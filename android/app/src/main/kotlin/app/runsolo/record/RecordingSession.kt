@@ -73,7 +73,15 @@ class RecordingSession(
     // first Flutter frame starved the main looper for seconds and the run lost its ticks).
     // Every public method and the tick are @Synchronized on this object, so main-thread calls
     // (lap/pause/stop/status from the API, BLE callbacks) and the recorder thread interleave safely.
-    private val thread = HandlerThread("runsolo-recorder").also { it.start() }
+    private val thread = HandlerThread("runsolo-recorder", android.os.Process.THREAD_PRIORITY_FOREGROUND).also { it.start() }
+
+    /**
+     * Last computed status, refreshed after every tick and control call. `status()` reads it
+     * without taking the monitor, so a Pigeon call on main never waits behind a journal fsync
+     * on the recorder thread; it is at most one tick (1 s) old.
+     */
+    @Volatile
+    private var snapshot: RecorderStatus? = null
     private val handler = Handler(thread.looper)
     private val cues = CuePlayer(this.context)
     private val lapInput = LapInput(this.context) { lap(LapSource.volumeKey) }
@@ -364,6 +372,7 @@ class RecordingSession(
                 ),
             )
         }
+        refreshSnapshot()
         if (r != null && !r.running && t >= r.endT) {
             // ReplaySource flips running before delivering the last fix, so this is that fix's tick.
             Log.i(TAG, "replay finished at ${core.status(t).elapsedMs} ms; stopping")
@@ -380,6 +389,7 @@ class RecordingSession(
         val (decision, out) = core.lap(source, t)
         Log.i(TAG, "lap $source → $decision")
         handle(out, t)
+        refreshSnapshot()
     }
 
     @Synchronized
@@ -412,6 +422,7 @@ class RecordingSession(
         stopTicks()
         val t = clock()
         val out = core.stop(t)
+        refreshSnapshot()
         for (o in out) if (o is RecorderCore.Output.Cue) {
             cues.play(o.kind, Phase.none, core.repIndex)
             writer.append(JournalLine.Cue(o.t, System.currentTimeMillis(), o.kind))
@@ -493,6 +504,7 @@ class RecordingSession(
                     RecorderEventBus.emit(CueEvent(kind = o.kind.toPigeon()))
                 }
                 is RecorderCore.Output.PhaseChanged -> {
+                    refreshSnapshot()
                     RecorderEventBus.emit(PhaseEvent(phase = o.phase.toPigeon(), repIndex = o.repIndex.toLong(), phaseDurationMs = o.phaseDurationMs ?: 0L))
                     onNotificationChanged?.invoke()
                 }
@@ -501,7 +513,12 @@ class RecordingSession(
     }
 
     private fun emitState() {
+        refreshSnapshot()
         RecorderEventBus.emit(StateEvent(state = core.state.toPigeon(), runId = runId, phase = core.phase.toPigeon()))
+    }
+
+    private fun refreshSnapshot() {
+        if (::core.isInitialized) snapshot = statusNow()
     }
 
     private fun fault(kind: FaultKind, message: String) {
@@ -510,8 +527,11 @@ class RecordingSession(
 
     // ---- views ----
 
+    /** Lock-free: the snapshot from the last tick/control call (≤ 1 s old), or a fresh one before the first tick. */
+    fun status(): RecorderStatus = snapshot ?: statusNow()
+
     @Synchronized
-    fun status(): RecorderStatus {
+    private fun statusNow(): RecorderStatus {
         val t = clock()
         val st = core.status(t)
         return RecorderStatus(

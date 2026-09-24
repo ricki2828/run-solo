@@ -76,6 +76,7 @@ class CuePlayer(context: Context) {
         }
     }
 
+    @Synchronized
     fun release() {
         try {
             tts?.stop()
@@ -89,7 +90,8 @@ class CuePlayer(context: Context) {
         abandonFocus()
     }
 
-    /** [nextPhase] is the phase that starts at a `phaseEnd`/`start` cue, for the wording. */
+    /** [nextPhase] is the phase that starts at a `phaseEnd`/`start` cue, for the wording. Called from the recorder thread; [done] from main. */
+    @Synchronized
     fun play(kind: CueKind, nextPhase: Phase, repIndex: Int) {
         vibrate(kind)
         if (!enabled) return
@@ -112,6 +114,7 @@ class CuePlayer(context: Context) {
         }
     }
 
+    @Synchronized
     private fun done() {
         if (inFlight > 0) inFlight--
         if (inFlight == 0) abandonFocus()

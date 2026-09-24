@@ -59,6 +59,9 @@ class ReplaySource(
     private var pending: Cancellable? = null
     private val t0 = items.first().t
     private var tStart = 0L
+
+    /** Read from other threads through `now()` (status calls on main); written by the delivery thread. */
+    @Volatile
     private var lastStamp = 0L
 
     var running = false

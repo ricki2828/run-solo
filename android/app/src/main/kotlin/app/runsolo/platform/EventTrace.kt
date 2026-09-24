@@ -14,6 +14,7 @@ import app.runsolo.core.json.Json
  */
 object EventTrace {
     const val TAG = "RunSolo/trace"
+    val enabled: Boolean get() = BuildConfig.DEBUG
 
     /** Dart enum spelling of a Pigeon Kotlin enum constant: `FOUR_BY_FOUR` → `fourByFour`. */
     fun dartName(e: Enum<*>): String = buildString {

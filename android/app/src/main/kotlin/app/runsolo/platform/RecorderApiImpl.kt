@@ -78,6 +78,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         active()?.let { return StartResult(runId = it.runId, error = null) }
         precondition()?.let { return StartResult(runId = null, error = it) }
         val session = newSession(mode, preset, units, replay)
+        RecorderService.pending = session // visible to the event bus before the first events are emitted
         session.startNew(device = "${Build.MANUFACTURER} ${Build.MODEL}", app = BuildConfig.VERSION_NAME, tz = TimeZone.getDefault().id)
         return launch(session)
     }
@@ -105,6 +106,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         val h = replayed.header
         val volumeKeys = prefs.getBoolean(RecorderService.PREF_VOLUME_KEY_LAPS, h.mode == app.runsolo.core.model.RunMode.free)
         val session = RecordingSession(context, runId, h.mode, h.preset, h.units, null, volumeKeys)
+        RecorderService.pending = session
         session.startResumed(replayed)
         return launch(session)
     }
