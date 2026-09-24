@@ -81,11 +81,13 @@ class RecorderService : Service() {
             )
         } catch (e: Exception) {
             // Android 14+: location FGS refused (permission revoked between check and start, or
-            // started from the background). Nothing was recorded yet: discard, never finalise.
+            // started from the background). Nothing was recorded yet: a new run is discarded, a
+            // resumed run keeps its journal for the next recover(). Never finalise.
             Log.e(TAG, "startForeground failed", e)
             session = null
-            s.discard()
-            RecorderEventBus.emit(FaultEvent(kind = FaultKind.START_FAILED, message = "Could not start recording: ${e.message}"))
+            s.abortStart()
+            val msg = if (s.resumed) "Could not restart recording; the run is kept for recovery: ${e.message}" else "Could not start recording: ${e.message}"
+            RecorderEventBus.emit(FaultEvent(kind = FaultKind.START_FAILED, message = msg))
             stopSelf()
             return
         }

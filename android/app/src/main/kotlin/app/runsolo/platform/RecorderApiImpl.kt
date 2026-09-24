@@ -53,12 +53,10 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     }
 
     /** See [StartGuard]: a failed resume keeps the journal; only a brand-new run is discarded. */
-    private fun begin(session: RecordingSession, onFailure: StartGuard.OnFailure, error: StartError, startStep: (RecordingSession) -> Unit): StartResult =
+    private fun begin(session: RecordingSession, startStep: (RecordingSession) -> Unit): StartResult =
         StartGuard.begin(
             session = session,
             register = { RecorderService.pending = it },
-            onFailure = onFailure,
-            failureError = error,
             startStep = startStep,
             launch = { launch(it) },
             log = { msg, e -> Log.e(TAG, msg, e) },
@@ -70,11 +68,12 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         try {
             ContextCompat.startForegroundService(context, intent)
         } catch (e: Exception) {
-            // Android 14+ refuses a location FGS started from the background: nothing recorded, no file.
+            // Android 14+ refuses a location FGS started from the background. A new run is discarded
+            // (nothing recorded, no file); a resumed run keeps its journal for the next recover().
             Log.e(TAG, "startForegroundService failed", e)
             RecorderService.pending = null
-            session.discard()
-            return StartResult(runId = null, error = StartError.FGS_NOT_ALLOWED)
+            session.abortStart()
+            return StartResult(runId = null, error = StartGuard.failureError(session, StartError.FGS_NOT_ALLOWED))
         }
         return StartResult(runId = session.runId, error = null)
     }
@@ -90,7 +89,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         active()?.let { return StartResult(runId = it.runId, error = null) }
         precondition()?.let { return StartResult(runId = null, error = it) }
         val session = newSession(mode, preset, units, replay)
-        return begin(session, StartGuard.OnFailure.DISCARD, StartError.START_FAILED) {
+        return begin(session) {
             it.startNew(device = "${Build.MANUFACTURER} ${Build.MODEL}", app = BuildConfig.VERSION_NAME, tz = TimeZone.getDefault().id)
         }
     }
@@ -118,7 +117,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         val h = replayed.header
         val volumeKeys = prefs.getBoolean(RecorderService.PREF_VOLUME_KEY_LAPS, h.mode == app.runsolo.core.model.RunMode.free)
         val session = RecordingSession(context, runId, h.mode, h.preset, h.units, null, volumeKeys)
-        return begin(session, StartGuard.OnFailure.KEEP_JOURNAL, StartError.RESUME_FAILED) { it.startResumed(replayed) }
+        return begin(session) { it.startResumed(replayed) }
     }
 
     override fun pause() {

@@ -37,6 +37,10 @@ android {
         abortOnError = true
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
     buildFeatures {
         // BuildConfig.DEBUG gates replay mode and the debug intents (plan §12).
         buildConfig = true
@@ -74,6 +78,7 @@ dependencies {
     // FusedLocationProvider (plan §3); falls back to raw GPS_PROVIDER when GMS is missing.
     // play-services-location does not declare INTERNET (dependency audit, plan §10).
     implementation("com.google.android.gms:play-services-location:21.3.0")
-    // JVM unit tests for the pure parts of the shell (StartGuard); run by CI's :app:testDebugUnitTest.
+    // JVM unit tests (StartGuard, and the real RecordingSession under Robolectric); CI runs :app:testDebugUnitTest.
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
 }

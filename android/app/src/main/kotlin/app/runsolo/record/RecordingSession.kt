@@ -96,6 +96,11 @@ class RecordingSession(
     /** Wall time the run started (from the header; survives a resume). */
     var startWallMs: Long = 0
         private set
+
+    /** True once [startResumed] ran: this session continues an orphaned journal that must never be deleted. */
+    @Volatile
+    override var resumed: Boolean = false
+        private set
     private var lapCount = 0
     private val laps = ArrayList<LapSummary>()
     private var lapStartT = 0L
@@ -143,6 +148,7 @@ class RecordingSession(
         val t = clock()
         val nowWall = System.currentTimeMillis()
         startWallMs = orphan.header.w
+        resumed = true // from here on, any abort keeps the journal
         writer.open() // drops a torn tail first
         val gap = (nowWall - orphan.lastWallMs).coerceAtLeast(0)
         writer.append(JournalLine.Gap(t, nowWall, gap))
@@ -451,9 +457,20 @@ class RecordingSession(
         cues.enabled = enabled
     }
 
-    /** The foreground service could not start: nothing worth keeping. Deletes the journal, never finalises. */
+    /**
+     * A start that did not reach recording (start step threw, `startForegroundService` or
+     * `startForeground` refused). The only decision point for the journal: a brand-new run is
+     * discarded (nothing worth keeping), a resumed run is suspended — journal closed and kept
+     * on disk for the next `recover()`. Never finalises.
+     */
     @Synchronized
-    override fun discard() {
+    override fun abortStart() {
+        if (resumed) suspend() else discard()
+    }
+
+    /** A brand-new run that never recorded: deletes its header-only journal. Only [abortStart] may call this. */
+    @Synchronized
+    private fun discard() {
         if (finished) return
         finished = true
         stopTicks()
@@ -466,9 +483,9 @@ class RecordingSession(
         thread.quitSafely()
     }
 
-    /** The service was torn down while the process lives: stop cleanly, keep the journal for recovery. */
+    /** Stop cleanly and keep the journal for recovery (service torn down mid-run, or a resumed start aborted). */
     @Synchronized
-    override fun suspend() {
+    fun suspend() {
         if (finished) return
         finished = true
         stopTicks()
