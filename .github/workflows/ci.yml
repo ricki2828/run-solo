@@ -185,10 +185,13 @@ jobs:
         run: |
           APK=build/app/outputs/flutter-apk/app-arm64-v8a-dogfood-release.apk
           BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
-          "$BT/apksigner" verify --print-certs "$APK" | grep -E "Signer #1 certificate DN"
-          "$BT/apksigner" verify --print-certs "$APK" | grep -q "CN=Run Solo dogfood" || { echo "dogfood APK is not signed with the dogfood key" >&2; exit 1; }
-          "$BT/aapt" dump badging "$APK" | grep -E "^package:" 
-          "$BT/aapt" dump badging "$APK" | grep -q "name='app.runsolo.dogfood'" || { echo "unexpected applicationId" >&2; exit 1; }
+          echo "build-tools: $BT"; ls "$BT" | grep -E "^(apksigner|aapt|zipalign)$"
+          "$BT/apksigner" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/signer.txt" 2>&1 || true
+          cat "$RUNNER_TEMP/signer.txt"
+          grep -q "CN=Run Solo dogfood" "$RUNNER_TEMP/signer.txt" || { echo "dogfood APK is not signed with the dogfood key" >&2; exit 1; }
+          "$BT/aapt" dump badging "$APK" > "$RUNNER_TEMP/badging.txt" 2>&1 || true
+          grep -E "^package:" "$RUNNER_TEMP/badging.txt" || true
+          grep -q "name='app.runsolo.dogfood'" "$RUNNER_TEMP/badging.txt" || { echo "unexpected applicationId" >&2; exit 1; }
           tools/check_16kb_alignment.sh "$APK" "$BT/zipalign"
           SIZE=$(stat -c %s "$APK"); MIB=$(awk "BEGIN{printf \"%.1f\", $SIZE/1048576}")
           echo "dogfood arm64 APK: ${MIB} MiB ($SIZE bytes)"
