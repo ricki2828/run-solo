@@ -96,8 +96,13 @@ data class RunFile(
             for (e in r.events) {
                 when (e) {
                     is RunEvent.Sample -> {
+                        // Engine contract: samples strictly increasing in t (a clamped clock jump or a
+                        // duplicate fix would repeat a t → dropped), hr > 0 or null.
+                        val last = samples.lastOrNull()
+                        if (last != null && e.t <= last.t) continue
                         filter.offer(LocationFix(e.t, e.lat, e.lon, e.altM, e.accuracyM, e.speedMps))
-                        samples.add(Sample(e.t, e.lat, e.lon, e.altM, e.accuracyM, e.speedMps, filter.totalM, e.hr))
+                        val hr = e.hr?.takeIf { it > 0 }
+                        samples.add(Sample(e.t, e.lat, e.lon, e.altM, e.accuracyM, e.speedMps, filter.totalM, hr))
                     }
                     is RunEvent.Lap -> markers.add(e.t to if (e.source == LapSource.auto) LapKind.auto else LapKind.manual)
                     is RunEvent.Pause -> if (pauseStart == null) pauseStart = e.t

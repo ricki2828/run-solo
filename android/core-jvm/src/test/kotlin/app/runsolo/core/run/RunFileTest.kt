@@ -97,6 +97,20 @@ class RunFileTest {
     }
 
     @Test
+    fun `samples are strictly increasing in t and hr is never 0`() {
+        val text = listOf(
+            header,
+            JournalLine.Sample(t0 + 5000, w0 + 5000, 0.0, 0.0, null, 5.0, null, 0),
+            JournalLine.Sample(t0 + 1000, w0 + 1000, 0.0, 0.0, null, 5.0, null, 150), // clock went backwards → clamped to 5000 → dropped
+            JournalLine.Sample(t0 + 1000, w0 + 1000, 0.0, 0.0, null, 5.0, null, null), // duplicate t → dropped
+            JournalLine.Sample(t0 + 2000, w0 + 2000, 0.0, 0.0, null, 5.0, null, 151), // 1 s after the clamp point
+        ).joinToString("") { JournalCodec.encode(it) + "\n" }
+        val f = RunFile.fromReplay(JournalReplay.read(text.toByteArray()), w0 + 6000)
+        assertEquals(listOf(5000L, 6000L), f.samples.map { it.t })
+        assertEquals(listOf(null, 151), f.samples.map { it.hr })
+    }
+
+    @Test
     fun `gap span is carried into gaps`() {
         val text = listOf(
             header,
