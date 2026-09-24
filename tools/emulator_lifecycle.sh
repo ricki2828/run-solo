@@ -33,6 +33,8 @@ check_fatal() { # <phase>; call BEFORE every logcat -c
 shell() { adb shell "$@" | tr -d '\r'; }
 
 adb wait-for-device
+until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 2; done
+adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
 adb logcat -c || true
 adb install -r "$APK"
 adb shell pm grant "$PKG" android.permission.ACCESS_FINE_LOCATION
@@ -42,8 +44,17 @@ adb shell settings put secure location_mode 3 || true
 adb shell settings put secure location_providers_allowed +gps || true
 
 log "start replay run (synthetic-4x4 @20x) on API $sdk"
-adb shell am start -W -n "$ACTIVITY" --es runsolo.replay synthetic-4x4 --ef runsolo.speed 20 > /dev/null
-wait_for_log 'RunSolo/debug.*startReplay .*runId=[0-9a-f-]+ error=null' 30 || fail "replay did not start"
+start_replay() { adb shell am start -W -n "$ACTIVITY" --es runsolo.replay synthetic-4x4 --ef runsolo.speed 20 > /dev/null; wait_for_log 'RunSolo/debug.*startReplay .*runId=[0-9a-f-]+ error=null' 30; }
+if ! start_replay; then
+  # A system-app ANR dialog (GMS on a cold hosted emulator) can swallow the first launch.
+  check_fatal "first launch"
+  log "replay did not start on the first launch; closing system dialogs and retrying once"
+  adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
+  adb shell am force-stop "$PKG" || true
+  sleep 5
+  adb logcat -c || true
+  start_replay || fail "replay did not start"
+fi
 run_id="$(adb logcat -d | grep -oE 'startReplay .*runId=[0-9a-f-]+' | tail -1 | sed 's/.*runId=//')"
 log "runId=$run_id"
 

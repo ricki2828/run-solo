@@ -7,12 +7,26 @@ set -euo pipefail
 APK="${1:?apk}"
 PKG="${2:?package}"
 
+ACTIVITY="$PKG/app.runsolo.MainActivity"
 adb wait-for-device
 adb shell getprop ro.build.version.sdk
+# Boot-complete + a settle: hosted-runner emulators are still starting GMS when adb is up,
+# and a GMS ANR dialog steals the launch (seen on API 34: "com.google.android.gms.persistent
+# is not responding", 0 monkey events injected).
+until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 2; done
+sleep 15
+adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
 adb logcat -c || true
 adb install -r "$APK"
-adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
-sleep 12
+# Explicit start (not monkey): a system-app ANR aborts monkey before it injects anything.
+# Retry once if the process is not up — only a FATAL in OUR process fails the run.
+launch() { adb shell am start -W -n "$ACTIVITY" > /dev/null; sleep 12; adb shell pidof "$PKG" > /dev/null; }
+if ! launch; then
+  echo "first launch did not come up; closing system dialogs and retrying once"
+  adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
+  sleep 5
+  launch || true
+fi
 
 if ! adb shell pidof "$PKG" > /dev/null; then
   echo "process $PKG is not running after launch" >&2
