@@ -7,7 +7,7 @@ import app.runsolo.core.json.Json
 /**
  * Debug builds only: every event the EventChannel emits, plus a `status()` snapshot after each
  * state/phase event, logged as one NDJSON line under `RunSolo/trace` in the same shape as the
- * JVM-generated contract fixture (`contract-events/*.ndjson`: `{"t": elapsedMs, "kind": …,
+ * JVM-generated contract fixture (`contract-events/` NDJSON: `{"t": elapsedMs, "kind": …,
  * Pigeon field names, enums as their Dart names}`). The CI lifecycle run captures these lines
  * and `tools/check_event_trace.py` compares their structure with the fixture, so a mapping bug
  * on the Android side (a field missing, an enum spelt differently, a wrong `tMs` base) fails CI.
