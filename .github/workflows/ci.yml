@@ -49,6 +49,22 @@ jobs:
       - name: run_engine tests
         working-directory: packages/run_engine
         run: dart test
+      - name: Render goldens (artifact; commit into test/golden/goldens to enable the golden tests)
+        # The aarch64 dev host cannot render them; this Linux runner is the
+        # reference. Never fails the job, and still runs when a golden test
+        # failed (that is when the fresh PNG is needed).
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          mkdir -p test/golden/goldens
+          flutter test --update-goldens test/golden
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: goldens
+          path: test/golden/goldens
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Kotlin→Dart contract fixtures are identical copies
         # core-jvm writes them from the real recording path; run_engine
         # tests them. A drift on either side fails here (review P1-4).

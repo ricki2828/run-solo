@@ -13,6 +13,8 @@ dependencies:
     sdk: flutter
   run_engine:
     path: packages/run_engine
+  # Only for the app files dir (settings sidecar, run files). No network.
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:
