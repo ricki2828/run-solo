@@ -5,6 +5,13 @@ plugins {
 group = "app.runsolo"
 version = "0.1.0"
 
+java {
+    // Must match the Kotlin jvmTarget below or Gradle fails the build ("Inconsistent JVM
+    // Target Compatibility"). Bytecode is Java 8; the toolchain that compiles it is JDK 17.
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
 kotlin {
     jvmToolchain(17)
     compilerOptions {
