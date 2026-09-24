@@ -4,7 +4,9 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.ServiceCompat
@@ -25,6 +27,7 @@ import app.runsolo.platform.RecorderEventBus
 class RecorderService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private lateinit var notification: RecorderNotification
+    private val main = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -67,8 +70,8 @@ class RecorderService : Service() {
             return
         }
         session = s
-        s.onNotificationChanged = { refreshNotification() }
-        s.onReplayFinished = { stopRun() }
+        s.onNotificationChanged = { refreshNotification() } // NotificationManager is thread-safe
+        s.onReplayFinished = { main.post { stopRun() } } // called on the recorder thread; Service calls belong on main
         try {
             ServiceCompat.startForeground(
                 this,
