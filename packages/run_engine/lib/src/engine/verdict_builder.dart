@@ -1,0 +1,398 @@
+import '../engine_version.dart';
+import '../model/run_file.dart';
+import '../model/verdict.dart';
+import 'constants.dart';
+import 'format.dart';
+import 'metrics.dart';
+import 'rep_detector.dart';
+
+/// What the engine needs to know about an earlier 4x4 to compare against it.
+/// The store keeps these in the index; [PriorRun.fromMetrics] builds one from
+/// a fresh analysis. Only eligible runs (4x4 after override, not noisy, not
+/// indoor, every rep clean) should be passed as priors; the builder also
+/// filters by date so a later run can never be a "prior".
+class PriorRun {
+  const PriorRun({
+    required this.id,
+    required this.start,
+    required this.avgWorkPaceSecPerKm,
+    this.fadeSecPerKm,
+    this.recoveryPaceSecPerKm,
+    this.timeInZoneSeconds,
+    this.meanWorkHr,
+    this.meanWorkHrFraction,
+    this.metresPerBeat,
+  });
+
+  final String id;
+  final DateTime start;
+  final double avgWorkPaceSecPerKm;
+  final double? fadeSecPerKm;
+  final double? recoveryPaceSecPerKm;
+  final double? timeInZoneSeconds;
+  final double? meanWorkHr;
+  final double? meanWorkHrFraction;
+  final double? metresPerBeat;
+
+  static PriorRun? fromMetrics(
+    String id,
+    DateTime start,
+    FourByFourMetrics m, {
+    required bool eligible,
+  }) {
+    if (!eligible || m.avgWorkPaceSecPerKm == null) return null;
+    return PriorRun(
+      id: id,
+      start: start,
+      avgWorkPaceSecPerKm: m.avgWorkPaceSecPerKm!,
+      fadeSecPerKm: m.fadeSecPerKm,
+      recoveryPaceSecPerKm: m.recoveryPaceSecPerKm,
+      timeInZoneSeconds: m.timeInZoneSeconds,
+      meanWorkHr: m.meanWorkHr,
+      meanWorkHrFraction: m.meanWorkHrFraction,
+      metresPerBeat: m.metresPerBeat,
+    );
+  }
+}
+
+/// GPS gates and lap state that decide whether a pace verdict is possible.
+class VerdictGates {
+  const VerdictGates({
+    required this.indoor,
+    required this.noisy,
+    required this.gpsQuality,
+  });
+
+  final bool indoor;
+  final bool noisy;
+  final double gpsQuality;
+}
+
+/// Staged verdict + copy pinned to the design brief's verdict copy set.
+class VerdictBuilder {
+  const VerdictBuilder(this.constants);
+
+  final EngineConstants constants;
+
+  Verdict build({
+    required RunFile run,
+    required RepDetection detection,
+    required FourByFourMetrics metrics,
+    required VerdictGates gates,
+    required List<PriorRun> priors,
+    required DateTime now,
+  }) {
+    final floor = constants.runFloorSecPerKm;
+    final band = constants.repBandSecPerKm;
+
+    Verdict none(VerdictHeadline headline, String subline, {String? hrLine}) =>
+        Verdict(
+          stage: VerdictStage.none,
+          headline: headline,
+          subline: subline,
+          hrLine: hrLine,
+          currentSecPerKm: metrics.avgWorkPaceSecPerKm,
+          floorSecPerKm: floor,
+          bandSecPerKm: band,
+          engineVersion: engineVersion,
+          computedAt: now,
+        );
+
+    if (gates.indoor) {
+      final tiz = metrics.timeInZoneSeconds;
+      return none(
+        VerdictHeadline.indoorRun,
+        tiz == null
+            ? 'No pace verdict.'
+            : 'No pace verdict. Time in zone ${PaceFormat.mmss(tiz)}.',
+      );
+    }
+    if (!detection.consistent) {
+      return none(
+        VerdictHeadline.noVerdict,
+        'Laps do not match a 4x4. Fix laps to get a verdict.',
+      );
+    }
+    if (gates.noisy) {
+      return none(
+        VerdictHeadline.noVerdict,
+        'GPS too noisy to compare. Reps shown, run not counted.',
+      );
+    }
+    if (!metrics.allRepsClean) {
+      final first = metrics.reps.firstWhere((r) => r.interrupted);
+      final reason = switch (first.interruptReason!) {
+        InterruptReason.gpsDropped => 'GPS dropped',
+        InterruptReason.paused => 'Paused',
+        InterruptReason.recordingStopped => 'Recording stopped',
+      };
+      final clean = metrics.cleanRepCount;
+      final cleanWord = PaceFormat.countWord(clean);
+      final repsWord = clean == 1 ? 'rep is' : 'reps are';
+      return none(
+        VerdictHeadline.noVerdict,
+        '$reason in rep ${first.number}. $cleanWord clean $repsWord not enough '
+        'to compare.',
+      );
+    }
+
+    final eligible = priors.where((p) => p.start.isBefore(run.start)).toList()
+      ..sort((a, b) => a.start.compareTo(b.start));
+
+    if (eligible.isEmpty) return _baseline(run, metrics, now);
+    if (eligible.length == 1) {
+      return _vsLast(run, metrics, eligible.single, now);
+    }
+    return _vsMedian(run, metrics, eligible, now);
+  }
+
+  Verdict _baseline(RunFile run, FourByFourMetrics m, DateTime now) {
+    final units = run.units;
+    final spread = m.repSpreadSecPerKm!;
+    final spreadText = spread <= constants.repBandSecPerKm
+        ? 'Reps within ${PaceFormat.seconds(PaceFormat.toUnit(spread, units))} of each other.'
+        : 'Reps spread ${PaceFormat.seconds(PaceFormat.toUnit(spread, units))}.';
+    final recovery = m.recoveryPaceSecPerKm;
+    final recoveryText = recovery == null
+        ? ''
+        : ' Recovery ${PaceFormat.paceBare(recovery, units)}.';
+    return Verdict(
+      stage: VerdictStage.baseline,
+      headline: VerdictHeadline.baselineSet,
+      subline:
+          '${PaceFormat.pace(m.avgWorkPaceSecPerKm!, units)} work pace. '
+          '$spreadText$recoveryText Next 4x4 gets a verdict.',
+      hrLine: m.timeInZoneSeconds == null
+          ? null
+          : 'Time in zone ${PaceFormat.mmss(m.timeInZoneSeconds!)} of '
+                '${PaceFormat.mmss(m.workSeconds)}.',
+      currentSecPerKm: m.avgWorkPaceSecPerKm,
+      floorSecPerKm: constants.runFloorSecPerKm,
+      bandSecPerKm: constants.repBandSecPerKm,
+      engineVersion: engineVersion,
+      computedAt: now,
+    );
+  }
+
+  Verdict _vsLast(
+    RunFile run,
+    FourByFourMetrics m,
+    PriorRun last,
+    DateTime now,
+  ) {
+    final units = run.units;
+    final current = m.avgWorkPaceSecPerKm!;
+    final baseline = last.avgWorkPaceSecPerKm;
+    final delta = baseline - current;
+    final floor = constants.run2FloorSecPerKm;
+    final vs =
+        '(${PaceFormat.paceBare(current, units)} vs ${PaceFormat.pace(baseline, units)})';
+    final VerdictHeadline headline;
+    final String subline;
+    String? hrLine;
+    if (delta > floor) {
+      headline = VerdictHeadline.faster;
+      subline =
+          'Work pace ${PaceFormat.delta(delta, units)} faster than your first 4x4 $vs.'
+          '${_fadeSentence(m, last, units)}';
+      hrLine = _fasterHrLine(m, last);
+    } else if (delta < -floor) {
+      headline = VerdictHeadline.slower;
+      subline =
+          'Work pace ${PaceFormat.delta(delta, units)} slower than your first 4x4 $vs.'
+          '${_fadeSentence(m, last, units)}';
+      hrLine = _slowerHrLine(m, last);
+    } else {
+      headline = VerdictHeadline.noRealChange;
+      final lead = delta.round() == 0
+          ? 'Same work pace as your first 4x4 (${PaceFormat.pace(current, units)}).'
+          : '${PaceFormat.delta(delta, units)} ${delta > 0 ? 'faster' : 'slower'} '
+                'than your first 4x4 $vs.';
+      subline =
+          '$lead Inside what phone GPS can tell (${PaceFormat.delta(floor, units)}).';
+    }
+    return Verdict(
+      stage: VerdictStage.vsLast,
+      headline: headline,
+      subline: subline,
+      hrLine: hrLine,
+      currentSecPerKm: current,
+      baselineSecPerKm: baseline,
+      deltaSecPerKm: delta,
+      rank: delta > 0 ? 1 : 0,
+      setSize: 1,
+      setIds: [last.id],
+      floorSecPerKm: floor,
+      bandSecPerKm: constants.repBandSecPerKm,
+      engineVersion: engineVersion,
+      computedAt: now,
+    );
+  }
+
+  Verdict _vsMedian(
+    RunFile run,
+    FourByFourMetrics m,
+    List<PriorRun> eligible,
+    DateTime now,
+  ) {
+    final units = run.units;
+    final current = m.avgWorkPaceSecPerKm!;
+    final set = eligible.length > constants.medianSetSize
+        ? eligible.sublist(eligible.length - constants.medianSetSize)
+        : eligible;
+    final baseline = _median(set.map((p) => p.avgWorkPaceSecPerKm).toList());
+    final delta = baseline - current;
+    final floor = constants.runFloorSecPerKm;
+    final rank = set.where((p) => p.avgWorkPaceSecPerKm > current).length;
+    final last = set.last;
+    final vs =
+        '(${PaceFormat.paceBare(current, units)} vs ${PaceFormat.pace(baseline, units)})';
+
+    final VerdictHeadline headline;
+    final String subline;
+    String? hrLine;
+    if (delta > floor) {
+      headline = VerdictHeadline.faster;
+      subline =
+          'Work pace ${PaceFormat.delta(delta, units)} faster than your recent 4x4s $vs.'
+          '${_fadeSentence(m, last, units)}';
+      hrLine = _fasterHrLine(m, last);
+    } else if (delta < -floor) {
+      headline = VerdictHeadline.slower;
+      subline =
+          'Work pace ${PaceFormat.delta(delta, units)} slower than your recent 4x4s $vs.'
+          '${_fadeSentence(m, last, units)}';
+      hrLine = _slowerHrLine(m, last);
+    } else {
+      headline = VerdictHeadline.holding;
+      final recovery = m.recoveryPaceSecPerKm;
+      final wasRecovery = last.recoveryPaceSecPerKm;
+      final recoveryText = recovery == null
+          ? ''
+          : wasRecovery == null
+          ? ' Recovery pace ${PaceFormat.paceBare(recovery, units)}.'
+          : ' Recovery pace ${PaceFormat.paceBare(recovery, units)}, was '
+                '${PaceFormat.paceBare(wasRecovery, units)}.';
+      subline =
+          'Within ${PaceFormat.delta(delta, units)} of your recent 4x4s $vs.$recoveryText';
+      hrLine = _holdingHrLine(m, last);
+    }
+
+    // 365-day best: more than 1% faster than every eligible prior in the window.
+    final yearAgo = run.start.subtract(const Duration(days: 365));
+    final inYear = eligible.where((p) => !p.start.isBefore(yearAgo)).toList();
+    var best = false;
+    if (inYear.isNotEmpty) {
+      final bestPrior = inYear
+          .map((p) => p.avgWorkPaceSecPerKm)
+          .reduce((a, b) => a < b ? a : b);
+      best = current < bestPrior * (1 - constants.bestBadgeFraction);
+    }
+
+    return Verdict(
+      stage: VerdictStage.vsMedian,
+      headline: headline,
+      subline: subline,
+      hrLine: hrLine,
+      currentSecPerKm: current,
+      baselineSecPerKm: baseline,
+      deltaSecPerKm: delta,
+      rank: rank,
+      setSize: set.length,
+      setIds: set.map((p) => p.id).toList(),
+      floorSecPerKm: floor,
+      bandSecPerKm: constants.repBandSecPerKm,
+      engineVersion: engineVersion,
+      computedAt: now,
+      bestIn365Days: best,
+      trendSecPerKmPerWeek: theilSenSlope(run.start, current, eligible),
+    );
+  }
+
+  String _fadeSentence(FourByFourMetrics m, PriorRun last, Units units) {
+    final fade = m.fadeSecPerKm;
+    if (fade == null) return '';
+    final was = last.fadeSecPerKm;
+    final fadeText = PaceFormat.seconds(PaceFormat.toUnit(fade, units));
+    if (was == null) return ' Fade $fadeText.';
+    return ' Fade $fadeText, was ${PaceFormat.seconds(PaceFormat.toUnit(was, units))}.';
+  }
+
+  String? _fasterHrLine(FourByFourMetrics m, PriorRun last) {
+    final pct = m.meanWorkHrFraction;
+    if (pct == null) return null;
+    final was = last.meanWorkHrFraction;
+    final pctText = '${(pct * 100).round()}% max HR';
+    if (was == null) return _timeInZoneOf(m);
+    final wasText = '${(was * 100).round()}%';
+    final diff = (pct - was) * 100;
+    if (diff.abs() <= 2) return 'Same effort: $pctText both runs.';
+    if (diff > 0) return 'Faster, but it cost more: $pctText, was $wasText.';
+    return 'Faster at lower effort: $pctText, was $wasText.';
+  }
+
+  String? _holdingHrLine(FourByFourMetrics m, PriorRun last) {
+    final tiz = m.timeInZoneSeconds;
+    if (tiz == null) return null;
+    final was = last.timeInZoneSeconds;
+    if (was == null) return _timeInZoneOf(m);
+    final diff = (tiz - was).round();
+    if (diff == 0)
+      return 'Time in zone ${PaceFormat.mmss(tiz)}, same as last time.';
+    return 'Time in zone ${PaceFormat.mmss(tiz)}, ${diff > 0 ? 'up' : 'down'} '
+        '${PaceFormat.seconds(diff.toDouble())}.';
+  }
+
+  String? _slowerHrLine(FourByFourMetrics m, PriorRun last) {
+    final hr = m.meanWorkHr;
+    if (hr == null) return null;
+    final was = last.meanWorkHr;
+    if (was != null && was - hr >= 2) {
+      return 'HR ${(was - hr).round()} bpm lower: easier day, not a worse one.';
+    }
+    return _timeInZoneOf(m);
+  }
+
+  String? _timeInZoneOf(FourByFourMetrics m) {
+    final tiz = m.timeInZoneSeconds;
+    if (tiz == null) return null;
+    return 'Time in zone ${PaceFormat.mmss(tiz)} of ${PaceFormat.mmss(m.workSeconds)}.';
+  }
+
+  static double _median(List<double> values) {
+    final sorted = List<double>.from(values)..sort();
+    final n = sorted.length;
+    return n.isOdd ? sorted[n ~/ 2] : (sorted[n ~/ 2 - 1] + sorted[n ~/ 2]) / 2;
+  }
+
+  /// Theil–Sen slope (s/km per week) over the last 12 weeks including the
+  /// current run, once there are >= 5 runs spanning >= 4 weeks. Null otherwise.
+  static double? theilSenSlope(
+    DateTime start,
+    double current,
+    List<PriorRun> eligible,
+  ) {
+    final windowStart = start.subtract(const Duration(days: 84));
+    final points = <(double, double)>[
+      for (final p in eligible)
+        if (!p.start.isBefore(windowStart))
+          (
+            p.start.difference(windowStart).inMinutes / (7 * 24 * 60),
+            p.avgWorkPaceSecPerKm,
+          ),
+      (start.difference(windowStart).inMinutes / (7 * 24 * 60), current),
+    ];
+    if (points.length < 5) return null;
+    final xs = points.map((p) => p.$1).toList()..sort();
+    if (xs.last - xs.first < 4) return null;
+    final slopes = <double>[];
+    for (var i = 0; i < points.length; i++) {
+      for (var j = i + 1; j < points.length; j++) {
+        final dx = points[j].$1 - points[i].$1;
+        if (dx == 0) continue;
+        slopes.add((points[j].$2 - points[i].$2) / dx);
+      }
+    }
+    return slopes.isEmpty ? null : _median(slopes);
+  }
+}
