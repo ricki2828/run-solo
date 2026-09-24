@@ -49,6 +49,18 @@ jobs:
       - name: run_engine tests
         working-directory: packages/run_engine
         run: dart test
+      - name: Kotlin→Dart contract fixtures are identical copies
+        # core-jvm writes them from the real recording path; run_engine
+        # tests them. A drift on either side fails here (review P1-4).
+        run: |
+          kotlin=android/core-jvm/src/test/fixtures/contract
+          dart=packages/run_engine/test/fixtures/contract
+          count=$(ls "$kotlin"/*.json 2>/dev/null | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "::error::no Kotlin contract fixtures in $kotlin"; exit 1
+          fi
+          diff -r "$kotlin" "$dart"
+          echo "contract fixtures: $count Kotlin files identical to run_engine copies (both ways)"
 
   core-jvm:
     name: core-jvm tests (pure Kotlin)
