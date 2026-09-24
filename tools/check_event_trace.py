@@ -24,6 +24,11 @@ ENUMS = {
     "fault": {"gpsLost", "gpsWeak", "hrDisconnected", "journalWriteFailed", "lowStorage", "osKilledMidRun", "startFailed"},
 }
 REQUIRED_KINDS = {"tick", "lap", "phase", "state", "status", "cue"}
+# Kinds the fixture scenario never produces but a real run legitimately can (the emulator has
+# no GPS, so `gpsLost` fires). Their shape is pinned here instead: field -> JSON types.
+KNOWN_SHAPES = {
+    "fault": {"t": {"int"}, "kind": {"str"}, "fault": {"str"}, "message": {"str"}},
+}
 
 
 def load(path):
@@ -95,19 +100,31 @@ def main():
     sc, sf = shape(captured), shape(fixture)
     for k in sorted(kinds_c & set(sf)):
         fc, ff = set(sc[k]), set(sf[k])
+        first = next(e for e in captured if e["kind"] == k)
         if fc != ff:
-            errors.append(f"{k}: field names differ; only in captured {sorted(fc - ff)}, only in fixture {sorted(ff - fc)}")
+            errors.append(f"{k}: field names differ; only in captured {sorted(fc - ff)}, only in fixture {sorted(ff - fc)}; first captured line: {json.dumps(first)}")
         for f in fc & ff:
             tc, tf = norm(sc[k][f]), norm(sf[k][f])
             if tc and tf and not tc <= tf:
-                errors.append(f"{k}.{f}: type {sorted(tc)} in captured vs {sorted(tf)} in fixture")
+                errors.append(f"{k}.{f}: type {sorted(tc)} in captured vs {sorted(tf)} in fixture; first captured line: {json.dumps(first)}")
     for k in kinds_c - set(sf):
-        errors.append(f"{k}: kind absent from the fixture")
+        first = next(e for e in captured if e["kind"] == k)
+        known = KNOWN_SHAPES.get(k)
+        if known is None:
+            errors.append(f"{k}: kind absent from the fixture and not a known shape; first line: {json.dumps(first)}")
+            continue
+        fc = set(sc[k])
+        if fc != set(known):
+            errors.append(f"{k}: field names {sorted(fc)} differ from the known shape {sorted(known)}; first line: {json.dumps(first)}")
+        for f in fc & set(known):
+            tc = norm(sc[k][f])
+            if tc and not tc <= norm(known[f]):
+                errors.append(f"{k}.{f}: type {sorted(tc)} vs known {sorted(known[f])}; first line: {json.dumps(first)}")
     # Enum vocabularies.
     for e in captured:
         for f, vocab in ENUMS.items():
             if f in e and e[f] is not None and e[f] not in vocab:
-                errors.append(f"{e['kind']}.{f} = {e[f]!r} is not a Dart enum name {sorted(vocab)}")
+                errors.append(f"{e['kind']}.{f} = {e[f]!r} is not a Dart enum name {sorted(vocab)}; line: {json.dumps(e)}")
                 break
     # Invariants.
     ticks = [e for e in captured if e["kind"] == "tick"]
@@ -116,21 +133,25 @@ def main():
     phases = [e["phase"] for e in captured if e["kind"] == "phase"]
     statuses = [e for e in captured if e["kind"] == "status"]
     ts = [e["elapsedMs"] for e in ticks]
-    if any(b < a for a, b in zip(ts, ts[1:])):
-        errors.append("tick.elapsedMs decreased")
-    if any(e["t"] != e["elapsedMs"] for e in ticks):
-        errors.append("tick.t != tick.elapsedMs")
-    if any(e["phaseRemainingMs"] < 0 for e in ticks):
-        errors.append("tick.phaseRemainingMs negative")
+    for a, b in zip(ticks, ticks[1:]):
+        if b["elapsedMs"] < a["elapsedMs"]:
+            errors.append(f"tick.elapsedMs decreased: {json.dumps(a)} -> {json.dumps(b)}")
+            break
+    bad = next((e for e in ticks if e["t"] != e["elapsedMs"]), None)
+    if bad:
+        errors.append(f"tick.t != tick.elapsedMs; first: {json.dumps(bad)}")
+    bad = next((e for e in ticks if e["phaseRemainingMs"] < 0), None)
+    if bad:
+        errors.append(f"tick.phaseRemainingMs negative; first: {json.dumps(bad)}")
     prev = 0
     for i, lap in enumerate(laps):
         if lap["index"] != i:
             errors.append(f"lap index {lap['index']} at position {i}")
         wall = lap["tMs"] - prev
         if not (0 < lap["activeMs"] <= wall + 1):
-            errors.append(f"lap {i}: activeMs {lap['activeMs']} outside (0, wall {wall}]")
+            errors.append(f"lap {i}: activeMs {lap['activeMs']} outside (0, wall {wall}]; line: {json.dumps(lap)}")
         if lap["t"] != lap["tMs"]:
-            errors.append(f"lap {i}: t != tMs")
+            errors.append(f"lap {i}: t != tMs; line: {json.dumps(lap)}")
         prev = lap["tMs"]
     if not states or states[0]["state"] != "recording":
         errors.append(f"first state is {states[0]['state'] if states else 'missing'}, expected recording")

@@ -29,7 +29,13 @@ object EventTrace {
     fun event(e: RecorderEvent, elapsedMs: Long) {
         if (!BuildConfig.DEBUG) return
         val m = LinkedHashMap<String, Any?>()
-        m["t"] = elapsedMs
+        // `t` is the event's own time where it has one (a tick's elapsedMs, a lap's tMs) — the
+        // fixture does the same — and the elapsed time at emission for the others.
+        m["t"] = when (e) {
+            is TickEvent -> e.elapsedMs
+            is LapEvent -> e.tMs
+            else -> elapsedMs
+        }
         when (e) {
             is TickEvent -> {
                 m["kind"] = "tick"

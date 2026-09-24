@@ -37,6 +37,8 @@ shell() { adb shell "$@" | tr -d '\r'; }
 
 adb wait-for-device
 until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 2; done
+# The trace at 20x is ~20 lines/s on a shared ring buffer; the default 256 KB evicts the early part.
+adb logcat -G 8M || true
 adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
 adb logcat -c || true
 adb install -r "$APK"
