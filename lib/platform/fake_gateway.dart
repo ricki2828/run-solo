@@ -1,0 +1,587 @@
+/// In-process stand-ins for the Kotlin side. Used by widget tests and by the
+/// APK when built with `--dart-define=RUN_SOLO_FAKE=true`.
+///
+/// The fake recorder mirrors `RecorderCore.kt` + `RecordingSession.kt`
+/// (see the semantics list in `gateway.dart`): elapsed runs through pauses
+/// while phase timers count active time only; ticks keep coming while paused;
+/// `LapEvent.distanceM` is cumulative; `repIndex` is 1-based and a recovery
+/// follows the last rep before cool-down; `StateEvent` / `PhaseEvent` fire
+/// on every transition; volume-key laps never re-align a preset.
+library;
+
+import 'dart:async';
+import 'dart:math' as math;
+
+import 'gateway.dart';
+
+/// A finalised run as the fake remembers it (the real app reads run files).
+class FakeFinalisedRun {
+  FakeFinalisedRun({
+    required this.runId,
+    required this.mode,
+    required this.start,
+    required this.durationMs,
+    required this.distanceM,
+    required this.laps,
+    this.preset,
+  });
+  final String runId;
+  final RecordMode mode;
+  final DateTime start;
+  final int durationMs;
+  final double distanceM;
+  final int laps;
+  final Preset? preset;
+}
+
+class FakeRecorderGateway implements RecorderGateway {
+  FakeRecorderGateway({
+    this.autoTick = false,
+    this.tickInterval = const Duration(milliseconds: 500),
+    DateTime Function()? now,
+    List<OrphanJournal>? orphans,
+    this.startError,
+  }) : _now = now ?? DateTime.now,
+       orphans = orphans ?? [];
+
+  /// Advance on a wall-clock timer (the APK); tests call [advance] instead.
+  final bool autoTick;
+  final Duration tickInterval;
+  final DateTime Function() _now;
+
+  /// Returned by [recover] until resumed, finalised or discarded.
+  final List<OrphanJournal> orphans;
+
+  /// When set, [start] / [resumeRecovered] fail with this error.
+  StartError? startError;
+
+  /// Runs finalised by [stop] / [finalise], newest last.
+  final List<FakeFinalisedRun> finalised = [];
+
+  /// Journals removed by [discardJournal].
+  final List<String> discarded = [];
+
+  /// Scripted faults. Toggling on emits the matching [FaultEvent] once.
+  bool get gpsLost => _gpsLost;
+  set gpsLost(bool v) {
+    if (v == _gpsLost) return;
+    _gpsLost = v;
+    if (v) _emit(FaultEvent(kind: FaultKind.gpsLost, message: 'No GPS fix'));
+  }
+
+  bool get strapDropped => _strapDropped;
+  set strapDropped(bool v) {
+    if (v == _strapDropped) return;
+    _strapDropped = v;
+    if (v) {
+      _emit(
+        FaultEvent(kind: FaultKind.hrDisconnected, message: 'Strap dropped'),
+      );
+    }
+  }
+
+  /// Simulated horizontal accuracy in metres (null while [gpsLost]).
+  double gpsAccuracyM = 8;
+  bool hrPaired = true;
+  bool cuesEnabled = true;
+
+  /// Rolling live pace the fake reports, s/km. Tests script "vs last rep".
+  double liveSecPerKm = 285;
+
+  bool _gpsLost = false;
+  bool _strapDropped = false;
+  final _controller = StreamController<RecorderEvent>.broadcast();
+  Timer? _timer;
+  int _runCounter = 0;
+  final _rng = math.Random(7);
+
+  // Live run state (mirrors RecorderCore).
+  RecorderState _state = RecorderState.idle;
+  String? _runId;
+  RecordMode _mode = RecordMode.free;
+  Preset? _preset;
+  DateTime? _startedAt;
+  int _elapsedMs = 0; // wall time incl. pauses
+  int _activeMs = 0; // recording time only
+  int _lapStartElapsedMs = 0;
+  int _lapStartActiveMs = 0;
+  double _lapStartDistanceM = 0;
+  double _totalDistanceM = 0;
+  int _lapIndex = 0;
+  final List<LapSummary> _laps = [];
+  Phase _phase = Phase.none;
+  int _repIndex = 0;
+  int? _phaseDurationMs;
+  int _phaseStartActiveMs = 0;
+  bool _halfwayCued = false;
+  bool _thirtyCued = false;
+
+  @override
+  Stream<RecorderEvent> get events => _controller.stream;
+
+  RecorderState get state => _state;
+  Phase get phase => _phase;
+  int get repIndex => _repIndex;
+  int get elapsedMs => _elapsedMs;
+  int get phaseRemainingMs => _remaining;
+
+  int get _remaining {
+    final d = _phaseDurationMs;
+    if (d == null) return 0;
+    return math.max(0, d - (_activeMs - _phaseStartActiveMs));
+  }
+
+  @override
+  Future<StartResult> start(
+    RecordMode mode,
+    Preset? preset,
+    Units units,
+  ) async {
+    if (startError != null) return StartResult(error: startError);
+    if (_state != RecorderState.idle) {
+      return StartResult(runId: _runId, error: StartError.alreadyRunning);
+    }
+    _runCounter += 1;
+    _begin(
+      'fake-${_runCounter.toString().padLeft(3, '0')}',
+      mode,
+      mode == RecordMode.fourByFour ? preset : null,
+    );
+    return StartResult(runId: _runId);
+  }
+
+  void _begin(String runId, RecordMode mode, Preset? preset) {
+    _runId = runId;
+    _mode = mode;
+    _preset = preset;
+    _startedAt = _now();
+    _elapsedMs = 0;
+    _activeMs = 0;
+    _lapStartElapsedMs = 0;
+    _lapStartActiveMs = 0;
+    _lapStartDistanceM = 0;
+    _totalDistanceM = 0;
+    _lapIndex = 0;
+    _laps.clear();
+    _repIndex = 0;
+    _phaseDurationMs = null;
+    _phase = Phase.none;
+    _state = RecorderState.recording;
+    _emitState();
+    if (preset != null) {
+      _phase = Phase.warmup;
+      _emit(PhaseEvent(phase: _phase, repIndex: 0, phaseDurationMs: 0));
+    }
+    if (autoTick) {
+      _timer = Timer.periodic(tickInterval, (_) => advance(tickInterval));
+    }
+    _emitTick();
+  }
+
+  @override
+  Future<void> pause() async {
+    if (_state != RecorderState.recording) return;
+    _state = RecorderState.paused;
+    _emitState();
+    _emitTick();
+  }
+
+  @override
+  Future<void> resume() async {
+    if (_state != RecorderState.paused) return;
+    _state = RecorderState.recording;
+    _emitState();
+    _emitTick();
+  }
+
+  @override
+  Future<void> lap(LapSource source) async {
+    if (_state != RecorderState.recording) return;
+    // RecorderCore default config: volume-key laps only in Free mode (W8);
+    // in a preset they are ignored outright, never recorded or re-aligned.
+    if (_preset != null && source == LapSource.volumeKey) return;
+    _emitLap(source);
+    if (_preset == null) return;
+    switch (_phase) {
+      case Phase.warmup:
+        _enter(Phase.work, 1);
+      case Phase.work:
+      case Phase.recovery:
+        _advancePhase();
+      case Phase.cooldown:
+      case Phase.none:
+        break;
+    }
+  }
+
+  @override
+  Future<String?> stop() async {
+    if (_state == RecorderState.idle) return null;
+    _timer?.cancel();
+    _timer = null;
+    _state = RecorderState.finalising;
+    _phase = Phase.none;
+    _emitState();
+    final id = _runId!;
+    finalised.add(
+      FakeFinalisedRun(
+        runId: id,
+        mode: _mode,
+        start: _startedAt!,
+        durationMs: _elapsedMs,
+        distanceM: _totalDistanceM,
+        laps: _lapIndex,
+        preset: _preset,
+      ),
+    );
+    _state = RecorderState.idle;
+    _emit(CueEvent(kind: CueKind.stop));
+    _emitState();
+    _runId = null;
+    return id;
+  }
+
+  @override
+  Future<RecorderStatus> status() async => RecorderStatus(
+    state: _state,
+    runId: _runId,
+    elapsedMs: _state == RecorderState.idle ? 0 : _elapsedMs,
+    lapIndex: _lapIndex,
+    gpsFix: !_gpsLost,
+    hrConnected: hrPaired && !_strapDropped,
+    phase: _phase,
+    repIndex: _repIndex,
+    phaseRemainingMs: _remaining,
+    preset: _preset,
+    journalOk: true,
+    mode: _state == RecorderState.idle ? RecordMode.free : _mode,
+    laps: List.of(_laps),
+  );
+
+  @override
+  Future<List<OrphanJournal>> recover() async => List.of(orphans);
+
+  @override
+  Future<String?> finalise(String runId) async {
+    final orphan = orphans.where((o) => o.runId == runId).firstOrNull;
+    if (orphan == null) return null;
+    orphans.remove(orphan);
+    finalised.add(
+      FakeFinalisedRun(
+        runId: runId,
+        mode: orphan.mode,
+        start: _now().subtract(
+          Duration(milliseconds: orphan.lastLineAgeMs + orphan.elapsedMs),
+        ),
+        durationMs: orphan.elapsedMs,
+        distanceM: orphan.elapsedMs / 300,
+        laps: 4,
+      ),
+    );
+    return 'runs/run-$runId.json.gz';
+  }
+
+  @override
+  Future<void> discardJournal(String runId) async {
+    orphans.removeWhere((o) => o.runId == runId);
+    discarded.add(runId);
+  }
+
+  @override
+  Future<StartResult> resumeRecovered(String runId) async {
+    if (startError != null) return StartResult(error: startError);
+    if (_state != RecorderState.idle) {
+      return StartResult(runId: _runId, error: StartError.alreadyRunning);
+    }
+    final orphan = orphans.where((o) => o.runId == runId).firstOrNull;
+    if (orphan == null || !orphan.readable) {
+      return StartResult(error: StartError.noSuchJournal);
+    }
+    orphans.remove(orphan);
+    _begin(
+      runId,
+      orphan.mode,
+      orphan.mode == RecordMode.fourByFour
+          ? Preset(reps: 4, workSeconds: 240, recoverySeconds: 180)
+          : null,
+    );
+    // The journal already held run time (a gap line covers the dark span,
+    // so the phase clock does not count it).
+    _elapsedMs = orphan.elapsedMs;
+    _activeMs = orphan.elapsedMs;
+    _totalDistanceM = orphan.elapsedMs / 300;
+    _lapStartElapsedMs = _elapsedMs;
+    _lapStartActiveMs = _activeMs;
+    _lapStartDistanceM = _totalDistanceM;
+    if (_preset != null) _enter(Phase.work, 1);
+    if (orphan.endedPaused) {
+      _state = RecorderState.paused;
+      _emitState();
+    }
+    _emitTick();
+    return StartResult(runId: runId);
+  }
+
+  @override
+  Future<void> setCues(bool enabled) async => cuesEnabled = enabled;
+
+  /// Move the fake clock. Wall time always advances; active time and
+  /// distance only while recording. Emits one tick plus whatever the phase
+  /// timer crossed on the way.
+  void advance(Duration dt) {
+    if (_state == RecorderState.idle || _state == RecorderState.finalising) {
+      return;
+    }
+    var remaining = dt.inMilliseconds;
+    if (_state == RecorderState.paused) {
+      _elapsedMs += remaining;
+      _emitTick();
+      return;
+    }
+    while (remaining > 0) {
+      final toBoundary = _phaseDurationMs == null ? remaining : _remaining;
+      final step = toBoundary > 0 ? math.min(remaining, toBoundary) : remaining;
+      _elapsedMs += step;
+      _activeMs += step;
+      if (!_gpsLost) _totalDistanceM += step / liveSecPerKm;
+      remaining -= step;
+      if (_phaseDurationMs != null) {
+        _cueCountdown();
+        if (_remaining <= 0) {
+          _emit(CueEvent(kind: CueKind.phaseEnd));
+          _emitLap(LapSource.auto);
+          _advancePhase();
+        }
+      }
+    }
+    _emitTick();
+  }
+
+  void _cueCountdown() {
+    final d = _phaseDurationMs;
+    if (d == null) return;
+    if (!_halfwayCued && _remaining <= d ~/ 2) {
+      _halfwayCued = true;
+      _emit(CueEvent(kind: CueKind.halfway));
+    }
+    if (!_thirtyCued && _remaining <= 30000) {
+      _thirtyCued = true;
+      _emit(CueEvent(kind: CueKind.thirtySeconds));
+    }
+  }
+
+  void _emitLap(LapSource source) {
+    final activeMs = _activeMs - _lapStartActiveMs;
+    _emit(
+      LapEvent(
+        index: _lapIndex,
+        tMs: _elapsedMs,
+        activeMs: activeMs,
+        distanceM: _totalDistanceM, // cumulative, as RecordingSession emits
+        source: source,
+      ),
+    );
+    _laps.add(
+      LapSummary(
+        index: _lapIndex,
+        tMs: _elapsedMs,
+        activeMs: activeMs,
+        distanceM: _totalDistanceM,
+        source: source,
+      ),
+    );
+    _lapIndex += 1;
+    _lapStartElapsedMs = _elapsedMs;
+    _lapStartActiveMs = _activeMs;
+    _lapStartDistanceM = _totalDistanceM;
+  }
+
+  /// RecorderCore.advance: work → recovery (same rep); recovery → next work,
+  /// or cool-down after the last rep's recovery.
+  void _advancePhase() {
+    final p = _preset;
+    if (p == null) return;
+    switch (_phase) {
+      case Phase.work:
+        _enter(Phase.recovery, _repIndex);
+      case Phase.recovery:
+        if (_repIndex >= p.reps) {
+          _enter(Phase.cooldown, _repIndex);
+        } else {
+          _enter(Phase.work, _repIndex + 1);
+        }
+      case Phase.warmup:
+      case Phase.cooldown:
+      case Phase.none:
+        break;
+    }
+  }
+
+  void _enter(Phase phase, int repIndex) {
+    final p = _preset!;
+    _phase = phase;
+    _repIndex = repIndex;
+    _phaseStartActiveMs = _activeMs;
+    _halfwayCued = false;
+    _thirtyCued = false;
+    _phaseDurationMs = switch (phase) {
+      Phase.work => p.workSeconds * 1000,
+      Phase.recovery => p.recoverySeconds * 1000,
+      _ => null,
+    };
+    _emit(
+      PhaseEvent(
+        phase: phase,
+        repIndex: repIndex,
+        phaseDurationMs: _phaseDurationMs ?? 0,
+      ),
+    );
+    if (_phaseDurationMs != null) _emit(CueEvent(kind: CueKind.start));
+  }
+
+  void _emitState() =>
+      _emit(StateEvent(state: _state, runId: _runId, phase: _phase));
+
+  void _emitTick() {
+    final jitter = (_rng.nextDouble() - 0.5) * 6;
+    _emit(
+      TickEvent(
+        elapsedMs: _elapsedMs,
+        lapElapsedMs: _elapsedMs - _lapStartElapsedMs,
+        lapDistanceM: _totalDistanceM - _lapStartDistanceM,
+        lapPaceLiveSecPerKm: _gpsLost ? null : liveSecPerKm + jitter,
+        totalDistanceM: _totalDistanceM,
+        hr: (!hrPaired || _strapDropped) ? null : _hrFor(_phase),
+        gpsAccuracyM: _gpsLost ? null : gpsAccuracyM,
+        state: _state,
+        phase: _phase,
+        repIndex: _repIndex,
+        phaseRemainingMs: _remaining,
+      ),
+    );
+  }
+
+  int _hrFor(Phase phase) => switch (phase) {
+    Phase.work => 168 + _rng.nextInt(5),
+    Phase.recovery => 140 + _rng.nextInt(5),
+    _ => 120 + _rng.nextInt(5),
+  };
+
+  void _emit(RecorderEvent e) {
+    if (!_controller.isClosed) _controller.add(e);
+  }
+
+  Future<void> dispose() async {
+    _timer?.cancel();
+    await _controller.close();
+  }
+}
+
+class FakeBleGateway implements BleGateway {
+  FakeBleGateway({List<BleDevice>? devices, this.scanDelay = Duration.zero})
+    : devices =
+          devices ??
+          [
+            BleDevice(address: 'C4:2B:11:09:AA:01', name: 'WHOOP 4A0C2F'),
+            BleDevice(address: 'F0:13:C3:5E:20:9B', name: 'Polar H10 9B2C'),
+          ];
+
+  final List<BleDevice> devices;
+  final Duration scanDelay;
+  BleDevice? paired;
+  bool connected = false;
+  int? lastHr;
+  bool adapterOn = true;
+  bool failNextPair = false;
+
+  @override
+  Future<List<BleDevice>> scan() async {
+    if (scanDelay > Duration.zero) await Future<void>.delayed(scanDelay);
+    return List.of(devices);
+  }
+
+  @override
+  Future<void> pair(BleDevice device) async {
+    if (failNextPair) {
+      failNextPair = false;
+      throw StateError('GATT 133');
+    }
+    paired = device;
+    connected = true;
+  }
+
+  @override
+  Future<void> forget() async {
+    paired = null;
+    connected = false;
+  }
+
+  @override
+  Future<BleStatus> status() async => BleStatus(
+    connected: connected,
+    address: paired?.address,
+    name: paired?.name,
+    lastHr: connected ? lastHr : null,
+    adapterOn: adapterOn,
+  );
+}
+
+class FakePermissionsGateway implements PermissionsGateway {
+  FakePermissionsGateway({
+    this.snapshot = const PermissionSnapshot(),
+    this.denyLocation = false,
+    this.grantCoarseOnly = false,
+    this.denyNotifications = false,
+    this.denyBluetooth = false,
+  });
+
+  PermissionSnapshot snapshot;
+  bool denyLocation;
+  bool grantCoarseOnly;
+  bool denyNotifications;
+  bool denyBluetooth;
+  int batterySettingsOpened = 0;
+  int appSettingsOpened = 0;
+  final List<PermissionKind> requests = [];
+
+  @override
+  Future<PermissionSnapshot> status() async => snapshot;
+
+  @override
+  Future<bool> request(PermissionKind kind) async {
+    requests.add(kind);
+    switch (kind) {
+      case PermissionKind.location:
+        if (denyLocation) return false;
+        snapshot = snapshot.copyWith(
+          fineLocation: !grantCoarseOnly,
+          coarseOnly: grantCoarseOnly,
+          locationServicesOn: true,
+        );
+        return !grantCoarseOnly;
+      case PermissionKind.notifications:
+        if (denyNotifications) return false;
+        snapshot = snapshot.copyWith(notifications: true);
+        return true;
+      case PermissionKind.bluetooth:
+        if (denyBluetooth) return false;
+        snapshot = snapshot.copyWith(bluetooth: true);
+        return true;
+    }
+  }
+
+  @override
+  Future<void> openBatterySettings() async {
+    batterySettingsOpened += 1;
+    snapshot = snapshot.copyWith(batteryUnrestricted: true);
+  }
+
+  @override
+  Future<void> openAppSettings() async => appSettingsOpened += 1;
+
+  /// Last value passed to [setKeepScreenOn]; null until called.
+  bool? keepScreenOn;
+
+  @override
+  Future<void> setKeepScreenOn(bool enabled) async => keepScreenOn = enabled;
+}

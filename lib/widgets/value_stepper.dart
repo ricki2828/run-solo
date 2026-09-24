@@ -1,0 +1,99 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../theme/theme.dart';
+
+/// Preset editor row: label, big tabular value, 56 dp minus / plus. A locked
+/// row (work 4:00 in v1, plan §6) shows the value with no controls.
+class ValueStepper extends StatelessWidget {
+  const ValueStepper({
+    super.key,
+    required this.label,
+    required this.value,
+    this.onMinus,
+    this.onPlus,
+    this.lockedNote,
+  });
+
+  final String label;
+  final String value;
+  final VoidCallback? onMinus;
+  final VoidCallback? onPlus;
+
+  /// When set, the row is read-only and this explains why.
+  final String? lockedNote;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final locked = lockedNote != null;
+    Widget button(IconData icon, VoidCallback? cb, String semantic) =>
+        Semantics(
+          button: true,
+          enabled: cb != null,
+          label: semantic,
+          child: InkWell(
+            onTap: cb == null
+                ? null
+                : () {
+                    HapticFeedback.selectionClick();
+                    cb();
+                  },
+            borderRadius: BorderRadius.circular(Radii.button),
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: t.bgRaised,
+                borderRadius: BorderRadius.circular(Radii.button),
+                border: Border.all(color: t.lineHair),
+              ),
+              child: Icon(
+                icon,
+                size: 24,
+                color: cb == null ? t.inkMuted : t.inkPrimary,
+              ),
+            ),
+          ),
+        );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: Space.x12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+                ),
+                const SizedBox(height: Space.x4),
+                Text(
+                  value,
+                  style: RunSoloType.display44.copyWith(
+                    color: locked ? t.inkSecondary : t.inkPrimary,
+                  ),
+                ),
+                if (locked)
+                  Text(
+                    lockedNote!,
+                    style: RunSoloType.label13.copyWith(
+                      color: t.inkMuted,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (!locked) ...[
+            button(Icons.remove, onMinus, '$label minus'),
+            const SizedBox(width: Space.x12),
+            button(Icons.add, onPlus, '$label plus'),
+          ],
+        ],
+      ),
+    );
+  }
+}
