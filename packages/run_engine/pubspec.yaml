@@ -1,0 +1,11 @@
+name: run_engine
+description: Pure-Dart analysis engine for Run Solo (laps, trimming, metrics, staged verdict, plan schedule). No Flutter, no I/O.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.0

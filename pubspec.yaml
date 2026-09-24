@@ -1,0 +1,37 @@
+name: run_solo
+description: "Run Solo: 4x4 Interval Run. Local-only Android running app with a staged 4x4 verdict."
+publish_to: 'none'
+
+# versionCode comes from the +N suffix (plan §11 release train).
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  run_engine:
+    path: packages/run_engine
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  pigeon: ^26.0.0
+
+flutter:
+  uses-material-design: true
+
+  # Fonts are bundled (OFL, see assets/fonts/OFL-*.txt). Nothing is fetched at runtime:
+  # the app has no network code (plan §2 rule 4).
+  fonts:
+    - family: Barlow Condensed
+      fonts:
+        - asset: assets/fonts/BarlowCondensed-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/BarlowCondensed-Bold.ttf
+          weight: 700
+    - family: Archivo
+      fonts:
+        - asset: assets/fonts/Archivo-Variable.ttf
