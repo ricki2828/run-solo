@@ -70,6 +70,15 @@ flutter {
     source = "../.."
 }
 
+// Robolectric unit tests (isIncludeAndroidResources) package the merged assets, which the Flutter
+// plugin writes in copyFlutterAssetsDebug without declaring the dependency; Gradle 9 fails the
+// build on the implicit ordering. Declare it explicitly.
+afterEvaluate {
+    tasks.matching { it.name == "packageDebugUnitTestForUnitTest" }.configureEach {
+        dependsOn(tasks.matching { it.name == "copyFlutterAssetsDebug" })
+    }
+}
+
 dependencies {
     // Pure Kotlin core (journal codec, lap state machine, ...) from the included build
     // android/core-jvm; substituted by coordinates via includeBuild in settings.gradle.kts.
