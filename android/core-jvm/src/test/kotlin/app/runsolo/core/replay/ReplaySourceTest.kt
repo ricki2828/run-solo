@@ -97,12 +97,12 @@ class ReplaySourceTest {
 
     @Test
     fun `run file json replays as a fixture`() {
-        val json = """{"schema":1,"samples":[[0,-33.8,151.2,null,5,3.0,0,150],[1000,-33.8,151.20003,10.5,6,null,3.0,null]]}"""
+        val json = """{"schema":1,"samples":[[0,-33.8,151.2,null,5,3.0,0,150],[1000,-33.8,151.20003,10.5,6,null,3.0,null],[2000,null,null,null,null,null,3.0,152]]}"""
         val t = TraceFixture.fromRunFileJson(json)
-        assertEquals(2, t.fixes.size)
+        assertEquals(2, t.fixes.size, "a no-fix sample is not a fix")
         assertNull(t.fixes[0].altM)
         assertEquals(10.5, t.fixes[1].altM)
-        assertEquals(listOf(HrReading(0, 150)), t.hr)
+        assertEquals(listOf(HrReading(0, 150), HrReading(2000, 152)), t.hr)
         assertTrue(t.fixes[1].speedMps == null)
     }
 }

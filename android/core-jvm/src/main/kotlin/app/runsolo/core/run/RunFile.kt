@@ -42,16 +42,21 @@ data class RunFile(
 ) {
     data class Lap(val i: Int, val t0: Long, val t1: Long, val d0: Double, val d1: Double, val kind: LapKind)
 
+    /** lat/lon/accuracy null = no fix at that tick; `distM` then repeats the last value. */
     data class Sample(
         val t: Long,
-        val lat: Double,
-        val lon: Double,
+        val lat: Double?,
+        val lon: Double?,
         val altM: Double?,
-        val accuracyM: Double,
+        val accuracyM: Double?,
         val speedMps: Double?,
         val distM: Double,
         val hr: Int?,
-    )
+    ) {
+        val hasFix: Boolean get() = lat != null && lon != null && accuracyM != null
+    }
+
+    val fixCount: Int get() = samples.count { it.hasFix }
 
     val distanceM: Double get() = samples.lastOrNull()?.distM ?: 0.0
     val elapsedMs: Long get() = endEpochMs - startEpochMs
@@ -100,7 +105,7 @@ data class RunFile(
                         // duplicate fix would repeat a t → dropped), hr > 0 or null.
                         val last = samples.lastOrNull()
                         if (last != null && e.t <= last.t) continue
-                        filter.offer(LocationFix(e.t, e.lat, e.lon, e.altM, e.accuracyM, e.speedMps))
+                        if (e.hasFix) filter.offer(LocationFix(e.t, e.lat!!, e.lon!!, e.altM, e.accuracyM!!, e.speedMps))
                         val hr = e.hr?.takeIf { it > 0 }
                         samples.add(Sample(e.t, e.lat, e.lon, e.altM, e.accuracyM, e.speedMps, filter.totalM, hr))
                     }

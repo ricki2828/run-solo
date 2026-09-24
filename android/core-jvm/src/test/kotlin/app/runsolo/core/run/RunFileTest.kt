@@ -111,6 +111,39 @@ class RunFileTest {
     }
 
     @Test
+    fun `no-fix ticks keep time and HR and repeat the distance`() {
+        val fixes = TraceFixture.straightLine(listOf(3 to 3.0), startT = t0)
+        val lines = ArrayList<JournalLine>()
+        lines.add(header.copy(mode = RunMode.free, preset = null))
+        for (f in fixes) lines.add(JournalLine.Sample(f.t, w0 + (f.t - t0), f.lat, f.lon, f.altM, f.accuracyM, f.speedMps, 140))
+        // Tunnel: 3 s without a fix, strap still reporting.
+        for (s in 4..6) lines.add(JournalLine.Sample.noFix(t0 + s * 1000L, w0 + s * 1000L, 150 + s))
+        lines.add(JournalLine.Sample(t0 + 7000, w0 + 7000, fixes.last().lat, fixes.last().lon, null, 5.0, null, null))
+        val f = RunFile.fromReplay(JournalReplay.read(lines.joinToString("") { JournalCodec.encode(it) + "\n" }.toByteArray()), w0 + 7000)
+        assertEquals(8, f.samples.size)
+        assertEquals(5, f.fixCount)
+        assertEquals(listOf(154, 155, 156), f.samples.subList(4, 7).map { it.hr })
+        assertTrue(f.samples.subList(4, 7).all { !it.hasFix && it.lat == null && it.accuracyM == null })
+        assertEquals(9.0, f.samples[3].distM, 0.1)
+        assertEquals(f.samples[3].distM, f.samples[6].distM, "distance repeats through the dropout")
+        assertEquals(f.samples[3].distM, f.samples[7].distM, 0.01)
+        val row = (RunFile.readJson(f.toGzipBytes()).list("samples")[5] as List<*>)
+        assertEquals(listOf(5000L, null, null, null, null, null, row[6], 155L), row)
+    }
+
+    @Test
+    fun `treadmill run - no fixes at all, HR present, zero distance`() {
+        val lines = ArrayList<JournalLine>()
+        lines.add(header.copy(mode = RunMode.free, preset = null))
+        for (s in 1..5) lines.add(JournalLine.Sample.noFix(t0 + s * 1000L, w0 + s * 1000L, 130 + s))
+        val f = RunFile.fromReplay(JournalReplay.read(lines.joinToString("") { JournalCodec.encode(it) + "\n" }.toByteArray()), w0 + 5000)
+        assertEquals(5, f.samples.size)
+        assertEquals(0, f.fixCount)
+        assertEquals(0.0, f.distanceM)
+        assertEquals(135, f.samples.last().hr)
+    }
+
+    @Test
     fun `gap span is carried into gaps`() {
         val text = listOf(
             header,

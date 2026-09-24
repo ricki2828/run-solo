@@ -30,17 +30,27 @@ sealed class JournalLine {
         val units: Units,
     ) : JournalLine()
 
-    /** Raw location sample; nothing is filtered before journaling so acceptance is repeatable. */
+    /**
+     * One 1 Hz tick. With a fix: the raw location (nothing is filtered before journaling so
+     * acceptance is repeatable). Without a fix (treadmill, tunnel, GPS dropout): lat/lon/acc
+     * null, so elapsed time and HR are still recorded and the engine can see the fix ratio.
+     */
     data class Sample(
         override val t: Long,
         override val w: Long,
-        val lat: Double,
-        val lon: Double,
+        val lat: Double?,
+        val lon: Double?,
         val altM: Double?,
-        val accuracyM: Double,
+        val accuracyM: Double?,
         val speedMps: Double?,
         val hr: Int?,
-    ) : JournalLine()
+    ) : JournalLine() {
+        val hasFix: Boolean get() = lat != null && lon != null && accuracyM != null
+
+        companion object {
+            fun noFix(t: Long, w: Long, hr: Int?) = Sample(t, w, null, null, null, null, null, hr)
+        }
+    }
 
     data class Lap(override val t: Long, override val w: Long, val source: LapSource) : JournalLine()
 

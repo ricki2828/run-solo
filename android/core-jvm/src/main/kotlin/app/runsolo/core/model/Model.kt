@@ -22,7 +22,8 @@ enum class RecorderState { idle, recording, paused, finalising }
 /** The 4x4 preset written into the file header; drives both cues and the detector (plan §6). */
 data class Preset(val reps: Int, val workSeconds: Int, val recoverySeconds: Int) {
     init {
-        require(reps in 1..12) { "reps out of range: $reps" }
+        // Plan §6: reps 3–6. The Dart parser rejects a file outside this range, so both sides agree.
+        require(reps in MIN_REPS..MAX_REPS) { "reps out of range: $reps" }
         require(workSeconds > 0 && recoverySeconds > 0) { "preset durations must be positive" }
     }
 
@@ -33,6 +34,8 @@ data class Preset(val reps: Int, val workSeconds: Int, val recoverySeconds: Int)
         linkedMapOf("reps" to reps, "workSeconds" to workSeconds, "recoverySeconds" to recoverySeconds)
 
     companion object {
+        const val MIN_REPS = 3
+        const val MAX_REPS = 6
         val DEFAULT_4X4 = Preset(reps = 4, workSeconds = 240, recoverySeconds = 180)
 
         fun fromJson(m: Map<String, Any?>?): Preset? {

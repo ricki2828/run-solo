@@ -12,13 +12,15 @@ sealed class RunEvent {
 
     data class Sample(
         override val t: Long,
-        val lat: Double,
-        val lon: Double,
+        val lat: Double?,
+        val lon: Double?,
         val altM: Double?,
-        val accuracyM: Double,
+        val accuracyM: Double?,
         val speedMps: Double?,
         val hr: Int?,
-    ) : RunEvent()
+    ) : RunEvent() {
+        val hasFix: Boolean get() = lat != null && lon != null && accuracyM != null
+    }
 
     data class Lap(override val t: Long, val source: LapSource) : RunEvent()
     data class Pause(override val t: Long) : RunEvent()

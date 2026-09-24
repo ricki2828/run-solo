@@ -37,10 +37,10 @@ object JournalCodec {
                 m["k"] = "s"
                 m["t"] = line.t
                 m["w"] = line.w
-                m["lat"] = line.lat
-                m["lon"] = line.lon
+                if (line.lat != null) m["lat"] = line.lat
+                if (line.lon != null) m["lon"] = line.lon
                 if (line.altM != null) m["alt"] = line.altM
-                m["acc"] = line.accuracyM
+                if (line.accuracyM != null) m["acc"] = line.accuracyM
                 if (line.speedMps != null) m["spd"] = line.speedMps
                 if (line.hr != null) m["hr"] = line.hr
             }
@@ -71,16 +71,22 @@ object JournalCodec {
                 preset = Preset.fromJson(m.obj("preset")),
                 units = Units.valueOf(m.string("units")),
             )
-            "s" -> JournalLine.Sample(
-                t = t,
-                w = w,
-                lat = m.double("lat"),
-                lon = m.double("lon"),
-                altM = m.doubleOrNull("alt"),
-                accuracyM = m.double("acc"),
+            "s" -> {
+                // A fix is all-or-nothing: lat, lon and acc together, each numeric; otherwise no fix.
+                val fixKeys = listOf("lat", "lon", "acc").filter { m.containsKey(it) }
+                require(fixKeys.isEmpty() || fixKeys.size == 3) { "partial fix in sample line" }
+                for (k in fixKeys) require(m[k] is Number) { "non-numeric '$k' in sample line" }
+                JournalLine.Sample(
+                    t = t,
+                    w = w,
+                    lat = m.doubleOrNull("lat"),
+                    lon = m.doubleOrNull("lon"),
+                    altM = m.doubleOrNull("alt"),
+                    accuracyM = m.doubleOrNull("acc"),
                 speedMps = m.doubleOrNull("spd"),
-                hr = m.longOrNull("hr")?.toInt(),
-            )
+                    hr = m.longOrNull("hr")?.toInt(),
+                )
+            }
             "lap" -> JournalLine.Lap(t, w, LapSource.valueOf(m.string("src")))
             "pause" -> JournalLine.Pause(t, w)
             "resume" -> JournalLine.Resume(t, w)

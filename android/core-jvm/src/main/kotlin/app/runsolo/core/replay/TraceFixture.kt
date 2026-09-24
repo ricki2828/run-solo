@@ -10,7 +10,8 @@ import kotlin.math.cos
  * Fixture loaders for replay mode. Two shapes:
  *  - CSV `t_ms,lat,lon,alt,acc,speed[,hr]` (blank alt/speed/hr → null; `#` comments allowed)
  *  - a schema v1 run file's JSON (`samples: [[t, lat, lon, alt, acc, speed, dist, hr], …]`),
- *    so any exported run replays as a fixture; `dist` is ignored (recomputed live).
+ *    so any exported run replays as a fixture; `dist` is ignored (recomputed live) and a
+ *    no-fix sample (`lat`/`lon` null) contributes only its HR.
  */
 object TraceFixture {
     data class Trace(val fixes: List<LocationFix>, val hr: List<HrReading>)
@@ -46,16 +47,21 @@ object TraceFixture {
         for (row in m.list("samples")) {
             val s = row as List<*>
             val t = (s[0] as Number).toLong()
-            fixes.add(
-                LocationFix(
-                    t = t,
-                    lat = (s[1] as Number).toDouble(),
-                    lon = (s[2] as Number).toDouble(),
-                    altM = (s[3] as Number?)?.toDouble(),
-                    accuracyM = (s[4] as Number).toDouble(),
-                    speedMps = (s[5] as Number?)?.toDouble(),
-                ),
-            )
+            val lat = s[1] as Number?
+            val lon = s[2] as Number?
+            val acc = s[4] as Number?
+            if (lat != null && lon != null && acc != null) {
+                fixes.add(
+                    LocationFix(
+                        t = t,
+                        lat = lat.toDouble(),
+                        lon = lon.toDouble(),
+                        altM = (s[3] as Number?)?.toDouble(),
+                        accuracyM = acc.toDouble(),
+                        speedMps = (s[5] as Number?)?.toDouble(),
+                    ),
+                )
+            }
             (s.getOrNull(7) as Number?)?.let { hr.add(HrReading(t, it.toInt())) }
         }
         return Trace(fixes, hr)

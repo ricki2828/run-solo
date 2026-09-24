@@ -23,6 +23,8 @@ class JournalCodecTest {
             header,
             JournalLine.Sample(6_000, 1, -33.8688, 151.2093, 12.5, 4.0, 3.1, 150),
             JournalLine.Sample(7_000, 2, -33.8688, 151.2093, null, 25.0, null, null),
+            JournalLine.Sample.noFix(7_500, 2, 148),
+            JournalLine.Sample.noFix(8_500, 2, null),
             JournalLine.Lap(8_000, 3, LapSource.notification),
             JournalLine.Pause(9_000, 4),
             JournalLine.Resume(10_000, 5),
@@ -46,6 +48,21 @@ class JournalCodecTest {
     }
 
     @Test
+    fun `no-fix sample carries only t and hr`() {
+        val text = JournalCodec.encode(JournalLine.Sample.noFix(7_500, 2, 148))
+        assertEquals("""{"k":"s","t":7500,"w":2,"hr":148}""", text)
+        assertFalse(JournalCodec.decode(text).let { (it as JournalLine.Sample).hasFix })
+    }
+
+    @Test
+    fun `preset reps are 3 to 6 on both sides`() {
+        assertFailsWith<IllegalArgumentException> { Preset(2, 240, 180) }
+        assertFailsWith<IllegalArgumentException> { Preset(7, 240, 180) }
+        Preset(3, 240, 120)
+        Preset(6, 240, 300)
+    }
+
+    @Test
     fun `header without preset (free run)`() {
         val h = header.copy(mode = RunMode.free, preset = null)
         assertEquals(h, JournalCodec.decode(JournalCodec.encode(h)))
@@ -55,7 +72,8 @@ class JournalCodecTest {
     fun `malformed lines throw`() {
         assertFailsWith<Exception> { JournalCodec.decode("""{"k":"lap","t":1}""") } // no src
         assertFailsWith<Exception> { JournalCodec.decode("""{"k":"zzz","t":1}""") }
-        assertFailsWith<Exception> { JournalCodec.decode("""{"k":"s","t":1,"lat":"x"}""") }
+        assertFailsWith<Exception> { JournalCodec.decode("""{"k":"s","t":1,"lat":"x","lon":1,"acc":2}""") }
+        assertFailsWith<Exception> { JournalCodec.decode("""{"k":"s","t":1,"lat":1,"lon":2}""") } // partial fix
         assertFailsWith<Exception> { JournalCodec.decode("""{"k":"s","t":1,"lat":1,"lon":2,"acc":3""") }
     }
 }
