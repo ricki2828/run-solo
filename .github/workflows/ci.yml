@@ -174,7 +174,7 @@ jobs:
       - name: Build dogfood APKs (arm64 for the phone, x86_64 for the emulator smoke)
         env:
           RUN_SOLO_DOGFOOD_STORE_PASSWORD: ${{ secrets.RUN_SOLO_DOGFOOD_STORE_PASSWORD }}
-          RUN_SOLO_DOGFOOD_KEY_ALIAS: ${{ secrets.RUN_SOLO_DOGFOOD_KEY_ALIAS }}
+          RUN_SOLO_DOGFOOD_KEY_ALIAS: dogfood  # not a secret: a secret value here masks the word in logs
           RUN_SOLO_DOGFOOD_KEY_PASSWORD: ${{ secrets.RUN_SOLO_DOGFOOD_KEY_PASSWORD }}
         run: |
           flutter build apk --release --flavor dogfood --split-per-abi \
@@ -183,7 +183,7 @@ jobs:
           ls -la build/app/outputs/flutter-apk/
       - name: Verify signer, size (< 30 MiB) and 16 KB alignment
         run: |
-          APK=build/app/outputs/flutter-apk/app-dogfood-arm64-v8a-release.apk
+          APK=build/app/outputs/flutter-apk/app-arm64-v8a-dogfood-release.apk
           BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
           "$BT/apksigner" verify --print-certs "$APK" | grep -E "Signer #1 certificate DN"
           "$BT/apksigner" verify --print-certs "$APK" | grep -q "CN=Run Solo dogfood" || { echo "dogfood APK is not signed with the dogfood key" >&2; exit 1; }
@@ -197,13 +197,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: run-solo-dogfood-apk
-          path: build/app/outputs/flutter-apk/app-dogfood-arm64-v8a-release.apk
+          path: build/app/outputs/flutter-apk/app-arm64-v8a-dogfood-release.apk
           if-no-files-found: error
           retention-days: 30
       - uses: actions/upload-artifact@v4
         with:
           name: run-solo-dogfood-x64-apk
-          path: build/app/outputs/flutter-apk/app-dogfood-x86_64-release.apk
+          path: build/app/outputs/flutter-apk/app-x86_64-dogfood-release.apk
           if-no-files-found: error
           retention-days: 7
 
@@ -274,5 +274,5 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
-            tools/emulator_smoke.sh apk/app-dogfood-x86_64-release.apk app.runsolo.dogfood
-            tools/emulator_lifecycle.sh apk/app-dogfood-x86_64-release.apk app.runsolo.dogfood
+            tools/emulator_smoke.sh apk/app-x86_64-dogfood-release.apk app.runsolo.dogfood
+            tools/emulator_lifecycle.sh apk/app-x86_64-dogfood-release.apk app.runsolo.dogfood

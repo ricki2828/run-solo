@@ -59,11 +59,11 @@ battery or smoothness. For phone testing download **`run-solo-dogfood-apk`** ins
 - release-mode AOT Dart, R8 + resource shrinking, `--obfuscate --split-debug-info`, arm64-v8a only, target under 30 MiB (CI fails above it and prints the size in the job summary)
 - applicationId **`app.runsolo.dogfood`**, so it installs beside `app.runsolo.debug` and a future Play build; plain `app.runsolo` is reserved for Play-signed builds
 - replay mode and the debug intents stay available (`BuildConfig.REPLAY_ENABLED`), same as debug
-- signed with the CI dogfood key (`CN=Run Solo dogfood`). Secrets: `RUN_SOLO_DOGFOOD_KEYSTORE_BASE64`, `RUN_SOLO_DOGFOOD_STORE_PASSWORD`, `RUN_SOLO_DOGFOOD_KEY_ALIAS`, `RUN_SOLO_DOGFOOD_KEY_PASSWORD`; offline copy in `~/.secrets/run-solo/` on the dev host (never committed). Reinstalling over an older dogfood build works as long as this key is unchanged.
+- signed with the CI dogfood key (`CN=Run Solo dogfood`). Secrets: `RUN_SOLO_DOGFOOD_KEYSTORE_BASE64`, `RUN_SOLO_DOGFOOD_STORE_PASSWORD`, `RUN_SOLO_DOGFOOD_KEY_PASSWORD`; offline copy in `~/.secrets/run-solo/` on the dev host (never committed). Reinstalling over an older dogfood build works as long as this key is unchanged.
 
 ```bash
 gh run download <run-id> --repo ricki2828/run-solo -n run-solo-dogfood-apk -D ~/Downloads/run-solo
-adb install -r ~/Downloads/run-solo/app-dogfood-arm64-v8a-release.apk
+adb install -r ~/Downloads/run-solo/app-arm64-v8a-dogfood-release.apk
 ```
 
 Flavours: `play` (Play track, no suffix) and `dogfood`. Every `flutter build`/`flutter run` now needs `--flavor play` or `--flavor dogfood`; Gradle tasks are `:app:lintPlayDebug`, `:app:testPlayDebugUnitTest`, etc.
