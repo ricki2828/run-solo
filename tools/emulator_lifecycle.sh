@@ -130,6 +130,9 @@ print(f"ok: {len(laps)} laps ({len(pre)} pre-kill), gap {g0}->{g1} ms, {len(befo
 PY
 
 log "verify the real Pigeon event trace against the JVM contract fixture"
+# Events are posted to the main looper; on a slow emulator the idle state line can land a few
+# seconds after stop() returned. Wait for it (bounded) - never seeing it is a real bug.
+wait_for_log 'RunSolo/trace: \{"t":[0-9]+,"kind":"state","state":"idle"' 15 || fail "idle state event never reached the trace after stop"
 capture_trace
 # The buffer is captured before each clear and once at the end; drop exact repeats from overlapping captures.
 awk '!seen[$0]++' "$TRACE" > "$TRACE.dedup" && mv "$TRACE.dedup" "$TRACE"
