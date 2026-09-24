@@ -386,8 +386,8 @@ class RunFile {
       }
     }
     final id = _readString(json, 'id');
-    if (!uuidPattern.hasMatch(id)) {
-      throw RunFileFormatException('id must be a lowercase uuid');
+    if (!idPattern.hasMatch(id)) {
+      throw RunFileFormatException('id must be a filename-safe token');
     }
     final modeName = _readString(json, 'mode');
     final mode = RunMode.values.cast<RunMode?>().firstWhere(
@@ -405,16 +405,16 @@ class RunFile {
     if (presetJson != null && presetJson is! Map<String, Object?>) {
       throw RunFileFormatException('preset must be an object or null');
     }
-    final samples = _readList(json, 'samples').map(Sample.fromJson).toList();
-    for (var i = 1; i < samples.length; i++) {
-      if (samples[i].tMs <= samples[i - 1].tMs) {
-        throw RunFileFormatException(
-          'samples must be strictly increasing in t',
-        );
-      }
-      if (samples[i].distM < samples[i - 1].distM) {
+    // A repeated or out-of-order `t` is one bad line from the writer, not a
+    // reason to make the whole run unreadable: drop it and keep the first.
+    final samples = <Sample>[];
+    for (final raw in _readList(json, 'samples')) {
+      final sample = Sample.fromJson(raw);
+      if (samples.isNotEmpty && sample.tMs <= samples.last.tMs) continue;
+      if (samples.isNotEmpty && sample.distM < samples.last.distM) {
         throw RunFileFormatException('sample dist must be non-decreasing');
       }
+      samples.add(sample);
     }
     final laps = _readList(
       json,
@@ -446,6 +446,10 @@ class RunFile {
       samples: samples,
     );
   }
+
+  /// The app writes uuids; any filename-safe token (`run-<id>.json.gz`) is
+  /// accepted so test fixtures and future writers stay readable.
+  static final RegExp idPattern = RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$');
 
   static final RegExp uuidPattern = RegExp(
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',

@@ -142,7 +142,7 @@ class RunSidecar {
       throw RunFileFormatException('sidecar schema must be $schema');
     }
     final runId = readStringField(json, 'run_id');
-    if (!RunFile.uuidPattern.hasMatch(runId)) {
+    if (!RunFile.idPattern.hasMatch(runId)) {
       throw RunFileFormatException('sidecar run_id must be a uuid');
     }
     final overrideName = json['run_type_override'];

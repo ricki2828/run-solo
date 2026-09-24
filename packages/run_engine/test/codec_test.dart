@@ -71,7 +71,7 @@ void main() {
         'wrong schema',
         () => expectRejected(valid()..['schema'] = 2, 'schema'),
       );
-      test('bad uuid', () => expectRejected(valid()..['id'] = 'RUN-1', 'id'));
+      test('bad id', () => expectRejected(valid()..['id'] = '../run 1', 'id'));
       test(
         'unknown mode',
         () => expectRejected(valid()..['mode'] = 'tempo', 'mode'),
@@ -128,11 +128,14 @@ void main() {
         expectRejected(j, 'hr 0');
       });
 
-      test('samples not increasing in t', () {
+      test('a repeated t is dropped, not fatal', () {
         final j = valid();
         final samples = j['samples'] as List;
         samples[1] = [0, null, null, null, null, null, 0, null];
-        expectRejected(j, 'duplicate t');
+        final parsed = RunFile.fromJson(j);
+        expect(parsed.samples.length, samples.length - 1);
+        expect(parsed.samples[0].tMs, 0);
+        expect(parsed.samples[1].tMs, 2000);
       });
 
       test('distance decreasing', () {
@@ -246,8 +249,11 @@ void main() {
         throwsA(isA<RunFileFormatException>()),
       );
       expect(
-        () =>
-            RunSidecar.fromJson({'schema': 1, 'run_id': 'x', 'lap_edits': []}),
+        () => RunSidecar.fromJson({
+          'schema': 1,
+          'run_id': '../x',
+          'lap_edits': [],
+        }),
         throwsA(isA<RunFileFormatException>()),
       );
       expect(
