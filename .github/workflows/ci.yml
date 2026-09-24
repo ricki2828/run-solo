@@ -127,6 +127,9 @@ jobs:
       - name: Android lint NewApi (minSdk 29 API guard)
         working-directory: android
         run: ./gradlew :app:lintDebug --no-daemon
+      - name: App JVM unit tests (StartGuard)
+        working-directory: android
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
       - name: Build release AAB (debug-signed until Play upload key lands; see README)
         run: flutter build appbundle --release --obfuscate --split-debug-info=build/symbols
       - name: 16 KB page-size check (debug APK)

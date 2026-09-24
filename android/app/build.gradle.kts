@@ -74,4 +74,6 @@ dependencies {
     // FusedLocationProvider (plan §3); falls back to raw GPS_PROVIDER when GMS is missing.
     // play-services-location does not declare INTERNET (dependency audit, plan §10).
     implementation("com.google.android.gms:play-services-location:21.3.0")
+    // JVM unit tests for the pure parts of the shell (StartGuard); run by CI's :app:testDebugUnitTest.
+    testImplementation("junit:junit:4.13.2")
 }

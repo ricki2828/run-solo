@@ -80,6 +80,8 @@ class _StartScreenState extends State<StartScreen> {
         );
       case StartError.noSuchJournal:
       case StartError.replayUnavailable:
+      case StartError.startFailed:
+      case StartError.resumeFailed:
         setState(() => _error = 'Could not start recording. Try again.');
       case StartError.alreadyRunning:
         break;

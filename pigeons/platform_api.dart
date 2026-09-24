@@ -64,6 +64,14 @@ enum StartError {
   /// start, or the permission was revoked between check and start). Nothing
   /// was recorded; no run file is written.
   fgsNotAllowed,
+
+  /// A brand-new run failed before recording began (storage, journal open);
+  /// its empty journal was discarded. Try again.
+  startFailed,
+
+  /// `resumeRecovered` failed while reopening the journal. The journal is
+  /// untouched and `recover()` will list it again.
+  resumeFailed,
 }
 
 /// Runtime permissions the setup checklist can request (plan §10). Location is

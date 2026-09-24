@@ -87,6 +87,8 @@ class RecoveryDialog extends StatelessWidget {
     StartError.notificationsDenied => 'Notifications are needed to resume.',
     StartError.alreadyRunning => 'A run is already recording.',
     StartError.replayUnavailable => 'Replay is not available in this build.',
+    StartError.startFailed || StartError.resumeFailed =>
+      'Could not resume right now. The run is kept; try again.',
   };
 
   @override

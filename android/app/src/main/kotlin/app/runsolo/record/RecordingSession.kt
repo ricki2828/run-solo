@@ -50,13 +50,13 @@ import app.runsolo.platform.toPigeon
  */
 class RecordingSession(
     context: Context,
-    val runId: String,
+    override val runId: String,
     val mode: RunMode,
     val preset: Preset?,
     val units: Units,
     private val replay: ReplayRunner?,
     volumeKeyLaps: Boolean,
-) {
+) : app.runsolo.platform.StartGuard.Session {
     // Application context: the session outlives the Activity (swipe from Recents keeps the
     // service alive; an Activity context would unbind TTS and leak the Activity).
     private val context: Context = context.applicationContext
@@ -453,7 +453,7 @@ class RecordingSession(
 
     /** The foreground service could not start: nothing worth keeping. Deletes the journal, never finalises. */
     @Synchronized
-    fun discard() {
+    override fun discard() {
         if (finished) return
         finished = true
         stopTicks()
@@ -468,7 +468,7 @@ class RecordingSession(
 
     /** The service was torn down while the process lives: stop cleanly, keep the journal for recovery. */
     @Synchronized
-    fun suspend() {
+    override fun suspend() {
         if (finished) return
         finished = true
         stopTicks()
