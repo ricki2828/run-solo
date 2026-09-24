@@ -41,6 +41,17 @@ class PointFilter(
     private var candidate: LocationFix? = null
     private val rejectedRun = ArrayList<LocationFix>()
 
+    /**
+     * Forget the anchor (keep the distance): the next two agreeing fixes anchor afresh and the
+     * jump from the old anchor is never counted. Called on resume so movement during a pause
+     * (walking to a tap, crossing a road) does not inflate distance or pace.
+     */
+    fun reanchor() {
+        lastAccepted = null
+        candidate = null
+        rejectedRun.clear()
+    }
+
     fun offer(fix: LocationFix): Result {
         if (fix.accuracyM > maxAccuracyM || fix.accuracyM.isNaN()) return reject(Reason.accuracy)
         val prev = lastAccepted

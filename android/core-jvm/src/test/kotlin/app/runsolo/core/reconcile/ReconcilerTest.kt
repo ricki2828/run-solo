@@ -68,7 +68,7 @@ class ReconcilerTest {
     fun `orphans - unreadable journal is reported with file age`() {
         fs.clock = 5_000
         put(RunPaths.journal("x"))
-        val o = Reconciler(fs).orphans(65_000).single()
+        val o = Reconciler(fs).orphans(65_000, activeRunId = null).single()
         assertEquals("x", o.runId)
         assertEquals(60_000, o.lastLineAgeMs)
         assertEquals(false, o.readable)

@@ -88,7 +88,7 @@ object ContractFixtures {
         fun finish(): String {
             emit(core.stop(t))
             writer.close()
-            val done = Finaliser(fs).finalise(id, wall) as Finaliser.Outcome.Done
+            val done = Finaliser(fs).finalise(id, wall, activeRunId = null) as Finaliser.Outcome.Done
             return Json.write(RunFile.readJson(fs.readBytes(done.path)))
         }
     }

@@ -15,6 +15,10 @@ import app.runsolo.core.model.LocationFix
  * goes through [filter] (live distance for the tick stream); the finaliser recomputes the
  * same thing from the journaled raw samples.
  *
+ * While paused ([onPause]/[onResume]) fixes are still journaled but not measured, and the
+ * filter re-anchors on resume so distance covered during the pause is excluded — the
+ * finaliser applies the same rule from the journal's pause/resume lines.
+ *
  * The service calls [onFix] from the location callback, [onHr] from the GATT callback and
  * [tick] from its 1 s timer (with the replay clock in replay mode).
  */
@@ -36,6 +40,19 @@ class SampleTicker(
     var lastFixT: Long? = null
         private set
 
+    var paused: Boolean = false
+        private set
+
+    fun onPause() {
+        paused = true
+    }
+
+    fun onResume() {
+        if (!paused) return
+        paused = false
+        filter.reanchor()
+    }
+
     fun onFix(fix: LocationFix) {
         pending.add(fix)
         lastFixT = fix.t
@@ -55,7 +72,7 @@ class SampleTicker(
         } else {
             pending.sortBy { it.t }
             for (fix in pending) {
-                filter.offer(fix)
+                if (!paused) filter.offer(fix)
                 var t = fix.t
                 if (t <= lastSampleT) {
                     t = lastSampleT + 1

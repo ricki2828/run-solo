@@ -101,17 +101,22 @@ data class RunFile(
             for (e in r.events) {
                 when (e) {
                     is RunEvent.Sample -> {
+                        // Paused: journaled, not measured (distance is frozen; the filter re-anchors on resume).
                         // Engine contract: samples strictly increasing in t (a clamped clock jump or a
                         // duplicate fix would repeat a t → dropped), hr > 0 or null.
                         val last = samples.lastOrNull()
                         if (last != null && e.t <= last.t) continue
-                        if (e.hasFix) filter.offer(LocationFix(e.t, e.lat!!, e.lon!!, e.altM, e.accuracyM!!, e.speedMps))
+                        if (e.hasFix && pauseStart == null) filter.offer(LocationFix(e.t, e.lat!!, e.lon!!, e.altM, e.accuracyM!!, e.speedMps))
                         val hr = e.hr?.takeIf { it > 0 }
                         samples.add(Sample(e.t, e.lat, e.lon, e.altM, e.accuracyM, e.speedMps, filter.totalM, hr))
                     }
                     is RunEvent.Lap -> markers.add(e.t to if (e.source == LapSource.auto) LapKind.auto else LapKind.manual)
                     is RunEvent.Pause -> if (pauseStart == null) pauseStart = e.t
-                    is RunEvent.Resume -> pauseStart?.let { pauses.add(longArrayOf(it, e.t)); pauseStart = null }
+                    is RunEvent.Resume -> pauseStart?.let {
+                        pauses.add(longArrayOf(it, e.t))
+                        pauseStart = null
+                        filter.reanchor()
+                    }
                     is RunEvent.Gap -> gaps.add(longArrayOf(e.t, e.endT))
                     is RunEvent.Cue, is RunEvent.HrLink -> Unit
                 }

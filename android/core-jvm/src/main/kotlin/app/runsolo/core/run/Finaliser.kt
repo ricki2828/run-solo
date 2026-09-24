@@ -32,7 +32,7 @@ class Finaliser(private val fs: FileSystem) {
         data class Active(val runId: String) : Outcome()
     }
 
-    fun finalise(runId: String, nowEpochMs: Long, activeRunId: String? = null): Outcome {
+    fun finalise(runId: String, nowEpochMs: Long, activeRunId: String?): Outcome {
         require(RunPaths.isSafeId(runId)) { "unsafe run id" }
         if (runId == activeRunId) return Outcome.Active(runId)
         val journal = RunPaths.journal(runId)

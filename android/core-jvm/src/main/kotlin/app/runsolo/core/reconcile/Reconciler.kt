@@ -49,8 +49,9 @@ data class OrphanJournal(
  * [plan] is a set difference, [orphans] finds journals to recover. Nothing here writes the
  * index — the Dart store applies the plan — and nothing here deletes a run file, ever.
  *
- * The run being recorded is invisible to every method that takes [activeRunId]: the service
- * passes the id its `RecorderCore` owns, and that journal is neither an orphan nor a leftover.
+ * The run being recorded is invisible to every method that takes `activeRunId`: the service
+ * passes the id its `RecorderCore` owns (explicitly null when idle — there is no default, so a
+ * caller cannot lose the guard by omission), and that journal is neither an orphan nor a leftover.
  */
 class Reconciler(private val fs: FileSystem) {
     /** Committed run files in `runs/` and `runs-archive/`. A file present in both counts once, `runs/` wins. */
@@ -110,7 +111,7 @@ class Reconciler(private val fs: FileSystem) {
      * [app.runsolo.core.run.Finaliser] cleans it up on its next call, which [sweepCommitted]
      * triggers. The active run is never listed.
      */
-    fun orphans(nowEpochMs: Long, activeRunId: String? = null): List<OrphanJournal> {
+    fun orphans(nowEpochMs: Long, activeRunId: String?): List<OrphanJournal> {
         val committed = scan().map { it.id }.toSet()
         val out = ArrayList<OrphanJournal>()
         for (name in fs.list(RunPaths.RUNS_DIR)) {
@@ -137,7 +138,7 @@ class Reconciler(private val fs: FileSystem) {
     }
 
     /** Journal directories whose run file is already committed: leftovers of a kill after rename. */
-    fun sweepCommitted(activeRunId: String? = null): List<String> {
+    fun sweepCommitted(activeRunId: String?): List<String> {
         val committed = scan().map { it.id }.toSet()
         return fs.list(RunPaths.RUNS_DIR).filter {
             it != activeRunId && it in committed && fs.isDirectory("${RunPaths.RUNS_DIR}/$it")

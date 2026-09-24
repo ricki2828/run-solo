@@ -59,8 +59,8 @@ class FinaliseReconcileTest {
     private fun appOpen(index: Index) {
         val rec = Reconciler(fs)
         val fin = Finaliser(fs)
-        for (id in rec.sweepCommitted()) fin.finalise(id, now)
-        for (o in rec.orphans(now)) fin.finalise(o.runId, now)
+        for (id in rec.sweepCommitted(activeRunId = null)) fin.finalise(id, now, activeRunId = null)
+        for (o in rec.orphans(now, activeRunId = null)) fin.finalise(o.runId, now, activeRunId = null)
         index.apply(rec.reconcile(index.rows.values.toList()))
     }
 
@@ -81,7 +81,7 @@ class FinaliseReconcileTest {
     @Test
     fun `happy path - stop finalises and Dart indexes`() {
         writeJournal("r1")
-        val out = Finaliser(fs).finalise("r1", now)
+        val out = Finaliser(fs).finalise("r1", now, activeRunId = null)
         assertIs<Finaliser.Outcome.Done>(out)
         assertTrue(out.fresh)
         assertEquals(listOf("writeBytes", "fsyncFile", "rename", "fsyncDir", "deleteRecursively"), fs.ops)
@@ -96,9 +96,9 @@ class FinaliseReconcileTest {
     fun `kill before tmp write - journal is an orphan, finalised on open`() {
         writeJournal("r1")
         fs.crashBefore = "writeBytes"
-        assertFailsWith<FakeFileSystem.Crash> { Finaliser(fs).finalise("r1", now) }
+        assertFailsWith<FakeFileSystem.Crash> { Finaliser(fs).finalise("r1", now, activeRunId = null) }
         val index = Index()
-        val orphans = Reconciler(fs).orphans(now)
+        val orphans = Reconciler(fs).orphans(now, activeRunId = null)
         assertEquals("r1", orphans.single().runId)
         assertEquals(RunMode.fourByFour, orphans.single().mode)
         assertEquals(57_000, orphans.single().lastLineAgeMs)
@@ -110,7 +110,7 @@ class FinaliseReconcileTest {
     fun `kill after tmp write before rename - tmp is discarded and rebuilt`() {
         writeJournal("r1")
         fs.crashBefore = "rename"
-        assertFailsWith<FakeFileSystem.Crash> { Finaliser(fs).finalise("r1", now) }
+        assertFailsWith<FakeFileSystem.Crash> { Finaliser(fs).finalise("r1", now, activeRunId = null) }
         assertTrue(fs.exists(RunPaths.runFileTmp("r1")))
         assertEquals(emptyList(), Reconciler(fs).scan()) // a tmp is never a run
         val index = Index()
@@ -124,13 +124,13 @@ class FinaliseReconcileTest {
     fun `kill after rename before journal delete and before index - swept, indexed once`() {
         writeJournal("r1")
         fs.crashBefore = "deleteRecursively"
-        assertFailsWith<FakeFileSystem.Crash> { Finaliser(fs).finalise("r1", now) }
+        assertFailsWith<FakeFileSystem.Crash> { Finaliser(fs).finalise("r1", now, activeRunId = null) }
         assertTrue(fs.exists(RunPaths.runFile("r1")))
         assertTrue(fs.exists(RunPaths.journal("r1")))
         val before = fs.readBytes(RunPaths.runFile("r1"))
         val rec = Reconciler(fs)
-        assertEquals(emptyList(), rec.orphans(now)) // committed → not an orphan
-        assertEquals(listOf("r1"), rec.sweepCommitted())
+        assertEquals(emptyList(), rec.orphans(now, activeRunId = null)) // committed → not an orphan
+        assertEquals(listOf("r1"), rec.sweepCommitted(activeRunId = null))
         val index = Index()
         appOpen(index)
         assertExactlyOne(index, "r1")
@@ -140,7 +140,7 @@ class FinaliseReconcileTest {
     @Test
     fun `kill after finalise before index - reconciler indexes the file`() {
         writeJournal("r1")
-        Finaliser(fs).finalise("r1", now)
+        Finaliser(fs).finalise("r1", now, activeRunId = null)
         val index = Index() // Dart never got to INSERT
         appOpen(index)
         assertExactlyOne(index, "r1")
@@ -149,7 +149,7 @@ class FinaliseReconcileTest {
     @Test
     fun `kill after index - nothing to do, still exactly one`() {
         writeJournal("r1")
-        val out = Finaliser(fs).finalise("r1", now) as Finaliser.Outcome.Done
+        val out = Finaliser(fs).finalise("r1", now, activeRunId = null) as Finaliser.Outcome.Done
         val index = Index()
         index.insertAfterStop(RunFileRef("r1", out.path))
         appOpen(index)
@@ -160,16 +160,16 @@ class FinaliseReconcileTest {
     @Test
     fun `finalise is a no-op with nothing on disk and corrupt without a header`() {
         fs.mkdirs(RunPaths.RUNS_DIR)
-        assertIs<Finaliser.Outcome.Nothing>(Finaliser(fs).finalise("nope", now))
+        assertIs<Finaliser.Outcome.Nothing>(Finaliser(fs).finalise("nope", now, activeRunId = null))
         fs.mkdirs(RunPaths.journalDir("bad"))
         fs.openAppend(RunPaths.journal("bad")).use { it.write("{\"k\":\"s\",\"t\":1}\n".toByteArray()) }
-        assertIs<Finaliser.Outcome.Corrupt>(Finaliser(fs).finalise("bad", now))
-        val o = Reconciler(fs).orphans(now).single()
+        assertIs<Finaliser.Outcome.Corrupt>(Finaliser(fs).finalise("bad", now, activeRunId = null))
+        val o = Reconciler(fs).orphans(now, activeRunId = null).single()
         assertFalse(o.readable)
     }
 
     @Test
     fun `unsafe ids are refused`() {
-        assertFailsWith<IllegalArgumentException> { Finaliser(fs).finalise("../x", now) }
+        assertFailsWith<IllegalArgumentException> { Finaliser(fs).finalise("../x", now, activeRunId = null) }
     }
 }

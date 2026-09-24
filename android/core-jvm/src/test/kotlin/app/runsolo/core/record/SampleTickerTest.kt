@@ -61,6 +61,23 @@ class SampleTickerTest {
     }
 
     @Test
+    fun `paused - fixes still journaled, distance frozen, re-anchored on resume`() {
+        val ticker = SampleTicker(wall = { 0 })
+        var t = 0L
+        var east = 0.0
+        fun step(mps: Double) { t += 1000; east += mps; ticker.onFix(fix(t, east)); ticker.tick(t + 50) }
+        repeat(10) { step(3.0) }
+        val before = ticker.distanceM
+        ticker.onPause()
+        repeat(5) { step(2.0) } // walking to the tap
+        assertEquals(before, ticker.distanceM)
+        assertTrue(ticker.paused)
+        ticker.onResume()
+        repeat(10) { step(3.0) }
+        assertEquals(before + 9 * 3.0, ticker.distanceM, 0.5) // the 10 m walked never counts; one fix re-anchors
+    }
+
+    @Test
     fun `jittered late delivery over a straight line - every fix journaled in order, ground-truth distance`() {
         val ticker = SampleTicker(wall = { 0 })
         val fixes = TraceFixture.straightLine(listOf(120 to 3.0), startT = 10_000)

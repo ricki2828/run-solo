@@ -98,7 +98,7 @@ class ActiveRunAndArchiveTest {
             w.close()
             fs.fsyncDir(RunPaths.journalDir("p"))
             fs.crashBefore = step
-            assertFailsWith<FakeFileSystem.Crash> { Finaliser(fs).finalise("p", w0 + 1000) }
+            assertFailsWith<FakeFileSystem.Crash> { Finaliser(fs).finalise("p", w0 + 1000, activeRunId = null) }
             fs.powerLoss()
             val committed = RunPaths.runFile("p")
             if (fs.exists(committed)) {
@@ -109,7 +109,7 @@ class ActiveRunAndArchiveTest {
                 assertTrue(fs.size(RunPaths.journal("p")) > 0)
             }
             // Recovery finishes the job either way.
-            val out = Finaliser(fs).finalise("p", w0 + 1000)
+            val out = Finaliser(fs).finalise("p", w0 + 1000, activeRunId = null)
             assertIs<Finaliser.Outcome.Done>(out)
             assertTrue(fs.size(committed) > 0)
         }

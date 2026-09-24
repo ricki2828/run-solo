@@ -44,8 +44,8 @@ class RunFileTest {
         assertEquals(20_000, f.laps[1].t0)
         assertEquals(50_000, f.laps[1].t1)
         assertEquals(LapKind.manual, f.laps[1].kind)
-        assertEquals(60.0, f.laps[0].d1, 0.5)
-        assertEquals(150.0, f.laps[1].d1, 1.0)
+        assertEquals(57.0, f.laps[0].d1, 0.5) // 20 steps, the first anchors
+        assertEquals(132.0, f.laps[1].d1, 1.0) // 5 paused steps excluded, one step re-anchors after resume
         assertEquals(f.laps[0].d1, f.laps[1].d0)
         assertEquals(1, f.pauses.size)
         assertEquals(listOf(40_000L, 45_000L), f.pauses[0].asList())
@@ -141,6 +141,27 @@ class RunFileTest {
         assertEquals(0, f.fixCount)
         assertEquals(0.0, f.distanceM)
         assertEquals(135, f.samples.last().hr)
+    }
+
+    @Test
+    fun `movement while paused is journaled but not measured`() {
+        // 30 s @3 m/s, pause, 20 s walking @1.5 m/s (30 m), resume, 30 s @3 m/s.
+        val fixes = TraceFixture.straightLine(listOf(30 to 3.0, 20 to 1.5, 30 to 3.0), startT = t0)
+        val lines = ArrayList<JournalLine>()
+        lines.add(header.copy(mode = RunMode.free, preset = null))
+        for (f in fixes) {
+            val s = (f.t - t0) / 1000
+            if (s == 30L) lines.add(JournalLine.Pause(f.t, w0 + s * 1000))
+            if (s == 50L) lines.add(JournalLine.Resume(f.t, w0 + s * 1000))
+            lines.add(JournalLine.Sample(f.t, w0 + s * 1000, f.lat, f.lon, f.altM, f.accuracyM, f.speedMps, null))
+        }
+        val f = RunFile.fromReplay(JournalReplay.read(lines.joinToString("") { JournalCodec.encode(it) + "\n" }.toByteArray()), w0 + 80_000)
+        assertEquals(81, f.samples.size, "paused samples are still in the file")
+        val atPause = f.samples.first { it.t == 30_000L }.distM
+        val atResume = f.samples.first { it.t == 50_000L }.distM
+        assertEquals(atPause, atResume, "distance frozen through the pause")
+        // 29 steps before (anchor consumes one, sample 30 is already paused) + 30 after (50 re-anchors, 51..80 count) = 177 m; the 30 m walked never.
+        assertEquals(29 * 3.0 + 30 * 3.0, f.distanceM, 1.0)
     }
 
     @Test
