@@ -9,21 +9,21 @@ abstract final class RunSoloType {
   static const List<FontFeature> tabular = [FontFeature.tabularFigures()];
 
   static TextStyle _display(double size, FontWeight weight) => TextStyle(
-        fontFamily: display,
-        fontSize: size,
-        fontWeight: weight,
-        height: 1.0,
-        letterSpacing: size * 0.01,
-        fontFeatures: tabular,
-      );
+    fontFamily: display,
+    fontSize: size,
+    fontWeight: weight,
+    height: 1.0,
+    letterSpacing: size * 0.01,
+    fontFeatures: tabular,
+  );
 
   static TextStyle _ui(double size, FontWeight weight) => TextStyle(
-        fontFamily: ui,
-        fontSize: size,
-        fontWeight: weight,
-        height: 1.35,
-        fontFeatures: tabular,
-      );
+    fontFamily: ui,
+    fontSize: size,
+    fontWeight: weight,
+    height: 1.35,
+    fontFeatures: tabular,
+  );
 
   static final TextStyle display96 = _display(96, FontWeight.w700);
   static final TextStyle display64 = _display(64, FontWeight.w700);
@@ -42,13 +42,13 @@ abstract final class RunSoloType {
   );
 
   static TextTheme textTheme(Color ink, Color inkSecondary) => TextTheme(
-        displayLarge: display96.copyWith(color: ink),
-        displayMedium: display64.copyWith(color: ink),
-        displaySmall: display44.copyWith(color: ink),
-        headlineMedium: title28.copyWith(color: ink),
-        bodyLarge: body17.copyWith(color: ink),
-        bodyMedium: body15.copyWith(color: ink),
-        labelLarge: label13.copyWith(color: ink),
-        labelSmall: micro11.copyWith(color: inkSecondary),
-      );
+    displayLarge: display96.copyWith(color: ink),
+    displayMedium: display64.copyWith(color: ink),
+    displaySmall: display44.copyWith(color: ink),
+    headlineMedium: title28.copyWith(color: ink),
+    bodyLarge: body17.copyWith(color: ink),
+    bodyMedium: body15.copyWith(color: ink),
+    labelLarge: label13.copyWith(color: ink),
+    labelSmall: micro11.copyWith(color: inkSecondary),
+  );
 }

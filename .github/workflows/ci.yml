@@ -35,7 +35,10 @@ jobs:
           dart run pigeon --input pigeons/platform_api.dart
           git diff --exit-code -- lib/platform android/app/src/main/kotlin/app/runsolo/platform
       - name: Format
-        run: dart format --output=none --set-exit-if-changed lib test pigeons packages/run_engine
+        # Generated Pigeon output is excluded: it is checked for drift above, not formatted.
+        run: |
+          dart format --output=none --set-exit-if-changed \
+            lib/main.dart lib/screens lib/theme lib/platform/platform.dart test pigeons packages/run_engine
       - name: Analyze
         run: flutter analyze
       - name: App tests

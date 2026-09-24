@@ -29,7 +29,13 @@ enum LapSource { button, notification, volumeKey, auto }
 
 enum CueKind { halfway, thirtySeconds, phaseEnd, start, stop }
 
-enum FaultKind { gpsLost, gpsWeak, hrDisconnected, journalWriteFailed, lowStorage }
+enum FaultKind {
+  gpsLost,
+  gpsWeak,
+  hrDisconnected,
+  journalWriteFailed,
+  lowStorage,
+}
 
 /// Typed errors returned by `start` (plan §2). Never a stringly-typed map.
 enum StartError {
@@ -43,7 +49,11 @@ enum StartError {
 
 /// The 4x4 preset written into the file header; drives cues and the detector.
 class Preset {
-  Preset({required this.reps, required this.workSeconds, required this.recoverySeconds});
+  Preset({
+    required this.reps,
+    required this.workSeconds,
+    required this.recoverySeconds,
+  });
   int reps;
   int workSeconds;
   int recoverySeconds;
@@ -85,7 +95,11 @@ class RecorderStatus {
 
 /// An in-progress journal found on app open without a finalised run file.
 class OrphanJournal {
-  OrphanJournal({required this.runId, required this.lastLineAgeMs, required this.mode});
+  OrphanJournal({
+    required this.runId,
+    required this.lastLineAgeMs,
+    required this.mode,
+  });
   String runId;
   int lastLineAgeMs;
   RecordMode mode;
@@ -104,11 +118,14 @@ abstract class RecorderApi {
   void pause();
   void resume();
   void lap(LapSource source);
+
   /// Finalises in Kotlin (journal -> tmp -> fsync -> rename -> delete journal). No-op when idle.
   String? stop();
   RecorderStatus status();
+
   /// Called on app open: journals without a finalised file.
   List<OrphanJournal> recover();
+
   /// Finalise an orphaned journal without resuming it.
   void finalise(String runId);
   void setCues(bool enabled);
@@ -141,6 +158,7 @@ class TickEvent extends RecorderEvent {
   int elapsedMs;
   int lapElapsedMs;
   double lapDistanceM;
+
   /// Rolling 15 s "live" pace; differs from the verdict's trimmed pace.
   double? lapPaceLiveSecPerKm;
   double totalDistanceM;
@@ -150,7 +168,12 @@ class TickEvent extends RecorderEvent {
 }
 
 class LapEvent extends RecorderEvent {
-  LapEvent({required this.index, required this.tMs, required this.distanceM, required this.source});
+  LapEvent({
+    required this.index,
+    required this.tMs,
+    required this.distanceM,
+    required this.source,
+  });
   int index;
   int tMs;
   double distanceM;

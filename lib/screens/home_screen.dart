@@ -32,10 +32,7 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: Space.x32),
               Divider(height: 2, thickness: 2, color: t.lineHair),
               const SizedBox(height: Space.x32),
-              FilledButton(
-                onPressed: null,
-                child: const Text('START'),
-              ),
+              FilledButton(onPressed: null, child: const Text('START')),
               const SizedBox(height: Space.x12),
               Text(
                 'Recording arrives in Phase 1.',

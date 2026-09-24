@@ -18,8 +18,14 @@ abstract final class MotionCurves {
 
 /// Spring parameters (mass, stiffness, damping) for direct-manipulation moments.
 abstract final class MotionSprings {
-  static const ({double mass, double stiffness, double damping}) tap =
-      (mass: 1, stiffness: 500, damping: 30);
-  static const ({double mass, double stiffness, double damping}) sheet =
-      (mass: 1, stiffness: 300, damping: 26);
+  static const ({double mass, double stiffness, double damping}) tap = (
+    mass: 1,
+    stiffness: 500,
+    damping: 30,
+  );
+  static const ({double mass, double stiffness, double damping}) sheet = (
+    mass: 1,
+    stiffness: 300,
+    damping: 26,
+  );
 }
