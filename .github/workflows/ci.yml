@@ -267,7 +267,9 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-      - name: Boot, install, launch, replay lifecycle
+      # The full lifecycle test needs `run-as` (debuggable packages only); the dogfood build is
+      # release, so it gets the launch smoke plus a logcat-only replay check.
+      - name: Boot, install, launch, replay smoke
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
@@ -278,4 +280,4 @@ jobs:
           disable-animations: true
           script: |
             tools/emulator_smoke.sh apk/app-x86_64-dogfood-release.apk app.runsolo.dogfood
-            tools/emulator_lifecycle.sh apk/app-x86_64-dogfood-release.apk app.runsolo.dogfood
+            tools/emulator_replay_smoke.sh apk/app-x86_64-dogfood-release.apk app.runsolo.dogfood
