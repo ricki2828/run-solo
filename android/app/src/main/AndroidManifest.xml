@@ -60,6 +60,10 @@
             android:exported="false"
             android:foregroundServiceType="location"
             android:stopWithTask="false" />
+        <!-- Notification actions: a broadcast into the live process, never a service start. -->
+        <receiver
+            android:name=".record.RecorderActionReceiver"
+            android:exported="false" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

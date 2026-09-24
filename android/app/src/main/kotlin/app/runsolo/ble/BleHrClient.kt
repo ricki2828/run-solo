@@ -30,31 +30,36 @@ import java.util.UUID
 
 /**
  * Heart Rate Profile client (plan §3, W7). Pairs by one filtered scan for 0x180D; after that
- * every connection is `connectGatt(autoConnect = true)` to the saved address, never a rescan
- * (Android throttles scan starts and suppresses unfiltered scans screen-off). `gatt.close()`
- * always precedes a reconnect (GATT 133 leak). Whoop broadcast is a standard HR profile
- * peripheral and needs nothing special; its contact bits are a Phase 1 device-test item.
+ * every connection is to the saved address, never a rescan (Android throttles scan starts and
+ * suppresses unfiltered scans screen-off). At run start an existing link is kept, otherwise a
+ * direct `connectGatt(autoConnect = false)`; after a drop `autoConnect = true` (passive, OS
+ * managed). `gatt.close()` always precedes a reconnect (GATT 133 leak). "Connected" is reported
+ * only once notifications are enabled (the CCCD write succeeded); a failed discovery or CCCD
+ * write is retried once, then the link is closed and reconnected. Whoop broadcast is a
+ * standard HR-profile peripheral; its contact bits are a Phase 1 device-test item.
  *
- * Readings go to [listener] with `t = elapsedRealtime` at receipt; `null` bpm means the strap
- * reports no contact (the join clears its history). All callbacks are marshalled to the main
- * thread.
+ * Readings go to [listener] with `t = elapsedRealtime` at receipt; a no-contact packet is
+ * reported as [Listener.onNoContact]. All callbacks are marshalled to the main thread.
  */
-class BleHrClient(private val context: Context) {
+class BleHrClient(context: Context) {
     interface Listener {
         fun onReading(reading: HrReading)
         fun onNoContact()
         fun onLink(connected: Boolean)
     }
 
-    private val prefs = context.getSharedPreferences("runsolo.ble", Context.MODE_PRIVATE)
+    private val context = context.applicationContext
+    private val prefs = this.context.getSharedPreferences("runsolo.ble", Context.MODE_PRIVATE)
     private val main = Handler(Looper.getMainLooper())
-    private val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager // null on devices without Bluetooth
+    private val manager = this.context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager // null without Bluetooth
     private val adapter: BluetoothAdapter? get() = manager?.adapter
     private val policy = BleReconnectPolicy(prefs.getString(KEY_ADDRESS, null))
     private var gatt: BluetoothGatt? = null
     private var pendingReconnect: Runnable? = null
+    private var setupRetried = false
     var listener: Listener? = null
 
+    /** Notifications enabled on the HR characteristic (not merely a GATT link). */
     var connected: Boolean = false
         private set
     var lastHr: Int? = null
@@ -147,8 +152,14 @@ class BleHrClient(private val context: Context) {
 
     // ---- link ----
 
-    /** Recording starts (or the app opens with a saved strap). */
-    fun connectIfPaired() = apply(policy.onStart())
+    /** Recording starts: keep a working link, otherwise connect directly to the saved strap. */
+    fun connectIfPaired() {
+        if (connected && gatt != null) {
+            listener?.onLink(true)
+            return
+        }
+        apply(policy.onStart())
+    }
 
     fun disconnect() {
         cancelReconnect()
@@ -190,6 +201,7 @@ class BleHrClient(private val context: Context) {
             return
         }
         Log.i(TAG, "connectGatt autoConnect=$autoConnect")
+        setupRetried = false
         gatt = try {
             device.connectGatt(context, autoConnect, gattCallback, BluetoothDevice.TRANSPORT_LE)
         } catch (e: Exception) {
@@ -221,47 +233,82 @@ class BleHrClient(private val context: Context) {
         listener?.onLink(v)
     }
 
+    /** Discovery or CCCD failed: retry once, then treat as a drop (close + reconnect). */
+    @SuppressLint("MissingPermission")
+    private fun setupFailed(g: BluetoothGatt, what: String) {
+        if (g !== gatt) return
+        Log.w(TAG, "$what failed")
+        if (!setupRetried) {
+            setupRetried = true
+            main.postDelayed({ if (g === gatt) g.discoverServices() }, 500)
+        } else {
+            closeGatt()
+            setConnected(false)
+            apply(policy.onDisconnected(SystemClock.elapsedRealtime()))
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun enableNotifications(g: BluetoothGatt): Boolean {
+        val ch = g.getService(HR_SERVICE)?.getCharacteristic(HR_MEASUREMENT) ?: return false
+        if (!g.setCharacteristicNotification(ch, true)) return false
+        val cccd = ch.getDescriptor(CCCD) ?: return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            g.writeDescriptor(cccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == BluetoothGatt.GATT_SUCCESS
+        } else {
+            @Suppress("DEPRECATION")
+            cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+            @Suppress("DEPRECATION")
+            g.writeDescriptor(cccd)
+        }
+    }
+
     private val gattCallback = object : BluetoothGattCallback() {
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
             main.post {
+                if (g !== gatt) { // stale callback from a closed gatt
+                    try {
+                        g.close()
+                    } catch (_: Exception) {
+                    }
+                    return@post
+                }
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    policy.onConnected(SystemClock.elapsedRealtime())
-                    setConnected(true)
-                    g.discoverServices()
+                    Log.i(TAG, "link up, discovering")
+                    if (!g.discoverServices()) setupFailed(g, "discoverServices")
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     Log.i(TAG, "disconnected status=$status")
                     setConnected(false)
                     listener?.onNoContact()
-                    if (g === gatt) apply(policy.onDisconnected(SystemClock.elapsedRealtime()))
+                    apply(policy.onDisconnected(SystemClock.elapsedRealtime()))
                 }
             }
         }
 
-        @SuppressLint("MissingPermission")
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
             main.post {
-                val ch = g.getService(HR_SERVICE)?.getCharacteristic(HR_MEASUREMENT)
-                if (ch == null) {
-                    Log.w(TAG, "no HR measurement characteristic")
-                    return@post
-                }
-                g.setCharacteristicNotification(ch, true)
-                val cccd = ch.getDescriptor(CCCD) ?: return@post
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    g.writeDescriptor(cccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                if (g !== gatt) return@post
+                if (status != BluetoothGatt.GATT_SUCCESS || !enableNotifications(g)) setupFailed(g, "services/cccd")
+            }
+        }
+
+        override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
+            main.post {
+                if (g !== gatt || descriptor.uuid != CCCD) return@post
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    policy.onConnected(SystemClock.elapsedRealtime())
+                    setConnected(true)
+                    Log.i(TAG, "HR notifications on")
                 } else {
-                    @Suppress("DEPRECATION")
-                    cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                    @Suppress("DEPRECATION")
-                    g.writeDescriptor(cccd)
+                    setupFailed(g, "cccd write status=$status")
                 }
             }
         }
 
         // API 33+ delivers the value; older delivers the characteristic.
         override fun onCharacteristicChanged(g: BluetoothGatt, ch: BluetoothGattCharacteristic, value: ByteArray) {
-            deliver(ch.uuid, value)
+            deliver(g, ch.uuid, value)
         }
 
         @Deprecated("Deprecated in Java")
@@ -269,16 +316,17 @@ class BleHrClient(private val context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
                 @Suppress("DEPRECATION")
                 val v = ch.value ?: return
-                deliver(ch.uuid, v)
+                deliver(g, ch.uuid, v)
             }
         }
     }
 
-    private fun deliver(uuid: UUID, value: ByteArray) {
+    private fun deliver(g: BluetoothGatt, uuid: UUID, value: ByteArray) {
         if (uuid != HR_MEASUREMENT) return
         val parsed = HeartRateMeasurement.parse(value) ?: return
         val t = SystemClock.elapsedRealtime()
         main.post {
+            if (g !== gatt) return@post
             val bpm = parsed.bpm
             lastHr = bpm
             if (bpm == null) listener?.onNoContact() else listener?.onReading(HrReading(t, bpm))

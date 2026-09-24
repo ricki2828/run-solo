@@ -6,8 +6,10 @@ package app.runsolo.core.ble
  * throttles scan starts (5 per 30 s) and suppresses unfiltered scans while the screen is off.
  *
  *  - Pairing scans once (outside this object) and saves the address.
- *  - Every reconnect is `gatt.close()` first (GATT 133 leak), then `connectGatt(autoConnect = true)`
- *    to the saved address. autoConnect is a passive, OS-managed wait, so there is no give-up.
+ *  - At start (and pairing) the connect is direct (`autoConnect = false`: seconds, not the
+ *    10–60 s a passive autoConnect can take). Every reconnect after a drop is `gatt.close()`
+ *    first (GATT 133 leak), then `connectGatt(autoConnect = true)` to the saved address —
+ *    a passive, OS-managed wait, so there is no give-up.
  *  - An explicit retry after a failed connect attempt backs off 1 s → 2 s → 4 s … capped at
  *    [maxDelayMs]; the backoff resets after a link that stayed up ≥ [stableMs].
  */
@@ -45,10 +47,10 @@ class BleReconnectPolicy(
         return Action.Nothing
     }
 
-    /** Recording starts (or the app opens with a saved strap): open the passive autoConnect link. */
+    /** Recording starts (or the app opens with a saved strap): a direct connect now. */
     fun onStart(): Action {
         val a = savedAddress ?: return Action.Nothing
-        return Action.Reconnect(a, autoConnect = true, delayMs = 0, closeFirst = true)
+        return Action.Reconnect(a, autoConnect = false, delayMs = 0, closeFirst = true)
     }
 
     fun onConnected(nowMs: Long) {

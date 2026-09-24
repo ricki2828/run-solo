@@ -58,10 +58,11 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         try {
             ContextCompat.startForegroundService(context, intent)
         } catch (e: Exception) {
+            // Android 14+ refuses a location FGS started from the background: nothing recorded, no file.
             Log.e(TAG, "startForegroundService failed", e)
             RecorderService.pending = null
-            session.stop()
-            return StartResult(runId = null, error = StartError.ALREADY_RUNNING)
+            session.discard()
+            return StartResult(runId = null, error = StartError.FGS_NOT_ALLOWED)
         }
         return StartResult(runId = session.runId, error = null)
     }

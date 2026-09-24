@@ -148,6 +148,9 @@ enum FaultKind {
   /// The OS killed the process mid-run (read from ApplicationExitInfo on the
   /// next app open); the UI shows the OEM guidance from `exitDiagnosis`.
   osKilledMidRun,
+  /// The foreground service could not start after `start` returned a run id;
+  /// the run was discarded (no file). Show the message, return to Start.
+  startFailed,
 }
 
 /// Typed errors returned by `start` (plan §2). Never a stringly-typed map.
@@ -162,6 +165,10 @@ enum StartError {
   replayUnavailable,
   /// `resumeRecovered` for a journal that no longer exists or is unreadable.
   noSuchJournal,
+  /// The OS refused the location foreground service (Android 14+ background
+  /// start, or the permission was revoked between check and start). Nothing
+  /// was recorded; no run file is written.
+  fgsNotAllowed,
 }
 
 /// Runtime permissions the setup checklist can request (plan §10). Location is

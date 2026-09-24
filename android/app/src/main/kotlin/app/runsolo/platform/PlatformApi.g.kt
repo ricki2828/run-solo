@@ -280,7 +280,12 @@ enum class FaultKind(val raw: Int) {
    * The OS killed the process mid-run (read from ApplicationExitInfo on the
    * next app open); the UI shows the OEM guidance from `exitDiagnosis`.
    */
-  OS_KILLED_MID_RUN(5);
+  OS_KILLED_MID_RUN(5),
+  /**
+   * The foreground service could not start after `start` returned a run id;
+   * the run was discarded (no file). Show the message, return to Start.
+   */
+  START_FAILED(6);
 
   companion object {
     fun ofRaw(raw: Int): FaultKind? {
@@ -300,7 +305,13 @@ enum class StartError(val raw: Int) {
   /** `startReplay` on a release build, or an unknown fixture name. */
   REPLAY_UNAVAILABLE(6),
   /** `resumeRecovered` for a journal that no longer exists or is unreadable. */
-  NO_SUCH_JOURNAL(7);
+  NO_SUCH_JOURNAL(7),
+  /**
+   * The OS refused the location foreground service (Android 14+ background
+   * start, or the permission was revoked between check and start). Nothing
+   * was recorded; no run file is written.
+   */
+  FGS_NOT_ALLOWED(8);
 
   companion object {
     fun ofRaw(raw: Int): StartError? {

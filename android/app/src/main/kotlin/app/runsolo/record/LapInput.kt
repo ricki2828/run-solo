@@ -18,7 +18,8 @@ import android.util.Log
  * session. With Spotify (or any player) playing, the keys go there and the volume-key lap
  * does nothing; the notification LAP still works. 400 ms debounce here, again in the core.
  */
-class LapInput(private val context: Context, private val onLap: () -> Unit) {
+class LapInput(context: Context, private val onLap: () -> Unit) {
+    private val context = context.applicationContext
     private var session: MediaSession? = null
     private var lastPressT = 0L
 

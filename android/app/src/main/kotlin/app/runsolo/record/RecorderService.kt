@@ -35,15 +35,27 @@ class RecorderService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_START -> startRun()
-            ACTION_LAP -> session?.lap(LapSource.notification)
-            ACTION_PAUSE -> session?.pause()
-            ACTION_RESUME -> session?.resume()
-            ACTION_STOP -> stopRun()
-            else -> if (session == null) stopSelf()
-        }
+        // Only ACTION_START from the Activity starts this service (notification actions are
+        // broadcasts). Every startForegroundService start must reach startForeground, so a
+        // start with nothing to do goes foreground for an instant and stops.
+        if (intent?.action == ACTION_START) startRun() else finishWithoutRun()
         return START_NOT_STICKY
+    }
+
+    private fun finishWithoutRun() {
+        if (session != null) return
+        try {
+            ServiceCompat.startForeground(
+                this,
+                RecorderNotification.NOTIFICATION_ID,
+                notification.buildIdle(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "startForeground (idle) failed: $e")
+        }
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private fun startRun() {
@@ -51,7 +63,7 @@ class RecorderService : Service() {
         pending = null
         if (s == null) {
             Log.w(TAG, "ACTION_START with no session")
-            stopSelf()
+            finishWithoutRun()
             return
         }
         session = s
@@ -66,10 +78,12 @@ class RecorderService : Service() {
             )
         } catch (e: Exception) {
             // Android 14+: location FGS refused (permission revoked between check and start, or
-            // started from the background). The run cannot continue without it.
+            // started from the background). Nothing was recorded yet: discard, never finalise.
             Log.e(TAG, "startForeground failed", e)
-            RecorderEventBus.emit(FaultEvent(kind = FaultKind.LOW_STORAGE, message = "Could not start recording: ${e.message}"))
-            stopRun()
+            session = null
+            s.discard()
+            RecorderEventBus.emit(FaultEvent(kind = FaultKind.START_FAILED, message = "Could not start recording: ${e.message}"))
+            stopSelf()
             return
         }
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -105,9 +119,13 @@ class RecorderService : Service() {
 
     override fun onDestroy() {
         // Normally after stopRun. If the system tears the service down while a run is on, the
-        // journal is intact on disk: sensors stop, the session stays for status()/stop(), and
-        // recover() handles the rest after a process death.
-        session?.detachSensors()
+        // journal is fsynced and closed and the session dropped, so status() says idle and the
+        // next app open offers recovery from the journal instead of a "recording" ghost.
+        session?.let {
+            Log.w(TAG, "service destroyed mid-run ${it.runId}; journal kept for recovery")
+            it.suspend()
+        }
+        session = null
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         if (instance === this) instance = null

@@ -8,9 +8,11 @@ import app.runsolo.platform.ExitDiagnosis
 import app.runsolo.platform.ExitReason
 
 /**
- * Was the process killed by the OS while a run was recording (plan §3, W11)? Every start
- * records `runId → start wall time` in prefs; on the next open, `ApplicationExitInfo`
- * (API 30+) is searched for an exit after that time. API 29 has no such record → `none`.
+ * Was the process killed by the OS while a run was recording (plan §3, W11)? Every start and
+ * resume records `runId → wall time` in prefs; on the next open, `ApplicationExitInfo`
+ * (API 30+) is searched for the EARLIEST exit after that time — the kill that interrupted
+ * the run, not a later swipe-away after the recovery dialog. API 29 has no record → `none`.
+ * Entries are pruned when the run is stopped.
  */
 object ExitDiagnostics {
     private const val PREFS = "runsolo.runs"
@@ -18,30 +20,38 @@ object ExitDiagnostics {
     fun noteStart(context: Context, runId: String, startWallMs: Long) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putLong("start.$runId", startWallMs)
-            .putString("last", runId)
+            .putLong("since.$runId", startWallMs)
+            .apply()
+    }
+
+    /** A resume after a kill: only exits after this moment count for the next diagnosis. */
+    fun noteResume(context: Context, runId: String, resumeWallMs: Long) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putLong("since.$runId", resumeWallMs)
             .apply()
     }
 
     fun noteStopped(context: Context, runId: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putBoolean("stopped.$runId", true)
+            .remove("start.$runId")
+            .remove("since.$runId")
             .apply()
     }
 
     fun diagnose(context: Context, runId: String): ExitDiagnosis {
         val manufacturer = Build.MANUFACTURER.lowercase()
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val start = prefs.getLong("start.$runId", -1)
+        val since = prefs.getLong("since.$runId", -1)
         val none = ExitDiagnosis(runId = runId, reason = ExitReason.NONE, timestampMs = 0, description = null, manufacturer = manufacturer)
-        if (start < 0 || prefs.getBoolean("stopped.$runId", false)) return none
+        if (since < 0) return none
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return none
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val exits = try {
-            am.getHistoricalProcessExitReasons(null, 0, 8)
+            am.getHistoricalProcessExitReasons(null, 0, 16)
         } catch (_: Exception) {
             return none
         }
-        val hit = exits.filter { it.timestamp >= start }.maxByOrNull { it.timestamp } ?: return none
+        val hit = exits.filter { it.timestamp >= since }.minByOrNull { it.timestamp } ?: return none
         val reason = when (hit.reason) {
             ApplicationExitInfo.REASON_LOW_MEMORY -> ExitReason.LOW_MEMORY
             ApplicationExitInfo.REASON_CRASH, ApplicationExitInfo.REASON_CRASH_NATIVE, ApplicationExitInfo.REASON_ANR -> ExitReason.CRASH

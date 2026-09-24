@@ -40,9 +40,10 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        recorder = RecorderApiImpl(this)
+        // Application context: the recorder outlives this Activity (swipe from Recents mid-run).
+        recorder = RecorderApiImpl(applicationContext)
         RecorderApi.setUp(flutterEngine.dartExecutor.binaryMessenger, recorder)
-        BleApi.setUp(flutterEngine.dartExecutor.binaryMessenger, BleApiImpl(this))
+        BleApi.setUp(flutterEngine.dartExecutor.binaryMessenger, BleApiImpl(applicationContext))
         PermissionsApi.setUp(flutterEngine.dartExecutor.binaryMessenger, Permissions())
         RecorderEventsStreamHandler.register(flutterEngine.dartExecutor.binaryMessenger, RecorderEventBus)
         handleDebugIntent(intent)

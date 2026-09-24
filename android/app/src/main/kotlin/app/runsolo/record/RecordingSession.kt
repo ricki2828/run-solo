@@ -13,6 +13,9 @@ import app.runsolo.core.gps.MovingDetector
 import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.journal.JournalWriter
 import app.runsolo.core.journal.Replay
+import app.runsolo.core.journal.RunEvent
+import app.runsolo.core.model.LocationFix
+import app.runsolo.core.run.RunPaths
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.HrReading
 import app.runsolo.core.model.LapSource
@@ -44,7 +47,7 @@ import app.runsolo.platform.toPigeon
  * Clock: `SystemClock.elapsedRealtime()`, or the replay's virtual clock in replay mode.
  */
 class RecordingSession(
-    private val context: Context,
+    context: Context,
     val runId: String,
     val mode: RunMode,
     val preset: Preset?,
@@ -52,7 +55,10 @@ class RecordingSession(
     private val replay: ReplayRunner?,
     volumeKeyLaps: Boolean,
 ) {
-    private val fs = JvmFileSystem(context.filesDir.toPath())
+    // Application context: the session outlives the Activity (swipe from Recents keeps the
+    // service alive; an Activity context would unbind TTS and leak the Activity).
+    private val context: Context = context.applicationContext
+    private val fs = JvmFileSystem(this.context.filesDir.toPath())
     private val writer = JournalWriter(fs, runId, onWriteFailed = { e ->
         Log.w(TAG, "journal write failed: $e")
         fault(FaultKind.JOURNAL_WRITE_FAILED, "Could not write to storage: ${e.message}")
@@ -61,8 +67,8 @@ class RecordingSession(
     private val livePace = LivePace()
     private val moving = MovingDetector()
     private val handler = Handler(Looper.getMainLooper())
-    private val cues = CuePlayer(context)
-    private val lapInput = LapInput(context) { lap(LapSource.volumeKey) }
+    private val cues = CuePlayer(this.context)
+    private val lapInput = LapInput(this.context) { lap(LapSource.volumeKey) }
     private val volumeKeyLapsEnabled = volumeKeyLaps
     private lateinit var core: RecorderCore
     private var location: LocationSource? = null
@@ -78,6 +84,7 @@ class RecordingSession(
     private var lapStartT = 0L
     private var lapStartDist = 0.0
     private var lastTickEventWall = 0L
+    private var lastNotificationRefreshWall = 0L
     private var gpsLostReported = false
     private var replayLapsPressed = 0
     private var hrConnected = false
@@ -117,7 +124,23 @@ class RecordingSession(
         core = RecorderCore.restore(replayed, t, RecorderCore.Config(volumeKeyLaps = volumeKeyLapsEnabled))
         lapCount = core.lapCount
         lapStartT = t
+        // Seed the live distance from the journal (same pause rule as the finaliser) so the
+        // tick totals continue instead of restarting from zero; lap distance from the last marker.
+        var paused = false
+        var lastLapDist = 0.0
+        for (e in replayed.events) {
+            when (e) {
+                is RunEvent.Sample -> if (e.hasFix && !paused) ticker.filter.offer(LocationFix(e.t, e.lat!!, e.lon!!, e.altM, e.accuracyM!!, e.speedMps))
+                is RunEvent.Pause -> paused = true
+                is RunEvent.Resume -> { paused = false; ticker.filter.reanchor() }
+                is RunEvent.Lap -> lastLapDist = ticker.filter.totalM
+                else -> Unit
+            }
+        }
+        ticker.filter.reanchor() // the runner moved during the dark span; do not count the jump
+        lapStartDist = lastLapDist
         if (core.state == RecorderState.paused) ticker.onPause()
+        ExitDiagnostics.noteResume(context, runId, nowWall)
         Log.i(TAG, "resumed $runId after ${gap / 1000}s gap; phase=${core.phase} rep=${core.repIndex} paused=${core.state == RecorderState.paused}")
         emitState()
     }
@@ -226,6 +249,10 @@ class RecordingSession(
             gpsLostReported = false
         }
         val wall = SystemClock.elapsedRealtime()
+        if (wall - lastNotificationRefreshWall >= 10_000) {
+            lastNotificationRefreshWall = wall
+            onNotificationChanged?.invoke() // keeps the HR text fresh; the chronometer ticks on its own
+        }
         if (wall - lastTickEventWall >= 500) {
             lastTickEventWall = wall
             val st = core.status(t)
@@ -308,6 +335,27 @@ class RecordingSession(
 
     fun setCues(enabled: Boolean) {
         cues.enabled = enabled
+    }
+
+    /** The foreground service could not start: nothing worth keeping. Deletes the journal, never finalises. */
+    fun discard() {
+        if (finished) return
+        finished = true
+        detachSensors()
+        writer.close()
+        fs.deleteRecursively(RunPaths.journalDir(runId))
+        ExitDiagnostics.noteStopped(context, runId)
+        RecorderEventBus.emit(StateEvent(state = app.runsolo.platform.RecorderState.IDLE, runId = runId, phase = app.runsolo.platform.Phase.NONE))
+        Log.w(TAG, "discarded $runId")
+    }
+
+    /** The service was torn down while the process lives: stop cleanly, keep the journal for recovery. */
+    fun suspend() {
+        if (finished) return
+        finished = true
+        detachSensors()
+        writer.close()
+        RecorderEventBus.emit(StateEvent(state = app.runsolo.platform.RecorderState.IDLE, runId = runId, phase = app.runsolo.platform.Phase.NONE))
     }
 
     // ---- outputs ----

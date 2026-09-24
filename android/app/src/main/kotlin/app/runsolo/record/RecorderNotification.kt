@@ -84,14 +84,23 @@ class RecorderNotification(private val context: Context) {
 
     fun update(c: Content) = manager.notify(NOTIFICATION_ID, build(c))
 
+    /** Momentary notification for a service start that has nothing to record. */
+    fun buildIdle(): Notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        .setSmallIcon(android.R.drawable.ic_media_play)
+        .setContentTitle("Run Solo")
+        .setSilent(true)
+        .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+        .build()
+
     private fun openApp(): PendingIntent {
         val i = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         return PendingIntent.getActivity(context, 0, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
+    /** Broadcast to [RecorderActionReceiver]: reaches the running process, never starts the service. */
     private fun serviceAction(action: String): PendingIntent {
-        val i = Intent(context, RecorderService::class.java).setAction(action)
-        return PendingIntent.getForegroundService(context, action.hashCode(), i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val i = Intent(context, RecorderActionReceiver::class.java).setAction(action)
+        return PendingIntent.getBroadcast(context, action.hashCode(), i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
     companion object {

@@ -6,33 +6,64 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.Phase
 import java.util.Locale
 
 /**
- * Speaks the preset cues (plan §3): TextToSpeech with audio focus TRANSIENT_MAY_DUCK, a tone
- * fallback when TTS is unavailable, and a short vibration on every cue so a pocketed phone
- * still registers. [enabled] mirrors `setCues`.
+ * Speaks the preset cues (plan §3): TextToSpeech bound to the application context (it must
+ * outlive the Activity — swiping the task away mid-run keeps the service alive), audio focus
+ * `TRANSIENT_MAY_DUCK` held only for the utterance (music ducks for the cue, then recovers), a
+ * tone fallback when TTS is missing or `speak` fails, and a short vibration on every cue so a
+ * pocketed phone still registers. [enabled] mirrors `setCues`.
  */
-class CuePlayer(private val context: Context) {
-    private val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+class CuePlayer(context: Context) {
+    private val context = context.applicationContext
+    private val audio = this.context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val main = Handler(Looper.getMainLooper())
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var tone: ToneGenerator? = null
     private var focus: AudioFocusRequest? = null
+
+    /** Utterances/tones in flight; focus is abandoned when it returns to zero. */
+    private var inFlight = 0
     var enabled: Boolean = true
 
     fun init() {
         try {
             tts = TextToSpeech(context) { status ->
                 ttsReady = status == TextToSpeech.SUCCESS
-                if (ttsReady) tts?.setLanguage(Locale.getDefault())
+                if (ttsReady) {
+                    tts?.setLanguage(Locale.getDefault())
+                    tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                        override fun onStart(utteranceId: String?) = Unit
+                        override fun onDone(utteranceId: String?) {
+                            main.post { done() }
+                        }
+
+                        @Deprecated("Deprecated in Java")
+                        override fun onError(utteranceId: String?) {
+                            main.post { done() }
+                        }
+
+                        override fun onError(utteranceId: String?, errorCode: Int) {
+                            main.post { done() }
+                        }
+
+                        override fun onStop(utteranceId: String?, interrupted: Boolean) {
+                            main.post { done() }
+                        }
+                    })
+                }
                 Log.i(TAG, "tts ready=$ttsReady")
             }
         } catch (e: Exception) {
@@ -46,10 +77,15 @@ class CuePlayer(private val context: Context) {
     }
 
     fun release() {
-        tts?.shutdown()
+        try {
+            tts?.stop()
+            tts?.shutdown()
+        } catch (_: Exception) {
+        }
         tts = null
         tone?.release()
         tone = null
+        inFlight = 0
         abandonFocus()
     }
 
@@ -65,13 +101,20 @@ class CuePlayer(private val context: Context) {
             CueKind.stop -> "Run saved"
         } ?: return
         requestFocus()
+        inFlight++
         val engine = tts
-        if (ttsReady && engine != null) {
-            engine.speak(text, TextToSpeech.QUEUE_ADD, null, "cue-${System.nanoTime()}")
-        } else {
+        val spoke = ttsReady && engine != null &&
+            engine.speak(text, TextToSpeech.QUEUE_ADD, null, "cue-${System.nanoTime()}") == TextToSpeech.SUCCESS
+        if (!spoke) {
             val toneType = if (kind == CueKind.start) ToneGenerator.TONE_PROP_BEEP2 else ToneGenerator.TONE_PROP_BEEP
             tone?.startTone(toneType, 250)
+            main.postDelayed({ done() }, 300)
         }
+    }
+
+    private fun done() {
+        if (inFlight > 0) inFlight--
+        if (inFlight == 0) abandonFocus()
     }
 
     private fun vibrate(kind: CueKind) {
