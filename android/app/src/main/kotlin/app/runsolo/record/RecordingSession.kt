@@ -12,6 +12,7 @@ import app.runsolo.core.gps.LivePace
 import app.runsolo.core.gps.MovingDetector
 import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.journal.JournalWriter
+import app.runsolo.core.journal.JournalReplay
 import app.runsolo.core.journal.Replay
 import app.runsolo.core.journal.RunEvent
 import app.runsolo.core.model.LocationFix
@@ -116,13 +117,20 @@ class RecordingSession(
     }
 
     /** Continue an orphaned journal after a kill (plan §3, W12): gap line, phase rebuilt from the journal. */
-    fun startResumed(replayed: Replay) {
+    fun startResumed(orphan: Replay) {
         val t = clock()
         val nowWall = System.currentTimeMillis()
-        startWallMs = replayed.header.w
+        startWallMs = orphan.header.w
         writer.open() // drops a torn tail first
-        val gap = (nowWall - replayed.lastWallMs).coerceAtLeast(0)
+        val gap = (nowWall - orphan.lastWallMs).coerceAtLeast(0)
         writer.append(JournalLine.Gap(t, nowWall, gap))
+        // Restore from the journal WITH the gap line, so elapsed time includes the dark span
+        // exactly as the finalised file's timeline will (and a second kill cannot shift it).
+        val replayed = try {
+            JournalReplay.read(fs.readBytes(RunPaths.journal(runId)))
+        } catch (_: Exception) {
+            orphan
+        }
         core = RecorderCore.restore(replayed, t, RecorderCore.Config(volumeKeyLaps = volumeKeyLapsEnabled))
         lapCount = core.lapCount
         lapStartT = t
