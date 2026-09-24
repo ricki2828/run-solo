@@ -14,8 +14,10 @@ import app.runsolo.core.replay.TraceFixture
 
 /**
  * Replay mode (plan §12, debug builds only): a fixture trace fed through the recorder at
- * `speed`× on a virtual clock. The session uses [now] as its clock, so `PointFilter`, the
- * lap state machine and the journal all run on trace time; wall time only paces delivery.
+ * `speed`× on a virtual clock. The session uses [now] (the stamp of the last delivered item)
+ * as its clock and ticks once per delivered fix, so `PointFilter`, the lap state machine and
+ * the journal all run on trace time; wall time only paces delivery and a slow main thread
+ * slows everything together.
  *
  * Fixtures: `synthetic-4x4` (straight line: 60 s warmup @2.5 m/s, the preset's reps
  * @4.2/2.0 m/s, 60 s cooldown, HR by phase) or `<name>` = `assets/replay/<name>.csv`.
@@ -37,9 +39,6 @@ class ReplayRunner private constructor(
 
     val endT: Long get() = source?.endT ?: 0
     val running: Boolean get() = source?.running == true
-
-    /** Wall milliseconds between two 1 Hz ticks at this speed. */
-    val tickWallMs: Long get() = (1000.0 / speed).toLong().coerceAtLeast(20)
 
     fun start(onFix: (LocationFix) -> Unit, onHr: (HrReading) -> Unit) {
         val scheduler = Scheduler { delayMs, action ->

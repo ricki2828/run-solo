@@ -154,7 +154,19 @@ class RecordingSession(
         if (volumeKeyLapsEnabled) lapInput.enable()
         val r = replay
         if (r != null) {
-            r.start(onFix = { ticker.onFix(it) }, onHr = { ticker.onHr(it) })
+            // One clock, one tick per delivered fix (see ReplaySource): no timer in replay mode.
+            r.start(
+                onFix = { fix ->
+                    ticker.onFix(fix)
+                    try {
+                        tick(fix.t)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "replay tick failed", e)
+                    }
+                },
+                onHr = { ticker.onHr(it) },
+            )
+            return
         } else {
             location = LocationSource.create(context, preferRawGps).also { src ->
                 try {
@@ -207,12 +219,12 @@ class RecordingSession(
     }
 
     private fun scheduleTick() {
-        val period = replay?.tickWallMs ?: 1000L
+        val period = 1000L
         val r = object : Runnable {
             override fun run() {
                 if (!attached || finished) return
                 try {
-                    tick()
+                    tick(clock())
                 } catch (e: Exception) {
                     Log.e(TAG, "tick failed", e)
                 }
@@ -225,8 +237,8 @@ class RecordingSession(
 
     // ---- the 1 Hz loop ----
 
-    private fun tick() {
-        val t = clock()
+    private fun tick(t: Long) {
+        if (finished) return
         val r = replay
         if (r != null && replayLapsPressed < r.autoLapAtMs.size && core.status(t).elapsedMs >= r.autoLapAtMs[replayLapsPressed]) {
             replayLapsPressed++

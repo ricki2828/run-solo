@@ -23,12 +23,14 @@ fun interface Cancellable {
 
 /**
  * Feeds a fixture trace (+ optional HR stream) into the sinks at [speed]× real time (plan §12
- * GPS replay mode). **Time is virtual end to end**: every emitted item is stamped on the
- * trace timeline anchored at [start] (`tStart + (item.t − t0)`), and [now] reports the trace
- * time that corresponds to the current wall clock. In replay mode the service must use
- * [now] as the clock for `RecorderCore.tick`, the journal and `HrJoin`, so `PointFilter`
- * sees 1 s between 1 Hz fixes and phase timers run at trace speed: a 10× 4x4 auto-laps at
- * 4:00 of trace time, 24 s of wall time.
+ * GPS replay mode). **Time is virtual end to end and has one source**: every emitted item is
+ * stamped on the trace timeline anchored at [start] (`tStart + (item.t − t0)`), and [now] is
+ * the stamp of the item emitted last — never derived from the wall clock, so a slow main
+ * thread (delivery lagging the scheduler) slows the whole run consistently instead of letting
+ * the recorder's clock run ahead of the samples. In replay mode the service must use [now] as
+ * the clock for `RecorderCore.tick`, the journal and `HrJoin`, and tick once per delivered fix;
+ * `PointFilter` then sees 1 s between 1 Hz fixes and phase timers run at trace speed: a 10×
+ * 4x4 auto-laps at 4:00 of trace time, 24 s of wall time.
  *
  * Streams are merged in time order; a tie emits the location first.
  */
@@ -56,8 +58,8 @@ class ReplaySource(
     private var index = 0
     private var pending: Cancellable? = null
     private val t0 = items.first().t
-    private var wallStart = 0L
     private var tStart = 0L
+    private var lastStamp = 0L
 
     var running = false
         private set
@@ -65,8 +67,8 @@ class ReplaySource(
         private set
     val total: Int get() = items.size
 
-    /** Trace time now: the timeline the sinks' stamps live on. Valid after [start]. */
-    fun now(): Long = tStart + ((clock() - wallStart) * speed).toLong()
+    /** Trace time now = the stamp of the last emitted item (the start anchor before any). Valid after [start]. */
+    fun now(): Long = lastStamp
 
     /** Trace time of the last item, on the [now] timeline. */
     val endT: Long get() = tStart + (items.last().t - t0)
@@ -75,8 +77,8 @@ class ReplaySource(
         check(!running)
         running = true
         index = 0
-        wallStart = clock()
-        tStart = wallStart
+        tStart = clock()
+        lastStamp = tStart
         scheduleNext()
     }
 
@@ -97,6 +99,7 @@ class ReplaySource(
         pending = scheduler.schedule(delay) {
             if (!running) return@schedule
             val stamp = tStart + (item.t - t0)
+            lastStamp = stamp
             when (item) {
                 is Item.Loc -> locationSink.onLocation(item.fix.copy(t = stamp))
                 is Item.Hr -> hrSink?.onHr(item.r.copy(t = stamp))

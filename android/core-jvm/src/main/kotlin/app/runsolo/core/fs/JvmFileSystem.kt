@@ -7,6 +7,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
+import java.util.stream.Collectors
 
 /** java.nio implementation rooted at [root] (the app's `files/` directory on Android). */
 class JvmFileSystem(private val root: Path) : FileSystem {
@@ -18,7 +19,8 @@ class JvmFileSystem(private val root: Path) : FileSystem {
     override fun list(dir: String): List<String> {
         val d = p(dir)
         if (!Files.isDirectory(d)) return emptyList()
-        Files.list(d).use { s -> return s.map { it.fileName.toString() }.toList().sorted() }
+        // Not Stream.toList(): that is Java 16 and crashes Android 10 (API 29) with NoSuchMethodError.
+        Files.list(d).use { s -> return s.map { it.fileName.toString() }.collect(Collectors.toList()).sorted() }
     }
 
     override fun mkdirs(dir: String) {
