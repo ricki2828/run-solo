@@ -11,10 +11,14 @@ data class RunFileRef(val id: String, val path: String)
 /** What the sqflite index knows about a run (plan §4 `run` table, the columns that matter here). */
 data class IndexRow(val id: String, val filePath: String, val missing: Boolean)
 
+/** A sidecar that is not beside its run file (an archive move interrupted between the two renames). */
+data class SidecarMove(val id: String, val from: String, val to: String)
+
 /**
- * The diff the store must apply. Every list is disjoint; applying all four makes files and
- * rows agree. The store applies [index] with `INSERT OR IGNORE` + `UPDATE` (never UPSERT —
- * API 29 SQLite is 3.22), so applying the same plan twice is harmless.
+ * The diff the store must apply. Every list is disjoint; applying all makes files and rows
+ * agree. The store applies [index] with `INSERT OR IGNORE` + `UPDATE` (never UPSERT —
+ * API 29 SQLite is 3.22), so applying the same plan twice is harmless. [moveSidecar] is a
+ * filesystem rename the store does before touching rows.
  */
 data class ReconcilePlan(
     /** File with no row at all → parse header, insert a row. */
@@ -25,8 +29,10 @@ data class ReconcilePlan(
     val restore: List<RunFileRef>,
     /** Row whose `file_path` no longer matches where the file is (archive move interrupted) → fix the path. */
     val repath: List<RunFileRef>,
+    /** Sidecar in a different directory from its run file → rename it next to the file. */
+    val moveSidecar: List<SidecarMove> = emptyList(),
 ) {
-    val isEmpty get() = index.isEmpty() && markMissing.isEmpty() && restore.isEmpty() && repath.isEmpty()
+    val isEmpty get() = index.isEmpty() && markMissing.isEmpty() && restore.isEmpty() && repath.isEmpty() && moveSidecar.isEmpty()
 }
 
 /** An in-progress journal with no committed run file (plan §3 `recover()`). */
@@ -42,6 +48,9 @@ data class OrphanJournal(
  * Files ↔ index, both ways (plan §2 rule 5, R1). Pure: [scan] reads the two run directories,
  * [plan] is a set difference, [orphans] finds journals to recover. Nothing here writes the
  * index — the Dart store applies the plan — and nothing here deletes a run file, ever.
+ *
+ * The run being recorded is invisible to every method that takes [activeRunId]: the service
+ * passes the id its `RecorderCore` owns, and that journal is neither an orphan nor a leftover.
  */
 class Reconciler(private val fs: FileSystem) {
     /** Committed run files in `runs/` and `runs-archive/`. A file present in both counts once, `runs/` wins. */
@@ -56,7 +65,19 @@ class Reconciler(private val fs: FileSystem) {
         return seen.values.toList()
     }
 
-    fun plan(files: List<RunFileRef>, rows: List<IndexRow>): ReconcilePlan {
+    /** Sidecars by id → directory they sit in (`runs` or `runs-archive`); first hit wins. */
+    private fun scanSidecars(): Map<String, String> {
+        val out = LinkedHashMap<String, String>()
+        for (dir in listOf(RunPaths.RUNS_DIR, RunPaths.ARCHIVE_DIR)) {
+            for (name in fs.list(dir)) {
+                val id = RunPaths.runIdFromSidecarName(name) ?: continue
+                out.putIfAbsent(id, dir)
+            }
+        }
+        return out
+    }
+
+    fun plan(files: List<RunFileRef>, rows: List<IndexRow>, sidecars: Map<String, String> = emptyMap()): ReconcilePlan {
         val byId = files.associateBy { it.id }
         val rowIds = rows.map { it.id }.toSet()
         val index = files.filter { it.id !in rowIds }
@@ -71,21 +92,29 @@ class Reconciler(private val fs: FileSystem) {
                 row.filePath != f.path -> repath.add(f)
             }
         }
-        return ReconcilePlan(index, markMissing, restore, repath)
+        val moves = ArrayList<SidecarMove>()
+        for ((id, dir) in sidecars) {
+            val f = byId[id] ?: continue
+            val fileDir = f.path.substringBeforeLast('/')
+            if (dir != fileDir) moves.add(SidecarMove(id, RunPaths.edits(id, dir), RunPaths.edits(id, fileDir)))
+        }
+        return ReconcilePlan(index, markMissing, restore, repath, moves)
     }
 
-    /** Convenience: scan + plan. */
-    fun reconcile(rows: List<IndexRow>): ReconcilePlan = plan(scan(), rows)
+    /** Convenience: scan files + sidecars, then plan. */
+    fun reconcile(rows: List<IndexRow>): ReconcilePlan = plan(scan(), rows, scanSidecars())
 
     /**
-     * Journals under `runs/<id>/` with no committed run file. A journal whose run file exists
-     * (kill after rename, before cleanup) is not an orphan — [app.runsolo.core.run.Finaliser]
-     * cleans it up on its next call, which [sweepCommitted] triggers.
+     * Journals under `runs/<id>/` with no committed run file, newest first. A journal whose run
+     * file exists (kill after rename, before cleanup) is not an orphan —
+     * [app.runsolo.core.run.Finaliser] cleans it up on its next call, which [sweepCommitted]
+     * triggers. The active run is never listed.
      */
-    fun orphans(nowEpochMs: Long): List<OrphanJournal> {
+    fun orphans(nowEpochMs: Long, activeRunId: String? = null): List<OrphanJournal> {
         val committed = scan().map { it.id }.toSet()
         val out = ArrayList<OrphanJournal>()
         for (name in fs.list(RunPaths.RUNS_DIR)) {
+            if (name == activeRunId) continue
             if (!RunPaths.isSafeId(name) || !fs.isDirectory("${RunPaths.RUNS_DIR}/$name")) continue
             val journal = RunPaths.journal(name)
             if (!fs.exists(journal) || name in committed) continue
@@ -104,14 +133,14 @@ class Reconciler(private val fs: FileSystem) {
                 ),
             )
         }
-        return out
+        return out.sortedBy { it.lastLineAgeMs }
     }
 
     /** Journal directories whose run file is already committed: leftovers of a kill after rename. */
-    fun sweepCommitted(): List<String> {
+    fun sweepCommitted(activeRunId: String? = null): List<String> {
         val committed = scan().map { it.id }.toSet()
         return fs.list(RunPaths.RUNS_DIR).filter {
-            it in committed && fs.isDirectory("${RunPaths.RUNS_DIR}/$it")
+            it != activeRunId && it in committed && fs.isDirectory("${RunPaths.RUNS_DIR}/$it")
         }
     }
 }

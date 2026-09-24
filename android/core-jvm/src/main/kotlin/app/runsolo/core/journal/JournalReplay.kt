@@ -45,8 +45,10 @@ data class Replay(
     val truncatedTail: Boolean,
     /** Lines that were complete but undecodable (bit rot); dropped, counted. */
     val badLines: Int,
-    /** Backward jumps of `t` with no `gap` line (should not happen; clamped, counted). */
+    /** Backward jumps of `t` larger than [JournalReplay.CLOCK_JUMP_MS] with no `gap` line (a reboot without a resume; clamped, counted). */
     val clockJumps: Int,
+    /** Lines written slightly out of time order (a back-dated auto-lap after a sample); re-sorted, counted. */
+    val outOfOrder: Int,
 ) {
     val isPaused: Boolean
         get() = events.lastOrNull { it is RunEvent.Pause || it is RunEvent.Resume } is RunEvent.Pause
@@ -55,11 +57,17 @@ data class Replay(
 object JournalReplay {
     class NoHeader(message: String) : RuntimeException(message)
 
+    /** A backward step in `t` bigger than this is a clock reset, not a late line. */
+    const val CLOCK_JUMP_MS = 5_000L
+
     /**
      * Decodes the journal bytes. Tolerates: a truncated last line (no trailing newline, or
-     * unparsable — dropped), undecodable middle lines (dropped, counted), and a monotonic clock
-     * that jumped backwards (clamped: run time does not advance, counted). Throws [NoHeader]
-     * when the first decodable line is not a header — such a journal cannot be finalised.
+     * unparsable — dropped), undecodable middle lines (dropped, counted), lines slightly out of
+     * time order (the core back-dates a phase-end auto-lap to the boundary after later samples
+     * were written: kept, re-sorted by `t` with journal order as the tie-break, counted), and a
+     * monotonic clock that jumped backwards by more than [CLOCK_JUMP_MS] with no `gap` line
+     * (clamped: run time does not advance, counted). Throws [NoHeader] when the first decodable
+     * line is not a header — such a journal cannot be finalised.
      */
     fun read(bytes: ByteArray): Replay {
         val text = bytes.toString(Charsets.UTF_8)
@@ -73,6 +81,7 @@ object JournalReplay {
         val events = ArrayList<RunEvent>()
         var badLines = 0
         var clockJumps = 0
+        var outOfOrder = 0
         var truncated = false
         var offset = 0L // runT = deviceT + offset
         var lastRunT = 0L
@@ -106,11 +115,13 @@ object JournalReplay {
                 events.add(RunEvent.Gap(gapStart, gapEnd))
             } else {
                 var candidate = line.t + offset
-                if (candidate < lastRunT) {
+                if (candidate < lastRunT - CLOCK_JUMP_MS) {
                     // Monotonic time went backwards with no gap line: clamp, never go negative.
                     clockJumps++
                     offset = lastRunT - line.t
                     candidate = lastRunT
+                } else if (candidate < lastRunT) {
+                    outOfOrder++
                 }
                 runT = candidate
                 events.add(
@@ -125,20 +136,25 @@ object JournalReplay {
                     },
                 )
             }
-            lastRunT = runT
-            lastDeviceT = line.t
-            if (line.w > 0) lastWall = line.w
+            if (runT >= lastRunT) {
+                lastRunT = runT
+                lastDeviceT = line.t
+            }
+            if (line.w > lastWall) lastWall = line.w
         }
         val h = header ?: throw NoHeader("Journal has no decodable header")
+        // Stable: equal t keeps journal order (pause before resume, lap before sample).
+        val sorted = if (outOfOrder == 0) events else events.sortedBy { it.t }
         return Replay(
             header = h,
-            events = events,
+            events = sorted,
             endT = lastRunT,
             lastWallMs = lastWall,
             lastDeviceT = lastDeviceT,
             truncatedTail = truncated,
             badLines = badLines,
             clockJumps = clockJumps,
+            outOfOrder = outOfOrder,
         )
     }
 }

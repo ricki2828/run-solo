@@ -82,11 +82,35 @@ class JournalReplayTest {
     }
 
     @Test
-    fun `backwards clock without a gap is clamped and counted`() {
-        val text = enc(header, sample(t0 + 5000), sample(t0 + 1000), sample(t0 + 2000))
+    fun `backwards clock by more than 5 s without a gap is clamped and counted`() {
+        val text = enc(header, sample(t0 + 9000), sample(t0 + 1000), sample(t0 + 2000))
         val r = JournalReplay.read(text.toByteArray())
         assertEquals(1, r.clockJumps)
-        assertEquals(listOf(5000L, 5000L, 6000L), r.events.map { it.t })
+        assertEquals(0, r.outOfOrder)
+        assertEquals(listOf(9000L, 9000L, 10_000L), r.events.map { it.t })
+    }
+
+    @Test
+    fun `a slightly late line (back-dated auto lap) is re-sorted, not re-based`() {
+        val text = enc(
+            header,
+            sample(t0 + 1000),
+            sample(t0 + 2000),
+            JournalLine.Lap(t0 + 1500, w0 + 2100, LapSource.auto), // written after the 2 s sample, stamped on the boundary
+            sample(t0 + 3000),
+        )
+        val r = JournalReplay.read(text.toByteArray())
+        assertEquals(0, r.clockJumps)
+        assertEquals(1, r.outOfOrder)
+        assertEquals(listOf(1000L, 1500L, 2000L, 3000L), r.events.map { it.t })
+        assertIs<RunEvent.Lap>(r.events[1])
+        assertEquals(3000, r.endT)
+    }
+
+    @Test
+    fun `a journal from a newer schema is rejected`() {
+        val newer = JournalCodec.encode(header).replace("\"schema\":1", "\"schema\":2")
+        assertFailsWith<JournalReplay.NoHeader> { JournalReplay.read((newer + "\n").toByteArray()) }
     }
 
     @Test

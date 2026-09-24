@@ -31,6 +31,9 @@ interface FileSystem {
     /** fsync the directory entry so a rename survives power loss. */
     fun fsyncDir(dir: String)
 
+    /** Cut the file to [size] bytes (used to drop a torn tail before appending a resume). */
+    fun truncate(path: String, size: Long)
+
     /** Atomic replace within the same filesystem. */
     fun rename(from: String, to: String)
     fun delete(path: String)

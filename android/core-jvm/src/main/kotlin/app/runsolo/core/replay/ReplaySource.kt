@@ -23,9 +23,14 @@ fun interface Cancellable {
 
 /**
  * Feeds a fixture trace (+ optional HR stream) into the sinks at [speed]× real time (plan §12
- * GPS replay mode). Timestamps are rewritten to the injected [clock] at emission so the
- * recorder sees them exactly as it would see live fixes; the fixture's own `t` only sets the
- * spacing. Streams are merged in time order; a tie emits the location first.
+ * GPS replay mode). **Time is virtual end to end**: every emitted item is stamped on the
+ * trace timeline anchored at [start] (`tStart + (item.t − t0)`), and [now] reports the trace
+ * time that corresponds to the current wall clock. In replay mode the service must use
+ * [now] as the clock for `RecorderCore.tick`, the journal and `HrJoin`, so `PointFilter`
+ * sees 1 s between 1 Hz fixes and phase timers run at trace speed: a 10× 4x4 auto-laps at
+ * 4:00 of trace time, 24 s of wall time.
+ *
+ * Streams are merged in time order; a tie emits the location first.
  */
 class ReplaySource(
     private val trace: List<LocationFix>,
@@ -50,7 +55,9 @@ class ReplaySource(
         .sortedWith(compareBy<Item> { it.t }.thenBy { if (it is Item.Loc) 0 else 1 })
     private var index = 0
     private var pending: Cancellable? = null
-    private var t0 = 0L
+    private val t0 = items.first().t
+    private var wallStart = 0L
+    private var tStart = 0L
 
     var running = false
         private set
@@ -58,11 +65,18 @@ class ReplaySource(
         private set
     val total: Int get() = items.size
 
+    /** Trace time now: the timeline the sinks' stamps live on. Valid after [start]. */
+    fun now(): Long = tStart + ((clock() - wallStart) * speed).toLong()
+
+    /** Trace time of the last item, on the [now] timeline. */
+    val endT: Long get() = tStart + (items.last().t - t0)
+
     fun start() {
         check(!running)
         running = true
         index = 0
-        t0 = items.first().t
+        wallStart = clock()
+        tStart = wallStart
         scheduleNext()
     }
 
@@ -82,10 +96,10 @@ class ReplaySource(
         val delay = ((item.t - prevT) / speed).toLong().coerceAtLeast(0)
         pending = scheduler.schedule(delay) {
             if (!running) return@schedule
-            val now = clock()
+            val stamp = tStart + (item.t - t0)
             when (item) {
-                is Item.Loc -> locationSink.onLocation(item.fix.copy(t = now))
-                is Item.Hr -> hrSink?.onHr(item.r.copy(t = now))
+                is Item.Loc -> locationSink.onLocation(item.fix.copy(t = stamp))
+                is Item.Hr -> hrSink?.onHr(item.r.copy(t = stamp))
             }
             emitted++
             index++

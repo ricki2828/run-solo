@@ -22,23 +22,26 @@ class GpsTest {
     @Test
     fun `filter - accuracy gate, speed sanity, monotonic time`() {
         val f = PointFilter()
-        val a = f.offer(LocationFix(0, 0.0, 0.0, null, 10.0, null))
-        assertTrue(a.accepted)
-        assertEquals(0.0, a.totalM)
-        val bad = f.offer(LocationFix(1000, 0.0, 0.0001, null, 26.0, null))
+        val first = f.offer(LocationFix(0, 0.0, 0.0, null, 10.0, null))
+        assertFalse(first.accepted)
+        assertEquals(PointFilter.Reason.awaitingConfirmation, first.reason)
+        val second = f.offer(LocationFix(1000, 0.0, 0.00003, null, 10.0, null)) // 3.3 m/s agrees → anchored
+        assertTrue(second.accepted)
+        assertEquals(3.3, second.totalM, 0.1)
+        val bad = f.offer(LocationFix(2000, 0.0, 0.0001, null, 26.0, null))
         assertFalse(bad.accepted)
         assertEquals(PointFilter.Reason.accuracy, bad.reason)
-        // 0.0001° ≈ 11.1 m in 1 s → 11 m/s → rejected as a spike.
-        val spike = f.offer(LocationFix(1000, 0.0, 0.0001, null, 5.0, null))
+        // 0.0001° ≈ 11.1 m from the anchor in 1 s → 7.8 m/s → rejected as a spike.
+        val spike = f.offer(LocationFix(2000, 0.0, 0.0001, null, 5.0, null))
         assertEquals(PointFilter.Reason.speed, spike.reason)
-        // Same point 3 s later: 3.7 m/s → accepted, distance measured from the LAST ACCEPTED point.
-        val ok = f.offer(LocationFix(3000, 0.0, 0.0001, null, 5.0, null))
+        // Same point 3 s after the anchor: 2.6 m/s → accepted, distance measured from the LAST ACCEPTED point.
+        val ok = f.offer(LocationFix(4000, 0.0, 0.0001, null, 5.0, null))
         assertTrue(ok.accepted)
         assertEquals(11.1, ok.totalM, 0.1)
-        val back = f.offer(LocationFix(2500, 0.0, 0.0002, null, 5.0, null))
+        val back = f.offer(LocationFix(3500, 0.0, 0.0002, null, 5.0, null))
         assertEquals(PointFilter.Reason.notMonotonic, back.reason)
-        assertEquals(2, f.acceptedCount)
-        assertEquals(3, f.rejectedCount)
+        assertEquals(3, f.acceptedCount)
+        assertEquals(4, f.rejectedCount)
         assertEquals(11.1, f.totalM, 0.1)
     }
 
@@ -47,7 +50,31 @@ class GpsTest {
         val f = PointFilter()
         for (fix in TraceFixture.straightLine(listOf(240 to 4.0, 180 to 2.0))) f.offer(fix)
         assertEquals(240 * 4.0 + 180 * 2.0, f.totalM, 2.0)
-        assertEquals(0, f.rejectedCount)
+        assertEquals(1, f.rejectedCount, "only the unconfirmed first point")
+        assertEquals(0, f.reanchors)
+    }
+
+    @Test
+    fun `filter - a bad first fix 400 m away is not the anchor`() {
+        val f = PointFilter()
+        val line = TraceFixture.straightLine(listOf(60 to 3.0), startT = 1000)
+        f.offer(LocationFix(0, line[0].lat + 0.0036, line[0].lon, null, 12.0, null)) // stale cold-start blend, 400 m north
+        for (fix in line) f.offer(fix)
+        assertEquals(60 * 3.0, f.totalM, 1.0)
+        assertEquals(0, f.reanchors)
+    }
+
+    @Test
+    fun `filter - three agreeing rejections re-anchor without counting the jump`() {
+        val f = PointFilter()
+        val here = TraceFixture.straightLine(listOf(10 to 3.0))
+        for (fix in here) f.offer(fix)
+        val before = f.totalM
+        // The track jumps 300 m east (a tunnel exit with a stale anchor) and continues at 3 m/s.
+        val there = TraceFixture.straightLine(listOf(10 to 3.0), lon0 = here.last().lon + 300 / 92_000.0, startT = here.last().t + 1000)
+        for (fix in there) f.offer(fix)
+        assertEquals(1, f.reanchors)
+        assertEquals(before + 8 * 3.0, f.totalM, 1.0) // 11 fixes over there: 3 spent confirming, 8 steps counted, the 300 m jump never
     }
 
     @Test

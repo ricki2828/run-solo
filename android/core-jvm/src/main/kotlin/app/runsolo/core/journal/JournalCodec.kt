@@ -17,6 +17,9 @@ import app.runsolo.core.model.Units
 object JournalCodec {
     const val SCHEMA = 1
 
+    /** Non-finite doubles are not JSON; a NaN altitude/speed from the platform becomes "absent". */
+    private fun Double?.finiteOrNull(): Double? = this?.takeIf { it.isFinite() }
+
     fun encode(line: JournalLine): String {
         val m = LinkedHashMap<String, Any?>()
         when (line) {
@@ -37,11 +40,17 @@ object JournalCodec {
                 m["k"] = "s"
                 m["t"] = line.t
                 m["w"] = line.w
-                if (line.lat != null) m["lat"] = line.lat
-                if (line.lon != null) m["lon"] = line.lon
-                if (line.altM != null) m["alt"] = line.altM
-                if (line.accuracyM != null) m["acc"] = line.accuracyM
-                if (line.speedMps != null) m["spd"] = line.speedMps
+                // A fix is all-or-nothing; a non-finite coordinate/accuracy demotes the tick to no-fix.
+                val lat = line.lat.finiteOrNull()
+                val lon = line.lon.finiteOrNull()
+                val acc = line.accuracyM.finiteOrNull()
+                if (lat != null && lon != null && acc != null) {
+                    m["lat"] = lat
+                    m["lon"] = lon
+                    line.altM.finiteOrNull()?.let { m["alt"] = it }
+                    m["acc"] = acc
+                    line.speedMps.finiteOrNull()?.let { m["spd"] = it }
+                }
                 if (line.hr != null) m["hr"] = line.hr
             }
             is JournalLine.Lap -> { m["k"] = "lap"; m["t"] = line.t; m["w"] = line.w; m["src"] = line.source.name }
@@ -60,7 +69,10 @@ object JournalCodec {
         val t = m.long("t")
         val w = m.longOrNull("w") ?: 0L
         return when (val k = m.string("k")) {
-            "hdr" -> JournalLine.Header(
+            "hdr" -> {
+                val schema = m.long("schema")
+                require(schema <= SCHEMA) { "journal schema $schema is newer than $SCHEMA" }
+                JournalLine.Header(
                 t = t,
                 w = w,
                 id = m.string("id"),
@@ -70,7 +82,8 @@ object JournalCodec {
                 mode = RunMode.valueOf(m.string("mode")),
                 preset = Preset.fromJson(m.obj("preset")),
                 units = Units.valueOf(m.string("units")),
-            )
+                )
+            }
             "s" -> {
                 // A fix is all-or-nothing: lat, lon and acc together, each numeric; otherwise no fix.
                 val fixKeys = listOf("lat", "lon", "acc").filter { m.containsKey(it) }

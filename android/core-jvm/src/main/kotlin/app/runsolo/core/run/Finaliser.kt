@@ -10,6 +10,10 @@ import app.runsolo.core.journal.Replay
  *   read journal → build RunFile → write `run-<id>.json.gz.tmp` → fsync → rename to
  *   `run-<id>.json.gz` → fsync dir → delete `runs/<id>/` (journal)
  *
+ * Never touches the run that is being recorded: the service passes [activeRunId] (the id its
+ * `RecorderCore` owns) and a request for it returns [Outcome.Active] untouched — `recover()`
+ * runs on every app open, including an open while the foreground service is mid-run.
+ *
  * Idempotent at every boundary, so `stop()`, `finalise(runId)` from the recovery dialog and
  * the Reconciler can all call it after a kill:
  *  - run file already exists and journal still there → journal is deleted, file kept
@@ -23,10 +27,14 @@ class Finaliser(private val fs: FileSystem) {
         data class Done(val runId: String, val path: String, val fresh: Boolean, val replay: Replay?) : Outcome()
         data class Corrupt(val runId: String, val reason: String) : Outcome()
         data class Nothing(val runId: String) : Outcome()
+
+        /** The run is still being recorded; nothing was read, written or deleted. */
+        data class Active(val runId: String) : Outcome()
     }
 
-    fun finalise(runId: String, nowEpochMs: Long): Outcome {
+    fun finalise(runId: String, nowEpochMs: Long, activeRunId: String? = null): Outcome {
         require(RunPaths.isSafeId(runId)) { "unsafe run id" }
+        if (runId == activeRunId) return Outcome.Active(runId)
         val journal = RunPaths.journal(runId)
         val target = RunPaths.runFile(runId)
         val tmp = RunPaths.runFileTmp(runId)

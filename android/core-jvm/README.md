@@ -17,5 +17,15 @@ adapter over these packages.
 | `ble` | Heart Rate Measurement parser, `HrJoin` (≤ 2 s), `BleReconnectPolicy` (saved address, autoConnect, backoff, close-first) |
 | `replay` | `ReplaySource` feeding a fixture through `LocationSink`/`HrSink` at N×; CSV / run-file fixture loaders; synthetic straight-line generator |
 
+Contract fixtures: `src/test/fixtures/contract/*.json` are real `Finaliser` output produced by
+`SampleTicker` + `RecorderCore` + `JournalWriter` in `ContractFixtures.kt`; the Dart engine holds
+a verbatim copy under `packages/run_engine/test/fixtures/contract/` and CI compares the two.
+
+Phase 1 device-test items (cannot be proven on the JVM): capture 30 s of raw `0x2A37` packets from
+the founder's Whoop broadcast and check them in as a parser fixture — some broadcasters set
+"sensor contact supported" without ever setting "detected", which this parser would read as
+no contact (null HR); FLP fix-time vs receipt-time skew against the ±2 s HR join; a real
+`am kill` mid-run on API 29/34/36 (the emulator job).
+
 Tests: `./gradlew test` (CI, or on the host when RAM allows). Without Gradle, `kotlinc` +
 `junit-platform-console-standalone` compile and run the same sources in well under 1 GB.

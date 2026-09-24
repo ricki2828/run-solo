@@ -142,6 +142,11 @@ class RecorderCore(
         if (source == LapSource.volumeKey && !config.volumeKeyLaps) return LapDecision.ignoredVolumeKeyDisabled to emptyList()
         lastAutoLapT?.let { if (t - it < config.doubleLapGuardMs) return LapDecision.ignoredDoubleLap to emptyList() }
         lastManualLapT?.let { if (t - it < config.debounceMs) return LapDecision.ignoredDebounce to emptyList() }
+        return LapDecision.accepted to applyManualLap(source, t)
+    }
+
+    /** Records a manual lap with no gate or guard: what was journaled did happen. */
+    private fun applyManualLap(source: LapSource, t: Long): List<Output> {
         lastManualLapT = t
         val out = ArrayList<Output>()
         out.add(Output.Lap(lapCount++, t, source))
@@ -153,7 +158,7 @@ class RecorderCore(
                 Phase.cooldown, Phase.none -> Unit
             }
         }
-        return LapDecision.accepted to out
+        return out
     }
 
     /** Advance the clock: emits due cues and the auto-lap at phase end. */
@@ -253,10 +258,9 @@ class RecorderCore(
                 val t = e.t + base
                 when (e) {
                     is RunEvent.Lap -> {
-                        // Replay bypasses the guards: whatever was journaled did happen.
-                        core.lastAutoLapT = null
-                        core.lastManualLapT = null
-                        core.lap(e.source, t)
+                        // Replay bypasses every gate and guard: whatever was journaled did happen.
+                        if (core.state == RecorderState.paused) continue
+                        if (e.source == LapSource.auto) core.endTimedPhase(t, auto = true) else core.applyManualLap(e.source, t)
                     }
                     is RunEvent.Pause -> core.pause(t)
                     is RunEvent.Resume -> core.resume(t)

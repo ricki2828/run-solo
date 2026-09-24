@@ -23,5 +23,12 @@ object RunPaths {
         return id.takeIf { it.isNotEmpty() && isSafeId(it) }
     }
 
+    /** `run-<id>.edits.json` → id, else null. */
+    fun runIdFromSidecarName(name: String): String? {
+        if (!name.startsWith(RUN_PREFIX) || !name.endsWith(EDITS_SUFFIX)) return null
+        val id = name.substring(RUN_PREFIX.length, name.length - EDITS_SUFFIX.length)
+        return id.takeIf { it.isNotEmpty() && isSafeId(it) }
+    }
+
     fun isSafeId(id: String) = id.all { it.isLetterOrDigit() || it == '-' }
 }

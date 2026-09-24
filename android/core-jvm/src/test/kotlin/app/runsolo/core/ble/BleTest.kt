@@ -67,18 +67,25 @@ class BleTest {
     }
 
     @Test
-    fun `join - latest reading within 2 s else null`() {
+    fun `join - nearest reading within plus or minus 2 s else null`() {
         val j = HrJoin()
         assertNull(j.hrAt(0))
         j.offer(HrReading(10_000, 150))
         assertEquals(150, j.hrAt(10_000))
         assertEquals(150, j.hrAt(12_000))
         assertNull(j.hrAt(12_001))
-        assertNull(j.hrAt(9_000), "a reading from the future is not used")
+        // A fix stamped with its fix time is delivered later than the strap's next notification:
+        // the reading 400 ms AFTER the sample time still joins.
+        assertEquals(150, j.hrAt(9_600))
+        assertNull(j.hrAt(7_999))
         j.offer(HrReading(13_000, 151))
-        assertEquals(151, j.hrAt(13_500))
+        assertEquals(150, j.hrAt(11_400), "nearest wins, not newest")
+        assertEquals(151, j.hrAt(12_600))
+        j.offerNoContact()
+        assertNull(j.hrAt(13_000), "no-contact clears the stale value")
+        j.offer(HrReading(14_000, 152))
         j.disconnected()
-        assertNull(j.hrAt(13_500))
+        assertNull(j.hrAt(14_000))
     }
 
     @Test

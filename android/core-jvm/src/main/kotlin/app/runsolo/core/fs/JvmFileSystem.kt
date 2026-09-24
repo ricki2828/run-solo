@@ -67,6 +67,10 @@ class JvmFileSystem(private val root: Path) : FileSystem {
         }
     }
 
+    override fun truncate(path: String, size: Long) {
+        FileChannel.open(p(path), StandardOpenOption.WRITE).use { it.truncate(size); it.force(true) }
+    }
+
     override fun rename(from: String, to: String) {
         Files.move(p(from), p(to), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
     }

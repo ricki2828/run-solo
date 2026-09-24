@@ -1,25 +1,31 @@
 package app.runsolo.core.contract
 
-import app.runsolo.core.journal.JournalCodec
+import app.runsolo.core.fs.FakeFileSystem
 import app.runsolo.core.journal.JournalLine
-import app.runsolo.core.journal.JournalReplay
+import app.runsolo.core.journal.JournalWriter
 import app.runsolo.core.json.Json
+import app.runsolo.core.model.HrReading
 import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.LocationFix
+import app.runsolo.core.model.Phase
 import app.runsolo.core.model.Preset
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.Units
 import app.runsolo.core.record.RecorderCore
+import app.runsolo.core.record.SampleTicker
 import app.runsolo.core.replay.TraceFixture
+import app.runsolo.core.run.Finaliser
 import app.runsolo.core.run.RunFile
+import app.runsolo.core.run.RunPaths
 import java.io.File
 
 /**
- * Kotlin→Dart contract fixtures: real `RunFile.fromReplay` output from journals written the
- * way the recorder writes them (RecorderCore drives the preset run, so laps and cues are the
- * machine's own). Checked into `src/test/fixtures/contract/` and copied verbatim into
+ * Kotlin→Dart contract fixtures: the real pipeline end to end — `SampleTicker` (1 Hz rule,
+ * no-fix ticks, HR join) + `RecorderCore` (laps, cues, phases) → `JournalWriter` on a
+ * `FakeFileSystem` → `Finaliser` → the gzip'd run file, decoded back to JSON. Nothing is
+ * hand-built. Checked into `src/test/fixtures/contract/` and copied verbatim into
  * `packages/run_engine/test/fixtures/contract/`; [ContractFixturesTest] fails when the
- * generator and the checked-in files drift, so the Dart side always tests the current shape.
+ * generator and the checked-in files drift, and CI compares the two copies.
  *
  * Regenerate: `java -cp <test classpath> app.runsolo.core.contract.ContractFixturesKt`.
  */
@@ -30,110 +36,120 @@ object ContractFixtures {
     private const val LAT0 = -33.8688
     private const val LON0 = 151.2093
 
-    fun all(): Map<String, RunFile> = linkedMapOf(
+    fun all(): Map<String, String> = linkedMapOf(
         "four_by_four_preset_auto_hr" to fourByFourPresetAutoHr(),
         "treadmill_no_fix_hr" to treadmillNoFixHr(),
         "gps_dropout_hr" to gpsDropoutHr(),
         "free_run_pause_manual_laps" to freeRunPauseManualLaps(),
     )
 
-    fun json(f: RunFile): String = Json.write(f.toJson())
+    /** One simulated recording: a service loop over the core, per second. */
+    private class Session(id: String, mode: RunMode, preset: Preset?) {
+        val fs = FakeFileSystem()
+        val writer = JournalWriter(fs, id, onWriteFailed = { throw it })
+        val ticker = SampleTicker(wall = { wall })
+        val core = RecorderCore(mode, preset)
+        private val id = id
+        var t = T0
+        var wall = W0
 
-    private fun header(id: String, mode: RunMode, preset: Preset?) =
-        JournalLine.Header(T0, W0, id, "contract-fixture", "core-jvm-test", "Australia/Sydney", mode, preset, Units.km)
+        init {
+            fs.mkdirs(RunPaths.RUNS_DIR)
+            writer.open()
+            writer.append(JournalLine.Header(T0, W0, id, "contract-fixture", "core-jvm-test", "Australia/Sydney", mode, preset, Units.km))
+            emit(core.start(T0))
+        }
 
-    private fun build(lines: List<JournalLine>): RunFile {
-        val bytes = lines.joinToString("") { JournalCodec.encode(it) + "\n" }.toByteArray()
-        val replay = JournalReplay.read(bytes)
-        return RunFile.fromReplay(replay, replay.lastWallMs)
+        fun emit(out: List<RecorderCore.Output>) {
+            for (o in out) {
+                when (o) {
+                    is RecorderCore.Output.Lap -> writer.append(JournalLine.Lap(o.t, wall, o.source))
+                    is RecorderCore.Output.Cue -> writer.append(JournalLine.Cue(o.t, wall, o.kind))
+                    is RecorderCore.Output.PhaseChanged -> Unit
+                }
+            }
+        }
+
+        /** Advance one second: deliver [fix] (if any) and [hr] (if any), tick core + sampler, journal. */
+        fun second(fix: LocationFix?, hr: Int?, before: () -> Unit = {}) {
+            t += 1000
+            wall += 1000
+            hr?.let { ticker.onHr(HrReading(t - 200, it)) }
+            fix?.let { ticker.onFix(it.copy(t = t)) }
+            before()
+            emit(core.tick(t))
+            for (s in ticker.tick(t)) writer.append(s)
+        }
+
+        fun lap(source: LapSource) = emit(core.lap(source, t).second)
+        fun pause() { core.pause(t); writer.append(JournalLine.Pause(t, wall)) }
+        fun resume() { core.resume(t); writer.append(JournalLine.Resume(t, wall)) }
+
+        fun finish(): String {
+            emit(core.stop(t))
+            writer.close()
+            val done = Finaliser(fs).finalise(id, wall) as Finaliser.Outcome.Done
+            return Json.write(RunFile.readJson(fs.readBytes(done.path)))
+        }
     }
 
-    private fun fixLine(f: LocationFix, hr: Int?) =
-        JournalLine.Sample(f.t, W0 + (f.t - T0), f.lat, f.lon, f.altM, f.accuracyM, f.speedMps, hr)
-
-    /** 60 s warmup, LAP, 4×(4:00 @ 4.2 m/s, 3:00 @ 2.0 m/s) auto-lapped by the core, 60 s cooldown; HR by phase. */
-    private fun fourByFourPresetAutoHr(): RunFile {
+    /** 60 s warmup, notification LAP, 4×(4:00 @4.2 m/s, 3:00 @2.0 m/s) auto-lapped by the core, 60 s cooldown; HR by phase. */
+    private fun fourByFourPresetAutoHr(): String {
         val preset = Preset.DEFAULT_4X4
         val segments = ArrayList<Pair<Int, Double>>()
         segments.add(60 to 2.5)
         repeat(preset.reps) { segments.add(preset.workSeconds to 4.2); segments.add(preset.recoverySeconds to 2.0) }
         segments.add(60 to 2.5)
         val fixes = TraceFixture.straightLine(segments, LAT0, LON0, 6.0, T0)
-        val core = RecorderCore(RunMode.fourByFour, preset)
-        val lines = ArrayList<JournalLine>()
-        lines.add(header("contract-4x4-preset", RunMode.fourByFour, preset))
-        core.start(T0)
-        for (f in fixes) {
-            val w = W0 + (f.t - T0)
-            if (f.t == T0 + 60_000) {
-                val (_, out) = core.lap(LapSource.notification, f.t)
-                lines.addAll(outputs(out, w))
-            }
-            lines.addAll(outputs(core.tick(f.t), w))
-            val hr = when (core.phase) {
-                app.runsolo.core.model.Phase.work -> 165 + ((f.t / 1000) % 5).toInt()
-                app.runsolo.core.model.Phase.recovery -> 145
+        val s = Session("contract-4x4-preset", RunMode.fourByFour, preset)
+        for ((i, f) in fixes.withIndex()) {
+            if (i == 0) continue // the generator's t=0 point is the start position; recording begins at second 1
+            val hr = when (s.core.phase) {
+                Phase.work -> 165 + (i % 5)
+                Phase.recovery -> 145
                 else -> 130
             }
-            lines.add(fixLine(f, hr))
+            s.second(f, hr) { if (i == 60) s.lap(LapSource.notification) }
         }
-        lines.addAll(outputs(core.stop(fixes.last().t), W0 + (fixes.last().t - T0)))
-        return build(lines)
-    }
-
-    private fun outputs(out: List<RecorderCore.Output>, w: Long): List<JournalLine> = out.mapNotNull {
-        when (it) {
-            is RecorderCore.Output.Lap -> JournalLine.Lap(it.t, w, it.source)
-            is RecorderCore.Output.Cue -> JournalLine.Cue(it.t, w, it.kind)
-            is RecorderCore.Output.PhaseChanged -> null
-        }
+        return s.finish()
     }
 
     /** 10 min free run with no GPS fix at all, HR ramp 120→150, one manual lap at 5:00. */
-    private fun treadmillNoFixHr(): RunFile {
-        val lines = ArrayList<JournalLine>()
-        lines.add(header("contract-treadmill", RunMode.free, null))
-        for (s in 1..600) {
-            val t = T0 + s * 1000L
-            val w = W0 + s * 1000L
-            if (s == 300) lines.add(JournalLine.Lap(t, w, LapSource.button))
-            lines.add(JournalLine.Sample.noFix(t, w, 120 + (30 * s) / 600))
-        }
-        return build(lines)
+    private fun treadmillNoFixHr(): String {
+        val s = Session("contract-treadmill", RunMode.free, null)
+        for (i in 1..600) s.second(null, 120 + (30 * i) / 600) { if (i == 300) s.lap(LapSource.button) }
+        return s.finish()
     }
 
     /** 6 min at 3 m/s; fixes lost from 2:00 to 2:45 (no-fix ticks carry HR 150); the runner keeps moving. */
-    private fun gpsDropoutHr(): RunFile {
+    private fun gpsDropoutHr(): String {
         val fixes = TraceFixture.straightLine(listOf(360 to 3.0), LAT0, LON0, 7.0, T0)
-        val lines = ArrayList<JournalLine>()
-        lines.add(header("contract-gps-dropout", RunMode.free, null))
-        for (f in fixes) {
-            val s = (f.t - T0) / 1000
-            val w = W0 + (f.t - T0)
-            if (s in 120..165) lines.add(JournalLine.Sample.noFix(f.t, w, 150)) else lines.add(fixLine(f, 150))
+        val s = Session("contract-gps-dropout", RunMode.free, null)
+        for ((i, f) in fixes.withIndex()) {
+            if (i == 0) continue
+            s.second(if (i in 120..165) null else f, 150)
         }
-        return build(lines)
+        return s.finish()
     }
 
     /** Free run, manual laps at 3:00 and 6:00, a 20 s standing pause at 4:30 (fixes keep coming, no HR strap). */
-    private fun freeRunPauseManualLaps(): RunFile {
+    private fun freeRunPauseManualLaps(): String {
         val fixes = TraceFixture.straightLine(listOf(270 to 3.0, 20 to 0.0, 250 to 3.0), LAT0, LON0, 5.0, T0)
-        val lines = ArrayList<JournalLine>()
-        lines.add(header("contract-pause", RunMode.free, null))
-        for (f in fixes) {
-            val s = (f.t - T0) / 1000
-            val w = W0 + (f.t - T0)
-            if (s == 180L || s == 360L) lines.add(JournalLine.Lap(f.t, w, LapSource.button))
-            if (s == 270L) lines.add(JournalLine.Pause(f.t, w))
-            if (s == 290L) lines.add(JournalLine.Resume(f.t, w))
-            lines.add(fixLine(f, null))
+        val s = Session("contract-pause", RunMode.free, null)
+        for ((i, f) in fixes.withIndex()) {
+            if (i == 0) continue
+            s.second(f, null) {
+                if (i == 180 || i == 360) s.lap(LapSource.button)
+                if (i == 270) s.pause()
+                if (i == 290) s.resume()
+            }
         }
-        return build(lines)
+        return s.finish()
     }
 
     fun write(dir: File = File(DIR)) {
         dir.mkdirs()
-        for ((name, f) in all()) File(dir, "$name.json").writeText(json(f) + "\n")
+        for ((name, json) in all()) File(dir, "$name.json").writeText(json + "\n")
     }
 }
 
