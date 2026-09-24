@@ -100,11 +100,28 @@ class StartResult {
   StartError? error;
 }
 
+/// One recorded lap, for a recreated UI (the "last rep" ghost survives an
+/// Activity recreate). `distanceM` is the cumulative run distance at the lap.
+class LapSummary {
+  LapSummary({
+    required this.index,
+    required this.tMs,
+    required this.distanceM,
+    required this.source,
+  });
+  int index;
+  int tMs;
+  double distanceM;
+  LapSource source;
+}
+
 /// Enough for a recreated UI to redraw mid-run.
 class RecorderStatus {
   RecorderStatus({
     required this.state,
     this.runId,
+    required this.mode,
+    required this.laps,
     required this.elapsedMs,
     required this.lapIndex,
     required this.gpsFix,
@@ -117,6 +134,11 @@ class RecorderStatus {
   });
   RecorderState state;
   String? runId;
+
+  /// The mode picked at Start (a by-feel 4x4 has `mode == fourByFour` and a
+  /// null `preset`).
+  RecordMode mode;
+  List<LapSummary> laps;
   int elapsedMs;
   int lapIndex;
   bool gpsFix;
@@ -293,6 +315,11 @@ abstract class PermissionsApi {
   /// The only Settings deep link allowed (plan §10): the app's battery page.
   void openBatterySettings();
   void openAppSettings();
+
+  /// `FLAG_KEEP_SCREEN_ON` on the Activity window (design brief: screen stays
+  /// on while recording, user setting). Cleared automatically when the
+  /// Activity is recreated, so call it again from the recording screen.
+  void setKeepScreenOn(bool enabled);
 }
 
 @HostApi()
@@ -321,9 +348,16 @@ class TickEvent extends RecorderEvent {
     this.hr,
     this.gpsAccuracyM,
     required this.state,
+    required this.phase,
+    required this.repIndex,
+    required this.phaseRemainingMs,
   });
+
+  /// Wall time since Start, pauses included.
   int elapsedMs;
   int lapElapsedMs;
+
+  /// Distance since the last lap marker (`totalDistanceM` is cumulative).
   double lapDistanceM;
 
   /// Rolling 15 s "live" pace; differs from the verdict's trimmed pace.
@@ -332,6 +366,11 @@ class TickEvent extends RecorderEvent {
   int? hr;
   double? gpsAccuracyM;
   RecorderState state;
+  Phase phase;
+  int repIndex;
+
+  /// Active-time countdown of the current timed phase (0 when untimed).
+  int phaseRemainingMs;
 }
 
 class LapEvent extends RecorderEvent {

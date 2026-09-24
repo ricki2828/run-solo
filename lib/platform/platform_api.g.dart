@@ -287,11 +287,70 @@ class StartResult {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// One recorded lap, for a recreated UI (the "last rep" ghost survives an
+/// Activity recreate). `distanceM` is the cumulative run distance at the lap.
+class LapSummary {
+  LapSummary({
+    required this.index,
+    required this.tMs,
+    required this.distanceM,
+    required this.source,
+  });
+
+  int index;
+
+  int tMs;
+
+  double distanceM;
+
+  LapSource source;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      index,
+      tMs,
+      distanceM,
+      source,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static LapSummary decode(Object result) {
+    result as List<Object?>;
+    return LapSummary(
+      index: result[0]! as int,
+      tMs: result[1]! as int,
+      distanceM: result[2]! as double,
+      source: result[3]! as LapSource,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! LapSummary || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(index, other.index) && _deepEquals(tMs, other.tMs) && _deepEquals(distanceM, other.distanceM) && _deepEquals(source, other.source);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 /// Enough for a recreated UI to redraw mid-run.
 class RecorderStatus {
   RecorderStatus({
     required this.state,
     this.runId,
+    required this.mode,
+    required this.laps,
     required this.elapsedMs,
     required this.lapIndex,
     required this.gpsFix,
@@ -306,6 +365,12 @@ class RecorderStatus {
   RecorderState state;
 
   String? runId;
+
+  /// The mode picked at Start (a by-feel 4x4 has `mode == fourByFour` and a
+  /// null `preset`).
+  RecordMode mode;
+
+  List<LapSummary> laps;
 
   int elapsedMs;
 
@@ -329,6 +394,8 @@ class RecorderStatus {
     return <Object?>[
       state,
       runId,
+      mode,
+      laps,
       elapsedMs,
       lapIndex,
       gpsFix,
@@ -349,15 +416,17 @@ class RecorderStatus {
     return RecorderStatus(
       state: result[0]! as RecorderState,
       runId: result[1] as String?,
-      elapsedMs: result[2]! as int,
-      lapIndex: result[3]! as int,
-      gpsFix: result[4]! as bool,
-      hrConnected: result[5]! as bool,
-      phase: result[6]! as Phase,
-      repIndex: result[7]! as int,
-      phaseRemainingMs: result[8]! as int,
-      preset: result[9] as Preset?,
-      journalOk: result[10]! as bool,
+      mode: result[2]! as RecordMode,
+      laps: (result[3]! as List<Object?>).cast<LapSummary>(),
+      elapsedMs: result[4]! as int,
+      lapIndex: result[5]! as int,
+      gpsFix: result[6]! as bool,
+      hrConnected: result[7]! as bool,
+      phase: result[8]! as Phase,
+      repIndex: result[9]! as int,
+      phaseRemainingMs: result[10]! as int,
+      preset: result[11] as Preset?,
+      journalOk: result[12]! as bool,
     );
   }
 
@@ -370,7 +439,7 @@ class RecorderStatus {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(preset, other.preset) && _deepEquals(journalOk, other.journalOk);
+    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(preset, other.preset) && _deepEquals(journalOk, other.journalOk);
   }
 
   @override
@@ -754,12 +823,17 @@ class TickEvent extends RecorderEvent {
     this.hr,
     this.gpsAccuracyM,
     required this.state,
+    required this.phase,
+    required this.repIndex,
+    required this.phaseRemainingMs,
   });
 
+  /// Wall time since Start, pauses included.
   int elapsedMs;
 
   int lapElapsedMs;
 
+  /// Distance since the last lap marker (`totalDistanceM` is cumulative).
   double lapDistanceM;
 
   /// Rolling 15 s "live" pace; differs from the verdict's trimmed pace.
@@ -773,6 +847,13 @@ class TickEvent extends RecorderEvent {
 
   RecorderState state;
 
+  Phase phase;
+
+  int repIndex;
+
+  /// Active-time countdown of the current timed phase (0 when untimed).
+  int phaseRemainingMs;
+
   List<Object?> _toList() {
     return <Object?>[
       elapsedMs,
@@ -783,6 +864,9 @@ class TickEvent extends RecorderEvent {
       hr,
       gpsAccuracyM,
       state,
+      phase,
+      repIndex,
+      phaseRemainingMs,
     ];
   }
 
@@ -800,6 +884,9 @@ class TickEvent extends RecorderEvent {
       hr: result[5] as int?,
       gpsAccuracyM: result[6] as double?,
       state: result[7]! as RecorderState,
+      phase: result[8]! as Phase,
+      repIndex: result[9]! as int,
+      phaseRemainingMs: result[10]! as int,
     );
   }
 
@@ -812,7 +899,7 @@ class TickEvent extends RecorderEvent {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapElapsedMs, other.lapElapsedMs) && _deepEquals(lapDistanceM, other.lapDistanceM) && _deepEquals(lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && _deepEquals(totalDistanceM, other.totalDistanceM) && _deepEquals(hr, other.hr) && _deepEquals(gpsAccuracyM, other.gpsAccuracyM) && _deepEquals(state, other.state);
+    return _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapElapsedMs, other.lapElapsedMs) && _deepEquals(lapDistanceM, other.lapDistanceM) && _deepEquals(lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && _deepEquals(totalDistanceM, other.totalDistanceM) && _deepEquals(hr, other.hr) && _deepEquals(gpsAccuracyM, other.gpsAccuracyM) && _deepEquals(state, other.state) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs);
   }
 
   @override
@@ -1108,44 +1195,47 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is StartResult) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
-    }    else if (value is RecorderStatus) {
+    }    else if (value is LapSummary) {
       buffer.putUint8(141);
       writeValue(buffer, value.encode());
-    }    else if (value is OrphanJournal) {
+    }    else if (value is RecorderStatus) {
       buffer.putUint8(142);
       writeValue(buffer, value.encode());
-    }    else if (value is ReplayConfig) {
+    }    else if (value is OrphanJournal) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
-    }    else if (value is PermissionStatus) {
+    }    else if (value is ReplayConfig) {
       buffer.putUint8(144);
       writeValue(buffer, value.encode());
-    }    else if (value is BleStatus) {
+    }    else if (value is PermissionStatus) {
       buffer.putUint8(145);
       writeValue(buffer, value.encode());
-    }    else if (value is ExitDiagnosis) {
+    }    else if (value is BleStatus) {
       buffer.putUint8(146);
       writeValue(buffer, value.encode());
-    }    else if (value is BleDevice) {
+    }    else if (value is ExitDiagnosis) {
       buffer.putUint8(147);
       writeValue(buffer, value.encode());
-    }    else if (value is TickEvent) {
+    }    else if (value is BleDevice) {
       buffer.putUint8(148);
       writeValue(buffer, value.encode());
-    }    else if (value is LapEvent) {
+    }    else if (value is TickEvent) {
       buffer.putUint8(149);
       writeValue(buffer, value.encode());
-    }    else if (value is CueEvent) {
+    }    else if (value is LapEvent) {
       buffer.putUint8(150);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is CueEvent) {
       buffer.putUint8(151);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is FaultEvent) {
       buffer.putUint8(152);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is StateEvent) {
       buffer.putUint8(153);
+      writeValue(buffer, value.encode());
+    }    else if (value is PhaseEvent) {
+      buffer.putUint8(154);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -1190,30 +1280,32 @@ class _PigeonCodec extends StandardMessageCodec {
       case 140:
         return StartResult.decode(readValue(buffer)!);
       case 141:
-        return RecorderStatus.decode(readValue(buffer)!);
+        return LapSummary.decode(readValue(buffer)!);
       case 142:
-        return OrphanJournal.decode(readValue(buffer)!);
+        return RecorderStatus.decode(readValue(buffer)!);
       case 143:
-        return ReplayConfig.decode(readValue(buffer)!);
+        return OrphanJournal.decode(readValue(buffer)!);
       case 144:
-        return PermissionStatus.decode(readValue(buffer)!);
+        return ReplayConfig.decode(readValue(buffer)!);
       case 145:
-        return BleStatus.decode(readValue(buffer)!);
+        return PermissionStatus.decode(readValue(buffer)!);
       case 146:
-        return ExitDiagnosis.decode(readValue(buffer)!);
+        return BleStatus.decode(readValue(buffer)!);
       case 147:
-        return BleDevice.decode(readValue(buffer)!);
+        return ExitDiagnosis.decode(readValue(buffer)!);
       case 148:
-        return TickEvent.decode(readValue(buffer)!);
+        return BleDevice.decode(readValue(buffer)!);
       case 149:
-        return LapEvent.decode(readValue(buffer)!);
+        return TickEvent.decode(readValue(buffer)!);
       case 150:
-        return CueEvent.decode(readValue(buffer)!);
+        return LapEvent.decode(readValue(buffer)!);
       case 151:
-        return FaultEvent.decode(readValue(buffer)!);
+        return CueEvent.decode(readValue(buffer)!);
       case 152:
-        return StateEvent.decode(readValue(buffer)!);
+        return FaultEvent.decode(readValue(buffer)!);
       case 153:
+        return StateEvent.decode(readValue(buffer)!);
+      case 154:
         return PhaseEvent.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -1593,6 +1685,27 @@ class PermissionsApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// `FLAG_KEEP_SCREEN_ON` on the Activity window (design brief: screen stays
+  /// on while recording, user setting). Cleared automatically when the
+  /// Activity is recreated, so call it again from the recording screen.
+  Future<void> setKeepScreenOn(bool enabled) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.PermissionsApi.setKeepScreenOn$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[enabled]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(

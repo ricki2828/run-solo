@@ -31,6 +31,7 @@ import app.runsolo.platform.CueEvent
 import app.runsolo.platform.FaultEvent
 import app.runsolo.platform.FaultKind
 import app.runsolo.platform.LapEvent
+import app.runsolo.platform.LapSummary
 import app.runsolo.platform.PhaseEvent
 import app.runsolo.platform.RecorderEventBus
 import app.runsolo.platform.RecorderStatus
@@ -81,6 +82,7 @@ class RecordingSession(
     var startWallMs: Long = 0
         private set
     private var lapCount = 0
+    private val laps = ArrayList<LapSummary>()
     private var lapStartT = 0L
     private var lapStartDist = 0.0
     private var lastTickEventWall = 0L
@@ -124,6 +126,12 @@ class RecordingSession(
         core = RecorderCore.restore(replayed, t, RecorderCore.Config(volumeKeyLaps = volumeKeyLapsEnabled))
         lapCount = core.lapCount
         lapStartT = t
+        var lapT = 0L
+        for (e in replayed.events) if (e is RunEvent.Lap) {
+            laps.add(LapSummary(index = laps.size.toLong(), tMs = e.t, distanceM = 0.0, source = e.source.toPigeon()))
+            lapT = e.t
+        }
+        if (laps.isNotEmpty()) lapStartT = t - (replayed.endT - lapT)
         // Seed the live distance from the journal (same pause rule as the finaliser) so the
         // tick totals continue instead of restarting from zero; lap distance from the last marker.
         var paused = false
@@ -133,7 +141,10 @@ class RecordingSession(
                 is RunEvent.Sample -> if (e.hasFix && !paused) ticker.filter.offer(LocationFix(e.t, e.lat!!, e.lon!!, e.altM, e.accuracyM!!, e.speedMps))
                 is RunEvent.Pause -> paused = true
                 is RunEvent.Resume -> { paused = false; ticker.filter.reanchor() }
-                is RunEvent.Lap -> lastLapDist = ticker.filter.totalM
+                is RunEvent.Lap -> {
+                    lastLapDist = ticker.filter.totalM
+                    laps.indexOfFirst { it.tMs == e.t }.takeIf { it >= 0 }?.let { i -> laps[i] = laps[i].copy(distanceM = lastLapDist) }
+                }
                 else -> Unit
             }
         }
@@ -278,6 +289,9 @@ class RecordingSession(
                     hr = last.hr?.toLong(),
                     gpsAccuracyM = last.accuracyM,
                     state = st.state.toPigeon(),
+                    phase = st.phase.toPigeon(),
+                    repIndex = st.repIndex.toLong(),
+                    phaseRemainingMs = st.phaseRemainingMs,
                 ),
             )
         }
@@ -380,6 +394,7 @@ class RecordingSession(
                     lapCount = o.index + 1
                     lapStartT = o.t
                     lapStartDist = ticker.distanceM
+                    laps.add(LapSummary(index = o.index.toLong(), tMs = core.status(o.t).elapsedMs, distanceM = ticker.distanceM, source = o.source.toPigeon()))
                     RecorderEventBus.emit(
                         LapEvent(index = o.index.toLong(), tMs = core.status(o.t).elapsedMs, distanceM = ticker.distanceM, source = o.source.toPigeon()),
                     )
@@ -415,6 +430,8 @@ class RecordingSession(
         return RecorderStatus(
             state = st.state.toPigeon(),
             runId = runId,
+            mode = mode.toPigeon(),
+            laps = laps.toList(),
             elapsedMs = st.elapsedMs,
             lapIndex = st.lapIndex.toLong(),
             gpsFix = !ticker.gpsLost(t),

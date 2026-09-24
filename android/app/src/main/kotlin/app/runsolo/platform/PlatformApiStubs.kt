@@ -26,6 +26,8 @@ class RecorderApiStub : RecorderApi {
         RecorderStatus(
             state = RecorderState.IDLE,
             runId = null,
+            mode = RecordMode.FREE,
+            laps = emptyList(),
             elapsedMs = 0,
             lapIndex = 0,
             gpsFix = false,
@@ -70,6 +72,8 @@ class PermissionsApiStub : PermissionsApi {
     override fun openBatterySettings() = Unit
 
     override fun openAppSettings() = Unit
+
+    override fun setKeepScreenOn(enabled: Boolean) = Unit
 }
 
 class BleApiStub : BleApi {

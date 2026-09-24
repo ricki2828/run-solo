@@ -137,6 +137,8 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     override fun status(): RecorderStatus = active()?.status() ?: RecorderStatus(
         state = RecorderState.IDLE,
         runId = null,
+        mode = RecordMode.FREE,
+        laps = emptyList(),
         elapsedMs = 0,
         lapIndex = 0,
         gpsFix = false,
