@@ -37,6 +37,8 @@ import java.io.File
  * emits ≤ 2 Hz).
  */
 object EventTraceFixture {
+    /** Own directory: the run-file contract tests glob `contract/` and must not see event traces. */
+    const val DIR = "src/test/fixtures/contract-events"
     const val NAME = "events_4x4_pause_kill"
     private const val W0 = 1_758_672_000_000L
     private const val RUN_ID = "contract-events-4x4"
@@ -209,7 +211,7 @@ object EventTraceFixture {
         return lines.toString()
     }
 
-    fun write(dir: File = File(ContractFixtures.DIR)) {
+    fun write(dir: File = File(DIR)) {
         dir.mkdirs()
         File(dir, "$NAME.ndjson").writeText(generate())
     }

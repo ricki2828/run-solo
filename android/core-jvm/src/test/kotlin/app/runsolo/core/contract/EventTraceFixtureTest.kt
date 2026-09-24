@@ -11,7 +11,7 @@ class EventTraceFixtureTest {
 
     @Test
     fun `checked-in event trace matches the generator byte for byte`() {
-        val file = File(ContractFixtures.DIR, "${EventTraceFixture.NAME}.ndjson")
+        val file = File(EventTraceFixture.DIR, "${EventTraceFixture.NAME}.ndjson")
         assertTrue(file.exists(), "missing ${file.path}; regenerate with EventTraceFixtureKt.main")
         assertEquals(EventTraceFixture.generate(), file.readText(), "event trace drifted; regenerate and copy to run_engine")
     }

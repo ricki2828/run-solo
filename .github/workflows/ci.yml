@@ -61,6 +61,18 @@ jobs:
           fi
           diff -r "$kotlin" "$dart"
           echo "contract fixtures: $count Kotlin files identical to run_engine copies (both ways)"
+      - name: Kotlin→Dart event-trace fixtures are identical copies
+        # EventChannel traces (RecorderEvent + status snapshots) for the Dart controller test;
+        # a separate dir so the run-file contract test never sees them.
+        run: |
+          kotlin=android/core-jvm/src/test/fixtures/contract-events
+          dart=packages/run_engine/test/fixtures/contract-events
+          count=$(ls "$kotlin"/*.ndjson 2>/dev/null | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "::error::no Kotlin event-trace fixtures in $kotlin"; exit 1
+          fi
+          diff -r "$kotlin" "$dart"
+          echo "event-trace fixtures: $count Kotlin files identical to run_engine copies (both ways)"
 
   core-jvm:
     name: core-jvm tests (pure Kotlin)
