@@ -97,7 +97,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     override fun start(mode: RecordMode, preset: Preset?, units: Units): StartResult = startWith(mode, preset, units, null)
 
     override fun startReplay(mode: RecordMode, preset: Preset?, units: Units, replay: ReplayConfig): StartResult {
-        if (!BuildConfig.DEBUG) return StartResult(runId = null, error = StartError.REPLAY_UNAVAILABLE)
+        if (!BuildConfig.REPLAY_ENABLED) return StartResult(runId = null, error = StartError.REPLAY_UNAVAILABLE)
         val corePreset = preset?.toCore() ?: CorePreset.DEFAULT_4X4
         val runner = ReplayRunner.create(context, replay.fixture, replay.speed, corePreset)
             ?: return StartResult(runId = null, error = StartError.REPLAY_UNAVAILABLE)

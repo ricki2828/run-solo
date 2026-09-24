@@ -14,7 +14,7 @@ import app.runsolo.core.json.Json
  */
 object EventTrace {
     const val TAG = "RunSolo/trace"
-    val enabled: Boolean get() = BuildConfig.DEBUG
+    val enabled: Boolean get() = BuildConfig.REPLAY_ENABLED
 
     /** Dart enum spelling of a Pigeon Kotlin enum constant: `FOUR_BY_FOUR` → `fourByFour`. */
     fun dartName(e: Enum<*>): String = buildString {
@@ -27,7 +27,7 @@ object EventTrace {
     }
 
     fun event(e: RecorderEvent, elapsedMs: Long) {
-        if (!BuildConfig.DEBUG) return
+        if (!BuildConfig.REPLAY_ENABLED) return
         val m = LinkedHashMap<String, Any?>()
         // `t` is the event's own time where it has one (a tick's elapsedMs, a lap's tMs) — the
         // fixture does the same — and the elapsed time at emission for the others.
@@ -85,7 +85,7 @@ object EventTrace {
     }
 
     fun status(s: RecorderStatus, elapsedMs: Long) {
-        if (!BuildConfig.DEBUG) return
+        if (!BuildConfig.REPLAY_ENABLED) return
         val m = LinkedHashMap<String, Any?>()
         m["t"] = elapsedMs
         m["kind"] = "status"

@@ -63,7 +63,7 @@ class MainActivity : FlutterActivity() {
      * Everything is logged under the `RunSolo/debug` tag for the emulator script.
      */
     private fun handleDebugIntent(intent: Intent?) {
-        if (!BuildConfig.DEBUG || intent == null || !::recorder.isInitialized) return
+        if (!BuildConfig.REPLAY_ENABLED || intent == null || !::recorder.isInitialized) return
         val fixture = intent.getStringExtra("runsolo.replay")
         val recover = intent.getBooleanExtra("runsolo.recover", false)
         val stopAfter = intent.getLongExtra("runsolo.stopAfterMs", -1)
