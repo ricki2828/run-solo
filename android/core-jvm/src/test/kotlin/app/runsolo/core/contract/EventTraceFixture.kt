@@ -33,8 +33,9 @@ import java.io.File
  * divergence there is a bug on the Android side, not in this file.
  *
  * NDJSON, one object per line: `{"t": <elapsedMs>, "kind": "tick|lap|phase|state|cue|fault|status", ...}`
- * with the Pigeon field names and enums as their Dart names. Ticks are 1 Hz here (the device
- * emits ≤ 2 Hz).
+ * with the Pigeon field names and enums as their Dart names; a cue line carries its kind as
+ * `cue`, a fault line as `fault` (the `kind` key is the line type). Ticks are 1 Hz here (the
+ * device emits ≤ 2 Hz).
  */
 object EventTraceFixture {
     /** Own directory: the run-file contract tests glob `contract/` and must not see event traces. */
@@ -109,7 +110,7 @@ object EventTraceFixture {
                     }
                     is RecorderCore.Output.Cue -> {
                         writer.append(JournalLine.Cue(o.t, W0 + o.t, o.kind))
-                        emit("cue", core.status(o.t).elapsedMs, mapOf("kind" to o.kind.name))
+                        emit("cue", core.status(o.t).elapsedMs, mapOf("cue" to o.kind.name))
                     }
                     is RecorderCore.Output.PhaseChanged -> {
                         emit("phase", core.status(o.t).elapsedMs, mapOf("phase" to o.phase.name, "repIndex" to o.repIndex, "phaseDurationMs" to (o.phaseDurationMs ?: 0L)))
@@ -219,7 +220,7 @@ object EventTraceFixture {
             traceIdx++
         }
         val out = core.stop(dt)
-        for (o in out) if (o is RecorderCore.Output.Cue) emit("cue", core.status(dt).elapsedMs, mapOf("kind" to o.kind.name))
+        for (o in out) if (o is RecorderCore.Output.Cue) emit("cue", core.status(dt).elapsedMs, mapOf("cue" to o.kind.name))
         state(dt, RecorderState.finalising)
         writer.close()
         emit("state", core.status(dt).elapsedMs, mapOf("state" to RecorderState.idle.name, "runId" to RUN_ID, "phase" to Phase.none.name))

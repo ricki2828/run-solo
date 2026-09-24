@@ -46,6 +46,10 @@ class EventTraceFixtureTest {
         assertEquals("work", afterResume["phase"])
         assertEquals(3L, afterResume["repIndex"])
         assertTrue((afterResume["phaseRemainingMs"] as Long) in 170_000L..180_000L, "remaining ${afterResume["phaseRemainingMs"]}")
+        // Cue lines keep `kind: cue` and carry the cue name in `cue`.
+        val cues = ev.filter { it["kind"] == "cue" }.map { it["cue"] }
+        assertEquals(4 * 8, cues.count { it != "stop" } - 1 + 1) // 4 cues per timed phase × 8 phases (rep 1's start rides with the LAP)
+        assertEquals("stop", cues.last())
         // Status snapshots carry laps and mode.
         val status = ev.last { it["kind"] == "status" }
         assertEquals("fourByFour", status["mode"])

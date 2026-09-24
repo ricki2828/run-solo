@@ -2,7 +2,7 @@ package app.runsolo.record
 
 import android.content.Context
 import android.os.Handler
-import android.os.Looper
+import android.os.HandlerThread
 import android.os.SystemClock
 import android.util.Log
 import app.runsolo.ble.BleHolder
@@ -50,13 +50,13 @@ import app.runsolo.platform.toPigeon
  */
 class RecordingSession(
     context: Context,
-    val runId: String,
+    override val runId: String,
     val mode: RunMode,
     val preset: Preset?,
     val units: Units,
     private val replay: ReplayRunner?,
     volumeKeyLaps: Boolean,
-) {
+) : app.runsolo.platform.StartGuard.Session {
     // Application context: the session outlives the Activity (swipe from Recents keeps the
     // service alive; an Activity context would unbind TTS and leak the Activity).
     private val context: Context = context.applicationContext
@@ -68,7 +68,21 @@ class RecordingSession(
     private val ticker = SampleTicker(wall = { System.currentTimeMillis() })
     private val livePace = LivePace()
     private val moving = MovingDetector()
-    private val handler = Handler(Looper.getMainLooper())
+    // The recorder runs on its own thread: the 1 Hz tick, journal writes (incl. fsync) and
+    // sensor callbacks never wait behind Flutter's main-thread work (on a slow emulator the
+    // first Flutter frame starved the main looper for seconds and the run lost its ticks).
+    // Every public method and the tick are @Synchronized on this object, so main-thread calls
+    // (lap/pause/stop/status from the API, BLE callbacks) and the recorder thread interleave safely.
+    private val thread = HandlerThread("runsolo-recorder", android.os.Process.THREAD_PRIORITY_FOREGROUND).also { it.start() }
+
+    /**
+     * Last computed status, refreshed after every tick and control call. `status()` reads it
+     * without taking the monitor, so a Pigeon call on main never waits behind a journal fsync
+     * on the recorder thread; it is at most one tick (1 s) old.
+     */
+    @Volatile
+    private var snapshot: RecorderStatus? = null
+    private val handler = Handler(thread.looper)
     private val cues = CuePlayer(this.context)
     private val lapInput = LapInput(this.context) { lap(LapSource.volumeKey) }
     private val volumeKeyLapsEnabled = volumeKeyLaps
@@ -81,6 +95,11 @@ class RecordingSession(
 
     /** Wall time the run started (from the header; survives a resume). */
     var startWallMs: Long = 0
+        private set
+
+    /** True once [startResumed] ran: this session continues an orphaned journal that must never be deleted. */
+    @Volatile
+    override var resumed: Boolean = false
         private set
     private var lapCount = 0
     private val laps = ArrayList<LapSummary>()
@@ -98,13 +117,18 @@ class RecordingSession(
     var onReplayFinished: (() -> Unit)? = null
 
     val cuesEnabled: Boolean get() = cues.enabled
+
+    /** Wall time since Start (pauses and gaps included) right now; 0 before the core starts. */
+    @Synchronized
+    fun elapsedNowMs(): Long = if (::core.isInitialized) core.status(clock()).elapsedMs else 0L
     val isReplay: Boolean get() = replay != null
 
     private fun clock(): Long = replay?.now() ?: SystemClock.elapsedRealtime()
 
     // ---- lifecycle ----
 
-    /** Fresh run: header line, state machine at warmup/none. */
+    /** Fresh run: header line, state machine at warmup/none. Ticks start now, sensors when the service is up. */
+    @Synchronized
     fun startNew(device: String, app: String, tz: String) {
         val t = clock()
         startWallMs = System.currentTimeMillis()
@@ -115,13 +139,16 @@ class RecordingSession(
         lapStartT = t
         ExitDiagnostics.noteStart(context, runId, startWallMs)
         emitState()
+        scheduleTick()
     }
 
     /** Continue an orphaned journal after a kill (plan §3, W12): gap line, phase rebuilt from the journal. */
+    @Synchronized
     fun startResumed(orphan: Replay) {
         val t = clock()
         val nowWall = System.currentTimeMillis()
         startWallMs = orphan.header.w
+        resumed = true // from here on, any abort keeps the journal
         writer.open() // drops a torn tail first
         val gap = (nowWall - orphan.lastWallMs).coerceAtLeast(0)
         writer.append(JournalLine.Gap(t, nowWall, gap))
@@ -176,11 +203,13 @@ class RecordingSession(
         lapStartDist = lastLapDist
         if (core.state == RecorderState.paused) ticker.onPause()
         ExitDiagnostics.noteResume(context, runId, nowWall)
+        scheduleTick()
         Log.i(TAG, "resumed $runId after ${gap / 1000}s gap; phase=${core.phase} rep=${core.repIndex} paused=${core.state == RecorderState.paused}")
         emitState()
     }
 
-    /** Called by the service once it is in the foreground: sensors, cues, tick loop. */
+    /** Called by the service once it is in the foreground: sensors and cues (ticks are already running). */
+    @Synchronized
     fun attachSensors(preferRawGps: Boolean, cuesEnabled: Boolean) {
         if (attached || finished) return
         attached = true
@@ -191,21 +220,21 @@ class RecordingSession(
         if (r != null) {
             // One clock, one tick per delivered fix (see ReplaySource): no timer in replay mode.
             r.start(
+                handler,
                 onFix = { fix ->
-                    ticker.onFix(fix)
                     try {
-                        tick(fix.t)
+                        replayFix(fix)
                     } catch (e: Exception) {
                         Log.e(TAG, "replay tick failed", e)
                     }
                 },
-                onHr = { ticker.onHr(it) },
+                onHr = { onHr(it) },
             )
             return
         } else {
             location = LocationSource.create(context, preferRawGps).also { src ->
                 try {
-                    src.start { ticker.onFix(it) }
+                    src.start(thread.looper) { onFix(it) }
                 } catch (e: Exception) {
                     Log.w(TAG, "location start failed: $e")
                     fault(FaultKind.GPS_LOST, "Location updates unavailable: ${e.message}")
@@ -214,33 +243,55 @@ class RecordingSession(
             val client = BleHolder.client(context)
             ble = client
             client.listener = object : BleHrClient.Listener {
-                override fun onReading(reading: HrReading) {
-                    lastHr = reading.bpm
-                    ticker.onHr(reading)
-                }
+                override fun onReading(reading: HrReading) = onHr(reading)
 
-                override fun onNoContact() {
-                    lastHr = null
-                    ticker.onHrNoContact()
-                }
+                override fun onNoContact() = onHrNoContact()
 
-                override fun onLink(connected: Boolean) {
-                    hrConnected = connected
-                    writer.append(JournalLine.HrLink(clock(), System.currentTimeMillis(), connected))
-                    if (!connected) fault(FaultKind.HR_DISCONNECTED, "Heart rate strap disconnected")
-                    onNotificationChanged?.invoke()
-                }
+                override fun onLink(connected: Boolean) = onHrLink(connected)
             }
             client.connectIfPaired()
         }
-        scheduleTick()
     }
 
+    // Sensor callbacks (recorder thread for fixes/replay, main thread for BLE) enter under the lock.
+    @Synchronized
+    private fun onFix(fix: LocationFix) {
+        if (!finished) ticker.onFix(fix)
+    }
+
+    @Synchronized
+    private fun replayFix(fix: LocationFix) {
+        if (finished) return
+        ticker.onFix(fix)
+        tick(fix.t)
+    }
+
+    @Synchronized
+    private fun onHr(reading: HrReading) {
+        lastHr = reading.bpm
+        ticker.onHr(reading)
+    }
+
+    @Synchronized
+    private fun onHrNoContact() {
+        lastHr = null
+        ticker.onHrNoContact()
+    }
+
+    @Synchronized
+    private fun onHrLink(connected: Boolean) {
+        if (finished) return
+        hrConnected = connected
+        writer.append(JournalLine.HrLink(clock(), System.currentTimeMillis(), connected))
+        if (!connected) fault(FaultKind.HR_DISCONNECTED, "Heart rate strap disconnected")
+        onNotificationChanged?.invoke()
+    }
+
+    @Synchronized
     fun detachSensors() {
+        stopTicks()
         if (!attached) return
         attached = false
-        tickRunnable?.let { handler.removeCallbacks(it) }
-        tickRunnable = null
         location?.stop()
         location = null
         replay?.stop()
@@ -253,11 +304,13 @@ class RecordingSession(
         cues.release()
     }
 
+    /** 1 Hz timer on the recorder thread; replay mode ticks per delivered fix instead. */
     private fun scheduleTick() {
+        if (tickRunnable != null || replay != null) return
         val period = 1000L
         val r = object : Runnable {
             override fun run() {
-                if (!attached || finished) return
+                if (finished || tickRunnable !== this) return
                 try {
                     tick(clock())
                 } catch (e: Exception) {
@@ -270,8 +323,14 @@ class RecordingSession(
         handler.postDelayed(r, period)
     }
 
+    private fun stopTicks() {
+        tickRunnable?.let { handler.removeCallbacks(it) }
+        tickRunnable = null
+    }
+
     // ---- the 1 Hz loop ----
 
+    @Synchronized
     private fun tick(t: Long) {
         if (finished) return
         val r = replay
@@ -319,22 +378,27 @@ class RecordingSession(
                 ),
             )
         }
+        refreshSnapshot()
         if (r != null && !r.running && t >= r.endT) {
-            Log.i(TAG, "replay finished")
+            // ReplaySource flips running before delivering the last fix, so this is that fix's tick.
+            Log.i(TAG, "replay finished at ${core.status(t).elapsedMs} ms; stopping")
             onReplayFinished?.invoke()
         }
     }
 
     // ---- controls ----
 
+    @Synchronized
     fun lap(source: LapSource) {
         if (finished) return
         val t = clock()
         val (decision, out) = core.lap(source, t)
         Log.i(TAG, "lap $source → $decision")
         handle(out, t)
+        refreshSnapshot()
     }
 
+    @Synchronized
     fun pause() {
         if (finished || core.state != RecorderState.recording) return
         val t = clock()
@@ -345,6 +409,7 @@ class RecordingSession(
         onNotificationChanged?.invoke()
     }
 
+    @Synchronized
     fun resume() {
         if (finished || core.state != RecorderState.paused) return
         val t = clock()
@@ -356,11 +421,14 @@ class RecordingSession(
     }
 
     /** Stop and finalise in Kotlin (B3). Returns the run file path relative to `files/`, or null on corruption. */
+    @Synchronized
     fun stop(): String? {
         if (finished) return null
         finished = true
+        stopTicks()
         val t = clock()
         val out = core.stop(t)
+        refreshSnapshot()
         for (o in out) if (o is RecorderCore.Output.Cue) {
             cues.play(o.kind, Phase.none, core.repIndex)
             writer.append(JournalLine.Cue(o.t, System.currentTimeMillis(), o.kind))
@@ -380,32 +448,51 @@ class RecordingSession(
         }
         Log.i(TAG, "finalised $runId → $path")
         RecorderEventBus.emit(StateEvent(state = app.runsolo.platform.RecorderState.IDLE, runId = runId, phase = app.runsolo.platform.Phase.NONE))
+        thread.quitSafely()
         return path
     }
 
+    @Synchronized
     fun setCues(enabled: Boolean) {
         cues.enabled = enabled
     }
 
-    /** The foreground service could not start: nothing worth keeping. Deletes the journal, never finalises. */
-    fun discard() {
+    /**
+     * A start that did not reach recording (start step threw, `startForegroundService` or
+     * `startForeground` refused). The only decision point for the journal: a brand-new run is
+     * discarded (nothing worth keeping), a resumed run is suspended — journal closed and kept
+     * on disk for the next `recover()`. Never finalises.
+     */
+    @Synchronized
+    override fun abortStart() {
+        if (resumed) suspend() else discard()
+    }
+
+    /** A brand-new run that never recorded: deletes its header-only journal. Only [abortStart] may call this. */
+    @Synchronized
+    private fun discard() {
         if (finished) return
         finished = true
+        stopTicks()
         detachSensors()
         writer.close()
         fs.deleteRecursively(RunPaths.journalDir(runId))
         ExitDiagnostics.noteStopped(context, runId)
         RecorderEventBus.emit(StateEvent(state = app.runsolo.platform.RecorderState.IDLE, runId = runId, phase = app.runsolo.platform.Phase.NONE))
         Log.w(TAG, "discarded $runId")
+        thread.quitSafely()
     }
 
-    /** The service was torn down while the process lives: stop cleanly, keep the journal for recovery. */
+    /** Stop cleanly and keep the journal for recovery (service torn down mid-run, or a resumed start aborted). */
+    @Synchronized
     fun suspend() {
         if (finished) return
         finished = true
+        stopTicks()
         detachSensors()
         writer.close()
         RecorderEventBus.emit(StateEvent(state = app.runsolo.platform.RecorderState.IDLE, runId = runId, phase = app.runsolo.platform.Phase.NONE))
+        thread.quitSafely()
     }
 
     // ---- outputs ----
@@ -434,6 +521,7 @@ class RecordingSession(
                     RecorderEventBus.emit(CueEvent(kind = o.kind.toPigeon()))
                 }
                 is RecorderCore.Output.PhaseChanged -> {
+                    refreshSnapshot()
                     RecorderEventBus.emit(PhaseEvent(phase = o.phase.toPigeon(), repIndex = o.repIndex.toLong(), phaseDurationMs = o.phaseDurationMs ?: 0L))
                     onNotificationChanged?.invoke()
                 }
@@ -442,7 +530,12 @@ class RecordingSession(
     }
 
     private fun emitState() {
+        refreshSnapshot()
         RecorderEventBus.emit(StateEvent(state = core.state.toPigeon(), runId = runId, phase = core.phase.toPigeon()))
+    }
+
+    private fun refreshSnapshot() {
+        if (::core.isInitialized) snapshot = statusNow()
     }
 
     private fun fault(kind: FaultKind, message: String) {
@@ -451,7 +544,11 @@ class RecordingSession(
 
     // ---- views ----
 
-    fun status(): RecorderStatus {
+    /** Lock-free: the snapshot from the last tick/control call (≤ 1 s old), or a fresh one before the first tick. */
+    fun status(): RecorderStatus = snapshot ?: statusNow()
+
+    @Synchronized
+    private fun statusNow(): RecorderStatus {
         val t = clock()
         val st = core.status(t)
         return RecorderStatus(
@@ -471,6 +568,7 @@ class RecordingSession(
         )
     }
 
+    @Synchronized
     fun notificationContent(): RecorderNotification.Content {
         val t = clock()
         val st = core.status(t)

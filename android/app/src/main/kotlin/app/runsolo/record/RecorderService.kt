@@ -4,7 +4,9 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.ServiceCompat
@@ -25,6 +27,7 @@ import app.runsolo.platform.RecorderEventBus
 class RecorderService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private lateinit var notification: RecorderNotification
+    private val main = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -67,8 +70,8 @@ class RecorderService : Service() {
             return
         }
         session = s
-        s.onNotificationChanged = { refreshNotification() }
-        s.onReplayFinished = { stopRun() }
+        s.onNotificationChanged = { refreshNotification() } // NotificationManager is thread-safe
+        s.onReplayFinished = { main.post { stopRun() } } // called on the recorder thread; Service calls belong on main
         try {
             ServiceCompat.startForeground(
                 this,
@@ -78,11 +81,13 @@ class RecorderService : Service() {
             )
         } catch (e: Exception) {
             // Android 14+: location FGS refused (permission revoked between check and start, or
-            // started from the background). Nothing was recorded yet: discard, never finalise.
+            // started from the background). Nothing was recorded yet: a new run is discarded, a
+            // resumed run keeps its journal for the next recover(). Never finalise.
             Log.e(TAG, "startForeground failed", e)
             session = null
-            s.discard()
-            RecorderEventBus.emit(FaultEvent(kind = FaultKind.START_FAILED, message = "Could not start recording: ${e.message}"))
+            s.abortStart()
+            val msg = if (s.resumed) "Could not restart recording; the run is kept for recovery: ${e.message}" else "Could not start recording: ${e.message}"
+            RecorderEventBus.emit(FaultEvent(kind = FaultKind.START_FAILED, message = msg))
             stopSelf()
             return
         }

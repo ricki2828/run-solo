@@ -59,6 +59,9 @@ class ReplaySource(
     private var pending: Cancellable? = null
     private val t0 = items.first().t
     private var tStart = 0L
+
+    /** Read from other threads through `now()` (status calls on main); written by the delivery thread. */
+    @Volatile
     private var lastStamp = 0L
 
     var running = false
@@ -100,12 +103,15 @@ class ReplaySource(
             if (!running) return@schedule
             val stamp = tStart + (item.t - t0)
             lastStamp = stamp
+            // Bookkeeping BEFORE the sink call: on the last item the sink (the recorder's tick)
+            // sees `running == false`, so a replay run finishes on its own.
+            emitted++
+            index++
+            if (index >= items.size) running = false
             when (item) {
                 is Item.Loc -> locationSink.onLocation(item.fix.copy(t = stamp))
                 is Item.Hr -> hrSink?.onHr(item.r.copy(t = stamp))
             }
-            emitted++
-            index++
             scheduleNext()
         }
     }

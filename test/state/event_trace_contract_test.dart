@@ -115,11 +115,17 @@ class TraceGateway implements RecorderGateway {
           phase: Phase.values.byName(e['phase'] as String),
         );
       case 'fault':
+        // The fixture carries the enum in `fault` (older copies used `faultKind`).
         return FaultEvent(
-          kind: FaultKind.values.byName(e['faultKind'] as String),
+          kind: FaultKind.values.byName(
+            (e['fault'] ?? e['faultKind']) as String,
+          ),
           message: e['message'] as String,
         );
+      case 'cue':
+        return CueEvent(kind: CueKind.values.byName(e['cue'] as String));
       default:
+        // Older fixture copies wrote the cue name into `kind`.
         if (cueKinds.contains(kind)) {
           return CueEvent(kind: CueKind.values.byName(kind));
         }

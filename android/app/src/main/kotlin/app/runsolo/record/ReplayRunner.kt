@@ -2,7 +2,6 @@ package app.runsolo.record
 
 import android.content.Context
 import android.os.Handler
-import android.os.Looper
 import android.os.SystemClock
 import app.runsolo.core.model.HrReading
 import app.runsolo.core.model.LocationFix
@@ -31,7 +30,6 @@ class ReplayRunner private constructor(
     /** Trace-time offsets (ms from the first fix) at which a notification LAP is pressed. */
     val autoLapAtMs: List<Long>,
 ) {
-    private val handler = Handler(Looper.getMainLooper())
     private var source: ReplaySource? = null
 
     /** Trace time; valid after [start]. */
@@ -40,7 +38,8 @@ class ReplayRunner private constructor(
     val endT: Long get() = source?.endT ?: 0
     val running: Boolean get() = source?.running == true
 
-    fun start(onFix: (LocationFix) -> Unit, onHr: (HrReading) -> Unit) {
+    /** Items are delivered on [handler]'s thread (the recorder thread). */
+    fun start(handler: Handler, onFix: (LocationFix) -> Unit, onHr: (HrReading) -> Unit) {
         val scheduler = Scheduler { delayMs, action ->
             val r = Runnable { action() }
             handler.postDelayed(r, delayMs)

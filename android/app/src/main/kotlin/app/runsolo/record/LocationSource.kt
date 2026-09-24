@@ -18,7 +18,8 @@ import com.google.android.gms.location.Priority
 
 /** 1 Hz fixes for the recorder (plan §3). Every fix is stamped from `elapsedRealtimeNanos`. */
 interface LocationSource {
-    fun start(onFix: (LocationFix) -> Unit)
+    /** Fixes are delivered on [looper] (the recorder thread). */
+    fun start(looper: Looper, onFix: (LocationFix) -> Unit)
     fun stop()
 
     companion object {
@@ -49,7 +50,7 @@ class FusedLocationSource(context: Context) : LocationSource {
     private var callback: LocationCallback? = null
 
     @SuppressLint("MissingPermission") // the service checks fine location before starting
-    override fun start(onFix: (LocationFix) -> Unit) {
+    override fun start(looper: Looper, onFix: (LocationFix) -> Unit) {
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000L)
             .setMinUpdateDistanceMeters(0f)
             .setMinUpdateIntervalMillis(1000L)
@@ -61,7 +62,7 @@ class FusedLocationSource(context: Context) : LocationSource {
             }
         }
         callback = cb
-        client.requestLocationUpdates(request, cb, Looper.getMainLooper())
+        client.requestLocationUpdates(request, cb, looper)
         Log.i(LocationSource.TAG, "fused updates started")
     }
 
@@ -77,10 +78,10 @@ class GpsProviderSource(context: Context) : LocationSource {
     private var listener: LocationListener? = null
 
     @SuppressLint("MissingPermission")
-    override fun start(onFix: (LocationFix) -> Unit) {
+    override fun start(looper: Looper, onFix: (LocationFix) -> Unit) {
         val l = LocationListener { location -> onFix(LocationSource.toFix(location)) }
         listener = l
-        manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, l, Looper.getMainLooper())
+        manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, l, looper)
         Log.i(LocationSource.TAG, "GPS_PROVIDER updates started")
     }
 

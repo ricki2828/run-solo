@@ -37,6 +37,10 @@ android {
         abortOnError = true
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
     buildFeatures {
         // BuildConfig.DEBUG gates replay mode and the debug intents (plan §12).
         buildConfig = true
@@ -66,6 +70,15 @@ flutter {
     source = "../.."
 }
 
+// Robolectric unit tests (isIncludeAndroidResources) package the merged assets, which the Flutter
+// plugin writes in copyFlutterAssetsDebug without declaring the dependency; Gradle 9 fails the
+// build on the implicit ordering. Declare it explicitly.
+afterEvaluate {
+    tasks.matching { it.name == "packageDebugUnitTestForUnitTest" }.configureEach {
+        dependsOn(tasks.matching { it.name == "copyFlutterAssetsDebug" })
+    }
+}
+
 dependencies {
     // Pure Kotlin core (journal codec, lap state machine, ...) from the included build
     // android/core-jvm; substituted by coordinates via includeBuild in settings.gradle.kts.
@@ -74,4 +87,7 @@ dependencies {
     // FusedLocationProvider (plan §3); falls back to raw GPS_PROVIDER when GMS is missing.
     // play-services-location does not declare INTERNET (dependency audit, plan §10).
     implementation("com.google.android.gms:play-services-location:21.3.0")
+    // JVM unit tests (StartGuard, and the real RecordingSession under Robolectric); CI runs :app:testDebugUnitTest.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
 }

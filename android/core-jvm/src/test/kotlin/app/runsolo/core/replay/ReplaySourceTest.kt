@@ -127,6 +127,19 @@ class ReplaySourceTest {
     }
 
     @Test
+    fun `the last item is delivered with running already false, so the recorder can auto-stop`() {
+        val s = InstantScheduler()
+        val seen = ArrayList<Boolean>()
+        lateinit var src: ReplaySource
+        src = ReplaySource(TraceFixture.straightLine(listOf(2 to 1.0)), emptyList(), 1.0, s.scheduler, { s.now }, { seen.add(src.running) }, null)
+        src.start()
+        s.pump()
+        assertEquals(listOf(true, true, false), seen)
+        assertEquals(3, src.emitted)
+        assertEquals(src.total, src.emitted)
+    }
+
+    @Test
     fun `stop cancels and nothing more is emitted`() {
         val s = InstantScheduler()
         var n = 0

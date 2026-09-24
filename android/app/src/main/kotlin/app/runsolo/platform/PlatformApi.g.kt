@@ -311,7 +311,17 @@ enum class StartError(val raw: Int) {
    * start, or the permission was revoked between check and start). Nothing
    * was recorded; no run file is written.
    */
-  FGS_NOT_ALLOWED(8);
+  FGS_NOT_ALLOWED(8),
+  /**
+   * A brand-new run failed before recording began (storage, journal open);
+   * its empty journal was discarded. Try again.
+   */
+  START_FAILED(9),
+  /**
+   * `resumeRecovered` failed while reopening the journal. The journal is
+   * untouched and `recover()` will list it again.
+   */
+  RESUME_FAILED(10);
 
   companion object {
     fun ofRaw(raw: Int): StartError? {
