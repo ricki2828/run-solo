@@ -136,6 +136,7 @@ class SyntheticExpectation {
     required this.lapsConsistent,
     required this.interruptedReps,
     required this.toleranceSecPerKm,
+    required this.recoveryToleranceSecPerKm,
     required this.indoor,
     required this.noisy,
     required this.rescueEdits,
@@ -155,6 +156,10 @@ class SyntheticExpectation {
 
   /// How close the engine must land (0.5 for clean traces, wider with jitter).
   final double toleranceSecPerKm;
+
+  /// Recovery pace tolerance. Jitter inflates distance more at slow speed
+  /// (relative inflation grows with σ²/v), so it is wider than the work one.
+  final double recoveryToleranceSecPerKm;
   final bool indoor;
   final bool noisy;
 
@@ -174,6 +179,7 @@ class SyntheticExpectation {
     'laps_consistent': lapsConsistent,
     'interrupted_reps': interruptedReps,
     'tolerance_s_per_km': toleranceSecPerKm,
+    'recovery_tolerance_s_per_km': recoveryToleranceSecPerKm,
     'indoor': indoor,
     'noisy': noisy,
     'rescue_edits': rescueEdits.map((e) => e.toJson()).toList(),
@@ -194,6 +200,8 @@ class SyntheticExpectation {
     lapsConsistent: json['laps_consistent'] as bool,
     interruptedReps: (json['interrupted_reps'] as List).cast<int>(),
     toleranceSecPerKm: (json['tolerance_s_per_km'] as num).toDouble(),
+    recoveryToleranceSecPerKm: (json['recovery_tolerance_s_per_km'] as num)
+        .toDouble(),
     indoor: json['indoor'] as bool,
     noisy: json['noisy'] as bool,
     rescueEdits: (json['rescue_edits'] as List)
@@ -459,6 +467,8 @@ class TraceGenerator {
       headline = 'baselineSet';
     }
 
+    final tolerance =
+        spec.toleranceSecPerKm ?? (spec.jitterSigmaM == 0 ? 0.5 : 6);
     return SyntheticExpectation(
       repCount: works.length,
       repPacesSecPerKm: repPaces,
@@ -468,8 +478,10 @@ class TraceGenerator {
       spreadSecPerKm: spread,
       lapsConsistent: consistent,
       interruptedReps: interrupted,
-      toleranceSecPerKm:
-          spec.toleranceSecPerKm ?? (spec.jitterSigmaM == 0 ? 0.5 : 6),
+      toleranceSecPerKm: tolerance,
+      recoveryToleranceSecPerKm: spec.jitterSigmaM == 0
+          ? tolerance
+          : tolerance * 2,
       indoor: spec.indoor,
       noisy: noisy,
       rescueEdits: rescue,

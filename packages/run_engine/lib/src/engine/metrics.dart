@@ -372,8 +372,9 @@ class MetricsCalculator {
 
   InterruptReason? _interruption(RunFile run, Trace trace, Lap lap) {
     for (final gap in run.gaps) {
-      if (gap.overlaps(lap.t0Ms, lap.t1Ms))
+      if (gap.overlaps(lap.t0Ms, lap.t1Ms)) {
         return InterruptReason.recordingStopped;
+      }
     }
     for (final pause in run.pauses) {
       if (pause.overlaps(lap.t0Ms, lap.t1Ms) &&

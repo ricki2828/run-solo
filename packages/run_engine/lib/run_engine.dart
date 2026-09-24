@@ -15,6 +15,7 @@ export 'src/engine/verdict_builder.dart';
 export 'src/engine_version.dart';
 export 'src/import/gpx_importer.dart';
 export 'src/import/import_dedupe.dart';
+export 'src/import/import_util.dart';
 export 'src/import/tcx_exporter.dart';
 export 'src/import/tcx_importer.dart';
 export 'src/model/run_file.dart';

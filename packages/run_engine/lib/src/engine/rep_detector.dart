@@ -209,6 +209,17 @@ class RepDetector {
     _Window recovery,
     int count,
   ) {
+    final maxReps = preset == null
+        ? EngineConstants.maxReps
+        : (preset.reps + 1).clamp(
+            EngineConstants.minReps,
+            EngineConstants.maxReps,
+          );
+    if (count > maxReps) {
+      return preset != null
+          ? 'Found $count reps, the preset expected ${preset.reps}.'
+          : 'Found $count reps, a 4x4 needs 3 to 6.';
+    }
     var i = laps.indexWhere(work.fits);
     if (i < 0) i = 0;
     var repNo = 0;

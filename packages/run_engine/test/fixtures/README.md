@@ -1,2 +1,30 @@
-Golden fixtures (plan §5): (a) synthetic traces with analytic ground truth from the generator,
-(b) the founder's real 4x4s converted via the TCX/GPX importer. Populated by run-engine-fable.
+# Golden fixtures (plan §5, §12)
+
+Two kinds so the tests are not tautological:
+
+**(a) `synthetic/`** — traces from `TraceGenerator` (`lib/src/synthetic/trace_generator.dart`)
+with analytic ground truth. Each file holds `spec` (name in `SyntheticSpecs.all`), `run`
+(the schema-1 file as the app stores it) and `expected` (rep paces, avg work pace,
+recovery pace, fade, spread, interrupted reps, lap consistency, rescue edits and the
+run-1 headline, all computed from the segment list, never from the engine).
+Regenerate after any generator change with `dart run tool/gen_fixtures.dart`; the drift
+test in `golden_fixtures_test.dart` fails until you do.
+
+| Fixture | Case |
+|---|---|
+| `easy_free_run` | 30 min free run, HR |
+| `four_by_four_manual_clean[_hr]` | by-feel 4x4, manual laps, no preset, per-rep speeds differ (fade 6 s) |
+| `four_by_four_missed_press` | rep 2 work/recovery merged by a missed LAP; `rescue_edits` splits it |
+| `preset_4x4_auto_standard` / `preset_4x4_manual_standard` | same trace, auto vs manual laps → identical verdict |
+| `preset_3x4_recovery_2_00`, `preset_4x4_recovery_3_30`, `preset_6x4_recovery_5_00` | every recovery boundary and rep bound (§17 B5) |
+| `preset_5x4_recovery_2_00_missing_final_recovery` | last recovery missing is tolerated |
+| `gps_dropout_rep2`, `pause_mid_rep3`, `kill_resume_gap_rep2` | one `interrupted` rep each → NO VERDICT |
+| `noisy_gps_phone_jitter` | 3 m AR(1) jitter, 5 % bad-accuracy samples: verdict still given, wider tolerance |
+| `very_noisy_gps_no_verdict` | 35 % bad-accuracy → `noisy`, no verdict |
+| `treadmill_indoor` | no fixes → INDOOR RUN, HR only |
+| `four_by_four_no_laps_speed_fallback` | no laps → reps from the speed stream |
+| `preset_work_cut_short_inconsistent` | rep 2 at 3:20 → `lapsInconsistent` with the fix-laps copy |
+
+**(b) `real/`** — the founder's 4x4s converted via `TcxImporter`/`GpxImporter`, checked
+against an independent reading (stopwatch / second-device splits). Not yet populated:
+needs the first real runs (plan §13 P0 verify).

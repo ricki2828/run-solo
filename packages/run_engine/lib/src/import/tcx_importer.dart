@@ -49,8 +49,9 @@ class TcxImporter {
         );
       }
     }
-    if (points.isEmpty)
+    if (points.isEmpty) {
       throw ImportFormatException('no <Trackpoint> with Time');
+    }
     points.sort((a, b) => a.time.compareTo(b.time));
     final start = points.first.time;
     final samples = buildSamples(points, start);
@@ -62,8 +63,9 @@ class TcxImporter {
       final startText = el.getAttribute('StartTime');
       final lapStart = startText == null ? null : DateTime.tryParse(startText);
       final total = _num(el.getElement('TotalTimeSeconds'));
-      if (lapStart == null)
+      if (lapStart == null) {
         throw ImportFormatException('lap $i has no StartTime');
+      }
       var t0 = lapStart.toUtc().difference(start).inMilliseconds;
       if (t0 < 0) t0 = 0;
       int t1;

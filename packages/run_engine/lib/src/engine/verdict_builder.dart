@@ -337,8 +337,9 @@ class VerdictBuilder {
     final was = last.timeInZoneSeconds;
     if (was == null) return _timeInZoneOf(m);
     final diff = (tiz - was).round();
-    if (diff == 0)
+    if (diff == 0) {
       return 'Time in zone ${PaceFormat.mmss(tiz)}, same as last time.';
+    }
     return 'Time in zone ${PaceFormat.mmss(tiz)}, ${diff > 0 ? 'up' : 'down'} '
         '${PaceFormat.seconds(diff.toDouble())}.';
   }
