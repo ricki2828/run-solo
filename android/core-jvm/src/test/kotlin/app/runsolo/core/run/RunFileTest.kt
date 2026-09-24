@@ -44,7 +44,7 @@ class RunFileTest {
         assertEquals(20_000, f.laps[1].t0)
         assertEquals(50_000, f.laps[1].t1)
         assertEquals(LapKind.manual, f.laps[1].kind)
-        assertEquals(57.0, f.laps[0].d1, 0.5) // 20 steps, the first anchors
+        assertEquals(60.0, f.laps[0].d1, 0.5) // 20 steps; the candidate at t=0 is confirmed by t=1, so that step counts
         assertEquals(132.0, f.laps[1].d1, 1.0) // 5 paused steps excluded, one step re-anchors after resume
         assertEquals(f.laps[0].d1, f.laps[1].d0)
         assertEquals(1, f.pauses.size)
