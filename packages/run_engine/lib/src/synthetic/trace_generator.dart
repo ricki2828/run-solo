@@ -63,6 +63,8 @@ class SyntheticSpec {
     this.badAccuracyShare = 0,
     this.dropouts = const [],
     this.pauses = const [],
+    this.moveWhilePausedMps = 0,
+    this.samplesDuringPause = false,
     this.gaps = const [],
     this.hr = false,
     this.hrStep = false,
@@ -102,8 +104,16 @@ class SyntheticSpec {
   /// Spans (ms) with no samples at all, e.g. a tunnel.
   final List<Span> dropouts;
 
-  /// Spans (ms) the runner paused; no samples, written to `pauses[]`.
+  /// Spans (ms) the runner paused; written to `pauses[]`. By default a
+  /// standstill with no samples.
   final List<Span> pauses;
+
+  /// Ground covered per second while paused (walking across a road).
+  final double moveWhilePausedMps;
+
+  /// Emit samples during pauses with `dist` still accumulating: the shape
+  /// of a writer that does not freeze distance while paused.
+  final bool samplesDuringPause;
 
   /// Spans (ms) the process was dead; no samples, written to `gaps[]`.
   final List<Span> gaps;
@@ -293,8 +303,10 @@ class TraceGenerator {
         final segEnd = t + seg.ms;
         final upto = tMs < segEnd ? tMs : segEnd;
         if (upto > t) {
-          final moving = (upto - t) - (pausedBefore(upto) - pausedBefore(t));
+          final paused = pausedBefore(upto) - pausedBefore(t);
+          final moving = (upto - t) - paused;
           d += seg.speedMps * moving / 1000;
+          d += spec.moveWhilePausedMps * paused / 1000;
         }
         if (tMs <= segEnd) return d;
         t = segEnd;
@@ -304,7 +316,8 @@ class TraceGenerator {
 
     bool silent(int tMs) =>
         spec.dropouts.any((s) => tMs >= s.t0Ms && tMs < s.t1Ms) ||
-        spec.pauses.any((s) => tMs >= s.t0Ms && tMs < s.t1Ms) ||
+        (!spec.samplesDuringPause &&
+            spec.pauses.any((s) => tMs >= s.t0Ms && tMs < s.t1Ms)) ||
         spec.gaps.any((s) => tMs >= s.t0Ms && tMs < s.t1Ms);
 
     final samples = <Sample>[];
@@ -926,6 +939,35 @@ class SyntheticSpecs {
       id: _id(30),
       preset: Preset.standard,
       gpsLagMs: 12000,
+      segments: fourByFour(),
+    ),
+    // --- review round 3: warm-up / truncated final recovery are never
+    // phases (P2-13); ground covered while paused is excluded (P2-14).
+    SyntheticSpec(
+      name: 'warmup_2_15_clean',
+      id: _id(32),
+      preset: Preset.standard,
+      segments: fourByFour(warmupS: 135),
+    ),
+    SyntheticSpec(
+      name: 'final_recovery_truncated_2_20',
+      id: _id(33),
+      preset: Preset.standard,
+      segments: [
+        ...fourByFour(cooldownS: 0).sublist(0, 8),
+        const Segment.recovery(140, _rec),
+      ],
+    ),
+    SyntheticSpec(
+      name: 'pause_moved_while_paused',
+      id: _id(34),
+      preset: Preset.standard,
+      pauses: const [Span(1400000, 1420000)],
+      moveWhilePausedMps: 1.2,
+      samplesDuringPause: true,
+      // GPS lag puts ~3 s of pre-pause running inside the pause span, which
+      // this writer shape cannot separate from the walking; 5 s/km covers it.
+      toleranceSecPerKm: 5,
       segments: fourByFour(),
     ),
     // --- HR step profile with analytic zone time and m/beat.

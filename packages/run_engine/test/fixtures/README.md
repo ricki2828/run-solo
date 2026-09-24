@@ -30,6 +30,11 @@ test in `golden_fixtures_test.dart` fails until you do.
 | `pause_8s_in_rep3`, `pause_15s_in_rep3` | short pauses: standstill excluded from pace, never "GPS dropped" |
 | `gps_lag_12s` | lag equal to the trim: exact only because the trim exists |
 | `preset_4x4_hr_step` | step HR profile with analytic mean/peak HR, zone time and m/beat |
+| `warmup_2_15_clean`, `final_recovery_truncated_2_20` | a short warm-up / a run ending inside the final recovery are never phases |
+| `pause_moved_while_paused` | writer that kept accumulating dist while the runner walked during a pause; excluded |
+
+**`contract/`** — real Kotlin `RunFile.fromReplay` output copied verbatim from
+`android/core-jvm/src/test/fixtures/contract/` (CI `cmp`s the two copies).
 
 **(b) `real/`** — the founder's 4x4s converted via `TcxImporter`/`GpxImporter`, checked
 against an independent reading (stopwatch / second-device splits). Not yet populated:

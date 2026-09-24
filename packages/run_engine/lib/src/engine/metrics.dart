@@ -44,6 +44,8 @@ class RepMetrics {
     required this.paceSecPerKm,
     required this.interrupted,
     this.interruptReason,
+    this.dropped = false,
+    this.outsideWindow = false,
     this.meanHr,
     this.peakHr,
     this.zoneSeconds,
@@ -67,6 +69,12 @@ class RepMetrics {
   final double? paceSecPerKm;
   final bool interrupted;
   final InterruptReason? interruptReason;
+
+  /// Excluded by a fix-laps `drop` (shown greyed like an interrupted rep).
+  final bool dropped;
+
+  /// Accepted by a fix-laps `keep` although outside the preset window.
+  final bool outsideWindow;
   final double? meanHr;
   final int? peakHr;
 
@@ -81,7 +89,7 @@ class RepMetrics {
 
   /// Moving seconds in the trimmed window (paused time excluded).
   double get trimmedSeconds => (trimmedT1Ms - trimmedT0Ms - pausedMs) / 1000;
-  bool get clean => !interrupted && paceSecPerKm != null;
+  bool get clean => !interrupted && !dropped && paceSecPerKm != null;
 }
 
 class RecoveryMetrics {
@@ -90,12 +98,16 @@ class RecoveryMetrics {
     required this.lap,
     required this.paceSecPerKm,
     this.meanHr,
+    this.dropped = false,
   });
 
   final int number;
   final Lap lap;
   final double? paceSecPerKm;
   final double? meanHr;
+
+  /// Excluded by a fix-laps `drop`.
+  final bool dropped;
 }
 
 /// 4x4 metrics (plan §5). Aggregates use clean reps only.
@@ -153,6 +165,8 @@ class FourByFourMetrics {
 
   int get cleanRepCount => reps.where((r) => r.clean).length;
   bool get allRepsClean => reps.isNotEmpty && cleanRepCount == reps.length;
+  bool get hasInterrupted => reps.any((r) => r.interrupted);
+  int get droppedRepCount => reps.where((r) => r.dropped).length;
 }
 
 /// Free run summary (plan §5): distance, moving time, avg pace, splits, HR.
@@ -205,8 +219,13 @@ class MetricsCalculator {
         t0 = lap.t0Ms;
         t1 = lap.t1Ms;
       }
-      final d = trace.distAt(t1) - trace.distAt(t0);
       final pausedMs = _pausedWithin(run, t0, t1);
+      // Paused time AND any ground covered while paused come out together,
+      // so walking across a road during a pause cannot make the rep faster.
+      final d =
+          trace.distAt(t1) -
+          trace.distAt(t0) -
+          _pausedDistWithin(run, trace, t0, t1);
       final seconds = (t1 - t0 - pausedMs) / 1000;
       final pace = d <= 0 || seconds <= 0 ? null : seconds / d * 1000;
       final reason = _interruption(run, trace, lap);
@@ -235,6 +254,8 @@ class MetricsCalculator {
           paceSecPerKm: pace,
           interrupted: reason != null,
           interruptReason: reason,
+          dropped: rep.workDropped,
+          outsideWindow: rep.workOutsideWindow,
           meanHr: meanHr,
           peakHr: hrPresent ? trace.peakHr(lap.t0Ms, lap.t1Ms) : null,
           zoneSeconds: zone,
@@ -250,7 +271,10 @@ class MetricsCalculator {
           r0 = rec.t0Ms;
           r1 = rec.t1Ms;
         }
-        final rd = trace.distAt(r1) - trace.distAt(r0);
+        final rd =
+            trace.distAt(r1) -
+            trace.distAt(r0) -
+            _pausedDistWithin(run, trace, r0, r1);
         final rs = (r1 - r0 - _pausedWithin(run, r0, r1)) / 1000;
         recoveries.add(
           RecoveryMetrics(
@@ -258,6 +282,7 @@ class MetricsCalculator {
             lap: rec,
             paceSecPerKm: rd <= 0 || rs <= 0 ? null : rs / rd * 1000,
             meanHr: hrPresent ? trace.meanHr(rec.t0Ms, rec.t1Ms) : null,
+            dropped: rep.recoveryDropped,
           ),
         );
       }
@@ -280,7 +305,17 @@ class MetricsCalculator {
       spread =
           paces.reduce((a, b) => a > b ? a : b) -
           paces.reduce((a, b) => a < b ? a : b);
-      fade = paces.last - paces.first;
+      // Fade compares first and last full reps: a kept rep under half the
+      // expected length (a bail-out) would only measure how short it was.
+      final expectedWorkMs =
+          (run.preset?.workSeconds ?? EngineConstants.byFeelWorkMinMs ~/ 1000) *
+          1000;
+      final full = clean
+          .where((r) => r.lap.durationMs >= expectedWorkMs * 0.5)
+          .toList();
+      fade = full.length >= 2
+          ? full.last.paceSecPerKm! - full.first.paceSecPerKm!
+          : null;
     }
     for (final r in reps) {
       workDistance += r.lap.distanceM;
@@ -291,7 +326,9 @@ class MetricsCalculator {
     );
 
     double? recoveryPace;
-    final recWithPace = recoveries.where((r) => r.paceSecPerKm != null);
+    final recWithPace = recoveries.where(
+      (r) => r.paceSecPerKm != null && !r.dropped,
+    );
     if (recWithPace.isNotEmpty) {
       var dist = 0.0;
       var secs = 0.0;
@@ -411,6 +448,27 @@ class MetricsCalculator {
       return InterruptReason.gpsDropped;
     }
     return null;
+  }
+
+  /// Distance the recorder accumulated on samples written *inside* pause
+  /// spans overlapping `[aMs, bMs]`: zero when the writer froze `dist` or
+  /// wrote no samples while paused (a silent pause must not have the
+  /// lagged pre-pause running interpolated into it and taken away).
+  static double _pausedDistWithin(RunFile run, Trace trace, int aMs, int bMs) {
+    var total = 0.0;
+    for (final p in run.pauses) {
+      final lo = p.t0Ms > aMs ? p.t0Ms : aMs;
+      final hi = p.t1Ms < bMs ? p.t1Ms : bMs;
+      if (hi <= lo) continue;
+      Sample? first;
+      Sample? last;
+      for (final s in trace.between(lo, hi)) {
+        first ??= s;
+        last = s;
+      }
+      if (first != null && last != null) total += last.distM - first.distM;
+    }
+    return total < 0 ? 0 : total;
   }
 
   static int _pausedWithin(RunFile run, int aMs, int bMs) {

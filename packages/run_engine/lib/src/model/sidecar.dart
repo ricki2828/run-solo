@@ -4,22 +4,35 @@ import '../run_mode.dart';
 import 'run_file.dart';
 import 'verdict.dart';
 
-/// A fix-laps edit (plan §5): merge lap `index` with the one after it, or
-/// split lap `index` at `atMs` (ms since run start). Applied in order to the
-/// recorded laps before detection.
-class LapEdit {
-  const LapEdit.merge(this.index) : atMs = null;
-  const LapEdit.split(this.index, int this.atMs);
+enum LapEditOp { merge, split, keep, drop }
 
+/// A fix-laps edit (plan §5, §6 "Keep it, merge it, or drop it?"), indexed
+/// against `RepDetection.laps` and applied in order before detection:
+/// - `merge`: join lap `index` with the one after it;
+/// - `split`: cut lap `index` at `atMs` (ms since run start);
+/// - `keep`: accept lap `index` as its phase even outside the preset window
+///   (a 3:20 last rep stays a rep; it is marked `outsideWindow`);
+/// - `drop`: accept it as its phase but exclude it from every metric and
+///   from the verdict, like an interrupted rep the runner chose to discard.
+class LapEdit {
+  const LapEdit.merge(this.index) : op = LapEditOp.merge, atMs = null;
+  const LapEdit.split(this.index, int this.atMs) : op = LapEditOp.split;
+  const LapEdit.keep(this.index) : op = LapEditOp.keep, atMs = null;
+  const LapEdit.drop(this.index) : op = LapEditOp.drop, atMs = null;
+
+  final LapEditOp op;
   final int index;
   final int? atMs;
 
-  bool get isMerge => atMs == null;
+  bool get isMerge => op == LapEditOp.merge;
+  bool get isSplit => op == LapEditOp.split;
+  bool get isKeep => op == LapEditOp.keep;
+  bool get isDrop => op == LapEditOp.drop;
 
   Map<String, Object?> toJson() => {
-    'op': isMerge ? 'merge' : 'split',
+    'op': op.name,
     'index': index,
-    if (!isMerge) 'at': atMs,
+    if (isSplit) 'at': atMs,
   };
 
   factory LapEdit.fromJson(Map<String, Object?> json) {
@@ -31,17 +44,26 @@ class LapEdit {
         return LapEdit.merge(index);
       case 'split':
         return LapEdit.split(index, readIntField(json, 'at'));
+      case 'keep':
+        return LapEdit.keep(index);
+      case 'drop':
+        return LapEdit.drop(index);
       default:
-        throw RunFileFormatException('lap_edit.op must be merge|split');
+        throw RunFileFormatException(
+          'lap_edit.op must be merge|split|keep|drop',
+        );
     }
   }
 
   @override
   bool operator ==(Object other) =>
-      other is LapEdit && other.index == index && other.atMs == atMs;
+      other is LapEdit &&
+      other.op == op &&
+      other.index == index &&
+      other.atMs == atMs;
 
   @override
-  int get hashCode => Object.hash(index, atMs);
+  int get hashCode => Object.hash(op, index, atMs);
 }
 
 /// `run-<uuid>.edits.json` (plan §4): every user-authored or frozen fact

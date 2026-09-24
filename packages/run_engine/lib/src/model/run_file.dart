@@ -11,6 +11,13 @@ class RunFileFormatException implements Exception {
   String toString() => 'RunFileFormatException: $message';
 }
 
+/// The file was written by a newer app (schema above 1 or a key this
+/// version does not know). The import screen should say "made by a newer
+/// version", not "malformed".
+class RunFileNewerVersionException extends RunFileFormatException {
+  RunFileNewerVersionException(super.message);
+}
+
 /// Distance units chosen at Start; only affects display, never storage.
 enum Units { km, mi }
 
@@ -375,14 +382,20 @@ class RunFile {
   };
 
   factory RunFile.fromJson(Map<String, Object?> json) {
-    if (json['schema'] != schema) {
+    final schemaValue = json['schema'];
+    if (schemaValue is int && schemaValue > schema) {
+      throw RunFileNewerVersionException(
+        'schema $schemaValue is newer than $schema',
+      );
+    }
+    if (schemaValue != schema) {
       throw RunFileFormatException('schema must be $schema');
     }
     // Strict: an unknown key means a newer writer; refuse rather than drop
     // it silently (the store keeps the original bytes for export anyway).
     for (final k in json.keys) {
       if (!_keys.contains(k)) {
-        throw RunFileFormatException('unknown key "$k"');
+        throw RunFileNewerVersionException('unknown key "$k"');
       }
     }
     final id = _readString(json, 'id');

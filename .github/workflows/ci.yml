@@ -49,6 +49,14 @@ jobs:
       - name: run_engine tests
         working-directory: packages/run_engine
         run: dart test
+      - name: Kotlin→Dart contract fixtures are identical copies
+        # core-jvm writes them from the real recording path; run_engine
+        # tests them. A drift on either side fails here (review P1-4).
+        run: |
+          shopt -s nullglob
+          for f in android/core-jvm/src/test/fixtures/contract/*.json; do
+            cmp "$f" "packages/run_engine/test/fixtures/contract/$(basename "$f")"
+          done
 
   core-jvm:
     name: core-jvm tests (pure Kotlin)

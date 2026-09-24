@@ -33,6 +33,12 @@ void main() {
       final run = load('four_by_four_preset_auto_hr');
       expect(run.preset, Preset.standard);
       expect(run.laps.length, 10);
+      expect(run.samples.length, 1800);
+      expect(
+        run.samples.first.tMs,
+        1000,
+        reason: 'recording starts at second 1',
+      );
       expect(run.laps.where((l) => l.kind == LapKind.auto).length, 8);
       expect(run.laps.first.kind, LapKind.manual);
       final a = engine.analyze(
@@ -56,7 +62,10 @@ void main() {
       expect(m.recoveryPaceSecPerKm, closeTo(500, 1));
       expect(
         m.timeInZoneSeconds,
-        closeTo(960, 1),
+        closeTo(
+          956,
+          0.5,
+        ), // each rep's first tick carries the previous phase HR
         reason: '165-169 is 89-91% of 185',
       );
       expect(a.verdict!.headline, VerdictHeadline.baselineSet);
@@ -64,7 +73,7 @@ void main() {
         a.verdict!.subline,
         '3:58/km work pace. Reps within 0 s of each other. Recovery 8:21. Next 4x4 gets a verdict.',
       );
-      expect(a.verdict!.hrLine, 'Time in zone 16:00 of 16:00.');
+      expect(a.verdict!.hrLine, 'Time in zone 15:56 of 16:00.');
       expect(a.eligibleAsPrior, isTrue);
     },
   );
@@ -104,13 +113,17 @@ void main() {
     expect(noFix.map((s) => s.distM).toSet().length, 1, reason: 'dist repeats');
     expect(noFix.every((s) => s.hr == 150), isTrue);
     final t = Trace(run.samples);
-    expect(t.fixShare(), closeTo(315 / 361, 0.01));
+    expect(t.fixShare(), closeTo(314 / 360, 0.01));
     // Quality counts the no-fix ticks as bad samples but the run is not noisy.
     final a = engine.analyze(run, now: fixedNow);
     expect(a.indoor, isFalse);
     expect(a.noisy, isFalse);
-    expect(a.gpsQuality, closeTo(315 / 361, 0.01));
-    expect(a.freeRun.distanceM, closeTo(1078.8, 0.1));
+    expect(a.gpsQuality, closeTo(314 / 360, 0.01));
+    expect(
+      a.freeRun.distanceM,
+      closeTo(1075.8, 0.5),
+      reason: 'anchored on the second fix',
+    );
     // The 45 s hole is a sample gap for any rep it sits in: forced to 4x4
     // the speed fallback finds no pattern (constant 3 m/s), no throw.
     final forced = engine.analyze(
@@ -130,8 +143,15 @@ void main() {
     expect(a.verdict, isNull);
     expect(a.freeRun.elapsedSeconds, 540);
     expect(a.freeRun.movingSeconds, 520);
-    expect(a.freeRun.distanceM, closeTo(1558.2, 0.1));
-    expect(a.freeRun.avgPaceSecPerKm, closeTo(520 / 1.5582, 0.5));
+    expect(a.freeRun.distanceM, closeTo(1552.3, 0.5));
+    expect(a.freeRun.avgPaceSecPerKm, closeTo(520 / 1.5523, 0.5));
+    // Dist is frozen through the pause (P2-14 on the Kotlin side); the
+    // samples are still there with a fix.
+    final paused = run.samples
+        .where((s) => s.tMs >= 270000 && s.tMs <= 290000)
+        .toList();
+    expect(paused.every((s) => s.hasFix), isTrue);
+    expect(paused.map((s) => s.distM).toSet().length, 1);
     expect(a.freeRun.splitsSecPerUnit.length, 1);
     expect(a.freeRun.avgHr, isNull);
   });

@@ -261,7 +261,7 @@ void main() {
           'schema': 1,
           'run_id': sidecar.runId,
           'lap_edits': [
-            {'op': 'drop', 'index': 1},
+            {'op': 'erase', 'index': 1},
           ],
         }),
         throwsA(isA<RunFileFormatException>()),

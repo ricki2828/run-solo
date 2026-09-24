@@ -131,7 +131,7 @@ class VerdictBuilder {
         'GPS too noisy to compare. Reps shown, run not counted.',
       );
     }
-    if (!metrics.allRepsClean) {
+    if (metrics.hasInterrupted) {
       final first = metrics.reps.firstWhere((r) => r.interrupted);
       final reason = switch (first.interruptReason!) {
         InterruptReason.gpsDropped => 'GPS dropped',
@@ -145,6 +145,21 @@ class VerdictBuilder {
         VerdictHeadline.noVerdict,
         '$reason in rep ${first.number}. $cleanWord clean $repsWord not enough '
         'to compare.',
+      );
+    }
+
+    if (metrics.cleanRepCount < EngineConstants.minReps) {
+      // Only reachable through fix-laps `drop`: too few reps left to compare.
+      final droppedNumbers = metrics.reps
+          .where((r) => r.dropped)
+          .map((r) => r.number)
+          .join(', ');
+      final clean = metrics.cleanRepCount;
+      final repsWord = clean == 1 ? 'rep is' : 'reps are';
+      return none(
+        VerdictHeadline.noVerdict,
+        'Rep $droppedNumbers dropped. ${PaceFormat.countWord(clean)} clean '
+        '$repsWord not enough to compare.',
       );
     }
 

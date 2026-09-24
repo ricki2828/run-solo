@@ -5,12 +5,28 @@ import 'trace.dart';
 /// One detected rep: the work lap and, unless it was the last rep with the
 /// final recovery missing, the recovery lap that followed it.
 class DetectedRep {
-  const DetectedRep({required this.number, required this.work, this.recovery});
+  const DetectedRep({
+    required this.number,
+    required this.work,
+    this.recovery,
+    this.workDropped = false,
+    this.recoveryDropped = false,
+    this.workOutsideWindow = false,
+    this.recoveryOutsideWindow = false,
+  });
 
   /// 1-based, as shown in the UI ("Rep 1..4").
   final int number;
   final Lap work;
   final Lap? recovery;
+
+  /// The user dropped this phase (fix-laps `drop`): excluded from metrics.
+  final bool workDropped;
+  final bool recoveryDropped;
+
+  /// Accepted by a `keep`/`drop` edit although outside the preset window.
+  final bool workOutsideWindow;
+  final bool recoveryOutsideWindow;
 }
 
 /// Why the recorded laps do not form a 4x4 (plan §5 `lapsInconsistent`).
@@ -76,6 +92,11 @@ class RepDetector {
   /// Pauses of the run being detected: lap speed uses moving time so a rep
   /// with a standstill inside it still reads as work.
   List<Span> _pauses = const [];
+  Set<int> _accepted = const {};
+  Set<int> _dropped = const {};
+
+  bool _fits(_Window w, Lap lap) =>
+      w.fits(lap) || _accepted.contains(lap.index);
 
   /// Recorded laps with `pause` laps dropped and indices renumbered to list
   /// position. This is the coordinate system fix-laps edits use.
@@ -94,13 +115,19 @@ class RepDetector {
 
   /// Detects reps from [laps] (already pause-free and renumbered, see
   /// [editableLaps]; derived from speed when [fromSpeed]).
+  /// [accepted] laps bypass the window check (fix-laps keep/drop);
+  /// [dropped] ones are also marked excluded on the detected rep.
   RepDetection detect(
     List<Lap> laps,
     Preset? preset, {
     required bool fromSpeed,
     List<Span> pauses = const [],
+    Set<int> accepted = const {},
+    Set<int> dropped = const {},
   }) {
     _pauses = pauses;
+    _accepted = accepted;
+    _dropped = dropped;
     if (laps.length < 2) {
       return RepDetection(
         warmup: laps,
@@ -161,11 +188,11 @@ class RepDetector {
     for (var s = 0; s < laps.length; s++) {
       final reps = <DetectedRep>[];
       var i = s;
-      while (i < laps.length && work.fits(laps[i])) {
+      while (i < laps.length && _fits(work, laps[i])) {
         final w = laps[i];
         Lap? r;
         if (i + 1 < laps.length &&
-            recovery.fits(laps[i + 1]) &&
+            _fits(recovery, laps[i + 1]) &&
             _speed(w) >=
                 constants.workVsRecoveryMinRatio * _speed(laps[i + 1])) {
           r = laps[i + 1];
@@ -179,7 +206,17 @@ class RepDetector {
             break;
           }
         }
-        reps.add(DetectedRep(number: reps.length + 1, work: w, recovery: r));
+        reps.add(
+          DetectedRep(
+            number: reps.length + 1,
+            work: w,
+            recovery: r,
+            workDropped: _dropped.contains(w.index),
+            recoveryDropped: r != null && _dropped.contains(r.index),
+            workOutsideWindow: !work.fits(w),
+            recoveryOutsideWindow: r != null && !recovery.fits(r),
+          ),
+        );
         if (r == null) {
           i += 1;
           break;
@@ -283,13 +320,16 @@ class RepDetector {
       expectWork = !expectWork;
     }
     final before = chain.reversed.toList();
+    // A recovery-like lap with no work lap before it is a warm-up (a 2:15
+    // warm-up is not "Recovery 0").
+    if (before.isNotEmpty && !before.first.$2) before.removeAt(0);
     var repNo = 0;
     for (final (lap, isWork) in before) {
       if (isWork) repNo++;
-      if (isWork && !work.fits(lap)) {
+      if (isWork && !_fits(work, lap)) {
         return _phaseDetail('Rep $repNo', lap, preset?.workSeconds);
       }
-      if (!isWork && !recovery.fits(lap)) {
+      if (!isWork && !_fits(recovery, lap)) {
         return _phaseDetail('Recovery $repNo', lap, preset?.recoverySeconds);
       }
     }
@@ -304,12 +344,16 @@ class RepDetector {
       if (expectWork) {
         if (!workLike(lap)) break;
         repNo++;
-        if (!work.fits(lap)) {
+        if (!_fits(work, lap)) {
           return _phaseDetail('Rep $repNo', lap, preset?.workSeconds);
         }
       } else {
         if (!recoveryLike(lap)) break;
-        if (!recovery.fits(lap)) {
+        // The run ending inside the final recovery is a cool-down by
+        // definition (§5 tolerates a missing final recovery, so a truncated
+        // one is tolerated too).
+        if (i == laps.length - 1) break;
+        if (!_fits(recovery, lap)) {
           return _phaseDetail('Recovery $repNo', lap, preset?.recoverySeconds);
         }
       }
@@ -346,20 +390,20 @@ class RepDetector {
           ? 'Found $count reps, the preset expected ${preset.reps}.'
           : 'Found $count reps, a 4x4 needs 3 to 6.';
     }
-    var i = laps.indexWhere(work.fits);
+    var i = laps.indexWhere((l) => _fits(work, l));
     if (i < 0) i = 0;
     var repNo = 0;
     var expectWork = true;
     while (i < laps.length) {
       final lap = laps[i];
       if (expectWork) {
-        if (!work.fits(lap)) {
+        if (!_fits(work, lap)) {
           return _phaseDetail('Rep ${repNo + 1}', lap, preset?.workSeconds);
         }
         repNo++;
         if (repNo > EngineConstants.maxReps) break;
       } else {
-        if (!recovery.fits(lap)) {
+        if (!_fits(recovery, lap)) {
           return _phaseDetail('Recovery $repNo', lap, preset?.recoverySeconds);
         }
         final prevWork = laps[i - 1];

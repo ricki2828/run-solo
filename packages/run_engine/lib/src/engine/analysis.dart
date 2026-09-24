@@ -64,7 +64,8 @@ class RunAnalysis {
   bool get lapsInconsistent => detection != null && !detection!.consistent;
 
   /// Whether this run may serve as a prior for later verdicts: a 4x4 with a
-  /// pace verdict path (not indoor, not noisy, laps consistent, all reps clean).
+  /// pace verdict path (not indoor, not noisy, laps consistent, no rep
+  /// interrupted, at least three clean reps after any drops).
   bool get eligibleAsPrior =>
       mode == RunMode.fourByFour &&
       !indoor &&
@@ -72,7 +73,8 @@ class RunAnalysis {
       detection != null &&
       detection!.consistent &&
       fourByFour != null &&
-      fourByFour!.allRepsClean;
+      !fourByFour!.hasInterrupted &&
+      fourByFour!.cleanRepCount >= EngineConstants.minReps;
 
   /// This run as a comparison input for later runs, or null if ineligible.
   PriorRun? asPrior(DateTime start) => fourByFour == null
@@ -141,19 +143,21 @@ class RunEngine {
     final fromSpeed = RepDetector.needsSpeedFallback(editable);
     final base = fromSpeed ? detector.deriveLapsFromSpeed(trace) : editable;
     final edits = sidecar?.lapEdits ?? const <LapEdit>[];
-    List<Lap> laps;
+    EditedLaps edited;
     var lapEditsInvalid = false;
     try {
-      laps = applyLapEdits(base, edits, trace);
+      edited = applyLapEditsWithMarks(base, edits, trace);
     } on LapEditException {
-      laps = base;
+      edited = EditedLaps(laps: base, kept: const {}, dropped: const {});
       lapEditsInvalid = true;
     }
     final detection = detector.detect(
-      laps,
+      edited.laps,
       run.preset,
       fromSpeed: fromSpeed,
       pauses: run.pauses,
+      accepted: edited.accepted,
+      dropped: edited.dropped,
     );
     final metrics = calc.fourByFour(run, detection, trace, profile);
 
