@@ -34,8 +34,10 @@ import java.util.UUID
  * suppresses unfiltered scans screen-off). At run start an existing link is kept, otherwise a
  * direct `connectGatt(autoConnect = false)`; after a drop `autoConnect = true` (passive, OS
  * managed). `gatt.close()` always precedes a reconnect (GATT 133 leak). "Connected" is reported
- * only once notifications are enabled (the CCCD write succeeded); a failed discovery or CCCD
- * write is retried once, then the link is closed and reconnected. Whoop broadcast is a
+ * only once notifications are enabled (the CCCD write succeeded) AND the first measurement
+ * has arrived — a link that never delivers is not a working strap; a failed discovery or CCCD
+ * write is retried once, then the link is closed and reconnected, and a link that stays silent
+ * for [SILENT_LINK_MS] after setup is treated the same way. Whoop broadcast is a
  * standard HR-profile peripheral; its contact bits are a Phase 1 device-test item.
  *
  * Readings go to [listener] with `t = elapsedRealtime` at receipt; a no-contact packet is
@@ -57,9 +59,11 @@ class BleHrClient(context: Context) {
     private var gatt: BluetoothGatt? = null
     private var pendingReconnect: Runnable? = null
     private var setupRetried = false
+    private var notificationsOn = false
+    private var silentWatchdog: Runnable? = null
     var listener: Listener? = null
 
-    /** Notifications enabled on the HR characteristic (not merely a GATT link). */
+    /** Notifications enabled AND at least one measurement received (not merely a GATT link). */
     var connected: Boolean = false
         private set
     var lastHr: Int? = null
@@ -227,10 +231,30 @@ class BleHrClient(context: Context) {
     }
 
     private fun setConnected(v: Boolean) {
+        if (!v) {
+            notificationsOn = false
+            cancelWatchdog()
+        }
         if (connected == v) return
         connected = v
         if (!v) lastHr = null
         listener?.onLink(v)
+    }
+
+    private fun cancelWatchdog() {
+        silentWatchdog?.let { main.removeCallbacks(it) }
+        silentWatchdog = null
+    }
+
+    /** Notifications are on but nothing arrived: drop and reconnect rather than sit "connected" with no HR. */
+    private fun armWatchdog(g: BluetoothGatt) {
+        cancelWatchdog()
+        val r = Runnable {
+            silentWatchdog = null
+            if (g === gatt && !connected) setupFailed(g, "silent link")
+        }
+        silentWatchdog = r
+        main.postDelayed(r, SILENT_LINK_MS)
     }
 
     /** Discovery or CCCD failed: retry once, then treat as a drop (close + reconnect). */
@@ -297,9 +321,9 @@ class BleHrClient(context: Context) {
             main.post {
                 if (g !== gatt || descriptor.uuid != CCCD) return@post
                 if (status == BluetoothGatt.GATT_SUCCESS) {
-                    policy.onConnected(SystemClock.elapsedRealtime())
-                    setConnected(true)
-                    Log.i(TAG, "HR notifications on")
+                    notificationsOn = true
+                    armWatchdog(g)
+                    Log.i(TAG, "HR notifications on; waiting for the first measurement")
                 } else {
                     setupFailed(g, "cccd write status=$status")
                 }
@@ -327,6 +351,12 @@ class BleHrClient(context: Context) {
         val t = SystemClock.elapsedRealtime()
         main.post {
             if (g !== gatt) return@post
+            if (notificationsOn && !connected) {
+                cancelWatchdog()
+                policy.onConnected(SystemClock.elapsedRealtime())
+                setConnected(true)
+                Log.i(TAG, "first measurement received; strap connected")
+            }
             val bpm = parsed.bpm
             lastHr = bpm
             if (bpm == null) listener?.onNoContact() else listener?.onReading(HrReading(t, bpm))
@@ -344,6 +374,7 @@ class BleHrClient(context: Context) {
         private const val TAG = "RunSolo/ble"
         private const val KEY_ADDRESS = "address"
         private const val KEY_NAME = "name"
+        private const val SILENT_LINK_MS = 15_000L
         val HR_SERVICE: UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
         val HR_MEASUREMENT: UUID = UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb")
         val CCCD: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
