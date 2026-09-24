@@ -91,11 +91,21 @@ void main() {
 
       test('preset out of range', () {
         expectRejected(
-          valid()..['preset'] = {'reps': 7, 'work_s': 240, 'recovery_s': 180},
+          valid()
+            ..['preset'] = {
+              'reps': 7,
+              'workSeconds': 240,
+              'recoverySeconds': 180,
+            },
           'reps 7',
         );
         expectRejected(
-          valid()..['preset'] = {'reps': 4, 'work_s': 0, 'recovery_s': 180},
+          valid()
+            ..['preset'] = {
+              'reps': 4,
+              'workSeconds': 0,
+              'recoverySeconds': 180,
+            },
           'work 0',
         );
       });

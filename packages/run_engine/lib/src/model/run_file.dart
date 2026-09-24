@@ -36,14 +36,14 @@ class Preset {
 
   Map<String, Object?> toJson() => {
     'reps': reps,
-    'work_s': workSeconds,
-    'recovery_s': recoverySeconds,
+    'workSeconds': workSeconds,
+    'recoverySeconds': recoverySeconds,
   };
 
   factory Preset.fromJson(Map<String, Object?> json) {
     final reps = _readInt(json, 'reps');
-    final work = _readInt(json, 'work_s');
-    final recovery = _readInt(json, 'recovery_s');
+    final work = _readInt(json, 'workSeconds');
+    final recovery = _readInt(json, 'recoverySeconds');
     if (reps < 3 || reps > 6) {
       throw RunFileFormatException('preset.reps must be 3..6, got $reps');
     }
