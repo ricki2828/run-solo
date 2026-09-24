@@ -100,12 +100,15 @@ class ReplaySource(
             if (!running) return@schedule
             val stamp = tStart + (item.t - t0)
             lastStamp = stamp
+            // Bookkeeping BEFORE the sink call: on the last item the sink (the recorder's tick)
+            // sees `running == false`, so a replay run finishes on its own.
+            emitted++
+            index++
+            if (index >= items.size) running = false
             when (item) {
                 is Item.Loc -> locationSink.onLocation(item.fix.copy(t = stamp))
                 is Item.Hr -> hrSink?.onHr(item.r.copy(t = stamp))
             }
-            emitted++
-            index++
             scheduleNext()
         }
     }

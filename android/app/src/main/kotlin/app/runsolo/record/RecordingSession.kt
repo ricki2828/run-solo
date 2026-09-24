@@ -98,6 +98,9 @@ class RecordingSession(
     var onReplayFinished: (() -> Unit)? = null
 
     val cuesEnabled: Boolean get() = cues.enabled
+
+    /** Wall time since Start (pauses and gaps included) right now; 0 before the core starts. */
+    fun elapsedNowMs(): Long = if (::core.isInitialized) core.status(clock()).elapsedMs else 0L
     val isReplay: Boolean get() = replay != null
 
     private fun clock(): Long = replay?.now() ?: SystemClock.elapsedRealtime()
@@ -320,7 +323,8 @@ class RecordingSession(
             )
         }
         if (r != null && !r.running && t >= r.endT) {
-            Log.i(TAG, "replay finished")
+            // ReplaySource flips running before delivering the last fix, so this is that fix's tick.
+            Log.i(TAG, "replay finished at ${core.status(t).elapsedMs} ms; stopping")
             onReplayFinished?.invoke()
         }
     }

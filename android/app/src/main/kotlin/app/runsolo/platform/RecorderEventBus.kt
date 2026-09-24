@@ -2,12 +2,14 @@ package app.runsolo.platform
 
 import android.os.Handler
 import android.os.Looper
+import app.runsolo.record.RecorderService
 
 /**
  * The one EventChannel listener (plan §2): Dart subscribes once and exposes a broadcast
  * stream. Events are delivered on the main thread; when nobody listens (Flutter killed,
  * recorder still running) they are dropped — `status()` is the source of truth for a
- * recreated UI, not the event history.
+ * recreated UI, not the event history. Debug builds also log every event (and a status
+ * snapshot after state/phase events) through [EventTrace].
  */
 object RecorderEventBus : RecorderEventsStreamHandler() {
     private val main = Handler(Looper.getMainLooper())
@@ -23,9 +25,17 @@ object RecorderEventBus : RecorderEventsStreamHandler() {
 
     fun emit(event: RecorderEvent) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            sink?.success(event)
+            deliver(event)
         } else {
-            main.post { sink?.success(event) }
+            main.post { deliver(event) }
         }
+    }
+
+    private fun deliver(event: RecorderEvent) {
+        sink?.success(event)
+        val session = RecorderService.session ?: RecorderService.pending
+        val elapsed = session?.elapsedNowMs() ?: 0L
+        EventTrace.event(event, elapsed)
+        if ((event is StateEvent || event is PhaseEvent) && session != null) EventTrace.status(session.status(), elapsed)
     }
 }

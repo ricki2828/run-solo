@@ -25,7 +25,10 @@ wait_for_log() { # <regex> <timeout-s>
   done
   return 1
 }
+TRACE=/tmp/trace.ndjson; : > "$TRACE"
+capture_trace() { adb logcat -d -s RunSolo/trace 2>/dev/null | sed -n 's/^.*RunSolo\/trace: //p' >> "$TRACE"; }
 check_fatal() { # <phase>; call BEFORE every logcat -c
+  capture_trace
   if adb logcat -d | grep -E "FATAL EXCEPTION|E AndroidRuntime.*$PKG" > /tmp/fatal.log; then
     echo "[lifecycle] fatal exception during $1:" >&2; cat /tmp/fatal.log >&2; dump; exit 1
   fi
@@ -124,4 +127,11 @@ assert before[-1][6] > 900, f"distance before the kill too small: {before[-1][6]
 print(f"ok: {len(laps)} laps ({len(pre)} pre-kill), gap {g0}->{g1} ms, {len(before)} samples before, {len(after)} after, {before[-1][6]:.0f} m")
 PY
 
-log "lifecycle ok on API $sdk (run $run_id: replay -> auto-laps -> kill -> not restarted -> recover -> resume -> finalise -> verified)"
+log "verify the real Pigeon event trace against the JVM contract fixture"
+capture_trace
+# The buffer is captured before each clear and once at the end; drop exact repeats from overlapping captures.
+awk '!seen[$0]++' "$TRACE" > "$TRACE.dedup" && mv "$TRACE.dedup" "$TRACE"
+wc -l "$TRACE"
+python3 tools/check_event_trace.py "$TRACE" packages/run_engine/test/fixtures/contract-events/events_4x4_pause_kill.ndjson || fail "event trace structure differs from the contract fixture"
+
+log "lifecycle ok on API $sdk (run $run_id: replay -> auto-laps -> kill -> not restarted -> recover -> resume -> finalise -> verified -> trace checked)"
