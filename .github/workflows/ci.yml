@@ -30,6 +30,9 @@ jobs:
           cache: true
       - run: flutter --version
       - run: flutter pub get
+      - name: run_engine deps (flutter analyze from the root also analyzes the package)
+        working-directory: packages/run_engine
+        run: dart pub get
       - name: Pigeon output is committed and current
         run: |
           dart run pigeon --input pigeons/platform_api.dart
@@ -45,9 +48,7 @@ jobs:
         run: flutter test
       - name: run_engine tests
         working-directory: packages/run_engine
-        run: |
-          dart pub get
-          dart test
+        run: dart test
 
   core-jvm:
     name: core-jvm tests (pure Kotlin)
