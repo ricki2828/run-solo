@@ -2,6 +2,8 @@ package app.runsolo
 
 import app.runsolo.platform.BleApi
 import app.runsolo.platform.BleApiStub
+import app.runsolo.platform.PermissionsApi
+import app.runsolo.platform.PermissionsApiStub
 import app.runsolo.platform.RecorderApi
 import app.runsolo.platform.RecorderApiStub
 import app.runsolo.platform.RecorderEventsStreamHandler
@@ -16,6 +18,7 @@ class MainActivity : FlutterActivity() {
         // run-native-fable replaces these with the RecorderService-backed implementations.
         RecorderApi.setUp(flutterEngine.dartExecutor.binaryMessenger, RecorderApiStub())
         BleApi.setUp(flutterEngine.dartExecutor.binaryMessenger, BleApiStub())
+        PermissionsApi.setUp(flutterEngine.dartExecutor.binaryMessenger, PermissionsApiStub())
         RecorderEventsStreamHandler.register(flutterEngine.dartExecutor.binaryMessenger, RecorderEventsStub())
     }
 }

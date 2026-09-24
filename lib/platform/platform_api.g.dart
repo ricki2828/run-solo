@@ -145,6 +145,9 @@ enum FaultKind {
   hrDisconnected,
   journalWriteFailed,
   lowStorage,
+  /// The OS killed the process mid-run (read from ApplicationExitInfo on the
+  /// next app open); the UI shows the OEM guidance from `exitDiagnosis`.
+  osKilledMidRun,
 }
 
 /// Typed errors returned by `start` (plan §2). Never a stringly-typed map.
@@ -155,6 +158,30 @@ enum StartError {
   lowStorage,
   notificationsDenied,
   alreadyRunning,
+  /// `startReplay` on a release build, or an unknown fixture name.
+  replayUnavailable,
+  /// `resumeRecovered` for a journal that no longer exists or is unreadable.
+  noSuchJournal,
+}
+
+/// Runtime permissions the setup checklist can request (plan §10). Location is
+/// the system prompt only (never a deep link); bluetooth = SCAN + CONNECT on
+/// API 31+, nothing to request below.
+enum PermissionKind {
+  location,
+  notifications,
+  bluetooth,
+}
+
+/// Why the previous process died, from `ApplicationExitInfo` (API 30+).
+enum ExitReason {
+  /// No kill recorded for this run (normal stop, or API 29).
+  none,
+  osKilled,
+  lowMemory,
+  crash,
+  userStop,
+  other,
 }
 
 /// The 4x4 preset written into the file header; drives cues and the detector.
@@ -350,6 +377,9 @@ class OrphanJournal {
     required this.runId,
     required this.lastLineAgeMs,
     required this.mode,
+    required this.readable,
+    required this.endedPaused,
+    required this.elapsedMs,
   });
 
   String runId;
@@ -358,11 +388,23 @@ class OrphanJournal {
 
   RecordMode mode;
 
+  /// False when the journal has no decodable header: it can only be discarded.
+  bool readable;
+
+  /// The run was paused when the process died.
+  bool endedPaused;
+
+  /// Run time recorded before the kill (pauses and earlier gaps included).
+  int elapsedMs;
+
   List<Object?> _toList() {
     return <Object?>[
       runId,
       lastLineAgeMs,
       mode,
+      readable,
+      endedPaused,
+      elapsedMs,
     ];
   }
 
@@ -375,6 +417,9 @@ class OrphanJournal {
       runId: result[0]! as String,
       lastLineAgeMs: result[1]! as int,
       mode: result[2]! as RecordMode,
+      readable: result[3]! as bool,
+      endedPaused: result[4]! as bool,
+      elapsedMs: result[5]! as int,
     );
   }
 
@@ -387,7 +432,256 @@ class OrphanJournal {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(runId, other.runId) && _deepEquals(lastLineAgeMs, other.lastLineAgeMs) && _deepEquals(mode, other.mode);
+    return _deepEquals(runId, other.runId) && _deepEquals(lastLineAgeMs, other.lastLineAgeMs) && _deepEquals(mode, other.mode) && _deepEquals(readable, other.readable) && _deepEquals(endedPaused, other.endedPaused) && _deepEquals(elapsedMs, other.elapsedMs);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// Replay mode (plan §12; debug builds only): a fixture trace fed through the
+/// recorder at `speed`x on a virtual clock. `fixture` is `synthetic-4x4`
+/// (straight line: 60 s warmup, the preset's reps, 60 s cooldown, HR by phase)
+/// or the name of a CSV under the app's Android `assets/replay/`.
+class ReplayConfig {
+  ReplayConfig({
+    required this.fixture,
+    required this.speed,
+  });
+
+  String fixture;
+
+  double speed;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      fixture,
+      speed,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static ReplayConfig decode(Object result) {
+    result as List<Object?>;
+    return ReplayConfig(
+      fixture: result[0]! as String,
+      speed: result[1]! as double,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! ReplayConfig || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(fixture, other.fixture) && _deepEquals(speed, other.speed);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// Everything the setup checklist shows (plan §9, §10).
+class PermissionStatus {
+  PermissionStatus({
+    required this.fineLocation,
+    required this.approximateOnly,
+    required this.locationEnabled,
+    required this.notifications,
+    required this.bluetooth,
+    required this.batteryUnrestricted,
+    required this.gmsAvailable,
+  });
+
+  bool fineLocation;
+
+  /// Coarse granted without fine: recording would silently be indoor (W10).
+  bool approximateOnly;
+
+  bool locationEnabled;
+
+  /// Granted, or not needed (API < 33).
+  bool notifications;
+
+  /// SCAN + CONNECT granted, or not needed (API < 31).
+  bool bluetooth;
+
+  /// Not under battery optimisation; false → checklist deep-links to the page.
+  bool batteryUnrestricted;
+
+  /// FusedLocationProvider available; false → raw GPS_PROVIDER fallback.
+  bool gmsAvailable;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      fineLocation,
+      approximateOnly,
+      locationEnabled,
+      notifications,
+      bluetooth,
+      batteryUnrestricted,
+      gmsAvailable,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static PermissionStatus decode(Object result) {
+    result as List<Object?>;
+    return PermissionStatus(
+      fineLocation: result[0]! as bool,
+      approximateOnly: result[1]! as bool,
+      locationEnabled: result[2]! as bool,
+      notifications: result[3]! as bool,
+      bluetooth: result[4]! as bool,
+      batteryUnrestricted: result[5]! as bool,
+      gmsAvailable: result[6]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PermissionStatus || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(fineLocation, other.fineLocation) && _deepEquals(approximateOnly, other.approximateOnly) && _deepEquals(locationEnabled, other.locationEnabled) && _deepEquals(notifications, other.notifications) && _deepEquals(bluetooth, other.bluetooth) && _deepEquals(batteryUnrestricted, other.batteryUnrestricted) && _deepEquals(gmsAvailable, other.gmsAvailable);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+class BleStatus {
+  BleStatus({
+    required this.connected,
+    this.address,
+    this.name,
+    this.lastHr,
+    required this.adapterOn,
+  });
+
+  bool connected;
+
+  String? address;
+
+  String? name;
+
+  int? lastHr;
+
+  bool adapterOn;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      connected,
+      address,
+      name,
+      lastHr,
+      adapterOn,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static BleStatus decode(Object result) {
+    result as List<Object?>;
+    return BleStatus(
+      connected: result[0]! as bool,
+      address: result[1] as String?,
+      name: result[2] as String?,
+      lastHr: result[3] as int?,
+      adapterOn: result[4]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! BleStatus || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(connected, other.connected) && _deepEquals(address, other.address) && _deepEquals(name, other.name) && _deepEquals(lastHr, other.lastHr) && _deepEquals(adapterOn, other.adapterOn);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// Result of the OS-kill diagnosis for a run (plan §3, W11).
+class ExitDiagnosis {
+  ExitDiagnosis({
+    required this.runId,
+    required this.reason,
+    required this.timestampMs,
+    this.description,
+    required this.manufacturer,
+  });
+
+  String runId;
+
+  ExitReason reason;
+
+  /// Wall-clock epoch ms of the kill, 0 when none.
+  int timestampMs;
+
+  /// Raw `ApplicationExitInfo.description`, for the diagnostics screen.
+  String? description;
+
+  /// `Build.MANUFACTURER` lower-cased, so the UI picks per-OEM guidance.
+  String manufacturer;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      runId,
+      reason,
+      timestampMs,
+      description,
+      manufacturer,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static ExitDiagnosis decode(Object result) {
+    result as List<Object?>;
+    return ExitDiagnosis(
+      runId: result[0]! as String,
+      reason: result[1]! as ExitReason,
+      timestampMs: result[2]! as int,
+      description: result[3] as String?,
+      manufacturer: result[4]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! ExitDiagnosis || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(runId, other.runId) && _deepEquals(reason, other.reason) && _deepEquals(timestampMs, other.timestampMs) && _deepEquals(description, other.description) && _deepEquals(manufacturer, other.manufacturer);
   }
 
   @override
@@ -659,6 +953,110 @@ class FaultEvent extends RecorderEvent {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// Recorder state transitions (start, pause, resume, stop, finalised), so a UI
+/// that missed a tick still redraws; `status()` remains the source of truth.
+class StateEvent extends RecorderEvent {
+  StateEvent({
+    required this.state,
+    this.runId,
+    required this.phase,
+  });
+
+  RecorderState state;
+
+  String? runId;
+
+  Phase phase;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      state,
+      runId,
+      phase,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static StateEvent decode(Object result) {
+    result as List<Object?>;
+    return StateEvent(
+      state: result[0]! as RecorderState,
+      runId: result[1] as String?,
+      phase: result[2]! as Phase,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! StateEvent || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(phase, other.phase);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// Preset phase change (warmup -> work 1 -> recovery 1 -> ... -> cooldown).
+class PhaseEvent extends RecorderEvent {
+  PhaseEvent({
+    required this.phase,
+    required this.repIndex,
+    required this.phaseDurationMs,
+  });
+
+  Phase phase;
+
+  int repIndex;
+
+  /// 0 for untimed phases (warmup, cooldown).
+  int phaseDurationMs;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      phase,
+      repIndex,
+      phaseDurationMs,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static PhaseEvent decode(Object result) {
+    result as List<Object?>;
+    return PhaseEvent(
+      phase: result[0]! as Phase,
+      repIndex: result[1]! as int,
+      phaseDurationMs: result[2]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PhaseEvent || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseDurationMs, other.phaseDurationMs);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
@@ -691,32 +1089,56 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is StartError) {
       buffer.putUint8(136);
       writeValue(buffer, value.index);
-    }    else if (value is Preset) {
+    }    else if (value is PermissionKind) {
       buffer.putUint8(137);
-      writeValue(buffer, value.encode());
-    }    else if (value is StartResult) {
+      writeValue(buffer, value.index);
+    }    else if (value is ExitReason) {
       buffer.putUint8(138);
-      writeValue(buffer, value.encode());
-    }    else if (value is RecorderStatus) {
+      writeValue(buffer, value.index);
+    }    else if (value is Preset) {
       buffer.putUint8(139);
       writeValue(buffer, value.encode());
-    }    else if (value is OrphanJournal) {
+    }    else if (value is StartResult) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
-    }    else if (value is BleDevice) {
+    }    else if (value is RecorderStatus) {
       buffer.putUint8(141);
       writeValue(buffer, value.encode());
-    }    else if (value is TickEvent) {
+    }    else if (value is OrphanJournal) {
       buffer.putUint8(142);
       writeValue(buffer, value.encode());
-    }    else if (value is LapEvent) {
+    }    else if (value is ReplayConfig) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
-    }    else if (value is CueEvent) {
+    }    else if (value is PermissionStatus) {
       buffer.putUint8(144);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is BleStatus) {
       buffer.putUint8(145);
+      writeValue(buffer, value.encode());
+    }    else if (value is ExitDiagnosis) {
+      buffer.putUint8(146);
+      writeValue(buffer, value.encode());
+    }    else if (value is BleDevice) {
+      buffer.putUint8(147);
+      writeValue(buffer, value.encode());
+    }    else if (value is TickEvent) {
+      buffer.putUint8(148);
+      writeValue(buffer, value.encode());
+    }    else if (value is LapEvent) {
+      buffer.putUint8(149);
+      writeValue(buffer, value.encode());
+    }    else if (value is CueEvent) {
+      buffer.putUint8(150);
+      writeValue(buffer, value.encode());
+    }    else if (value is FaultEvent) {
+      buffer.putUint8(151);
+      writeValue(buffer, value.encode());
+    }    else if (value is StateEvent) {
+      buffer.putUint8(152);
+      writeValue(buffer, value.encode());
+    }    else if (value is PhaseEvent) {
+      buffer.putUint8(153);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -751,23 +1173,41 @@ class _PigeonCodec extends StandardMessageCodec {
         final value = readValue(buffer) as int?;
         return value == null ? null : StartError.values[value];
       case 137:
-        return Preset.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : PermissionKind.values[value];
       case 138:
-        return StartResult.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : ExitReason.values[value];
       case 139:
-        return RecorderStatus.decode(readValue(buffer)!);
+        return Preset.decode(readValue(buffer)!);
       case 140:
-        return OrphanJournal.decode(readValue(buffer)!);
+        return StartResult.decode(readValue(buffer)!);
       case 141:
-        return BleDevice.decode(readValue(buffer)!);
+        return RecorderStatus.decode(readValue(buffer)!);
       case 142:
-        return TickEvent.decode(readValue(buffer)!);
+        return OrphanJournal.decode(readValue(buffer)!);
       case 143:
-        return LapEvent.decode(readValue(buffer)!);
+        return ReplayConfig.decode(readValue(buffer)!);
       case 144:
-        return CueEvent.decode(readValue(buffer)!);
+        return PermissionStatus.decode(readValue(buffer)!);
       case 145:
+        return BleStatus.decode(readValue(buffer)!);
+      case 146:
+        return ExitDiagnosis.decode(readValue(buffer)!);
+      case 147:
+        return BleDevice.decode(readValue(buffer)!);
+      case 148:
+        return TickEvent.decode(readValue(buffer)!);
+      case 149:
+        return LapEvent.decode(readValue(buffer)!);
+      case 150:
+        return CueEvent.decode(readValue(buffer)!);
+      case 151:
         return FaultEvent.decode(readValue(buffer)!);
+      case 152:
+        return StateEvent.decode(readValue(buffer)!);
+      case 153:
+        return PhaseEvent.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -789,7 +1229,8 @@ class RecorderApi {
 
   final String pigeonVar_messageChannelSuffix;
 
-  /// Idempotent: a second call while recording returns the running id.
+  /// Idempotent: a second call while recording returns the running id. Must be
+  /// called while the Activity is visible (the FGS is started from it, B2).
   Future<StartResult> start(RecordMode mode, Preset? preset, Units units) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.start$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -798,6 +1239,48 @@ class RecorderApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[mode, preset, units]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as StartResult;
+  }
+
+  /// Debug builds only: like `start`, fed from a fixture instead of GPS/BLE.
+  Future<StartResult> startReplay(RecordMode mode, Preset? preset, Units units, ReplayConfig replay) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.startReplay$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[mode, preset, units, replay]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as StartResult;
+  }
+
+  /// Continue an orphaned journal after the user confirms (plan §3): writes the
+  /// `gap` line, rebuilds the preset phase from the journal, restarts the FGS.
+  /// Idempotent like `start`.
+  Future<StartResult> resumeRecovered(String runId) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.resumeRecovered$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[runId]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
@@ -902,7 +1385,8 @@ class RecorderApi {
     return pigeonVar_replyValue! as RecorderStatus;
   }
 
-  /// Called on app open: journals without a finalised file.
+  /// Called on app open: journals without a finalised file, newest first. Never
+  /// includes the run that is being recorded.
   Future<List<OrphanJournal>> recover() async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.recover$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -922,9 +1406,30 @@ class RecorderApi {
     return (pigeonVar_replyValue! as List<Object?>).cast<OrphanJournal>();
   }
 
-  /// Finalise an orphaned journal without resuming it.
-  Future<void> finalise(String runId) async {
+  /// Finalise an orphaned journal without resuming it. Returns the run file
+  /// path relative to the app's files dir, or null when nothing was there.
+  Future<String?> finalise(String runId) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.finalise$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[runId]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+    return pigeonVar_replyValue as String?;
+  }
+
+  /// Delete an unreadable orphan (`readable == false`). Never touches a run file.
+  Future<void> discardJournal(String runId) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.discardJournal$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -958,6 +1463,138 @@ class RecorderApi {
     )
     ;
   }
+
+  /// Run files on disk (`runs/` + `runs-archive/`) as `runId -> relative path`,
+  /// for the Dart Reconciler. Journals and sidecars are not listed.
+  Future<Map<String, String>> listRunFiles() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.listRunFiles$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return (pigeonVar_replyValue! as Map<Object?, Object?>).cast<String, String>();
+  }
+
+  /// Was the previous process killed by the OS while `runId` was recording?
+  Future<ExitDiagnosis> exitDiagnosis(String runId) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.exitDiagnosis$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[runId]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as ExitDiagnosis;
+  }
+}
+
+class PermissionsApi {
+  /// Constructor for [PermissionsApi].  The [binaryMessenger] named argument is
+  /// available for dependency injection.  If it is left null, the default
+  /// BinaryMessenger will be used which routes to the host platform.
+  PermissionsApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+      : pigeonVar_binaryMessenger = binaryMessenger,
+        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  final BinaryMessenger? pigeonVar_binaryMessenger;
+
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  final String pigeonVar_messageChannelSuffix;
+
+  Future<PermissionStatus> permissionStatus() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.PermissionsApi.permissionStatus$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as PermissionStatus;
+  }
+
+  /// Shows the system prompt (or the enable-location dialog for `location` when
+  /// the setting is off). Resolves when the user answers; true = granted.
+  Future<bool> requestPermission(PermissionKind kind) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.PermissionsApi.requestPermission$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[kind]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as bool;
+  }
+
+  /// The only Settings deep link allowed (plan §10): the app's battery page.
+  Future<void> openBatterySettings() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.PermissionsApi.openBatterySettings$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  Future<void> openAppSettings() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.PermissionsApi.openAppSettings$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
 }
 
 class BleApi {
@@ -973,7 +1610,7 @@ class BleApi {
 
   final String pigeonVar_messageChannelSuffix;
 
-  /// Scan once for Heart Rate Profile (0x180D) devices to pair.
+  /// Scan once for Heart Rate Profile (0x180D) devices to pair (≤ 10 s).
   Future<List<BleDevice>> bleScan() async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.BleApi.bleScan$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -993,6 +1630,7 @@ class BleApi {
     return (pigeonVar_replyValue! as List<Object?>).cast<BleDevice>();
   }
 
+  /// Saves the address and connects; reconnects use autoConnect, never a rescan.
   Future<void> blePair(String address) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.BleApi.blePair$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -1027,6 +1665,25 @@ class BleApi {
         isNullValid: true,
     )
     ;
+  }
+
+  Future<BleStatus> bleStatus() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.BleApi.bleStatus$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as BleStatus;
   }
 }
 

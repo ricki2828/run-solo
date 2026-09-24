@@ -275,7 +275,12 @@ enum class FaultKind(val raw: Int) {
   GPS_WEAK(1),
   HR_DISCONNECTED(2),
   JOURNAL_WRITE_FAILED(3),
-  LOW_STORAGE(4);
+  LOW_STORAGE(4),
+  /**
+   * The OS killed the process mid-run (read from ApplicationExitInfo on the
+   * next app open); the UI shows the OEM guidance from `exitDiagnosis`.
+   */
+  OS_KILLED_MID_RUN(5);
 
   companion object {
     fun ofRaw(raw: Int): FaultKind? {
@@ -291,10 +296,48 @@ enum class StartError(val raw: Int) {
   LOCATION_OFF(2),
   LOW_STORAGE(3),
   NOTIFICATIONS_DENIED(4),
-  ALREADY_RUNNING(5);
+  ALREADY_RUNNING(5),
+  /** `startReplay` on a release build, or an unknown fixture name. */
+  REPLAY_UNAVAILABLE(6),
+  /** `resumeRecovered` for a journal that no longer exists or is unreadable. */
+  NO_SUCH_JOURNAL(7);
 
   companion object {
     fun ofRaw(raw: Int): StartError? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+/**
+ * Runtime permissions the setup checklist can request (plan §10). Location is
+ * the system prompt only (never a deep link); bluetooth = SCAN + CONNECT on
+ * API 31+, nothing to request below.
+ */
+enum class PermissionKind(val raw: Int) {
+  LOCATION(0),
+  NOTIFICATIONS(1),
+  BLUETOOTH(2);
+
+  companion object {
+    fun ofRaw(raw: Int): PermissionKind? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+/** Why the previous process died, from `ApplicationExitInfo` (API 30+). */
+enum class ExitReason(val raw: Int) {
+  /** No kill recorded for this run (normal stop, or API 29). */
+  NONE(0),
+  OS_KILLED(1),
+  LOW_MEMORY(2),
+  CRASH(3),
+  USER_STOP(4),
+  OTHER(5);
+
+  companion object {
+    fun ofRaw(raw: Int): ExitReason? {
       return values().firstOrNull { it.raw == raw }
     }
   }
@@ -470,7 +513,13 @@ data class RecorderStatus (
 data class OrphanJournal (
   val runId: String,
   val lastLineAgeMs: Long,
-  val mode: RecordMode
+  val mode: RecordMode,
+  /** False when the journal has no decodable header: it can only be discarded. */
+  val readable: Boolean,
+  /** The run was paused when the process died. */
+  val endedPaused: Boolean,
+  /** Run time recorded before the kill (pauses and earlier gaps included). */
+  val elapsedMs: Long
 )
  {
   companion object {
@@ -478,7 +527,10 @@ data class OrphanJournal (
       val runId = pigeonVar_list[0] as String
       val lastLineAgeMs = pigeonVar_list[1] as Long
       val mode = pigeonVar_list[2] as RecordMode
-      return OrphanJournal(runId, lastLineAgeMs, mode)
+      val readable = pigeonVar_list[3] as Boolean
+      val endedPaused = pigeonVar_list[4] as Boolean
+      val elapsedMs = pigeonVar_list[5] as Long
+      return OrphanJournal(runId, lastLineAgeMs, mode, readable, endedPaused, elapsedMs)
     }
   }
   fun toList(): List<Any?> {
@@ -486,6 +538,9 @@ data class OrphanJournal (
       runId,
       lastLineAgeMs,
       mode,
+      readable,
+      endedPaused,
+      elapsedMs,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -496,7 +551,7 @@ data class OrphanJournal (
       return true
     }
     val other = other as OrphanJournal
-    return PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.lastLineAgeMs, other.lastLineAgeMs) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode)
+    return PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.lastLineAgeMs, other.lastLineAgeMs) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.readable, other.readable) && PlatformApiPigeonUtils.deepEquals(this.endedPaused, other.endedPaused) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs)
   }
 
   override fun hashCode(): Int {
@@ -504,6 +559,228 @@ data class OrphanJournal (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.runId)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.lastLineAgeMs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.mode)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.readable)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.endedPaused)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.elapsedMs)
+    return result
+  }
+}
+
+/**
+ * Replay mode (plan §12; debug builds only): a fixture trace fed through the
+ * recorder at `speed`x on a virtual clock. `fixture` is `synthetic-4x4`
+ * (straight line: 60 s warmup, the preset's reps, 60 s cooldown, HR by phase)
+ * or the name of a CSV under the app's Android `assets/replay/`.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class ReplayConfig (
+  val fixture: String,
+  val speed: Double
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): ReplayConfig {
+      val fixture = pigeonVar_list[0] as String
+      val speed = pigeonVar_list[1] as Double
+      return ReplayConfig(fixture, speed)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      fixture,
+      speed,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as ReplayConfig
+    return PlatformApiPigeonUtils.deepEquals(this.fixture, other.fixture) && PlatformApiPigeonUtils.deepEquals(this.speed, other.speed)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.fixture)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.speed)
+    return result
+  }
+}
+
+/**
+ * Everything the setup checklist shows (plan §9, §10).
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class PermissionStatus (
+  val fineLocation: Boolean,
+  /** Coarse granted without fine: recording would silently be indoor (W10). */
+  val approximateOnly: Boolean,
+  val locationEnabled: Boolean,
+  /** Granted, or not needed (API < 33). */
+  val notifications: Boolean,
+  /** SCAN + CONNECT granted, or not needed (API < 31). */
+  val bluetooth: Boolean,
+  /** Not under battery optimisation; false → checklist deep-links to the page. */
+  val batteryUnrestricted: Boolean,
+  /** FusedLocationProvider available; false → raw GPS_PROVIDER fallback. */
+  val gmsAvailable: Boolean
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): PermissionStatus {
+      val fineLocation = pigeonVar_list[0] as Boolean
+      val approximateOnly = pigeonVar_list[1] as Boolean
+      val locationEnabled = pigeonVar_list[2] as Boolean
+      val notifications = pigeonVar_list[3] as Boolean
+      val bluetooth = pigeonVar_list[4] as Boolean
+      val batteryUnrestricted = pigeonVar_list[5] as Boolean
+      val gmsAvailable = pigeonVar_list[6] as Boolean
+      return PermissionStatus(fineLocation, approximateOnly, locationEnabled, notifications, bluetooth, batteryUnrestricted, gmsAvailable)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      fineLocation,
+      approximateOnly,
+      locationEnabled,
+      notifications,
+      bluetooth,
+      batteryUnrestricted,
+      gmsAvailable,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as PermissionStatus
+    return PlatformApiPigeonUtils.deepEquals(this.fineLocation, other.fineLocation) && PlatformApiPigeonUtils.deepEquals(this.approximateOnly, other.approximateOnly) && PlatformApiPigeonUtils.deepEquals(this.locationEnabled, other.locationEnabled) && PlatformApiPigeonUtils.deepEquals(this.notifications, other.notifications) && PlatformApiPigeonUtils.deepEquals(this.bluetooth, other.bluetooth) && PlatformApiPigeonUtils.deepEquals(this.batteryUnrestricted, other.batteryUnrestricted) && PlatformApiPigeonUtils.deepEquals(this.gmsAvailable, other.gmsAvailable)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.fineLocation)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.approximateOnly)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.locationEnabled)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.notifications)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.bluetooth)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.batteryUnrestricted)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.gmsAvailable)
+    return result
+  }
+}
+
+/** Generated class from Pigeon that represents data sent in messages. */
+data class BleStatus (
+  val connected: Boolean,
+  val address: String? = null,
+  val name: String? = null,
+  val lastHr: Long? = null,
+  val adapterOn: Boolean
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): BleStatus {
+      val connected = pigeonVar_list[0] as Boolean
+      val address = pigeonVar_list[1] as String?
+      val name = pigeonVar_list[2] as String?
+      val lastHr = pigeonVar_list[3] as Long?
+      val adapterOn = pigeonVar_list[4] as Boolean
+      return BleStatus(connected, address, name, lastHr, adapterOn)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      connected,
+      address,
+      name,
+      lastHr,
+      adapterOn,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as BleStatus
+    return PlatformApiPigeonUtils.deepEquals(this.connected, other.connected) && PlatformApiPigeonUtils.deepEquals(this.address, other.address) && PlatformApiPigeonUtils.deepEquals(this.name, other.name) && PlatformApiPigeonUtils.deepEquals(this.lastHr, other.lastHr) && PlatformApiPigeonUtils.deepEquals(this.adapterOn, other.adapterOn)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.connected)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.address)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.name)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.lastHr)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.adapterOn)
+    return result
+  }
+}
+
+/**
+ * Result of the OS-kill diagnosis for a run (plan §3, W11).
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class ExitDiagnosis (
+  val runId: String,
+  val reason: ExitReason,
+  /** Wall-clock epoch ms of the kill, 0 when none. */
+  val timestampMs: Long,
+  /** Raw `ApplicationExitInfo.description`, for the diagnostics screen. */
+  val description: String? = null,
+  /** `Build.MANUFACTURER` lower-cased, so the UI picks per-OEM guidance. */
+  val manufacturer: String
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): ExitDiagnosis {
+      val runId = pigeonVar_list[0] as String
+      val reason = pigeonVar_list[1] as ExitReason
+      val timestampMs = pigeonVar_list[2] as Long
+      val description = pigeonVar_list[3] as String?
+      val manufacturer = pigeonVar_list[4] as String
+      return ExitDiagnosis(runId, reason, timestampMs, description, manufacturer)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      runId,
+      reason,
+      timestampMs,
+      description,
+      manufacturer,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as ExitDiagnosis
+    return PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.reason, other.reason) && PlatformApiPigeonUtils.deepEquals(this.timestampMs, other.timestampMs) && PlatformApiPigeonUtils.deepEquals(this.description, other.description) && PlatformApiPigeonUtils.deepEquals(this.manufacturer, other.manufacturer)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.runId)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.reason)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.timestampMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.description)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.manufacturer)
     return result
   }
 }
@@ -731,6 +1008,100 @@ data class FaultEvent (
     return result
   }
 }
+
+/**
+ * Recorder state transitions (start, pause, resume, stop, finalised), so a UI
+ * that missed a tick still redraws; `status()` remains the source of truth.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class StateEvent (
+  val state: RecorderState,
+  val runId: String? = null,
+  val phase: Phase
+) : RecorderEvent()
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): StateEvent {
+      val state = pigeonVar_list[0] as RecorderState
+      val runId = pigeonVar_list[1] as String?
+      val phase = pigeonVar_list[2] as Phase
+      return StateEvent(state, runId, phase)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      state,
+      runId,
+      phase,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as StateEvent
+    return PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.state)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.runId)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.phase)
+    return result
+  }
+}
+
+/**
+ * Preset phase change (warmup -> work 1 -> recovery 1 -> ... -> cooldown).
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class PhaseEvent (
+  val phase: Phase,
+  val repIndex: Long,
+  /** 0 for untimed phases (warmup, cooldown). */
+  val phaseDurationMs: Long
+) : RecorderEvent()
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): PhaseEvent {
+      val phase = pigeonVar_list[0] as Phase
+      val repIndex = pigeonVar_list[1] as Long
+      val phaseDurationMs = pigeonVar_list[2] as Long
+      return PhaseEvent(phase, repIndex, phaseDurationMs)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      phase,
+      repIndex,
+      phaseDurationMs,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as PhaseEvent
+    return PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseDurationMs, other.phaseDurationMs)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.phase)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.repIndex)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.phaseDurationMs)
+    return result
+  }
+}
 private open class PlatformApiPigeonCodec : StandardMessageCodec() {
   override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
     return when (type) {
@@ -775,48 +1146,88 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         }
       }
       137.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          Preset.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          PermissionKind.ofRaw(it.toInt())
         }
       }
       138.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          StartResult.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          ExitReason.ofRaw(it.toInt())
         }
       }
       139.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          RecorderStatus.fromList(it)
+          Preset.fromList(it)
         }
       }
       140.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          OrphanJournal.fromList(it)
+          StartResult.fromList(it)
         }
       }
       141.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BleDevice.fromList(it)
+          RecorderStatus.fromList(it)
         }
       }
       142.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TickEvent.fromList(it)
+          OrphanJournal.fromList(it)
         }
       }
       143.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapEvent.fromList(it)
+          ReplayConfig.fromList(it)
         }
       }
       144.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CueEvent.fromList(it)
+          PermissionStatus.fromList(it)
         }
       }
       145.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
+          BleStatus.fromList(it)
+        }
+      }
+      146.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          ExitDiagnosis.fromList(it)
+        }
+      }
+      147.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          BleDevice.fromList(it)
+        }
+      }
+      148.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          TickEvent.fromList(it)
+        }
+      }
+      149.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          LapEvent.fromList(it)
+        }
+      }
+      150.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          CueEvent.fromList(it)
+        }
+      }
+      151.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
           FaultEvent.fromList(it)
+        }
+      }
+      152.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          StateEvent.fromList(it)
+        }
+      }
+      153.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          PhaseEvent.fromList(it)
         }
       }
       else -> super.readValueOfType(type, buffer)
@@ -856,40 +1267,72 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(136)
         writeValue(stream, value.raw.toLong())
       }
-      is Preset -> {
+      is PermissionKind -> {
         stream.write(137)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is StartResult -> {
+      is ExitReason -> {
         stream.write(138)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is RecorderStatus -> {
+      is Preset -> {
         stream.write(139)
         writeValue(stream, value.toList())
       }
-      is OrphanJournal -> {
+      is StartResult -> {
         stream.write(140)
         writeValue(stream, value.toList())
       }
-      is BleDevice -> {
+      is RecorderStatus -> {
         stream.write(141)
         writeValue(stream, value.toList())
       }
-      is TickEvent -> {
+      is OrphanJournal -> {
         stream.write(142)
         writeValue(stream, value.toList())
       }
-      is LapEvent -> {
+      is ReplayConfig -> {
         stream.write(143)
         writeValue(stream, value.toList())
       }
-      is CueEvent -> {
+      is PermissionStatus -> {
         stream.write(144)
         writeValue(stream, value.toList())
       }
-      is FaultEvent -> {
+      is BleStatus -> {
         stream.write(145)
+        writeValue(stream, value.toList())
+      }
+      is ExitDiagnosis -> {
+        stream.write(146)
+        writeValue(stream, value.toList())
+      }
+      is BleDevice -> {
+        stream.write(147)
+        writeValue(stream, value.toList())
+      }
+      is TickEvent -> {
+        stream.write(148)
+        writeValue(stream, value.toList())
+      }
+      is LapEvent -> {
+        stream.write(149)
+        writeValue(stream, value.toList())
+      }
+      is CueEvent -> {
+        stream.write(150)
+        writeValue(stream, value.toList())
+      }
+      is FaultEvent -> {
+        stream.write(151)
+        writeValue(stream, value.toList())
+      }
+      is StateEvent -> {
+        stream.write(152)
+        writeValue(stream, value.toList())
+      }
+      is PhaseEvent -> {
+        stream.write(153)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -902,19 +1345,45 @@ val PlatformApiPigeonMethodCodec = StandardMethodCodec(PlatformApiPigeonCodec())
 
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface RecorderApi {
-  /** Idempotent: a second call while recording returns the running id. */
+  /**
+   * Idempotent: a second call while recording returns the running id. Must be
+   * called while the Activity is visible (the FGS is started from it, B2).
+   */
   fun start(mode: RecordMode, preset: Preset?, units: Units): StartResult
+  /** Debug builds only: like `start`, fed from a fixture instead of GPS/BLE. */
+  fun startReplay(mode: RecordMode, preset: Preset?, units: Units, replay: ReplayConfig): StartResult
+  /**
+   * Continue an orphaned journal after the user confirms (plan §3): writes the
+   * `gap` line, rebuilds the preset phase from the journal, restarts the FGS.
+   * Idempotent like `start`.
+   */
+  fun resumeRecovered(runId: String): StartResult
   fun pause()
   fun resume()
   fun lap(source: LapSource)
   /** Finalises in Kotlin (journal -> tmp -> fsync -> rename -> delete journal). No-op when idle. */
   fun stop(): String?
   fun status(): RecorderStatus
-  /** Called on app open: journals without a finalised file. */
+  /**
+   * Called on app open: journals without a finalised file, newest first. Never
+   * includes the run that is being recorded.
+   */
   fun recover(): List<OrphanJournal>
-  /** Finalise an orphaned journal without resuming it. */
-  fun finalise(runId: String)
+  /**
+   * Finalise an orphaned journal without resuming it. Returns the run file
+   * path relative to the app's files dir, or null when nothing was there.
+   */
+  fun finalise(runId: String): String?
+  /** Delete an unreadable orphan (`readable == false`). Never touches a run file. */
+  fun discardJournal(runId: String)
   fun setCues(enabled: Boolean)
+  /**
+   * Run files on disk (`runs/` + `runs-archive/`) as `runId -> relative path`,
+   * for the Dart Reconciler. Journals and sidecars are not listed.
+   */
+  fun listRunFiles(): Map<String, String>
+  /** Was the previous process killed by the OS while `runId` was recording? */
+  fun exitDiagnosis(runId: String): ExitDiagnosis
 
   companion object {
     /** The codec used by RecorderApi. */
@@ -935,6 +1404,43 @@ interface RecorderApi {
             val unitsArg = args[2] as Units
             val wrapped: List<Any?> = try {
               listOf(api.start(modeArg, presetArg, unitsArg))
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.startReplay$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val modeArg = args[0] as RecordMode
+            val presetArg = args[1] as Preset?
+            val unitsArg = args[2] as Units
+            val replayArg = args[3] as ReplayConfig
+            val wrapped: List<Any?> = try {
+              listOf(api.startReplay(modeArg, presetArg, unitsArg, replayArg))
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.resumeRecovered$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val runIdArg = args[0] as String
+            val wrapped: List<Any?> = try {
+              listOf(api.resumeRecovered(runIdArg))
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)
             }
@@ -1046,7 +1552,24 @@ interface RecorderApi {
             val args = message as List<Any?>
             val runIdArg = args[0] as String
             val wrapped: List<Any?> = try {
-              api.finalise(runIdArg)
+              listOf(api.finalise(runIdArg))
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.discardJournal$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val runIdArg = args[0] as String
+            val wrapped: List<Any?> = try {
+              api.discardJournal(runIdArg)
               listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)
@@ -1075,15 +1598,140 @@ interface RecorderApi {
           channel.setMessageHandler(null)
         }
       }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.listRunFiles$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              listOf(api.listRunFiles())
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.exitDiagnosis$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val runIdArg = args[0] as String
+            val wrapped: List<Any?> = try {
+              listOf(api.exitDiagnosis(runIdArg))
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+    }
+  }
+}
+/** Generated interface from Pigeon that represents a handler of messages from Flutter. */
+interface PermissionsApi {
+  fun permissionStatus(): PermissionStatus
+  /**
+   * Shows the system prompt (or the enable-location dialog for `location` when
+   * the setting is off). Resolves when the user answers; true = granted.
+   */
+  fun requestPermission(kind: PermissionKind, callback: (Result<Boolean>) -> Unit)
+  /** The only Settings deep link allowed (plan §10): the app's battery page. */
+  fun openBatterySettings()
+  fun openAppSettings()
+
+  companion object {
+    /** The codec used by PermissionsApi. */
+    val codec: MessageCodec<Any?> by lazy {
+      PlatformApiPigeonCodec()
+    }
+    /** Sets up an instance of `PermissionsApi` to handle messages through the `binaryMessenger`. */
+    @JvmOverloads
+    fun setUp(binaryMessenger: BinaryMessenger, api: PermissionsApi?, messageChannelSuffix: String = "") {
+      val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.PermissionsApi.permissionStatus$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              listOf(api.permissionStatus())
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.PermissionsApi.requestPermission$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val kindArg = args[0] as PermissionKind
+            api.requestPermission(kindArg) { result: Result<Boolean> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.PermissionsApi.openBatterySettings$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.openBatterySettings()
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.PermissionsApi.openAppSettings$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.openAppSettings()
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
     }
   }
 }
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface BleApi {
-  /** Scan once for Heart Rate Profile (0x180D) devices to pair. */
+  /** Scan once for Heart Rate Profile (0x180D) devices to pair (≤ 10 s). */
   fun bleScan(callback: (Result<List<BleDevice>>) -> Unit)
+  /** Saves the address and connects; reconnects use autoConnect, never a rescan. */
   fun blePair(address: String)
   fun bleForget()
+  fun bleStatus(): BleStatus
 
   companion object {
     /** The codec used by BleApi. */
@@ -1137,6 +1785,21 @@ interface BleApi {
             val wrapped: List<Any?> = try {
               api.bleForget()
               listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.BleApi.bleStatus$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              listOf(api.bleStatus())
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)
             }
