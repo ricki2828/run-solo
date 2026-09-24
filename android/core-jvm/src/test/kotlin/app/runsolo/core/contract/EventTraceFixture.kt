@@ -74,6 +74,7 @@ object EventTraceFixture {
         val livePace = LivePace()
         val laps = ArrayList<Map<String, Any?>>()
         var lapStartT = 0L
+        var lapStartActive = 0L
         var lapStartDist = 0.0
         var hrLast: Int? = null
 
@@ -97,8 +98,10 @@ object EventTraceFixture {
                 when (o) {
                     is RecorderCore.Output.Lap -> {
                         writer.append(JournalLine.Lap(o.t, W0 + o.t, o.source))
-                        val el = core.status(o.t).elapsedMs
-                        val lap = linkedMapOf<String, Any?>("index" to o.index, "tMs" to el, "distanceM" to ticker.distanceM, "source" to o.source.name)
+                        val st = core.status(o.t)
+                        val el = st.elapsedMs
+                        val lap = linkedMapOf<String, Any?>("index" to o.index, "tMs" to el, "activeMs" to (st.activeMs - lapStartActive), "distanceM" to ticker.distanceM, "source" to o.source.name)
+                        lapStartActive = st.activeMs
                         laps.add(lap)
                         lapStartT = o.t
                         lapStartDist = ticker.distanceM
@@ -193,6 +196,18 @@ object EventTraceFixture {
         lapStartDist = lastLapDist
         val lastLapRunT = replayed.events.filterIsInstance<RunEvent.Lap>().last().t
         lapStartT = resumeDeviceT - (replayed.endT - lastLapRunT) // endT includes the gap
+        // As RecordingSession: active time at the last lap = its run time minus pauses/gaps before it.
+        var inactive = 0L
+        var pauseStart: Long? = null
+        for (e in replayed.events) {
+            when (e) {
+                is RunEvent.Pause -> if (pauseStart == null) pauseStart = e.t
+                is RunEvent.Resume -> pauseStart?.let { inactive += e.t - it; pauseStart = null }
+                is RunEvent.Gap -> inactive += e.endT - e.t
+                is RunEvent.Lap -> lapStartActive = e.t - inactive
+                else -> Unit
+            }
+        }
         livePace.reset()
         state(resumeDeviceT, RecorderState.recording)
         // Trace resumes where the runner is now: the runner kept running through the dark 30 s.

@@ -85,6 +85,7 @@ class RecordingSession(
     private var lapCount = 0
     private val laps = ArrayList<LapSummary>()
     private var lapStartT = 0L
+    private var lapStartActive = 0L
     private var lapStartDist = 0.0
     private var lastTickEventWall = 0L
     private var lastNotificationRefreshWall = 0L
@@ -134,12 +135,27 @@ class RecordingSession(
         core = RecorderCore.restore(replayed, t, RecorderCore.Config(volumeKeyLaps = volumeKeyLapsEnabled))
         lapCount = core.lapCount
         lapStartT = t
+        // Laps from the journal, with active time (pauses and gaps excluded) per lap.
         var lapT = 0L
-        for (e in replayed.events) if (e is RunEvent.Lap) {
-            laps.add(LapSummary(index = laps.size.toLong(), tMs = e.t, distanceM = 0.0, source = e.source.toPigeon()))
-            lapT = e.t
+        var inactive = 0L
+        var pauseStart: Long? = null
+        var prevActive = 0L
+        for (e in replayed.events) {
+            when (e) {
+                is RunEvent.Pause -> if (pauseStart == null) pauseStart = e.t
+                is RunEvent.Resume -> pauseStart?.let { inactive += e.t - it; pauseStart = null }
+                is RunEvent.Gap -> inactive += e.endT - e.t
+                is RunEvent.Lap -> {
+                    val active = e.t - inactive
+                    laps.add(LapSummary(index = laps.size.toLong(), tMs = e.t, activeMs = active - prevActive, distanceM = 0.0, source = e.source.toPigeon()))
+                    prevActive = active
+                    lapT = e.t
+                }
+                else -> Unit
+            }
         }
         if (laps.isNotEmpty()) lapStartT = t - (replayed.endT - lapT)
+        lapStartActive = prevActive
         // Seed the live distance from the journal (same pause rule as the finaliser) so the
         // tick totals continue instead of restarting from zero; lap distance from the last marker.
         var paused = false
@@ -402,9 +418,12 @@ class RecordingSession(
                     lapCount = o.index + 1
                     lapStartT = o.t
                     lapStartDist = ticker.distanceM
-                    laps.add(LapSummary(index = o.index.toLong(), tMs = core.status(o.t).elapsedMs, distanceM = ticker.distanceM, source = o.source.toPigeon()))
+                    val st = core.status(o.t)
+                    val activeMs = st.activeMs - lapStartActive
+                    lapStartActive = st.activeMs
+                    laps.add(LapSummary(index = o.index.toLong(), tMs = st.elapsedMs, activeMs = activeMs, distanceM = ticker.distanceM, source = o.source.toPigeon()))
                     RecorderEventBus.emit(
-                        LapEvent(index = o.index.toLong(), tMs = core.status(o.t).elapsedMs, distanceM = ticker.distanceM, source = o.source.toPigeon()),
+                        LapEvent(index = o.index.toLong(), tMs = st.elapsedMs, activeMs = activeMs, distanceM = ticker.distanceM, source = o.source.toPigeon()),
                     )
                     Log.i(TAG, "lap index=${o.index} source=${o.source} t=${core.status(o.t).elapsedMs}")
                     onNotificationChanged?.invoke()

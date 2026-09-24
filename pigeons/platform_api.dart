@@ -106,11 +106,18 @@ class LapSummary {
   LapSummary({
     required this.index,
     required this.tMs,
+    required this.activeMs,
     required this.distanceM,
     required this.source,
   });
   int index;
+
+  /// Wall time since Start at the lap marker (pauses and gaps included).
   int tMs;
+
+  /// Duration of the lap that ENDS here, excluding pauses and kill gaps —
+  /// what the verdict engine's rep time will be.
+  int activeMs;
   double distanceM;
   LapSource source;
 }
@@ -377,11 +384,15 @@ class LapEvent extends RecorderEvent {
   LapEvent({
     required this.index,
     required this.tMs,
+    required this.activeMs,
     required this.distanceM,
     required this.source,
   });
   int index;
   int tMs;
+
+  /// Duration of the lap that ends here, excluding pauses and kill gaps.
+  int activeMs;
   double distanceM;
   LapSource source;
 }

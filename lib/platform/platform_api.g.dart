@@ -293,13 +293,19 @@ class LapSummary {
   LapSummary({
     required this.index,
     required this.tMs,
+    required this.activeMs,
     required this.distanceM,
     required this.source,
   });
 
   int index;
 
+  /// Wall time since Start at the lap marker (pauses and gaps included).
   int tMs;
+
+  /// Duration of the lap that ENDS here, excluding pauses and kill gaps —
+  /// what the verdict engine's rep time will be.
+  int activeMs;
 
   double distanceM;
 
@@ -309,6 +315,7 @@ class LapSummary {
     return <Object?>[
       index,
       tMs,
+      activeMs,
       distanceM,
       source,
     ];
@@ -322,8 +329,9 @@ class LapSummary {
     return LapSummary(
       index: result[0]! as int,
       tMs: result[1]! as int,
-      distanceM: result[2]! as double,
-      source: result[3]! as LapSource,
+      activeMs: result[2]! as int,
+      distanceM: result[3]! as double,
+      source: result[4]! as LapSource,
     );
   }
 
@@ -336,7 +344,7 @@ class LapSummary {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(index, other.index) && _deepEquals(tMs, other.tMs) && _deepEquals(distanceM, other.distanceM) && _deepEquals(source, other.source);
+    return _deepEquals(index, other.index) && _deepEquals(tMs, other.tMs) && _deepEquals(activeMs, other.activeMs) && _deepEquals(distanceM, other.distanceM) && _deepEquals(source, other.source);
   }
 
   @override
@@ -911,6 +919,7 @@ class LapEvent extends RecorderEvent {
   LapEvent({
     required this.index,
     required this.tMs,
+    required this.activeMs,
     required this.distanceM,
     required this.source,
   });
@@ -918,6 +927,9 @@ class LapEvent extends RecorderEvent {
   int index;
 
   int tMs;
+
+  /// Duration of the lap that ends here, excluding pauses and kill gaps.
+  int activeMs;
 
   double distanceM;
 
@@ -927,6 +939,7 @@ class LapEvent extends RecorderEvent {
     return <Object?>[
       index,
       tMs,
+      activeMs,
       distanceM,
       source,
     ];
@@ -940,8 +953,9 @@ class LapEvent extends RecorderEvent {
     return LapEvent(
       index: result[0]! as int,
       tMs: result[1]! as int,
-      distanceM: result[2]! as double,
-      source: result[3]! as LapSource,
+      activeMs: result[2]! as int,
+      distanceM: result[3]! as double,
+      source: result[4]! as LapSource,
     );
   }
 
@@ -954,7 +968,7 @@ class LapEvent extends RecorderEvent {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(index, other.index) && _deepEquals(tMs, other.tMs) && _deepEquals(distanceM, other.distanceM) && _deepEquals(source, other.source);
+    return _deepEquals(index, other.index) && _deepEquals(tMs, other.tMs) && _deepEquals(activeMs, other.activeMs) && _deepEquals(distanceM, other.distanceM) && _deepEquals(source, other.source);
   }
 
   @override

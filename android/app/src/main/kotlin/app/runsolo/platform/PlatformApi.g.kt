@@ -446,7 +446,13 @@ data class StartResult (
  */
 data class LapSummary (
   val index: Long,
+  /** Wall time since Start at the lap marker (pauses and gaps included). */
   val tMs: Long,
+  /**
+   * Duration of the lap that ENDS here, excluding pauses and kill gaps —
+   * what the verdict engine's rep time will be.
+   */
+  val activeMs: Long,
   val distanceM: Double,
   val source: LapSource
 )
@@ -455,15 +461,17 @@ data class LapSummary (
     fun fromList(pigeonVar_list: List<Any?>): LapSummary {
       val index = pigeonVar_list[0] as Long
       val tMs = pigeonVar_list[1] as Long
-      val distanceM = pigeonVar_list[2] as Double
-      val source = pigeonVar_list[3] as LapSource
-      return LapSummary(index, tMs, distanceM, source)
+      val activeMs = pigeonVar_list[2] as Long
+      val distanceM = pigeonVar_list[3] as Double
+      val source = pigeonVar_list[4] as LapSource
+      return LapSummary(index, tMs, activeMs, distanceM, source)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       index,
       tMs,
+      activeMs,
       distanceM,
       source,
     )
@@ -476,13 +484,14 @@ data class LapSummary (
       return true
     }
     val other = other as LapSummary
-    return PlatformApiPigeonUtils.deepEquals(this.index, other.index) && PlatformApiPigeonUtils.deepEquals(this.tMs, other.tMs) && PlatformApiPigeonUtils.deepEquals(this.distanceM, other.distanceM) && PlatformApiPigeonUtils.deepEquals(this.source, other.source)
+    return PlatformApiPigeonUtils.deepEquals(this.index, other.index) && PlatformApiPigeonUtils.deepEquals(this.tMs, other.tMs) && PlatformApiPigeonUtils.deepEquals(this.activeMs, other.activeMs) && PlatformApiPigeonUtils.deepEquals(this.distanceM, other.distanceM) && PlatformApiPigeonUtils.deepEquals(this.source, other.source)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.index)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.tMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.activeMs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.distanceM)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.source)
     return result
@@ -984,6 +993,8 @@ data class TickEvent (
 data class LapEvent (
   val index: Long,
   val tMs: Long,
+  /** Duration of the lap that ends here, excluding pauses and kill gaps. */
+  val activeMs: Long,
   val distanceM: Double,
   val source: LapSource
 ) : RecorderEvent()
@@ -992,15 +1003,17 @@ data class LapEvent (
     fun fromList(pigeonVar_list: List<Any?>): LapEvent {
       val index = pigeonVar_list[0] as Long
       val tMs = pigeonVar_list[1] as Long
-      val distanceM = pigeonVar_list[2] as Double
-      val source = pigeonVar_list[3] as LapSource
-      return LapEvent(index, tMs, distanceM, source)
+      val activeMs = pigeonVar_list[2] as Long
+      val distanceM = pigeonVar_list[3] as Double
+      val source = pigeonVar_list[4] as LapSource
+      return LapEvent(index, tMs, activeMs, distanceM, source)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       index,
       tMs,
+      activeMs,
       distanceM,
       source,
     )
@@ -1013,13 +1026,14 @@ data class LapEvent (
       return true
     }
     val other = other as LapEvent
-    return PlatformApiPigeonUtils.deepEquals(this.index, other.index) && PlatformApiPigeonUtils.deepEquals(this.tMs, other.tMs) && PlatformApiPigeonUtils.deepEquals(this.distanceM, other.distanceM) && PlatformApiPigeonUtils.deepEquals(this.source, other.source)
+    return PlatformApiPigeonUtils.deepEquals(this.index, other.index) && PlatformApiPigeonUtils.deepEquals(this.tMs, other.tMs) && PlatformApiPigeonUtils.deepEquals(this.activeMs, other.activeMs) && PlatformApiPigeonUtils.deepEquals(this.distanceM, other.distanceM) && PlatformApiPigeonUtils.deepEquals(this.source, other.source)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.index)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.tMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.activeMs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.distanceM)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.source)
     return result

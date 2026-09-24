@@ -22,6 +22,11 @@ class EventTraceFixtureTest {
         val laps = ev.filter { it["kind"] == "lap" }
         assertEquals(9, laps.size, "9 lap markers → 10 laps in the file")
         assertEquals(listOf("notification") + List(8) { "auto" }, laps.map { it["source"] })
+        // Active lap time excludes the pause (rep 2 work) and the dark gap (rep 3 work): every work lap is 240 s.
+        assertEquals(List(4) { 240_000L }, laps.filterIndexed { i, _ -> i % 2 == 1 }.map { it["activeMs"] })
+        assertEquals(listOf(60_000L) + List(4) { 180_000L }, laps.filterIndexed { i, _ -> i % 2 == 0 }.map { it["activeMs"] })
+        assertEquals(240_000L + 20_000L, (laps[3]["tMs"] as Long) - (laps[2]["tMs"] as Long), "wall time of rep 2 includes the pause")
+        assertEquals(240_000L + 30_000L, (laps[5]["tMs"] as Long) - (laps[4]["tMs"] as Long), "wall time of rep 3 includes the gap")
         val phases = ev.filter { it["kind"] == "phase" }.map { it["phase"] }
         assertEquals(listOf("warmup", "work", "recovery", "work", "recovery", "work", "recovery", "work", "recovery", "cooldown"), phases)
         val states = ev.filter { it["kind"] == "state" }.map { it["state"] }
