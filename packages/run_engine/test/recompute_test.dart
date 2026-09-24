@@ -1,4 +1,5 @@
 import 'package:run_engine/run_engine.dart';
+import 'package:run_engine/testing.dart';
 import 'package:test/test.dart';
 
 import 'helpers.dart';
@@ -331,13 +332,26 @@ void main() {
           )
           .fourByFour!;
       expect(bySetting.maxHrUsed, 190);
-      final observed = engine.analyze(hr, now: fixedNow).fourByFour!;
-      expect(observed.maxHrUsed, closeTo(170, 3));
-      // A strap showing more than 220−age wins over the estimate.
-      final young = engine
+      // No profile at all: no denominator, no zone metrics, but the run's
+      // own 30 s peak is reported so the store can fold it into settings.
+      final none = engine.analyze(hr, now: fixedNow).fourByFour!;
+      expect(none.maxHrUsed, isNull);
+      expect(none.timeInZoneSeconds, isNull);
+      expect(none.observedMaxHrThisRun, closeTo(170, 3));
+      // A user-level observed max above 220−age wins over the estimate;
+      // this run's own peak never does (one denominator across history).
+      final observed = engine
+          .analyze(
+            hr,
+            profile: const UserProfile(age: 60, observedMaxHr: 175),
+            now: fixedNow,
+          )
+          .fourByFour!;
+      expect(observed.maxHrUsed, 175);
+      final older = engine
           .analyze(hr, profile: const UserProfile(age: 60), now: fixedNow)
           .fourByFour!;
-      expect(young.maxHrUsed, greaterThan(160));
+      expect(older.maxHrUsed, 160);
       expect(byAge.timeInZoneSeconds, greaterThan(800));
       expect(byAge.timeInZoneSeconds, lessThanOrEqualTo(byAge.workSeconds));
       expect(byAge.workSeconds, 960);

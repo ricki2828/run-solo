@@ -17,12 +17,18 @@ enum InterruptReason {
 
 /// What the user told the engine about themselves (plan §16 decision 3).
 class UserProfile {
-  const UserProfile({this.age, this.maxHr});
+  const UserProfile({this.age, this.maxHr, this.observedMaxHr});
 
   final int? age;
 
-  /// Explicit max HR setting; wins over the age estimate.
+  /// Explicit max HR setting; wins over everything.
   final int? maxHr;
+
+  /// Highest 30 s HR seen across the user's history (kept in settings by the
+  /// store from [FourByFourMetrics.observedMaxHrThisRun]). Wins over 220−age
+  /// when higher. Never per run: every run must share one denominator so
+  /// "same effort: 91% both runs" is comparable.
+  final double? observedMaxHr;
 
   static const UserProfile none = UserProfile();
 }
@@ -33,6 +39,7 @@ class RepMetrics {
     required this.lap,
     required this.trimmedT0Ms,
     required this.trimmedT1Ms,
+    this.pausedMs = 0,
     required this.distanceM,
     required this.paceSecPerKm,
     required this.interrupted,
@@ -48,6 +55,9 @@ class RepMetrics {
   final Lap lap;
   final int trimmedT0Ms;
   final int trimmedT1Ms;
+
+  /// Paused time inside the trimmed window; excluded from the pace.
+  final int pausedMs;
 
   /// Distance over the trimmed window.
   final double distanceM;
@@ -69,7 +79,8 @@ class RepMetrics {
   /// Metres per heartbeat over the trimmed window ("faster at the same HR").
   final double? metresPerBeat;
 
-  double get trimmedSeconds => (trimmedT1Ms - trimmedT0Ms) / 1000;
+  /// Moving seconds in the trimmed window (paused time excluded).
+  double get trimmedSeconds => (trimmedT1Ms - trimmedT0Ms - pausedMs) / 1000;
   bool get clean => !interrupted && paceSecPerKm != null;
 }
 
@@ -105,6 +116,7 @@ class FourByFourMetrics {
     this.meanWorkHr,
     this.meanWorkHrFraction,
     this.metresPerBeat,
+    this.observedMaxHrThisRun,
   });
 
   final List<RepMetrics> reps;
@@ -134,6 +146,10 @@ class FourByFourMetrics {
   /// meanWorkHr ÷ maxHrUsed, e.g. 0.91.
   final double? meanWorkHrFraction;
   final double? metresPerBeat;
+
+  /// Highest 30 s mean HR in this run; the store folds it into
+  /// `UserProfile.observedMaxHr` (settings) when it exceeds the stored value.
+  final double? observedMaxHrThisRun;
 
   int get cleanRepCount => reps.where((r) => r.clean).length;
   bool get allRepsClean => reps.isNotEmpty && cleanRepCount == reps.length;
@@ -174,7 +190,7 @@ class MetricsCalculator {
     UserProfile profile,
   ) {
     final hrPresent = run.hasHr;
-    final maxHr = hrPresent ? _maxHr(profile, trace) : null;
+    final maxHr = hrPresent ? maxHrFor(profile) : null;
     final zoneLow = maxHr == null ? null : maxHr * constants.zoneLowFraction;
     final zoneHigh = maxHr == null ? null : maxHr * constants.zoneHighFraction;
 
@@ -190,7 +206,8 @@ class MetricsCalculator {
         t1 = lap.t1Ms;
       }
       final d = trace.distAt(t1) - trace.distAt(t0);
-      final seconds = (t1 - t0) / 1000;
+      final pausedMs = _pausedWithin(run, t0, t1);
+      final seconds = (t1 - t0 - pausedMs) / 1000;
       final pace = d <= 0 || seconds <= 0 ? null : seconds / d * 1000;
       final reason = _interruption(run, trace, lap);
       final meanHr = hrPresent ? trace.meanHr(lap.t0Ms, lap.t1Ms) : null;
@@ -213,6 +230,7 @@ class MetricsCalculator {
           lap: lap,
           trimmedT0Ms: t0,
           trimmedT1Ms: t1,
+          pausedMs: pausedMs,
           distanceM: d < 0 ? 0 : d,
           paceSecPerKm: pace,
           interrupted: reason != null,
@@ -233,7 +251,7 @@ class MetricsCalculator {
           r1 = rec.t1Ms;
         }
         final rd = trace.distAt(r1) - trace.distAt(r0);
-        final rs = (r1 - r0) / 1000;
+        final rs = (r1 - r0 - _pausedWithin(run, r0, r1)) / 1000;
         recoveries.add(
           RecoveryMetrics(
             number: rep.number,
@@ -278,11 +296,13 @@ class MetricsCalculator {
       var dist = 0.0;
       var secs = 0.0;
       for (final r in recWithPace) {
-        final s =
-            ((r.lap.t1Ms - constants.trimEndMs) -
-                (r.lap.t0Ms + constants.trimStartMs)) /
-            1000;
-        final seconds = s > 0 ? s : r.lap.durationMs / 1000;
+        var a = r.lap.t0Ms + constants.trimStartMs;
+        var b = r.lap.t1Ms - constants.trimEndMs;
+        if (b <= a) {
+          a = r.lap.t0Ms;
+          b = r.lap.t1Ms;
+        }
+        final seconds = (b - a - _pausedWithin(run, a, b)) / 1000;
         secs += seconds;
         dist += seconds / r.paceSecPerKm! * 1000;
       }
@@ -296,7 +316,9 @@ class MetricsCalculator {
     double? meanWorkHr;
     double? mpb;
     if (hrPresent && reps.isNotEmpty) {
-      tiz = reps.fold<double>(0, (sum, r) => sum + (r.zoneSeconds ?? 0));
+      tiz = maxHr == null
+          ? null
+          : reps.fold<double>(0, (sum, r) => sum + (r.zoneSeconds ?? 0));
       var beats = 0.0;
       var secs = 0.0;
       var mpbDist = 0.0;
@@ -334,6 +356,7 @@ class MetricsCalculator {
           ? null
           : meanWorkHr / maxHr,
       metresPerBeat: mpb,
+      observedMaxHrThisRun: hrPresent ? trace.highest30sHr() : null,
     );
   }
 
@@ -382,22 +405,35 @@ class MetricsCalculator {
         return InterruptReason.paused;
       }
     }
-    if (trace.maxSampleGapMs(lap.t0Ms, lap.t1Ms) >
+    // A genuine pause writes no samples; its span is not a GPS gap.
+    if (trace.maxSampleGapMs(lap.t0Ms, lap.t1Ms, excluding: run.pauses) >
         constants.sampleGapInterruptMs) {
       return InterruptReason.gpsDropped;
     }
     return null;
   }
 
-  /// Max HR precedence (plan §5, §16): setting → 220−age → highest 30 s
-  /// observed; a paired strap showing a higher 30 s value wins over the
-  /// estimate.
-  double? _maxHr(UserProfile profile, Trace trace) {
-    final observed = trace.highest30sHr();
+  static int _pausedWithin(RunFile run, int aMs, int bMs) {
+    var total = 0;
+    for (final p in run.pauses) {
+      final lo = p.t0Ms > aMs ? p.t0Ms : aMs;
+      final hi = p.t1Ms < bMs ? p.t1Ms : bMs;
+      if (hi > lo) total += hi - lo;
+    }
+    return total;
+  }
+
+  /// Max HR precedence (plan §5, §16): setting → the higher of 220−age and
+  /// the user-level observed 30 s max → observed alone. Never this run's own
+  /// peak: the store updates `UserProfile.observedMaxHr` from
+  /// [FourByFourMetrics.observedMaxHrThisRun] after the run, so the next
+  /// analysis shares one denominator with history.
+  static double? maxHrFor(UserProfile profile) {
     if (profile.maxHr != null) return profile.maxHr!.toDouble();
     final estimate = profile.age == null
         ? null
         : (220 - profile.age!).toDouble();
+    final observed = profile.observedMaxHr;
     if (estimate == null) return observed;
     if (observed != null && observed > estimate) return observed;
     return estimate;

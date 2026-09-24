@@ -54,14 +54,29 @@ class Trace {
 
   /// Largest gap between consecutive samples inside `[aMs, bMs]`, including
   /// the lead-in from `aMs` to the first sample and out to `bMs`.
-  int maxSampleGapMs(int aMs, int bMs) {
+  ///
+  /// Spans in [excluding] (pauses) do not count as gaps: their overlap with
+  /// each sample-to-sample interval is subtracted.
+  int maxSampleGapMs(int aMs, int bMs, {List<Span> excluding = const []}) {
+    int gap(int from, int to) {
+      var g = to - from;
+      for (final p in excluding) {
+        final lo = p.t0Ms > from ? p.t0Ms : from;
+        final hi = p.t1Ms < to ? p.t1Ms : to;
+        if (hi > lo) g -= hi - lo;
+      }
+      return g;
+    }
+
     var maxGap = 0;
     var prev = aMs;
     for (final s in between(aMs, bMs)) {
-      if (s.tMs - prev > maxGap) maxGap = s.tMs - prev;
+      final g = gap(prev, s.tMs);
+      if (g > maxGap) maxGap = g;
       prev = s.tMs;
     }
-    if (bMs - prev > maxGap) maxGap = bMs - prev;
+    final last = gap(prev, bMs);
+    if (last > maxGap) maxGap = last;
     return maxGap;
   }
 

@@ -58,13 +58,14 @@ class SyntheticSpec {
     this.missedBoundaries = const {},
     this.gpsLagMs = 3000,
     this.jitterSigmaM = 0,
-    this.jitterCorrelation = 0.98,
+    this.jitterCorrelation = 0.99,
     this.accuracyM = 6,
     this.badAccuracyShare = 0,
     this.dropouts = const [],
     this.pauses = const [],
     this.gaps = const [],
     this.hr = false,
+    this.hrStep = false,
     this.indoor = false,
     this.seed = 1,
     this.start,
@@ -108,6 +109,10 @@ class SyntheticSpec {
   final List<Span> gaps;
   final bool hr;
 
+  /// HR jumps to the phase target instantly with no noise, so mean/peak HR,
+  /// time in zone and m/beat have exact analytic values.
+  final bool hrStep;
+
   /// Treadmill: no fixes, no distance, HR only.
   final bool indoor;
   final int seed;
@@ -141,6 +146,9 @@ class SyntheticExpectation {
     required this.noisy,
     required this.rescueEdits,
     required this.headlineRun1,
+    this.expectedMeanWorkHr,
+    this.expectedZoneSecondsAtMax180,
+    this.expectedMetresPerBeat,
   });
 
   final int repCount;
@@ -169,6 +177,11 @@ class SyntheticExpectation {
   /// Headline key expected when this run is analysed with no priors.
   final String headlineRun1;
 
+  /// HR truth, only for `hrStep` specs (see the generator).
+  final double? expectedMeanWorkHr;
+  final double? expectedZoneSecondsAtMax180;
+  final double? expectedMetresPerBeat;
+
   Map<String, Object?> toJson() => {
     'rep_count': repCount,
     'rep_paces_s_per_km': repPacesSecPerKm,
@@ -184,6 +197,9 @@ class SyntheticExpectation {
     'noisy': noisy,
     'rescue_edits': rescueEdits.map((e) => e.toJson()).toList(),
     'headline_run1': headlineRun1,
+    'expected_mean_work_hr': expectedMeanWorkHr,
+    'expected_zone_seconds_at_max_180': expectedZoneSecondsAtMax180,
+    'expected_metres_per_beat': expectedMetresPerBeat,
   };
 
   factory SyntheticExpectation.fromJson(
@@ -208,6 +224,11 @@ class SyntheticExpectation {
         .map((e) => LapEdit.fromJson(e as Map<String, Object?>))
         .toList(),
     headlineRun1: json['headline_run1'] as String,
+    expectedMeanWorkHr: (json['expected_mean_work_hr'] as num?)?.toDouble(),
+    expectedZoneSecondsAtMax180:
+        (json['expected_zone_seconds_at_max_180'] as num?)?.toDouble(),
+    expectedMetresPerBeat: (json['expected_metres_per_beat'] as num?)
+        ?.toDouble(),
   );
 }
 
@@ -253,13 +274,30 @@ class TraceGenerator {
     }
 
     // True cumulative distance at t (piecewise linear).
+    // A pause is a standstill: the runner covers no ground while paused,
+    // so true distance advances with moving time only. Dropouts and
+    // kill→resume gaps keep the runner moving (the phone lost the signal).
+    int pausedBefore(int tMs) {
+      var total = 0;
+      for (final p in spec.pauses) {
+        if (tMs <= p.t0Ms) continue;
+        total += (tMs < p.t1Ms ? tMs : p.t1Ms) - p.t0Ms;
+      }
+      return total;
+    }
+
     double trueDist(int tMs) {
       var d = 0.0;
       var t = 0;
       for (final seg in spec.segments) {
-        if (tMs <= t + seg.ms) return d + seg.speedMps * (tMs - t) / 1000;
-        d += seg.speedMps * seg.ms / 1000;
-        t += seg.ms;
+        final segEnd = t + seg.ms;
+        final upto = tMs < segEnd ? tMs : segEnd;
+        if (upto > t) {
+          final moving = (upto - t) - (pausedBefore(upto) - pausedBefore(t));
+          d += seg.speedMps * moving / 1000;
+        }
+        if (tMs <= segEnd) return d;
+        t = segEnd;
       }
       return d;
     }
@@ -284,8 +322,10 @@ class TraceGenerator {
     for (var t = 0; t <= totalMs; t += 1000) {
       // HR follows the phase target with a 30 s time constant.
       final target = _hrTarget(_phaseAt(spec, t));
-      hr = target + (hr - target) * math.exp(-1 / 30);
-      final hrNoisy = (hr + (rng.nextDouble() * 4 - 2)).round();
+      hr = spec.hrStep ? target : target + (hr - target) * math.exp(-1 / 30);
+      final hrNoisy = spec.hrStep
+          ? hr.round()
+          : (hr + (rng.nextDouble() * 4 - 2)).round();
 
       if (silent(t)) continue;
 
@@ -390,17 +430,70 @@ class TraceGenerator {
       if (seg.phase == SegmentPhase.work) works.add(seg);
       if (seg.phase == SegmentPhase.recovery) recoveries.add(seg);
     }
-    final trim = (trimStartMs + trimEndMs) / 1000;
+    // Trimmed moving seconds per segment: the engine's window minus any
+    // paused time inside it (a pause is a standstill, excluded from pace).
+    final segStart = <int, int>{};
+    var acc = 0;
+    for (var i = 0; i < spec.segments.length; i++) {
+      segStart[i] = acc;
+      acc += spec.segments[i].ms;
+    }
+    int indexOf(Segment seg) => spec.segments.indexOf(seg);
+    double trimmedMoving(Segment seg) {
+      final a = segStart[indexOf(seg)]! + trimStartMs;
+      final b = segStart[indexOf(seg)]! + seg.ms - trimEndMs;
+      var paused = 0;
+      for (final p in spec.pauses) {
+        final lo = p.t0Ms > a ? p.t0Ms : a;
+        final hi = p.t1Ms < b ? p.t1Ms : b;
+        if (hi > lo) paused += hi - lo;
+      }
+      return (b - a - paused) / 1000;
+    }
+
     double? weighted(List<Segment> segs) {
       if (segs.isEmpty) return null;
       var secs = 0.0;
       var dist = 0.0;
       for (final s in segs) {
-        final w = s.seconds - trim;
+        final w = trimmedMoving(s);
         secs += w;
         dist += s.speedMps * w;
       }
       return secs / dist * 1000;
+    }
+
+    // HR truth (step profile only): every work sample sits at the work
+    // target, so mean = peak = target and zone time = the rep's sampled
+    // seconds when the target is inside 85–95% of max HR 180 (153–171).
+    double? expectedMeanWorkHr;
+    double? expectedZoneSeconds;
+    double? expectedMpb;
+    if (spec.hr && spec.hrStep) {
+      final target = _hrTarget(SegmentPhase.work);
+      expectedMeanWorkHr = target;
+      final inZone = target >= 180 * 0.85 && target <= 180 * 0.95;
+      var workSecs = 0.0;
+      for (final w in works) {
+        var silent = 0;
+        final a = segStart[indexOf(w)]!;
+        final b = a + w.ms;
+        for (final sp in [...spec.pauses, ...spec.dropouts, ...spec.gaps]) {
+          final lo = sp.t0Ms > a ? sp.t0Ms : a;
+          final hi = sp.t1Ms < b ? sp.t1Ms : b;
+          if (hi > lo) silent += hi - lo;
+        }
+        workSecs += (w.ms - silent) / 1000;
+      }
+      expectedZoneSeconds = inZone ? workSecs : 0;
+      var dist = 0.0;
+      var beats = 0.0;
+      for (final w in works) {
+        final sec = trimmedMoving(w);
+        dist += w.speedMps * sec;
+        beats += target * sec / 60;
+      }
+      expectedMpb = beats == 0 ? null : dist / beats;
     }
 
     final repPaces = works.map((w) => w.paceSecPerKm).toList();
@@ -468,7 +561,7 @@ class TraceGenerator {
     }
 
     final tolerance =
-        spec.toleranceSecPerKm ?? (spec.jitterSigmaM == 0 ? 0.5 : 6);
+        spec.toleranceSecPerKm ?? (spec.jitterSigmaM == 0 ? 0.5 : 3);
     return SyntheticExpectation(
       repCount: works.length,
       repPacesSecPerKm: repPaces,
@@ -486,6 +579,9 @@ class TraceGenerator {
       noisy: noisy,
       rescueEdits: rescue,
       headlineRun1: headline,
+      expectedMeanWorkHr: expectedMeanWorkHr,
+      expectedZoneSecondsAtMax180: expectedZoneSeconds,
+      expectedMetresPerBeat: expectedMpb,
     );
   }
 
@@ -696,7 +792,7 @@ class SyntheticSpecs {
       name: 'noisy_gps_phone_jitter',
       id: _id(14),
       preset: Preset.standard,
-      jitterSigmaM: 3,
+      jitterSigmaM: 2,
       accuracyM: 12,
       badAccuracyShare: 0.05,
       hr: true,
@@ -744,5 +840,125 @@ class SyntheticSpecs {
         const Segment.cooldown(300, _warm),
       ],
     ),
+
+    // --- §6 edge phases: a cut/long phase on the edge of the block must be
+    // flagged, never relabelled warm-up or cool-down (review P1-1).
+    SyntheticSpec(
+      name: 'preset_rep1_cut_short',
+      id: _id(19),
+      preset: Preset.standard,
+      expectLapsConsistent: false,
+      segments: _withWork(0, 200),
+    ),
+    SyntheticSpec(
+      name: 'preset_last_rep_cut_short',
+      id: _id(20),
+      preset: Preset.standard,
+      expectLapsConsistent: false,
+      segments: _withWork(3, 200),
+    ),
+    SyntheticSpec(
+      name: 'preset_recovery1_cut_short',
+      id: _id(21),
+      preset: Preset.standard,
+      expectLapsConsistent: false,
+      segments: _withRecovery(0, 140),
+    ),
+    // --- preset ±30 s edges (B5): 4:30 / 3:30 accepted, 4:31 / 3:29 flagged.
+    SyntheticSpec(
+      name: 'preset_work_4_30_accepted',
+      id: _id(22),
+      preset: Preset.standard,
+      segments: _withWork(3, 270),
+    ),
+    SyntheticSpec(
+      name: 'preset_work_4_31_flagged',
+      id: _id(23),
+      preset: Preset.standard,
+      expectLapsConsistent: false,
+      segments: _withWork(0, 271),
+    ),
+    SyntheticSpec(
+      name: 'preset_work_3_30_accepted',
+      id: _id(24),
+      preset: Preset.standard,
+      segments: _withWork(0, 210),
+    ),
+    SyntheticSpec(
+      name: 'preset_work_3_29_flagged',
+      id: _id(25),
+      preset: Preset.standard,
+      expectLapsConsistent: false,
+      segments: _withWork(1, 209),
+    ),
+    SyntheticSpec(
+      name: 'preset_recovery_edges_accepted',
+      id: _id(26),
+      preset: Preset.standard,
+      segments: _withRecovery(2, 210, also: const {0: 150}),
+    ),
+    SyntheticSpec(
+      name: 'preset_recovery_3_31_flagged',
+      id: _id(27),
+      preset: Preset.standard,
+      expectLapsConsistent: false,
+      segments: _withRecovery(2, 211),
+    ),
+    // --- short pauses inside a rep (review P1-2): pace excludes the
+    // standstill; a genuine pause is never "GPS dropped".
+    SyntheticSpec(
+      name: 'pause_8s_in_rep3',
+      id: _id(28),
+      preset: Preset.standard,
+      pauses: const [Span(1400000, 1408000)],
+      segments: fourByFour(),
+    ),
+    SyntheticSpec(
+      name: 'pause_15s_in_rep3',
+      id: _id(29),
+      preset: Preset.standard,
+      pauses: const [Span(1400000, 1415000)],
+      segments: fourByFour(),
+    ),
+    // --- GPS lag equal to the trim: exact only because the trim exists.
+    SyntheticSpec(
+      name: 'gps_lag_12s',
+      id: _id(30),
+      preset: Preset.standard,
+      gpsLagMs: 12000,
+      segments: fourByFour(),
+    ),
+    // --- HR step profile with analytic zone time and m/beat.
+    SyntheticSpec(
+      name: 'preset_4x4_hr_step',
+      id: _id(31),
+      preset: Preset.standard,
+      hr: true,
+      hrStep: true,
+      segments: fourByFour(),
+    ),
   ];
+
+  /// The standard 4x4 with work segment [rep] (0-based) set to [seconds].
+  static List<Segment> _withWork(int rep, int seconds) {
+    final segs = fourByFour();
+    final i = 1 + rep * 2;
+    segs[i] = Segment.work(seconds, segs[i].speedMps);
+    return segs;
+  }
+
+  /// The standard 4x4 with recovery [rep] (0-based) set to [seconds], plus
+  /// any other recoveries in [also].
+  static List<Segment> _withRecovery(
+    int rep,
+    int seconds, {
+    Map<int, int> also = const {},
+  }) {
+    final segs = fourByFour();
+    for (final e in {rep: seconds, ...also}.entries) {
+      final i = 2 + e.key * 2;
+      segs[i] = Segment.recovery(e.value, segs[i].speedMps);
+    }
+    return segs;
+  }
 }

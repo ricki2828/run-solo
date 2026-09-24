@@ -5,7 +5,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:run_engine/run_engine.dart';
+import 'package:run_engine/testing.dart';
 
 void main() {
   final dir = Directory('test/fixtures/synthetic');

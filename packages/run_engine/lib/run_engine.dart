@@ -22,4 +22,3 @@ export 'src/model/run_file.dart';
 export 'src/model/sidecar.dart';
 export 'src/model/verdict.dart';
 export 'src/run_mode.dart';
-export 'src/synthetic/trace_generator.dart';

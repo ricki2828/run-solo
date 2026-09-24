@@ -3,6 +3,7 @@ import 'package:xml/xml.dart';
 import '../model/run_file.dart';
 import '../run_mode.dart';
 import 'import_util.dart';
+import 'tcx_exporter.dart';
 
 /// TCX → schema-1 run file (plan §4 W1). `<Lap>` elements become manual laps
 /// so a watch-recorded 4x4 keeps its splits; trackpoints become samples.
@@ -10,11 +11,18 @@ import 'import_util.dart';
 class TcxImporter {
   const TcxImporter();
 
+  /// [tz] is the IANA zone the run was recorded in (TCX has none); the
+  /// caller passes the device zone. [mode] defaults to 4x4 only when the
+  /// file's laps are manual presses (watch auto-laps every km are not reps).
+  /// TCX timestamps without an offset are read as UTC. If the file was
+  /// exported by this app, its uuid (in `<Notes>`) is reused so re-import
+  /// dedupes; otherwise the id is a hash of the file.
   RunFile import(
     String text, {
     RunMode? mode,
     Units units = Units.km,
     String app = 'import:tcx',
+    String tz = 'UTC',
   }) {
     final XmlDocument doc;
     try {
@@ -30,8 +38,7 @@ class TcxImporter {
     final points = <ImportPoint>[];
     for (final lap in lapElements) {
       for (final tp in lap.findAllElements('Trackpoint')) {
-        final timeText = tp.getElement('Time')?.innerText;
-        final time = timeText == null ? null : DateTime.tryParse(timeText);
+        final time = parseImportTime(tp.getElement('Time')?.innerText);
         if (time == null) continue;
         final pos = tp.getElement('Position');
         final lat = _num(pos?.getElement('LatitudeDegrees'));
@@ -60,8 +67,11 @@ class TcxImporter {
     final trace = _DistLookup(samples);
     for (var i = 0; i < lapElements.length; i++) {
       final el = lapElements[i];
-      final startText = el.getAttribute('StartTime');
-      final lapStart = startText == null ? null : DateTime.tryParse(startText);
+      final lapStart = parseImportTime(el.getAttribute('StartTime'));
+      final trigger = el.getElement('TriggerMethod')?.innerText.trim();
+      final kind = trigger == null || trigger == 'Manual'
+          ? LapKind.manual
+          : LapKind.auto;
       final total = _num(el.getElement('TotalTimeSeconds'));
       if (lapStart == null) {
         throw ImportFormatException('lap $i has no StartTime');
@@ -70,8 +80,9 @@ class TcxImporter {
       if (t0 < 0) t0 = 0;
       int t1;
       if (i + 1 < lapElements.length) {
-        final nextText = lapElements[i + 1].getAttribute('StartTime');
-        final next = nextText == null ? null : DateTime.tryParse(nextText);
+        final next = parseImportTime(
+          lapElements[i + 1].getAttribute('StartTime'),
+        );
         t1 = next == null
             ? t0 + ((total ?? 0) * 1000).round()
             : next.toUtc().difference(start).inMilliseconds;
@@ -88,10 +99,15 @@ class TcxImporter {
           t1Ms: t1,
           d0M: trace.at(t0),
           d1M: trace.at(t1),
-          kind: LapKind.manual,
+          kind: kind,
         ),
       );
     }
+    final manualLaps = laps.where((l) => l.kind == LapKind.manual).length;
+    final notes = activity.getElement('Notes')?.innerText.trim() ?? '';
+    final ownId = notes.startsWith(TcxExporter.notesPrefix)
+        ? notes.substring(TcxExporter.notesPrefix.length)
+        : null;
 
     final device =
         doc
@@ -102,13 +118,15 @@ class TcxImporter {
             .trim() ??
         'unknown';
     return RunFile(
-      id: deterministicUuid(text),
+      id: ownId != null && RunFile.uuidPattern.hasMatch(ownId)
+          ? ownId
+          : deterministicUuid(text),
       device: device,
       app: app,
       start: start,
       end: start.add(Duration(milliseconds: samples.last.tMs)),
-      tz: 'UTC',
-      mode: mode ?? (laps.length >= 3 ? RunMode.fourByFour : RunMode.free),
+      tz: tz,
+      mode: mode ?? (manualLaps >= 3 ? RunMode.fourByFour : RunMode.free),
       preset: null,
       units: units,
       laps: laps,
@@ -144,6 +162,9 @@ class ImportPoint {
 /// points with a fix).
 List<Sample> buildSamples(List<ImportPoint> points, DateTime start) {
   final samples = <Sample>[];
+  // Use the device distance only when every point carries it; mixing it
+  // with haversine would double count or skip segments.
+  final useDeviceDist = points.every((p) => p.dist != null);
   var dist = 0.0;
   double? lastLat;
   double? lastLon;
@@ -153,7 +174,7 @@ List<Sample> buildSamples(List<ImportPoint> points, DateTime start) {
     if (t <= prevT) continue;
     prevT = t;
     final hasFix = p.lat != null && p.lon != null;
-    if (p.dist != null) {
+    if (useDeviceDist) {
       if (p.dist! > dist) dist = p.dist!;
     } else if (hasFix && lastLat != null) {
       dist += haversineM(lastLat, lastLon!, p.lat!, p.lon!);
@@ -211,8 +232,7 @@ class GpxPointBuilder {
   static List<Sample> samplesFrom(Iterable<XmlElement> trkpts) {
     final points = <ImportPoint>[];
     for (final tp in trkpts) {
-      final timeText = tp.getElement('time')?.innerText;
-      final time = timeText == null ? null : DateTime.tryParse(timeText);
+      final time = parseImportTime(tp.getElement('time')?.innerText);
       if (time == null) continue;
       final lat = double.tryParse(tp.getAttribute('lat') ?? '');
       final lon = double.tryParse(tp.getAttribute('lon') ?? '');
@@ -235,10 +255,9 @@ class GpxPointBuilder {
   static DateTime? firstTime(Iterable<XmlElement> trkpts) {
     DateTime? first;
     for (final tp in trkpts) {
-      final timeText = tp.getElement('time')?.innerText;
-      final time = timeText == null ? null : DateTime.tryParse(timeText);
+      final time = parseImportTime(tp.getElement('time')?.innerText);
       if (time != null && (first == null || time.isBefore(first))) {
-        first = time.toUtc();
+        first = time;
       }
     }
     return first;

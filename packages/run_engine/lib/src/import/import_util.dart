@@ -43,3 +43,23 @@ double haversineM(double lat1, double lon1, double lat2, double lon2) {
       math.cos(p1) * math.cos(p2) * math.sin(dl / 2) * math.sin(dl / 2);
   return 2 * r * math.atan2(math.sqrt(a), math.sqrt(1 - a));
 }
+
+/// Parses a TCX/GPX timestamp. A value without `Z` or an offset is taken as
+/// UTC (never the phone's local zone, which would shift with travel).
+DateTime? parseImportTime(String? text) {
+  if (text == null) return null;
+  final t = text.trim();
+  final parsed = DateTime.tryParse(t);
+  if (parsed == null) return null;
+  final hasOffset = RegExp(r'(Z|[+-]\d\d:?\d\d)$').hasMatch(t);
+  if (hasOffset) return parsed.toUtc();
+  return DateTime.utc(
+    parsed.year,
+    parsed.month,
+    parsed.day,
+    parsed.hour,
+    parsed.minute,
+    parsed.second,
+    parsed.millisecond,
+  );
+}

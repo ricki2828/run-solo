@@ -353,11 +353,37 @@ class RunFile {
     'samples': samples.map((s) => s.toJson()).toList(),
   };
 
-  /// Strict: unknown schema, missing keys, wrong types, unordered samples or
-  /// laps outside the sample range all throw [RunFileFormatException].
+  /// Strict: unknown schema, unknown or missing keys, wrong types, naive
+  /// timestamps, unordered samples or overlapping laps all throw
+  /// [RunFileFormatException]. Laps past the last sample are allowed (an
+  /// imported watch file may end its last lap after its last trackpoint).
+  static const Set<String> _keys = {
+    'schema',
+    'id',
+    'device',
+    'app',
+    'start',
+    'end',
+    'tz',
+    'mode',
+    'preset',
+    'units',
+    'laps',
+    'pauses',
+    'gaps',
+    'samples',
+  };
+
   factory RunFile.fromJson(Map<String, Object?> json) {
     if (json['schema'] != schema) {
       throw RunFileFormatException('schema must be $schema');
+    }
+    // Strict: an unknown key means a newer writer; refuse rather than drop
+    // it silently (the store keeps the original bytes for export anyway).
+    for (final k in json.keys) {
+      if (!_keys.contains(k)) {
+        throw RunFileFormatException('unknown key "$k"');
+      }
     }
     final id = _readString(json, 'id');
     if (!uuidPattern.hasMatch(id)) {
@@ -467,10 +493,16 @@ String _readString(Map<String, Object?> json, String key) {
   return v;
 }
 
+/// ISO 8601 with an explicit `Z` or offset: a naive timestamp would parse
+/// in the phone's local zone and shift with travel.
+final RegExp _isoWithOffset = RegExp(r'(Z|[+-]\d\d:?\d\d)$');
+
 DateTime _readDateTime(Map<String, Object?> json, String key) {
   final v = _readString(json, key);
   final parsed = DateTime.tryParse(v);
-  if (parsed == null) throw RunFileFormatException('$key must be ISO 8601');
+  if (parsed == null || !_isoWithOffset.hasMatch(v)) {
+    throw RunFileFormatException('$key must be ISO 8601 with Z or an offset');
+  }
   return parsed.toUtc();
 }
 

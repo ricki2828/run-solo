@@ -33,6 +33,7 @@ class RunAnalysis {
     required this.noisy,
     required this.gpsQuality,
     required this.engineVersion,
+    this.lapEditsInvalid = false,
   });
 
   final String runId;
@@ -54,6 +55,11 @@ class RunAnalysis {
   final bool noisy;
   final double gpsQuality;
   final int engineVersion;
+
+  /// The sidecar's lap edits no longer apply to this run's laps (e.g. an
+  /// edit written against a different lap list). They were ignored; the
+  /// verdict is computed from the unedited laps and the UI should say so.
+  final bool lapEditsInvalid;
 
   bool get lapsInconsistent => detection != null && !detection!.consistent;
 
@@ -80,7 +86,7 @@ class RunAnalysis {
 
   /// The sidecar with this verdict frozen (plan §4, §17 R3).
   RunSidecar freezeInto(RunSidecar sidecar) =>
-      sidecar.copyWith(frozenVerdict: verdict);
+      verdict == null ? sidecar : sidecar.withFrozenVerdict(verdict!);
 }
 
 /// The engine entry point. Pure and deterministic: the same inputs give the
@@ -126,14 +132,38 @@ class RunEngine {
       );
     }
 
-    final laps = applyLapEdits(run.laps, sidecar?.lapEdits ?? const [], trace);
-    final detection = RepDetector(constants).detect(laps, run.preset, trace);
+    // Edit base: recorded laps (pause laps dropped, renumbered), or laps
+    // derived from the speed stream when too few were recorded. Fix-laps
+    // edits index this list. Invalid edits never brick a run: they are
+    // ignored and flagged.
+    final detector = RepDetector(constants);
+    final editable = RepDetector.editableLaps(run.laps);
+    final fromSpeed = RepDetector.needsSpeedFallback(editable);
+    final base = fromSpeed ? detector.deriveLapsFromSpeed(trace) : editable;
+    final edits = sidecar?.lapEdits ?? const <LapEdit>[];
+    List<Lap> laps;
+    var lapEditsInvalid = false;
+    try {
+      laps = applyLapEdits(base, edits, trace);
+    } on LapEditException {
+      laps = base;
+      lapEditsInvalid = true;
+    }
+    final detection = detector.detect(
+      laps,
+      run.preset,
+      fromSpeed: fromSpeed,
+      pauses: run.pauses,
+    );
     final metrics = calc.fourByFour(run, detection, trace, profile);
 
     final frozen = sidecar?.frozenVerdict;
+    final inputsKey = Verdict.inputsKeyFor(edits, sidecar?.runTypeOverride);
     final Verdict verdict;
     final VerdictSource source;
-    if (frozen != null && frozen.engineVersion == engineVersion) {
+    if (frozen != null &&
+        frozen.engineVersion == engineVersion &&
+        frozen.inputsKey == inputsKey) {
       verdict = frozen;
       source = VerdictSource.frozen;
     } else {
@@ -144,6 +174,7 @@ class RunEngine {
         gates: VerdictGates(indoor: indoor, noisy: noisy, gpsQuality: quality),
         priors: priors,
         now: at,
+        inputsKey: inputsKey,
       );
       source = VerdictSource.computed;
     }
@@ -160,6 +191,7 @@ class RunEngine {
       noisy: noisy,
       gpsQuality: quality,
       engineVersion: engineVersion,
+      lapEditsInvalid: lapEditsInvalid,
     );
   }
 }

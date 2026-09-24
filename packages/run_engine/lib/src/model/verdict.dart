@@ -1,4 +1,8 @@
+import 'dart:convert';
+
+import '../run_mode.dart';
 import 'run_file.dart';
+import 'sidecar.dart';
 
 /// Which comparison produced the verdict (plan §5 staged verdict).
 enum VerdictStage {
@@ -51,6 +55,7 @@ class Verdict {
     required this.computedAt,
     this.bestIn365Days = false,
     this.trendSecPerKmPerWeek,
+    this.inputsKey = '',
   });
 
   final VerdictStage stage;
@@ -89,6 +94,17 @@ class Verdict {
   /// means getting faster.
   final double? trendSecPerKmPerWeek;
 
+  /// Fingerprint of the sidecar inputs (lap edits + override) the verdict was
+  /// computed from. A frozen verdict whose key no longer matches the sidecar
+  /// (e.g. edits merged in from a DB restore) is recomputed, never trusted.
+  final String inputsKey;
+
+  static String inputsKeyFor(List<LapEdit> edits, RunMode? override) =>
+      jsonEncode({
+        'edits': edits.map((e) => e.toJson()).toList(),
+        'override': override?.name,
+      });
+
   bool get hasPaceVerdict =>
       stage != VerdictStage.none && headline != VerdictHeadline.indoorRun;
 
@@ -110,6 +126,7 @@ class Verdict {
     'computed_at': computedAt.toUtc().toIso8601String(),
     'best_365d': bestIn365Days,
     'trend_s_per_km_per_week': trendSecPerKmPerWeek,
+    'inputs_key': inputsKey,
   };
 
   factory Verdict.fromJson(Map<String, Object?> json) {
@@ -166,6 +183,7 @@ class Verdict {
       computedAt: readDateTimeField(json, 'computed_at'),
       bestIn365Days: json['best_365d'] == true,
       trendSecPerKmPerWeek: optDouble('trend_s_per_km_per_week'),
+      inputsKey: (json['inputs_key'] as String?) ?? '',
     );
   }
 }

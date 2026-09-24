@@ -20,6 +20,10 @@ enum InconsistencyKind {
 
   /// Fewer or more reps than the preset (±1) or the 3–6 range allows.
   repCountOutOfRange,
+
+  /// A phase next to the detected block was cut short or ran long beyond
+  /// the tolerance (§6), e.g. rep 1 at 3:20 or rep 4 at 4:31.
+  phaseOutsideWindow,
 }
 
 class RepDetection {
@@ -47,8 +51,10 @@ class RepDetection {
   /// Laps were derived from the speed stream because none were recorded.
   final bool fromSpeedStream;
 
-  /// The laps the detection ran over (after edits, pause laps dropped, or
-  /// derived from speed).
+  /// The laps the detection ran over: pause laps dropped, fix-laps edits
+  /// applied, renumbered so `Lap.index` == list position (or derived from
+  /// speed when [fromSpeedStream]). **Fix-laps edits are indexed against this
+  /// list**, never against the raw `RunFile.laps`.
   final List<Lap> laps;
 }
 
@@ -57,34 +63,59 @@ class _Window {
   final int minMs;
   final int maxMs;
   bool fits(Lap lap) => lap.durationMs >= minMs && lap.durationMs <= maxMs;
+  int get midMs => (minMs + maxMs) ~/ 2;
 }
 
 /// Preset-aware rep detection from laps (plan §5, §17 B5). Precedence is the
 /// caller's: fix-laps edits are applied before this runs.
 class RepDetector {
-  const RepDetector(this.constants);
+  RepDetector(this.constants);
 
   final EngineConstants constants;
 
-  RepDetection detect(List<Lap> recordedLaps, Preset? preset, Trace trace) {
+  /// Pauses of the run being detected: lap speed uses moving time so a rep
+  /// with a standstill inside it still reads as work.
+  List<Span> _pauses = const [];
+
+  /// Recorded laps with `pause` laps dropped and indices renumbered to list
+  /// position. This is the coordinate system fix-laps edits use.
+  static List<Lap> editableLaps(List<Lap> recordedLaps) {
     final laps = recordedLaps.where((l) => l.kind != LapKind.pause).toList();
+    return [for (var i = 0; i < laps.length; i++) laps[i].copyWith(index: i)];
+  }
+
+  /// True when a run has too few recorded laps to detect from and the speed
+  /// stream must be used instead.
+  static bool needsSpeedFallback(List<Lap> editable) => editable.length < 2;
+
+  /// Laps derived from the speed stream (public so the caller can use them as
+  /// the base for fix-laps edits on a no-lap run).
+  List<Lap> deriveLapsFromSpeed(Trace trace) => _lapsFromSpeed(trace);
+
+  /// Detects reps from [laps] (already pause-free and renumbered, see
+  /// [editableLaps]; derived from speed when [fromSpeed]).
+  RepDetection detect(
+    List<Lap> laps,
+    Preset? preset, {
+    required bool fromSpeed,
+    List<Span> pauses = const [],
+  }) {
+    _pauses = pauses;
     if (laps.length < 2) {
-      final derived = _lapsFromSpeed(trace);
-      if (derived.length < 2) {
-        return RepDetection(
-          warmup: laps,
-          reps: const [],
-          cooldown: const [],
-          consistent: false,
-          inconsistency: InconsistencyKind.noPattern,
-          inconsistencyDetail: 'No laps and no clear fast/easy pattern.',
-          fromSpeedStream: true,
-          laps: derived,
-        );
-      }
-      return _detectFromLaps(derived, preset, fromSpeed: true);
+      return RepDetection(
+        warmup: laps,
+        reps: const [],
+        cooldown: const [],
+        consistent: false,
+        inconsistency: InconsistencyKind.noPattern,
+        inconsistencyDetail: fromSpeed
+            ? 'No laps and no clear fast/easy pattern.'
+            : 'Fewer than two laps.',
+        fromSpeedStream: fromSpeed,
+        laps: laps,
+      );
     }
-    return _detectFromLaps(laps, preset, fromSpeed: false);
+    return _detectFromLaps(laps, preset, fromSpeed: fromSpeed);
   }
 
   RepDetection _detectFromLaps(
@@ -183,20 +214,115 @@ class RepDetector {
     final count = bestReps.length;
     final inRange = count >= minReps && count <= maxReps;
     String? detail;
+    InconsistencyKind? kind;
     if (!inRange) {
+      kind = InconsistencyKind.repCountOutOfRange;
       detail = _explain(laps, bestReps, preset, work, recovery, count);
+    } else {
+      detail = _edgePhaseCutShort(
+        laps,
+        bestStart,
+        bestEnd,
+        bestReps,
+        preset,
+        work,
+        recovery,
+      );
+      if (detail != null) kind = InconsistencyKind.phaseOutsideWindow;
     }
     return RepDetection(
       warmup: warmup,
       reps: bestReps,
       cooldown: cooldown,
-      consistent: inRange,
-      inconsistency: inRange ? null : InconsistencyKind.repCountOutOfRange,
+      consistent: kind == null,
+      inconsistency: kind,
       inconsistencyDetail: detail,
       fromSpeedStream: fromSpeed,
       laps: laps,
     );
   }
+
+  /// §6: a phase cut short (or run long) beyond the tolerance on the edge of
+  /// the block must not be relabelled warm-up or cool-down. Walk outwards
+  /// from the block: a neighbouring lap that is phase-like (its speed says
+  /// work or recovery and its length is within 30% of the expected phase)
+  /// but does not fit the window is the cut phase. A lap that is not
+  /// phase-like (a slow 8 min warm-up) ends the walk.
+  String? _edgePhaseCutShort(
+    List<Lap> laps,
+    int blockStart,
+    int blockEnd,
+    List<DetectedRep> reps,
+    Preset? preset,
+    _Window work,
+    _Window recovery,
+  ) {
+    final recoveries = reps.map((r) => r.recovery).whereType<Lap>().toList();
+    if (recoveries.isEmpty) return null;
+    final recoverySpeeds = recoveries.map(_speed).toList()..sort();
+    final recoverySpeed = recoverySpeeds[recoverySpeeds.length ~/ 2];
+    // No speed information (treadmill): nothing to judge a neighbour by.
+    if (recoverySpeed <= 0) return null;
+    final workSpeeds = reps.map((r) => _speed(r.work)).toList()..sort();
+    final workSpeed = workSpeeds[workSpeeds.length ~/ 2];
+    final ratio = constants.workVsRecoveryMinRatio;
+    bool workLike(Lap l) =>
+        _speed(l) >= ratio * recoverySpeed && _near(l, work.midMs);
+    bool recoveryLike(Lap l) =>
+        _speed(l) * ratio <= workSpeed && _near(l, recovery.midMs);
+
+    // Backwards: the lap before the first work is expected to be a recovery.
+    // Collect the phase-like chain first, then number it from the outside so
+    // the cut phase gets its true number ("Rep 1", not "Rep 0").
+    final chain = <(Lap, bool)>[]; // (lap, isWork), nearest to the block first
+    var expectWork = false;
+    for (var i = blockStart - 1; i >= 0; i--) {
+      final lap = laps[i];
+      if (expectWork ? !workLike(lap) : !recoveryLike(lap)) break;
+      chain.add((lap, expectWork));
+      expectWork = !expectWork;
+    }
+    final before = chain.reversed.toList();
+    var repNo = 0;
+    for (final (lap, isWork) in before) {
+      if (isWork) repNo++;
+      if (isWork && !work.fits(lap)) {
+        return _phaseDetail('Rep $repNo', lap, preset?.workSeconds);
+      }
+      if (!isWork && !recovery.fits(lap)) {
+        return _phaseDetail('Recovery $repNo', lap, preset?.recoverySeconds);
+      }
+    }
+    final offset = before.where((e) => e.$2).length;
+
+    // Forwards: after the block comes a work lap (recovery present) or the
+    // missing final recovery.
+    expectWork = reps.last.recovery != null;
+    repNo = offset + reps.length;
+    for (var i = blockEnd; i < laps.length; i++) {
+      final lap = laps[i];
+      if (expectWork) {
+        if (!workLike(lap)) break;
+        repNo++;
+        if (!work.fits(lap)) {
+          return _phaseDetail('Rep $repNo', lap, preset?.workSeconds);
+        }
+      } else {
+        if (!recoveryLike(lap)) break;
+        if (!recovery.fits(lap)) {
+          return _phaseDetail('Recovery $repNo', lap, preset?.recoverySeconds);
+        }
+      }
+      expectWork = !expectWork;
+    }
+    return null;
+  }
+
+  /// Within ±30% of the expected phase length: wide enough to catch a 3:20
+  /// rep or a 2:20 recovery, narrow enough that an 8 min warm-up next to a
+  /// 5:00 recovery is not mistaken for one.
+  static bool _near(Lap lap, int expectedMs) =>
+      lap.durationMs >= expectedMs * 0.7 && lap.durationMs <= expectedMs * 1.3;
 
   /// Walks the earliest candidate sequence (from the first lap that fits the
   /// work window) and names the lap that broke it, so the fix-laps screen
@@ -258,8 +384,16 @@ class RepDetector {
     return '$phase was ${_mmss(lap.durationMs)}, outside the 4x4 window.';
   }
 
-  static double _speed(Lap lap) =>
-      lap.durationMs == 0 ? 0 : lap.distanceM / (lap.durationMs / 1000);
+  double _speed(Lap lap) {
+    var paused = 0;
+    for (final p in _pauses) {
+      final lo = p.t0Ms > lap.t0Ms ? p.t0Ms : lap.t0Ms;
+      final hi = p.t1Ms < lap.t1Ms ? p.t1Ms : lap.t1Ms;
+      if (hi > lo) paused += hi - lo;
+    }
+    final moving = lap.durationMs - paused;
+    return moving <= 0 ? 0 : lap.distanceM / (moving / 1000);
+  }
 
   /// Speed-stream fallback: a 20 s centred window speed per sample, a
   /// two-level threshold between the fast and easy modes, then contiguous

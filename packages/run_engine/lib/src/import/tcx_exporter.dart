@@ -11,6 +11,10 @@ class TcxExporter {
   final bool homeTrim;
   final double homeTrimM;
 
+  /// `<Notes>` carries the run's uuid so an own export re-imports with the
+  /// same id and dedupes.
+  static const String notesPrefix = 'runsolo:';
+
   String export(RunFile run) {
     final total = run.distanceM;
     bool keepPosition(Sample s) {
@@ -135,6 +139,7 @@ class TcxExporter {
                     },
                   );
                 }
+                builder.element('Notes', nest: '$notesPrefix${run.id}');
                 builder.element(
                   'Creator',
                   nest: () {
@@ -158,7 +163,8 @@ class TcxExporter {
   static String _iso(DateTime t) {
     final u = t.toUtc();
     String two(int v) => v.toString().padLeft(2, '0');
+    final ms = u.millisecond.toString().padLeft(3, '0');
     return '${u.year}-${two(u.month)}-${two(u.day)}T${two(u.hour)}:'
-        '${two(u.minute)}:${two(u.second)}Z';
+        '${two(u.minute)}:${two(u.second)}.${ms}Z';
   }
 }

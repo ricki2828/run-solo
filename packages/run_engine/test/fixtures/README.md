@@ -24,6 +24,12 @@ test in `golden_fixtures_test.dart` fails until you do.
 | `treadmill_indoor` | no fixes → INDOOR RUN, HR only |
 | `four_by_four_no_laps_speed_fallback` | no laps → reps from the speed stream |
 | `preset_work_cut_short_inconsistent` | rep 2 at 3:20 → `lapsInconsistent` with the fix-laps copy |
+| `preset_rep1_cut_short`, `preset_last_rep_cut_short`, `preset_recovery1_cut_short` | §6 edge phases: flagged, never relabelled warm-up/cool-down |
+| `preset_work_4_30_accepted`, `preset_work_3_30_accepted`, `preset_recovery_edges_accepted` | preset ±30 s edges accepted |
+| `preset_work_4_31_flagged`, `preset_work_3_29_flagged`, `preset_recovery_3_31_flagged` | 1 s past the tolerance → flagged |
+| `pause_8s_in_rep3`, `pause_15s_in_rep3` | short pauses: standstill excluded from pace, never "GPS dropped" |
+| `gps_lag_12s` | lag equal to the trim: exact only because the trim exists |
+| `preset_4x4_hr_step` | step HR profile with analytic mean/peak HR, zone time and m/beat |
 
 **(b) `real/`** — the founder's 4x4s converted via `TcxImporter`/`GpxImporter`, checked
 against an independent reading (stopwatch / second-device splits). Not yet populated:

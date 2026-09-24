@@ -53,6 +53,7 @@ class RunSidecar {
     this.runTypeOverride,
     this.notes,
     this.frozenVerdict,
+    this.verdictHistory = const [],
   });
 
   static const int schema = 1;
@@ -65,19 +66,28 @@ class RunSidecar {
   final String? notes;
   final Verdict? frozenVerdict;
 
+  /// Earlier verdicts, oldest first: every verdict that was unfrozen by a
+  /// fix-laps edit or override, or replaced by an engine bump (plan §5
+  /// "previous text kept in verdict history"), so a rebuild from sidecars
+  /// keeps the history the DB `verdict` table shows.
+  final List<Verdict> verdictHistory;
+
   bool get isEmpty =>
       lapEdits.isEmpty &&
       runTypeOverride == null &&
       notes == null &&
-      frozenVerdict == null;
+      frozenVerdict == null &&
+      verdictHistory.isEmpty;
 
   RunSidecar copyWith({
     List<LapEdit>? lapEdits,
     Object? runTypeOverride = _unset,
     Object? notes = _unset,
     Object? frozenVerdict = _unset,
+    List<Verdict>? verdictHistory,
   }) => RunSidecar(
     runId: runId,
+    verdictHistory: verdictHistory ?? this.verdictHistory,
     lapEdits: lapEdits ?? this.lapEdits,
     runTypeOverride: identical(runTypeOverride, _unset)
         ? this.runTypeOverride
@@ -92,11 +102,30 @@ class RunSidecar {
   /// analysis recomputes (plan §5: recompute only on fix-laps, override, or
   /// an engine bump). The old verdict text is the store's history to keep.
   RunSidecar withLapEdit(LapEdit edit) =>
-      copyWith(lapEdits: [...lapEdits, edit], frozenVerdict: null);
+      _unfrozen().copyWith(lapEdits: [...lapEdits, edit]);
 
   /// Override the run type; also unfreezes the verdict.
   RunSidecar withOverride(RunMode? mode) =>
-      copyWith(runTypeOverride: mode, frozenVerdict: null);
+      _unfrozen().copyWith(runTypeOverride: mode);
+
+  /// Freeze [verdict]; a different verdict already frozen moves to history
+  /// (an engine bump recomputed it).
+  RunSidecar withFrozenVerdict(Verdict verdict) {
+    final current = frozenVerdict;
+    final replaced =
+        current != null && current.engineVersion != verdict.engineVersion;
+    return copyWith(
+      frozenVerdict: verdict,
+      verdictHistory: replaced ? [...verdictHistory, current] : verdictHistory,
+    );
+  }
+
+  RunSidecar _unfrozen() => frozenVerdict == null
+      ? this
+      : copyWith(
+          frozenVerdict: null,
+          verdictHistory: [...verdictHistory, frozenVerdict!],
+        );
 
   Map<String, Object?> toJson() => {
     'schema': schema,
@@ -105,6 +134,7 @@ class RunSidecar {
     'run_type_override': runTypeOverride?.name,
     'notes': notes,
     'frozen_verdict': frozenVerdict?.toJson(),
+    'verdict_history': verdictHistory.map((v) => v.toJson()).toList(),
   };
 
   factory RunSidecar.fromJson(Map<String, Object?> json) {
@@ -131,6 +161,10 @@ class RunSidecar {
       throw RunFileFormatException('notes must be a string or null');
     }
     final frozen = json['frozen_verdict'];
+    final history = json['verdict_history'] ?? const [];
+    if (history is! List) {
+      throw RunFileFormatException('verdict_history must be a list');
+    }
     return RunSidecar(
       runId: runId,
       lapEdits: readListField(
@@ -142,6 +176,9 @@ class RunSidecar {
       frozenVerdict: frozen == null
           ? null
           : Verdict.fromJson(asMapField(frozen, 'frozen_verdict')),
+      verdictHistory: history
+          .map((v) => Verdict.fromJson(asMapField(v, 'verdict_history')))
+          .toList(),
     );
   }
 }

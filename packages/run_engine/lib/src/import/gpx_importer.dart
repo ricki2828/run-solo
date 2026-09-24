@@ -16,6 +16,7 @@ class GpxImporter {
     RunMode mode = RunMode.free,
     Units units = Units.km,
     String app = 'import:gpx',
+    String tz = 'UTC',
   }) {
     final XmlDocument doc;
     try {
@@ -34,7 +35,7 @@ class GpxImporter {
       app: app,
       start: start,
       end: start.add(Duration(milliseconds: samples.last.tMs)),
-      tz: 'UTC',
+      tz: tz,
       mode: mode,
       preset: null,
       units: units,

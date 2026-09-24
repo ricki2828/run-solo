@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:run_engine/run_engine.dart';
+import 'package:run_engine/testing.dart';
 import 'package:test/test.dart';
 
 import 'helpers.dart';
@@ -24,6 +27,11 @@ void main() {
         RunFileCodec.encode(f.run),
         RunFileCodec.encode(regenerated.run),
         reason: '${f.name}: regenerate with `dart run tool/gen_fixtures.dart`',
+      );
+      expect(
+        jsonEncode(f.expected.toJson()),
+        jsonEncode(regenerated.expected.toJson()),
+        reason: '${f.name}: expectation drifted, regenerate the fixtures',
       );
     }
   });
@@ -105,6 +113,48 @@ void main() {
             );
           });
         }
+      }
+
+      if (e.lapsConsistent) {
+        test('independent: rep count equals the work segments in the spec', () {
+          final works = spec(f.name).segments
+              .where((s) => s.phase == SegmentPhase.work)
+              .length;
+          expect(m.reps.length, works);
+          // Reps are contiguous: every recovery starts where its work ends.
+          for (final r in d.reps) {
+            if (r.recovery != null) expect(r.recovery!.t0Ms, r.work.t1Ms);
+          }
+        });
+      }
+
+      if (e.expectedMeanWorkHr != null) {
+        test('HR truth: mean/peak HR, zone time at max 180, m/beat', () {
+          final withMax = engine
+              .analyze(
+                f.run,
+                profile: const UserProfile(maxHr: 180),
+                now: fixedNow,
+              )
+              .fourByFour!;
+          for (final r in withMax.reps) {
+            expect(r.meanHr, closeTo(e.expectedMeanWorkHr!, 0.01));
+            expect(r.peakHr, e.expectedMeanWorkHr!.round());
+          }
+          expect(withMax.meanWorkHr, closeTo(e.expectedMeanWorkHr!, 0.01));
+          expect(
+            withMax.timeInZoneSeconds,
+            closeTo(e.expectedZoneSecondsAtMax180!, 0.01),
+          );
+          expect(
+            withMax.metresPerBeat,
+            closeTo(e.expectedMetresPerBeat!, 0.001),
+          );
+          expect(
+            withMax.meanWorkHrFraction,
+            closeTo(e.expectedMeanWorkHr! / 180, 1e-9),
+          );
+        });
       }
 
       if (e.rescueEdits.isNotEmpty) {

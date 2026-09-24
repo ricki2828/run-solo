@@ -22,6 +22,7 @@ class PriorRun {
     this.meanWorkHr,
     this.meanWorkHrFraction,
     this.metresPerBeat,
+    this.repPacesSecPerKm = const [],
   });
 
   final String id;
@@ -33,6 +34,10 @@ class PriorRun {
   final double? meanWorkHr;
   final double? meanWorkHrFraction;
   final double? metresPerBeat;
+
+  /// Per-rep paces (clean reps; null for an interrupted one) so run 2's
+  /// "vs last" column on the detail screen can be filled from the index.
+  final List<double?> repPacesSecPerKm;
 
   static PriorRun? fromMetrics(
     String id,
@@ -51,6 +56,9 @@ class PriorRun {
       meanWorkHr: m.meanWorkHr,
       meanWorkHrFraction: m.meanWorkHrFraction,
       metresPerBeat: m.metresPerBeat,
+      repPacesSecPerKm: m.reps
+          .map((r) => r.clean ? r.paceSecPerKm : null)
+          .toList(),
     );
   }
 }
@@ -70,9 +78,10 @@ class VerdictGates {
 
 /// Staged verdict + copy pinned to the design brief's verdict copy set.
 class VerdictBuilder {
-  const VerdictBuilder(this.constants);
+  VerdictBuilder(this.constants);
 
   final EngineConstants constants;
+  String _inputsKey = '';
 
   Verdict build({
     required RunFile run,
@@ -81,7 +90,9 @@ class VerdictBuilder {
     required VerdictGates gates,
     required List<PriorRun> priors,
     required DateTime now,
+    String inputsKey = '',
   }) {
+    _inputsKey = inputsKey;
     final floor = constants.runFloorSecPerKm;
     final band = constants.repBandSecPerKm;
 
@@ -96,6 +107,7 @@ class VerdictBuilder {
           bandSecPerKm: band,
           engineVersion: engineVersion,
           computedAt: now,
+          inputsKey: _inputsKey,
         );
 
     if (gates.indoor) {
@@ -171,6 +183,7 @@ class VerdictBuilder {
       bandSecPerKm: constants.repBandSecPerKm,
       engineVersion: engineVersion,
       computedAt: now,
+      inputsKey: _inputsKey,
     );
   }
 
@@ -190,13 +203,13 @@ class VerdictBuilder {
     final VerdictHeadline headline;
     final String subline;
     String? hrLine;
-    if (delta > floor) {
+    if (_beyond(delta, floor)) {
       headline = VerdictHeadline.faster;
       subline =
           'Work pace ${PaceFormat.delta(delta, units)} faster than your first 4x4 $vs.'
           '${_fadeSentence(m, last, units)}';
-      hrLine = _fasterHrLine(m, last);
-    } else if (delta < -floor) {
+      hrLine = _fasterHrLine(m, last, [last]);
+    } else if (_beyond(-delta, floor)) {
       headline = VerdictHeadline.slower;
       subline =
           'Work pace ${PaceFormat.delta(delta, units)} slower than your first 4x4 $vs.'
@@ -226,6 +239,7 @@ class VerdictBuilder {
       bandSecPerKm: constants.repBandSecPerKm,
       engineVersion: engineVersion,
       computedAt: now,
+      inputsKey: _inputsKey,
     );
   }
 
@@ -251,13 +265,13 @@ class VerdictBuilder {
     final VerdictHeadline headline;
     final String subline;
     String? hrLine;
-    if (delta > floor) {
+    if (_beyond(delta, floor)) {
       headline = VerdictHeadline.faster;
       subline =
           'Work pace ${PaceFormat.delta(delta, units)} faster than your recent 4x4s $vs.'
           '${_fadeSentence(m, last, units)}';
-      hrLine = _fasterHrLine(m, last);
-    } else if (delta < -floor) {
+      hrLine = _fasterHrLine(m, last, set);
+    } else if (_beyond(-delta, floor)) {
       headline = VerdictHeadline.slower;
       subline =
           'Work pace ${PaceFormat.delta(delta, units)} slower than your recent 4x4s $vs.'
@@ -304,6 +318,7 @@ class VerdictBuilder {
       bandSecPerKm: constants.repBandSecPerKm,
       engineVersion: engineVersion,
       computedAt: now,
+      inputsKey: _inputsKey,
       bestIn365Days: best,
       trendSecPerKmPerWeek: theilSenSlope(run.start, current, eligible),
     );
@@ -318,16 +333,40 @@ class VerdictBuilder {
     return ' Fade $fadeText, was ${PaceFormat.seconds(PaceFormat.toUnit(was, units))}.';
   }
 
-  String? _fasterHrLine(FourByFourMetrics m, PriorRun last) {
+  /// The verdict decision uses the displayed (rounded) numbers so "14 s/km
+  /// faster" can never sit inside a printed 14 s/km floor.
+  static bool _beyond(double delta, double floor) =>
+      delta.round() > floor.round();
+
+  /// Plan §5 "faster at the same HR": pace better AND metres-per-beat better
+  /// than the baseline (median mpb of the comparison set) → same-HR line;
+  /// pace better but mpb worse → "it cost more". Falls back to % max HR
+  /// when mpb is unavailable, and to time in zone when no prior has HR.
+  String? _fasterHrLine(
+    FourByFourMetrics m,
+    PriorRun last,
+    List<PriorRun> set,
+  ) {
     final pct = m.meanWorkHrFraction;
     if (pct == null) return null;
     final was = last.meanWorkHrFraction;
     final pctText = '${(pct * 100).round()}% max HR';
     if (was == null) return _timeInZoneOf(m);
     final wasText = '${(was * 100).round()}%';
-    final diff = (pct - was) * 100;
-    if (diff.abs() <= 2) return 'Same effort: $pctText both runs.';
-    if (diff > 0) return 'Faster, but it cost more: $pctText, was $wasText.';
+    final samePct = ((pct - was) * 100).abs() <= 2;
+    final setMpb = set.map((p) => p.metresPerBeat).whereType<double>().toList();
+    final mpb = m.metresPerBeat;
+    if (mpb != null && setMpb.isNotEmpty) {
+      final baselineMpb = _median(setMpb);
+      if (mpb >= baselineMpb) {
+        return samePct
+            ? 'Same effort: $pctText both runs.'
+            : 'Faster at the same HR: $pctText, was $wasText.';
+      }
+      return 'Faster, but it cost more: $pctText, was $wasText.';
+    }
+    if (samePct) return 'Same effort: $pctText both runs.';
+    if (pct > was) return 'Faster, but it cost more: $pctText, was $wasText.';
     return 'Faster at lower effort: $pctText, was $wasText.';
   }
 
