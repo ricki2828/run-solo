@@ -29,9 +29,12 @@ android {
 
     lint {
         // lintVital on the release AAB would fail on MissingPermission in the BLE/location
-        // callbacks that are guarded at runtime (the service checks before starting). Lint
-        // still runs in CI's debug build output; it does not gate the bundle.
+        // callbacks that are guarded at runtime (the service checks before starting).
         checkReleaseBuilds = false
+        // CI runs `:app:lintDebug` with only NewApi: any framework/JDK call above minSdk 29
+        // without a version guard fails the build (core-jvm is covered by -Xjdk-release=1.8).
+        checkOnly += setOf("NewApi")
+        abortOnError = true
     }
 
     buildFeatures {
