@@ -83,7 +83,7 @@ object JournalCodec {
                     lon = m.doubleOrNull("lon"),
                     altM = m.doubleOrNull("alt"),
                     accuracyM = m.doubleOrNull("acc"),
-                speedMps = m.doubleOrNull("spd"),
+                    speedMps = m.doubleOrNull("spd"),
                     hr = m.longOrNull("hr")?.toInt(),
                 )
             }
