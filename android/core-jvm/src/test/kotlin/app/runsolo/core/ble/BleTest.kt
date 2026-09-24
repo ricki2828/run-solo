@@ -95,7 +95,7 @@ class BleTest {
         assertIs<BleReconnectPolicy.Action.Nothing>(p.onDisconnected(0))
         val pair = p.pair("AA:BB")
         assertEquals(BleReconnectPolicy.Action.Reconnect("AA:BB", autoConnect = false, delayMs = 0, closeFirst = true), pair)
-        assertEquals(BleReconnectPolicy.Action.Reconnect("AA:BB", autoConnect = true, delayMs = 0, closeFirst = true), p.onStart())
+        assertEquals(BleReconnectPolicy.Action.Reconnect("AA:BB", autoConnect = false, delayMs = 0, closeFirst = true), p.onStart(), "direct connect at start")
         p.onConnected(1_000)
         // Drops after 2 s (unstable): 1 s, 2 s, 4 s … capped at 30 s.
         val delays = (1..7).map { (p.onDisconnected(3_000) as BleReconnectPolicy.Action.Reconnect).delayMs }

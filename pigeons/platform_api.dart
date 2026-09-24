@@ -35,6 +35,14 @@ enum FaultKind {
   hrDisconnected,
   journalWriteFailed,
   lowStorage,
+
+  /// The OS killed the process mid-run (read from ApplicationExitInfo on the
+  /// next app open); the UI shows the OEM guidance from `exitDiagnosis`.
+  osKilledMidRun,
+
+  /// The foreground service could not start after `start` returned a run id;
+  /// the run was discarded (no file). Show the message, return to Start.
+  startFailed,
 }
 
 /// Typed errors returned by `start` (plan §2). Never a stringly-typed map.
@@ -45,6 +53,33 @@ enum StartError {
   lowStorage,
   notificationsDenied,
   alreadyRunning,
+
+  /// `startReplay` on a release build, or an unknown fixture name.
+  replayUnavailable,
+
+  /// `resumeRecovered` for a journal that no longer exists or is unreadable.
+  noSuchJournal,
+
+  /// The OS refused the location foreground service (Android 14+ background
+  /// start, or the permission was revoked between check and start). Nothing
+  /// was recorded; no run file is written.
+  fgsNotAllowed,
+}
+
+/// Runtime permissions the setup checklist can request (plan §10). Location is
+/// the system prompt only (never a deep link); bluetooth = SCAN + CONNECT on
+/// API 31+, nothing to request below.
+enum PermissionKind { location, notifications, bluetooth }
+
+/// Why the previous process died, from `ApplicationExitInfo` (API 30+).
+enum ExitReason {
+  /// No kill recorded for this run (normal stop, or API 29).
+  none,
+  osKilled,
+  lowMemory,
+  crash,
+  userStop,
+  other,
 }
 
 /// The 4x4 preset written into the file header; drives cues and the detector.
@@ -65,11 +100,35 @@ class StartResult {
   StartError? error;
 }
 
+/// One recorded lap, for a recreated UI (the "last rep" ghost survives an
+/// Activity recreate). `distanceM` is the cumulative run distance at the lap.
+class LapSummary {
+  LapSummary({
+    required this.index,
+    required this.tMs,
+    required this.activeMs,
+    required this.distanceM,
+    required this.source,
+  });
+  int index;
+
+  /// Wall time since Start at the lap marker (pauses and gaps included).
+  int tMs;
+
+  /// Duration of the lap that ENDS here, excluding pauses and kill gaps —
+  /// what the verdict engine's rep time will be.
+  int activeMs;
+  double distanceM;
+  LapSource source;
+}
+
 /// Enough for a recreated UI to redraw mid-run.
 class RecorderStatus {
   RecorderStatus({
     required this.state,
     this.runId,
+    required this.mode,
+    required this.laps,
     required this.elapsedMs,
     required this.lapIndex,
     required this.gpsFix,
@@ -82,6 +141,11 @@ class RecorderStatus {
   });
   RecorderState state;
   String? runId;
+
+  /// The mode picked at Start (a by-feel 4x4 has `mode == fourByFour` and a
+  /// null `preset`).
+  RecordMode mode;
+  List<LapSummary> laps;
   int elapsedMs;
   int lapIndex;
   bool gpsFix;
@@ -99,10 +163,99 @@ class OrphanJournal {
     required this.runId,
     required this.lastLineAgeMs,
     required this.mode,
+    required this.readable,
+    required this.endedPaused,
+    required this.elapsedMs,
   });
   String runId;
   int lastLineAgeMs;
   RecordMode mode;
+
+  /// False when the journal has no decodable header: it can only be discarded.
+  bool readable;
+
+  /// The run was paused when the process died.
+  bool endedPaused;
+
+  /// Run time recorded before the kill (pauses and earlier gaps included).
+  int elapsedMs;
+}
+
+/// Replay mode (plan §12; debug builds only): a fixture trace fed through the
+/// recorder at `speed`x on a virtual clock. `fixture` is `synthetic-4x4`
+/// (straight line: 60 s warmup, the preset's reps, 60 s cooldown, HR by phase)
+/// or the name of a CSV under the app's Android `assets/replay/`.
+class ReplayConfig {
+  ReplayConfig({required this.fixture, required this.speed});
+  String fixture;
+  double speed;
+}
+
+/// Everything the setup checklist shows (plan §9, §10).
+class PermissionStatus {
+  PermissionStatus({
+    required this.fineLocation,
+    required this.approximateOnly,
+    required this.locationEnabled,
+    required this.notifications,
+    required this.bluetooth,
+    required this.batteryUnrestricted,
+    required this.gmsAvailable,
+  });
+  bool fineLocation;
+
+  /// Coarse granted without fine: recording would silently be indoor (W10).
+  bool approximateOnly;
+  bool locationEnabled;
+
+  /// Granted, or not needed (API < 33).
+  bool notifications;
+
+  /// SCAN + CONNECT granted, or not needed (API < 31).
+  bool bluetooth;
+
+  /// Not under battery optimisation; false → checklist deep-links to the page.
+  bool batteryUnrestricted;
+
+  /// FusedLocationProvider available; false → raw GPS_PROVIDER fallback.
+  bool gmsAvailable;
+}
+
+class BleStatus {
+  BleStatus({
+    required this.connected,
+    this.address,
+    this.name,
+    this.lastHr,
+    required this.adapterOn,
+  });
+  bool connected;
+  String? address;
+  String? name;
+  int? lastHr;
+  bool adapterOn;
+}
+
+/// Result of the OS-kill diagnosis for a run (plan §3, W11).
+class ExitDiagnosis {
+  ExitDiagnosis({
+    required this.runId,
+    required this.reason,
+    required this.timestampMs,
+    this.description,
+    required this.manufacturer,
+  });
+  String runId;
+  ExitReason reason;
+
+  /// Wall-clock epoch ms of the kill, 0 when none.
+  int timestampMs;
+
+  /// Raw `ApplicationExitInfo.description`, for the diagnostics screen.
+  String? description;
+
+  /// `Build.MANUFACTURER` lower-cased, so the UI picks per-OEM guidance.
+  String manufacturer;
 }
 
 class BleDevice {
@@ -113,8 +266,22 @@ class BleDevice {
 
 @HostApi()
 abstract class RecorderApi {
-  /// Idempotent: a second call while recording returns the running id.
+  /// Idempotent: a second call while recording returns the running id. Must be
+  /// called while the Activity is visible (the FGS is started from it, B2).
   StartResult start(RecordMode mode, Preset? preset, Units units);
+
+  /// Debug builds only: like `start`, fed from a fixture instead of GPS/BLE.
+  StartResult startReplay(
+    RecordMode mode,
+    Preset? preset,
+    Units units,
+    ReplayConfig replay,
+  );
+
+  /// Continue an orphaned journal after the user confirms (plan §3): writes the
+  /// `gap` line, rebuilds the preset phase from the journal, restarts the FGS.
+  /// Idempotent like `start`.
+  StartResult resumeRecovered(String runId);
   void pause();
   void resume();
   void lap(LapSource source);
@@ -123,21 +290,55 @@ abstract class RecorderApi {
   String? stop();
   RecorderStatus status();
 
-  /// Called on app open: journals without a finalised file.
+  /// Called on app open: journals without a finalised file, newest first. Never
+  /// includes the run that is being recorded.
   List<OrphanJournal> recover();
 
-  /// Finalise an orphaned journal without resuming it.
-  void finalise(String runId);
+  /// Finalise an orphaned journal without resuming it. Returns the run file
+  /// path relative to the app's files dir, or null when nothing was there.
+  String? finalise(String runId);
+
+  /// Delete an unreadable orphan (`readable == false`). Never touches a run file.
+  void discardJournal(String runId);
   void setCues(bool enabled);
+
+  /// Run files on disk (`runs/` + `runs-archive/`) as `runId -> relative path`,
+  /// for the Dart Reconciler. Journals and sidecars are not listed.
+  Map<String, String> listRunFiles();
+
+  /// Was the previous process killed by the OS while `runId` was recording?
+  ExitDiagnosis exitDiagnosis(String runId);
+}
+
+@HostApi()
+abstract class PermissionsApi {
+  PermissionStatus permissionStatus();
+
+  /// Shows the system prompt (or the enable-location dialog for `location` when
+  /// the setting is off). Resolves when the user answers; true = granted.
+  @async
+  bool requestPermission(PermissionKind kind);
+
+  /// The only Settings deep link allowed (plan §10): the app's battery page.
+  void openBatterySettings();
+  void openAppSettings();
+
+  /// `FLAG_KEEP_SCREEN_ON` on the Activity window (design brief: screen stays
+  /// on while recording, user setting). Cleared automatically when the
+  /// Activity is recreated, so call it again from the recording screen.
+  void setKeepScreenOn(bool enabled);
 }
 
 @HostApi()
 abstract class BleApi {
-  /// Scan once for Heart Rate Profile (0x180D) devices to pair.
+  /// Scan once for Heart Rate Profile (0x180D) devices to pair (≤ 10 s).
   @async
   List<BleDevice> bleScan();
+
+  /// Saves the address and connects; reconnects use autoConnect, never a rescan.
   void blePair(String address);
   void bleForget();
+  BleStatus bleStatus();
 }
 
 // --- Events (EventChannel, <= 2 Hz to the UI) ---
@@ -154,9 +355,16 @@ class TickEvent extends RecorderEvent {
     this.hr,
     this.gpsAccuracyM,
     required this.state,
+    required this.phase,
+    required this.repIndex,
+    required this.phaseRemainingMs,
   });
+
+  /// Wall time since Start, pauses included.
   int elapsedMs;
   int lapElapsedMs;
+
+  /// Distance since the last lap marker (`totalDistanceM` is cumulative).
   double lapDistanceM;
 
   /// Rolling 15 s "live" pace; differs from the verdict's trimmed pace.
@@ -165,17 +373,26 @@ class TickEvent extends RecorderEvent {
   int? hr;
   double? gpsAccuracyM;
   RecorderState state;
+  Phase phase;
+  int repIndex;
+
+  /// Active-time countdown of the current timed phase (0 when untimed).
+  int phaseRemainingMs;
 }
 
 class LapEvent extends RecorderEvent {
   LapEvent({
     required this.index,
     required this.tMs,
+    required this.activeMs,
     required this.distanceM,
     required this.source,
   });
   int index;
   int tMs;
+
+  /// Duration of the lap that ends here, excluding pauses and kill gaps.
+  int activeMs;
   double distanceM;
   LapSource source;
 }
@@ -189,6 +406,29 @@ class FaultEvent extends RecorderEvent {
   FaultEvent({required this.kind, required this.message});
   FaultKind kind;
   String message;
+}
+
+/// Recorder state transitions (start, pause, resume, stop, finalised), so a UI
+/// that missed a tick still redraws; `status()` remains the source of truth.
+class StateEvent extends RecorderEvent {
+  StateEvent({required this.state, this.runId, required this.phase});
+  RecorderState state;
+  String? runId;
+  Phase phase;
+}
+
+/// Preset phase change (warmup -> work 1 -> recovery 1 -> ... -> cooldown).
+class PhaseEvent extends RecorderEvent {
+  PhaseEvent({
+    required this.phase,
+    required this.repIndex,
+    required this.phaseDurationMs,
+  });
+  Phase phase;
+  int repIndex;
+
+  /// 0 for untimed phases (warmup, cooldown).
+  int phaseDurationMs;
 }
 
 @EventChannelApi()

@@ -61,6 +61,18 @@ jobs:
           fi
           diff -r "$kotlin" "$dart"
           echo "contract fixtures: $count Kotlin files identical to run_engine copies (both ways)"
+      - name: Kotlin→Dart event-trace fixtures are identical copies
+        # EventChannel traces (RecorderEvent + status snapshots) for the Dart controller test;
+        # a separate dir so the run-file contract test never sees them.
+        run: |
+          kotlin=android/core-jvm/src/test/fixtures/contract-events
+          dart=packages/run_engine/test/fixtures/contract-events
+          count=$(ls "$kotlin"/*.ndjson 2>/dev/null | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "::error::no Kotlin event-trace fixtures in $kotlin"; exit 1
+          fi
+          diff -r "$kotlin" "$dart"
+          echo "event-trace fixtures: $count Kotlin files identical to run_engine copies (both ways)"
 
   core-jvm:
     name: core-jvm tests (pure Kotlin)
@@ -96,6 +108,9 @@ jobs:
       - run: flutter pub get
       - name: Build debug APK
         run: flutter build apk --debug
+      - name: Android lint NewApi (minSdk 29 API guard)
+        working-directory: android
+        run: ./gradlew :app:lintDebug --no-daemon
       - name: Build release AAB (debug-signed until Play upload key lands; see README)
         run: flutter build appbundle --release --obfuscate --split-debug-info=build/symbols
       - name: 16 KB page-size check (debug APK)
@@ -144,4 +159,6 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: tools/emulator_smoke.sh apk/app-debug.apk app.runsolo.debug
+          script: |
+            tools/emulator_smoke.sh apk/app-debug.apk app.runsolo.debug
+            tools/emulator_lifecycle.sh apk/app-debug.apk app.runsolo.debug
