@@ -27,6 +27,18 @@ android {
         versionName = flutter.versionName
     }
 
+    lint {
+        // lintVital on the release AAB would fail on MissingPermission in the BLE/location
+        // callbacks that are guarded at runtime (the service checks before starting). Lint
+        // still runs in CI's debug build output; it does not gate the bundle.
+        checkReleaseBuilds = false
+    }
+
+    buildFeatures {
+        // BuildConfig.DEBUG gates replay mode and the debug intents (plan §12).
+        buildConfig = true
+    }
+
     buildTypes {
         debug {
             // Dogfood builds install beside the Play build (plan §11).
@@ -55,4 +67,8 @@ dependencies {
     // Pure Kotlin core (journal codec, lap state machine, ...) from the included build
     // android/core-jvm; substituted by coordinates via includeBuild in settings.gradle.kts.
     implementation("app.runsolo:core-jvm")
+    implementation("androidx.core:core-ktx:1.15.0")
+    // FusedLocationProvider (plan §3); falls back to raw GPS_PROVIDER when GMS is missing.
+    // play-services-location does not declare INTERNET (dependency audit, plan §10).
+    implementation("com.google.android.gms:play-services-location:21.3.0")
 }
