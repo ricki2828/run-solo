@@ -24,8 +24,9 @@ Android-module tests are built **only in GitHub Actions**. Every push to `main` 
 
 1. `flutter` job: Pigeon drift check, `dart format`, `flutter analyze`, `flutter test`, `dart test` in `packages/run_engine`.
 2. `core-jvm` job: `./gradlew test` in `android/core-jvm` (pure JVM).
-3. `build-apk` job: `flutter build apk --debug` (uploaded as artifact **`run-solo-debug-apk`**), a release AAB build (debug-signed for now), and the 16 KB page-size check on both (ELF `LOAD` alignment of every 64-bit `.so` plus `zipalign -P 16`). Fails the job if misaligned.
-4. `emulator` job: API 29 / 34 / 36 x86_64 emulators install and launch the debug APK and assert the process is alive with no fatal exception. Phase 1 turns this into the replay-mode lifecycle test.
+3. `build-apk` job: `flutter build apk --debug --flavor play` (uploaded as artifact **`run-solo-debug-apk`**), a release AAB build (debug-signed for now), and the 16 KB page-size check on both (ELF `LOAD` alignment of every 64-bit `.so` plus `zipalign -P 16`). Fails the job if misaligned.
+4. `emulator` job: API 29 / 34 / 36 x86_64 emulators install and launch the debug APK, then run the replay-mode lifecycle test.
+5. `build-dogfood` job: optimised sideload build for the Pixel, artifact **`run-solo-dogfood-apk`** (see below). `emulator-dogfood` runs the same smoke + lifecycle test on its x86_64 twin on API 36, so R8 stripping is caught in CI.
 
 Flutter is pinned to **3.47.5** in `ci.yml` (`FLUTTER_VERSION`); the host install at `~/tools/flutter` is the same version. Bump both together.
 
@@ -49,6 +50,23 @@ The debug package is `app.runsolo.debug`, so it installs beside a Play build.
 - Memory: `earlyoom` SIGTERMs the largest process once available RAM drops below ~10% (~1.5 GB). The Flutter tool build, the Dart analysis server (~860 MB) and Gradle each need headroom, so run one heavy thing at a time and expect `flutter analyze` / `flutter test` to be killed when other services are busy; CI is the gate. `export FLUTTER_TOOL_ARGS=--old_gen_heap_size=400` keeps the tool smaller.
 - Gradle: `android/core-jvm/gradle.properties` disables the daemon, caps the JVM at 768 MB and runs the Kotlin compiler in-process. `cd android/core-jvm && ./gradlew test` is the only Gradle invocation that works on the host.
 - Java 17 is present; no Android SDK, no Gradle install (the wrapper downloads Gradle 9.3.1).
+
+## Dogfood build (the one to put on the Pixel)
+
+The debug APK is ~160 MB, JIT and unsigned-for-purpose: fine for the emulator, useless for
+battery or smoothness. For phone testing download **`run-solo-dogfood-apk`** instead:
+
+- release-mode AOT Dart, R8 + resource shrinking, `--obfuscate --split-debug-info`, arm64-v8a only, target under 30 MiB (CI fails above it and prints the size in the job summary)
+- applicationId **`app.runsolo.dogfood`**, so it installs beside `app.runsolo.debug` and a future Play build; plain `app.runsolo` is reserved for Play-signed builds
+- replay mode and the debug intents stay available (`BuildConfig.REPLAY_ENABLED`), same as debug
+- signed with the CI dogfood key (`CN=Run Solo dogfood`). Secrets: `RUN_SOLO_DOGFOOD_KEYSTORE_BASE64`, `RUN_SOLO_DOGFOOD_STORE_PASSWORD`, `RUN_SOLO_DOGFOOD_KEY_ALIAS`, `RUN_SOLO_DOGFOOD_KEY_PASSWORD`; offline copy in `~/.secrets/run-solo/` on the dev host (never committed). Reinstalling over an older dogfood build works as long as this key is unchanged.
+
+```bash
+gh run download <run-id> --repo ricki2828/run-solo -n run-solo-dogfood-apk -D ~/Downloads/run-solo
+adb install -r ~/Downloads/run-solo/app-dogfood-arm64-v8a-release.apk
+```
+
+Flavours: `play` (Play track, no suffix) and `dogfood`. Every `flutter build`/`flutter run` now needs `--flavor play` or `--flavor dogfood`; Gradle tasks are `:app:lintPlayDebug`, `:app:testPlayDebugUnitTest`, etc.
 
 ## Release signing (not set up yet)
 

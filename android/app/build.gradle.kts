@@ -42,20 +42,60 @@ android {
     }
 
     buildFeatures {
-        // BuildConfig.DEBUG gates replay mode and the debug intents (plan §12).
+        // BuildConfig.REPLAY_ENABLED gates replay mode and the debug intents (plan §12);
+        // it is true for every debug build and for the dogfood flavour's release build.
         buildConfig = true
+    }
+
+    signingConfigs {
+        // CI dogfood key: repo secrets decoded to a temp file by ci.yml (RUN_SOLO_DOGFOOD_*).
+        // Offline copy under ~/.secrets/run-solo/. Absent locally -> debug key, so the
+        // variant still configures; the CI job fails if the key is missing.
+        create("dogfood") {
+            val ksPath = System.getenv("RUN_SOLO_DOGFOOD_KEYSTORE")
+            if (ksPath != null) {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("RUN_SOLO_DOGFOOD_STORE_PASSWORD")
+                keyAlias = System.getenv("RUN_SOLO_DOGFOOD_KEY_ALIAS")
+                keyPassword = System.getenv("RUN_SOLO_DOGFOOD_KEY_PASSWORD")
+            } else {
+                initWith(getByName("debug"))
+            }
+        }
+    }
+
+    flavorDimensions += "dist"
+    productFlavors {
+        // Play track: applicationId app.runsolo (reserved for Play-signed builds).
+        create("play") {
+            dimension = "dist"
+            buildConfigField("boolean", "REPLAY_ENABLED", "false")
+            // TODO: Play upload key (plan §11). Debug key for now so `flutter run --release` works.
+            signingConfig = signingConfigs.getByName("debug")
+        }
+        // Sideloadable optimised build for the founder's Pixel: release-mode AOT + R8,
+        // arm64 only, own key, replay/debug intents kept for desk testing.
+        create("dogfood") {
+            dimension = "dist"
+            applicationIdSuffix = ".dogfood"
+            versionNameSuffix = "-dogfood"
+            buildConfigField("boolean", "REPLAY_ENABLED", "true")
+            signingConfig = signingConfigs.getByName("dogfood")
+        }
     }
 
     buildTypes {
         debug {
-            // Dogfood builds install beside the Play build (plan §11).
+            // Debug builds install beside the Play build (plan §11).
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            buildConfigField("boolean", "REPLAY_ENABLED", "true")
         }
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Signing is per flavour (see productFlavors); nothing set here so the flavour wins.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
@@ -74,8 +114,10 @@ flutter {
 // plugin writes in copyFlutterAssetsDebug without declaring the dependency; Gradle 9 fails the
 // build on the implicit ordering. Declare it explicitly.
 afterEvaluate {
-    tasks.matching { it.name == "packageDebugUnitTestForUnitTest" }.configureEach {
-        dependsOn(tasks.matching { it.name == "copyFlutterAssetsDebug" })
+    val unitTestPackage = Regex("^package(\\w+)DebugUnitTestForUnitTest$")
+    tasks.matching { unitTestPackage.matches(it.name) }.configureEach {
+        val flavour = unitTestPackage.find(name)!!.groupValues[1]
+        dependsOn(tasks.matching { it.name == "copyFlutterAssets${flavour}Debug" })
     }
 }
 
