@@ -94,7 +94,10 @@ upload-key reset, not a new listing.
 
 Resolved in `android/app/build.gradle.kts` (`mapsApiKey()`): env `RUN_SOLO_MAPS_API_KEY`, then
 Gradle property / `android/local.properties` `runsolo.mapsApiKey=...`, then empty. It lands in
-the manifest as `com.google.android.geo.API_KEY` and is never read from Dart or printed by CI.
+the manifest as `com.google.android.geo.API_KEY`. Dart gets the same value through
+`--dart-define=RUN_SOLO_MAPS_API_KEY=...` (`String.fromEnvironment`; empty = draw the route shape,
+never a GoogleMap), and `mapsApiKey()` also reads that dart-define, so locally one
+`flutter run --flavor play --dart-define=RUN_SOLO_MAPS_API_KEY=$KEY` sets both. CI never prints it.
 Restrict the key to Android apps with one entry per package + signing SHA-1 (upload key, **Play
 app-signing certificate**, dogfood key, your local debug key); see `docs/play-console.md` §12.
 CI's debug APK is signed by a per-runner debug key, so the emulator smoke always sees the
