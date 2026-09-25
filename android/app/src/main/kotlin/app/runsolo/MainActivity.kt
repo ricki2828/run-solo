@@ -190,26 +190,6 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        override fun requestIgnoreBatteryOptimizations(callback: (Result<Boolean>) -> Unit) {
-            val pm = getSystemService(POWER_SERVICE) as PowerManager
-            if (pm.isIgnoringBatteryOptimizations(packageName)) {
-                callback(Result.success(true))
-                return
-            }
-            permissionCallbacks.remove(REQ_BATTERY)?.invoke(Result.success(false))
-            permissionCallbacks[REQ_BATTERY] = callback
-            val dialog = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
-            try {
-                @Suppress("DEPRECATION")
-                startActivityForResult(dialog, REQ_BATTERY)
-            } catch (_: Exception) {
-                // No system dialog on this build: the battery page is the fallback; answer on return.
-                openBatterySettings()
-                @Suppress("DEPRECATION")
-                startActivityForResult(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS), REQ_BATTERY)
-            }
-        }
-
         override fun openAppSettings() {
             try {
                 startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
@@ -285,11 +265,6 @@ class MainActivity : FlutterActivity() {
             val lm = getSystemService(LOCATION_SERVICE) as LocationManager
             cb(Result.success(lm.isLocationEnabled))
         }
-        if (requestCode == REQ_BATTERY) {
-            val cb = permissionCallbacks.remove(REQ_BATTERY) ?: return
-            val pm = getSystemService(POWER_SERVICE) as PowerManager
-            cb(Result.success(pm.isIgnoringBatteryOptimizations(packageName)))
-        }
     }
 
     companion object {
@@ -298,6 +273,5 @@ class MainActivity : FlutterActivity() {
         private const val REQ_NOTIFICATIONS = 42
         private const val REQ_BLUETOOTH = 43
         private const val REQ_LOCATION_SETTINGS = 44
-        private const val REQ_BATTERY = 45
     }
 }
