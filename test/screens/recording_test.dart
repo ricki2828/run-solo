@@ -103,6 +103,14 @@ void main() {
     expect(find.text('RECOVERY 1 OF 3'), findsOneWidget);
     expect(find.text('remaining in recovery'), findsOneWidget);
     expect(timer(tester), '3:00');
+    // Founder 25-Sep: in a recovery the countdown to the next rep is the
+    // biggest number, above the recovery average.
+    expect(
+      tester.getSize(timerText()).height,
+      greaterThan(
+        tester.getSize(find.byKey(const ValueKey('segment-avg'))).height,
+      ),
+    );
     final t = Theme.of(tester.element(timerText())).extension<RunSoloTokens>()!;
     expect(
       tester.widget<Text>(timerText()).style!.color,

@@ -215,20 +215,24 @@ class _RecordingScreenState extends State<RecordingScreen>
                           // their own and the screen shows the countdown,
                           // the segment's average pace and the current-pace
                           // dial. Lock-screen LAP still re-aligns a phase.
-                          // Timed phases (founder, tester 0.2): the segment
-                          // average is the primary number, at least as big
-                          // as the countdown; one step smaller on short
-                          // screens so both fit at 360 x 640.
+                          // Timed phases (founder, tester 0.2 / 25-Sep): in
+                          // a rep the rep average is the biggest number, in
+                          // a recovery the countdown to the next rep is; one
+                          // step smaller on short screens so both fit at
+                          // 360 x 640.
                           _PausedHidden(
                             paused: s.paused,
                             child: _TimerBlock(
                               s: s,
                               ctl: ctl,
-                              style: s.phase == Phase.warmup
-                                  ? null
-                                  : (compact
-                                        ? RunSoloType.display64
-                                        : RunSoloType.display96),
+                              style: switch (s.phase) {
+                                Phase.work => primaryStyle(
+                                  compact,
+                                  secondary: true,
+                                ),
+                                Phase.recovery => primaryStyle(compact),
+                                _ => null,
+                              },
                             ),
                           ),
                           const Spacer(),
@@ -353,6 +357,13 @@ class _RecordingScreenState extends State<RecordingScreen>
     );
   }
 }
+
+/// Size of a 4x4 timed phase's two big numbers: the primary (rep average in
+/// a rep, countdown in a recovery) and the secondary one. Short screens
+/// (< 720 dp) step both down.
+TextStyle primaryStyle(bool compact, {bool secondary = false}) => secondary
+    ? (compact ? RunSoloType.display64 : RunSoloType.display96)
+    : RunSoloType.timer120.copyWith(fontSize: compact ? 128 : 168);
 
 /// `repIndex` is 1-based in work / recovery (RecorderCore.kt); the last rep
 /// goes straight to cool-down, so recoveries count to `reps - 1` (brief
@@ -724,13 +735,12 @@ class _SegmentPace extends StatelessWidget {
             Fmt.pace(segmentAvg, units),
             key: const ValueKey('segment-avg'),
             softWrap: false,
-            // Larger than any other number on the screen; the FittedBox only
-            // shrinks it for a wide value (10:05 /mi).
-            style: RunSoloType.timer120.copyWith(
-              color: t.inkPrimary,
-              fontWeight: FontWeight.w700,
-              fontSize: compact ? 128 : 168,
-            ),
+            // The biggest number in a rep; second to the countdown in a
+            // recovery. The FittedBox only shrinks it for a wide value.
+            style: primaryStyle(
+              compact,
+              secondary: s.phase == Phase.recovery,
+            ).copyWith(color: t.inkPrimary, fontWeight: FontWeight.w700),
           ),
         ),
         Text(
