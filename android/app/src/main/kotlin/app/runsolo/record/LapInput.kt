@@ -35,6 +35,7 @@ class LapInput(context: Context, private val onLap: () -> Unit) {
         )
         s.setPlaybackToRemote(object : VolumeProvider(VolumeProvider.VOLUME_CONTROL_RELATIVE, 50, 50) {
             override fun onAdjustVolume(direction: Int) {
+                Log.i(TAG, "volume key direction=$direction")
                 if (direction == AudioManager.ADJUST_SAME) return
                 val now = SystemClock.elapsedRealtime()
                 if (now - lastPressT < 400) return
