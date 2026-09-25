@@ -365,7 +365,7 @@ String phaseTitle(RecordingSnapshot s) {
       return 'FREE RUN';
     case RecordMode.cooper:
       return '12-MINUTE TEST';
-    case RecordMode.fourByFour:
+    case RecordMode.intervals:
       break;
   }
   if (!s.isPreset) return 'LAP ${s.lapIndex + 1}';
@@ -630,9 +630,7 @@ class _TimerBlock extends StatelessWidget {
     final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
     final recovery = s.phase == Phase.recovery;
     final ms = s.timed ? ctl.displayRemainingMs : ctl.displayLapElapsedMs;
-    final total = recovery && s.preset != null
-        ? s.preset!.recoverySeconds * 1000
-        : 0;
+    final total = recovery ? s.recoveryMs : 0;
     // Scales down only when the digits would not fit (hour-long runs,
     // narrow phones); the 120 px face is the normal case.
     final digits = FittedBox(

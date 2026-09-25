@@ -32,7 +32,7 @@ void main() {
     final fake = FakeRecorderGateway(now: now);
     final services = fakeServices(recorder: fake);
     await services.recording.start(
-      RecordMode.fourByFour,
+      RecordMode.intervals,
       standardPreset(),
       Units.km,
     );

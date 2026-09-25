@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
+import '../platform/session_codec.dart';
 import '../state/recording_controller.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
@@ -55,9 +57,11 @@ class _StartScreenState extends State<StartScreen> {
           s.volumeKeyLapFor(RecordMode.laps),
         );
       }
+      // CONTRACT.md I1: the app expands the session; Kotlin runs it.
       result = await services.recording.start(s.lastMode, switch (s.lastMode) {
-        RecordMode.fourByFour => s.preset,
-        RecordMode.laps || RecordMode.free || RecordMode.cooper => null,
+        RecordMode.intervals => s.spec,
+        RecordMode.cooper => engine.SessionSpec.cooper.toPigeon(),
+        RecordMode.laps || RecordMode.free => null,
       }, s.units);
     } catch (e) {
       // A PlatformException must never strand the button in "starting".
@@ -102,6 +106,10 @@ class _StartScreenState extends State<StartScreen> {
       case StartError.startFailed:
       case StartError.resumeFailed:
         setState(() => _error = 'Could not start recording. Try again.');
+      case StartError.unsupportedSession:
+        setState(
+          () => _error = 'This version cannot run that session. Pick another.',
+        );
       case StartError.alreadyRunning:
         break;
     }
@@ -117,7 +125,7 @@ class _StartScreenState extends State<StartScreen> {
       builder: (context, _) {
         final s = services.settings.settings;
         final mode = s.lastMode;
-        final preset = mode == RecordMode.fourByFour;
+        final preset = mode == RecordMode.intervals;
         Future<void> set(AppSettings Function(AppSettings) f) =>
             services.settings.update(f);
         return Scaffold(
@@ -265,7 +273,7 @@ class _StartScreenState extends State<StartScreen> {
                   FilledButton(
                     onPressed: _starting ? null : _start,
                     child: Text(switch (mode) {
-                      RecordMode.fourByFour => 'START WARM-UP',
+                      RecordMode.intervals => 'START WARM-UP',
                       RecordMode.laps => 'START LAPS RUN',
                       RecordMode.free => 'START FREE RUN',
                       RecordMode.cooper => 'START TEST',

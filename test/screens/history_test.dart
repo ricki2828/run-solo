@@ -80,7 +80,7 @@ void main() {
       runs: [
         RunSummary(
           id: 'gone',
-          mode: RecordMode.fourByFour,
+          mode: RecordMode.intervals,
           start: DateTime(2026, 9, 1, 7),
           durationMs: 32 * 60 * 1000,
           distanceM: 6400,

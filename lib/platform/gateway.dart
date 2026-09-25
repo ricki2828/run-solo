@@ -76,8 +76,16 @@ class PermissionSnapshot {
 }
 
 abstract class RecorderGateway {
-  /// Must be called while the Activity is visible (FGS start, B2).
-  Future<StartResult> start(RecordMode mode, Preset? preset, Units units);
+  /// Must be called while the Activity is visible (FGS start, B2). [spec]:
+  /// required for intervals and cooper, the fartlek spec or null for laps,
+  /// null for free (CONTRACT.md I1). [lastCooperVo2] feeds the Cooper
+  /// projection cue (I2).
+  Future<StartResult> start(
+    RecordMode mode,
+    SessionSpec? spec,
+    Units units, {
+    double? lastCooperVo2,
+  });
   Future<void> pause();
   Future<void> resume();
   Future<void> lap(LapSource source);

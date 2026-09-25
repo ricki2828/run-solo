@@ -140,7 +140,7 @@ class RunDetailBody extends StatelessWidget {
         ),
         const SizedBox(height: Space.x24),
         switch (d.summary.mode) {
-          RecordMode.fourByFour => _FourByFourTables(
+          RecordMode.intervals => _FourByFourTables(
             detail: d,
             units: units,
             onVerdict: onVerdict,

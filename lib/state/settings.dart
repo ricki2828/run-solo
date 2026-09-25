@@ -6,11 +6,13 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 
 import '../platform/gateway.dart';
+import '../platform/session_codec.dart';
 
 /// 4x4 editor bounds (plan §6): reps 3–6, work locked 4:00, recovery
-/// 2:00–5:00 in 15 s steps.
+/// 2:00–5:00 in 15 s steps. Match `SessionCatalogue.norwegian4x4`.
 abstract final class PresetRules {
   static const int minReps = 3;
   static const int maxReps = 6;
@@ -25,12 +27,6 @@ abstract final class PresetRules {
     final snapped = (seconds / recoveryStep).round() * recoveryStep;
     return snapped.clamp(minRecovery, maxRecovery);
   }
-
-  static Preset normalise(Preset p) => Preset(
-    reps: clampReps(p.reps),
-    workSeconds: workSeconds,
-    recoverySeconds: clampRecovery(p.recoverySeconds),
-  );
 }
 
 /// Max HR entry bounds (plan D3). Typed values outside these are rejected at
@@ -70,7 +66,7 @@ class AppSettings {
     this.units = Units.km,
     this.reps = 4,
     this.recoverySeconds = 180,
-    this.lastMode = RecordMode.fourByFour,
+    this.lastMode = RecordMode.intervals,
     this.cues = true,
     this.haptics = true,
     this.volumeKeyLap,
@@ -115,17 +111,19 @@ class AppSettings {
   final bool onboardingDone;
   final SavedStrap? strap;
 
-  Preset get preset => Preset(
+  /// The 4x4 session to record, expanded by the engine catalogue from the
+  /// saved reps and recovery (CONTRACT.md I1: Kotlin never expands).
+  SessionSpec get spec => engine.SessionCatalogue.expand(
+    engine.SessionSpec.norwegian4x4Id,
     reps: reps,
-    workSeconds: PresetRules.workSeconds,
-    recoverySeconds: recoverySeconds,
-  );
+    recovery: engine.SessionStep.recovery(recoverySeconds, rep: 1),
+  ).toPigeon();
 
   /// Effective volume-key lap for a run type (plan §18.2 defaults).
   bool volumeKeyLapFor(RecordMode mode) => switch (mode) {
     RecordMode.free || RecordMode.cooper => false,
     RecordMode.laps => volumeKeyLap ?? true,
-    RecordMode.fourByFour => volumeKeyLap ?? false,
+    RecordMode.intervals => volumeKeyLap ?? false,
   };
 
   AppSettings copyWith({
@@ -223,8 +221,11 @@ class AppSettings {
       recoverySeconds: PresetRules.clampRecovery(
         pick('recoverySeconds', d.recoverySeconds),
       ),
-      lastMode:
-          RecordMode.values.asNameMap()[pick('lastMode', '')] ?? d.lastMode,
+      // Schema <= 2 saved `fourByFour`; it is `intervals` now (I1).
+      lastMode: switch (pick('lastMode', '')) {
+        'fourByFour' => RecordMode.intervals,
+        final String name => RecordMode.values.asNameMap()[name] ?? d.lastMode,
+      },
       cues: pick('cues', d.cues),
       haptics: pick('haptics', d.haptics),
       volumeKeyLap: j['volumeKeyLap'] is bool

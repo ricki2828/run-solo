@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_solo/screens/permissions_screen.dart';
 import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/state/recording_controller.dart';
@@ -67,9 +68,14 @@ void main() {
 
     final status = await fake.status();
     expect(status.state, RecorderState.recording);
-    expect(status.preset?.reps, 5);
-    expect(status.preset?.recoverySeconds, 150);
-    expect(status.preset?.workSeconds, 240);
+    // CONTRACT.md I1: Start sends the catalogue-expanded session.
+    final spec = status.spec!;
+    expect(spec.templateId, 'norwegian-4x4');
+    expect(spec.repCount, 5);
+    expect(spec.steps, hasLength(9), reason: '5 reps, 4 recoveries');
+    expect(spec.timedSeconds(StepKind.work, 1), 240);
+    expect(spec.timedSeconds(StepKind.recovery, 1), 150);
+    expect(fake.startCalls.single.mode, RecordMode.intervals);
     expect(fake.cuesEnabled, isFalse);
     expect(find.byType(RecordingScreen), findsOneWidget);
   });
@@ -88,7 +94,8 @@ void main() {
     expect(find.byType(ValueStepper), findsNothing);
     await tester.tap(find.text('START FREE RUN'));
     await pumpTimes(tester, 6);
-    expect((await fake.status()).preset, isNull);
+    expect((await fake.status()).spec, isNull);
+    expect(fake.startCalls.single.spec, isNull);
     expect(find.text('FREE RUN'), findsOneWidget);
   });
 

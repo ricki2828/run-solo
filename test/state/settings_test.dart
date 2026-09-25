@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_solo/state/settings.dart';
 
 void main() {
@@ -69,7 +70,7 @@ void main() {
   test('volume-key lap default follows the run type (plan §18.2)', () {
     const d = AppSettings();
     expect(d.volumeKeyLapFor(RecordMode.laps), isTrue);
-    expect(d.volumeKeyLapFor(RecordMode.fourByFour), isFalse);
+    expect(d.volumeKeyLapFor(RecordMode.intervals), isFalse);
     expect(d.volumeKeyLapFor(RecordMode.free), isFalse);
     const off = AppSettings(volumeKeyLap: false);
     expect(off.volumeKeyLapFor(RecordMode.laps), isFalse);
@@ -86,11 +87,13 @@ void main() {
     expect(PresetRules.clampRecovery(173), 180);
     expect(PresetRules.clampRecovery(600), 300);
     expect(PresetRules.clampReps(2), 3);
-    final p = PresetRules.normalise(
-      Preset(reps: 4, workSeconds: 300, recoverySeconds: 200),
-    );
-    expect(p.workSeconds, 240);
-    expect(p.recoverySeconds, 195);
+    // The saved 4x4 expands through the engine catalogue: work stays 4:00.
+    final spec = const AppSettings(reps: 5, recoverySeconds: 195).spec;
+    expect(spec.templateId, 'norwegian-4x4');
+    expect(spec.repCount, 5);
+    expect(spec.timedSeconds(StepKind.work, 3), 240);
+    expect(spec.timedSeconds(StepKind.recovery, 4), 195);
+    expect(spec.timedSeconds(StepKind.recovery, 5), isNull, reason: 'N − 1');
   });
 
   test('controller saves on update', () async {

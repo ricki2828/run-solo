@@ -19,20 +19,21 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../platform/fake_gateway.dart';
 import '../platform/gateway.dart';
+import '../platform/session_codec.dart';
 import 'run_index.dart';
 import 'sidecar_writer.dart';
 
 /// `RunMode` (file / engine) ↔ `RecordMode` (Pigeon / UI). Exhaustive on both
 /// sides (W7) so a new run type fails to compile instead of mislabelling.
 RecordMode recordModeOf(engine.RunMode m) => switch (m) {
-  engine.RunMode.intervals => RecordMode.fourByFour,
+  engine.RunMode.intervals => RecordMode.intervals,
   engine.RunMode.laps => RecordMode.laps,
   engine.RunMode.free => RecordMode.free,
   engine.RunMode.cooper => RecordMode.cooper,
 };
 
 engine.RunMode runModeOf(RecordMode m) => switch (m) {
-  RecordMode.fourByFour => engine.RunMode.intervals,
+  RecordMode.intervals => engine.RunMode.intervals,
   RecordMode.laps => engine.RunMode.laps,
   RecordMode.free => engine.RunMode.free,
   RecordMode.cooper => engine.RunMode.cooper,
@@ -40,14 +41,14 @@ engine.RunMode runModeOf(RecordMode m) => switch (m) {
 
 /// Short label per run type ("4x4", "LAPS", "FREE", "TEST").
 String modeLabel(RecordMode m) => switch (m) {
-  RecordMode.fourByFour => '4x4',
+  RecordMode.intervals => '4x4',
   RecordMode.laps => 'LAPS',
   RecordMode.free => 'FREE',
   RecordMode.cooper => 'TEST',
 };
 
 String modeTitle(RecordMode m) => switch (m) {
-  RecordMode.fourByFour => '4x4',
+  RecordMode.intervals => '4x4',
   RecordMode.laps => 'Laps run',
   RecordMode.free => 'Free run',
   RecordMode.cooper => '12-minute test',
@@ -62,7 +63,7 @@ class RunSummary {
     required this.durationMs,
     required this.distanceM,
     required this.laps,
-    this.preset,
+    this.spec,
     this.missing = false,
     this.verdict,
     this.analysis,
@@ -76,7 +77,10 @@ class RunSummary {
   final int durationMs;
   final double distanceM;
   final int laps;
-  final Preset? preset;
+
+  /// The recorded session (schema 3); null for Laps / Free and by-feel
+  /// intervals.
+  final engine.SessionSpec? spec;
 
   /// Indexed but the file is gone (plan §2 rule 5); shown, never hidden.
   final bool missing;
@@ -88,7 +92,7 @@ class RunSummary {
   /// medians, fade and bests off it).
   final engine.RunAnalysis? analysis;
 
-  bool get isFourByFour => mode == RecordMode.fourByFour;
+  bool get isFourByFour => mode == RecordMode.intervals;
 
   /// Whole-run average pace, s/km; null when no distance.
   double? get avgSecPerKm =>
@@ -276,18 +280,12 @@ RunSummary _summaryOf(
   durationMs: run.end.difference(run.start).inMilliseconds,
   distanceM: run.distanceM,
   laps: run.laps.length,
-  preset: run.preset == null
-      ? null
-      : Preset(
-          reps: run.preset!.reps,
-          workSeconds: run.preset!.workSeconds,
-          recoverySeconds: run.preset!.recoverySeconds,
-        ),
+  spec: run.session,
   // Only a 4x4 carries a verdict word (plan §18.2); guard by the effective
   // mode so nothing else ever shows one.
   verdict:
       recordModeOf(sidecar?.runTypeOverride ?? a?.mode ?? run.mode) ==
-          RecordMode.fourByFour
+          RecordMode.intervals
       ? displayVerdict(sidecar, a)
       : null,
   analysis: a,
@@ -354,7 +352,7 @@ class MemoryRunStore implements RunStore {
               durationMs: f.durationMs,
               distanceM: f.distanceM,
               laps: f.laps,
-              preset: f.preset,
+              spec: f.spec?.toEngine(),
             ),
           ),
     ];
