@@ -23,7 +23,7 @@ void main() {
       home: RunDetailScreen(runId: r.id),
     );
     await pumpTimes(tester, 6);
-    expect(find.text('4X4'), findsOneWidget);
+    expect(find.text('NORWEGIAN 4X4'), findsOneWidget);
     expect(find.byKey(const ValueKey('fake-map')), findsOneWidget);
     expect(find.text('Rep 1'), findsOneWidget);
     expect(find.text('Rep 4'), findsOneWidget);

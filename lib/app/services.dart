@@ -19,6 +19,7 @@ import '../platform/transfer_gateway.dart';
 import '../state/history_store.dart';
 import '../state/max_hr.dart';
 import '../state/recording_controller.dart';
+import '../state/sessions.dart';
 import '../state/settings.dart';
 import '../state/weather.dart';
 import '../state/zone_memento.dart';
@@ -35,11 +36,13 @@ class AppServices {
     required this.maps,
     required this.transfer,
     required this.storage,
+    SessionsController? sessions,
     RecordingController? recording,
     DateTime Function()? now,
     ZoneMementoStore? zoneMemento,
     this.weather,
   }) : now = now ?? DateTime.now,
+       sessions = sessions ?? SessionsController(MemorySessionsStore()),
        recording =
            recording ??
            RecordingController(
@@ -96,6 +99,12 @@ class AppServices {
       debugPrint('weather: pass failed ($e)');
     }
   }
+  /// Saved custom Intervals templates (`state/sessions.json`, plan §3.4).
+  final SessionsController sessions;
+
+  /// The session Start would run now (A8 session card).
+  engine.SessionSpec get pickedSession =>
+      settings.settings.session(sessions.sessions);
 
   /// The engine profile from settings (plan D3 `maxHrFor` inputs).
   engine.UserProfile get profile => MaxHr.profileFor(settings.settings, now());
@@ -115,6 +124,7 @@ class AppServices {
     FakeTransferGateway? transfer,
     FakeStorageGateway? storage,
     DateTime Function()? now,
+    List<CustomSession> customSessions = const [],
   }) {
     final rec = recorder ?? FakeRecorderGateway(autoTick: true, now: now);
     final settingsCtl = SettingsController(
@@ -139,6 +149,10 @@ class AppServices {
       transfer: transfer ?? FakeTransferGateway(),
       storage: storage ?? FakeStorageGateway(),
       now: now,
+      sessions: SessionsController(
+        MemorySessionsStore(customSessions),
+        now: now,
+      )..preload(customSessions),
     );
   }
 
@@ -148,6 +162,10 @@ class AppServices {
       FileSettingsStore(Directory('${support.path}/state')),
     );
     await settings.load();
+    final sessions = SessionsController(
+      FileSessionsStore(Directory('${support.path}/state')),
+    );
+    await sessions.load();
     final history = FileRunStore(
       Directory('${support.path}/runs'),
       profile: () => MaxHr.profileFor(settings.settings, DateTime.now()),
@@ -168,6 +186,7 @@ class AppServices {
         provider: const OpenMeteoProvider(),
         enabled: () => settings.settings.weatherPerRun,
       ),
+      sessions: sessions,
     );
     services.startWeather();
     return services;

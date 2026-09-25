@@ -615,10 +615,14 @@ class _SummaryScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final title = switch (detail.summary.mode) {
+      RecordMode.laps
+          when detail.summary.spec?.templateId ==
+              engine.SessionSpec.fartlekId =>
+        'FARTLEK',
       RecordMode.laps => 'LAPS RUN',
       RecordMode.free => 'FREE RUN',
       RecordMode.cooper => '12-MINUTE TEST',
-      RecordMode.intervals => '4x4',
+      RecordMode.intervals => 'INTERVALS',
     };
     return Scaffold(
       appBar: AppBar(

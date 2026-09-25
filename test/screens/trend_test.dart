@@ -14,7 +14,7 @@ void main() {
     await pumpApp(tester, fakeServices(files: [r1]), home: const TrendScreen());
     await pumpTimes(tester, 6);
     expect(find.byKey(const ValueKey('trend-empty')), findsOneWidget);
-    expect(find.text('4X4 · 1 SESSION'), findsOneWidget);
+    expect(find.text('NORWEGIAN 4X4 · 1 SESSION'), findsOneWidget);
   });
 
   testWidgets('three 4x4s: hero median, delta, chart, bests', (tester) async {

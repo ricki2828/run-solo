@@ -7,6 +7,7 @@ import '../app/services.dart';
 import '../map/map_surface.dart';
 import '../map/route_builder.dart';
 import '../platform/gateway.dart';
+import '../state/fartlek_summary.dart';
 import '../state/history_store.dart';
 import '../state/zone_histogram.dart';
 import '../theme/theme.dart';
@@ -65,7 +66,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
           );
         }
         return Scaffold(
-          appBar: AppBar(title: Text(modeTitle(d.summary.mode).toUpperCase())),
+          appBar: AppBar(title: Text(runTitle(d.summary).toUpperCase())),
           body: SafeArea(
             child: RunDetailBody(
               detail: d,
@@ -145,6 +146,16 @@ class RunDetailBody extends StatelessWidget {
             units: units,
             onVerdict: onVerdict,
           ),
+          RecordMode.laps
+              when d.summary.spec?.templateId == engine.SessionSpec.fartlekId =>
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                FartlekBlock(summary: FartlekSummary.of(a.laps), units: units),
+                const SizedBox(height: Space.x24),
+                _LapsTable(view: a.laps, units: units),
+              ],
+            ),
           RecordMode.laps => _LapsTable(view: a.laps, units: units),
           RecordMode.free ||
           RecordMode.cooper => _Splits(free: free, units: units),
@@ -193,7 +204,7 @@ class _Header extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '${modeLabel(d.summary.mode)} · ${Fmt.dayDate(d.run.start)} · ${Fmt.hhmm(d.run.start)}',
+          '${runLabel(d.summary)} · ${Fmt.dayDate(d.run.start)} · ${Fmt.hhmm(d.run.start)}',
           style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
         ),
         const SizedBox(height: Space.x12),
@@ -886,6 +897,76 @@ class _Row extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Fartlek summary (plan §3.5): surge count, surge time, surge pace against
+/// easy pace, HR time in band. Informational only; no verdict word.
+class FartlekBlock extends StatelessWidget {
+  const FartlekBlock({super.key, required this.summary, required this.units});
+  final FartlekSummary? summary;
+  final Units units;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final s = summary;
+    if (s == null) {
+      return Text(
+        'No surges marked. Press LAP at the start and end of each surge.',
+        key: const ValueKey('fartlek-empty'),
+        style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+      );
+    }
+    final unit = units == Units.mi ? '/mi' : '/km';
+    return Column(
+      key: const ValueKey('fartlek-summary'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'FARTLEK',
+          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+        ),
+        const SizedBox(height: Space.x8),
+        Row(
+          children: [
+            Expanded(
+              child: StatTile(label: 'SURGES', value: '${s.surges}'),
+            ),
+            Expanded(
+              child: StatTile(
+                label: 'SURGE TIME',
+                value: Fmt.clock((s.surgeSeconds * 1000).round()),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: Space.x16),
+        Row(
+          children: [
+            Expanded(
+              child: StatTile(
+                label: 'SURGE PACE $unit',
+                value: Fmt.pace(s.surgePaceSecPerKm, units),
+              ),
+            ),
+            Expanded(
+              child: StatTile(
+                label: 'EASY PACE $unit',
+                value: Fmt.pace(s.easyPaceSecPerKm, units),
+              ),
+            ),
+          ],
+        ),
+        if (s.timeInBandSeconds != null) ...[
+          const SizedBox(height: Space.x16),
+          StatTile(
+            label: 'HR 85-95%',
+            value: Fmt.clock((s.timeInBandSeconds! * 1000).round()),
+          ),
+        ],
+      ],
     );
   }
 }

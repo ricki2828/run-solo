@@ -11,7 +11,9 @@ import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
 
-/// Trend per run type (design brief §4.9). 4x4: hero 6-run median, delta vs
+/// Trend per run type (design brief §4.9); Intervals group by comparison
+/// key (plan §3.8), one chip per session shape, titled with the session
+/// name. The 4x4 key (t240x*): hero 6-run median, delta vs
 /// the previous median, dot-and-line chart (Y inverted, median band, noise
 /// floor band, PB dots in Arc), bests row. Laps and Free show distance and
 /// pace only, no verdict language. Under two sessions: "Two 4x4s draw the
@@ -25,6 +27,9 @@ class TrendScreen extends StatefulWidget {
 
 class _TrendScreenState extends State<TrendScreen> {
   RecordMode _type = RecordMode.intervals;
+
+  /// Selected Intervals comparison key; null = the most recent one.
+  String? _key;
   Future<List<RunSummary>>? _runs;
 
   @override
@@ -44,9 +49,27 @@ class _TrendScreenState extends State<TrendScreen> {
           future: _runs,
           builder: (context, snap) {
             final all = snap.data ?? const <RunSummary>[];
-            final runs =
+            final typed =
                 all.where((r) => r.mode == _type && r.analysis != null).toList()
                   ..sort((a, b) => a.start.compareTo(b.start));
+            // Intervals: one trend per comparison key, newest key first,
+            // titled by the latest run's session name.
+            final keys = <String, String>{};
+            for (final r in typed.reversed) {
+              final k = trendKey(r);
+              if (k != null) keys.putIfAbsent(k, () => runTitle(r));
+            }
+            final key = _type != RecordMode.intervals
+                ? null
+                : keys.containsKey(_key)
+                ? _key
+                : keys.keys.firstOrNull;
+            final runs = key == null
+                ? typed
+                : typed.where((r) => trendKey(r) == key).toList();
+            final title = key == null
+                ? modeTitle(_type).toUpperCase()
+                : keys[key]!.toUpperCase();
             return ListView(
               padding: const EdgeInsets.symmetric(
                 horizontal: Space.screenGutter,
@@ -61,9 +84,7 @@ class _TrendScreenState extends State<TrendScreen> {
                       RecordMode.free,
                     ]) ...[
                       _TypeChip(
-                        label: modeLabel(m) == '4x4'
-                            ? '4x4'
-                            : modeTitle(m).split(' ').first,
+                        label: modeTitle(m).split(' ').first,
                         selected: _type == m,
                         onTap: () => setState(() => _type = m),
                       ),
@@ -71,14 +92,39 @@ class _TrendScreenState extends State<TrendScreen> {
                     ],
                   ],
                 ),
+                if (keys.length > 1) ...[
+                  const SizedBox(height: Space.x12),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final e in keys.entries) ...[
+                          _TypeChip(
+                            key: ValueKey('trend-key-${e.key}'),
+                            label: e.value,
+                            selected: e.key == key,
+                            onTap: () => setState(() => _key = e.key),
+                          ),
+                          const SizedBox(width: Space.x8),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: Space.x24),
                 _LaneHeader(
                   title:
-                      '${modeTitle(_type).toUpperCase()} · ${runs.length} SESSION${runs.length == 1 ? '' : 'S'}',
+                      '$title · ${runs.length} SESSION${runs.length == 1 ? '' : 'S'}',
                 ),
                 const SizedBox(height: Space.x24),
                 switch (_type) {
-                  RecordMode.intervals => _FourByFourTrend(
+                  RecordMode.intervals
+                      when key == null ||
+                          key == engine.ComparisonKey.norwegian4x4 =>
+                    _FourByFourTrend(runs: runs, units: units),
+                  // Other session shapes: distance and pace until the
+                  // generalised rep metrics land (I3).
+                  RecordMode.intervals => _DistanceTrend(
                     runs: runs,
                     units: units,
                   ),
@@ -100,6 +146,12 @@ class _TrendScreenState extends State<TrendScreen> {
     );
   }
 }
+
+/// The comparison key a run's trend groups under (plan §3.8).
+String? trendKey(RunSummary r) =>
+    r.analysis?.comparisonKey ??
+    r.spec?.comparisonKey ??
+    (r.analysis?.intervals != null ? engine.ComparisonKey.norwegian4x4 : null);
 
 /// Session medians for the 4x4 trend: the engine's work pace per run and the
 /// rolling median of the previous 6 (the verdict's comparison set).
@@ -544,6 +596,7 @@ class _TrendPainter extends CustomPainter {
 
 class _TypeChip extends StatelessWidget {
   const _TypeChip({
+    super.key,
     required this.label,
     required this.selected,
     required this.onTap,

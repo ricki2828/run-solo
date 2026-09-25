@@ -18,14 +18,17 @@ Finder stepperButton(String label, IconData icon) => find.descendant(
 );
 
 void main() {
-  testWidgets('preset editor: reps 3–6, work locked, recovery 15 s steps', (
+  testWidgets('session card: 4x4 reps 3–6, recovery 15 s steps, no work row', (
     tester,
   ) async {
     final services = fakeServices();
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
 
-    expect(find.text('Fixed at 4:00 in this version.'), findsOneWidget);
+    // D2: reps and recovery only; the work length is in the structure line.
+    expect(find.text('NORWEGIAN 4X4'), findsOneWidget);
+    expect(find.text('4 × 4:00 · 3:00 jog'), findsOneWidget);
+    expect(find.widgetWithText(ValueStepper, 'REP'), findsNothing);
     expect(find.text('4'), findsOneWidget);
 
     await tester.tap(stepperButton('Reps', Icons.add));
@@ -49,7 +52,9 @@ void main() {
     expect(services.settings.settings.recoverySeconds, 120);
   });
 
-  testWidgets('START 4x4 hands the preset to the recorder', (tester) async {
+  testWidgets('START WARM-UP hands the 4x4 session to the recorder', (
+    tester,
+  ) async {
     final fake = FakeRecorderGateway(now: now);
     final services = fakeServices(
       recorder: fake,

@@ -205,7 +205,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                           _Banner(text: _stopError!, color: t.semDanger)
                         else if (s.fault != null)
                           _Banner(text: s.fault!, color: t.semDanger)
-                        else if (s.gpsLost)
+                        else if (s.gpsLost || s.showEndRep)
                           _Banner(text: gpsBannerCopy(s), color: t.semWarn)
                         else if (s.notice != null)
                           _Banner(text: s.notice!, color: t.semWarn),
@@ -274,26 +274,48 @@ class _RecordingScreenState extends State<RecordingScreen>
                             maxHr: maxHr,
                             compact: compact,
                           ),
-                        const SizedBox(height: Space.x12),
-                        Visibility(
-                          visible: !s.paused,
-                          maintainSize: true,
-                          maintainAnimation: true,
-                          maintainState: true,
-                          child: GpsBar(
-                            accuracyM: s.gpsAccuracyM,
-                            lost: s.gpsLost,
+                        // END REP: the banner already says GPS is lost,
+                        // and the short phone needs the bar's height.
+                        if (!s.showEndRep) ...[
+                          const SizedBox(height: Space.x12),
+                          Visibility(
+                            visible: !s.paused,
+                            maintainSize: true,
+                            maintainAnimation: true,
+                            maintainState: true,
+                            child: GpsBar(
+                              accuracyM: s.gpsAccuracyM,
+                              lost: s.gpsLost,
+                            ),
                           ),
-                        ),
+                        ],
                         const SizedBox(height: Space.x16),
-                        if (s.isPreset && s.phase == Phase.warmup)
+                        if (s.isPreset &&
+                            s.phase == Phase.warmup &&
+                            s.needsGps &&
+                            s.gpsLost)
+                          // W3: distance reps cannot end without GPS, so
+                          // START REPS waits for a fix.
+                          _WaitingForGps(height: lapHeight)
+                        else if (s.isPreset && s.phase == Phase.warmup)
                           LapButton(
                             key: const ValueKey('start-reps'),
-                            label: 'START 4x4',
+                            label: 'START REPS',
                             onLap: ctl.startReps,
                             pulse: ctl.lapPulse,
                             haptics: settings.haptics,
                             height: lapHeight,
+                          )
+                        else if (s.isPreset && s.showEndRep)
+                          // A8 / W3: a distance step with GPS weak or lost
+                          // for > 10 s ends by hand.
+                          LapButton(
+                            key: const ValueKey('end-rep'),
+                            label: 'END REP',
+                            onLap: ctl.endRep,
+                            pulse: ctl.lapPulse,
+                            haptics: settings.haptics,
+                            height: compact ? 96 : 120,
                           )
                         else if (s.isPreset)
                           const Spacer()
@@ -359,6 +381,14 @@ class _RecordingScreenState extends State<RecordingScreen>
   }
 }
 
+/// Metres to go (A8): whole metres, rounded down to 5 m under 100 m and
+/// to 10 m above; holds at "0 m" until the auto-lap sample lands.
+String metresText(double metres) {
+  final m = metres.floor();
+  final r = m < 100 ? m - m % 5 : m - m % 10;
+  return '$r m';
+}
+
 /// Size of a 4x4 timed phase's two big numbers: the primary (rep average in
 /// a rep, countdown in a recovery) and the secondary one. Short screens
 /// (< 720 dp) step both down.
@@ -372,6 +402,13 @@ TextStyle primaryStyle(bool compact, {bool secondary = false}) => secondary
 String phaseTitle(RecordingSnapshot s) {
   switch (s.mode) {
     case RecordMode.laps:
+      // Fartlek (plan §3.5): the first LAP starts surge 1; odd laps are
+      // surges, even laps easy.
+      if (s.fartlek) {
+        final n = s.lapIndex;
+        if (n == 0) return 'EASY · LAP TO SURGE';
+        return n.isOdd ? 'SURGE ${(n + 1) ~/ 2}' : 'EASY ${n ~/ 2}';
+      }
       return 'LAP ${s.lapIndex + 1}';
     case RecordMode.free:
       return 'FREE RUN';
@@ -381,12 +418,29 @@ String phaseTitle(RecordingSnapshot s) {
       break;
   }
   if (!s.isPreset) return 'LAP ${s.lapIndex + 1}';
+  final step = s.currentStep;
+  final detail = step == null ? '' : ' · ${stepDetail(step)}';
   return switch (s.phase) {
     Phase.warmup => 'WARM-UP',
-    Phase.work => 'REP ${s.repIndex} OF ${s.reps}',
-    Phase.recovery => 'RECOVERY ${s.repIndex} OF ${s.reps - 1}',
+    Phase.work => 'REP ${s.repIndex} OF ${s.reps}$detail',
+    Phase.recovery => 'RECOVERY ${s.repIndex} OF ${s.reps - 1}$detail',
     Phase.cooldown => 'COOL-DOWN',
-    Phase.none => '4x4',
+    Phase.none => 'INTERVALS',
+  };
+}
+
+/// "400 M", "1:00", "JOG" (A8 titles): a distance step says its distance,
+/// a timed rep its length, a timed recovery its style.
+String stepDetail(SessionStep st) {
+  final work = st.kind == StepKind.work;
+  return switch (st.target) {
+    TargetKind.distance =>
+      st.value >= 1000 && st.value % 1000 == 0
+          ? '${st.value ~/ 1000} KM'
+          : '${st.value} M',
+    TargetKind.time when work => Fmt.recovery(st.value),
+    TargetKind.time ||
+    TargetKind.equalToPreviousWork => st.style.name.toUpperCase(),
   };
 }
 
@@ -410,6 +464,10 @@ String phaseTitle(RecordingSnapshot s) {
 
 /// "Rep flagged" only means something inside a rep; elsewhere say what it is.
 String gpsBannerCopy(RecordingSnapshot s) {
+  if (s.showEndRep) return 'GPS lost. Tap END REP at the end of the rep.';
+  if (s.phase == Phase.warmup && s.needsGps && s.gpsLost) {
+    return 'Distance reps need GPS. Wait for a fix to start reps.';
+  }
   if (!s.hadFix) return 'Waiting for GPS';
   if (s.phase == Phase.work) return 'GPS dropped, this rep is flagged';
   return 'GPS dropped';
@@ -419,9 +477,11 @@ String timerCaption(RecordingSnapshot s) {
   // Total time has its own large cell in the vitals row (tester 0.2).
   if (!s.isPreset) return 'this lap';
   return switch (s.phase) {
-    Phase.warmup => 'warm up, then tap START 4x4',
-    Phase.work => 'remaining in rep',
-    Phase.recovery => 'remaining in recovery',
+    Phase.warmup when s.spec?.warmupSeconds != null => 'warm-up left',
+    Phase.warmup => 'warm up, then tap START REPS',
+    Phase.work when s.distanceStep => 'to go',
+    Phase.work => 'left in rep',
+    Phase.recovery => 'to rep ${s.repIndex + 1}',
     Phase.cooldown => 'hold Stop when done',
     Phase.none => '',
   };
@@ -537,7 +597,14 @@ class _Vitals extends StatelessWidget {
       fontSize: compact ? 36 : 44,
     );
     final label = RunSoloType.micro11.copyWith(color: secondary);
-    final hr = s.hr;
+    // Short reps (plan §3.7, A8): HR lags a 30 s effort, so in a rep the
+    // cell shows the rep's max instead of the live reading.
+    final repMax =
+        s.shortReps &&
+        s.phase == Phase.work &&
+        s.stepMaxHr != null &&
+        s.hr != null;
+    final hr = repMax ? s.stepMaxHr : s.hr;
     final pct = hr == null || maxHr <= 0 ? null : (hr * 100 / maxHr).round();
     Widget cell(String title, Widget value, {IconData? icon}) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -564,7 +631,7 @@ class _Vitals extends StatelessWidget {
                 ? 'Heart rate strap reconnecting'
                 : 'Heart rate $hr',
             child: cell(
-              'HEART RATE',
+              repMax ? 'REP MAX HR' : 'HEART RATE',
               Row(
                 crossAxisAlignment: CrossAxisAlignment.baseline,
                 textBaseline: TextBaseline.alphabetic,
@@ -716,20 +783,44 @@ class _TimerBlock extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
     final recovery = s.phase == Phase.recovery;
-    final ms = s.timed ? ctl.displayRemainingMs : ctl.displayLapElapsedMs;
-    final total = recovery ? s.recoveryMs : 0;
+    final fixedWarmup =
+        s.phase == Phase.warmup && s.spec?.warmupSeconds != null;
+    final ms = s.timed || fixedWarmup
+        ? ctl.displayRemainingMs
+        : ctl.displayLapElapsedMs;
+    final toGo = s.metresToGo;
+    final target = s.currentStep?.value ?? 0;
+    final total = !recovery
+        ? 0
+        : s.phaseDurationMs > 0
+        ? s.phaseDurationMs
+        : s.recoveryMs;
+    // A distance step counts metres down (A8); the ring fills by distance.
+    final progress = toGo != null
+        ? (target == 0 ? 0.0 : 1 - toGo / target)
+        : total == 0
+        ? 0.0
+        : 1 - ms / total;
     // Scales down only when the digits would not fit (hour-long runs,
     // narrow phones); the 120 px face is the normal case.
     final digits = FittedBox(
       fit: BoxFit.scaleDown,
       child: Text(
-        Fmt.clock(ms),
+        // A8: with no fix the metres never extrapolate; they read "--".
+        toGo == null
+            ? Fmt.clock(ms)
+            : s.gpsLost
+            ? '--'
+            : metresText(toGo),
         key: const ValueKey('timer'),
         softWrap: false,
         style: (style ?? RunSoloType.timer120).copyWith(
-          // A8: the countdown is Bone in every phase; in a recovery the
-          // grey (M3) moves to the secondary number, the recovery average.
-          color: t.inkPrimary,
+          // A8 + founder rule: the biggest number is also the brightest. In
+          // a rep the countdown (or metres to go) is secondary, so it is
+          // muted; in a recovery it is the primary number, in Bone.
+          color: s.phase == Phase.work || (toGo != null && s.gpsLost)
+              ? secondary
+              : t.inkPrimary,
         ),
         textAlign: TextAlign.center,
       ),
@@ -739,7 +830,7 @@ class _TimerBlock extends StatelessWidget {
         if (recovery)
           CustomPaint(
             painter: _RecoveryRingPainter(
-              progress: total == 0 ? 0 : 1 - ms / total,
+              progress: progress,
               color: secondary,
               track: t.lineHair,
             ),
@@ -824,46 +915,50 @@ class _SegmentPace extends StatelessWidget {
           '$title /${units == Units.mi ? 'mi' : 'km'}',
           style: RunSoloType.label13.copyWith(color: secondary),
         ),
-        SizedBox(height: compact ? Space.x8 : Space.x16),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AuxFigure(
-                    label: 'DISTANCE',
-                    value: Fmt.distance(s.lapDistanceM, units),
-                    labelColor: secondary,
-                    valueColor: t.inkPrimary,
-                  ),
-                  if (s.lastRepPaceSecPerKm != null) ...[
-                    const SizedBox(height: Space.x4),
+        // With no fix there is no live pace or distance to show here, and
+        // the GPS banner (and END REP) need the room on a short phone.
+        if (!s.showEndRep && !s.gpsLost) ...[
+          SizedBox(height: compact ? Space.x8 : Space.x16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     AuxFigure(
-                      label: 'LAST REP',
-                      value: Fmt.pace(s.lastRepPaceSecPerKm, units),
+                      label: 'DISTANCE',
+                      value: Fmt.distance(s.lapDistanceM, units),
                       labelColor: secondary,
                       valueColor: t.inkPrimary,
                     ),
+                    if (s.lastRepPaceSecPerKm != null) ...[
+                      const SizedBox(height: Space.x4),
+                      AuxFigure(
+                        label: 'LAST REP',
+                        value: Fmt.pace(s.lastRepPaceSecPerKm, units),
+                        labelColor: secondary,
+                        valueColor: t.inkPrimary,
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            const SizedBox(width: Space.x16),
-            SizedBox(
-              width: compact ? 112 : 136,
-              child: PaceDial(
-                currentSecPerKm: s.livePaceSecPerKm,
-                referenceSecPerKm: reference,
-                units: units,
-                onZone: onZone,
-                paceStyle: RunSoloType.display44,
+              const SizedBox(width: Space.x16),
+              SizedBox(
+                width: compact ? 112 : 136,
+                child: PaceDial(
+                  currentSecPerKm: s.livePaceSecPerKm,
+                  referenceSecPerKm: reference,
+                  units: units,
+                  onZone: onZone,
+                  paceStyle: RunSoloType.display44,
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -1166,4 +1261,44 @@ class _RecoveryRingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_RecoveryRingPainter old) => old.progress != progress;
+}
+
+/// Warm-up of a distance session without a fix (W3): START REPS stays off
+/// until GPS is back, and says why.
+class _WaitingForGps extends StatelessWidget {
+  const _WaitingForGps({required this.height});
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Semantics(
+      button: true,
+      enabled: false,
+      label: 'Start reps. Waiting for GPS',
+      child: Container(
+        key: const ValueKey('start-reps-waiting'),
+        height: height,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: t.bgRaised,
+          borderRadius: BorderRadius.circular(Radii.lap),
+          border: Border.all(color: t.semWarn, width: 2),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'START REPS',
+              style: RunSoloType.display44.copyWith(color: t.inkSecondary),
+            ),
+            Text(
+              'waiting for GPS',
+              style: RunSoloType.body15.copyWith(color: t.semWarn),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

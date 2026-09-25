@@ -55,7 +55,7 @@ void main() {
 
     expect(find.byType(RecoveryDialog), findsOneWidget);
     expect(find.text('RECOVERED YOUR RUN'), findsOneWidget);
-    expect(find.textContaining('4x4, 10:00 recorded'), findsOneWidget);
+    expect(find.textContaining('Intervals, 10:00 recorded'), findsOneWidget);
     expect(find.text('FINISH'), findsOneWidget);
     expect(find.text('RESUME'), findsOneWidget);
   });
@@ -93,7 +93,11 @@ void main() {
       tester.widget<Text>(find.byKey(const ValueKey('vitals-total'))).data,
       '10:00',
     );
-    expect(find.text('REP 1 OF 4'), findsOneWidget, reason: 'phase rebuilt');
+    expect(
+      find.text('REP 1 OF 4 · 4:00'),
+      findsOneWidget,
+      reason: 'phase rebuilt',
+    );
   });
 
   testWidgets('older than 30 min: SAVE only, finalises', (tester) async {

@@ -1,21 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
-import '../app/format.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../platform/session_codec.dart';
 import '../state/recording_controller.dart';
+import '../state/sessions.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/mode_chip.dart';
+import '../widgets/structure_glyph.dart';
 import '../widgets/value_stepper.dart';
+import 'custom_builder_screen.dart';
+import 'intervals_sheet.dart';
 
-/// Start (plan §6, §18.2, design brief §4.5): three run types, 4x4 preset
-/// editor (reps 3–6, work locked 4:00, recovery 2:00–5:00 in 15 s), cue
-/// toggles, strap status, START. Typed start errors map to copy here;
+/// Start (plan §3.2, design brief A8): INTERVALS / LAPS / FREE. Tapping
+/// INTERVALS opens the sheet; the picked session shows as the session card
+/// (reps and recovery steppers only, D2; anything else is Save as custom).
+/// Cue toggles, strap status, START. Typed start errors map to copy here;
 /// permission errors route to the checklist.
 class StartScreen extends StatefulWidget {
   const StartScreen({super.key});
@@ -52,14 +56,16 @@ class _StartScreenState extends State<StartScreen> {
     StartResult result;
     try {
       await services.recorder.setCues(s.cues);
-      if (s.lastMode == RecordMode.laps) {
+      if (s.recordMode == RecordMode.laps) {
         await services.recorder.setVolumeKeyLaps(
           s.volumeKeyLapFor(RecordMode.laps),
         );
       }
       // CONTRACT.md I1: the app expands the session; Kotlin runs it.
-      result = await services.recording.start(s.lastMode, switch (s.lastMode) {
-        RecordMode.intervals => s.spec,
+      // Fartlek is a Laps run carrying the fartlek session (plan §3.5).
+      final mode = s.recordMode;
+      result = await services.recording.start(mode, switch (s.lastMode) {
+        RecordMode.intervals => services.pickedSession.toPigeon(),
         RecordMode.cooper => engine.SessionSpec.cooper.toPigeon(),
         RecordMode.laps || RecordMode.free => null,
       }, s.units);
@@ -115,13 +121,63 @@ class _StartScreenState extends State<StartScreen> {
     }
   }
 
+  /// The Intervals sheet (A8). Picking a card selects Intervals too; the
+  /// back arrow changes nothing.
+  Future<void> _openSheet() async {
+    final services = AppServices.of(context);
+    final r = await showIntervalsSheet(
+      context,
+      currentId: services.settings.settings.sessionId,
+    );
+    if (!mounted || r == null) return;
+    switch (r) {
+      case PickSession(:final id):
+        await services.settings.update(
+          (x) => x.copyWith(lastMode: RecordMode.intervals, sessionId: id),
+        );
+      case BuildCustom():
+        await _build(null);
+    }
+  }
+
+  /// Custom builder: a new template, or one pre-filled ("Save as custom").
+  /// Saved templates are picked; SAVE & START starts the warm-up.
+  Future<void> _build(CustomSession? initial, {bool editing = false}) async {
+    final services = AppServices.of(context);
+    if (services.sessions.full && !editing) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You have 20 sessions. Delete one first.'),
+        ),
+      );
+      return;
+    }
+    final r = await Navigator.of(context).push<BuilderResult>(
+      MaterialPageRoute(
+        builder: (_) => CustomBuilderScreen(
+          initial:
+              initial ?? CustomSession(id: services.sessions.newId(), name: ''),
+        ),
+      ),
+    );
+    if (!mounted || r == null) return;
+    final stored = await services.sessions.save(r.session);
+    await services.settings.update(
+      (x) => x.copyWith(
+        lastMode: RecordMode.intervals,
+        sessionId: stored.templateId,
+      ),
+    );
+    if (r.start && mounted) await _start();
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final text = Theme.of(context).textTheme;
     final services = AppServices.of(context);
     return ListenableBuilder(
-      listenable: services.settings,
+      listenable: Listenable.merge([services.settings, services.sessions]),
       builder: (context, _) {
         final s = services.settings.settings;
         final mode = s.lastMode;
@@ -139,53 +195,29 @@ class _StartScreenState extends State<StartScreen> {
                 const SizedBox(height: Space.x8),
                 ModeChipRow(
                   selected: mode,
-                  reps: s.reps,
-                  recoverySeconds: s.recoverySeconds,
-                  onSelect: (m) => set((x) => x.copyWith(lastMode: m)),
+                  session: services.pickedSession,
+                  onSelect: (m) => m == RecordMode.intervals
+                      ? _openSheet()
+                      : set((x) => x.copyWith(lastMode: m)),
                 ),
                 const SizedBox(height: Space.x24),
                 if (preset) ...[
-                  ValueStepper(
-                    label: 'Reps',
-                    value: '${s.reps}',
-                    onMinus: s.reps > PresetRules.minReps
-                        ? () => set((x) => x.copyWith(reps: x.reps - 1))
-                        : null,
-                    onPlus: s.reps < PresetRules.maxReps
-                        ? () => set((x) => x.copyWith(reps: x.reps + 1))
-                        : null,
-                  ),
-                  ValueStepper(
-                    label: 'Rep',
-                    value: Fmt.recovery(PresetRules.workSeconds),
-                    lockedNote: 'Fixed at 4:00 in this version.',
-                  ),
-                  ValueStepper(
-                    label: 'Recovery',
-                    value: Fmt.recovery(s.recoverySeconds),
-                    onMinus: s.recoverySeconds > PresetRules.minRecovery
-                        ? () => set(
-                            (x) => x.copyWith(
-                              recoverySeconds: PresetRules.clampRecovery(
-                                x.recoverySeconds - PresetRules.recoveryStep,
-                              ),
-                            ),
-                          )
-                        : null,
-                    onPlus: s.recoverySeconds < PresetRules.maxRecovery
-                        ? () => set(
-                            (x) => x.copyWith(
-                              recoverySeconds: PresetRules.clampRecovery(
-                                x.recoverySeconds + PresetRules.recoveryStep,
-                              ),
-                            ),
-                          )
-                        : null,
-                  ),
-                  Text(
-                    'Warm up, then tap START 4x4. Cool down after the last rep '
-                    'and hold Stop.',
-                    style: text.bodyMedium?.copyWith(color: t.inkSecondary),
+                  _SessionCard(
+                    spec: services.pickedSession,
+                    settings: s,
+                    onChange: _openSheet,
+                    onEdit: set,
+                    // A custom template edits in place (same id); a preset
+                    // becomes a new template pre-filled from its edits.
+                    onSaveAsCustom: () => _build(
+                      services.sessions.byTemplateId(s.sessionId) ??
+                          SessionChoice.asCustom(
+                            services.pickedSession,
+                            services.sessions.newId(),
+                          ),
+                      editing:
+                          services.sessions.byTemplateId(s.sessionId) != null,
+                    ),
                   ),
                   const SizedBox(height: Space.x16),
                   _Toggle(
@@ -273,6 +305,9 @@ class _StartScreenState extends State<StartScreen> {
                   FilledButton(
                     onPressed: _starting ? null : _start,
                     child: Text(switch (mode) {
+                      RecordMode.intervals
+                          when SessionChoice.isFartlek(s.sessionId) =>
+                        'START FARTLEK',
                       RecordMode.intervals => 'START WARM-UP',
                       RecordMode.laps => 'START LAPS RUN',
                       RecordMode.free => 'START FREE RUN',
@@ -321,6 +356,272 @@ class _Toggle extends StatelessWidget {
             activeTrackColor: t.inkPrimary,
             inactiveThumbColor: t.inkSecondary,
             inactiveTrackColor: t.bgRaised,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The picked session on Start (design brief A8): name + Change, glyph,
+/// the preset's editable steppers (reps and recovery only, D2), the
+/// warm-up caption and "Save as custom". Custom templates and fartlek show
+/// their structure; a custom template is edited in the builder.
+class _SessionCard extends StatelessWidget {
+  const _SessionCard({
+    required this.spec,
+    required this.settings,
+    required this.onChange,
+    required this.onEdit,
+    required this.onSaveAsCustom,
+  });
+
+  final engine.SessionSpec spec;
+  final AppSettings settings;
+  final VoidCallback onChange;
+  final Future<void> Function(AppSettings Function(AppSettings)) onEdit;
+  final VoidCallback onSaveAsCustom;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final preset = engine.SessionCatalogue.byId(spec.templateId);
+    final fartlek = spec.templateId == engine.SessionSpec.fartlekId;
+    final rec = spec.steps.where((s) => !s.isWork).firstOrNull;
+    final reps = spec.repCount;
+    final canSaveAsCustom =
+        !fartlek && SessionChoice.asCustom(spec, 'x') != null;
+
+    Future<void> edit({int? reps, engine.SessionStep? recovery}) {
+      final p = preset!;
+      if (p.id == engine.SessionSpec.norwegian4x4Id) {
+        return onEdit(
+          (x) => x.copyWith(
+            reps: reps == null ? null : PresetRules.clampReps(reps),
+            recoverySeconds: recovery == null
+                ? null
+                : PresetRules.clampRecovery(recovery.value),
+          ),
+        );
+      }
+      return onEdit((x) {
+        final old = x.presetEdits[p.id];
+        final next = PresetEdit(
+          reps: reps ?? old?.reps,
+          recovery: recovery ?? old?.recovery,
+        );
+        return x.copyWith(presetEdits: {...x.presetEdits, p.id: next});
+      });
+    }
+
+    final children = <Widget>[
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              spec.name.toUpperCase(),
+              key: const ValueKey('session-name'),
+              style: RunSoloType.title28.copyWith(color: t.inkPrimary),
+            ),
+          ),
+          TextButton(
+            key: const ValueKey('session-change'),
+            style: TextButton.styleFrom(minimumSize: const Size(56, 56)),
+            onPressed: onChange,
+            child: Text(
+              'Change ›',
+              style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+            ),
+          ),
+        ],
+      ),
+      if (!fartlek) ...[
+        StructureGlyph(spec: spec, height: 20),
+        const SizedBox(height: Space.x8),
+      ],
+      Text(
+        SessionText.structure(spec),
+        style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+      ),
+    ];
+
+    if (preset != null && preset.repsEditable) {
+      children.add(
+        ValueStepper(
+          label: 'Reps',
+          value: '$reps',
+          onMinus: reps > preset.minReps! ? () => edit(reps: reps - 1) : null,
+          onPlus: reps < preset.maxReps! ? () => edit(reps: reps + 1) : null,
+        ),
+      );
+    }
+    if (preset != null && preset.recoveryEditable && rec != null) {
+      final distance = rec.target == engine.TargetKind.distance;
+      final range = distance
+          ? preset.recoveryDistanceRange
+          : preset.recoveryRange;
+      if (preset.recoveryRange != null &&
+          preset.recoveryDistanceRange != null) {
+        // 8 × 400 m: recovery by metres or minutes (plan §3.1).
+        children.add(
+          _Choice(
+            label: 'Recovery by',
+            left: 'Distance',
+            right: 'Time',
+            leftSelected: distance,
+            onLeft: () => edit(
+              recovery: engine.SessionStep.recoveryDistance(200, rep: 1),
+            ),
+            onRight: () =>
+                edit(recovery: engine.SessionStep.recovery(90, rep: 1)),
+          ),
+        );
+      }
+      if (range != null) {
+        final step = distance
+            ? SessionRules.distanceStep
+            : SessionRules.timeStep;
+        engine.SessionStep withValue(int v) => distance
+            ? engine.SessionStep.recoveryDistance(v, rep: 1, style: rec.style)
+            : engine.SessionStep.recovery(v, rep: 1, style: rec.style);
+        children.add(
+          ValueStepper(
+            label: 'Recovery',
+            value: SessionText.target(rec),
+            onMinus: rec.value > range.$1
+                ? () => edit(
+                    recovery: withValue(
+                      (rec.value - step).clamp(range.$1, range.$2),
+                    ),
+                  )
+                : null,
+            onPlus: rec.value < range.$2
+                ? () => edit(
+                    recovery: withValue(
+                      (rec.value + step).clamp(range.$1, range.$2),
+                    ),
+                  )
+                : null,
+          ),
+        );
+      }
+    }
+
+    children.add(const SizedBox(height: Space.x8));
+    children.add(
+      Text(
+        fartlek
+            ? 'Press LAP at the start and end of each surge. You get a '
+                  'surge summary, not a verdict.'
+            : spec.warmupSeconds == null
+            ? 'Warm-up: open. Tap START REPS when you are ready.'
+            : 'Warm-up: ${SessionText.clock(spec.warmupSeconds!)}, then the '
+                  'reps start on their own.',
+        style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+      ),
+    );
+    if (SessionChoice.needsGps(spec)) {
+      children.add(
+        Padding(
+          padding: const EdgeInsets.only(top: Space.x8),
+          child: Text(
+            'Distance reps need GPS. START REPS waits for a fix.',
+            key: const ValueKey('session-gps-note'),
+            style: RunSoloType.label13.copyWith(color: t.semWarn),
+          ),
+        ),
+      );
+    }
+    if (canSaveAsCustom) {
+      children.add(
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const ValueKey('session-save-custom'),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(56, 48),
+              padding: EdgeInsets.zero,
+            ),
+            onPressed: onSaveAsCustom,
+            child: Text(
+              preset != null
+                  ? 'Anything else: Save as custom ›'
+                  : 'Edit in the builder ›',
+              style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+            ),
+          ),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
+    );
+  }
+}
+
+class _Choice extends StatelessWidget {
+  const _Choice({
+    required this.label,
+    required this.left,
+    required this.right,
+    required this.leftSelected,
+    required this.onLeft,
+    required this.onRight,
+  });
+  final String label;
+  final String left;
+  final String right;
+  final bool leftSelected;
+  final VoidCallback onLeft;
+  final VoidCallback onRight;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    Widget seg(String text, bool selected, VoidCallback onTap) => Expanded(
+      child: Semantics(
+        button: true,
+        selected: selected,
+        child: InkWell(
+          key: ValueKey('choice-$text'),
+          borderRadius: BorderRadius.circular(Radii.chip),
+          onTap: selected ? null : onTap,
+          child: Container(
+            height: 48,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? t.inkPrimary : t.bgRaised,
+              borderRadius: BorderRadius.circular(Radii.chip),
+              border: Border.all(color: t.lineHair),
+            ),
+            child: Text(
+              text,
+              style: RunSoloType.label13.copyWith(
+                fontSize: 15,
+                color: selected ? t.bgBase : t.inkPrimary,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: Space.x12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+          ),
+          const SizedBox(height: Space.x8),
+          Row(
+            children: [
+              seg(left, leftSelected, onLeft),
+              const SizedBox(width: Space.x8),
+              seg(right, !leftSelected, onRight),
+            ],
           ),
         ],
       ),

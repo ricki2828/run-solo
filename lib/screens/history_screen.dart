@@ -10,10 +10,11 @@ import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
 
-enum HistoryFilter { all, fourByFour, laps, free }
+enum HistoryFilter { all, intervals, laps, free, tests }
 
-/// History list (design brief §4.8, plan §18.2): newest first, grouped by
-/// month, filter chips All / 4x4 / Laps / Free, verdict arrow in the
+/// History list (design brief §4.8, plan §3.8): newest first, grouped by
+/// month, filter chips All / Intervals / Laps / Free / Tests, each row
+/// titled by its session, verdict arrow in the
 /// semantic colour, tap opens the verdict (4x4) or the run detail.
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key, this.onStart});
@@ -51,9 +52,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
             final runs = all.where((r) {
               return switch (_filter) {
                 HistoryFilter.all => true,
-                HistoryFilter.fourByFour => r.isFourByFour,
+                HistoryFilter.intervals => r.mode == RecordMode.intervals,
                 HistoryFilter.laps => r.mode == RecordMode.laps,
                 HistoryFilter.free => r.mode == RecordMode.free,
+                HistoryFilter.tests => r.mode == RecordMode.cooper,
               };
             }).toList();
             if (all.isEmpty) return _Empty(onStart: widget.onStart);
@@ -63,22 +65,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
               children: [
                 const SizedBox(height: Space.x8),
-                Row(
-                  children: [
-                    for (final f in HistoryFilter.values) ...[
-                      _FilterChip(
-                        label: switch (f) {
-                          HistoryFilter.all => 'All',
-                          HistoryFilter.fourByFour => '4x4',
-                          HistoryFilter.laps => 'Laps',
-                          HistoryFilter.free => 'Free',
-                        },
-                        selected: _filter == f,
-                        onTap: () => setState(() => _filter = f),
-                      ),
-                      const SizedBox(width: Space.x8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final f in HistoryFilter.values) ...[
+                        _FilterChip(
+                          label: switch (f) {
+                            HistoryFilter.all => 'All',
+                            HistoryFilter.intervals => 'Intervals',
+                            HistoryFilter.laps => 'Laps',
+                            HistoryFilter.free => 'Free',
+                            HistoryFilter.tests => 'Tests',
+                          },
+                          selected: _filter == f,
+                          onTap: () => setState(() => _filter = f),
+                        ),
+                        const SizedBox(width: Space.x8),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
                 const SizedBox(height: Space.x16),
                 if (runs.isEmpty)
@@ -131,7 +137,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
               const SizedBox(height: Space.x8),
               Text(
-                '${modeTitle(r.mode)}, ${Fmt.dayDate(r.start)}. The run, its '
+                '${runTitle(r)}, ${Fmt.dayDate(r.start)}. The run, its '
                 'edits and its verdict go with it. There is no undo.',
                 style: RunSoloType.body17.copyWith(color: t.inkPrimary),
               ),
@@ -255,7 +261,7 @@ class HistoryRow extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final muted = run.missing ? t.inkMuted : t.inkPrimary;
     final (direction, glyph, glyphColor) = verdictGlyph(run.verdict, t);
-    final label = modeTitle(run.mode);
+    final label = runTitle(run);
     return Semantics(
       button: onTap != null,
       label:
@@ -274,7 +280,7 @@ class HistoryRow extends StatelessWidget {
               SizedBox(
                 width: 44,
                 child: Text(
-                  modeLabel(run.mode),
+                  runLabel(run),
                   style: RunSoloType.title28.copyWith(
                     fontSize: 20,
                     color: muted,
@@ -297,7 +303,13 @@ class HistoryRow extends StatelessWidget {
                               RecordMode.intervals =>
                                 run.analysis?.intervals != null
                                     ? '${run.analysis!.intervals!.reps.length} reps · ${Fmt.distance(run.distanceM, units)}'
+                                    : run.spec != null
+                                    ? '${run.spec!.name} · ${Fmt.distance(run.distanceM, units)}'
                                     : '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',
+                              RecordMode.laps
+                                  when run.spec?.templateId ==
+                                      engine.SessionSpec.fartlekId =>
+                                'Fartlek · ${Fmt.distance(run.distanceM, units)}',
                               RecordMode.laps =>
                                 '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',
                               RecordMode.free || RecordMode.cooper =>

@@ -109,8 +109,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: Space.x24),
                 ModeChipRow(
                   selected: settings.lastMode,
-                  reps: settings.reps,
-                  recoverySeconds: settings.recoverySeconds,
+                  session: services.pickedSession,
                   onSelect: (m) =>
                       services.settings.update((s) => s.copyWith(lastMode: m)),
                 ),

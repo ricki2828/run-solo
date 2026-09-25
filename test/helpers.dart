@@ -13,6 +13,7 @@ import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_solo/platform/transfer_gateway.dart';
 import 'package:run_solo/splash/intro_gate.dart';
 import 'package:run_solo/state/history_store.dart';
+import 'package:run_solo/state/sessions.dart';
 import 'package:run_solo/state/settings.dart';
 
 /// Fixed test clock so timer interpolation is zero and "3 days ago" is stable.
@@ -41,6 +42,7 @@ AppServices fakeServices({
   MapSurfaceFactory? maps,
   FakeTransferGateway? transfer,
   FakeStorageGateway? storage,
+  List<CustomSession> customSessions = const [],
 }) => AppServices.fake(
   recorder: recorder ?? FakeRecorderGateway(now: now),
   ble: ble,
@@ -62,7 +64,12 @@ AppServices fakeServices({
   transfer: transfer,
   storage: storage,
   now: now,
+  customSessions: customSessions,
 );
+
+/// A catalogue preset expanded as the recorder receives it.
+SessionSpec presetSpec(String id, {int? reps}) =>
+    engine.SessionCatalogue.expand(id, reps: reps).toPigeon();
 
 /// Mounts the app. With [pushRoute] the home is a launcher that pushes that
 /// named route on first frame, so screens that pop can be tested.
