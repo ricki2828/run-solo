@@ -409,6 +409,17 @@ class RecordingSession(
         refreshSnapshot()
     }
 
+    /** "Start 4x4": end the warm-up and start rep 1; a no-op outside the warm-up. */
+    @Synchronized
+    fun startReps() {
+        if (finished) return
+        val t = clock()
+        val (decision, out) = core.startReps(t)
+        Log.i(TAG, "startReps → $decision")
+        handle(out, t)
+        refreshSnapshot()
+    }
+
     @Synchronized
     fun pause() {
         if (finished || core.state != RecorderState.recording) return

@@ -1585,6 +1585,12 @@ interface RecorderApi {
   fun pause()
   fun resume()
   fun lap(source: LapSource)
+  /**
+   * The "Start 4x4" action: ends the untimed warm-up and starts rep 1 (same
+   * effect and journal line as a first `lap(button)`); a no-op anywhere else,
+   * so a manual LAP mid-rep can never be confused with starting.
+   */
+  fun startReps()
   /** Finalises in Kotlin (journal -> tmp -> fsync -> rename -> delete journal). No-op when idle. */
   fun stop(): String?
   fun status(): RecorderStatus
@@ -1714,6 +1720,22 @@ interface RecorderApi {
             val sourceArg = args[0] as LapSource
             val wrapped: List<Any?> = try {
               api.lap(sourceArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.startReps$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.startReps()
               listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)

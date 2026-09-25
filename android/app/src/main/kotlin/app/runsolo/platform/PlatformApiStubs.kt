@@ -20,6 +20,8 @@ class RecorderApiStub : RecorderApi {
 
     override fun lap(source: LapSource) = Unit
 
+    override fun startReps() = Unit
+
     override fun stop(): String? = null
 
     override fun status(): RecorderStatus =

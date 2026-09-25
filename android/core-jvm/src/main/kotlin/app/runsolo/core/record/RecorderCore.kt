@@ -50,7 +50,7 @@ class RecorderCore(
         data class PhaseChanged(val t: Long, val phase: Phase, val repIndex: Int, val phaseDurationMs: Long?) : Output()
     }
 
-    enum class LapDecision { accepted, ignoredDoubleLap, ignoredDebounce, ignoredVolumeKeyDisabled, ignoredPaused, ignoredIdle, ignoredModeNoLaps }
+    enum class LapDecision { accepted, ignoredDoubleLap, ignoredDebounce, ignoredVolumeKeyDisabled, ignoredPaused, ignoredIdle, ignoredModeNoLaps, ignoredNotWarmup }
 
     data class Status(
         val state: RecorderState,
@@ -150,6 +150,18 @@ class RecorderCore(
         lastAutoLapT?.let { if (t - it < config.doubleLapGuardMs) return LapDecision.ignoredDoubleLap to emptyList() }
         lastManualLapT?.let { if (t - it < config.debounceMs) return LapDecision.ignoredDebounce to emptyList() }
         return LapDecision.accepted to applyManualLap(source, t)
+    }
+
+    /**
+     * The "Start 4x4" action: ends the untimed warm-up and starts rep 1 (plan §6). Journaled as
+     * a button lap so the file is what a first LAP would have written; a no-op anywhere else
+     * (a press mid-rep is never a lap, so a manual LAP cannot be confused with starting).
+     */
+    fun startReps(t: Long): Pair<LapDecision, List<Output>> {
+        if (state == RecorderState.idle || state == RecorderState.finalising) return LapDecision.ignoredIdle to emptyList()
+        if (state == RecorderState.paused) return LapDecision.ignoredPaused to emptyList()
+        if (preset == null || phase != Phase.warmup) return LapDecision.ignoredNotWarmup to emptyList()
+        return LapDecision.accepted to applyManualLap(LapSource.button, t)
     }
 
     /** Records a manual lap with no gate or guard: what was journaled did happen. */

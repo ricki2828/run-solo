@@ -112,6 +112,27 @@ class RecorderCoreTest {
     }
 
     @Test
+    fun `startReps - ends the warm-up like a first LAP, no-op anywhere else`() {
+        val core = RecorderCore(RunMode.fourByFour, preset)
+        assertEquals(LapDecision.ignoredIdle, core.startReps(t0).first)
+        core.start(t0)
+        run(core, t0, t0 + 90_000)
+        val (d, out) = core.startReps(t0 + 90_000)
+        assertEquals(LapDecision.accepted, d)
+        assertEquals(listOf(LapSource.button to 90_000L), laps(out))
+        assertEquals(listOf(CueKind.start to 90_000L), cues(out))
+        assertEquals(Phase.work, core.phase)
+        assertEquals(1, core.repIndex)
+        assertEquals(LapDecision.ignoredNotWarmup, core.startReps(t0 + 100_000).first) // mid-rep: never a lap
+        assertEquals(1, core.lapCount)
+        core.pause(t0 + 110_000)
+        assertEquals(LapDecision.ignoredPaused, core.startReps(t0 + 111_000).first)
+        val free = RecorderCore(RunMode.laps, null)
+        free.start(t0)
+        assertEquals(LapDecision.ignoredNotWarmup, free.startReps(t0 + 1000).first)
+    }
+
+    @Test
     fun `double-lap guard - manual press within 5 s of an auto lap is ignored`() {
         val core = RecorderCore(RunMode.fourByFour, preset)
         core.start(t0)

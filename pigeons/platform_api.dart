@@ -339,6 +339,11 @@ abstract class RecorderApi {
   void resume();
   void lap(LapSource source);
 
+  /// The "Start 4x4" action: ends the untimed warm-up and starts rep 1 (same
+  /// effect and journal line as a first `lap(button)`); a no-op anywhere else,
+  /// so a manual LAP mid-rep can never be confused with starting.
+  void startReps();
+
   /// Finalises in Kotlin (journal -> tmp -> fsync -> rename -> delete journal). No-op when idle.
   String? stop();
   RecorderStatus status();

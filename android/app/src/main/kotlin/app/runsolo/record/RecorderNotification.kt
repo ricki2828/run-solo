@@ -49,7 +49,7 @@ class RecorderNotification(private val context: Context) {
             c.state == RecorderState.paused -> "Paused"
             c.phase == Phase.work -> "Rep ${c.repIndex}${c.reps?.let { " of $it" } ?: ""} — work"
             c.phase == Phase.recovery -> "Rep ${c.repIndex}${c.reps?.let { " of $it" } ?: ""} — recover"
-            c.phase == Phase.warmup -> "Warm up — press LAP to start rep 1"
+            c.phase == Phase.warmup -> "Warm up — Start 4x4 when ready"
             c.phase == Phase.cooldown -> "Cool down"
             else -> "Recording"
         }
@@ -89,7 +89,7 @@ class RecorderNotification(private val context: Context) {
     /** Momentary notification for a service start that has nothing to record. */
     fun buildIdle(): Notification = NotificationCompat.Builder(context, CHANNEL_ID)
         .setSmallIcon(android.R.drawable.ic_media_play)
-        .setContentTitle("Run Solo")
+        .setContentTitle("Run Supreme")
         .setSilent(true)
         .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
         .build()
