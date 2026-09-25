@@ -139,10 +139,11 @@ enum ExitReason {
   other,
 }
 
-/// One expanded step. `repIndex` is 1-based; a recovery carries the rep number
-/// of the work step before it (run-file JSON key `rep`).
-class Step {
-  Step({
+/// One expanded step (named `SessionStep`: a generated `Step` would clash
+/// with Flutter material's `Step`). `repIndex` is 1-based; a recovery carries
+/// the rep number of the work step before it (run-file JSON key `rep`).
+class SessionStep {
+  SessionStep({
     required this.kind,
     required this.target,
     required this.value,
@@ -185,7 +186,7 @@ class SessionSpec {
   CueProfile cueProfile;
   double? hrBandLow;
   double? hrBandHigh;
-  List<Step> steps;
+  List<SessionStep> steps;
 }
 
 class StartResult {

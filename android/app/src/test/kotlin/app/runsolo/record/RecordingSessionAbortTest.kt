@@ -33,10 +33,10 @@ class RecordingSessionAbortTest {
     private val fs = JvmFileSystem(context.filesDir.toPath())
     private val w0 = 1_700_000_000_000L
 
-    private fun writeOrphan(id: String, session: SessionSpec? = SessionSpec.norwegian4x4()) {
+    private fun writeOrphan(id: String, mode: RunMode = RunMode.intervals, session: SessionSpec? = SessionSpec.norwegian4x4()) {
         fs.mkdirs(RunPaths.journalDir(id))
         val lines = listOf(
-            JournalLine.Header(1_000, w0, id, "d", "a", "UTC", RunMode.intervals, session, Units.km),
+            JournalLine.Header(1_000, w0, id, "d", "a", "UTC", mode, session, Units.km),
             JournalLine.Lap(61_000, w0 + 60_000, LapSource.button),
             JournalLine.Sample(62_000, w0 + 61_000, -33.8, 151.2, null, 5.0, 3.0, 150),
         )
@@ -65,10 +65,10 @@ class RecordingSessionAbortTest {
 
     @Test
     fun `startResumed that throws (restore fails) - resumed is already set, so abortStart keeps the journal (PR5 P3)`() {
-        // An intervals header without a session makes RecorderCore.restore throw after the gap line was written.
-        writeOrphan("orphan-2", session = null)
+        // A cooper header without its session makes RecorderCore.restore throw after the gap line was written.
+        writeOrphan("orphan-2", mode = RunMode.cooper, session = null)
         val orphan = JournalReplay.read(fs.readBytes(RunPaths.journal("orphan-2")))
-        val session = RecordingSession(context, "orphan-2", RunMode.intervals, null, Units.km, null, volumeKeyLaps = false)
+        val session = RecordingSession(context, "orphan-2", RunMode.cooper, null, Units.km, null, volumeKeyLaps = false)
         val thrown = try {
             session.startResumed(orphan)
             null

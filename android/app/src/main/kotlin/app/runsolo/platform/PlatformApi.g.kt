@@ -459,12 +459,13 @@ enum class ExitReason(val raw: Int) {
 }
 
 /**
- * One expanded step. `repIndex` is 1-based; a recovery carries the rep number
- * of the work step before it (run-file JSON key `rep`).
+ * One expanded step (named `SessionStep`: a generated `Step` would clash
+ * with Flutter material's `Step`). `repIndex` is 1-based; a recovery carries
+ * the rep number of the work step before it (run-file JSON key `rep`).
  *
  * Generated class from Pigeon that represents data sent in messages.
  */
-data class Step (
+data class SessionStep (
   val kind: StepKind,
   val target: TargetKind,
   val value: Long,
@@ -473,13 +474,13 @@ data class Step (
 )
  {
   companion object {
-    fun fromList(pigeonVar_list: List<Any?>): Step {
+    fun fromList(pigeonVar_list: List<Any?>): SessionStep {
       val kind = pigeonVar_list[0] as StepKind
       val target = pigeonVar_list[1] as TargetKind
       val value = pigeonVar_list[2] as Long
       val style = pigeonVar_list[3] as RecoveryStyle
       val repIndex = pigeonVar_list[4] as Long
-      return Step(kind, target, value, style, repIndex)
+      return SessionStep(kind, target, value, style, repIndex)
     }
   }
   fun toList(): List<Any?> {
@@ -498,7 +499,7 @@ data class Step (
     if (this === other) {
       return true
     }
-    val other = other as Step
+    val other = other as SessionStep
     return PlatformApiPigeonUtils.deepEquals(this.kind, other.kind) && PlatformApiPigeonUtils.deepEquals(this.target, other.target) && PlatformApiPigeonUtils.deepEquals(this.value, other.value) && PlatformApiPigeonUtils.deepEquals(this.style, other.style) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex)
   }
 
@@ -532,7 +533,7 @@ data class SessionSpec (
   val cueProfile: CueProfile,
   val hrBandLow: Double? = null,
   val hrBandHigh: Double? = null,
-  val steps: List<Step>
+  val steps: List<SessionStep>
 )
  {
   companion object {
@@ -546,7 +547,7 @@ data class SessionSpec (
       val cueProfile = pigeonVar_list[6] as CueProfile
       val hrBandLow = pigeonVar_list[7] as Double?
       val hrBandHigh = pigeonVar_list[8] as Double?
-      val steps = pigeonVar_list[9] as List<Step>
+      val steps = pigeonVar_list[9] as List<SessionStep>
       return SessionSpec(templateId, templateVersion, name, warmupSeconds, cooldownSeconds, lapLockout, cueProfile, hrBandLow, hrBandHigh, steps)
     }
   }
@@ -1555,7 +1556,7 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
       }
       143.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          Step.fromList(it)
+          SessionStep.fromList(it)
         }
       }
       144.toByte() -> {
@@ -1704,7 +1705,7 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(142)
         writeValue(stream, value.raw.toLong())
       }
-      is Step -> {
+      is SessionStep -> {
         stream.write(143)
         writeValue(stream, value.toList())
       }

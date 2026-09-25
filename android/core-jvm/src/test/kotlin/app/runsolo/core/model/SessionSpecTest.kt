@@ -93,7 +93,6 @@ class SessionSpecTest {
 
     @Test
     fun `legacy preset mapping`() {
-        assertEquals(SessionSpec.norwegian4x4(4, 240, 180), SessionSpec.fromLegacyPreset(null))
         assertEquals(SessionSpec.norwegian4x4(6, 240, 300), SessionSpec.fromLegacyPreset(mapOf("reps" to 6L, "workSeconds" to 240L, "recoverySeconds" to 300L)))
     }
 }

@@ -86,9 +86,13 @@ class JournalCodecTest {
         assertEquals(listOf("work" to 240, "recovery" to 150, "work" to 240, "recovery" to 150, "work" to 240), s.steps.map { it.kind.name to it.value })
         assertEquals(listOf(1, 1, 2, 2, 3), s.steps.map { it.rep })
         assertEquals(0.85 to 0.95, s.hrBand)
-        // No preset: the standard 4 × 240/180.
-        assertEquals(SessionSpec.norwegian4x4(4, 240, 180), legacy(2, "fourByFour", "null").session)
-        assertEquals(SessionSpec.norwegian4x4(), legacy(1, "fourByFour", "null").session)
+        // No preset: a by-feel 4x4 → intervals with no session (keeps the by-feel detector).
+        assertEquals(RunMode.intervals, legacy(2, "fourByFour", "null").mode)
+        assertEquals(null, legacy(2, "fourByFour", "null").session)
+        assertEquals(null, legacy(1, "fourByFour", "null").session)
+        // Schema 3 refuses the old vocabulary.
+        assertFailsWith<IllegalArgumentException> { legacy(3, "intervals", "null") }
+        assertFailsWith<JournalCodec.NewerSchema> { legacy(3, "fourByFour", "null") }
         // Schema-2 cooper → the Cooper spec; laps/free → none; schema-1 free → laps.
         assertEquals(SessionSpec.COOPER, legacy(2, "cooper", "null").session)
         assertEquals(null, legacy(2, "laps", "null").session)

@@ -84,14 +84,18 @@ object JournalCodec {
     }
 
     /**
-     * The header's session: schema 3 reads `session`; schema ≤ 2 maps `fourByFour` + `preset`
-     * to the norwegian-4x4 spec (no preset = the standard 4 × 240/180) and `cooper` to the
-     * Cooper spec, exactly as the Dart reader does for run files.
+     * The header's session: schema 3 reads `session` (a `preset` key there is refused); schema
+     * ≤ 2 maps `fourByFour` + `preset` to the norwegian-4x4 spec, `fourByFour` without a preset
+     * (by-feel) to no session, and `cooper` to the Cooper spec, exactly as the Dart run-file
+     * reader does.
      */
     fun decodeSession(m: Map<String, Any?>, mode: RunMode, schema: Long): SessionSpec? {
-        if (schema >= 3) return SessionSpec.fromJson(m.obj("session"))
+        if (schema >= 3) {
+            require(!m.containsKey("preset")) { "schema-3 header carries a preset" }
+            return SessionSpec.fromJson(m.obj("session"))
+        }
         return when (mode) {
-            RunMode.intervals -> SessionSpec.fromLegacyPreset(m.obj("preset"))
+            RunMode.intervals -> m.obj("preset")?.let { SessionSpec.fromLegacyPreset(it) }
             RunMode.cooper -> SessionSpec.COOPER
             RunMode.laps, RunMode.free -> null
         }

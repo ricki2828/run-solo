@@ -78,6 +78,12 @@ class RecorderCore(
         unsupported(mode, spec)?.let { throw IllegalArgumentException(it) }
     }
 
+    /**
+     * Phases follow [spec]. An `intervals` run with no session is a by-feel 4x4 read from a
+     * schema ≤ 2 file or journal (`fourByFour` without a preset): it records like `laps`.
+     */
+    private val structured: Boolean = mode.followsSteps && spec != null
+
     var state: RecorderState = RecorderState.idle
         private set
     var lapCount: Int = 0
@@ -117,7 +123,7 @@ class RecorderCore(
         lastT = t
         state = RecorderState.recording
         val out = ArrayList<Output>()
-        if (mode.followsSteps) {
+        if (structured) {
             phase = Phase.warmup
             out.add(Output.PhaseChanged(t, phase, 0, null))
         }
@@ -173,7 +179,7 @@ class RecorderCore(
     fun startReps(t: Long): Pair<LapDecision, List<Output>> {
         if (state == RecorderState.idle || state == RecorderState.finalising) return LapDecision.ignoredIdle to emptyList()
         if (state == RecorderState.paused) return LapDecision.ignoredPaused to emptyList()
-        if (!mode.followsSteps || phase != Phase.warmup) return LapDecision.ignoredNotWarmup to emptyList()
+        if (!structured || phase != Phase.warmup) return LapDecision.ignoredNotWarmup to emptyList()
         return LapDecision.accepted to applyManualLap(LapSource.button, t)
     }
 
@@ -182,7 +188,7 @@ class RecorderCore(
         lastManualLapT = t
         val out = ArrayList<Output>()
         out.add(Output.Lap(lapCount++, t, source))
-        val realigns = mode.followsSteps && source != LapSource.volumeKey
+        val realigns = structured && source != LapSource.volumeKey
         if (realigns) {
             when (phase) {
                 Phase.warmup -> out.addAll(enterStep(t, 0))
@@ -294,7 +300,7 @@ class RecorderCore(
             spec?.problems()?.takeIf { it.isNotEmpty() }?.let { return "invalid session: ${it.joinToString("; ")}" }
             return when (mode) {
                 RunMode.intervals -> when {
-                    spec == null -> "intervals needs a session"
+                    spec == null -> null // a by-feel 4x4 from an old journal; new runs are refused by the shell
                     spec.steps.isEmpty() -> "intervals needs steps"
                     spec.steps.any { it.target != TargetKind.time } -> "distance and equal-time steps are not supported yet"
                     spec.warmupSeconds != null || spec.cooldownSeconds != null -> "a fixed warm-up or cool-down is not supported yet"
@@ -304,7 +310,7 @@ class RecorderCore(
                 }
                 RunMode.laps -> if (spec == null || (spec.isFartlek && spec.steps.isEmpty())) null else "laps takes no session but a fartlek"
                 RunMode.free -> if (spec == null) null else "free takes no session"
-                RunMode.cooper -> if (spec == null || spec.templateId == SessionSpec.COOPER_ID) null else "cooper takes the Cooper session only"
+                RunMode.cooper -> if (spec?.templateId == SessionSpec.COOPER_ID) null else "cooper needs the Cooper session"
             }
         }
 

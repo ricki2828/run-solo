@@ -164,8 +164,8 @@ class RecorderCoreTest {
 
     @Test
     fun `free mode (and cooper) ignore every lap source - no lap, no phase, no cue`() {
-        for (mode in listOf(RunMode.free, RunMode.cooper)) {
-            val core = RecorderCore(mode, null)
+        for ((mode, spec) in listOf(RunMode.free to null, RunMode.cooper to SessionSpec.COOPER)) {
+            val core = RecorderCore(mode, spec)
             assertTrue(core.start(t0).isEmpty())
             for (src in LapSource.values()) {
                 val (d, out) = core.lap(src, t0 + 1_000)
@@ -181,14 +181,20 @@ class RecorderCoreTest {
 
     @Test
     fun `mode and session must agree`() {
-        assertFailsWith<IllegalArgumentException> { RecorderCore(RunMode.intervals, null) }
         assertFailsWith<IllegalArgumentException> { RecorderCore(RunMode.laps, preset) }
         assertFailsWith<IllegalArgumentException> { RecorderCore(RunMode.free, preset) }
         assertFailsWith<IllegalArgumentException> { RecorderCore(RunMode.free, SessionSpec.FARTLEK) }
         assertFailsWith<IllegalArgumentException> { RecorderCore(RunMode.cooper, preset) }
         RecorderCore(RunMode.laps, SessionSpec.FARTLEK)
         RecorderCore(RunMode.cooper, SessionSpec.COOPER)
-        RecorderCore(RunMode.cooper, null)
+        assertFailsWith<IllegalArgumentException> { RecorderCore(RunMode.cooper, null) }
+        // A by-feel 4x4 from an old journal: intervals with no session records like laps.
+        val byFeel = RecorderCore(RunMode.intervals, null)
+        byFeel.start(t0)
+        assertEquals(Phase.none, byFeel.phase)
+        assertEquals(LapDecision.accepted, byFeel.lap(LapSource.button, t0 + 1_000).first)
+        assertEquals(Phase.none, byFeel.phase)
+        assertEquals(LapDecision.ignoredNotWarmup, byFeel.startReps(t0 + 2_000).first)
         assertEquals(true, RunMode.laps.volumeKeyLapsDefault)
         assertEquals(listOf(false, false, false), listOf(RunMode.intervals, RunMode.free, RunMode.cooper).map { it.volumeKeyLapsDefault })
     }

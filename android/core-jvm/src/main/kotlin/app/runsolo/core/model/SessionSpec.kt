@@ -54,50 +54,56 @@ data class SessionSpec(
     val reps: Int get() = workSteps.size
     val isFartlek: Boolean get() = templateId == FARTLEK_ID
 
-    /** The contract's validation rules (shared with Dart); a list of problems, empty when valid. */
+    /**
+     * The contract's validation rules, a line-for-line mirror of the Dart `SessionSpec.validate()`
+     * (same order, same messages); a list of problems, empty when valid.
+     */
     fun problems(): List<String> {
-        val p = ArrayList<String>()
-        if (templateId.isEmpty()) p.add("templateId empty")
-        if (templateVersion < 1) p.add("templateVersion < 1")
-        if (steps.size > MAX_STEPS) p.add("more than $MAX_STEPS steps")
-        hrBand?.let { (lo, hi) -> if (!(lo > 0 && lo < hi && hi <= 1.2)) p.add("hrBand must be 0 < low < high <= 1.2") }
-        warmupSeconds?.let { if (it !in 300..1200) p.add("warmup must be open or 300..1200 s") }
-        cooldownSeconds?.let { if (it !in 300..1200) p.add("cooldown must be open or 300..1200 s") }
-        if (steps.isEmpty()) {
-            if (!isFartlek) p.add("no steps")
-            return p
+        val out = ArrayList<String>()
+        if (templateId.isEmpty()) out.add("templateId is empty")
+        if (templateVersion < 1) out.add("templateVersion must be >= 1")
+        hrBand?.let { (lo, hi) -> if (!(lo > 0 && lo < hi && hi <= 1.2)) out.add("hrBand must be 0 < low < high <= 1.2") }
+        for ((label, v) in listOf("warmup" to warmupSeconds, "cooldown" to cooldownSeconds)) {
+            if (v != null && v !in 300..1200) out.add("$label must be open or 300..1200 s")
         }
-        val work = workSteps.size
-        if (work !in 1..MAX_WORK) p.add("work steps $work not in 1..$MAX_WORK")
-        steps.forEachIndexed { i, s ->
-            val wantKind = if (i % 2 == 0) StepKind.work else StepKind.recovery
-            if (s.kind != wantKind) p.add("step $i: expected ${wantKind.name}")
-            val wantRep = i / 2 + 1
-            if (s.rep != wantRep) p.add("step $i: rep ${s.rep}, expected $wantRep")
+        if (steps.isEmpty()) {
+            if (!isFartlek) out.add("only fartlek may have no steps")
+            return out
+        }
+        if (steps.size > MAX_STEPS) out.add("more than $MAX_STEPS steps")
+        if (reps !in 1..MAX_WORK) out.add("reps must be 1..$MAX_WORK")
+        for ((i, s) in steps.withIndex()) {
+            val expectWork = i % 2 == 0
+            if ((s.kind == StepKind.work) != expectWork) {
+                out.add("step $i: steps must alternate work, recovery, …, work")
+                continue
+            }
+            val rep = i / 2 + 1
+            if (s.rep != rep) out.add("step $i: rep must be $rep, got ${s.rep}")
             when (s.kind) {
                 StepKind.work -> {
-                    if (s.style != RecoveryStyle.run) p.add("step $i: work style must be run")
+                    if (s.style != RecoveryStyle.run) out.add("step $i: work style is run")
                     when (s.target) {
-                        TargetKind.time -> if (s.value !in 15..1200) p.add("step $i: work time ${s.value} s not in 15..1200")
-                        TargetKind.distance -> if (s.value !in 100..10_000) p.add("step $i: work distance ${s.value} m not in 100..10000")
-                        TargetKind.equalToPreviousWork -> p.add("step $i: a work step cannot be equalToPreviousWork")
+                        TargetKind.time -> if (s.value !in 15..1200) out.add("step $i: time work must be 15..1200 s")
+                        TargetKind.distance -> if (s.value !in 100..10_000) out.add("step $i: distance work must be 100..10000 m")
+                        TargetKind.equalToPreviousWork -> out.add("step $i: only a recovery can be equal time")
                     }
                 }
                 StepKind.recovery -> {
-                    if (s.style == RecoveryStyle.run) p.add("step $i: recovery style must be jog, walk or stand")
+                    if (s.style == RecoveryStyle.run) out.add("step $i: recovery style is jog, walk or stand")
                     when (s.target) {
-                        TargetKind.time -> if (s.value !in 0..600) p.add("step $i: recovery time ${s.value} s not in 0..600")
+                        TargetKind.time -> if (s.value !in 0..600) out.add("step $i: time recovery must be 0..600 s")
                         TargetKind.distance -> {
-                            if (s.value !in 50..2000) p.add("step $i: recovery distance ${s.value} m not in 50..2000")
-                            if (s.style != RecoveryStyle.jog) p.add("step $i: a ${s.style.name} recovery must be time or equalToPreviousWork")
+                            if (s.value !in 50..2000) out.add("step $i: distance recovery must be 50..2000 m")
+                            if (s.style != RecoveryStyle.jog) out.add("step $i: walk and stand recoveries must be timed")
                         }
-                        TargetKind.equalToPreviousWork -> if (s.value != 0) p.add("step $i: equalToPreviousWork value must be 0")
+                        TargetKind.equalToPreviousWork -> if (s.value != 0) out.add("step $i: equal time carries value 0")
                     }
                 }
             }
         }
-        if (steps.last().kind != StepKind.work) p.add("last step must be work")
-        return p
+        if (steps.last().kind != StepKind.work) out.add("the last step must be work")
+        return out
     }
 
     fun toJson(): Map<String, Any?> = linkedMapOf(
@@ -183,10 +189,11 @@ data class SessionSpec(
         )
 
         /**
-         * Schema ≤ 2 `preset{reps, workSeconds, recoverySeconds}` → the norwegian-4x4 spec; a
-         * `fourByFour` with no preset was the standard 4 × 240/180.
+         * Schema ≤ 2 `preset{reps, workSeconds, recoverySeconds}` → the norwegian-4x4 spec. A
+         * `fourByFour` with no preset was a by-feel 4x4 and maps to no session (it keeps the
+         * by-feel detector, so its verdicts do not change).
          */
-        fun fromLegacyPreset(m: Map<String, Any?>?): SessionSpec =
-            if (m == null) norwegian4x4() else norwegian4x4(m.int("reps"), m.int("workSeconds"), m.int("recoverySeconds"))
+        fun fromLegacyPreset(m: Map<String, Any?>): SessionSpec =
+            norwegian4x4(m.int("reps"), m.int("workSeconds"), m.int("recoverySeconds"))
     }
 }

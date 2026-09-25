@@ -43,7 +43,7 @@ fun CorePhase.toPigeon(): Phase = Phase.valueOf(name.toUpperSnake())
 fun CoreLapSource.toPigeon(): LapSource = LapSource.valueOf(name.toUpperSnake())
 fun LapSource.toCore(): CoreLapSource = CoreLapSource.valueOf(name.toCamel())
 fun CoreCue.toPigeon(): CueKind = CueKind.valueOf(name.toUpperSnake())
-fun CoreStep.toPigeon(): Step = Step(
+fun CoreStep.toPigeon(): SessionStep = SessionStep(
     kind = StepKind.valueOf(kind.name.toUpperSnake()),
     target = TargetKind.valueOf(target.name.toUpperSnake()),
     value = value.toLong(),
@@ -51,7 +51,7 @@ fun CoreStep.toPigeon(): Step = Step(
     repIndex = rep.toLong(),
 )
 
-fun Step.toCore(): CoreStep = CoreStep(
+fun SessionStep.toCore(): CoreStep = CoreStep(
     kind = CoreStepKind.valueOf(kind.name.toCamel()),
     target = CoreTargetKind.valueOf(target.name.toCamel()),
     value = value.toInt(),

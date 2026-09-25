@@ -91,6 +91,8 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         } catch (e: IllegalArgumentException) {
             return Result.failure(e)
         }
+        // An intervals run with no session only exists as an old by-feel 4x4 journal; never start one.
+        if (mode == app.runsolo.core.model.RunMode.intervals && core == null) return Result.failure(IllegalArgumentException("intervals needs a session"))
         RecorderCore.unsupported(mode, core)?.let { return Result.failure(IllegalArgumentException(it)) }
         return Result.success(core)
     }

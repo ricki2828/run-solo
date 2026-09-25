@@ -255,10 +255,11 @@ enum ExitReason {
   other,
 }
 
-/// One expanded step. `repIndex` is 1-based; a recovery carries the rep number
-/// of the work step before it (run-file JSON key `rep`).
-class Step {
-  Step({
+/// One expanded step (named `SessionStep`: a generated `Step` would clash
+/// with Flutter material's `Step`). `repIndex` is 1-based; a recovery carries
+/// the rep number of the work step before it (run-file JSON key `rep`).
+class SessionStep {
+  SessionStep({
     required this.kind,
     required this.target,
     required this.value,
@@ -289,9 +290,9 @@ class Step {
   Object encode() {
     return _toList();  }
 
-  static Step decode(Object result) {
+  static SessionStep decode(Object result) {
     result as List<Object?>;
-    return Step(
+    return SessionStep(
       kind: result[0]! as StepKind,
       target: result[1]! as TargetKind,
       value: result[2]! as int,
@@ -303,7 +304,7 @@ class Step {
   @override
   // ignore: avoid_equals_and_hash_code_on_mutable_classes
   bool operator ==(Object other) {
-    if (other is! Step || other.runtimeType != runtimeType) {
+    if (other is! SessionStep || other.runtimeType != runtimeType) {
       return false;
     }
     if (identical(this, other)) {
@@ -354,7 +355,7 @@ class SessionSpec {
 
   double? hrBandHigh;
 
-  List<Step> steps;
+  List<SessionStep> steps;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -386,7 +387,7 @@ class SessionSpec {
       cueProfile: result[6]! as CueProfile,
       hrBandLow: result[7] as double?,
       hrBandHigh: result[8] as double?,
-      steps: (result[9]! as List<Object?>).cast<Step>(),
+      steps: (result[9]! as List<Object?>).cast<SessionStep>(),
     );
   }
 
@@ -1471,7 +1472,7 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is ExitReason) {
       buffer.putUint8(142);
       writeValue(buffer, value.index);
-    }    else if (value is Step) {
+    }    else if (value is SessionStep) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
     }    else if (value is SessionSpec) {
@@ -1576,7 +1577,7 @@ class _PigeonCodec extends StandardMessageCodec {
         final value = readValue(buffer) as int?;
         return value == null ? null : ExitReason.values[value];
       case 143:
-        return Step.decode(readValue(buffer)!);
+        return SessionStep.decode(readValue(buffer)!);
       case 144:
         return SessionSpec.decode(readValue(buffer)!);
       case 145:
