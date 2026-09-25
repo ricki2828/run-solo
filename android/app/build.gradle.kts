@@ -176,6 +176,8 @@ dependencies {
     // android/core-jvm; substituted by coordinates via includeBuild in settings.gradle.kts.
     implementation("app.runsolo:core-jvm")
     implementation("androidx.core:core-ktx:1.15.0")
+    // System splash on every supported API (29+), plan §4 B3.
+    implementation("androidx.core:core-splashscreen:1.0.1")
     // FusedLocationProvider (plan §3); falls back to raw GPS_PROVIDER when GMS is missing.
     // play-services-location does not declare INTERNET (dependency audit, plan §10).
     implementation("com.google.android.gms:play-services-location:21.3.0")
