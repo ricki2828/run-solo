@@ -15,6 +15,10 @@ env:
   # Pinned to the same stable the dev host runs (~/tools/flutter). Bump both together.
   FLUTTER_VERSION: '3.47.5'
   JAVA_VERSION: '17'
+  # Google Maps key (plan §18.3): manifest placeholder via build.gradle.kts. Empty when the
+  # secret is absent (forks, before the founder creates it): the build still passes and the
+  # map shows its failed state. GitHub masks the value; nothing below prints it.
+  RUN_SOLO_MAPS_API_KEY: ${{ secrets.RUN_SOLO_MAPS_API_KEY }}
 
 jobs:
   flutter:
@@ -132,7 +136,13 @@ jobs:
       - name: App JVM unit tests (StartGuard)
         working-directory: android
         run: ./gradlew :app:testPlayDebugUnitTest --no-daemon
-      - name: Build release AAB (debug-signed until Play upload key lands; see README)
+      - name: Maps key meta-data is in the merged manifest (name only, value never printed)
+        run: |
+          AAPT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/aapt"
+          n=$("$AAPT" dump xmltree build/dist/app-debug.apk AndroidManifest.xml | grep -c 'com.google.android.geo.API_KEY' || true)
+          [ "$n" -ge 1 ] || { echo "::error::com.google.android.geo.API_KEY meta-data missing from the manifest"; exit 1; }
+          if [ -z "$RUN_SOLO_MAPS_API_KEY" ]; then echo "::warning::RUN_SOLO_MAPS_API_KEY secret is not set; this build has an empty Maps key"; fi
+      - name: Build release AAB (debug-signed here; the Play-signed one is the release-aab job)
         run: flutter build appbundle --release --flavor play --obfuscate --split-debug-info=build/symbols
       - name: 16 KB page-size check (debug APK)
         run: |
@@ -209,6 +219,78 @@ jobs:
           path: build/app/outputs/flutter-apk/app-x86_64-dogfood-release.apk
           if-no-files-found: error
           retention-days: 7
+
+  release-aab:
+    # Play upload (plan §11): manual run or a v* tag. Signed with the upload key from the
+    # RUN_SOLO_UPLOAD_* secrets (offline copy ~/.secrets/run-solo/); Play App Signing re-signs
+    # with the app-signing key. Not on PRs, so it adds nothing to the PR gate.
+    name: release AAB (play, upload-key signed)
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - name: Decode upload keystore (repo secrets RUN_SOLO_UPLOAD_*)
+        env:
+          KS_B64: ${{ secrets.RUN_SOLO_UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KS_B64" ]; then echo "::error::RUN_SOLO_UPLOAD_KEYSTORE_BASE64 secret missing" >&2; exit 1; fi
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          echo "RUN_SOLO_UPLOAD_KEYSTORE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+      - name: Build release AAB (play flavour, R8, obfuscated, split debug info)
+        env:
+          RUN_SOLO_UPLOAD_STORE_PASSWORD: ${{ secrets.RUN_SOLO_UPLOAD_STORE_PASSWORD }}
+          RUN_SOLO_UPLOAD_KEY_ALIAS: upload  # not a secret: a secret value here masks the word in logs
+          RUN_SOLO_UPLOAD_KEY_PASSWORD: ${{ secrets.RUN_SOLO_UPLOAD_KEY_PASSWORD }}
+        run: |
+          flutter build appbundle --release --flavor play --obfuscate --split-debug-info=build/symbols-play
+          ls -la build/app/outputs/bundle/playRelease/
+      - name: Verify signer (upload key), 16 KB alignment, Maps meta-data present
+        run: |
+          AAB=build/app/outputs/bundle/playRelease/app-play-release.aab
+          jarsigner -verify -verbose:summary -certs "$AAB" > "$RUNNER_TEMP/signer.txt" 2>&1 || true
+          grep -q "CN=Run Solo upload" "$RUNNER_TEMP/signer.txt" || { tail -20 "$RUNNER_TEMP/signer.txt"; echo "AAB is not signed with the upload key" >&2; exit 1; }
+          grep -q "jar verified" "$RUNNER_TEMP/signer.txt" || { tail -20 "$RUNNER_TEMP/signer.txt"; echo "AAB signature did not verify" >&2; exit 1; }
+          tools/check_16kb_alignment.sh "$AAB"
+          # The bundle manifest is protobuf; the attribute name still appears as a plain string.
+          unzip -p "$AAB" base/manifest/AndroidManifest.xml | grep -aq 'com.google.android.geo.API_KEY' || { echo "Maps meta-data missing from the bundle manifest" >&2; exit 1; }
+          if [ -z "$RUN_SOLO_MAPS_API_KEY" ]; then echo "::warning::RUN_SOLO_MAPS_API_KEY secret is not set; the Play build will show 'Map failed to load'"; fi
+          SIZE=$(stat -c %s "$AAB"); MIB=$(awk "BEGIN{printf \"%.1f\", $SIZE/1048576}")
+          echo "### Play AAB: ${MIB} MiB (app.runsolo, upload-key signed, ${GITHUB_REF_NAME})" >> "$GITHUB_STEP_SUMMARY"
+      - name: Package native debug symbols (Play vitals) and R8 mapping
+        run: |
+          mkdir -p build/dist-play
+          cp build/app/outputs/bundle/playRelease/app-play-release.aab build/dist-play/
+          cp build/app/outputs/mapping/playRelease/mapping.txt build/dist-play/mapping.txt
+          NATIVE=build/app/intermediates/merged_native_libs/playRelease/mergePlayReleaseNativeLibs/out/lib
+          if [ -d "$NATIVE" ]; then (cd "$NATIVE" && zip -qr "$GITHUB_WORKSPACE/build/dist-play/native-debug-symbols.zip" .); else echo "::warning::native libs dir not found at $NATIVE"; fi
+          ls -la build/dist-play
+      - uses: actions/upload-artifact@v4
+        with:
+          name: run-solo-play-aab-${{ github.ref_name }}
+          path: build/dist-play/app-play-release.aab
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        with:
+          name: run-solo-play-symbols-${{ github.ref_name }}
+          path: |
+            build/dist-play/mapping.txt
+            build/dist-play/native-debug-symbols.zip
+            build/symbols-play
+          if-no-files-found: error
+          retention-days: 90
 
   emulator:
     name: emulator smoke (API ${{ matrix.api-level }})
