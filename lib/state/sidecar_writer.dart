@@ -41,6 +41,21 @@ class SidecarWriter {
     engine.RunSidecar Function(engine.RunSidecar current) transform,
   ) => _serial(id, () => _apply(id, file, transform));
 
+  /// Serialised read → [transform] → atomic write of a whole text file under
+  /// [key] (the summary index uses this). The transform gets null for a
+  /// missing file; returning null or the same text writes nothing.
+  Future<void> replaceText(
+    String key,
+    File file,
+    String? Function(String? current) transform,
+  ) => _serial(key, () async {
+    final current = await file.exists() ? await file.readAsString() : null;
+    final next = transform(current);
+    if (next == null || next == current) return;
+    await file.parent.create(recursive: true);
+    await _writeAtomic(file, next);
+  });
+
   /// Delete run [id]'s sidecar, after any write queued before it.
   Future<void> delete(String id, File file) => _serial(id, () async {
     if (await file.exists()) await file.delete();
@@ -81,6 +96,12 @@ class SidecarWriter {
         engine.RunSidecarCodec.encode(current) == text) {
       return current;
     }
+    await _writeAtomic(file, text);
+    return next;
+  }
+
+  /// Unique tmp name, write, flush to disk, rename over [file].
+  Future<void> _writeAtomic(File file, String text) async {
     final tmp = File('${file.path}.${pid}_${_seq++}.tmp');
     try {
       final raf = await tmp.open(mode: FileMode.writeOnly);
@@ -97,7 +118,6 @@ class SidecarWriter {
       } catch (_) {}
       rethrow;
     }
-    return next;
   }
 
   /// Decode [file]; null when missing or unreadable. A newer schema rethrows

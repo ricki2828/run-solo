@@ -19,6 +19,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../platform/fake_gateway.dart';
 import '../platform/gateway.dart';
+import 'run_index.dart';
 import 'sidecar_writer.dart';
 
 /// `RunMode` (file / engine) ↔ `RecordMode` (Pigeon / UI). Exhaustive on both
@@ -466,6 +467,49 @@ class FileRunStore implements RunStore {
 
   static final _name = RegExp(r'^run-(.+)\.json\.gz$');
 
+  /// `files/state/index.json` (Phase 3 W5), next to `files/runs/`.
+  File get indexFile => File('${runsDir.parent.path}/state/index.json');
+
+  /// The summary cache as last written (empty when missing or damaged).
+  Future<RunIndex> readIndex() => RunIndex.read(indexFile);
+
+  /// Brings the cache in line with the files after an analysis pass: an
+  /// entry is rebuilt only when its run file, its sidecar or the engine
+  /// changed (run AND sidecar mtime, re-check INFO); runs that are gone
+  /// drop out. Written only when something changed. A cache failure never
+  /// fails the list.
+  Future<void> _updateIndex(
+    Map<String, (engine.RunFile, engine.RunSidecar?, File)> scanned,
+    Map<String, engine.RunAnalysis> analyses,
+  ) async {
+    try {
+      final old = await readIndex();
+      final next = <String, RunIndexEntry>{};
+      for (final e in scanned.entries) {
+        final (run, sidecar, file) = e.value;
+        final stamp = await FileStamp.of(file, _sidecarFor(file));
+        if (stamp == null) continue;
+        final have = old.entries[e.key];
+        if (have != null && have.isFresh(stamp)) {
+          next[e.key] = have;
+          continue;
+        }
+        final a = analyses[e.key];
+        next[e.key] = RunIndexEntry.of(
+          run: run,
+          sidecar: sidecar,
+          a: a,
+          shownVerdict: _summaryOf(run, sidecar, a).verdict,
+          stamp: stamp,
+        );
+      }
+      final text = RunIndex(next).encode();
+      await sidecars.replaceText('index.json', indexFile, (_) => text);
+    } catch (e) {
+      debugPrint('index: not updated ($e)');
+    }
+  }
+
   /// Decoded files by id → (file, sidecar, path); rebuilt on every list so
   /// a run finalised by the service a moment ago shows up.
   Future<Map<String, (engine.RunFile, engine.RunSidecar?, File)>>
@@ -532,6 +576,7 @@ class FileRunStore implements RunStore {
   @override
   Future<List<RunSummary>> list() async {
     final r = await _scanAndAnalyse();
+    await _updateIndex(r.scanned, r.analyses);
     final out = [
       for (final v in r.scanned.values)
         _summaryOf(v.$1, v.$2, r.analyses[v.$1.id]),
@@ -643,6 +688,11 @@ class FileRunStore implements RunStore {
     if (v == null) return;
     await sidecars.delete(id, _sidecarFor(v.$3));
     await v.$3.delete();
+    await sidecars.replaceText('index.json', indexFile, (current) {
+      final index = RunIndex.decode(current);
+      if (!index.entries.containsKey(id)) return null;
+      return RunIndex({...index.entries}..remove(id)).encode();
+    });
   }
 }
 

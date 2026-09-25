@@ -47,6 +47,43 @@ class PriorRun {
   /// "vs last" column on the detail screen can be filled from the index.
   final List<double?> repPacesSecPerKm;
 
+  /// For the app's summary cache (`index.json`, Phase 3 W5), so a History
+  /// load can feed priors without re-analysing every older run.
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'start': start.toUtc().toIso8601String(),
+    'avg_work_s_per_km': avgWorkPaceSecPerKm,
+    'fade_s_per_km': fadeSecPerKm,
+    'recovery_s_per_km': recoveryPaceSecPerKm,
+    'time_in_zone_s': timeInZoneSeconds,
+    'mean_work_hr': meanWorkHr,
+    'mean_work_hr_fraction': meanWorkHrFraction,
+    'metres_per_beat': metresPerBeat,
+    'rep_paces_s_per_km': repPacesSecPerKm,
+    'comparison_key': comparisonKey,
+  };
+
+  factory PriorRun.fromJson(Map<String, Object?> j) {
+    double? d(String k) => (j[k] as num?)?.toDouble();
+    return PriorRun(
+      id: j['id']! as String,
+      start: DateTime.parse(j['start']! as String).toUtc(),
+      avgWorkPaceSecPerKm: d('avg_work_s_per_km')!,
+      fadeSecPerKm: d('fade_s_per_km'),
+      recoveryPaceSecPerKm: d('recovery_s_per_km'),
+      timeInZoneSeconds: d('time_in_zone_s'),
+      meanWorkHr: d('mean_work_hr'),
+      meanWorkHrFraction: d('mean_work_hr_fraction'),
+      metresPerBeat: d('metres_per_beat'),
+      repPacesSecPerKm: [
+        for (final v in (j['rep_paces_s_per_km'] as List?) ?? const [])
+          (v as num?)?.toDouble(),
+      ],
+      comparisonKey:
+          (j['comparison_key'] as String?) ?? ComparisonKey.norwegian4x4,
+    );
+  }
+
   static PriorRun? fromMetrics(
     String id,
     DateTime start,
