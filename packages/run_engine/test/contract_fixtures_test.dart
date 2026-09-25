@@ -13,21 +13,18 @@ import 'helpers.dart';
 void main() {
   final dir = Directory('test/fixtures/contract');
 
-  /// Schema-2 fixtures live at the top level; the schema-1 set is frozen
-  /// under `contract/schema1/` (§18.7). A name is looked up in both so the
-  /// tests below survive the writer's move.
-  File fileOf(String name) {
-    for (final candidate in [
-      File('${dir.path}/$name.json'),
-      File('${dir.path}/schema1/$name.json'),
-    ]) {
-      if (candidate.existsSync()) return candidate;
-    }
-    fail('contract fixture $name missing from $dir and $dir/schema1');
+  /// `contract/schema1/` is the frozen Phase-1 writer output (read-only,
+  /// still `schema: 1`, `mode: free`); `contract/schema2/` is regenerated
+  /// by the Phase-2 Kotlin writer (§18.7). Both trees are `diff -r`'d
+  /// against core-jvm in CI.
+  File fileOf(String name, {int schema = 1}) {
+    final f = File('${dir.path}/schema$schema/$name.json');
+    if (!f.existsSync()) fail('contract fixture missing: ${f.path}');
+    return f;
   }
 
-  RunFile load(String name) =>
-      RunFileCodec.decode(fileOf(name).readAsStringSync());
+  RunFile load(String name, {int schema = 1}) =>
+      RunFileCodec.decode(fileOf(name, schema: schema).readAsStringSync());
 
   List<File> allFixtures() => [
     for (final f in dir.listSync(recursive: true).whereType<File>())
@@ -45,23 +42,141 @@ void main() {
       final canonical = RunFileCodec.encode(run);
       expect(RunFileCodec.encode(RunFileCodec.decode(canonical)), canonical);
       expect(run.start, DateTime.utc(2025, 9, 24));
-      final inSchema1Dir = f.path.contains('/schema1/');
-      expect(
-        run.readSchema,
-        inSchema1Dir ? 1 : anyOf(1, 2),
-        reason: 'frozen schema-1 copies stay schema 1: ${f.path}',
-      );
+      final expectedSchema = f.path.contains('/schema1/') ? 1 : 2;
+      expect(run.readSchema, expectedSchema, reason: f.path);
+      expect(text, contains('"schema":$expectedSchema,'), reason: f.path);
     }
+    expect(files.length, greaterThanOrEqualTo(9), reason: '4 frozen + 5 new');
   });
 
-  test('a frozen schema-1 fixture, once present, is byte-identical to the '
-      'copy that shipped with Phase 1', () {
-    // The four Phase-1 files are frozen read-only under schema1/ by the
-    // writer's PR; until then they sit at the top level. Either way the
-    // schema-1 `free` file must read as laps (§18.7 B1).
+  test('the frozen schema-1 free file reads as laps (§18.7 B1)', () {
     final run = load('free_run_pause_manual_laps');
     expect(run.readSchema, 1);
     expect(run.mode, RunMode.laps);
+  });
+
+  group('schema-2 writer output', () {
+    test('4x4 preset: identical verdict to the frozen schema-1 recording', () {
+      final v1 = load('four_by_four_preset_auto_hr');
+      final v2 = load('four_by_four_preset_auto_hr', schema: 2);
+      expect(v2.readSchema, 2);
+      expect(v2.mode, RunMode.fourByFour);
+      expect(v2.preset, Preset.standard);
+      expect(v2.laps.length, 10);
+      expect(v2.samples.length, 1800);
+      final a1 = engine.analyze(
+        v1,
+        profile: const UserProfile(maxHr: 185),
+        now: fixedNow,
+      );
+      final a2 = engine.analyze(
+        v2,
+        profile: const UserProfile(maxHr: 185),
+        now: fixedNow,
+      );
+      expect(a2.verdict!.headline, VerdictHeadline.baselineSet);
+      expect(a2.verdict!.subline, a1.verdict!.subline);
+      expect(a2.verdict!.hrLine, a1.verdict!.hrLine);
+      expect(
+        a2.fourByFour!.avgWorkPaceSecPerKm,
+        closeTo(a1.fourByFour!.avgWorkPaceSecPerKm!, 1e-6),
+      );
+    });
+
+    test(
+      'treadmill recorded as laps: indoor, lap rows with no pace, HR band',
+      () {
+        final run = load('treadmill_no_fix_hr', schema: 2);
+        expect(run.mode, RunMode.laps);
+        expect(run.laps.length, 2);
+        final a = engine.analyze(
+          run,
+          profile: const UserProfile(maxHr: 180),
+          now: fixedNow,
+        );
+        expect(a.indoor, isTrue);
+        expect(a.verdict, isNull);
+        final l = a.laps!;
+        expect(l.laps.length, 2);
+        expect(l.laps.every((r) => r.paceSecPerKm == null), isTrue);
+        expect(l.laps.every((r) => !r.scored), isTrue, reason: 'no distance');
+        expect(l.fastestLapNumber, isNull);
+        expect(l.spreadSecPerKm, isNull);
+        expect(l.laps.every((r) => r.movingSeconds == 300), isTrue);
+        expect(l.avgHr, closeTo(135, 2));
+        expect(l.maxHrUsed, 180);
+        expect(l.timeInBandSeconds, isNotNull);
+      },
+    );
+
+    test('gps dropout recorded as free: summary only, same distance as v1', () {
+      final v1 = load('gps_dropout_hr');
+      final v2 = load('gps_dropout_hr', schema: 2);
+      expect(v1.mode, RunMode.laps, reason: 'v1 free → laps');
+      expect(v2.mode, RunMode.free);
+      expect(v2.laps.length, 1, reason: 'one segment [0, end]');
+      final a = engine.analyze(v2, now: fixedNow);
+      expect(a.laps, isNull);
+      expect(a.verdict, isNull);
+      expect(a.freeRun.distanceM, closeTo(1075.8, 0.5));
+      expect(a.gpsQuality, closeTo(314 / 360, 0.01));
+    });
+
+    test(
+      'laps run with a pause: same lap table as the frozen v1 recording',
+      () {
+        final v1 = load('free_run_pause_manual_laps');
+        final v2 = load('laps_run_pause_manual_laps', schema: 2);
+        expect(v2.mode, RunMode.laps);
+        expect(v2.pauses, [const Span(270000, 290000)]);
+        expect(v2.laps.length, 3);
+        final a1 = engine.analyze(v1, now: fixedNow).laps!;
+        final a2 = engine.analyze(v2, now: fixedNow).laps!;
+        expect(a2.laps.length, 3);
+        expect(a2.laps[1].movingSeconds, 160);
+        for (var i = 0; i < 3; i++) {
+          expect(a2.laps[i].distanceM, closeTo(a1.laps[i].distanceM, 0.01));
+          expect(
+            a2.laps[i].paceSecPerKm,
+            closeTo(a1.laps[i].paceSecPerKm!, 0.01),
+          );
+        }
+        expect(a2.fastestLapNumber, a1.fastestLapNumber);
+        expect(a2.spreadSecPerKm, closeTo(a1.spreadSecPerKm!, 0.01));
+      },
+    );
+
+    test(
+      'free run with no laps: one segment, pause excluded, no lap table',
+      () {
+        final run = load('free_run_no_laps', schema: 2);
+        expect(run.mode, RunMode.free);
+        expect(run.preset, isNull);
+        expect(run.laps.length, 1, reason: 'lap() calls ignored: one segment');
+        expect(run.laps.single.t0Ms, 0);
+        expect(run.laps.single.t1Ms, 480000);
+        expect(run.pauses, [const Span(240000, 255000)]);
+        expect(run.hasHr, isTrue);
+        final a = engine.analyze(run, now: fixedNow);
+        expect(a.mode, RunMode.free);
+        expect(a.laps, isNull);
+        expect(a.verdict, isNull);
+        expect(a.freeRun.elapsedSeconds, 480);
+        expect(a.freeRun.movingSeconds, 465);
+        expect(a.freeRun.distanceM, closeTo(1387, 1));
+        expect(a.freeRun.avgHr, isNotNull);
+        expect(a.freeRun.splitsSecPerUnit.length, 1);
+        // Overridden to Laps it is one row; the segment is the whole run.
+        final asLaps = engine.analyze(
+          run,
+          sidecar: RunSidecar(runId: run.id).withOverride(RunMode.laps),
+          now: fixedNow,
+        );
+        expect(asLaps.laps!.laps.length, 1);
+        expect(asLaps.laps!.laps.single.movingSeconds, 465);
+        expect(asLaps.laps!.spreadSecPerKm, isNull);
+      },
+    );
   });
 
   test(
