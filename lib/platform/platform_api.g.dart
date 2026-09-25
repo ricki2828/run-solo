@@ -1561,6 +1561,27 @@ class RecorderApi {
     ;
   }
 
+  /// The "Start 4x4" action: ends the untimed warm-up and starts rep 1 (same
+  /// effect and journal line as a first `lap(button)`); a no-op anywhere else,
+  /// so a manual LAP mid-rep can never be confused with starting.
+  Future<void> startReps() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.startReps$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
   /// Finalises in Kotlin (journal -> tmp -> fsync -> rename -> delete journal). No-op when idle.
   Future<String?> stop() async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.stop$pigeonVar_messageChannelSuffix';

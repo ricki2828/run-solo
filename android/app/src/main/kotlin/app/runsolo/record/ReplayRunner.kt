@@ -81,7 +81,10 @@ class ReplayRunner private constructor(
         private fun synthetic4x4(preset: Preset, speed: Double): ReplayRunner {
             val segments = ArrayList<Pair<Int, Double>>()
             segments.add(60 to 2.5)
-            repeat(preset.reps) { segments.add(preset.workSeconds to 4.2); segments.add(preset.recoverySeconds to 2.0) }
+            for (r in 1..preset.reps) {
+                segments.add(preset.workSeconds to 4.2)
+                if (r < preset.reps) segments.add(preset.recoverySeconds to 2.0)
+            }
             segments.add(60 to 2.5)
             val fixes = TraceFixture.straightLine(segments, accuracyM = 6.0, startT = 0)
             val hr = ArrayList<HrReading>()

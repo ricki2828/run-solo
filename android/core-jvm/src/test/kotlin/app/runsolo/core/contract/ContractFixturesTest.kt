@@ -68,11 +68,12 @@ class ContractFixturesTest {
     }
 
     @Test
-    fun `4x4 preset fixture - 10 laps, 8 auto on the exact boundaries, HR on every sample, fixes throughout`() {
+    fun `4x4 preset fixture - 9 laps, 7 auto on the exact boundaries (no recovery after rep 4), HR on every sample, fixes throughout`() {
         val m = fixture("four_by_four_preset_auto_hr")
         val laps = laps(m)
-        assertEquals(10, laps.size)
-        assertEquals(8, laps.count { it["kind"] == "auto" })
+        assertEquals(9, laps.size)
+        assertEquals(7, laps.count { it["kind"] == "auto" })
+        assertEquals(60_000L + 4 * 240_000L + 3 * 180_000L, laps[7]["t1"]) // rep 4 ends straight into cool-down
         assertEquals("manual", laps.first()["kind"])
         assertEquals("manual", laps.last()["kind"])
         assertEquals(60_000L, laps[0]["t1"])
@@ -80,12 +81,12 @@ class ContractFixturesTest {
         assertEquals(480_000L, laps[2]["t1"])
         assertEquals(240.0 * 4.2, (laps[1]["d1"] as Number).toDouble() - (laps[1]["d0"] as Number).toDouble(), 3.0)
         val s = samples(m)
-        assertEquals(60 + 4 * 420 + 60, s.size) // recording starts at second 1; the last tick is the stop second
+        assertEquals(60 + 4 * 240 + 3 * 180 + 60, s.size) // recording starts at second 1; the last tick is the stop second
         assertTrue(s.all { it[7] != null && it[1] != null })
         assertTrue(s.zipWithNext().all { (a, b) -> (b[0] as Long) > (a[0] as Long) && (b[6] as Number).toDouble() >= (a[6] as Number).toDouble() })
         assertEquals(mapOf("reps" to 4L, "workSeconds" to 240L, "recoverySeconds" to 180L), m["preset"])
         assertEquals("2025-09-24T00:00:00Z", m["start"])
-        assertEquals("2025-09-24T00:30:00Z", m["end"])
+        assertEquals("2025-09-24T00:27:00Z", m["end"])
     }
 
     @Test

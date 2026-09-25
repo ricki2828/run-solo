@@ -137,6 +137,10 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         active()?.lap(source.toCore())
     }
 
+    override fun startReps() {
+        active()?.startReps()
+    }
+
     override fun stop(): String? {
         val svc = RecorderService.instance
         val path = if (svc != null && RecorderService.session != null) {

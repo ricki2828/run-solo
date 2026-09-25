@@ -80,11 +80,14 @@ class ReplaySourceTest {
 
     /** §12: a full 4x4 with auto-laps runs at the desk at 10×, on the replay clock end to end. */
     @Test
-    fun `10x straight-line 4x4 through ticker and core - 8 auto laps on the boundaries, ground-truth distance`() {
+    fun `10x straight-line 4x4 through ticker and core - 7 auto laps on the boundaries, ground-truth distance`() {
         val preset = Preset.DEFAULT_4X4
         val segments = ArrayList<Pair<Int, Double>>()
         segments.add(30 to 2.5)
-        repeat(preset.reps) { segments.add(preset.workSeconds to 4.2); segments.add(preset.recoverySeconds to 2.0) }
+        for (r in 1..preset.reps) {
+            segments.add(preset.workSeconds to 4.2)
+            if (r < preset.reps) segments.add(preset.recoverySeconds to 2.0)
+        }
         segments.add(30 to 2.5)
         val trace = TraceFixture.straightLine(segments)
         val truthM = segments.sumOf { it.first * it.second }
@@ -113,11 +116,11 @@ class ReplaySourceTest {
         s.pump()
 
         assertEquals(trace.size, samples)
-        assertEquals(9, laps.size)
+        assertEquals(8, laps.size)
         val auto = laps.filter { it.source == LapSource.auto }
-        assertEquals(8, auto.size)
+        assertEquals(7, auto.size)
         val t0 = 1_000_000L + 30_000
-        val expected = (1..8).map { i -> t0 + ((i + 1) / 2) * preset.workMs + (i / 2) * preset.recoveryMs }
+        val expected = (1..7).map { i -> t0 + ((i + 1) / 2) * preset.workMs + (i / 2) * preset.recoveryMs }
         assertEquals(expected, auto.map { it.t })
         assertEquals(Phase.cooldown, core.phase)
         assertEquals(truthM, ticker.distanceM, truthM * 0.01)

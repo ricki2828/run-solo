@@ -186,6 +186,9 @@ sleep 10
 if shell pidof "$PKG" > /dev/null 2>&1; then fail "process came back after the kill (sticky restart?)"; fi
 log "process stayed dead for 10 s (START_NOT_STICKY)"
 shell "run-as $PKG ls files/journals/$run_id" | grep -q journal.ndjson || fail "journal lost by the kill"
+if [ "$MODE" = laps ] && [ "$sdk" -eq 34 ]; then
+  shell "run-as $PKG ls files/journals/$run_id" | grep -q volume-key-unavailable || fail "API 34: volumeKeyUnavailable marker missing from the journal dir"
+fi
 check_fatal "kill"
 
 log "relaunch with recover; resume, then stop after 8 s"
@@ -195,6 +198,11 @@ wait_for_log "RunSolo/debug.*recover count=1 $run_id" 30 || fail "orphan not fou
 wait_for_log "RunSolo/debug.*exitDiagnosis runId=$run_id" 30 || fail "no exit diagnosis"
 wait_for_log "RunSolo/debug.*resumeRecovered runId=$run_id error=null" 30 || fail "resume failed"
 wait_for_log "RunSolo/session.*resumed $run_id after" 30 || fail "session did not resume"
+if [ "$MODE" = laps ] && [ "$sdk" -eq 34 ]; then
+  # Once per run: the recovered session must not show the note again.
+  wait_for_log "RunSolo/session.*volumeKeyUnavailable already noted for $run_id" 10 || fail "API 34: recovered session did not see the volumeKeyUnavailable marker"
+  if adb logcat -d | grep -q '"fault":"volumeKeyUnavailable"'; then fail "API 34: volumeKeyUnavailable fired again after recovery"; fi
+fi
 wait_for_log "RunSolo/debug.*stop .*runId=$run_id" 45 || fail "stop did not finalise"
 check_fatal "recover/resume/stop"
 

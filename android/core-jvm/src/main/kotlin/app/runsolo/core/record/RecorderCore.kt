@@ -50,7 +50,7 @@ class RecorderCore(
         data class PhaseChanged(val t: Long, val phase: Phase, val repIndex: Int, val phaseDurationMs: Long?) : Output()
     }
 
-    enum class LapDecision { accepted, ignoredDoubleLap, ignoredDebounce, ignoredVolumeKeyDisabled, ignoredPaused, ignoredIdle, ignoredModeNoLaps }
+    enum class LapDecision { accepted, ignoredDoubleLap, ignoredDebounce, ignoredVolumeKeyDisabled, ignoredPaused, ignoredIdle, ignoredModeNoLaps, ignoredNotWarmup }
 
     data class Status(
         val state: RecorderState,
@@ -76,7 +76,7 @@ class RecorderCore(
     var phase: Phase = Phase.none
         private set
 
-    /** 1-based rep number during work/recovery; 0 in warmup/none, preset.reps after the last recovery. */
+    /** 1-based rep number during work/recovery; 0 in warmup/none, preset.reps from the last rep through cool-down. */
     var repIndex: Int = 0
         private set
 
@@ -152,6 +152,18 @@ class RecorderCore(
         return LapDecision.accepted to applyManualLap(source, t)
     }
 
+    /**
+     * The "Start 4x4" action: ends the untimed warm-up and starts rep 1 (plan §6). Journaled as
+     * a button lap so the file is what a first LAP would have written; a no-op anywhere else
+     * (a press mid-rep is never a lap, so a manual LAP cannot be confused with starting).
+     */
+    fun startReps(t: Long): Pair<LapDecision, List<Output>> {
+        if (state == RecorderState.idle || state == RecorderState.finalising) return LapDecision.ignoredIdle to emptyList()
+        if (state == RecorderState.paused) return LapDecision.ignoredPaused to emptyList()
+        if (preset == null || phase != Phase.warmup) return LapDecision.ignoredNotWarmup to emptyList()
+        return LapDecision.accepted to applyManualLap(LapSource.button, t)
+    }
+
     /** Records a manual lap with no gate or guard: what was journaled did happen. */
     private fun applyManualLap(source: LapSource, t: Long): List<Output> {
         lastManualLapT = t
@@ -216,13 +228,17 @@ class RecorderCore(
         return out
     }
 
-    /** Move from the current timed phase to the next one. */
+    /**
+     * Move from the current timed phase to the next one. N reps have N−1 recoveries: the last
+     * work phase goes straight to cool-down (founder field test 25-Sep: a 4th recovery ran
+     * after rep 4 before the cool-down).
+     */
     private fun advance(t: Long): List<Output> {
         val p = preset ?: return emptyList()
         return when (phase) {
-            Phase.work -> enterPhase(t, Phase.recovery, repIndex)
-            Phase.recovery -> if (repIndex >= p.reps) enterPhase(t, Phase.cooldown, repIndex) else enterPhase(t, Phase.work, repIndex + 1)
-            else -> emptyList()
+            Phase.work -> if (repIndex >= p.reps) enterPhase(t, Phase.cooldown, repIndex) else enterPhase(t, Phase.recovery, repIndex)
+            Phase.recovery -> enterPhase(t, Phase.work, repIndex + 1)
+            Phase.none, Phase.warmup, Phase.cooldown -> emptyList()
         }
     }
 

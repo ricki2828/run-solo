@@ -63,28 +63,73 @@ class RecorderCoreTest {
         assertEquals(Phase.work, core.phase)
         assertEquals(1, core.repIndex)
 
-        val total = 4 * 240_000L + 4 * 180_000L
+        // 4 reps = 4 work + 3 recovery phases: the last rep goes straight to cool-down.
+        val total = 4 * 240_000L + 3 * 180_000L
         val out = run(core, t0 + 60_000, t0 + 60_000 + total + 5_000)
         val autoLaps = laps(out)
-        assertEquals(8, autoLaps.size)
+        assertEquals(7, autoLaps.size)
         assertTrue(autoLaps.all { it.first == LapSource.auto })
         // Lap times are exact phase boundaries, not tick times.
         assertEquals(60_000 + 240_000L, autoLaps[0].second)
         assertEquals(60_000 + 420_000L, autoLaps[1].second)
-        assertEquals(60_000 + total, autoLaps[7].second)
+        assertEquals(60_000 + total, autoLaps[6].second)
         assertEquals(Phase.cooldown, core.phase)
         assertEquals(4, core.repIndex)
-        assertEquals(9, core.lapCount)
+        assertEquals(8, core.lapCount)
         val c = cues(out)
         // Rep 1 work: halfway 2:00, -30 3:30, end 4:00, then recovery start.
         assertEquals(
             listOf(CueKind.halfway to 180_000L, CueKind.thirtySeconds to 270_000L, CueKind.phaseEnd to 300_000L, CueKind.start to 300_000L),
             c.take(4),
         )
-        assertEquals(4 * 4 + 4 * 4 - 1, c.size) // 4 cues per timed phase, 8 phases; rep 1's start cue came with the LAP
+        assertEquals(4 * 4 + 3 * 4 - 1, c.size) // 4 cues per timed phase, 7 phases; rep 1's start cue came with the LAP
+        assertEquals(CueKind.phaseEnd, c.last().first) // the last cue is the end of rep 4, straight into cool-down
         assertTrue(run(core, t0 + 60_000 + total + 6_000, t0 + 60_000 + total + 120_000).isEmpty(), "cooldown is untimed")
         assertEquals(listOf(Output.Cue(t0 + 2_000_000, CueKind.stop)), core.stop(t0 + 2_000_000))
         assertEquals(RecorderState.finalising, core.state)
+    }
+
+    @Test
+    fun `phase sequence for 3 to 6 reps - N work, N-1 recovery, then cooldown`() {
+        for (reps in Preset.MIN_REPS..Preset.MAX_REPS) {
+            val p = Preset(reps, 240, 180)
+            val core = RecorderCore(RunMode.fourByFour, p)
+            core.start(t0)
+            val phases = ArrayList<Pair<Phase, Int>>()
+            fun collect(out: List<Output>) = out.filterIsInstance<Output.PhaseChanged>().forEach { phases.add(it.phase to it.repIndex) }
+            collect(core.lap(LapSource.button, t0).second)
+            collect(run(core, t0, t0 + reps * 240_000L + (reps - 1) * 180_000L + 60_000L))
+            val expected = ArrayList<Pair<Phase, Int>>()
+            for (r in 1..reps) {
+                expected.add(Phase.work to r)
+                if (r < reps) expected.add(Phase.recovery to r)
+            }
+            expected.add(Phase.cooldown to reps)
+            assertEquals(expected, phases, "reps=$reps")
+            assertEquals(2 * reps, core.lapCount, "reps=$reps: the warm-up LAP plus one auto lap per timed phase end (2N-1 phases)")
+            assertEquals(Phase.cooldown, core.phase)
+        }
+    }
+
+    @Test
+    fun `startReps - ends the warm-up like a first LAP, no-op anywhere else`() {
+        val core = RecorderCore(RunMode.fourByFour, preset)
+        assertEquals(LapDecision.ignoredIdle, core.startReps(t0).first)
+        core.start(t0)
+        run(core, t0, t0 + 90_000)
+        val (d, out) = core.startReps(t0 + 90_000)
+        assertEquals(LapDecision.accepted, d)
+        assertEquals(listOf(LapSource.button to 90_000L), laps(out))
+        assertEquals(listOf(CueKind.start to 90_000L), cues(out))
+        assertEquals(Phase.work, core.phase)
+        assertEquals(1, core.repIndex)
+        assertEquals(LapDecision.ignoredNotWarmup, core.startReps(t0 + 100_000).first) // mid-rep: never a lap
+        assertEquals(1, core.lapCount)
+        core.pause(t0 + 110_000)
+        assertEquals(LapDecision.ignoredPaused, core.startReps(t0 + 111_000).first)
+        val free = RecorderCore(RunMode.laps, null)
+        free.start(t0)
+        assertEquals(LapDecision.ignoredNotWarmup, free.startReps(t0 + 1000).first)
     }
 
     @Test

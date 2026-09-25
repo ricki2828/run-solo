@@ -31,7 +31,7 @@
     <!-- Auto Backup on (plan §4): both rules files because minSdk 29 reads fullBackupContent
          (29-30) and 31+ reads dataExtractionRules. -->
     <application
-        android:label="Run Solo"
+        android:label="Run Supreme"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"

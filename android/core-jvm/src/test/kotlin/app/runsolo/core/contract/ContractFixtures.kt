@@ -97,12 +97,15 @@ object ContractFixtures {
         }
     }
 
-    /** 60 s warmup, notification LAP, 4×(4:00 @4.2 m/s, 3:00 @2.0 m/s) auto-lapped by the core, 60 s cooldown; HR by phase. */
+    /** 60 s warmup, notification LAP, 4×4:00 @4.2 m/s with 3×3:00 @2.0 m/s between them, auto-lapped by the core, 60 s cooldown; HR by phase. */
     private fun fourByFourPresetAutoHr(): String {
         val preset = Preset.DEFAULT_4X4
         val segments = ArrayList<Pair<Int, Double>>()
         segments.add(60 to 2.5)
-        repeat(preset.reps) { segments.add(preset.workSeconds to 4.2); segments.add(preset.recoverySeconds to 2.0) }
+        for (r in 1..preset.reps) {
+            segments.add(preset.workSeconds to 4.2)
+            if (r < preset.reps) segments.add(preset.recoverySeconds to 2.0)
+        }
         segments.add(60 to 2.5)
         val fixes = TraceFixture.straightLine(segments, LAT0, LON0, 6.0, T0)
         val s = Session("contract-4x4-preset", RunMode.fourByFour, preset)

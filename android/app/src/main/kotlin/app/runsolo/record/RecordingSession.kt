@@ -88,7 +88,7 @@ class RecordingSession(
     private val lapInput = LapInput(
         this.context,
         onLap = { lap(LapSource.volumeKey) },
-        onUnavailable = { fault(FaultKind.VOLUME_KEY_UNAVAILABLE, "Volume-key laps don't work on Android 14; use the lock-screen LAP") },
+        onUnavailable = { volumeKeyUnavailableOnce() },
     )
 
     /** Volume-key laps need a mode that takes laps at all (plan §18.2): Free never registers the MediaSession. */
@@ -409,6 +409,17 @@ class RecordingSession(
         refreshSnapshot()
     }
 
+    /** "Start 4x4": end the warm-up and start rep 1; a no-op outside the warm-up. */
+    @Synchronized
+    fun startReps() {
+        if (finished) return
+        val t = clock()
+        val (decision, out) = core.startReps(t)
+        Log.i(TAG, "startReps → $decision")
+        handle(out, t)
+        refreshSnapshot()
+    }
+
     @Synchronized
     fun pause() {
         if (finished || core.state != RecorderState.recording) return
@@ -549,6 +560,25 @@ class RecordingSession(
         if (::core.isInitialized) snapshot = statusNow()
     }
 
+    /**
+     * Once per run id, across kill/recovery: a marker next to the journal (deleted with it on
+     * finalise/discard) records that the note was already shown for this run.
+     */
+    private fun volumeKeyUnavailableOnce() {
+        val marker = "${RunPaths.journalDir(runId)}/$VOLUME_KEY_UNAVAILABLE_MARKER"
+        if (fs.exists(marker)) {
+            Log.i(TAG, "volumeKeyUnavailable already noted for $runId")
+            return
+        }
+        try {
+            fs.mkdirs(RunPaths.journalDir(runId))
+            fs.writeBytes(marker, ByteArray(0))
+        } catch (e: Exception) {
+            Log.w(TAG, "volumeKeyUnavailable marker not written: $e")
+        }
+        fault(FaultKind.VOLUME_KEY_UNAVAILABLE, "Volume-key laps don't work on Android 14; use the lock-screen LAP")
+    }
+
     private fun fault(kind: FaultKind, message: String) {
         RecorderEventBus.emit(FaultEvent(kind = kind, message = message))
     }
@@ -601,5 +631,6 @@ class RecordingSession(
 
     companion object {
         const val TAG = "RunSolo/session"
+        private const val VOLUME_KEY_UNAVAILABLE_MARKER = "volume-key-unavailable"
     }
 }
