@@ -17,8 +17,10 @@ env:
   JAVA_VERSION: '17'
   # Google Maps key (plan §18.3): manifest placeholder via build.gradle.kts. Empty when the
   # secret is absent (forks, before the founder creates it): the build still passes and the
-  # map shows its failed state. GitHub masks the value; nothing below prints it.
+  # map shows its failed state. GitHub masks the value; nothing below prints it. The same value
+  # goes to Dart as --dart-define (String.fromEnvironment) so the app knows whether a map can load.
   RUN_SOLO_MAPS_API_KEY: ${{ secrets.RUN_SOLO_MAPS_API_KEY }}
+  MAPS_DEFINE: --dart-define=RUN_SOLO_MAPS_API_KEY=${{ secrets.RUN_SOLO_MAPS_API_KEY }}
 
 jobs:
   flutter:
@@ -128,7 +130,7 @@ jobs:
       - run: flutter pub get
       - name: Build debug APK (play flavour, app.runsolo.debug)
         run: |
-          flutter build apk --debug --flavor play
+          flutter build apk --debug --flavor play $MAPS_DEFINE
           mkdir -p build/dist && cp build/app/outputs/flutter-apk/app-play-debug.apk build/dist/app-debug.apk
       - name: Android lint NewApi (minSdk 29 API guard)
         working-directory: android
@@ -143,7 +145,7 @@ jobs:
           [ "$n" -ge 1 ] || { echo "::error::com.google.android.geo.API_KEY meta-data missing from the manifest"; exit 1; }
           if [ -z "$RUN_SOLO_MAPS_API_KEY" ]; then echo "::warning::RUN_SOLO_MAPS_API_KEY secret is not set; this build has an empty Maps key"; fi
       - name: Build release AAB (debug-signed here; the Play-signed one is the release-aab job)
-        run: flutter build appbundle --release --flavor play --obfuscate --split-debug-info=build/symbols
+        run: flutter build appbundle --release --flavor play --obfuscate --split-debug-info=build/symbols $MAPS_DEFINE
       - name: 16 KB page-size check (debug APK)
         run: |
           ZIPALIGN="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/zipalign"
@@ -189,7 +191,7 @@ jobs:
         run: |
           flutter build apk --release --flavor dogfood --split-per-abi \
             --target-platform android-arm64,android-x64 \
-            --obfuscate --split-debug-info=build/symbols-dogfood
+            --obfuscate --split-debug-info=build/symbols-dogfood $MAPS_DEFINE
           ls -la build/app/outputs/flutter-apk/
       - name: Verify signer, size (< 30 MiB) and 16 KB alignment
         run: |
@@ -254,7 +256,7 @@ jobs:
           RUN_SOLO_UPLOAD_KEY_ALIAS: upload  # not a secret: a secret value here masks the word in logs
           RUN_SOLO_UPLOAD_KEY_PASSWORD: ${{ secrets.RUN_SOLO_UPLOAD_KEY_PASSWORD }}
         run: |
-          flutter build appbundle --release --flavor play --obfuscate --split-debug-info=build/symbols-play
+          flutter build appbundle --release --flavor play --obfuscate --split-debug-info=build/symbols-play $MAPS_DEFINE
           ls -la build/app/outputs/bundle/playRelease/
       - name: Verify signer (upload key), 16 KB alignment, Maps meta-data present
         run: |

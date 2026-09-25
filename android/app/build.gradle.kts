@@ -121,9 +121,18 @@ android {
     }
 }
 
-// See defaultConfig: env, then -Prunsolo.mapsApiKey / local.properties, then empty.
+// See defaultConfig: env, then the Flutter --dart-define of the same name (the tool passes
+// them as -Pdart-defines=<base64 KEY=VALUE>,...), then -Prunsolo.mapsApiKey / local.properties,
+// then empty. Dart reads its copy with String.fromEnvironment('RUN_SOLO_MAPS_API_KEY'); both
+// must be the same value, which is why CI passes one env var to both.
 fun mapsApiKey(): String {
     System.getenv("RUN_SOLO_MAPS_API_KEY")?.takeIf { it.isNotBlank() }?.let { return it }
+    (project.findProperty("dart-defines") as String?)?.split(",")?.forEach { encoded ->
+        val decoded = runCatching { String(java.util.Base64.getDecoder().decode(encoded)) }.getOrNull() ?: return@forEach
+        if (decoded.startsWith("RUN_SOLO_MAPS_API_KEY=")) {
+            decoded.removePrefix("RUN_SOLO_MAPS_API_KEY=").takeIf { it.isNotBlank() }?.let { return it }
+        }
+    }
     (project.findProperty("runsolo.mapsApiKey") as String?)?.takeIf { it.isNotBlank() }?.let { return it }
     val local = rootProject.file("local.properties")
     if (local.exists()) {
