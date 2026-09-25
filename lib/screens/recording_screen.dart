@@ -174,7 +174,8 @@ class _RecordingScreenState extends State<RecordingScreen>
           final s = ctl.snapshot;
           final zoneBg = HrZones.background(s.zone);
           final compact = MediaQuery.sizeOf(context).height < 720;
-          final lapHeight = compact ? 160.0 : 200.0;
+          // 148 on short screens: the 36 sp last-lap line (A8) needs the room.
+          final lapHeight = compact ? 148.0 : 200.0;
           return Scaffold(
             backgroundColor: Colors.transparent,
             body: Stack(
@@ -456,6 +457,42 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// A small label over a 36 sp figure: the floor for every number on the
+/// record screen (A8, "no number smaller than 36 sp").
+class AuxFigure extends StatelessWidget {
+  const AuxFigure({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.labelColor,
+    required this.valueColor,
+  });
+  final String label;
+  final String value;
+  final Color labelColor;
+  final Color valueColor;
+
+  static final TextStyle style = RunSoloType.display44.copyWith(fontSize: 36);
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(label, style: RunSoloType.micro11.copyWith(color: labelColor)),
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(
+          value,
+          softWrap: false,
+          style: style.copyWith(color: valueColor),
+        ),
+      ),
+    ],
+  );
+}
+
 /// Heart rate and total time as a row of large tabular figures with small
 /// labels (founder, tester 0.2). Bone digits on every zone background
 /// (≥ 7:1, zone contrast test); a dropped strap reads "--" + reconnecting in
@@ -525,11 +562,12 @@ class _Vitals extends StatelessWidget {
                   Flexible(
                     child: Text(
                       hr == null ? 'reconnecting' : '$pct%',
+                      key: const ValueKey('vitals-hr-pct'),
                       softWrap: false,
                       overflow: TextOverflow.fade,
-                      style: RunSoloType.body15.copyWith(
-                        color: hr == null ? t.semWarn : secondary,
-                      ),
+                      style: hr == null
+                          ? RunSoloType.body15.copyWith(color: t.semWarn)
+                          : AuxFigure.style.copyWith(color: secondary),
                     ),
                   ),
                 ],
@@ -616,12 +654,32 @@ class _FreeRunBlock extends StatelessWidget {
             onZone: s.zone > 0,
           ),
         ),
-        Text(
-          runAverage == null
-              ? 'average from 20 m'
-              : 'run average ${Fmt.paceUnit(runAverage, units)}',
-          style: RunSoloType.body15.copyWith(color: secondary),
-        ),
+        if (runAverage == null)
+          Text(
+            'average from 20 m',
+            style: RunSoloType.body15.copyWith(color: secondary),
+          )
+        else
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                'run average ',
+                style: RunSoloType.body15.copyWith(color: secondary),
+              ),
+              Text(
+                Fmt.pace(runAverage, units),
+                key: const ValueKey('run-average'),
+                style: AuxFigure.style.copyWith(color: t.inkPrimary),
+              ),
+              Text(
+                ' /${units == Units.mi ? 'mi' : 'km'}',
+                style: RunSoloType.body15.copyWith(color: secondary),
+              ),
+            ],
+          ),
       ],
     );
   }
@@ -653,7 +711,9 @@ class _TimerBlock extends StatelessWidget {
         key: const ValueKey('timer'),
         softWrap: false,
         style: (style ?? RunSoloType.timer120).copyWith(
-          color: recovery ? secondary : t.inkPrimary,
+          // A8: the countdown is Bone in every phase; in a recovery the
+          // grey (M3) moves to the secondary number, the recovery average.
+          color: t.inkPrimary,
         ),
         textAlign: TextAlign.center,
       ),
@@ -737,10 +797,11 @@ class _SegmentPace extends StatelessWidget {
             softWrap: false,
             // The biggest number in a rep; second to the countdown in a
             // recovery. The FittedBox only shrinks it for a wide value.
-            style: primaryStyle(
-              compact,
-              secondary: s.phase == Phase.recovery,
-            ).copyWith(color: t.inkPrimary, fontWeight: FontWeight.w700),
+            style: primaryStyle(compact, secondary: s.phase == Phase.recovery)
+                .copyWith(
+                  color: s.phase == Phase.recovery ? secondary : t.inkPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
           ),
         ),
         Text(
@@ -752,12 +813,26 @@ class _SegmentPace extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Expanded(
-              child: Text(
-                s.lastRepPaceSecPerKm == null
-                    ? Fmt.distance(s.lapDistanceM, units)
-                    : '${Fmt.distance(s.lapDistanceM, units)}\nlast rep '
-                          '${Fmt.pace(s.lastRepPaceSecPerKm, units)}',
-                style: RunSoloType.body17.copyWith(color: secondary),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AuxFigure(
+                    label: 'DISTANCE',
+                    value: Fmt.distance(s.lapDistanceM, units),
+                    labelColor: secondary,
+                    valueColor: t.inkPrimary,
+                  ),
+                  if (s.lastRepPaceSecPerKm != null) ...[
+                    const SizedBox(height: Space.x4),
+                    AuxFigure(
+                      label: 'LAST REP',
+                      value: Fmt.pace(s.lastRepPaceSecPerKm, units),
+                      labelColor: secondary,
+                      valueColor: t.inkPrimary,
+                    ),
+                  ],
+                ],
               ),
             ),
             const SizedBox(width: Space.x16),
@@ -849,25 +924,41 @@ class _Stats extends StatelessWidget {
           ],
         ),
         const SizedBox(height: Space.x4),
-        Row(
-          children: [
-            Text(
-              showGhost
-                  ? '${s.isPreset ? 'last rep' : 'last lap'} ${Fmt.pace(last, units)}'
-                  : (s.isPreset ? 'warm-up pace' : 'first lap'),
-              style: RunSoloType.body15.copyWith(color: deltaColor),
-            ),
-            if (direction != null && delta != null) ...[
-              const SizedBox(width: Space.x8),
-              DeltaGlyph(direction: direction, color: deltaColor, size: 11),
-              const SizedBox(width: Space.x4),
+        if (!showGhost)
+          Text(
+            s.isPreset ? 'warm-up pace' : 'first lap',
+            style: RunSoloType.body15.copyWith(color: deltaColor),
+          )
+        else
+          // A8: no number on the record screen under 36 sp.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
               Text(
-                delta,
+                s.isPreset ? 'last rep ' : 'last lap ',
                 style: RunSoloType.body15.copyWith(color: deltaColor),
               ),
+              Text(
+                Fmt.pace(last, units),
+                key: const ValueKey('ghost-pace'),
+                style: AuxFigure.style.copyWith(color: t.inkPrimary),
+              ),
+              if (direction != null && delta != null) ...[
+                const SizedBox(width: Space.x12),
+                DeltaGlyph(direction: direction, color: deltaColor, size: 14),
+                const SizedBox(width: Space.x4),
+                Flexible(
+                  child: Text(
+                    delta,
+                    softWrap: false,
+                    overflow: TextOverflow.fade,
+                    style: AuxFigure.style.copyWith(color: deltaColor),
+                  ),
+                ),
+              ],
             ],
-          ],
-        ),
+          ),
       ],
     );
   }

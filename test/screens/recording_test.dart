@@ -80,7 +80,7 @@ void main() {
     final avgH = tester
         .getSize(find.byKey(const ValueKey('segment-avg')))
         .height;
-    expect(avgH, greaterThanOrEqualTo(tester.getSize(timerText()).height));
+    expect(avgH, greaterThan(tester.getSize(timerText()).height));
     expect(
       avgH,
       greaterThan(
@@ -112,11 +112,21 @@ void main() {
       ),
     );
     final t = Theme.of(tester.element(timerText())).extension<RunSoloTokens>()!;
+    // A8: the countdown stays Bone in a recovery; the grey (M3) moves to
+    // the secondary number, the recovery average.
     expect(
       tester.widget<Text>(timerText()).style!.color,
+      t.inkPrimary,
+      reason: 'recovery countdown is Bone',
+    );
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('segment-avg')))
+          .style!
+          .color,
       // Fake carries HR, so a zone background is active: Bone 70 % (A1).
       anyOf(t.inkSecondary, HrZones.secondaryOnZone),
-      reason: 'recovery digits are grey',
+      reason: 'recovery average is the grey secondary number',
     );
 
     // M3: the Bone flash is mid-fade right after the transition (one frame
@@ -135,7 +145,8 @@ void main() {
     fake.advance(const Duration(seconds: 180));
     await settle(tester);
     expect(find.text('REP 2 OF 4'), findsOneWidget);
-    expect(find.textContaining('last rep 4:45'), findsOneWidget);
+    expect(find.text('LAST REP'), findsOneWidget);
+    expect(find.text('4:45'), findsWidgets);
     fake.liveSecPerKm = 275;
     fake.advance(const Duration(seconds: 1));
     await settle(tester);
@@ -189,7 +200,8 @@ void main() {
     final (fake, _) = await openRecording(tester, mode: RecordMode.laps);
     fake.advance(const Duration(seconds: 5));
     await settle(tester);
-    expect(find.text('GPS 8 m'), findsOneWidget);
+    expect(find.text('GPS'), findsOneWidget);
+    expect(find.bySemanticsLabel('GPS 8 m'), findsOneWidget);
 
     fake.gpsLost = true;
     fake.advance(const Duration(seconds: 1));
@@ -204,7 +216,8 @@ void main() {
     fake.advance(const Duration(seconds: 1));
     await settle(tester);
     expect(find.text('GPS dropped'), findsNothing);
-    expect(find.text('GPS 24 m'), findsOneWidget);
+    // 24 m is weak (> 20 m): a status word, not a small number (A8).
+    expect(find.text('GPS weak'), findsOneWidget);
   });
 
   testWidgets('GPS lost inside a rep flags the rep; before first fix waits', (
@@ -250,9 +263,9 @@ void main() {
     final (fake, _) = await openRecording(tester, mode: RecordMode.laps);
     fake.advance(const Duration(seconds: 65));
     await settle(tester);
-    for (final key in ['vitals-hr', 'vitals-total']) {
+    for (final key in ['vitals-hr', 'vitals-hr-pct', 'vitals-total']) {
       final text = tester.widget<Text>(find.byKey(ValueKey(key)));
-      expect(text.style!.fontSize, greaterThanOrEqualTo(32), reason: key);
+      expect(text.style!.fontSize, greaterThanOrEqualTo(36), reason: key);
     }
     expect(
       tester.widget<Text>(find.byKey(const ValueKey('vitals-total'))).data,
