@@ -310,6 +310,11 @@ class RecordingController extends ChangeNotifier {
   /// ignore it too, this just avoids the round trip).
   Future<void> lap() =>
       _snap.lapsEnabled ? _gateway.lap(LapSource.button) : Future.value();
+
+  /// "Start 4x4" in warm-up; nothing otherwise.
+  Future<void> startReps() => _snap.isPreset && _snap.phase == Phase.warmup
+      ? _gateway.startReps()
+      : Future.value();
   Future<void> pause() => _gateway.pause();
   Future<void> resume() => _gateway.resume();
 

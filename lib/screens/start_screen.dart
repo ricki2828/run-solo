@@ -219,7 +219,7 @@ class _StartScreenState extends State<StartScreen> {
                 FilledButton(
                   onPressed: _starting ? null : _start,
                   child: Text(switch (mode) {
-                    RecordMode.fourByFour => 'START 4x4',
+                    RecordMode.fourByFour => 'START WARM-UP',
                     RecordMode.laps => 'START LAPS RUN',
                     RecordMode.free => 'START FREE RUN',
                     RecordMode.cooper => 'START TEST',

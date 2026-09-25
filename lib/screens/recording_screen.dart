@@ -15,6 +15,7 @@ import '../widgets/gps_bar.dart';
 import '../widgets/hold_button.dart';
 import '../widgets/hr_badge.dart';
 import '../widgets/lap_button.dart';
+import '../widgets/pace_dial.dart';
 import '../widgets/zone_gauge.dart';
 
 /// Record screen (design brief §4.4, addendum A1/A2): three layouts on one
@@ -210,7 +211,28 @@ class _RecordingScreenState extends State<RecordingScreen>
                         else if (s.notice != null)
                           _Banner(text: s.notice!, color: t.semWarn),
                         const Spacer(),
-                        if (s.lapsEnabled) ...[
+                        if (s.isPreset) ...[
+                          // 4x4 (founder field test 25-Sep): no big LAP.
+                          // Warm-up → big START 4x4; then the phases run on
+                          // their own and the screen shows the countdown,
+                          // the segment's average pace and the current-pace
+                          // dial. Lock-screen LAP still re-aligns a phase.
+                          _TimerBlock(s: s, ctl: ctl),
+                          const Spacer(),
+                          Visibility(
+                            visible: !s.paused,
+                            maintainSize: true,
+                            maintainAnimation: true,
+                            maintainState: true,
+                            child: s.phase == Phase.warmup
+                                ? _Stats(s: s, units: settings.units)
+                                : _SegmentPace(
+                                    s: s,
+                                    ctl: ctl,
+                                    units: settings.units,
+                                  ),
+                          ),
+                        ] else if (s.lapsEnabled) ...[
                           _TimerBlock(s: s, ctl: ctl),
                           const Spacer(),
                           // The PAUSED card sits here; keep the space, hide
@@ -241,7 +263,18 @@ class _RecordingScreenState extends State<RecordingScreen>
                           ),
                         ),
                         const SizedBox(height: Space.x16),
-                        if (s.lapsEnabled)
+                        if (s.isPreset && s.phase == Phase.warmup)
+                          LapButton(
+                            key: const ValueKey('start-reps'),
+                            label: 'START 4x4',
+                            onLap: ctl.startReps,
+                            pulse: ctl.lapPulse,
+                            haptics: settings.haptics,
+                            height: lapHeight,
+                          )
+                        else if (s.isPreset)
+                          const Spacer()
+                        else if (s.lapsEnabled)
                           LapButton(
                             onLap: ctl.lap,
                             pulse: ctl.lapPulse,
@@ -336,7 +369,7 @@ String gpsBannerCopy(RecordingSnapshot s) {
 String timerCaption(RecordingSnapshot s) {
   if (!s.isPreset) return 'this lap · total ${Fmt.clock(s.elapsedMs)}';
   return switch (s.phase) {
-    Phase.warmup => 'tap LAP when ready',
+    Phase.warmup => 'warm up, then tap START 4x4',
     Phase.work => 'remaining in rep',
     Phase.recovery => 'remaining in recovery',
     Phase.cooldown => 'hold Stop when done',
@@ -522,6 +555,80 @@ class _TimerBlock extends StatelessWidget {
         Text(
           s.paused ? '' : timerCaption(s),
           style: RunSoloType.label13.copyWith(color: secondary),
+        ),
+      ],
+    );
+  }
+}
+
+/// 4x4 in a timed phase (A2 revised, founder 25-Sep): the segment's average
+/// pace large on the left, the current-pace dial on the right, referenced
+/// to the last rep's pace (or the segment average until there is one).
+class _SegmentPace extends StatelessWidget {
+  const _SegmentPace({required this.s, required this.ctl, required this.units});
+  final RecordingSnapshot s;
+  final RecordingController ctl;
+  final Units units;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final onZone = s.zone > 0;
+    final secondary = onZone ? HrZones.secondaryOnZone : t.inkSecondary;
+    final activeMs = ctl.displayLapElapsedMs;
+    final segmentAvg = s.lapDistanceM > 20 && activeMs > 0
+        ? activeMs / 1000 / (s.lapDistanceM / 1000)
+        : null;
+    final reference = s.phase == Phase.work
+        ? (s.lastRepPaceSecPerKm ?? segmentAvg)
+        : segmentAvg;
+    final title = switch (s.phase) {
+      Phase.work => 'REP AVERAGE',
+      Phase.recovery => 'RECOVERY AVERAGE',
+      _ => 'SEGMENT AVERAGE',
+    };
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  Fmt.pace(segmentAvg, units),
+                  key: const ValueKey('segment-avg'),
+                  softWrap: false,
+                  style: RunSoloType.display64.copyWith(color: t.inkPrimary),
+                ),
+              ),
+              Text(
+                '$title /${units == Units.mi ? 'mi' : 'km'}',
+                style: RunSoloType.micro11.copyWith(color: secondary),
+              ),
+              const SizedBox(height: Space.x8),
+              Text(
+                s.lastRepPaceSecPerKm == null
+                    ? Fmt.distance(s.lapDistanceM, units)
+                    : '${Fmt.distance(s.lapDistanceM, units)} · last rep '
+                          '${Fmt.pace(s.lastRepPaceSecPerKm, units)}',
+                style: RunSoloType.body15.copyWith(color: secondary),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: Space.x16),
+        SizedBox(
+          width: 150,
+          child: PaceDial(
+            currentSecPerKm: s.livePaceSecPerKm,
+            referenceSecPerKm: reference,
+            units: units,
+            onZone: onZone,
+          ),
         ),
       ],
     );

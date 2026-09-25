@@ -26,6 +26,11 @@ class PigeonRecorderGateway implements RecorderGateway {
   @override
   Future<void> lap(LapSource source) => _api.lap(source);
 
+  // TODO(run2-native-fable): swap to `_api.startReps()` when PR #9's
+  // follow-up lands; identical effect in warm-up today.
+  @override
+  Future<void> startReps() => _api.lap(LapSource.button);
+
   @override
   Future<String?> stop() => _api.stop();
 

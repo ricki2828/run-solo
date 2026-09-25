@@ -8,9 +8,9 @@ import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/theme/theme.dart';
 import 'package:run_solo/theme/zones.dart';
-import 'package:run_solo/widgets/delta_glyph.dart';
 import 'package:run_solo/widgets/hold_button.dart';
 import 'package:run_solo/widgets/lap_button.dart';
+import 'package:run_solo/widgets/pace_dial.dart';
 
 import '../helpers.dart';
 
@@ -47,27 +47,34 @@ Finder timerText() => find.byKey(const ValueKey('timer'));
 String timer(WidgetTester tester) => tester.widget<Text>(timerText()).data!;
 
 void main() {
-  testWidgets('4x4: warm-up counts up, LAP starts rep 1 counting down', (
+  testWidgets('4x4: warm-up counts up, START 4x4 begins rep 1, no big LAP', (
     tester,
   ) async {
     final (fake, _) = await openRecording(tester);
     expect(find.text('WARM-UP'), findsOneWidget);
-    expect(find.text('tap LAP when ready'), findsOneWidget);
+    expect(find.text('warm up, then tap START 4x4'), findsOneWidget);
     expect(find.text('first rep sets the pace'), findsOneWidget);
+    expect(find.byKey(const ValueKey('start-reps')), findsOneWidget);
+    expect(find.text('START 4x4'), findsOneWidget);
 
     fake.advance(const Duration(seconds: 65));
     await settle(tester);
     expect(timer(tester), '1:05');
 
-    await tester.tap(find.byType(LapButton));
+    await tester.tap(find.byKey(const ValueKey('start-reps')));
     await settle(tester);
+    expect(fake.startRepsCalls, 1);
     expect(find.text('REP 1 OF 4'), findsOneWidget);
     expect(find.text('remaining in rep'), findsOneWidget);
     expect(timer(tester), '4:00');
+    // Founder field test: the phases run on their own, no big LAP button.
+    expect(find.byType(LapButton), findsNothing);
 
     fake.advance(const Duration(seconds: 73));
     await settle(tester);
     expect(timer(tester), '2:47');
+    expect(find.byKey(const ValueKey('segment-avg')), findsOneWidget);
+    expect(find.byKey(const ValueKey('dial-pace')), findsOneWidget);
     expect(find.textContaining('4:4'), findsWidgets, reason: 'live pace');
     expect(find.text('0.26 km'), findsOneWidget);
   });
@@ -76,7 +83,7 @@ void main() {
     tester,
   ) async {
     final (fake, _) = await openRecording(tester);
-    await tester.tap(find.byType(LapButton));
+    await tester.tap(find.byKey(const ValueKey('start-reps')));
     await settle(tester);
     fake.advance(const Duration(seconds: 240));
     await settle(tester);
@@ -103,7 +110,8 @@ void main() {
     );
     expect(fade.opacity.value, greaterThan(0));
 
-    // Ghost line: last rep pace and delta, in rep 2.
+    // Rep 2: the last rep's pace is the dial's reference; a faster current
+    // pace swings the needle right (position > 0).
     fake.advance(const Duration(seconds: 180));
     await settle(tester);
     expect(find.text('REP 2 OF 4'), findsOneWidget);
@@ -111,11 +119,9 @@ void main() {
     fake.liveSecPerKm = 275;
     fake.advance(const Duration(seconds: 1));
     await settle(tester);
-    expect(
-      tester.widget<DeltaGlyph>(find.byType(DeltaGlyph)).direction,
-      DeltaDirection.up,
-      reason: 'faster glyph',
-    );
+    final dial = tester.widget<PaceDial>(find.byType(PaceDial));
+    expect(dial.referenceSecPerKm, closeTo(285, 3));
+    expect(dial.position!, greaterThan(0.1), reason: 'faster than last rep');
   });
 
   testWidgets('reduced motion: no invert flash and no LAP ring', (

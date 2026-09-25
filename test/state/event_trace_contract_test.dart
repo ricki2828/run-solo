@@ -183,6 +183,9 @@ class TraceGateway implements RecorderGateway {
   Future<void> resume() => throw UnimplementedError();
   @override
   Future<void> lap(LapSource s) => throw UnimplementedError();
+
+  @override
+  Future<void> startReps() => throw UnimplementedError();
   @override
   Future<String?> stop() => throw UnimplementedError();
   @override

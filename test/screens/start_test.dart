@@ -61,7 +61,7 @@ void main() {
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
 
-    await tester.tap(find.text('START 4x4'));
+    await tester.tap(find.text('START WARM-UP'));
     await pumpTimes(tester, 6);
 
     final status = await fake.status();
@@ -101,7 +101,7 @@ void main() {
     final services = fakeServices(recorder: fake);
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
-    await tester.tap(find.text('START 4x4'));
+    await tester.tap(find.text('START WARM-UP'));
     await pumpTimes(tester, 6);
     expect(find.byType(PermissionsScreen), findsOneWidget);
     expect(find.byType(RecordingScreen), findsNothing);
@@ -115,7 +115,7 @@ void main() {
     final services = fakeServices(recorder: fake);
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
-    await tester.tap(find.text('START 4x4'));
+    await tester.tap(find.text('START WARM-UP'));
     await pumpTimes(tester, 6);
     expect(find.textContaining('Not enough storage'), findsOneWidget);
   });

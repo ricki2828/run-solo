@@ -208,6 +208,17 @@ class FakeRecorderGateway implements RecorderGateway {
     _emitTick();
   }
 
+  /// Same transition as the first LAP press in warm-up; ignored elsewhere.
+  @override
+  Future<void> startReps() async {
+    if (_state != RecorderState.recording || _phase != Phase.warmup) return;
+    startRepsCalls += 1;
+    _emitLap(LapSource.button);
+    _enter(Phase.work, 1);
+  }
+
+  int startRepsCalls = 0;
+
   @override
   Future<void> lap(LapSource source) async {
     if (_state != RecorderState.recording) return;

@@ -82,6 +82,12 @@ abstract class RecorderGateway {
   Future<void> resume();
   Future<void> lap(LapSource source);
 
+  /// 4x4 "Start 4x4" button: ends the untimed warm-up and begins rep 1. A
+  /// no-op outside warm-up. Native adds `startReps()` to the contract; until
+  /// then the Pigeon gateway sends the first `lap(button)`, which is the
+  /// same transition in core-jvm.
+  Future<void> startReps();
+
   /// Finalises in Kotlin before returning the run id; null when idle.
   Future<String?> stop();
   Future<RecorderStatus> status();
