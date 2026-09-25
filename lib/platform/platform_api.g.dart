@@ -1830,8 +1830,10 @@ class PermissionsApi {
     return pigeonVar_replyValue! as bool;
   }
 
-  /// The app's battery page (plan §10 deep link), the fallback when the
-  /// exemption dialog is unavailable.
+  /// The only Settings deep link allowed (plan §10): the app's battery page.
+  /// The setup checklist's battery step opens this and re-reads
+  /// `batteryUnrestricted`; the direct REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+  /// dialog is not used (Play flags the declaration for this app type).
   Future<void> openBatterySettings() async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.PermissionsApi.openBatterySettings$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -1848,31 +1850,6 @@ class PermissionsApi {
         isNullValid: true,
     )
     ;
-  }
-
-  /// Setup checklist "battery" step (founder decision 24-Sep-2026, overrides
-  /// plan §10): shows the system `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
-  /// dialog for this package (Play allows it for fitness trackers with a
-  /// location foreground service; the declaration must say so). Falls back to
-  /// `openBatterySettings` when no Activity handles it. Resolves when the user
-  /// returns with the new `isIgnoringBatteryOptimizations` value.
-  Future<bool> requestIgnoreBatteryOptimizations() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.PermissionsApi.requestIgnoreBatteryOptimizations$pigeonVar_messageChannelSuffix';
-    final pigeonVar_channel = BasicMessageChannel<Object?>(
-      pigeonVar_channelName,
-      pigeonChannelCodec,
-      binaryMessenger: pigeonVar_binaryMessenger,
-    );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
-    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
-
-    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
-    return pigeonVar_replyValue! as bool;
   }
 
   Future<void> openAppSettings() async {
