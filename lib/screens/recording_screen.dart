@@ -390,6 +390,24 @@ String phaseTitle(RecordingSnapshot s) {
   };
 }
 
+/// The record screen's delta vs the last lap / rep, as displayed: flat only
+/// when the ROUNDED delta in the display unit is 0, shown as "±0 s" with no
+/// glyph (the flat dash read as a minus). Otherwise the arrow and "N s", so
+/// a 0.6 s/km difference never reads "±1 s".
+({String text, DeltaDirection direction}) ghostDelta(
+  double live,
+  double last,
+  Units units,
+) {
+  final n = Fmt.deltaSecondsVsLast(live, last, units);
+  return n == 0
+      ? (text: '±0 s', direction: DeltaDirection.flat)
+      : (
+          text: '${n.abs()} s',
+          direction: n < 0 ? DeltaDirection.up : DeltaDirection.down,
+        );
+}
+
 /// "Rep flagged" only means something inside a rep; elsewhere say what it is.
 String gpsBannerCopy(RecordingSnapshot s) {
   if (!s.hadFix) return 'Waiting for GPS';
@@ -867,22 +885,18 @@ class _Stats extends StatelessWidget {
     String? delta;
     DeltaDirection? direction;
     if (showGhost && live != null) {
-      final d = live - last;
-      direction = DeltaGlyph.forDelta(d);
-      // Holding (inside the 1 s dead zone): "±0 s" with no glyph. The flat
-      // dash in front of a number read as a minus ("−0 s").
-      delta = direction == DeltaDirection.flat
-          ? '±${Fmt.deltaVsLast(live, last, units)}'
-          : Fmt.deltaVsLast(live, last, units);
+      final g = ghostDelta(live, last, units);
+      delta = g.text;
+      direction = g.direction;
       // A1: Vermillion and Arc deltas are Bone with the arrow on a zone
       // background (Vermillion drops to 4.1:1 on Z3).
       deltaColor = onZone
           ? t.inkPrimary
-          : d < -1
-          ? t.semFaster
-          : d > 1
-          ? t.semSlower
-          : t.semHolding;
+          : switch (direction) {
+              DeltaDirection.up => t.semFaster,
+              DeltaDirection.down => t.semSlower,
+              DeltaDirection.flat => t.semHolding,
+            };
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

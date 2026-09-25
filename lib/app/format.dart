@@ -50,9 +50,14 @@ abstract final class Fmt {
   /// "5 s"; the arrow beside it is a `DeltaGlyph` (the bundled fonts carry
   /// no ▲▼▬ glyphs), direction from live minus last.
   static String deltaVsLast(double live, double last, Units units) {
-    final d = engine.PaceFormat.toUnit(live - last, _u(units)).round();
+    final d = deltaSecondsVsLast(live, last, units);
     return '${d.abs()} s';
   }
+
+  /// The delta as shown: live minus last in the display unit, rounded to
+  /// whole seconds (negative = faster).
+  static int deltaSecondsVsLast(double live, double last, Units units) =>
+      engine.PaceFormat.toUnit(live - last, _u(units)).round();
 
   static String recovery(int seconds) => clock(seconds * 1000);
 
