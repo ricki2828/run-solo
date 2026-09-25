@@ -360,6 +360,13 @@ abstract class RecorderApi {
   void discardJournal(String runId);
   void setCues(bool enabled);
 
+  /// The user's volume-key LAP setting for Laps runs, persisted natively (the
+  /// recorder reads it at start). Takes effect from the next run or resume,
+  /// not the live one. Unset means on. 4x4 and Free never use volume keys,
+  /// whatever this says. A no-op in effect where
+  /// `PermissionsApi.volumeKeyLapsSupported()` is false.
+  void setVolumeKeyLaps(bool enabled);
+
   /// Run files on disk (`runs/` + `runs-archive/`) as `runId -> relative path`,
   /// for the Dart Reconciler. Journals and sidecars are not listed.
   Map<String, String> listRunFiles();
@@ -403,6 +410,11 @@ abstract class PermissionsApi {
   /// on while recording, user setting). Cleared automatically when the
   /// Activity is recreated, so call it again from the recording screen.
   void setKeepScreenOn(bool enabled);
+
+  /// Whether volume keys can land laps on this device. False on Android 14
+  /// (API 34), where keys never reach an app's session: hide the volume-key
+  /// LAP setting there and point at the lock-screen LAP instead.
+  bool volumeKeyLapsSupported();
 }
 
 @HostApi()

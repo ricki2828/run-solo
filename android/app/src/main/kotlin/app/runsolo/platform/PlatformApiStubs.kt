@@ -48,6 +48,7 @@ class RecorderApiStub : RecorderApi {
     override fun discardJournal(runId: String) = Unit
 
     override fun setCues(enabled: Boolean) = Unit
+    override fun setVolumeKeyLaps(enabled: Boolean) = Unit
 
     override fun listRunFiles(): Map<String, String> = emptyMap()
 
@@ -83,6 +84,8 @@ class PermissionsApiStub : PermissionsApi {
     override fun openAppSettings() = Unit
 
     override fun setKeepScreenOn(enabled: Boolean) = Unit
+
+    override fun volumeKeyLapsSupported() = true
 }
 
 class BleApiStub : BleApi {

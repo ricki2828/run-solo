@@ -85,7 +85,7 @@ class RecordingSession(
     private var snapshot: RecorderStatus? = null
     private val handler = Handler(thread.looper)
     private val cues = CuePlayer(this.context)
-    private val lapInput = LapInput(
+    internal val lapInput = LapInput(
         this.context,
         onLap = { lap(LapSource.volumeKey) },
         onUnavailable = { volumeKeyUnavailableOnce() },
@@ -222,7 +222,7 @@ class RecordingSession(
         attached = true
         cues.enabled = cuesEnabled
         cues.init()
-        if (volumeKeyLapsEnabled) lapInput.enable()
+        enableLapInput()
         val r = replay
         if (r != null) {
             // One clock, one tick per delivered fix (see ReplaySource): no timer in replay mode.
@@ -472,6 +472,11 @@ class RecordingSession(
         RecorderEventBus.emit(StateEvent(state = app.runsolo.platform.RecorderState.IDLE, runId = runId, phase = app.runsolo.platform.Phase.NONE))
         thread.quitSafely()
         return path
+    }
+
+    /** Registers the volume-key LAP when the user's setting and the mode allow it (from [attachSensors]). */
+    internal fun enableLapInput() {
+        if (volumeKeyLapsEnabled) lapInput.enable()
     }
 
     @Synchronized

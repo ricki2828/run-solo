@@ -1700,6 +1700,29 @@ class RecorderApi {
     ;
   }
 
+  /// The user's volume-key LAP setting for Laps runs, persisted natively (the
+  /// recorder reads it at start). Takes effect from the next run or resume,
+  /// not the live one. Unset means on. 4x4 and Free never use volume keys,
+  /// whatever this says. A no-op in effect where
+  /// `PermissionsApi.volumeKeyLapsSupported()` is false.
+  Future<void> setVolumeKeyLaps(bool enabled) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.setVolumeKeyLaps$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[enabled]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
   /// Run files on disk (`runs/` + `runs-archive/`) as `runId -> relative path`,
   /// for the Dart Reconciler. Journals and sidecars are not listed.
   Future<Map<String, String>> listRunFiles() async {
@@ -1914,6 +1937,28 @@ class PermissionsApi {
         isNullValid: true,
     )
     ;
+  }
+
+  /// Whether volume keys can land laps on this device. False on Android 14
+  /// (API 34), where keys never reach an app's session: hide the volume-key
+  /// LAP setting there and point at the lock-screen LAP instead.
+  Future<bool> volumeKeyLapsSupported() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.PermissionsApi.volumeKeyLapsSupported$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as bool;
   }
 }
 
