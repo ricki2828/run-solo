@@ -135,7 +135,7 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
-      - name: Build debug APK (play flavour, app.runsolo.debug)
+      - name: Build debug APK (play flavour, app.runsupreme.debug)
         run: |
           flutter build apk --debug --flavor play $MAPS_DEFINE
           mkdir -p build/dist && cp build/app/outputs/flutter-apk/app-play-debug.apk build/dist/app-debug.apk
@@ -218,11 +218,11 @@ jobs:
           grep -q "CN=Run Solo dogfood" "$RUNNER_TEMP/signer.txt" || { echo "dogfood APK is not signed with the dogfood key" >&2; exit 1; }
           "$BT/aapt" dump badging "$APK" > "$RUNNER_TEMP/badging.txt" 2>&1 || true
           grep -E "^package:" "$RUNNER_TEMP/badging.txt" || true
-          grep -q "name='app.runsolo.dogfood'" "$RUNNER_TEMP/badging.txt" || { echo "unexpected applicationId" >&2; exit 1; }
+          grep -q "name='app.runsupreme.dogfood'" "$RUNNER_TEMP/badging.txt" || { echo "unexpected applicationId" >&2; exit 1; }
           tools/check_16kb_alignment.sh "$APK" "$BT/zipalign"
           SIZE=$(stat -c %s "$APK"); MIB=$(awk "BEGIN{printf \"%.1f\", $SIZE/1048576}")
           echo "dogfood arm64 APK: ${MIB} MiB ($SIZE bytes)"
-          echo "### Dogfood APK: ${MIB} MiB (app.runsolo.dogfood, arm64-v8a, R8)" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Dogfood APK: ${MIB} MiB (app.runsupreme.dogfood, arm64-v8a, R8)" >> "$GITHUB_STEP_SUMMARY"
           if [ "$SIZE" -gt $((30 * 1048576)) ]; then echo "dogfood APK exceeds 30 MiB" >&2; exit 1; fi
       - uses: actions/upload-artifact@v4
         with:
@@ -306,7 +306,7 @@ jobs:
           unzip -p "$AAB" base/manifest/AndroidManifest.xml | grep -aq 'com.google.android.geo.API_KEY' || { echo "Maps meta-data missing from the bundle manifest" >&2; exit 1; }
           if [ -z "$RUN_SOLO_MAPS_API_KEY" ]; then echo "::warning::RUN_SOLO_MAPS_API_KEY secret is not set; the Play build will show 'Map failed to load'"; fi
           SIZE=$(stat -c %s "$AAB"); MIB=$(awk "BEGIN{printf \"%.1f\", $SIZE/1048576}")
-          echo "### Play AAB: ${MIB} MiB (app.runsolo, upload-key signed, ${GITHUB_REF_NAME})" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Play AAB: ${MIB} MiB (app.runsupreme, upload-key signed, ${GITHUB_REF_NAME})" >> "$GITHUB_STEP_SUMMARY"
       - name: Collect the AAB and R8 mapping (native symbols travel inside the AAB via ndk.debugSymbolLevel FULL)
         run: |
           # Artifact names cannot contain "/", and a branch dispatch has one (release/phase2).
@@ -365,10 +365,10 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
-            tools/emulator_smoke.sh apk/app-debug.apk app.runsolo.debug
-            tools/emulator_lifecycle.sh apk/app-debug.apk app.runsolo.debug fourByFour
-            tools/emulator_lifecycle.sh apk/app-debug.apk app.runsolo.debug laps
-            tools/emulator_lifecycle.sh apk/app-debug.apk app.runsolo.debug free
+            tools/emulator_smoke.sh apk/app-debug.apk app.runsupreme.debug
+            tools/emulator_lifecycle.sh apk/app-debug.apk app.runsupreme.debug fourByFour
+            tools/emulator_lifecycle.sh apk/app-debug.apk app.runsupreme.debug laps
+            tools/emulator_lifecycle.sh apk/app-debug.apk app.runsupreme.debug free
 
   emulator-dogfood:
     name: emulator smoke, dogfood R8 build (API 36)
@@ -402,5 +402,5 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
-            tools/emulator_smoke.sh apk/app-x86_64-dogfood-release.apk app.runsolo.dogfood
-            tools/emulator_replay_smoke.sh apk/app-x86_64-dogfood-release.apk app.runsolo.dogfood
+            tools/emulator_smoke.sh apk/app-x86_64-dogfood-release.apk app.runsupreme.dogfood
+            tools/emulator_replay_smoke.sh apk/app-x86_64-dogfood-release.apk app.runsupreme.dogfood

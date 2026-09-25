@@ -10,7 +10,7 @@ Founder approves the wording (plan §18.9 item 8) before anything is typed into 
 
 | Item | Value | Status |
 |---|---|---|
-| Package name | `app.runsolo` (Play build only; `.debug` and `.dogfood` never go to Play) | fixed |
+| Package name | `app.runsupreme` (Play build only; `.debug` and `.dogfood` never go to Play) | fixed |
 | Privacy policy URL | `https://runsolo.app/privacy` (served from this repo's `docs/` via GitHub Pages while the repo is public; when it goes private at launch the page moves to a public host with the same URL, see README) | founder: turn Pages on + DNS |
 | Play App Signing | Enrol at first upload; Google holds the app-signing key, we upload with `CN=Run Solo upload` | first AAB upload |
 | Upload key SHA-1 | `6D:E0:ED:82:5F:B7:80:73:3A:C5:EC:9D:37:5F:8F:63:1F:6E:D0:57` | for the Maps key restriction |
@@ -129,7 +129,7 @@ All **No**.
 
 ## 11. Testing track order (plan §11)
 
-1. Internal testing: founder + a couple of devices from week 3 (Play-signed builds replace sideloaded `app.runsolo` release builds; dogfood `.dogfood` package stays).
+1. Internal testing: founder + a couple of devices from week 3 (Play-signed builds replace sideloaded `app.runsupreme` release builds; dogfood `.dogfood` package stays).
 2. Closed testing (Alpha): create the track, add the tester email list (≥ 15 recruited, ≥ 12 must stay opted in 14 continuous days, Google checks usage), submit for review with all the forms above done. See `docs/closed-test-testers.md`.
 3. Production access questionnaire after the 14 days (week 7), then staged rollout 20% → 100%.
 
@@ -137,10 +137,10 @@ All **No**.
 
 1. Google Cloud project → enable **Maps SDK for Android** → billing account attached → budget alert at US$1 → per-day quota cap on the key (W9).
 2. Create the API key. Application restriction: **Android apps**, entries for each package + SHA-1:
-   - `app.runsolo` + upload key SHA-1 above
-   - `app.runsolo` + **Play app-signing certificate SHA-1** (Play Console → Test and release → Setup → App signing, available after the first upload) — without this the Play build shows "Map failed to load"
-   - `app.runsolo.dogfood` + dogfood key SHA-1 (`tools/print_cert_sha1.sh ~/.secrets/run-solo/<dogfood>.jks dogfood`)
-   - `app.runsolo.debug` + your local `~/.android/debug.keystore` SHA-1 (CI's debug APK uses a per-runner debug key, so the emulator smoke never shows a map; that is expected)
+   - `app.runsupreme` + upload key SHA-1 above
+   - `app.runsupreme` + **Play app-signing certificate SHA-1** (Play Console → Test and release → Setup → App signing, available after the first upload) — without this the Play build shows "Map failed to load"
+   - `app.runsupreme.dogfood` + dogfood key SHA-1 (`tools/print_cert_sha1.sh ~/.secrets/run-solo/<dogfood>.jks dogfood`)
+   - `app.runsupreme.debug` + your local `~/.android/debug.keystore` SHA-1 (CI's debug APK uses a per-runner debug key, so the emulator smoke never shows a map; that is expected)
    API restriction: **Maps SDK for Android** only.
 3. Add it as repo secret `RUN_SOLO_MAPS_API_KEY` (`gh secret set RUN_SOLO_MAPS_API_KEY -R ricki2828/run-solo`). Builds pass without it; with it, `build-apk` stops warning.
 4. Locally: `runsolo.mapsApiKey=...` in `android/local.properties` (gitignored) for `flutter run`.

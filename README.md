@@ -1,9 +1,8 @@
 # Run Supreme
 
 Formerly Run Solo: the Kotlin packages (`app.runsolo.*`), secret names (`RUN_SOLO_*`), keystore
-certificate CNs and the `~/.secrets/run-solo/` folder keep the old name on purpose; the visible
-brand and the store listing changed. The applicationId is still `app.runsolo` until the separate
-rebrand PR moves it to `app.runsupreme` (before the first Play upload).
+certificate CNs and the `~/.secrets/run-solo/` folder keep the old name on purpose; only the
+applicationId (`app.runsupreme`), the visible brand and the store listing changed.
 
 **Run Supreme: 4x4 Interval Run.** Free Android app: record a run, get a staged 4x4 verdict. No
 accounts, no ads, no analytics of our own; runs stay on the phone, the post-run map comes from
@@ -17,7 +16,7 @@ Google Maps and weather from Open-Meteo (privacy: `docs/privacy/`). Plan:
 | `lib/` | Flutter app. `theme/` = Night Session tokens, motion, type; `screens/`; `platform/` = Pigeon channel contract (generated `*.g.dart` committed) |
 | `pigeons/platform_api.dart` | Source of truth for `RecorderApi` / `BleApi` / `RecorderEvents` (plan §2). Regenerate: `dart run pigeon --input pigeons/platform_api.dart` |
 | `packages/run_engine/` | Pure-Dart analysis engine (laps, trimming, metrics, staged verdict, plans schedule). The only place verdict logic lives. `dart test` here |
-| `android/app/` | Android shell (Kotlin, package `app.runsolo`). minSdk 29, target/compileSdk 36. Debug builds are `app.runsolo.debug` |
+| `android/app/` | Android shell (Kotlin packages `app.runsolo.*`, applicationId `app.runsupreme`). minSdk 29, target/compileSdk 36. Debug builds are `app.runsupreme.debug` |
 | `android/core-jvm/` | Pure Kotlin/JVM module (journal codec, lap state machine, haversine, HR parse, cue scheduler). Standalone Gradle build, no Android plugin, included into the app via `includeBuild` |
 | `assets/fonts/` | Barlow Condensed 600/700 + Archivo variable, bundled (SIL OFL 1.1, licences beside them). Nothing is fetched at runtime |
 | `tools/` | `check_16kb_alignment.sh` (16 KB page-size gate), `emulator_*.sh`, `print_cert_sha1.sh` (SHA-1s for the Maps key restriction) |
@@ -50,7 +49,7 @@ adb install -r ~/Downloads/run-solo/app-debug.apk                       # or cop
 
 Or on GitHub: Actions → the run → Artifacts → `run-solo-debug-apk` (zip) → unzip → copy
 `app-debug.apk` to the phone → open it (allow "install unknown apps" for the file manager once).
-The debug package is `app.runsolo.debug`, so it installs beside a Play build.
+The debug package is `app.runsupreme.debug`, so it installs beside a Play build.
 
 ## Working on the host (aarch64, shared, low RAM)
 
@@ -65,9 +64,10 @@ The debug APK is ~160 MB, JIT and unsigned-for-purpose: fine for the emulator, u
 battery or smoothness. For phone testing download **`run-solo-dogfood-apk`** instead:
 
 - release-mode AOT Dart, R8 + resource shrinking, `--obfuscate --split-debug-info`, arm64-v8a only, target under 30 MiB (CI fails above it and prints the size in the job summary)
-- applicationId **`app.runsolo.dogfood`**, so it installs beside `app.runsolo.debug` and a future Play build; plain `app.runsolo` is reserved for Play-signed builds
+- applicationId **`app.runsupreme.dogfood`**, so it installs beside `app.runsupreme.debug` and a future Play build; plain `app.runsupreme` is reserved for Play-signed builds
 - replay mode and the debug intents stay available (`BuildConfig.REPLAY_ENABLED`), same as debug
 - signed with the CI dogfood key (`CN=Run Solo dogfood`). Secrets: `RUN_SOLO_DOGFOOD_KEYSTORE_BASE64`, `RUN_SOLO_DOGFOOD_STORE_PASSWORD`, `RUN_SOLO_DOGFOOD_KEY_PASSWORD`; offline copy in `~/.secrets/run-solo/` on the dev host (never committed). Reinstalling over an older dogfood build works as long as this key is unchanged.
+- **Package switch (this PR):** builds before it were `app.runsolo.dogfood`; from here on they are `app.runsupreme.dogfood`, a different app on the phone. Before installing the new one, in the old app use Settings → **Move runs to another Run Supreme**, then Settings → **Import runs** in the new app. Only uninstall the old app once the runs show up in the new one. Uninstalling first deletes the runs.
 
 ```bash
 gh run download <run-id> --repo ricki2828/run-solo -n run-solo-dogfood-apk -D ~/Downloads/run-solo
