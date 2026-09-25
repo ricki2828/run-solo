@@ -26,9 +26,17 @@ class GpsBar extends StatelessWidget {
         : weak
         ? t.semWarn
         : t.inkPrimary;
-    final label = noFix ? 'GPS dropped' : 'GPS ${acc.round()} m';
+    // A8: no number under 36 sp on the record screen, so the on-screen
+    // label is a status word; the accuracy stays in the bar's fill and in
+    // the screen-reader label.
+    final label = noFix
+        ? 'GPS dropped'
+        : weak
+        ? 'GPS weak'
+        : 'GPS';
     return Semantics(
-      label: label,
+      label: noFix ? label : 'GPS ${acc.round()} m',
+      excludeSemantics: true,
       child: Row(
         children: [
           Expanded(
