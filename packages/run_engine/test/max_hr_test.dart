@@ -84,10 +84,111 @@ void main() {
       expect(resolve(age: 40, observed: s.observed), 180);
     });
 
-    test('no typed value: 220 is the only ceiling (220−age is a guess)', () {
-      final s = guard.fold(none, runObserved30s: 205, typedMaxHr: null);
-      expect(s.observed, 205);
-      expect(s.pending, isNull);
+    group('no typed max: default + 10, or 200, is the guard (follow-up)', () {
+      test('age 60: a 10 s burst lifting a window to 172 is held pending, '
+          'not silently over 220−60', () {
+        final s = guard.fold(
+          none,
+          runObserved30s: 172,
+          typedMaxHr: null,
+          age: 60,
+        );
+        expect(s.observed, isNull);
+        expect(s.pending, 172);
+        expect(resolve(age: 60, observed: s.observed), 160);
+        final confirmed = guard.confirmPending(s);
+        expect(resolve(age: 60, observed: confirmed.observed), 172);
+      });
+
+      test('age 60: a genuine sustained 168 (inside +10) applies', () {
+        final s = guard.fold(
+          none,
+          runObserved30s: 168,
+          typedMaxHr: null,
+          age: 60,
+        );
+        expect(s.observed, 168);
+        expect(s.pending, isNull);
+        expect(resolve(age: 60, observed: s.observed), 168);
+      });
+
+      test('age 40: 190 applies (edge inclusive), 191 pending', () {
+        expect(
+          guard
+              .fold(none, runObserved30s: 190, typedMaxHr: null, age: 40)
+              .observed,
+          190,
+        );
+        final s = guard.fold(
+          none,
+          runObserved30s: 191,
+          typedMaxHr: null,
+          age: 40,
+        );
+        expect(s.observed, isNull);
+        expect(s.pending, 191);
+      });
+
+      test('no age: 190 fallback + 10 → 200 applies, 201 pending', () {
+        expect(
+          guard.fold(none, runObserved30s: 200, typedMaxHr: null).observed,
+          200,
+        );
+        final s = guard.fold(none, runObserved30s: 201, typedMaxHr: null);
+        expect(s.observed, isNull);
+        expect(s.pending, 201);
+      });
+
+      test(
+        'age 25 (default 195): 202 is within +10 but above 200 → pending',
+        () {
+          final s = guard.fold(
+            none,
+            runObserved30s: 202,
+            typedMaxHr: null,
+            age: 25,
+          );
+          expect(s.observed, isNull);
+          expect(s.pending, 202);
+          expect(
+            guard
+                .fold(none, runObserved30s: 200, typedMaxHr: null, age: 25)
+                .observed,
+            200,
+          );
+        },
+      );
+
+      test('an accepted observed max raises the untyped reference', () {
+        var s = guard.fold(
+          none,
+          runObserved30s: 172,
+          typedMaxHr: null,
+          age: 60,
+        );
+        s = guard.confirmPending(s);
+        s = guard.fold(s, runObserved30s: 180, typedMaxHr: null, age: 60);
+        expect(s.observed, 180, reason: '172 + 10 covers 180');
+        s = guard.fold(s, runObserved30s: 195, typedMaxHr: null, age: 60);
+        expect(s.observed, 180);
+        expect(s.pending, 195);
+      });
+
+      test('a typed max keeps the +15 rule and ignores age', () {
+        final s = guard.fold(
+          none,
+          runObserved30s: 199,
+          typedMaxHr: 185,
+          age: 60,
+        );
+        expect(s.observed, 199);
+        expect(
+          guard
+              .fold(none, runObserved30s: 205, typedMaxHr: 185, age: 60)
+              .pending,
+          205,
+        );
+      });
     });
 
     test('[Ignore] drops the pending value; it is offered once', () {
