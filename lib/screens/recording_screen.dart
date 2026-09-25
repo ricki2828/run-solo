@@ -219,14 +219,17 @@ class _RecordingScreenState extends State<RecordingScreen>
                           // average is the primary number, at least as big
                           // as the countdown; one step smaller on short
                           // screens so both fit at 360 x 640.
-                          _TimerBlock(
-                            s: s,
-                            ctl: ctl,
-                            style: s.phase == Phase.warmup
-                                ? null
-                                : (compact
-                                      ? RunSoloType.display64
-                                      : RunSoloType.display96),
+                          _PausedHidden(
+                            paused: s.paused,
+                            child: _TimerBlock(
+                              s: s,
+                              ctl: ctl,
+                              style: s.phase == Phase.warmup
+                                  ? null
+                                  : (compact
+                                        ? RunSoloType.display64
+                                        : RunSoloType.display96),
+                            ),
                           ),
                           const Spacer(),
                           Visibility(
@@ -244,7 +247,10 @@ class _RecordingScreenState extends State<RecordingScreen>
                                   ),
                           ),
                         ] else if (s.lapsEnabled) ...[
-                          _TimerBlock(s: s, ctl: ctl),
+                          _PausedHidden(
+                            paused: s.paused,
+                            child: _TimerBlock(s: s, ctl: ctl),
+                          ),
                           const Spacer(),
                           // The PAUSED card sits here; keep the space, hide
                           // the numbers so nothing peeks out around it.
@@ -936,6 +942,24 @@ class _PauseButton extends StatelessWidget {
 }
 
 /// Paused: dim to 60%, one big RESUME (design brief §4.4).
+/// Under the PAUSED card the phase timer and stats keep their space but
+/// hide, so no number peeks out around (or under) the card; total time
+/// stays readable in the vitals row.
+class _PausedHidden extends StatelessWidget {
+  const _PausedHidden({required this.paused, required this.child});
+  final bool paused;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Visibility(
+    visible: !paused,
+    maintainSize: true,
+    maintainAnimation: true,
+    maintainState: true,
+    child: child,
+  );
+}
+
 class _PausedOverlay extends StatelessWidget {
   const _PausedOverlay({required this.onResume});
   final Future<void> Function() onResume;
@@ -946,15 +970,8 @@ class _PausedOverlay extends StatelessWidget {
     return ColoredBox(
       color: t.bgBase.withValues(alpha: 0.6),
       child: Center(
-        child: Container(
-          // Solid card: the numbers behind move with the mode and screen
-          // height, so PAUSED must never sit on top of them.
-          margin: const EdgeInsets.symmetric(horizontal: Space.x24),
-          padding: const EdgeInsets.all(Space.x24),
-          decoration: BoxDecoration(
-            color: t.bgBase,
-            borderRadius: BorderRadius.circular(Radii.lap),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Space.x32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

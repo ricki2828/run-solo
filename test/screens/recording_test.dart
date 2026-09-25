@@ -258,6 +258,10 @@ void main() {
     await settle(tester);
     expect(find.text('PAUSED'), findsOneWidget);
     expect(fake.state, RecorderState.paused);
+    // The phase timer hides under the PAUSED card (no digits peeking out);
+    // the large TOTAL stays readable.
+    expect(timerText().hitTestable(), findsNothing);
+    expect(find.byKey(const ValueKey('vitals-total')), findsOneWidget);
 
     await tester.tap(find.widgetWithText(FilledButton, 'RESUME'));
     await settle(tester);
