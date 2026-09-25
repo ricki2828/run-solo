@@ -9,6 +9,7 @@ import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/max_hr.dart';
+import '../state/recording_controller.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
@@ -41,6 +42,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     with WidgetsBindingObserver {
   PermissionSnapshot? _perms;
   bool _busy = false;
+
+  /// False on Android 14: the volume-key toggle is disabled with a reason.
+  bool _volumeKeyLaps = true;
+  bool _volumeKeyChecked = false;
 
   @override
   void initState() {
@@ -143,6 +148,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _refreshPerms();
+    if (_volumeKeyChecked) return;
+    _volumeKeyChecked = true;
+    AppServices.of(context).permissions.volumeKeyLapsAvailable().then((ok) {
+      if (mounted && ok != _volumeKeyLaps) setState(() => _volumeKeyLaps = ok);
+    });
   }
 
   void _refreshPerms() {
@@ -259,8 +269,11 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               _Toggle(
                 label: 'Volume-key lap (Laps run)',
-                value: s.volumeKeyLapFor(RecordMode.laps),
-                onChanged: (v) => set((x) => x.copyWith(volumeKeyLap: v)),
+                value: _volumeKeyLaps && s.volumeKeyLapFor(RecordMode.laps),
+                onChanged: _volumeKeyLaps
+                    ? (v) => set((x) => x.copyWith(volumeKeyLap: v))
+                    : null,
+                reason: _volumeKeyLaps ? null : kVolumeKeyToggleReason,
               ),
               _Toggle(
                 label: 'Voice cues',
@@ -600,25 +613,44 @@ class _Toggle extends StatelessWidget {
     required this.label,
     required this.value,
     required this.onChanged,
+    this.reason,
   });
   final String label;
   final bool value;
-  final ValueChanged<bool> onChanged;
+
+  /// Null disables the switch.
+  final ValueChanged<bool>? onChanged;
+
+  /// One line under the label, e.g. why the switch is disabled.
+  final String? reason;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     return Container(
-      height: 64,
+      constraints: const BoxConstraints(minHeight: 64),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: t.lineHair)),
       ),
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              label,
-              style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: RunSoloType.body17.copyWith(
+                    color: onChanged == null ? t.inkSecondary : t.inkPrimary,
+                  ),
+                ),
+                if (reason != null)
+                  Text(
+                    reason!,
+                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                  ),
+              ],
             ),
           ),
           Semantics(

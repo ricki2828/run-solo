@@ -4,6 +4,7 @@ import '../app/format.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
+import '../state/recording_controller.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
@@ -24,6 +25,20 @@ class StartScreen extends StatefulWidget {
 class _StartScreenState extends State<StartScreen> {
   bool _starting = false;
   String? _error;
+
+  /// False on Android 14: the toggle is disabled with a reason.
+  bool _volumeKeyLaps = true;
+  bool _volumeKeyChecked = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_volumeKeyChecked) return;
+    _volumeKeyChecked = true;
+    AppServices.of(context).permissions.volumeKeyLapsAvailable().then((ok) {
+      if (mounted && ok != _volumeKeyLaps) setState(() => _volumeKeyLaps = ok);
+    });
+  }
 
   Future<void> _start() async {
     final services = AppServices.of(context);
@@ -179,9 +194,16 @@ class _StartScreenState extends State<StartScreen> {
                   const SizedBox(height: Space.x16),
                   _Toggle(
                     label: 'Volume-key lap',
-                    value: s.volumeKeyLapFor(RecordMode.laps),
-                    onChanged: (v) => set((x) => x.copyWith(volumeKeyLap: v)),
+                    value: _volumeKeyLaps && s.volumeKeyLapFor(RecordMode.laps),
+                    onChanged: _volumeKeyLaps
+                        ? (v) => set((x) => x.copyWith(volumeKeyLap: v))
+                        : null,
                   ),
+                  if (!_volumeKeyLaps)
+                    Text(
+                      kVolumeKeyToggleReason,
+                      style: text.bodyMedium?.copyWith(color: t.inkSecondary),
+                    ),
                 ] else ...[
                   Text(
                     'Free run: time, distance, pace and heart rate. No laps. '
@@ -243,7 +265,9 @@ class _Toggle extends StatelessWidget {
   });
   final String label;
   final bool value;
-  final ValueChanged<bool> onChanged;
+
+  /// Null disables the switch.
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {

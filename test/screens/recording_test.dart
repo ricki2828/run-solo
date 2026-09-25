@@ -245,7 +245,7 @@ void main() {
     await settle(tester);
     expect(
       find.text(
-        "On Android 14, volume-key laps don't work while music plays. "
+        "On Android 14, volume-key laps aren't available. "
         'Use the lock-screen LAP.',
       ),
       findsOneWidget,

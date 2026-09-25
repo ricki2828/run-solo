@@ -5,6 +5,7 @@ import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/permissions_screen.dart';
 import 'package:run_solo/screens/recording_screen.dart';
+import 'package:run_solo/state/recording_controller.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/widgets/value_stepper.dart';
 
@@ -118,5 +119,24 @@ void main() {
     await tester.tap(find.text('START WARM-UP'));
     await pumpTimes(tester, 6);
     expect(find.textContaining('Not enough storage'), findsOneWidget);
+  });
+
+  testWidgets('Laps on Android 14: volume-key toggle disabled with reason', (
+    tester,
+  ) async {
+    final services = fakeServices(
+      permissions: FakePermissionsGateway(volumeKeyLaps: false),
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.laps,
+      ),
+    );
+    await pumpApp(tester, services, pushRoute: Routes.start);
+    await pumpTimes(tester, 4);
+    expect(find.text('Volume-key lap'), findsOneWidget);
+    expect(find.text(kVolumeKeyToggleReason), findsOneWidget);
+    final sw = tester.widget<Switch>(find.byType(Switch));
+    expect(sw.onChanged, isNull);
+    expect(sw.value, isFalse);
   });
 }

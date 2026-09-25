@@ -153,4 +153,10 @@ abstract class PermissionsGateway {
   /// FLAG_KEEP_SCREEN_ON on the Activity window; resets on recreate, so the
   /// record screen re-applies it on init and state changes.
   Future<void> setKeepScreenOn(bool enabled);
+
+  /// False on Android 14 (API 34): the system never routes volume keys to an
+  /// app's session there, so native registers none and fires
+  /// `volumeKeyUnavailable` once per run. Start and Settings disable the
+  /// volume-key toggle with a one-line reason.
+  Future<bool> volumeKeyLapsAvailable();
 }

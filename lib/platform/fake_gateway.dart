@@ -597,9 +597,13 @@ class FakePermissionsGateway implements PermissionsGateway {
     this.grantCoarseOnly = false,
     this.denyNotifications = false,
     this.denyBluetooth = false,
+    this.volumeKeyLaps = true,
   });
 
   PermissionSnapshot snapshot;
+
+  /// False scripts an Android 14 phone (volume-key laps unavailable).
+  bool volumeKeyLaps;
   bool denyLocation;
   bool grantCoarseOnly;
   bool denyNotifications;
@@ -661,4 +665,7 @@ class FakePermissionsGateway implements PermissionsGateway {
 
   @override
   Future<void> setKeepScreenOn(bool enabled) async => keepScreenOn = enabled;
+
+  @override
+  Future<bool> volumeKeyLapsAvailable() async => volumeKeyLaps;
 }

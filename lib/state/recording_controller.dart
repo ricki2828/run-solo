@@ -18,6 +18,14 @@ import 'package:run_engine/run_engine.dart' as engine;
 import '../platform/gateway.dart';
 import 'zone_memento.dart';
 
+/// One-time note when native reports `FaultKind.volumeKeyUnavailable`.
+const String kVolumeKeyUnavailableNote =
+    "On Android 14, volume-key laps aren't available. Use the lock-screen LAP.";
+
+/// Reason under the disabled "Volume-key lap" toggle (Start, Settings).
+const String kVolumeKeyToggleReason =
+    'Not available on Android 14. Use the lock-screen LAP.';
+
 @immutable
 class RecordingSnapshot {
   const RecordingSnapshot({
@@ -456,12 +464,10 @@ class RecordingController extends ChangeNotifier {
       FaultKind.gpsLost => _snap.copyWith(gpsLost: true, clearGps: true),
       // Debug-only signal that a LAP reached Free mode; the screen has no LAP there.
       FaultKind.gpsWeak || FaultKind.lapIgnored => _snap,
-      // Android 14 + music playing: the volume keys belong to the music, so
-      // volume-key laps are off for this run; notification LAP still works.
+      // Android 14 never routes volume keys to an app's session, so native
+      // registers none and fires this once; the lock-screen LAP still works.
       FaultKind.volumeKeyUnavailable => _snap.copyWith(
-        notice:
-            "On Android 14, volume-key laps don't work while music plays. "
-            'Use the lock-screen LAP.',
+        notice: kVolumeKeyUnavailableNote,
       ),
       FaultKind.hrDisconnected => _snap.copyWith(clearHr: true),
       FaultKind.journalWriteFailed ||
