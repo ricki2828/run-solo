@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Window ground behind Flutter (launch splash and NormalTheme): the Dart theme's bgBase, so
+         waking the recording screen never flashes white/black before the zone colour paints. -->
+    <color name="window_ground">#FFF4F2EE</color>
+</resources>
