@@ -14,11 +14,13 @@ void main() {
   final dir = Directory('test/fixtures/contract');
 
   /// `contract/schema1/` is the frozen Phase-1 writer output (read-only,
-  /// still `schema: 1`, `mode: free`); `contract/schema2/` is regenerated
+  /// still `schema: 1`, `mode: free`); `contract/<name>.json` is regenerated
   /// by the Phase-2 Kotlin writer (§18.7). Both trees are `diff -r`'d
   /// against core-jvm in CI.
   File fileOf(String name, {int schema = 1}) {
-    final f = File('${dir.path}/schema$schema/$name.json');
+    final f = File(
+      schema == 1 ? '${dir.path}/schema1/$name.json' : '${dir.path}/$name.json',
+    );
     if (!f.existsSync()) fail('contract fixture missing: ${f.path}');
     return f;
   }
