@@ -23,6 +23,51 @@ class ContractFixturesTest {
     }
 
     @Test
+    fun `schema-1 fixtures are frozen - four files, schema 1, free is the lap-capable mode of the day`() {
+        val files = File(ContractFixtures.SCHEMA1_DIR).listFiles { f -> f.name.endsWith(".json") }!!.sortedBy { it.name }
+        assertEquals(
+            listOf("four_by_four_preset_auto_hr", "free_run_pause_manual_laps", "gps_dropout_hr", "treadmill_no_fix_hr"),
+            files.map { it.nameWithoutExtension },
+        )
+        for (f in files) {
+            val m = Json.parseObject(f.readText())
+            assertEquals(1L, m["schema"], f.name)
+            assertTrue(m["mode"] == "fourByFour" || m["mode"] == "free", f.name)
+        }
+        // The frozen `free` file with manual laps is exactly what schema 2 calls `laps`.
+        val v1 = Json.parseObject(File(ContractFixtures.SCHEMA1_DIR, "free_run_pause_manual_laps.json").readText())
+        assertEquals("free", v1["mode"])
+        assertEquals(3, laps(v1).size)
+    }
+
+    @Test
+    fun `every schema-2 fixture is schema 2 with a schema-2 mode`() {
+        for ((name, json) in ContractFixtures.all()) {
+            val m = Json.parseObject(json)
+            assertEquals(2L, m["schema"], name)
+            assertTrue(m["mode"] in setOf("fourByFour", "laps", "free"), "$name mode=${m["mode"]}")
+            assertEquals(m["mode"] == "fourByFour", m["preset"] != null, "$name preset")
+        }
+    }
+
+    @Test
+    fun `free fixture - LAP presses from every source ignored, one lap segment, pause recorded`() {
+        val m = fixture("free_run_no_laps")
+        assertEquals("free", m["mode"])
+        val laps = laps(m)
+        assertEquals(1, laps.size)
+        assertEquals(0L, laps[0]["t0"])
+        assertEquals(480_000L, laps[0]["t1"])
+        assertEquals("manual", laps[0]["kind"])
+        assertEquals(listOf(listOf(240_000L, 255_000L)), m["pauses"])
+        val s = samples(m)
+        assertEquals(480, s.size)
+        assertTrue(s.all { it[7] != null })
+        val dist = (s.last()[6] as Number).toDouble()
+        assertTrue(dist in 1380.0..1395.0, "15 s standing still is not distance: $dist") // 465 moving seconds @3 m/s minus re-anchor
+    }
+
+    @Test
     fun `4x4 preset fixture - 10 laps, 8 auto on the exact boundaries, HR on every sample, fixes throughout`() {
         val m = fixture("four_by_four_preset_auto_hr")
         val laps = laps(m)
@@ -46,6 +91,7 @@ class ContractFixturesTest {
     @Test
     fun `treadmill fixture - HR, no fixes, zero distance, 2 laps`() {
         val m = fixture("treadmill_no_fix_hr")
+        assertEquals("laps", m["mode"])
         val s = samples(m)
         assertEquals(600, s.size)
         assertTrue(s.all { it[1] == null && it[2] == null && it[4] == null })
@@ -58,6 +104,7 @@ class ContractFixturesTest {
     @Test
     fun `dropout fixture - HR through 46 no-fix ticks, distance repeats then catches up`() {
         val m = fixture("gps_dropout_hr")
+        assertEquals("free", m["mode"])
         val s = samples(m)
         assertEquals(360, s.size)
         val noFix = s.filter { it[1] == null }
@@ -69,7 +116,8 @@ class ContractFixturesTest {
 
     @Test
     fun `pause fixture - one 20 s pause, 3 laps, no HR`() {
-        val m = fixture("free_run_pause_manual_laps")
+        val m = fixture("laps_run_pause_manual_laps")
+        assertEquals("laps", m["mode"])
         assertEquals(listOf(listOf(270_000L, 290_000L)), m["pauses"])
         assertEquals(listOf(0L, 180_000L, 360_000L), laps(m).map { it["t0"] })
         assertEquals(540_000L, laps(m).last()["t1"])

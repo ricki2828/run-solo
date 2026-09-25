@@ -80,10 +80,14 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
 
     private fun newSession(mode: RecordMode, preset: Preset?, units: Units, replay: ReplayRunner?): RecordingSession {
         val coreMode = mode.toCore()
-        val corePreset = preset?.toCore() ?: if (coreMode == app.runsolo.core.model.RunMode.fourByFour) CorePreset.DEFAULT_4X4 else null
-        val volumeKeys = prefs.getBoolean(RecorderService.PREF_VOLUME_KEY_LAPS, coreMode == app.runsolo.core.model.RunMode.free)
-        return RecordingSession(context, UUID.randomUUID().toString(), coreMode, corePreset, units.toCore(), replay, volumeKeys)
+        // Only the 4x4 carries a preset (plan §18.2); anything passed for another mode is dropped, not journaled.
+        val corePreset = if (coreMode.usesPreset) preset?.toCore() ?: CorePreset.DEFAULT_4X4 else null
+        return RecordingSession(context, UUID.randomUUID().toString(), coreMode, corePreset, units.toCore(), replay, volumeKeyLaps(coreMode))
     }
+
+    /** The user's opt-in, defaulting per mode (W8: on only for Laps); the session still gates it on `mode.lapInput`. */
+    private fun volumeKeyLaps(mode: app.runsolo.core.model.RunMode): Boolean =
+        prefs.getBoolean(RecorderService.PREF_VOLUME_KEY_LAPS, mode.volumeKeyLapsDefault)
 
     private fun startWith(mode: RecordMode, preset: Preset?, units: Units, replay: ReplayRunner?): StartResult {
         active()?.let { return StartResult(runId = it.runId, error = null) }
@@ -110,13 +114,13 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         val replayed = try {
             JournalReplay.read(fs.readBytes(RunPaths.journal(runId)))
         } catch (e: Exception) {
+            // Includes NewerJournal: a journal from a newer app cannot be resumed here (and is never discarded).
             Log.w(TAG, "resume: unreadable journal $runId: $e")
             return StartResult(runId = null, error = StartError.NO_SUCH_JOURNAL)
         }
         precondition()?.let { return StartResult(runId = null, error = it) }
         val h = replayed.header
-        val volumeKeys = prefs.getBoolean(RecorderService.PREF_VOLUME_KEY_LAPS, h.mode == app.runsolo.core.model.RunMode.free)
-        val session = RecordingSession(context, runId, h.mode, h.preset, h.units, null, volumeKeys)
+        val session = RecordingSession(context, runId, h.mode, h.preset, h.units, null, volumeKeyLaps(h.mode))
         return begin(session) { it.startResumed(replayed) }
     }
 
@@ -175,11 +179,15 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
                 } catch (_: Exception) {
                 }
             }
+            // Diagnose the kill now and cache it (W11): the prefs that anchor it are pruned at stop,
+            // and run detail asks `exitDiagnosis(runId)` long after the run was finalised.
+            ExitDiagnostics.cacheForRecovery(context, o.runId)
             OrphanJournal(
                 runId = o.runId,
                 lastLineAgeMs = o.lastLineAgeMs,
                 mode = o.mode.toPigeon(),
                 readable = o.readable,
+                newer = o.newer,
                 endedPaused = endedPaused,
                 elapsedMs = elapsed,
             )
@@ -201,6 +209,22 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     override fun discardJournal(runId: String) {
         if (!RunPaths.isSafeId(runId) || runId == active()?.runId) return
         if (fs.exists(RunPaths.runFile(runId)) || fs.exists(RunPaths.runFile(runId, RunPaths.ARCHIVE_DIR))) return
+        val journal = RunPaths.journal(runId)
+        if (fs.exists(journal)) {
+            // A journal from a newer app is never discarded (plan §18.7 W6): a later build reads it.
+            val newer = try {
+                JournalReplay.read(fs.readBytes(journal))
+                false
+            } catch (_: JournalReplay.NewerJournal) {
+                true
+            } catch (_: Exception) {
+                false
+            }
+            if (newer) {
+                Log.w(TAG, "discardJournal $runId refused: written by a newer app")
+                return
+            }
+        }
         fs.deleteRecursively(RunPaths.journalDir(runId))
     }
 

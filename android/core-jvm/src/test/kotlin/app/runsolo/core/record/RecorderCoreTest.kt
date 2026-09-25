@@ -14,6 +14,7 @@ import app.runsolo.core.record.RecorderCore.LapDecision
 import app.runsolo.core.record.RecorderCore.Output
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class RecorderCoreTest {
@@ -102,7 +103,7 @@ class RecorderCoreTest {
 
     @Test
     fun `debounce - two manual presses 400 ms apart count once`() {
-        val core = RecorderCore(RunMode.free, null)
+        val core = RecorderCore(RunMode.laps, null)
         core.start(t0)
         assertEquals(LapDecision.accepted, core.lap(LapSource.volumeKey, t0 + 1000).first)
         assertEquals(LapDecision.ignoredDebounce, core.lap(LapSource.volumeKey, t0 + 1300).first)
@@ -111,7 +112,33 @@ class RecorderCoreTest {
     }
 
     @Test
-    fun `volume keys - off by default in preset mode, on in free mode, never re-align`() {
+    fun `free mode (and cooper) ignore every lap source - no lap, no phase, no cue`() {
+        for (mode in listOf(RunMode.free, RunMode.cooper)) {
+            val core = RecorderCore(mode, null)
+            assertTrue(core.start(t0).isEmpty())
+            for (src in LapSource.values()) {
+                val (d, out) = core.lap(src, t0 + 1_000)
+                assertEquals(LapDecision.ignoredModeNoLaps, d, "$mode $src")
+                assertTrue(out.isEmpty())
+            }
+            assertEquals(0, core.lapCount)
+            assertTrue(run(core, t0, t0 + 600_000, 10_000).isEmpty())
+            assertEquals(Phase.none, core.phase)
+            assertEquals(listOf(Output.Cue(t0 + 700_000, CueKind.stop)), core.stop(t0 + 700_000))
+        }
+    }
+
+    @Test
+    fun `mode and preset must agree`() {
+        assertFailsWith<IllegalArgumentException> { RecorderCore(RunMode.fourByFour, null) }
+        assertFailsWith<IllegalArgumentException> { RecorderCore(RunMode.laps, preset) }
+        assertFailsWith<IllegalArgumentException> { RecorderCore(RunMode.free, preset) }
+        assertEquals(true, RunMode.laps.volumeKeyLapsDefault)
+        assertEquals(listOf(false, false, false), listOf(RunMode.fourByFour, RunMode.free, RunMode.cooper).map { it.volumeKeyLapsDefault })
+    }
+
+    @Test
+    fun `volume keys - off by default in preset mode, on in laps mode, never re-align`() {
         val preset4 = RecorderCore(RunMode.fourByFour, preset)
         preset4.start(t0)
         assertEquals(LapDecision.ignoredVolumeKeyDisabled, preset4.lap(LapSource.volumeKey, t0 + 1000).first)
@@ -174,8 +201,8 @@ class RecorderCoreTest {
     }
 
     @Test
-    fun `free mode has no phases and honours every manual source`() {
-        val core = RecorderCore(RunMode.free, null)
+    fun `laps mode has no phases and honours every manual source`() {
+        val core = RecorderCore(RunMode.laps, null)
         core.start(t0)
         assertEquals(Phase.none, core.phase)
         assertTrue(run(core, t0, t0 + 3_600_000, 10_000).isEmpty())
@@ -219,10 +246,44 @@ class RecorderCoreTest {
     }
 
     @Test
-    fun `restore of a journal that ended paused resumes paused`() {
+    fun `restore of a schema-1 free journal with 2 manual laps resumes as laps and accepts further laps (N2)`() {
+        val w0 = 1_700_000_000_000L
+        val v1Header = """{"k":"hdr","schema":1,"t":0,"w":$w0,"id":"r","device":"d","app":"a","tz":"UTC","mode":"free","preset":null,"units":"km"}"""
+        val rest = listOf(
+            JournalLine.Lap(5_000, w0 + 5_000, LapSource.volumeKey),
+            JournalLine.Lap(9_000, w0 + 9_000, LapSource.button),
+            JournalLine.Sample(10_000, w0 + 10_000, 0.0, 0.0, null, 5.0, null, null),
+            JournalLine.Gap(100, w0 + 40_000, 30_000),
+        ).joinToString("") { JournalCodec.encode(it) + "\n" }
+        val replay = JournalReplay.read((v1Header + "\n" + rest).toByteArray())
+        assertEquals(RunMode.laps, replay.header.mode)
+        val core = RecorderCore.restore(replay, nowT = 100)
+        assertEquals(RunMode.laps, core.mode)
+        assertEquals(RecorderState.recording, core.state)
+        assertEquals(2, core.lapCount)
+        assertEquals(LapDecision.accepted, core.lap(LapSource.volumeKey, 2_100).first)
+        assertEquals(LapDecision.accepted, core.lap(LapSource.notification, 4_100).first)
+        assertEquals(4, core.lapCount)
+    }
+
+    @Test
+    fun `restore of a schema-2 free journal stays free and still ignores laps`() {
         val w0 = 1_700_000_000_000L
         val lines = listOf(
             JournalLine.Header(0, w0, "r", "d", "a", "UTC", RunMode.free, null, Units.km),
+            JournalLine.Sample(10_000, w0 + 10_000, 0.0, 0.0, null, 5.0, null, null),
+            JournalLine.Gap(100, w0 + 40_000, 30_000),
+        )
+        val core = RecorderCore.restore(JournalReplay.read(lines.joinToString("") { JournalCodec.encode(it) + "\n" }.toByteArray()), nowT = 100)
+        assertEquals(RunMode.free, core.mode)
+        assertEquals(LapDecision.ignoredModeNoLaps, core.lap(LapSource.button, 2_100).first)
+    }
+
+    @Test
+    fun `restore of a journal that ended paused resumes paused`() {
+        val w0 = 1_700_000_000_000L
+        val lines = listOf(
+            JournalLine.Header(0, w0, "r", "d", "a", "UTC", RunMode.laps, null, Units.km),
             JournalLine.Lap(5_000, w0 + 5_000, LapSource.button),
             JournalLine.Pause(8_000, w0 + 8_000),
             JournalLine.Gap(100, w0 + 20_000, 12_000),

@@ -108,9 +108,21 @@ class JournalReplayTest {
     }
 
     @Test
-    fun `a journal from a newer schema is rejected`() {
-        val newer = JournalCodec.encode(header).replace("\"schema\":1", "\"schema\":2")
-        assertFailsWith<JournalReplay.NoHeader> { JournalReplay.read((newer + "\n").toByteArray()) }
+    fun `a journal from a newer schema is rejected as newer (never discardable)`() {
+        val newer = JournalCodec.encode(header).replace("\"schema\":${JournalCodec.SCHEMA}", "\"schema\":${JournalCodec.SCHEMA + 1}")
+        assertFailsWith<JournalReplay.NewerJournal> { JournalReplay.read((newer + "\n").toByteArray()) }
+        val unknownMode = JournalCodec.encode(header).replace("\"mode\":\"fourByFour\"", "\"mode\":\"hyrox\"")
+        assertFailsWith<JournalReplay.NewerJournal> { JournalReplay.read((unknownMode + "\n").toByteArray()) }
+    }
+
+    @Test
+    fun `a schema-1 free journal replays as laps (plan 18-7 B1)`() {
+        val v1 = """{"k":"hdr","schema":1,"t":$t0,"w":$w0,"id":"id1","device":"d","app":"a","tz":"UTC","mode":"free","preset":null,"units":"km"}"""
+        val r = JournalReplay.read((v1 + "\n" + enc(sample(t0 + 1000))).toByteArray())
+        assertEquals(RunMode.laps, r.header.mode)
+        // Schema 2 keeps `free` as written.
+        val v2 = JournalCodec.encode(header.copy(mode = RunMode.free, preset = null))
+        assertEquals(RunMode.free, JournalReplay.read((v2 + "\n").toByteArray()).header.mode)
     }
 
     @Test

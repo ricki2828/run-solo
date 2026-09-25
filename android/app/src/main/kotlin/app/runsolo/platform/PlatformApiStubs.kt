@@ -53,6 +53,13 @@ class RecorderApiStub : RecorderApi {
         ExitDiagnosis(runId = runId, reason = ExitReason.NONE, timestampMs = 0, description = null, manufacturer = "")
 }
 
+class StorageApiStub : StorageApi {
+    override fun backupStatus(): BackupStatus =
+        BackupStatus(backedUpBytes = 0, budgetBytes = 15L * 1024 * 1024, quotaBytes = 25L * 1024 * 1024, archivedRunCount = 0, overBudget = false)
+
+    override fun enforceBackupBudget(): List<String> = emptyList()
+}
+
 class PermissionsApiStub : PermissionsApi {
     override fun permissionStatus(): PermissionStatus =
         PermissionStatus(
@@ -70,6 +77,10 @@ class PermissionsApiStub : PermissionsApi {
     }
 
     override fun openBatterySettings() = Unit
+
+    override fun requestIgnoreBatteryOptimizations(callback: (Result<Boolean>) -> Unit) {
+        callback(Result.success(false))
+    }
 
     override fun openAppSettings() = Unit
 

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Auto Backup rules for API 29-30 (`android:fullBackupContent`, plan §4 W3). With any
+     <include>, ONLY the included paths are backed up; the excludes below make the intent
+     explicit and guard a future include of a parent directory. Budget: the app keeps
+     db + runs/ + sidecars under ~15 MB (StorageApi.enforceBackupBudget) because past the
+     25 MB quota Android backs up nothing. -->
+<full-backup-content>
+    <include domain="database" path="runsolo.db" />
+    <include domain="file" path="runs/" />
+    <include domain="file" path="state/" />
+    <!-- SQLite side files: a restored -wal/-shm from a different db image corrupts the index. -->
+    <exclude domain="database" path="runsolo.db-wal" />
+    <exclude domain="database" path="runsolo.db-shm" />
+    <exclude domain="database" path="runsolo.db-journal" />
+    <!-- In-progress journals (files/journals/<id>/journal.ndjson) and the overflow archive. -->
+    <exclude domain="file" path="journals/" />
+    <exclude domain="file" path="runs-archive/" />
+</full-backup-content>

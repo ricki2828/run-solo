@@ -24,7 +24,10 @@ import app.runsolo.core.model.RunMode
  *  - A timed phase ends by its `phaseEnd` cue (auto-lap) or early by a manual LAP from the
  *    button/notification, which re-aligns the phases (R5: the engine may then call the run
  *    `lapsInconsistent`; that is the user's choice).
- *  - Volume-key laps: only when [Config.volumeKeyLaps] (default: Free mode only). In preset
+ *  - Modes (plan §18.2): `fourByFour` = preset phases; `laps` = by-feel laps from any source;
+ *    `free` (and `cooper` until Phase 3) = no lap input at all — every LAP is
+ *    [LapDecision.ignoredModeNoLaps]. Every mode check is an exhaustive `when` (W7).
+ *  - Volume-key laps: only when [Config.volumeKeyLaps] (default: Laps mode only). In preset
  *    mode they are recorded but never re-align the phase (pocket-bump guard, W8).
  *  - Double-lap guard: a manual press within [Config.doubleLapGuardMs] of an auto-lap is
  *    ignored; any manual press within [Config.debounceMs] of the previous manual lap is ignored.
@@ -33,7 +36,7 @@ import app.runsolo.core.model.RunMode
 class RecorderCore(
     val mode: RunMode,
     val preset: Preset?,
-    private val config: Config = Config(volumeKeyLaps = mode == RunMode.free),
+    private val config: Config = Config(volumeKeyLaps = mode.volumeKeyLapsDefault),
 ) {
     data class Config(
         val volumeKeyLaps: Boolean,
@@ -47,7 +50,7 @@ class RecorderCore(
         data class PhaseChanged(val t: Long, val phase: Phase, val repIndex: Int, val phaseDurationMs: Long?) : Output()
     }
 
-    enum class LapDecision { accepted, ignoredDoubleLap, ignoredDebounce, ignoredVolumeKeyDisabled, ignoredPaused, ignoredIdle }
+    enum class LapDecision { accepted, ignoredDoubleLap, ignoredDebounce, ignoredVolumeKeyDisabled, ignoredPaused, ignoredIdle, ignoredModeNoLaps }
 
     data class Status(
         val state: RecorderState,
@@ -60,7 +63,10 @@ class RecorderCore(
     )
 
     init {
-        require(mode == RunMode.free || preset != null) { "4x4 mode needs a preset" }
+        when (mode) {
+            RunMode.fourByFour -> require(preset != null) { "4x4 mode needs a preset" }
+            RunMode.laps, RunMode.free, RunMode.cooper -> require(preset == null) { "$mode carries no preset" }
+        }
     }
 
     var state: RecorderState = RecorderState.idle
@@ -134,6 +140,7 @@ class RecorderCore(
     /** A LAP from any source. Returns the decision plus the outputs to journal/speak. */
     fun lap(source: LapSource, t: Long): Pair<LapDecision, List<Output>> {
         if (state == RecorderState.idle || state == RecorderState.finalising) return LapDecision.ignoredIdle to emptyList()
+        if (!mode.lapInput) return LapDecision.ignoredModeNoLaps to emptyList()
         if (state == RecorderState.paused) return LapDecision.ignoredPaused to emptyList()
         if (source == LapSource.auto) {
             // Only restore() feeds auto laps; live auto-laps come from the cue scheduler in tick().

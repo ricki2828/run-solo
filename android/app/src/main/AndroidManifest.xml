@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <!-- Plan §10. No background location, no REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, no INTERNET. -->
+    <!-- Plan §10: no background location. REQUEST_IGNORE_BATTERY_OPTIMIZATIONS was added on
+         24-Sep-2026 by founder decision (setup-checklist battery step; declare it in Play as a
+         fitness tracker with a location FGS). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -27,10 +30,16 @@
         android:name="android.hardware.location.gps"
         android:required="false" />
 
+    <!-- Auto Backup on (plan §4): both rules files because minSdk 29 reads fullBackupContent
+         (29-30) and 31+ reads dataExtractionRules. -->
     <application
         android:label="Run Solo"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        tools:targetApi="s">
         <activity
             android:name=".MainActivity"
             android:exported="true"

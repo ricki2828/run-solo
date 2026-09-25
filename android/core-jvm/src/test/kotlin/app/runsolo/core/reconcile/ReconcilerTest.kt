@@ -19,7 +19,8 @@ class ReconcilerTest {
         put("runs/run-a.json.gz")
         put("runs/run-a.edits.json")
         put("runs/run-b.json.gz.tmp")
-        put("runs/c/journal.ndjson")
+        put("journals/c/journal.ndjson")
+        put("runs/c/journal.ndjson") // a Phase-1 leftover directory under runs/ is neither a run file nor an orphan
         put("runs-archive/run-d.json.gz")
         put("runs-archive/run-d.edits.json")
         put("runs/run-bad id.json.gz")
@@ -72,6 +73,24 @@ class ReconcilerTest {
         assertEquals("x", o.runId)
         assertEquals(60_000, o.lastLineAgeMs)
         assertEquals(false, o.readable)
+    }
+
+    @Test
+    fun `orphans - a journal from a newer app is unreadable and flagged newer`() {
+        val newer = """{"k":"hdr","schema":99,"t":1,"w":5000,"id":"n","device":"d","app":"a","tz":"UTC","mode":"fourByFour","preset":null,"units":"km"}""" + "\n"
+        fs.mkdirs(RunPaths.journalDir("n"))
+        fs.writeBytes(RunPaths.journal("n"), newer.toByteArray())
+        val unknownMode = """{"k":"hdr","schema":2,"t":1,"w":5000,"id":"m","device":"d","app":"a","tz":"UTC","mode":"hyrox","preset":null,"units":"km"}""" + "\n"
+        fs.mkdirs(RunPaths.journalDir("m"))
+        fs.writeBytes(RunPaths.journal("m"), unknownMode.toByteArray())
+        fs.mkdirs(RunPaths.journalDir("garbage"))
+        fs.writeBytes(RunPaths.journal("garbage"), "not json\n".toByteArray())
+        val byId = Reconciler(fs).orphans(65_000, activeRunId = null).associateBy { it.runId }
+        assertEquals(false, byId.getValue("n").readable)
+        assertEquals(true, byId.getValue("n").newer)
+        assertEquals(true, byId.getValue("m").newer)
+        assertEquals(false, byId.getValue("garbage").newer)
+        assertEquals(false, byId.getValue("garbage").readable)
     }
 
     @Test

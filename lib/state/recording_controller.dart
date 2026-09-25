@@ -418,7 +418,8 @@ class RecordingController extends ChangeNotifier {
   void _onFault(FaultEvent f) {
     _snap = switch (f.kind) {
       FaultKind.gpsLost => _snap.copyWith(gpsLost: true, clearGps: true),
-      FaultKind.gpsWeak => _snap,
+      // Debug-only signal that a LAP reached Free mode; the screen has no LAP there.
+      FaultKind.gpsWeak || FaultKind.lapIgnored => _snap,
       FaultKind.hrDisconnected => _snap.copyWith(clearHr: true),
       FaultKind.journalWriteFailed ||
       FaultKind.lowStorage ||

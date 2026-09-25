@@ -15,8 +15,16 @@ library;
 
 import 'package:pigeon/pigeon.dart';
 
-/// Mode picked at Start. Mirrors `RunMode` in `package:run_engine`.
-enum RecordMode { fourByFour, free }
+/// Run type picked at Start (plan §18.2). Mirrors `RunMode` in `package:run_engine`.
+///
+/// - `fourByFour`: preset phases, cues, auto-laps, manual LAP overrides.
+/// - `laps`: by-feel laps; LAP button, notification LAP and volume keys (opt-in,
+///   default on). Schema-1 `free` files map here (plan §18.7).
+/// - `free`: no lap input at all — no LAP button, no notification LAP action, no
+///   MediaSession; `lap()` is a no-op (`FaultKind.lapIgnored` in debug builds).
+/// - `cooper`: schema-2 vocabulary for the Phase-3 12-minute test; until the
+///   protocol lands Kotlin records it like `free`. Not offered in the UI yet.
+enum RecordMode { fourByFour, laps, free, cooper }
 
 enum Units { km, mi }
 
@@ -43,6 +51,10 @@ enum FaultKind {
   /// The foreground service could not start after `start` returned a run id;
   /// the run was discarded (no file). Show the message, return to Start.
   startFailed,
+
+  /// A LAP arrived in `free` (or `cooper`) mode and was ignored. Debug builds
+  /// only; a UI that shows a LAP control in that mode has a bug.
+  lapIgnored,
 }
 
 /// Typed errors returned by `start` (plan §2). Never a stringly-typed map.
@@ -172,6 +184,7 @@ class OrphanJournal {
     required this.lastLineAgeMs,
     required this.mode,
     required this.readable,
+    required this.newer,
     required this.endedPaused,
     required this.elapsedMs,
   });
@@ -179,8 +192,14 @@ class OrphanJournal {
   int lastLineAgeMs;
   RecordMode mode;
 
-  /// False when the journal has no decodable header: it can only be discarded.
+  /// False when the journal has no decodable header: it can only be discarded
+  /// (unless `newer`).
   bool readable;
+
+  /// The journal was written by a newer app (schema or mode this build does not
+  /// know). Unreadable here, but NEVER offered for discard: show "update the
+  /// app to recover this run"; `discardJournal` refuses it (plan §18.7 W6).
+  bool newer;
 
   /// The run was paused when the process died.
   bool endedPaused;
@@ -272,6 +291,27 @@ class BleDevice {
   String? name;
 }
 
+/// What the static Auto Backup rules would back up right now (plan §4, W3):
+/// `databases/runsolo.db` + `files/runs/` run files + sidecars. `files/state/`
+/// is a few KB and not counted. Over the 25 MB `quotaBytes` Android backs up
+/// nothing, so the app keeps the set under `budgetBytes` (15 MB) by archiving.
+class BackupStatus {
+  BackupStatus({
+    required this.backedUpBytes,
+    required this.budgetBytes,
+    required this.quotaBytes,
+    required this.archivedRunCount,
+    required this.overBudget,
+  });
+  int backedUpBytes;
+  int budgetBytes;
+  int quotaBytes;
+
+  /// Runs already in `files/runs-archive/` (on device, indexed, not backed up).
+  int archivedRunCount;
+  bool overBudget;
+}
+
 @HostApi()
 abstract class RecorderApi {
   /// Idempotent: a second call while recording returns the running id. Must be
@@ -318,6 +358,21 @@ abstract class RecorderApi {
   ExitDiagnosis exitDiagnosis(String runId);
 }
 
+/// Backup budget (plan §4). Journals live in `files/journals/`, run files in
+/// `files/runs/`, overflow in `files/runs-archive/`; the rules files exclude
+/// journals, the archive and the SQLite `-wal`/`-shm`/`-journal` side files.
+@HostApi()
+abstract class StorageApi {
+  BackupStatus backupStatus();
+
+  /// Moves the oldest run files (with their sidecars) into `runs-archive/`
+  /// until the backed-up set fits the budget; returns the run ids moved. Call
+  /// after each finalise/import, then run the Reconciler (rows get `repath`).
+  /// Non-empty → show "export to keep older runs safe". Never touches the run
+  /// being recorded, never deletes anything.
+  List<String> enforceBackupBudget();
+}
+
 @HostApi()
 abstract class PermissionsApi {
   PermissionStatus permissionStatus();
@@ -327,8 +382,18 @@ abstract class PermissionsApi {
   @async
   bool requestPermission(PermissionKind kind);
 
-  /// The only Settings deep link allowed (plan §10): the app's battery page.
+  /// The app's battery page (plan §10 deep link), the fallback when the
+  /// exemption dialog is unavailable.
   void openBatterySettings();
+
+  /// Setup checklist "battery" step (founder decision 24-Sep-2026, overrides
+  /// plan §10): shows the system `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
+  /// dialog for this package (Play allows it for fitness trackers with a
+  /// location foreground service; the declaration must say so). Falls back to
+  /// `openBatterySettings` when no Activity handles it. Resolves when the user
+  /// returns with the new `isIgnoringBatteryOptimizations` value.
+  @async
+  bool requestIgnoreBatteryOptimizations();
   void openAppSettings();
 
   /// `FLAG_KEEP_SCREEN_ON` on the Activity window (design brief: screen stays
