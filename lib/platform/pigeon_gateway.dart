@@ -81,9 +81,11 @@ class PigeonPermissionsGateway implements PermissionsGateway {
   @override
   Future<void> openBatterySettings() => _api.openBatterySettings();
 
-  /// Until `PermissionsApi.requestIgnoreBatteryOptimizations` lands from
-  /// run2-native-fable this opens the battery page and re-reads the status,
-  /// which is the plan's documented fallback path.
+  /// Play policy restricts the direct `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
+  /// dialog to apps whose core function it is; nobody has cited the clause
+  /// that covers a fitness tracker with a location FGS, so the UI keeps
+  /// the plan §10 path: open the battery settings page and re-read. Swap to
+  /// `_api.requestIgnoreBatteryOptimizations()` once the review cites it.
   @override
   Future<bool> requestBatteryExemption() async {
     await _api.openBatterySettings();
