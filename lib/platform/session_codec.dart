@@ -21,7 +21,7 @@ extension EngineSessionToPigeon on engine.SessionSpec {
     hrBandHigh: hrBandHigh,
     steps: [
       for (final s in steps)
-        p.Step(
+        p.SessionStep(
           kind: p.StepKind.values.byName(s.kind.name),
           target: p.TargetKind.values.byName(s.target.name),
           value: s.value,

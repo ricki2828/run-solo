@@ -148,7 +148,7 @@ class TraceGateway implements RecorderGateway {
     steps: [
       for (final s
           in (j['steps'] as List<Object?>).cast<Map<String, Object?>>())
-        Step(
+        SessionStep(
           kind: StepKind.values.byName(s['kind'] as String),
           target: TargetKind.values.byName(s['target'] as String),
           value: s['value'] as int,
