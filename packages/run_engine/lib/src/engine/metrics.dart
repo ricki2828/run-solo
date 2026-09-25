@@ -535,8 +535,13 @@ class MetricsCalculator {
       bandSecPerKm: constants.repBandSecPerKm,
       hrPresent: hrPresent,
       maxHrUsed: maxHr,
-      avgHr: hrPresent ? trace.meanHr(trace.startMs, trace.endMs) : null,
-      maxHr: hrPresent ? trace.peakHr(trace.startMs, trace.endMs + 1) : null,
+      // Whole-run HR with paused spans excluded, like the lap rows.
+      avgHr: hrPresent
+          ? trace.meanHrExcluding(trace.startMs, trace.endMs, run.pauses)
+          : null,
+      maxHr: hrPresent
+          ? trace.peakHrExcluding(trace.startMs, trace.endMs + 1, run.pauses)
+          : null,
       timeInBandSeconds: maxHr == null
           ? null
           : trace.secondsInZone(
