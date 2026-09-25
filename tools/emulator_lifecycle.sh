@@ -83,7 +83,17 @@ case "$MODE" in
     # line) and lands no lap is a product bug: fail at once. Only a press that never reached the
     # session (adb/emulator injection drop: no lapinput line at all) may be retried, and every
     # retry is a visible ::warning:: in the run summary.
-    music_volume() { shell media volume --stream 3 --get | grep -oE 'volume is [0-9]+' | grep -oE '[0-9]+$'; }
+    # `media volume` (older images) or `cmd media_session volume` (newer, `media` removed): pick
+    # whichever the device has; both print "volume is N in range [..]".
+    if shell cmd media_session volume --stream 3 --get 2>/dev/null | grep -q 'volume is'; then
+      MEDIA_CMD="cmd media_session volume"
+    elif shell media volume --stream 3 --get 2>/dev/null | grep -q 'volume is'; then
+      MEDIA_CMD="media volume"
+    else
+      fail "neither 'cmd media_session volume' nor 'media volume' works on API $sdk; cannot read the music volume"
+    fi
+    music_volume() { shell $MEDIA_CMD --stream 3 --get | grep -oE 'volume is [0-9]+' | grep -oE '[0-9]+$'; }
+    set_music_volume() { shell $MEDIA_CMD --stream 3 --set "$1" > /dev/null; }
     vol_before="$(music_volume)"
     log "music volume before the key: $vol_before"
     landed=0
@@ -134,11 +144,11 @@ case "$MODE" in
     # A volume change that is not a key press (adb, 3 steps) must not lap.
     accepted_before="$(adb logcat -d | grep -c 'lap volumeKey → accepted' || true)"
     if [ "$vol_before" -ge 3 ]; then target=$((vol_before - 3)); else target=$((vol_before + 3)); fi
-    shell media volume --stream 3 --set "$target" > /dev/null
+    set_music_volume "$target"
     sleep 3
     accepted_after="$(adb logcat -d | grep -c 'lap volumeKey → accepted' || true)"
     [ "$accepted_after" = "$accepted_before" ] || fail "an adb volume change without a key press produced a lap"
-    shell media volume --stream 3 --set "$vol_before" > /dev/null
+    set_music_volume "$vol_before"
     log "manual + volume-key laps landed via $path (volume-key lap at run time ${vk_t} ms; volume $vol_before kept; adb change ignored)"
     ;;
   free)
