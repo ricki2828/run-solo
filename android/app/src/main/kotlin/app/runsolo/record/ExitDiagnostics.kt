@@ -12,10 +12,13 @@ import app.runsolo.platform.ExitReason
  * resume records `runId → wall time` in prefs; on the next open, `ApplicationExitInfo`
  * (API 30+) is searched for the EARLIEST exit after that time — the kill that interrupted
  * the run, not a later swipe-away after the recovery dialog. API 29 has no record → `none`.
- * Entries are pruned when the run is stopped.
+ * Entries are pruned when the run is stopped — so the verdict is CACHED per run the moment
+ * `recover()` sees the orphan ([cacheForRecovery]): run detail asks [diagnose] long after
+ * the run was finalised. The cache is bounded ([MAX_CACHED], oldest evicted).
  */
 object ExitDiagnostics {
     private const val PREFS = "runsolo.runs"
+    private const val MAX_CACHED = 64
 
     fun noteStart(context: Context, runId: String, startWallMs: Long) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -38,7 +41,49 @@ object ExitDiagnostics {
             .apply()
     }
 
+    /**
+     * Called by `recover()` for every orphan: diagnose the kill that produced it and keep the
+     * answer under `diag.<id>` so it survives `noteStopped` and a later resume. Only a real
+     * kill is cached (a `none` now may become a kill once the OS records it).
+     */
+    fun cacheForRecovery(context: Context, runId: String) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.contains("diag.$runId")) return
+        val d = diagnoseLive(context, runId)
+        if (d.reason == ExitReason.NONE) return
+        cache(context, d)
+    }
+
+    /** Persist a diagnosis (also used by tests); evicts the oldest cached entries past [MAX_CACHED]. */
+    fun cache(context: Context, d: ExitDiagnosis) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val editor = prefs.edit().putString("diag.${d.runId}", encode(d))
+        val cached = prefs.all.keys.filter { it.startsWith("diag.") }
+        if (cached.size >= MAX_CACHED) {
+            val byTime = cached.sortedBy { k -> decode(k.removePrefix("diag."), prefs.getString(k, null))?.timestampMs ?: 0L }
+            for (k in byTime.take(cached.size - MAX_CACHED + 1)) editor.remove(k)
+        }
+        editor.apply()
+    }
+
+    /** The cached verdict when there is one, else a live look-up (only meaningful before `noteStopped`). */
     fun diagnose(context: Context, runId: String): ExitDiagnosis {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        decode(runId, prefs.getString("diag.$runId", null))?.let { return it }
+        return diagnoseLive(context, runId)
+    }
+
+    private fun encode(d: ExitDiagnosis): String =
+        listOf(d.reason.name, d.timestampMs.toString(), d.manufacturer, d.description ?: "").joinToString("\u0001")
+
+    private fun decode(runId: String, text: String?): ExitDiagnosis? {
+        val parts = text?.split("\u0001") ?: return null
+        if (parts.size < 4) return null
+        val reason = ExitReason.values().firstOrNull { it.name == parts[0] } ?: return null
+        return ExitDiagnosis(runId = runId, reason = reason, timestampMs = parts[1].toLongOrNull() ?: 0L, description = parts[3].ifEmpty { null }, manufacturer = parts[2])
+    }
+
+    private fun diagnoseLive(context: Context, runId: String): ExitDiagnosis {
         val manufacturer = Build.MANUFACTURER.lowercase()
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val since = prefs.getLong("since.$runId", -1)

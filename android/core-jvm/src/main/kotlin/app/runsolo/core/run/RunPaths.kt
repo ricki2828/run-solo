@@ -4,13 +4,16 @@ package app.runsolo.core.run
 object RunPaths {
     const val RUNS_DIR = "runs"
     const val ARCHIVE_DIR = "runs-archive"
+
+    /** In-progress journals live outside `runs/` so the static Auto Backup rules can exclude them (plan §4). */
+    const val JOURNALS_DIR = "journals"
     const val JOURNAL_NAME = "journal.ndjson"
     private const val RUN_PREFIX = "run-"
     private const val RUN_SUFFIX = ".json.gz"
     private const val EDITS_SUFFIX = ".edits.json"
     private const val TMP_SUFFIX = ".tmp"
 
-    fun journalDir(runId: String) = "$RUNS_DIR/$runId"
+    fun journalDir(runId: String) = "$JOURNALS_DIR/$runId"
     fun journal(runId: String) = "${journalDir(runId)}/$JOURNAL_NAME"
     fun runFile(runId: String, dir: String = RUNS_DIR) = "$dir/$RUN_PREFIX$runId$RUN_SUFFIX"
     fun runFileTmp(runId: String) = "${runFile(runId)}$TMP_SUFFIX"
