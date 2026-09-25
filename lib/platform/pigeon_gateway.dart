@@ -51,11 +51,8 @@ class PigeonRecorderGateway implements RecorderGateway {
   @override
   Future<void> setCues(bool enabled) => _api.setCues(enabled);
 
-  // TODO(run3-native-opus): `_api.setVolumeKeyLaps(enabled)` once native's
-  // follow-up PR adds it to RecorderApi; until then native uses the mode
-  // default (on for Laps, off otherwise).
   @override
-  Future<void> setVolumeKeyLaps(bool enabled) async {}
+  Future<void> setVolumeKeyLaps(bool enabled) => _api.setVolumeKeyLaps(enabled);
 }
 
 class PigeonBleGateway implements BleGateway {
@@ -113,12 +110,8 @@ class PigeonPermissionsGateway implements PermissionsGateway {
   @override
   Future<void> openAppSettings() => _api.openAppSettings();
 
-  // TODO(run3-native-opus): `_api.volumeKeyLapsSupported()` once native's
-  // follow-up PR adds it to PermissionsApi (false on API 34); until then the
-  // toggle stays enabled and the run-time `volumeKeyUnavailable` note still
-  // covers Android 14.
   @override
-  Future<bool> volumeKeyLapsSupported() async => true;
+  Future<bool> volumeKeyLapsSupported() => _api.volumeKeyLapsSupported();
 
   @override
   Future<void> setKeepScreenOn(bool enabled) => _api.setKeepScreenOn(enabled);

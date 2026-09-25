@@ -159,4 +159,17 @@ void main() {
     expect(fake.volumeKeyLaps, isFalse);
     expect(services.recording.snapshot.recording, isTrue);
   });
+
+  testWidgets('a 4x4 start leaves the Laps-only volume-key setting alone', (
+    tester,
+  ) async {
+    final fake = FakeRecorderGateway(now: now);
+    final services = fakeServices(recorder: fake);
+    await pumpApp(tester, services, pushRoute: Routes.start);
+    await pumpTimes(tester, 4);
+    expect(find.text('Volume-key lap'), findsNothing);
+    await tester.tap(find.text('START WARM-UP'));
+    await pumpTimes(tester, 4);
+    expect(fake.volumeKeyLaps, isNull);
+  });
 }

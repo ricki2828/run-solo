@@ -105,9 +105,9 @@ abstract class RecorderGateway {
   Future<void> discardJournal(String runId);
   Future<void> setCues(bool enabled);
 
-  /// Saved volume-key lap choice; native applies it from the next start or
-  /// resume (never mid-run) and never in Free. Start sends it before every
-  /// start so the Settings/Start toggle is authoritative.
+  /// Saved volume-key lap choice for Laps runs (4x4 and Free never hook the
+  /// volume keys). Native applies it from the next start or resume, never
+  /// mid-run; Start sends it before every Laps start.
   Future<void> setVolumeKeyLaps(bool enabled);
 
   /// Broadcast; ≤ 2 Hz ticks plus lap / phase / state / cue / fault events.
