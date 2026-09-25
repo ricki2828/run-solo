@@ -49,14 +49,14 @@ class LapInput(
     private var session: MediaSession? = null
     private var receiver: BroadcastReceiver? = null
     private var deviceCallback: AudioDeviceCallback? = null
-    private var lastPressT = 0L
+    private var lastPressT = -DEBOUNCE_MS // a press at elapsedRealtime < 400 ms (Robolectric's clock starts near 0) is not debounced
     private var unavailableReported = false
 
     /** Broadcasts caused by our own restore are ignored until this time. */
     private var suppressUntil = 0L
 
     /** Last audio-device change (elapsedRealtime); stream changes right after it are not presses. */
-    private var deviceChangeT = Long.MIN_VALUE
+    private var deviceChangeT = -1L // elapsedRealtime is never negative; MIN_VALUE would overflow the subtraction
 
     /** Which path landed the last lap: "session" or "stream" (tests and the CI trace). */
     var lastPath: String? = null
@@ -105,8 +105,24 @@ class LapInput(
     private fun enableStreamFallback() {
         if (audio.isMusicActive) reportUnavailable("music active on Android 14")
         val cb = object : AudioDeviceCallback() {
-            override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) { deviceChangeT = SystemClock.elapsedRealtime() }
-            override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>) { deviceChangeT = SystemClock.elapsedRealtime() }
+            // AudioManager invokes onAudioDevicesAdded once right after registration with the
+            // devices already connected; that is not a change and must not open the quiet window
+            // (it silenced the first 2 s of every run, and the Robolectric test).
+            private var initialListSeen = false
+
+            override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) {
+                if (!initialListSeen) {
+                    initialListSeen = true
+                    return
+                }
+                deviceChangeT = SystemClock.elapsedRealtime()
+                Log.i(TAG, "audio devices added (${added.size}); quiet window")
+            }
+
+            override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>) {
+                deviceChangeT = SystemClock.elapsedRealtime()
+                Log.i(TAG, "audio devices removed (${removed.size}); quiet window")
+            }
         }
         audio.registerAudioDeviceCallback(cb, Handler(Looper.getMainLooper()))
         deviceCallback = cb
@@ -137,7 +153,7 @@ class LapInput(
             Log.i(TAG, "volume changed $prev→$value: not a single key step, ignored")
             return
         }
-        if (now - deviceChangeT < DEVICE_CHANGE_QUIET_MS) {
+        if (deviceChangeT >= 0 && now - deviceChangeT < DEVICE_CHANGE_QUIET_MS) {
             Log.i(TAG, "volume changed $prev→$value within ${DEVICE_CHANGE_QUIET_MS} ms of an audio-device change, ignored")
             return
         }
