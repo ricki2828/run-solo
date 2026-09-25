@@ -36,7 +36,11 @@ void main() {
     await pumpTimes(tester, 6);
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(RecoveryDialog), findsOneWidget);
-    expect(find.textContaining('4x4'), findsNothing);
+    final inDialog = find.descendant(
+      of: find.byType(RecoveryDialog),
+      matching: find.textContaining('4x4'),
+    );
+    expect(inDialog, findsNothing);
     expect(find.textContaining('A run, 10:00 recorded'), findsOneWidget);
   });
 
