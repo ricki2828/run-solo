@@ -1,3 +1,7 @@
+// `java.util.*` cannot be written inline here: `java` resolves to the java {} extension accessor.
+import java.util.Base64
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -25,6 +29,11 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Google Maps key (plan §18.3): env RUN_SOLO_MAPS_API_KEY (CI secret), else the Gradle
+        // property / local.properties entry `runsolo.mapsApiKey`, else "" so builds without the
+        // secret still pass (the app shows its "Map failed to load" state). Never printed.
+        manifestPlaceholders["mapsApiKey"] = mapsApiKey()
     }
 
     lint {
@@ -48,6 +57,21 @@ android {
     }
 
     signingConfigs {
+        // Play upload key (plan §11): repo secrets RUN_SOLO_UPLOAD_* decoded to a temp file by
+        // ci.yml; Play App Signing holds the app-signing key. Offline copy under
+        // ~/.secrets/run-solo/. Absent -> debug key, so PR builds and `flutter run --release`
+        // still configure; the release-aab job fails if the key is missing.
+        create("upload") {
+            val ksPath = System.getenv("RUN_SOLO_UPLOAD_KEYSTORE")
+            if (ksPath != null) {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("RUN_SOLO_UPLOAD_STORE_PASSWORD")
+                keyAlias = System.getenv("RUN_SOLO_UPLOAD_KEY_ALIAS") ?: "upload"
+                keyPassword = System.getenv("RUN_SOLO_UPLOAD_KEY_PASSWORD")
+            } else {
+                initWith(getByName("debug"))
+            }
+        }
         // CI dogfood key: repo secrets decoded to a temp file by ci.yml (RUN_SOLO_DOGFOOD_*).
         // Offline copy under ~/.secrets/run-solo/. Absent locally -> debug key, so the
         // variant still configures; the CI job fails if the key is missing.
@@ -70,8 +94,9 @@ android {
         create("play") {
             dimension = "dist"
             buildConfigField("boolean", "REPLAY_ENABLED", "false")
-            // TODO: Play upload key (plan §11). Debug key for now so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Upload key when RUN_SOLO_UPLOAD_KEYSTORE is set (release-aab job), debug key otherwise.
+            // The debug build type keeps its own debug signing (build type wins over flavour).
+            signingConfig = signingConfigs.getByName("upload")
         }
         // Sideloadable optimised build for the founder's Pixel: release-mode AOT + R8,
         // arm64 only, own key, replay/debug intents kept for desk testing.
@@ -96,8 +121,33 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Native debug symbols (libapp.so, libflutter.so) packed into the AAB so Play vitals
+            // symbolicates native traces (plan §11) without a separate upload.
+            ndk { debugSymbolLevel = "FULL" }
         }
     }
+}
+
+// See defaultConfig: env, then the Flutter --dart-define of the same name (the tool passes
+// them as -Pdart-defines=<base64 KEY=VALUE>,...), then -Prunsolo.mapsApiKey / local.properties,
+// then empty. Dart reads its copy with String.fromEnvironment('RUN_SOLO_MAPS_API_KEY'); both
+// must be the same value, which is why CI passes one env var to both.
+fun mapsApiKey(): String {
+    System.getenv("RUN_SOLO_MAPS_API_KEY")?.takeIf { it.isNotBlank() }?.let { return it }
+    (project.findProperty("dart-defines") as String?)?.split(",")?.forEach { encoded ->
+        val decoded = runCatching { String(Base64.getDecoder().decode(encoded)) }.getOrNull() ?: return@forEach
+        if (decoded.startsWith("RUN_SOLO_MAPS_API_KEY=")) {
+            decoded.removePrefix("RUN_SOLO_MAPS_API_KEY=").takeIf { it.isNotBlank() }?.let { return it }
+        }
+    }
+    (project.findProperty("runsolo.mapsApiKey") as String?)?.takeIf { it.isNotBlank() }?.let { return it }
+    val local = rootProject.file("local.properties")
+    if (local.exists()) {
+        val props = Properties()
+        local.inputStream().use { props.load(it) }
+        props.getProperty("runsolo.mapsApiKey")?.takeIf { it.isNotBlank() }?.let { return it }
+    }
+    return ""
 }
 
 kotlin {

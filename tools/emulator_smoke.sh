@@ -29,13 +29,19 @@ if ! launch; then
 fi
 
 if ! adb shell pidof "$PKG" > /dev/null; then
+  # A dead emulator makes `adb logcat` block on "waiting for device" until the job timeout
+  # (seen on API 29: "error: closed" after install, then 37 min idle). Fail fast instead.
+  if [ "$(timeout 10 adb get-state 2>/dev/null | tr -d '\r')" != "device" ]; then
+    echo "emulator went away during launch (runner infra, not an app crash); re-run the job" >&2
+    exit 1
+  fi
   echo "process $PKG is not running after launch" >&2
-  adb logcat -d | tail -n 200
+  timeout 60 adb logcat -d | tail -n 200
   exit 1
 fi
 echo "$PKG running (pid $(adb shell pidof "$PKG"))"
 
-if adb logcat -d | grep -E "FATAL EXCEPTION|E AndroidRuntime.*$PKG" > /tmp/fatal.log; then
+if timeout 60 adb logcat -d | grep -E "FATAL EXCEPTION|E AndroidRuntime.*$PKG" > /tmp/fatal.log; then
   echo "fatal exception in logcat:" >&2
   cat /tmp/fatal.log
   exit 1

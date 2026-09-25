@@ -1,8 +1,14 @@
-# Run Solo
+# Run Supreme
 
-**Run Solo: 4x4 Interval Run.** Free, local-only Android app: record a run, get a staged
-4x4 verdict. No accounts, no analytics, no network. Plan: `~/ai/plans/run-solo-v1-plan.md`;
-visuals: `~/ai/plans/run-solo-design-brief.md`.
+Formerly Run Solo: the Kotlin packages (`app.runsolo.*`), secret names (`RUN_SOLO_*`), keystore
+certificate CNs and the `~/.secrets/run-solo/` folder keep the old name on purpose; the visible
+brand and the store listing changed. The applicationId is still `app.runsolo` until the separate
+rebrand PR moves it to `app.runsupreme` (before the first Play upload).
+
+**Run Supreme: 4x4 Interval Run.** Free Android app: record a run, get a staged 4x4 verdict. No
+accounts, no ads, no analytics of our own; runs stay on the phone, the post-run map comes from
+Google Maps and weather from Open-Meteo (privacy: `docs/privacy/`). Plan:
+`~/ai/plans/run-solo-v1-plan.md`; visuals: `~/ai/plans/run-solo-design-brief.md`.
 
 ## Repo layout
 
@@ -14,7 +20,8 @@ visuals: `~/ai/plans/run-solo-design-brief.md`.
 | `android/app/` | Android shell (Kotlin, package `app.runsolo`). minSdk 29, target/compileSdk 36. Debug builds are `app.runsolo.debug` |
 | `android/core-jvm/` | Pure Kotlin/JVM module (journal codec, lap state machine, haversine, HR parse, cue scheduler). Standalone Gradle build, no Android plugin, included into the app via `includeBuild` |
 | `assets/fonts/` | Barlow Condensed 600/700 + Archivo variable, bundled (SIL OFL 1.1, licences beside them). Nothing is fetched at runtime |
-| `tools/` | `check_16kb_alignment.sh` (16 KB page-size gate), `emulator_smoke.sh` |
+| `tools/` | `check_16kb_alignment.sh` (16 KB page-size gate), `emulator_*.sh`, `print_cert_sha1.sh` (SHA-1s for the Maps key restriction) |
+| `docs/` | GitHub Pages site (`runsolo.app`): `privacy/` policy page; `play-console.md` (every App content / Data safety / listing answer), `fgs-demo-video.md`, `closed-test-testers.md` |
 | `.github/workflows/ci.yml` | CI (below) |
 
 ## Building: CI only for Android
@@ -26,7 +33,8 @@ Android-module tests are built **only in GitHub Actions**. Every push to `main` 
 2. `core-jvm` job: `./gradlew test` in `android/core-jvm` (pure JVM).
 3. `build-apk` job: `flutter build apk --debug --flavor play` (uploaded as artifact **`run-solo-debug-apk`**), a release AAB build (debug-signed for now), and the 16 KB page-size check on both (ELF `LOAD` alignment of every 64-bit `.so` plus `zipalign -P 16`). Fails the job if misaligned.
 4. `emulator` job: API 29 / 34 / 36 x86_64 emulators install and launch the debug APK, then run the replay-mode lifecycle test.
-5. `build-dogfood` job: optimised sideload build for the Pixel, artifact **`run-solo-dogfood-apk`** (see below). `emulator-dogfood` runs the launch smoke and a logcat-only replay check (auto-laps fire) on its x86_64 twin on API 36, so R8 stripping is caught in CI; the full lifecycle test needs `run-as` and stays on the debug build.
+5. `release-aab` job (**manual run or a `v*` tag only**, not on PRs): `flutter build appbundle --release --flavor play`, signed with the Play upload key, signer + 16 KB + Maps meta-data verified, artifacts `run-solo-play-aab-<ref>` (the `.aab` to upload to Play; native debug symbols are inside it via `ndk.debugSymbolLevel = "FULL"`) and `run-solo-play-symbols-<ref>` (R8 `mapping.txt`, Dart split-debug-info) kept 90 days. Upload `mapping.txt` with the release in Play Console so vitals traces are readable. The job preflights the upload key with `keytool` before building.
+6. `build-dogfood` job: optimised sideload build for the Pixel, artifact **`run-solo-dogfood-apk`** (see below). `emulator-dogfood` runs the launch smoke and a logcat-only replay check (auto-laps fire) on its x86_64 twin on API 36, so R8 stripping is caught in CI; the full lifecycle test needs `run-as` and stays on the debug build.
 
 Flutter is pinned to **3.47.5** in `ci.yml` (`FLUTTER_VERSION`); the host install at `~/tools/flutter` is the same version. Bump both together.
 
@@ -68,21 +76,47 @@ adb install -r ~/Downloads/run-solo/app-arm64-v8a-dogfood-release.apk
 
 Flavours: `play` (Play track, no suffix) and `dogfood`. Every `flutter build`/`flutter run` now needs `--flavor play` or `--flavor dogfood`; Gradle tasks are `:app:lintPlayDebug`, `:app:testPlayDebugUnitTest`, etc.
 
-## Release signing (not set up yet)
+## Release signing (Play upload key)
 
-Release builds are currently signed with the debug key so the AAB builds in CI. The release
-step (plan §11) will need these repository secrets:
+The `play` flavour signs with the upload key when `RUN_SOLO_UPLOAD_KEYSTORE` points at the
+keystore (the `release-aab` job decodes it from secrets); otherwise it falls back to the debug
+key so PR builds and `flutter run --release` still work. Play App Signing holds the app-signing
+key; we only ever hold the upload key (`CN=Run Solo upload`, alias `upload`, RSA 4096).
 
 | Secret | Contents |
 |---|---|
-| `PLAY_UPLOAD_KEYSTORE_BASE64` | base64 of the upload keystore (`.jks`); Play App Signing holds the app-signing key |
-| `PLAY_UPLOAD_KEYSTORE_PASSWORD` | keystore password |
-| `PLAY_UPLOAD_KEY_ALIAS` | key alias |
-| `PLAY_UPLOAD_KEY_PASSWORD` | key password |
-| `PLAY_SERVICE_ACCOUNT_JSON` | later, for uploading tagged builds to the internal track |
+| `RUN_SOLO_UPLOAD_KEYSTORE_BASE64` | base64 of the upload keystore (`.jks`) |
+| `RUN_SOLO_UPLOAD_STORE_PASSWORD` | keystore password |
+| `RUN_SOLO_UPLOAD_KEY_PASSWORD` | key password (PKCS12: equal to the store password) |
+| `RUN_SOLO_MAPS_API_KEY` | Google Maps key (manifest placeholder; builds pass with it absent) |
+| `PLAY_SERVICE_ACCOUNT_JSON` | later, for uploading tagged builds to the internal track automatically |
 
-Keep an offline copy of the upload keystore; losing it is recoverable via a Play Console
+Offline copy of the keystore and passwords: `~/.secrets/run-solo/run-solo-upload.{jks,env}` on
+the dev host (mode 600, never committed). Losing the upload key is recoverable via a Play Console
 upload-key reset, not a new listing.
+
+### Google Maps key
+
+Resolved in `android/app/build.gradle.kts` (`mapsApiKey()`): env `RUN_SOLO_MAPS_API_KEY`, then
+Gradle property / `android/local.properties` `runsolo.mapsApiKey=...`, then empty. It lands in
+the manifest as `com.google.android.geo.API_KEY`. Dart gets the same value through
+`--dart-define=RUN_SOLO_MAPS_API_KEY=...` (`String.fromEnvironment`; empty = draw the route shape,
+never a GoogleMap), and `mapsApiKey()` also reads that dart-define, so locally one
+`flutter run --flavor play --dart-define=RUN_SOLO_MAPS_API_KEY=$KEY` sets both. CI never prints it.
+Restrict the key to Android apps with one entry per package + signing SHA-1 (upload key, **Play
+app-signing certificate**, dogfood key, your local debug key); see `docs/play-console.md` §12.
+CI's debug APK is signed by a per-runner debug key, so the emulator smoke always sees the
+"Map failed to load" state.
+
+### GitHub Pages (`runsolo.app`)
+
+Settings → Pages → Source "Deploy from a branch", branch `main`, folder `/docs`; custom domain
+`runsolo.app` (add the `A`/`AAAA` records GitHub lists plus `www` CNAME, tick Enforce HTTPS).
+The privacy policy is then `https://runsolo.app/privacy/`. The repo is public for now (free
+Actions minutes) and goes private again at launch: GitHub Pages on a private repo needs a paid
+plan, so before that switch move `docs/` to a public host (simplest: a tiny public repo
+`run-solo-site` holding only `index.html` and `privacy/`, Pages on, same custom domain) and keep
+the URL identical, since it is printed on the Play forms.
 
 ## Licences
 
