@@ -32,7 +32,7 @@ Generated straight into the app and the store folder (do not hand-edit; regenera
 - Typeface: Barlow Condensed Bold (`assets/fonts`, OFL). Shaped with HarfBuzz using kerning, tracking +20 (2% of the em, brief §2.2).
 - Cut: centred at 40% of cap height. It is 7.5% of cap height in the mark and wordmark, 12% in the launcher and splash icons (seen at 48 px), and 15% in the 24 dp notification icon.
 - Lap line: 60% of the cut thickness (8% of cap height in the icons), with a round leading end. In colour it enters at the leg, so it shows through the leg's cut. In the mark it runs 0.25 cap past the R, 0.2 cap in the icons. In the wordmark it is a separate dash 0.76 cap long, 0.18 cap after the E.
-- Launcher: every path point sits within 32 dp of the centre (the safe zone is 33 dp). The monochrome layer uses the same transform as the colour layer.
+- Launcher: every path point sits within 30 dp of the centre (the safe zone is 33 dp, so about a 9% inset; at 32 dp the R looked oversized next to other running apps). Notification icon: 2 dp padding on the 24 dp grid. The monochrome layer uses the same transform as the colour layer.
 
 Regenerate after any change (the Android XML is generated; do not hand-edit it):
 

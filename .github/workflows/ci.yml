@@ -95,6 +95,21 @@ jobs:
           diff -r "$kotlin" "$dart"
           echo "event-trace fixtures: $count Kotlin files identical to run_engine copies (both ways)"
 
+  brand:
+    name: brand vectors are current
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r assets/brand/requirements.txt
+      - name: Regenerate and diff (vectors only; PNG antialiasing may differ by platform)
+        run: |
+          python assets/brand/build_brand.py
+          git diff --exit-code -- assets/brand/svg android/app/src/main/res/drawable android/app/src/main/res/mipmap-anydpi-v26
+
   core-jvm:
     name: core-jvm tests (pure Kotlin)
     runs-on: ubuntu-latest

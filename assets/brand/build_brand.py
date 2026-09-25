@@ -337,8 +337,9 @@ def main():
         write(f"svg/{name}-mono-black.svg", svg(w, h, [("#000000", d_main), ("#000000", d_mono)]))
         write(f"svg/{name}-mono-white.svg", svg(w, h, [("#FFFFFF", d_main), ("#FFFFFF", d_mono)]))
 
-    # Adaptive launcher icon: 108 dp canvas, mark inside the 66 dp safe zone (radius 33, 1 dp margin).
-    t = fit_circle([ICON_R, ICON_LINE], 108, 32)
+    # Adaptive launcher icon: 108 dp canvas, mark inside the 66 dp safe zone. Radius 30 of 33 (about a
+    # 9% inset) so the R does not look oversized next to other running apps on a home screen.
+    t = fit_circle([ICON_R, ICON_LINE], 108, 30)
     fg = [(BONE, to_d(ICON_R, *t)), (ARC, to_d(ICON_LINE, *t))]
     # Same transform as the colour layer, so the themed icon sits exactly where the colour one does.
     mono = [("#FFFFFFFF", to_d(ICON_R, *t)), ("#FFFFFFFF", to_d(ICON_TAIL, *t))]
@@ -368,10 +369,10 @@ def main():
     write("drawable/splash_icon.xml", vector(288, 288, splash), RES)
     write("svg/icon/splash_icon.svg", svg(288, 288, splash))
 
-    # Notification small icon: 24 dp, white on transparent, 1 dp padding, heavier cut for legibility.
+    # Notification small icon: 24 dp, white on transparent, 2 dp padding (system icon grid), heavier cut.
     heavy = diff(R, rect(0, CUT_Y - NOTE_CUT_T / 2, 1000, CUT_Y + NOTE_CUT_T / 2))
     tail = pill(r_xmax + 0.08 * CAP, CUT_Y - 0.055 * CAP, r_xmax + 0.36 * CAP, CUT_Y + 0.055 * CAP)
-    tn = fit_box([heavy, tail], 24, 1)
+    tn = fit_box([heavy, tail], 24, 2)
     note = [("#FFFFFFFF", to_d(heavy, *tn)), ("#FFFFFFFF", to_d(tail, *tn))]
     write("drawable/ic_stat_runsupreme.xml", vector(24, 24, note), RES)
     write("svg/icon/ic_stat_runsupreme.svg", svg(24, 24, [("#FFFFFF", d) for _, d in note]))
