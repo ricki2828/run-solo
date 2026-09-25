@@ -97,8 +97,8 @@ class LapInputTest {
     }
 
     @Test
-    @Config(sdk = [36])
-    fun `API 36 (default gating) - no stream fallback at all`() {
+    @Config(sdk = [35]) // highest SDK Robolectric 4.14 ships; the gate is `== 34`, so 35 behaves like 36
+    fun `API 35 (default gating) - no stream fallback at all`() {
         val li = LapInput(context, onLap = { laps++ }, onUnavailable = { unavailable++ })
         li.enable()
         volumeChanged(AudioManager.STREAM_MUSIC, prev = 5, value = 6)

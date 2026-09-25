@@ -56,7 +56,7 @@ class LapInput(
     private var suppressUntil = 0L
 
     /** Last audio-device change (elapsedRealtime); stream changes right after it are not presses. */
-    private var deviceChangeT = Long.MIN_VALUE
+    private var deviceChangeT = -1L // elapsedRealtime is never negative; MIN_VALUE would overflow the subtraction
 
     /** Which path landed the last lap: "session" or "stream" (tests and the CI trace). */
     var lastPath: String? = null
@@ -137,7 +137,7 @@ class LapInput(
             Log.i(TAG, "volume changed $prev→$value: not a single key step, ignored")
             return
         }
-        if (now - deviceChangeT < DEVICE_CHANGE_QUIET_MS) {
+        if (deviceChangeT >= 0 && now - deviceChangeT < DEVICE_CHANGE_QUIET_MS) {
             Log.i(TAG, "volume changed $prev→$value within ${DEVICE_CHANGE_QUIET_MS} ms of an audio-device change, ignored")
             return
         }
