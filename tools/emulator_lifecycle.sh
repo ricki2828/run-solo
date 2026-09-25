@@ -83,6 +83,9 @@ case "$MODE" in
     # line) and lands no lap is a product bug: fail at once. Only a press that never reached the
     # session (adb/emulator injection drop: no lapinput line at all) may be retried, and every
     # retry is a visible ::warning:: in the run summary.
+    music_volume() { shell media volume --stream 3 --get | grep -oE 'volume is [0-9]+' | grep -oE '[0-9]+$'; }
+    vol_before="$(music_volume)"
+    log "music volume before the key: $vol_before"
     landed=0
     # Either path counts as "the key reached us": the VolumeProvider (`direction=`) or the
     # Android-14 stream-change fallback (`volume changed`).
@@ -121,7 +124,22 @@ case "$MODE" in
       fail "volume-key lap never reached the session in 3 presses (see system state above)"
     fi
     vk_t="$(adb logcat -d | grep -oE 'lap index=[0-9]+ source=volumeKey t=[0-9]+' | tail -1 | sed 's/.*t=//')"
-    log "manual + volume-key laps landed (volume-key lap at run time ${vk_t} ms)"
+    # Which path landed it: the MediaSession everywhere but API 34, the stream fallback on 34.
+    path="$(adb logcat -d -s RunSolo/lapinput | grep -oE 'lap from (session|stream)' | tail -1 | sed 's/lap from //')"
+    if [ "$sdk" -eq 34 ]; then want=stream; else want=session; fi
+    [ "$path" = "$want" ] || fail "volume-key lap landed via '$path' on API $sdk, expected '$want'"
+    # The stream fallback must leave the music volume where it was.
+    vol_after="$(music_volume)"
+    [ "$vol_after" = "$vol_before" ] || fail "music volume changed by the volume-key lap: $vol_before -> $vol_after"
+    # A volume change that is not a key press (adb, 3 steps) must not lap.
+    accepted_before="$(adb logcat -d | grep -c 'lap volumeKey → accepted' || true)"
+    if [ "$vol_before" -ge 3 ]; then target=$((vol_before - 3)); else target=$((vol_before + 3)); fi
+    shell media volume --stream 3 --set "$target" > /dev/null
+    sleep 3
+    accepted_after="$(adb logcat -d | grep -c 'lap volumeKey → accepted' || true)"
+    [ "$accepted_after" = "$accepted_before" ] || fail "an adb volume change without a key press produced a lap"
+    shell media volume --stream 3 --set "$vol_before" > /dev/null
+    log "manual + volume-key laps landed via $path (volume-key lap at run time ${vk_t} ms; volume $vol_before kept; adb change ignored)"
     ;;
   free)
     # Every LAP is ignored: API presses log ignoredModeNoLaps + a lapIgnored fault; the volume key reaches nothing.

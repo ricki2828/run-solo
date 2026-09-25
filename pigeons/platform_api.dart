@@ -55,6 +55,11 @@ enum FaultKind {
   /// A LAP arrived in `free` (or `cooper`) mode and was ignored. Debug builds
   /// only; a UI that shows a LAP control in that mode has a bug.
   lapIgnored,
+
+  /// Android 14 only: volume-key laps cannot work while another app's music
+  /// plays (the key is the user's volume). Fired at most once per run; show a
+  /// one-time note "use the lock-screen LAP".
+  volumeKeyUnavailable,
 }
 
 /// Typed errors returned by `start` (plan §2). Never a stringly-typed map.

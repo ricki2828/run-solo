@@ -21,7 +21,7 @@ ENUMS = {
     "source": {"button", "notification", "volumeKey", "auto"},
     "cue": {"halfway", "thirtySeconds", "phaseEnd", "start", "stop"},
     "mode": {"fourByFour", "laps", "free", "cooper"},
-    "fault": {"gpsLost", "gpsWeak", "hrDisconnected", "journalWriteFailed", "lowStorage", "osKilledMidRun", "startFailed", "lapIgnored"},
+    "fault": {"gpsLost", "gpsWeak", "hrDisconnected", "journalWriteFailed", "lowStorage", "osKilledMidRun", "startFailed", "lapIgnored", "volumeKeyUnavailable"},
 }
 REQUIRED_KINDS = {"tick", "lap", "phase", "state", "status", "cue"}
 # Kinds the fixture scenario never produces but a real run legitimately can (the emulator has
