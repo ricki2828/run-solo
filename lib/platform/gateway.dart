@@ -125,10 +125,9 @@ abstract class PermissionsGateway {
   /// is unavailable).
   Future<void> openBatterySettings();
 
-  /// The in-app exemption prompt (Phase 2 backlog: overrides plan §10's
-  /// exclusion for this fitness tracker with a location FGS):
-  /// `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, falling back to the app's
-  /// battery page. True when the app is exempt afterwards.
+  /// Battery-optimisation shortcut (Settings row + checklist): opens the
+  /// system battery page and re-reads status. The direct exemption dialog
+  /// was dropped (Play-restricted, 24-Sep review). True when exempt after.
   Future<bool> requestBatteryExemption();
 
   /// App info page, for a "don't ask again" denial of notifications / BLE.

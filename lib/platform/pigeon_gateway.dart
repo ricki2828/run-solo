@@ -81,11 +81,9 @@ class PigeonPermissionsGateway implements PermissionsGateway {
   @override
   Future<void> openBatterySettings() => _api.openBatterySettings();
 
-  /// Play policy restricts the direct `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
-  /// dialog to apps whose core function it is; nobody has cited the clause
-  /// that covers a fitness tracker with a location FGS, so the UI keeps
-  /// the plan §10 path: open the battery settings page and re-read. Swap to
-  /// `_api.requestIgnoreBatteryOptimizations()` once the review cites it.
+  /// The direct `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` dialog is Play-
+  /// restricted and was dropped from the contract (24-Sep review); plan
+  /// §10's path stands: open the battery settings page and re-read.
   @override
   Future<bool> requestBatteryExemption() async {
     await _api.openBatterySettings();
