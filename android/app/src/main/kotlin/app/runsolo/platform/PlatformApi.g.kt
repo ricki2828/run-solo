@@ -304,9 +304,9 @@ enum class FaultKind(val raw: Int) {
    */
   LAP_IGNORED(7),
   /**
-   * Android 14 only: volume-key laps cannot work while another app's music
-   * plays (the key is the user's volume). Fired at most once per run; show a
-   * one-time note "use the lock-screen LAP".
+   * Android 14 only: volume keys never reach an app's session there, so
+   * volume-key laps are off. Fired at most once per run when volume-key laps
+   * are on; show a one-time note "use the lock-screen LAP".
    */
   VOLUME_KEY_UNAVAILABLE(8);
 
