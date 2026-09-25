@@ -1,10 +1,18 @@
 name: ci
 
+# CI diet (Actions minutes are metered on this private repo). Every PR push: analyze/test,
+# core-jvm, debug APK + 16 KB (~8 min). The emulator matrix, the dogfood build and its smoke
+# (~22 min) run only on main, on a v* tag, on workflow_dispatch, on a PR that is not a draft,
+# or on a draft PR carrying the `emulators` label. Open PRs as drafts while iterating and mark
+# them ready at the end. Docs-only changes run nothing.
 on:
   push:
     branches: [main]
     tags: ['v*']
+    paths-ignore: ['docs/**', '**.md']
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    paths-ignore: ['docs/**', '**.md']
   workflow_dispatch:
 
 concurrency:
@@ -12,6 +20,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # True on main / tags / dispatch / non-draft PR / `emulators` label: gates the slow jobs.
+  FULL_GATE: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'emulators') }}
   # Pinned to the same stable the dev host runs (~/tools/flutter). Bump both together.
   FLUTTER_VERSION: '3.47.5'
   JAVA_VERSION: '17'
@@ -146,13 +156,15 @@ jobs:
           n=$("$AAPT" dump xmltree build/dist/app-debug.apk AndroidManifest.xml | grep -c 'com.google.android.geo.API_KEY' || true)
           [ "$n" -ge 1 ] || { echo "::error::com.google.android.geo.API_KEY meta-data missing from the manifest"; exit 1; }
           if [ -z "$RUN_SOLO_MAPS_API_KEY" ]; then echo "::warning::RUN_SOLO_MAPS_API_KEY secret is not set; this build has an empty Maps key"; fi
-      - name: Build release AAB (debug-signed here; the Play-signed one is the release-aab job)
+      - name: Build release AAB (debug-signed; full gate only, the Play-signed one is the release-aab job)
+        if: env.FULL_GATE == 'true'
         run: flutter build appbundle --release --flavor play --obfuscate --split-debug-info=build/symbols $MAPS_DEFINE
       - name: 16 KB page-size check (debug APK)
         run: |
           ZIPALIGN="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/zipalign"
           tools/check_16kb_alignment.sh build/dist/app-debug.apk "$ZIPALIGN"
       - name: 16 KB page-size check (release AAB, includes libapp.so)
+        if: env.FULL_GATE == 'true'
         run: tools/check_16kb_alignment.sh build/app/outputs/bundle/playRelease/app-play-release.aab
       - uses: actions/upload-artifact@v4
         with:
@@ -163,6 +175,7 @@ jobs:
 
   build-dogfood:
     name: build dogfood APK (arm64, R8, signed)
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'emulators') }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -329,6 +342,7 @@ jobs:
   emulator:
     name: emulator smoke (API ${{ matrix.api-level }})
     needs: build-apk
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'emulators') }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -350,6 +364,14 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
+      - name: AVD snapshot cache (saves the cold boot, ~1-2 min per job)
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ matrix.api-level }}-x86_64-google_apis-v1
       - name: Boot, install, launch
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -366,6 +388,7 @@ jobs:
   emulator-dogfood:
     name: emulator smoke, dogfood R8 build (API 36)
     needs: build-dogfood
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'emulators') }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
