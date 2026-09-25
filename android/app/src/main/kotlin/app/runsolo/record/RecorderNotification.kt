@@ -47,9 +47,9 @@ class RecorderNotification(private val context: Context) {
     fun build(c: Content): Notification {
         val title = when {
             c.state == RecorderState.paused -> "Paused"
-            c.phase == Phase.work -> "Rep ${c.repIndex}${c.reps?.let { " of $it" } ?: ""} — work"
-            c.phase == Phase.recovery -> "Rep ${c.repIndex}${c.reps?.let { " of $it" } ?: ""} — recover"
-            c.phase == Phase.warmup -> "Warm up — Start 4x4 when ready"
+            c.phase == Phase.work -> "Rep ${c.repIndex}${c.reps?.let { " of $it" } ?: ""} · work"
+            c.phase == Phase.recovery -> "Rep ${c.repIndex}${c.reps?.let { " of $it" } ?: ""} · recover"
+            c.phase == Phase.warmup -> "Warm up · Start 4x4 when ready"
             c.phase == Phase.cooldown -> "Cool down"
             else -> "Recording"
         }
