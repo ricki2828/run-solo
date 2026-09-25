@@ -50,6 +50,7 @@ class _StartScreenState extends State<StartScreen> {
     StartResult result;
     try {
       await services.recorder.setCues(s.cues);
+      await services.recorder.setVolumeKeyLaps(s.volumeKeyLapFor(s.lastMode));
       result = await services.recording.start(s.lastMode, switch (s.lastMode) {
         RecordMode.fourByFour => s.preset,
         RecordMode.laps || RecordMode.free || RecordMode.cooper => null,

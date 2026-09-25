@@ -139,4 +139,24 @@ void main() {
     expect(sw.onChanged, isNull);
     expect(sw.value, isFalse);
   });
+
+  testWidgets('START sends the saved volume-key choice before starting', (
+    tester,
+  ) async {
+    final fake = FakeRecorderGateway(now: now);
+    final services = fakeServices(
+      recorder: fake,
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.laps,
+        volumeKeyLap: false,
+      ),
+    );
+    await pumpApp(tester, services, pushRoute: Routes.start);
+    await pumpTimes(tester, 4);
+    await tester.tap(find.text('START LAPS RUN'));
+    await pumpTimes(tester, 4);
+    expect(fake.volumeKeyLaps, isFalse);
+    expect(services.recording.snapshot.recording, isTrue);
+  });
 }

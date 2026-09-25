@@ -26,10 +26,8 @@ class PigeonRecorderGateway implements RecorderGateway {
   @override
   Future<void> lap(LapSource source) => _api.lap(source);
 
-  // TODO(run2-native-fable): swap to `_api.startReps()` when PR #9's
-  // follow-up lands; identical effect in warm-up today.
   @override
-  Future<void> startReps() => _api.lap(LapSource.button);
+  Future<void> startReps() => _api.startReps();
 
   @override
   Future<String?> stop() => _api.stop();
@@ -52,6 +50,12 @@ class PigeonRecorderGateway implements RecorderGateway {
 
   @override
   Future<void> setCues(bool enabled) => _api.setCues(enabled);
+
+  // TODO(run3-native-opus): `_api.setVolumeKeyLaps(enabled)` once native's
+  // follow-up PR adds it to RecorderApi; until then native uses the mode
+  // default (on for Laps, off otherwise).
+  @override
+  Future<void> setVolumeKeyLaps(bool enabled) async {}
 }
 
 class PigeonBleGateway implements BleGateway {

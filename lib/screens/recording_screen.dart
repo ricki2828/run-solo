@@ -336,8 +336,9 @@ class _RecordingScreenState extends State<RecordingScreen>
   }
 }
 
-/// `repIndex` is 1-based in work / recovery (RecorderCore.kt); a recovery
-/// follows the last rep too, so recoveries count to `reps`.
+/// `repIndex` is 1-based in work / recovery (RecorderCore.kt); the last rep
+/// goes straight to cool-down, so recoveries count to `reps - 1` (brief
+/// §4.4 "Recovery 2 of 3").
 String phaseTitle(RecordingSnapshot s) {
   switch (s.mode) {
     case RecordMode.laps:
@@ -353,7 +354,7 @@ String phaseTitle(RecordingSnapshot s) {
   return switch (s.phase) {
     Phase.warmup => 'WARM-UP',
     Phase.work => 'REP ${s.repIndex} OF ${s.reps}',
-    Phase.recovery => 'RECOVERY ${s.repIndex} OF ${s.reps}',
+    Phase.recovery => 'RECOVERY ${s.repIndex} OF ${s.reps - 1}',
     Phase.cooldown => 'COOL-DOWN',
     Phase.none => '4x4',
   };

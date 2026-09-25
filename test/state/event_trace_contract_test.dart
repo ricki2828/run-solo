@@ -198,6 +198,8 @@ class TraceGateway implements RecorderGateway {
   Future<void> discardJournal(String r) => throw UnimplementedError();
   @override
   Future<void> setCues(bool e) => throw UnimplementedError();
+  @override
+  Future<void> setVolumeKeyLaps(bool e) => throw UnimplementedError();
 }
 
 /// Work-rep paces straight from the trace's `lap` lines: odd lap indices end
@@ -257,7 +259,7 @@ void main() {
       // Rep 1 ends at 300 s: auto lap, recovery, M3, rep pace from the delta of
       // the cumulative lap distance.
       await trace.playUntil(301000);
-      expect(phaseTitle(ctl.snapshot), 'RECOVERY 1 OF 4');
+      expect(phaseTitle(ctl.snapshot), 'RECOVERY 1 OF 3');
       expect(ctl.repCompletePulse.value, 1);
       expect(ctl.snapshot.repPaces, hasLength(1));
       expect(ctl.snapshot.repPaces.single, closeTo(238.8, 0.5));
@@ -281,7 +283,7 @@ void main() {
       await trace.playUntil(739000);
       expect(phaseTitle(ctl.snapshot), 'REP 2 OF 4');
       await trace.playUntil(741000);
-      expect(phaseTitle(ctl.snapshot), 'RECOVERY 2 OF 4');
+      expect(phaseTitle(ctl.snapshot), 'RECOVERY 2 OF 3');
       expect(ctl.snapshot.repPaces, hasLength(2));
 
       // Kill at rep 3 + 60 s, 30 s dark, resumeRecovered: elapsed jumps, the
@@ -307,7 +309,7 @@ void main() {
       // straight to cool-down (no recovery after the last rep); the run stops
       // at 27:00 with 8 laps.
       await trace.playUntil(1191000);
-      expect(phaseTitle(fresh.snapshot), 'RECOVERY 3 OF 4');
+      expect(phaseTitle(fresh.snapshot), 'RECOVERY 3 OF 3');
       await trace.playUntil(1371000);
       expect(phaseTitle(fresh.snapshot), 'REP 4 OF 4');
       await trace.playUntil(1611000);

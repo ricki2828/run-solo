@@ -88,7 +88,7 @@ void main() {
     fake.advance(const Duration(seconds: 240));
     await settle(tester);
 
-    expect(find.text('RECOVERY 1 OF 4'), findsOneWidget);
+    expect(find.text('RECOVERY 1 OF 3'), findsOneWidget);
     expect(find.text('remaining in recovery'), findsOneWidget);
     expect(timer(tester), '3:00');
     final t = Theme.of(tester.element(timerText())).extension<RunSoloTokens>()!;
@@ -145,7 +145,7 @@ void main() {
       ),
     );
     expect(fade.opacity.value, 0);
-    expect(find.text('RECOVERY 1 OF 4'), findsOneWidget);
+    expect(find.text('RECOVERY 1 OF 3'), findsOneWidget);
   });
 
   testWidgets('M2: LAP ring plays for a tap and for a notification lap', (
