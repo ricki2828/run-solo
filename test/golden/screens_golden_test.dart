@@ -60,6 +60,23 @@ void main() {
     await golden(tester, 'record_rep');
   });
 
+  testWidgets('record: 4x4 warm-up with the big START 4x4', (tester) async {
+    final fake = FakeRecorderGateway(now: now);
+    final services = fakeServices(recorder: fake);
+    await services.recording.start(
+      RecordMode.fourByFour,
+      standardPreset(),
+      Units.km,
+    );
+    await pumpApp(tester, services, pushRoute: Routes.recording);
+    await pumpTimes(tester, 4);
+    fake.advance(const Duration(seconds: 95));
+    await pumpTimes(tester, 5);
+    await settleAnimations(tester);
+    expect(find.text('START 4x4'), findsOneWidget);
+    await golden(tester, 'record_warmup');
+  });
+
   testWidgets('record: recovery ring', (tester) async {
     final fake = FakeRecorderGateway(now: now);
     final services = fakeServices(recorder: fake);
