@@ -4,18 +4,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app/format.dart';
+import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/recording_controller.dart';
 import '../theme/theme.dart';
+import '../theme/zones.dart';
+import '../widgets/delta_glyph.dart';
 import '../widgets/gps_bar.dart';
 import '../widgets/hold_button.dart';
 import '../widgets/hr_badge.dart';
 import '../widgets/lap_button.dart';
+import '../widgets/zone_gauge.dart';
 
-/// Record screen (design brief §4.4): 4x4 and Free run share it. Timer
-/// counts down in a timed phase, up otherwise. No animation runs except M2
-/// (LAP ring) and M3 (rep-complete invert). Buttons only, no gestures.
+/// Record screen (design brief §4.4, addendum A1/A2): three layouts on one
+/// screen. 4x4 = countdown + LAP; Laps run = count-up + LAP; Free run = no
+/// LAP, the 200 dp go to time / distance / pace / HR. The background follows
+/// the HR zone from the engine tracker (600 ms crossfade, 160 ms reduced;
+/// never a black frame after a wake because the controller seeds the last
+/// zone). Timer counts down in a timed phase, up otherwise. No animation
+/// runs except M2 (LAP ring), M3 (rep-complete invert) and the zone fade.
+/// Buttons only, no gestures.
 class RecordingScreen extends StatefulWidget {
   const RecordingScreen({super.key});
 
@@ -104,8 +113,22 @@ class _RecordingScreenState extends State<RecordingScreen>
       _stopError = null;
     });
     try {
-      await _ctl!.stop();
-      if (mounted) Navigator.of(context).pop();
+      final id = await _ctl!.stop();
+      if (!mounted) return;
+      if (id == null) {
+        Navigator.of(context).pop();
+      } else {
+        // Plan §4: keep the backed-up set under budget after each finalise.
+        // Best effort; the archive is still indexed by the store.
+        unawaited(
+          _services!.storage.enforceBackupBudget().catchError(
+            (_) => <String>[],
+          ),
+        );
+        // Verdict / summary replaces the record screen (design brief §4.6).
+        Navigator.of(context)
+            .pushReplacementNamed(Routes.verdictJustFinished, arguments: id);
+      }
     } catch (e) {
       // The journal still holds the run; recovery offers it on next open.
       // Never trap the runner behind the SAVING overlay.
@@ -139,17 +162,35 @@ class _RecordingScreenState extends State<RecordingScreen>
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final ctl = _ctl!;
-    final settings = AppServices.of(context).settings.settings;
+    final services = AppServices.of(context);
+    final settings = services.settings.settings;
+    final maxHr = services.maxHr.maxHr;
+    final reduced = _reduced;
     return PopScope(
       canPop: false,
       child: ListenableBuilder(
         listenable: ctl,
         builder: (context, _) {
           final s = ctl.snapshot;
+          final zoneBg = HrZones.background(s.zone);
+          final lapHeight = MediaQuery.sizeOf(context).height < 720
+              ? 160.0
+              : 200.0;
           return Scaffold(
+            backgroundColor: Colors.transparent,
             body: Stack(
               fit: StackFit.expand,
               children: [
+                // A1: zone background, 600 ms `e.standard` crossfade (160 ms
+                // reduced). Zone changes are already dwell-gated upstream.
+                AnimatedContainer(
+                  key: const ValueKey('zone-background'),
+                  duration: reduced
+                      ? MotionDurations.quick
+                      : const Duration(milliseconds: 600),
+                  curve: MotionCurves.standard,
+                  color: zoneBg,
+                ),
                 SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -159,28 +200,56 @@ class _RecordingScreenState extends State<RecordingScreen>
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         const SizedBox(height: Space.x12),
-                        _Header(s: s, maxHr: settings.maxHr),
+                        _Header(s: s, maxHr: maxHr),
                         if (_stopError != null)
                           _Banner(text: _stopError!, color: t.semDanger)
                         else if (s.fault != null)
                           _Banner(text: s.fault!, color: t.semDanger)
                         else if (s.gpsLost)
-                          _Banner(text: gpsBannerCopy(s), color: t.semWarn),
+                          _Banner(text: gpsBannerCopy(s), color: t.semWarn)
+                        else if (s.notice != null)
+                          _Banner(text: s.notice!, color: t.semWarn),
                         const Spacer(),
-                        _TimerBlock(s: s, ctl: ctl),
-                        const Spacer(),
-                        _Stats(s: s, units: settings.units),
+                        if (s.lapsEnabled) ...[
+                          _TimerBlock(s: s, ctl: ctl),
+                          const Spacer(),
+                          // The PAUSED card sits here; keep the space, hide
+                          // the numbers so nothing peeks out around it.
+                          Visibility(
+                            visible: !s.paused,
+                            maintainSize: true,
+                            maintainAnimation: true,
+                            maintainState: true,
+                            child: _Stats(s: s, units: settings.units),
+                          ),
+                        ] else
+                          _FreeRunBlock(
+                            s: s,
+                            ctl: ctl,
+                            units: settings.units,
+                            maxHr: maxHr,
+                          ),
                         const SizedBox(height: Space.x12),
-                        GpsBar(accuracyM: s.gpsAccuracyM, lost: s.gpsLost),
-                        const SizedBox(height: Space.x16),
-                        LapButton(
-                          onLap: ctl.lap,
-                          pulse: ctl.lapPulse,
-                          haptics: settings.haptics,
-                          height: MediaQuery.sizeOf(context).height < 720
-                              ? 160
-                              : 200,
+                        Visibility(
+                          visible: !s.paused,
+                          maintainSize: true,
+                          maintainAnimation: true,
+                          maintainState: true,
+                          child: GpsBar(
+                            accuracyM: s.gpsAccuracyM,
+                            lost: s.gpsLost,
+                          ),
                         ),
+                        const SizedBox(height: Space.x16),
+                        if (s.lapsEnabled)
+                          LapButton(
+                            onLap: ctl.lap,
+                            pulse: ctl.lapPulse,
+                            haptics: settings.haptics,
+                            height: lapHeight,
+                          )
+                        else
+                          const Spacer(),
                         const SizedBox(height: Space.x12),
                         Row(
                           children: [
@@ -237,7 +306,17 @@ class _RecordingScreenState extends State<RecordingScreen>
 /// `repIndex` is 1-based in work / recovery (RecorderCore.kt); a recovery
 /// follows the last rep too, so recoveries count to `reps`.
 String phaseTitle(RecordingSnapshot s) {
-  if (!s.isPreset) return 'FREE RUN · LAP ${s.lapIndex + 1}';
+  switch (s.mode) {
+    case RecordMode.laps:
+      return 'LAP ${s.lapIndex + 1}';
+    case RecordMode.free:
+      return 'FREE RUN';
+    case RecordMode.cooper:
+      return '12-MINUTE TEST';
+    case RecordMode.fourByFour:
+      break;
+  }
+  if (!s.isPreset) return 'LAP ${s.lapIndex + 1}';
   return switch (s.phase) {
     Phase.warmup => 'WARM-UP',
     Phase.work => 'REP ${s.repIndex} OF ${s.reps}',
@@ -255,7 +334,7 @@ String gpsBannerCopy(RecordingSnapshot s) {
 }
 
 String timerCaption(RecordingSnapshot s) {
-  if (!s.isPreset) return 'this lap';
+  if (!s.isPreset) return 'this lap · total ${Fmt.clock(s.elapsedMs)}';
   return switch (s.phase) {
     Phase.warmup => 'tap LAP when ready',
     Phase.work => 'remaining in rep',
@@ -273,25 +352,120 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+    // A1: labels render in Bone (or Bone 70 %) on a zone background.
+    final onZone = s.zone > 0;
+    final secondary = onZone ? HrZones.secondaryOnZone : t.inkSecondary;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: s.hrPaired
+                  ? ZoneHeader(
+                      zone: s.zone,
+                      paired: s.hrPaired,
+                      // A1: the label reads the strap state as soon as the
+                      // reading drops; the background keeps the last zone
+                      // until the tracker's 5 s loss rule.
+                      dropped: s.hr == null,
+                      onZoneBackground: onZone,
+                    )
+                  : Text(
+                      'TOTAL ${Fmt.clock(s.elapsedMs)}',
+                      style: RunSoloType.micro11.copyWith(color: secondary),
+                    ),
+            ),
+            HrBadge(hr: s.hr, paired: s.hrPaired, maxHr: maxHr, onZone: onZone),
+          ],
+        ),
+        const SizedBox(height: Space.x4),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
                 phaseTitle(s),
                 style: RunSoloType.title28.copyWith(color: t.inkPrimary),
               ),
+            ),
+            if (s.hrPaired && s.lapsEnabled)
               Text(
                 'TOTAL ${Fmt.clock(s.elapsedMs)}',
-                style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+                style: RunSoloType.micro11.copyWith(color: secondary),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Free run (A2): exactly four numbers, no lap counter, no ghost line.
+class _FreeRunBlock extends StatelessWidget {
+  const _FreeRunBlock({
+    required this.s,
+    required this.ctl,
+    required this.units,
+    required this.maxHr,
+  });
+  final RecordingSnapshot s;
+  final RecordingController ctl;
+  final Units units;
+  final int maxHr;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
+    final pct = s.hr == null || maxHr <= 0
+        ? null
+        : (s.hr! * 100 / maxHr).round();
+    return Column(
+      key: const ValueKey('free-run-block'),
+      children: [
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            Fmt.clock(ctl.displayElapsedMs),
+            key: const ValueKey('timer'),
+            softWrap: false,
+            style: RunSoloType.timer120.copyWith(color: t.inkPrimary),
+          ),
+        ),
+        const SizedBox(height: Space.x24),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            Fmt.distance(s.totalDistanceM, units),
+            softWrap: false,
+            style: RunSoloType.display96.copyWith(color: t.inkPrimary),
+          ),
+        ),
+        const SizedBox(height: Space.x8),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            Fmt.paceUnit(s.livePaceSecPerKm, units),
+            softWrap: false,
+            style: RunSoloType.display64.copyWith(color: t.inkPrimary),
+          ),
+        ),
+        const SizedBox(height: Space.x8),
+        if (s.hrPaired)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.favorite, size: 16, color: t.hrZone),
+              const SizedBox(width: Space.x8),
+              Text(
+                s.hr == null ? '-- · reconnecting' : '${s.hr} · $pct%',
+                style: RunSoloType.body17.copyWith(
+                  color: s.hr == null ? t.semWarn : secondary,
+                ),
               ),
             ],
           ),
-        ),
-        HrBadge(hr: s.hr, paired: s.hrPaired, maxHr: maxHr),
       ],
     );
   }
@@ -305,6 +479,7 @@ class _TimerBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
     final recovery = s.phase == Phase.recovery;
     final ms = s.timed ? ctl.displayRemainingMs : ctl.displayLapElapsedMs;
     final total = recovery && s.preset != null
@@ -319,7 +494,7 @@ class _TimerBlock extends StatelessWidget {
         key: const ValueKey('timer'),
         softWrap: false,
         style: RunSoloType.timer120.copyWith(
-          color: recovery ? t.inkSecondary : t.inkPrimary,
+          color: recovery ? secondary : t.inkPrimary,
         ),
         textAlign: TextAlign.center,
       ),
@@ -330,7 +505,7 @@ class _TimerBlock extends StatelessWidget {
           CustomPaint(
             painter: _RecoveryRingPainter(
               progress: total == 0 ? 0 : 1 - ms / total,
-              color: t.inkSecondary,
+              color: secondary,
               track: t.lineHair,
             ),
             child: Padding(
@@ -345,8 +520,8 @@ class _TimerBlock extends StatelessWidget {
           digits,
         const SizedBox(height: Space.x8),
         Text(
-          timerCaption(s),
-          style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+          s.paused ? '' : timerCaption(s),
+          style: RunSoloType.label13.copyWith(color: secondary),
         ),
       ],
     );
@@ -364,12 +539,19 @@ class _Stats extends StatelessWidget {
     final live = s.livePaceSecPerKm;
     final last = s.lastRepPaceSecPerKm;
     final showGhost = last != null;
-    Color deltaColor = t.inkSecondary;
+    final onZone = s.zone > 0;
+    Color deltaColor = onZone ? HrZones.secondaryOnZone : t.inkSecondary;
     String? delta;
+    DeltaDirection? direction;
     if (showGhost && live != null) {
       delta = Fmt.deltaVsLast(live, last, units);
       final d = live - last;
-      deltaColor = d < -1
+      direction = DeltaGlyph.forDelta(d);
+      // A1: Vermillion and Arc deltas are Bone with the arrow on a zone
+      // background (Vermillion drops to 4.1:1 on Z3).
+      deltaColor = onZone
+          ? t.inkPrimary
+          : d < -1
           ? t.semFaster
           : d > 1
           ? t.semSlower
@@ -397,7 +579,9 @@ class _Stats extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
                 '/${units == Units.mi ? 'mi' : 'km'}',
-                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                style: RunSoloType.label13.copyWith(
+                  color: onZone ? HrZones.secondaryOnZone : t.inkSecondary,
+                ),
               ),
             ),
             const SizedBox(width: Space.x16),
@@ -415,12 +599,24 @@ class _Stats extends StatelessWidget {
           ],
         ),
         const SizedBox(height: Space.x4),
-        Text(
-          showGhost
-              ? '${s.isPreset ? 'last rep' : 'last lap'} ${Fmt.pace(last, units)}'
-                    '${delta == null ? '' : '  $delta'}'
-              : (s.isPreset ? 'first rep sets the pace' : 'first lap'),
-          style: RunSoloType.body15.copyWith(color: deltaColor),
+        Row(
+          children: [
+            Text(
+              showGhost
+                  ? '${s.isPreset ? 'last rep' : 'last lap'} ${Fmt.pace(last, units)}'
+                  : (s.isPreset ? 'first rep sets the pace' : 'first lap'),
+              style: RunSoloType.body15.copyWith(color: deltaColor),
+            ),
+            if (direction != null && delta != null) ...[
+              const SizedBox(width: Space.x8),
+              DeltaGlyph(direction: direction, color: deltaColor, size: 11),
+              const SizedBox(width: Space.x4),
+              Text(
+                delta,
+                style: RunSoloType.body15.copyWith(color: deltaColor),
+              ),
+            ],
+          ],
         ),
       ],
     );

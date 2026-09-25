@@ -10,10 +10,10 @@ import '../widgets/chrome.dart';
 import '../widgets/mode_chip.dart';
 import '../widgets/value_stepper.dart';
 
-/// Start (plan §6, design brief §4.5): mode toggle, 4x4 preset editor
-/// (reps 3–6, work locked 4:00, recovery 2:00–5:00 in 15 s), cue toggles,
-/// strap status, START. Typed start errors map to copy here; permission
-/// errors route to the checklist.
+/// Start (plan §6, §18.2, design brief §4.5): three run types, 4x4 preset
+/// editor (reps 3–6, work locked 4:00, recovery 2:00–5:00 in 15 s), cue
+/// toggles, strap status, START. Typed start errors map to copy here;
+/// permission errors route to the checklist.
 class StartScreen extends StatefulWidget {
   const StartScreen({super.key});
 
@@ -35,11 +35,10 @@ class _StartScreenState extends State<StartScreen> {
     StartResult result;
     try {
       await services.recorder.setCues(s.cues);
-      result = await services.recording.start(
-        s.lastMode,
-        s.lastMode == RecordMode.fourByFour ? s.preset : null,
-        s.units,
-      );
+      result = await services.recording.start(s.lastMode, switch (s.lastMode) {
+        RecordMode.fourByFour => s.preset,
+        RecordMode.laps || RecordMode.free || RecordMode.cooper => null,
+      }, s.units);
     } catch (e) {
       // A PlatformException must never strand the button in "starting".
       if (mounted) {
@@ -97,7 +96,8 @@ class _StartScreenState extends State<StartScreen> {
       listenable: services.settings,
       builder: (context, _) {
         final s = services.settings.settings;
-        final preset = s.lastMode == RecordMode.fourByFour;
+        final mode = s.lastMode;
+        final preset = mode == RecordMode.fourByFour;
         Future<void> set(AppSettings Function(AppSettings) f) =>
             services.settings.update(f);
         return Scaffold(
@@ -109,29 +109,11 @@ class _StartScreenState extends State<StartScreen> {
               ),
               children: [
                 const SizedBox(height: Space.x8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ModeChip(
-                        title: '4x4',
-                        subtitle: 'Timed reps, cues',
-                        selected: preset,
-                        onTap: () => set(
-                          (x) => x.copyWith(lastMode: RecordMode.fourByFour),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: Space.x12),
-                    Expanded(
-                      child: ModeChip(
-                        title: 'FREE RUN',
-                        subtitle: 'Lap by hand',
-                        selected: !preset,
-                        onTap: () =>
-                            set((x) => x.copyWith(lastMode: RecordMode.free)),
-                      ),
-                    ),
-                  ],
+                ModeChipRow(
+                  selected: mode,
+                  reps: s.reps,
+                  recoverySeconds: s.recoverySeconds,
+                  onSelect: (m) => set((x) => x.copyWith(lastMode: m)),
                 ),
                 const SizedBox(height: Space.x24),
                 if (preset) ...[
@@ -188,17 +170,23 @@ class _StartScreenState extends State<StartScreen> {
                     value: s.haptics,
                     onChanged: (v) => set((x) => x.copyWith(haptics: v)),
                   ),
-                ] else ...[
+                ] else if (mode == RecordMode.laps) ...[
                   Text(
-                    'Free run: the timer counts up, LAP marks a split. '
-                    'Volume keys lap too when enabled.',
+                    'Tap LAP at each interval. No timer phases, no cues; '
+                    'you get a lap table, not a verdict.',
                     style: text.bodyMedium?.copyWith(color: t.inkSecondary),
                   ),
                   const SizedBox(height: Space.x16),
                   _Toggle(
                     label: 'Volume-key lap',
-                    value: s.volumeKeyLap,
+                    value: s.volumeKeyLapFor(RecordMode.laps),
                     onChanged: (v) => set((x) => x.copyWith(volumeKeyLap: v)),
+                  ),
+                ] else ...[
+                  Text(
+                    'Free run: time, distance, pace and heart rate. No laps. '
+                    'Pause and hold-to-stop as usual.',
+                    style: text.bodyMedium?.copyWith(color: t.inkSecondary),
                   ),
                 ],
                 const SizedBox(height: Space.x16),
@@ -230,7 +218,12 @@ class _StartScreenState extends State<StartScreen> {
                   ),
                 FilledButton(
                   onPressed: _starting ? null : _start,
-                  child: Text(preset ? 'START 4x4' : 'START FREE RUN'),
+                  child: Text(switch (mode) {
+                    RecordMode.fourByFour => 'START 4x4',
+                    RecordMode.laps => 'START LAPS RUN',
+                    RecordMode.free => 'START FREE RUN',
+                    RecordMode.cooper => 'START TEST',
+                  }),
                 ),
                 const SizedBox(height: Space.x24),
               ],

@@ -7,6 +7,8 @@ import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/theme/theme.dart';
+import 'package:run_solo/theme/zones.dart';
+import 'package:run_solo/widgets/delta_glyph.dart';
 import 'package:run_solo/widgets/hold_button.dart';
 import 'package:run_solo/widgets/lap_button.dart';
 
@@ -85,7 +87,8 @@ void main() {
     final t = Theme.of(tester.element(timerText())).extension<RunSoloTokens>()!;
     expect(
       tester.widget<Text>(timerText()).style!.color,
-      t.inkSecondary,
+      // Fake carries HR, so a zone background is active: Bone 70 % (A1).
+      anyOf(t.inkSecondary, HrZones.secondaryOnZone),
       reason: 'recovery digits are grey',
     );
 
@@ -108,7 +111,11 @@ void main() {
     fake.liveSecPerKm = 275;
     fake.advance(const Duration(seconds: 1));
     await settle(tester);
-    expect(find.textContaining('▲'), findsOneWidget, reason: 'faster glyph');
+    expect(
+      tester.widget<DeltaGlyph>(find.byType(DeltaGlyph)).direction,
+      DeltaDirection.up,
+      reason: 'faster glyph',
+    );
   });
 
   testWidgets('reduced motion: no invert flash and no LAP ring', (
@@ -138,7 +145,7 @@ void main() {
   testWidgets('M2: LAP ring plays for a tap and for a notification lap', (
     tester,
   ) async {
-    final (fake, _) = await openRecording(tester, mode: RecordMode.free);
+    final (fake, _) = await openRecording(tester, mode: RecordMode.laps);
     await tester.tap(find.byType(LapButton));
     await tester.pump(const Duration(milliseconds: 100));
     expect(ringPainter(), findsOneWidget);
@@ -149,11 +156,11 @@ void main() {
     await settle(tester);
     await tester.pump(const Duration(milliseconds: 100));
     expect(ringPainter(), findsOneWidget);
-    expect(find.text('FREE RUN · LAP 3'), findsOneWidget);
+    expect(find.text('LAP 3'), findsOneWidget);
   });
 
   testWidgets('GPS lost: banner, pace "--", bar says dropped', (tester) async {
-    final (fake, _) = await openRecording(tester, mode: RecordMode.free);
+    final (fake, _) = await openRecording(tester, mode: RecordMode.laps);
     fake.advance(const Duration(seconds: 5));
     await settle(tester);
     expect(find.text('GPS 8 m'), findsOneWidget);
@@ -198,11 +205,11 @@ void main() {
   testWidgets('strap dropped shows "--" and reconnecting, never 0', (
     tester,
   ) async {
-    final (fake, _) = await openRecording(tester, mode: RecordMode.free);
+    final (fake, _) = await openRecording(tester, mode: RecordMode.laps);
     fake.advance(const Duration(seconds: 2));
     await settle(tester);
     expect(find.text('reconnecting'), findsNothing);
-    expect(find.textContaining('%'), findsOneWidget);
+    expect(find.textContaining('%'), findsWidgets);
 
     fake.strapDropped = true;
     fake.advance(const Duration(seconds: 1));
@@ -212,7 +219,7 @@ void main() {
   });
 
   testWidgets('pause dims and offers RESUME; resume continues', (tester) async {
-    final (fake, _) = await openRecording(tester, mode: RecordMode.free);
+    final (fake, _) = await openRecording(tester, mode: RecordMode.laps);
     await tester.tap(find.text('PAUSE'));
     await settle(tester);
     expect(find.text('PAUSED'), findsOneWidget);
@@ -224,10 +231,50 @@ void main() {
     expect(fake.state, RecorderState.recording);
   });
 
+  testWidgets('Android 14 volume-key note: one amber line, run keeps going', (
+    tester,
+  ) async {
+    final (fake, services) = await openRecording(tester, mode: RecordMode.laps);
+    fake.emitFault(FaultKind.volumeKeyUnavailable, 'volume keys taken');
+    await settle(tester);
+    expect(
+      find.text(
+        "On Android 14, volume-key laps don't work while music plays. "
+        'Use the lock-screen LAP.',
+      ),
+      findsOneWidget,
+    );
+    expect(services.recording.snapshot.recording, isTrue);
+    expect(find.byType(LapButton), findsOneWidget);
+    // A GPS drop outranks the note; the note returns once GPS is back.
+    fake.gpsLost = true;
+    fake.advance(const Duration(seconds: 1));
+    await settle(tester);
+    expect(find.text('GPS dropped'), findsWidgets);
+    expect(find.textContaining('Android 14'), findsNothing);
+  });
+
+  testWidgets('finalise enforces the backup budget (plan §4)', (tester) async {
+    final storage = FakeStorageGateway();
+    final fake = FakeRecorderGateway(now: now);
+    final services = fakeServices(recorder: fake, storage: storage);
+    await services.recording.start(RecordMode.laps, null, Units.km);
+    await pumpApp(tester, services, pushRoute: Routes.recording);
+    await pumpTimes(tester, 4);
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(HoldButton)),
+    );
+    await settleAnimations(tester, const Duration(seconds: 2));
+    await gesture.up();
+    await pumpTimes(tester, 5);
+    expect(fake.finalised, hasLength(1));
+    expect(storage.enforceCalls, 1);
+  });
+
   testWidgets('hold-to-stop: a short press does nothing, 2 s finalises', (
     tester,
   ) async {
-    final (fake, _) = await openRecording(tester, mode: RecordMode.free);
+    final (fake, _) = await openRecording(tester, mode: RecordMode.laps);
     final stop = find.byType(HoldButton);
 
     final short = await tester.startGesture(tester.getCenter(stop));
@@ -252,7 +299,7 @@ void main() {
   testWidgets('keeps the screen on while recording, releases on stop', (
     tester,
   ) async {
-    final (fake, services) = await openRecording(tester, mode: RecordMode.free);
+    final (fake, services) = await openRecording(tester, mode: RecordMode.laps);
     final perms = services.permissions as FakePermissionsGateway;
     expect(perms.keepScreenOn, isTrue);
     final stop = find.byType(HoldButton);
@@ -267,7 +314,7 @@ void main() {
   });
 
   testWidgets('back button cannot leave a live run', (tester) async {
-    await openRecording(tester, mode: RecordMode.free);
+    await openRecording(tester, mode: RecordMode.laps);
     final navigator = tester.state<NavigatorState>(find.byType(Navigator));
     // maybePop reports true when PopScope vetoes; the screen must stay.
     await navigator.maybePop();

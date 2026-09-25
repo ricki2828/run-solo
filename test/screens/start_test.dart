@@ -88,7 +88,7 @@ void main() {
     await tester.tap(find.text('START FREE RUN'));
     await pumpTimes(tester, 6);
     expect((await fake.status()).preset, isNull);
-    expect(find.text('FREE RUN · LAP 1'), findsOneWidget);
+    expect(find.text('FREE RUN'), findsOneWidget);
   });
 
   testWidgets('approximateOnly start error routes to the checklist', (

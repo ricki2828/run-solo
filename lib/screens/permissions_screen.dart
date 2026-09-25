@@ -4,6 +4,7 @@ import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../theme/theme.dart';
 import '../widgets/setup_row.dart';
+import 'settings_screen.dart';
 
 /// Setup checklist (design brief §4.2, plan §10): each row explains why,
 /// tap = the system prompt only. Denials stay red and honest; the only
@@ -19,8 +20,27 @@ class PermissionsScreen extends StatefulWidget {
   State<PermissionsScreen> createState() => _PermissionsScreenState();
 }
 
-class _PermissionsScreenState extends State<PermissionsScreen> {
+class _PermissionsScreenState extends State<PermissionsScreen>
+    with WidgetsBindingObserver {
   PermissionSnapshot? _snap;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Back from a system settings page (battery, app info): re-read.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
 
   @override
   void didChangeDependencies() {
@@ -85,9 +105,17 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
           children: [
             const SizedBox(height: Space.x8),
             Text(
-              'Your runs never leave your phone.',
-              style: text.bodyLarge?.copyWith(color: t.inkSecondary),
+              kPrivacyParagraph,
+              style: text.bodyMedium?.copyWith(color: t.inkSecondary),
             ),
+            if (widget.onboarding)
+              Padding(
+                padding: const EdgeInsets.only(top: Space.x8),
+                child: Text(
+                  kOnboardingInternetLine,
+                  style: text.bodyMedium?.copyWith(color: t.inkMuted),
+                ),
+              ),
             const SizedBox(height: Space.x24),
             SetupRow(
               icon: Icons.location_on_outlined,
@@ -118,10 +146,12 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
               title: 'Battery optimisation off',
               why:
                   'Some phones kill a recording after a few minutes. '
-                  'This opens the system page; set Run Solo to Unrestricted.',
+                  'Tap to let Run Solo keep recording with the screen off.',
               state: s.batteryUnrestricted ? SetupState.ok : SetupState.needed,
               onTap: () async {
-                await perms.openBatterySettings();
+                // Phase 2 backlog: in-app exemption prompt (system dialog),
+                // the settings page is the gateway's own fallback.
+                await perms.requestBatteryExemption();
                 await _refresh();
               },
             ),

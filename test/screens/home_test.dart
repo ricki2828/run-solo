@@ -68,7 +68,7 @@ void main() {
     );
     await pumpApp(tester, services, home: HomeScreen(now: now));
     expect(find.text('Strap: Whoop'), findsOneWidget);
-    expect(find.text('5 × 4:00 · 2:30 rec'), findsOneWidget);
+    expect(find.text('5 × 4:00\n2:30 rec'), findsOneWidget);
 
     await tester.tap(find.text('4x4'));
     await pumpTimes(tester);

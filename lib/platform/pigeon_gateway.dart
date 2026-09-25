@@ -66,6 +66,17 @@ class PigeonBleGateway implements BleGateway {
   Future<BleStatus> status() => _api.bleStatus();
 }
 
+class PigeonStorageGateway implements StorageGateway {
+  PigeonStorageGateway({StorageApi? api}) : _api = api ?? StorageApi();
+  final StorageApi _api;
+
+  @override
+  Future<BackupStatus> backupStatus() => _api.backupStatus();
+
+  @override
+  Future<List<String>> enforceBackupBudget() => _api.enforceBackupBudget();
+}
+
 class PigeonPermissionsGateway implements PermissionsGateway {
   PigeonPermissionsGateway({PermissionsApi? api})
     : _api = api ?? PermissionsApi();
@@ -80,6 +91,15 @@ class PigeonPermissionsGateway implements PermissionsGateway {
 
   @override
   Future<void> openBatterySettings() => _api.openBatterySettings();
+
+  /// The direct `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` dialog is Play-
+  /// restricted and was dropped from the contract (24-Sep review); plan
+  /// §10's path stands: open the battery settings page and re-read.
+  @override
+  Future<bool> requestBatteryExemption() async {
+    await _api.openBatterySettings();
+    return (await _api.permissionStatus()).batteryUnrestricted;
+  }
 
   @override
   Future<void> openAppSettings() => _api.openAppSettings();

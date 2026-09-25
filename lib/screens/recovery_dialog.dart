@@ -4,6 +4,7 @@ import '../app/format.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
+import '../state/history_store.dart';
 import '../theme/theme.dart';
 
 /// Outcome of the recovery dialog.
@@ -95,7 +96,8 @@ class RecoveryDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final lastLine = now.subtract(Duration(milliseconds: orphan.lastLineAgeMs));
-    final mode = orphan.mode == RecordMode.fourByFour ? '4x4' : 'Free run';
+    // A journal from a newer app reports a placeholder mode: name no type.
+    final mode = orphan.newer ? 'A run' : modeTitle(orphan.mode);
     final counter = remaining > 0 ? ' (1 of ${remaining + 1})' : '';
     final String body;
     if (!orphan.readable) {

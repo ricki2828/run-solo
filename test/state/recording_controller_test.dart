@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/state/recording_controller.dart';
+import 'package:run_solo/state/zone_memento.dart';
 
 import '../helpers.dart';
 
@@ -144,14 +145,126 @@ void main() {
     expect(ctl.snapshot.strapDropped, isFalse);
   });
 
-  test('free run: laps count up, volume-key lap honoured', () async {
-    await ctl.start(RecordMode.free, null, Units.km);
+  test('laps run: laps count up, volume-key lap honoured', () async {
+    await ctl.start(RecordMode.laps, null, Units.km);
     fake.advance(const Duration(seconds: 30));
     await fake.lap(LapSource.volumeKey);
     await settle();
     expect(ctl.snapshot.lapIndex, 1);
     expect(ctl.snapshot.phase, Phase.none);
     expect(ctl.lapPulse.value, 1, reason: 'ring confirms every lap source');
+    expect(ctl.snapshot.lapsEnabled, isTrue);
+  });
+
+  test('free run: no lap input at all (plan §18.2)', () async {
+    await ctl.start(RecordMode.free, null, Units.km);
+    fake.advance(const Duration(seconds: 30));
+    await ctl.lap();
+    await fake.lap(LapSource.volumeKey);
+    await fake.lap(LapSource.notification);
+    await settle();
+    expect(ctl.snapshot.lapsEnabled, isFalse);
+    expect(ctl.snapshot.lapIndex, 0);
+    expect(ctl.lapPulse.value, 0);
+    expect(
+      fake.lapsIgnored,
+      2,
+      reason: 'controller never forwards, fake ignores',
+    );
+  });
+
+  test('zone follows the tracker: first HR immediate, dwell on change, seed on attach', () async {
+    await ctl.start(RecordMode.laps, null, Units.km);
+    fake.scriptedHr = 140; // Z3 at max 190
+    fake.advance(const Duration(milliseconds: 500));
+    await settle();
+    expect(ctl.snapshot.zone, 3);
+    fake.scriptedHr = 178;
+    fake.advance(const Duration(milliseconds: 500));
+    await settle();
+    expect(ctl.snapshot.zone, 3, reason: 'dwell not met');
+    for (var i = 0; i < 12; i++) {
+      fake.advance(const Duration(milliseconds: 500));
+    }
+    await settle();
+    expect(ctl.snapshot.zone, 5);
+    // A fresh controller over the same live run (process restart) with no
+    // memento: the first tick sets the zone immediately, no 5 s black.
+    final again = RecordingController(fake, now: now);
+    await again.attach();
+    expect(again.snapshot.zone, 0, reason: 'status() carries no HR');
+    fake.advance(const Duration(milliseconds: 500));
+    await settle();
+    expect(again.snapshot.zone, 5);
+    again.dispose();
+  });
+
+  test(
+    '(f) recreated isolate: the zone memento seeds the first frame',
+    () async {
+      final memento = MemoryZoneMementoStore();
+      final first = RecordingController(fake, now: now, zoneMemento: memento);
+      await first.start(RecordMode.laps, null, Units.km);
+      fake.scriptedHr = 160; // zone 4
+      fake.advance(const Duration(milliseconds: 500));
+      await settle();
+      expect(first.snapshot.zone, 4);
+      expect(memento.memento?.zone, 4);
+      expect(memento.memento?.runId, first.snapshot.runId);
+      expect(memento.saves, 1, reason: 'written on change only');
+      fake.advance(const Duration(seconds: 3));
+      await settle();
+      expect(memento.saves, 1);
+      first.dispose();
+
+      // New isolate, same service still recording, no ticks yet.
+      final second = RecordingController(fake, now: now, zoneMemento: memento);
+      await second.attach();
+      expect(second.snapshot.zone, 4, reason: 'first frame is the last zone');
+      // Still zone 4 after a few HR-less seconds, no black flash.
+      fake.scriptedHr = null;
+      fake.strapDropped = true;
+      fake.advance(const Duration(seconds: 2));
+      await settle();
+      expect(second.snapshot.zone, 4);
+      fake.strapDropped = false;
+      fake.scriptedHr = 160;
+      fake.advance(const Duration(milliseconds: 500));
+      await settle();
+      expect(second.snapshot.zone, 4);
+      // Stop clears the memento so the next run starts clean.
+      await second.stop();
+      await settle();
+      expect(memento.memento, isNull);
+      second.dispose();
+    },
+  );
+
+  test('volumeKeyUnavailable becomes a one-time notice, not a fault', () async {
+    await ctl.start(RecordMode.laps, null, Units.km);
+    fake.emitFault(
+      FaultKind.volumeKeyUnavailable,
+      'Volume keys belong to music',
+    );
+    await settle();
+    expect(ctl.snapshot.fault, isNull);
+    expect(ctl.snapshot.notice, contains('lock-screen LAP'));
+    expect(ctl.snapshot.recording, isTrue);
+  });
+
+  test('memento for another run is ignored', () async {
+    final memento = MemoryZoneMementoStore()
+      ..memento = const ZoneMemento(
+        runId: 'other',
+        zone: 5,
+        hr: 180,
+        elapsedMs: 1000,
+      );
+    await fake.start(RecordMode.laps, null, Units.km);
+    final c = RecordingController(fake, now: now, zoneMemento: memento);
+    await c.attach();
+    expect(c.snapshot.zone, 0);
+    c.dispose();
   });
 
   test('preset ignores volume-key laps (plan §6, W8)', () async {
@@ -247,7 +360,9 @@ void main() {
     expect(paces, hasLength(2));
     expect(paces.first, closeTo(266.7, 0.1));
     expect(paces.last, closeTo(266.7, 0.1), reason: 'pause not counted');
-    expect(RecordingController.repPacesFromLaps(laps, null), isEmpty);
+    // Laps run (no preset): every lap counts.
+    expect(RecordingController.repPacesFromLaps(laps, null), hasLength(6));
+    expect(RecordingController.repPacesFromLaps(const [], null), isEmpty);
   });
 
   test('typed start errors pass through untouched', () async {

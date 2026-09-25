@@ -114,6 +114,17 @@ abstract class BleGateway {
   Future<BleStatus> status();
 }
 
+/// Auto Backup budget (plan §4, native #9 contract): after each finalise
+/// and import the app asks Kotlin to move the oldest runs (file + sidecar)
+/// to `files/runs-archive/` until the backed-up set is under budget; the
+/// store scans both directories, so nothing disappears from History.
+abstract class StorageGateway {
+  Future<BackupStatus> backupStatus();
+
+  /// Run ids moved to the archive this call; empty when under budget.
+  Future<List<String>> enforceBackupBudget();
+}
+
 abstract class PermissionsGateway {
   Future<PermissionSnapshot> status();
 
@@ -121,8 +132,14 @@ abstract class PermissionsGateway {
   /// after for the full snapshot.
   Future<bool> request(PermissionKind kind);
 
-  /// The only Settings deep-link plan §10 allows for location trouble.
+  /// Battery-optimisation settings page (fallback when the exemption dialog
+  /// is unavailable).
   Future<void> openBatterySettings();
+
+  /// Battery-optimisation shortcut (Settings row + checklist): opens the
+  /// system battery page and re-reads status. The direct exemption dialog
+  /// was dropped (Play-restricted, 24-Sep review). True when exempt after.
+  Future<bool> requestBatteryExemption();
 
   /// App info page, for a "don't ask again" denial of notifications / BLE.
   Future<void> openAppSettings();

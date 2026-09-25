@@ -11,17 +11,39 @@ OrphanJournal orphan({
   int ageMinutes = 13,
   bool readable = true,
   bool endedPaused = false,
+  bool newer = false,
 }) => OrphanJournal(
   runId: 'orphan-1',
   lastLineAgeMs: ageMinutes * 60 * 1000,
   mode: RecordMode.fourByFour,
   readable: readable,
-  newer: false,
+  newer: newer,
   endedPaused: endedPaused,
   elapsedMs: 10 * 60 * 1000,
 );
 
 void main() {
+  testWidgets('a journal from a newer app names no run type', (tester) async {
+    final fake = FakeRecorderGateway(
+      now: now,
+      orphans: [orphan(readable: true, newer: true)],
+    );
+    await pumpApp(
+      tester,
+      fakeServices(recorder: fake),
+      checkRecoveryOnOpen: true,
+    );
+    await pumpTimes(tester, 6);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(RecoveryDialog), findsOneWidget);
+    final inDialog = find.descendant(
+      of: find.byType(RecoveryDialog),
+      matching: find.textContaining('4x4'),
+    );
+    expect(inDialog, findsNothing);
+    expect(find.textContaining('A run, 10:00 recorded'), findsOneWidget);
+  });
+
   testWidgets('orphan on open: dialog names the mode and last-written time', (
     tester,
   ) async {
@@ -134,7 +156,7 @@ void main() {
     tester,
   ) async {
     final fake = FakeRecorderGateway(now: now);
-    await fake.start(RecordMode.free, null, Units.km);
+    await fake.start(RecordMode.laps, null, Units.km);
     fake.advance(const Duration(minutes: 7));
     final services = fakeServices(recorder: fake);
     await pumpApp(tester, services, checkRecoveryOnOpen: true);

@@ -13,8 +13,10 @@ library;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 
 import '../platform/gateway.dart';
+import 'zone_memento.dart';
 
 @immutable
 class RecordingSnapshot {
@@ -38,7 +40,9 @@ class RecordingSnapshot {
     this.gpsLost = false,
     this.hadFix = false,
     this.repPaces = const [],
+    this.zone = 0,
     this.fault,
+    this.notice,
     this.discarded = false,
   });
 
@@ -73,17 +77,32 @@ class RecordingSnapshot {
   /// At least one fix this run; before that the banner says "Waiting for GPS".
   final bool hadFix;
 
-  /// Pace of each completed work rep (s/km), for "last rep 4:46 ▲ 5 s".
+  /// Pace of each completed work rep (4x4) or lap (Laps run), s/km, for
+  /// "last rep 4:46 ▲ 5 s". Empty in a Free run.
   final List<double> repPaces;
+
+  /// HR zone 0–5 from the engine tracker (plan §18.1): hysteresis and dwell
+  /// applied, so the background never flashes. 0 = no HR.
+  final int zone;
 
   /// Journal / storage faults the runner must see; null when fine.
   final String? fault;
+
+  /// A one-time, non-fatal note for this run (amber banner), e.g. Android 14
+  /// giving the volume keys to another app's music.
+  final String? notice;
 
   /// The service discarded the run (`FaultKind.startFailed`): leave the screen.
   final bool discarded;
 
   bool get isPreset => preset != null;
   int get reps => preset?.reps ?? 0;
+
+  /// Free runs have no lap input at all (plan §18.2).
+  bool get lapsEnabled => switch (mode) {
+    RecordMode.fourByFour || RecordMode.laps => true,
+    RecordMode.free || RecordMode.cooper => false,
+  };
   bool get recording => state == RecorderState.recording;
   bool get paused => state == RecorderState.paused;
   bool get active => recording || paused;
@@ -117,8 +136,10 @@ class RecordingSnapshot {
     bool? gpsLost,
     bool? hadFix,
     List<double>? repPaces,
+    int? zone,
     String? fault,
     bool clearFault = false,
+    String? notice,
     bool? discarded,
   }) => RecordingSnapshot(
     state: state ?? this.state,
@@ -142,17 +163,36 @@ class RecordingSnapshot {
     gpsLost: gpsLost ?? this.gpsLost,
     hadFix: hadFix ?? this.hadFix,
     repPaces: repPaces ?? this.repPaces,
+    zone: zone ?? this.zone,
     fault: clearFault ? null : (fault ?? this.fault),
+    notice: notice ?? this.notice,
     discarded: discarded ?? this.discarded,
   );
 }
 
 class RecordingController extends ChangeNotifier {
-  RecordingController(this._gateway, {DateTime Function()? now})
-    : _now = now ?? DateTime.now;
+  RecordingController(
+    this._gateway, {
+    DateTime Function()? now,
+    int Function()? maxHr,
+    ZoneMementoStore? zoneMemento,
+  }) : _now = now ?? DateTime.now,
+       _maxHr = maxHr ?? (() => 190),
+       _zoneMemento = zoneMemento ?? MemoryZoneMementoStore();
 
   final RecorderGateway _gateway;
   final DateTime Function() _now;
+
+  /// Resolved max HR (plan D3 `maxHrFor`), read when a run starts or the
+  /// screen re-attaches; a mid-run settings change applies on the next run.
+  final int Function() _maxHr;
+
+  /// The engine's zone tracker (plan §18.1): hysteresis, dwell, loss and
+  /// first-sample rules live there, fixture-tested; this only feeds ticks.
+  engine.HrZoneTracker? _tracker;
+
+  /// Last zone of the live run on disk, for a recreated isolate (W4).
+  final ZoneMementoStore _zoneMemento;
 
   RecordingSnapshot _snap = const RecordingSnapshot();
   RecordingSnapshot get snapshot => _snap;
@@ -178,6 +218,28 @@ class RecordingController extends ChangeNotifier {
   /// Activity is recreated.
   Future<void> attach() async {
     _sub ??= _gateway.events.listen(_onEvent);
+    if (_tracker == null) {
+      // Recreated isolate (W4): `status()` carries no HR, so the last zone
+      // comes from the memento the previous isolate wrote for this run.
+      // Seed the tracker and paint that zone before the first tick.
+      final status = await _gateway.status();
+      final m = await _zoneMemento.load();
+      final live =
+          status.state == RecorderState.recording ||
+          status.state == RecorderState.paused;
+      if (live && m != null && m.runId == status.runId && m.zone > 0) {
+        _tracker = engine.HrZoneTracker.seeded(
+          maxHr: _maxHr().toDouble(),
+          zone: m.zone,
+          hr: m.hr,
+          atMs: m.elapsedMs,
+        );
+        _snap = _snap.copyWith(zone: m.zone, runId: status.runId);
+        notifyListeners();
+      } else {
+        _tracker = engine.HrZoneTracker(maxHr: _maxHr().toDouble());
+      }
+    }
     await refreshStatus();
   }
 
@@ -233,20 +295,28 @@ class RecordingController extends ChangeNotifier {
 
   void _reset(RecordMode mode, Preset? preset) {
     _lastLapDistanceM = 0;
+    _tracker = engine.HrZoneTracker(maxHr: _maxHr().toDouble());
     _snap = RecordingSnapshot(
       mode: mode,
-      preset: mode == RecordMode.fourByFour ? preset : null,
+      preset: switch (mode) {
+        RecordMode.fourByFour => preset,
+        RecordMode.laps || RecordMode.free || RecordMode.cooper => null,
+      },
       hrPaired: _snap.hrPaired,
     );
   }
 
-  Future<void> lap() => _gateway.lap(LapSource.button);
+  /// No-op in a Free run (plan §18.2: lap input disabled; the service would
+  /// ignore it too, this just avoids the round trip).
+  Future<void> lap() =>
+      _snap.lapsEnabled ? _gateway.lap(LapSource.button) : Future.value();
   Future<void> pause() => _gateway.pause();
   Future<void> resume() => _gateway.resume();
 
   /// Throws what the platform throws; the screen decides what to show.
   Future<String?> stop() async {
     final id = await _gateway.stop();
+    unawaited(_zoneMemento.save(null));
     _snap = _snap.copyWith(state: RecorderState.idle);
     notifyListeners();
     return id;
@@ -289,6 +359,22 @@ class RecordingController extends ChangeNotifier {
   void _onTick(TickEvent t) {
     _lastTickAt = _now();
     final fix = t.gpsAccuracyM != null;
+    final update = (_tracker ??= engine.HrZoneTracker(
+      maxHr: _maxHr().toDouble(),
+    )).update(t.elapsedMs, t.hr);
+    final zone = update.state.zone;
+    if (update.changed && _snap.runId != null) {
+      unawaited(
+        _zoneMemento.save(
+          ZoneMemento(
+            runId: _snap.runId!,
+            zone: zone,
+            hr: t.hr,
+            elapsedMs: t.elapsedMs,
+          ),
+        ),
+      );
+    }
     _snap = _snap.copyWith(
       state: t.state,
       phase: t.phase,
@@ -307,6 +393,7 @@ class RecordingController extends ChangeNotifier {
       gpsLost: !fix,
       hadFix: _snap.hadFix || fix,
       phaseRemainingMs: t.phaseRemainingMs,
+      zone: zone,
     );
   }
 
@@ -318,7 +405,12 @@ class RecordingController extends ChangeNotifier {
     final lapMs = l.activeMs;
     _lastLapDistanceM = l.distanceM;
     final paces = List.of(_snap.repPaces);
-    if (_snap.phase == Phase.work && lapDistanceM > 0 && lapMs > 0) {
+    final counts = switch (_snap.mode) {
+      RecordMode.fourByFour => _snap.phase == Phase.work,
+      RecordMode.laps => true,
+      RecordMode.free || RecordMode.cooper => false,
+    };
+    if (counts && lapDistanceM > 0 && lapMs > 0) {
       paces.add(lapMs / 1000 / (lapDistanceM / 1000));
     }
     _snap = _snap.copyWith(
@@ -359,8 +451,13 @@ class RecordingController extends ChangeNotifier {
       FaultKind.gpsLost => _snap.copyWith(gpsLost: true, clearGps: true),
       // Debug-only signal that a LAP reached Free mode; the screen has no LAP there.
       FaultKind.gpsWeak || FaultKind.lapIgnored => _snap,
-      // Android 14: volume-key laps off (one-time note, app side).
-      FaultKind.volumeKeyUnavailable => _snap,
+      // Android 14 + music playing: the volume keys belong to the music, so
+      // volume-key laps are off for this run; notification LAP still works.
+      FaultKind.volumeKeyUnavailable => _snap.copyWith(
+        notice:
+            "On Android 14, volume-key laps don't work while music plays. "
+            'Use the lock-screen LAP.',
+      ),
       FaultKind.hrDisconnected => _snap.copyWith(clearHr: true),
       FaultKind.journalWriteFailed ||
       FaultKind.lowStorage ||
@@ -376,17 +473,19 @@ class RecordingController extends ChangeNotifier {
   /// Work-rep paces from the service's lap list (cumulative `distanceM`,
   /// active-time `activeMs`). With a preset, lap 0 ends the warm-up and
   /// phases then alternate, so odd indices end work reps until the last
-  /// recovery (index 2·reps). Free runs have no reps.
+  /// recovery (index 2·reps). Without a preset (Laps run) every lap counts;
+  /// Free runs have no laps.
   static List<double> repPacesFromLaps(List<LapSummary> laps, Preset? preset) {
-    if (preset == null || laps.isEmpty) return const [];
+    if (laps.isEmpty) return const [];
     final out = <double>[];
     var prevD = 0.0;
     for (final l in laps) {
       final ms = l.activeMs;
       final m = l.distanceM - prevD;
       prevD = l.distanceM;
-      final endsWork = l.index.isOdd && l.index <= 2 * preset.reps;
-      if (endsWork && ms > 0 && m > 0) out.add(ms / 1000 / (m / 1000));
+      final counts =
+          preset == null || (l.index.isOdd && l.index <= 2 * preset.reps);
+      if (counts && ms > 0 && m > 0) out.add(ms / 1000 / (m / 1000));
     }
     return out;
   }

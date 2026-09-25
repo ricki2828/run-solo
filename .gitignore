@@ -49,3 +49,6 @@ app.*.map.json
 
 # run_engine coverage output (dart test --coverage)
 packages/run_engine/coverage/
+
+# Golden diff output from a failed run, never goldens.
+test/golden/failures/

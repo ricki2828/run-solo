@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 
 import 'app/routes.dart';
 import 'app/services.dart';
+import 'screens/fix_laps_screen.dart';
 import 'screens/pairing_screen.dart';
 import 'screens/permissions_screen.dart';
 import 'screens/recording_screen.dart';
+import 'screens/run_detail_screen.dart';
+import 'screens/settings_screen.dart';
 import 'screens/shell_screen.dart';
 import 'screens/start_screen.dart';
+import 'screens/verdict_screen.dart';
 import 'theme/theme.dart';
 
 Future<void> main() async {
@@ -69,6 +73,20 @@ class RunSoloApp extends StatelessWidget {
                 ),
                 Routes.pairing => const PairingScreen(),
                 Routes.recording => const RecordingScreen(),
+                Routes.verdict => VerdictScreen(
+                  runId: settings.arguments as String,
+                ),
+                Routes.verdictJustFinished => VerdictScreen(
+                  runId: settings.arguments as String,
+                  justFinished: true,
+                ),
+                Routes.runDetail => RunDetailScreen(
+                  runId: settings.arguments as String,
+                ),
+                Routes.fixLaps => FixLapsScreen(
+                  runId: settings.arguments as String,
+                ),
+                Routes.settings => SettingsScreen(now: now),
                 _ => null,
               };
               if (page == null) return null;

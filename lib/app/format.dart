@@ -31,6 +31,14 @@ abstract final class Fmt {
   static String paceUnit(double? secPerKm, Units units) =>
       secPerKm == null ? '--' : engine.PaceFormat.pace(secPerKm, _u(units));
 
+  /// "0.62" (unit in the column header).
+  static String distanceBare(double metres, Units units) {
+    final v = units == Units.mi
+        ? metres / engine.PaceFormat.metresPerMile
+        : metres / 1000;
+    return v.toStringAsFixed(2);
+  }
+
   /// "0.62 km" / "0.39 mi".
   static String distance(double metres, Units units) {
     final v = units == Units.mi
@@ -39,11 +47,11 @@ abstract final class Fmt {
     return '${v.toStringAsFixed(2)} ${engine.PaceFormat.unitLabel(_u(units))}';
   }
 
-  /// "▲ 5 s" faster / "▼ 5 s" slower / "▬ 0 s"; sign from live minus last.
+  /// "5 s"; the arrow beside it is a `DeltaGlyph` (the bundled fonts carry
+  /// no ▲▼▬ glyphs), direction from live minus last.
   static String deltaVsLast(double live, double last, Units units) {
     final d = engine.PaceFormat.toUnit(live - last, _u(units)).round();
-    final glyph = d < 0 ? '▲' : (d > 0 ? '▼' : '▬');
-    return '$glyph ${d.abs()} s';
+    return '${d.abs()} s';
   }
 
   static String recovery(int seconds) => clock(seconds * 1000);

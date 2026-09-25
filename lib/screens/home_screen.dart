@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
 import '../app/routes.dart';
@@ -8,10 +9,11 @@ import '../state/history_store.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/mode_chip.dart';
+import 'settings_screen.dart';
 
-/// Home (design brief §4.3): Tally + date, last-run card (verdict arrives in
-/// Phase 2, so the card shows pace and duration), mode chips, strap row,
-/// START. Checklist incomplete = red row above START.
+/// Home (design brief §4.3): Tally + date, last-run card with its verdict,
+/// three mode chips (4x4, Laps, Free), strap row, START. Checklist
+/// incomplete = red row above START.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.now});
 
@@ -97,37 +99,30 @@ class _HomeScreenState extends State<HomeScreen> {
                       run: last,
                       units: settings.units,
                       now: _now,
+                      onTap: last == null
+                          ? null
+                          : () => Navigator.of(context)
+                                .pushNamed(Routes.verdict, arguments: last.id),
                     );
                   },
                 ),
                 const SizedBox(height: Space.x24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ModeChip(
-                        title: '4x4',
-                        subtitle:
-                            '${settings.reps} × 4:00 · ${Fmt.recovery(settings.recoverySeconds)} rec',
-                        selected: settings.lastMode == RecordMode.fourByFour,
-                        onTap: () => services.settings.update(
-                          (s) => s.copyWith(lastMode: RecordMode.fourByFour),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: Space.x12),
-                    Expanded(
-                      child: ModeChip(
-                        title: 'FREE RUN',
-                        subtitle: 'Lap by hand',
-                        selected: settings.lastMode == RecordMode.free,
-                        onTap: () => services.settings.update(
-                          (s) => s.copyWith(lastMode: RecordMode.free),
-                        ),
-                      ),
-                    ),
-                  ],
+                ModeChipRow(
+                  selected: settings.lastMode,
+                  reps: settings.reps,
+                  recoverySeconds: settings.recoverySeconds,
+                  onSelect: (m) =>
+                      services.settings.update((s) => s.copyWith(lastMode: m)),
                 ),
                 const SizedBox(height: Space.x16),
+                if (settings.pendingObservedMaxHr != null)
+                  _StrapRow(
+                    label:
+                        'Strap saw ${settings.pendingObservedMaxHr} bpm, tap to review',
+                    muted: false,
+                    warn: true,
+                    onTap: () => showPendingMaxSheet(context),
+                  ),
                 _StrapRow(
                   label: settings.strap == null
                       ? 'No strap, tap to pair'
@@ -167,10 +162,12 @@ class _LastRunCard extends StatelessWidget {
     required this.run,
     required this.units,
     required this.now,
+    this.onTap,
   });
   final RunSummary? run;
   final Units units;
   final DateTime now;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -195,21 +192,39 @@ class _LastRunCard extends StatelessWidget {
         ],
       );
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'LAST 4x4 · ${Fmt.ago(r.start, now).toUpperCase()}',
-          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+    final v = r.verdict;
+    final word = v?.headline.text;
+    final wordColor = switch (v?.headline) {
+      engine.VerdictHeadline.faster => t.accentArc,
+      null => t.inkPrimary,
+      _ => t.inkPrimary,
+    };
+    return Semantics(
+      button: onTap != null,
+      label: 'Last 4x4${word == null ? '' : ', $word'}',
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'LAST 4x4 · ${Fmt.ago(r.start, now).toUpperCase()}',
+              style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+            ),
+            const SizedBox(height: Space.x8),
+            Text(
+              word ?? Fmt.paceUnit(r.headlineSecPerKm, units),
+              style: text.displayMedium?.copyWith(color: wordColor),
+            ),
+            const SizedBox(height: Space.x8),
+            Text(
+              v?.subline ??
+                  '${r.laps} laps · ${Fmt.clock(r.durationMs)} · verdict after your next 4x4',
+              style: text.bodyMedium?.copyWith(color: t.inkSecondary),
+            ),
+          ],
         ),
-        const SizedBox(height: Space.x8),
-        Text(Fmt.paceUnit(r.avgSecPerKm, units), style: text.displayMedium),
-        const SizedBox(height: Space.x8),
-        Text(
-          '${r.laps} laps · ${Fmt.clock(r.durationMs)} · verdict after your next 4x4',
-          style: text.bodyMedium?.copyWith(color: t.inkSecondary),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -219,9 +234,11 @@ class _StrapRow extends StatelessWidget {
     required this.label,
     required this.muted,
     required this.onTap,
+    this.warn = false,
   });
   final String label;
   final bool muted;
+  final bool warn;
   final VoidCallback onTap;
 
   @override
@@ -236,12 +253,22 @@ class _StrapRow extends StatelessWidget {
           height: 56,
           child: Row(
             children: [
-              Icon(Icons.favorite, size: 16, color: t.hrZone),
+              Icon(
+                Icons.favorite,
+                size: 16,
+                color: warn ? t.semWarn : t.hrZone,
+              ),
               const SizedBox(width: Space.x8),
-              Text(
-                label,
-                style: RunSoloType.body15.copyWith(
-                  color: muted ? t.inkSecondary : t.inkPrimary,
+              Expanded(
+                child: Text(
+                  label,
+                  style: RunSoloType.body15.copyWith(
+                    color: warn
+                        ? t.semWarn
+                        : muted
+                        ? t.inkSecondary
+                        : t.inkPrimary,
+                  ),
                 ),
               ),
             ],
