@@ -191,6 +191,86 @@ class FreeRunSummary {
   final double? avgHr;
 }
 
+/// One row of the Laps run table (§18.2): recorded lap, untrimmed, with
+/// paused time and any ground covered while paused taken out of the pace.
+class LapRowMetrics {
+  const LapRowMetrics({
+    required this.number,
+    required this.lap,
+    required this.movingSeconds,
+    required this.distanceM,
+    required this.paceSecPerKm,
+    required this.scored,
+    this.meanHr,
+  });
+
+  /// 1-based, over non-pause laps in recorded order.
+  final int number;
+  final Lap lap;
+
+  /// Lap duration minus paused time inside it.
+  final double movingSeconds;
+
+  /// Lap distance minus any distance the recorder accumulated while paused.
+  final double distanceM;
+
+  /// movingSeconds ÷ distance, s/km; null when the lap covered no ground.
+  final double? paceSecPerKm;
+
+  /// Whether the lap counts for fastest lap and spread: at least
+  /// [EngineConstants.scoredLapMinSeconds] moving and
+  /// [EngineConstants.scoredLapMinMetres] covered. A 4 s tail lap after the
+  /// last press is listed but never "fastest".
+  final bool scored;
+  final double? meanHr;
+}
+
+/// Laps run post-run block (§18.2): lap table, fastest lap, lap spread against
+/// the rep band, HR avg/max and time in the 85–95% band. No verdict word, no
+/// trend entry. Pure description: nothing here compares to another run.
+class LapsSummary {
+  const LapsSummary({
+    required this.laps,
+    required this.fastestLapNumber,
+    required this.spreadSecPerKm,
+    required this.spreadWithinBand,
+    required this.bandSecPerKm,
+    required this.hrPresent,
+    this.maxHrUsed,
+    this.avgHr,
+    this.maxHr,
+    this.timeInBandSeconds,
+    this.observedMaxHrThisRun,
+  });
+
+  final List<LapRowMetrics> laps;
+
+  /// Number of the fastest scored lap, or null when fewer than one scored.
+  final int? fastestLapNumber;
+
+  /// Slowest minus fastest scored lap, s/km; null with fewer than two scored.
+  final double? spreadSecPerKm;
+
+  /// `spread <= rep band` (the same 10 s/km band a 4x4 uses), null when no
+  /// spread.
+  final bool? spreadWithinBand;
+  final double bandSecPerKm;
+  final bool hrPresent;
+
+  /// The resolved max HR the band used ([MetricsCalculator.maxHrFor]).
+  final double? maxHrUsed;
+  final double? avgHr;
+  final int? maxHr;
+
+  /// Seconds of the whole run with HR inside the 85–95% band.
+  final double? timeInBandSeconds;
+
+  /// Highest 30 s mean HR in this run (same contract as the 4x4 field).
+  final double? observedMaxHrThisRun;
+
+  int get scoredLapCount => laps.where((l) => l.scored).length;
+}
+
 /// Computes metrics from a detection; pure.
 class MetricsCalculator {
   const MetricsCalculator(this.constants);
@@ -397,6 +477,83 @@ class MetricsCalculator {
     );
   }
 
+  /// Laps-run table and aggregates (§18.2) from the recorded laps (pause
+  /// laps dropped and renumbered, like the 4x4 edit base). The run's laps
+  /// are used as recorded: fix-laps edits only apply to the 4x4 path.
+  LapsSummary laps(RunFile run, Trace trace, UserProfile profile) {
+    final hrPresent = run.hasHr;
+    final maxHr = hrPresent ? maxHrFor(profile) : null;
+    final rows = <LapRowMetrics>[];
+    var n = 0;
+    for (final lap in run.laps) {
+      if (lap.kind == LapKind.pause) continue;
+      n++;
+      final pausedMs = _pausedWithin(run, lap.t0Ms, lap.t1Ms);
+      final d =
+          trace.distAt(lap.t1Ms) -
+          trace.distAt(lap.t0Ms) -
+          _pausedDistWithin(run, trace, lap.t0Ms, lap.t1Ms);
+      final seconds = (lap.durationMs - pausedMs) / 1000;
+      final dist = d < 0 ? 0.0 : d;
+      rows.add(
+        LapRowMetrics(
+          number: n,
+          lap: lap,
+          movingSeconds: seconds,
+          distanceM: dist,
+          paceSecPerKm: dist <= 0 || seconds <= 0
+              ? null
+              : seconds / dist * 1000,
+          scored:
+              seconds >= constants.scoredLapMinSeconds &&
+              dist >= constants.scoredLapMinMetres,
+          meanHr: hrPresent ? trace.meanHr(lap.t0Ms, lap.t1Ms) : null,
+        ),
+      );
+    }
+    final scored = rows.where((l) => l.scored && l.paceSecPerKm != null);
+    LapRowMetrics? fastest;
+    LapRowMetrics? slowest;
+    for (final l in scored) {
+      if (fastest == null || l.paceSecPerKm! < fastest.paceSecPerKm!) {
+        fastest = l;
+      }
+      if (slowest == null || l.paceSecPerKm! > slowest.paceSecPerKm!) {
+        slowest = l;
+      }
+    }
+    final spread = scored.length < 2
+        ? null
+        : slowest!.paceSecPerKm! - fastest!.paceSecPerKm!;
+    return LapsSummary(
+      laps: rows,
+      fastestLapNumber: fastest?.number,
+      spreadSecPerKm: spread,
+      spreadWithinBand: spread == null
+          ? null
+          : spread <= constants.repBandSecPerKm,
+      bandSecPerKm: constants.repBandSecPerKm,
+      hrPresent: hrPresent,
+      maxHrUsed: maxHr,
+      // Whole-run HR with paused spans excluded, like the lap rows.
+      avgHr: hrPresent
+          ? trace.meanHrExcluding(trace.startMs, trace.endMs, run.pauses)
+          : null,
+      maxHr: hrPresent
+          ? trace.peakHrExcluding(trace.startMs, trace.endMs + 1, run.pauses)
+          : null,
+      timeInBandSeconds: maxHr == null
+          ? null
+          : trace.secondsInZone(
+              trace.startMs,
+              trace.endMs,
+              maxHr * constants.zoneLowFraction,
+              maxHr * constants.zoneHighFraction,
+            ),
+      observedMaxHrThisRun: hrPresent ? trace.highest30sHr() : null,
+    );
+  }
+
   FreeRunSummary freeRun(RunFile run, Trace trace) {
     final elapsed = run.elapsedMs / 1000;
     final paused = run.pauses.fold<int>(0, (s, p) => s + p.durationMs) / 1000;
@@ -481,19 +638,21 @@ class MetricsCalculator {
     return total;
   }
 
-  /// Max HR precedence (plan §5, §16): setting → the higher of 220−age and
-  /// the user-level observed 30 s max → observed alone. Never this run's own
-  /// peak: the store updates `UserProfile.observedMaxHr` from
-  /// [FourByFourMetrics.observedMaxHrThisRun] after the run, so the next
-  /// analysis shares one denominator with history.
-  static double? maxHrFor(UserProfile profile) {
-    if (profile.maxHr != null) return profile.maxHr!.toDouble();
-    final estimate = profile.age == null
-        ? null
-        : (220 - profile.age!).toDouble();
+  /// The one max-HR resolver (plan D3, §18.11 N1). **Observed wins**:
+  /// `max(typed ?? (age != null ? 220 − age : 190), observed30s)`. A strap's
+  /// sustained 30 s HR above any lower value, typed included, is evidence
+  /// that value is too low. Never null, so zones always resolve. Never this
+  /// run's own peak: the store folds `observedMaxHrThisRun` into
+  /// `UserProfile.observedMaxHr` (through the artefact guard in
+  /// `ObservedMaxHr`) after the run, so every analysis shares one denominator.
+  static double maxHrFor(UserProfile profile) {
+    final base =
+        profile.maxHr?.toDouble() ??
+        (profile.age == null ? fallbackMaxHr : (220 - profile.age!).toDouble());
     final observed = profile.observedMaxHr;
-    if (estimate == null) return observed;
-    if (observed != null && observed > estimate) return observed;
-    return estimate;
+    return observed != null && observed > base ? observed : base;
   }
+
+  /// Used when nothing is typed and no age is known.
+  static const double fallbackMaxHr = 190;
 }
