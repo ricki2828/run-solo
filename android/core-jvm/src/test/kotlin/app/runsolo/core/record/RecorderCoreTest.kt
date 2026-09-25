@@ -45,11 +45,11 @@ class RecorderCoreTest {
     fun `cue scheduler - 4 00 and 3 00 phases`() {
         assertEquals(
             listOf(CueKind.start to 0L, CueKind.halfway to 120_000L, CueKind.thirtySeconds to 210_000L, CueKind.phaseEnd to 240_000L),
-            CueScheduler.forPhase(240_000).map { it.kind to it.atMs },
+            CueScheduler.forPhase(240_000).map { it.kind to it.at },
         )
         assertEquals(
             listOf(0L, 90_000L, 150_000L, 180_000L),
-            CueScheduler.forPhase(180_000).map { it.atMs },
+            CueScheduler.forPhase(180_000).map { it.at },
         )
         // A 60 s phase has no −30 s cue (it would coincide with halfway).
         assertEquals(listOf(CueKind.start, CueKind.halfway, CueKind.phaseEnd), CueScheduler.forPhase(60_000).map { it.kind })
@@ -88,7 +88,7 @@ class RecorderCoreTest {
             listOf(CueKind.halfway to 180_000L, CueKind.thirtySeconds to 270_000L, CueKind.phaseEnd to 300_000L, CueKind.start to 300_000L),
             c.take(4),
         )
-        assertEquals(4 * 4 + 3 * 4 - 1, c.size) // 4 cues per timed phase, 7 phases; rep 1's start cue came with the LAP
+        assertEquals(4 * 4 + 3 * 4 - 1 + 1, c.size) // 4 cues per timed phase, 7 phases; rep 1's start cue came with the LAP; + lastRep at rep 4
         assertEquals(CueKind.phaseEnd, c.last().first) // the last cue is the end of rep 4, straight into cool-down
         assertTrue(run(core, t0 + 60_000 + total + 6_000, t0 + 60_000 + total + 120_000).isEmpty(), "cooldown is untimed")
         assertEquals(listOf(Output.Cue(t0 + 2_000_000, CueKind.stop)), core.stop(t0 + 2_000_000))
@@ -163,9 +163,9 @@ class RecorderCoreTest {
     }
 
     @Test
-    fun `free mode (and cooper) ignore every lap source - no lap, no phase, no cue`() {
-        for ((mode, spec) in listOf(RunMode.free to null, RunMode.cooper to SessionSpec.COOPER)) {
-            val core = RecorderCore(mode, spec)
+    fun `free mode ignores every lap source - no lap, no phase, no cue`() {
+        for (mode in listOf(RunMode.free)) {
+            val core = RecorderCore(mode, null)
             assertTrue(core.start(t0).isEmpty())
             for (src in LapSource.values()) {
                 val (d, out) = core.lap(src, t0 + 1_000)
@@ -433,16 +433,11 @@ class RecorderCoreStepsTest {
     }
 
     @Test
-    fun `I1 rejects what it cannot run yet, and invalid specs`() {
-        fun rejects(s: SessionSpec) = assertTrue(RecorderCore.unsupported(RunMode.intervals, s) != null, s.toString())
-        rejects(spec(listOf(Step(StepKind.work, TargetKind.distance, 400, RecoveryStyle.run, 1))))
-        rejects(spec(listOf(work(60, 1), Step(StepKind.recovery, TargetKind.equalToPreviousWork, 0, RecoveryStyle.jog, 1), work(60, 2))))
-        rejects(spec(listOf(work(60, 1))).copy(warmupSeconds = 600))
-        rejects(spec(listOf(work(60, 1))).copy(cooldownSeconds = 300))
-        rejects(spec(listOf(work(60, 1))).copy(lapLockout = true))
-        rejects(spec(listOf(work(30, 1))).copy(cueProfile = CueProfile.short))
-        rejects(spec(listOf(work(10, 1)))) // invalid: under 15 s
-        rejects(spec(emptyList()))
+    fun `unsupported is only invalid specs and mode mismatches now`() {
+        assertNull(RecorderCore.unsupported(RunMode.intervals, spec(listOf(Step(StepKind.work, TargetKind.distance, 400, RecoveryStyle.run, 1)))))
+        assertNull(RecorderCore.unsupported(RunMode.intervals, spec(listOf(work(60, 1))).copy(warmupSeconds = 600, cooldownSeconds = 300, lapLockout = true, cueProfile = CueProfile.short)))
+        assertTrue(RecorderCore.unsupported(RunMode.intervals, spec(listOf(work(10, 1)))) != null) // invalid: under 15 s
+        assertTrue(RecorderCore.unsupported(RunMode.intervals, spec(emptyList())) != null)
         assertNull(RecorderCore.unsupported(RunMode.intervals, base))
         val forty = ArrayList<Step>()
         for (r in 1..40) {

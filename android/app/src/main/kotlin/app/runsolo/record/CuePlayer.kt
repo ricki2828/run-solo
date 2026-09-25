@@ -15,7 +15,6 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import app.runsolo.core.model.CueKind
-import app.runsolo.core.model.Phase
 import java.util.Locale
 
 /**
@@ -90,20 +89,39 @@ class CuePlayer(context: Context) {
         abandonFocus()
     }
 
-    /** [nextPhase] is the phase that starts at a `phaseEnd`/`start` cue, for the wording. Called from the recorder thread; [done] from main. */
+    /**
+     * One cue: a vibration, then [text] (from `CueWords`, JVM-tested) or, for `countdown`, three
+     * tones a second apart. Called from the recorder thread; [done] from main.
+     */
     @Synchronized
-    fun play(kind: CueKind, nextPhase: Phase, repIndex: Int) {
+    fun play(kind: CueKind, text: String?) {
         vibrate(kind)
         if (!enabled) return
-        val text = when (kind) {
-            CueKind.start -> if (nextPhase == Phase.work) "Go. Rep $repIndex" else "Recover"
-            CueKind.halfway -> "Halfway"
-            CueKind.thirtySeconds -> "Thirty seconds"
-            CueKind.phaseEnd -> if (nextPhase == Phase.cooldown) "Done. Cool down" else null // the next `start` cue says what comes
-            CueKind.stop -> "Run saved"
-            // Phase 3 cues (I2): the core never emits them yet; no wording until it does.
-            CueKind.distanceToGo, CueKind.lastRep, CueKind.minuteMark, CueKind.countdown, CueKind.projection -> null
-        } ?: return
+        if (kind == CueKind.countdown) {
+            countdown()
+            return
+        }
+        say(kind, text ?: return)
+    }
+
+    /** Spoken without a vibration pattern of its own (e.g. "GPS weak"). */
+    @Synchronized
+    fun announce(text: String) {
+        if (enabled) say(null, text)
+    }
+
+    private fun countdown() {
+        requestFocus()
+        for (i in 0..2) {
+            inFlight++
+            main.postDelayed({
+                synchronized(this) { tone?.startTone(if (i == 2) ToneGenerator.TONE_PROP_BEEP2 else ToneGenerator.TONE_PROP_BEEP, 200) }
+                main.postDelayed({ done() }, 250)
+            }, i * 1_000L)
+        }
+    }
+
+    private fun say(kind: CueKind?, text: String) {
         requestFocus()
         inFlight++
         val engine = tts

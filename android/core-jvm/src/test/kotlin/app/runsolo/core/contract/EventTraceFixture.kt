@@ -49,7 +49,7 @@ object EventTraceFixture {
     fun pigeonShape(spec: SessionSpec): Map<String, Any?> = linkedMapOf(
         "templateId" to spec.templateId, "templateVersion" to spec.templateVersion, "name" to spec.name,
         "warmupSeconds" to spec.warmupSeconds, "cooldownSeconds" to spec.cooldownSeconds,
-        "lapLockout" to spec.lapLockout, "cueProfile" to spec.cueProfile.name,
+        "lapLockout" to spec.lapLockout, "autoStop" to spec.autoStop, "cueProfile" to spec.cueProfile.name,
         "hrBandLow" to spec.hrBand?.first, "hrBandHigh" to spec.hrBand?.second,
         "steps" to spec.steps.map { linkedMapOf("kind" to it.kind.name, "target" to it.target.name, "value" to it.value, "style" to it.style.name, "repIndex" to it.rep) },
     )
@@ -121,12 +121,13 @@ object EventTraceFixture {
                     }
                     is RecorderCore.Output.Cue -> {
                         writer.append(JournalLine.Cue(o.t, W0 + o.t, o.kind))
-                        emit("cue", core.status(o.t).elapsedMs, mapOf("cue" to o.kind.name))
+                        emit("cue", core.status(o.t).elapsedMs, linkedMapOf("cue" to o.kind.name, "value" to o.value))
                     }
                     is RecorderCore.Output.PhaseChanged -> {
                         emit("phase", core.status(o.t).elapsedMs, mapOf("phase" to o.phase.name, "repIndex" to o.repIndex, "phaseDurationMs" to (o.phaseDurationMs ?: 0L)))
                         emit("status", core.status(o.t).elapsedMs, status(o.t))
                     }
+                    is RecorderCore.Output.AutoStop -> Unit // no auto-stop in this 4x4
                 }
             }
         }
@@ -134,9 +135,9 @@ object EventTraceFixture {
         fun tick(t: Long, fix: LocationFix?, hr: Int?) {
             hr?.let { ticker.onHr(HrReading(t - 200, it)) }
             fix?.let { ticker.onFix(it) }
-            handle(core.tick(t), t)
             val samples = ticker.tick(t)
             for (s in samples) writer.append(s)
+            handle(core.tick(t, ticker.distanceM, !ticker.gpsLost(t)), t)
             val last = samples.last()
             val pace = if (last.hasFix) livePace.update(last.t, ticker.distanceM) else null
             hrLast = last.hr
@@ -231,7 +232,7 @@ object EventTraceFixture {
             traceIdx++
         }
         val out = core.stop(dt)
-        for (o in out) if (o is RecorderCore.Output.Cue) emit("cue", core.status(dt).elapsedMs, mapOf("cue" to o.kind.name))
+        for (o in out) if (o is RecorderCore.Output.Cue) emit("cue", core.status(dt).elapsedMs, linkedMapOf("cue" to o.kind.name, "value" to o.value))
         state(dt, RecorderState.finalising)
         writer.close()
         emit("state", core.status(dt).elapsedMs, mapOf("state" to RecorderState.idle.name, "runId" to RUN_ID, "phase" to Phase.none.name))

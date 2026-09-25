@@ -8,8 +8,8 @@ package app.runsolo.core.model
 /**
  * Run type picked at Start (plan §18.2, Phase 3 §3.8). `intervals` follows a [SessionSpec]
  * (schema ≤ 2 `fourByFour` maps here); `laps` is the lap-capable by-feel run (schema-1 `free`
- * maps here, §18.7 B1), optionally a fartlek; `free` has no lap input at all; `cooper` carries
- * the Cooper spec and records like `free` until I2.
+ * maps here, §18.7 B1), optionally a fartlek; `free` has no lap input at all; `cooper` runs
+ * the Cooper spec (no LAP input; `startReps` starts the test).
  */
 enum class RunMode {
     intervals, laps, free, cooper;
@@ -28,11 +28,11 @@ enum class RunMode {
             intervals, free, cooper -> false
         }
 
-    /** Whether the run's phases follow its session's steps. */
+    /** Whether the run's phases follow its session's steps (Cooper: warm-up, the 12:00 work step, cool-down). */
     val followsSteps: Boolean
         get() = when (this) {
-            intervals -> true
-            laps, free, cooper -> false
+            intervals, cooper -> true
+            laps, free -> false
         }
 
     companion object {

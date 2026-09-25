@@ -26,6 +26,7 @@ import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.RecorderState
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.Units
+import app.runsolo.core.record.CueWords
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
 import app.runsolo.core.run.Finaliser
@@ -57,6 +58,8 @@ class RecordingSession(
     val units: Units,
     private val replay: ReplayRunner?,
     volumeKeyLaps: Boolean,
+    /** The last Cooper result's VO2, for the projection cue's "up 2 on last time"; not journaled (a recovered test omits the gap). */
+    private val lastCooperVo2: Double? = null,
 ) : app.runsolo.platform.StartGuard.Session {
     // Application context: the session outlives the Activity (swipe from Recents keeps the
     // service alive; an Activity context would unbind TTS and leak the Activity).
@@ -116,12 +119,18 @@ class RecordingSession(
     private var lastTickEventWall = 0L
     private var lastNotificationRefreshWall = 0L
     private var gpsLostReported = false
+
+    /** Distance step whose "GPS weak" was already said (once per step, W3). */
+    private var gpsWeakStep: Int? = null
     private var replayLapsPressed = 0
     private var hrConnected = false
     private var lastHr: Int? = null
 
     var onNotificationChanged: (() -> Unit)? = null
     var onReplayFinished: (() -> Unit)? = null
+
+    /** The session asked to end itself ([SessionSpec.autoStop]); called on the recorder thread, the service stops on main. */
+    var onAutoStop: (() -> Unit)? = null
 
     val cuesEnabled: Boolean get() = cues.enabled
 
@@ -345,16 +354,24 @@ class RecordingSession(
             replayLapsPressed++
             lap(LapSource.notification)
         }
-        handle(core.tick(t), t)
+        // Sample first: the core's distance steps need this second's distance (Phase 3 §3.6).
         val samples = ticker.tick(t)
         for (s in samples) writer.append(s)
+        val lost = ticker.gpsLost(t)
+        handle(core.tick(t, ticker.distanceM, gpsOk = !lost), t)
         val last = samples.last()
         var pace: Double? = null
         if (last.hasFix) {
             pace = livePace.update(last.t, ticker.distanceM)
             moving.update(last.t, ticker.distanceM)
         }
-        val lost = ticker.gpsLost(t)
+        val step = core.stepIndex
+        if (lost && step != null && core.status(t).stepRemainingM != null && gpsWeakStep != step && r == null) {
+            // A distance rep does not end on its own without GPS (W3): say so once per rep.
+            gpsWeakStep = step
+            cues.announce("GPS weak")
+            fault(FaultKind.GPS_WEAK, "GPS weak: this rep ends when GPS is back, or on LAP")
+        }
         if (lost && !gpsLostReported && r == null) {
             gpsLostReported = true
             fault(FaultKind.GPS_LOST, "No GPS fix")
@@ -362,7 +379,9 @@ class RecordingSession(
             gpsLostReported = false
         }
         val wall = SystemClock.elapsedRealtime()
-        if (wall - lastNotificationRefreshWall >= 10_000) {
+        // Distance steps show metres to go, so they refresh more often than the HR text needs.
+        val refreshMs = if (core.status(t).stepRemainingM != null) 3_000 else 10_000
+        if (wall - lastNotificationRefreshWall >= refreshMs) {
             lastNotificationRefreshWall = wall
             onNotificationChanged?.invoke() // keeps the HR text fresh; the chronometer ticks on its own
         }
@@ -409,7 +428,7 @@ class RecordingSession(
         refreshSnapshot()
     }
 
-    /** "Start 4x4": end the warm-up and start rep 1; a no-op outside the warm-up. */
+    /** "Start reps": end the warm-up and start rep 1 (the Cooper test's only start); a no-op outside the warm-up. */
     @Synchronized
     fun startReps() {
         if (finished) return
@@ -452,7 +471,7 @@ class RecordingSession(
         val out = core.stop(t)
         refreshSnapshot()
         for (o in out) if (o is RecorderCore.Output.Cue) {
-            cues.play(o.kind, Phase.none, core.repIndex)
+            cues.play(o.kind, cueText(o))
             writer.append(JournalLine.Cue(o.t, System.currentTimeMillis(), o.kind))
         }
         RecorderEventBus.emit(StateEvent(state = app.runsolo.platform.RecorderState.FINALISING, runId = runId, phase = app.runsolo.platform.Phase.NONE))
@@ -544,17 +563,24 @@ class RecordingSession(
                 }
                 is RecorderCore.Output.Cue -> {
                     writer.append(JournalLine.Cue(o.t, System.currentTimeMillis(), o.kind))
-                    cues.play(o.kind, core.phase, core.repIndex)
-                    RecorderEventBus.emit(CueEvent(kind = o.kind.toPigeon()))
+                    cues.play(o.kind, cueText(o))
+                    RecorderEventBus.emit(CueEvent(kind = o.kind.toPigeon(), value = o.value))
                 }
                 is RecorderCore.Output.PhaseChanged -> {
                     refreshSnapshot()
                     RecorderEventBus.emit(PhaseEvent(phase = o.phase.toPigeon(), repIndex = o.repIndex.toLong(), phaseDurationMs = o.phaseDurationMs ?: 0L))
                     onNotificationChanged?.invoke()
                 }
+                is RecorderCore.Output.AutoStop -> {
+                    Log.i(TAG, "auto-stop at ${core.status(o.t).elapsedMs} ms")
+                    onAutoStop?.invoke()
+                }
             }
         }
     }
+
+    private fun cueText(o: RecorderCore.Output.Cue): String? =
+        CueWords.text(o.kind, o.value, spec, core.phase, core.repIndex, core.stepIndex, lastCooperVo2)
 
     private fun emitState() {
         refreshSnapshot()
@@ -621,7 +647,9 @@ class RecordingSession(
     fun notificationContent(): RecorderNotification.Content {
         val t = clock()
         val st = core.status(t)
-        val timed = st.phase == Phase.work || st.phase == Phase.recovery
+        // Counting down: a time step, or a fixed warm-up/cool-down still running.
+        val fixedEdge = (st.phase == Phase.warmup && spec?.warmupSeconds != null) || (st.phase == Phase.cooldown && spec?.cooldownSeconds != null)
+        val timed = st.stepRemainingMs != null || (fixedEdge && st.phaseRemainingMs > 0)
         return RecorderNotification.Content(
             state = st.state,
             phase = st.phase,
@@ -629,6 +657,8 @@ class RecordingSession(
             reps = spec?.reps?.takeIf { mode.followsSteps },
             elapsedBaseRealtime = SystemClock.elapsedRealtime() - st.activeMs,
             phaseRemainingMs = if (timed && st.state == RecorderState.recording) st.phaseRemainingMs else null,
+            metresToGo = st.stepRemainingM,
+            cooper = mode == RunMode.cooper,
             lapIndex = st.lapIndex,
             hr = lastHr,
             lapAction = mode.lapInput,

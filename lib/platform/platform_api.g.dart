@@ -107,8 +107,8 @@ int _deepHash(Object? value) {
 ///   `laps` with the steps-empty fartlek spec.
 /// - `free`: no lap input at all — no LAP button, no notification LAP action, no
 ///   MediaSession; `lap()` is a no-op (`FaultKind.lapIgnored` in debug builds).
-/// - `cooper`: the 12-minute test with the Cooper spec; until I2 Kotlin records
-///   it like `free`. Not offered in the UI yet.
+/// - `cooper`: the 12-minute test with the Cooper spec: no LAP, `startReps`
+///   starts the 12:00, projection cues. Not offered in the UI yet.
 enum RecordMode {
   intervals,
   laps,
@@ -229,9 +229,9 @@ enum StartError {
   /// `resumeRecovered` failed while reopening the journal. The journal is
   /// untouched and `recover()` will list it again.
   resumeFailed,
-  /// The session is invalid for the mode, or needs something this recorder
-  /// cannot run yet (I1: distance and equal-time steps, a fixed warm-up or
-  /// cool-down, lap lockout, the short/Cooper cue profiles). Nothing started.
+  /// The session fails validation or does not fit the mode (intervals and
+  /// cooper need their session, laps takes only the fartlek, free none).
+  /// Nothing started.
   unsupportedSession,
 }
 
@@ -329,6 +329,7 @@ class SessionSpec {
     this.warmupSeconds,
     this.cooldownSeconds,
     required this.lapLockout,
+    this.autoStop,
     required this.cueProfile,
     this.hrBandLow,
     this.hrBandHigh,
@@ -349,6 +350,10 @@ class SessionSpec {
 
   bool lapLockout;
 
+  /// The recording stops itself when the last timed part ends (the last step,
+  /// or a fixed cool-down): parkrun stops at 5.00 km. Null = false.
+  bool? autoStop;
+
   CueProfile cueProfile;
 
   double? hrBandLow;
@@ -365,6 +370,7 @@ class SessionSpec {
       warmupSeconds,
       cooldownSeconds,
       lapLockout,
+      autoStop,
       cueProfile,
       hrBandLow,
       hrBandHigh,
@@ -384,10 +390,11 @@ class SessionSpec {
       warmupSeconds: result[3] as int?,
       cooldownSeconds: result[4] as int?,
       lapLockout: result[5]! as bool,
-      cueProfile: result[6]! as CueProfile,
-      hrBandLow: result[7] as double?,
-      hrBandHigh: result[8] as double?,
-      steps: (result[9]! as List<Object?>).cast<SessionStep>(),
+      autoStop: result[6] as bool?,
+      cueProfile: result[7]! as CueProfile,
+      hrBandLow: result[8] as double?,
+      hrBandHigh: result[9] as double?,
+      steps: (result[10]! as List<Object?>).cast<SessionStep>(),
     );
   }
 
@@ -400,7 +407,7 @@ class SessionSpec {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(templateId, other.templateId) && _deepEquals(templateVersion, other.templateVersion) && _deepEquals(name, other.name) && _deepEquals(warmupSeconds, other.warmupSeconds) && _deepEquals(cooldownSeconds, other.cooldownSeconds) && _deepEquals(lapLockout, other.lapLockout) && _deepEquals(cueProfile, other.cueProfile) && _deepEquals(hrBandLow, other.hrBandLow) && _deepEquals(hrBandHigh, other.hrBandHigh) && _deepEquals(steps, other.steps);
+    return _deepEquals(templateId, other.templateId) && _deepEquals(templateVersion, other.templateVersion) && _deepEquals(name, other.name) && _deepEquals(warmupSeconds, other.warmupSeconds) && _deepEquals(cooldownSeconds, other.cooldownSeconds) && _deepEquals(lapLockout, other.lapLockout) && _deepEquals(autoStop, other.autoStop) && _deepEquals(cueProfile, other.cueProfile) && _deepEquals(hrBandLow, other.hrBandLow) && _deepEquals(hrBandHigh, other.hrBandHigh) && _deepEquals(steps, other.steps);
   }
 
   @override
@@ -1236,13 +1243,19 @@ class LapEvent extends RecorderEvent {
 class CueEvent extends RecorderEvent {
   CueEvent({
     required this.kind,
+    this.value,
   });
 
   CueKind kind;
 
+  /// `projection`: the projected Cooper distance in metres, or a distance
+  /// step's projected finish in ms; `minuteMark`: the minute. Null otherwise.
+  double? value;
+
   List<Object?> _toList() {
     return <Object?>[
       kind,
+      value,
     ];
   }
 
@@ -1253,6 +1266,7 @@ class CueEvent extends RecorderEvent {
     result as List<Object?>;
     return CueEvent(
       kind: result[0]! as CueKind,
+      value: result[1] as double?,
     );
   }
 
@@ -1265,7 +1279,7 @@ class CueEvent extends RecorderEvent {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(kind, other.kind);
+    return _deepEquals(kind, other.kind) && _deepEquals(value, other.value);
   }
 
   @override
@@ -1638,8 +1652,8 @@ class RecorderApi {
   ///
   /// `spec`: required for `intervals` and `cooper`, the fartlek spec or null
   /// for `laps`, null for `free`; anything else is `unsupportedSession`.
-  /// `lastCooperVo2`: the previous Cooper result for the projection cue (I2;
-  /// Kotlin does not read history).
+  /// `lastCooperVo2`: the previous Cooper result for the projection cue's gap
+  /// to last time (Kotlin does not read history).
   Future<StartResult> start(RecordMode mode, SessionSpec? spec, Units units, double? lastCooperVo2) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.start$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(

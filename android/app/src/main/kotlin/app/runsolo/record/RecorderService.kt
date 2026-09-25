@@ -72,6 +72,7 @@ class RecorderService : Service() {
         session = s
         s.onNotificationChanged = { refreshNotification() } // NotificationManager is thread-safe
         s.onReplayFinished = { main.post { stopRun() } } // called on the recorder thread; Service calls belong on main
+        s.onAutoStop = { main.post { stopRun() } }
         try {
             ServiceCompat.startForeground(
                 this,
