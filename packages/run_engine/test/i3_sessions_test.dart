@@ -26,8 +26,12 @@ void main() {
     LapStyle lapStyle = LapStyle.auto,
     List<Span> gaps = const [],
     DateTime? start,
+    int warmupSeconds = 300,
+    int cooldownSeconds = 300,
   }) {
-    final segs = <Segment>[const Segment.warmup(300, 2.8)];
+    final segs = <Segment>[
+      if (warmupSeconds > 0) Segment.warmup(warmupSeconds, 2.8),
+    ];
     int? lastWorkSeconds;
     for (final st in spec.steps) {
       if (stopAfterRep != null && st.rep > stopAfterRep) break;
@@ -52,7 +56,7 @@ void main() {
         segs.add(Segment.recovery(secs, recoveryMps));
       }
     }
-    segs.add(const Segment.cooldown(300, 2.5));
+    if (cooldownSeconds > 0) segs.add(Segment.cooldown(cooldownSeconds, 2.5));
     return generator
         .generate(
           SyntheticSpec(
@@ -172,6 +176,49 @@ void main() {
         two.detection!.inconsistencyDetail,
         'Found 6 reps, the session expected 8.',
       );
+    });
+
+    test('I2 writer shapes: START REPS at 0 writes a [0,0] lead-in lap; a '
+        'fixed cool-down adds a second cool-down lap', () {
+      final noWarmup = sessionRun(fourHundreds, warmupSeconds: 0);
+      final withZeroLap = noWarmup.copyWith(
+        laps: [
+          const Lap(
+            index: 0,
+            t0Ms: 0,
+            t1Ms: 0,
+            d0M: 0,
+            d1M: 0,
+            kind: LapKind.manual,
+          ),
+          for (final l in noWarmup.laps) l.copyWith(index: l.index + 1),
+        ],
+      );
+      final a = analyze(withZeroLap);
+      expect(a.detection!.consistent, isTrue);
+      expect(a.detection!.reps.length, 8);
+      expect(a.detection!.warmup.single.durationMs, 0);
+
+      final run = sessionRun(fourHundreds);
+      final last = run.laps.last;
+      final mid = last.t0Ms + 120000;
+      final split = run.copyWith(
+        laps: [
+          ...run.laps.take(run.laps.length - 1),
+          last.copyWith(
+            t1Ms: mid,
+            d1M: run.samples.lastWhere((s) => s.tMs <= mid).distM,
+          ),
+          last.copyWith(
+            index: last.index + 1,
+            t0Ms: mid,
+            d0M: run.samples.lastWhere((s) => s.tMs <= mid).distM,
+          ),
+        ],
+      );
+      final b = analyze(split);
+      expect(b.detection!.consistent, isTrue);
+      expect(b.detection!.cooldown.length, 2);
     });
 
     test('no laps: no speed-stream fallback, NO VERDICT', () {
