@@ -15,6 +15,7 @@ import app.runsolo.core.journal.JournalReplay
 import app.runsolo.core.model.Preset as CorePreset
 import app.runsolo.core.reconcile.Reconciler
 import app.runsolo.core.run.Finaliser
+import app.runsolo.core.run.JournalMigration
 import app.runsolo.core.run.RunPaths
 import app.runsolo.record.ExitDiagnostics
 import app.runsolo.record.RecorderService
@@ -168,6 +169,13 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     override fun recover(): List<OrphanJournal> {
         val now = System.currentTimeMillis()
         val activeId = active()?.runId
+        // Phase-1 journals lived under runs/<id>/; move them first so they are offered too (one-shot, crash-safe).
+        try {
+            val moved = JournalMigration(fs).migrate()
+            if (moved.isNotEmpty()) Log.i(TAG, "migrated ${moved.size} legacy journal(s): ${moved.map { it.id }}")
+        } catch (e: Exception) {
+            Log.w(TAG, "legacy journal migration failed: $e")
+        }
         return Reconciler(fs).orphans(now, activeRunId = activeId).map { o ->
             var endedPaused = false
             var elapsed = 0L
