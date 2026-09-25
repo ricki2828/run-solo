@@ -17,7 +17,7 @@ MODE="${3:-fourByFour}"
 ACTIVITY="$PKG/app.runsolo.MainActivity"
 
 log() { echo "[lifecycle:$MODE] $*"; }
-dump() { adb logcat -d -s RunSolo/debug RunSolo/session RunSolo/service RunSolo/api RunSolo/action AndroidRuntime | tail -n 200 >&2; }
+dump() { adb logcat -d -s RunSolo/debug RunSolo/session RunSolo/service RunSolo/api RunSolo/action RunSolo/lapinput AndroidRuntime | tail -n 200 >&2; }
 fail() { echo "[lifecycle] FAIL: $*" >&2; dump; exit 1; }
 sdk="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
 wait_for_log() { # <regex> <timeout-s>
@@ -78,8 +78,19 @@ case "$MODE" in
   laps)
     # Manual laps from the debug intent land; a volume key press must land too (MediaSession active).
     wait_for_log 'RunSolo/session.*lap index=2 source=notification' 90 || fail "manual laps did not land in laps mode"
-    adb shell input keyevent KEYCODE_VOLUME_UP
-    wait_for_log 'RunSolo/session.*lap volumeKey → accepted' 20 || fail "volume-key lap did not land in laps mode (MediaSession not active?)"
+    wait_for_log 'RunSolo/lapinput.*volume-key lap enabled' 5 || fail "MediaSession for volume-key laps was never registered in laps mode"
+    # `input keyevent` on a loaded hosted emulator can be delayed or dropped; a runner presses
+    # again too. Up to 3 presses, each with the media-session state dumped when it misses, so a
+    # miss on every press shows whether OUR session was the volume target.
+    landed=0
+    for attempt in 1 2 3; do
+      adb shell input keyevent KEYCODE_VOLUME_UP
+      if wait_for_log 'RunSolo/session.*lap volumeKey → accepted' 10; then landed=1; break; fi
+      log "volume key press $attempt did not land; media_session state:"
+      adb shell dumpsys media_session 2>/dev/null | grep -iE "runsolo|active|Sessions|state=|flags=|volume" | head -n 40 >&2 || true
+      adb logcat -d -s RunSolo/lapinput | tail -n 5 >&2 || true
+    done
+    [ "$landed" = 1 ] || fail "volume-key lap did not land in laps mode after 3 presses (see media_session dump above)"
     log "manual + volume-key laps landed"
     ;;
   free)
@@ -165,11 +176,14 @@ assert all(b > a for a, b in zip(ts, ts[1:])), "t not strictly increasing"
 assert all(s[6] >= p[6] for p, s in zip(samples, samples[1:])), "dist decreased"
 before = [s for s in samples if s[0] <= g0]
 after = [s for s in samples if s[0] > g1]
-assert len(before) >= (400 if mode == "fourByFour" else 150), f"samples before the kill: {len(before)}"
+# 1 Hz sampling up to the kill: the count must track the kill time (the kill lands ~480 s in
+# for the 4x4, but right after the third lap + volume key for laps/free, so no absolute number).
+assert len(before) >= 0.95 * (g0 / 1000) - 2, f"samples before the kill: {len(before)} for {g0} ms (1 Hz expected)"
+assert len(before) >= (400 if mode == "fourByFour" else 60), f"samples before the kill: {len(before)}"
 assert len(after) >= 3, f"samples after the gap: {len(after)}"
 assert sum(1 for s in before if s[1] is not None) >= 0.95 * len(before), "replay samples should carry a fix (>= 95%)"
 assert sum(1 for s in before if s[7] is not None) >= 0.9 * len(before), "HR missing on replay samples"
-assert before[-1][6] > (900 if mode == "fourByFour" else 300), f"distance before the kill too small: {before[-1][6]}"
+assert before[-1][6] > (900 if mode == "fourByFour" else 2.0 * g0 / 1000), f"distance before the kill too small: {before[-1][6]} m in {g0} ms"
 print(f"ok [{mode}]: {len(laps)} laps ({len(pre)} pre-kill), gap {g0}->{g1} ms, {len(before)} samples before, {len(after)} after, {before[-1][6]:.0f} m")
 PY
 
