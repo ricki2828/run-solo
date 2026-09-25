@@ -4,7 +4,7 @@ Two kinds so the tests are not tautological:
 
 **(a) `synthetic/`** — traces from `TraceGenerator` (`lib/src/synthetic/trace_generator.dart`)
 with analytic ground truth. Each file holds `spec` (name in `SyntheticSpecs.all`), `run`
-(the schema-1 file as the app stores it) and `expected` (rep paces, avg work pace,
+(the run file as the app stores it, schema 2) and `expected` (rep paces, avg work pace,
 recovery pace, fade, spread, interrupted reps, lap consistency, rescue edits and the
 run-1 headline, all computed from the segment list, never from the engine).
 Regenerate after any generator change with `dart run tool/gen_fixtures.dart`; the drift
@@ -12,7 +12,8 @@ test in `golden_fixtures_test.dart` fails until you do.
 
 | Fixture | Case |
 |---|---|
-| `easy_free_run` | 30 min free run, HR |
+| `easy_free_run` | 30 min free run (mode `free`, no laps), HR |
+| `laps_run_manual_clean_hr` | the `four_by_four_manual_clean_hr` trace recorded as a Laps run (§18.2): lap table, no verdict; a 4x4 override reproduces the by-feel verdict |
 | `four_by_four_manual_clean[_hr]` | by-feel 4x4, manual laps, no preset, per-rep speeds differ (fade 6 s) |
 | `four_by_four_missed_press` | rep 2 work/recovery merged by a missed LAP; `rescue_edits` splits it |
 | `preset_4x4_auto_standard` / `preset_4x4_manual_standard` | same trace, auto vs manual laps → identical verdict |
@@ -34,7 +35,9 @@ test in `golden_fixtures_test.dart` fails until you do.
 | `pause_moved_while_paused` | writer that kept accumulating dist while the runner walked during a pause; excluded |
 
 **`contract/`** — real Kotlin `RunFile.fromReplay` output copied verbatim from
-`android/core-jvm/src/test/fixtures/contract/` (CI `cmp`s the two copies).
+`android/core-jvm/src/test/fixtures/contract/` (CI `diff -r`s the two copies, subdirs
+included). Schema-2 files sit at the top level; the four Phase-1 schema-1 files are frozen
+read-only under `contract/schema1/` (§18.7) and must decode with v1 `free` → `laps`.
 
 **(b) `real/`** — the founder's 4x4s converted via `TcxImporter`/`GpxImporter`, checked
 against an independent reading (stopwatch / second-device splits). Not yet populated:

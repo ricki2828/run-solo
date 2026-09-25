@@ -26,6 +26,7 @@ class RunAnalysis {
     required this.mode,
     required this.detection,
     required this.fourByFour,
+    this.laps,
     required this.freeRun,
     required this.verdict,
     required this.verdictSource,
@@ -41,14 +42,18 @@ class RunAnalysis {
   /// The effective mode (override applied).
   final RunMode mode;
 
-  /// Null for free runs.
+  /// Only for the 4x4 path.
   final RepDetection? detection;
   final FourByFourMetrics? fourByFour;
+
+  /// Only for a Laps run (§18.2): lap table, fastest lap, spread, HR band.
+  final LapsSummary? laps;
 
   /// Always computed (also useful as the header of a 4x4 detail screen).
   final FreeRunSummary freeRun;
 
-  /// Null for free runs; a 4x4 always has one, if only NO VERDICT.
+  /// Only the 4x4 path has one, if only NO VERDICT. Laps, Free and Cooper
+  /// runs carry no verdict word.
   final Verdict? verdict;
   final VerdictSource? verdictSource;
   final bool indoor;
@@ -118,20 +123,43 @@ class RunEngine {
     final noisy = !indoor && quality < constants.noisyQualityBelow;
     final freeRun = calc.freeRun(run, trace);
 
-    if (mode == RunMode.free) {
-      return RunAnalysis(
-        runId: run.id,
-        mode: mode,
-        detection: null,
-        fourByFour: null,
-        freeRun: freeRun,
-        verdict: null,
-        verdictSource: null,
-        indoor: indoor,
-        noisy: noisy,
-        gpsQuality: quality,
-        engineVersion: engineVersion,
-      );
+    // Exhaustive (W7): a new mode fails to compile here instead of being
+    // mislabelled as a 4x4.
+    switch (mode) {
+      case RunMode.free:
+      case RunMode.cooper:
+        // Cooper (Phase 3) gets its own result block later; until then a
+        // cooper file reads as a summary-only run, never a 4x4.
+        return RunAnalysis(
+          runId: run.id,
+          mode: mode,
+          detection: null,
+          fourByFour: null,
+          freeRun: freeRun,
+          verdict: null,
+          verdictSource: null,
+          indoor: indoor,
+          noisy: noisy,
+          gpsQuality: quality,
+          engineVersion: engineVersion,
+        );
+      case RunMode.laps:
+        return RunAnalysis(
+          runId: run.id,
+          mode: mode,
+          detection: null,
+          fourByFour: null,
+          laps: calc.laps(run, trace, profile),
+          freeRun: freeRun,
+          verdict: null,
+          verdictSource: null,
+          indoor: indoor,
+          noisy: noisy,
+          gpsQuality: quality,
+          engineVersion: engineVersion,
+        );
+      case RunMode.fourByFour:
+        break;
     }
 
     // Edit base: recorded laps (pause laps dropped, renumbered), or laps

@@ -2,7 +2,8 @@ import 'dart:convert';
 
 import '../run_mode.dart';
 
-/// Thrown by the codec when a run file or sidecar does not match schema 1.
+/// Thrown by the codec when a run file or sidecar does not match a schema
+/// this build can read.
 class RunFileFormatException implements Exception {
   RunFileFormatException(this.message);
   final String message;
@@ -279,7 +280,14 @@ class Sample {
 
 const _unset = Object();
 
-/// The run file, schema 1 (plan §4). Written by Kotlin at `stop()`, read here.
+/// The run file (plan §4, §18.7). Written by Kotlin at `stop()` as schema
+/// [schema]; this reader accepts every schema from 1 up to it.
+///
+/// Schema history:
+/// - 1: `mode` ∈ {fourByFour, free}; `free` was the lap-capable mode.
+/// - 2: `mode` ∈ {fourByFour, laps, free, cooper}; keys unchanged. A
+///   schema-1 `free` decodes as [RunMode.laps] (§18.7 B1) and the file is
+///   re-encoded as schema 2.
 class RunFile {
   RunFile({
     required this.id,
@@ -295,9 +303,19 @@ class RunFile {
     this.pauses = const [],
     this.gaps = const [],
     required this.samples,
+    this.readSchema = schema,
   });
 
-  static const int schema = 1;
+  /// The schema this build writes.
+  static const int schema = 2;
+
+  /// The lowest schema this build reads (every older one is mapped forward).
+  static const int minReadSchema = 1;
+
+  /// The schema the decoded bytes carried (1 or 2); [schema] for a run built
+  /// in memory. Not serialised: [toJson] always writes [schema]. The store
+  /// uses it to know a file was migrated on read.
+  final int readSchema;
 
   final String id;
   final String device;
@@ -388,8 +406,8 @@ class RunFile {
         'schema $schemaValue is newer than $schema',
       );
     }
-    if (schemaValue != schema) {
-      throw RunFileFormatException('schema must be $schema');
+    if (schemaValue is! int || schemaValue < minReadSchema) {
+      throw RunFileFormatException('schema must be $minReadSchema..$schema');
     }
     // Strict: an unknown key means a newer writer; refuse rather than drop
     // it silently (the store keeps the original bytes for export anyway).
@@ -402,12 +420,7 @@ class RunFile {
     if (!idPattern.hasMatch(id)) {
       throw RunFileFormatException('id must be a filename-safe token');
     }
-    final modeName = _readString(json, 'mode');
-    final mode = RunMode.values.cast<RunMode?>().firstWhere(
-      (m) => m!.name == modeName,
-      orElse: () => null,
-    );
-    if (mode == null) throw RunFileFormatException('mode must be a RunMode');
+    final mode = RunMode.decode(_readString(json, 'mode'), schema: schemaValue);
     final unitsName = _readString(json, 'units');
     final units = Units.values.cast<Units?>().firstWhere(
       (u) => u!.name == unitsName,
@@ -457,6 +470,7 @@ class RunFile {
       pauses: _readList(json, 'pauses').map(Span.fromJson).toList(),
       gaps: _readList(json, 'gaps').map(Span.fromJson).toList(),
       samples: samples,
+      readSchema: schemaValue,
     );
   }
 

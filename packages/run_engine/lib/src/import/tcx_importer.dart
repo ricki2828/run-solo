@@ -5,7 +5,7 @@ import '../run_mode.dart';
 import 'import_util.dart';
 import 'tcx_exporter.dart';
 
-/// TCX → schema-1 run file (plan §4 W1). `<Lap>` elements become manual laps
+/// TCX → run file (plan §4 W1). `<Lap>` elements become manual laps
 /// so a watch-recorded 4x4 keeps its splits; trackpoints become samples.
 /// Timezone is unknown in TCX, so `tz` is recorded as UTC.
 class TcxImporter {
@@ -126,7 +126,15 @@ class TcxImporter {
       start: start,
       end: start.add(Duration(milliseconds: samples.last.tMs)),
       tz: tz,
-      mode: mode ?? (manualLaps >= 3 ? RunMode.fourByFour : RunMode.free),
+      // §18.7: manual laps → `laps` (a by-feel 4x4 shape → `fourByFour`,
+      // as before), none → `free`.
+      mode:
+          mode ??
+          (manualLaps >= 3
+              ? RunMode.fourByFour
+              : manualLaps >= 1
+              ? RunMode.laps
+              : RunMode.free),
       preset: null,
       units: units,
       laps: laps,
