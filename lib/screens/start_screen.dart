@@ -35,7 +35,7 @@ class _StartScreenState extends State<StartScreen> {
     super.didChangeDependencies();
     if (_volumeKeyChecked) return;
     _volumeKeyChecked = true;
-    AppServices.of(context).permissions.volumeKeyLapsAvailable().then((ok) {
+    AppServices.of(context).permissions.volumeKeyLapsSupported().then((ok) {
       if (mounted && ok != _volumeKeyLaps) setState(() => _volumeKeyLaps = ok);
     });
   }
@@ -170,8 +170,8 @@ class _StartScreenState extends State<StartScreen> {
                         : null,
                   ),
                   Text(
-                    'Warm-up and cool-down are untimed: tap LAP when ready, '
-                    'hold Stop when done.',
+                    'Warm up as long as you like, then tap START 4x4. After the '
+                    'last rep, cool down and hold Stop when done.',
                     style: text.bodyMedium?.copyWith(color: t.inkSecondary),
                   ),
                   const SizedBox(height: Space.x16),
@@ -202,7 +202,9 @@ class _StartScreenState extends State<StartScreen> {
                   if (!_volumeKeyLaps)
                     Text(
                       kVolumeKeyToggleReason,
-                      style: text.bodyMedium?.copyWith(color: t.inkSecondary),
+                      style: RunSoloType.label13.copyWith(
+                        color: t.inkSecondary,
+                      ),
                     ),
                 ] else ...[
                   Text(

@@ -150,7 +150,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     _refreshPerms();
     if (_volumeKeyChecked) return;
     _volumeKeyChecked = true;
-    AppServices.of(context).permissions.volumeKeyLapsAvailable().then((ok) {
+    AppServices.of(context).permissions.volumeKeyLapsSupported().then((ok) {
       if (mounted && ok != _volumeKeyLaps) setState(() => _volumeKeyLaps = ok);
     });
   }

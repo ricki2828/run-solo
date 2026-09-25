@@ -109,11 +109,12 @@ class PigeonPermissionsGateway implements PermissionsGateway {
   @override
   Future<void> openAppSettings() => _api.openAppSettings();
 
-  // TODO(run3-native-opus): `(await _api.androidSdkInt()) != 34` once #12
-  // adds it to PermissionsApi; until then the toggle stays enabled and the
-  // run-time `volumeKeyUnavailable` note still covers Android 14.
+  // TODO(run3-native-opus): `_api.volumeKeyLapsSupported()` once native's
+  // follow-up PR adds it to PermissionsApi (false on API 34); until then the
+  // toggle stays enabled and the run-time `volumeKeyUnavailable` note still
+  // covers Android 14.
   @override
-  Future<bool> volumeKeyLapsAvailable() async => true;
+  Future<bool> volumeKeyLapsSupported() async => true;
 
   @override
   Future<void> setKeepScreenOn(bool enabled) => _api.setKeepScreenOn(enabled);

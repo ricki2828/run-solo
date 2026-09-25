@@ -158,5 +158,5 @@ abstract class PermissionsGateway {
   /// app's session there, so native registers none and fires
   /// `volumeKeyUnavailable` once per run. Start and Settings disable the
   /// volume-key toggle with a one-line reason.
-  Future<bool> volumeKeyLapsAvailable();
+  Future<bool> volumeKeyLapsSupported();
 }

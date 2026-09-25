@@ -667,5 +667,5 @@ class FakePermissionsGateway implements PermissionsGateway {
   Future<void> setKeepScreenOn(bool enabled) async => keepScreenOn = enabled;
 
   @override
-  Future<bool> volumeKeyLapsAvailable() async => volumeKeyLaps;
+  Future<bool> volumeKeyLapsSupported() async => volumeKeyLaps;
 }
