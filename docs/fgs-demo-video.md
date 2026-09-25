@@ -50,8 +50,7 @@ the screen recorder settings are right; the replay footage is not what gets uplo
 
 ## Things the reviewer must NOT see
 
-- Any deep-link to Settings for location (plan §10: system prompt only). The battery-optimisation
-  system dialog is allowed but keep it out of the video: do the setup checklist before recording.
+- Any deep-link to Settings for location (plan §10: system prompt only).
 - Replay mode, debug intents or the `.dogfood` package name.
 - A permission prompt for background location (there is none; if one appears, the build is wrong).
 - Recording restarting after Stop, or a notification that survives Stop.

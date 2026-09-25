@@ -121,6 +121,9 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Native debug symbols (libapp.so, libflutter.so) packed into the AAB so Play vitals
+            // symbolicates native traces (plan §11) without a separate upload.
+            ndk { debugSymbolLevel = "FULL" }
         }
     }
 }

@@ -37,7 +37,7 @@ Founder approves the wording (plan §18.9 item 8) before anything is typed into 
 > Coming in the paid version: tempo and easy-run verdicts, adaptive plans, iOS. Join the waitlist inside the app.
 
 - **Category**: Health & Fitness. **Tags**: Running, Fitness tracker, Interval training.
-- **Countries**: English-speaking non-EU (AU, NZ, US, CA, GB, SG, ZA, IE is EU so out) per plan §10.
+- **Countries**: English-speaking non-EU per plan §10: AU, NZ, US, CA, GB, SG, ZA. (IE is EU, so not in the list.)
 - **Graphics**: icon (Tally), feature graphic 1024x500, 6 screenshots 1080x2400 with the brief's captions; HR pairing as #7 if there is room. No Hyrox marks or keywords anywhere.
 - **Contact details**: email above; website `https://runsolo.app`.
 
@@ -77,7 +77,7 @@ Plan §18.6 (v5.4). Over-declare rather than under-declare. Answer the overview 
 |---|---|
 | Does your app collect or share any of the required user data types? | **Yes** |
 | Is all of the user data collected by your app encrypted in transit? | **Yes** (Maps SDK and Open-Meteo use HTTPS) |
-| Do you provide a way for users to request that their data is deleted? | **Yes**: "Delete all" in Settings, Data removes everything on the device; nothing is held off-device by us. Pick "Yes, deletion is via the app" and link the privacy page. |
+| Do you provide a way for users to request that their data is deleted? | **Yes**: "Delete all" in Settings, Data removes everything on the device; nothing is held off-device by us. Pick "Yes, deletion is via the app" and link the privacy page. What Google's Maps SDK collected is Google's to delete (Google account controls), and the privacy page says so. |
 | Have you reviewed the Google Play Families policy? | Not applicable (18+ only) |
 | Is your app's data handling independently validated against a security standard (MASA)? | **No** |
 
@@ -85,11 +85,12 @@ Data types. "Collected" in Play's sense includes what the Maps SDK sends to Goog
 
 | Category | Data type | Collected? | Shared? | Ephemeral? | Required or optional | Purposes | Why (for the founder) |
 |---|---|---|---|---|---|---|---|
-| Location | **Precise location** | Yes | No | Yes (processed in memory by the SDK, not stored by us) | Optional (only when the user opens a run detail with a map) | App functionality | Post-run map fits the camera to the route at zoom 15/16 and the full-screen map is panned/zoomed; the camera events Google receives describe an area smaller than Play's ~3 km² "approximate" threshold (R1) |
-| Location | **Approximate location** | Yes | No | Yes | Optional (weather can be turned off; the map only on detail) | App functionality | Maps SDK derives it from the IP; Open-Meteo gets the run location rounded to ~10 km |
+| Location | **Precise location** | Yes | No | No (Google retains map camera/interaction events "to improve Google services") | Required (the post-run map has no toggle) | App functionality, **Analytics** | Post-run map fits the camera to the route at zoom 15/16 and the full-screen map is panned/zoomed; the camera events Google receives describe an area smaller than Play's ~3 km² "approximate" threshold (R1) |
+| Location | **Approximate location** | Yes | No | No | Required for the map's IP-derived part; the Open-Meteo part is optional (weather toggle) | App functionality, **Analytics** | Maps SDK derives it from the IP and Google says IP + request metadata are used "to understand SDK usage"; Open-Meteo gets the run location rounded to ~10 km |
 | Device or other IDs | **Device or other IDs** | Yes | No | No | Required (part of the Maps SDK whenever a map loads) | App functionality, **Analytics** | Maps SDK identifier used by Google to measure daily active SDK users |
+| App activity | **App interactions** | Yes | No | No | Required | App functionality, **Analytics** | Google lists "map interaction events (panning, zooming)" as its own collected item; Play's matching type is App interactions. Plan §18.6 did not cover this category; declared to over- rather than under-declare |
 | App info and performance | **Crash logs** | Yes | No | No | Required | App functionality | Maps SDK crash reporting (Google's disclosure) |
-| App info and performance | **Diagnostics** | Yes | No | No | Required | App functionality | Maps SDK request metadata / performance data |
+| App info and performance | **Diagnostics** | Yes | No | No | Required | App functionality, **Analytics** | Maps SDK request metadata / performance data, used by Google "to understand SDK usage" |
 | Health and fitness | Health info / Fitness info | **No** | No | | | | Heart rate, pace, route files stay on the device; never transmitted by us. Auto Backup is a system feature under the user's Google account and Play's guidance excludes it. |
 | Personal info | any | No | | | | | No account, no name, no email |
 | Financial info | any | No | | | | | |
@@ -113,22 +114,13 @@ Play Console → App content → **Foreground service permissions**. Declare the
 >
 > **Demo video URL:** (unlisted YouTube link recorded per `docs/fgs-demo-video.md`).
 
-Also true of the app and worth having ready if asked: `FOREGROUND_SERVICE_LOCATION` is declared in the manifest, the service is `START_NOT_STICKY`, `stopWithTask=false` only so the notification survives a task swipe while a run is live. `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is declared (§8a) but has nothing to do with the FGS type.
-
-## 8a. Battery optimisation exemption (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`)
-
-Founder decision 24-Sep (overrides plan §10): the app declares this permission so the setup
-checklist can ask the system to exempt Run Solo from Doze on OEMs that kill the recording. Play
-lists "fitness/health tracking with a foreground service" among the acceptable cases. If the
-Console shows a declaration or the reviewer asks, use:
-
-> Run Solo records GPS pace during a running workout through a foreground location service. On several manufacturers' phones, battery optimisation suspends that service mid-run and the recording is lost. The app asks for the exemption once, from its setup checklist, via the system dialog (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`), only after the user has chosen to record runs with the screen off, and it works without the exemption. It is never used to run anything outside a run the user started.
+Also true of the app and worth having ready if asked: `FOREGROUND_SERVICE_LOCATION` is declared in the manifest, the service is `START_NOT_STICKY`, `stopWithTask=false` only so the notification survives a task swipe while a run is live, and no `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (the setup checklist deep-links to the battery-optimisation settings page instead).
 
 ## 9. Government apps / Financial features / Health apps declarations
 
 - Government app: **No**.
 - Financial features: **None**.
-- Health apps declaration (if shown): **Health and fitness** category, "activity and fitness tracking", not a medical device, no health data leaves the device, no integration with Health Connect in v1.
+- Health apps declaration (mandatory for every app now): app **does** have health features → **Activity and fitness tracking** (running workouts, heart rate from a paired strap). Not a medical device, no clinical or diagnostic claims, health data stays on the device, no Health Connect integration in v1 (Phase 2 backlog; when it lands the declaration and Data safety are updated together).
 
 ## 10. News app / COVID / other
 

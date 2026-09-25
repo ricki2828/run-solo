@@ -28,7 +28,7 @@ Android-module tests are built **only in GitHub Actions**. Every push to `main` 
 2. `core-jvm` job: `./gradlew test` in `android/core-jvm` (pure JVM).
 3. `build-apk` job: `flutter build apk --debug --flavor play` (uploaded as artifact **`run-solo-debug-apk`**), a release AAB build (debug-signed for now), and the 16 KB page-size check on both (ELF `LOAD` alignment of every 64-bit `.so` plus `zipalign -P 16`). Fails the job if misaligned.
 4. `emulator` job: API 29 / 34 / 36 x86_64 emulators install and launch the debug APK, then run the replay-mode lifecycle test.
-5. `release-aab` job (**manual run or a `v*` tag only**, not on PRs): `flutter build appbundle --release --flavor play`, signed with the Play upload key, signer + 16 KB + Maps meta-data verified, artifacts `run-solo-play-aab-<ref>` (the `.aab` to upload to Play) and `run-solo-play-symbols-<ref>` (R8 `mapping.txt`, native debug symbols zip, Dart split-debug-info) kept 90 days. Upload the mapping and native symbols with the release in Play Console so vitals traces are readable.
+5. `release-aab` job (**manual run or a `v*` tag only**, not on PRs): `flutter build appbundle --release --flavor play`, signed with the Play upload key, signer + 16 KB + Maps meta-data verified, artifacts `run-solo-play-aab-<ref>` (the `.aab` to upload to Play; native debug symbols are inside it via `ndk.debugSymbolLevel = "FULL"`) and `run-solo-play-symbols-<ref>` (R8 `mapping.txt`, Dart split-debug-info) kept 90 days. Upload `mapping.txt` with the release in Play Console so vitals traces are readable. The job preflights the upload key with `keytool` before building.
 6. `build-dogfood` job: optimised sideload build for the Pixel, artifact **`run-solo-dogfood-apk`** (see below). `emulator-dogfood` runs the launch smoke and a logcat-only replay check (auto-laps fire) on its x86_64 twin on API 36, so R8 stripping is caught in CI; the full lifecycle test needs `run-as` and stays on the debug build.
 
 Flutter is pinned to **3.47.5** in `ci.yml` (`FLUTTER_VERSION`); the host install at `~/tools/flutter` is the same version. Bump both together.
@@ -82,7 +82,7 @@ key; we only ever hold the upload key (`CN=Run Solo upload`, alias `upload`, RSA
 |---|---|
 | `RUN_SOLO_UPLOAD_KEYSTORE_BASE64` | base64 of the upload keystore (`.jks`) |
 | `RUN_SOLO_UPLOAD_STORE_PASSWORD` | keystore password |
-| `RUN_SOLO_UPLOAD_KEY_PASSWORD` | key password |
+| `RUN_SOLO_UPLOAD_KEY_PASSWORD` | key password (PKCS12: equal to the store password) |
 | `RUN_SOLO_MAPS_API_KEY` | Google Maps key (manifest placeholder; builds pass with it absent) |
 | `PLAY_SERVICE_ACCOUNT_JSON` | later, for uploading tagged builds to the internal track automatically |
 
