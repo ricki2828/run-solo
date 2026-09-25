@@ -85,11 +85,14 @@ void main() {
       expect(RunMode.decode('free', schema: 2), RunMode.free);
       expect(RunMode.decode('laps', schema: 2), RunMode.laps);
       expect(RunMode.decode('cooper', schema: 2), RunMode.cooper);
-      expect(
-        () => RunMode.decode('laps', schema: 1),
-        returnsNormally,
-        reason: 'a forward-mapped name is still readable',
-      );
+      // No v1 writer emitted these: under schema 1 they are corruption.
+      for (final bad in ['laps', 'cooper', 'tempo']) {
+        expect(
+          () => RunMode.decode(bad, schema: 1),
+          throwsA(isA<RunFileFormatException>()),
+          reason: bad,
+        );
+      }
       expect(RunMode.fourByFour.lapCapable, isTrue);
       expect(RunMode.laps.lapCapable, isTrue);
       expect(RunMode.free.lapCapable, isFalse);
@@ -410,12 +413,19 @@ void main() {
       return run.copyWith(laps: laps);
     }
 
-    test('TCX: 0 laps → free, 1–2 → laps, ≥3 → fourByFour', () {
+    test('TCX: 0 laps → free, any laps → laps, never 4x4 by count (P2-1)', () {
       const exp = TcxExporter(homeTrim: false);
       const imp = TcxImporter();
       // The exporter writes one auto lap when a run has none, so build a
       // file with explicit lap counts through the exporter's lap loop.
-      expect(imp.import(exp.export(tcxWithLaps(3))).mode, RunMode.fourByFour);
+      // A Garmin auto-km easy run has many <Lap>s and must not enter the
+      // 4x4 trend; the 4x4 flip is a sidecar override.
+      expect(imp.import(exp.export(tcxWithLaps(10))).mode, RunMode.laps);
+      expect(imp.import(exp.export(tcxWithLaps(3))).mode, RunMode.laps);
+      expect(
+        imp.import(exp.export(tcxWithLaps(3)), mode: RunMode.fourByFour).mode,
+        RunMode.fourByFour,
+      );
       expect(imp.import(exp.export(tcxWithLaps(2))).mode, RunMode.laps);
       expect(imp.import(exp.export(tcxWithLaps(1))).mode, RunMode.laps);
       expect(

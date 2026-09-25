@@ -21,7 +21,17 @@ enum RunMode {
   /// [schema] 1 that name maps to [laps], always (§18.7: simpler than "when
   /// laps > 1"). Throws [RunFileFormatException] for an unknown name.
   static RunMode decode(String name, {required int schema}) {
-    if (schema <= 1 && name == 'free') return RunMode.laps;
+    if (schema <= 1) {
+      // No v1 writer emitted anything else; a stray `laps`/`cooper` in a
+      // schema-1 file is corruption, not a newer writer.
+      return switch (name) {
+        'free' => RunMode.laps,
+        'fourByFour' => RunMode.fourByFour,
+        _ => throw RunFileFormatException(
+          'schema-1 mode must be fourByFour|free, got "$name"',
+        ),
+      };
+    }
     final mode = RunMode.values.cast<RunMode?>().firstWhere(
       (m) => m!.name == name,
       orElse: () => null,

@@ -110,6 +110,8 @@ void main() {
         '[]',
         '{}',
         '{"kind":"other"}',
+        '{"kind":"runsolo-export","run":{},"sidecar":null}',
+        '{"kind":"runsolo-export","schema":"2","run":{},"sidecar":null}',
         '{"kind":"runsolo-export","schema":2,"run":5}',
         '{"kind":"runsolo-export","schema":2,"run":{},"sidecar":"x"}',
         '{"samples":[]}',
@@ -170,9 +172,53 @@ void main() {
         );
         final plan = planBundleImport([a, b, a], {b.id});
         expect(plan.toImport.map((x) => x.id), [a.id]);
+        expect(plan.alreadyOnDeviceIds, [b.id]);
+        expect(plan.duplicateIds, [a.id]);
         expect(plan.skippedIds, [b.id, a.id]);
       },
     );
+
+    test('within a batch the copy with a sidecar wins over a bare file, in '
+        'either order (P2-2)', () {
+      final bare = RunBundle(run: fourByFour);
+      final withSidecar = RunBundle(
+        run: fourByFour,
+        sidecar: RunSidecar(
+          runId: fourByFour.id,
+          notes: 'keep me',
+        ).withOverride(RunMode.laps),
+      );
+      for (final batch in [
+        [bare, withSidecar],
+        [withSidecar, bare],
+      ]) {
+        final plan = planBundleImport(batch, const {});
+        expect(plan.toImport.length, 1);
+        expect(plan.toImport.single.sidecar?.notes, 'keep me');
+        expect(plan.duplicateIds, [fourByFour.id]);
+        expect(plan.alreadyOnDeviceIds, isEmpty);
+      }
+      // Two sidecar copies: first wins (never merged).
+      final other = RunBundle(
+        run: fourByFour,
+        sidecar: RunSidecar(runId: fourByFour.id, notes: 'second'),
+      );
+      expect(
+        planBundleImport([
+          withSidecar,
+          other,
+        ], const {}).toImport.single.sidecar!.notes,
+        'keep me',
+      );
+      // First-seen order is kept even when a later copy wins.
+      final plan = planBundleImport([
+        bare,
+        RunBundle(run: lapsRun),
+        withSidecar,
+      ], const {});
+      expect(plan.toImport.map((x) => x.id), [fourByFour.id, lapsRun.id]);
+      expect(plan.toImport.first.sidecar, isNotNull);
+    });
 
     test('importing the same export twice is a no-op the second time', () {
       final text = RunBundleCodec.encode(RunBundle(run: fourByFour));
@@ -183,7 +229,8 @@ void main() {
         {first.toImport.single.id},
       );
       expect(second.toImport, isEmpty);
-      expect(second.skippedIds, [fourByFour.id]);
+      expect(second.alreadyOnDeviceIds, [fourByFour.id]);
+      expect(second.duplicateIds, isEmpty);
     });
 
     test('a bare v1 file and its v2 re-export share the uuid', () {
@@ -193,7 +240,7 @@ void main() {
       );
       final plan = planBundleImport([v1, v2], const {});
       expect(plan.toImport.length, 1);
-      expect(plan.skippedIds, [lapsRun.id]);
+      expect(plan.duplicateIds, [lapsRun.id]);
     });
   });
 }
