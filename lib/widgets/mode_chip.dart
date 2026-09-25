@@ -1,6 +1,60 @@
 import 'package:flutter/material.dart';
 
+import '../app/format.dart';
+import '../platform/gateway.dart';
 import '../theme/theme.dart';
+
+/// Three chips at Start and Home (plan §18.2, addendum A2): 4x4, Laps,
+/// Free. Cooper (12-minute test) is Phase 3 and not offered here.
+class ModeChipRow extends StatelessWidget {
+  const ModeChipRow({
+    super.key,
+    required this.selected,
+    required this.onSelect,
+    required this.reps,
+    required this.recoverySeconds,
+  });
+  final RecordMode selected;
+  final ValueChanged<RecordMode> onSelect;
+  final int reps;
+  final int recoverySeconds;
+
+  static const List<RecordMode> offered = [
+    RecordMode.fourByFour,
+    RecordMode.laps,
+    RecordMode.free,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (final m in offered) ...[
+          if (m != offered.first) const SizedBox(width: Space.x8),
+          Expanded(
+            child: ModeChip(
+              title: switch (m) {
+                RecordMode.fourByFour => '4x4',
+                RecordMode.laps => 'LAPS',
+                RecordMode.free => 'FREE',
+                RecordMode.cooper => 'TEST',
+              },
+              subtitle: switch (m) {
+                RecordMode.fourByFour =>
+                  '$reps × 4:00 · ${Fmt.recovery(recoverySeconds)}',
+                RecordMode.laps => 'Tap LAP each interval',
+                RecordMode.free => 'Just run',
+                RecordMode.cooper => '12 minutes',
+              },
+              selected: selected == m,
+              onTap: () => onSelect(m),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
 
 /// 96 dp mode chip; selected = 2 px Bone border (design brief §5).
 class ModeChip extends StatelessWidget {
@@ -31,7 +85,7 @@ class ModeChip extends StatelessWidget {
           duration: MotionDurations.quick,
           curve: MotionCurves.standard,
           height: 96,
-          padding: const EdgeInsets.all(Space.cardPadding),
+          padding: const EdgeInsets.all(Space.x12),
           decoration: BoxDecoration(
             color: t.bgRaised,
             borderRadius: BorderRadius.circular(Radii.card),

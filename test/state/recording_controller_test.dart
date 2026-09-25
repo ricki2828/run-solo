@@ -144,14 +144,58 @@ void main() {
     expect(ctl.snapshot.strapDropped, isFalse);
   });
 
-  test('free run: laps count up, volume-key lap honoured', () async {
-    await ctl.start(RecordMode.free, null, Units.km);
+  test('laps run: laps count up, volume-key lap honoured', () async {
+    await ctl.start(RecordMode.laps, null, Units.km);
     fake.advance(const Duration(seconds: 30));
     await fake.lap(LapSource.volumeKey);
     await settle();
     expect(ctl.snapshot.lapIndex, 1);
     expect(ctl.snapshot.phase, Phase.none);
     expect(ctl.lapPulse.value, 1, reason: 'ring confirms every lap source');
+    expect(ctl.snapshot.lapsEnabled, isTrue);
+  });
+
+  test('free run: no lap input at all (plan §18.2)', () async {
+    await ctl.start(RecordMode.free, null, Units.km);
+    fake.advance(const Duration(seconds: 30));
+    await ctl.lap();
+    await fake.lap(LapSource.volumeKey);
+    await fake.lap(LapSource.notification);
+    await settle();
+    expect(ctl.snapshot.lapsEnabled, isFalse);
+    expect(ctl.snapshot.lapIndex, 0);
+    expect(ctl.lapPulse.value, 0);
+    expect(
+      fake.lapsIgnored,
+      2,
+      reason: 'controller never forwards, fake ignores',
+    );
+  });
+
+  test('zone follows the tracker: first HR immediate, dwell on change, seed on attach', () async {
+    await ctl.start(RecordMode.laps, null, Units.km);
+    fake.scriptedHr = 140; // Z3 at max 190
+    fake.advance(const Duration(milliseconds: 500));
+    await settle();
+    expect(ctl.snapshot.zone, 3);
+    fake.scriptedHr = 178;
+    fake.advance(const Duration(milliseconds: 500));
+    await settle();
+    expect(ctl.snapshot.zone, 3, reason: 'dwell not met');
+    for (var i = 0; i < 12; i++) {
+      fake.advance(const Duration(milliseconds: 500));
+    }
+    await settle();
+    expect(ctl.snapshot.zone, 5);
+    // A fresh controller over the same live run (process restart): the
+    // first tick sets the zone immediately, no 5 s black.
+    final again = RecordingController(fake, now: now);
+    await again.attach();
+    expect(again.snapshot.zone, 0, reason: 'status() carries no HR');
+    fake.advance(const Duration(milliseconds: 500));
+    await settle();
+    expect(again.snapshot.zone, 5);
+    again.dispose();
   });
 
   test('preset ignores volume-key laps (plan §6, W8)', () async {
@@ -247,7 +291,9 @@ void main() {
     expect(paces, hasLength(2));
     expect(paces.first, closeTo(266.7, 0.1));
     expect(paces.last, closeTo(266.7, 0.1), reason: 'pause not counted');
-    expect(RecordingController.repPacesFromLaps(laps, null), isEmpty);
+    // Laps run (no preset): every lap counts.
+    expect(RecordingController.repPacesFromLaps(laps, null), hasLength(6));
+    expect(RecordingController.repPacesFromLaps(const [], null), isEmpty);
   });
 
   test('typed start errors pass through untouched', () async {

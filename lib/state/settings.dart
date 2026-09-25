@@ -1,6 +1,5 @@
 /// User settings mirrored to `files/state/settings.json` (plan §2: sidecars
-/// are the source of truth, the index is a cache). Kept tiny for Phase 1;
-/// Settings screen proper is Phase 3.
+/// are the source of truth, the index is a cache).
 library;
 
 import 'dart:convert';
@@ -34,6 +33,22 @@ abstract final class PresetRules {
   );
 }
 
+/// Max HR entry bounds (plan D3). Typed values outside these are rejected at
+/// the field, never clamped silently.
+abstract final class MaxHrRules {
+  static const int min = 120;
+  static const int max = 220;
+  static const int fallback = 190;
+
+  /// An observed 30 s value more than this above the typed max is offered as
+  /// a confirm sheet, not applied (artefact guard, D3 rule 5).
+  static const int artefactMargin = 15;
+
+  static bool validTyped(int v) => v >= min && v <= max;
+  static bool validBirthYear(int y, int nowYear) =>
+      y >= nowYear - 100 && y <= nowYear - 10;
+}
+
 @immutable
 class SavedStrap {
   const SavedStrap({required this.address, this.name});
@@ -58,10 +73,14 @@ class AppSettings {
     this.lastMode = RecordMode.fourByFour,
     this.cues = true,
     this.haptics = true,
-    this.volumeKeyLap = false,
+    this.volumeKeyLap,
     this.keepScreenOn = true,
     this.reducedMotion = false,
-    this.maxHr = 190,
+    this.typedMaxHr,
+    this.birthYear,
+    this.observedMaxHr,
+    this.observedMaxHrAt,
+    this.pendingObservedMaxHr,
     this.onboardingDone = false,
     this.strap,
   });
@@ -72,10 +91,27 @@ class AppSettings {
   final RecordMode lastMode;
   final bool cues;
   final bool haptics;
-  final bool volumeKeyLap;
+
+  /// Null = the run type's default (plan §18.2: on for Laps, off for 4x4,
+  /// never for Free). See [volumeKeyLapFor].
+  final bool? volumeKeyLap;
   final bool keepScreenOn;
   final bool reducedMotion;
-  final int maxHr;
+
+  /// Max HR typed in Settings; null = not entered (plan D3, N1: the old
+  /// constant 190 migrates to null so the age / observed sources can win).
+  final int? typedMaxHr;
+
+  /// Asked once in onboarding, skippable; drives the 220 − age fallback.
+  final int? birthYear;
+
+  /// Highest sustained 30 s strap reading accepted so far, and when.
+  final int? observedMaxHr;
+  final DateTime? observedMaxHrAt;
+
+  /// An observed value the artefact guard held back (> typed + 15 or > 220);
+  /// offered once as a confirm sheet, then applied or discarded.
+  final int? pendingObservedMaxHr;
   final bool onboardingDone;
   final SavedStrap? strap;
 
@@ -84,6 +120,13 @@ class AppSettings {
     workSeconds: PresetRules.workSeconds,
     recoverySeconds: recoverySeconds,
   );
+
+  /// Effective volume-key lap for a run type (plan §18.2 defaults).
+  bool volumeKeyLapFor(RecordMode mode) => switch (mode) {
+    RecordMode.free || RecordMode.cooper => false,
+    RecordMode.laps => volumeKeyLap ?? true,
+    RecordMode.fourByFour => volumeKeyLap ?? false,
+  };
 
   AppSettings copyWith({
     Units? units,
@@ -95,7 +138,15 @@ class AppSettings {
     bool? volumeKeyLap,
     bool? keepScreenOn,
     bool? reducedMotion,
-    int? maxHr,
+    int? typedMaxHr,
+    bool clearTypedMaxHr = false,
+    int? birthYear,
+    bool clearBirthYear = false,
+    int? observedMaxHr,
+    DateTime? observedMaxHrAt,
+    bool clearObservedMaxHr = false,
+    int? pendingObservedMaxHr,
+    bool clearPendingObservedMaxHr = false,
     bool? onboardingDone,
     SavedStrap? strap,
     bool clearStrap = false,
@@ -109,7 +160,17 @@ class AppSettings {
     volumeKeyLap: volumeKeyLap ?? this.volumeKeyLap,
     keepScreenOn: keepScreenOn ?? this.keepScreenOn,
     reducedMotion: reducedMotion ?? this.reducedMotion,
-    maxHr: maxHr ?? this.maxHr,
+    typedMaxHr: clearTypedMaxHr ? null : (typedMaxHr ?? this.typedMaxHr),
+    birthYear: clearBirthYear ? null : (birthYear ?? this.birthYear),
+    observedMaxHr: clearObservedMaxHr
+        ? null
+        : (observedMaxHr ?? this.observedMaxHr),
+    observedMaxHrAt: clearObservedMaxHr
+        ? null
+        : (observedMaxHrAt ?? this.observedMaxHrAt),
+    pendingObservedMaxHr: clearPendingObservedMaxHr
+        ? null
+        : (pendingObservedMaxHr ?? this.pendingObservedMaxHr),
     onboardingDone: onboardingDone ?? this.onboardingDone,
     strap: clearStrap ? null : (strap ?? this.strap),
   );
@@ -124,12 +185,18 @@ class AppSettings {
     'volumeKeyLap': volumeKeyLap,
     'keepScreenOn': keepScreenOn,
     'reducedMotion': reducedMotion,
-    'maxHr': maxHr,
+    'typedMaxHr': typedMaxHr,
+    'birthYear': birthYear,
+    'observedMaxHr': observedMaxHr,
+    'observedMaxHrAt': observedMaxHrAt?.toUtc().toIso8601String(),
+    'pendingObservedMaxHr': pendingObservedMaxHr,
     'onboardingDone': onboardingDone,
     'strap': strap?.toJson(),
   };
 
   /// Lenient: unknown or malformed keys fall back to defaults, never throw.
+  /// Phase 1's `maxHr` key migrates: its constant default 190 becomes
+  /// "not entered" (null); any other value was typed by the user (N1).
   factory AppSettings.fromJson(Map<String, Object?> j) {
     const d = AppSettings();
     T pick<T>(String key, T fallback) {
@@ -137,7 +204,19 @@ class AppSettings {
       return v is T ? v : fallback;
     }
 
+    int? optInt(String key) {
+      final v = j[key];
+      return v is int ? v : null;
+    }
+
     final strapJson = j['strap'];
+    var typed = optInt('typedMaxHr');
+    if (typed == null && j.containsKey('maxHr')) {
+      final legacy = optInt('maxHr');
+      if (legacy != null && legacy != MaxHrRules.fallback) typed = legacy;
+    }
+    if (typed != null && !MaxHrRules.validTyped(typed)) typed = null;
+    final observedAtRaw = j['observedMaxHrAt'];
     return AppSettings(
       units: Units.values.asNameMap()[pick('units', '')] ?? d.units,
       reps: PresetRules.clampReps(pick('reps', d.reps)),
@@ -148,10 +227,18 @@ class AppSettings {
           RecordMode.values.asNameMap()[pick('lastMode', '')] ?? d.lastMode,
       cues: pick('cues', d.cues),
       haptics: pick('haptics', d.haptics),
-      volumeKeyLap: pick('volumeKeyLap', d.volumeKeyLap),
+      volumeKeyLap: j['volumeKeyLap'] is bool
+          ? j['volumeKeyLap'] as bool
+          : null,
       keepScreenOn: pick('keepScreenOn', d.keepScreenOn),
       reducedMotion: pick('reducedMotion', d.reducedMotion),
-      maxHr: pick('maxHr', d.maxHr),
+      typedMaxHr: typed,
+      birthYear: optInt('birthYear'),
+      observedMaxHr: optInt('observedMaxHr'),
+      observedMaxHrAt: observedAtRaw is String
+          ? DateTime.tryParse(observedAtRaw)
+          : null,
+      pendingObservedMaxHr: optInt('pendingObservedMaxHr'),
       onboardingDone: pick('onboardingDone', d.onboardingDone),
       strap: strapJson is Map<String, Object?> && strapJson['address'] is String
           ? SavedStrap.fromJson(strapJson)

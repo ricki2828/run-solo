@@ -121,8 +121,15 @@ abstract class PermissionsGateway {
   /// after for the full snapshot.
   Future<bool> request(PermissionKind kind);
 
-  /// The only Settings deep-link plan §10 allows for location trouble.
+  /// Battery-optimisation settings page (fallback when the exemption dialog
+  /// is unavailable).
   Future<void> openBatterySettings();
+
+  /// The in-app exemption prompt (Phase 2 backlog: overrides plan §10's
+  /// exclusion for this fitness tracker with a location FGS):
+  /// `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, falling back to the app's
+  /// battery page. True when the app is exempt afterwards.
+  Future<bool> requestBatteryExemption();
 
   /// App info page, for a "don't ask again" denial of notifications / BLE.
   Future<void> openAppSettings();

@@ -53,11 +53,18 @@ class StatTile extends StatelessWidget {
       crossAxisAlignment: align,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          value,
-          style: RunSoloType.display44.copyWith(
-            fontSize: size,
-            color: valueColor ?? t.inkPrimary,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: align == CrossAxisAlignment.end
+              ? Alignment.centerRight
+              : Alignment.centerLeft,
+          child: Text(
+            value,
+            softWrap: false,
+            style: RunSoloType.display44.copyWith(
+              fontSize: size,
+              color: valueColor ?? t.inkPrimary,
+            ),
           ),
         ),
         const SizedBox(height: Space.x4),

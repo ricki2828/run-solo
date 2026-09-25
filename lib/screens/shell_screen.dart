@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
+import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import 'history_screen.dart';
 import 'home_screen.dart';
 import 'permissions_screen.dart';
 import 'recovery_dialog.dart';
+import 'settings_screen.dart';
+import 'trend_screen.dart';
 
 /// Bottom-nav shell. On first frame it runs the recovery check (plan §3:
 /// orphaned journals are offered on app open only) and, if the run is still
@@ -65,11 +69,8 @@ class _ShellScreenState extends State<ShellScreen> {
         children: [
           HomeScreen(now: widget.now),
           HistoryScreen(onStart: () => setState(() => _tab = AppTab.home)),
-          const _Placeholder(
-            title: 'TREND',
-            line: 'Two 4x4s draw the first line.',
-          ),
-          const _SettingsLite(),
+          const TrendScreen(),
+          SettingsScreen(now: widget.now),
         ],
       ),
       bottomNavigationBar: BottomNav(
@@ -87,6 +88,11 @@ class _OnboardingRoute extends StatelessWidget {
   Widget build(BuildContext context) {
     return _OnboardingIntro(
       onContinue: () async {
+        // Screen 2 (plan D3): birth year, asked once, skippable.
+        await Navigator.of(
+          context,
+        ).push<void>(MaterialPageRoute(builder: (_) => const _BirthYearStep()));
+        if (!context.mounted) return;
         final ok = await Navigator.of(context).push<bool>(
           MaterialPageRoute(
             builder: (_) => const PermissionsScreen(onboarding: true),
@@ -205,104 +211,93 @@ class _UnitChip extends StatelessWidget {
   }
 }
 
-class _Placeholder extends StatelessWidget {
-  const _Placeholder({required this.title, required this.line});
-  final String title;
-  final String line;
+/// Onboarding screen 2: birth year for the 220 − age max HR fallback.
+/// Skippable; the default 190 applies until a strap or a typed value wins.
+class _BirthYearStep extends StatefulWidget {
+  const _BirthYearStep();
 
   @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Padding(
-        padding: const EdgeInsets.all(Space.screenGutter),
-        child: Text(
-          line,
-          style: RunSoloType.body17.copyWith(color: t.inkSecondary),
-        ),
-      ),
-    );
-  }
+  State<_BirthYearStep> createState() => _BirthYearStepState();
 }
 
-/// Just enough Settings for Phase 1: strap, checklist, units, motion.
-class _SettingsLite extends StatelessWidget {
-  const _SettingsLite();
+class _BirthYearStepState extends State<_BirthYearStep> {
+  final _ctl = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final text = Theme.of(context).textTheme;
     final services = AppServices.of(context);
-    return ListenableBuilder(
-      listenable: services.settings,
-      builder: (context, _) {
-        final s = services.settings.settings;
-        Widget row(String label, String value, VoidCallback onTap) => InkWell(
-          onTap: onTap,
-          child: Container(
-            height: 64,
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: t.lineHair)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    label,
-                    style: RunSoloType.body17.copyWith(color: t.inkPrimary),
-                  ),
-                ),
-                Text(
-                  value,
-                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                ),
-                const SizedBox(width: Space.x8),
-                Icon(Icons.chevron_right, size: 20, color: t.inkSecondary),
-              ],
-            ),
-          ),
-        );
-        return Scaffold(
-          appBar: AppBar(title: const Text('SETTINGS')),
-          body: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              row(
-                'Units',
-                s.units == Units.km ? 'km' : 'mi',
-                () => services.settings.update(
-                  (x) => x.copyWith(
-                    units: x.units == Units.km ? Units.mi : Units.km,
-                  ),
+              const SizedBox(height: Space.x48),
+              Text('YOUR BIRTH YEAR', style: text.displayMedium),
+              const SizedBox(height: Space.x16),
+              Text(
+                'Sets a starting max heart rate (220 minus age) for the '
+                'zones. A strap reading or a typed value in Settings '
+                'overrides it. Optional.',
+                style: text.bodyLarge?.copyWith(color: t.inkSecondary),
+              ),
+              const SizedBox(height: Space.x24),
+              TextField(
+                key: const ValueKey('birth-year'),
+                controller: _ctl,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                maxLength: 4,
+                style: RunSoloType.display44.copyWith(color: t.inkPrimary),
+                decoration: InputDecoration(
+                  hintText: '1985',
+                  hintStyle: RunSoloType.display44.copyWith(color: t.inkMuted),
+                  counterText: '',
+                  errorText: _error,
+                  border: InputBorder.none,
                 ),
               ),
-              row(
-                'Heart rate strap',
-                s.strap?.label ?? 'None',
-                () => Navigator.of(context).pushNamed(Routes.pairing),
+              const Spacer(),
+              FilledButton(
+                onPressed: () async {
+                  final v = int.tryParse(_ctl.text);
+                  final year = services.now().year;
+                  if (v == null || !MaxHrRules.validBirthYear(v, year)) {
+                    setState(() => _error = 'Enter a four-digit year.');
+                    return;
+                  }
+                  await services.settings.update(
+                    (s) => s.copyWith(birthYear: v),
+                  );
+                  if (context.mounted) Navigator.of(context).pop();
+                },
+                child: const Text('CONTINUE'),
               ),
-              row(
-                'Setup checklist',
-                '',
-                () => Navigator.of(context).pushNamed(Routes.permissions),
-              ),
-              row(
-                'Reduced motion',
-                s.reducedMotion ? 'On' : 'Off',
-                () => services.settings.update(
-                  (x) => x.copyWith(reducedMotion: !x.reducedMotion),
+              const SizedBox(height: Space.x12),
+              Center(
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(
+                    'Skip',
+                    style: text.labelLarge?.copyWith(color: t.inkSecondary),
+                  ),
                 ),
               ),
               const SizedBox(height: Space.x24),
-              Text(
-                'Your runs never leave your phone.',
-                style: RunSoloType.label13.copyWith(color: t.inkMuted),
-              ),
             ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

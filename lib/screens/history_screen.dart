@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
+import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
+import '../widgets/delta_glyph.dart';
 
-enum HistoryFilter { all, fourByFour, free }
+enum HistoryFilter { all, fourByFour, laps, free }
 
-/// History list (design brief §4.8): newest first, grouped by month, filter
-/// chips, buttons only. The verdict arrow column arrives with Phase 2; for
-/// now the row shows mode, date, average pace and duration.
+/// History list (design brief §4.8, plan §18.2): newest first, grouped by
+/// month, filter chips All / 4x4 / Laps / Free, verdict arrow in the
+/// semantic colour, tap opens the verdict (4x4) or the run detail.
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key, this.onStart});
 
@@ -49,7 +52,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
               return switch (_filter) {
                 HistoryFilter.all => true,
                 HistoryFilter.fourByFour => r.isFourByFour,
-                HistoryFilter.free => !r.isFourByFour,
+                HistoryFilter.laps => r.mode == RecordMode.laps,
+                HistoryFilter.free => r.mode == RecordMode.free,
               };
             }).toList();
             if (all.isEmpty) return _Empty(onStart: widget.onStart);
@@ -66,6 +70,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         label: switch (f) {
                           HistoryFilter.all => 'All',
                           HistoryFilter.fourByFour => '4x4',
+                          HistoryFilter.laps => 'Laps',
                           HistoryFilter.free => 'Free',
                         },
                         selected: _filter == f,
@@ -111,78 +116,162 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
         );
       }
-      out.add(HistoryRow(run: r, units: units));
+      out.add(
+        HistoryRow(
+          run: r,
+          units: units,
+          onTap: r.missing
+              ? null
+              : () async {
+                  await Navigator.of(context).pushNamed(
+                    r.isFourByFour ? Routes.verdict : Routes.runDetail,
+                    arguments: r.id,
+                  );
+                  if (mounted) {
+                    setState(() {
+                      _runs = AppServices.of(context).history.list();
+                    });
+                  }
+                },
+        ),
+      );
     }
     return out;
   }
 }
 
+/// Verdict arrow + colour for a row (up = faster in Arc, down = slower in
+/// Vermillion, flat = holding / no real change, a dot for baseline, "!" for
+/// no verdict, nothing for other run types).
+(DeltaDirection?, String, Color) verdictGlyph(
+  engine.Verdict? v,
+  RunSoloTokens t,
+) => switch (v?.headline) {
+  engine.VerdictHeadline.faster => (DeltaDirection.up, '', t.semFaster),
+  engine.VerdictHeadline.slower => (DeltaDirection.down, '', t.semSlower),
+  engine.VerdictHeadline.holding => (DeltaDirection.flat, '', t.semHolding),
+  engine.VerdictHeadline.noRealChange => (DeltaDirection.flat, '', t.semNoise),
+  engine.VerdictHeadline.baselineSet => (null, '·', t.inkSecondary),
+  engine.VerdictHeadline.noVerdict ||
+  engine.VerdictHeadline.indoorRun => (null, '!', t.semNoise),
+  null => (null, '', t.inkSecondary),
+};
+
 class HistoryRow extends StatelessWidget {
-  const HistoryRow({super.key, required this.run, required this.units});
+  const HistoryRow({
+    super.key,
+    required this.run,
+    required this.units,
+    this.onTap,
+  });
   final RunSummary run;
   final Units units;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final muted = run.missing ? t.inkMuted : t.inkPrimary;
+    final (direction, glyph, glyphColor) = verdictGlyph(run.verdict, t);
+    final label = modeTitle(run.mode);
     return Semantics(
+      button: onTap != null,
       label:
-          '${run.isFourByFour ? '4x4' : 'Free run'}, ${Fmt.dayDate(run.start)}',
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 64),
-        padding: const EdgeInsets.symmetric(vertical: Space.x12),
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: t.lineHair)),
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 40,
-              child: Text(
-                run.isFourByFour ? '4x4' : 'FR',
-                style: RunSoloType.title28.copyWith(fontSize: 22, color: muted),
-              ),
-            ),
-            const SizedBox(width: Space.x12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    Fmt.dayDate(run.start),
-                    style: RunSoloType.body17.copyWith(color: muted),
-                  ),
-                  Text(
-                    run.missing
-                        ? 'File missing'
-                        : run.isFourByFour
-                        ? '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}'
-                        : Fmt.distance(run.distanceM, units),
-                    style: RunSoloType.label13.copyWith(
-                      color: run.missing ? t.semWarn : t.inkSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  Fmt.paceUnit(run.avgSecPerKm, units),
+          '$label, ${Fmt.dayDate(run.start)}${run.verdict == null ? '' : ', ${run.verdict!.headline.text}'}',
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 64),
+          padding: const EdgeInsets.symmetric(vertical: Space.x12),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: t.lineHair)),
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 44,
+                child: Text(
+                  modeLabel(run.mode),
                   style: RunSoloType.title28.copyWith(
-                    fontSize: 22,
+                    fontSize: 20,
                     color: muted,
                   ),
                 ),
-                Text(
-                  Fmt.clock(run.durationMs),
-                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+              ),
+              const SizedBox(width: Space.x12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      Fmt.dayDate(run.start),
+                      style: RunSoloType.body17.copyWith(color: muted),
+                    ),
+                    Text(
+                      run.missing
+                          ? 'File missing'
+                          : switch (run.mode) {
+                              RecordMode.fourByFour =>
+                                run.analysis?.fourByFour != null
+                                    ? '${run.analysis!.fourByFour!.reps.length} reps · ${Fmt.distance(run.distanceM, units)}'
+                                    : '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',
+                              RecordMode.laps =>
+                                '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',
+                              RecordMode.free || RecordMode.cooper =>
+                                Fmt.distance(run.distanceM, units),
+                            },
+                      style: RunSoloType.label13.copyWith(
+                        color: run.missing ? t.semWarn : t.inkSecondary,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (direction != null)
+                        Padding(
+                          padding: const EdgeInsets.only(right: Space.x8),
+                          child: DeltaGlyph(
+                            key: ValueKey('verdict-glyph-${run.id}'),
+                            direction: direction,
+                            color: glyphColor,
+                            size: 14,
+                          ),
+                        )
+                      else if (glyph.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(right: Space.x8),
+                          child: Text(
+                            glyph,
+                            key: ValueKey('verdict-glyph-${run.id}'),
+                            style: RunSoloType.title28.copyWith(
+                              fontSize: 22,
+                              color: glyphColor,
+                            ),
+                          ),
+                        ),
+                      Text(
+                        Fmt.paceUnit(run.headlineSecPerKm, units),
+                        style: RunSoloType.title28.copyWith(
+                          fontSize: 22,
+                          color: muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    Fmt.clock(run.durationMs),
+                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -205,22 +294,27 @@ class _FilterChip extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      child: InkWell(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        borderRadius: BorderRadius.circular(Radii.chip),
         child: AnimatedContainer(
           duration: MotionDurations.quick,
-          height: 40,
+          height: 48,
           padding: const EdgeInsets.symmetric(horizontal: Space.x16),
           alignment: Alignment.center,
+          // Selected = 2 px Bone border, like the mode chips (brief §5).
           decoration: BoxDecoration(
-            color: selected ? t.inkPrimary : t.bgRaised,
+            color: t.bgRaised,
             borderRadius: BorderRadius.circular(Radii.chip),
+            border: Border.all(
+              color: selected ? t.inkPrimary : t.lineHair,
+              width: 2,
+            ),
           ),
           child: Text(
             label,
             style: RunSoloType.label13.copyWith(
-              color: selected ? t.bgBase : t.inkPrimary,
+              color: selected ? t.inkPrimary : t.inkSecondary,
             ),
           ),
         ),

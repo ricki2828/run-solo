@@ -15,6 +15,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../platform/gateway.dart';
+import 'hr_zone_tracker.dart';
 
 @immutable
 class RecordingSnapshot {
@@ -38,6 +39,7 @@ class RecordingSnapshot {
     this.gpsLost = false,
     this.hadFix = false,
     this.repPaces = const [],
+    this.zone = 0,
     this.fault,
     this.discarded = false,
   });
@@ -73,8 +75,13 @@ class RecordingSnapshot {
   /// At least one fix this run; before that the banner says "Waiting for GPS".
   final bool hadFix;
 
-  /// Pace of each completed work rep (s/km), for "last rep 4:46 ▲ 5 s".
+  /// Pace of each completed work rep (4x4) or lap (Laps run), s/km, for
+  /// "last rep 4:46 ▲ 5 s". Empty in a Free run.
   final List<double> repPaces;
+
+  /// HR zone 0–5 from the engine tracker (plan §18.1): hysteresis and dwell
+  /// applied, so the background never flashes. 0 = no HR.
+  final int zone;
 
   /// Journal / storage faults the runner must see; null when fine.
   final String? fault;
@@ -84,6 +91,12 @@ class RecordingSnapshot {
 
   bool get isPreset => preset != null;
   int get reps => preset?.reps ?? 0;
+
+  /// Free runs have no lap input at all (plan §18.2).
+  bool get lapsEnabled => switch (mode) {
+    RecordMode.fourByFour || RecordMode.laps => true,
+    RecordMode.free || RecordMode.cooper => false,
+  };
   bool get recording => state == RecorderState.recording;
   bool get paused => state == RecorderState.paused;
   bool get active => recording || paused;
@@ -117,6 +130,7 @@ class RecordingSnapshot {
     bool? gpsLost,
     bool? hadFix,
     List<double>? repPaces,
+    int? zone,
     String? fault,
     bool clearFault = false,
     bool? discarded,
@@ -142,17 +156,39 @@ class RecordingSnapshot {
     gpsLost: gpsLost ?? this.gpsLost,
     hadFix: hadFix ?? this.hadFix,
     repPaces: repPaces ?? this.repPaces,
+    zone: zone ?? this.zone,
     fault: clearFault ? null : (fault ?? this.fault),
     discarded: discarded ?? this.discarded,
   );
 }
 
 class RecordingController extends ChangeNotifier {
-  RecordingController(this._gateway, {DateTime Function()? now})
-    : _now = now ?? DateTime.now;
+  RecordingController(
+    this._gateway, {
+    DateTime Function()? now,
+    int Function()? maxHr,
+    ZoneTracker Function({required int maxHr, int? seedZone, int? seedHr})?
+    trackerFactory,
+  }) : _now = now ?? DateTime.now,
+       _maxHr = maxHr ?? (() => 190),
+       _trackerFactory = trackerFactory ?? _defaultTracker;
+
+  static ZoneTracker _defaultTracker({
+    required int maxHr,
+    int? seedZone,
+    int? seedHr,
+  }) => UiHrZoneTracker(maxHr: maxHr, seedZone: seedZone, seedHr: seedHr);
 
   final RecorderGateway _gateway;
   final DateTime Function() _now;
+
+  /// Resolved max HR (plan D3 `maxHrFor`), read when a run starts or the
+  /// screen re-attaches; a mid-run settings change applies on the next run.
+  final int Function() _maxHr;
+  final ZoneTracker Function({required int maxHr, int? seedZone, int? seedHr})
+  _trackerFactory;
+  ZoneTracker? _tracker;
+  int? _lastHr;
 
   RecordingSnapshot _snap = const RecordingSnapshot();
   RecordingSnapshot get snapshot => _snap;
@@ -178,6 +214,13 @@ class RecordingController extends ChangeNotifier {
   /// Activity is recreated.
   Future<void> attach() async {
     _sub ??= _gateway.events.listen(_onEvent);
+    // Recreated UI (W4): seed the tracker with the last zone so the first
+    // frame paints it instead of black for 5 s. `status()` carries no HR.
+    _tracker ??= _trackerFactory(
+      maxHr: _maxHr(),
+      seedZone: _snap.zone == 0 ? null : _snap.zone,
+      seedHr: _lastHr,
+    );
     await refreshStatus();
   }
 
@@ -233,14 +276,22 @@ class RecordingController extends ChangeNotifier {
 
   void _reset(RecordMode mode, Preset? preset) {
     _lastLapDistanceM = 0;
+    _lastHr = null;
+    _tracker = _trackerFactory(maxHr: _maxHr());
     _snap = RecordingSnapshot(
       mode: mode,
-      preset: mode == RecordMode.fourByFour ? preset : null,
+      preset: switch (mode) {
+        RecordMode.fourByFour => preset,
+        RecordMode.laps || RecordMode.free || RecordMode.cooper => null,
+      },
       hrPaired: _snap.hrPaired,
     );
   }
 
-  Future<void> lap() => _gateway.lap(LapSource.button);
+  /// No-op in a Free run (plan §18.2: lap input disabled; the service would
+  /// ignore it too, this just avoids the round trip).
+  Future<void> lap() =>
+      _snap.lapsEnabled ? _gateway.lap(LapSource.button) : Future.value();
   Future<void> pause() => _gateway.pause();
   Future<void> resume() => _gateway.resume();
 
@@ -289,6 +340,10 @@ class RecordingController extends ChangeNotifier {
   void _onTick(TickEvent t) {
     _lastTickAt = _now();
     final fix = t.gpsAccuracyM != null;
+    if (t.hr != null) _lastHr = t.hr;
+    final zone = (_tracker ??= _trackerFactory(
+      maxHr: _maxHr(),
+    )).update(t.elapsedMs, t.hr).zone;
     _snap = _snap.copyWith(
       state: t.state,
       phase: t.phase,
@@ -307,6 +362,7 @@ class RecordingController extends ChangeNotifier {
       gpsLost: !fix,
       hadFix: _snap.hadFix || fix,
       phaseRemainingMs: t.phaseRemainingMs,
+      zone: zone,
     );
   }
 
@@ -318,7 +374,12 @@ class RecordingController extends ChangeNotifier {
     final lapMs = l.activeMs;
     _lastLapDistanceM = l.distanceM;
     final paces = List.of(_snap.repPaces);
-    if (_snap.phase == Phase.work && lapDistanceM > 0 && lapMs > 0) {
+    final counts = switch (_snap.mode) {
+      RecordMode.fourByFour => _snap.phase == Phase.work,
+      RecordMode.laps => true,
+      RecordMode.free || RecordMode.cooper => false,
+    };
+    if (counts && lapDistanceM > 0 && lapMs > 0) {
       paces.add(lapMs / 1000 / (lapDistanceM / 1000));
     }
     _snap = _snap.copyWith(
@@ -373,17 +434,19 @@ class RecordingController extends ChangeNotifier {
   /// Work-rep paces from the service's lap list (cumulative `distanceM`,
   /// active-time `activeMs`). With a preset, lap 0 ends the warm-up and
   /// phases then alternate, so odd indices end work reps until the last
-  /// recovery (index 2·reps). Free runs have no reps.
+  /// recovery (index 2·reps). Without a preset (Laps run) every lap counts;
+  /// Free runs have no laps.
   static List<double> repPacesFromLaps(List<LapSummary> laps, Preset? preset) {
-    if (preset == null || laps.isEmpty) return const [];
+    if (laps.isEmpty) return const [];
     final out = <double>[];
     var prevD = 0.0;
     for (final l in laps) {
       final ms = l.activeMs;
       final m = l.distanceM - prevD;
       prevD = l.distanceM;
-      final endsWork = l.index.isOdd && l.index <= 2 * preset.reps;
-      if (endsWork && ms > 0 && m > 0) out.add(ms / 1000 / (m / 1000));
+      final counts =
+          preset == null || (l.index.isOdd && l.index <= 2 * preset.reps);
+      if (counts && ms > 0 && m > 0) out.add(ms / 1000 / (m / 1000));
     }
     return out;
   }

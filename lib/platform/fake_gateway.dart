@@ -61,6 +61,13 @@ class FakeRecorderGateway implements RecorderGateway {
   /// Journals removed by [discardJournal].
   final List<String> discarded = [];
 
+  /// Lap presses swallowed because the run is a Free run.
+  int lapsIgnored = 0;
+
+  /// Scripted HR for the next ticks (null = the phase-based default). Zone
+  /// tests drive the tracker through this.
+  int? scriptedHr;
+
   /// Scripted faults. Toggling on emits the matching [FaultEvent] once.
   bool get gpsLost => _gpsLost;
   set gpsLost(bool v) {
@@ -145,7 +152,10 @@ class FakeRecorderGateway implements RecorderGateway {
     _begin(
       'fake-${_runCounter.toString().padLeft(3, '0')}',
       mode,
-      mode == RecordMode.fourByFour ? preset : null,
+      switch (mode) {
+        RecordMode.fourByFour => preset,
+        RecordMode.laps || RecordMode.free || RecordMode.cooper => null,
+      },
     );
     return StartResult(runId: _runId);
   }
@@ -197,7 +207,18 @@ class FakeRecorderGateway implements RecorderGateway {
   @override
   Future<void> lap(LapSource source) async {
     if (_state != RecorderState.recording) return;
-    // RecorderCore default config: volume-key laps only in Free mode (W8);
+    // Plan §18.2: Free run has no lap input at all; the service ignores any
+    // press (debug builds log `lapIgnored`), nothing is recorded.
+    switch (_mode) {
+      case RecordMode.free:
+        lapsIgnored += 1;
+        return;
+      case RecordMode.fourByFour:
+      case RecordMode.laps:
+      case RecordMode.cooper:
+        break;
+    }
+    // RecorderCore default config: volume-key laps only in Laps mode (W8);
     // in a preset they are ignored outright, never recorded or re-aligned.
     if (_preset != null && source == LapSource.volumeKey) return;
     _emitLap(source);
@@ -451,7 +472,9 @@ class FakeRecorderGateway implements RecorderGateway {
         lapDistanceM: _totalDistanceM - _lapStartDistanceM,
         lapPaceLiveSecPerKm: _gpsLost ? null : liveSecPerKm + jitter,
         totalDistanceM: _totalDistanceM,
-        hr: (!hrPaired || _strapDropped) ? null : _hrFor(_phase),
+        hr: (!hrPaired || _strapDropped)
+            ? null
+            : (scriptedHr ?? _hrFor(_phase)),
         gpsAccuracyM: _gpsLost ? null : gpsAccuracyM,
         state: _state,
         phase: _phase,
@@ -574,6 +597,20 @@ class FakePermissionsGateway implements PermissionsGateway {
   Future<void> openBatterySettings() async {
     batterySettingsOpened += 1;
     snapshot = snapshot.copyWith(batteryUnrestricted: true);
+  }
+
+  int batteryExemptionRequests = 0;
+
+  /// Scripted outcome of the system exemption dialog.
+  bool grantBatteryExemption = true;
+
+  @override
+  Future<bool> requestBatteryExemption() async {
+    batteryExemptionRequests += 1;
+    if (grantBatteryExemption) {
+      snapshot = snapshot.copyWith(batteryUnrestricted: true);
+    }
+    return grantBatteryExemption;
   }
 
   @override

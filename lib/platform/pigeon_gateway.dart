@@ -81,6 +81,15 @@ class PigeonPermissionsGateway implements PermissionsGateway {
   @override
   Future<void> openBatterySettings() => _api.openBatterySettings();
 
+  /// Until `PermissionsApi.requestIgnoreBatteryOptimizations` lands from
+  /// run2-native-fable this opens the battery page and re-reads the status,
+  /// which is the plan's documented fallback path.
+  @override
+  Future<bool> requestBatteryExemption() async {
+    await _api.openBatterySettings();
+    return (await _api.permissionStatus()).batteryUnrestricted;
+  }
+
   @override
   Future<void> openAppSettings() => _api.openAppSettings();
 

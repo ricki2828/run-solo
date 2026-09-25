@@ -133,7 +133,7 @@ void main() {
     tester,
   ) async {
     final fake = FakeRecorderGateway(now: now);
-    await fake.start(RecordMode.free, null, Units.km);
+    await fake.start(RecordMode.laps, null, Units.km);
     fake.advance(const Duration(minutes: 7));
     final services = fakeServices(recorder: fake);
     await pumpApp(tester, services, checkRecoveryOnOpen: true);

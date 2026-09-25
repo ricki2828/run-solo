@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/app/services.dart';
+import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/main.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
@@ -23,6 +25,9 @@ AppServices fakeServices({
   FakePermissionsGateway? permissions,
   AppSettings settings = const AppSettings(onboardingDone: true),
   List<RunSummary> runs = const [],
+  List<engine.RunFile> files = const [],
+  Map<String, engine.RunSidecar> sidecars = const {},
+  MapSurfaceFactory? maps,
 }) => AppServices.fake(
   recorder: recorder ?? FakeRecorderGateway(now: now),
   ble: ble,
@@ -38,6 +43,9 @@ AppServices fakeServices({
       ),
   settings: settings,
   runs: runs,
+  files: files,
+  sidecars: sidecars,
+  maps: maps,
   now: now,
 );
 
@@ -82,6 +90,10 @@ Future<void> pumpApp(
 }) async {
   await loadRunSoloFonts();
   phoneViewport(tester);
+  // Tear the previous app down first: a second RunSoloApp at the same tree
+  // position would keep the old Navigator (and its routes, bound to the old
+  // services), so a golden would capture the previous screen.
+  await tester.pumpWidget(const SizedBox.shrink());
   await tester.pumpWidget(
     RunSoloApp(
       services: services,
@@ -128,12 +140,13 @@ RunSummary summary({
   required String id,
   required DateTime start,
   bool fourByFour = true,
+  RecordMode? mode,
   int durationMs = 32 * 60 * 1000,
   double distanceM = 6800,
   int laps = 8,
 }) => RunSummary(
   id: id,
-  mode: fourByFour ? RecordMode.fourByFour : RecordMode.free,
+  mode: mode ?? (fourByFour ? RecordMode.fourByFour : RecordMode.free),
   start: start,
   durationMs: durationMs,
   distanceM: distanceM,
@@ -150,6 +163,25 @@ Future<void> settleAnimations(
   await tester.pump(const Duration(milliseconds: 16));
   await tester.pump(total);
   await tester.pump(total);
+}
+
+/// Drag the first ListView until [finder] is built and on stage (ListView
+/// children are lazy, so `scrollUntilVisible` cannot see them yet).
+Future<void> scrollTo(
+  WidgetTester tester,
+  Finder finder, {
+  int maxDrags = 12,
+}) async {
+  for (var i = 0; i < maxDrags; i++) {
+    if (finder.evaluate().isNotEmpty) {
+      await tester.ensureVisible(finder.first);
+      await tester.pump();
+      return;
+    }
+    await tester.drag(find.byType(ListView).first, const Offset(0, -400));
+    await tester.pump();
+  }
+  expect(finder, findsWidgets, reason: 'not found after scrolling');
 }
 
 /// Settle without `pumpAndSettle` (the record screen keeps a periodic timer).

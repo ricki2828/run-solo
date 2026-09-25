@@ -39,11 +39,11 @@ abstract final class Fmt {
     return '${v.toStringAsFixed(2)} ${engine.PaceFormat.unitLabel(_u(units))}';
   }
 
-  /// "▲ 5 s" faster / "▼ 5 s" slower / "▬ 0 s"; sign from live minus last.
+  /// "5 s"; the arrow beside it is a `DeltaGlyph` (the bundled fonts carry
+  /// no ▲▼▬ glyphs), direction from live minus last.
   static String deltaVsLast(double live, double last, Units units) {
     final d = engine.PaceFormat.toUnit(live - last, _u(units)).round();
-    final glyph = d < 0 ? '▲' : (d > 0 ? '▼' : '▬');
-    return '$glyph ${d.abs()} s';
+    return '${d.abs()} s';
   }
 
   static String recovery(int seconds) => clock(seconds * 1000);

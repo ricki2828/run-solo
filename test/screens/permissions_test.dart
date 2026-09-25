@@ -86,7 +86,7 @@ void main() {
     await pumpTimes(tester);
     await tester.tap(row('Battery optimisation off'));
     await pumpTimes(tester);
-    expect(perms.batterySettingsOpened, 1);
+    expect(perms.batteryExemptionRequests, 1);
     expect(find.text('NEEDED'), findsNothing);
   });
 
@@ -105,6 +105,7 @@ void main() {
     );
     await pumpTimes(tester, 4);
     expect(find.text('CONTINUE'), findsOneWidget);
+    await scrollTo(tester, find.text('Skip for now'));
     await tester.tap(find.text('Skip for now'));
     await pumpTimes(tester);
     expect(services.settings.settings.onboardingDone, isTrue);
