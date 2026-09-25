@@ -172,4 +172,21 @@ void main() {
     await pumpTimes(tester, 4);
     expect(fake.volumeKeyLaps, isNull);
   });
+
+  testWidgets('START WARM-UP is pinned on screen, even at 360 x 640', (
+    tester,
+  ) async {
+    final services = fakeServices();
+    await pumpApp(tester, services, pushRoute: Routes.start);
+    // Smaller than the 360 x 800 target: only a pinned button passes.
+    tester.view.physicalSize = const Size(1080, 1920);
+    tester.view.devicePixelRatio = 3.0;
+    await pumpTimes(tester, 4);
+    final button = find.widgetWithText(FilledButton, 'START WARM-UP');
+    final rect = tester.getRect(button);
+    expect(rect.top, greaterThanOrEqualTo(0));
+    expect(rect.bottom, lessThanOrEqualTo(640));
+    // Not covered by anything: a tap lands on the button itself.
+    expect(button.hitTestable(), findsOneWidget);
+  });
 }

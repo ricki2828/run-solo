@@ -175,8 +175,8 @@ class _StartScreenState extends State<StartScreen> {
                         : null,
                   ),
                   Text(
-                    'Warm up as long as you like, then tap START 4x4. After the '
-                    'last rep, cool down and hold Stop when done.',
+                    'Warm up, then tap START 4x4. Cool down after the last rep '
+                    'and hold Stop.',
                     style: text.bodyMedium?.copyWith(color: t.inkSecondary),
                   ),
                   const SizedBox(height: Space.x16),
@@ -236,26 +236,43 @@ class _StartScreenState extends State<StartScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: Space.x32),
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: Space.x12),
-                    child: Text(
-                      _error!,
-                      style: text.labelLarge?.copyWith(color: t.semDanger),
-                    ),
-                  ),
-                FilledButton(
-                  onPressed: _starting ? null : _start,
-                  child: Text(switch (mode) {
-                    RecordMode.fourByFour => 'START WARM-UP',
-                    RecordMode.laps => 'START LAPS RUN',
-                    RecordMode.free => 'START FREE RUN',
-                    RecordMode.cooper => 'START TEST',
-                  }),
-                ),
-                const SizedBox(height: Space.x24),
+                const SizedBox(height: Space.x16),
               ],
+            ),
+          ),
+          // Pinned: the primary action stays on screen at 360 x 800 however
+          // long the options above get; the options scroll behind it.
+          bottomNavigationBar: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Space.screenGutter,
+                Space.x12,
+                Space.screenGutter,
+                Space.x24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: Space.x12),
+                      child: Text(
+                        _error!,
+                        style: text.labelLarge?.copyWith(color: t.semDanger),
+                      ),
+                    ),
+                  FilledButton(
+                    onPressed: _starting ? null : _start,
+                    child: Text(switch (mode) {
+                      RecordMode.fourByFour => 'START WARM-UP',
+                      RecordMode.laps => 'START LAPS RUN',
+                      RecordMode.free => 'START FREE RUN',
+                      RecordMode.cooper => 'START TEST',
+                    }),
+                  ),
+                ],
+              ),
             ),
           ),
         );
