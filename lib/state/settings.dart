@@ -79,6 +79,7 @@ class AppSettings {
     this.pendingObservedMaxHr,
     this.onboardingDone = false,
     this.strap,
+    this.introSeenVersion,
   });
 
   final Units units;
@@ -110,6 +111,10 @@ class AppSettings {
   final int? pendingObservedMaxHr;
   final bool onboardingDone;
   final SavedStrap? strap;
+
+  /// App version that last played the full Lap Draw intro (plan §4, D8):
+  /// null or older than the running version = full intro, else 0.6 s.
+  final String? introSeenVersion;
 
   /// The 4x4 session to record, expanded by the engine catalogue from the
   /// saved reps and recovery (CONTRACT.md I1: Kotlin never expands).
@@ -148,6 +153,7 @@ class AppSettings {
     bool? onboardingDone,
     SavedStrap? strap,
     bool clearStrap = false,
+    String? introSeenVersion,
   }) => AppSettings(
     units: units ?? this.units,
     reps: reps ?? this.reps,
@@ -171,6 +177,7 @@ class AppSettings {
         : (pendingObservedMaxHr ?? this.pendingObservedMaxHr),
     onboardingDone: onboardingDone ?? this.onboardingDone,
     strap: clearStrap ? null : (strap ?? this.strap),
+    introSeenVersion: introSeenVersion ?? this.introSeenVersion,
   );
 
   Map<String, Object?> toJson() => {
@@ -190,6 +197,7 @@ class AppSettings {
     'pendingObservedMaxHr': pendingObservedMaxHr,
     'onboardingDone': onboardingDone,
     'strap': strap?.toJson(),
+    'introSeenVersion': introSeenVersion,
   };
 
   /// Lenient: unknown or malformed keys fall back to defaults, never throw.
@@ -243,6 +251,9 @@ class AppSettings {
       onboardingDone: pick('onboardingDone', d.onboardingDone),
       strap: strapJson is Map<String, Object?> && strapJson['address'] is String
           ? SavedStrap.fromJson(strapJson)
+          : null,
+      introSeenVersion: j['introSeenVersion'] is String
+          ? j['introSeenVersion'] as String
           : null,
     );
   }

@@ -13,6 +13,7 @@ import 'package:run_solo/screens/run_detail_screen.dart';
 import 'package:run_solo/screens/settings_screen.dart';
 import 'package:run_solo/screens/shell_screen.dart';
 import 'package:run_solo/screens/trend_screen.dart';
+import 'package:run_solo/splash/intro_gate.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/theme/theme.dart';
 import 'package:run_solo/theme/zones.dart';
@@ -495,6 +496,32 @@ void main() {
     );
     await pumpTimes(tester, 4);
     await golden(tester, 'start_laps_android14');
+  });
+
+  // B3 / brief A9: the Lap Draw intro over Home. The ticker starts on the
+  // first frame after pumpApp, so frame times are from there.
+  Future<void> introAt(
+    WidgetTester tester,
+    IntroKind kind,
+    int ms,
+    String name,
+  ) async {
+    await pumpApp(tester, fakeServices(), intro: kind);
+    await tester.pump(Duration(milliseconds: ms));
+    await golden(tester, name);
+    await tester.pump(const Duration(seconds: 2));
+  }
+
+  testWidgets('intro: full, line drawing through the R', (tester) async {
+    await introAt(tester, IntroKind.full, 450, 'intro_full_draw');
+  });
+
+  testWidgets('intro: full, final composition', (tester) async {
+    await introAt(tester, IntroKind.full, 1120, 'intro_full_final');
+  });
+
+  testWidgets('intro: 0.6 s, final frame', (tester) async {
+    await introAt(tester, IntroKind.short, 400, 'intro_short_final');
   });
 
   test(

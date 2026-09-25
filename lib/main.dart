@@ -11,6 +11,8 @@ import 'screens/settings_screen.dart';
 import 'screens/shell_screen.dart';
 import 'screens/start_screen.dart';
 import 'screens/verdict_screen.dart';
+import 'splash/intro_gate.dart';
+import 'splash/intro_host.dart';
 import 'theme/theme.dart';
 
 Future<void> main() async {
@@ -20,7 +22,10 @@ Future<void> main() async {
   final services = kFakePlatform
       ? AppServices.fake()
       : await AppServices.production();
-  runApp(RunSoloApp(services: services));
+  // Decided before the first frame (plan §4): no intro while a run is live
+  // or a recovery journal waits. Start-up work runs under the intro.
+  final intro = await IntroGate.read(services);
+  runApp(RunSoloApp(services: services, intro: intro));
 }
 
 class RunSoloApp extends StatelessWidget {
@@ -30,6 +35,7 @@ class RunSoloApp extends StatelessWidget {
     this.now,
     this.checkRecoveryOnOpen = true,
     this.home,
+    this.intro = IntroKind.none,
   });
 
   final AppServices services;
@@ -40,6 +46,9 @@ class RunSoloApp extends StatelessWidget {
 
   /// Tests can mount a single screen inside the app chrome.
   final Widget? home;
+
+  /// The Lap Draw intro for this cold start; tests default to none.
+  final IntroKind intro;
 
   @override
   Widget build(BuildContext context) {
@@ -55,13 +64,16 @@ class RunSoloApp extends StatelessWidget {
             theme: runSoloTheme(),
             darkTheme: runSoloTheme(),
             themeMode: ThemeMode.dark,
-            builder: (context, child) => reduced
-                ? MediaQuery(
-                    data: MediaQuery.of(context)
-                        .copyWith(disableAnimations: true),
-                    child: child!,
-                  )
-                : child!,
+            builder: (context, child) {
+              final app = IntroHost(kind: intro, child: child!);
+              return reduced
+                  ? MediaQuery(
+                      data: MediaQuery.of(context)
+                          .copyWith(disableAnimations: true),
+                      child: app,
+                    )
+                  : app;
+            },
             home:
                 home ??
                 ShellScreen(now: now, checkRecoveryOnOpen: checkRecoveryOnOpen),
