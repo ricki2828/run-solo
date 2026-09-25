@@ -152,6 +152,8 @@ class _Ctx {
     required this.isFourByFour,
     required this.sessionName,
     required this.nominalRepMetres,
+    required this.parkrun,
+    required this.singleRep,
   });
 
   /// Run 3+ floor for the key (plan §3.7 W1); run 2 uses ×√2.
@@ -165,16 +167,35 @@ class _Ctx {
   /// Set only for rep-time sessions.
   final int? nominalRepMetres;
 
+  /// Parkrun: the headline is the finish time (K1: the official time from
+  /// the sidecar will override the GPS one).
+  final bool parkrun;
+
+  /// One rep: no spread sentence, no "average".
+  final bool singleRep;
+
   double get run2Floor => floor * math.sqrt2;
   bool get repTime => nominalRepMetres != null;
   double get _km => nominalRepMetres! / 1000;
 
-  String get one => isFourByFour ? '4x4' : '$sessionName session';
-  String get many => isFourByFour ? '4x4s' : '$sessionName sessions';
+  String get one => isFourByFour
+      ? '4x4'
+      : parkrun
+      ? 'parkrun'
+      : '$sessionName session';
+  String get many => isFourByFour
+      ? '4x4s'
+      : parkrun
+      ? 'parkruns'
+      : '$sessionName sessions';
   String get mismatch => isFourByFour
       ? 'Laps do not match a 4x4. Fix laps to get a verdict.'
       : 'Laps do not match the session. Fix laps to get a verdict.';
-  String get metric => repTime ? 'Rep time' : 'Work pace';
+  String get metric => parkrun
+      ? 'Finish time'
+      : repTime
+      ? 'Rep time'
+      : 'Work pace';
 
   /// Headline number with its unit: "4:44/km" or "1:31".
   String value(double secPerKm) => repTime
@@ -240,6 +261,8 @@ class VerdictBuilder {
       nominalRepMetres: metrics.kind == IntervalMetricKind.repTime
           ? metrics.nominalRepMetres
           : null,
+      parkrun: ComparisonKey.isParkrun(comparisonKey),
+      singleRep: (session?.repCount ?? metrics.reps.length) == 1,
     );
     final same = [
       for (final p in priors)
@@ -362,20 +385,25 @@ class VerdictBuilder {
   Verdict _baseline(_Ctx c, IntervalMetrics m, DateTime now) {
     final units = c.units;
     final spread = m.repSpreadSecPerKm!;
-    final spreadText = spread <= constants.repBandSecPerKm
-        ? 'Reps within ${c.gap(spread)} of each other.'
-        : 'Reps spread ${c.gap(spread)}.';
+    final spreadText = c.singleRep
+        ? ''
+        : spread <= constants.repBandSecPerKm
+        ? ' Reps within ${c.gap(spread)} of each other.'
+        : ' Reps spread ${c.gap(spread)}.';
     final recovery = m.recoveryPaceSecPerKm;
     final recoveryText = recovery == null
         ? ''
         : ' Recovery ${PaceFormat.paceBare(recovery, units)}.';
-    final lead = c.repTime
-        ? '${c.nominalRepMetres} m in ${c.value(m.avgWorkPaceSecPerKm!)} average.'
-        : '${c.value(m.avgWorkPaceSecPerKm!)} work pace.';
+    final avg = m.avgWorkPaceSecPerKm!;
+    final lead = c.parkrun
+        ? 'Finish ${c.value(avg)}.'
+        : c.repTime
+        ? '${c.nominalRepMetres} m in ${c.value(avg)}${c.singleRep ? '' : ' average'}.'
+        : '${c.value(avg)} work pace.';
     return Verdict(
       stage: VerdictStage.baseline,
       headline: VerdictHeadline.baselineSet,
-      subline: '$lead $spreadText$recoveryText Next ${c.one} gets a verdict.',
+      subline: '$lead$spreadText$recoveryText Next ${c.one} gets a verdict.',
       hrLine: m.timeInZoneSeconds == null
           ? null
           : 'Time in zone ${PaceFormat.mmss(m.timeInZoneSeconds!)} of '

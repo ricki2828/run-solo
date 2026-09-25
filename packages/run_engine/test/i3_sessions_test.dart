@@ -404,6 +404,63 @@ void main() {
     });
   });
 
+  group('parkrun: its own key, finish time (lead decision 26-Sep)', () {
+    const parkrun = SessionSpec(
+      templateId: 'parkrun',
+      templateVersion: 1,
+      name: 'parkrun',
+      autoStop: true,
+      steps: [SessionStep.workDistance(5000, rep: 1)],
+    );
+    const custom5k = SessionSpec(
+      templateId: 'custom:5k',
+      templateVersion: 1,
+      name: '1 × 5 km',
+      steps: [SessionStep.workDistance(5000, rep: 1)],
+    );
+
+    test('keyed by template, with a course hook for K1', () {
+      expect(parkrun.comparisonKey, 'parkrun');
+      expect(
+        ComparisonKey.parkrunOf(courseId: 'albert-melbourne'),
+        'parkrun:albert-melbourne',
+      );
+      expect(ComparisonKey.isParkrun('parkrun:albert-melbourne'), isTrue);
+      expect(
+        custom5k.comparisonKey,
+        'd5000x*',
+        reason: 'a custom 1 × 5000 m never shares parkrun history',
+      );
+    });
+
+    test('headline is the finish time; staged against parkruns only', () {
+      final runs = [
+        sessionRun(parkrun, n: 1, workMps: 3.4),
+        sessionRun(parkrun, n: 2, workMps: 3.6),
+      ];
+      final a = staged(runs);
+      expect(a[0].comparisonKey, 'parkrun');
+      expect(a[0].detection!.consistent, isTrue);
+      expect(a[0].intervals!.kind, IntervalMetricKind.repTime);
+      expect(
+        a[0].verdict!.subline,
+        matches(RegExp(r'^Finish 2\d:\d\d\. Next parkrun gets a verdict\.$')),
+      );
+      expect(a[1].verdict!.headline, VerdictHeadline.faster);
+      expect(a[1].verdict!.subline, startsWith('Finish time '));
+      expect(a[1].verdict!.subline, contains('than your first parkrun ('));
+      // A custom 5 km never sees the parkruns as priors.
+      final c = analyze(
+        sessionRun(custom5k, n: 3, workMps: 3.6),
+        priors: [a[0].asPrior(runs[0].start)!],
+      );
+      expect(c.verdict!.stage, VerdictStage.baseline);
+      expect(c.verdict!.subline, startsWith('5000 m in 2'));
+      expect(c.verdict!.subline, isNot(contains('average')));
+      expect(c.verdict!.subline, isNot(contains('Reps within')));
+    });
+  });
+
   group('stateless builder (#21 review P3)', () {
     test('one builder, two keys: each floor is its own', () {
       const b = VerdictBuilder(EngineConstants.defaults);

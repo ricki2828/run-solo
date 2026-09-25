@@ -129,6 +129,7 @@ class SessionSpec {
   static const String norwegian4x4Id = 'norwegian-4x4';
   static const String cooperId = 'cooper';
   static const String fartlekId = 'fartlek';
+  static const String parkrunId = 'parkrun';
   static const String customPrefix = 'custom:';
 
   /// Most steps a session may expand to (40 reps + 39 recoveries).
@@ -444,15 +445,27 @@ class SessionSpec {
 /// - every work step `D` metres → `d{D}x*`;
 /// - a time ladder → `pyr:60,120,…`; a distance ladder → `dpyr:400,800,…`;
 /// - mixed time and distance → `mix:t60,d400,…`;
-/// - fartlek → `fartlek`; Cooper → `cooper`.
+/// - fartlek → `fartlek`; Cooper → `cooper`;
+/// - parkrun → `parkrun` by template, never the generic `d5000x*` a custom
+///   1 × 5000 m gets (lead decision 26-Sep); K1 adds the course as
+///   `parkrun:<courseId>` through [parkrunOf].
 abstract final class ComparisonKey {
   static const String fartlek = 'fartlek';
   static const String cooper = 'cooper';
+  static const String parkrun = 'parkrun';
   static const String norwegian4x4 = 't240x*';
+
+  /// `parkrun`, or `parkrun:<courseId>` once K1 knows the course.
+  static String parkrunOf({String? courseId}) =>
+      courseId == null || courseId.isEmpty ? parkrun : '$parkrun:$courseId';
+
+  static bool isParkrun(String key) =>
+      key == parkrun || key.startsWith('$parkrun:');
 
   static String of(SessionSpec spec) {
     if (spec.templateId == SessionSpec.fartlekId) return fartlek;
     if (spec.templateId == SessionSpec.cooperId) return cooper;
+    if (spec.templateId == SessionSpec.parkrunId) return parkrunOf();
     final work = spec.workSteps.toList();
     if (work.isEmpty) return fartlek;
     final kinds = work.map((s) => s.target).toSet();
