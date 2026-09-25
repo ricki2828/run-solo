@@ -85,6 +85,15 @@ case "$MODE" in
     # retry is a visible ::warning:: in the run summary.
     landed=0
     keys_seen() { adb logcat -d -s RunSolo/lapinput | grep -c "direction=" || true; }
+    media_state() { # what the system thinks the volume/media-key target is right now
+      echo "--- dumpsys media_session ---" >&2
+      adb shell dumpsys media_session 2>&1 | head -n 80 >&2 || true
+      echo "--- display/keyguard ---" >&2
+      adb shell dumpsys power 2>&1 | grep -E "mWakefulness=|Display Power: state=" | head -n 4 >&2 || true
+      adb shell dumpsys window 2>&1 | grep -E "mDreamingLockscreen|isStatusBarKeyguard|mKeyguardShowing|mFocusedApp|mAwake" | head -n 6 >&2 || true
+      echo "--- system media/audio key logs ---" >&2
+      adb logcat -d -s MediaSessionService MediaSessionStack MediaSessionRecord MediaSessionLegacyHelper AudioService WindowManager PhoneWindowManager 2>/dev/null | grep -iE "volume|session|KEYCODE" | tail -n 30 >&2 || true
+    }
     for attempt in 1 2 3; do
       before_keys="$(keys_seen)"
       adb shell input keyevent KEYCODE_VOLUME_UP
@@ -95,10 +104,20 @@ case "$MODE" in
         fail "volume key press $attempt reached the session (lapinput direction line) but no lap was accepted"
       fi
       echo "::warning::volume key press $attempt on API $sdk was dropped before reaching the session (no lapinput line); retrying"
-      log "volume key press $attempt never reached the session; media_session state:"
-      adb shell dumpsys media_session 2>/dev/null | grep -iE "runsolo|active|Sessions|state=|flags=|volume" | head -n 40 >&2 || true
+      log "volume key press $attempt never reached the session; system state:"
+      media_state
     done
-    [ "$landed" = 1 ] || fail "volume-key lap never reached the session in 3 presses (see media_session dump above)"
+    if [ "$landed" != 1 ]; then
+      # Evidence for the product question, not a pass: does the key land once the screen is on?
+      log "trying once more with the display awake, to tell screen-off routing from a dead session"
+      adb shell input keyevent KEYCODE_WAKEUP; sleep 2
+      adb shell input keyevent KEYCODE_VOLUME_UP
+      if wait_for_log 'RunSolo/session.*lap volumeKey → accepted' 10; then
+        fail "volume key lands only with the display awake on API $sdk: screen-off volume-key laps are broken here"
+      fi
+      media_state
+      fail "volume-key lap never reached the session in 3 presses (see system state above)"
+    fi
     vk_t="$(adb logcat -d | grep -oE 'lap index=[0-9]+ source=volumeKey t=[0-9]+' | tail -1 | sed 's/.*t=//')"
     log "manual + volume-key laps landed (volume-key lap at run time ${vk_t} ms)"
     ;;
