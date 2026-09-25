@@ -1608,6 +1608,13 @@ interface RecorderApi {
   fun discardJournal(runId: String)
   fun setCues(enabled: Boolean)
   /**
+   * The user's volume-key LAP setting, persisted natively (the recorder reads
+   * it at start). Takes effect from the next run or resume, not the live one.
+   * Unset means the mode default (on for Laps only). A no-op in effect where
+   * `PermissionsApi.volumeKeyLapsSupported()` is false.
+   */
+  fun setVolumeKeyLaps(enabled: Boolean)
+  /**
    * Run files on disk (`runs/` + `runs-archive/`) as `runId -> relative path`,
    * for the Dart Reconciler. Journals and sidecars are not listed.
    */
@@ -1834,6 +1841,24 @@ interface RecorderApi {
             val enabledArg = args[0] as Boolean
             val wrapped: List<Any?> = try {
               api.setCues(enabledArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.setVolumeKeyLaps$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val enabledArg = args[0] as Boolean
+            val wrapped: List<Any?> = try {
+              api.setVolumeKeyLaps(enabledArg)
               listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)

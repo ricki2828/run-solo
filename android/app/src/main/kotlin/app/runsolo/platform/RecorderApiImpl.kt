@@ -87,7 +87,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     }
 
     /** The user's opt-in, defaulting per mode (W8: on only for Laps); the session still gates it on `mode.lapInput`. */
-    private fun volumeKeyLaps(mode: app.runsolo.core.model.RunMode): Boolean =
+    internal fun volumeKeyLaps(mode: app.runsolo.core.model.RunMode): Boolean =
         prefs.getBoolean(RecorderService.PREF_VOLUME_KEY_LAPS, mode.volumeKeyLapsDefault)
 
     private fun startWith(mode: RecordMode, preset: Preset?, units: Units, replay: ReplayRunner?): StartResult {
@@ -243,6 +243,11 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     override fun setCues(enabled: Boolean) {
         prefs.edit().putBoolean(RecorderService.PREF_CUES, enabled).apply()
         active()?.setCues(enabled)
+    }
+
+    override fun setVolumeKeyLaps(enabled: Boolean) {
+        // commit(), not apply(): the next start() may come from a new process.
+        prefs.edit().putBoolean(RecorderService.PREF_VOLUME_KEY_LAPS, enabled).commit()
     }
 
     override fun listRunFiles(): Map<String, String> = Reconciler(fs).scan().associate { it.id to it.path }

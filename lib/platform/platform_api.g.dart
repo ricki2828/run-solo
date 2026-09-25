@@ -1700,6 +1700,28 @@ class RecorderApi {
     ;
   }
 
+  /// The user's volume-key LAP setting, persisted natively (the recorder reads
+  /// it at start). Takes effect from the next run or resume, not the live one.
+  /// Unset means the mode default (on for Laps only). A no-op in effect where
+  /// `PermissionsApi.volumeKeyLapsSupported()` is false.
+  Future<void> setVolumeKeyLaps(bool enabled) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.setVolumeKeyLaps$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[enabled]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
   /// Run files on disk (`runs/` + `runs-archive/`) as `runId -> relative path`,
   /// for the Dart Reconciler. Journals and sidecars are not listed.
   Future<Map<String, String>> listRunFiles() async {

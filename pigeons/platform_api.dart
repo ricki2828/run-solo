@@ -360,6 +360,12 @@ abstract class RecorderApi {
   void discardJournal(String runId);
   void setCues(bool enabled);
 
+  /// The user's volume-key LAP setting, persisted natively (the recorder reads
+  /// it at start). Takes effect from the next run or resume, not the live one.
+  /// Unset means the mode default (on for Laps only). A no-op in effect where
+  /// `PermissionsApi.volumeKeyLapsSupported()` is false.
+  void setVolumeKeyLaps(bool enabled);
+
   /// Run files on disk (`runs/` + `runs-archive/`) as `runId -> relative path`,
   /// for the Dart Reconciler. Journals and sidecars are not listed.
   Map<String, String> listRunFiles();
