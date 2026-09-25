@@ -88,7 +88,7 @@ class RecordingSession(
     private val lapInput = LapInput(
         this.context,
         onLap = { lap(LapSource.volumeKey) },
-        onUnavailable = { fault(FaultKind.VOLUME_KEY_UNAVAILABLE, "Volume-key laps don't work on Android 14 while music plays; use the lock-screen LAP") },
+        onUnavailable = { fault(FaultKind.VOLUME_KEY_UNAVAILABLE, "Volume-key laps don't work on Android 14; use the lock-screen LAP") },
     )
 
     /** Volume-key laps need a mode that takes laps at all (plan §18.2): Free never registers the MediaSession. */
