@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run Solo privacy policy</title>
+<meta name="description" content="What Run Solo stores on your phone, what Google Maps and Open-Meteo receive, and the controls you have.">
+<style>
+  :root { --bg:#0b0b0c; --ink:#ece7dc; --mute:#9c978d; --line:#26262a; --accent:#2fd7e6; }
+  @media (prefers-color-scheme: light) { :root { --bg:#f6f3ec; --ink:#141414; --mute:#5c5a55; --line:#dcd7cc; --accent:#0a8f9c; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:17px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:680px; margin:0 auto; padding:48px 16px 96px; }
+  h1 { font-size:2rem; line-height:1.15; margin:0 0 8px; letter-spacing:-0.01em; }
+  h2 { font-size:1.2rem; margin:40px 0 8px; }
+  .meta { color:var(--mute); margin:0 0 32px; }
+  p, li { margin:0 0 12px; }
+  ul { padding-left:20px; }
+  a { color:var(--accent); text-underline-offset:3px; }
+  hr { border:0; border-top:1px solid var(--line); margin:40px 0; }
+  table { border-collapse:collapse; width:100%; font-size:0.95rem; margin:8px 0 16px; }
+  th, td { text-align:left; vertical-align:top; padding:8px 8px 8px 0; border-bottom:1px solid var(--line); }
+  th { color:var(--mute); font-weight:600; }
+  .small { color:var(--mute); font-size:0.9rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Run Solo privacy policy</h1>
+  <p class="meta">Applies to the Run Solo Android app. Last updated 25 September 2026.</p>
+
+  <p>Run Solo is a running app with no account, no ads and no analytics of our own. This page says
+  plainly what stays on your phone, what two outside services receive so the app can work, and
+  what you can turn off.</p>
+
+  <h2>1. Your runs stay on your phone</h2>
+  <p>Everything Run Solo records is stored on your device: your recorded route (GPS points),
+  lap and rep times, pace, heart rate from a paired strap, the verdicts and trends the app
+  computes from them, your settings, and any plan you follow. We do not run a server, we do not
+  have an account for you, and we never see any of this.</p>
+  <p>Android's automatic backup may copy your run files to your Google account as part of your
+  device backup, under Google's backup terms and your device settings. You can turn device backup
+  off in Android settings. Files you export (JSON or TCX) go wherever you choose to send them.</p>
+
+  <h2>2. Google Maps</h2>
+  <p>After a run, Run Solo draws your route on a Google map. The map is provided by the Google
+  Maps SDK for Android, which runs inside the app and talks to Google directly to fetch map tiles.
+  According to
+  <a href="https://developers.google.com/maps/documentation/android-sdk/play-data-disclosure" rel="noopener">Google's own disclosure for this SDK</a>,
+  Google receives:</p>
+  <ul>
+    <li>your IP address (which gives an approximate location),</li>
+    <li>a Maps SDK identifier that Google uses to count daily active users of the SDK,</li>
+    <li>request metadata and crash data from the SDK,</li>
+    <li>map interaction and camera events, which describe the map area you are viewing. Because
+    the post-run map is zoomed in on your route, that map area amounts to a precise location.</li>
+  </ul>
+  <p>In short: Google sees the map area you view and your IP address, like any maps app. Google does
+  not receive your run file, your lap times or your heart rate from us. Google's handling of what it
+  receives is covered by the <a href="https://policies.google.com/privacy" rel="noopener">Google Privacy Policy</a>.
+  The map only loads when you open a run's detail screen; there is no map while you are recording.</p>
+
+  <h2>3. Weather from Open-Meteo</h2>
+  <p>To adjust for heat and humidity, Run Solo can fetch the weather for each run from
+  <a href="https://open-meteo.com" rel="noopener">Open-Meteo</a>. The request contains your run's
+  location rounded to about 10 km, and the run's date and time. It contains no identifier: no
+  account, no device ID, no name. Open-Meteo's servers see the IP address the request comes
+  from, as any web request does. Weather data is provided by Open-Meteo.com under the
+  <a href="https://creativecommons.org/licenses/by/4.0/" rel="noopener">CC BY 4.0</a> licence.</p>
+  <p>You can turn this off in Settings, under Recording, with the "Weather for each run"
+  switch. With it off, nothing is sent to Open-Meteo.</p>
+
+  <h2>4. Permissions the app asks for</h2>
+  <table>
+    <tr><th>Permission</th><th>Why</th></tr>
+    <tr><td>Precise location</td><td>To record your pace and route with GPS during a run you started. Recording runs as a visible notification while the run is in progress and stops when you press Stop. Run Solo never records location in the background on its own.</td></tr>
+    <tr><td>Nearby devices (Bluetooth)</td><td>To pair a heart-rate strap. Bluetooth is not used to work out where you are.</td></tr>
+    <tr><td>Notifications</td><td>The recording notification with its LAP and Stop buttons, and cues while your screen is off.</td></tr>
+    <tr><td>Internet</td><td>Map tiles from Google and weather from Open-Meteo, as described above. Nothing else.</td></tr>
+  </table>
+
+  <h2>5. What we do not do</h2>
+  <ul>
+    <li>No accounts, sign-in or profiles.</li>
+    <li>No advertising, no ad SDKs.</li>
+    <li>No analytics or tracking of our own. The only analytics-type signal is the Maps SDK identifier
+    described in section 2, which belongs to Google's SDK, not to us.</li>
+    <li>We do not sell or share your data. We could not: we never hold it.</li>
+    <li>Run Solo is not directed at children and has no features aimed at them.</li>
+  </ul>
+
+  <h2>6. Your controls</h2>
+  <ul>
+    <li><strong>Delete everything</strong>: Settings, Data, "Delete all" removes every run and setting from the phone. Uninstalling the app does the same. What Google's Maps SDK already received (section 2) is held by Google, not us; your Google account's privacy controls apply to it.</li>
+    <li><strong>Weather</strong>: Settings, Recording, "Weather for each run".</li>
+    <li><strong>Map</strong>: the map appears only on a run's detail screen; do not open it if you would rather Google did not receive that map area.</li>
+    <li><strong>Backup</strong>: Android settings, Google, Backup.</li>
+    <li><strong>Export</strong>: Settings, Data, "Export all" gives you your data as JSON or TCX.</li>
+  </ul>
+
+  <h2>7. Changes and contact</h2>
+  <p>If the app starts sending anything new off your phone, this page and the app's Settings,
+  About screen change first and the Play listing's data safety section is updated. Questions:
+  <a href="mailto:privacy@runsolo.app">privacy@runsolo.app</a>.</p>
+
+  <hr>
+  <p class="small">The same wording lives in the app under Settings, About. Weather data by
+  <a href="https://open-meteo.com" rel="noopener">Open-Meteo.com</a>.</p>
+</main>
+</body>
+</html>
