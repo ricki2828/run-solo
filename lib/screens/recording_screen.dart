@@ -946,11 +946,28 @@ class _Stats extends StatelessWidget {
               ),
               if (direction != null && delta != null) ...[
                 const SizedBox(width: Space.x12),
-                DeltaGlyph(direction: direction, color: deltaColor, size: 14),
-                const SizedBox(width: Space.x4),
+                // The glyph rides inside the text run, centred on the digits:
+                // a bare glyph has no baseline, so a baseline Row pinned it
+                // to the top and "holding" read as a floating bar.
                 Flexible(
-                  child: Text(
-                    delta,
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.middle,
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: Space.x4),
+                            child: DeltaGlyph(
+                              direction: direction,
+                              color: deltaColor,
+                              size: 14,
+                            ),
+                          ),
+                        ),
+                        TextSpan(text: delta),
+                      ],
+                    ),
+                    key: const ValueKey('ghost-delta'),
                     softWrap: false,
                     overflow: TextOverflow.fade,
                     style: AuxFigure.style.copyWith(color: deltaColor),

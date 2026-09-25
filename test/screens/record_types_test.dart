@@ -7,6 +7,7 @@ import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/theme/zones.dart';
+import 'package:run_solo/widgets/delta_glyph.dart';
 import 'package:run_solo/widgets/lap_button.dart';
 import 'package:run_solo/widgets/pace_dial.dart';
 
@@ -88,6 +89,11 @@ void main() {
     // Total time lives in the large vitals row, not the caption.
     expect(find.text('this lap'), findsOneWidget);
     expect(find.byKey(const ValueKey('vitals-total')), findsOneWidget);
+    // The delta glyph sits on the digits' centre line, not floating above
+    // (lead P3: "holding" rendered like a raised bar).
+    final glyph = tester.getCenter(find.byType(DeltaGlyph));
+    final delta = tester.getRect(find.byKey(const ValueKey('ghost-delta')));
+    expect((glyph.dy - delta.center.dy).abs(), lessThan(4));
   });
 
   testWidgets('4x4 keeps the countdown and LAP', (tester) async {
