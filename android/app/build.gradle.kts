@@ -1,3 +1,7 @@
+// `java.util.*` cannot be written inline here: `java` resolves to the java {} extension accessor.
+import java.util.Base64
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -128,7 +132,7 @@ android {
 fun mapsApiKey(): String {
     System.getenv("RUN_SOLO_MAPS_API_KEY")?.takeIf { it.isNotBlank() }?.let { return it }
     (project.findProperty("dart-defines") as String?)?.split(",")?.forEach { encoded ->
-        val decoded = runCatching { String(java.util.Base64.getDecoder().decode(encoded)) }.getOrNull() ?: return@forEach
+        val decoded = runCatching { String(Base64.getDecoder().decode(encoded)) }.getOrNull() ?: return@forEach
         if (decoded.startsWith("RUN_SOLO_MAPS_API_KEY=")) {
             decoded.removePrefix("RUN_SOLO_MAPS_API_KEY=").takeIf { it.isNotBlank() }?.let { return it }
         }
@@ -136,7 +140,7 @@ fun mapsApiKey(): String {
     (project.findProperty("runsolo.mapsApiKey") as String?)?.takeIf { it.isNotBlank() }?.let { return it }
     val local = rootProject.file("local.properties")
     if (local.exists()) {
-        val props = java.util.Properties()
+        val props = Properties()
         local.inputStream().use { props.load(it) }
         props.getProperty("runsolo.mapsApiKey")?.takeIf { it.isNotBlank() }?.let { return it }
     }
