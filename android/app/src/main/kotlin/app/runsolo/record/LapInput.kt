@@ -93,6 +93,7 @@ class LapInput(
         private const val DEBOUNCE_MS = 400L
 
         /** Volume keys reach an app's session everywhere but Android 14 (see the class doc). */
-        val SUPPORTED: Boolean = Build.VERSION.SDK_INT != Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+        val SUPPORTED: Boolean
+            get() = Build.VERSION.SDK_INT != Build.VERSION_CODES.UPSIDE_DOWN_CAKE
     }
 }

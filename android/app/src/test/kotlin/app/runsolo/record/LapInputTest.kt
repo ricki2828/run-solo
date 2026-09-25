@@ -24,6 +24,18 @@ class LapInputTest {
 
     @Test
     @Config(sdk = [34])
+    fun `API 34 - volume-key laps not supported`() {
+        assertFalse(LapInput.SUPPORTED)
+    }
+
+    @Test
+    @Config(sdk = [29, 35])
+    fun `API 29 and 35 - volume-key laps supported`() {
+        assertTrue(LapInput.SUPPORTED)
+    }
+
+    @Test
+    @Config(sdk = [34])
     fun `API 34 - no session, unavailable reported once per run`() {
         val li = input()
         li.enable()
