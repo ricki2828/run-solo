@@ -66,6 +66,17 @@ class PigeonBleGateway implements BleGateway {
   Future<BleStatus> status() => _api.bleStatus();
 }
 
+class PigeonStorageGateway implements StorageGateway {
+  PigeonStorageGateway({StorageApi? api}) : _api = api ?? StorageApi();
+  final StorageApi _api;
+
+  @override
+  Future<BackupStatus> backupStatus() => _api.backupStatus();
+
+  @override
+  Future<List<String>> enforceBackupBudget() => _api.enforceBackupBudget();
+}
+
 class PigeonPermissionsGateway implements PermissionsGateway {
   PigeonPermissionsGateway({PermissionsApi? api})
     : _api = api ?? PermissionsApi();

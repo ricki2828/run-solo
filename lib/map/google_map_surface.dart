@@ -241,7 +241,10 @@ class _GoogleRouteMapState extends State<_GoogleRouteMap> {
         zoom: 15,
       ),
       style: _styleJson,
-      liteModeEnabled: !widget.interactive,
+      // Not lite mode: lite mode supports only click events, so
+      // onCameraIdle (which drives the blank-snapshot check) may never fire.
+      // The card is a full map with every gesture off and a tap layer on top.
+      liteModeEnabled: false,
       mapToolbarEnabled: false,
       myLocationEnabled: false,
       myLocationButtonEnabled: false,
@@ -273,11 +276,14 @@ class _GoogleRouteMapState extends State<_GoogleRouteMap> {
       },
       onCameraIdle: _checkBlank,
     );
+    // A non-interactive card must not swallow the tap that opens the
+    // full-screen map: block the platform view's own touch handling.
+    final card = widget.interactive ? map : IgnorePointer(child: map);
     return ClipRRect(
       borderRadius: widget.interactive
           ? BorderRadius.zero
           : BorderRadius.circular(Radii.card),
-      child: map,
+      child: card,
     );
   }
 }

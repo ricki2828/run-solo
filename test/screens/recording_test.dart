@@ -231,6 +231,23 @@ void main() {
     expect(fake.state, RecorderState.recording);
   });
 
+  testWidgets('finalise enforces the backup budget (plan §4)', (tester) async {
+    final storage = FakeStorageGateway();
+    final fake = FakeRecorderGateway(now: now);
+    final services = fakeServices(recorder: fake, storage: storage);
+    await services.recording.start(RecordMode.laps, null, Units.km);
+    await pumpApp(tester, services, pushRoute: Routes.recording);
+    await pumpTimes(tester, 4);
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(HoldButton)),
+    );
+    await settleAnimations(tester, const Duration(seconds: 2));
+    await gesture.up();
+    await pumpTimes(tester, 5);
+    expect(fake.finalised, hasLength(1));
+    expect(storage.enforceCalls, 1);
+  });
+
   testWidgets('hold-to-stop: a short press does nothing, 2 s finalises', (
     tester,
   ) async {

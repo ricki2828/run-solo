@@ -32,6 +32,7 @@ class AppServices {
     required this.history,
     required this.maps,
     required this.transfer,
+    required this.storage,
     RecordingController? recording,
     DateTime Function()? now,
     ZoneMementoStore? zoneMemento,
@@ -55,6 +56,7 @@ class AppServices {
   final RunStore history;
   final MapSurfaceFactory maps;
   final TransferGateway transfer;
+  final StorageGateway storage;
   final RecordingController recording;
   final DateTime Function() now;
 
@@ -74,6 +76,7 @@ class AppServices {
     Map<String, engine.RunSidecar> sidecars = const {},
     MapSurfaceFactory? maps,
     FakeTransferGateway? transfer,
+    FakeStorageGateway? storage,
     DateTime Function()? now,
   }) {
     final rec = recorder ?? FakeRecorderGateway(autoTick: true, now: now);
@@ -97,6 +100,7 @@ class AppServices {
       ),
       maps: maps ?? const FakeMapSurfaceFactory(),
       transfer: transfer ?? FakeTransferGateway(),
+      storage: storage ?? FakeStorageGateway(),
       now: now,
     );
   }
@@ -118,6 +122,7 @@ class AppServices {
       ),
       maps: const GoogleMapSurfaceFactory(),
       transfer: const ShareSheetTransferGateway(),
+      storage: PigeonStorageGateway(),
       zoneMemento: FileZoneMementoStore(Directory('${support.path}/state')),
     );
   }

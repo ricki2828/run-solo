@@ -209,15 +209,23 @@ void main() {
         const PickedFile(name: 'junk.json', text: '{"hello": 1}'),
       ],
     );
-    final services = fakeServices(files: [r1], transfer: transfer);
+    final storage = FakeStorageGateway(archiveNext: ['old-1', 'old-2']);
+    final services = fakeServices(
+      files: [r1],
+      transfer: transfer,
+      storage: storage,
+    );
     await pumpApp(tester, services, home: SettingsScreen(now: now));
     await pumpTimes(tester, 3);
     await scrollTo(tester, find.text('Import runs'));
     await tester.tap(find.text('Import runs'));
     await pumpTimes(tester, 6);
+    expect(storage.enforceCalls, 1, reason: 'budget enforced after import');
     expect(
       find.text(
-        'Imported 1, 1 already here (edits not merged), 1 not Run Solo files.',
+        'Imported 1, 1 already here (edits not merged), 1 not Run Solo files. '
+        '2 older runs are past the backup budget: move runs to another Run '
+        'Solo to keep them safe.',
       ),
       findsOneWidget,
     );

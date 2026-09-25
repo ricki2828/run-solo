@@ -179,9 +179,14 @@ class _Status extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final a = detail.analysis;
     final v = detail.summary.verdict;
-    final detail0 = a.detection?.inconsistencyDetail;
+    final detail0 = _withRow(a.detection);
     return AnimatedSwitcher(
       duration: MotionDurations.slow,
+      // Left-aligned like the page, not centred (the default layout).
+      layoutBuilder: (current, previous) => Stack(
+        alignment: Alignment.topLeft,
+        children: [...previous, ?current],
+      ),
       child: Column(
         key: ValueKey(v?.headline.name ?? 'none'),
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -214,6 +219,22 @@ class _Status extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The engine's line names the rep it tried ("Rep 2 was 7:00, …"); the list
+/// below is numbered by lap, so point at the row too when one lap in the
+/// list has exactly that duration.
+String? _withRow(engine.RepDetection? det) {
+  final text = det?.inconsistencyDetail;
+  if (text == null || det == null) return text;
+  final m = RegExp(r'(\d+):(\d\d)').firstMatch(text);
+  if (m == null) return text;
+  final secs = int.parse(m.group(1)!) * 60 + int.parse(m.group(2)!);
+  final hits = det.laps
+      .where((l) => (l.durationMs / 1000).round() == secs)
+      .toList();
+  if (hits.length != 1) return text;
+  return '$text That is lap ${hits.single.index + 1} below.';
 }
 
 class _LapRowTile extends StatelessWidget {

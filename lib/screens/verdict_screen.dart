@@ -495,6 +495,9 @@ class _Lines extends StatelessWidget {
     if (v != null) {
       lines.add(v.subline);
       if (v.hrLine != null) lines.add(v.hrLine!);
+      if (v.engineVersion != engine.engineVersion) {
+        lines.add('Verdict from an earlier version of the app.');
+      }
     }
     if (flagged) {
       final why = a.detection?.inconsistencyDetail;

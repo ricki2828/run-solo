@@ -549,6 +549,32 @@ class FakeBleGateway implements BleGateway {
   );
 }
 
+class FakeStorageGateway implements StorageGateway {
+  FakeStorageGateway({this.archiveNext = const []});
+
+  /// Ids the next [enforceBackupBudget] reports as archived.
+  List<String> archiveNext;
+  int enforceCalls = 0;
+  int backedUpBytes = 0;
+
+  @override
+  Future<BackupStatus> backupStatus() async => BackupStatus(
+    backedUpBytes: backedUpBytes,
+    budgetBytes: 15 * 1024 * 1024,
+    quotaBytes: 25 * 1024 * 1024,
+    archivedRunCount: 0,
+    overBudget: backedUpBytes > 15 * 1024 * 1024,
+  );
+
+  @override
+  Future<List<String>> enforceBackupBudget() async {
+    enforceCalls += 1;
+    final out = List.of(archiveNext);
+    archiveNext = const [];
+    return out;
+  }
+}
+
 class FakePermissionsGateway implements PermissionsGateway {
   FakePermissionsGateway({
     this.snapshot = const PermissionSnapshot(),

@@ -118,6 +118,13 @@ class _RecordingScreenState extends State<RecordingScreen>
       if (id == null) {
         Navigator.of(context).pop();
       } else {
+        // Plan §4: keep the backed-up set under budget after each finalise.
+        // Best effort; the archive is still indexed by the store.
+        unawaited(
+          _services!.storage.enforceBackupBudget().catchError(
+            (_) => <String>[],
+          ),
+        );
         // Verdict / summary replaces the record screen (design brief §4.6).
         Navigator.of(context)
             .pushReplacementNamed(Routes.verdictJustFinished, arguments: id);

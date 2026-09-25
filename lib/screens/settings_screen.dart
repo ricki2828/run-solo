@@ -115,6 +115,10 @@ class _SettingsScreenState extends State<SettingsScreen>
         }
       }
       final result = await services.history.importBundles(bundles);
+      // Plan §4: imported runs count against the backup budget too.
+      final archived = await services.storage.enforceBackupBudget().catchError(
+        (_) => <String>[],
+      );
       final parts = <String>[
         'Imported ${result.imported}',
         if (result.alreadyOnDeviceIds.isNotEmpty)
@@ -123,7 +127,11 @@ class _SettingsScreenState extends State<SettingsScreen>
           '${result.duplicateIds.length} repeated in the files',
         if (unreadable > 0) '$unreadable not Run Solo files',
       ];
-      _toast('${parts.join(', ')}.');
+      _toast(
+        '${parts.join(', ')}.'
+        '${archived.isEmpty ? '' : ' ${archived.length} older runs are past '
+                  'the backup budget: move runs to another Run Solo to keep them safe.'}',
+      );
     } catch (e) {
       _toast('Could not import. $e');
     } finally {

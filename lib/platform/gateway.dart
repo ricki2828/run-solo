@@ -114,6 +114,17 @@ abstract class BleGateway {
   Future<BleStatus> status();
 }
 
+/// Auto Backup budget (plan §4, native #9 contract): after each finalise
+/// and import the app asks Kotlin to move the oldest runs (file + sidecar)
+/// to `files/runs-archive/` until the backed-up set is under budget; the
+/// store scans both directories, so nothing disappears from History.
+abstract class StorageGateway {
+  Future<BackupStatus> backupStatus();
+
+  /// Run ids moved to the archive this call; empty when under budget.
+  Future<List<String>> enforceBackupBudget();
+}
+
 abstract class PermissionsGateway {
   Future<PermissionSnapshot> status();
 

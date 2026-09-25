@@ -30,6 +30,7 @@ AppServices fakeServices({
   Map<String, engine.RunSidecar> sidecars = const {},
   MapSurfaceFactory? maps,
   FakeTransferGateway? transfer,
+  FakeStorageGateway? storage,
 }) => AppServices.fake(
   recorder: recorder ?? FakeRecorderGateway(now: now),
   ble: ble,
@@ -49,6 +50,7 @@ AppServices fakeServices({
   sidecars: sidecars,
   maps: maps,
   transfer: transfer,
+  storage: storage,
   now: now,
 );
 
