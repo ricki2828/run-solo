@@ -454,6 +454,10 @@ class _FreeRunBlock extends StatelessWidget {
     final pct = s.hr == null || maxHr <= 0
         ? null
         : (s.hr! * 100 / maxHr).round();
+    final activeMs = ctl.displayElapsedMs;
+    final runAverage = s.totalDistanceM > 20 && activeMs > 0
+        ? activeMs / 1000 / (s.totalDistanceM / 1000)
+        : null;
     return Column(
       key: const ValueKey('free-run-block'),
       children: [
@@ -476,13 +480,22 @@ class _FreeRunBlock extends StatelessWidget {
           ),
         ),
         const SizedBox(height: Space.x8),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            Fmt.paceUnit(s.livePaceSecPerKm, units),
-            softWrap: false,
-            style: RunSoloType.display64.copyWith(color: t.inkPrimary),
+        // Founder 25-Sep: the current-pace dial here too, needle against the
+        // run's average so far.
+        SizedBox(
+          width: 200,
+          child: PaceDial(
+            currentSecPerKm: s.livePaceSecPerKm,
+            referenceSecPerKm: runAverage,
+            units: units,
+            onZone: s.zone > 0,
           ),
+        ),
+        Text(
+          runAverage == null
+              ? 'average from 20 m'
+              : 'run average ${Fmt.paceUnit(runAverage, units)}',
+          style: RunSoloType.body15.copyWith(color: secondary),
         ),
         const SizedBox(height: Space.x8),
         if (s.hrPaired)

@@ -8,6 +8,7 @@ import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/theme/zones.dart';
 import 'package:run_solo/widgets/lap_button.dart';
+import 'package:run_solo/widgets/pace_dial.dart';
 
 import '../helpers.dart';
 
@@ -54,6 +55,9 @@ void main() {
     expect(find.byKey(const ValueKey('free-run-block')), findsOneWidget);
     expect(find.textContaining('last lap'), findsNothing);
     expect(find.textContaining('LAP '), findsNothing);
+    // Founder 25-Sep: current-pace dial against the run's average so far.
+    expect(find.byType(PaceDial), findsOneWidget);
+    expect(find.textContaining('average'), findsOneWidget);
     // Pause and hold-to-stop remain.
     expect(find.text('PAUSE'), findsOneWidget);
     expect(find.text('HOLD TO STOP'), findsOneWidget);
