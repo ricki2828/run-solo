@@ -66,8 +66,7 @@ void main() {
       RunFileCodec.decode(RunFileCodec.encode(imported));
       final a = engine.analyze(
         imported,
-        sidecar: RunSidecar(runId: imported.id)
-            .withOverride(RunMode.fourByFour),
+        sidecar: RunSidecar(runId: imported.id).withOverride(RunMode.intervals),
         now: fixedNow,
       );
       final original = engine.analyze(run, now: fixedNow);
@@ -163,7 +162,7 @@ void main() {
     test('as 4x4 the speed fallback finds the reps', () {
       final imported = const GpxImporter().import(
         gpxOf(run, hr: false),
-        mode: RunMode.fourByFour,
+        mode: RunMode.intervals,
       );
       final a = engine.analyze(imported, now: fixedNow);
       expect(a.detection!.fromSpeedStream, isTrue);

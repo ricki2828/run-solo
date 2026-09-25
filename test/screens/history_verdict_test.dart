@@ -90,7 +90,7 @@ void main() {
         runs: [
           RunSummary(
             id: 'gone',
-            mode: RecordMode.fourByFour,
+            mode: RecordMode.intervals,
             start: d1,
             durationMs: 1800000,
             distanceM: 6000,

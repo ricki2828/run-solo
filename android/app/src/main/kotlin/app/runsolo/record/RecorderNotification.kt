@@ -14,7 +14,7 @@ import app.runsolo.core.model.RecorderState
 
 /**
  * The recording notification (plan §3): elapsed as a chronometer (no per-second notify),
- * a countdown chronometer for preset phases, LAP as the primary action (also on the lock
+ * a countdown chronometer for timed steps, LAP as the primary action (also on the lock
  * screen), Stop second. On 14+ the user can swipe it away; the in-app button remains.
  */
 class RecorderNotification(private val context: Context) {

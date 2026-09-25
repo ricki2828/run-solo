@@ -1,5 +1,8 @@
 import 'dart:math' as math;
 
+import '../model/session_catalogue.dart';
+import '../model/session_spec.dart';
+
 /// Seeded engine constants (plan §5). Calibrated from the founder's fixtures
 /// before the closed test; every verdict stores the values it used.
 class EngineConstants {
@@ -71,6 +74,49 @@ class EngineConstants {
 
   /// Run 2 compares single vs single, doubling the variance: floor × sqrt(2).
   double get run2FloorSecPerKm => runFloorSecPerKm * math.sqrt2;
+
+  /// Noise floor for comparison key [key], s/km (Phase 3 plan §3.7,
+  /// eng-review W1). Fixed per key, never from a run's own rep count:
+  /// - `t240x*` (every 4x4, 3–6 reps): [runFloorSecPerKm], as in Phase 2, so
+  ///   no migrated 4x4 verdict changes;
+  /// - any other key: `floor × sqrt(16 min ÷ nominal work minutes)`, clamped
+  ///   to 1–2 × [runFloorSecPerKm] (10–20 s/km). The nominal session is the
+  ///   catalogue preset whose default owns the key, else the template's own
+  ///   default passed as [templateDefault] (custom keys).
+  /// Seeded; calibrated in Phase 3 I3/I5 against the founder's runs.
+  double floorSecPerKmForKey(String key, {SessionSpec? templateDefault}) {
+    if (key == ComparisonKey.norwegian4x4) return runFloorSecPerKm;
+    final nominal =
+        SessionCatalogue.ownerOfKey(key)?.defaults ?? templateDefault;
+    final seconds = nominal == null ? 0 : nominalWorkSeconds(nominal);
+    if (seconds <= 0) return runFloorSecPerKm;
+    final f = runFloorSecPerKm * math.sqrt(16 * 60 / seconds);
+    return f.clamp(runFloorSecPerKm, 2 * runFloorSecPerKm).toDouble();
+  }
+
+  /// Distance keys state the floor per rep (the headline is rep time):
+  /// `floor_s_per_rep = floor_s_per_km × nominal_km` (400 m at 12 s/km →
+  /// 4.8 s).
+  static double floorSecPerRep(double floorSecPerKm, int repMetres) =>
+      floorSecPerKm * repMetres / 1000;
+
+  /// Pace assumed to turn distance work into minutes for the floor formula
+  /// (seed, calibrated with the floors).
+  static const int nominalDistancePaceSecPerKm = 300;
+
+  /// Total work seconds of [spec]: time steps as written, distance steps at
+  /// [nominalDistancePaceSecPerKm].
+  static int nominalWorkSeconds(SessionSpec spec) {
+    var total = 0.0;
+    for (final s in spec.workSteps) {
+      total += switch (s.target) {
+        TargetKind.time => s.value,
+        TargetKind.distance => s.value / 1000 * nominalDistancePaceSecPerKm,
+        TargetKind.equalToPreviousWork => 0,
+      };
+    }
+    return total.round();
+  }
 
   /// Fixed windows for by-feel runs with no preset (plan §5).
   static const int byFeelWorkMinMs = 210000; // 3:30

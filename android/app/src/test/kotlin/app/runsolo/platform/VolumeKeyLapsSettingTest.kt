@@ -2,6 +2,7 @@ package app.runsolo.platform
 
 import android.content.Context
 import app.runsolo.core.model.RunMode
+import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
 import app.runsolo.record.RecorderService
 import app.runsolo.record.RecordingSession
@@ -26,13 +27,13 @@ class VolumeKeyLapsSettingTest {
     }
 
     private fun session(id: String, mode: RunMode, api: RecorderApiImpl) =
-        RecordingSession(context, id, mode, null, Units.km, null, api.volumeKeyLaps(mode))
+        RecordingSession(context, id, mode, if (mode == RunMode.intervals) SessionSpec.norwegian4x4() else null, Units.km, null, api.volumeKeyLaps(mode))
 
     @Test
     fun `unset - on for laps, off for 4x4 and free`() {
         val api = RecorderApiImpl(context)
         assertTrue(api.volumeKeyLaps(RunMode.laps))
-        assertFalse(api.volumeKeyLaps(RunMode.fourByFour))
+        assertFalse(api.volumeKeyLaps(RunMode.intervals))
         assertFalse(api.volumeKeyLaps(RunMode.free))
     }
 
@@ -40,8 +41,8 @@ class VolumeKeyLapsSettingTest {
     fun `on for laps never leaks into a 4x4 - volume keys stay the user's`() {
         RecorderApiImpl(context).setVolumeKeyLaps(true)
         val next = RecorderApiImpl(context)
-        assertFalse(next.volumeKeyLaps(RunMode.fourByFour))
-        val s = session("vk-4x4", RunMode.fourByFour, next)
+        assertFalse(next.volumeKeyLaps(RunMode.intervals))
+        val s = session("vk-4x4", RunMode.intervals, next)
         s.enableLapInput()
         assertFalse(s.lapInput.registered)
     }

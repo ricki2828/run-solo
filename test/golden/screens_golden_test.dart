@@ -45,7 +45,7 @@ void main() {
     final fake = FakeRecorderGateway(now: now);
     final services = fakeServices(recorder: fake);
     await services.recording.start(
-      RecordMode.fourByFour,
+      RecordMode.intervals,
       standardPreset(),
       Units.km,
     );
@@ -64,7 +64,7 @@ void main() {
     final fake = FakeRecorderGateway(now: now);
     final services = fakeServices(recorder: fake);
     await services.recording.start(
-      RecordMode.fourByFour,
+      RecordMode.intervals,
       standardPreset(),
       Units.km,
     );
@@ -96,7 +96,7 @@ void main() {
       final fake = FakeRecorderGateway(now: now);
       final services = fakeServices(recorder: fake);
       await services.recording.start(
-        RecordMode.fourByFour,
+        RecordMode.intervals,
         standardPreset(),
         Units.km,
       );
@@ -125,7 +125,7 @@ void main() {
     final fake = FakeRecorderGateway(now: now);
     final services = fakeServices(recorder: fake);
     await services.recording.start(
-      RecordMode.fourByFour,
+      RecordMode.intervals,
       standardPreset(),
       Units.km,
     );
@@ -229,7 +229,7 @@ void main() {
     final services = fakeServices(recorder: fake);
     await services.recording.start(
       mode,
-      mode == RecordMode.fourByFour ? standardPreset() : null,
+      mode == RecordMode.intervals ? standardPreset() : null,
       Units.km,
     );
     await pumpApp(tester, services, pushRoute: Routes.recording);
@@ -237,7 +237,7 @@ void main() {
       tester.view.physicalSize = Size(1080, height * 3.0);
     }
     await pumpTimes(tester, 4);
-    if (mode == RecordMode.fourByFour) await fake.lap(LapSource.button);
+    if (mode == RecordMode.intervals) await fake.lap(LapSource.button);
     fake.advance(const Duration(seconds: 73));
     await pumpTimes(tester, 5);
     if (mode != RecordMode.free) {
@@ -251,9 +251,9 @@ void main() {
   }
 
   testWidgets('record: zone 0 / 3 / 5 backgrounds (A1)', (tester) async {
-    await recordWithHr(tester, RecordMode.fourByFour, null, 'record_zone0');
-    await recordWithHr(tester, RecordMode.fourByFour, 140, 'record_zone3');
-    await recordWithHr(tester, RecordMode.fourByFour, 178, 'record_zone5');
+    await recordWithHr(tester, RecordMode.intervals, null, 'record_zone0');
+    await recordWithHr(tester, RecordMode.intervals, 140, 'record_zone3');
+    await recordWithHr(tester, RecordMode.intervals, 178, 'record_zone5');
   });
 
   testWidgets('record: laps run and free run layouts (A2)', (tester) async {

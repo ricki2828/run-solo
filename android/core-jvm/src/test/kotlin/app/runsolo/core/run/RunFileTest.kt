@@ -6,8 +6,8 @@ import app.runsolo.core.journal.JournalReplay
 import app.runsolo.core.json.list
 import app.runsolo.core.model.LapKind
 import app.runsolo.core.model.LapSource
-import app.runsolo.core.model.Preset
 import app.runsolo.core.model.RunMode
+import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
 import app.runsolo.core.replay.TraceFixture
 import kotlin.test.Test
@@ -18,7 +18,7 @@ import kotlin.test.assertTrue
 class RunFileTest {
     private val t0 = 50_000L
     private val w0 = 1_700_000_000_000L
-    private val header = JournalLine.Header(t0, w0, "id1", "dev", "app", "UTC", RunMode.fourByFour, Preset.DEFAULT_4X4, Units.km)
+    private val header = JournalLine.Header(t0, w0, "id1", "dev", "app", "UTC", RunMode.intervals, SessionSpec.norwegian4x4(), Units.km)
 
     /** 20 s at 3 m/s, lap, 20 s at 3 m/s, pause 5 s, 10 s more. */
     private fun journal(): ByteArray {
@@ -56,15 +56,17 @@ class RunFileTest {
     }
 
     @Test
-    fun `gzip json round trip matches schema v2`() {
+    fun `gzip json round trip matches schema v3`() {
         val f = RunFile.fromReplay(JournalReplay.read(journal()), w0 + 50_000)
         val m = RunFile.readJson(f.toGzipBytes())
-        assertEquals(2L, m["schema"])
+        assertEquals(3L, m["schema"])
         assertEquals("id1", m["id"])
-        assertEquals("fourByFour", m["mode"])
+        assertEquals("intervals", m["mode"])
         assertEquals("km", m["units"])
         assertEquals("2023-11-14T22:13:20Z", m["start"])
-        assertEquals(mapOf("reps" to 4L, "workSeconds" to 240L, "recoverySeconds" to 180L), m["preset"])
+        assertEquals(false, m.containsKey("preset"))
+        @Suppress("UNCHECKED_CAST")
+        assertEquals(SessionSpec.norwegian4x4(), SessionSpec.fromJson(m["session"] as Map<String, Any?>))
         val laps = m.list("laps")
         assertEquals(2, laps.size)
         val lap0 = laps[0] as Map<*, *>
@@ -114,7 +116,7 @@ class RunFileTest {
     fun `no-fix ticks keep time and HR and repeat the distance`() {
         val fixes = TraceFixture.straightLine(listOf(3 to 3.0), startT = t0)
         val lines = ArrayList<JournalLine>()
-        lines.add(header.copy(mode = RunMode.free, preset = null))
+        lines.add(header.copy(mode = RunMode.free, session = null))
         for (f in fixes) lines.add(JournalLine.Sample(f.t, w0 + (f.t - t0), f.lat, f.lon, f.altM, f.accuracyM, f.speedMps, 140))
         // Tunnel: 3 s without a fix, strap still reporting.
         for (s in 4..6) lines.add(JournalLine.Sample.noFix(t0 + s * 1000L, w0 + s * 1000L, 150 + s))
@@ -134,7 +136,7 @@ class RunFileTest {
     @Test
     fun `treadmill run - no fixes at all, HR present, zero distance`() {
         val lines = ArrayList<JournalLine>()
-        lines.add(header.copy(mode = RunMode.free, preset = null))
+        lines.add(header.copy(mode = RunMode.free, session = null))
         for (s in 1..5) lines.add(JournalLine.Sample.noFix(t0 + s * 1000L, w0 + s * 1000L, 130 + s))
         val f = RunFile.fromReplay(JournalReplay.read(lines.joinToString("") { JournalCodec.encode(it) + "\n" }.toByteArray()), w0 + 5000)
         assertEquals(5, f.samples.size)
@@ -148,7 +150,7 @@ class RunFileTest {
         // 30 s @3 m/s, pause, 20 s walking @1.5 m/s (30 m), resume, 30 s @3 m/s.
         val fixes = TraceFixture.straightLine(listOf(30 to 3.0, 20 to 1.5, 30 to 3.0), startT = t0)
         val lines = ArrayList<JournalLine>()
-        lines.add(header.copy(mode = RunMode.free, preset = null))
+        lines.add(header.copy(mode = RunMode.free, session = null))
         for (f in fixes) {
             val s = (f.t - t0) / 1000
             if (s == 30L) lines.add(JournalLine.Pause(f.t, w0 + s * 1000))
@@ -175,5 +177,19 @@ class RunFileTest {
         val f = RunFile.fromReplay(JournalReplay.read(text.toByteArray()), w0 + 62_000)
         assertEquals(listOf(1000L, 61_000L), f.gaps.single().asList())
         assertEquals(62_000, f.samples.last().t)
+    }
+
+    @Test
+    fun `a schema-2 4x4 journal (update mid-run) finalises as a schema-3 intervals file with the norwegian-4x4 session`() {
+        val v2 = """{"k":"hdr","schema":2,"t":$t0,"w":$w0,"id":"id1","device":"d","app":"a","tz":"UTC","mode":"fourByFour","preset":{"reps":5,"workSeconds":240,"recoverySeconds":120},"units":"km"}"""
+        val rest = listOf(JournalLine.Lap(t0 + 60_000, w0 + 60_000, LapSource.button)).joinToString("") { JournalCodec.encode(it) + "\n" }
+        val f = RunFile.fromReplay(JournalReplay.read((v2 + "\n" + rest).toByteArray()), w0 + 90_000)
+        val m = RunFile.readJson(f.toGzipBytes())
+        assertEquals(3L, m["schema"])
+        assertEquals("intervals", m["mode"])
+        @Suppress("UNCHECKED_CAST")
+        val spec = SessionSpec.fromJson(m["session"] as Map<String, Any?>)!!
+        assertEquals(SessionSpec.norwegian4x4(5, 240, 120), spec)
+        assertEquals(9, spec.steps.size)
     }
 }

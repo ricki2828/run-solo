@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../platform/gateway.dart';
+import '../platform/session_codec.dart';
 import 'zone_memento.dart';
 
 /// One-time note when native reports `FaultKind.volumeKeyUnavailable`.
@@ -32,7 +33,7 @@ class RecordingSnapshot {
     this.state = RecorderState.idle,
     this.runId,
     this.mode = RecordMode.free,
-    this.preset,
+    this.spec,
     this.phase = Phase.none,
     this.repIndex = 0,
     this.lapIndex = 0,
@@ -57,7 +58,10 @@ class RecordingSnapshot {
   final RecorderState state;
   final String? runId;
   final RecordMode mode;
-  final Preset? preset;
+
+  /// The session being recorded (CONTRACT.md I1): an intervals spec runs
+  /// timed phases; a Cooper or fartlek spec rides along for the file.
+  final SessionSpec? spec;
   final Phase phase;
 
   /// 1-based rep in work / recovery; 0 in warm-up.
@@ -103,12 +107,17 @@ class RecordingSnapshot {
   /// The service discarded the run (`FaultKind.startFailed`): leave the screen.
   final bool discarded;
 
-  bool get isPreset => preset != null;
-  int get reps => preset?.reps ?? 0;
+  /// Timed interval phases (warm-up, reps, recoveries, cool-down).
+  bool get isPreset => mode == RecordMode.intervals && spec != null;
+  int get reps => isPreset ? spec!.repCount : 0;
+
+  /// This rep's recovery length in ms; 0 when not timed.
+  int get recoveryMs =>
+      (spec?.timedSeconds(StepKind.recovery, repIndex) ?? 0) * 1000;
 
   /// Free runs have no lap input at all (plan §18.2).
   bool get lapsEnabled => switch (mode) {
-    RecordMode.fourByFour || RecordMode.laps => true,
+    RecordMode.intervals || RecordMode.laps => true,
     RecordMode.free || RecordMode.cooper => false,
   };
   bool get recording => state == RecorderState.recording;
@@ -125,7 +134,7 @@ class RecordingSnapshot {
     RecorderState? state,
     String? runId,
     RecordMode? mode,
-    Preset? preset,
+    SessionSpec? spec,
     Phase? phase,
     int? repIndex,
     int? lapIndex,
@@ -153,7 +162,7 @@ class RecordingSnapshot {
     state: state ?? this.state,
     runId: runId ?? this.runId,
     mode: mode ?? this.mode,
-    preset: preset ?? this.preset,
+    spec: spec ?? this.spec,
     phase: phase ?? this.phase,
     repIndex: repIndex ?? this.repIndex,
     lapIndex: lapIndex ?? this.lapIndex,
@@ -266,8 +275,11 @@ class RecordingController extends ChangeNotifier {
       state: s.state,
       runId: s.runId,
       mode: s.state == RecorderState.idle ? _snap.mode : s.mode,
-      preset: s.preset,
-      repPaces: repPacesFromLaps(s.laps, s.preset),
+      spec: s.spec,
+      repPaces: repPacesFromLaps(
+        s.laps,
+        s.mode == RecordMode.intervals ? s.spec : null,
+      ),
       phase: s.phase,
       repIndex: s.repIndex,
       lapIndex: s.lapIndex,
@@ -284,12 +296,18 @@ class RecordingController extends ChangeNotifier {
 
   Future<StartResult> start(
     RecordMode mode,
-    Preset? preset,
-    Units units,
-  ) async {
-    final result = await _gateway.start(mode, preset, units);
+    SessionSpec? spec,
+    Units units, {
+    double? lastCooperVo2,
+  }) async {
+    final result = await _gateway.start(
+      mode,
+      spec,
+      units,
+      lastCooperVo2: lastCooperVo2,
+    );
     if (result.error == null || result.error == StartError.alreadyRunning) {
-      _reset(mode, preset);
+      _reset(mode, spec);
       await attach();
     }
     return result;
@@ -301,14 +319,14 @@ class RecordingController extends ChangeNotifier {
     await attach();
   }
 
-  void _reset(RecordMode mode, Preset? preset) {
+  void _reset(RecordMode mode, SessionSpec? spec) {
     _lastLapDistanceM = 0;
     _tracker = engine.HrZoneTracker(maxHr: _maxHr().toDouble());
     _snap = RecordingSnapshot(
       mode: mode,
-      preset: switch (mode) {
-        RecordMode.fourByFour => preset,
-        RecordMode.laps || RecordMode.free || RecordMode.cooper => null,
+      spec: switch (mode) {
+        RecordMode.intervals || RecordMode.cooper || RecordMode.laps => spec,
+        RecordMode.free => null,
       },
       hrPaired: _snap.hrPaired,
     );
@@ -419,7 +437,7 @@ class RecordingController extends ChangeNotifier {
     _lastLapDistanceM = l.distanceM;
     final paces = List.of(_snap.repPaces);
     final counts = switch (_snap.mode) {
-      RecordMode.fourByFour => _snap.phase == Phase.work,
+      RecordMode.intervals => _snap.phase == Phase.work,
       RecordMode.laps => true,
       RecordMode.free || RecordMode.cooper => false,
     };
@@ -482,11 +500,14 @@ class RecordingController extends ChangeNotifier {
   }
 
   /// Work-rep paces from the service's lap list (cumulative `distanceM`,
-  /// active-time `activeMs`). With a preset, lap 0 ends the warm-up and
-  /// phases then alternate, so odd indices end work reps until the last
-  /// recovery (index 2·reps). Without a preset (Laps run) every lap counts;
-  /// Free runs have no laps.
-  static List<double> repPacesFromLaps(List<LapSummary> laps, Preset? preset) {
+  /// active-time `activeMs`). With an intervals spec, lap 0 ends the
+  /// warm-up and phases then alternate, so odd indices end work reps up to
+  /// the last rep (index 2·reps − 1). Without one (Laps run) every lap
+  /// counts; Free runs have no laps.
+  static List<double> repPacesFromLaps(
+    List<LapSummary> laps,
+    SessionSpec? spec,
+  ) {
     if (laps.isEmpty) return const [];
     final out = <double>[];
     var prevD = 0.0;
@@ -495,7 +516,7 @@ class RecordingController extends ChangeNotifier {
       final m = l.distanceM - prevD;
       prevD = l.distanceM;
       final counts =
-          preset == null || (l.index.isOdd && l.index <= 2 * preset.reps);
+          spec == null || (l.index.isOdd && l.index <= 2 * spec.repCount);
       if (counts && ms > 0 && m > 0) out.add(ms / 1000 / (m / 1000));
     }
     return out;

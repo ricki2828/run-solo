@@ -25,7 +25,7 @@ Future<(FakeRecorderGateway, AppServices)> open(
   final services = fakeServices(recorder: fake, settings: settings);
   await services.recording.start(
     mode,
-    mode == RecordMode.fourByFour ? standardPreset() : null,
+    mode == RecordMode.intervals ? standardPreset() : null,
     Units.km,
   );
   await pumpApp(tester, services, pushRoute: Routes.recording);
@@ -97,7 +97,7 @@ void main() {
   });
 
   testWidgets('4x4 keeps the countdown and LAP', (tester) async {
-    await open(tester, mode: RecordMode.fourByFour);
+    await open(tester, mode: RecordMode.intervals);
     expect(find.text('WARM-UP'), findsOneWidget);
     expect(find.byType(LapButton), findsOneWidget);
   });
@@ -105,11 +105,7 @@ void main() {
   testWidgets(
     'zone background: first HR sets the zone at once, label present',
     (tester) async {
-      final (fake, _) = await open(
-        tester,
-        mode: RecordMode.fourByFour,
-        hr: 140,
-      );
+      final (fake, _) = await open(tester, mode: RecordMode.intervals, hr: 140);
       await pumpTimes(tester, 3);
       await tester.pump(const Duration(milliseconds: 700));
       expect(background(tester), HrZones.background(3));

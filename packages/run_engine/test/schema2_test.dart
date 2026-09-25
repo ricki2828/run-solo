@@ -5,28 +5,23 @@ import 'package:test/test.dart';
 
 import 'helpers.dart';
 
-/// Schema 1 → 2 (plan §18.7) and the three run types (§18.2).
+/// Schema 1 → 2 (plan §18.7) and the three run types (§18.2); since Phase 3
+/// both read forward into schema 3 (see schema3_test.dart).
 void main() {
-  /// Rewrites a run built by this engine as the bytes a schema-1 writer
-  /// produced: `schema: 1` and today's `laps` spelled `free`.
-  String asSchema1(RunFile run) {
-    final j = run.toJson();
-    j['schema'] = 1;
-    if (run.mode == RunMode.laps) j['mode'] = 'free';
-    return jsonEncode(j);
-  }
+  /// The bytes a schema-1 writer produced for [run].
+  String asSchema1(RunFile run) => legacyRunText(run, 1);
 
   group('run file schema', () {
     final fourByFour = fixture('four_by_four_manual_clean_hr').run;
     final lapsRun = fixture('laps_run_manual_clean_hr').run;
 
-    test('this build writes schema 2', () {
+    test('this build writes schema 3', () {
       final j = jsonDecode(RunFileCodec.encode(lapsRun)) as Map;
-      expect(j['schema'], 2);
+      expect(j['schema'], 3);
       expect(j['mode'], 'laps');
     });
 
-    test('a schema-1 free file decodes as laps and re-encodes as schema 2', () {
+    test('a schema-1 free file decodes as laps and re-encodes as schema 3', () {
       final text = asSchema1(lapsRun);
       expect(text, contains('"schema":1'));
       expect(text, contains('"mode":"free"'));
@@ -36,32 +31,43 @@ void main() {
       expect(run.laps.length, lapsRun.laps.length);
       final again = RunFileCodec.encode(run);
       expect(again, RunFileCodec.encode(lapsRun));
-      expect(RunFileCodec.decode(again).readSchema, 2);
+      expect(RunFileCodec.decode(again).readSchema, 3);
     });
 
     test('a schema-1 fourByFour file is unchanged by the bump', () {
       final run = RunFileCodec.decode(asSchema1(fourByFour));
-      expect(run.mode, RunMode.fourByFour);
+      expect(run.mode, RunMode.intervals);
       expect(run.preset, fourByFour.preset);
       expect(RunFileCodec.encode(run), RunFileCodec.encode(fourByFour));
     });
 
     test('schema 2 spells every mode literally, including cooper', () {
-      for (final m in RunMode.values) {
-        final j = lapsRun.toJson()..['mode'] = m.name;
-        if (m != RunMode.fourByFour) j['preset'] = null;
-        expect(RunFile.fromJson(j).mode, m, reason: m.name);
+      const names = {
+        'fourByFour': RunMode.intervals,
+        'laps': RunMode.laps,
+        'free': RunMode.free,
+        'cooper': RunMode.cooper,
+      };
+      for (final e in names.entries) {
+        final j = legacyRunJson(lapsRun, 2)..['mode'] = e.key;
+        expect(RunFile.fromJson(j).mode, e.value, reason: e.key);
       }
       // `free` under schema 2 is the new lap-less mode, not laps.
       expect(
-        RunFile.fromJson(lapsRun.toJson()..['mode'] = 'free').mode,
+        RunFile.fromJson(legacyRunJson(lapsRun, 2)..['mode'] = 'free').mode,
         RunMode.free,
+      );
+      // No schema-2 writer wrote `intervals`.
+      expect(
+        () =>
+            RunFile.fromJson(legacyRunJson(lapsRun, 2)..['mode'] = 'intervals'),
+        throwsA(isA<RunFileFormatException>()),
       );
     });
 
-    test('schema 3 is newer, schema 0 and an unknown mode are malformed', () {
+    test('schema 4 is newer, schema 0 and an unknown mode are malformed', () {
       expect(
-        () => RunFile.fromJson(lapsRun.toJson()..['schema'] = 3),
+        () => RunFile.fromJson(lapsRun.toJson()..['schema'] = 4),
         throwsA(isA<RunFileNewerVersionException>()),
       );
       expect(
@@ -93,7 +99,7 @@ void main() {
           reason: bad,
         );
       }
-      expect(RunMode.fourByFour.lapCapable, isTrue);
+      expect(RunMode.intervals.lapCapable, isTrue);
       expect(RunMode.laps.lapCapable, isTrue);
       expect(RunMode.free.lapCapable, isFalse);
       expect(RunMode.cooper.lapCapable, isFalse);
@@ -103,17 +109,17 @@ void main() {
   group('sidecar schema', () {
     const id = '00000000-0000-4000-8000-000000000035';
 
-    test('this build writes schema 2 with null weather/cooper', () {
+    test('this build writes schema 3 with null weather/cooper', () {
       final j = jsonDecode(
         RunSidecarCodec.encode(const RunSidecar(runId: id)),
       ) as Map;
-      expect(j['schema'], 2);
+      expect(j['schema'], 3);
       expect(j.containsKey('weather'), isTrue);
       expect(j['weather'], isNull);
       expect(j['cooper'], isNull);
     });
 
-    test('a v1 override "free" reads as laps; v1 re-encodes as v2', () {
+    test('a v1 override "free" reads as laps; v1 re-encodes as v3', () {
       final v1 = jsonEncode({
         'schema': 1,
         'run_id': id,
@@ -127,9 +133,9 @@ void main() {
       expect(s.readSchema, 1);
       expect(s.runTypeOverride, RunMode.laps);
       expect(s.weather, isNull);
-      final v2 = RunSidecarCodec.decode(RunSidecarCodec.encode(s));
-      expect(v2.readSchema, 2);
-      expect(v2.runTypeOverride, RunMode.laps);
+      final v3 = RunSidecarCodec.decode(RunSidecarCodec.encode(s));
+      expect(v3.readSchema, 3);
+      expect(v3.runTypeOverride, RunMode.laps);
     });
 
     test('a v2 override "free" stays free', () {
@@ -162,7 +168,15 @@ void main() {
       expect(s.weather!['temp_c'], 28.5);
       expect(s.cooper!['distance_m'], 2800);
       expect(s.isEmpty, isFalse);
-      expect(RunSidecarCodec.encode(s), text);
+      // Re-encoded as schema 3: the objects byte-for-byte, plus the key cache.
+      expect(
+        RunSidecarCodec.encode(s),
+        jsonEncode(
+          (jsonDecode(text) as Map<String, Object?>)
+            ..['schema'] = 3
+            ..['comparison_key'] = null,
+        ),
+      );
       // A fix-laps edit rewrites the sidecar without dropping them.
       final edited = s.withLapEdit(const LapEdit.merge(0));
       expect(edited.weather, s.weather);
@@ -170,7 +184,7 @@ void main() {
     });
 
     test(
-      'schema 3 is newer (read-only), 0 or a non-object weather malformed',
+      'schema 4 is newer (read-only), 0 or a non-object weather malformed',
       () {
         Map<String, Object?> base() => {
           'schema': 2,
@@ -182,7 +196,7 @@ void main() {
           'verdict_history': <Object?>[],
         };
         expect(
-          () => RunSidecar.fromJson(base()..['schema'] = 3),
+          () => RunSidecar.fromJson(base()..['schema'] = 4),
           throwsA(isA<RunFileNewerVersionException>()),
         );
         expect(
@@ -221,7 +235,7 @@ void main() {
         profile: profile,
         now: fixedNow,
       );
-      expect(a.mode, RunMode.fourByFour);
+      expect(a.mode, RunMode.intervals);
       expect(a.verdict!.headline, VerdictHeadline.baselineSet);
       expect(a.fourByFour!.reps.length, 4);
       expect(a.laps, isNull);
@@ -281,11 +295,11 @@ void main() {
       final overridden = engine.analyze(
         asLaps.run,
         sidecar: RunSidecar(runId: asLaps.run.id)
-            .withOverride(RunMode.fourByFour),
+            .withOverride(RunMode.intervals),
         profile: profile,
         now: fixedNow,
       );
-      expect(overridden.mode, RunMode.fourByFour);
+      expect(overridden.mode, RunMode.intervals);
       expect(overridden.laps, isNull);
       expect(overridden.verdict!.headline, direct.verdict!.headline);
       expect(overridden.verdict!.subline, direct.verdict!.subline);
@@ -379,7 +393,7 @@ void main() {
       // dogfood override to 4x4 and froze the verdict into a v1 sidecar.
       final v1Run = RunFileCodec.decode(asSchema1(lapsRun));
       final sidecar0 = RunSidecar(runId: v1Run.id)
-          .withOverride(RunMode.fourByFour);
+          .withOverride(RunMode.intervals);
       final first = engine.analyze(
         v1Run,
         sidecar: sidecar0,
@@ -388,7 +402,7 @@ void main() {
       );
       expect(first.verdictSource, VerdictSource.computed);
       final frozenSidecar = first.freezeInto(sidecar0);
-      final v1SidecarText = jsonEncode(frozenSidecar.toJson()..['schema'] = 1);
+      final v1SidecarText = jsonEncode(legacySidecarJson(frozenSidecar, 1));
       // After the bump: rebuild-from-files re-reads both and must restore,
       // not recompute.
       final run2 = RunFileCodec.decode(asSchema1(lapsRun));
@@ -423,8 +437,8 @@ void main() {
       expect(imp.import(exp.export(tcxWithLaps(10))).mode, RunMode.laps);
       expect(imp.import(exp.export(tcxWithLaps(3))).mode, RunMode.laps);
       expect(
-        imp.import(exp.export(tcxWithLaps(3)), mode: RunMode.fourByFour).mode,
-        RunMode.fourByFour,
+        imp.import(exp.export(tcxWithLaps(3)), mode: RunMode.intervals).mode,
+        RunMode.intervals,
       );
       expect(imp.import(exp.export(tcxWithLaps(2))).mode, RunMode.laps);
       expect(imp.import(exp.export(tcxWithLaps(1))).mode, RunMode.laps);

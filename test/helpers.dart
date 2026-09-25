@@ -9,6 +9,7 @@ import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/main.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_solo/platform/transfer_gateway.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/settings.dart';
@@ -17,8 +18,16 @@ import 'package:run_solo/state/settings.dart';
 final DateTime testNow = DateTime(2026, 9, 24, 10, 0);
 DateTime now() => testNow;
 
-Preset standardPreset() =>
-    Preset(reps: 4, workSeconds: 240, recoverySeconds: 180);
+/// The default Norwegian 4x4 (4 × 4:00, 3:00 recoveries) as the recorder
+/// receives it, expanded by the engine catalogue.
+SessionSpec standardPreset() => fourByFourSpec();
+
+SessionSpec fourByFourSpec({int reps = 4, int recoverySeconds = 180}) =>
+    engine.SessionCatalogue.expand(
+      engine.SessionSpec.norwegian4x4Id,
+      reps: reps,
+      recovery: engine.SessionStep.recovery(recoverySeconds, rep: 1),
+    ).toPigeon();
 
 AppServices fakeServices({
   FakeRecorderGateway? recorder,
@@ -151,7 +160,7 @@ RunSummary summary({
   int laps = 8,
 }) => RunSummary(
   id: id,
-  mode: mode ?? (fourByFour ? RecordMode.fourByFour : RecordMode.free),
+  mode: mode ?? (fourByFour ? RecordMode.intervals : RecordMode.free),
   start: start,
   durationMs: durationMs,
   distanceM: distanceM,

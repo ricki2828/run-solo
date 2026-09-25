@@ -12,7 +12,8 @@ import androidx.core.content.ContextCompat
 import app.runsolo.BuildConfig
 import app.runsolo.core.fs.JvmFileSystem
 import app.runsolo.core.journal.JournalReplay
-import app.runsolo.core.model.Preset as CorePreset
+import app.runsolo.core.model.SessionSpec as CoreSpec
+import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.reconcile.Reconciler
 import app.runsolo.core.run.Finaliser
 import app.runsolo.core.run.JournalMigration
@@ -79,12 +80,25 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         return StartResult(runId = session.runId, error = null)
     }
 
-    private fun newSession(mode: RecordMode, preset: Preset?, units: Units, replay: ReplayRunner?): RecordingSession {
-        val coreMode = mode.toCore()
-        // Only the 4x4 carries a preset (plan §18.2); anything passed for another mode is dropped, not journaled.
-        val corePreset = if (coreMode.usesPreset) preset?.toCore() ?: CorePreset.DEFAULT_4X4 else null
-        return RecordingSession(context, UUID.randomUUID().toString(), coreMode, corePreset, units.toCore(), replay, volumeKeyLaps(coreMode))
+    /**
+     * The spec the core will run, or null when [RecorderCore.unsupported] refuses it (invalid,
+     * wrong for the mode, or needing an I2 feature). Checked before anything is started, so a
+     * refused session leaves no journal.
+     */
+    private fun coreSpec(mode: app.runsolo.core.model.RunMode, spec: SessionSpec?): Result<CoreSpec?> {
+        val core = try {
+            spec?.toCore()
+        } catch (e: IllegalArgumentException) {
+            return Result.failure(e)
+        }
+        // An intervals run with no session only exists as an old by-feel 4x4 journal; never start one.
+        if (mode == app.runsolo.core.model.RunMode.intervals && core == null) return Result.failure(IllegalArgumentException("intervals needs a session"))
+        RecorderCore.unsupported(mode, core)?.let { return Result.failure(IllegalArgumentException(it)) }
+        return Result.success(core)
     }
+
+    private fun newSession(mode: app.runsolo.core.model.RunMode, spec: CoreSpec?, units: Units, replay: ReplayRunner?): RecordingSession =
+        RecordingSession(context, UUID.randomUUID().toString(), mode, spec, units.toCore(), replay, volumeKeyLaps(mode))
 
     /**
      * Volume-key laps are a Laps-run feature only (W8): the user's setting, default on, applies
@@ -94,23 +108,28 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     internal fun volumeKeyLaps(mode: app.runsolo.core.model.RunMode): Boolean =
         mode == app.runsolo.core.model.RunMode.laps && prefs.getBoolean(RecorderService.PREF_VOLUME_KEY_LAPS, mode.volumeKeyLapsDefault)
 
-    private fun startWith(mode: RecordMode, preset: Preset?, units: Units, replay: ReplayRunner?): StartResult {
+    private fun startWith(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ((CoreSpec?) -> ReplayRunner?)?): StartResult {
         active()?.let { return StartResult(runId = it.runId, error = null) }
+        val coreMode = mode.toCore()
+        val coreSpec = coreSpec(coreMode, spec).getOrElse {
+            Log.w(TAG, "start refused: $it")
+            return StartResult(runId = null, error = StartError.UNSUPPORTED_SESSION)
+        }
         precondition()?.let { return StartResult(runId = null, error = it) }
-        val session = newSession(mode, preset, units, replay)
+        val runner = replay?.let { make -> make(coreSpec) ?: return StartResult(runId = null, error = StartError.REPLAY_UNAVAILABLE) }
+        val session = newSession(coreMode, coreSpec, units, runner)
         return begin(session) {
             it.startNew(device = "${Build.MANUFACTURER} ${Build.MODEL}", app = BuildConfig.VERSION_NAME, tz = TimeZone.getDefault().id)
         }
     }
 
-    override fun start(mode: RecordMode, preset: Preset?, units: Units): StartResult = startWith(mode, preset, units, null)
+    /** [lastCooperVo2] feeds the Cooper projection cue (I2); unused until then. */
+    override fun start(mode: RecordMode, spec: SessionSpec?, units: Units, lastCooperVo2: Double?): StartResult =
+        startWith(mode, spec, units, null)
 
-    override fun startReplay(mode: RecordMode, preset: Preset?, units: Units, replay: ReplayConfig): StartResult {
+    override fun startReplay(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ReplayConfig): StartResult {
         if (!BuildConfig.REPLAY_ENABLED) return StartResult(runId = null, error = StartError.REPLAY_UNAVAILABLE)
-        val corePreset = preset?.toCore() ?: CorePreset.DEFAULT_4X4
-        val runner = ReplayRunner.create(context, replay.fixture, replay.speed, corePreset)
-            ?: return StartResult(runId = null, error = StartError.REPLAY_UNAVAILABLE)
-        return startWith(mode, preset, units, runner)
+        return startWith(mode, spec, units) { s -> ReplayRunner.create(context, replay.fixture, replay.speed, s) }
     }
 
     override fun resumeRecovered(runId: String): StartResult {
@@ -125,7 +144,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         }
         precondition()?.let { return StartResult(runId = null, error = it) }
         val h = replayed.header
-        val session = RecordingSession(context, runId, h.mode, h.preset, h.units, null, volumeKeyLaps(h.mode))
+        val session = RecordingSession(context, runId, h.mode, h.session, h.units, null, volumeKeyLaps(h.mode))
         return begin(session) { it.startResumed(replayed) }
     }
 
@@ -170,7 +189,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         phase = Phase.NONE,
         repIndex = 0,
         phaseRemainingMs = 0,
-        preset = null,
+        spec = null,
         journalOk = true,
     )
 

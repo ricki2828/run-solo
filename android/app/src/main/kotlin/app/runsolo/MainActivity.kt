@@ -29,6 +29,7 @@ import app.runsolo.platform.LapSource
 import app.runsolo.platform.ReplayConfig
 import app.runsolo.platform.StorageApi
 import app.runsolo.platform.StorageApiImpl
+import app.runsolo.platform.toPigeon
 import app.runsolo.platform.Units
 import app.runsolo.record.LapInput
 import app.runsolo.record.LocationSource
@@ -63,7 +64,7 @@ class MainActivity : FlutterActivity() {
 
     /**
      * Debug builds only (plan §12 replay mode + the CI lifecycle test). Extras:
-     *  - `runsolo.replay=<fixture>` [`runsolo.speed=<x>`] [`runsolo.mode=fourByFour|laps|free`]: start a replay run now.
+     *  - `runsolo.replay=<fixture>` [`runsolo.speed=<x>`] [`runsolo.mode=intervals|laps|free`]: start a replay run now.
      *  - `runsolo.lapEveryMs=<n>`: press a notification LAP every n ms of wall time while recording
      *    (Laps mode; in Free mode the presses must be ignored and logged as `lapIgnored`).
      *  - `runsolo.recover=true`: run recover(); resume the newest readable orphan, else finalise it.
@@ -81,9 +82,11 @@ class MainActivity : FlutterActivity() {
         main.post {
             if (fixture != null) {
                 val speed = intent.getFloatExtra("runsolo.speed", 10f).toDouble() // `am start --ef`
-                val modeName = intent.getStringExtra("runsolo.mode") ?: "fourByFour"
-                val mode = RecordMode.values().firstOrNull { EventTraceName.dart(it) == modeName } ?: RecordMode.FOUR_BY_FOUR
-                val r = recorder.startReplay(mode, null, Units.KM, ReplayConfig(fixture, speed))
+                val modeName = intent.getStringExtra("runsolo.mode") ?: "intervals"
+                val mode = RecordMode.values().firstOrNull { EventTraceName.dart(it) == modeName } ?: RecordMode.INTERVALS
+                // Intervals replays run the standard Norwegian 4x4 (the lifecycle test's timeline).
+                val spec = if (mode == RecordMode.INTERVALS) app.runsolo.core.model.SessionSpec.norwegian4x4().toPigeon() else null
+                val r = recorder.startReplay(mode, spec, Units.KM, ReplayConfig(fixture, speed))
                 Log.i(DEBUG_TAG, "startReplay fixture=$fixture mode=${EventTraceName.dart(mode)} speed=$speed → runId=${r.runId} error=${r.error}")
             }
             if (lapEvery > 0) {

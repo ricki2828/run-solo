@@ -28,7 +28,7 @@ object EventTrace {
     const val TAG = "RunSolo/trace"
     val enabled: Boolean get() = BuildConfig.REPLAY_ENABLED
 
-    /** Dart enum spelling of a Pigeon Kotlin enum constant: `FOUR_BY_FOUR` → `fourByFour`. */
+    /** Dart enum spelling of a Pigeon Kotlin enum constant: `EQUAL_TO_PREVIOUS_WORK` → `equalToPreviousWork`. */
     fun dartName(e: Enum<*>): String = EventTraceName.dart(e)
 
     fun event(e: RecorderEvent, elapsedMs: Long) {
@@ -107,7 +107,20 @@ object EventTrace {
         m["phase"] = dartName(s.phase)
         m["repIndex"] = s.repIndex
         m["phaseRemainingMs"] = s.phaseRemainingMs
-        m["preset"] = s.preset?.let { linkedMapOf("reps" to it.reps, "workSeconds" to it.workSeconds, "recoverySeconds" to it.recoverySeconds) }
+        m["spec"] = s.spec?.let { spec ->
+            linkedMapOf(
+                "templateId" to spec.templateId, "templateVersion" to spec.templateVersion, "name" to spec.name,
+                "warmupSeconds" to spec.warmupSeconds, "cooldownSeconds" to spec.cooldownSeconds,
+                "lapLockout" to spec.lapLockout, "cueProfile" to dartName(spec.cueProfile),
+                "hrBandLow" to spec.hrBandLow, "hrBandHigh" to spec.hrBandHigh,
+                "steps" to spec.steps.map { st ->
+                    linkedMapOf("kind" to dartName(st.kind), "target" to dartName(st.target), "value" to st.value, "style" to dartName(st.style), "repIndex" to st.repIndex)
+                },
+            )
+        }
+        m["stepIndex"] = s.stepIndex
+        m["stepRemainingMs"] = s.stepRemainingMs
+        m["stepRemainingM"] = s.stepRemainingM
         m["journalOk"] = s.journalOk
         Log.i(TAG, Json.write(m))
     }

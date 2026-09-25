@@ -19,9 +19,16 @@ ENUMS = {
     "state": {"idle", "recording", "paused", "finalising"},
     "phase": {"none", "warmup", "work", "recovery", "cooldown"},
     "source": {"button", "notification", "volumeKey", "auto"},
-    "cue": {"halfway", "thirtySeconds", "phaseEnd", "start", "stop"},
-    "mode": {"fourByFour", "laps", "free", "cooper"},
+    "cue": {"halfway", "thirtySeconds", "phaseEnd", "start", "stop", "distanceToGo", "lastRep", "minuteMark", "countdown", "projection"},
+    "mode": {"intervals", "laps", "free", "cooper"},
     "fault": {"gpsLost", "gpsWeak", "hrDisconnected", "journalWriteFailed", "lowStorage", "osKilledMidRun", "startFailed", "lapIgnored", "volumeKeyUnavailable"},
+}
+# Enums inside status.spec (the Pigeon SessionSpec) and its steps.
+SPEC_ENUMS = {"cueProfile": {"standard", "short", "cooper"}}
+STEP_ENUMS = {
+    "kind": {"work", "recovery"},
+    "target": {"time", "distance", "equalToPreviousWork"},
+    "style": {"run", "jog", "walk", "stand"},
 }
 REQUIRED_KINDS = {"tick", "lap", "phase", "state", "status", "cue"}
 # Kinds the fixture scenario never produces but a real run legitimately can (the emulator has
@@ -80,6 +87,19 @@ def shape(events):
                     t = jtype(v)
                     if t is not None:
                         s["status.laps[]"][f].add(t)
+            spec = e.get("spec")
+            if isinstance(spec, dict):
+                for f, v in spec.items():
+                    t = jtype(v)
+                    if t is not None:
+                        s["status.spec"][f].add(t)
+                    else:
+                        s["status.spec"][f]
+                for step in spec.get("steps") or []:
+                    for f, v in step.items():
+                        t = jtype(v)
+                        if t is not None:
+                            s["status.spec.steps[]"][f].add(t)
     return s
 
 
@@ -98,9 +118,14 @@ def main():
     if missing:
         errors.append(f"captured trace has no {sorted(missing)} events ({len(captured)} lines)")
     sc, sf = shape(captured), shape(fixture)
-    for k in sorted(kinds_c & set(sf)):
+    # Top-level kinds plus the nested shapes (status.laps[], status.spec, status.spec.steps[]).
+    nested = {k for k in sf if "." in k}
+    for k in sorted((kinds_c & set(sf)) | nested):
+        if k not in sc:
+            errors.append(f"{k}: in the fixture, never in the captured trace")
+            continue
         fc, ff = set(sc[k]), set(sf[k])
-        first = next(e for e in captured if e["kind"] == k)
+        first = next(e for e in captured if e["kind"] == k.split(".")[0])
         if fc != ff:
             errors.append(f"{k}: field names differ; only in captured {sorted(fc - ff)}, only in fixture {sorted(ff - fc)}; first captured line: {json.dumps(first)}")
         for f in fc & ff:
@@ -126,6 +151,17 @@ def main():
             if f in e and e[f] is not None and e[f] not in vocab:
                 errors.append(f"{e['kind']}.{f} = {e[f]!r} is not a Dart enum name {sorted(vocab)}; line: {json.dumps(e)}")
                 break
+    for e in captured:
+        spec = e.get("spec") if e["kind"] == "status" else None
+        if not isinstance(spec, dict):
+            continue
+        for f, vocab in SPEC_ENUMS.items():
+            if spec.get(f) not in vocab:
+                errors.append(f"status.spec.{f} = {spec.get(f)!r} is not a Dart enum name {sorted(vocab)}")
+        for step in spec.get("steps") or []:
+            for f, vocab in STEP_ENUMS.items():
+                if step.get(f) not in vocab:
+                    errors.append(f"status.spec.steps[].{f} = {step.get(f)!r} is not a Dart enum name {sorted(vocab)}")
     # Invariants.
     ticks = [e for e in captured if e["kind"] == "tick"]
     laps = [e for e in captured if e["kind"] == "lap"]
@@ -169,8 +205,10 @@ def main():
         elif e["kind"] == "status" and len(e["laps"]) != seen:
             errors.append(f"status at t={e['t']} lists {len(e['laps'])} laps, {seen} lap events so far")
             break
-    if statuses and any(s["mode"] != "fourByFour" for s in statuses):
-        errors.append("status.mode is not fourByFour for the replay 4x4")
+    if statuses and any(s["mode"] != "intervals" for s in statuses):
+        errors.append("status.mode is not intervals for the replay 4x4")
+    if statuses and any((s.get("spec") or {}).get("templateId") != "norwegian-4x4" for s in statuses):
+        errors.append("status.spec is not the norwegian-4x4 session for the replay 4x4")
     if errors:
         print("event trace check FAILED:")
         for err in errors:

@@ -92,7 +92,7 @@ class _VerdictScreenState extends State<VerdictScreen> {
           );
         }
         return switch (detail.summary.mode) {
-          RecordMode.fourByFour => _FourByFourVerdict(
+          RecordMode.intervals => _FourByFourVerdict(
             detail: detail,
             previous: previous,
             justFinished: widget.justFinished,
@@ -618,7 +618,7 @@ class _SummaryScreen extends StatelessWidget {
       RecordMode.laps => 'LAPS RUN',
       RecordMode.free => 'FREE RUN',
       RecordMode.cooper => '12-MINUTE TEST',
-      RecordMode.fourByFour => '4x4',
+      RecordMode.intervals => '4x4',
     };
     return Scaffold(
       appBar: AppBar(

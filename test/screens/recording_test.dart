@@ -17,7 +17,7 @@ import '../helpers.dart';
 /// Start a run on the fake and open the record screen.
 Future<(FakeRecorderGateway, AppServices)> openRecording(
   WidgetTester tester, {
-  RecordMode mode = RecordMode.fourByFour,
+  RecordMode mode = RecordMode.intervals,
   AppSettings settings = const AppSettings(onboardingDone: true),
   void Function(FakeRecorderGateway fake)? before,
 }) async {
@@ -26,7 +26,7 @@ Future<(FakeRecorderGateway, AppServices)> openRecording(
   final services = fakeServices(recorder: fake, settings: settings);
   await services.recording.start(
     mode,
-    mode == RecordMode.fourByFour ? standardPreset() : null,
+    mode == RecordMode.intervals ? standardPreset() : null,
     Units.km,
   );
   await pumpApp(tester, services, pushRoute: Routes.recording);

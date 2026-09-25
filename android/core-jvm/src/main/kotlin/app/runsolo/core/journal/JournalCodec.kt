@@ -9,14 +9,17 @@ import app.runsolo.core.json.obj
 import app.runsolo.core.json.string
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.LapSource
-import app.runsolo.core.model.Preset
 import app.runsolo.core.model.RunMode
+import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
 
 /** Line ↔ JSON. Keys are short because the journal is written at 1 Hz for an hour. */
 object JournalCodec {
-    /** Bumps with the run-file schema (plan §18.7): 2 = `mode` gained laps/free-without-laps/cooper. */
-    const val SCHEMA = 2
+    /**
+     * Bumps with the run-file schema (plan §18.7): 2 = `mode` gained laps/free-without-laps/cooper;
+     * 3 = `fourByFour` → `intervals`, header `preset` → `session` (Phase 3 §3.8).
+     */
+    const val SCHEMA = 3
 
     /** The header was written by a newer app (schema above [SCHEMA] or a mode this build does not know). */
     class NewerSchema(message: String) : IllegalArgumentException(message)
@@ -37,7 +40,7 @@ object JournalCodec {
                 m["app"] = line.app
                 m["tz"] = line.tz
                 m["mode"] = line.mode.name
-                m["preset"] = line.preset?.toJson()
+                m["session"] = line.session?.toJson()
                 m["units"] = line.units.name
             }
             is JournalLine.Sample -> {
@@ -68,14 +71,34 @@ object JournalCodec {
     }
 
     /**
-     * Schema-1 `free` was the lap-capable by-feel run (volume laps on, manual laps journaled), so
+     * Schema ≤ 2 `fourByFour` is `intervals` (Phase 3 §3.8). Schema-1 `free` was the
+     * lap-capable by-feel run (volume laps on, manual laps journaled), so
      * it is `laps` now — always, not only when laps exist (plan §18.7 B1). Applied here, not in
      * `RecorderCore.restore`, because `RunMode.valueOf` runs first. An unknown mode name comes
      * from a newer app and is reported as such, never guessed.
      */
     fun decodeMode(name: String, schema: Long): RunMode {
         if (schema <= 1 && name == "free") return RunMode.laps
+        if (schema <= 2 && name == RunMode.LEGACY_FOUR_BY_FOUR) return RunMode.intervals
         return RunMode.values().firstOrNull { it.name == name } ?: throw NewerSchema("unknown run mode '$name'")
+    }
+
+    /**
+     * The header's session: schema 3 reads `session` (a `preset` key there is refused); schema
+     * ≤ 2 maps `fourByFour` + `preset` to the norwegian-4x4 spec, `fourByFour` without a preset
+     * (by-feel) to no session, and `cooper` to the Cooper spec, exactly as the Dart run-file
+     * reader does.
+     */
+    fun decodeSession(m: Map<String, Any?>, mode: RunMode, schema: Long): SessionSpec? {
+        if (schema >= 3) {
+            require(!m.containsKey("preset")) { "schema-3 header carries a preset" }
+            return SessionSpec.fromJson(m.obj("session"))
+        }
+        return when (mode) {
+            RunMode.intervals -> m.obj("preset")?.let { SessionSpec.fromLegacyPreset(it) }
+            RunMode.cooper -> SessionSpec.COOPER
+            RunMode.laps, RunMode.free -> null
+        }
     }
 
     /** Throws [Json.ParseException] or [IllegalArgumentException] on a malformed line; [NewerSchema] for a header from a newer app. */
@@ -87,6 +110,7 @@ object JournalCodec {
             "hdr" -> {
                 val schema = m.long("schema")
                 if (schema > SCHEMA) throw NewerSchema("journal schema $schema is newer than $SCHEMA")
+                val mode = decodeMode(m.string("mode"), schema)
                 JournalLine.Header(
                     t = t,
                     w = w,
@@ -94,8 +118,8 @@ object JournalCodec {
                     device = m.string("device"),
                     app = m.string("app"),
                     tz = m.string("tz"),
-                    mode = decodeMode(m.string("mode"), schema),
-                    preset = Preset.fromJson(m.obj("preset")),
+                    mode = mode,
+                    session = decodeSession(m, mode, schema),
                     units = Units.valueOf(m.string("units")),
                 )
             }

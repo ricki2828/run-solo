@@ -12,7 +12,10 @@ library;
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:run_engine/run_engine.dart' as engine;
+
 import 'gateway.dart';
+import 'session_codec.dart';
 
 /// A finalised run as the fake remembers it (the real app reads run files).
 class FakeFinalisedRun {
@@ -23,7 +26,7 @@ class FakeFinalisedRun {
     required this.durationMs,
     required this.distanceM,
     required this.laps,
-    this.preset,
+    this.spec,
   });
   final String runId;
   final RecordMode mode;
@@ -31,7 +34,7 @@ class FakeFinalisedRun {
   final int durationMs;
   final double distanceM;
   final int laps;
-  final Preset? preset;
+  final SessionSpec? spec;
 }
 
 class FakeRecorderGateway implements RecorderGateway {
@@ -110,7 +113,11 @@ class FakeRecorderGateway implements RecorderGateway {
   RecorderState _state = RecorderState.idle;
   String? _runId;
   RecordMode _mode = RecordMode.free;
-  Preset? _preset;
+  SessionSpec? _spec;
+
+  /// Interval phases run only for an intervals spec (Cooper is one timed
+  /// work step with no phases in I1; fartlek is Laps).
+  SessionSpec? get _timed => _mode == RecordMode.intervals ? _spec : null;
   DateTime? _startedAt;
   int _elapsedMs = 0; // wall time incl. pauses
   int _activeMs = 0; // recording time only
@@ -145,9 +152,11 @@ class FakeRecorderGateway implements RecorderGateway {
   @override
   Future<StartResult> start(
     RecordMode mode,
-    Preset? preset,
-    Units units,
-  ) async {
+    SessionSpec? spec,
+    Units units, {
+    double? lastCooperVo2,
+  }) async {
+    startCalls.add((mode: mode, spec: spec, lastCooperVo2: lastCooperVo2));
     if (startError != null) return StartResult(error: startError);
     if (_state != RecorderState.idle) {
       return StartResult(runId: _runId, error: StartError.alreadyRunning);
@@ -157,17 +166,21 @@ class FakeRecorderGateway implements RecorderGateway {
       'fake-${_runCounter.toString().padLeft(3, '0')}',
       mode,
       switch (mode) {
-        RecordMode.fourByFour => preset,
-        RecordMode.laps || RecordMode.free || RecordMode.cooper => null,
+        RecordMode.intervals || RecordMode.cooper || RecordMode.laps => spec,
+        RecordMode.free => null,
       },
     );
     return StartResult(runId: _runId);
   }
 
-  void _begin(String runId, RecordMode mode, Preset? preset) {
+  /// Every `start` call, for tests that check what the app sent.
+  final List<({RecordMode mode, SessionSpec? spec, double? lastCooperVo2})>
+  startCalls = [];
+
+  void _begin(String runId, RecordMode mode, SessionSpec? spec) {
     _runId = runId;
     _mode = mode;
-    _preset = preset;
+    _spec = spec;
     _startedAt = _now();
     _elapsedMs = 0;
     _activeMs = 0;
@@ -182,7 +195,7 @@ class FakeRecorderGateway implements RecorderGateway {
     _phase = Phase.none;
     _state = RecorderState.recording;
     _emitState();
-    if (preset != null) {
+    if (_timed != null) {
       _phase = Phase.warmup;
       _emit(PhaseEvent(phase: _phase, repIndex: 0, phaseDurationMs: 0));
     }
@@ -228,16 +241,16 @@ class FakeRecorderGateway implements RecorderGateway {
       case RecordMode.free:
         lapsIgnored += 1;
         return;
-      case RecordMode.fourByFour:
+      case RecordMode.intervals:
       case RecordMode.laps:
       case RecordMode.cooper:
         break;
     }
     // RecorderCore default config: volume-key laps only in Laps mode (W8);
     // in a preset they are ignored outright, never recorded or re-aligned.
-    if (_preset != null && source == LapSource.volumeKey) return;
+    if (_timed != null && source == LapSource.volumeKey) return;
     _emitLap(source);
-    if (_preset == null) return;
+    if (_timed == null) return;
     switch (_phase) {
       case Phase.warmup:
         _enter(Phase.work, 1);
@@ -267,7 +280,7 @@ class FakeRecorderGateway implements RecorderGateway {
         durationMs: _elapsedMs,
         distanceM: _totalDistanceM,
         laps: _lapIndex,
-        preset: _preset,
+        spec: _spec,
       ),
     );
     _state = RecorderState.idle;
@@ -288,7 +301,7 @@ class FakeRecorderGateway implements RecorderGateway {
     phase: _phase,
     repIndex: _repIndex,
     phaseRemainingMs: _remaining,
-    preset: _preset,
+    spec: _state == RecorderState.idle ? null : _spec,
     journalOk: true,
     mode: _state == RecorderState.idle ? RecordMode.free : _mode,
     laps: List.of(_laps),
@@ -337,8 +350,8 @@ class FakeRecorderGateway implements RecorderGateway {
     _begin(
       runId,
       orphan.mode,
-      orphan.mode == RecordMode.fourByFour
-          ? Preset(reps: 4, workSeconds: 240, recoverySeconds: 180)
+      orphan.mode == RecordMode.intervals
+          ? engine.SessionCatalogue.norwegian4x4.defaults.toPigeon()
           : null,
     );
     // The journal already held run time (a gap line covers the dark span,
@@ -349,7 +362,7 @@ class FakeRecorderGateway implements RecorderGateway {
     _lapStartElapsedMs = _elapsedMs;
     _lapStartActiveMs = _activeMs;
     _lapStartDistanceM = _totalDistanceM;
-    if (_preset != null) _enter(Phase.work, 1);
+    if (_timed != null) _enter(Phase.work, 1);
     if (orphan.endedPaused) {
       _state = RecorderState.paused;
       _emitState();
@@ -441,11 +454,11 @@ class FakeRecorderGateway implements RecorderGateway {
   /// RecorderCore.advance: work → recovery (same rep), or cool-down after
   /// the last rep; recovery → next work.
   void _advancePhase() {
-    final p = _preset;
+    final p = _timed;
     if (p == null) return;
     switch (_phase) {
       case Phase.work:
-        if (_repIndex >= p.reps) {
+        if (_repIndex >= p.repCount) {
           _enter(Phase.cooldown, _repIndex);
         } else {
           _enter(Phase.recovery, _repIndex);
@@ -460,15 +473,16 @@ class FakeRecorderGateway implements RecorderGateway {
   }
 
   void _enter(Phase phase, int repIndex) {
-    final p = _preset!;
+    final p = _timed!;
     _phase = phase;
     _repIndex = repIndex;
     _phaseStartActiveMs = _activeMs;
     _halfwayCued = false;
     _thirtyCued = false;
     _phaseDurationMs = switch (phase) {
-      Phase.work => p.workSeconds * 1000,
-      Phase.recovery => p.recoverySeconds * 1000,
+      Phase.work => (p.timedSeconds(StepKind.work, repIndex) ?? 0) * 1000,
+      Phase.recovery =>
+        (p.timedSeconds(StepKind.recovery, repIndex) ?? 0) * 1000,
       _ => null,
     };
     _emit(

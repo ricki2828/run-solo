@@ -69,7 +69,7 @@ void main() {
             expect(analysis.freeRun.distanceM, greaterThan(0));
           });
           return;
-        case RunMode.fourByFour:
+        case RunMode.intervals:
           break;
       }
 

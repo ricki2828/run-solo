@@ -72,7 +72,7 @@ void main() {
 
     await tester.tap(find.text('4x4'));
     await pumpTimes(tester);
-    expect(services.settings.settings.lastMode, RecordMode.fourByFour);
+    expect(services.settings.settings.lastMode, RecordMode.intervals);
   });
 
   testWidgets('location not granted: red row, START opens the checklist', (

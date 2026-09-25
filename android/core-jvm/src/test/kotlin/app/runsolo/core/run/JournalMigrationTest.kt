@@ -53,14 +53,14 @@ class JournalMigrationTest {
     }
 
     @Test
-    fun `finalising the migrated orphan produces a schema-2 laps run file`() {
+    fun `finalising the migrated orphan produces a schema-3 laps run file`() {
         fs.mkdirs(RunPaths.RUNS_DIR)
         legacyJournal("p1")
         JournalMigration(fs).migrate()
         val out = Finaliser(fs).finalise("p1", w0 + 100_000, activeRunId = null)
         assertTrue(out is Finaliser.Outcome.Done)
         val m = RunFile.readJson(fs.readBytes((out as Finaliser.Outcome.Done).path))
-        assertEquals(2L, m["schema"])
+        assertEquals(3L, m["schema"])
         assertEquals("laps", m["mode"])
         assertEquals(2, (m["laps"] as List<*>).size)
     }

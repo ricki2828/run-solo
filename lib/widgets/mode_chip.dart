@@ -20,7 +20,7 @@ class ModeChipRow extends StatelessWidget {
   final int recoverySeconds;
 
   static const List<RecordMode> offered = [
-    RecordMode.fourByFour,
+    RecordMode.intervals,
     RecordMode.laps,
     RecordMode.free,
   ];
@@ -34,13 +34,13 @@ class ModeChipRow extends StatelessWidget {
           Expanded(
             child: ModeChip(
               title: switch (m) {
-                RecordMode.fourByFour => '4x4',
+                RecordMode.intervals => '4x4',
                 RecordMode.laps => 'LAPS',
                 RecordMode.free => 'FREE',
                 RecordMode.cooper => 'TEST',
               },
               subtitle: switch (m) {
-                RecordMode.fourByFour =>
+                RecordMode.intervals =>
                   '$reps × 4:00\n${Fmt.recovery(recoverySeconds)} rec',
                 RecordMode.laps => 'LAP by hand',
                 RecordMode.free => 'Just run',

@@ -52,7 +52,7 @@ class FreeModeTest {
         assertTrue(path != null)
         val m = app.runsolo.core.run.RunFile.readJson(fs.readBytes(path!!))
         assertEquals("free", m["mode"])
-        assertEquals(2L, m["schema"])
+        assertEquals(3L, m["schema"])
         assertEquals(1, (m["laps"] as List<*>).size)
     }
 

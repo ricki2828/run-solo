@@ -2,8 +2,8 @@ package app.runsolo.core.journal
 
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.LapSource
-import app.runsolo.core.model.Preset
 import app.runsolo.core.model.RunMode
+import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
 
 /**
@@ -26,7 +26,8 @@ sealed class JournalLine {
         val app: String,
         val tz: String,
         val mode: RunMode,
-        val preset: Preset?,
+        /** The full expanded session (schema 3), so restore needs nothing else. */
+        val session: SessionSpec?,
         val units: Units,
     ) : JournalLine()
 

@@ -7,13 +7,13 @@
 #      journal gone, strictly increasing t, no FATAL in logcat at any phase.
 # The Flutter "recovery dialog" itself is driven here by a debug intent, not the UI; the
 # Dart store's index row is asserted by the Dart side once the store lands.
-# MODE (3rd arg, default fourByFour) runs the same lifecycle as a Laps run (manual laps from the
+# MODE (3rd arg, default intervals: the Norwegian 4x4 session) runs the same lifecycle as a Laps run (manual laps from the
 # debug intent + a volume key, no phases) or a Free run (every LAP ignored, no LAP action).
-# Usage: tools/emulator_lifecycle.sh <apk> <package> [fourByFour|laps|free]
+# Usage: tools/emulator_lifecycle.sh <apk> <package> [intervals|laps|free]
 set -euo pipefail
 APK="${1:?apk}"
 PKG="${2:?package}"
-MODE="${3:-fourByFour}"
+MODE="${3:-intervals}"
 ACTIVITY="$PKG/app.runsolo.MainActivity"
 
 log() { echo "[lifecycle:$MODE] $*"; }
@@ -54,7 +54,7 @@ adb shell settings put secure location_providers_allowed +gps || true
 log "start replay run (synthetic-4x4 trace @20x, mode $MODE) on API $sdk"
 # Laps/Free: the debug intent presses a notification LAP every 4 s of wall time (~80 s of trace).
 LAP_EXTRA=""
-if [ "$MODE" != "fourByFour" ]; then LAP_EXTRA="--el runsolo.lapEveryMs 4000"; fi
+if [ "$MODE" != "intervals" ]; then LAP_EXTRA="--el runsolo.lapEveryMs 4000"; fi
 start_replay() { adb shell am start -W -n "$ACTIVITY" --es runsolo.replay synthetic-4x4 --es runsolo.mode "$MODE" --ef runsolo.speed 20 $LAP_EXTRA > /dev/null; wait_for_log "RunSolo/debug.*startReplay .*mode=$MODE .*runId=[0-9a-f-]+ error=null" 30; }
 if ! start_replay; then
   # A system-app ANR dialog (GMS on a cold hosted emulator) can swallow the first launch.
@@ -70,7 +70,7 @@ run_id="$(adb logcat -d | grep -oE 'startReplay .*runId=[0-9a-f-]+' | tail -1 | 
 log "runId=$run_id"
 
 case "$MODE" in
-  fourByFour)
+  intervals)
     # 60 s warmup at 20x = 3 s, then rep 1 (4:00 = 12 s) auto-laps into recovery (3:00 = 9 s). Wait for 2 auto laps.
     wait_for_log 'RunSolo/session.*lap index=2 source=auto' 90 || fail "auto-laps did not fire"
     log "auto-laps fired"
@@ -218,14 +218,17 @@ python3 - "$run_id" "$MODE" "${vk_t:-}" "$sdk" <<'PY' || fail "run file assertio
 import gzip, json, sys
 run_id, mode, vk_t, sdk = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
 f = json.load(gzip.open("/tmp/run.json.gz"))
-assert f["schema"] == 2 and f["id"] == run_id, "header"
+assert f["schema"] == 3 and f["id"] == run_id, f"header: schema {f['schema']}"
 assert f["mode"] == mode, f"mode {f['mode']} != {mode}"
 laps, gaps, samples = f["laps"], f["gaps"], f["samples"]
 assert len(gaps) == 1 and gaps[0][1] > gaps[0][0] > 0, f"gaps={gaps}"
 g0, g1 = gaps[0]
 pre = [l for l in laps if l["t1"] <= g0]
-if mode == "fourByFour":
-    assert f["preset"] == {"reps": 4, "workSeconds": 240, "recoverySeconds": 180}, f["preset"]
+assert "preset" not in f and "session" in f, f"schema-3 keys {list(f)}"
+if mode == "intervals":
+    s = f["session"]
+    assert s["templateId"] == "norwegian-4x4" and s["hrBand"] == [0.85, 0.95], s
+    assert [(st["kind"], st["value"], st["rep"]) for st in s["steps"]] == [("work", 240, 1), ("recovery", 180, 1), ("work", 240, 2), ("recovery", 180, 2), ("work", 240, 3), ("recovery", 180, 3), ("work", 240, 4)], s["steps"]
     assert len(pre) >= 3, f"laps before the kill: {len(pre)}"
     assert sum(1 for l in pre if l["kind"] == "auto") >= 2, "need >= 2 auto laps before the kill"
     # The warmup LAP is pressed on the first tick at/after 60 s of trace time (ticks are 1 s of
@@ -236,7 +239,7 @@ if mode == "fourByFour":
     assert pre[2]["kind"] == "auto" and pre[2]["t1"] - pre[2]["t0"] == 180000, f"rep 1 recovery lap {pre[2]}"
     assert abs(pre[1]["t1"] - 300000) <= 3000 and abs(pre[2]["t1"] - 480000) <= 3000, "boundaries drifted"
 elif mode == "laps":
-    assert f["preset"] is None, f["preset"]
+    assert f["session"] is None, f["session"]
     assert len(pre) >= 3, f"manual laps before the kill: {len(pre)}"
     assert all(l["kind"] == "manual" for l in laps), "laps mode has no auto laps"
     # Laps from the debug intent are ~80 s of trace apart (4 s wall at 20x); the volume-key lap
@@ -251,7 +254,7 @@ elif mode == "laps":
         assert vk_t, "volume-key lap time missing from the log"
         assert any(abs(l["t1"] - int(vk_t)) <= 1000 for l in laps), f"no lap within 1 s of the volume-key press at {vk_t} ms: {[l['t1'] for l in laps]}"
 elif mode == "free":
-    assert f["preset"] is None, f["preset"]
+    assert f["session"] is None, f["session"]
     assert len(laps) == 1 and laps[0]["t0"] == 0, f"free mode must have exactly one lap segment: {laps}"
     assert laps[0]["kind"] == "manual" and laps[0]["t1"] >= samples[-1][0], laps
 else:
@@ -264,15 +267,15 @@ after = [s for s in samples if s[0] > g1]
 # 1 Hz sampling up to the kill: the count must track the kill time (the kill lands ~480 s in
 # for the 4x4, but right after the third lap + volume key for laps/free, so no absolute number).
 assert len(before) >= 0.95 * (g0 / 1000) - 2, f"samples before the kill: {len(before)} for {g0} ms (1 Hz expected)"
-assert len(before) >= (400 if mode == "fourByFour" else 60), f"samples before the kill: {len(before)}"
+assert len(before) >= (400 if mode == "intervals" else 60), f"samples before the kill: {len(before)}"
 assert len(after) >= 3, f"samples after the gap: {len(after)}"
 assert sum(1 for s in before if s[1] is not None) >= 0.95 * len(before), "replay samples should carry a fix (>= 95%)"
 assert sum(1 for s in before if s[7] is not None) >= 0.9 * len(before), "HR missing on replay samples"
-assert before[-1][6] > (900 if mode == "fourByFour" else 2.0 * g0 / 1000), f"distance before the kill too small: {before[-1][6]} m in {g0} ms"
+assert before[-1][6] > (900 if mode == "intervals" else 2.0 * g0 / 1000), f"distance before the kill too small: {before[-1][6]} m in {g0} ms"
 print(f"ok [{mode}]: {len(laps)} laps ({len(pre)} pre-kill), gap {g0}->{g1} ms, {len(before)} samples before, {len(after)} after, {before[-1][6]:.0f} m")
 PY
 
-if [ "$MODE" != "fourByFour" ]; then
+if [ "$MODE" != "intervals" ]; then
   log "lifecycle ok on API $sdk in $MODE mode (run $run_id: replay -> laps -> kill -> not restarted -> recover -> resume -> finalise -> verified)"
   exit 0
 fi

@@ -31,7 +31,9 @@ void main() {
 
     test('preset round-trips', () {
       final withPreset = run.copyWith(
-        preset: const Preset(reps: 5, workSeconds: 240, recoverySeconds: 150),
+        session: SessionSpec.fromLegacyPreset(
+          const Preset(reps: 5, workSeconds: 240, recoverySeconds: 150),
+        ),
       );
       final back = RunFileCodec.decode(RunFileCodec.encode(withPreset));
       expect(back.preset, withPreset.preset);
@@ -239,7 +241,7 @@ void main() {
     test('withLapEdit and withOverride unfreeze the verdict', () {
       expect(sidecar.withLapEdit(const LapEdit.merge(0)).frozenVerdict, isNull);
       expect(sidecar.withLapEdit(const LapEdit.merge(0)).lapEdits.length, 3);
-      expect(sidecar.withOverride(RunMode.fourByFour).frozenVerdict, isNull);
+      expect(sidecar.withOverride(RunMode.intervals).frozenVerdict, isNull);
       expect(sidecar.withOverride(null).runTypeOverride, isNull);
     });
 

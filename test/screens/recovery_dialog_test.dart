@@ -15,7 +15,7 @@ OrphanJournal orphan({
 }) => OrphanJournal(
   runId: 'orphan-1',
   lastLineAgeMs: ageMinutes * 60 * 1000,
-  mode: RecordMode.fourByFour,
+  mode: RecordMode.intervals,
   readable: readable,
   newer: newer,
   endedPaused: endedPaused,

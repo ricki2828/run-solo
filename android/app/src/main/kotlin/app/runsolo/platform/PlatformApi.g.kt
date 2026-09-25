@@ -193,18 +193,21 @@ class FlutterError (
 ) : RuntimeException()
 
 /**
- * Run type picked at Start (plan §18.2). Mirrors `RunMode` in `package:run_engine`.
+ * Run type picked at Start (plan §18.2, Phase 3 §3.8). Mirrors `RunMode` in
+ * `package:run_engine`.
  *
- * - `fourByFour`: preset phases, cues, auto-laps, manual LAP overrides.
+ * - `intervals`: the phases follow a `SessionSpec` (cues, auto-laps, manual LAP
+ *   overrides). Schema <= 2 `fourByFour` files map here.
  * - `laps`: by-feel laps; LAP button, notification LAP and volume keys (opt-in,
- *   default on). Schema-1 `free` files map here (plan §18.7).
+ *   default on). Schema-1 `free` files map here (plan §18.7). A fartlek is
+ *   `laps` with the steps-empty fartlek spec.
  * - `free`: no lap input at all — no LAP button, no notification LAP action, no
  *   MediaSession; `lap()` is a no-op (`FaultKind.lapIgnored` in debug builds).
- * - `cooper`: schema-2 vocabulary for the Phase-3 12-minute test; until the
- *   protocol lands Kotlin records it like `free`. Not offered in the UI yet.
+ * - `cooper`: the 12-minute test with the Cooper spec; until I2 Kotlin records
+ *   it like `free`. Not offered in the UI yet.
  */
 enum class RecordMode(val raw: Int) {
-  FOUR_BY_FOUR(0),
+  INTERVALS(0),
   LAPS(1),
   FREE(2),
   COOPER(3);
@@ -240,7 +243,7 @@ enum class RecorderState(val raw: Int) {
   }
 }
 
-/** Phase of a preset (4x4) run; `none` in free mode or outside a rep. */
+/** Phase of an intervals run; `none` in the other modes. */
 enum class Phase(val raw: Int) {
   NONE(0),
   WARMUP(1),
@@ -268,15 +271,77 @@ enum class LapSource(val raw: Int) {
   }
 }
 
+/**
+ * `distanceToGo`, `lastRep`, `minuteMark`, `countdown` and `projection` are
+ * Phase 3 cues (I2); I1 never emits them.
+ */
 enum class CueKind(val raw: Int) {
   HALFWAY(0),
   THIRTY_SECONDS(1),
   PHASE_END(2),
   START(3),
-  STOP(4);
+  STOP(4),
+  DISTANCE_TO_GO(5),
+  LAST_REP(6),
+  MINUTE_MARK(7),
+  COUNTDOWN(8),
+  PROJECTION(9);
 
   companion object {
     fun ofRaw(raw: Int): CueKind? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+enum class StepKind(val raw: Int) {
+  WORK(0),
+  RECOVERY(1);
+
+  companion object {
+    fun ofRaw(raw: Int): StepKind? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+/**
+ * `time`: value in seconds; `distance`: metres; `equalToPreviousWork`: value
+ * 0, lasts as long as the work step before it took (Yasso, pyramids).
+ */
+enum class TargetKind(val raw: Int) {
+  TIME(0),
+  DISTANCE(1),
+  EQUAL_TO_PREVIOUS_WORK(2);
+
+  companion object {
+    fun ofRaw(raw: Int): TargetKind? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+/** Work steps are always `run`; recoveries `jog`, `walk` or `stand`. */
+enum class RecoveryStyle(val raw: Int) {
+  RUN(0),
+  JOG(1),
+  WALK(2),
+  STAND(3);
+
+  companion object {
+    fun ofRaw(raw: Int): RecoveryStyle? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+enum class CueProfile(val raw: Int) {
+  STANDARD(0),
+  SHORT(1),
+  COOPER(2);
+
+  companion object {
+    fun ofRaw(raw: Int): CueProfile? {
       return values().firstOrNull { it.raw == raw }
     }
   }
@@ -344,7 +409,13 @@ enum class StartError(val raw: Int) {
    * `resumeRecovered` failed while reopening the journal. The journal is
    * untouched and `recover()` will list it again.
    */
-  RESUME_FAILED(10);
+  RESUME_FAILED(10),
+  /**
+   * The session is invalid for the mode, or needs something this recorder
+   * cannot run yet (I1: distance and equal-time steps, a fixed warm-up or
+   * cool-down, lap lockout, the short/Cooper cue profiles). Nothing started.
+   */
+  UNSUPPORTED_SESSION(11);
 
   companion object {
     fun ofRaw(raw: Int): StartError? {
@@ -388,29 +459,37 @@ enum class ExitReason(val raw: Int) {
 }
 
 /**
- * The 4x4 preset written into the file header; drives cues and the detector.
+ * One expanded step (named `SessionStep`: a generated `Step` would clash
+ * with Flutter material's `Step`). `repIndex` is 1-based; a recovery carries
+ * the rep number of the work step before it (run-file JSON key `rep`).
  *
  * Generated class from Pigeon that represents data sent in messages.
  */
-data class Preset (
-  val reps: Long,
-  val workSeconds: Long,
-  val recoverySeconds: Long
+data class SessionStep (
+  val kind: StepKind,
+  val target: TargetKind,
+  val value: Long,
+  val style: RecoveryStyle,
+  val repIndex: Long
 )
  {
   companion object {
-    fun fromList(pigeonVar_list: List<Any?>): Preset {
-      val reps = pigeonVar_list[0] as Long
-      val workSeconds = pigeonVar_list[1] as Long
-      val recoverySeconds = pigeonVar_list[2] as Long
-      return Preset(reps, workSeconds, recoverySeconds)
+    fun fromList(pigeonVar_list: List<Any?>): SessionStep {
+      val kind = pigeonVar_list[0] as StepKind
+      val target = pigeonVar_list[1] as TargetKind
+      val value = pigeonVar_list[2] as Long
+      val style = pigeonVar_list[3] as RecoveryStyle
+      val repIndex = pigeonVar_list[4] as Long
+      return SessionStep(kind, target, value, style, repIndex)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
-      reps,
-      workSeconds,
-      recoverySeconds,
+      kind,
+      target,
+      value,
+      style,
+      repIndex,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -420,15 +499,95 @@ data class Preset (
     if (this === other) {
       return true
     }
-    val other = other as Preset
-    return PlatformApiPigeonUtils.deepEquals(this.reps, other.reps) && PlatformApiPigeonUtils.deepEquals(this.workSeconds, other.workSeconds) && PlatformApiPigeonUtils.deepEquals(this.recoverySeconds, other.recoverySeconds)
+    val other = other as SessionStep
+    return PlatformApiPigeonUtils.deepEquals(this.kind, other.kind) && PlatformApiPigeonUtils.deepEquals(this.target, other.target) && PlatformApiPigeonUtils.deepEquals(this.value, other.value) && PlatformApiPigeonUtils.deepEquals(this.style, other.style) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
-    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.reps)
-    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.workSeconds)
-    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.recoverySeconds)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.kind)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.target)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.value)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.style)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.repIndex)
+    return result
+  }
+}
+
+/**
+ * The expanded session (Phase 3 §3.3): Dart expands presets and custom
+ * templates, Kotlin validates, journals and runs the flat step list. Written
+ * to the run file as `session` (hrBand as `[low, high]`).
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class SessionSpec (
+  val templateId: String,
+  val templateVersion: Long,
+  val name: String,
+  /** null = open (ends on the first LAP / `startReps`); int = fixed seconds. */
+  val warmupSeconds: Long? = null,
+  /** null = open (runs until Stop); int = fixed seconds. */
+  val cooldownSeconds: Long? = null,
+  val lapLockout: Boolean,
+  val cueProfile: CueProfile,
+  val hrBandLow: Double? = null,
+  val hrBandHigh: Double? = null,
+  val steps: List<SessionStep>
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): SessionSpec {
+      val templateId = pigeonVar_list[0] as String
+      val templateVersion = pigeonVar_list[1] as Long
+      val name = pigeonVar_list[2] as String
+      val warmupSeconds = pigeonVar_list[3] as Long?
+      val cooldownSeconds = pigeonVar_list[4] as Long?
+      val lapLockout = pigeonVar_list[5] as Boolean
+      val cueProfile = pigeonVar_list[6] as CueProfile
+      val hrBandLow = pigeonVar_list[7] as Double?
+      val hrBandHigh = pigeonVar_list[8] as Double?
+      val steps = pigeonVar_list[9] as List<SessionStep>
+      return SessionSpec(templateId, templateVersion, name, warmupSeconds, cooldownSeconds, lapLockout, cueProfile, hrBandLow, hrBandHigh, steps)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      templateId,
+      templateVersion,
+      name,
+      warmupSeconds,
+      cooldownSeconds,
+      lapLockout,
+      cueProfile,
+      hrBandLow,
+      hrBandHigh,
+      steps,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as SessionSpec
+    return PlatformApiPigeonUtils.deepEquals(this.templateId, other.templateId) && PlatformApiPigeonUtils.deepEquals(this.templateVersion, other.templateVersion) && PlatformApiPigeonUtils.deepEquals(this.name, other.name) && PlatformApiPigeonUtils.deepEquals(this.warmupSeconds, other.warmupSeconds) && PlatformApiPigeonUtils.deepEquals(this.cooldownSeconds, other.cooldownSeconds) && PlatformApiPigeonUtils.deepEquals(this.lapLockout, other.lapLockout) && PlatformApiPigeonUtils.deepEquals(this.cueProfile, other.cueProfile) && PlatformApiPigeonUtils.deepEquals(this.hrBandLow, other.hrBandLow) && PlatformApiPigeonUtils.deepEquals(this.hrBandHigh, other.hrBandHigh) && PlatformApiPigeonUtils.deepEquals(this.steps, other.steps)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.templateId)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.templateVersion)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.name)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.warmupSeconds)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.cooldownSeconds)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.lapLockout)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.cueProfile)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.hrBandLow)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.hrBandHigh)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.steps)
     return result
   }
 }
@@ -539,10 +698,7 @@ data class LapSummary (
 data class RecorderStatus (
   val state: RecorderState,
   val runId: String? = null,
-  /**
-   * The mode picked at Start (a by-feel 4x4 has `mode == fourByFour` and a
-   * null `preset`).
-   */
+  /** The mode picked at Start. */
   val mode: RecordMode,
   val laps: List<LapSummary>,
   val elapsedMs: Long,
@@ -552,7 +708,15 @@ data class RecorderStatus (
   val phase: Phase,
   val repIndex: Long,
   val phaseRemainingMs: Long,
-  val preset: Preset? = null,
+  val spec: SessionSpec? = null,
+  /**
+   * 0-based index into `spec.steps` during work/recovery; null in warm-up,
+   * cool-down and unstructured runs.
+   */
+  val stepIndex: Long? = null,
+  val stepRemainingMs: Long? = null,
+  /** Metres left in a distance step (I2; null until then). */
+  val stepRemainingM: Double? = null,
   val journalOk: Boolean
 )
  {
@@ -569,9 +733,12 @@ data class RecorderStatus (
       val phase = pigeonVar_list[8] as Phase
       val repIndex = pigeonVar_list[9] as Long
       val phaseRemainingMs = pigeonVar_list[10] as Long
-      val preset = pigeonVar_list[11] as Preset?
-      val journalOk = pigeonVar_list[12] as Boolean
-      return RecorderStatus(state, runId, mode, laps, elapsedMs, lapIndex, gpsFix, hrConnected, phase, repIndex, phaseRemainingMs, preset, journalOk)
+      val spec = pigeonVar_list[11] as SessionSpec?
+      val stepIndex = pigeonVar_list[12] as Long?
+      val stepRemainingMs = pigeonVar_list[13] as Long?
+      val stepRemainingM = pigeonVar_list[14] as Double?
+      val journalOk = pigeonVar_list[15] as Boolean
+      return RecorderStatus(state, runId, mode, laps, elapsedMs, lapIndex, gpsFix, hrConnected, phase, repIndex, phaseRemainingMs, spec, stepIndex, stepRemainingMs, stepRemainingM, journalOk)
     }
   }
   fun toList(): List<Any?> {
@@ -587,7 +754,10 @@ data class RecorderStatus (
       phase,
       repIndex,
       phaseRemainingMs,
-      preset,
+      spec,
+      stepIndex,
+      stepRemainingMs,
+      stepRemainingM,
       journalOk,
     )
   }
@@ -599,7 +769,7 @@ data class RecorderStatus (
       return true
     }
     val other = other as RecorderStatus
-    return PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.laps, other.laps) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapIndex, other.lapIndex) && PlatformApiPigeonUtils.deepEquals(this.gpsFix, other.gpsFix) && PlatformApiPigeonUtils.deepEquals(this.hrConnected, other.hrConnected) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.preset, other.preset) && PlatformApiPigeonUtils.deepEquals(this.journalOk, other.journalOk)
+    return PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.laps, other.laps) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapIndex, other.lapIndex) && PlatformApiPigeonUtils.deepEquals(this.gpsFix, other.gpsFix) && PlatformApiPigeonUtils.deepEquals(this.hrConnected, other.hrConnected) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.spec, other.spec) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.journalOk, other.journalOk)
   }
 
   override fun hashCode(): Int {
@@ -615,7 +785,10 @@ data class RecorderStatus (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.phase)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.repIndex)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.phaseRemainingMs)
-    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.preset)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.spec)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.stepIndex)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.stepRemainingMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.stepRemainingM)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.journalOk)
     return result
   }
@@ -697,7 +870,7 @@ data class OrphanJournal (
 /**
  * Replay mode (plan §12; debug builds only): a fixture trace fed through the
  * recorder at `speed`x on a virtual clock. `fixture` is `synthetic-4x4`
- * (straight line: 60 s warmup, the preset's reps, 60 s cooldown, HR by phase)
+ * (straight line: 60 s warmup, the spec's steps, 60 s cooldown, HR by phase)
  * or the name of a CSV under the app's Android `assets/replay/`.
  *
  * Generated class from Pigeon that represents data sent in messages.
@@ -1263,7 +1436,7 @@ data class StateEvent (
 }
 
 /**
- * Preset phase change (warmup -> work 1 -> recovery 1 -> ... -> cooldown).
+ * Phase change (warmup -> work 1 -> recovery 1 -> ... -> cooldown).
  *
  * Generated class from Pigeon that represents data sent in messages.
  */
@@ -1343,105 +1516,130 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
       }
       135.toByte() -> {
         return (readValue(buffer) as Long?)?.let {
-          FaultKind.ofRaw(it.toInt())
+          StepKind.ofRaw(it.toInt())
         }
       }
       136.toByte() -> {
         return (readValue(buffer) as Long?)?.let {
-          StartError.ofRaw(it.toInt())
+          TargetKind.ofRaw(it.toInt())
         }
       }
       137.toByte() -> {
         return (readValue(buffer) as Long?)?.let {
-          PermissionKind.ofRaw(it.toInt())
+          RecoveryStyle.ofRaw(it.toInt())
         }
       }
       138.toByte() -> {
         return (readValue(buffer) as Long?)?.let {
-          ExitReason.ofRaw(it.toInt())
+          CueProfile.ofRaw(it.toInt())
         }
       }
       139.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          Preset.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          FaultKind.ofRaw(it.toInt())
         }
       }
       140.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          StartResult.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          StartError.ofRaw(it.toInt())
         }
       }
       141.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          LapSummary.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          PermissionKind.ofRaw(it.toInt())
         }
       }
       142.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          RecorderStatus.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          ExitReason.ofRaw(it.toInt())
         }
       }
       143.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          OrphanJournal.fromList(it)
+          SessionStep.fromList(it)
         }
       }
       144.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ReplayConfig.fromList(it)
+          SessionSpec.fromList(it)
         }
       }
       145.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          PermissionStatus.fromList(it)
+          StartResult.fromList(it)
         }
       }
       146.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BleStatus.fromList(it)
+          LapSummary.fromList(it)
         }
       }
       147.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ExitDiagnosis.fromList(it)
+          RecorderStatus.fromList(it)
         }
       }
       148.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BleDevice.fromList(it)
+          OrphanJournal.fromList(it)
         }
       }
       149.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BackupStatus.fromList(it)
+          ReplayConfig.fromList(it)
         }
       }
       150.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TickEvent.fromList(it)
+          PermissionStatus.fromList(it)
         }
       }
       151.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapEvent.fromList(it)
+          BleStatus.fromList(it)
         }
       }
       152.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CueEvent.fromList(it)
+          ExitDiagnosis.fromList(it)
         }
       }
       153.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FaultEvent.fromList(it)
+          BleDevice.fromList(it)
         }
       }
       154.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StateEvent.fromList(it)
+          BackupStatus.fromList(it)
         }
       }
       155.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          TickEvent.fromList(it)
+        }
+      }
+      156.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          LapEvent.fromList(it)
+        }
+      }
+      157.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          CueEvent.fromList(it)
+        }
+      }
+      158.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          FaultEvent.fromList(it)
+        }
+      }
+      159.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          StateEvent.fromList(it)
+        }
+      }
+      160.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           PhaseEvent.fromList(it)
         }
@@ -1475,88 +1673,108 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(134)
         writeValue(stream, value.raw.toLong())
       }
-      is FaultKind -> {
+      is StepKind -> {
         stream.write(135)
         writeValue(stream, value.raw.toLong())
       }
-      is StartError -> {
+      is TargetKind -> {
         stream.write(136)
         writeValue(stream, value.raw.toLong())
       }
-      is PermissionKind -> {
+      is RecoveryStyle -> {
         stream.write(137)
         writeValue(stream, value.raw.toLong())
       }
-      is ExitReason -> {
+      is CueProfile -> {
         stream.write(138)
         writeValue(stream, value.raw.toLong())
       }
-      is Preset -> {
+      is FaultKind -> {
         stream.write(139)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is StartResult -> {
+      is StartError -> {
         stream.write(140)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is LapSummary -> {
+      is PermissionKind -> {
         stream.write(141)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is RecorderStatus -> {
+      is ExitReason -> {
         stream.write(142)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is OrphanJournal -> {
+      is SessionStep -> {
         stream.write(143)
         writeValue(stream, value.toList())
       }
-      is ReplayConfig -> {
+      is SessionSpec -> {
         stream.write(144)
         writeValue(stream, value.toList())
       }
-      is PermissionStatus -> {
+      is StartResult -> {
         stream.write(145)
         writeValue(stream, value.toList())
       }
-      is BleStatus -> {
+      is LapSummary -> {
         stream.write(146)
         writeValue(stream, value.toList())
       }
-      is ExitDiagnosis -> {
+      is RecorderStatus -> {
         stream.write(147)
         writeValue(stream, value.toList())
       }
-      is BleDevice -> {
+      is OrphanJournal -> {
         stream.write(148)
         writeValue(stream, value.toList())
       }
-      is BackupStatus -> {
+      is ReplayConfig -> {
         stream.write(149)
         writeValue(stream, value.toList())
       }
-      is TickEvent -> {
+      is PermissionStatus -> {
         stream.write(150)
         writeValue(stream, value.toList())
       }
-      is LapEvent -> {
+      is BleStatus -> {
         stream.write(151)
         writeValue(stream, value.toList())
       }
-      is CueEvent -> {
+      is ExitDiagnosis -> {
         stream.write(152)
         writeValue(stream, value.toList())
       }
-      is FaultEvent -> {
+      is BleDevice -> {
         stream.write(153)
         writeValue(stream, value.toList())
       }
-      is StateEvent -> {
+      is BackupStatus -> {
         stream.write(154)
         writeValue(stream, value.toList())
       }
-      is PhaseEvent -> {
+      is TickEvent -> {
         stream.write(155)
+        writeValue(stream, value.toList())
+      }
+      is LapEvent -> {
+        stream.write(156)
+        writeValue(stream, value.toList())
+      }
+      is CueEvent -> {
+        stream.write(157)
+        writeValue(stream, value.toList())
+      }
+      is FaultEvent -> {
+        stream.write(158)
+        writeValue(stream, value.toList())
+      }
+      is StateEvent -> {
+        stream.write(159)
+        writeValue(stream, value.toList())
+      }
+      is PhaseEvent -> {
+        stream.write(160)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -1572,13 +1790,18 @@ interface RecorderApi {
   /**
    * Idempotent: a second call while recording returns the running id. Must be
    * called while the Activity is visible (the FGS is started from it, B2).
+   *
+   * `spec`: required for `intervals` and `cooper`, the fartlek spec or null
+   * for `laps`, null for `free`; anything else is `unsupportedSession`.
+   * `lastCooperVo2`: the previous Cooper result for the projection cue (I2;
+   * Kotlin does not read history).
    */
-  fun start(mode: RecordMode, preset: Preset?, units: Units): StartResult
+  fun start(mode: RecordMode, spec: SessionSpec?, units: Units, lastCooperVo2: Double?): StartResult
   /** Debug builds only: like `start`, fed from a fixture instead of GPS/BLE. */
-  fun startReplay(mode: RecordMode, preset: Preset?, units: Units, replay: ReplayConfig): StartResult
+  fun startReplay(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ReplayConfig): StartResult
   /**
    * Continue an orphaned journal after the user confirms (plan §3): writes the
-   * `gap` line, rebuilds the preset phase from the journal, restarts the FGS.
+   * `gap` line, rebuilds the step phase from the journal, restarts the FGS.
    * Idempotent like `start`.
    */
   fun resumeRecovered(runId: String): StartResult
@@ -1586,7 +1809,7 @@ interface RecorderApi {
   fun resume()
   fun lap(source: LapSource)
   /**
-   * The "Start 4x4" action: ends the untimed warm-up and starts rep 1 (same
+   * The "Start reps" action: ends the untimed warm-up and starts rep 1 (same
    * effect and journal line as a first `lap(button)`); a no-op anywhere else,
    * so a manual LAP mid-rep can never be confused with starting.
    */
@@ -1610,8 +1833,8 @@ interface RecorderApi {
   /**
    * The user's volume-key LAP setting for Laps runs, persisted natively (the
    * recorder reads it at start). Takes effect from the next run or resume,
-   * not the live one. Unset means on. 4x4 and Free never use volume keys,
-   * whatever this says. A no-op in effect where
+   * not the live one. Unset means on. Intervals, Free and Cooper never use
+   * volume keys, whatever this says. A no-op in effect where
    * `PermissionsApi.volumeKeyLapsSupported()` is false.
    */
   fun setVolumeKeyLaps(enabled: Boolean)
@@ -1638,10 +1861,11 @@ interface RecorderApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val modeArg = args[0] as RecordMode
-            val presetArg = args[1] as Preset?
+            val specArg = args[1] as SessionSpec?
             val unitsArg = args[2] as Units
+            val lastCooperVo2Arg = args[3] as Double?
             val wrapped: List<Any?> = try {
-              listOf(api.start(modeArg, presetArg, unitsArg))
+              listOf(api.start(modeArg, specArg, unitsArg, lastCooperVo2Arg))
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)
             }
@@ -1657,11 +1881,11 @@ interface RecorderApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val modeArg = args[0] as RecordMode
-            val presetArg = args[1] as Preset?
+            val specArg = args[1] as SessionSpec?
             val unitsArg = args[2] as Units
             val replayArg = args[3] as ReplayConfig
             val wrapped: List<Any?> = try {
-              listOf(api.startReplay(modeArg, presetArg, unitsArg, replayArg))
+              listOf(api.startReplay(modeArg, specArg, unitsArg, replayArg))
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)
             }

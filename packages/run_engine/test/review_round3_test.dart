@@ -262,7 +262,7 @@ void main() {
       () {
         final run = fixture('preset_4x4_auto_standard').run;
         expect(
-          () => RunFile.fromJson(run.toJson()..['schema'] = 3),
+          () => RunFile.fromJson(run.toJson()..['schema'] = 4),
           throwsA(isA<RunFileNewerVersionException>()),
         );
         expect(

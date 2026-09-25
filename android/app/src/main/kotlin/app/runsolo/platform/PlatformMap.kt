@@ -3,7 +3,12 @@ package app.runsolo.platform
 import app.runsolo.core.model.CueKind as CoreCue
 import app.runsolo.core.model.LapSource as CoreLapSource
 import app.runsolo.core.model.Phase as CorePhase
-import app.runsolo.core.model.Preset as CorePreset
+import app.runsolo.core.model.CueProfile as CoreCueProfile
+import app.runsolo.core.model.RecoveryStyle as CoreRecoveryStyle
+import app.runsolo.core.model.SessionSpec as CoreSpec
+import app.runsolo.core.model.Step as CoreStep
+import app.runsolo.core.model.StepKind as CoreStepKind
+import app.runsolo.core.model.TargetKind as CoreTargetKind
 import app.runsolo.core.model.RecorderState as CoreState
 import app.runsolo.core.model.RunMode as CoreMode
 import app.runsolo.core.model.Units as CoreUnits
@@ -38,5 +43,49 @@ fun CorePhase.toPigeon(): Phase = Phase.valueOf(name.toUpperSnake())
 fun CoreLapSource.toPigeon(): LapSource = LapSource.valueOf(name.toUpperSnake())
 fun LapSource.toCore(): CoreLapSource = CoreLapSource.valueOf(name.toCamel())
 fun CoreCue.toPigeon(): CueKind = CueKind.valueOf(name.toUpperSnake())
-fun CorePreset.toPigeon(): Preset = Preset(reps = reps.toLong(), workSeconds = workSeconds.toLong(), recoverySeconds = recoverySeconds.toLong())
-fun Preset.toCore(): CorePreset = CorePreset(reps = reps.toInt(), workSeconds = workSeconds.toInt(), recoverySeconds = recoverySeconds.toInt())
+fun CoreStep.toPigeon(): SessionStep = SessionStep(
+    kind = StepKind.valueOf(kind.name.toUpperSnake()),
+    target = TargetKind.valueOf(target.name.toUpperSnake()),
+    value = value.toLong(),
+    style = RecoveryStyle.valueOf(style.name.toUpperSnake()),
+    repIndex = rep.toLong(),
+)
+
+fun SessionStep.toCore(): CoreStep = CoreStep(
+    kind = CoreStepKind.valueOf(kind.name.toCamel()),
+    target = CoreTargetKind.valueOf(target.name.toCamel()),
+    value = value.toInt(),
+    style = CoreRecoveryStyle.valueOf(style.name.toCamel()),
+    rep = repIndex.toInt(),
+)
+
+fun CoreSpec.toPigeon(): SessionSpec = SessionSpec(
+    templateId = templateId,
+    templateVersion = templateVersion.toLong(),
+    name = name,
+    warmupSeconds = warmupSeconds?.toLong(),
+    cooldownSeconds = cooldownSeconds?.toLong(),
+    lapLockout = lapLockout,
+    cueProfile = CueProfile.valueOf(cueProfile.name.toUpperSnake()),
+    hrBandLow = hrBand?.first,
+    hrBandHigh = hrBand?.second,
+    steps = steps.map { it.toPigeon() },
+)
+
+/** Throws [IllegalArgumentException] for a half-given HR band; the caller reports `unsupportedSession`. */
+fun SessionSpec.toCore(): CoreSpec {
+    val lo = hrBandLow
+    val hi = hrBandHigh
+    require((lo == null) == (hi == null)) { "hrBandLow and hrBandHigh must be given together" }
+    return CoreSpec(
+        templateId = templateId,
+        templateVersion = templateVersion.toInt(),
+        name = name,
+        warmupSeconds = warmupSeconds?.toInt(),
+        cooldownSeconds = cooldownSeconds?.toInt(),
+        lapLockout = lapLockout,
+        cueProfile = CoreCueProfile.valueOf(cueProfile.name.toCamel()),
+        hrBand = if (lo != null && hi != null) lo to hi else null,
+        steps = steps.map { it.toCore() },
+    )
+}

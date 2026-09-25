@@ -1,5 +1,6 @@
 import '../engine_version.dart';
 import '../model/run_file.dart';
+import '../model/session_spec.dart';
 import '../model/sidecar.dart';
 import '../model/verdict.dart';
 import '../run_mode.dart';
@@ -19,6 +20,36 @@ enum VerdictSource {
   computed,
 }
 
+/// The session run [run] is judged as under [mode] (the override when set):
+/// - intervals: the file's session; a by-feel 4x4 (no session, or a Laps
+///   run overridden to intervals) is judged as the default Norwegian 4x4,
+///   so it keeps its history key `t240x*` (plan §3.8 mapping) while the
+///   detector stays by-feel (`RunFile.preset` is null);
+/// - cooper: the Cooper session; laps: the fartlek session when recorded as
+///   one; free: none.
+SessionSpec? effectiveSession(RunFile run, RunMode mode) {
+  final own = run.session;
+  return switch (mode) {
+    RunMode.intervals =>
+      own != null && own.steps.isNotEmpty && run.mode == RunMode.intervals
+          ? own
+          : SessionSpec.norwegian4x4(),
+    RunMode.cooper => SessionSpec.cooper,
+    RunMode.laps =>
+      own?.templateId == SessionSpec.fartlekId ? SessionSpec.fartlek : null,
+    RunMode.free => null,
+  };
+}
+
+/// The comparison key of [session] under [mode]; null for laps and free
+/// (a fartlek groups as `fartlek`).
+String? comparisonKeyOf(SessionSpec? session, RunMode mode) => switch (mode) {
+  RunMode.free => null,
+  RunMode.laps =>
+    session?.templateId == SessionSpec.fartlekId ? ComparisonKey.fartlek : null,
+  RunMode.intervals || RunMode.cooper => session?.comparisonKey,
+};
+
 /// Engine output (plan §5): reps, recovery spans, metrics, verdict, flags.
 class RunAnalysis {
   const RunAnalysis({
@@ -35,9 +66,19 @@ class RunAnalysis {
     required this.gpsQuality,
     required this.engineVersion,
     this.lapEditsInvalid = false,
+    this.session,
+    this.comparisonKey,
   });
 
   final String runId;
+
+  /// The session this run is judged as ([effectiveSession]); null for laps,
+  /// free and summary-only runs.
+  final SessionSpec? session;
+
+  /// Which runs this one compares with (plan §3.7); null when it compares
+  /// with nothing (laps, free).
+  final String? comparisonKey;
 
   /// The effective mode (override applied).
   final RunMode mode;
@@ -72,7 +113,7 @@ class RunAnalysis {
   /// pace verdict path (not indoor, not noisy, laps consistent, no rep
   /// interrupted, at least three clean reps after any drops).
   bool get eligibleAsPrior =>
-      mode == RunMode.fourByFour &&
+      mode == RunMode.intervals &&
       !indoor &&
       !noisy &&
       detection != null &&
@@ -89,6 +130,7 @@ class RunAnalysis {
           start,
           fourByFour!,
           eligible: eligibleAsPrior,
+          comparisonKey: comparisonKey ?? ComparisonKey.norwegian4x4,
         );
 
   /// The sidecar with this verdict frozen (plan §4, §17 R3).
@@ -122,6 +164,8 @@ class RunEngine {
     );
     final noisy = !indoor && quality < constants.noisyQualityBelow;
     final freeRun = calc.freeRun(run, trace);
+    final session = effectiveSession(run, mode);
+    final key = comparisonKeyOf(session, mode);
 
     // Exhaustive (W7): a new mode fails to compile here instead of being
     // mislabelled as a 4x4.
@@ -142,6 +186,8 @@ class RunEngine {
           noisy: noisy,
           gpsQuality: quality,
           engineVersion: engineVersion,
+          session: session,
+          comparisonKey: key,
         );
       case RunMode.laps:
         return RunAnalysis(
@@ -157,9 +203,30 @@ class RunEngine {
           noisy: noisy,
           gpsQuality: quality,
           engineVersion: engineVersion,
+          session: session,
+          comparisonKey: key,
         );
-      case RunMode.fourByFour:
-        break;
+      case RunMode.intervals:
+        // Phase 3 I1: only the 4x4 key has a detector and floors yet; any
+        // other session reads as its lap table, no verdict, until I3.
+        if (key != ComparisonKey.norwegian4x4) {
+          return RunAnalysis(
+            runId: run.id,
+            mode: mode,
+            detection: null,
+            fourByFour: null,
+            laps: calc.laps(run, trace, profile),
+            freeRun: freeRun,
+            verdict: null,
+            verdictSource: null,
+            indoor: indoor,
+            noisy: noisy,
+            gpsQuality: quality,
+            engineVersion: engineVersion,
+            session: session,
+            comparisonKey: key,
+          );
+        }
     }
 
     // Edit base: recorded laps (pause laps dropped, renumbered), or laps
@@ -207,6 +274,8 @@ class RunEngine {
         priors: priors,
         now: at,
         inputsKey: inputsKey,
+        comparisonKey: key!,
+        templateDefault: session,
       );
       source = VerdictSource.computed;
     }
@@ -223,6 +292,8 @@ class RunEngine {
       noisy: noisy,
       gpsQuality: quality,
       engineVersion: engineVersion,
+      session: session,
+      comparisonKey: key,
       lapEditsInvalid: lapEditsInvalid,
     );
   }

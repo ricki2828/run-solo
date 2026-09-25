@@ -133,8 +133,33 @@ class TraceGateway implements RecorderGateway {
     }
   }
 
+  /// The Pigeon SessionSpec as Kotlin writes it in the trace (flat,
+  /// CONTRACT.md I1).
+  SessionSpec _parseSpec(Map<String, Object?> j) => SessionSpec(
+    templateId: j['templateId'] as String,
+    templateVersion: j['templateVersion'] as int,
+    name: j['name'] as String,
+    warmupSeconds: j['warmupSeconds'] as int?,
+    cooldownSeconds: j['cooldownSeconds'] as int?,
+    lapLockout: j['lapLockout'] as bool,
+    cueProfile: CueProfile.values.byName(j['cueProfile'] as String),
+    hrBandLow: (j['hrBandLow'] as num?)?.toDouble(),
+    hrBandHigh: (j['hrBandHigh'] as num?)?.toDouble(),
+    steps: [
+      for (final s
+          in (j['steps'] as List<Object?>).cast<Map<String, Object?>>())
+        SessionStep(
+          kind: StepKind.values.byName(s['kind'] as String),
+          target: TargetKind.values.byName(s['target'] as String),
+          value: s['value'] as int,
+          style: RecoveryStyle.values.byName(s['style'] as String),
+          repIndex: s['repIndex'] as int,
+        ),
+    ],
+  );
+
   RecorderStatus _parseStatus(Map<String, Object?> e) {
-    final preset = e['preset'] as Map<String, Object?>?;
+    final spec = e['spec'] as Map<String, Object?>?;
     return RecorderStatus(
       state: RecorderState.values.byName(e['state'] as String),
       runId: e['runId'] as String?,
@@ -145,13 +170,10 @@ class TraceGateway implements RecorderGateway {
       phase: Phase.values.byName(e['phase'] as String),
       repIndex: e['repIndex'] as int,
       phaseRemainingMs: e['phaseRemainingMs'] as int,
-      preset: preset == null
-          ? null
-          : Preset(
-              reps: preset['reps'] as int,
-              workSeconds: preset['workSeconds'] as int,
-              recoverySeconds: preset['recoverySeconds'] as int,
-            ),
+      spec: spec == null ? null : _parseSpec(spec),
+      stepIndex: e['stepIndex'] as int?,
+      stepRemainingMs: e['stepRemainingMs'] as int?,
+      stepRemainingM: (e['stepRemainingM'] as num?)?.toDouble(),
       journalOk: e['journalOk'] as bool,
       mode: RecordMode.values.byName(e['mode'] as String),
       laps: [
@@ -175,8 +197,12 @@ class TraceGateway implements RecorderGateway {
 
   // The trace drives everything; controls are not part of this contract.
   @override
-  Future<StartResult> start(RecordMode m, Preset? p, Units u) =>
-      throw UnimplementedError();
+  Future<StartResult> start(
+    RecordMode m,
+    SessionSpec? s,
+    Units u, {
+    double? lastCooperVo2,
+  }) => throw UnimplementedError();
   @override
   Future<void> pause() => throw UnimplementedError();
   @override
@@ -246,8 +272,9 @@ void main() {
     () async {
       await ctl.attach(); // subscribes; status() is idle until the run starts
       await trace.playUntil(0); // phase warmup, status, state recording
-      expect(ctl.snapshot.mode, RecordMode.fourByFour);
-      expect(ctl.snapshot.preset?.reps, 4);
+      expect(ctl.snapshot.mode, RecordMode.intervals);
+      expect(ctl.snapshot.reps, 4);
+      expect(ctl.snapshot.spec?.templateId, 'norwegian-4x4');
       expect(phaseTitle(ctl.snapshot), 'WARM-UP');
 
       // Notification LAP at 60 s starts rep 1; the ring fires for it too.

@@ -8,8 +8,8 @@ import app.runsolo.core.json.Json
 import app.runsolo.core.model.LapKind
 import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.LocationFix
-import app.runsolo.core.model.Preset
 import app.runsolo.core.model.RunMode
+import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
 import java.io.ByteArrayOutputStream
 import java.time.Instant
@@ -17,7 +17,8 @@ import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 
 /**
- * Schema v2 run file (plan §4, §18.7: same shape as v1, `mode` vocabulary grown), built from a journal replay. All `t` are run-timeline millis
+ * Schema v3 run file (plan §4, §18.7; Phase 3 §3.8: `mode` `intervals` replaces `fourByFour`, `session`
+ * replaces `preset`), built from a journal replay. All `t` are run-timeline millis
  * since `start`; `d` values are cumulative accepted-haversine metres.
  *
  * Laps are the segments between lap markers: `[start, m1], [m1, m2], …, [mn, end]`. A lap's
@@ -33,7 +34,7 @@ data class RunFile(
     val endEpochMs: Long,
     val tz: String,
     val mode: RunMode,
-    val preset: Preset?,
+    val session: SessionSpec?,
     val units: Units,
     val laps: List<Lap>,
     val pauses: List<LongArray>,
@@ -70,7 +71,7 @@ data class RunFile(
         "end" to Instant.ofEpochMilli(endEpochMs).toString(),
         "tz" to tz,
         "mode" to mode.name,
-        "preset" to preset?.toJson(),
+        "session" to session?.toJson(),
         "units" to units.name,
         "laps" to laps.map {
             linkedMapOf("i" to it.i, "t0" to it.t0, "t1" to it.t1, "d0" to it.d0, "d1" to it.d1, "kind" to it.kind.name)
@@ -87,7 +88,7 @@ data class RunFile(
     }
 
     companion object {
-        const val SCHEMA = 2
+        const val SCHEMA = 3
 
         /** Builds the run file from a replay; distance is recomputed by [PointFilter] over raw samples. */
         fun fromReplay(r: Replay, endEpochMs: Long): RunFile {
@@ -136,7 +137,7 @@ data class RunFile(
             return RunFile(
                 id = h.id, device = h.device, app = h.app,
                 startEpochMs = h.w, endEpochMs = endEpochMs, tz = h.tz,
-                mode = h.mode, preset = h.preset, units = h.units,
+                mode = h.mode, session = h.session, units = h.units,
                 laps = laps, pauses = pauses, gaps = gaps, samples = samples,
             )
         }

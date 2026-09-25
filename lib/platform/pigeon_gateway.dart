@@ -14,8 +14,12 @@ class PigeonRecorderGateway implements RecorderGateway {
   Stream<RecorderEvent> get events => recorderEventStream();
 
   @override
-  Future<StartResult> start(RecordMode mode, Preset? preset, Units units) =>
-      _api.start(mode, preset, units);
+  Future<StartResult> start(
+    RecordMode mode,
+    SessionSpec? spec,
+    Units units, {
+    double? lastCooperVo2,
+  }) => _api.start(mode, spec, units, lastCooperVo2);
 
   @override
   Future<void> pause() => _api.pause();

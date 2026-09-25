@@ -24,7 +24,7 @@ class TrendScreen extends StatefulWidget {
 }
 
 class _TrendScreenState extends State<TrendScreen> {
-  RecordMode _type = RecordMode.fourByFour;
+  RecordMode _type = RecordMode.intervals;
   Future<List<RunSummary>>? _runs;
 
   @override
@@ -56,7 +56,7 @@ class _TrendScreenState extends State<TrendScreen> {
                 Row(
                   children: [
                     for (final m in [
-                      RecordMode.fourByFour,
+                      RecordMode.intervals,
                       RecordMode.laps,
                       RecordMode.free,
                     ]) ...[
@@ -78,7 +78,7 @@ class _TrendScreenState extends State<TrendScreen> {
                 ),
                 const SizedBox(height: Space.x24),
                 switch (_type) {
-                  RecordMode.fourByFour => _FourByFourTrend(
+                  RecordMode.intervals => _FourByFourTrend(
                     runs: runs,
                     units: units,
                   ),

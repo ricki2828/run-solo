@@ -4,21 +4,27 @@ import app.runsolo.core.journal.JournalCodec
 import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.journal.JournalReplay
 import app.runsolo.core.model.CueKind
+import app.runsolo.core.model.CueProfile
 import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.Phase
-import app.runsolo.core.model.Preset
 import app.runsolo.core.model.RecorderState
+import app.runsolo.core.model.RecoveryStyle
 import app.runsolo.core.model.RunMode
+import app.runsolo.core.model.SessionSpec
+import app.runsolo.core.model.Step
+import app.runsolo.core.model.StepKind
+import app.runsolo.core.model.TargetKind
 import app.runsolo.core.model.Units
 import app.runsolo.core.record.RecorderCore.LapDecision
 import app.runsolo.core.record.RecorderCore.Output
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RecorderCoreTest {
-    private val preset = Preset.DEFAULT_4X4
+    private val preset = SessionSpec.norwegian4x4()
     private val t0 = 1_000_000L
 
     /** Drives the core at 1 Hz between two device times, collecting outputs. */
@@ -39,11 +45,11 @@ class RecorderCoreTest {
     fun `cue scheduler - 4 00 and 3 00 phases`() {
         assertEquals(
             listOf(CueKind.start to 0L, CueKind.halfway to 120_000L, CueKind.thirtySeconds to 210_000L, CueKind.phaseEnd to 240_000L),
-            CueScheduler.forWork(preset).map { it.kind to it.atMs },
+            CueScheduler.forPhase(240_000).map { it.kind to it.atMs },
         )
         assertEquals(
             listOf(0L, 90_000L, 150_000L, 180_000L),
-            CueScheduler.forRecovery(preset).map { it.atMs },
+            CueScheduler.forPhase(180_000).map { it.atMs },
         )
         // A 60 s phase has no −30 s cue (it would coincide with halfway).
         assertEquals(listOf(CueKind.start, CueKind.halfway, CueKind.phaseEnd), CueScheduler.forPhase(60_000).map { it.kind })
@@ -52,7 +58,7 @@ class RecorderCoreTest {
 
     @Test
     fun `full 4x4 - first LAP starts rep 1, auto laps at phase ends, cooldown after last recovery`() {
-        val core = RecorderCore(RunMode.fourByFour, preset)
+        val core = RecorderCore(RunMode.intervals, preset)
         core.start(t0)
         assertEquals(Phase.warmup, core.phase)
         assertTrue(run(core, t0, t0 + 60_000).isEmpty(), "warmup is untimed: no cues")
@@ -90,10 +96,10 @@ class RecorderCoreTest {
     }
 
     @Test
-    fun `phase sequence for 3 to 6 reps - N work, N-1 recovery, then cooldown`() {
-        for (reps in Preset.MIN_REPS..Preset.MAX_REPS) {
-            val p = Preset(reps, 240, 180)
-            val core = RecorderCore(RunMode.fourByFour, p)
+    fun `phase sequence for 1 to 6 reps - N work, N-1 recovery, then cooldown`() {
+        for (reps in 1..6) {
+            val p = SessionSpec.norwegian4x4(reps, 240, 180)
+            val core = RecorderCore(RunMode.intervals, p)
             core.start(t0)
             val phases = ArrayList<Pair<Phase, Int>>()
             fun collect(out: List<Output>) = out.filterIsInstance<Output.PhaseChanged>().forEach { phases.add(it.phase to it.repIndex) }
@@ -113,7 +119,7 @@ class RecorderCoreTest {
 
     @Test
     fun `startReps - ends the warm-up like a first LAP, no-op anywhere else`() {
-        val core = RecorderCore(RunMode.fourByFour, preset)
+        val core = RecorderCore(RunMode.intervals, preset)
         assertEquals(LapDecision.ignoredIdle, core.startReps(t0).first)
         core.start(t0)
         run(core, t0, t0 + 90_000)
@@ -134,7 +140,7 @@ class RecorderCoreTest {
 
     @Test
     fun `double-lap guard - manual press within 5 s of an auto lap is ignored`() {
-        val core = RecorderCore(RunMode.fourByFour, preset)
+        val core = RecorderCore(RunMode.intervals, preset)
         core.start(t0)
         core.lap(LapSource.button, t0)
         run(core, t0, t0 + 240_000)
@@ -158,8 +164,8 @@ class RecorderCoreTest {
 
     @Test
     fun `free mode (and cooper) ignore every lap source - no lap, no phase, no cue`() {
-        for (mode in listOf(RunMode.free, RunMode.cooper)) {
-            val core = RecorderCore(mode, null)
+        for ((mode, spec) in listOf(RunMode.free to null, RunMode.cooper to SessionSpec.COOPER)) {
+            val core = RecorderCore(mode, spec)
             assertTrue(core.start(t0).isEmpty())
             for (src in LapSource.values()) {
                 val (d, out) = core.lap(src, t0 + 1_000)
@@ -174,22 +180,33 @@ class RecorderCoreTest {
     }
 
     @Test
-    fun `mode and preset must agree`() {
-        assertFailsWith<IllegalArgumentException> { RecorderCore(RunMode.fourByFour, null) }
+    fun `mode and session must agree`() {
         assertFailsWith<IllegalArgumentException> { RecorderCore(RunMode.laps, preset) }
         assertFailsWith<IllegalArgumentException> { RecorderCore(RunMode.free, preset) }
+        assertFailsWith<IllegalArgumentException> { RecorderCore(RunMode.free, SessionSpec.FARTLEK) }
+        assertFailsWith<IllegalArgumentException> { RecorderCore(RunMode.cooper, preset) }
+        RecorderCore(RunMode.laps, SessionSpec.FARTLEK)
+        RecorderCore(RunMode.cooper, SessionSpec.COOPER)
+        assertFailsWith<IllegalArgumentException> { RecorderCore(RunMode.cooper, null) }
+        // A by-feel 4x4 from an old journal: intervals with no session records like laps.
+        val byFeel = RecorderCore(RunMode.intervals, null)
+        byFeel.start(t0)
+        assertEquals(Phase.none, byFeel.phase)
+        assertEquals(LapDecision.accepted, byFeel.lap(LapSource.button, t0 + 1_000).first)
+        assertEquals(Phase.none, byFeel.phase)
+        assertEquals(LapDecision.ignoredNotWarmup, byFeel.startReps(t0 + 2_000).first)
         assertEquals(true, RunMode.laps.volumeKeyLapsDefault)
-        assertEquals(listOf(false, false, false), listOf(RunMode.fourByFour, RunMode.free, RunMode.cooper).map { it.volumeKeyLapsDefault })
+        assertEquals(listOf(false, false, false), listOf(RunMode.intervals, RunMode.free, RunMode.cooper).map { it.volumeKeyLapsDefault })
     }
 
     @Test
     fun `volume keys - off by default in preset mode, on in laps mode, never re-align`() {
-        val preset4 = RecorderCore(RunMode.fourByFour, preset)
+        val preset4 = RecorderCore(RunMode.intervals, preset)
         preset4.start(t0)
         assertEquals(LapDecision.ignoredVolumeKeyDisabled, preset4.lap(LapSource.volumeKey, t0 + 1000).first)
         assertEquals(0, preset4.lapCount)
 
-        val optIn = RecorderCore(RunMode.fourByFour, preset, RecorderCore.Config(volumeKeyLaps = true))
+        val optIn = RecorderCore(RunMode.intervals, preset, RecorderCore.Config(volumeKeyLaps = true))
         optIn.start(t0)
         optIn.lap(LapSource.button, t0)
         run(optIn, t0, t0 + 10_000)
@@ -202,7 +219,7 @@ class RecorderCoreTest {
 
     @Test
     fun `manual LAP mid-phase ends it early and re-aligns`() {
-        val core = RecorderCore(RunMode.fourByFour, preset)
+        val core = RecorderCore(RunMode.intervals, preset)
         core.start(t0)
         core.lap(LapSource.button, t0)
         run(core, t0, t0 + 200_000) // 3:20 into work
@@ -217,7 +234,7 @@ class RecorderCoreTest {
 
     @Test
     fun `pause freezes the phase timer and laps are ignored while paused`() {
-        val core = RecorderCore(RunMode.fourByFour, preset)
+        val core = RecorderCore(RunMode.intervals, preset)
         core.start(t0)
         core.lap(LapSource.button, t0)
         run(core, t0, t0 + 100_000)
@@ -235,7 +252,7 @@ class RecorderCoreTest {
 
     @Test
     fun `late tick still lands the auto lap on the boundary`() {
-        val core = RecorderCore(RunMode.fourByFour, preset)
+        val core = RecorderCore(RunMode.intervals, preset)
         core.start(t0)
         core.lap(LapSource.button, t0)
         core.tick(t0 + 1000)
@@ -265,7 +282,7 @@ class RecorderCoreTest {
         val w0 = 1_700_000_000_000L
         val d0 = 500_000L
         val lines = listOf(
-            JournalLine.Header(d0, w0, "r", "d", "a", "UTC", RunMode.fourByFour, preset, Units.km),
+            JournalLine.Header(d0, w0, "r", "d", "a", "UTC", RunMode.intervals, preset, Units.km),
             JournalLine.Lap(d0 + 10_000, w0 + 10_000, LapSource.button),
             JournalLine.Cue(d0 + 130_000, w0 + 130_000, CueKind.halfway),
             JournalLine.Lap(d0 + 250_000, w0 + 250_000, LapSource.auto),
@@ -340,5 +357,98 @@ class RecorderCoreTest {
         assertEquals(20_000, core.status(100).elapsedMs)
         core.resume(1_100)
         assertEquals(8_000, core.status(1_100).activeMs)
+    }
+}
+
+class RecorderCoreStepsTest {
+    private val t0 = 1_000_000L
+    private val base = SessionSpec.norwegian4x4()
+    private fun spec(steps: List<Step>) = base.copy(templateId = "custom:test", name = "test", hrBand = null, steps = steps)
+    private fun work(sec: Int, rep: Int) = Step(StepKind.work, TargetKind.time, sec, RecoveryStyle.run, rep)
+    private fun rec(sec: Int, rep: Int, style: RecoveryStyle = RecoveryStyle.jog) = Step(StepKind.recovery, TargetKind.time, sec, style, rep)
+
+    private fun runTo(core: RecorderCore, from: Long, to: Long): List<Output> {
+        val out = ArrayList<Output>()
+        var t = from
+        while (t <= to) {
+            out.addAll(core.tick(t))
+            t += 1000
+        }
+        return out
+    }
+
+    @Test
+    fun `non-uniform time steps (pyramid) walk in order with exact boundaries and step status`() {
+        val s = spec(listOf(work(60, 1), rec(60, 1, RecoveryStyle.walk), work(120, 2), rec(30, 2, RecoveryStyle.stand), work(60, 3)))
+        val core = RecorderCore(RunMode.intervals, s)
+        core.start(t0)
+        assertNull(core.status(t0).stepIndex)
+        core.startReps(t0 + 10_000)
+        val st = core.status(t0 + 10_000)
+        assertEquals(0, st.stepIndex)
+        assertEquals(60_000L, st.stepRemainingMs)
+        assertNull(st.stepRemainingM)
+        val out = runTo(core, t0 + 10_000, t0 + 410_000)
+        val autos: List<Long> = out.filterIsInstance<Output.Lap>().filter { it.source == LapSource.auto }.map { it.t - t0 - 10_000 }
+        assertEquals(listOf(60_000L, 120_000L, 240_000L, 270_000L, 330_000L), autos)
+        val phases: List<String> = out.filterIsInstance<Output.PhaseChanged>().map { "${it.phase}/${it.repIndex}/${it.phaseDurationMs}" }
+        assertEquals(listOf("recovery/1/60000", "work/2/120000", "recovery/2/30000", "work/3/60000", "cooldown/3/null"), phases)
+        assertNull(core.status(t0 + 410_000).stepIndex)
+        assertNull(core.status(t0 + 410_000).stepRemainingMs)
+    }
+
+    @Test
+    fun `a 0 s recovery goes straight into the next rep - no recovery phase, no lap`() {
+        val s = spec(listOf(work(60, 1), rec(0, 1), work(60, 2)))
+        val core = RecorderCore(RunMode.intervals, s)
+        core.start(t0)
+        core.startReps(t0)
+        val out = runTo(core, t0, t0 + 130_000)
+        val lapTimes: List<Long> = out.filterIsInstance<Output.Lap>().map { it.t - t0 }
+        assertEquals(listOf(60_000L, 120_000L), lapTimes)
+        val phases: List<String> = out.filterIsInstance<Output.PhaseChanged>().map { "${it.phase}/${it.repIndex}" }
+        assertEquals(listOf("work/2", "cooldown/2"), phases)
+        assertEquals(3, core.lapCount) // start LAP + 2 auto
+    }
+
+    @Test
+    fun `restore rebuilds a non-uniform session from the journaled laps`() {
+        val s = spec(listOf(work(60, 1), rec(90, 1), work(120, 2)))
+        // start, LAP at 0, auto at 60 s (recovery), auto at 150 s (rep 2 work), last sample at 180 s.
+        val lines = listOf(
+            JournalLine.Header(0, 1_000, "r", "d", "a", "UTC", RunMode.intervals, s, Units.km),
+            JournalLine.Lap(0, 1_000, LapSource.button),
+            JournalLine.Lap(60_000, 61_000, LapSource.auto),
+            JournalLine.Lap(150_000, 151_000, LapSource.auto),
+            JournalLine.Sample(180_000, 181_000, null, null, null, null, null, null),
+        )
+        val replay = JournalReplay.read(lines.joinToString("") { JournalCodec.encode(it) + "\n" }.toByteArray())
+        assertEquals(s, replay.header.session)
+        val core = RecorderCore.restore(replay, nowT = 5_000_000)
+        assertEquals(Phase.work, core.phase)
+        assertEquals(2, core.repIndex)
+        val st = core.status(5_000_000)
+        assertEquals(2, st.stepIndex)
+        assertEquals(90_000L, st.stepRemainingMs)
+    }
+
+    @Test
+    fun `I1 rejects what it cannot run yet, and invalid specs`() {
+        fun rejects(s: SessionSpec) = assertTrue(RecorderCore.unsupported(RunMode.intervals, s) != null, s.toString())
+        rejects(spec(listOf(Step(StepKind.work, TargetKind.distance, 400, RecoveryStyle.run, 1))))
+        rejects(spec(listOf(work(60, 1), Step(StepKind.recovery, TargetKind.equalToPreviousWork, 0, RecoveryStyle.jog, 1), work(60, 2))))
+        rejects(spec(listOf(work(60, 1))).copy(warmupSeconds = 600))
+        rejects(spec(listOf(work(60, 1))).copy(cooldownSeconds = 300))
+        rejects(spec(listOf(work(60, 1))).copy(lapLockout = true))
+        rejects(spec(listOf(work(30, 1))).copy(cueProfile = CueProfile.short))
+        rejects(spec(listOf(work(10, 1)))) // invalid: under 15 s
+        rejects(spec(emptyList()))
+        assertNull(RecorderCore.unsupported(RunMode.intervals, base))
+        val forty = ArrayList<Step>()
+        for (r in 1..40) {
+            forty.add(work(15, r))
+            if (r < 40) forty.add(rec(0, r))
+        }
+        assertNull(RecorderCore.unsupported(RunMode.intervals, spec(forty)))
     }
 }

@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_solo/state/recording_controller.dart';
 import 'package:run_solo/state/zone_memento.dart';
 
@@ -28,11 +30,7 @@ void main() {
   }
 
   test('4x4: warm-up → work countdown → auto lap → recovery', () async {
-    final r = await ctl.start(
-      RecordMode.fourByFour,
-      standardPreset(),
-      Units.km,
-    );
+    final r = await ctl.start(RecordMode.intervals, standardPreset(), Units.km);
     expect(r.error, isNull);
     await settle();
     expect(ctl.snapshot.phase, Phase.warmup);
@@ -72,7 +70,7 @@ void main() {
   test(
     'a pause mid-rep freezes the countdown while elapsed keeps running',
     () async {
-      await ctl.start(RecordMode.fourByFour, standardPreset(), Units.km);
+      await ctl.start(RecordMode.intervals, standardPreset(), Units.km);
       await ctl.lap();
       await settle();
       fake.advance(const Duration(seconds: 60));
@@ -101,8 +99,8 @@ void main() {
     'the last rep goes straight to cool-down (no recovery after it)',
     () async {
       await ctl.start(
-        RecordMode.fourByFour,
-        Preset(reps: 3, workSeconds: 240, recoverySeconds: 120),
+        RecordMode.intervals,
+        fourByFourSpec(reps: 3, recoverySeconds: 120),
         Units.km,
       );
       await ctl.lap();
@@ -269,7 +267,7 @@ void main() {
   });
 
   test('preset ignores volume-key laps (plan §6, W8)', () async {
-    await ctl.start(RecordMode.fourByFour, standardPreset(), Units.km);
+    await ctl.start(RecordMode.intervals, standardPreset(), Units.km);
     await fake.lap(LapSource.volumeKey);
     await settle();
     expect(ctl.snapshot.phase, Phase.warmup);
@@ -302,7 +300,7 @@ void main() {
   );
 
   test('attach() redraws a live run from status() (recreated UI)', () async {
-    await fake.start(RecordMode.fourByFour, standardPreset(), Units.km);
+    await fake.start(RecordMode.intervals, standardPreset(), Units.km);
     await fake.lap(LapSource.button);
     fake.advance(const Duration(seconds: 100));
     final fresh = RecordingController(fake, now: now);
@@ -311,21 +309,21 @@ void main() {
     expect(fresh.snapshot.phase, Phase.work);
     expect(fresh.snapshot.repIndex, 1);
     expect(fresh.snapshot.phaseRemainingMs, 140000);
-    expect(fresh.snapshot.preset?.reps, 4);
+    expect(fresh.snapshot.reps, 4);
     fresh.dispose();
   });
 
   test(
     're-attach rebuilds the rep ghost and mode from status().laps',
     () async {
-      await fake.start(RecordMode.fourByFour, standardPreset(), Units.km);
+      await fake.start(RecordMode.intervals, standardPreset(), Units.km);
       await fake.lap(LapSource.button);
       fake.advance(const Duration(seconds: 240)); // rep 1 (auto lap)
       fake.advance(const Duration(seconds: 180)); // recovery 1
       fake.advance(const Duration(seconds: 100)); // into rep 2
       final fresh = RecordingController(fake, now: now);
       await fresh.attach();
-      expect(fresh.snapshot.mode, RecordMode.fourByFour);
+      expect(fresh.snapshot.mode, RecordMode.intervals);
       expect(fresh.snapshot.repPaces, hasLength(1));
       expect(fresh.snapshot.repPaces.single, closeTo(285, 1));
       expect(fresh.snapshot.repIndex, 2);
@@ -353,11 +351,22 @@ void main() {
       lap(1, 300000, 240000, 1000), // rep 1: 240 s / 900 m
       lap(2, 480000, 180000, 1300), // recovery 1
       lap(3, 740000, 240000, 2200), // rep 2: 240 s active (20 s pause) / 900 m
-      lap(4, 920000, 180000, 2500), // recovery 2 (last, reps = 2)
+      lap(4, 920000, 180000, 2500), // cool-down (reps = 2): ignored
       lap(5, 980000, 60000, 2700), // cool-down manual lap: ignored
     ];
-    final preset = Preset(reps: 2, workSeconds: 240, recoverySeconds: 180);
-    final paces = RecordingController.repPacesFromLaps(laps, preset);
+    // Two reps is below the catalogue's 4x4 minimum, so build the uniform
+    // session directly (the rule only reads the work-step count).
+    final twoReps = engine.SessionSpec(
+      templateId: engine.SessionSpec.norwegian4x4Id,
+      templateVersion: 1,
+      name: 'Norwegian 4x4',
+      steps: engine.SessionSpec.uniform(
+        reps: 2,
+        work: (r) => engine.SessionStep.work(240, rep: r),
+        recovery: (r) => engine.SessionStep.recovery(180, rep: r),
+      ),
+    ).toPigeon();
+    final paces = RecordingController.repPacesFromLaps(laps, twoReps);
     expect(paces, hasLength(2));
     expect(paces.first, closeTo(266.7, 0.1));
     expect(paces.last, closeTo(266.7, 0.1), reason: 'pause not counted');

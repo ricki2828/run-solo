@@ -1,7 +1,7 @@
 package app.runsolo.core.journal
 
 import app.runsolo.core.model.LapSource
-import app.runsolo.core.model.Preset
+import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.Units
 import kotlin.test.Test
@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 class JournalReplayTest {
     private val t0 = 100_000L
     private val w0 = 1_700_000_000_000L
-    private val header = JournalLine.Header(t0, w0, "id1", "dev", "app", "UTC", RunMode.fourByFour, Preset.DEFAULT_4X4, Units.km)
+    private val header = JournalLine.Header(t0, w0, "id1", "dev", "app", "UTC", RunMode.intervals, SessionSpec.norwegian4x4(), Units.km)
 
     private fun enc(vararg lines: JournalLine) = lines.joinToString("") { JournalCodec.encode(it) + "\n" }
 
@@ -111,7 +111,7 @@ class JournalReplayTest {
     fun `a journal from a newer schema is rejected as newer (never discardable)`() {
         val newer = JournalCodec.encode(header).replace("\"schema\":${JournalCodec.SCHEMA}", "\"schema\":${JournalCodec.SCHEMA + 1}")
         assertFailsWith<JournalReplay.NewerJournal> { JournalReplay.read((newer + "\n").toByteArray()) }
-        val unknownMode = JournalCodec.encode(header).replace("\"mode\":\"fourByFour\"", "\"mode\":\"hyrox\"")
+        val unknownMode = JournalCodec.encode(header).replace("\"mode\":\"intervals\"", "\"mode\":\"hyrox\"")
         assertFailsWith<JournalReplay.NewerJournal> { JournalReplay.read((unknownMode + "\n").toByteArray()) }
     }
 
@@ -121,7 +121,7 @@ class JournalReplayTest {
         val r = JournalReplay.read((v1 + "\n" + enc(sample(t0 + 1000))).toByteArray())
         assertEquals(RunMode.laps, r.header.mode)
         // Schema 2 keeps `free` as written.
-        val v2 = JournalCodec.encode(header.copy(mode = RunMode.free, preset = null))
+        val v2 = JournalCodec.encode(header.copy(mode = RunMode.free, session = null))
         assertEquals(RunMode.free, JournalReplay.read((v2 + "\n").toByteArray()).header.mode)
     }
 

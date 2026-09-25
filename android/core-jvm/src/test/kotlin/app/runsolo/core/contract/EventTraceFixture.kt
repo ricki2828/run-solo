@@ -11,7 +11,8 @@ import app.runsolo.core.model.HrReading
 import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.LocationFix
 import app.runsolo.core.model.Phase
-import app.runsolo.core.model.Preset
+import app.runsolo.core.model.SessionSpec
+import app.runsolo.core.model.StepKind
 import app.runsolo.core.model.RecorderState
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.Units
@@ -44,14 +45,20 @@ object EventTraceFixture {
     private const val W0 = 1_758_672_000_000L
     private const val RUN_ID = "contract-events-4x4"
 
+    /** The Pigeon `SessionSpec` field names (flat HR band, `repIndex`), as `EventTrace` logs them on the device. */
+    fun pigeonShape(spec: SessionSpec): Map<String, Any?> = linkedMapOf(
+        "templateId" to spec.templateId, "templateVersion" to spec.templateVersion, "name" to spec.name,
+        "warmupSeconds" to spec.warmupSeconds, "cooldownSeconds" to spec.cooldownSeconds,
+        "lapLockout" to spec.lapLockout, "cueProfile" to spec.cueProfile.name,
+        "hrBandLow" to spec.hrBand?.first, "hrBandHigh" to spec.hrBand?.second,
+        "steps" to spec.steps.map { linkedMapOf("kind" to it.kind.name, "target" to it.target.name, "value" to it.value, "style" to it.style.name, "repIndex" to it.rep) },
+    )
+
     fun generate(): String {
-        val preset = Preset.DEFAULT_4X4
+        val preset = SessionSpec.norwegian4x4()
         val segments = ArrayList<Pair<Int, Double>>()
         segments.add(60 to 2.5)
-        for (r in 1..preset.reps) {
-            segments.add(preset.workSeconds to 4.2)
-            if (r < preset.reps) segments.add(preset.recoverySeconds to 2.0)
-        }
+        for (st in preset.steps) segments.add(st.value to if (st.kind == StepKind.work) 4.2 else 2.0)
         segments.add(60 to 2.5)
         val fixes = TraceFixture.straightLine(segments, accuracyM = 6.0, startT = 0)
         // Scenario points on the trace timeline (seconds).
@@ -74,7 +81,7 @@ object EventTraceFixture {
         fs.mkdirs(RunPaths.RUNS_DIR)
         var writer = JournalWriter(fs, RUN_ID, onWriteFailed = { throw it })
         var ticker = SampleTicker(wall = { W0 })
-        var core = RecorderCore(RunMode.fourByFour, preset)
+        var core = RecorderCore(RunMode.intervals, preset)
         val livePace = LivePace()
         val laps = ArrayList<Map<String, Any?>>()
         var lapStartT = 0L
@@ -85,10 +92,11 @@ object EventTraceFixture {
         fun status(t: Long): Map<String, Any?> {
             val st = core.status(t)
             return linkedMapOf(
-                "state" to st.state.name, "runId" to RUN_ID, "mode" to RunMode.fourByFour.name, "laps" to laps.toList(),
+                "state" to st.state.name, "runId" to RUN_ID, "mode" to RunMode.intervals.name, "laps" to laps.toList(),
                 "elapsedMs" to st.elapsedMs, "lapIndex" to st.lapIndex, "gpsFix" to !ticker.gpsLost(t), "hrConnected" to true,
                 "phase" to st.phase.name, "repIndex" to st.repIndex, "phaseRemainingMs" to st.phaseRemainingMs,
-                "preset" to preset.toJson(), "journalOk" to writer.ok,
+                "spec" to pigeonShape(preset), "stepIndex" to st.stepIndex, "stepRemainingMs" to st.stepRemainingMs,
+                "stepRemainingM" to st.stepRemainingM, "journalOk" to writer.ok,
             )
         }
 
@@ -151,7 +159,7 @@ object EventTraceFixture {
 
         // ---- before the kill: device time == trace time ----
         writer.open()
-        writer.append(JournalLine.Header(0, W0, RUN_ID, "contract-fixture", "core-jvm-test", "Australia/Sydney", RunMode.fourByFour, preset, Units.km))
+        writer.append(JournalLine.Header(0, W0, RUN_ID, "contract-fixture", "core-jvm-test", "Australia/Sydney", RunMode.intervals, preset, Units.km))
         handle(core.start(0), 0)
         state(0, RecorderState.recording)
         var i = 1

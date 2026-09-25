@@ -4,7 +4,7 @@ import app.runsolo.core.fs.FakeFileSystem
 import app.runsolo.core.journal.JournalCodec
 import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.model.LapSource
-import app.runsolo.core.model.Preset
+import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.Units
 import app.runsolo.core.reconcile.IndexRow
@@ -47,7 +47,7 @@ class FinaliseReconcileTest {
     private fun writeJournal(id: String) {
         fs.mkdirs(RunPaths.journalDir(id))
         val lines = listOf(
-            JournalLine.Header(t0, w0, id, "dev", "app", "UTC", RunMode.fourByFour, Preset.DEFAULT_4X4, Units.km),
+            JournalLine.Header(t0, w0, id, "dev", "app", "UTC", RunMode.intervals, SessionSpec.norwegian4x4(), Units.km),
             JournalLine.Sample(t0 + 1000, w0 + 1000, 0.0, 0.0, null, 5.0, null, null),
             JournalLine.Lap(t0 + 2000, w0 + 2000, LapSource.button),
             JournalLine.Sample(t0 + 3000, w0 + 3000, 0.0, 0.001, null, 5.0, null, null),
@@ -100,7 +100,7 @@ class FinaliseReconcileTest {
         val index = Index()
         val orphans = Reconciler(fs).orphans(now, activeRunId = null)
         assertEquals("r1", orphans.single().runId)
-        assertEquals(RunMode.fourByFour, orphans.single().mode)
+        assertEquals(RunMode.intervals, orphans.single().mode)
         assertEquals(57_000, orphans.single().lastLineAgeMs)
         appOpen(index)
         assertExactlyOne(index, "r1")

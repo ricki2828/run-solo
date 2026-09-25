@@ -15,27 +15,54 @@ library;
 
 import 'package:pigeon/pigeon.dart';
 
-/// Run type picked at Start (plan §18.2). Mirrors `RunMode` in `package:run_engine`.
+/// Run type picked at Start (plan §18.2, Phase 3 §3.8). Mirrors `RunMode` in
+/// `package:run_engine`.
 ///
-/// - `fourByFour`: preset phases, cues, auto-laps, manual LAP overrides.
+/// - `intervals`: the phases follow a `SessionSpec` (cues, auto-laps, manual LAP
+///   overrides). Schema <= 2 `fourByFour` files map here.
 /// - `laps`: by-feel laps; LAP button, notification LAP and volume keys (opt-in,
-///   default on). Schema-1 `free` files map here (plan §18.7).
+///   default on). Schema-1 `free` files map here (plan §18.7). A fartlek is
+///   `laps` with the steps-empty fartlek spec.
 /// - `free`: no lap input at all — no LAP button, no notification LAP action, no
 ///   MediaSession; `lap()` is a no-op (`FaultKind.lapIgnored` in debug builds).
-/// - `cooper`: schema-2 vocabulary for the Phase-3 12-minute test; until the
-///   protocol lands Kotlin records it like `free`. Not offered in the UI yet.
-enum RecordMode { fourByFour, laps, free, cooper }
+/// - `cooper`: the 12-minute test with the Cooper spec; until I2 Kotlin records
+///   it like `free`. Not offered in the UI yet.
+enum RecordMode { intervals, laps, free, cooper }
 
 enum Units { km, mi }
 
 enum RecorderState { idle, recording, paused, finalising }
 
-/// Phase of a preset (4x4) run; `none` in free mode or outside a rep.
+/// Phase of an intervals run; `none` in the other modes.
 enum Phase { none, warmup, work, recovery, cooldown }
 
 enum LapSource { button, notification, volumeKey, auto }
 
-enum CueKind { halfway, thirtySeconds, phaseEnd, start, stop }
+/// `distanceToGo`, `lastRep`, `minuteMark`, `countdown` and `projection` are
+/// Phase 3 cues (I2); I1 never emits them.
+enum CueKind {
+  halfway,
+  thirtySeconds,
+  phaseEnd,
+  start,
+  stop,
+  distanceToGo,
+  lastRep,
+  minuteMark,
+  countdown,
+  projection,
+}
+
+enum StepKind { work, recovery }
+
+/// `time`: value in seconds; `distance`: metres; `equalToPreviousWork`: value
+/// 0, lasts as long as the work step before it took (Yasso, pyramids).
+enum TargetKind { time, distance, equalToPreviousWork }
+
+/// Work steps are always `run`; recoveries `jog`, `walk` or `stand`.
+enum RecoveryStyle { run, jog, walk, stand }
+
+enum CueProfile { standard, short, cooper }
 
 enum FaultKind {
   gpsLost,
@@ -89,6 +116,11 @@ enum StartError {
   /// `resumeRecovered` failed while reopening the journal. The journal is
   /// untouched and `recover()` will list it again.
   resumeFailed,
+
+  /// The session is invalid for the mode, or needs something this recorder
+  /// cannot run yet (I1: distance and equal-time steps, a fixed warm-up or
+  /// cool-down, lap lockout, the short/Cooper cue profiles). Nothing started.
+  unsupportedSession,
 }
 
 /// Runtime permissions the setup checklist can request (plan §10). Location is
@@ -107,16 +139,54 @@ enum ExitReason {
   other,
 }
 
-/// The 4x4 preset written into the file header; drives cues and the detector.
-class Preset {
-  Preset({
-    required this.reps,
-    required this.workSeconds,
-    required this.recoverySeconds,
+/// One expanded step (named `SessionStep`: a generated `Step` would clash
+/// with Flutter material's `Step`). `repIndex` is 1-based; a recovery carries
+/// the rep number of the work step before it (run-file JSON key `rep`).
+class SessionStep {
+  SessionStep({
+    required this.kind,
+    required this.target,
+    required this.value,
+    required this.style,
+    required this.repIndex,
   });
-  int reps;
-  int workSeconds;
-  int recoverySeconds;
+  StepKind kind;
+  TargetKind target;
+  int value;
+  RecoveryStyle style;
+  int repIndex;
+}
+
+/// The expanded session (Phase 3 §3.3): Dart expands presets and custom
+/// templates, Kotlin validates, journals and runs the flat step list. Written
+/// to the run file as `session` (hrBand as `[low, high]`).
+class SessionSpec {
+  SessionSpec({
+    required this.templateId,
+    required this.templateVersion,
+    required this.name,
+    this.warmupSeconds,
+    this.cooldownSeconds,
+    required this.lapLockout,
+    required this.cueProfile,
+    this.hrBandLow,
+    this.hrBandHigh,
+    required this.steps,
+  });
+  String templateId;
+  int templateVersion;
+  String name;
+
+  /// null = open (ends on the first LAP / `startReps`); int = fixed seconds.
+  int? warmupSeconds;
+
+  /// null = open (runs until Stop); int = fixed seconds.
+  int? cooldownSeconds;
+  bool lapLockout;
+  CueProfile cueProfile;
+  double? hrBandLow;
+  double? hrBandHigh;
+  List<SessionStep> steps;
 }
 
 class StartResult {
@@ -161,14 +231,16 @@ class RecorderStatus {
     required this.phase,
     required this.repIndex,
     required this.phaseRemainingMs,
-    this.preset,
+    this.spec,
+    this.stepIndex,
+    this.stepRemainingMs,
+    this.stepRemainingM,
     required this.journalOk,
   });
   RecorderState state;
   String? runId;
 
-  /// The mode picked at Start (a by-feel 4x4 has `mode == fourByFour` and a
-  /// null `preset`).
+  /// The mode picked at Start.
   RecordMode mode;
   List<LapSummary> laps;
   int elapsedMs;
@@ -178,7 +250,15 @@ class RecorderStatus {
   Phase phase;
   int repIndex;
   int phaseRemainingMs;
-  Preset? preset;
+  SessionSpec? spec;
+
+  /// 0-based index into `spec.steps` during work/recovery; null in warm-up,
+  /// cool-down and unstructured runs.
+  int? stepIndex;
+  int? stepRemainingMs;
+
+  /// Metres left in a distance step (I2; null until then).
+  double? stepRemainingM;
   bool journalOk;
 }
 
@@ -215,7 +295,7 @@ class OrphanJournal {
 
 /// Replay mode (plan §12; debug builds only): a fixture trace fed through the
 /// recorder at `speed`x on a virtual clock. `fixture` is `synthetic-4x4`
-/// (straight line: 60 s warmup, the preset's reps, 60 s cooldown, HR by phase)
+/// (straight line: 60 s warmup, the spec's steps, 60 s cooldown, HR by phase)
 /// or the name of a CSV under the app's Android `assets/replay/`.
 class ReplayConfig {
   ReplayConfig({required this.fixture, required this.speed});
@@ -321,25 +401,35 @@ class BackupStatus {
 abstract class RecorderApi {
   /// Idempotent: a second call while recording returns the running id. Must be
   /// called while the Activity is visible (the FGS is started from it, B2).
-  StartResult start(RecordMode mode, Preset? preset, Units units);
+  ///
+  /// `spec`: required for `intervals` and `cooper`, the fartlek spec or null
+  /// for `laps`, null for `free`; anything else is `unsupportedSession`.
+  /// `lastCooperVo2`: the previous Cooper result for the projection cue (I2;
+  /// Kotlin does not read history).
+  StartResult start(
+    RecordMode mode,
+    SessionSpec? spec,
+    Units units,
+    double? lastCooperVo2,
+  );
 
   /// Debug builds only: like `start`, fed from a fixture instead of GPS/BLE.
   StartResult startReplay(
     RecordMode mode,
-    Preset? preset,
+    SessionSpec? spec,
     Units units,
     ReplayConfig replay,
   );
 
   /// Continue an orphaned journal after the user confirms (plan §3): writes the
-  /// `gap` line, rebuilds the preset phase from the journal, restarts the FGS.
+  /// `gap` line, rebuilds the step phase from the journal, restarts the FGS.
   /// Idempotent like `start`.
   StartResult resumeRecovered(String runId);
   void pause();
   void resume();
   void lap(LapSource source);
 
-  /// The "Start 4x4" action: ends the untimed warm-up and starts rep 1 (same
+  /// The "Start reps" action: ends the untimed warm-up and starts rep 1 (same
   /// effect and journal line as a first `lap(button)`); a no-op anywhere else,
   /// so a manual LAP mid-rep can never be confused with starting.
   void startReps();
@@ -362,8 +452,8 @@ abstract class RecorderApi {
 
   /// The user's volume-key LAP setting for Laps runs, persisted natively (the
   /// recorder reads it at start). Takes effect from the next run or resume,
-  /// not the live one. Unset means on. 4x4 and Free never use volume keys,
-  /// whatever this says. A no-op in effect where
+  /// not the live one. Unset means on. Intervals, Free and Cooper never use
+  /// volume keys, whatever this says. A no-op in effect where
   /// `PermissionsApi.volumeKeyLapsSupported()` is false.
   void setVolumeKeyLaps(bool enabled);
 
@@ -505,7 +595,7 @@ class StateEvent extends RecorderEvent {
   Phase phase;
 }
 
-/// Preset phase change (warmup -> work 1 -> recovery 1 -> ... -> cooldown).
+/// Phase change (warmup -> work 1 -> recovery 1 -> ... -> cooldown).
 class PhaseEvent extends RecorderEvent {
   PhaseEvent({
     required this.phase,

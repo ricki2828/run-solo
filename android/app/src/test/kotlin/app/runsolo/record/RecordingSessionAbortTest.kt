@@ -6,8 +6,8 @@ import app.runsolo.core.journal.JournalCodec
 import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.journal.JournalReplay
 import app.runsolo.core.model.LapSource
-import app.runsolo.core.model.Preset
 import app.runsolo.core.model.RunMode
+import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
 import app.runsolo.core.reconcile.Reconciler
 import app.runsolo.core.run.RunPaths
@@ -33,10 +33,10 @@ class RecordingSessionAbortTest {
     private val fs = JvmFileSystem(context.filesDir.toPath())
     private val w0 = 1_700_000_000_000L
 
-    private fun writeOrphan(id: String, preset: Preset? = Preset.DEFAULT_4X4) {
+    private fun writeOrphan(id: String, mode: RunMode = RunMode.intervals, session: SessionSpec? = SessionSpec.norwegian4x4()) {
         fs.mkdirs(RunPaths.journalDir(id))
         val lines = listOf(
-            JournalLine.Header(1_000, w0, id, "d", "a", "UTC", RunMode.fourByFour, preset, Units.km),
+            JournalLine.Header(1_000, w0, id, "d", "a", "UTC", mode, session, Units.km),
             JournalLine.Lap(61_000, w0 + 60_000, LapSource.button),
             JournalLine.Sample(62_000, w0 + 61_000, -33.8, 151.2, null, 5.0, 3.0, 150),
         )
@@ -47,7 +47,7 @@ class RecordingSessionAbortTest {
     fun `abortStart on a resumed session keeps the journal - recover lists it, content intact plus the gap line`() {
         writeOrphan("orphan-1")
         val orphan = JournalReplay.read(fs.readBytes(RunPaths.journal("orphan-1")))
-        val session = RecordingSession(context, "orphan-1", RunMode.fourByFour, Preset.DEFAULT_4X4, Units.km, null, volumeKeyLaps = false)
+        val session = RecordingSession(context, "orphan-1", RunMode.intervals, SessionSpec.norwegian4x4(), Units.km, null, volumeKeyLaps = false)
         session.startResumed(orphan)
         assertTrue(session.resumed)
 
@@ -65,10 +65,10 @@ class RecordingSessionAbortTest {
 
     @Test
     fun `startResumed that throws (restore fails) - resumed is already set, so abortStart keeps the journal (PR5 P3)`() {
-        // A 4x4 header without a preset makes RecorderCore.restore throw after the gap line was written.
-        writeOrphan("orphan-2", preset = null)
+        // A cooper header without its session makes RecorderCore.restore throw after the gap line was written.
+        writeOrphan("orphan-2", mode = RunMode.cooper, session = null)
         val orphan = JournalReplay.read(fs.readBytes(RunPaths.journal("orphan-2")))
-        val session = RecordingSession(context, "orphan-2", RunMode.fourByFour, null, Units.km, null, volumeKeyLaps = false)
+        val session = RecordingSession(context, "orphan-2", RunMode.cooper, null, Units.km, null, volumeKeyLaps = false)
         val thrown = try {
             session.startResumed(orphan)
             null
