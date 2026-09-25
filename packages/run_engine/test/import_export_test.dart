@@ -54,7 +54,8 @@ void main() {
       expect(imported.samples.length, run.samples.length);
       expect(imported.start, run.start);
       expect(imported.hasHr, isTrue);
-      expect(imported.mode, RunMode.fourByFour);
+      // §18.7: <Lap> boundaries → laps, never 4x4 by lap count (P2-1).
+      expect(imported.mode, RunMode.laps);
       expect(imported.device, 'synthetic');
       expect(imported.distanceM, closeTo(run.distanceM, 0.5));
       for (var i = 0; i < run.laps.length; i++) {
@@ -63,7 +64,12 @@ void main() {
       }
       // Passes strict validation and the engine reaches the same verdict.
       RunFileCodec.decode(RunFileCodec.encode(imported));
-      final a = engine.analyze(imported, now: fixedNow);
+      final a = engine.analyze(
+        imported,
+        sidecar: RunSidecar(runId: imported.id)
+            .withOverride(RunMode.fourByFour),
+        now: fixedNow,
+      );
       final original = engine.analyze(run, now: fixedNow);
       expect(a.verdict!.headline, original.verdict!.headline);
       expect(

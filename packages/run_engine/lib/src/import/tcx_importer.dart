@@ -126,15 +126,10 @@ class TcxImporter {
       start: start,
       end: start.add(Duration(milliseconds: samples.last.tMs)),
       tz: tz,
-      // §18.7: manual laps → `laps` (a by-feel 4x4 shape → `fourByFour`,
-      // as before), none → `free`.
-      mode:
-          mode ??
-          (manualLaps >= 3
-              ? RunMode.fourByFour
-              : manualLaps >= 1
-              ? RunMode.laps
-              : RunMode.free),
+      // §18.7: any <Lap> → `laps`, none → `free`. Never 4x4 by lap count:
+      // Garmin/Coros write a <Lap> per auto-km, so a 10 km easy run would
+      // otherwise enter the 4x4 trend. The 4x4 flip is a sidecar override.
+      mode: mode ?? (manualLaps >= 1 ? RunMode.laps : RunMode.free),
       preset: null,
       units: units,
       laps: laps,

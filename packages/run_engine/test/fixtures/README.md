@@ -39,6 +39,7 @@ test in `golden_fixtures_test.dart` fails until you do.
 included). Schema-2 files sit at the top level; the four Phase-1 schema-1 files are frozen
 read-only under `contract/schema1/` (§18.7) and must decode with v1 `free` → `laps`.
 
-**(b) `real/`** — the founder's 4x4s converted via `TcxImporter`/`GpxImporter`, checked
+**(b) `real/`** — the founder's 4x4s converted via `TcxImporter`/`GpxImporter` (they import
+as `laps`, never 4x4 by lap count, so each carries a sidecar `run_type_override: fourByFour`), checked
 against an independent reading (stopwatch / second-device splits). Not yet populated:
 needs the first real runs (plan §13 P0 verify).
