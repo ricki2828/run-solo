@@ -78,6 +78,10 @@ class PermissionsApiStub : PermissionsApi {
 
     override fun openBatterySettings() = Unit
 
+    override fun requestIgnoreBatteryOptimizations(callback: (Result<Boolean>) -> Unit) {
+        callback(Result.success(false))
+    }
+
     override fun openAppSettings() = Unit
 
     override fun setKeepScreenOn(enabled: Boolean) = Unit

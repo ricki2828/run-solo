@@ -23,8 +23,8 @@ import java.io.File
  * Kotlin→Dart contract fixtures: the real pipeline end to end — `SampleTicker` (1 Hz rule,
  * no-fix ticks, HR join) + `RecorderCore` (laps, cues, phases) → `JournalWriter` on a
  * `FakeFileSystem` → `Finaliser` → the gzip'd run file, decoded back to JSON. Nothing is
- * hand-built. Checked into `src/test/fixtures/contract/schema2/` and copied verbatim into
- * `packages/run_engine/test/fixtures/contract/schema2/`; [ContractFixturesTest] fails when the
+ * hand-built. Checked into `src/test/fixtures/contract/` and copied verbatim into
+ * `packages/run_engine/test/fixtures/contract/`; [ContractFixturesTest] fails when the
  * generator and the checked-in files drift, and CI compares the two copies. The four schema-1
  * files under `contract/schema1/` are frozen output of the Phase-1 writer (plan §18.7): never
  * regenerated, they pin the v1 `free` → `laps` mapping on the Dart side.
@@ -32,7 +32,7 @@ import java.io.File
  * Regenerate: `java -cp <test classpath> app.runsolo.core.contract.ContractFixturesKt`.
  */
 object ContractFixtures {
-    const val DIR = "src/test/fixtures/contract/schema2"
+    const val DIR = "src/test/fixtures/contract"
     const val SCHEMA1_DIR = "src/test/fixtures/contract/schema1"
     private const val T0 = 1_000_000L
     private const val W0 = 1_758_672_000_000L // 2025-09-24T00:00:00Z

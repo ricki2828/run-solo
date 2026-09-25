@@ -381,8 +381,18 @@ abstract class PermissionsApi {
   @async
   bool requestPermission(PermissionKind kind);
 
-  /// The only Settings deep link allowed (plan §10): the app's battery page.
+  /// The app's battery page (plan §10 deep link), the fallback when the
+  /// exemption dialog is unavailable.
   void openBatterySettings();
+
+  /// Setup checklist "battery" step (founder decision 24-Sep-2026, overrides
+  /// plan §10): shows the system `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
+  /// dialog for this package (Play allows it for fitness trackers with a
+  /// location foreground service; the declaration must say so). Falls back to
+  /// `openBatterySettings` when no Activity handles it. Resolves when the user
+  /// returns with the new `isIgnoringBatteryOptimizations` value.
+  @async
+  bool requestIgnoreBatteryOptimizations();
   void openAppSettings();
 
   /// `FLAG_KEEP_SCREEN_ON` on the Activity window (design brief: screen stays

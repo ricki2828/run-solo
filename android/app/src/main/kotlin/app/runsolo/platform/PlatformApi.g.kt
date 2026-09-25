@@ -1919,8 +1919,20 @@ interface PermissionsApi {
    * the setting is off). Resolves when the user answers; true = granted.
    */
   fun requestPermission(kind: PermissionKind, callback: (Result<Boolean>) -> Unit)
-  /** The only Settings deep link allowed (plan §10): the app's battery page. */
+  /**
+   * The app's battery page (plan §10 deep link), the fallback when the
+   * exemption dialog is unavailable.
+   */
   fun openBatterySettings()
+  /**
+   * Setup checklist "battery" step (founder decision 24-Sep-2026, overrides
+   * plan §10): shows the system `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
+   * dialog for this package (Play allows it for fitness trackers with a
+   * location foreground service; the declaration must say so). Falls back to
+   * `openBatterySettings` when no Activity handles it. Resolves when the user
+   * returns with the new `isIgnoringBatteryOptimizations` value.
+   */
+  fun requestIgnoreBatteryOptimizations(callback: (Result<Boolean>) -> Unit)
   fun openAppSettings()
   /**
    * `FLAG_KEEP_SCREEN_ON` on the Activity window (design brief: screen stays
@@ -1984,6 +1996,24 @@ interface PermissionsApi {
               PlatformApiPigeonUtils.wrapError(exception)
             }
             reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.PermissionsApi.requestIgnoreBatteryOptimizations$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            api.requestIgnoreBatteryOptimizations{ result: Result<Boolean> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
+            }
           }
         } else {
           channel.setMessageHandler(null)

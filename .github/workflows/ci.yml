@@ -66,18 +66,19 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - name: Kotlin→Dart contract fixtures are identical copies
-        # core-jvm writes schema2/ from the real recording path; schema1/ is the
-        # frozen Phase-1 output (plan §18.7). run_engine tests both. A drift on
-        # either side, or an empty directory, fails here (review P1-4).
+        # core-jvm writes the top-level (schema 2) files from the real recording
+        # path; schema1/ is the frozen Phase-1 output (plan §18.7). run_engine
+        # tests both. A drift on either side, or an empty directory, fails here
+        # (review P1-4).
         run: |
           kotlin=android/core-jvm/src/test/fixtures/contract
           dart=packages/run_engine/test/fixtures/contract
-          for schema in schema1 schema2; do
-            count=$(ls "$kotlin/$schema"/*.json 2>/dev/null | wc -l)
+          for dir in "$kotlin" "$kotlin/schema1"; do
+            count=$(ls "$dir"/*.json 2>/dev/null | wc -l)
             if [ "$count" -eq 0 ]; then
-              echo "::error::no Kotlin contract fixtures in $kotlin/$schema"; exit 1
+              echo "::error::no Kotlin contract fixtures in $dir"; exit 1
             fi
-            echo "contract fixtures: $count files in $schema"
+            echo "contract fixtures: $count files in $dir"
           done
           diff -r "$kotlin" "$dart"
           echo "contract fixtures identical to run_engine copies (both ways)"
