@@ -5,6 +5,7 @@ import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/permissions_screen.dart';
 import 'package:run_solo/screens/recording_screen.dart';
+import 'package:run_solo/state/recording_controller.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/widgets/value_stepper.dart';
 
@@ -61,7 +62,7 @@ void main() {
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
 
-    await tester.tap(find.text('START 4x4'));
+    await tester.tap(find.text('START WARM-UP'));
     await pumpTimes(tester, 6);
 
     final status = await fake.status();
@@ -101,7 +102,7 @@ void main() {
     final services = fakeServices(recorder: fake);
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
-    await tester.tap(find.text('START 4x4'));
+    await tester.tap(find.text('START WARM-UP'));
     await pumpTimes(tester, 6);
     expect(find.byType(PermissionsScreen), findsOneWidget);
     expect(find.byType(RecordingScreen), findsNothing);
@@ -115,8 +116,60 @@ void main() {
     final services = fakeServices(recorder: fake);
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
-    await tester.tap(find.text('START 4x4'));
+    await tester.tap(find.text('START WARM-UP'));
     await pumpTimes(tester, 6);
     expect(find.textContaining('Not enough storage'), findsOneWidget);
+  });
+
+  testWidgets('Laps on Android 14: volume-key toggle disabled with reason', (
+    tester,
+  ) async {
+    final services = fakeServices(
+      permissions: FakePermissionsGateway(volumeKeyLaps: false),
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.laps,
+      ),
+    );
+    await pumpApp(tester, services, pushRoute: Routes.start);
+    await pumpTimes(tester, 4);
+    expect(find.text('Volume-key lap'), findsOneWidget);
+    expect(find.text(kVolumeKeyToggleReason), findsOneWidget);
+    final sw = tester.widget<Switch>(find.byType(Switch));
+    expect(sw.onChanged, isNull);
+    expect(sw.value, isFalse);
+  });
+
+  testWidgets('START sends the saved volume-key choice before starting', (
+    tester,
+  ) async {
+    final fake = FakeRecorderGateway(now: now);
+    final services = fakeServices(
+      recorder: fake,
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.laps,
+        volumeKeyLap: false,
+      ),
+    );
+    await pumpApp(tester, services, pushRoute: Routes.start);
+    await pumpTimes(tester, 4);
+    await tester.tap(find.text('START LAPS RUN'));
+    await pumpTimes(tester, 4);
+    expect(fake.volumeKeyLaps, isFalse);
+    expect(services.recording.snapshot.recording, isTrue);
+  });
+
+  testWidgets('a 4x4 start leaves the Laps-only volume-key setting alone', (
+    tester,
+  ) async {
+    final fake = FakeRecorderGateway(now: now);
+    final services = fakeServices(recorder: fake);
+    await pumpApp(tester, services, pushRoute: Routes.start);
+    await pumpTimes(tester, 4);
+    expect(find.text('Volume-key lap'), findsNothing);
+    await tester.tap(find.text('START WARM-UP'));
+    await pumpTimes(tester, 4);
+    expect(fake.volumeKeyLaps, isNull);
   });
 }

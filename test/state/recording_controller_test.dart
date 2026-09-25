@@ -97,28 +97,29 @@ void main() {
     },
   );
 
-  test('recovery follows the last rep before cool-down', () async {
-    await ctl.start(
-      RecordMode.fourByFour,
-      Preset(reps: 3, workSeconds: 240, recoverySeconds: 120),
-      Units.km,
-    );
-    await ctl.lap();
-    await settle();
-    for (var i = 0; i < 2; i++) {
+  test(
+    'the last rep goes straight to cool-down (no recovery after it)',
+    () async {
+      await ctl.start(
+        RecordMode.fourByFour,
+        Preset(reps: 3, workSeconds: 240, recoverySeconds: 120),
+        Units.km,
+      );
+      await ctl.lap();
+      await settle();
+      for (var i = 0; i < 2; i++) {
+        fake.advance(const Duration(seconds: 240));
+        await settle();
+        fake.advance(const Duration(seconds: 120));
+        await settle();
+      }
+      expect(ctl.snapshot.phase, Phase.work);
+      expect(ctl.snapshot.repIndex, 3);
       fake.advance(const Duration(seconds: 240));
       await settle();
-      fake.advance(const Duration(seconds: 120));
-      await settle();
-    }
-    fake.advance(const Duration(seconds: 240));
-    await settle();
-    expect(ctl.snapshot.phase, Phase.recovery);
-    expect(ctl.snapshot.repIndex, 3);
-    fake.advance(const Duration(seconds: 120));
-    await settle();
-    expect(ctl.snapshot.phase, Phase.cooldown);
-  });
+      expect(ctl.snapshot.phase, Phase.cooldown);
+    },
+  );
 
   test('faults: GPS lost clears pace, strap drop clears HR, never 0', () async {
     await ctl.start(RecordMode.free, null, Units.km);

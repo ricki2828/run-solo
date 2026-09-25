@@ -9,6 +9,7 @@ import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/max_hr.dart';
+import '../state/recording_controller.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
@@ -41,6 +42,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     with WidgetsBindingObserver {
   PermissionSnapshot? _perms;
   bool _busy = false;
+
+  /// False on Android 14: the volume-key toggle is disabled with a reason.
+  bool _volumeKeyLaps = true;
+  bool _volumeKeyChecked = false;
 
   @override
   void initState() {
@@ -79,14 +84,14 @@ class _SettingsScreenState extends State<SettingsScreen>
       final dir = await Directory.systemTemp.createTemp('runsolo-export-');
       final paths = <String>[];
       for (final b in bundles) {
-        final f = File('${dir.path}/run-${b.run.id}.runsolo.json');
+        final f = File('${dir.path}/run-${b.run.id}.runsupreme.json');
         await f.writeAsString(engine.RunBundleCodec.encode(b), flush: true);
         paths.add(f.path);
       }
       await services.transfer.shareFiles(
         paths,
         subject:
-            'Run Solo: ${bundles.length} run${bundles.length == 1 ? '' : 's'}',
+            'Run Supreme: ${bundles.length} run${bundles.length == 1 ? '' : 's'}',
       );
     } catch (e) {
       _toast('Could not move runs. $e');
@@ -125,12 +130,12 @@ class _SettingsScreenState extends State<SettingsScreen>
           '${result.alreadyOnDeviceIds.length} already here (edits not merged)',
         if (result.duplicateIds.isNotEmpty)
           '${result.duplicateIds.length} repeated in the files',
-        if (unreadable > 0) '$unreadable not Run Solo files',
+        if (unreadable > 0) '$unreadable not Run Supreme files',
       ];
       _toast(
         '${parts.join(', ')}.'
         '${archived.isEmpty ? '' : ' ${archived.length} older runs are past '
-                  'the backup budget: move runs to another Run Solo to keep them safe.'}',
+                  'the backup budget: move runs to another Run Supreme to keep them safe.'}',
       );
     } catch (e) {
       _toast('Could not import. $e');
@@ -143,6 +148,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _refreshPerms();
+    if (_volumeKeyChecked) return;
+    _volumeKeyChecked = true;
+    AppServices.of(context).permissions.volumeKeyLapsSupported().then((ok) {
+      if (mounted && ok != _volumeKeyLaps) setState(() => _volumeKeyLaps = ok);
+    });
   }
 
   void _refreshPerms() {
@@ -259,8 +269,11 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               _Toggle(
                 label: 'Volume-key lap (Laps run)',
-                value: s.volumeKeyLapFor(RecordMode.laps),
-                onChanged: (v) => set((x) => x.copyWith(volumeKeyLap: v)),
+                value: _volumeKeyLaps && s.volumeKeyLapFor(RecordMode.laps),
+                onChanged: _volumeKeyLaps
+                    ? (v) => set((x) => x.copyWith(volumeKeyLap: v))
+                    : null,
+                reason: _volumeKeyLaps ? null : kVolumeKeyToggleReason,
               ),
               _Toggle(
                 label: 'Voice cues',
@@ -287,7 +300,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               const _Section('Data'),
               SettingsRow(
-                label: 'Move runs to another Run Solo',
+                label: 'Move runs to another Run Supreme',
                 value: _busy ? 'Working' : '',
                 onTap: _busy ? null : () => _moveRuns(context),
               ),
@@ -313,7 +326,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               const _Section('About'),
               const SizedBox(height: Space.x8),
               Text(
-                'RUN SOLO',
+                'RUN SUPREME',
                 style: RunSoloType.title28.copyWith(
                   color: t.inkPrimary,
                   letterSpacing: 28 * 0.02,
@@ -600,25 +613,44 @@ class _Toggle extends StatelessWidget {
     required this.label,
     required this.value,
     required this.onChanged,
+    this.reason,
   });
   final String label;
   final bool value;
-  final ValueChanged<bool> onChanged;
+
+  /// Null disables the switch.
+  final ValueChanged<bool>? onChanged;
+
+  /// One line under the label, e.g. why the switch is disabled.
+  final String? reason;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     return Container(
-      height: 64,
+      constraints: const BoxConstraints(minHeight: 64),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: t.lineHair)),
       ),
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              label,
-              style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: RunSoloType.body17.copyWith(
+                    color: onChanged == null ? t.inkSecondary : t.inkPrimary,
+                  ),
+                ),
+                if (reason != null)
+                  Text(
+                    reason!,
+                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                  ),
+              ],
             ),
           ),
           Semantics(
@@ -672,8 +704,8 @@ class _BatteryRow extends StatelessWidget {
                     ),
                     Text(
                       ok
-                          ? 'Off for Run Solo. Recording survives a long run with the screen off.'
-                          : 'Android can stop recording mid-run. Tap to allow Run Solo to keep going.',
+                          ? 'Off for Run Supreme. Recording survives a long run with the screen off.'
+                          : 'Android can stop recording mid-run. Tap to allow Run Supreme to keep going.',
                       style: RunSoloType.label13.copyWith(
                         color: ok ? t.inkSecondary : t.semWarn,
                       ),

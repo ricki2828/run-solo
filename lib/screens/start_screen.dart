@@ -4,6 +4,7 @@ import '../app/format.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
+import '../state/recording_controller.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
@@ -25,6 +26,20 @@ class _StartScreenState extends State<StartScreen> {
   bool _starting = false;
   String? _error;
 
+  /// False on Android 14: the toggle is disabled with a reason.
+  bool _volumeKeyLaps = true;
+  bool _volumeKeyChecked = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_volumeKeyChecked) return;
+    _volumeKeyChecked = true;
+    AppServices.of(context).permissions.volumeKeyLapsSupported().then((ok) {
+      if (mounted && ok != _volumeKeyLaps) setState(() => _volumeKeyLaps = ok);
+    });
+  }
+
   Future<void> _start() async {
     final services = AppServices.of(context);
     final s = services.settings.settings;
@@ -35,6 +50,11 @@ class _StartScreenState extends State<StartScreen> {
     StartResult result;
     try {
       await services.recorder.setCues(s.cues);
+      if (s.lastMode == RecordMode.laps) {
+        await services.recorder.setVolumeKeyLaps(
+          s.volumeKeyLapFor(RecordMode.laps),
+        );
+      }
       result = await services.recording.start(s.lastMode, switch (s.lastMode) {
         RecordMode.fourByFour => s.preset,
         RecordMode.laps || RecordMode.free || RecordMode.cooper => null,
@@ -155,8 +175,8 @@ class _StartScreenState extends State<StartScreen> {
                         : null,
                   ),
                   Text(
-                    'Warm-up and cool-down are untimed: tap LAP when ready, '
-                    'hold Stop when done.',
+                    'Warm up as long as you like, then tap START 4x4. After the '
+                    'last rep, cool down and hold Stop when done.',
                     style: text.bodyMedium?.copyWith(color: t.inkSecondary),
                   ),
                   const SizedBox(height: Space.x16),
@@ -179,9 +199,18 @@ class _StartScreenState extends State<StartScreen> {
                   const SizedBox(height: Space.x16),
                   _Toggle(
                     label: 'Volume-key lap',
-                    value: s.volumeKeyLapFor(RecordMode.laps),
-                    onChanged: (v) => set((x) => x.copyWith(volumeKeyLap: v)),
+                    value: _volumeKeyLaps && s.volumeKeyLapFor(RecordMode.laps),
+                    onChanged: _volumeKeyLaps
+                        ? (v) => set((x) => x.copyWith(volumeKeyLap: v))
+                        : null,
                   ),
+                  if (!_volumeKeyLaps)
+                    Text(
+                      kVolumeKeyToggleReason,
+                      style: RunSoloType.label13.copyWith(
+                        color: t.inkSecondary,
+                      ),
+                    ),
                 ] else ...[
                   Text(
                     'Free run: time, distance, pace and heart rate. No laps. '
@@ -219,7 +248,7 @@ class _StartScreenState extends State<StartScreen> {
                 FilledButton(
                   onPressed: _starting ? null : _start,
                   child: Text(switch (mode) {
-                    RecordMode.fourByFour => 'START 4x4',
+                    RecordMode.fourByFour => 'START WARM-UP',
                     RecordMode.laps => 'START LAPS RUN',
                     RecordMode.free => 'START FREE RUN',
                     RecordMode.cooper => 'START TEST',
@@ -243,7 +272,9 @@ class _Toggle extends StatelessWidget {
   });
   final String label;
   final bool value;
-  final ValueChanged<bool> onChanged;
+
+  /// Null disables the switch.
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {

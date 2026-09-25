@@ -4,8 +4,8 @@
 /// The fake recorder mirrors `RecorderCore.kt` + `RecordingSession.kt`
 /// (see the semantics list in `gateway.dart`): elapsed runs through pauses
 /// while phase timers count active time only; ticks keep coming while paused;
-/// `LapEvent.distanceM` is cumulative; `repIndex` is 1-based and a recovery
-/// follows the last rep before cool-down; `StateEvent` / `PhaseEvent` fire
+/// `LapEvent.distanceM` is cumulative; `repIndex` is 1-based and the last
+/// rep goes straight to cool-down (no recovery after it); `StateEvent` / `PhaseEvent` fire
 /// on every transition; volume-key laps never re-align a preset.
 library;
 
@@ -208,6 +208,17 @@ class FakeRecorderGateway implements RecorderGateway {
     _emitTick();
   }
 
+  /// Same transition as the first LAP press in warm-up; ignored elsewhere.
+  @override
+  Future<void> startReps() async {
+    if (_state != RecorderState.recording || _phase != Phase.warmup) return;
+    startRepsCalls += 1;
+    _emitLap(LapSource.button);
+    _enter(Phase.work, 1);
+  }
+
+  int startRepsCalls = 0;
+
   @override
   Future<void> lap(LapSource source) async {
     if (_state != RecorderState.recording) return;
@@ -350,6 +361,12 @@ class FakeRecorderGateway implements RecorderGateway {
   @override
   Future<void> setCues(bool enabled) async => cuesEnabled = enabled;
 
+  /// Last value passed to [setVolumeKeyLaps]; null until called.
+  bool? volumeKeyLaps;
+
+  @override
+  Future<void> setVolumeKeyLaps(bool enabled) async => volumeKeyLaps = enabled;
+
   /// Move the fake clock. Wall time always advances; active time and
   /// distance only while recording. Emits one tick plus whatever the phase
   /// timer crossed on the way.
@@ -421,20 +438,20 @@ class FakeRecorderGateway implements RecorderGateway {
     _lapStartDistanceM = _totalDistanceM;
   }
 
-  /// RecorderCore.advance: work → recovery (same rep); recovery → next work,
-  /// or cool-down after the last rep's recovery.
+  /// RecorderCore.advance: work → recovery (same rep), or cool-down after
+  /// the last rep; recovery → next work.
   void _advancePhase() {
     final p = _preset;
     if (p == null) return;
     switch (_phase) {
       case Phase.work:
-        _enter(Phase.recovery, _repIndex);
-      case Phase.recovery:
         if (_repIndex >= p.reps) {
           _enter(Phase.cooldown, _repIndex);
         } else {
-          _enter(Phase.work, _repIndex + 1);
+          _enter(Phase.recovery, _repIndex);
         }
+      case Phase.recovery:
+        _enter(Phase.work, _repIndex + 1);
       case Phase.warmup:
       case Phase.cooldown:
       case Phase.none:
@@ -586,9 +603,13 @@ class FakePermissionsGateway implements PermissionsGateway {
     this.grantCoarseOnly = false,
     this.denyNotifications = false,
     this.denyBluetooth = false,
+    this.volumeKeyLaps = true,
   });
 
   PermissionSnapshot snapshot;
+
+  /// False scripts an Android 14 phone (volume-key laps unavailable).
+  bool volumeKeyLaps;
   bool denyLocation;
   bool grantCoarseOnly;
   bool denyNotifications;
@@ -650,4 +671,7 @@ class FakePermissionsGateway implements PermissionsGateway {
 
   @override
   Future<void> setKeepScreenOn(bool enabled) async => keepScreenOn = enabled;
+
+  @override
+  Future<bool> volumeKeyLapsSupported() async => volumeKeyLaps;
 }

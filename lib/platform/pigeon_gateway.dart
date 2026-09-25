@@ -27,6 +27,9 @@ class PigeonRecorderGateway implements RecorderGateway {
   Future<void> lap(LapSource source) => _api.lap(source);
 
   @override
+  Future<void> startReps() => _api.startReps();
+
+  @override
   Future<String?> stop() => _api.stop();
 
   @override
@@ -47,6 +50,9 @@ class PigeonRecorderGateway implements RecorderGateway {
 
   @override
   Future<void> setCues(bool enabled) => _api.setCues(enabled);
+
+  @override
+  Future<void> setVolumeKeyLaps(bool enabled) => _api.setVolumeKeyLaps(enabled);
 }
 
 class PigeonBleGateway implements BleGateway {
@@ -103,6 +109,9 @@ class PigeonPermissionsGateway implements PermissionsGateway {
 
   @override
   Future<void> openAppSettings() => _api.openAppSettings();
+
+  @override
+  Future<bool> volumeKeyLapsSupported() => _api.volumeKeyLapsSupported();
 
   @override
   Future<void> setKeepScreenOn(bool enabled) => _api.setKeepScreenOn(enabled);

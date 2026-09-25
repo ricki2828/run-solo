@@ -8,8 +8,8 @@
 ///   arriving while paused with `state == paused`.
 /// * `LapEvent.distanceM` is the run's cumulative distance at the lap, so lap
 ///   distance is the delta from the previous lap.
-/// * `repIndex` is 1-based in work / recovery; a recovery follows the last rep
-///   before cool-down.
+/// * `repIndex` is 1-based in work / recovery; the last rep goes straight to
+///   cool-down (N reps, N − 1 recoveries).
 /// * `hr == null` means no strap or no contact, never 0.
 library;
 
@@ -82,6 +82,10 @@ abstract class RecorderGateway {
   Future<void> resume();
   Future<void> lap(LapSource source);
 
+  /// 4x4 "Start 4x4" button: ends the untimed warm-up and begins rep 1. A
+  /// no-op outside warm-up, so a LAP mid-rep is never taken as starting.
+  Future<void> startReps();
+
   /// Finalises in Kotlin before returning the run id; null when idle.
   Future<String?> stop();
   Future<RecorderStatus> status();
@@ -100,6 +104,11 @@ abstract class RecorderGateway {
   /// Delete an unreadable orphan (`readable == false`).
   Future<void> discardJournal(String runId);
   Future<void> setCues(bool enabled);
+
+  /// Saved volume-key lap choice for Laps runs (4x4 and Free never hook the
+  /// volume keys). Native applies it from the next start or resume, never
+  /// mid-run; Start sends it before every Laps start.
+  Future<void> setVolumeKeyLaps(bool enabled);
 
   /// Broadcast; ≤ 2 Hz ticks plus lap / phase / state / cue / fault events.
   Stream<RecorderEvent> get events;
@@ -147,4 +156,10 @@ abstract class PermissionsGateway {
   /// FLAG_KEEP_SCREEN_ON on the Activity window; resets on recreate, so the
   /// record screen re-applies it on init and state changes.
   Future<void> setKeepScreenOn(bool enabled);
+
+  /// False on Android 14 (API 34): the system never routes volume keys to an
+  /// app's session there, so native registers none and fires
+  /// `volumeKeyUnavailable` once per run. Start and Settings disable the
+  /// volume-key toggle with a one-line reason.
+  Future<bool> volumeKeyLapsSupported();
 }

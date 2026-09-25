@@ -7,6 +7,7 @@ import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/platform/transfer_gateway.dart';
 import 'package:run_solo/screens/settings_screen.dart';
+import 'package:run_solo/state/recording_controller.dart';
 import 'package:run_solo/state/settings.dart';
 
 import '../helpers.dart';
@@ -155,6 +156,54 @@ void main() {
     expect(find.text('OK'), findsWidgets);
   });
 
+  testWidgets('Android 14: volume-key toggle disabled with its reason', (
+    tester,
+  ) async {
+    final services = fakeServices(
+      permissions: FakePermissionsGateway(volumeKeyLaps: false),
+    );
+    await pumpApp(tester, services, home: SettingsScreen(now: now));
+    await pumpTimes(tester, 3);
+    await scrollTo(tester, find.text('Volume-key lap (Laps run)'));
+    expect(find.text(kVolumeKeyToggleReason), findsOneWidget);
+    final sw = tester.widget<Switch>(
+      find.descendant(
+        of: find
+            .ancestor(
+              of: find.text('Volume-key lap (Laps run)'),
+              matching: find.byType(Row),
+            )
+            .first,
+        matching: find.byType(Switch),
+      ),
+    );
+    expect(sw.onChanged, isNull);
+    expect(sw.value, isFalse);
+  });
+
+  testWidgets('other Android versions: volume-key toggle works, no reason', (
+    tester,
+  ) async {
+    final services = fakeServices();
+    await pumpApp(tester, services, home: SettingsScreen(now: now));
+    await pumpTimes(tester, 3);
+    await scrollTo(tester, find.text('Volume-key lap (Laps run)'));
+    expect(find.text(kVolumeKeyToggleReason), findsNothing);
+    final sw = tester.widget<Switch>(
+      find.descendant(
+        of: find
+            .ancestor(
+              of: find.text('Volume-key lap (Laps run)'),
+              matching: find.byType(Row),
+            )
+            .first,
+        matching: find.byType(Switch),
+      ),
+    );
+    expect(sw.onChanged, isNotNull);
+    expect(sw.value, isTrue);
+  });
+
   testWidgets('About carries the §18.6 paragraph and attribution', (
     tester,
   ) async {
@@ -177,10 +226,10 @@ void main() {
       home: SettingsScreen(now: now),
     );
     await pumpTimes(tester, 3);
-    await scrollTo(tester, find.text('Move runs to another Run Solo'));
+    await scrollTo(tester, find.text('Move runs to another Run Supreme'));
     // Real file I/O (temp dir) needs real async time.
     await tester.runAsync(() async {
-      await tester.tap(find.text('Move runs to another Run Solo'));
+      await tester.tap(find.text('Move runs to another Run Supreme'));
       await Future<void>.delayed(const Duration(milliseconds: 300));
     });
     await pumpTimes(tester, 3);
@@ -223,9 +272,9 @@ void main() {
     expect(storage.enforceCalls, 1, reason: 'budget enforced after import');
     expect(
       find.text(
-        'Imported 1, 1 already here (edits not merged), 1 not Run Solo files. '
+        'Imported 1, 1 already here (edits not merged), 1 not Run Supreme files. '
         '2 older runs are past the backup budget: move runs to another Run '
-        'Solo to keep them safe.',
+        'Supreme to keep them safe.',
       ),
       findsOneWidget,
     );

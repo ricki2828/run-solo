@@ -50,7 +50,7 @@ class RunSoloApp extends StatelessWidget {
         builder: (context, _) {
           final reduced = services.settings.settings.reducedMotion;
           return MaterialApp(
-            title: 'Run Solo',
+            title: 'Run Supreme',
             debugShowCheckedModeBanner: false,
             theme: runSoloTheme(),
             darkTheme: runSoloTheme(),

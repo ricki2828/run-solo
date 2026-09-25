@@ -28,6 +28,7 @@ void main() {
       'requestPermission',
       'openBatterySettings',
       'openAppSettings',
+      'volumeKeyLapsSupported',
     ]) {
       messenger.setMockDecodedMessageHandler<Object?>(
         BasicMessageChannel<Object?>(
@@ -101,5 +102,12 @@ void main() {
     await g.openAppSettings();
     expect(battery, 1);
     expect(app, 1);
+  });
+
+  test('volumeKeyLapsSupported passes the host capability through', () async {
+    mock('volumeKeyLapsSupported', (_) => false);
+    expect(await PigeonPermissionsGateway().volumeKeyLapsSupported(), isFalse);
+    mock('volumeKeyLapsSupported', (_) => true);
+    expect(await PigeonPermissionsGateway().volumeKeyLapsSupported(), isTrue);
   });
 }

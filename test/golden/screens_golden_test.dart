@@ -393,6 +393,24 @@ void main() {
     await golden(tester, 'start_laps');
   });
 
+  testWidgets('start: laps run on Android 14 (volume-key toggle off)', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      fakeServices(
+        permissions: FakePermissionsGateway(volumeKeyLaps: false),
+        settings: const AppSettings(
+          onboardingDone: true,
+          lastMode: RecordMode.laps,
+        ),
+      ),
+      pushRoute: Routes.start,
+    );
+    await pumpTimes(tester, 4);
+    await golden(tester, 'start_laps_android14');
+  });
+
   test(
     'zone backgrounds keep Bone ≥ 7:1 and warn ≥ 4.5:1 (A1, A7 checklist)',
     () {
