@@ -9,7 +9,8 @@ import android.os.SystemClock
 import android.util.Log
 
 /**
- * Volume-key LAP (plan §3, W8): opt-in, on by default only in Free mode. Volume keys reach
+ * Volume-key LAP (plan §3, W8): opt-in, on by default only in Laps mode (never in Free, which
+ * takes no laps at all). Volume keys reach
  * an app only through the active MediaSession's `VolumeProvider` (remote playback), which
  * takes the keys away from the music volume while it is active — so it is off by default in
  * preset mode and the notification/lock-screen LAP action stays primary.

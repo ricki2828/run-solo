@@ -79,19 +79,28 @@ case "$MODE" in
     # Manual laps from the debug intent land; a volume key press must land too (MediaSession active).
     wait_for_log 'RunSolo/session.*lap index=2 source=notification' 90 || fail "manual laps did not land in laps mode"
     wait_for_log 'RunSolo/lapinput.*volume-key lap enabled' 5 || fail "MediaSession for volume-key laps was never registered in laps mode"
-    # `input keyevent` on a loaded hosted emulator can be delayed or dropped; a runner presses
-    # again too. Up to 3 presses, each with the media-session state dumped when it misses, so a
-    # miss on every press shows whether OUR session was the volume target.
+    # A runner presses once. A press that REACHES our VolumeProvider (a lapinput `direction=`
+    # line) and lands no lap is a product bug: fail at once. Only a press that never reached the
+    # session (adb/emulator injection drop: no lapinput line at all) may be retried, and every
+    # retry is a visible ::warning:: in the run summary.
     landed=0
+    keys_seen() { adb logcat -d -s RunSolo/lapinput | grep -c "direction=" || true; }
     for attempt in 1 2 3; do
+      before_keys="$(keys_seen)"
       adb shell input keyevent KEYCODE_VOLUME_UP
       if wait_for_log 'RunSolo/session.*lap volumeKey → accepted' 10; then landed=1; break; fi
-      log "volume key press $attempt did not land; media_session state:"
+      after_keys="$(keys_seen)"
+      if [ "$after_keys" -gt "$before_keys" ]; then
+        adb logcat -d -s RunSolo/lapinput RunSolo/session | tail -n 20 >&2 || true
+        fail "volume key press $attempt reached the session (lapinput direction line) but no lap was accepted"
+      fi
+      echo "::warning::volume key press $attempt on API $sdk was dropped before reaching the session (no lapinput line); retrying"
+      log "volume key press $attempt never reached the session; media_session state:"
       adb shell dumpsys media_session 2>/dev/null | grep -iE "runsolo|active|Sessions|state=|flags=|volume" | head -n 40 >&2 || true
-      adb logcat -d -s RunSolo/lapinput | tail -n 5 >&2 || true
     done
-    [ "$landed" = 1 ] || fail "volume-key lap did not land in laps mode after 3 presses (see media_session dump above)"
-    log "manual + volume-key laps landed"
+    [ "$landed" = 1 ] || fail "volume-key lap never reached the session in 3 presses (see media_session dump above)"
+    vk_t="$(adb logcat -d | grep -oE 'lap index=[0-9]+ source=volumeKey t=[0-9]+' | tail -1 | sed 's/.*t=//')"
+    log "manual + volume-key laps landed (volume-key lap at run time ${vk_t} ms)"
     ;;
   free)
     # Every LAP is ignored: API presses log ignoredModeNoLaps + a lapIgnored fault; the volume key reaches nothing.
@@ -136,9 +145,9 @@ shell pidof "$PKG" > /dev/null || fail "process died after finalise"
 
 log "verify the run file contents"
 adb exec-out "run-as $PKG cat files/runs/run-$run_id.json.gz" > /tmp/run.json.gz
-python3 - "$run_id" "$MODE" <<'PY' || fail "run file assertions failed"
+python3 - "$run_id" "$MODE" "${vk_t:-}" <<'PY' || fail "run file assertions failed"
 import gzip, json, sys
-run_id, mode = sys.argv[1], sys.argv[2]
+run_id, mode, vk_t = sys.argv[1], sys.argv[2], sys.argv[3]
 f = json.load(gzip.open("/tmp/run.json.gz"))
 assert f["schema"] == 2 and f["id"] == run_id, "header"
 assert f["mode"] == mode, f"mode {f['mode']} != {mode}"
@@ -165,6 +174,9 @@ elif mode == "laps":
     # arrives between two of them. Every lap must be strictly ordered and non-empty.
     assert all(b["t0"] == a["t1"] for a, b in zip(laps, laps[1:])), "laps must tile the run"
     assert all(l["t1"] > l["t0"] for l in laps), "empty lap"
+    # The volume-key lap the session accepted must be in the file at that run time (same clock).
+    assert vk_t, "volume-key lap time missing from the log"
+    assert any(abs(l["t1"] - int(vk_t)) <= 1000 for l in laps), f"no lap within 1 s of the volume-key press at {vk_t} ms: {[l['t1'] for l in laps]}"
 elif mode == "free":
     assert f["preset"] is None, f["preset"]
     assert len(laps) == 1 and laps[0]["t0"] == 0, f"free mode must have exactly one lap segment: {laps}"

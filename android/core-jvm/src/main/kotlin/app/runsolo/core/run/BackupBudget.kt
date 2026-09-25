@@ -9,6 +9,9 @@ import app.runsolo.core.fs.FileSystem
  * device, still indexed, just not backed up — once `db + runs/ files + sidecars` passes
  * [budgetBytes] (~15 MB, well under the quota so a big run or a DB rebuild cannot tip it).
  *
+ * The backed-up total counts EVERYTHING under `runs/` (the rule includes the directory, so a
+ * `.tmp` or a stray subdirectory is backed up too), but only run files can be moved.
+ *
  * "Oldest" is by the run file's modification time (the finalise moment; an import writes a
  * newer mtime, so an imported old run is archived last — acceptable, it is already exported).
  * The move itself is [Archiver]'s job; the Dart Reconciler then `repath`s the index rows.
@@ -38,16 +41,22 @@ class BackupBudget(
         Entry(id, fs.size(file) + sidecar, fs.lastModifiedMs(file) ?: 0L)
     }
 
+    /** Bytes of every file under [dir], recursively. */
+    fun dirBytes(dir: String): Long = fs.list(dir).sumOf { name ->
+        val p = "$dir/$name"
+        if (fs.isDirectory(p)) dirBytes(p) else fs.size(p)
+    }
+
     fun status(dbBytes: Long): Status = Status(
-        backedUpBytes = dbBytes + entries().sumOf { it.bytes },
+        backedUpBytes = dbBytes + dirBytes(RunPaths.RUNS_DIR),
         budgetBytes = budgetBytes,
         quotaBytes = QUOTA_BYTES,
         archivedRunCount = fs.list(RunPaths.ARCHIVE_DIR).count { RunPaths.runIdFromFileName(it) != null },
     )
 
     /** Pure: which ids to archive, oldest first, until the set fits (the DB itself is never movable). */
-    fun plan(dbBytes: Long, entries: List<Entry> = entries()): List<String> {
-        var total = dbBytes + entries.sumOf { it.bytes }
+    fun plan(dbBytes: Long, entries: List<Entry> = entries(), otherBytes: Long = dirBytes(RunPaths.RUNS_DIR) - entries.sumOf { it.bytes }): List<String> {
+        var total = dbBytes + otherBytes + entries.sumOf { it.bytes }
         if (total <= budgetBytes) return emptyList()
         val out = ArrayList<String>()
         for (e in entries.sortedWith(compareBy<Entry> { it.modifiedMs }.thenBy { it.id })) {

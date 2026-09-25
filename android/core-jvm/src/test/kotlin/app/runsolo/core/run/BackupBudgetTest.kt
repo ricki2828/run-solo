@@ -67,6 +67,21 @@ class BackupBudgetTest {
     }
 
     @Test
+    fun `everything under runs counts - a tmp file and a stray directory push the set over`() {
+        run("a", 100, 1_000)
+        fs.writeBytes(RunPaths.runFileTmp("zzz"), ByteArray(300))
+        fs.mkdirs("${RunPaths.RUNS_DIR}/leftover")
+        fs.writeBytes("${RunPaths.RUNS_DIR}/leftover/journal.ndjson", ByteArray(300))
+        val b = BackupBudget(fs, budgetBytes = 500)
+        assertEquals(700, b.status(dbBytes = 0).backedUpBytes)
+        assertEquals(listOf("a"), b.plan(dbBytes = 0))
+        assertEquals(listOf("a"), b.enforce(dbBytes = 0, activeRunId = null))
+        // Only run files can move; the stray bytes still count and the set is still over.
+        assertEquals(600, b.status(dbBytes = 0).backedUpBytes)
+        assertTrue(b.status(dbBytes = 0).overBudget)
+    }
+
+    @Test
     fun `the database alone over budget - nothing to move, still reported over`() {
         run("a", 10, 1_000)
         val b = BackupBudget(fs, budgetBytes = 100)
