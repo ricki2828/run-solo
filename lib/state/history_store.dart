@@ -136,25 +136,17 @@ class ImportResult {
   List<String> get skippedIds => [...alreadyOnDeviceIds, ...duplicateIds];
 }
 
-/// The verdict a run shows (plan §5: verdicts are point-in-time and frozen).
-/// A sidecar's frozen verdict wins while its inputs (lap edits, override)
-/// still match, even after an engine version bump: the runner keeps the
-/// words they were shown. Only fix-laps / an override (which change the
-/// inputs key) or a run with no frozen verdict get the engine's fresh one.
+/// The verdict a run shows. Founder decision 25-Sep (overrides the plan's
+/// frozen-verdict rule across engine bumps): when the engine version
+/// changes, past verdicts are RECALCULATED so verdict and tables always
+/// agree; the previous text moves to the sidecar's verdict history (the
+/// engine's `freezeInto` does that). Fix-laps edits and overrides still
+/// apply on top. Within one engine version the frozen verdict is restored
+/// unchanged (the engine's `VerdictSource.frozen` path).
 engine.Verdict? displayVerdict(
   engine.RunSidecar? sidecar,
   engine.RunAnalysis? analysis,
-) {
-  final frozen = sidecar?.frozenVerdict;
-  if (frozen != null && sidecar != null) {
-    final key = engine.Verdict.inputsKeyFor(
-      sidecar.lapEdits,
-      sidecar.runTypeOverride,
-    );
-    if (frozen.inputsKey == key) return frozen;
-  }
-  return analysis?.verdict;
-}
+) => analysis?.verdict;
 
 abstract class RunStore implements HistoryStore {
   Future<RunDetail?> load(String id);
@@ -218,11 +210,10 @@ class _Analyser {
         continue;
       }
       analyses[run.id] = a;
-      // Freeze only when nothing usable is frozen yet: an engine bump must
-      // not silently replace the verdict the runner already saw.
+      // A computed verdict (first analysis, fix-laps/override, or an engine
+      // bump) is frozen; `freezeInto` moves a superseded one to history.
       if (a.verdict != null &&
-          a.verdictSource == engine.VerdictSource.computed &&
-          displayVerdict(sidecar, a) == a.verdict) {
+          a.verdictSource == engine.VerdictSource.computed) {
         frozen[run.id] = a.freezeInto(sidecar);
       }
       final prior = a.asPrior(run.start);

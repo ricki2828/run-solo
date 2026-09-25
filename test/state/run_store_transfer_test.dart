@@ -42,44 +42,39 @@ void main() {
     },
   );
 
-  test(
-    'engine bump: an engineVersion-1 frozen verdict is shown, not recomputed',
-    () async {
-      final r1 = fourByFourFile(n: 1, start: d1);
-      final fresh = MemoryRunStore(files: [r1]);
-      await fresh.list();
-      final current = (await fresh.load(r1.id))!.sidecar.frozenVerdict!;
-      // Pretend an older engine froze different words for the same inputs.
-      final old = engine.Verdict(
-        stage: current.stage,
-        headline: engine.VerdictHeadline.holding,
-        subline: 'Words the runner already saw.',
-        floorSecPerKm: current.floorSecPerKm,
-        bandSecPerKm: current.bandSecPerKm,
-        engineVersion: current.engineVersion - 1,
-        computedAt: current.computedAt,
-        inputsKey: current.inputsKey,
-      );
-      final sidecar = engine.RunSidecar(runId: r1.id).withFrozenVerdict(old);
-      final store = MemoryRunStore(files: [r1], sidecars: {r1.id: sidecar});
-      final listed = await store.list();
-      expect(listed.single.verdict!.subline, 'Words the runner already saw.');
-      expect(listed.single.verdict!.engineVersion, current.engineVersion - 1);
-      expect(store.written, isEmpty, reason: 'sidecar not rewritten');
-      final d = await store.load(r1.id);
-      expect(d!.summary.verdict!.headline, engine.VerdictHeadline.holding);
-      // Fix-laps changes the inputs: the engine's fresh verdict takes over.
-      final edited = await store.applyLapEdit(
-        r1.id,
-        const engine.LapEdit.keep(1),
-      );
-      expect(edited.summary.verdict!.engineVersion, current.engineVersion);
-      expect(
-        edited.sidecar.verdictHistory.map((v) => v.subline),
-        contains('Words the runner already saw.'),
-      );
-    },
-  );
+  test('engine bump: an engineVersion-1 verdict is recalculated, old text kept in history', () async {
+    final r1 = fourByFourFile(n: 1, start: d1);
+    final fresh = MemoryRunStore(files: [r1]);
+    await fresh.list();
+    final current = (await fresh.load(r1.id))!.sidecar.frozenVerdict!;
+    // An older engine froze different words for the same inputs.
+    final old = engine.Verdict(
+      stage: current.stage,
+      headline: engine.VerdictHeadline.holding,
+      subline: 'Words the runner saw last version.',
+      floorSecPerKm: current.floorSecPerKm,
+      bandSecPerKm: current.bandSecPerKm,
+      engineVersion: current.engineVersion - 1,
+      computedAt: current.computedAt,
+      inputsKey: current.inputsKey,
+    );
+    final sidecar = engine.RunSidecar(runId: r1.id).withFrozenVerdict(old);
+    final store = MemoryRunStore(files: [r1], sidecars: {r1.id: sidecar});
+    final listed = await store.list();
+    // Founder decision 25-Sep: recalculated so verdict and tables agree.
+    expect(listed.single.verdict!.engineVersion, current.engineVersion);
+    expect(listed.single.verdict!.subline, current.subline);
+    final d = await store.load(r1.id);
+    expect(d!.sidecar.frozenVerdict!.engineVersion, current.engineVersion);
+    expect(
+      d.sidecar.verdictHistory.map((v) => v.subline),
+      contains('Words the runner saw last version.'),
+      reason: 'previous text kept in history, not shown as current',
+    );
+    expect(store.written, isNotEmpty, reason: 'sidecar rewritten once');
+    // Same version again: restored, not recomputed.
+    expect(d.analysis.verdictSource, engine.VerdictSource.frozen);
+  });
 
   test(
     'file store: no index, no WAL; rebuilds from files on every open',

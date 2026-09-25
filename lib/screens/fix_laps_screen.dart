@@ -189,7 +189,7 @@ class _Status extends StatelessWidget {
       ),
       child: Column(
         key: ValueKey(v?.headline.name ?? 'none'),
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             v?.headline.text ?? 'NO VERDICT',
