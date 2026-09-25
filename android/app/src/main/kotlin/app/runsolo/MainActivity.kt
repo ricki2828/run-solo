@@ -24,7 +24,11 @@ import app.runsolo.platform.RecorderApi
 import app.runsolo.platform.RecorderApiImpl
 import app.runsolo.platform.RecorderEventBus
 import app.runsolo.platform.RecorderEventsStreamHandler
+import app.runsolo.platform.EventTraceName
+import app.runsolo.platform.LapSource
 import app.runsolo.platform.ReplayConfig
+import app.runsolo.platform.StorageApi
+import app.runsolo.platform.StorageApiImpl
 import app.runsolo.platform.Units
 import app.runsolo.record.LocationSource
 import com.google.android.gms.common.api.ResolvableApiException
@@ -46,6 +50,7 @@ class MainActivity : FlutterActivity() {
         RecorderApi.setUp(flutterEngine.dartExecutor.binaryMessenger, recorder)
         BleApi.setUp(flutterEngine.dartExecutor.binaryMessenger, BleApiImpl(applicationContext))
         PermissionsApi.setUp(flutterEngine.dartExecutor.binaryMessenger, Permissions())
+        StorageApi.setUp(flutterEngine.dartExecutor.binaryMessenger, StorageApiImpl(applicationContext))
         RecorderEventsStreamHandler.register(flutterEngine.dartExecutor.binaryMessenger, RecorderEventBus)
         handleDebugIntent(intent)
     }
@@ -57,7 +62,9 @@ class MainActivity : FlutterActivity() {
 
     /**
      * Debug builds only (plan §12 replay mode + the CI lifecycle test). Extras:
-     *  - `runsolo.replay=<fixture>` [`runsolo.speed=<x>`]: start a replay run now.
+     *  - `runsolo.replay=<fixture>` [`runsolo.speed=<x>`] [`runsolo.mode=fourByFour|laps|free`]: start a replay run now.
+     *  - `runsolo.lapEveryMs=<n>`: press a notification LAP every n ms of wall time while recording
+     *    (Laps mode; in Free mode the presses must be ignored and logged as `lapIgnored`).
      *  - `runsolo.recover=true`: run recover(); resume the newest readable orphan, else finalise it.
      *  - `runsolo.stopAfterMs=<n>`: stop the run after n ms (used after recover).
      * Everything is logged under the `RunSolo/debug` tag for the emulator script.
@@ -67,13 +74,28 @@ class MainActivity : FlutterActivity() {
         val fixture = intent.getStringExtra("runsolo.replay")
         val recover = intent.getBooleanExtra("runsolo.recover", false)
         val stopAfter = intent.getLongExtra("runsolo.stopAfterMs", -1)
-        if (fixture == null && !recover && stopAfter < 0) return
+        val lapEvery = intent.getLongExtra("runsolo.lapEveryMs", -1)
+        if (fixture == null && !recover && stopAfter < 0 && lapEvery < 0) return
         val main = Handler(Looper.getMainLooper())
         main.post {
             if (fixture != null) {
                 val speed = intent.getFloatExtra("runsolo.speed", 10f).toDouble() // `am start --ef`
-                val r = recorder.startReplay(RecordMode.FOUR_BY_FOUR, null, Units.KM, ReplayConfig(fixture, speed))
-                Log.i(DEBUG_TAG, "startReplay fixture=$fixture speed=$speed → runId=${r.runId} error=${r.error}")
+                val modeName = intent.getStringExtra("runsolo.mode") ?: "fourByFour"
+                val mode = RecordMode.values().firstOrNull { EventTraceName.dart(it) == modeName } ?: RecordMode.FOUR_BY_FOUR
+                val r = recorder.startReplay(mode, null, Units.KM, ReplayConfig(fixture, speed))
+                Log.i(DEBUG_TAG, "startReplay fixture=$fixture mode=${EventTraceName.dart(mode)} speed=$speed → runId=${r.runId} error=${r.error}")
+            }
+            if (lapEvery > 0) {
+                val press = object : Runnable {
+                    override fun run() {
+                        val st = recorder.status()
+                        if (st.state == app.runsolo.platform.RecorderState.IDLE) return
+                        recorder.lap(LapSource.NOTIFICATION)
+                        Log.i(DEBUG_TAG, "debug lap pressed at ${st.elapsedMs} ms (mode=${EventTraceName.dart(st.mode)})")
+                        main.postDelayed(this, lapEvery)
+                    }
+                }
+                main.postDelayed(press, lapEvery)
             }
             if (recover) {
                 val orphans = recorder.recover()

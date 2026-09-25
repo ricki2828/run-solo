@@ -5,7 +5,35 @@ package app.runsolo.core.model
  * the Android shell maps them with `valueOf(name)`; core-jvm must not depend on the generated
  * Pigeon file (it carries Flutter imports).
  */
-enum class RunMode { fourByFour, free }
+/**
+ * Run type picked at Start (plan §18.2). `laps` is the lap-capable by-feel run (schema-1 `free`
+ * maps here, §18.7 B1); `free` has no lap input at all; `cooper` is vocabulary for the schema-2
+ * file format (Phase 3 protocol) and records like `free` until then.
+ */
+enum class RunMode {
+    fourByFour, laps, free, cooper;
+
+    /** Whether LAP presses (button, notification, volume key) are accepted at all. Exhaustive: a new mode must decide. */
+    val lapInput: Boolean
+        get() = when (this) {
+            fourByFour, laps -> true
+            free, cooper -> false
+        }
+
+    /** Volume-key laps default (W8): on only for the by-feel Laps run. */
+    val volumeKeyLapsDefault: Boolean
+        get() = when (this) {
+            laps -> true
+            fourByFour, free, cooper -> false
+        }
+
+    /** Only the 4x4 carries a preset in the header; every other mode's preset is null. */
+    val usesPreset: Boolean
+        get() = when (this) {
+            fourByFour -> true
+            laps, free, cooper -> false
+        }
+}
 
 enum class Units { km, mi }
 

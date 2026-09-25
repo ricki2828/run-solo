@@ -40,6 +40,8 @@ class RecorderNotification(private val context: Context) {
         val phaseRemainingMs: Long?,
         val lapIndex: Int,
         val hr: Int?,
+        /** False in Free mode (plan §18.2): no LAP action at all, on the shade or the lock screen. */
+        val lapAction: Boolean = true,
     )
 
     fun build(c: Content): Notification {
@@ -52,7 +54,7 @@ class RecorderNotification(private val context: Context) {
             else -> "Recording"
         }
         val text = buildString {
-            append("Lap ${c.lapIndex + 1}")
+            if (c.lapAction) append("Lap ${c.lapIndex + 1}") else append("Free run")
             c.hr?.let { append("  ·  $it bpm") }
         }
         val b = NotificationCompat.Builder(context, CHANNEL_ID)
@@ -66,8 +68,8 @@ class RecorderNotification(private val context: Context) {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setContentIntent(openApp())
-            .addAction(0, "LAP", serviceAction(RecorderService.ACTION_LAP))
-            .addAction(0, if (c.state == RecorderState.paused) "Resume" else "Pause", serviceAction(if (c.state == RecorderState.paused) RecorderService.ACTION_RESUME else RecorderService.ACTION_PAUSE))
+        if (c.lapAction) b.addAction(0, "LAP", serviceAction(RecorderService.ACTION_LAP))
+        b.addAction(0, if (c.state == RecorderState.paused) "Resume" else "Pause", serviceAction(if (c.state == RecorderState.paused) RecorderService.ACTION_RESUME else RecorderService.ACTION_PAUSE))
             .addAction(0, "Stop", serviceAction(RecorderService.ACTION_STOP))
         if (c.state == RecorderState.paused) {
             b.setUsesChronometer(false)

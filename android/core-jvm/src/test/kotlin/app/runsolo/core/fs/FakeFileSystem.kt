@@ -142,8 +142,24 @@ class FakeFileSystem : FileSystem {
 
     override fun rename(from: String, to: String) {
         op("rename")
-        val b = files.remove(from) ?: throw java.io.FileNotFoundException(from)
         ensureParent(to)
+        if (from in dirs) {
+            // Directory move (java.nio Files.move on the same filesystem): every entry under it moves.
+            check(to !in dirs && to !in files) { "rename onto an existing target: $to" }
+            val prefix = "$from/"
+            for (p in files.keys.filter { it.startsWith(prefix) }) {
+                val np = to + p.removePrefix(from)
+                files[np] = files.remove(p)!!
+                mtimes.remove(p)?.let { mtimes[np] = it }
+                inodes.remove(p)?.let { inodes[np] = it }
+            }
+            for (d in dirs.filter { it == from || it.startsWith(prefix) }.toList()) {
+                dirs.remove(d)
+                dirs.add(to + d.removePrefix(from))
+            }
+            return
+        }
+        val b = files.remove(from) ?: throw java.io.FileNotFoundException(from)
         files[to] = b
         mtimes[to] = mtimes.remove(from) ?: clock
         inodes.remove(from)?.let { inodes[to] = it }

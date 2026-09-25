@@ -25,12 +25,15 @@ import java.io.File
  * `FakeFileSystem` → `Finaliser` → the gzip'd run file, decoded back to JSON. Nothing is
  * hand-built. Checked into `src/test/fixtures/contract/` and copied verbatim into
  * `packages/run_engine/test/fixtures/contract/`; [ContractFixturesTest] fails when the
- * generator and the checked-in files drift, and CI compares the two copies.
+ * generator and the checked-in files drift, and CI compares the two copies. The four schema-1
+ * files under `contract/schema1/` are frozen output of the Phase-1 writer (plan §18.7): never
+ * regenerated, they pin the v1 `free` → `laps` mapping on the Dart side.
  *
  * Regenerate: `java -cp <test classpath> app.runsolo.core.contract.ContractFixturesKt`.
  */
 object ContractFixtures {
     const val DIR = "src/test/fixtures/contract"
+    const val SCHEMA1_DIR = "src/test/fixtures/contract/schema1"
     private const val T0 = 1_000_000L
     private const val W0 = 1_758_672_000_000L // 2025-09-24T00:00:00Z
     private const val LAT0 = -33.8688
@@ -40,7 +43,8 @@ object ContractFixtures {
         "four_by_four_preset_auto_hr" to fourByFourPresetAutoHr(),
         "treadmill_no_fix_hr" to treadmillNoFixHr(),
         "gps_dropout_hr" to gpsDropoutHr(),
-        "free_run_pause_manual_laps" to freeRunPauseManualLaps(),
+        "laps_run_pause_manual_laps" to lapsRunPauseManualLaps(),
+        "free_run_no_laps" to freeRunNoLaps(),
     )
 
     /** One simulated recording: a service loop over the core, per second. */
@@ -114,14 +118,14 @@ object ContractFixtures {
         return s.finish()
     }
 
-    /** 10 min free run with no GPS fix at all, HR ramp 120→150, one manual lap at 5:00. */
+    /** 10 min Laps run with no GPS fix at all, HR ramp 120→150, one manual lap at 5:00. */
     private fun treadmillNoFixHr(): String {
-        val s = Session("contract-treadmill", RunMode.free, null)
+        val s = Session("contract-treadmill", RunMode.laps, null)
         for (i in 1..600) s.second(null, 120 + (30 * i) / 600) { if (i == 300) s.lap(LapSource.button) }
         return s.finish()
     }
 
-    /** 6 min at 3 m/s; fixes lost from 2:00 to 2:45 (no-fix ticks carry HR 150); the runner keeps moving. */
+    /** 6 min Free run at 3 m/s; fixes lost from 2:00 to 2:45 (no-fix ticks carry HR 150); the runner keeps moving. */
     private fun gpsDropoutHr(): String {
         val fixes = TraceFixture.straightLine(listOf(360 to 3.0), LAT0, LON0, 7.0, T0)
         val s = Session("contract-gps-dropout", RunMode.free, null)
@@ -132,16 +136,37 @@ object ContractFixtures {
         return s.finish()
     }
 
-    /** Free run, manual laps at 3:00 and 6:00, a 20 s standing pause at 4:30 (fixes keep coming, no HR strap). */
-    private fun freeRunPauseManualLaps(): String {
+    /** Laps run, manual laps at 3:00 and 6:00, a 20 s standing pause at 4:30 (fixes keep coming, no HR strap). */
+    private fun lapsRunPauseManualLaps(): String {
         val fixes = TraceFixture.straightLine(listOf(270 to 3.0, 20 to 0.0, 250 to 3.0), LAT0, LON0, 5.0, T0)
-        val s = Session("contract-pause", RunMode.free, null)
+        val s = Session("contract-pause", RunMode.laps, null)
         for ((i, f) in fixes.withIndex()) {
             if (i == 0) continue
             s.second(f, null) {
                 if (i == 180 || i == 360) s.lap(LapSource.button)
                 if (i == 270) s.pause()
                 if (i == 290) s.resume()
+            }
+        }
+        return s.finish()
+    }
+
+    /**
+     * Schema-2 Free run (plan §18.2): 8 min at 3 m/s with HR, a 15 s pause at 4:00, and LAP presses
+     * from every source at 2:00, 5:00 and 6:00 that the core must ignore — the file has exactly one
+     * lap segment `[0, end]`.
+     */
+    private fun freeRunNoLaps(): String {
+        val fixes = TraceFixture.straightLine(listOf(240 to 3.0, 15 to 0.0, 225 to 3.0), LAT0, LON0, 5.0, T0)
+        val s = Session("contract-free", RunMode.free, null)
+        for ((i, f) in fixes.withIndex()) {
+            if (i == 0) continue
+            s.second(f, 140 + (i % 7)) {
+                if (i == 120) s.lap(LapSource.button)
+                if (i == 240) s.pause()
+                if (i == 255) s.resume()
+                if (i == 300) s.lap(LapSource.notification)
+                if (i == 360) s.lap(LapSource.volumeKey)
             }
         }
         return s.finish()

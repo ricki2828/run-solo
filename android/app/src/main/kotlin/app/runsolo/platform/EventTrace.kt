@@ -12,12 +12,9 @@ import app.runsolo.core.json.Json
  * and `tools/check_event_trace.py` compares their structure with the fixture, so a mapping bug
  * on the Android side (a field missing, an enum spelt differently, a wrong `tMs` base) fails CI.
  */
-object EventTrace {
-    const val TAG = "RunSolo/trace"
-    val enabled: Boolean get() = BuildConfig.REPLAY_ENABLED
-
-    /** Dart enum spelling of a Pigeon Kotlin enum constant: `FOUR_BY_FOUR` → `fourByFour`. */
-    fun dartName(e: Enum<*>): String = buildString {
+/** Dart spelling of Pigeon enum constants, usable outside debug-only code. */
+object EventTraceName {
+    fun dart(e: Enum<*>): String = buildString {
         var up = false
         for (c in e.name) {
             if (c == '_') { up = true; continue }
@@ -25,6 +22,14 @@ object EventTrace {
             up = false
         }
     }
+}
+
+object EventTrace {
+    const val TAG = "RunSolo/trace"
+    val enabled: Boolean get() = BuildConfig.REPLAY_ENABLED
+
+    /** Dart enum spelling of a Pigeon Kotlin enum constant: `FOUR_BY_FOUR` → `fourByFour`. */
+    fun dartName(e: Enum<*>): String = EventTraceName.dart(e)
 
     fun event(e: RecorderEvent, elapsedMs: Long) {
         if (!BuildConfig.REPLAY_ENABLED) return

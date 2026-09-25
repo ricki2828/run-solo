@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Window ground behind Flutter (launch splash and NormalTheme): the Night Session ground (the app pins ThemeMode.dark, lib/main.dart), so
+         waking the recording screen never flashes white/black before the zone colour paints. -->
+    <color name="window_ground">#FF0A0B0D</color>
+</resources>

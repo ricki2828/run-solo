@@ -56,10 +56,10 @@ class RunFileTest {
     }
 
     @Test
-    fun `gzip json round trip matches schema v1`() {
+    fun `gzip json round trip matches schema v2`() {
         val f = RunFile.fromReplay(JournalReplay.read(journal()), w0 + 50_000)
         val m = RunFile.readJson(f.toGzipBytes())
-        assertEquals(1L, m["schema"])
+        assertEquals(2L, m["schema"])
         assertEquals("id1", m["id"])
         assertEquals("fourByFour", m["mode"])
         assertEquals("km", m["units"])

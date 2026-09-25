@@ -11,7 +11,9 @@ import 'helpers.dart';
 /// formatting (`Instant.toString()` without millis, integral doubles as
 /// ints, full-precision doubles, no-fix ticks as `[t,null×5,dist,hr]`).
 void main() {
-  final dir = Directory('test/fixtures/contract');
+  // schema1/: frozen Phase-1 writer output. schema2/ (mode laps/free, `schema: 2`)
+  // is covered once the engine's schema-2 reader lands (plan §18.7).
+  final dir = Directory('test/fixtures/contract/schema1');
   RunFile load(String name) =>
       RunFileCodec.decode(File('${dir.path}/$name.json').readAsStringSync());
 

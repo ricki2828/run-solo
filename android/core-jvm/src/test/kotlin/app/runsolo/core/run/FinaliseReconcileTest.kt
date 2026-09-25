@@ -84,7 +84,7 @@ class FinaliseReconcileTest {
         val out = Finaliser(fs).finalise("r1", now, activeRunId = null)
         assertIs<Finaliser.Outcome.Done>(out)
         assertTrue(out.fresh)
-        assertEquals(listOf("writeBytes", "fsyncFile", "rename", "fsyncDir", "deleteRecursively"), fs.ops)
+        assertEquals(listOf("writeBytes", "fsyncFile", "rename", "fsyncDir", "deleteRecursively", "fsyncDir"), fs.ops) // the last fsyncDir makes the journal delete durable
         val index = Index()
         index.insertAfterStop(RunFileRef("r1", out.path))
         appOpen(index)

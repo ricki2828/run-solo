@@ -65,6 +65,7 @@ class Finaliser(private val fs: FileSystem) {
         fs.rename(tmp, target)
         fs.fsyncDir(RunPaths.RUNS_DIR)
         fs.deleteRecursively(RunPaths.journalDir(runId))
+        fs.fsyncDir(RunPaths.JOURNALS_DIR)
         return Outcome.Done(runId, target, fresh = true, replay = replay)
     }
 }

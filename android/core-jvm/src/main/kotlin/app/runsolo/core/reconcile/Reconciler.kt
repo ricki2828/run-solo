@@ -40,8 +40,10 @@ data class OrphanJournal(
     val runId: String,
     val lastLineAgeMs: Long,
     val mode: RunMode,
-    /** True when the journal decodes to a header; false → it can only be discarded. */
+    /** True when the journal decodes to a header; false → it can only be discarded (unless [newer]). */
     val readable: Boolean,
+    /** The header is from a newer app or an unknown mode (plan §18.7 W6): unreadable here, never offered for discard. */
+    val newer: Boolean = false,
 )
 
 /**
@@ -106,7 +108,7 @@ class Reconciler(private val fs: FileSystem) {
     fun reconcile(rows: List<IndexRow>): ReconcilePlan = plan(scan(), rows, scanSidecars())
 
     /**
-     * Journals under `runs/<id>/` with no committed run file, newest first. A journal whose run
+     * Journals under `journals/<id>/` with no committed run file, newest first. A journal whose run
      * file exists (kill after rename, before cleanup) is not an orphan —
      * [app.runsolo.core.run.Finaliser] cleans it up on its next call, which [sweepCommitted]
      * triggers. The active run is never listed.
@@ -114,13 +116,17 @@ class Reconciler(private val fs: FileSystem) {
     fun orphans(nowEpochMs: Long, activeRunId: String?): List<OrphanJournal> {
         val committed = scan().map { it.id }.toSet()
         val out = ArrayList<OrphanJournal>()
-        for (name in fs.list(RunPaths.RUNS_DIR)) {
+        for (name in fs.list(RunPaths.JOURNALS_DIR)) {
             if (name == activeRunId) continue
-            if (!RunPaths.isSafeId(name) || !fs.isDirectory("${RunPaths.RUNS_DIR}/$name")) continue
+            if (!RunPaths.isSafeId(name) || !fs.isDirectory(RunPaths.journalDir(name))) continue
             val journal = RunPaths.journal(name)
             if (!fs.exists(journal) || name in committed) continue
+            var newer = false
             val replay = try {
                 JournalReplay.read(fs.readBytes(journal))
+            } catch (_: JournalReplay.NewerJournal) {
+                newer = true
+                null
             } catch (_: Exception) {
                 null
             }
@@ -131,6 +137,7 @@ class Reconciler(private val fs: FileSystem) {
                     lastLineAgeMs = (nowEpochMs - lastWall).coerceAtLeast(0),
                     mode = replay?.header?.mode ?: RunMode.free,
                     readable = replay != null,
+                    newer = newer,
                 ),
             )
         }
@@ -140,8 +147,8 @@ class Reconciler(private val fs: FileSystem) {
     /** Journal directories whose run file is already committed: leftovers of a kill after rename. */
     fun sweepCommitted(activeRunId: String?): List<String> {
         val committed = scan().map { it.id }.toSet()
-        return fs.list(RunPaths.RUNS_DIR).filter {
-            it != activeRunId && it in committed && fs.isDirectory("${RunPaths.RUNS_DIR}/$it")
+        return fs.list(RunPaths.JOURNALS_DIR).filter {
+            it != activeRunId && it in committed && fs.isDirectory(RunPaths.journalDir(it))
         }
     }
 }

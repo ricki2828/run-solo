@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import android.util.Log
+import app.runsolo.BuildConfig
 import app.runsolo.ble.BleHolder
 import app.runsolo.ble.BleHrClient
 import app.runsolo.core.fs.JvmFileSystem
@@ -84,8 +85,14 @@ class RecordingSession(
     private var snapshot: RecorderStatus? = null
     private val handler = Handler(thread.looper)
     private val cues = CuePlayer(this.context)
-    private val lapInput = LapInput(this.context) { lap(LapSource.volumeKey) }
-    private val volumeKeyLapsEnabled = volumeKeyLaps
+    private val lapInput = LapInput(
+        this.context,
+        onLap = { lap(LapSource.volumeKey) },
+        onUnavailable = { fault(FaultKind.VOLUME_KEY_UNAVAILABLE, "Volume-key laps don't work on Android 14; use the lock-screen LAP") },
+    )
+
+    /** Volume-key laps need a mode that takes laps at all (plan §18.2): Free never registers the MediaSession. */
+    private val volumeKeyLapsEnabled = volumeKeyLaps && mode.lapInput
     private lateinit var core: RecorderCore
     private var location: LocationSource? = null
     private var ble: BleHrClient? = null
@@ -394,6 +401,10 @@ class RecordingSession(
         val t = clock()
         val (decision, out) = core.lap(source, t)
         Log.i(TAG, "lap $source → $decision")
+        if (decision == RecorderCore.LapDecision.ignoredModeNoLaps && BuildConfig.DEBUG) {
+            // Debug only (plan §18.2): a LAP in Free mode means some surface still shows a LAP control.
+            fault(FaultKind.LAP_IGNORED, "LAP from $source ignored in $mode mode")
+        }
         handle(out, t)
         refreshSnapshot()
     }
@@ -582,6 +593,7 @@ class RecordingSession(
             phaseRemainingMs = if (timed && st.state == RecorderState.recording) st.phaseRemainingMs else null,
             lapIndex = st.lapIndex,
             hr = lastHr,
+            lapAction = mode.lapInput,
         )
     }
 

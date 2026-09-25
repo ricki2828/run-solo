@@ -33,10 +33,10 @@ class RecordingSessionAbortTest {
     private val fs = JvmFileSystem(context.filesDir.toPath())
     private val w0 = 1_700_000_000_000L
 
-    private fun writeOrphan(id: String) {
+    private fun writeOrphan(id: String, preset: Preset? = Preset.DEFAULT_4X4) {
         fs.mkdirs(RunPaths.journalDir(id))
         val lines = listOf(
-            JournalLine.Header(1_000, w0, id, "d", "a", "UTC", RunMode.fourByFour, Preset.DEFAULT_4X4, Units.km),
+            JournalLine.Header(1_000, w0, id, "d", "a", "UTC", RunMode.fourByFour, preset, Units.km),
             JournalLine.Lap(61_000, w0 + 60_000, LapSource.button),
             JournalLine.Sample(62_000, w0 + 61_000, -33.8, 151.2, null, 5.0, 3.0, 150),
         )
@@ -61,6 +61,30 @@ class RecordingSessionAbortTest {
         assertEquals(1, replay.events.count { it is app.runsolo.core.journal.RunEvent.Lap })
         assertEquals(1, replay.events.count { it is app.runsolo.core.journal.RunEvent.Gap })
         assertFalse("no run file may appear: abort never finalises", fs.exists(RunPaths.runFile("orphan-1")))
+    }
+
+    @Test
+    fun `startResumed that throws (restore fails) - resumed is already set, so abortStart keeps the journal (PR5 P3)`() {
+        // A 4x4 header without a preset makes RecorderCore.restore throw after the gap line was written.
+        writeOrphan("orphan-2", preset = null)
+        val orphan = JournalReplay.read(fs.readBytes(RunPaths.journal("orphan-2")))
+        val session = RecordingSession(context, "orphan-2", RunMode.fourByFour, null, Units.km, null, volumeKeyLaps = false)
+        val thrown = try {
+            session.startResumed(orphan)
+            null
+        } catch (e: Exception) {
+            e
+        }
+        assertTrue("restore must throw for this fixture", thrown != null)
+        assertTrue("resumed is set before open/restore", session.resumed)
+
+        session.abortStart() // what StartGuard.begin does on the throw
+
+        assertTrue(fs.exists(RunPaths.journal("orphan-2")))
+        val orphans = Reconciler(fs).orphans(w0 + 120_000, activeRunId = null)
+        assertEquals(listOf("orphan-2"), orphans.map { it.runId })
+        assertTrue(orphans.single().readable)
+        assertFalse(fs.exists(RunPaths.runFile("orphan-2")))
     }
 
     @Test
