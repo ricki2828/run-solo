@@ -946,8 +946,15 @@ class _PausedOverlay extends StatelessWidget {
     return ColoredBox(
       color: t.bgBase.withValues(alpha: 0.6),
       child: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: Space.x32),
+        child: Container(
+          // Solid card: the numbers behind move with the mode and screen
+          // height, so PAUSED must never sit on top of them.
+          margin: const EdgeInsets.symmetric(horizontal: Space.x24),
+          padding: const EdgeInsets.all(Space.x24),
+          decoration: BoxDecoration(
+            color: t.bgBase,
+            borderRadius: BorderRadius.circular(Radii.lap),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
