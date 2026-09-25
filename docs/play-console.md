@@ -113,7 +113,16 @@ Play Console → App content → **Foreground service permissions**. Declare the
 >
 > **Demo video URL:** (unlisted YouTube link recorded per `docs/fgs-demo-video.md`).
 
-Also true of the app and worth having ready if asked: `FOREGROUND_SERVICE_LOCATION` is declared in the manifest, the service is `START_NOT_STICKY`, `stopWithTask=false` only so the notification survives a task swipe while a run is live, and no `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
+Also true of the app and worth having ready if asked: `FOREGROUND_SERVICE_LOCATION` is declared in the manifest, the service is `START_NOT_STICKY`, `stopWithTask=false` only so the notification survives a task swipe while a run is live. `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is declared (§8a) but has nothing to do with the FGS type.
+
+## 8a. Battery optimisation exemption (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`)
+
+Founder decision 24-Sep (overrides plan §10): the app declares this permission so the setup
+checklist can ask the system to exempt Run Solo from Doze on OEMs that kill the recording. Play
+lists "fitness/health tracking with a foreground service" among the acceptable cases. If the
+Console shows a declaration or the reviewer asks, use:
+
+> Run Solo records GPS pace during a running workout through a foreground location service. On several manufacturers' phones, battery optimisation suspends that service mid-run and the recording is lost. The app asks for the exemption once, from its setup checklist, via the system dialog (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`), only after the user has chosen to record runs with the screen off, and it works without the exemption. It is never used to run anything outside a run the user started.
 
 ## 9. Government apps / Financial features / Health apps declarations
 
