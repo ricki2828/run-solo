@@ -360,9 +360,10 @@ abstract class RecorderApi {
   void discardJournal(String runId);
   void setCues(bool enabled);
 
-  /// The user's volume-key LAP setting, persisted natively (the recorder reads
-  /// it at start). Takes effect from the next run or resume, not the live one.
-  /// Unset means the mode default (on for Laps only). A no-op in effect where
+  /// The user's volume-key LAP setting for Laps runs, persisted natively (the
+  /// recorder reads it at start). Takes effect from the next run or resume,
+  /// not the live one. Unset means on. 4x4 and Free never use volume keys,
+  /// whatever this says. A no-op in effect where
   /// `PermissionsApi.volumeKeyLapsSupported()` is false.
   void setVolumeKeyLaps(bool enabled);
 

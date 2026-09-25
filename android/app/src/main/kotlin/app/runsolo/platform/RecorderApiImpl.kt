@@ -86,9 +86,13 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         return RecordingSession(context, UUID.randomUUID().toString(), coreMode, corePreset, units.toCore(), replay, volumeKeyLaps(coreMode))
     }
 
-    /** The user's opt-in, defaulting per mode (W8: on only for Laps); the session still gates it on `mode.lapInput`. */
+    /**
+     * Volume-key laps are a Laps-run feature only (W8): the user's setting, default on, applies
+     * to Laps; the 4x4 laps itself automatically and Free takes no laps, so neither ever takes
+     * the volume keys from the user's music, whatever the setting says.
+     */
     internal fun volumeKeyLaps(mode: app.runsolo.core.model.RunMode): Boolean =
-        prefs.getBoolean(RecorderService.PREF_VOLUME_KEY_LAPS, mode.volumeKeyLapsDefault)
+        mode == app.runsolo.core.model.RunMode.laps && prefs.getBoolean(RecorderService.PREF_VOLUME_KEY_LAPS, mode.volumeKeyLapsDefault)
 
     private fun startWith(mode: RecordMode, preset: Preset?, units: Units, replay: ReplayRunner?): StartResult {
         active()?.let { return StartResult(runId = it.runId, error = null) }
