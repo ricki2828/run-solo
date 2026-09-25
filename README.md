@@ -107,8 +107,11 @@ CI's debug APK is signed by a per-runner debug key, so the emulator smoke always
 
 Settings → Pages → Source "Deploy from a branch", branch `main`, folder `/docs`; custom domain
 `runsolo.app` (add the `A`/`AAAA` records GitHub lists plus `www` CNAME, tick Enforce HTTPS).
-Pages on a private repo needs GitHub Pro; otherwise make the repo public or host `docs/`
-elsewhere. The privacy policy is then `https://runsolo.app/privacy/`.
+The privacy policy is then `https://runsolo.app/privacy/`. The repo is public for now (free
+Actions minutes) and goes private again at launch: GitHub Pages on a private repo needs a paid
+plan, so before that switch move `docs/` to a public host (simplest: a tiny public repo
+`run-solo-site` holding only `index.html` and `privacy/`, Pages on, same custom domain) and keep
+the URL identical, since it is printed on the Play forms.
 
 ## Licences
 

@@ -11,7 +11,7 @@ Founder approves the wording (plan §18.9 item 8) before anything is typed into 
 | Item | Value | Status |
 |---|---|---|
 | Package name | `app.runsolo` (Play build only; `.debug` and `.dogfood` never go to Play) | fixed |
-| Privacy policy URL | `https://runsolo.app/privacy` (served from this repo's `docs/` via GitHub Pages; see §7) | founder: turn Pages on + DNS |
+| Privacy policy URL | `https://runsolo.app/privacy` (served from this repo's `docs/` via GitHub Pages while the repo is public; when it goes private at launch the page moves to a public host with the same URL, see README) | founder: turn Pages on + DNS |
 | Play App Signing | Enrol at first upload; Google holds the app-signing key, we upload with `CN=Run Solo upload` | first AAB upload |
 | Upload key SHA-1 | `6D:E0:ED:82:5F:B7:80:73:3A:C5:EC:9D:37:5F:8F:63:1F:6E:D0:57` | for the Maps key restriction |
 | Contact email in the listing | `privacy@runsolo.app` is used on the privacy page | founder: confirm the mailbox exists or change it |
