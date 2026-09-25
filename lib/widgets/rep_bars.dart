@@ -95,15 +95,15 @@ class RepBars extends StatelessWidget {
             final delta = r.ghostSecPerKm == null || r.paceSecPerKm == null
                 ? null
                 : r.paceSecPerKm! - r.ghostSecPerKm!;
-            final deltaColor = tone == RepTone.arc
-                ? t.accentArc
-                : delta == null
-                ? t.inkSecondary
-                : delta < -1
-                ? t.semFaster
-                : delta > 1
-                ? t.semSlower
-                : t.semHolding;
+            // Cyan is earned by the verdict, not by a rep: deltas take the
+            // verdict's tone. NO REAL CHANGE / HOLDING / BASELINE stay in ink
+            // even when single reps came in a few seconds faster.
+            final deltaColor = switch (tone) {
+              RepTone.arc => t.accentArc,
+              RepTone.faster => t.semFaster,
+              RepTone.slower => t.semSlower,
+              RepTone.neutral => t.inkSecondary,
+            };
             rows.add(
               SizedBox(
                 height: barHeight,
