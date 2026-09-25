@@ -17,7 +17,7 @@ import '../helpers.dart';
 ///
 /// Scenario: synthetic 4x4 (4 × 4:00 / 3:00), notification LAP at 60 s, a
 /// 20 s pause at rep 2 + 90 s, a kill at rep 3 + 60 s with a 30 s dark gap and
-/// `resumeRecovered`, then stop at 30:00.
+/// `resumeRecovered`, then stop 10 s into the cool-down (27:00).
 const String tracePath =
     'packages/run_engine/test/fixtures/contract-events/events_4x4_pause_kill.ndjson';
 
@@ -300,13 +300,14 @@ void main() {
       expect(fresh.snapshot.recording, isTrue);
       expect(ctl.snapshot.phaseRemainingMs, fresh.snapshot.phaseRemainingMs);
 
-      // Rep 3 ends at 1190 s (gap excluded from the phase clock); recovery 4
-      // precedes cool-down; the run stops at 30:00 with 9 laps.
+      // Rep 3 ends at 1190 s (gap excluded from the phase clock); rep 4 goes
+      // straight to cool-down (no recovery after the last rep); the run stops
+      // at 27:00 with 8 laps.
       await trace.playUntil(1191000);
       expect(phaseTitle(fresh.snapshot), 'RECOVERY 3 OF 4');
+      await trace.playUntil(1371000);
+      expect(phaseTitle(fresh.snapshot), 'REP 4 OF 4');
       await trace.playUntil(1611000);
-      expect(phaseTitle(fresh.snapshot), 'RECOVERY 4 OF 4');
-      await trace.playUntil(1791000);
       expect(phaseTitle(fresh.snapshot), 'COOL-DOWN');
       // Ghost paces use activeMs, so the 20 s pause in rep 2 and the 30 s
       // dark gap in rep 3 do not inflate them (every work lap is 240 s
@@ -322,9 +323,9 @@ void main() {
       expect((laps[3]['tMs'] as int) - (laps[2]['tMs'] as int), 260000);
       expect(laps[5]['activeMs'], 240000);
       expect((laps[5]['tMs'] as int) - (laps[4]['tMs'] as int), 270000);
-      await trace.playUntil(1800000);
+      await trace.playUntil(1620000);
       expect(fresh.snapshot.state, RecorderState.idle);
-      expect(fresh.snapshot.lapIndex, 9);
+      expect(fresh.snapshot.lapIndex, 8);
       expect(
         fresh.repCompletePulse.value,
         2,
@@ -332,7 +333,7 @@ void main() {
       );
       expect(ctl.repCompletePulse.value, 4);
       expect(ctl.repStartPulse.value, 3);
-      expect(ctl.lapPulse.value, 9);
+      expect(ctl.lapPulse.value, 8);
       expect(ctl.snapshot.fault, isNull);
       fresh.dispose();
     },

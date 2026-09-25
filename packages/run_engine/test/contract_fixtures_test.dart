@@ -64,8 +64,10 @@ void main() {
       expect(v2.readSchema, 2);
       expect(v2.mode, RunMode.fourByFour);
       expect(v2.preset, Preset.standard);
-      expect(v2.laps.length, 10);
-      expect(v2.samples.length, 1800);
+      // No recovery after the last rep: 9 laps, stopped 60 s into cool-down
+      // (27:00); the work reps match the frozen 10-lap schema-1 recording.
+      expect(v2.laps.length, 9);
+      expect(v2.samples.length, 1620);
       final a1 = engine.analyze(
         v1,
         profile: const UserProfile(maxHr: 185),
