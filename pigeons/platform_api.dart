@@ -184,6 +184,7 @@ class OrphanJournal {
     required this.lastLineAgeMs,
     required this.mode,
     required this.readable,
+    required this.newer,
     required this.endedPaused,
     required this.elapsedMs,
   });
