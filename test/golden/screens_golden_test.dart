@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/app/routes.dart';
+import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/home_screen.dart';
@@ -272,6 +273,43 @@ void main() {
     );
     await pumpTimes(tester, 6);
     await golden(tester, 'detail_free');
+  });
+
+  testWidgets('verdict: indoor run', (tester) async {
+    final indoor = fourByFourFile(n: 6, start: d1, indoor: true);
+    await verdictGolden(tester, [indoor], indoor.id, 'verdict_indoor');
+  });
+
+  testWidgets('run detail: map failed to load, no Play services', (
+    tester,
+  ) async {
+    final free = freeRunFile(n: 3, start: d1);
+    await pumpApp(
+      tester,
+      fakeServices(
+        files: [free],
+        maps: const FakeMapSurfaceFactory(available: true, failLoad: true),
+      ),
+      home: RunDetailScreen(runId: free.id),
+    );
+    await pumpTimes(tester, 6);
+    await golden(tester, 'detail_map_failed');
+    await pumpApp(
+      tester,
+      fakeServices(
+        files: [free],
+        maps: const FakeMapSurfaceFactory(available: true),
+        permissions: FakePermissionsGateway(
+          snapshot: const PermissionSnapshot(
+            fineLocation: true,
+            gmsAvailable: false,
+          ),
+        ),
+      ),
+      home: RunDetailScreen(runId: free.id),
+    );
+    await pumpTimes(tester, 6);
+    await golden(tester, 'detail_no_gms');
   });
 
   testWidgets('fix laps: flagged run', (tester) async {

@@ -113,7 +113,7 @@ void main() {
     final services = fakeServices();
     await pumpApp(tester, services, home: SettingsScreen(now: now));
     await pumpTimes(tester, 3);
-    await tester.tap(find.text('Max HR'));
+    await tester.tap(find.text('Max HR (entered)'));
     await settleAnimations(tester);
     await tester.enterText(find.byType(TextField), '300');
     await tester.tap(find.text('SAVE'));
@@ -145,6 +145,13 @@ void main() {
     await tester.tap(find.text('Battery optimisation'));
     await pumpTimes(tester, 4);
     expect(perms.batteryExemptionRequests, 1);
+    expect(find.text('NEEDED'), findsOneWidget, reason: 'page only opened');
+    // The user grants it on the system page and comes back: refresh on resume.
+    perms.snapshot = perms.snapshot.copyWith(batteryUnrestricted: true);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await pumpTimes(tester, 4);
+    expect(find.text('NEEDED'), findsNothing);
     expect(find.text('OK'), findsWidgets);
   });
 

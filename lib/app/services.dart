@@ -19,6 +19,7 @@ import '../state/history_store.dart';
 import '../state/max_hr.dart';
 import '../state/recording_controller.dart';
 import '../state/settings.dart';
+import '../state/zone_memento.dart';
 
 const bool kFakePlatform = bool.fromEnvironment('RUN_SOLO_FAKE');
 
@@ -33,12 +34,14 @@ class AppServices {
     required this.transfer,
     RecordingController? recording,
     DateTime Function()? now,
+    ZoneMementoStore? zoneMemento,
   }) : now = now ?? DateTime.now,
        recording =
            recording ??
            RecordingController(
              recorder,
              now: now,
+             zoneMemento: zoneMemento,
              maxHr: () => MaxHr.resolve(
                settings.settings,
                (now ?? DateTime.now)(),
@@ -115,6 +118,7 @@ class AppServices {
       ),
       maps: const GoogleMapSurfaceFactory(),
       transfer: const ShareSheetTransferGateway(),
+      zoneMemento: FileZoneMementoStore(Directory('${support.path}/state')),
     );
   }
 

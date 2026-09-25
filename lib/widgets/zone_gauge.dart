@@ -11,10 +11,14 @@ class ZoneHeader extends StatelessWidget {
     super.key,
     required this.zone,
     required this.paired,
+    this.dropped = false,
     this.onZoneBackground = true,
   });
   final int zone;
   final bool paired;
+
+  /// No reading right now: label says RECONNECTING, gauge keeps the zone.
+  final bool dropped;
 
   /// Bone labels when a zone background is active (A1), else secondary ink.
   final bool onZoneBackground;
@@ -22,9 +26,9 @@ class ZoneHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final label = HrZones.label(zone, paired: paired);
+    final label = HrZones.label(dropped ? 0 : zone, paired: paired);
     return Semantics(
-      label: zone > 0
+      label: zone > 0 && !dropped
           ? 'Heart rate zone $zone, ${HrZones.words[zone].toLowerCase()}'
           : label.toLowerCase(),
       child: Row(

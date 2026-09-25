@@ -31,6 +31,14 @@ abstract final class Fmt {
   static String paceUnit(double? secPerKm, Units units) =>
       secPerKm == null ? '--' : engine.PaceFormat.pace(secPerKm, _u(units));
 
+  /// "0.62" (unit in the column header).
+  static String distanceBare(double metres, Units units) {
+    final v = units == Units.mi
+        ? metres / engine.PaceFormat.metresPerMile
+        : metres / 1000;
+    return v.toStringAsFixed(2);
+  }
+
   /// "0.62 km" / "0.39 mi".
   static String distance(double metres, Units units) {
     final v = units == Units.mi

@@ -54,15 +54,17 @@ class _VerdictScreenState extends State<VerdictScreen> {
     if (detail == null) return (null, null);
     final all = await services.history.list();
     final previous = previousFourByFour(all, detail.summary);
-    if (widget.justFinished) {
-      final observed =
-          detail.analysis.fourByFour?.observedMaxHrThisRun ??
-          detail.analysis.laps?.observedMaxHrThisRun;
-      if (observed != null) {
-        await services.settings.update(
-          (s) => MaxHr.foldObserved(s, observed, detail.run.end),
-        );
-      }
+    // Fold on every load, not only right after Stop: the guard ignores
+    // anything at or below the stored value, so this is idempotent, and a
+    // run whose verdict screen never opened (app died after Stop) still
+    // folds the next time it is viewed.
+    final observed =
+        detail.analysis.fourByFour?.observedMaxHrThisRun ??
+        detail.analysis.laps?.observedMaxHrThisRun;
+    if (observed != null) {
+      await services.settings.update(
+        (s) => MaxHr.foldObserved(s, observed, detail.run.end),
+      );
     }
     return (detail, previous);
   }

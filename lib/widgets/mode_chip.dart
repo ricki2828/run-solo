@@ -41,8 +41,8 @@ class ModeChipRow extends StatelessWidget {
               },
               subtitle: switch (m) {
                 RecordMode.fourByFour =>
-                  '$reps × 4:00 · ${Fmt.recovery(recoverySeconds)}',
-                RecordMode.laps => 'Tap LAP each interval',
+                  '$reps × 4:00\n${Fmt.recovery(recoverySeconds)} rec',
+                RecordMode.laps => 'LAP by hand',
                 RecordMode.free => 'Just run',
                 RecordMode.cooper => '12 minutes',
               },
@@ -112,9 +112,12 @@ class ModeChip extends StatelessWidget {
               const SizedBox(height: Space.x4),
               Text(
                 subtitle,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                style: RunSoloType.label13.copyWith(
+                  color: t.inkSecondary,
+                  height: 1.2,
+                ),
               ),
             ],
           ),

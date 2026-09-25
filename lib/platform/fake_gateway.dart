@@ -596,7 +596,6 @@ class FakePermissionsGateway implements PermissionsGateway {
   @override
   Future<void> openBatterySettings() async {
     batterySettingsOpened += 1;
-    snapshot = snapshot.copyWith(batteryUnrestricted: true);
   }
 
   int batteryExemptionRequests = 0;
@@ -604,13 +603,13 @@ class FakePermissionsGateway implements PermissionsGateway {
   /// Scripted outcome of the system exemption dialog.
   bool grantBatteryExemption = true;
 
+  /// Mirrors the real path: the page opens, nothing changes until the user
+  /// returns; tests flip [snapshot] and resume the app.
   @override
   Future<bool> requestBatteryExemption() async {
     batteryExemptionRequests += 1;
-    if (grantBatteryExemption) {
-      snapshot = snapshot.copyWith(batteryUnrestricted: true);
-    }
-    return grantBatteryExemption;
+    batterySettingsOpened += 1;
+    return snapshot.batteryUnrestricted;
   }
 
   @override

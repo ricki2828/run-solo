@@ -20,8 +20,27 @@ class PermissionsScreen extends StatefulWidget {
   State<PermissionsScreen> createState() => _PermissionsScreenState();
 }
 
-class _PermissionsScreenState extends State<PermissionsScreen> {
+class _PermissionsScreenState extends State<PermissionsScreen>
+    with WidgetsBindingObserver {
   PermissionSnapshot? _snap;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Back from a system settings page (battery, app info): re-read.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
 
   @override
   void didChangeDependencies() {
@@ -86,8 +105,8 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
           children: [
             const SizedBox(height: Space.x8),
             Text(
-              'Your recorded route, times and heart rate stay on your phone.',
-              style: text.bodyLarge?.copyWith(color: t.inkSecondary),
+              kPrivacyParagraph,
+              style: text.bodyMedium?.copyWith(color: t.inkSecondary),
             ),
             if (widget.onboarding)
               Padding(

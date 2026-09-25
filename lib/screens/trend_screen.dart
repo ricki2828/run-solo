@@ -213,8 +213,7 @@ class _FourByFourTrend extends StatelessWidget {
         ),
         const SizedBox(height: Space.x8),
         Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
               Fmt.paceUnit(current, units),
@@ -222,18 +221,27 @@ class _FourByFourTrend extends StatelessWidget {
               style: RunSoloType.display64.copyWith(color: t.inkPrimary),
             ),
             const SizedBox(width: Space.x16),
-            if (delta != null) ...[
-              DeltaGlyph(
-                direction: DeltaGlyph.forDelta(delta, dead: floor),
-                color: deltaColor,
-                size: 16,
+            if (delta != null)
+              Padding(
+                // Sit the glyph on the number's x-height, not the cap line.
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    DeltaGlyph(
+                      direction: DeltaGlyph.forDelta(delta, dead: floor),
+                      color: deltaColor,
+                      size: 14,
+                    ),
+                    const SizedBox(width: Space.x4),
+                    Text(
+                      _deltaText(delta, units),
+                      style: RunSoloType.title28.copyWith(color: deltaColor),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(width: Space.x4),
-              Text(
-                _deltaText(delta, units),
-                style: RunSoloType.title28.copyWith(color: deltaColor),
-              ),
-            ],
           ],
         ),
         const SizedBox(height: Space.x24),

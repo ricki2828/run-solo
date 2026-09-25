@@ -204,7 +204,15 @@ class _RecordingScreenState extends State<RecordingScreen>
                         if (s.lapsEnabled) ...[
                           _TimerBlock(s: s, ctl: ctl),
                           const Spacer(),
-                          _Stats(s: s, units: settings.units),
+                          // The PAUSED card sits here; keep the space, hide
+                          // the numbers so nothing peeks out around it.
+                          Visibility(
+                            visible: !s.paused,
+                            maintainSize: true,
+                            maintainAnimation: true,
+                            maintainState: true,
+                            child: _Stats(s: s, units: settings.units),
+                          ),
                         ] else
                           _FreeRunBlock(
                             s: s,
@@ -213,7 +221,16 @@ class _RecordingScreenState extends State<RecordingScreen>
                             maxHr: maxHr,
                           ),
                         const SizedBox(height: Space.x12),
-                        GpsBar(accuracyM: s.gpsAccuracyM, lost: s.gpsLost),
+                        Visibility(
+                          visible: !s.paused,
+                          maintainSize: true,
+                          maintainAnimation: true,
+                          maintainState: true,
+                          child: GpsBar(
+                            accuracyM: s.gpsAccuracyM,
+                            lost: s.gpsLost,
+                          ),
+                        ),
                         const SizedBox(height: Space.x16),
                         if (s.lapsEnabled)
                           LapButton(
@@ -340,6 +357,10 @@ class _Header extends StatelessWidget {
                   ? ZoneHeader(
                       zone: s.zone,
                       paired: s.hrPaired,
+                      // A1: the label reads the strap state as soon as the
+                      // reading drops; the background keeps the last zone
+                      // until the tracker's 5 s loss rule.
+                      dropped: s.hr == null,
                       onZoneBackground: onZone,
                     )
                   : Text(
@@ -490,7 +511,7 @@ class _TimerBlock extends StatelessWidget {
           digits,
         const SizedBox(height: Space.x8),
         Text(
-          timerCaption(s),
+          s.paused ? '' : timerCaption(s),
           style: RunSoloType.label13.copyWith(color: secondary),
         ),
       ],

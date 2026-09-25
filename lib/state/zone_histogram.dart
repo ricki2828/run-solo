@@ -7,10 +7,17 @@ import 'package:run_engine/run_engine.dart' as engine;
 /// per addendum A1 shares, no hysteresis needed for a histogram).
 List<double> zoneSecondsOf(engine.RunFile run, int maxHrUsed) {
   final out = List<double>.filled(6, 0);
-  for (final s in run.samples) {
+  final samples = run.samples;
+  for (var i = 0; i < samples.length; i++) {
+    final s = samples[i];
+    // Weight by the gap to the next sample, capped so a dropout or a pause
+    // does not credit minutes to one reading.
+    final dt = i + 1 < samples.length
+        ? ((samples[i + 1].tMs - s.tMs) / 1000).clamp(0.0, 5.0)
+        : 1.0;
     final hr = s.hr;
     if (hr == null) {
-      out[0] += 1;
+      out[0] += dt;
       continue;
     }
     final f = hr / maxHrUsed;
@@ -23,7 +30,7 @@ List<double> zoneSecondsOf(engine.RunFile run, int maxHrUsed) {
         : f < 0.9
         ? 4
         : 5;
-    out[z] += 1;
+    out[z] += dt;
   }
   return out;
 }

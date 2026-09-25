@@ -197,27 +197,33 @@ class _Header extends StatelessWidget {
           style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
         ),
         const SizedBox(height: Space.x12),
+        // Labels share one bottom edge; the numbers scale down to fit.
         Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Expanded(
               child: StatTile(
                 label: 'time',
                 value: Fmt.clock(d.summary.durationMs),
+                size: 36,
               ),
             ),
+            const SizedBox(width: Space.x16),
             Expanded(
               child: StatTile(
                 label: 'distance',
                 value: Fmt.distance(free.distanceM, units),
+                size: 36,
               ),
             ),
+            const SizedBox(width: Space.x16),
             Expanded(
               child: StatTile(
                 label: avgHr == null ? 'pace' : 'avg hr',
                 value: avgHr == null
                     ? Fmt.pace(free.avgPaceSecPerKm, units)
                     : '${avgHr.round()}',
+                size: 36,
               ),
             ),
           ],
@@ -229,22 +235,39 @@ class _Header extends StatelessWidget {
 
 /// Map card states (A4): route on Google (or the shape fallback), "Indoor
 /// run, no route", "Map needs Google Play services".
-class _MapCard extends StatelessWidget {
+class _MapCard extends StatefulWidget {
   const _MapCard({required this.route, required this.indoor});
   final RouteGeometry route;
   final bool indoor;
 
   @override
+  State<_MapCard> createState() => _MapCardState();
+}
+
+class _MapCardState extends State<_MapCard> {
+  Future<PermissionSnapshot>? _perms;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _perms ??= AppServices.of(context).permissions.status();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final services = AppServices.of(context);
-    if (indoor || route.isEmpty) {
+    final route = widget.route;
+    if (widget.indoor || route.isEmpty) {
       return _MapMessage(text: 'Indoor run, no route');
     }
     return FutureBuilder<PermissionSnapshot>(
-      future: services.permissions.status(),
+      future: _perms,
       builder: (context, snap) {
-        final gms = snap.data?.gmsAvailable ?? true;
+        // Until the GMS check answers, draw our own shape: never a
+        // GoogleMap for a frame on a device without Play services.
+        if (!snap.hasData) return RouteShape(route: route);
+        final gms = snap.data!.gmsAvailable;
         if (!gms && services.maps.available) {
           return Stack(
             fit: StackFit.expand,
@@ -566,7 +589,9 @@ class _LapsTable extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _TableHeader(cells: const ['Lap', 'Time', 'Dist', 'Pace', 'HR']),
+        _TableHeader(
+          cells: ['Lap', 'Time', units == Units.mi ? 'Mi' : 'Km', 'Pace', 'HR'],
+        ),
         for (final r in view.laps)
           _TableRow(
             highlight: r.number == view.fastestLapNumber,
@@ -574,7 +599,7 @@ class _LapsTable extends StatelessWidget {
             cells: [
               '${r.number}',
               Fmt.clock((r.movingSeconds * 1000).round()),
-              Fmt.distance(r.distanceM, units),
+              Fmt.distanceBare(r.distanceM, units),
               Fmt.pace(r.paceSecPerKm, units),
               r.meanHr == null ? '--' : '${r.meanHr!.round()}',
             ],
@@ -788,6 +813,8 @@ class _TableRow extends StatelessWidget {
                     padding: EdgeInsets.only(left: i == 0 ? 0 : Space.x8),
                     child: Text(
                       cells[i],
+                      softWrap: false,
+                      overflow: TextOverflow.fade,
                       textAlign: i == 0 ? TextAlign.left : TextAlign.right,
                       style: RunSoloType.label13.copyWith(
                         fontSize: 15,

@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
 
 import '../theme/theme.dart';
+import 'blank_snapshot.dart';
 import 'map_surface.dart';
 import 'route_builder.dart';
 
@@ -58,18 +59,60 @@ class _GoogleRouteMapState extends State<_GoogleRouteMap> {
 
   Set<gm.Marker> _markers = const {};
   bool _failed = false;
-  bool _ready = false;
+  bool _prepared = false;
+  bool _checked = false;
+  gm.GoogleMapController? _controller;
   Timer? _loadWatch;
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Theme / MediaQuery are read here, never in initState (P2-3).
+    if (_prepared) return;
+    _prepared = true;
     _prepare();
-    // A blank canvas (missing key, SHA mismatch) never reports an error; if
-    // the map has not called back within 8 s we show the failed state (W9).
-    _loadWatch = Timer(const Duration(seconds: 8), () {
-      if (mounted && !_ready) setState(() => _failed = true);
+    // A rejected key or an unregistered signing SHA-1 still creates the map
+    // and fires onMapCreated, so that callback proves nothing (W9). The
+    // first camera idle triggers a snapshot check; if neither the idle nor
+    // the snapshot has settled in 10 s, show the failed state anyway.
+    _loadWatch = Timer(const Duration(seconds: 10), () {
+      if (mounted && !_checked) setState(() => _failed = true);
     });
+  }
+
+  /// After the first idle: a flat single-colour canvas means no tiles were
+  /// authorised. Styled tiles plus the Bone polyline are never flat.
+  Future<void> _checkBlank() async {
+    if (_checked) return;
+    final c = _controller;
+    if (c == null) return;
+    _checked = true;
+    _loadWatch?.cancel();
+    try {
+      // Tiles can land a beat after the idle callback.
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      final png = await c.takeSnapshot();
+      if (png == null) {
+        if (mounted) setState(() => _failed = true);
+        return;
+      }
+      final codec = await ui.instantiateImageCodec(png);
+      final frame = await codec.getNextFrame();
+      final rgba = await frame.image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      );
+      final blank =
+          rgba == null ||
+          isBlankSnapshot(
+            rgba.buffer.asUint8List(),
+            width: frame.image.width,
+            height: frame.image.height,
+          );
+      if (blank && mounted) setState(() => _failed = true);
+    } catch (e) {
+      debugPrint('map: snapshot check failed ($e)');
+      if (mounted) setState(() => _failed = true);
+    }
   }
 
   @override
@@ -224,11 +267,11 @@ class _GoogleRouteMapState extends State<_GoogleRouteMap> {
       },
       markers: _markers,
       onMapCreated: (c) {
-        _ready = true;
-        _loadWatch?.cancel();
+        _controller = c;
         // Fit with 24 dp padding (A4). Lite mode has no animation.
         unawaited(c.moveCamera(gm.CameraUpdate.newLatLngBounds(bounds, 24)));
       },
+      onCameraIdle: _checkBlank,
     );
     return ClipRRect(
       borderRadius: widget.interactive

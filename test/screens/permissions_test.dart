@@ -66,6 +66,7 @@ void main() {
     await pumpTimes(tester);
     expect(find.text('DENIED'), findsNWidgets(2));
     expect(find.textContaining('Approximate only'), findsOneWidget);
+    await scrollTo(tester, find.text('DONE'));
     final done = tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'DONE'),
     );
@@ -87,6 +88,11 @@ void main() {
     await tester.tap(row('Battery optimisation off'));
     await pumpTimes(tester);
     expect(perms.batteryExemptionRequests, 1);
+    expect(find.text('NEEDED'), findsOneWidget, reason: 'page only opened');
+    perms.snapshot = perms.snapshot.copyWith(batteryUnrestricted: true);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await pumpTimes(tester);
     expect(find.text('NEEDED'), findsNothing);
   });
 
@@ -104,6 +110,7 @@ void main() {
       pushArguments: true,
     );
     await pumpTimes(tester, 4);
+    await scrollTo(tester, find.text('CONTINUE'));
     expect(find.text('CONTINUE'), findsOneWidget);
     await scrollTo(tester, find.text('Skip for now'));
     await tester.tap(find.text('Skip for now'));

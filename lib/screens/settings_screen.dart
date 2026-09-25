@@ -37,9 +37,28 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen>
+    with WidgetsBindingObserver {
   PermissionSnapshot? _perms;
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Back from the system battery page: re-read the exemption.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshPerms();
+  }
 
   void _toast(String text) {
     if (!mounted) return;
@@ -156,7 +175,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: () => Navigator.of(context).pushNamed(Routes.pairing),
               ),
               SettingsRow(
-                label: 'Max HR',
+                label: 'Max HR (entered)',
                 value: s.typedMaxHr == null ? 'Not entered' : '${s.typedMaxHr}',
                 onTap: () => _editNumber(
                   context,
@@ -610,7 +629,7 @@ class _Toggle extends StatelessWidget {
 }
 
 /// Battery shortcut row (Phase 2 backlog): one line of why, opens the
-/// system exemption dialog via the gateway.
+/// system battery page via the gateway; the pill refreshes on resume.
 class _BatteryRow extends StatelessWidget {
   const _BatteryRow({required this.perms, required this.onTap});
   final PermissionSnapshot? perms;

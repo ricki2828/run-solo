@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../platform/gateway.dart';
+import 'zone_memento.dart';
 
 @immutable
 class RecordingSnapshot {
@@ -167,8 +168,10 @@ class RecordingController extends ChangeNotifier {
     this._gateway, {
     DateTime Function()? now,
     int Function()? maxHr,
+    ZoneMementoStore? zoneMemento,
   }) : _now = now ?? DateTime.now,
-       _maxHr = maxHr ?? (() => 190);
+       _maxHr = maxHr ?? (() => 190),
+       _zoneMemento = zoneMemento ?? MemoryZoneMementoStore();
 
   final RecorderGateway _gateway;
   final DateTime Function() _now;
@@ -180,7 +183,9 @@ class RecordingController extends ChangeNotifier {
   /// The engine's zone tracker (plan §18.1): hysteresis, dwell, loss and
   /// first-sample rules live there, fixture-tested; this only feeds ticks.
   engine.HrZoneTracker? _tracker;
-  int? _lastHr;
+
+  /// Last zone of the live run on disk, for a recreated isolate (W4).
+  final ZoneMementoStore _zoneMemento;
 
   RecordingSnapshot _snap = const RecordingSnapshot();
   RecordingSnapshot get snapshot => _snap;
@@ -206,16 +211,28 @@ class RecordingController extends ChangeNotifier {
   /// Activity is recreated.
   Future<void> attach() async {
     _sub ??= _gateway.events.listen(_onEvent);
-    // Recreated UI (W4): seed the tracker with the last zone so the first
-    // frame paints it instead of black for 5 s. `status()` carries no HR.
-    _tracker ??= _snap.zone == 0
-        ? engine.HrZoneTracker(maxHr: _maxHr().toDouble())
-        : engine.HrZoneTracker.seeded(
-            maxHr: _maxHr().toDouble(),
-            zone: _snap.zone,
-            hr: _lastHr,
-            atMs: _snap.elapsedMs,
-          );
+    if (_tracker == null) {
+      // Recreated isolate (W4): `status()` carries no HR, so the last zone
+      // comes from the memento the previous isolate wrote for this run.
+      // Seed the tracker and paint that zone before the first tick.
+      final status = await _gateway.status();
+      final m = await _zoneMemento.load();
+      final live =
+          status.state == RecorderState.recording ||
+          status.state == RecorderState.paused;
+      if (live && m != null && m.runId == status.runId && m.zone > 0) {
+        _tracker = engine.HrZoneTracker.seeded(
+          maxHr: _maxHr().toDouble(),
+          zone: m.zone,
+          hr: m.hr,
+          atMs: m.elapsedMs,
+        );
+        _snap = _snap.copyWith(zone: m.zone, runId: status.runId);
+        notifyListeners();
+      } else {
+        _tracker = engine.HrZoneTracker(maxHr: _maxHr().toDouble());
+      }
+    }
     await refreshStatus();
   }
 
@@ -271,7 +288,6 @@ class RecordingController extends ChangeNotifier {
 
   void _reset(RecordMode mode, Preset? preset) {
     _lastLapDistanceM = 0;
-    _lastHr = null;
     _tracker = engine.HrZoneTracker(maxHr: _maxHr().toDouble());
     _snap = RecordingSnapshot(
       mode: mode,
@@ -293,6 +309,7 @@ class RecordingController extends ChangeNotifier {
   /// Throws what the platform throws; the screen decides what to show.
   Future<String?> stop() async {
     final id = await _gateway.stop();
+    unawaited(_zoneMemento.save(null));
     _snap = _snap.copyWith(state: RecorderState.idle);
     notifyListeners();
     return id;
@@ -335,10 +352,22 @@ class RecordingController extends ChangeNotifier {
   void _onTick(TickEvent t) {
     _lastTickAt = _now();
     final fix = t.gpsAccuracyM != null;
-    if (t.hr != null) _lastHr = t.hr;
-    final zone = (_tracker ??= engine.HrZoneTracker(
+    final update = (_tracker ??= engine.HrZoneTracker(
       maxHr: _maxHr().toDouble(),
-    )).update(t.elapsedMs, t.hr).state.zone;
+    )).update(t.elapsedMs, t.hr);
+    final zone = update.state.zone;
+    if (update.changed && _snap.runId != null) {
+      unawaited(
+        _zoneMemento.save(
+          ZoneMemento(
+            runId: _snap.runId!,
+            zone: zone,
+            hr: t.hr,
+            elapsedMs: t.elapsedMs,
+          ),
+        ),
+      );
+    }
     _snap = _snap.copyWith(
       state: t.state,
       phase: t.phase,
