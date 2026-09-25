@@ -69,7 +69,7 @@ void main() {
 
       test(
         'wrong schema',
-        () => expectRejected(valid()..['schema'] = 2, 'schema'),
+        () => expectRejected(valid()..['schema'] = 0, 'schema'),
       );
       test('bad id', () => expectRejected(valid()..['id'] = '../run 1', 'id'));
       test(

@@ -6,7 +6,19 @@ void main() {
     expect(engineVersion, 1);
   });
 
-  test('exactly two run modes exist in v1', () {
-    expect(RunMode.values, [RunMode.fourByFour, RunMode.free]);
+  test('run modes are pinned in Pigeon/core-jvm order (§18.2, §18.4)', () {
+    expect(RunMode.values, [
+      RunMode.fourByFour,
+      RunMode.laps,
+      RunMode.free,
+      RunMode.cooper,
+    ]);
+  });
+
+  test('run file and sidecar write schema 2 and read from 1', () {
+    expect(RunFile.schema, 2);
+    expect(RunFile.minReadSchema, 1);
+    expect(RunSidecar.schema, 2);
+    expect(RunSidecar.minReadSchema, 1);
   });
 }

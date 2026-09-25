@@ -11,14 +11,33 @@ import 'helpers.dart';
 /// formatting (`Instant.toString()` without millis, integral doubles as
 /// ints, full-precision doubles, no-fix ticks as `[t,null×5,dist,hr]`).
 void main() {
-  // schema1/: frozen Phase-1 writer output. schema2/ (mode laps/free, `schema: 2`)
-  // is covered once the engine's schema-2 reader lands (plan §18.7).
-  final dir = Directory('test/fixtures/contract/schema1');
-  RunFile load(String name) =>
-      RunFileCodec.decode(File('${dir.path}/$name.json').readAsStringSync());
+  final dir = Directory('test/fixtures/contract');
 
-  test('all four contract fixtures decode and re-encode stably', () {
-    for (final f in dir.listSync().whereType<File>()) {
+  /// Schema-2 fixtures live at the top level; the schema-1 set is frozen
+  /// under `contract/schema1/` (§18.7). A name is looked up in both so the
+  /// tests below survive the writer's move.
+  File fileOf(String name) {
+    for (final candidate in [
+      File('${dir.path}/$name.json'),
+      File('${dir.path}/schema1/$name.json'),
+    ]) {
+      if (candidate.existsSync()) return candidate;
+    }
+    fail('contract fixture $name missing from $dir and $dir/schema1');
+  }
+
+  RunFile load(String name) =>
+      RunFileCodec.decode(fileOf(name).readAsStringSync());
+
+  List<File> allFixtures() => [
+    for (final f in dir.listSync(recursive: true).whereType<File>())
+      if (f.path.endsWith('.json')) f,
+  ];
+
+  test('every contract fixture decodes and re-encodes stably', () {
+    final files = allFixtures();
+    expect(files, isNotEmpty, reason: 'an empty dir must fail, never pass');
+    for (final f in files) {
       final text = f.readAsStringSync();
       expect(text, contains('T00:00:00Z"'), reason: 'Instant.toString()');
       expect(text, contains('"d0":0,'), reason: 'integral double as int');
@@ -26,7 +45,23 @@ void main() {
       final canonical = RunFileCodec.encode(run);
       expect(RunFileCodec.encode(RunFileCodec.decode(canonical)), canonical);
       expect(run.start, DateTime.utc(2025, 9, 24));
+      final inSchema1Dir = f.path.contains('/schema1/');
+      expect(
+        run.readSchema,
+        inSchema1Dir ? 1 : anyOf(1, 2),
+        reason: 'frozen schema-1 copies stay schema 1: ${f.path}',
+      );
     }
+  });
+
+  test('a frozen schema-1 fixture, once present, is byte-identical to the '
+      'copy that shipped with Phase 1', () {
+    // The four Phase-1 files are frozen read-only under schema1/ by the
+    // writer's PR; until then they sit at the top level. Either way the
+    // schema-1 `free` file must read as laps (§18.7 B1).
+    final run = load('free_run_pause_manual_laps');
+    expect(run.readSchema, 1);
+    expect(run.mode, RunMode.laps);
   });
 
   test(
@@ -136,13 +171,33 @@ void main() {
     expect(forced.verdict!.headline, VerdictHeadline.noVerdict);
   });
 
-  test('free run with a pause and manual laps: moving time and splits', () {
+  test('v1 free run with a pause and manual laps: reads as Laps, gets the '
+      'lap table with the pause taken out of lap 2', () {
     final run = load('free_run_pause_manual_laps');
     expect(run.pauses, [const Span(270000, 290000)]);
     expect(run.laps.map((l) => l.kind).toSet(), {LapKind.manual});
     expect(run.hasHr, isFalse);
     final a = engine.analyze(run, now: fixedNow);
     expect(a.verdict, isNull);
+    expect(a.mode, RunMode.laps);
+    final l = a.laps!;
+    expect(l.laps.length, 3);
+    expect(l.laps.every((r) => r.scored), isTrue);
+    // Lap 2 (180–360 s) holds the 20 s pause with dist frozen: 160 s moving
+    // over the recorded lap distance.
+    final lap2 = l.laps[1];
+    expect(lap2.movingSeconds, 160);
+    expect(lap2.distanceM, closeTo(run.laps[1].distanceM, 0.01));
+    expect(
+      lap2.paceSecPerKm,
+      closeTo(160 / run.laps[1].distanceM * 1000, 0.01),
+    );
+    expect(l.laps[0].movingSeconds, 180);
+    expect(l.hrPresent, isFalse);
+    expect(l.timeInBandSeconds, isNull);
+    expect(l.avgHr, isNull);
+    expect(l.fastestLapNumber, isNotNull);
+    expect(l.spreadSecPerKm, isNotNull);
     expect(a.freeRun.elapsedSeconds, 540);
     expect(a.freeRun.movingSeconds, 520);
     expect(a.freeRun.distanceM, closeTo(1552.3, 0.5));

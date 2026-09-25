@@ -20,6 +20,8 @@ class EngineConstants {
     this.zoneHighFraction = 0.95,
     this.medianSetSize = 6,
     this.bestBadgeFraction = 0.01,
+    this.scoredLapMinSeconds = 60,
+    this.scoredLapMinMetres = 100,
   });
 
   /// Run-to-run noise floor for work and recovery pace, s/km.
@@ -61,6 +63,11 @@ class EngineConstants {
 
   /// 365-day best badge needs > this fraction better than the best prior.
   final double bestBadgeFraction;
+
+  /// A Laps-run lap counts for fastest/spread only past both of these (a
+  /// short tail after the last press is listed, never scored).
+  final double scoredLapMinSeconds;
+  final double scoredLapMinMetres;
 
   /// Run 2 compares single vs single, doubling the variance: floor × sqrt(2).
   double get run2FloorSecPerKm => runFloorSecPerKm * math.sqrt2;
