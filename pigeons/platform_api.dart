@@ -541,6 +541,9 @@ class TickEvent extends RecorderEvent {
     required this.phase,
     required this.repIndex,
     required this.phaseRemainingMs,
+    this.stepIndex,
+    this.stepRemainingMs,
+    this.stepRemainingM,
   });
 
   /// Wall time since Start, pauses included.
@@ -561,6 +564,13 @@ class TickEvent extends RecorderEvent {
 
   /// Active-time countdown of the current timed phase (0 when untimed).
   int phaseRemainingMs;
+
+  /// As `RecorderStatus`: the 0-based step (null in warm-up/cool-down), the
+  /// time left in a time step, the metres left in a distance step (whose
+  /// `phaseRemainingMs` is 0).
+  int? stepIndex;
+  int? stepRemainingMs;
+  double? stepRemainingM;
 }
 
 class LapEvent extends RecorderEvent {

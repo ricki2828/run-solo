@@ -148,6 +148,7 @@ object EventTraceFixture {
                     "elapsedMs" to st.elapsedMs, "lapElapsedMs" to (t - lapStartT), "lapDistanceM" to (ticker.distanceM - lapStartDist),
                     "lapPaceLiveSecPerKm" to pace, "totalDistanceM" to ticker.distanceM, "hr" to last.hr, "gpsAccuracyM" to last.accuracyM,
                     "state" to st.state.name, "phase" to st.phase.name, "repIndex" to st.repIndex, "phaseRemainingMs" to st.phaseRemainingMs,
+                    "stepIndex" to st.stepIndex, "stepRemainingMs" to st.stepRemainingMs, "stepRemainingM" to st.stepRemainingM,
                 ),
             )
         }

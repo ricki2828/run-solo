@@ -401,6 +401,9 @@ class RecordingSession(
                     phase = st.phase.toPigeon(),
                     repIndex = st.repIndex.toLong(),
                     phaseRemainingMs = st.phaseRemainingMs,
+                    stepIndex = st.stepIndex?.toLong(),
+                    stepRemainingMs = st.stepRemainingMs,
+                    stepRemainingM = st.stepRemainingM,
                 ),
             )
         }

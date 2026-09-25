@@ -1098,6 +1098,9 @@ class TickEvent extends RecorderEvent {
     required this.phase,
     required this.repIndex,
     required this.phaseRemainingMs,
+    this.stepIndex,
+    this.stepRemainingMs,
+    this.stepRemainingM,
   });
 
   /// Wall time since Start, pauses included.
@@ -1126,6 +1129,15 @@ class TickEvent extends RecorderEvent {
   /// Active-time countdown of the current timed phase (0 when untimed).
   int phaseRemainingMs;
 
+  /// As `RecorderStatus`: the 0-based step (null in warm-up/cool-down), the
+  /// time left in a time step, the metres left in a distance step (whose
+  /// `phaseRemainingMs` is 0).
+  int? stepIndex;
+
+  int? stepRemainingMs;
+
+  double? stepRemainingM;
+
   List<Object?> _toList() {
     return <Object?>[
       elapsedMs,
@@ -1139,6 +1151,9 @@ class TickEvent extends RecorderEvent {
       phase,
       repIndex,
       phaseRemainingMs,
+      stepIndex,
+      stepRemainingMs,
+      stepRemainingM,
     ];
   }
 
@@ -1159,6 +1174,9 @@ class TickEvent extends RecorderEvent {
       phase: result[8]! as Phase,
       repIndex: result[9]! as int,
       phaseRemainingMs: result[10]! as int,
+      stepIndex: result[11] as int?,
+      stepRemainingMs: result[12] as int?,
+      stepRemainingM: result[13] as double?,
     );
   }
 
@@ -1171,7 +1189,7 @@ class TickEvent extends RecorderEvent {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapElapsedMs, other.lapElapsedMs) && _deepEquals(lapDistanceM, other.lapDistanceM) && _deepEquals(lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && _deepEquals(totalDistanceM, other.totalDistanceM) && _deepEquals(hr, other.hr) && _deepEquals(gpsAccuracyM, other.gpsAccuracyM) && _deepEquals(state, other.state) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs);
+    return _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapElapsedMs, other.lapElapsedMs) && _deepEquals(lapDistanceM, other.lapDistanceM) && _deepEquals(lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && _deepEquals(totalDistanceM, other.totalDistanceM) && _deepEquals(hr, other.hr) && _deepEquals(gpsAccuracyM, other.gpsAccuracyM) && _deepEquals(state, other.state) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM);
   }
 
   @override

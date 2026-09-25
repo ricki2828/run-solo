@@ -1211,7 +1211,15 @@ data class TickEvent (
   val phase: Phase,
   val repIndex: Long,
   /** Active-time countdown of the current timed phase (0 when untimed). */
-  val phaseRemainingMs: Long
+  val phaseRemainingMs: Long,
+  /**
+   * As `RecorderStatus`: the 0-based step (null in warm-up/cool-down), the
+   * time left in a time step, the metres left in a distance step (whose
+   * `phaseRemainingMs` is 0).
+   */
+  val stepIndex: Long? = null,
+  val stepRemainingMs: Long? = null,
+  val stepRemainingM: Double? = null
 ) : RecorderEvent()
  {
   companion object {
@@ -1227,7 +1235,10 @@ data class TickEvent (
       val phase = pigeonVar_list[8] as Phase
       val repIndex = pigeonVar_list[9] as Long
       val phaseRemainingMs = pigeonVar_list[10] as Long
-      return TickEvent(elapsedMs, lapElapsedMs, lapDistanceM, lapPaceLiveSecPerKm, totalDistanceM, hr, gpsAccuracyM, state, phase, repIndex, phaseRemainingMs)
+      val stepIndex = pigeonVar_list[11] as Long?
+      val stepRemainingMs = pigeonVar_list[12] as Long?
+      val stepRemainingM = pigeonVar_list[13] as Double?
+      return TickEvent(elapsedMs, lapElapsedMs, lapDistanceM, lapPaceLiveSecPerKm, totalDistanceM, hr, gpsAccuracyM, state, phase, repIndex, phaseRemainingMs, stepIndex, stepRemainingMs, stepRemainingM)
     }
   }
   fun toList(): List<Any?> {
@@ -1243,6 +1254,9 @@ data class TickEvent (
       phase,
       repIndex,
       phaseRemainingMs,
+      stepIndex,
+      stepRemainingMs,
+      stepRemainingM,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -1253,7 +1267,7 @@ data class TickEvent (
       return true
     }
     val other = other as TickEvent
-    return PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapElapsedMs, other.lapElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapDistanceM, other.lapDistanceM) && PlatformApiPigeonUtils.deepEquals(this.lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.totalDistanceM, other.totalDistanceM) && PlatformApiPigeonUtils.deepEquals(this.hr, other.hr) && PlatformApiPigeonUtils.deepEquals(this.gpsAccuracyM, other.gpsAccuracyM) && PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs)
+    return PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapElapsedMs, other.lapElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapDistanceM, other.lapDistanceM) && PlatformApiPigeonUtils.deepEquals(this.lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.totalDistanceM, other.totalDistanceM) && PlatformApiPigeonUtils.deepEquals(this.hr, other.hr) && PlatformApiPigeonUtils.deepEquals(this.gpsAccuracyM, other.gpsAccuracyM) && PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM)
   }
 
   override fun hashCode(): Int {
@@ -1269,6 +1283,9 @@ data class TickEvent (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.phase)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.repIndex)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.phaseRemainingMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.stepIndex)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.stepRemainingMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.stepRemainingM)
     return result
   }
 }

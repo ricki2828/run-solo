@@ -55,6 +55,9 @@ object EventTrace {
                 m["phase"] = dartName(e.phase)
                 m["repIndex"] = e.repIndex
                 m["phaseRemainingMs"] = e.phaseRemainingMs
+                m["stepIndex"] = e.stepIndex
+                m["stepRemainingMs"] = e.stepRemainingMs
+                m["stepRemainingM"] = e.stepRemainingM
             }
             is LapEvent -> {
                 m["kind"] = "lap"
