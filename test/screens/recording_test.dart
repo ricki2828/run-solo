@@ -231,6 +231,29 @@ void main() {
     expect(fake.state, RecorderState.recording);
   });
 
+  testWidgets('Android 14 volume-key note: one amber line, run keeps going', (
+    tester,
+  ) async {
+    final (fake, services) = await openRecording(tester, mode: RecordMode.laps);
+    fake.emitFault(FaultKind.volumeKeyUnavailable, 'volume keys taken');
+    await settle(tester);
+    expect(
+      find.text(
+        "On Android 14, volume-key laps don't work while music plays. "
+        'Use the lock-screen LAP.',
+      ),
+      findsOneWidget,
+    );
+    expect(services.recording.snapshot.recording, isTrue);
+    expect(find.byType(LapButton), findsOneWidget);
+    // A GPS drop outranks the note; the note returns once GPS is back.
+    fake.gpsLost = true;
+    fake.advance(const Duration(seconds: 1));
+    await settle(tester);
+    expect(find.text('GPS dropped'), findsWidgets);
+    expect(find.textContaining('Android 14'), findsNothing);
+  });
+
   testWidgets('finalise enforces the backup budget (plan §4)', (tester) async {
     final storage = FakeStorageGateway();
     final fake = FakeRecorderGateway(now: now);

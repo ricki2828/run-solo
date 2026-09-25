@@ -455,7 +455,7 @@ class RecordingController extends ChangeNotifier {
       // volume-key laps are off for this run; notification LAP still works.
       FaultKind.volumeKeyUnavailable => _snap.copyWith(
         notice:
-            'Volume-key laps are off while music plays on Android 14. '
+            "On Android 14, volume-key laps don't work while music plays. "
             'Use the lock-screen LAP.',
       ),
       FaultKind.hrDisconnected => _snap.copyWith(clearHr: true),
