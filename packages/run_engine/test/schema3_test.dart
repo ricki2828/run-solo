@@ -307,7 +307,7 @@ void main() {
       );
       expect(parkrun.validate(), isEmpty);
       expect(SessionSpec.fromJson(parkrun.toJson()), parkrun);
-      expect(parkrun.comparisonKey, 'd5000x*');
+      expect(parkrun.comparisonKey, 'parkrun');
       final legacy = SessionSpec.norwegian4x4().toJson()..remove('autoStop');
       expect(SessionSpec.fromJson(legacy).autoStop, isFalse);
       expect(SessionSpec.fromJson(legacy), SessionSpec.norwegian4x4());
