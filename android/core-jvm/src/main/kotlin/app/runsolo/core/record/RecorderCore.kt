@@ -144,6 +144,13 @@ class RecorderCore(
     private var phaseTargetM: Long? = null
     private var pendingCues: ArrayDeque<CueScheduler.CuePoint> = ArrayDeque()
 
+    /**
+     * A step started by a manual LAP / `startReps` between two ticks: its start distance is
+     * re-read at the next tick, interpolated at the press time (as the run file sees it), so a
+     * distance step does not count the sample before the press.
+     */
+    private var pendingStartT: Long? = null
+
     /** Measured active time of the last work step (the equal-time recovery's length). */
     private var lastWorkActiveMs = 0L
     private var lastAutoLapT: Long? = null
@@ -245,6 +252,7 @@ class RecorderCore(
                 Phase.work, Phase.recovery -> out.addAll(advance(t, lastD))
                 Phase.cooldown, Phase.none -> Unit
             }
+            if (stepIndex != null) pendingStartT = t
         }
         return out
     }
@@ -262,6 +270,10 @@ class RecorderCore(
         val prevD = lastD
         lastD = distanceM
         lastDT = t
+        pendingStartT?.let { pt ->
+            phaseStartD = distanceAtTime(pt, prevT, prevD, t, distanceM)
+            pendingStartT = null
+        }
         val out = ArrayList<Output>()
         var guard = 0
         while (timed && guard++ < 256) {
@@ -306,7 +318,7 @@ class RecorderCore(
     private var lastBoundaryT = 0L
     private fun boundaryStartT(prevT: Long, t: Long) = lastBoundaryT.coerceIn(prevT, t)
 
-    private fun distanceAtTime(bt: Long, prevT: Long, prevD: Double, t: Long, d: Double): Double =
+    fun distanceAtTime(bt: Long, prevT: Long, prevD: Double, t: Long, d: Double): Double =
         if (t <= prevT) d else prevD + (d - prevD) * ((bt - prevT).toDouble() / (t - prevT)).coerceIn(0.0, 1.0)
 
     /** A due non-boundary cue, with its value; null when suppressed. */
@@ -503,12 +515,22 @@ class RecorderCore(
             core.start(base)
             val filter = PointFilter()
             var paused = false
+            var prevSampleT = base
             for (e in replay.events) {
                 val t = e.t + base
                 when (e) {
-                    is RunEvent.Sample -> if (e.hasFix && !paused) {
-                        filter.offer(LocationFix(e.t, e.lat!!, e.lon!!, e.altM, e.accuracyM!!, e.speedMps))
-                        core.lastD = filter.totalM
+                    is RunEvent.Sample -> {
+                        val before = filter.totalM
+                        if (e.hasFix && !paused) {
+                            filter.offer(LocationFix(e.t, e.lat!!, e.lon!!, e.altM, e.accuracyM!!, e.speedMps))
+                            core.lastD = filter.totalM
+                        }
+                        // As live: a step started by a press between two samples starts at the interpolated distance.
+                        core.pendingStartT?.let { pt ->
+                            core.phaseStartD = core.distanceAtTime(pt, prevSampleT, before, t, filter.totalM)
+                            core.pendingStartT = null
+                        }
+                        prevSampleT = t
                     }
                     is RunEvent.Lap -> {
                         // Replay bypasses every gate and guard: whatever was journaled did happen.

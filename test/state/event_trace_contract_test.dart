@@ -289,7 +289,7 @@ void main() {
       expect(phaseTitle(ctl.snapshot), 'RECOVERY 1 OF 3');
       expect(ctl.repCompletePulse.value, 1);
       expect(ctl.snapshot.repPaces, hasLength(1));
-      expect(ctl.snapshot.repPaces.single, closeTo(237.8, 0.5));
+      expect(ctl.snapshot.repPaces.single, closeTo(238.4, 0.5));
 
       // Pause at rep 2 + 90 s: countdown frozen at 150 s while elapsed runs.
       await trace.playUntil(571000);

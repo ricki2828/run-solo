@@ -120,6 +120,15 @@ class RecordingSession(
     private var lastNotificationRefreshWall = 0L
     private var gpsLostReported = false
 
+    /**
+     * Manual laps (button, notification, volume key, START REPS) wait for the next tick so their
+     * distance is interpolated at the press time from the two ticks around it, as the run file
+     * and engine see it (PR #26 review P3). Auto laps land on a tick boundary and go out at once.
+     */
+    private val pendingLaps = ArrayList<RecorderCore.Output.Lap>()
+    private var prevTickT = 0L
+    private var prevTickD = 0.0
+
     /** Distance step whose "GPS weak" was already said (once per step, W3). */
     private var gpsWeakStep: Int? = null
     private var replayLapsPressed = 0
@@ -152,6 +161,7 @@ class RecordingSession(
         writer.append(JournalLine.Header(t, startWallMs, runId, device, app, tz, mode, spec, units))
         core = RecorderCore(mode, spec, RecorderCore.Config(volumeKeyLaps = volumeKeyLapsEnabled))
         handle(core.start(t), t)
+        prevTickT = t
         lapStartT = t
         ExitDiagnostics.noteStart(context, runId, startWallMs)
         emitState()
@@ -217,6 +227,8 @@ class RecordingSession(
         }
         ticker.filter.reanchor() // the runner moved during the dark span; do not count the jump
         lapStartDist = lastLapDist
+        prevTickT = t
+        prevTickD = ticker.distanceM
         if (core.state == RecorderState.paused) ticker.onPause()
         ExitDiagnostics.noteResume(context, runId, nowWall)
         scheduleTick()
@@ -358,7 +370,10 @@ class RecordingSession(
         val samples = ticker.tick(t)
         for (s in samples) writer.append(s)
         val lost = ticker.gpsLost(t)
+        flushLaps(t)
         handle(core.tick(t, ticker.distanceM, gpsOk = !lost), t)
+        prevTickT = t
+        prevTickD = ticker.distanceM
         val last = samples.last()
         var pace: Double? = null
         if (last.hasFix) {
@@ -471,6 +486,7 @@ class RecordingSession(
         finished = true
         stopTicks()
         val t = clock()
+        flushLaps(t)
         val out = core.stop(t)
         refreshSnapshot()
         for (o in out) if (o is RecorderCore.Output.Cue) {
@@ -552,17 +568,7 @@ class RecordingSession(
                 is RecorderCore.Output.Lap -> {
                     writer.append(JournalLine.Lap(o.t, System.currentTimeMillis(), o.source))
                     lapCount = o.index + 1
-                    lapStartT = o.t
-                    lapStartDist = ticker.distanceM
-                    val st = core.status(o.t)
-                    val activeMs = st.activeMs - lapStartActive
-                    lapStartActive = st.activeMs
-                    laps.add(LapSummary(index = o.index.toLong(), tMs = st.elapsedMs, activeMs = activeMs, distanceM = ticker.distanceM, source = o.source.toPigeon()))
-                    RecorderEventBus.emit(
-                        LapEvent(index = o.index.toLong(), tMs = st.elapsedMs, activeMs = activeMs, distanceM = ticker.distanceM, source = o.source.toPigeon()),
-                    )
-                    Log.i(TAG, "lap index=${o.index} source=${o.source} t=${core.status(o.t).elapsedMs}")
-                    onNotificationChanged?.invoke()
+                    if (o.source == LapSource.auto) publishLap(o, ticker.distanceM) else pendingLaps.add(o)
                 }
                 is RecorderCore.Output.Cue -> {
                     writer.append(JournalLine.Cue(o.t, System.currentTimeMillis(), o.kind))
@@ -580,6 +586,25 @@ class RecordingSession(
                 }
             }
         }
+    }
+
+    /** Sends the manual laps pressed since the last tick, each at its interpolated distance. */
+    private fun flushLaps(t: Long) {
+        if (pendingLaps.isEmpty()) return
+        for (o in pendingLaps) publishLap(o, core.distanceAtTime(o.t, prevTickT, prevTickD, t, ticker.distanceM))
+        pendingLaps.clear()
+    }
+
+    private fun publishLap(o: RecorderCore.Output.Lap, distanceM: Double) {
+        lapStartT = o.t
+        lapStartDist = distanceM
+        val st = core.status(o.t)
+        val activeMs = st.activeMs - lapStartActive
+        lapStartActive = st.activeMs
+        laps.add(LapSummary(index = o.index.toLong(), tMs = st.elapsedMs, activeMs = activeMs, distanceM = distanceM, source = o.source.toPigeon()))
+        RecorderEventBus.emit(LapEvent(index = o.index.toLong(), tMs = st.elapsedMs, activeMs = activeMs, distanceM = distanceM, source = o.source.toPigeon()))
+        Log.i(TAG, "lap index=${o.index} source=${o.source} t=${st.elapsedMs}")
+        onNotificationChanged?.invoke()
     }
 
     private fun cueText(o: RecorderCore.Output.Cue): String? =

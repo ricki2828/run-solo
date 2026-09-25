@@ -105,19 +105,33 @@ object EventTraceFixture {
             emit("status", core.status(t).elapsedMs, status(t))
         }
 
+        val pendingLaps = ArrayList<RecorderCore.Output.Lap>()
+        var prevTickT = 0L
+        var prevTickD = 0.0
+
+        fun publishLap(o: RecorderCore.Output.Lap, distanceM: Double) {
+            val st = core.status(o.t)
+            val el = st.elapsedMs
+            val lap = linkedMapOf<String, Any?>("index" to o.index, "tMs" to el, "activeMs" to (st.activeMs - lapStartActive), "distanceM" to distanceM, "source" to o.source.name)
+            lapStartActive = st.activeMs
+            laps.add(lap)
+            lapStartT = o.t
+            lapStartDist = distanceM
+            emit("lap", el, lap)
+        }
+
+        fun flushLaps(t: Long) {
+            for (o in pendingLaps) publishLap(o, core.distanceAtTime(o.t, prevTickT, prevTickD, t, ticker.distanceM))
+            pendingLaps.clear()
+        }
+
         fun handle(out: List<RecorderCore.Output>, t: Long) {
             for (o in out) {
                 when (o) {
                     is RecorderCore.Output.Lap -> {
                         writer.append(JournalLine.Lap(o.t, W0 + o.t, o.source))
-                        val st = core.status(o.t)
-                        val el = st.elapsedMs
-                        val lap = linkedMapOf<String, Any?>("index" to o.index, "tMs" to el, "activeMs" to (st.activeMs - lapStartActive), "distanceM" to ticker.distanceM, "source" to o.source.name)
-                        lapStartActive = st.activeMs
-                        laps.add(lap)
-                        lapStartT = o.t
-                        lapStartDist = ticker.distanceM
-                        emit("lap", el, lap)
+                        // As RecordingSession: a manual lap goes out at the next tick, at its interpolated distance.
+                        if (o.source == LapSource.auto) publishLap(o, ticker.distanceM) else pendingLaps.add(o)
                     }
                     is RecorderCore.Output.Cue -> {
                         writer.append(JournalLine.Cue(o.t, W0 + o.t, o.kind))
@@ -137,7 +151,10 @@ object EventTraceFixture {
             fix?.let { ticker.onFix(it) }
             val samples = ticker.tick(t)
             for (s in samples) writer.append(s)
+            flushLaps(t)
             handle(core.tick(t, ticker.distanceM, !ticker.gpsLost(t)), t)
+            prevTickT = t
+            prevTickD = ticker.distanceM
             val last = samples.last()
             val pace = if (last.hasFix) livePace.update(last.t, ticker.distanceM) else null
             hrLast = last.hr
@@ -208,6 +225,8 @@ object EventTraceFixture {
         }
         ticker.filter.reanchor()
         lapStartDist = lastLapDist
+        prevTickT = resumeDeviceT
+        prevTickD = ticker.distanceM
         val lastLapRunT = replayed.events.filterIsInstance<RunEvent.Lap>().last().t
         lapStartT = resumeDeviceT - (replayed.endT - lastLapRunT) // endT includes the gap
         // As RecordingSession: active time at the last lap = its run time minus pauses/gaps before it.
@@ -232,6 +251,7 @@ object EventTraceFixture {
             tick(dt, fixes[traceIdx].copy(t = dt), hrFor())
             traceIdx++
         }
+        flushLaps(dt)
         val out = core.stop(dt)
         for (o in out) if (o is RecorderCore.Output.Cue) emit("cue", core.status(dt).elapsedMs, linkedMapOf("cue" to o.kind.name, "value" to o.value))
         state(dt, RecorderState.finalising)

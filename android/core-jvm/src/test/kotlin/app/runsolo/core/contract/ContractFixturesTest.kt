@@ -230,8 +230,8 @@ class ContractFixturesTest {
         assertEquals(2, laps.size) // warm-up, then the 5 km ended by the stop
         assertEquals(120_000L, laps[0]["t1"])
         val fiveK = (laps[1]["d1"] as Number).toDouble() - (laps[1]["d0"] as Number).toDouble()
-        assertTrue(fiveK in 4_995.0..5_005.0, "5 km lap $fiveK m (the lap starts between two samples)")
-        assertTrue((laps[1]["t1"] as Long) in 1_370_000L..1_371_000L, "stopped at ${laps[1]["t1"]}")
+        assertTrue(fiveK in 5_000.0..5_004.5, "5 km lap $fiveK m: at least 5 km, at most one sample over")
+        assertTrue((laps[1]["t1"] as Long) in 1_369_000L..1_373_000L, "stopped at ${laps[1]["t1"]} (1250 s at 4 m/s after the 120 s start, filter distance)")
     }
 
     @Test

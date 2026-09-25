@@ -207,6 +207,7 @@ class RecorderCoreI2Test {
         core.start(t0)
         assertEquals(Phase.warmup, core.phase)
         assertEquals(LapDecision.ignoredModeNoLaps, core.lap(LapSource.button, t0 + 1_000).first)
+        core.tick(t0 + 60_000, 0.0) // the warm-up ticks (distance counted from here)
         assertEquals(LapDecision.accepted, core.startReps(t0 + 60_000).first)
         assertEquals(Phase.work, core.phase)
         val w = t0 + 60_000
@@ -333,5 +334,19 @@ class RecorderCoreI2Test {
         assertEquals(RecorderState.recording, core.state)
         val out = core.tick(9_001_000, live.filter.totalM)
         assertTrue(out.any { it is Output.AutoStop }, out.toString())
+    }
+
+    @Test
+    fun `a distance step started by a press between ticks counts from the interpolated press point`() {
+        val core = RecorderCore(RunMode.intervals, spec(workM(400, 1)))
+        core.start(t0)
+        core.tick(t0 + 1_000, 3.0)
+        core.tick(t0 + 2_000, 6.0)
+        core.startReps(t0 + 2_500) // halfway between ticks: 7.5 m, not the last tick's 6 m
+        core.tick(t0 + 3_000, 9.0)
+        assertEquals(400.0 - 1.5, core.status(t0 + 3_000).stepRemainingM!!, 1e-9)
+        // The boundary follows: 400 m from 7.5 m is reached at 407.5 m.
+        val (out, _) = drive(core, t0 + 3_000, 140, 3.0, 9.0)
+        assertEquals(t0 + 3_000 + 132_833, laps(out).single().t)
     }
 }
