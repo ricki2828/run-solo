@@ -44,6 +44,7 @@ void main() {
       ObservedMaxHrState.none,
       runObserved30s: a.laps!.observedMaxHrThisRun,
       typedMaxHr: null,
+      age: null,
     );
     expect(s.observed, lessThan(156));
     expect(s.pending, isNull);
@@ -117,6 +118,34 @@ void main() {
         Sample(tMs: t * 1000, distM: t * 3.0, hr: 190),
     ];
     expect(Trace(sparse).highest30sHr(), isNull);
+  });
+
+  test('API boundary, age 60: a 10 s burst lifting a 30 s window to 172 '
+      'is held pending; the same run with no age applies', () {
+    // 10 min at 150 with 10 s at 216: the best 30 s window averages 172.
+    final t = Trace(samples(600, (t) => t >= 300 && t < 310 ? 216 : 150));
+    final a = engine.analyze(runOf(t.samples), now: fixedNow);
+    final observed = a.laps!.observedMaxHrThisRun;
+    expect(observed, closeTo(172, 0.5));
+    // The call the app makes (MaxHr.foldObserved): age is required, so a
+    // caller cannot silently fall back to the 190 reference.
+    final s = ObservedMaxHrGuard.defaults.fold(
+      ObservedMaxHrState.none,
+      runObserved30s: observed,
+      typedMaxHr: null,
+      age: 60,
+    );
+    expect(s.observed, isNull);
+    expect(s.pending, closeTo(172, 0.5));
+    expect(MetricsCalculator.maxHrFor(s.profile(age: 60)), 160);
+    final noAge = ObservedMaxHrGuard.defaults.fold(
+      ObservedMaxHrState.none,
+      runObserved30s: observed,
+      typedMaxHr: null,
+      age: null,
+    );
+    expect(noAge.observed, closeTo(172, 0.5), reason: '172 <= 190 + 10');
+    expect(noAge.pending, isNull);
   });
 
   test('no HR at all → null', () {

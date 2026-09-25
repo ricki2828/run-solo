@@ -95,11 +95,14 @@ class ObservedMaxHrGuard {
   ///   `(220 − age ?? 190) + defaultMarginBpm` (accepted max raising the
   ///   reference) → pending likewise;
   /// - otherwise accepted at once.
+  ///
+  /// [age] is required (null when unknown) so a caller cannot silently fall
+  /// back to the 190 reference when the user's age is on file.
   ObservedMaxHrState fold(
     ObservedMaxHrState state, {
     required double? runObserved30s,
     required int? typedMaxHr,
-    int? age,
+    required int? age,
   }) {
     final value = runObserved30s;
     if (value == null) return state;

@@ -52,21 +52,36 @@ void main() {
     const none = ObservedMaxHrState.none;
 
     test('typed 185 + observed 199 → applied automatically (inside +15)', () {
-      final s = guard.fold(none, runObserved30s: 199, typedMaxHr: 185);
+      final s = guard.fold(
+        none,
+        runObserved30s: 199,
+        typedMaxHr: 185,
+        age: null,
+      );
       expect(s.observed, 199);
       expect(s.pending, isNull);
       expect(resolve(typed: 185, observed: s.observed), 199);
     });
 
     test('typed 185 + observed 200 → applied (the edge is inclusive)', () {
-      final s = guard.fold(none, runObserved30s: 200, typedMaxHr: 185);
+      final s = guard.fold(
+        none,
+        runObserved30s: 200,
+        typedMaxHr: 185,
+        age: null,
+      );
       expect(s.observed, 200);
     });
 
     test(
       'typed 185 + observed 201 → pending; resolver stays 185 until confirmed',
       () {
-        final s = guard.fold(none, runObserved30s: 201, typedMaxHr: 185);
+        final s = guard.fold(
+          none,
+          runObserved30s: 201,
+          typedMaxHr: 185,
+          age: null,
+        );
         expect(s.observed, isNull);
         expect(s.pending, 201);
         expect(resolve(typed: 185, observed: s.observed), 185);
@@ -78,7 +93,12 @@ void main() {
     );
 
     test('observed 225 → pending even with no typed value (above 220)', () {
-      final s = guard.fold(none, runObserved30s: 225, typedMaxHr: null);
+      final s = guard.fold(
+        none,
+        runObserved30s: 225,
+        typedMaxHr: null,
+        age: null,
+      );
       expect(s.observed, isNull);
       expect(s.pending, 225);
       expect(resolve(age: 40, observed: s.observed), 180);
@@ -131,10 +151,17 @@ void main() {
 
       test('no age: 190 fallback + 10 → 200 applies, 201 pending', () {
         expect(
-          guard.fold(none, runObserved30s: 200, typedMaxHr: null).observed,
+          guard
+              .fold(none, runObserved30s: 200, typedMaxHr: null, age: null)
+              .observed,
           200,
         );
-        final s = guard.fold(none, runObserved30s: 201, typedMaxHr: null);
+        final s = guard.fold(
+          none,
+          runObserved30s: 201,
+          typedMaxHr: null,
+          age: null,
+        );
         expect(s.observed, isNull);
         expect(s.pending, 201);
       });
@@ -192,7 +219,12 @@ void main() {
     });
 
     test('[Ignore] drops the pending value; it is offered once', () {
-      final s = guard.fold(none, runObserved30s: 201, typedMaxHr: 185);
+      final s = guard.fold(
+        none,
+        runObserved30s: 201,
+        typedMaxHr: 185,
+        age: null,
+      );
       final ignored = guard.ignorePending(s);
       expect(ignored, none);
       // The same run folded again would ask again; the store folds a run
@@ -200,32 +232,35 @@ void main() {
     });
 
     test('a confirmed 205 does not re-prompt on 206 (reference moves up)', () {
-      var s = guard.fold(none, runObserved30s: 205, typedMaxHr: 185);
+      var s = guard.fold(none, runObserved30s: 205, typedMaxHr: 185, age: null);
       s = guard.confirmPending(s);
       expect(s.observed, 205);
-      s = guard.fold(s, runObserved30s: 206, typedMaxHr: 185);
+      s = guard.fold(s, runObserved30s: 206, typedMaxHr: 185, age: null);
       expect(s.observed, 206);
       expect(s.pending, isNull);
     });
 
     test('a value not above the accepted max changes nothing', () {
       const s = ObservedMaxHrState(observed: 192);
-      expect(guard.fold(s, runObserved30s: 190, typedMaxHr: 185), s);
-      expect(guard.fold(s, runObserved30s: 192, typedMaxHr: 185), s);
-      expect(guard.fold(s, runObserved30s: null, typedMaxHr: 185), s);
+      expect(guard.fold(s, runObserved30s: 190, typedMaxHr: 185, age: null), s);
+      expect(guard.fold(s, runObserved30s: 192, typedMaxHr: 185, age: null), s);
+      expect(
+        guard.fold(s, runObserved30s: null, typedMaxHr: 185, age: null),
+        s,
+      );
     });
 
     test('a higher pending replaces a lower one; a lower one is ignored', () {
-      var s = guard.fold(none, runObserved30s: 201, typedMaxHr: 185);
-      s = guard.fold(s, runObserved30s: 203, typedMaxHr: 185);
+      var s = guard.fold(none, runObserved30s: 201, typedMaxHr: 185, age: null);
+      s = guard.fold(s, runObserved30s: 203, typedMaxHr: 185, age: null);
       expect(s.pending, 203);
-      s = guard.fold(s, runObserved30s: 202, typedMaxHr: 185);
+      s = guard.fold(s, runObserved30s: 202, typedMaxHr: 185, age: null);
       expect(s.pending, 203);
     });
 
     test('an in-guard value applies while a higher one stays pending', () {
-      var s = guard.fold(none, runObserved30s: 210, typedMaxHr: 185);
-      s = guard.fold(s, runObserved30s: 195, typedMaxHr: 185);
+      var s = guard.fold(none, runObserved30s: 210, typedMaxHr: 185, age: null);
+      s = guard.fold(s, runObserved30s: 195, typedMaxHr: 185, age: null);
       expect(s.observed, 195);
       expect(s.pending, 210);
       // Confirming keeps the higher of the two.
@@ -233,8 +268,8 @@ void main() {
     });
 
     test('reset clears observed and pending; the resolver falls back', () {
-      var s = guard.fold(none, runObserved30s: 199, typedMaxHr: 185);
-      s = guard.fold(s, runObserved30s: 215, typedMaxHr: 185);
+      var s = guard.fold(none, runObserved30s: 199, typedMaxHr: 185, age: null);
+      s = guard.fold(s, runObserved30s: 215, typedMaxHr: 185, age: null);
       expect(s.observed, 199);
       expect(s.pending, 215);
       final r = guard.reset(s);
