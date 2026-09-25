@@ -778,6 +778,34 @@ class SyntheticSpecs {
       segments: fourByFour(reps: 6, recoveryS: 300),
     ),
     SyntheticSpec(
+      // Founder field test (25-Sep): the recorder ran the 4th recovery and
+      // the run was stopped right after it, no cool-down lap. 4 reps + 4
+      // recoveries must read as a complete 4x4, never lapsInconsistent.
+      name: 'preset_4x4_ends_after_final_recovery',
+      id: _id(36),
+      preset: Preset.standard,
+      segments: [
+        const Segment.warmup(480, _warm),
+        for (var i = 0; i < 4; i++) ...[
+          const Segment.work(240, _work),
+          const Segment.recovery(180, _rec),
+        ],
+      ],
+    ),
+    SyntheticSpec(
+      name: 'preset_4x4_manual_ends_after_final_recovery',
+      id: _id(37),
+      preset: Preset.standard,
+      lapStyle: LapStyle.manual,
+      segments: [
+        const Segment.warmup(480, _warm),
+        for (var i = 0; i < 4; i++) ...[
+          const Segment.work(240, _work),
+          const Segment.recovery(180, _rec),
+        ],
+      ],
+    ),
+    SyntheticSpec(
       name: 'preset_5x4_recovery_2_00_missing_final_recovery',
       id: _id(10),
       preset: const Preset(reps: 5, workSeconds: 240, recoverySeconds: 120),

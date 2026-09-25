@@ -19,6 +19,7 @@ test in `golden_fixtures_test.dart` fails until you do.
 | `preset_4x4_auto_standard` / `preset_4x4_manual_standard` | same trace, auto vs manual laps → identical verdict |
 | `preset_3x4_recovery_2_00`, `preset_4x4_recovery_3_30`, `preset_6x4_recovery_5_00` | every recovery boundary and rep bound (§17 B5) |
 | `preset_5x4_recovery_2_00_missing_final_recovery` | last recovery missing is tolerated |
+| `preset_4x4[_manual]_ends_after_final_recovery` | 4 reps + 4 recoveries, stopped right after the last recovery, no cool-down (founder field test 25-Sep): complete 4x4, BASELINE SET |
 | `gps_dropout_rep2`, `pause_mid_rep3`, `kill_resume_gap_rep2` | one `interrupted` rep each → NO VERDICT |
 | `noisy_gps_phone_jitter` | 3 m AR(1) jitter, 5 % bad-accuracy samples: verdict still given, wider tolerance |
 | `very_noisy_gps_no_verdict` | 35 % bad-accuracy → `noisy`, no verdict |
