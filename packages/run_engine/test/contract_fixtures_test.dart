@@ -106,8 +106,8 @@ void main() {
       );
       expect(a2.verdict!.hrLine, a1.verdict!.hrLine);
       expect(
-        a2.fourByFour!.avgWorkPaceSecPerKm,
-        closeTo(a1.fourByFour!.avgWorkPaceSecPerKm!, 1e-6),
+        a2.intervals!.avgWorkPaceSecPerKm,
+        closeTo(a1.intervals!.avgWorkPaceSecPerKm!, 1e-6),
       );
     });
 
@@ -231,7 +231,7 @@ void main() {
         isFalse,
         reason: a.detection!.inconsistencyDetail,
       );
-      final m = a.fourByFour!;
+      final m = a.intervals!;
       expect(m.reps.length, 4);
       expect(m.allRepsClean, isTrue);
       // 4.2 m/s = 238.1 s/km work, 2.0 m/s = 500 s/km recovery.

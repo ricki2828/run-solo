@@ -25,7 +25,7 @@ class UserProfile {
   final int? maxHr;
 
   /// Highest 30 s HR seen across the user's history (kept in settings by the
-  /// store from [FourByFourMetrics.observedMaxHrThisRun]). Wins over 220−age
+  /// store from [IntervalMetrics.observedMaxHrThisRun]). Wins over 220−age
   /// when higher. Never per run: every run must share one denominator so
   /// "same effort: 91% both runs" is comparable.
   final double? observedMaxHr;
@@ -111,8 +111,8 @@ class RecoveryMetrics {
 }
 
 /// 4x4 metrics (plan §5). Aggregates use clean reps only.
-class FourByFourMetrics {
-  const FourByFourMetrics({
+class IntervalMetrics {
+  const IntervalMetrics({
     required this.reps,
     required this.recoveries,
     required this.avgWorkPaceSecPerKm,
@@ -277,7 +277,7 @@ class MetricsCalculator {
 
   final EngineConstants constants;
 
-  FourByFourMetrics fourByFour(
+  IntervalMetrics intervals(
     RunFile run,
     RepDetection detection,
     Trace trace,
@@ -455,7 +455,7 @@ class MetricsCalculator {
       mpb = mpbBeats == 0 ? null : mpbDist / mpbBeats;
     }
 
-    return FourByFourMetrics(
+    return IntervalMetrics(
       reps: reps,
       recoveries: recoveries,
       avgWorkPaceSecPerKm: avgPace,

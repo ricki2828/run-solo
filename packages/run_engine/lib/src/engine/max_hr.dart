@@ -83,7 +83,7 @@ class ObservedMaxHrGuard {
 
   static const ObservedMaxHrGuard defaults = ObservedMaxHrGuard();
 
-  /// Fold one run's highest 30 s HR ([FourByFourMetrics.observedMaxHrThisRun]
+  /// Fold one run's highest 30 s HR ([IntervalMetrics.observedMaxHrThisRun]
   /// or [LapsSummary.observedMaxHrThisRun]) into the state.
   ///
   /// - null, or not above the accepted value → unchanged;

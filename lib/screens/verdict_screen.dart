@@ -59,7 +59,7 @@ class _VerdictScreenState extends State<VerdictScreen> {
     // run whose verdict screen never opened (app died after Stop) still
     // folds the next time it is viewed.
     final observed =
-        detail.analysis.fourByFour?.observedMaxHrThisRun ??
+        detail.analysis.intervals?.observedMaxHrThisRun ??
         detail.analysis.laps?.observedMaxHrThisRun;
     if (observed != null) {
       await services.settings.update(
@@ -110,7 +110,7 @@ RunSummary? previousFourByFour(List<RunSummary> all, RunSummary current) {
   for (final r in all) {
     if (r.id == current.id) continue;
     if (!r.start.isBefore(current.start)) continue;
-    if (r.isFourByFour && r.analysis?.fourByFour != null) return r;
+    if (r.isFourByFour && r.analysis?.intervals != null) return r;
   }
   return null;
 }
@@ -133,9 +133,9 @@ RevealState revealStateOf(engine.Verdict? v) {
 
 /// Rep rows for the bars: this run's reps against the previous run's.
 List<RepBarDatum> repBarData(RunDetail detail, RunSummary? previous) {
-  final m = detail.analysis.fourByFour;
+  final m = detail.analysis.intervals;
   if (m == null) return const [];
-  final ghost = previous?.analysis?.fourByFour?.reps;
+  final ghost = previous?.analysis?.intervals?.reps;
   return [
     for (final r in m.reps)
       RepBarDatum(

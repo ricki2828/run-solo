@@ -87,7 +87,7 @@ class PriorRun {
   static PriorRun? fromMetrics(
     String id,
     DateTime start,
-    FourByFourMetrics m, {
+    IntervalMetrics m, {
     required bool eligible,
     String comparisonKey = ComparisonKey.norwegian4x4,
   }) {
@@ -138,7 +138,7 @@ class VerdictBuilder {
   Verdict build({
     required RunFile run,
     required RepDetection detection,
-    required FourByFourMetrics metrics,
+    required IntervalMetrics metrics,
     required VerdictGates gates,
     required List<PriorRun> priors,
     required DateTime now,
@@ -235,7 +235,7 @@ class VerdictBuilder {
     return _vsMedian(run, metrics, eligible, now);
   }
 
-  Verdict _baseline(RunFile run, FourByFourMetrics m, DateTime now) {
+  Verdict _baseline(RunFile run, IntervalMetrics m, DateTime now) {
     final units = run.units;
     final spread = m.repSpreadSecPerKm!;
     final spreadText = spread <= constants.repBandSecPerKm
@@ -264,12 +264,7 @@ class VerdictBuilder {
     );
   }
 
-  Verdict _vsLast(
-    RunFile run,
-    FourByFourMetrics m,
-    PriorRun last,
-    DateTime now,
-  ) {
+  Verdict _vsLast(RunFile run, IntervalMetrics m, PriorRun last, DateTime now) {
     final units = run.units;
     final current = m.avgWorkPaceSecPerKm!;
     final baseline = last.avgWorkPaceSecPerKm;
@@ -322,7 +317,7 @@ class VerdictBuilder {
 
   Verdict _vsMedian(
     RunFile run,
-    FourByFourMetrics m,
+    IntervalMetrics m,
     List<PriorRun> eligible,
     DateTime now,
   ) {
@@ -401,7 +396,7 @@ class VerdictBuilder {
     );
   }
 
-  String _fadeSentence(FourByFourMetrics m, PriorRun last, Units units) {
+  String _fadeSentence(IntervalMetrics m, PriorRun last, Units units) {
     final fade = m.fadeSecPerKm;
     if (fade == null) return '';
     final was = last.fadeSecPerKm;
@@ -419,11 +414,7 @@ class VerdictBuilder {
   /// than the baseline (median mpb of the comparison set) → same-HR line;
   /// pace better but mpb worse → "it cost more". Falls back to % max HR
   /// when mpb is unavailable, and to time in zone when no prior has HR.
-  String? _fasterHrLine(
-    FourByFourMetrics m,
-    PriorRun last,
-    List<PriorRun> set,
-  ) {
+  String? _fasterHrLine(IntervalMetrics m, PriorRun last, List<PriorRun> set) {
     final pct = m.meanWorkHrFraction;
     if (pct == null) return null;
     final was = last.meanWorkHrFraction;
@@ -447,7 +438,7 @@ class VerdictBuilder {
     return 'Faster at lower effort: $pctText, was $wasText.';
   }
 
-  String? _holdingHrLine(FourByFourMetrics m, PriorRun last) {
+  String? _holdingHrLine(IntervalMetrics m, PriorRun last) {
     final tiz = m.timeInZoneSeconds;
     if (tiz == null) return null;
     final was = last.timeInZoneSeconds;
@@ -460,7 +451,7 @@ class VerdictBuilder {
         '${PaceFormat.seconds(diff.toDouble())}.';
   }
 
-  String? _slowerHrLine(FourByFourMetrics m, PriorRun last) {
+  String? _slowerHrLine(IntervalMetrics m, PriorRun last) {
     final hr = m.meanWorkHr;
     if (hr == null) return null;
     final was = last.meanWorkHr;
@@ -470,7 +461,7 @@ class VerdictBuilder {
     return _timeInZoneOf(m);
   }
 
-  String? _timeInZoneOf(FourByFourMetrics m) {
+  String? _timeInZoneOf(IntervalMetrics m) {
     final tiz = m.timeInZoneSeconds;
     if (tiz == null) return null;
     return 'Time in zone ${PaceFormat.mmss(tiz)} of ${PaceFormat.mmss(m.workSeconds)}.';

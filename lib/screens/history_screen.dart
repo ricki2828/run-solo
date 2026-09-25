@@ -295,8 +295,8 @@ class HistoryRow extends StatelessWidget {
                           ? 'File missing'
                           : switch (run.mode) {
                               RecordMode.intervals =>
-                                run.analysis?.fourByFour != null
-                                    ? '${run.analysis!.fourByFour!.reps.length} reps · ${Fmt.distance(run.distanceM, units)}'
+                                run.analysis?.intervals != null
+                                    ? '${run.analysis!.intervals!.reps.length} reps · ${Fmt.distance(run.distanceM, units)}'
                                     : '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',
                               RecordMode.laps =>
                                 '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',

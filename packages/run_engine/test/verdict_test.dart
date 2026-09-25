@@ -118,7 +118,7 @@ void main() {
       );
       final own = engine
           .analyze(run, profile: profile, now: fixedNow)
-          .fourByFour!;
+          .intervals!;
       final pct = own.meanWorkHrFraction!;
       final priors = [
         prior(
@@ -159,7 +159,7 @@ void main() {
       );
       final own = engine
           .analyze(run, profile: profile, now: fixedNow)
-          .fourByFour!;
+          .intervals!;
       final priors = [
         prior(
           '00000000-0000-4000-8000-000000000511',
@@ -194,7 +194,7 @@ void main() {
       final run = runWithPaces([303, 308, 312, 317], hr: true, start: d3);
       final own = engine
           .analyze(run, profile: profile, now: fixedNow)
-          .fourByFour!;
+          .intervals!;
       final priors = [
         prior(
           '00000000-0000-4000-8000-000000000521',

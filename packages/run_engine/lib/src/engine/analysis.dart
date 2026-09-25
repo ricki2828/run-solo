@@ -56,7 +56,7 @@ class RunAnalysis {
     required this.runId,
     required this.mode,
     required this.detection,
-    required this.fourByFour,
+    required this.intervals,
     this.laps,
     required this.freeRun,
     required this.verdict,
@@ -85,7 +85,7 @@ class RunAnalysis {
 
   /// Only for the 4x4 path.
   final RepDetection? detection;
-  final FourByFourMetrics? fourByFour;
+  final IntervalMetrics? intervals;
 
   /// Only for a Laps run (§18.2): lap table, fastest lap, spread, HR band.
   final LapsSummary? laps;
@@ -118,17 +118,17 @@ class RunAnalysis {
       !noisy &&
       detection != null &&
       detection!.consistent &&
-      fourByFour != null &&
-      !fourByFour!.hasInterrupted &&
-      fourByFour!.cleanRepCount >= EngineConstants.minReps;
+      intervals != null &&
+      !intervals!.hasInterrupted &&
+      intervals!.cleanRepCount >= EngineConstants.minReps;
 
   /// This run as a comparison input for later runs, or null if ineligible.
-  PriorRun? asPrior(DateTime start) => fourByFour == null
+  PriorRun? asPrior(DateTime start) => intervals == null
       ? null
       : PriorRun.fromMetrics(
           runId,
           start,
-          fourByFour!,
+          intervals!,
           eligible: eligibleAsPrior,
           comparisonKey: comparisonKey ?? ComparisonKey.norwegian4x4,
         );
@@ -178,7 +178,7 @@ class RunEngine {
           runId: run.id,
           mode: mode,
           detection: null,
-          fourByFour: null,
+          intervals: null,
           freeRun: freeRun,
           verdict: null,
           verdictSource: null,
@@ -194,7 +194,7 @@ class RunEngine {
           runId: run.id,
           mode: mode,
           detection: null,
-          fourByFour: null,
+          intervals: null,
           laps: calc.laps(run, trace, profile),
           freeRun: freeRun,
           verdict: null,
@@ -214,7 +214,7 @@ class RunEngine {
             runId: run.id,
             mode: mode,
             detection: null,
-            fourByFour: null,
+            intervals: null,
             laps: calc.laps(run, trace, profile),
             freeRun: freeRun,
             verdict: null,
@@ -254,7 +254,7 @@ class RunEngine {
       accepted: edited.accepted,
       dropped: edited.dropped,
     );
-    final metrics = calc.fourByFour(run, detection, trace, profile);
+    final metrics = calc.intervals(run, detection, trace, profile);
 
     final frozen = sidecar?.frozenVerdict;
     final inputsKey = Verdict.inputsKeyFor(edits, sidecar?.runTypeOverride);
@@ -284,7 +284,7 @@ class RunEngine {
       runId: run.id,
       mode: mode,
       detection: detection,
-      fourByFour: metrics,
+      intervals: metrics,
       freeRun: freeRun,
       verdict: verdict,
       verdictSource: source,

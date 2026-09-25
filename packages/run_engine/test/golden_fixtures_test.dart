@@ -51,7 +51,7 @@ void main() {
         case RunMode.cooper:
           test('free run has a summary and no verdict', () {
             expect(analysis.verdict, isNull);
-            expect(analysis.fourByFour, isNull);
+            expect(analysis.intervals, isNull);
             expect(analysis.laps, isNull);
             expect(analysis.freeRun.distanceM, greaterThan(0));
             expect(analysis.freeRun.avgPaceSecPerKm, isNotNull);
@@ -60,7 +60,7 @@ void main() {
         case RunMode.laps:
           test('laps run has a lap table and no verdict', () {
             expect(analysis.verdict, isNull);
-            expect(analysis.fourByFour, isNull);
+            expect(analysis.intervals, isNull);
             expect(
               analysis.laps!.laps.length,
               e.repCount * 2 + 2,
@@ -73,7 +73,7 @@ void main() {
           break;
       }
 
-      final m = analysis.fourByFour!;
+      final m = analysis.intervals!;
       final d = analysis.detection!;
 
       test('laps consistent = ${e.lapsConsistent}', () {
@@ -153,7 +153,7 @@ void main() {
                 profile: const UserProfile(maxHr: 180),
                 now: fixedNow,
               )
-              .fourByFour!;
+              .intervals!;
           for (final r in withMax.reps) {
             expect(r.meanHr, closeTo(e.expectedMeanWorkHr!, 0.01));
             expect(r.peakHr, e.expectedMeanWorkHr!.round());
@@ -187,9 +187,9 @@ void main() {
             now: fixedNow,
           );
           expect(fixed.detection!.consistent, isTrue);
-          expect(fixed.fourByFour!.reps.length, e.repCount);
+          expect(fixed.intervals!.reps.length, e.repCount);
           expect(
-            fixed.fourByFour!.avgWorkPaceSecPerKm,
+            fixed.intervals!.avgWorkPaceSecPerKm,
             closeTo(e.avgWorkPaceSecPerKm!, e.toleranceSecPerKm),
           );
           expect(fixed.verdict!.headline, VerdictHeadline.baselineSet);

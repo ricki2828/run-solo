@@ -24,8 +24,8 @@ void main() {
       );
       expect(a.indoor, isFalse);
       expect(a.noisy, isFalse);
-      expect(a.fourByFour!.reps.length, f.run.preset!.reps);
-      expect(a.fourByFour!.allRepsClean, isTrue);
+      expect(a.intervals!.reps.length, f.run.preset!.reps);
+      expect(a.intervals!.allRepsClean, isTrue);
       expect(a.verdict!.stage, VerdictStage.baseline);
       expect(a.verdict!.headline, VerdictHeadline.baselineSet);
       expect(a.verdict!.headline.text, 'BASELINE SET');
@@ -41,7 +41,7 @@ void main() {
       profile: profile,
       now: fixedNow,
     );
-    final m = a.fourByFour!;
+    final m = a.intervals!;
     expect(m.recoveries.length, 4);
     expect(m.recoveries.last.paceSecPerKm, isNotNull);
     expect(m.recoveryPaceSecPerKm, isNotNull);

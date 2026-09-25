@@ -34,7 +34,7 @@ void main() {
           isFalse,
           reason: a.detection!.inconsistencyDetail,
         );
-        final m = a.fourByFour!;
+        final m = a.intervals!;
         expect(m.reps.length, 4);
         expect(m.cleanRepCount, 4);
         expect(a.verdict!.headline, VerdictHeadline.baselineSet);
@@ -57,7 +57,7 @@ void main() {
             isFalse,
             reason: a.detection!.inconsistencyDetail,
           );
-          final m = a.fourByFour!;
+          final m = a.intervals!;
           expect(m.reps.length, 4);
           expect(a.verdict!.headline, VerdictHeadline.baselineSet);
           expect(a.eligibleAsPrior, isTrue);
@@ -135,7 +135,7 @@ void main() {
           .run;
       // Under 70% of the preset it is not even phase-like: it reads as
       // cool-down and the run has 3 reps until the runner keeps it.
-      expect(engine.analyze(run, now: fixedNow).fourByFour!.reps.length, 3);
+      expect(engine.analyze(run, now: fixedNow).intervals!.reps.length, 3);
       final a = engine.analyze(
         run,
         sidecar: RunSidecar(runId: run.id).withLapEdit(const LapEdit.keep(7)),
@@ -146,9 +146,9 @@ void main() {
         isFalse,
         reason: a.detection!.inconsistencyDetail,
       );
-      expect(a.fourByFour!.reps.length, 4);
-      expect(a.fourByFour!.fadeSecPerKm, closeTo(0, 0.5));
-      expect(a.fourByFour!.reps[3].paceSecPerKm, closeTo(300, 1));
+      expect(a.intervals!.reps.length, 4);
+      expect(a.intervals!.fadeSecPerKm, closeTo(0, 0.5));
+      expect(a.intervals!.reps[3].paceSecPerKm, closeTo(300, 1));
     });
 
     test(
@@ -200,10 +200,10 @@ void main() {
         isFalse,
         reason: a.detection!.inconsistencyDetail,
       );
-      expect(a.fourByFour!.reps.length, 4);
+      expect(a.intervals!.reps.length, 4);
       expect(a.verdict!.headline, VerdictHeadline.baselineSet);
       expect(
-        a.fourByFour!.avgWorkPaceSecPerKm,
+        a.intervals!.avgWorkPaceSecPerKm,
         closeTo(f.expected.avgWorkPaceSecPerKm!, 0.5),
       );
     });
@@ -227,7 +227,7 @@ void main() {
       expect(inPause.length, greaterThan(15));
       expect(inPause.last.distM - inPause.first.distM, greaterThan(15));
       final a = engine.analyze(f.run, now: fixedNow);
-      final m = a.fourByFour!;
+      final m = a.intervals!;
       expect(m.reps[2].interrupted, isFalse);
       expect(
         m.reps[2].paceSecPerKm,
@@ -243,7 +243,7 @@ void main() {
     test('independent: without the exclusion the rep would read faster', () {
       final f = fixture('pause_moved_while_paused');
       final noPause = f.run.copyWith(pauses: const []);
-      final m = engine.analyze(noPause, now: fixedNow).fourByFour!;
+      final m = engine.analyze(noPause, now: fixedNow).intervals!;
       // 20 s standstill plus 24 m of walking counted as running: slower time,
       // but the exclusion removes both; here nothing is excluded.
       expect((m.reps[2].paceSecPerKm! - 284).abs(), greaterThan(3));
@@ -251,7 +251,7 @@ void main() {
 
     test('a writer that froze dist through the pause gets the same pace', () {
       final f = fixture('pause_15s_in_rep3');
-      final m = engine.analyze(f.run, now: fixedNow).fourByFour!;
+      final m = engine.analyze(f.run, now: fixedNow).intervals!;
       expect(m.reps[2].paceSecPerKm, closeTo(284, 0.5));
     });
   });
@@ -292,7 +292,7 @@ void main() {
             segments: SyntheticSpecs.fourByFour(),
           ),
         );
-        final m = engine.analyze(s.run, now: fixedNow).fourByFour!;
+        final m = engine.analyze(s.run, now: fixedNow).intervals!;
         final t = Trace(s.run.samples);
         for (final r in m.reps) {
           final recorded =

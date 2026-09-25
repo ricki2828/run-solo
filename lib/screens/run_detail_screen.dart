@@ -420,7 +420,7 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final d = widget.detail;
     final a = d.analysis;
-    final m = a.fourByFour;
+    final m = a.intervals;
     final v = d.summary.verdict;
     final units = widget.units;
     if (m == null) {
