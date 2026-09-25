@@ -9,4 +9,9 @@
 ///
 /// 2: D3 max-HR resolver (observed beats typed, 190 fallback) moves every
 ///    HR zone and time-in-zone; sustained-30 s rule for the observed max.
-const int engineVersion = 2;
+/// 3: Phase 3 I3: every Intervals session judged like with like (step
+///    detection, metric per session kind, floor per comparison key, rep time
+///    for distance reps, D4 note). Every Norwegian 4x4 verdict keeps its
+///    exact words (migration golden); the bump re-freezes them once without
+///    a history line (same text).
+const int engineVersion = 3;

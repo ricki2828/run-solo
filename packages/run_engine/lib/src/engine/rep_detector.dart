@@ -1,4 +1,5 @@
 import '../model/run_file.dart';
+import '../model/session_spec.dart';
 import 'constants.dart';
 import 'trace.dart';
 
@@ -13,6 +14,8 @@ class DetectedRep {
     this.recoveryDropped = false,
     this.workOutsideWindow = false,
     this.recoveryOutsideWindow = false,
+    this.workStep,
+    this.recoveryStep,
   });
 
   /// 1-based, as shown in the UI ("Rep 1..4").
@@ -27,6 +30,11 @@ class DetectedRep {
   /// Accepted by a `keep`/`drop` edit although outside the preset window.
   final bool workOutsideWindow;
   final bool recoveryOutsideWindow;
+
+  /// The session steps this rep was matched against (Phase 3 generalised
+  /// detection); null on the 4x4 path, which matches the legacy preset.
+  final SessionStep? workStep;
+  final SessionStep? recoveryStep;
 }
 
 /// Why the recorded laps do not form a 4x4 (plan §5 `lapsInconsistent`).

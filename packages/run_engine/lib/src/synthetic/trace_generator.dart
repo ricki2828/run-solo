@@ -53,6 +53,7 @@ class SyntheticSpec {
     this.id = '00000000-0000-4000-8000-000000000001',
     this.mode = RunMode.intervals,
     this.preset,
+    this.session,
     this.units = Units.km,
     this.lapStyle = LapStyle.auto,
     this.manualDelayMs = 1000,
@@ -81,6 +82,11 @@ class SyntheticSpec {
   final String id;
   final RunMode mode;
   final Preset? preset;
+
+  /// A Phase 3 session written into the file instead of [preset] (the
+  /// generator's analytic expectations stay 4x4-only; session tests assert
+  /// directly).
+  final SessionSpec? session;
   final Units units;
   final LapStyle lapStyle;
   final int manualDelayMs;
@@ -426,9 +432,11 @@ class TraceGenerator {
       end: start.add(Duration(milliseconds: totalMs)),
       tz: 'Australia/Sydney',
       mode: spec.mode,
-      session: spec.preset == null
-          ? null
-          : SessionSpec.fromLegacyPreset(spec.preset!),
+      session:
+          spec.session ??
+          (spec.preset == null
+              ? null
+              : SessionSpec.fromLegacyPreset(spec.preset!)),
       units: spec.units,
       laps: laps,
       pauses: spec.pauses,

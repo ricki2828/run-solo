@@ -386,13 +386,17 @@ void main() {
     });
 
     test(
-      '8 × 400 m (shape only in I1): the catalogue expansion, key d400x*',
+      '8 × 400 m: the catalogue expansion, key d400x*, rep-time baseline',
       () {
         final run = load('session_8x400_shape', schema: 3);
         expect(run.session, SessionCatalogue.fourHundreds.defaults);
         final a = engine.analyze(run, now: fixedNow);
         expect(a.comparisonKey, 'd400x*');
-        expect(a.verdict, isNull, reason: 'distance detection is I3');
+        expect(a.detection!.consistent, isTrue);
+        expect(a.detection!.reps.length, 8);
+        expect(a.intervals!.kind, IntervalMetricKind.repTime);
+        expect(a.verdict!.headline, VerdictHeadline.baselineSet);
+        expect(a.verdict!.subline, startsWith('400 m in 1:40 average.'));
       },
     );
   });

@@ -557,18 +557,23 @@ void main() {
       expect(same.asPrior(fixedNow)?.comparisonKey, 't240x*');
     });
 
-    test('a session the Phase 2 detector cannot judge gets no verdict yet '
-        '(I3), only its lap table and key', () {
+    test('a 4x4 recording judged as 8 × 400 m finds no 400 m reps: NO '
+        'VERDICT from the step detector (I3), never the 4x4 path', () {
       final run = lapsRun.copyWith(
         mode: RunMode.intervals,
         session: SessionCatalogue.fourHundreds.defaults,
       );
       expect(run.preset, isNull);
       final a = engine.analyze(run, now: fixedNow);
-      expect(a.verdict, isNull);
-      expect(a.laps, isNotNull);
       expect(a.comparisonKey, 'd400x*');
       expect(a.session!.templateId, '400s');
+      expect(a.detection!.consistent, isFalse);
+      expect(a.detection!.fromSpeedStream, isFalse);
+      expect(a.verdict!.headline, VerdictHeadline.noVerdict);
+      expect(
+        a.verdict!.subline,
+        'Laps do not match the session. Fix laps to get a verdict.',
+      );
     });
 
     test('legacy preset view', () {

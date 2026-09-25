@@ -28,12 +28,20 @@ class PriorRun {
     this.metresPerBeat,
     this.repPacesSecPerKm = const [],
     this.comparisonKey = ComparisonKey.norwegian4x4,
+    this.repCount,
+    this.recoveryLabel,
   });
 
   final String id;
 
   /// Only priors of the same key are compared (plan §3.7, D4).
   final String comparisonKey;
+
+  /// Planned reps and the recovery ("2:30 recovery", "200 m jog") of the
+  /// session, for the D4 note when they differ from this run's; null for a
+  /// by-feel 4x4 (count = detected reps, no planned recovery).
+  final int? repCount;
+  final String? recoveryLabel;
   final DateTime start;
   final double avgWorkPaceSecPerKm;
   final double? fadeSecPerKm;
@@ -61,6 +69,8 @@ class PriorRun {
     'metres_per_beat': metresPerBeat,
     'rep_paces_s_per_km': repPacesSecPerKm,
     'comparison_key': comparisonKey,
+    'rep_count': repCount,
+    'recovery_label': recoveryLabel,
   };
 
   factory PriorRun.fromJson(Map<String, Object?> j) {
@@ -81,6 +91,8 @@ class PriorRun {
       ],
       comparisonKey:
           (j['comparison_key'] as String?) ?? ComparisonKey.norwegian4x4,
+      repCount: j['rep_count'] as int?,
+      recoveryLabel: j['recovery_label'] as String?,
     );
   }
 
@@ -90,6 +102,8 @@ class PriorRun {
     IntervalMetrics m, {
     required bool eligible,
     String comparisonKey = ComparisonKey.norwegian4x4,
+    int? repCount,
+    String? recoveryLabel,
   }) {
     if (!eligible || m.avgWorkPaceSecPerKm == null) return null;
     return PriorRun(
@@ -106,6 +120,8 @@ class PriorRun {
           .map((r) => r.clean ? r.paceSecPerKm : null)
           .toList(),
       comparisonKey: comparisonKey,
+      repCount: repCount,
+      recoveryLabel: recoveryLabel,
     );
   }
 }
@@ -123,18 +139,81 @@ class VerdictGates {
   final double gpsQuality;
 }
 
+/// Words and number formats of one verdict (Phase 3 §3.7). The Norwegian
+/// 4x4 key keeps the Phase 2 copy word for word (migration golden); every
+/// other session names itself, and a rep-time session reads in seconds per
+/// rep instead of pace.
+class _Ctx {
+  _Ctx({
+    required this.floor,
+    required this.band,
+    required this.inputsKey,
+    required this.units,
+    required this.isFourByFour,
+    required this.sessionName,
+    required this.nominalRepMetres,
+  });
+
+  /// Run 3+ floor for the key (plan §3.7 W1); run 2 uses ×√2.
+  final double floor;
+  final double band;
+  final String inputsKey;
+  final Units units;
+  final bool isFourByFour;
+  final String sessionName;
+
+  /// Set only for rep-time sessions.
+  final int? nominalRepMetres;
+
+  double get run2Floor => floor * math.sqrt2;
+  bool get repTime => nominalRepMetres != null;
+  double get _km => nominalRepMetres! / 1000;
+
+  String get one => isFourByFour ? '4x4' : '$sessionName session';
+  String get many => isFourByFour ? '4x4s' : '$sessionName sessions';
+  String get mismatch => isFourByFour
+      ? 'Laps do not match a 4x4. Fix laps to get a verdict.'
+      : 'Laps do not match the session. Fix laps to get a verdict.';
+  String get metric => repTime ? 'Rep time' : 'Work pace';
+
+  /// Headline number with its unit: "4:44/km" or "1:31".
+  String value(double secPerKm) => repTime
+      ? PaceFormat.mmss(secPerKm * _km)
+      : PaceFormat.pace(secPerKm, units);
+
+  /// "4:44" (for "4:44 vs 4:58/km") or "1:29" (for "1:29 vs 1:31").
+  String bare(double secPerKm) => repTime
+      ? PaceFormat.mmss(secPerKm * _km)
+      : PaceFormat.paceBare(secPerKm, units);
+
+  /// "14 s/km" or, per rep, "2 s".
+  String delta(double deltaSecPerKm) => repTime
+      ? PaceFormat.seconds(deltaSecPerKm * _km)
+      : PaceFormat.delta(deltaSecPerKm, units);
+
+  /// A spread or fade in the headline's unit, as "5 s".
+  String gap(double secPerKm) => repTime
+      ? PaceFormat.seconds(secPerKm * _km)
+      : PaceFormat.seconds(PaceFormat.toUnit(secPerKm, units));
+
+  /// The decision uses the displayed (rounded) numbers so a printed delta
+  /// can never sit inside a printed floor: per rep for rep-time sessions.
+  bool beyond(double delta, double floor) => repTime
+      ? (delta * _km).round() > (floor * _km).round()
+      : delta.round() > floor.round();
+}
+
 /// Staged verdict + copy pinned to the design brief's verdict copy set.
+/// Stateless: every call derives its floor and copy from its own inputs
+/// (#21 review P3), so one builder can serve concurrent analyses.
 class VerdictBuilder {
-  VerdictBuilder(this.constants);
+  const VerdictBuilder(this.constants);
 
   final EngineConstants constants;
-  String _inputsKey = '';
 
-  /// Noise floor for this run's comparison key (plan §3.7 W1); the 4x4 key
-  /// keeps [EngineConstants.runFloorSecPerKm].
-  double _floor = EngineConstants.defaults.runFloorSecPerKm;
-  double get _run2Floor => _floor * math.sqrt2;
-
+  /// [session] is the run's own planned session (null for a by-feel 4x4):
+  /// its name labels the copy and its reps/recovery feed the D4 note.
+  /// [minCleanReps] is how many clean reps a verdict needs (3 for a 4x4).
   Verdict build({
     required RunFile run,
     required RepDetection detection,
@@ -145,18 +224,27 @@ class VerdictBuilder {
     String inputsKey = '',
     String comparisonKey = ComparisonKey.norwegian4x4,
     SessionSpec? templateDefault,
+    SessionSpec? session,
+    int minCleanReps = EngineConstants.minReps,
   }) {
-    _inputsKey = inputsKey;
-    _floor = constants.floorSecPerKmForKey(
-      comparisonKey,
-      templateDefault: templateDefault,
+    final c = _Ctx(
+      floor: constants.floorSecPerKmForKey(
+        comparisonKey,
+        templateDefault: templateDefault,
+      ),
+      band: constants.repBandSecPerKm,
+      inputsKey: inputsKey,
+      units: run.units,
+      isFourByFour: comparisonKey == ComparisonKey.norwegian4x4,
+      sessionName: session?.name ?? templateDefault?.name ?? 'interval',
+      nominalRepMetres: metrics.kind == IntervalMetricKind.repTime
+          ? metrics.nominalRepMetres
+          : null,
     );
-    priors = [
+    final same = [
       for (final p in priors)
         if (p.comparisonKey == comparisonKey) p,
     ];
-    final floor = _floor;
-    final band = constants.repBandSecPerKm;
 
     Verdict none(VerdictHeadline headline, String subline, {String? hrLine}) =>
         Verdict(
@@ -165,11 +253,12 @@ class VerdictBuilder {
           subline: subline,
           hrLine: hrLine,
           currentSecPerKm: metrics.avgWorkPaceSecPerKm,
-          floorSecPerKm: floor,
-          bandSecPerKm: band,
+          floorSecPerKm: c.floor,
+          bandSecPerKm: c.band,
           engineVersion: engineVersion,
           computedAt: now,
-          inputsKey: _inputsKey,
+          inputsKey: c.inputsKey,
+          nominalRepMetres: c.nominalRepMetres,
         );
 
     if (gates.indoor) {
@@ -182,10 +271,7 @@ class VerdictBuilder {
       );
     }
     if (!detection.consistent) {
-      return none(
-        VerdictHeadline.noVerdict,
-        'Laps do not match a 4x4. Fix laps to get a verdict.',
-      );
+      return none(VerdictHeadline.noVerdict, c.mismatch);
     }
     if (gates.noisy) {
       return none(
@@ -210,7 +296,7 @@ class VerdictBuilder {
       );
     }
 
-    if (metrics.cleanRepCount < EngineConstants.minReps) {
+    if (metrics.cleanRepCount < minCleanReps) {
       // Only reachable through fix-laps `drop`: too few reps left to compare.
       final droppedNumbers = metrics.reps
           .where((r) => r.dropped)
@@ -225,76 +311,121 @@ class VerdictBuilder {
       );
     }
 
-    final eligible = priors.where((p) => p.start.isBefore(run.start)).toList()
+    final eligible = same.where((p) => p.start.isBefore(run.start)).toList()
       ..sort((a, b) => a.start.compareTo(b.start));
 
-    if (eligible.isEmpty) return _baseline(run, metrics, now);
+    if (eligible.isEmpty) return _baseline(c, metrics, now);
+    final note = _comparisonNote(eligible.last, session, metrics);
     if (eligible.length == 1) {
-      return _vsLast(run, metrics, eligible.single, now);
+      return _vsLast(c, metrics, eligible.single, now, note);
     }
-    return _vsMedian(run, metrics, eligible, now);
+    return _vsMedian(c, run, metrics, eligible, now, note);
   }
 
-  Verdict _baseline(RunFile run, IntervalMetrics m, DateTime now) {
-    final units = run.units;
+  /// D4: "Last time: 5 reps, 2:30 recovery." when the last comparable run
+  /// had a different rep count or recovery; null when they match or either
+  /// side is unknown.
+  static String? _comparisonNote(
+    PriorRun last,
+    SessionSpec? session,
+    IntervalMetrics m,
+  ) {
+    final reps = session?.repCount ?? m.reps.length;
+    final recovery = session == null ? null : recoveryLabelOf(session);
+    final repsDiffer = last.repCount != null && last.repCount != reps;
+    final recoveryDiffers =
+        last.recoveryLabel != null &&
+        recovery != null &&
+        last.recoveryLabel != recovery;
+    if (!repsDiffer && !recoveryDiffers) return null;
+    final parts = [
+      if (last.repCount != null) '${last.repCount} reps',
+      ?last.recoveryLabel,
+    ];
+    return 'Last time: ${parts.join(', ')}.';
+  }
+
+  /// "2:30 recovery", "200 m jog", "equal-time jog", "no recovery".
+  static String recoveryLabelOf(SessionSpec session) {
+    final rec = session.steps.where((s) => !s.isWork).firstOrNull;
+    if (rec == null) return 'no recovery';
+    return switch (rec.target) {
+      TargetKind.time =>
+        rec.value == 0
+            ? 'no recovery'
+            : '${PaceFormat.mmss(rec.value.toDouble())} ${rec.style == RecoveryStyle.jog ? 'recovery' : rec.style.name}',
+      TargetKind.distance => '${rec.value} m ${rec.style.name}',
+      TargetKind.equalToPreviousWork => 'equal-time ${rec.style.name}',
+    };
+  }
+
+  Verdict _baseline(_Ctx c, IntervalMetrics m, DateTime now) {
+    final units = c.units;
     final spread = m.repSpreadSecPerKm!;
     final spreadText = spread <= constants.repBandSecPerKm
-        ? 'Reps within ${PaceFormat.seconds(PaceFormat.toUnit(spread, units))} of each other.'
-        : 'Reps spread ${PaceFormat.seconds(PaceFormat.toUnit(spread, units))}.';
+        ? 'Reps within ${c.gap(spread)} of each other.'
+        : 'Reps spread ${c.gap(spread)}.';
     final recovery = m.recoveryPaceSecPerKm;
     final recoveryText = recovery == null
         ? ''
         : ' Recovery ${PaceFormat.paceBare(recovery, units)}.';
+    final lead = c.repTime
+        ? '${c.nominalRepMetres} m in ${c.value(m.avgWorkPaceSecPerKm!)} average.'
+        : '${c.value(m.avgWorkPaceSecPerKm!)} work pace.';
     return Verdict(
       stage: VerdictStage.baseline,
       headline: VerdictHeadline.baselineSet,
-      subline:
-          '${PaceFormat.pace(m.avgWorkPaceSecPerKm!, units)} work pace. '
-          '$spreadText$recoveryText Next 4x4 gets a verdict.',
+      subline: '$lead $spreadText$recoveryText Next ${c.one} gets a verdict.',
       hrLine: m.timeInZoneSeconds == null
           ? null
           : 'Time in zone ${PaceFormat.mmss(m.timeInZoneSeconds!)} of '
                 '${PaceFormat.mmss(m.workSeconds)}.',
       currentSecPerKm: m.avgWorkPaceSecPerKm,
-      floorSecPerKm: _floor,
-      bandSecPerKm: constants.repBandSecPerKm,
+      floorSecPerKm: c.floor,
+      bandSecPerKm: c.band,
       engineVersion: engineVersion,
       computedAt: now,
-      inputsKey: _inputsKey,
+      inputsKey: c.inputsKey,
+      nominalRepMetres: c.nominalRepMetres,
     );
   }
 
-  Verdict _vsLast(RunFile run, IntervalMetrics m, PriorRun last, DateTime now) {
-    final units = run.units;
+  Verdict _vsLast(
+    _Ctx c,
+    IntervalMetrics m,
+    PriorRun last,
+    DateTime now,
+    String? note,
+  ) {
     final current = m.avgWorkPaceSecPerKm!;
     final baseline = last.avgWorkPaceSecPerKm;
     final delta = baseline - current;
-    final floor = _run2Floor;
-    final vs =
-        '(${PaceFormat.paceBare(current, units)} vs ${PaceFormat.pace(baseline, units)})';
+    final floor = c.run2Floor;
+    final vs = '(${c.bare(current)} vs ${c.value(baseline)})';
     final VerdictHeadline headline;
     final String subline;
     String? hrLine;
-    if (_beyond(delta, floor)) {
+    if (c.beyond(delta, floor)) {
       headline = VerdictHeadline.faster;
       subline =
-          'Work pace ${PaceFormat.delta(delta, units)} faster than your first 4x4 $vs.'
-          '${_fadeSentence(m, last, units)}';
+          '${c.metric} ${c.delta(delta)} faster than your first ${c.one} $vs.'
+          '${_fadeSentence(c, m, last)}';
       hrLine = _fasterHrLine(m, last, [last]);
-    } else if (_beyond(-delta, floor)) {
+    } else if (c.beyond(-delta, floor)) {
       headline = VerdictHeadline.slower;
       subline =
-          'Work pace ${PaceFormat.delta(delta, units)} slower than your first 4x4 $vs.'
-          '${_fadeSentence(m, last, units)}';
+          '${c.metric} ${c.delta(delta)} slower than your first ${c.one} $vs.'
+          '${_fadeSentence(c, m, last)}';
       hrLine = _slowerHrLine(m, last);
     } else {
       headline = VerdictHeadline.noRealChange;
-      final lead = delta.round() == 0
-          ? 'Same work pace as your first 4x4 (${PaceFormat.pace(current, units)}).'
-          : '${PaceFormat.delta(delta, units)} ${delta > 0 ? 'faster' : 'slower'} '
-                'than your first 4x4 $vs.';
-      subline =
-          '$lead Inside what phone GPS can tell (${PaceFormat.delta(floor, units)}).';
+      final shown = c.repTime ? (delta * c._km).round() : delta.round();
+      final lead = shown == 0
+          ? 'Same ${c.metric.toLowerCase()} as your first ${c.one} '
+                '(${c.value(current)}).'
+          : '${c.delta(delta)} ${delta > 0 ? 'faster' : 'slower'} '
+                'than your first ${c.one} $vs.';
+      subline = '$lead Inside what phone GPS can tell (${c.delta(floor)}).';
     }
     return Verdict(
       stage: VerdictStage.vsLast,
@@ -308,46 +439,49 @@ class VerdictBuilder {
       setSize: 1,
       setIds: [last.id],
       floorSecPerKm: floor,
-      bandSecPerKm: constants.repBandSecPerKm,
+      bandSecPerKm: c.band,
       engineVersion: engineVersion,
       computedAt: now,
-      inputsKey: _inputsKey,
+      inputsKey: c.inputsKey,
+      comparisonNote: note,
+      nominalRepMetres: c.nominalRepMetres,
     );
   }
 
   Verdict _vsMedian(
+    _Ctx c,
     RunFile run,
     IntervalMetrics m,
     List<PriorRun> eligible,
     DateTime now,
+    String? note,
   ) {
-    final units = run.units;
+    final units = c.units;
     final current = m.avgWorkPaceSecPerKm!;
     final set = eligible.length > constants.medianSetSize
         ? eligible.sublist(eligible.length - constants.medianSetSize)
         : eligible;
     final baseline = _median(set.map((p) => p.avgWorkPaceSecPerKm).toList());
     final delta = baseline - current;
-    final floor = _floor;
+    final floor = c.floor;
     final rank = set.where((p) => p.avgWorkPaceSecPerKm > current).length;
     final last = set.last;
-    final vs =
-        '(${PaceFormat.paceBare(current, units)} vs ${PaceFormat.pace(baseline, units)})';
+    final vs = '(${c.bare(current)} vs ${c.value(baseline)})';
 
     final VerdictHeadline headline;
     final String subline;
     String? hrLine;
-    if (_beyond(delta, floor)) {
+    if (c.beyond(delta, floor)) {
       headline = VerdictHeadline.faster;
       subline =
-          'Work pace ${PaceFormat.delta(delta, units)} faster than your recent 4x4s $vs.'
-          '${_fadeSentence(m, last, units)}';
+          '${c.metric} ${c.delta(delta)} faster than your recent ${c.many} $vs.'
+          '${_fadeSentence(c, m, last)}';
       hrLine = _fasterHrLine(m, last, set);
-    } else if (_beyond(-delta, floor)) {
+    } else if (c.beyond(-delta, floor)) {
       headline = VerdictHeadline.slower;
       subline =
-          'Work pace ${PaceFormat.delta(delta, units)} slower than your recent 4x4s $vs.'
-          '${_fadeSentence(m, last, units)}';
+          '${c.metric} ${c.delta(delta)} slower than your recent ${c.many} $vs.'
+          '${_fadeSentence(c, m, last)}';
       hrLine = _slowerHrLine(m, last);
     } else {
       headline = VerdictHeadline.holding;
@@ -360,7 +494,7 @@ class VerdictBuilder {
           : ' Recovery pace ${PaceFormat.paceBare(recovery, units)}, was '
                 '${PaceFormat.paceBare(wasRecovery, units)}.';
       subline =
-          'Within ${PaceFormat.delta(delta, units)} of your recent 4x4s $vs.$recoveryText';
+          'Within ${c.delta(delta)} of your recent ${c.many} $vs.$recoveryText';
       hrLine = _holdingHrLine(m, last);
     }
 
@@ -387,28 +521,25 @@ class VerdictBuilder {
       setSize: set.length,
       setIds: set.map((p) => p.id).toList(),
       floorSecPerKm: floor,
-      bandSecPerKm: constants.repBandSecPerKm,
+      bandSecPerKm: c.band,
       engineVersion: engineVersion,
       computedAt: now,
-      inputsKey: _inputsKey,
+      inputsKey: c.inputsKey,
       bestIn365Days: best,
       trendSecPerKmPerWeek: theilSenSlope(run.start, current, eligible),
+      comparisonNote: note,
+      nominalRepMetres: c.nominalRepMetres,
     );
   }
 
-  String _fadeSentence(IntervalMetrics m, PriorRun last, Units units) {
+  String _fadeSentence(_Ctx c, IntervalMetrics m, PriorRun last) {
     final fade = m.fadeSecPerKm;
     if (fade == null) return '';
     final was = last.fadeSecPerKm;
-    final fadeText = PaceFormat.seconds(PaceFormat.toUnit(fade, units));
+    final fadeText = c.gap(fade);
     if (was == null) return ' Fade $fadeText.';
-    return ' Fade $fadeText, was ${PaceFormat.seconds(PaceFormat.toUnit(was, units))}.';
+    return ' Fade $fadeText, was ${c.gap(was)}.';
   }
-
-  /// The verdict decision uses the displayed (rounded) numbers so "14 s/km
-  /// faster" can never sit inside a printed 14 s/km floor.
-  static bool _beyond(double delta, double floor) =>
-      delta.round() > floor.round();
 
   /// Plan §5 "faster at the same HR": pace better AND metres-per-beat better
   /// than the baseline (median mpb of the comparison set) → same-HR line;
