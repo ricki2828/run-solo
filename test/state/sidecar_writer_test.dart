@@ -155,6 +155,48 @@ void main() {
       expect(d!.analysis.verdictSource, engine.VerdictSource.frozen);
     });
 
+    test('delete during list() leaves no orphan sidecar (PR #21 P2)', () async {
+      final r = fourByFourFile(n: 1, start: d1);
+      final runsDir = Directory('${dir.path}/runs');
+      final store = FileRunStore(runsDir);
+      await store.importBundles([engine.RunBundle(run: r)]);
+      final sidecar = File('${runsDir.path}/run-${r.id}.edits.json');
+      expect(sidecar.existsSync(), isFalse, reason: 'nothing frozen yet');
+
+      // list() has scanned and analysed the run; before its freeze lands,
+      // the runner deletes it.
+      var deleted = false;
+      store.afterAnalyse = () async {
+        if (deleted) return;
+        deleted = true;
+        await store.delete(r.id);
+      };
+      await store.list();
+      store.afterAnalyse = null;
+
+      expect(File('${runsDir.path}/run-${r.id}.json.gz').existsSync(), isFalse);
+      expect(sidecar.existsSync(), isFalse, reason: 'no orphan sidecar');
+      expect(await store.list(), isEmpty);
+    });
+
+    test('a queued freeze behind deleteRun writes nothing', () async {
+      final w = SidecarWriter();
+      final run = File('${dir.path}/run-a.json.gz')..writeAsStringSync('x');
+      final sc = File('${dir.path}/run-a.edits.json');
+      await w.update('a', sc, (s) => s.copyWith(notes: 'n'), runFile: run);
+      expect(sc.existsSync(), isTrue);
+      final del = w.deleteRun('a', run, sc);
+      final late = w.update(
+        'a',
+        sc,
+        (s) => s.copyWith(notes: 'stale'),
+        runFile: run,
+      );
+      await Future.wait([del, late]);
+      expect(run.existsSync(), isFalse);
+      expect(sc.existsSync(), isFalse);
+    });
+
     test('list() writes nothing once every verdict is frozen', () async {
       final r = fourByFourFile(n: 1, start: d1);
       final runsDir = Directory('${dir.path}/runs');

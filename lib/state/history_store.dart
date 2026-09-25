@@ -562,6 +562,7 @@ class FileRunStore implements RunStore {
           e.key,
           _sidecarFor(entry.$3),
           freezeTransform(e.value),
+          runFile: entry.$3,
         );
         scanned[e.key] = (entry.$1, now, entry.$3);
       } catch (err) {
@@ -612,7 +613,7 @@ class FileRunStore implements RunStore {
       final next = change(current);
       _checkEdits(_analyser, v.$1, next);
       return next;
-    });
+    }, runFile: v.$3);
     return (await load(id))!;
   }
 
@@ -684,8 +685,7 @@ class FileRunStore implements RunStore {
     final scanned = await _scan();
     final v = scanned[id];
     if (v == null) return;
-    await sidecars.delete(id, _sidecarFor(v.$3));
-    await v.$3.delete();
+    await sidecars.deleteRun(id, v.$3, _sidecarFor(v.$3));
     await sidecars.replaceText('index.json', indexFile, (current) {
       final index = RunIndex.decode(current);
       if (!index.entries.containsKey(id)) return null;

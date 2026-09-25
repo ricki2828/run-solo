@@ -35,11 +35,17 @@ class SidecarWriter {
   /// A sidecar from a newer app (`RunFileNewerVersionException`) is never
   /// rewritten (W6): the exception reaches the caller and nothing is written.
   /// An unreadable (corrupt) sidecar is replaced, as before.
+  ///
+  /// With [runFile], nothing is written once that run file is gone (checked
+  /// inside the critical section): a `list()` that scanned a run just
+  /// deleted must not recreate its sidecar as an orphan, which a later
+  /// re-import of the same uuid would adopt (PR #21 review P2).
   Future<engine.RunSidecar> update(
     String id,
     File file,
-    engine.RunSidecar Function(engine.RunSidecar current) transform,
-  ) => _serial(id, () => _apply(id, file, transform));
+    engine.RunSidecar Function(engine.RunSidecar current) transform, {
+    File? runFile,
+  }) => _serial(id, () => _apply(id, file, transform, runFile));
 
   /// Serialised read → [transform] → atomic write of a whole text file under
   /// [key] (the summary index uses this). The transform gets null for a
@@ -56,10 +62,14 @@ class SidecarWriter {
     await _writeAtomic(file, next);
   });
 
-  /// Delete run [id]'s sidecar, after any write queued before it.
-  Future<void> delete(String id, File file) => _serial(id, () async {
-    if (await file.exists()) await file.delete();
-  });
+  /// Delete run [id]'s run file and sidecar in one critical section, after
+  /// any write queued before it; a write queued after it finds the run file
+  /// gone and writes nothing.
+  Future<void> deleteRun(String id, File runFile, File sidecar) =>
+      _serial(id, () async {
+        if (await runFile.exists()) await runFile.delete();
+        if (await sidecar.exists()) await sidecar.delete();
+      });
 
   /// Run [op] after every earlier operation on [id] has finished (success or
   /// failure); operations on different ids do not wait for each other.
@@ -81,7 +91,11 @@ class SidecarWriter {
     String id,
     File file,
     engine.RunSidecar Function(engine.RunSidecar current) transform,
+    File? runFile,
   ) async {
+    if (runFile != null && !await runFile.exists()) {
+      return await read(file) ?? engine.RunSidecar(runId: id);
+    }
     final current = await read(file) ?? engine.RunSidecar(runId: id);
     await afterRead?.call(id);
     final next = transform(current);
