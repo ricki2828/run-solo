@@ -84,8 +84,24 @@ class EngineConstants {
   ///   catalogue preset whose default owns the key, else the template's own
   ///   default passed as [templateDefault] (custom keys).
   /// Seeded; calibrated in Phase 3 I3/I5 against the founder's runs.
-  double floorSecPerKmForKey(String key, {SessionSpec? templateDefault}) {
+  ///
+  /// Parkrun (`parkrun`, `parkrun:<course>`) is fixed by decision, not the
+  /// formula (lead 26-Sep): PB gains are 10–30 s, so the GPS finish uses
+  /// [parkrunGpsFloorSecPerKm] (3 s/km ≈ 15 s over 5 km, about a 1% GPS
+  /// distance error). K1: with an official time from the sidecar
+  /// ([officialTime]) it drops to [parkrunOfficialFloorSecPerKm] (1 s/km
+  /// ≈ 5 s).
+  double floorSecPerKmForKey(
+    String key, {
+    SessionSpec? templateDefault,
+    bool officialTime = false,
+  }) {
     if (key == ComparisonKey.norwegian4x4) return runFloorSecPerKm;
+    if (ComparisonKey.isParkrun(key)) {
+      return officialTime
+          ? parkrunOfficialFloorSecPerKm
+          : parkrunGpsFloorSecPerKm;
+    }
     final nominal =
         SessionCatalogue.ownerOfKey(key)?.defaults ?? templateDefault;
     final seconds = nominal == null ? 0 : nominalWorkSeconds(nominal);
@@ -93,6 +109,9 @@ class EngineConstants {
     final f = runFloorSecPerKm * math.sqrt(16 * 60 / seconds);
     return f.clamp(runFloorSecPerKm, 2 * runFloorSecPerKm).toDouble();
   }
+
+  static const double parkrunGpsFloorSecPerKm = 3;
+  static const double parkrunOfficialFloorSecPerKm = 1;
 
   /// Distance keys state the floor per rep (the headline is rep time):
   /// `floor_s_per_rep = floor_s_per_km × nominal_km` (400 m at 12 s/km →

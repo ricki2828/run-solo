@@ -433,6 +433,20 @@ void main() {
       );
     });
 
+    test('floor: 3 s/km on the GPS finish (~15 s), 1 s/km with an official '
+        'time (K1, ~5 s); never the 10 s/km formula', () {
+      const c = EngineConstants.defaults;
+      expect(c.floorSecPerKmForKey('parkrun'), 3);
+      expect(c.floorSecPerKmForKey('parkrun:albert-melbourne'), 3);
+      expect(EngineConstants.floorSecPerRep(3, 5000), 15);
+      expect(c.floorSecPerKmForKey('parkrun', officialTime: true), 1);
+      expect(EngineConstants.floorSecPerRep(1, 5000), 5);
+      // The generic 5 km key keeps the formula.
+      expect(c.floorSecPerKmForKey('d5000x*', templateDefault: custom5k), 10);
+      final a = analyze(sessionRun(parkrun, workMps: 3.4));
+      expect(a.verdict!.floorSecPerKm, 3);
+    });
+
     test('headline is the finish time; staged against parkruns only', () {
       final runs = [
         sessionRun(parkrun, n: 1, workMps: 3.4),
