@@ -24,14 +24,14 @@ import 'sidecar_writer.dart';
 /// `RunMode` (file / engine) ↔ `RecordMode` (Pigeon / UI). Exhaustive on both
 /// sides (W7) so a new run type fails to compile instead of mislabelling.
 RecordMode recordModeOf(engine.RunMode m) => switch (m) {
-  engine.RunMode.fourByFour => RecordMode.fourByFour,
+  engine.RunMode.intervals => RecordMode.fourByFour,
   engine.RunMode.laps => RecordMode.laps,
   engine.RunMode.free => RecordMode.free,
   engine.RunMode.cooper => RecordMode.cooper,
 };
 
 engine.RunMode runModeOf(RecordMode m) => switch (m) {
-  RecordMode.fourByFour => engine.RunMode.fourByFour,
+  RecordMode.fourByFour => engine.RunMode.intervals,
   RecordMode.laps => engine.RunMode.laps,
   RecordMode.free => engine.RunMode.free,
   RecordMode.cooper => engine.RunMode.cooper,

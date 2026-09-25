@@ -130,7 +130,7 @@ class TcxImporter {
       // Garmin/Coros write a <Lap> per auto-km, so a 10 km easy run would
       // otherwise enter the 4x4 trend. The 4x4 flip is a sidecar override.
       mode: mode ?? (manualLaps >= 1 ? RunMode.laps : RunMode.free),
-      preset: null,
+      session: null,
       units: units,
       laps: laps,
       samples: samples,

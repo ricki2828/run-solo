@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../run_mode.dart';
+import 'session_spec.dart';
 
 /// Thrown by the codec when a run file or sidecar does not match a schema
 /// this build can read.
@@ -22,8 +23,9 @@ class RunFileNewerVersionException extends RunFileFormatException {
 /// Distance units chosen at Start; only affects display, never storage.
 enum Units { km, mi }
 
-/// The 4x4 preset written into the file header (plan §6). Drives the cues in
-/// Kotlin and the detector's expected pattern here, so they cannot disagree.
+/// The Phase 2 4x4 preset: the schema ≤ 2 `preset` header, and the
+/// detector's view of a uniform time session ([SessionSpec.legacyPreset])
+/// until the generalised detector (Phase 3 I3). Never written by schema 3.
 class Preset {
   const Preset({
     required this.reps,
@@ -286,8 +288,14 @@ const _unset = Object();
 /// Schema history:
 /// - 1: `mode` ∈ {fourByFour, free}; `free` was the lap-capable mode.
 /// - 2: `mode` ∈ {fourByFour, laps, free, cooper}; keys unchanged. A
-///   schema-1 `free` decodes as [RunMode.laps] (§18.7 B1) and the file is
-///   re-encoded as schema 2.
+///   schema-1 `free` decodes as [RunMode.laps] (§18.7 B1).
+/// - 3 (Phase 3 §3.8): `mode` ∈ {intervals, laps, free, cooper}; `preset`
+///   is replaced by `session` (an expanded [SessionSpec]). Older files map
+///   forward on read: `fourByFour` + `preset` → `intervals` + the
+///   norwegian-4x4 session; `fourByFour` with no preset (by-feel) →
+///   `intervals` with no session (still by-feel); `cooper` → the Cooper
+///   session. The file is rewritten as schema 3 only when something else
+///   writes it (lazy, as schema 1 → 2 was).
 class RunFile {
   RunFile({
     required this.id,
@@ -297,7 +305,7 @@ class RunFile {
     required this.end,
     required this.tz,
     required this.mode,
-    this.preset,
+    this.session,
     required this.units,
     required this.laps,
     this.pauses = const [],
@@ -307,12 +315,12 @@ class RunFile {
   });
 
   /// The schema this build writes.
-  static const int schema = 2;
+  static const int schema = 3;
 
   /// The lowest schema this build reads (every older one is mapped forward).
   static const int minReadSchema = 1;
 
-  /// The schema the decoded bytes carried (1 or 2); [schema] for a run built
+  /// The schema the decoded bytes carried (1..3); [schema] for a run built
   /// in memory. Not serialised: [toJson] always writes [schema]. The store
   /// uses it to know a file was migrated on read.
   final int readSchema;
@@ -324,8 +332,15 @@ class RunFile {
   final DateTime end;
   final String tz;
   final RunMode mode;
-  final Preset? preset;
+
+  /// The structured session (intervals, cooper, fartlek-laps); null for
+  /// laps, free and a by-feel 4x4.
+  final SessionSpec? session;
   final Units units;
+
+  /// The detector's legacy view of [session] (uniform time sessions only);
+  /// null for by-feel and for sessions the Phase 2 detector cannot match.
+  Preset? get preset => session?.legacyPreset;
   final List<Lap> laps;
   final List<Span> pauses;
   final List<Span> gaps;
@@ -340,7 +355,7 @@ class RunFile {
   RunFile copyWith({
     String? id,
     RunMode? mode,
-    Object? preset = _unset,
+    Object? session = _unset,
     List<Lap>? laps,
     List<Span>? pauses,
     List<Span>? gaps,
@@ -353,7 +368,9 @@ class RunFile {
     end: end,
     tz: tz,
     mode: mode ?? this.mode,
-    preset: identical(preset, _unset) ? this.preset : preset as Preset?,
+    session: identical(session, _unset)
+        ? this.session
+        : session as SessionSpec?,
     units: units,
     laps: laps ?? this.laps,
     pauses: pauses ?? this.pauses,
@@ -370,7 +387,7 @@ class RunFile {
     'end': end.toUtc().toIso8601String(),
     'tz': tz,
     'mode': mode.name,
-    'preset': preset?.toJson(),
+    'session': session?.toJson(),
     'units': units.name,
     'laps': laps.map((l) => l.toJson()).toList(),
     'pauses': pauses.map((p) => p.toJson()).toList(),
@@ -391,7 +408,7 @@ class RunFile {
     'end',
     'tz',
     'mode',
-    'preset',
+    'session',
     'units',
     'laps',
     'pauses',
@@ -412,7 +429,11 @@ class RunFile {
     // Strict: an unknown key means a newer writer; refuse rather than drop
     // it silently (the store keeps the original bytes for export anyway).
     for (final k in json.keys) {
-      if (!_keys.contains(k)) {
+      // Schema ≤ 2 wrote `preset` where schema 3 writes `session`.
+      final known = schemaValue <= 2
+          ? (k == 'preset' || (k != 'session' && _keys.contains(k)))
+          : _keys.contains(k);
+      if (!known) {
         throw RunFileNewerVersionException('unknown key "$k"');
       }
     }
@@ -427,10 +448,7 @@ class RunFile {
       orElse: () => null,
     );
     if (units == null) throw RunFileFormatException('units must be km|mi');
-    final presetJson = json['preset'];
-    if (presetJson != null && presetJson is! Map<String, Object?>) {
-      throw RunFileFormatException('preset must be an object or null');
-    }
+    final session = _decodeSession(json, schemaValue, mode);
     // A repeated or out-of-order `t` is one bad line from the writer, not a
     // reason to make the whole run unreadable: drop it and keep the first.
     final samples = <Sample>[];
@@ -462,9 +480,7 @@ class RunFile {
       end: _readDateTime(json, 'end'),
       tz: _readString(json, 'tz'),
       mode: mode,
-      preset: presetJson == null
-          ? null
-          : Preset.fromJson(presetJson as Map<String, Object?>),
+      session: session,
       units: units,
       laps: laps,
       pauses: _readList(json, 'pauses').map(Span.fromJson).toList(),
@@ -472,6 +488,51 @@ class RunFile {
       samples: samples,
       readSchema: schemaValue,
     );
+  }
+
+  /// Schema 3 reads `session`; schema ≤ 2 maps `preset` forward (plan §3.8).
+  static SessionSpec? _decodeSession(
+    Map<String, Object?> json,
+    int schemaValue,
+    RunMode mode,
+  ) {
+    if (schemaValue >= 3) {
+      final raw = json['session'];
+      if (raw == null) {
+        if (mode == RunMode.cooper) {
+          throw RunFileFormatException('a cooper run needs its session');
+        }
+        return null;
+      }
+      final spec = SessionSpec.fromJson(_asMap(raw, 'session'));
+      final ok = switch (mode) {
+        RunMode.intervals || RunMode.cooper => spec.steps.isNotEmpty,
+        RunMode.laps => spec.templateId == SessionSpec.fartlekId,
+        RunMode.free => false,
+      };
+      if (!ok) {
+        throw RunFileFormatException(
+          'session ${spec.templateId} does not fit mode ${mode.name}',
+        );
+      }
+      return spec;
+    }
+    final presetJson = json['preset'];
+    if (presetJson != null && presetJson is! Map<String, Object?>) {
+      throw RunFileFormatException('preset must be an object or null');
+    }
+    return switch (mode) {
+      // A by-feel 4x4 (no preset) stays by-feel: no session.
+      RunMode.intervals =>
+        presetJson == null
+            ? null
+            : SessionSpec.fromLegacyPreset(
+                Preset.fromJson(presetJson as Map<String, Object?>),
+              ),
+      RunMode.cooper => SessionSpec.cooper,
+      // A preset on a Laps/Free file was never written; ignore it as before.
+      RunMode.laps || RunMode.free => null,
+    };
   }
 
   /// The app writes uuids; any filename-safe token (`run-<id>.json.gz`) is

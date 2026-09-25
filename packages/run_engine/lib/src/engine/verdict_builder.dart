@@ -1,5 +1,9 @@
 import '../engine_version.dart';
+
+import 'dart:math' as math;
+
 import '../model/run_file.dart';
+import '../model/session_spec.dart';
 import '../model/verdict.dart';
 import 'constants.dart';
 import 'format.dart';
@@ -23,9 +27,13 @@ class PriorRun {
     this.meanWorkHrFraction,
     this.metresPerBeat,
     this.repPacesSecPerKm = const [],
+    this.comparisonKey = ComparisonKey.norwegian4x4,
   });
 
   final String id;
+
+  /// Only priors of the same key are compared (plan §3.7, D4).
+  final String comparisonKey;
   final DateTime start;
   final double avgWorkPaceSecPerKm;
   final double? fadeSecPerKm;
@@ -44,6 +52,7 @@ class PriorRun {
     DateTime start,
     FourByFourMetrics m, {
     required bool eligible,
+    String comparisonKey = ComparisonKey.norwegian4x4,
   }) {
     if (!eligible || m.avgWorkPaceSecPerKm == null) return null;
     return PriorRun(
@@ -59,6 +68,7 @@ class PriorRun {
       repPacesSecPerKm: m.reps
           .map((r) => r.clean ? r.paceSecPerKm : null)
           .toList(),
+      comparisonKey: comparisonKey,
     );
   }
 }
@@ -83,6 +93,11 @@ class VerdictBuilder {
   final EngineConstants constants;
   String _inputsKey = '';
 
+  /// Noise floor for this run's comparison key (plan §3.7 W1); the 4x4 key
+  /// keeps [EngineConstants.runFloorSecPerKm].
+  double _floor = EngineConstants.defaults.runFloorSecPerKm;
+  double get _run2Floor => _floor * math.sqrt2;
+
   Verdict build({
     required RunFile run,
     required RepDetection detection,
@@ -91,9 +106,19 @@ class VerdictBuilder {
     required List<PriorRun> priors,
     required DateTime now,
     String inputsKey = '',
+    String comparisonKey = ComparisonKey.norwegian4x4,
+    SessionSpec? templateDefault,
   }) {
     _inputsKey = inputsKey;
-    final floor = constants.runFloorSecPerKm;
+    _floor = constants.floorSecPerKmForKey(
+      comparisonKey,
+      templateDefault: templateDefault,
+    );
+    priors = [
+      for (final p in priors)
+        if (p.comparisonKey == comparisonKey) p,
+    ];
+    final floor = _floor;
     final band = constants.repBandSecPerKm;
 
     Verdict none(VerdictHeadline headline, String subline, {String? hrLine}) =>
@@ -194,7 +219,7 @@ class VerdictBuilder {
           : 'Time in zone ${PaceFormat.mmss(m.timeInZoneSeconds!)} of '
                 '${PaceFormat.mmss(m.workSeconds)}.',
       currentSecPerKm: m.avgWorkPaceSecPerKm,
-      floorSecPerKm: constants.runFloorSecPerKm,
+      floorSecPerKm: _floor,
       bandSecPerKm: constants.repBandSecPerKm,
       engineVersion: engineVersion,
       computedAt: now,
@@ -212,7 +237,7 @@ class VerdictBuilder {
     final current = m.avgWorkPaceSecPerKm!;
     final baseline = last.avgWorkPaceSecPerKm;
     final delta = baseline - current;
-    final floor = constants.run2FloorSecPerKm;
+    final floor = _run2Floor;
     final vs =
         '(${PaceFormat.paceBare(current, units)} vs ${PaceFormat.pace(baseline, units)})';
     final VerdictHeadline headline;
@@ -271,7 +296,7 @@ class VerdictBuilder {
         : eligible;
     final baseline = _median(set.map((p) => p.avgWorkPaceSecPerKm).toList());
     final delta = baseline - current;
-    final floor = constants.runFloorSecPerKm;
+    final floor = _floor;
     final rank = set.where((p) => p.avgWorkPaceSecPerKm > current).length;
     final last = set.last;
     final vs =

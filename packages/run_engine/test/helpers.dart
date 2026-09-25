@@ -92,3 +92,56 @@ PriorRun prior(
   meanWorkHrFraction: hrFraction,
   metresPerBeat: mpb,
 );
+
+/// The bytes a schema-[schema] writer (1 or 2) produced for [run]: `preset`
+/// instead of `session`, `fourByFour` for intervals, and under schema 1
+/// today's `laps` spelled `free`. For migration tests (Phase 3 §3.8).
+Map<String, Object?> legacyRunJson(RunFile run, int schema) {
+  assert(schema == 1 || schema == 2);
+  final j = run.toJson();
+  final out = <String, Object?>{};
+  for (final e in j.entries) {
+    switch (e.key) {
+      case 'schema':
+        out['schema'] = schema;
+      case 'mode':
+        out['mode'] = switch (run.mode) {
+          RunMode.intervals => 'fourByFour',
+          RunMode.laps => schema == 1 ? 'free' : 'laps',
+          RunMode.free => 'free',
+          RunMode.cooper => 'cooper',
+        };
+      case 'session':
+        out['preset'] = run.mode == RunMode.intervals
+            ? run.preset?.toJson()
+            : null;
+      default:
+        out[e.key] = e.value;
+    }
+  }
+  return out;
+}
+
+String legacyRunText(RunFile run, int schema) =>
+    jsonEncode(legacyRunJson(run, schema));
+
+/// A schema-[schema] (1 or 2) sidecar for [s]: no `comparison_key`, the
+/// override in that schema's vocabulary.
+Map<String, Object?> legacySidecarJson(RunSidecar s, int schema) {
+  final j = s.toJson()
+    ..['schema'] = schema
+    ..remove('comparison_key');
+  j['run_type_override'] = switch (s.runTypeOverride) {
+    null => null,
+    RunMode.intervals => 'fourByFour',
+    RunMode.laps => schema == 1 ? 'free' : 'laps',
+    RunMode.free => 'free',
+    RunMode.cooper => 'cooper',
+  };
+  if (schema == 1) {
+    j
+      ..remove('weather')
+      ..remove('cooper');
+  }
+  return j;
+}

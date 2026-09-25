@@ -76,7 +76,7 @@ void main() {
     });
 
     test('a by-feel run flags a cut edge with the by-feel copy', () {
-      final run = fixture('preset_rep1_cut_short').run.copyWith(preset: null);
+      final run = fixture('preset_rep1_cut_short').run.copyWith(session: null);
       final a = engine.analyze(run, now: fixedNow);
       expect(a.lapsInconsistent, isTrue);
       expect(

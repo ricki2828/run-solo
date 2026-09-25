@@ -75,6 +75,9 @@ class LapEdit {
 /// - 2: adds optional `weather` and `cooper` objects (Phase 3 fills them;
 ///   this build carries them opaquely so a rewrite never drops them).
 ///   Missing keys read as absent; a v1 sidecar is re-encoded as v2.
+/// - 3 (Phase 3 §3.8): `run_type_override` uses the schema-3 vocabulary
+///   (`fourByFour` → `intervals`, mapped on read); adds `comparison_key`, a
+///   cache of the run's comparison key for the index (never an input).
 class RunSidecar {
   const RunSidecar({
     required this.runId,
@@ -85,10 +88,11 @@ class RunSidecar {
     this.verdictHistory = const [],
     this.weather,
     this.cooper,
+    this.comparisonKey,
     this.readSchema = schema,
   });
 
-  static const int schema = 2;
+  static const int schema = 3;
   static const int minReadSchema = 1;
 
   /// The schema the decoded bytes carried; not serialised.
@@ -108,6 +112,10 @@ class RunSidecar {
   final String? notes;
   final Verdict? frozenVerdict;
 
+  /// Cache only (the index groups by it); the engine derives the key from
+  /// the run file and override, never from here.
+  final String? comparisonKey;
+
   /// Earlier verdicts, oldest first: every verdict that was unfrozen by a
   /// fix-laps edit or override, or replaced by an engine bump (plan §5
   /// "previous text kept in verdict history"), so a rebuild from sidecars
@@ -121,7 +129,8 @@ class RunSidecar {
       frozenVerdict == null &&
       verdictHistory.isEmpty &&
       weather == null &&
-      cooper == null;
+      cooper == null &&
+      comparisonKey == null;
 
   RunSidecar copyWith({
     List<LapEdit>? lapEdits,
@@ -131,8 +140,12 @@ class RunSidecar {
     List<Verdict>? verdictHistory,
     Object? weather = _unset,
     Object? cooper = _unset,
+    Object? comparisonKey = _unset,
   }) => RunSidecar(
     runId: runId,
+    comparisonKey: identical(comparisonKey, _unset)
+        ? this.comparisonKey
+        : comparisonKey as String?,
     weather: identical(weather, _unset)
         ? this.weather
         : weather as Map<String, Object?>?,
@@ -192,6 +205,7 @@ class RunSidecar {
     'verdict_history': verdictHistory.map((v) => v.toJson()).toList(),
     'weather': weather,
     'cooper': cooper,
+    'comparison_key': comparisonKey,
   };
 
   /// Newer than this build (W6): the app must treat the run as read-only and
@@ -232,6 +246,10 @@ class RunSidecar {
     if (notes != null && notes is! String) {
       throw RunFileFormatException('notes must be a string or null');
     }
+    final key = json['comparison_key'];
+    if (key != null && key is! String) {
+      throw RunFileFormatException('comparison_key must be a string or null');
+    }
     final frozen = json['frozen_verdict'];
     final history = json['verdict_history'] ?? const [];
     if (history is! List) {
@@ -253,6 +271,7 @@ class RunSidecar {
           .toList(),
       weather: optObject('weather'),
       cooper: optObject('cooper'),
+      comparisonKey: key as String?,
       readSchema: schemaValue,
     );
   }

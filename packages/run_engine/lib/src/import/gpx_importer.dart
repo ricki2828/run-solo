@@ -37,7 +37,7 @@ class GpxImporter {
       end: start.add(Duration(milliseconds: samples.last.tMs)),
       tz: tz,
       mode: mode,
-      preset: null,
+      session: null,
       units: units,
       laps: const [],
       samples: samples,

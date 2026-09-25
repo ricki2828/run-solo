@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../model/run_file.dart';
+import '../model/session_spec.dart';
 import '../model/sidecar.dart';
 import '../run_mode.dart';
 
@@ -50,7 +51,7 @@ class SyntheticSpec {
     required this.name,
     required this.segments,
     this.id = '00000000-0000-4000-8000-000000000001',
-    this.mode = RunMode.fourByFour,
+    this.mode = RunMode.intervals,
     this.preset,
     this.units = Units.km,
     this.lapStyle = LapStyle.auto,
@@ -425,7 +426,9 @@ class TraceGenerator {
       end: start.add(Duration(milliseconds: totalMs)),
       tz: 'Australia/Sydney',
       mode: spec.mode,
-      preset: spec.preset,
+      session: spec.preset == null
+          ? null
+          : SessionSpec.fromLegacyPreset(spec.preset!),
       units: spec.units,
       laps: laps,
       pauses: spec.pauses,
@@ -558,12 +561,12 @@ class TraceGenerator {
     final noisy = !spec.indoor && spec.badAccuracyShare > 0.2;
     final consistent =
         spec.expectLapsConsistent ??
-        (spec.mode == RunMode.fourByFour &&
+        (spec.mode == RunMode.intervals &&
             spec.missedBoundaries.isEmpty &&
             works.length >= 3 &&
             works.length <= 6);
     final String headline;
-    if (spec.mode != RunMode.fourByFour) {
+    if (spec.mode != RunMode.intervals) {
       headline = 'none';
     } else if (spec.indoor) {
       headline = 'indoorRun';

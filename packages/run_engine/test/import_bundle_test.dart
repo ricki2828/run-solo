@@ -12,12 +12,7 @@ void main() {
   final fourByFour = fixture('four_by_four_manual_clean_hr').run;
   final lapsRun = fixture('laps_run_manual_clean_hr').run;
 
-  String asSchema1(RunFile run) {
-    final j = run.toJson();
-    j['schema'] = 1;
-    if (run.mode == RunMode.laps) j['mode'] = 'free';
-    return jsonEncode(j);
-  }
+  String asSchema1(RunFile run) => legacyRunText(run, 1);
 
   group('bundle codec', () {
     test('encode → decode is byte-identical, sidecar included', () {
@@ -29,7 +24,7 @@ void main() {
       final text = RunBundleCodec.encode(bundle);
       final j = jsonDecode(text) as Map<String, Object?>;
       expect(j['kind'], RunBundleCodec.kind);
-      expect(j['schema'], 2);
+      expect(j['schema'], 3);
       final back = RunBundleCodec.decode(text);
       expect(RunBundleCodec.encode(back), text);
       expect(back.sidecar!.notes, 'windy');
@@ -50,9 +45,9 @@ void main() {
       expect(b.id, lapsRun.id);
     });
 
-    test('a bare schema-2 run file imports', () {
+    test('a bare schema-3 run file imports', () {
       final b = RunBundleCodec.decode(RunFileCodec.encode(fourByFour));
-      expect(b.run.mode, RunMode.fourByFour);
+      expect(b.run.mode, RunMode.intervals);
       expect(RunFileCodec.encode(b.run), RunFileCodec.encode(fourByFour));
     });
 
@@ -82,12 +77,12 @@ void main() {
         'sidecar': null,
       };
       expect(
-        () => RunBundleCodec.decode(jsonEncode({...base, 'schema': 3})),
+        () => RunBundleCodec.decode(jsonEncode({...base, 'schema': 4})),
         throwsA(isA<RunFileNewerVersionException>()),
       );
       expect(
         () => RunBundleCodec.decode(
-          jsonEncode({...base, 'run': fourByFour.toJson()..['schema'] = 3}),
+          jsonEncode({...base, 'run': fourByFour.toJson()..['schema'] = 4}),
         ),
         throwsA(isA<RunFileNewerVersionException>()),
       );
@@ -96,7 +91,7 @@ void main() {
           jsonEncode({
             ...base,
             'sidecar': RunSidecar(runId: fourByFour.id).toJson()
-              ..['schema'] = 3,
+              ..['schema'] = 4,
           }),
         ),
         throwsA(isA<RunFileNewerVersionException>()),
@@ -131,7 +126,7 @@ void main() {
       // laps, overridden to 4x4 and frozen.
       final v1Run = RunFileCodec.decode(asSchema1(lapsRun));
       final sidecar0 = RunSidecar(runId: v1Run.id)
-          .withOverride(RunMode.fourByFour);
+          .withOverride(RunMode.intervals);
       final first = engine.analyze(
         v1Run,
         sidecar: sidecar0,
@@ -157,7 +152,7 @@ void main() {
       expect(again.verdictSource, VerdictSource.frozen);
       expect(again.verdict!.computedAt, first.verdict!.computedAt);
       expect(again.verdict!.subline, first.verdict!.subline);
-      expect(again.mode, RunMode.fourByFour);
+      expect(again.mode, RunMode.intervals);
     });
   });
 
@@ -233,7 +228,7 @@ void main() {
       expect(second.duplicateIds, isEmpty);
     });
 
-    test('a bare v1 file and its v2 re-export share the uuid', () {
+    test('a bare v1 file and its v3 re-export share the uuid', () {
       final v1 = RunBundleCodec.decode(asSchema1(lapsRun));
       final v2 = RunBundleCodec.decode(
         RunBundleCodec.encode(RunBundle(run: lapsRun)),

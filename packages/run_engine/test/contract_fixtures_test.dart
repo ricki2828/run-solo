@@ -62,7 +62,7 @@ void main() {
       final v1 = load('four_by_four_preset_auto_hr');
       final v2 = load('four_by_four_preset_auto_hr', schema: 2);
       expect(v2.readSchema, 2);
-      expect(v2.mode, RunMode.fourByFour);
+      expect(v2.mode, RunMode.intervals);
       expect(v2.preset, Preset.standard);
       // No recovery after the last rep: 9 laps, stopped 60 s into cool-down
       // (27:00); the work reps match the frozen 10-lap schema-1 recording.
@@ -254,7 +254,7 @@ void main() {
     // Overridden to 4x4 it is INDOOR RUN, never a pace verdict.
     final indoor = engine.analyze(
       run,
-      sidecar: RunSidecar(runId: run.id).withOverride(RunMode.fourByFour),
+      sidecar: RunSidecar(runId: run.id).withOverride(RunMode.intervals),
       profile: const UserProfile(maxHr: 180),
       now: fixedNow,
     );
@@ -284,7 +284,7 @@ void main() {
     // the speed fallback finds no pattern (constant 3 m/s), no throw.
     final forced = engine.analyze(
       run,
-      sidecar: RunSidecar(runId: run.id).withOverride(RunMode.fourByFour),
+      sidecar: RunSidecar(runId: run.id).withOverride(RunMode.intervals),
       now: fixedNow,
     );
     expect(forced.verdict!.headline, VerdictHeadline.noVerdict);

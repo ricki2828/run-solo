@@ -99,11 +99,16 @@ class Verdict {
   /// (e.g. edits merged in from a DB restore) is recomputed, never trusted.
   final String inputsKey;
 
-  static String inputsKeyFor(List<LapEdit> edits, RunMode? override) =>
-      jsonEncode({
-        'edits': edits.map((e) => e.toJson()).toList(),
-        'override': override?.name,
-      });
+  static String inputsKeyFor(
+    List<LapEdit> edits,
+    RunMode? override,
+  ) => jsonEncode({
+    'edits': edits.map((e) => e.toJson()).toList(),
+    // Spelled as schema ≤ 2 did (Phase 3 renamed fourByFour →
+    // intervals), so a verdict frozen under an override before the
+    // rename still matches and is restored, not recomputed.
+    'override': override == RunMode.intervals ? 'fourByFour' : override?.name,
+  });
 
   /// Same headline and wording (what a runner reads), whatever the numbers
   /// or engine version behind them.

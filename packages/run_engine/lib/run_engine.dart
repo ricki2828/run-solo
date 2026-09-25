@@ -22,6 +22,8 @@ export 'src/import/run_bundle.dart';
 export 'src/import/tcx_exporter.dart';
 export 'src/import/tcx_importer.dart';
 export 'src/model/run_file.dart';
+export 'src/model/session_catalogue.dart';
+export 'src/model/session_spec.dart';
 export 'src/model/sidecar.dart';
 export 'src/model/verdict.dart';
 export 'src/run_mode.dart';

@@ -94,10 +94,10 @@ void main() {
       expect(engine.analyze(free, now: fixedNow).verdict, isNull);
       final a = engine.analyze(
         free,
-        sidecar: RunSidecar(runId: free.id).withOverride(RunMode.fourByFour),
+        sidecar: RunSidecar(runId: free.id).withOverride(RunMode.intervals),
         now: fixedNow,
       );
-      expect(a.mode, RunMode.fourByFour);
+      expect(a.mode, RunMode.intervals);
       expect(a.detection!.fromSpeedStream, isTrue);
       expect(a.detection!.consistent, isTrue);
       expect(a.verdict!.headline, VerdictHeadline.baselineSet);
@@ -232,7 +232,7 @@ void main() {
       final base = fixture('preset_6x4_recovery_5_00').run;
       expect(
         engine
-            .analyze(base.copyWith(preset: null), now: fixedNow)
+            .analyze(base.copyWith(session: null), now: fixedNow)
             .lapsInconsistent,
         isFalse,
       );
@@ -253,7 +253,7 @@ void main() {
       expect(engine.analyze(long, now: fixedNow).lapsInconsistent, isFalse);
       expect(
         engine
-            .analyze(long.copyWith(preset: null), now: fixedNow)
+            .analyze(long.copyWith(session: null), now: fixedNow)
             .lapsInconsistent,
         isTrue,
       );
@@ -263,11 +263,15 @@ void main() {
       final five = fixture('preset_5x4_recovery_2_00_missing_final_recovery')
           .run;
       final asFour = five.copyWith(
-        preset: const Preset(reps: 4, workSeconds: 240, recoverySeconds: 120),
+        session: SessionSpec.fromLegacyPreset(
+          const Preset(reps: 4, workSeconds: 240, recoverySeconds: 120),
+        ),
       );
       expect(engine.analyze(asFour, now: fixedNow).lapsInconsistent, isFalse);
       final asThree = five.copyWith(
-        preset: const Preset(reps: 3, workSeconds: 240, recoverySeconds: 120),
+        session: SessionSpec.fromLegacyPreset(
+          const Preset(reps: 3, workSeconds: 240, recoverySeconds: 120),
+        ),
       );
       final a = engine.analyze(asThree, now: fixedNow);
       expect(a.lapsInconsistent, isTrue);
