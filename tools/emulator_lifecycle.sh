@@ -84,7 +84,9 @@ case "$MODE" in
     # session (adb/emulator injection drop: no lapinput line at all) may be retried, and every
     # retry is a visible ::warning:: in the run summary.
     landed=0
-    keys_seen() { adb logcat -d -s RunSolo/lapinput | grep -c "direction=" || true; }
+    # Either path counts as "the key reached us": the VolumeProvider (`direction=`) or the
+    # Android-14 stream-change fallback (`volume changed`).
+    keys_seen() { adb logcat -d -s RunSolo/lapinput | grep -cE "direction=|volume changed" || true; }
     media_state() { # what the system thinks the volume/media-key target is right now
       echo "--- dumpsys media_session ---" >&2
       adb shell dumpsys media_session 2>&1 | head -n 80 >&2 || true
