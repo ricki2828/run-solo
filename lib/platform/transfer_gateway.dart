@@ -1,4 +1,4 @@
-/// Moving runs between Run Solo installs (plan §4: share-sheet export, SAF
+/// Moving runs between Run Supreme installs (plan §4: share-sheet export, SAF
 /// import, uuid dedupe). The founder's dogfood runs (`app.runsolo.dogfood`)
 /// reach the Play build this way. Behind a seam so widget tests never touch
 /// the share sheet or a document picker.
@@ -42,7 +42,7 @@ class ShareSheetTransferGateway implements TransferGateway {
   @override
   Future<List<PickedFile>> pickFiles() async {
     const group = fs.XTypeGroup(
-      label: 'Run Solo exports',
+      label: 'Run Supreme exports',
       extensions: ['json'],
       mimeTypes: ['application/json', 'application/octet-stream'],
     );

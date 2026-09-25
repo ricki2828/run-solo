@@ -99,6 +99,83 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
+  /// Delete a run: confirm sheet, then file + sidecar go together. The run
+  /// still being recorded is refused (its file does not exist yet anyway).
+  Future<void> _confirmDelete(RunSummary r) async {
+    final services = AppServices.of(context);
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    if (services.recording.snapshot.active &&
+        services.recording.snapshot.runId == r.id) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('That run is still recording.')),
+      );
+      return;
+    }
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: t.bgRaised,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Radii.sheet)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(Space.screenGutter),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'DELETE THIS RUN?',
+                key: const ValueKey('delete-sheet'),
+                style: RunSoloType.title28.copyWith(color: t.inkPrimary),
+              ),
+              const SizedBox(height: Space.x8),
+              Text(
+                '${modeTitle(r.mode)}, ${Fmt.dayDate(r.start)}. The run, its '
+                'edits and its verdict go with it. There is no undo.',
+                style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+              ),
+              const SizedBox(height: Space.x24),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: Text(
+                        'KEEP',
+                        style: RunSoloType.label13.copyWith(
+                          color: t.inkSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: t.semDanger,
+                        foregroundColor: t.inkPrimary,
+                      ),
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('DELETE'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await services.history.delete(r.id);
+    if (!mounted) return;
+    final refreshed = services.history.list();
+    setState(() {
+      _runs = refreshed;
+    });
+  }
+
   List<Widget> _grouped(List<RunSummary> runs, Units units, RunSoloTokens t) {
     final out = <Widget>[];
     String? month;
@@ -120,6 +197,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         HistoryRow(
           run: r,
           units: units,
+          onLongPress: () => _confirmDelete(r),
           onTap: r.missing
               ? null
               : () async {
@@ -163,10 +241,14 @@ class HistoryRow extends StatelessWidget {
     required this.run,
     required this.units,
     this.onTap,
+    this.onLongPress,
   });
   final RunSummary run;
   final Units units;
   final VoidCallback? onTap;
+
+  /// Long-press → delete confirm sheet (founder field test, 25-Sep).
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -180,6 +262,7 @@ class HistoryRow extends StatelessWidget {
           '$label, ${Fmt.dayDate(run.start)}${run.verdict == null ? '' : ', ${run.verdict!.headline.text}'}',
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Container(
           constraints: const BoxConstraints(minHeight: 64),
           padding: const EdgeInsets.symmetric(vertical: Space.x12),

@@ -1,5 +1,5 @@
 name: run_solo
-description: "Run Solo: 4x4 Interval Run. Local-only Android running app with a staged 4x4 verdict."
+description: "Run Supreme: 4x4 Interval Run. Local-only Android running app with a staged 4x4 verdict."
 publish_to: 'none'
 
 # versionCode comes from the +N suffix (plan §11 release train).
@@ -18,7 +18,7 @@ dependencies:
   # Post-run route map (plan §18.3). The only network user besides Phase 3's
   # weather client. Sits behind `MapSurface`; tests never construct it.
   google_maps_flutter: ^2.10.0
-  # Move runs between Run Solo installs (dogfood → Play, plan §4 import): the
+  # Move runs between Run Supreme installs (dogfood → Play, plan §4 import): the
   # share sheet writes RunBundle JSON files, SAF picks them back. No network.
   share_plus: ^11.0.0
   file_selector: ^1.0.3

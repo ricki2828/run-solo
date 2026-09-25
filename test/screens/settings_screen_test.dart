@@ -177,10 +177,10 @@ void main() {
       home: SettingsScreen(now: now),
     );
     await pumpTimes(tester, 3);
-    await scrollTo(tester, find.text('Move runs to another Run Solo'));
+    await scrollTo(tester, find.text('Move runs to another Run Supreme'));
     // Real file I/O (temp dir) needs real async time.
     await tester.runAsync(() async {
-      await tester.tap(find.text('Move runs to another Run Solo'));
+      await tester.tap(find.text('Move runs to another Run Supreme'));
       await Future<void>.delayed(const Duration(milliseconds: 300));
     });
     await pumpTimes(tester, 3);
@@ -223,9 +223,9 @@ void main() {
     expect(storage.enforceCalls, 1, reason: 'budget enforced after import');
     expect(
       find.text(
-        'Imported 1, 1 already here (edits not merged), 1 not Run Solo files. '
+        'Imported 1, 1 already here (edits not merged), 1 not Run Supreme files. '
         '2 older runs are past the backup budget: move runs to another Run '
-        'Solo to keep them safe.',
+        'Supreme to keep them safe.',
       ),
       findsOneWidget,
     );

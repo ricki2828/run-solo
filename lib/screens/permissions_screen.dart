@@ -75,7 +75,7 @@ class _PermissionsScreenState extends State<PermissionsScreen>
 
   String? _deniedHint(PermissionKind kind, String base) =>
       _denied.contains(kind)
-      ? '$base Settings > Apps > Run Solo > Permissions.'
+      ? '$base Settings > Apps > Run Supreme > Permissions.'
       : null;
 
   @override
@@ -146,7 +146,7 @@ class _PermissionsScreenState extends State<PermissionsScreen>
               title: 'Battery optimisation off',
               why:
                   'Some phones kill a recording after a few minutes. '
-                  'Tap to let Run Solo keep recording with the screen off.',
+                  'Tap to let Run Supreme keep recording with the screen off.',
               state: s.batteryUnrestricted ? SetupState.ok : SetupState.needed,
               onTap: () async {
                 // Phase 2 backlog: in-app exemption prompt (system dialog),

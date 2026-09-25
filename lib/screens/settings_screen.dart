@@ -79,14 +79,14 @@ class _SettingsScreenState extends State<SettingsScreen>
       final dir = await Directory.systemTemp.createTemp('runsolo-export-');
       final paths = <String>[];
       for (final b in bundles) {
-        final f = File('${dir.path}/run-${b.run.id}.runsolo.json');
+        final f = File('${dir.path}/run-${b.run.id}.runsupreme.json');
         await f.writeAsString(engine.RunBundleCodec.encode(b), flush: true);
         paths.add(f.path);
       }
       await services.transfer.shareFiles(
         paths,
         subject:
-            'Run Solo: ${bundles.length} run${bundles.length == 1 ? '' : 's'}',
+            'Run Supreme: ${bundles.length} run${bundles.length == 1 ? '' : 's'}',
       );
     } catch (e) {
       _toast('Could not move runs. $e');
@@ -125,12 +125,12 @@ class _SettingsScreenState extends State<SettingsScreen>
           '${result.alreadyOnDeviceIds.length} already here (edits not merged)',
         if (result.duplicateIds.isNotEmpty)
           '${result.duplicateIds.length} repeated in the files',
-        if (unreadable > 0) '$unreadable not Run Solo files',
+        if (unreadable > 0) '$unreadable not Run Supreme files',
       ];
       _toast(
         '${parts.join(', ')}.'
         '${archived.isEmpty ? '' : ' ${archived.length} older runs are past '
-                  'the backup budget: move runs to another Run Solo to keep them safe.'}',
+                  'the backup budget: move runs to another Run Supreme to keep them safe.'}',
       );
     } catch (e) {
       _toast('Could not import. $e');
@@ -287,7 +287,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               const _Section('Data'),
               SettingsRow(
-                label: 'Move runs to another Run Solo',
+                label: 'Move runs to another Run Supreme',
                 value: _busy ? 'Working' : '',
                 onTap: _busy ? null : () => _moveRuns(context),
               ),
@@ -313,7 +313,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               const _Section('About'),
               const SizedBox(height: Space.x8),
               Text(
-                'RUN SOLO',
+                'RUN SUPREME',
                 style: RunSoloType.title28.copyWith(
                   color: t.inkPrimary,
                   letterSpacing: 28 * 0.02,
@@ -672,8 +672,8 @@ class _BatteryRow extends StatelessWidget {
                     ),
                     Text(
                       ok
-                          ? 'Off for Run Solo. Recording survives a long run with the screen off.'
-                          : 'Android can stop recording mid-run. Tap to allow Run Solo to keep going.',
+                          ? 'Off for Run Supreme. Recording survives a long run with the screen off.'
+                          : 'Android can stop recording mid-run. Tap to allow Run Supreme to keep going.',
                       style: RunSoloType.label13.copyWith(
                         color: ok ? t.inkSecondary : t.semWarn,
                       ),
