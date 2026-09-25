@@ -58,10 +58,10 @@ class BackupRulesTest {
     fun `manifest wires both rules files and keeps backup on`() {
         val f = listOf("src/main/AndroidManifest.xml", "android/app/src/main/AndroidManifest.xml").map(::File).first { it.exists() }
         val app = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(f).documentElement.getElementsByTagName("application").item(0) as Element
-        val ns = "http://schemas.android.com/apk/res/android"
-        assertEquals("true", app.getAttributeNS(ns, "allowBackup"))
-        assertEquals("@xml/backup_rules", app.getAttributeNS(ns, "fullBackupContent"))
-        assertEquals("@xml/data_extraction_rules", app.getAttributeNS(ns, "dataExtractionRules"))
+        // The default parser is not namespace-aware, so read the prefixed attribute names as written.
+        assertEquals("true", app.getAttribute("android:allowBackup"))
+        assertEquals("@xml/backup_rules", app.getAttribute("android:fullBackupContent"))
+        assertEquals("@xml/data_extraction_rules", app.getAttribute("android:dataExtractionRules"))
     }
 
     @Test
