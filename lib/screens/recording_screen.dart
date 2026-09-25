@@ -13,7 +13,6 @@ import '../theme/zones.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/gps_bar.dart';
 import '../widgets/hold_button.dart';
-import '../widgets/hr_badge.dart';
 import '../widgets/lap_button.dart';
 import '../widgets/pace_dial.dart';
 import '../widgets/zone_gauge.dart';
@@ -174,9 +173,8 @@ class _RecordingScreenState extends State<RecordingScreen>
         builder: (context, _) {
           final s = ctl.snapshot;
           final zoneBg = HrZones.background(s.zone);
-          final lapHeight = MediaQuery.sizeOf(context).height < 720
-              ? 160.0
-              : 200.0;
+          final compact = MediaQuery.sizeOf(context).height < 720;
+          final lapHeight = compact ? 160.0 : 200.0;
           return Scaffold(
             backgroundColor: Colors.transparent,
             body: Stack(
@@ -201,7 +199,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         const SizedBox(height: Space.x12),
-                        _Header(s: s, maxHr: maxHr),
+                        _Header(s: s, maxHr: maxHr, compact: compact),
                         if (_stopError != null)
                           _Banner(text: _stopError!, color: t.semDanger)
                         else if (s.fault != null)
@@ -217,7 +215,22 @@ class _RecordingScreenState extends State<RecordingScreen>
                           // their own and the screen shows the countdown,
                           // the segment's average pace and the current-pace
                           // dial. Lock-screen LAP still re-aligns a phase.
-                          _TimerBlock(s: s, ctl: ctl),
+                          // Timed phases (founder, tester 0.2): the segment
+                          // average is the primary number, at least as big
+                          // as the countdown; one step smaller on short
+                          // screens so both fit at 360 x 640.
+                          _PausedHidden(
+                            paused: s.paused,
+                            child: _TimerBlock(
+                              s: s,
+                              ctl: ctl,
+                              style: s.phase == Phase.warmup
+                                  ? null
+                                  : (compact
+                                        ? RunSoloType.display64
+                                        : RunSoloType.display96),
+                            ),
+                          ),
                           const Spacer(),
                           Visibility(
                             visible: !s.paused,
@@ -230,10 +243,14 @@ class _RecordingScreenState extends State<RecordingScreen>
                                     s: s,
                                     ctl: ctl,
                                     units: settings.units,
+                                    compact: compact,
                                   ),
                           ),
                         ] else if (s.lapsEnabled) ...[
-                          _TimerBlock(s: s, ctl: ctl),
+                          _PausedHidden(
+                            paused: s.paused,
+                            child: _TimerBlock(s: s, ctl: ctl),
+                          ),
                           const Spacer(),
                           // The PAUSED card sits here; keep the space, hide
                           // the numbers so nothing peeks out around it.
@@ -250,6 +267,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                             ctl: ctl,
                             units: settings.units,
                             maxHr: maxHr,
+                            compact: compact,
                           ),
                         const SizedBox(height: Space.x12),
                         Visibility(
@@ -368,7 +386,8 @@ String gpsBannerCopy(RecordingSnapshot s) {
 }
 
 String timerCaption(RecordingSnapshot s) {
-  if (!s.isPreset) return 'this lap · total ${Fmt.clock(s.elapsedMs)}';
+  // Total time has its own large cell in the vitals row (tester 0.2).
+  if (!s.isPreset) return 'this lap';
   return switch (s.phase) {
     Phase.warmup => 'warm up, then tap START 4x4',
     Phase.work => 'remaining in rep',
@@ -379,9 +398,10 @@ String timerCaption(RecordingSnapshot s) {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.s, required this.maxHr});
+  const _Header({required this.s, required this.maxHr, this.compact = false});
   final RecordingSnapshot s;
   final int maxHr;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -392,46 +412,136 @@ class _Header extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(
-              child: s.hrPaired
-                  ? ZoneHeader(
-                      zone: s.zone,
-                      paired: s.hrPaired,
-                      // A1: the label reads the strap state as soon as the
-                      // reading drops; the background keeps the last zone
-                      // until the tracker's 5 s loss rule.
-                      dropped: s.hr == null,
-                      onZoneBackground: onZone,
-                    )
-                  : Text(
-                      'TOTAL ${Fmt.clock(s.elapsedMs)}',
-                      style: RunSoloType.micro11.copyWith(color: secondary),
-                    ),
-            ),
-            HrBadge(hr: s.hr, paired: s.hrPaired, maxHr: maxHr, onZone: onZone),
-          ],
+        if (s.hrPaired) ...[
+          ZoneHeader(
+            zone: s.zone,
+            paired: s.hrPaired,
+            // A1: the label reads the strap state as soon as the reading
+            // drops; the background keeps the last zone until the tracker's
+            // 5 s loss rule.
+            dropped: s.hr == null,
+            onZoneBackground: onZone,
+          ),
+          const SizedBox(height: Space.x4),
+        ],
+        Text(
+          phaseTitle(s),
+          style: RunSoloType.title28.copyWith(color: t.inkPrimary),
         ),
-        const SizedBox(height: Space.x4),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                phaseTitle(s),
-                style: RunSoloType.title28.copyWith(color: t.inkPrimary),
-              ),
-            ),
-            if (s.hrPaired && s.lapsEnabled)
-              Text(
-                'TOTAL ${Fmt.clock(s.elapsedMs)}',
-                style: RunSoloType.micro11.copyWith(color: secondary),
-              ),
-          ],
+        const SizedBox(height: Space.x8),
+        // Founder (tester 0.2): heart rate and total time readable at arm's
+        // length, not top-bar text. Free run's big timer already is the
+        // total, so it shows heart rate only.
+        _Vitals(
+          s: s,
+          maxHr: maxHr,
+          showTotal: s.mode != RecordMode.free,
+          compact: compact,
+          secondary: secondary,
         ),
+        const SizedBox(height: Space.x8),
       ],
     );
+  }
+}
+
+/// Heart rate and total time as a row of large tabular figures with small
+/// labels (founder, tester 0.2). Bone digits on every zone background
+/// (≥ 7:1, zone contrast test); a dropped strap reads "--" + reconnecting in
+/// warn, never 0.
+class _Vitals extends StatelessWidget {
+  const _Vitals({
+    required this.s,
+    required this.maxHr,
+    required this.showTotal,
+    required this.compact,
+    required this.secondary,
+  });
+  final RecordingSnapshot s;
+  final int maxHr;
+  final bool showTotal;
+  final bool compact;
+  final Color secondary;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final number = RunSoloType.display44.copyWith(
+      color: t.inkPrimary,
+      fontSize: compact ? 36 : 44,
+    );
+    final label = RunSoloType.micro11.copyWith(color: secondary);
+    final hr = s.hr;
+    final pct = hr == null || maxHr <= 0 ? null : (hr * 100 / maxHr).round();
+    Widget cell(String title, Widget value, {IconData? icon}) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 12, color: t.hrZone),
+              const SizedBox(width: Space.x4),
+            ],
+            Text(title, style: label),
+          ],
+        ),
+        value,
+      ],
+    );
+    final cells = <Widget>[
+      if (s.hrPaired)
+        Expanded(
+          child: Semantics(
+            label: hr == null
+                ? 'Heart rate strap reconnecting'
+                : 'Heart rate $hr',
+            child: cell(
+              'HEART RATE',
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    hr == null ? '--' : '$hr',
+                    key: const ValueKey('vitals-hr'),
+                    style: hr == null
+                        ? number.copyWith(color: secondary)
+                        : number,
+                  ),
+                  const SizedBox(width: Space.x8),
+                  Flexible(
+                    child: Text(
+                      hr == null ? 'reconnecting' : '$pct%',
+                      softWrap: false,
+                      overflow: TextOverflow.fade,
+                      style: RunSoloType.body15.copyWith(
+                        color: hr == null ? t.semWarn : secondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              icon: Icons.favorite,
+            ),
+          ),
+        ),
+      if (showTotal)
+        Expanded(
+          child: cell(
+            'TOTAL',
+            Text(
+              Fmt.clock(s.elapsedMs),
+              key: const ValueKey('vitals-total'),
+              softWrap: false,
+              style: number,
+            ),
+          ),
+        ),
+    ];
+    if (cells.isEmpty) return const SizedBox.shrink();
+    return Row(crossAxisAlignment: CrossAxisAlignment.end, children: cells);
   }
 }
 
@@ -442,19 +552,20 @@ class _FreeRunBlock extends StatelessWidget {
     required this.ctl,
     required this.units,
     required this.maxHr,
+    this.compact = false,
   });
   final RecordingSnapshot s;
   final RecordingController ctl;
   final Units units;
   final int maxHr;
 
+  /// Short screen (< 720 dp): each number one step down.
+  final bool compact;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
-    final pct = s.hr == null || maxHr <= 0
-        ? null
-        : (s.hr! * 100 / maxHr).round();
     final activeMs = ctl.displayElapsedMs;
     final runAverage = s.totalDistanceM > 20 && activeMs > 0
         ? activeMs / 1000 / (s.totalDistanceM / 1000)
@@ -468,23 +579,25 @@ class _FreeRunBlock extends StatelessWidget {
             Fmt.clock(ctl.displayElapsedMs),
             key: const ValueKey('timer'),
             softWrap: false,
-            style: RunSoloType.timer120.copyWith(color: t.inkPrimary),
+            style: (compact ? RunSoloType.display96 : RunSoloType.timer120)
+                .copyWith(color: t.inkPrimary),
           ),
         ),
-        const SizedBox(height: Space.x24),
+        SizedBox(height: compact ? Space.x8 : Space.x24),
         FittedBox(
           fit: BoxFit.scaleDown,
           child: Text(
             Fmt.distance(s.totalDistanceM, units),
             softWrap: false,
-            style: RunSoloType.display96.copyWith(color: t.inkPrimary),
+            style: (compact ? RunSoloType.display64 : RunSoloType.display96)
+                .copyWith(color: t.inkPrimary),
           ),
         ),
         const SizedBox(height: Space.x8),
         // Founder 25-Sep: the current-pace dial here too, needle against the
         // run's average so far.
         SizedBox(
-          width: 200,
+          width: compact ? 150 : 200,
           child: PaceDial(
             currentSecPerKm: s.livePaceSecPerKm,
             referenceSecPerKm: runAverage,
@@ -498,30 +611,18 @@ class _FreeRunBlock extends StatelessWidget {
               : 'run average ${Fmt.paceUnit(runAverage, units)}',
           style: RunSoloType.body15.copyWith(color: secondary),
         ),
-        const SizedBox(height: Space.x8),
-        if (s.hrPaired)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.favorite, size: 16, color: t.hrZone),
-              const SizedBox(width: Space.x8),
-              Text(
-                s.hr == null ? '-- · reconnecting' : '${s.hr} · $pct%',
-                style: RunSoloType.body17.copyWith(
-                  color: s.hr == null ? t.semWarn : secondary,
-                ),
-              ),
-            ],
-          ),
       ],
     );
   }
 }
 
 class _TimerBlock extends StatelessWidget {
-  const _TimerBlock({required this.s, required this.ctl});
+  const _TimerBlock({required this.s, required this.ctl, this.style});
   final RecordingSnapshot s;
   final RecordingController ctl;
+
+  /// Digits style; timer120 unless a bigger primary number shares the screen.
+  final TextStyle? style;
 
   @override
   Widget build(BuildContext context) {
@@ -540,7 +641,7 @@ class _TimerBlock extends StatelessWidget {
         Fmt.clock(ms),
         key: const ValueKey('timer'),
         softWrap: false,
-        style: RunSoloType.timer120.copyWith(
+        style: (style ?? RunSoloType.timer120).copyWith(
           color: recovery ? secondary : t.inkPrimary,
         ),
         textAlign: TextAlign.center,
@@ -575,14 +676,25 @@ class _TimerBlock extends StatelessWidget {
   }
 }
 
-/// 4x4 in a timed phase (A2 revised, founder 25-Sep): the segment's average
-/// pace large on the left, the current-pace dial on the right, referenced
-/// to the last rep's pace (or the segment average until there is one).
+/// 4x4 in a timed phase (A2 revised, founder 25-Sep; tester 0.2): the
+/// segment's average pace is the primary number, full width and at least
+/// the countdown's size so it reads at arm's length mid-rep. Under it, the
+/// distance / last rep on the left and the current-pace dial on the right,
+/// referenced to the last rep's pace (or the segment average until there
+/// is one).
 class _SegmentPace extends StatelessWidget {
-  const _SegmentPace({required this.s, required this.ctl, required this.units});
+  const _SegmentPace({
+    required this.s,
+    required this.ctl,
+    required this.units,
+    this.compact = false,
+  });
   final RecordingSnapshot s;
   final RecordingController ctl;
   final Units units;
+
+  /// Short screen (< 720 dp): every number one step down, same order.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -601,48 +713,55 @@ class _SegmentPace extends StatelessWidget {
       Phase.recovery => 'RECOVERY AVERAGE',
       _ => 'SEGMENT AVERAGE',
     };
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  Fmt.pace(segmentAvg, units),
-                  key: const ValueKey('segment-avg'),
-                  softWrap: false,
-                  style: RunSoloType.display64.copyWith(color: t.inkPrimary),
-                ),
-              ),
-              Text(
-                '$title /${units == Units.mi ? 'mi' : 'km'}',
-                style: RunSoloType.micro11.copyWith(color: secondary),
-              ),
-              const SizedBox(height: Space.x8),
-              Text(
-                s.lastRepPaceSecPerKm == null
-                    ? Fmt.distance(s.lapDistanceM, units)
-                    : '${Fmt.distance(s.lapDistanceM, units)} · last rep '
-                          '${Fmt.pace(s.lastRepPaceSecPerKm, units)}',
-                style: RunSoloType.body15.copyWith(color: secondary),
-              ),
-            ],
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            Fmt.pace(segmentAvg, units),
+            key: const ValueKey('segment-avg'),
+            softWrap: false,
+            // Larger than any other number on the screen; the FittedBox only
+            // shrinks it for a wide value (10:05 /mi).
+            style: RunSoloType.timer120.copyWith(
+              color: t.inkPrimary,
+              fontWeight: FontWeight.w700,
+              fontSize: compact ? 128 : 168,
+            ),
           ),
         ),
-        const SizedBox(width: Space.x16),
-        SizedBox(
-          width: 150,
-          child: PaceDial(
-            currentSecPerKm: s.livePaceSecPerKm,
-            referenceSecPerKm: reference,
-            units: units,
-            onZone: onZone,
-          ),
+        Text(
+          '$title /${units == Units.mi ? 'mi' : 'km'}',
+          style: RunSoloType.label13.copyWith(color: secondary),
+        ),
+        SizedBox(height: compact ? Space.x8 : Space.x16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Text(
+                s.lastRepPaceSecPerKm == null
+                    ? Fmt.distance(s.lapDistanceM, units)
+                    : '${Fmt.distance(s.lapDistanceM, units)}\nlast rep '
+                          '${Fmt.pace(s.lastRepPaceSecPerKm, units)}',
+                style: RunSoloType.body17.copyWith(color: secondary),
+              ),
+            ),
+            const SizedBox(width: Space.x16),
+            SizedBox(
+              width: compact ? 112 : 136,
+              child: PaceDial(
+                currentSecPerKm: s.livePaceSecPerKm,
+                referenceSecPerKm: reference,
+                units: units,
+                onZone: onZone,
+                paceStyle: RunSoloType.display44,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -725,7 +844,7 @@ class _Stats extends StatelessWidget {
             Text(
               showGhost
                   ? '${s.isPreset ? 'last rep' : 'last lap'} ${Fmt.pace(last, units)}'
-                  : (s.isPreset ? 'first rep sets the pace' : 'first lap'),
+                  : (s.isPreset ? 'warm-up pace' : 'first lap'),
               style: RunSoloType.body15.copyWith(color: deltaColor),
             ),
             if (direction != null && delta != null) ...[
@@ -823,6 +942,24 @@ class _PauseButton extends StatelessWidget {
 }
 
 /// Paused: dim to 60%, one big RESUME (design brief §4.4).
+/// Under the PAUSED card the phase timer and stats keep their space but
+/// hide, so no number peeks out around (or under) the card; total time
+/// stays readable in the vitals row.
+class _PausedHidden extends StatelessWidget {
+  const _PausedHidden({required this.paused, required this.child});
+  final bool paused;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Visibility(
+    visible: !paused,
+    maintainSize: true,
+    maintainAnimation: true,
+    maintainState: true,
+    child: child,
+  );
+}
+
 class _PausedOverlay extends StatelessWidget {
   const _PausedOverlay({required this.onResume});
   final Future<void> Function() onResume;
