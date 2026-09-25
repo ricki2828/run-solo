@@ -4,18 +4,27 @@
 Everything is outlined (no live text) and boolean-cut, so each file is plain filled paths
 that work as SVG and as Android VectorDrawable (no masks, no clip paths).
 
-    python3 -m venv /tmp/brandvenv && /tmp/brandvenv/bin/pip install fonttools uharfbuzz skia-pathops
-    /tmp/brandvenv/bin/python assets/brand/build_brand.py
+It writes the SVG masters (assets/brand/svg), the Android resources the app ships
+(android/app/src/main/res) and the Play Store graphics (store/play).
+
+    python3 -m venv /tmp/brandvenv && /tmp/brandvenv/bin/pip install -r assets/brand/requirements.txt
+    /tmp/brandvenv/bin/python assets/brand/build_brand.py [--hero photo.jpg]
 """
+import argparse
 from pathlib import Path
 
 import pathops
 import uharfbuzz as hb
 from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.pens.transformPen import TransformPen
+from fontTools.pens.basePen import BasePen
 from fontTools.ttLib import TTFont
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageOps
 
 HERE = Path(__file__).resolve().parent
+REPO = HERE.parents[1]
+RES = REPO / "android" / "app" / "src" / "main" / "res"
+STORE = REPO / "store" / "play"
 FONT = HERE.parent / "fonts" / "BarlowCondensed-Bold.ttf"
 
 BONE, ARC, BG = "#EDEAE3", "#19E6FF", "#0A0B0D"
@@ -202,13 +211,120 @@ def vector(size_dp, viewport, layers):
             f'{paths}\n</vector>\n')
 
 
-def write(rel, text):
-    out = HERE / rel
+def write(rel, text, root=HERE):
+    out = root / rel
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text)
 
 
+# ---- raster (Play Store graphics) ----
+class _Flatten(BasePen):
+    """Flattens a path into polygons, one per contour, for Pillow."""
+
+    def __init__(self, xform, steps=24):
+        super().__init__(None)
+        self.a, self.b, self.c, self.d, self.e, self.f = xform
+        self.steps, self.polys, self.cur = steps, [], []
+
+    def _pt(self, p):
+        x, y = p
+        return (self.a * x + self.c * y + self.e, self.b * x + self.d * y + self.f)
+
+    def _moveTo(self, p):
+        self.cur = [self._pt(p)]
+
+    def _lineTo(self, p):
+        self.cur.append(self._pt(p))
+
+    def _curveToOne(self, p1, p2, p3):
+        p0 = self._getCurrentPoint()
+        for i in range(1, self.steps + 1):
+            s = i / self.steps
+            u = 1 - s
+            self.cur.append(self._pt((
+                u ** 3 * p0[0] + 3 * u * u * s * p1[0] + 3 * u * s * s * p2[0] + s ** 3 * p3[0],
+                u ** 3 * p0[1] + 3 * u * u * s * p1[1] + 3 * u * s * s * p2[1] + s ** 3 * p3[1])))
+
+    def _qCurveToOne(self, p1, p2):
+        p0 = self._getCurrentPoint()
+        for i in range(1, self.steps + 1):
+            s = i / self.steps
+            u = 1 - s
+            self.cur.append(self._pt((u * u * p0[0] + 2 * u * s * p1[0] + s * s * p2[0],
+                                      u * u * p0[1] + 2 * u * s * p1[1] + s * s * p2[1])))
+
+    def _closePath(self):
+        if len(self.cur) > 2:
+            self.polys.append(self.cur)
+        self.cur = []
+
+    _endPath = _closePath
+
+
+SS = 4  # supersampling factor
+
+
+def paint(img, colour, path, xform):
+    """Fills `path` (font units) onto `img`. Contours after pathops never overlap, so XOR = nonzero."""
+    w, h = img.size
+    mask = Image.new("1", (w * SS, h * SS), 0)
+    pen = _Flatten(tuple(v * SS for v in xform[:4]) + (xform[4] * SS, xform[5] * SS))
+    path.draw(pen)
+    for poly in pen.polys:
+        m = Image.new("1", mask.size, 0)
+        ImageDraw.Draw(m).polygon(poly, fill=1)
+        mask = ImageChops.logical_xor(mask, m)
+    alpha = mask.convert("L").resize((w, h), Image.LANCZOS)
+    img.paste(Image.new("RGBA", (w, h), colour), (0, 0), alpha)
+
+
+def scaled(xform, k, dx=0, dy=0):
+    a, b, c, d, e, f = xform
+    return (a * k, b * k, c * k, d * k, e * k + dx, f * k + dy)
+
+
+def play_icon(t):
+    """512 x 512 Play icon: the launcher's 108 dp artwork, cropped to the central 80 dp (Play masks the corners)."""
+    size, crop = 512, 80
+    k = size / crop
+    img = Image.new("RGBA", (size, size), BG)
+    x = scaled(t, k, -(108 - crop) / 2 * k, -(108 - crop) / 2 * k)
+    paint(img, BONE, ICON_R, x)
+    paint(img, ARC, ICON_LINE, x)
+    return img
+
+
+def feature_graphic(hero=None):
+    """1024 x 500: wordmark left, a large R right, one lap line running through both (brief section 6)."""
+    w, h = 1024, 500
+    img = Image.new("RGB", (w, h), BG)
+    if hero:
+        photo = ImageOps.fit(Image.open(hero).convert("RGB"), (w, h), Image.LANCZOS)
+        photo = ImageEnhance.Color(photo).enhance(0.25)
+        img = Image.blend(img, photo, 0.38)
+    lanes = ImageDraw.Draw(img, "RGBA")
+    for y in range(0, h, 8):  # lane lines: 1 px at 8 px, 6%
+        lanes.line([(0, y), (w, y)], fill=(255, 255, 255, 15))
+    line_px = 280  # the lap line height on the graphic
+    # Wordmark: 470 px wide, cut height on the line.
+    _, _, wx, _ = bounds(WORD)
+    k = 470 / wx
+    tw = (k, 0, 0, -k, 64, line_px + CUT_Y * k)
+    paint(img, BONE, WORD, tw)
+    # Big R on the right, bleeding off the bottom, its cut on the same line.
+    kr = 420 / CAP
+    tr = (kr, 0, 0, -kr, 660, line_px + CUT_Y * kr)
+    paint(img, BONE, R_CUT, tr)
+    # One lap line from the end of the wordmark through the R to the right edge.
+    y0, y1 = (line_px - LINE_T / 2 * k), (line_px + LINE_T / 2 * k)
+    ImageDraw.Draw(img).rectangle([64 + wx * k + 24, y0, w, y1], fill=ARC)
+    return img
+
+
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--hero", help="licensed hero photo for the feature graphic (see store/art/LICENSES.md)")
+    args = ap.parse_args()
     # Mark and wordmark, cropped to their bounds with a small pad (font units).
     for name, main_path, accent_path, mono_accent in (
         ("mark", R_CUT, MARK_LINE, MONO_TAIL),
@@ -222,21 +338,22 @@ def main():
         write(f"svg/{name}-mono-white.svg", svg(w, h, [("#FFFFFF", d_main), ("#FFFFFF", d_mono)]))
 
     # Adaptive launcher icon: 108 dp canvas, mark inside the 66 dp safe zone (radius 33, 1 dp margin).
+    # Founder kept the approved #20 size (32 dp), 26-Sep.
     t = fit_circle([ICON_R, ICON_LINE], 108, 32)
     fg = [(BONE, to_d(ICON_R, *t)), (ARC, to_d(ICON_LINE, *t))]
     # Same transform as the colour layer, so the themed icon sits exactly where the colour one does.
     mono = [("#FFFFFFFF", to_d(ICON_R, *t)), ("#FFFFFFFF", to_d(ICON_TAIL, *t))]
     bg_rect = "M0 0H108V108H0Z"
-    write("android/drawable/ic_launcher_foreground.xml", vector(108, 108, fg))
-    write("android/drawable/ic_launcher_monochrome.xml", vector(108, 108, mono))
-    write("android/drawable/ic_launcher_background.xml", vector(108, 108, [(BG, bg_rect)]))
-    write("android/mipmap-anydpi-v26/ic_launcher.xml",
+    write("drawable/ic_launcher_foreground.xml", vector(108, 108, fg), RES)
+    write("drawable/ic_launcher_monochrome.xml", vector(108, 108, mono), RES)
+    write("drawable/ic_launcher_background.xml", vector(108, 108, [(BG, bg_rect)]), RES)
+    write("mipmap-anydpi-v26/ic_launcher.xml",
           '<?xml version="1.0" encoding="utf-8"?>\n'
           '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
           '    <background android:drawable="@drawable/ic_launcher_background" />\n'
           '    <foreground android:drawable="@drawable/ic_launcher_foreground" />\n'
           '    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />\n'
-          '</adaptive-icon>\n')
+          '</adaptive-icon>\n', RES)
     write("svg/icon/ic_launcher_foreground.svg", svg(108, 108, fg))
     write("svg/icon/ic_launcher_monochrome.svg", svg(108, 108, [("#FFFFFF", d) for _, d in mono]))
     write("svg/icon/ic_launcher_background.svg", svg(108, 108, [], bg=BG))
@@ -249,17 +366,21 @@ def main():
     # Android 12 splash icon (no icon background): 288 dp canvas, keep inside the 192 dp circle.
     ts = fit_circle([ICON_R, ICON_LINE], 288, 84)
     splash = [(BONE, to_d(ICON_R, *ts)), (ARC, to_d(ICON_LINE, *ts))]
-    write("android/drawable/splash_icon.xml", vector(288, 288, splash))
+    write("drawable/splash_icon.xml", vector(288, 288, splash), RES)
     write("svg/icon/splash_icon.svg", svg(288, 288, splash))
 
-    # Notification small icon: 24 dp, white on transparent, 1 dp padding, heavier cut for legibility.
+    # Notification small icon: 24 dp, white on transparent, 2 dp padding (system icon grid), heavier cut.
     heavy = diff(R, rect(0, CUT_Y - NOTE_CUT_T / 2, 1000, CUT_Y + NOTE_CUT_T / 2))
     tail = pill(r_xmax + 0.08 * CAP, CUT_Y - 0.055 * CAP, r_xmax + 0.36 * CAP, CUT_Y + 0.055 * CAP)
-    tn = fit_box([heavy, tail], 24, 1)
+    tn = fit_box([heavy, tail], 24, 2)
     note = [("#FFFFFFFF", to_d(heavy, *tn)), ("#FFFFFFFF", to_d(tail, *tn))]
-    write("android/drawable/ic_stat_runsupreme.xml", vector(24, 24, note))
+    write("drawable/ic_stat_runsupreme.xml", vector(24, 24, note), RES)
     write("svg/icon/ic_stat_runsupreme.svg", svg(24, 24, [("#FFFFFF", d) for _, d in note]))
-    print("brand assets written to", HERE)
+
+    STORE.mkdir(parents=True, exist_ok=True)
+    play_icon(t).save(STORE / "icon-512.png", optimize=True)
+    feature_graphic(args.hero).save(STORE / "feature-graphic-1024x500.png", optimize=True)
+    print("brand assets written to", HERE, RES, STORE)
 
 
 if __name__ == "__main__":

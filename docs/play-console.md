@@ -39,7 +39,7 @@ Founder approves the wording (plan §18.9 item 8) before anything is typed into 
 
 - **Category**: Health & Fitness. **Tags**: Running, Fitness tracker, Interval training.
 - **Countries**: English-speaking non-EU per plan §10: AU, NZ, US, CA, GB, SG, ZA. (IE is EU, so not in the list.)
-- **Graphics**: icon (Tally), feature graphic 1024x500, 6 screenshots 1080x2400 with the brief's captions; HR pairing as #7 if there is room. No Hyrox marks or keywords anywhere.
+- **Graphics**: icon `store/play/icon-512.png` (Lap Line R), feature graphic `store/play/feature-graphic-1024x500.png` (vector version until the hero photo is licensed, `store/art/LICENSES.md`); both rebuilt by `assets/brand/build_brand.py`; 6 screenshots 1080x2400 with the brief's captions; HR pairing as #7 if there is room. No Hyrox marks or keywords anywhere.
 - **Contact details**: email above; website `https://runsolo.app`.
 
 ## 2. Privacy policy

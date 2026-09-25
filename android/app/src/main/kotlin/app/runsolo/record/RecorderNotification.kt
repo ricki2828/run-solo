@@ -9,6 +9,7 @@ import android.content.Intent
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import app.runsolo.MainActivity
+import app.runsolo.R
 import app.runsolo.core.model.Phase
 import app.runsolo.core.model.RecorderState
 
@@ -58,7 +59,8 @@ class RecorderNotification(private val context: Context) {
             c.hr?.let { append("  ·  $it bpm") }
         }
         val b = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setSmallIcon(R.drawable.ic_stat_runsupreme)
+            .setColor(ARC)
             .setContentTitle(title)
             .setContentText(text)
             .setOngoing(true)
@@ -88,7 +90,8 @@ class RecorderNotification(private val context: Context) {
 
     /** Momentary notification for a service start that has nothing to record. */
     fun buildIdle(): Notification = NotificationCompat.Builder(context, CHANNEL_ID)
-        .setSmallIcon(android.R.drawable.ic_media_play)
+        .setSmallIcon(R.drawable.ic_stat_runsupreme)
+        .setColor(ARC)
         .setContentTitle("Run Supreme")
         .setSilent(true)
         .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
@@ -108,5 +111,7 @@ class RecorderNotification(private val context: Context) {
     companion object {
         const val CHANNEL_ID = "recording"
         const val NOTIFICATION_ID = 1001
+        /** Arc teal (brand accent) tints the small icon and actions, brief section 2.2. */
+        const val ARC = 0xFF19E6FF.toInt()
     }
 }

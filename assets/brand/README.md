@@ -1,4 +1,4 @@
-# Run Supreme brand: "Lap Line" (B1)
+# Run Supreme brand: "Lap Line" (B1, wired in B2)
 
 These are the production vectors for the logo the founder chose on 25-Sep (plan `run-supreme-phase3-plan.md` §5, D9). The mark is a condensed R cut by the lap line at 40% of cap height. The Arc lap line runs through the cut and leaves to the right. The wordmark RUN SUPREME carries the same cut, with a dash after the word.
 
@@ -15,23 +15,33 @@ The generator draws everything as outlined, boolean-cut filled paths, so the fil
 | `svg/icon/ic_launcher_safe-zone-guide.svg` | Review aid: 108 dp canvas, 72 dp mask, 66 dp safe zone |
 | `svg/icon/splash_icon.svg` | Android 12 splash icon, 288 dp canvas, mark inside the 192 dp circle |
 | `svg/icon/ic_stat_runsupreme.svg` | 24 dp notification small icon, white on transparent |
-| `android/drawable/*.xml`, `android/mipmap-anydpi-v26/ic_launcher.xml` | The same assets as VectorDrawables, plus the adaptive-icon definition with a `<monochrome>` layer |
 
-B2 copies `android/` into `android/app/src/main/res/`, deletes the Flutter PNG mipmaps (minSdk 29 makes the adaptive icon universal), and uses `splash_icon` as `windowSplashScreenAnimatedIcon` on `#0A0B0D`. It also uses `ic_stat_runsupreme` as the notification small icon with `setColor(0xFF19E6FF)`. Nothing under `res/` changes in this PR.
+Generated straight into the app and the store folder (do not hand-edit; regenerate):
+
+| File | Use |
+|---|---|
+| `android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml` | Adaptive icon with a `<monochrome>` layer (Android 13+ themed icons). The Flutter PNG mipmaps are deleted; minSdk 29 makes the adaptive icon universal |
+| `res/drawable/ic_launcher_{foreground,background,monochrome}.xml` | The three layers |
+| `res/drawable/ic_stat_runsupreme.xml` | Notification small icon, used by `RecorderNotification` with `setColor(#19E6FF)` |
+| `res/drawable/splash_icon.xml` | Android 12 splash icon. Not referenced yet: B3 sets it as `windowSplashScreenAnimatedIcon` on `#0A0B0D` |
+| `store/play/icon-512.png` | Play Store icon, 512 x 512, the launcher artwork cropped to the central 80 dp (Play masks the corners) |
+| `store/play/feature-graphic-1024x500.png` | Play feature graphic: wordmark left, large R right, one lap line through both. Vector version; `--hero` adds the licensed photo (`store/art/LICENSES.md`) |
 
 ## Geometry (font units, cap height 700)
 
 - Typeface: Barlow Condensed Bold (`assets/fonts`, OFL). Shaped with HarfBuzz using kerning, tracking +20 (2% of the em, brief §2.2).
 - Cut: centred at 40% of cap height. It is 7.5% of cap height in the mark and wordmark, 12% in the launcher and splash icons (seen at 48 px), and 15% in the 24 dp notification icon.
 - Lap line: 60% of the cut thickness (8% of cap height in the icons), with a round leading end. In colour it enters at the leg, so it shows through the leg's cut. In the mark it runs 0.25 cap past the R, 0.2 cap in the icons. In the wordmark it is a separate dash 0.76 cap long, 0.18 cap after the E.
-- Launcher: every path point sits within 32 dp of the centre (the safe zone is 33 dp). The monochrome layer uses the same transform as the colour layer.
+- Launcher: every path point sits within 32 dp of the centre (the safe zone is 33 dp; the founder kept this approved size over a 30 dp inset). Notification icon: 2 dp padding on the 24 dp grid. The monochrome layer uses the same transform as the colour layer.
 
 Regenerate after any change (the Android XML is generated; do not hand-edit it):
 
 ```
-python3 -m venv /tmp/brandvenv && /tmp/brandvenv/bin/pip install fonttools uharfbuzz skia-pathops
-/tmp/brandvenv/bin/python assets/brand/build_brand.py
+python3 -m venv /tmp/brandvenv && /tmp/brandvenv/bin/pip install -r assets/brand/requirements.txt
+/tmp/brandvenv/bin/python assets/brand/build_brand.py            # add --hero store/art/hero.jpg once licensed
 ```
+
+Dependencies are pinned in `requirements.txt`. Running twice gives byte-identical output (checked for the PNGs).
 
 ## Supreme box-logo check (re-done on the production mark, 25-Sep)
 
@@ -46,6 +56,6 @@ The mark to avoid is white Futura Heavy Oblique in a filled red rectangle.
 
 ## Not verified
 
-- The drawables were not compiled with `aapt2`: the SDK copy on the build host is the wrong architecture. B2's Gradle build is the first real compile. The XML is well-formed and uses only `<vector>` / `<path>` with `M L Q C H V Z` commands.
-- Legibility at 48 px was checked on a rendered mock home screen with plain placeholder tiles, not next to the real NRC, Strava and Runna icons on a phone. B2 should take that device screenshot.
+- The drawables compile in CI (the Gradle build and emulator job); they cannot be compiled on the build host, whose SDK copy is the wrong architecture.
+- Legibility at 48 px was checked on a rendered mock home screen with plain placeholder tiles, not next to the real NRC, Strava and Runna icons on a phone. Still open: a device screenshot on a real home screen.
 - Kerning in the wordmark has had no human designer pass (brief §7 keeps that for post-gate).
