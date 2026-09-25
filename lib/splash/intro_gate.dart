@@ -35,21 +35,23 @@ abstract final class IntroGate {
     return seenVersion == currentVersion ? IntroKind.short : IntroKind.full;
   }
 
-  /// Asks the recorder. Start-up must not hang on the intro, so a slow or
-  /// failing platform call means no intro rather than a guess.
+  /// Asks the recorder. `status()` and `recover()` run concurrently under
+  /// one [timeout] budget, so a stuck platform holds the system splash for
+  /// [timeout] at most. Start-up must not hang on the intro: a slow or
+  /// failing call means no intro rather than a guess.
   static Future<IntroKind> read(
     AppServices services, {
     Duration timeout = const Duration(milliseconds: 400),
   }) async {
     try {
-      final status = await services.recorder.status().timeout(timeout);
-      final live =
-          status.state == RecorderState.recording ||
-          status.state == RecorderState.paused;
-      if (live) return IntroKind.none;
-      final orphans = await services.recorder.recover().timeout(timeout);
+      final (status, orphans) = await (
+        services.recorder.status(),
+        services.recorder.recover(),
+      ).wait.timeout(timeout);
       return decide(
-        recordingLive: false,
+        recordingLive:
+            status.state == RecorderState.recording ||
+            status.state == RecorderState.paused,
         hasRecoveryJournal: orphans.isNotEmpty,
         seenVersion: services.settings.settings.introSeenVersion,
       );

@@ -113,6 +113,49 @@ void main() {
     });
   });
 
+  group('IntroGate.read: slow or failing platform means no intro', () {
+    test('both calls hang: no intro, within the one budget', () async {
+      final fake = _SlowGateway(
+        statusDelay: const Duration(days: 1),
+        recoverDelay: const Duration(days: 1),
+      );
+      final sw = Stopwatch()..start();
+      final kind = await IntroGate.read(
+        fakeServices(recorder: fake),
+        timeout: const Duration(milliseconds: 200),
+      );
+      expect(kind, IntroKind.none);
+      expect(sw.elapsedMilliseconds, lessThan(390), reason: 'one budget');
+    });
+
+    test('status() and recover() run concurrently under the budget', () async {
+      // 250 ms each: serial would be 500 ms and blow a 400 ms budget.
+      final fake = _SlowGateway(
+        statusDelay: const Duration(milliseconds: 250),
+        recoverDelay: const Duration(milliseconds: 250),
+      );
+      expect(
+        await IntroGate.read(
+          fakeServices(recorder: fake),
+          timeout: const Duration(milliseconds: 400),
+        ),
+        IntroKind.full,
+      );
+    });
+
+    test('a platform error in either call means no intro', () async {
+      for (final fake in [
+        _SlowGateway(statusError: true),
+        _SlowGateway(recoverError: true),
+      ]) {
+        expect(
+          await IntroGate.read(fakeServices(recorder: fake)),
+          IntroKind.none,
+        );
+      }
+    });
+  });
+
   group('beats (brief A9)', () {
     final l = LapDrawLayout(const Size(360, 780));
 
@@ -261,4 +304,33 @@ void main() {
       expect(services.settings.settings.introSeenVersion, isNull);
     });
   });
+}
+
+/// The fake recorder with a slow or failing `status()` / `recover()`.
+class _SlowGateway extends FakeRecorderGateway {
+  _SlowGateway({
+    this.statusDelay = Duration.zero,
+    this.recoverDelay = Duration.zero,
+    this.statusError = false,
+    this.recoverError = false,
+  }) : super(now: now);
+
+  final Duration statusDelay;
+  final Duration recoverDelay;
+  final bool statusError;
+  final bool recoverError;
+
+  @override
+  Future<RecorderStatus> status() async {
+    await Future<void>.delayed(statusDelay);
+    if (statusError) throw StateError('channel down');
+    return super.status();
+  }
+
+  @override
+  Future<List<OrphanJournal>> recover() async {
+    await Future<void>.delayed(recoverDelay);
+    if (recoverError) throw StateError('channel down');
+    return super.recover();
+  }
 }
