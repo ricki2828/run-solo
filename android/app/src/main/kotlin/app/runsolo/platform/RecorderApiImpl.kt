@@ -129,7 +129,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
 
     override fun startReplay(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ReplayConfig): StartResult {
         if (!BuildConfig.REPLAY_ENABLED) return StartResult(runId = null, error = StartError.REPLAY_UNAVAILABLE)
-        return startWith(mode, spec, units) { s -> ReplayRunner.create(context, replay.fixture, replay.speed, s) }
+        return startWith(mode, spec, units, replay = { s -> ReplayRunner.create(context, replay.fixture, replay.speed, s) })
     }
 
     override fun resumeRecovered(runId: String): StartResult {
