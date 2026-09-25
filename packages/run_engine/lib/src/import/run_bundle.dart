@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import '../model/run_file.dart';
 import '../model/sidecar.dart';
-import 'import_dedupe.dart';
 
 /// A run file with its sidecar: the unit of JSON export and import (plan
 /// §4 W1, §18.7). Export is the inverse of import, not sync: the run's bytes
@@ -68,7 +67,10 @@ class RunBundleCodec {
       );
     }
     final schema = parsed['schema'];
-    if (schema is int && schema > RunFile.schema) {
+    if (schema is! int) {
+      throw RunFileFormatException('export.schema must be an int');
+    }
+    if (schema > RunFile.schema) {
       throw RunFileNewerVersionException(
         'export schema $schema is newer than ${RunFile.schema}',
       );
@@ -92,31 +94,57 @@ class RunBundleCodec {
 
 /// Result of deduplicating bundles against the runs already on the device.
 class BundleImportPlan {
-  const BundleImportPlan({required this.toImport, required this.skippedIds});
+  const BundleImportPlan({
+    required this.toImport,
+    required this.alreadyOnDeviceIds,
+    required this.duplicateIds,
+  });
 
-  /// Bundles not yet on the device, in input order, one per uuid.
+  /// Bundles not yet on the device, in first-seen order, one per uuid.
   final List<RunBundle> toImport;
 
-  /// Ids skipped because they already exist or repeat within the batch. An
-  /// existing run's sidecar is never merged or overwritten by an import.
-  final List<String> skippedIds;
+  /// Ids the device already has. Never overwritten and the incoming
+  /// sidecar is never merged: the import screen says "already on this
+  /// phone; its edits were not merged".
+  final List<String> alreadyOnDeviceIds;
+
+  /// Ids that repeated within the batch (the extra copies).
+  final List<String> duplicateIds;
+
+  /// Every skipped id, in input order.
+  List<String> get skippedIds => [...alreadyOnDeviceIds, ...duplicateIds];
 }
 
-/// Dedupe by uuid, same rule as [planImport]: first occurrence wins, an
-/// indexed id is skipped, never overwritten.
+/// Dedupe by uuid. An indexed id is skipped, never overwritten. Within the
+/// batch, the copy that carries a sidecar wins over a bare run file (a zip
+/// of a dogfood phone holds `run-<id>.json.gz` beside the export bundle;
+/// dropping the bundle would lose the frozen verdict and edits, §4 W1);
+/// between two bundles with sidecars, or two bare files, the first wins.
 BundleImportPlan planBundleImport(
   Iterable<RunBundle> incoming,
   Set<String> existingIds,
 ) {
-  final seen = <String>{...existingIds};
-  final toImport = <RunBundle>[];
-  final skipped = <String>[];
+  final chosen = <String, RunBundle>{};
+  final order = <String>[];
+  final existing = <String>[];
+  final duplicates = <String>[];
   for (final b in incoming) {
-    if (seen.add(b.id)) {
-      toImport.add(b);
-    } else {
-      skipped.add(b.id);
+    if (existingIds.contains(b.id)) {
+      existing.add(b.id);
+      continue;
     }
+    final current = chosen[b.id];
+    if (current == null) {
+      chosen[b.id] = b;
+      order.add(b.id);
+      continue;
+    }
+    duplicates.add(b.id);
+    if (current.sidecar == null && b.sidecar != null) chosen[b.id] = b;
   }
-  return BundleImportPlan(toImport: toImport, skippedIds: skipped);
+  return BundleImportPlan(
+    toImport: [for (final id in order) chosen[id]!],
+    alreadyOnDeviceIds: existing,
+    duplicateIds: duplicates,
+  );
 }
