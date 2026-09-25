@@ -161,11 +161,14 @@ class RunSidecar {
       _unfrozen().copyWith(runTypeOverride: mode);
 
   /// Freeze [verdict]; a different verdict already frozen moves to history
-  /// (an engine bump recomputed it).
+  /// (an engine bump recomputed it). An engine bump that leaves the headline
+  /// and text unchanged adds no history line (Phase 3 eng-review INFO).
   RunSidecar withFrozenVerdict(Verdict verdict) {
     final current = frozenVerdict;
     final replaced =
-        current != null && current.engineVersion != verdict.engineVersion;
+        current != null &&
+        current.engineVersion != verdict.engineVersion &&
+        !current.sameText(verdict);
     return copyWith(
       frozenVerdict: verdict,
       verdictHistory: replaced ? [...verdictHistory, current] : verdictHistory,

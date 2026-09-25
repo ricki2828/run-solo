@@ -1,8 +1,9 @@
 /// Finalised runs: the History list, run detail, fix-laps edits, trend and
-/// delete. Phase 2 still reads run files directly (`files/runs/` and
-/// `files/runs-archive/`, plan §2 rule 5) and mirrors every user-authored or
-/// frozen fact to the `run-<id>.edits.json` sidecar; the sqflite index +
-/// Reconciler slot in behind [RunStore] later without touching screens.
+/// delete. Reads run files directly (`files/runs/` and `files/runs-archive/`,
+/// plan §2 rule 5) and mirrors every user-authored or frozen fact to the
+/// `run-<id>.edits.json` sidecar, always through [SidecarWriter] (Phase 3
+/// BLOCK-1). There is no sqflite index: a JSON summary cache
+/// (`files/state/index.json`, Phase 3 W5) sits behind [RunStore] instead.
 ///
 /// Analysis order matters: verdicts compare against earlier runs, so the
 /// store analyses oldest → newest, feeding each eligible 4x4 in as a prior
@@ -18,6 +19,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../platform/fake_gateway.dart';
 import '../platform/gateway.dart';
+import 'sidecar_writer.dart';
 
 /// `RunMode` (file / engine) ↔ `RecordMode` (Pigeon / UI). Exhaustive on both
 /// sides (W7) so a new run type fails to compile instead of mislabelling.
@@ -182,17 +184,18 @@ class _Analyser {
   final DateTime Function() now;
   final engine.RunEngine runEngine;
 
-  /// Oldest → newest; returns analyses keyed by id plus sidecars that gained
-  /// a frozen verdict (the caller persists those).
+  /// Oldest → newest; returns analyses keyed by id plus the computed
+  /// verdicts to freeze (the caller persists those through
+  /// [freezeTransform]).
   ({
     Map<String, engine.RunAnalysis> analyses,
-    Map<String, engine.RunSidecar> frozen,
+    Map<String, engine.Verdict> frozen,
   })
   run(List<engine.RunFile> runs, Map<String, engine.RunSidecar> sidecars) {
     final ordered = List.of(runs)..sort((a, b) => a.start.compareTo(b.start));
     final priors = <engine.PriorRun>[];
     final analyses = <String, engine.RunAnalysis>{};
-    final frozen = <String, engine.RunSidecar>{};
+    final frozen = <String, engine.Verdict>{};
     final p = profile();
     for (final run in ordered) {
       final sidecar = sidecars[run.id] ?? engine.RunSidecar(runId: run.id);
@@ -214,7 +217,7 @@ class _Analyser {
       // bump) is frozen; `freezeInto` moves a superseded one to history.
       if (a.verdict != null &&
           a.verdictSource == engine.VerdictSource.computed) {
-        frozen[run.id] = a.freezeInto(sidecar);
+        frozen[run.id] = a.verdict!;
       }
       final prior = a.asPrior(run.start);
       if (prior != null) priors.add(prior);
@@ -222,6 +225,27 @@ class _Analyser {
     return (analyses: analyses, frozen: frozen);
   }
 }
+
+/// Freeze [verdict] onto the sidecar as it is on disk NOW (read inside the
+/// writer's critical section). Returns [current] unchanged, so nothing is
+/// written, when:
+/// - the verdict was computed from other inputs (a fix-laps edit or override
+///   landed while `list()` was analysing: that write froze its own verdict);
+/// - the same verdict is already frozen.
+engine.RunSidecar Function(engine.RunSidecar) freezeTransform(
+  engine.Verdict verdict,
+) => (current) {
+  final inputs = engine.Verdict.inputsKeyFor(
+    current.lapEdits,
+    current.runTypeOverride,
+  );
+  if (inputs != verdict.inputsKey) return current;
+  final f = current.frozenVerdict;
+  if (f != null && jsonEncode(f.toJson()) == jsonEncode(verdict.toJson())) {
+    return current;
+  }
+  return current.withFrozenVerdict(verdict);
+};
 
 /// An edit the engine cannot apply (`lapEditsInvalid`) is refused before
 /// anything is written, so a sidecar never carries a dead edit.
@@ -303,8 +327,11 @@ class MemoryRunStore implements RunStore {
     final live = files.where((f) => !_deleted.contains(f.id)).toList();
     final r = _analyser.run(live, sidecars);
     for (final e in r.frozen.entries) {
-      sidecars[e.key] = e.value;
-      written.add(e.value);
+      final current = sidecars[e.key] ?? engine.RunSidecar(runId: e.key);
+      final next = freezeTransform(e.value)(current);
+      if (identical(next, current)) continue;
+      sidecars[e.key] = next;
+      written.add(next);
     }
     return r.analyses;
   }
@@ -408,15 +435,17 @@ class MemoryRunStore implements RunStore {
 }
 
 /// `files/runs/` + `files/runs-archive/`: `run-<id>.json.gz` written by
-/// Kotlin, `run-<id>.edits.json` written here (tmp → fsync → rename).
+/// Kotlin, `run-<id>.edits.json` written here, only via [sidecars].
 class FileRunStore implements RunStore {
   FileRunStore(
     this.runsDir, {
     Directory? archiveDir,
+    SidecarWriter? sidecarWriter,
     engine.UserProfile Function()? profile,
     DateTime Function()? now,
   }) : archiveDir =
            archiveDir ?? Directory('${runsDir.parent.path}/runs-archive'),
+       sidecars = sidecarWriter ?? SidecarWriter(),
        _analyser = _Analyser(
          profile: profile ?? (() => engine.UserProfile.none),
          now: now ?? DateTime.now,
@@ -424,7 +453,16 @@ class FileRunStore implements RunStore {
 
   final Directory runsDir;
   final Directory archiveDir;
+
+  /// Every sidecar write goes through here (one per app: pass the same
+  /// writer to every store over the same directory).
+  final SidecarWriter sidecars;
   final _Analyser _analyser;
+
+  /// Test seam: runs after `list()`/`load()` analysed its scan and before it
+  /// freezes verdicts (where a concurrent edit used to be overwritten).
+  @visibleForTesting
+  Future<void> Function()? afterAnalyse;
 
   static final _name = RegExp(r'^run-(.+)\.json\.gz$');
 
@@ -458,27 +496,9 @@ class FileRunStore implements RunStore {
   static File _sidecarFor(File runFile) =>
       File(runFile.path.replaceFirst(RegExp(r'\.json\.gz$'), '.edits.json'));
 
-  Future<engine.RunSidecar?> _readSidecar(File f) async {
-    if (!await f.exists()) return null;
-    try {
-      return engine.RunSidecarCodec.decode(await f.readAsString());
-    } on engine.RunFileNewerVersionException {
-      // W6: a sidecar from a newer app is kept read-only, never rewritten.
-      rethrow;
-    } catch (e) {
-      debugPrint('history: sidecar unreadable ${f.path} ($e)');
-      return null;
-    }
-  }
-
-  Future<void> _writeSidecar(File f, engine.RunSidecar sidecar) async {
-    final tmp = File('${f.path}.tmp');
-    await tmp.writeAsString(
-      engine.RunSidecarCodec.encode(sidecar),
-      flush: true,
-    );
-    await tmp.rename(f.path);
-  }
+  /// W6: a sidecar from a newer app rethrows (kept read-only, never
+  /// rewritten); a damaged one reads as null.
+  Future<engine.RunSidecar?> _readSidecar(File f) => SidecarWriter.read(f);
 
   Future<
     ({
@@ -492,11 +512,16 @@ class FileRunStore implements RunStore {
       for (final v in scanned.values)
         if (v.$2 != null) v.$1.id: v.$2!,
     });
+    await afterAnalyse?.call();
     for (final e in r.frozen.entries) {
       final entry = scanned[e.key]!;
       try {
-        await _writeSidecar(_sidecarFor(entry.$3), e.value);
-        scanned[e.key] = (entry.$1, e.value, entry.$3);
+        final now = await sidecars.update(
+          e.key,
+          _sidecarFor(entry.$3),
+          freezeTransform(e.value),
+        );
+        scanned[e.key] = (entry.$1, now, entry.$3);
       } catch (err) {
         debugPrint('history: could not freeze verdict for ${e.key} ($err)');
       }
@@ -537,9 +562,14 @@ class FileRunStore implements RunStore {
     final scanned = await _scan();
     final v = scanned[id];
     if (v == null) throw StateError('run $id not found');
-    final next = change(v.$2 ?? engine.RunSidecar(runId: id));
-    _checkEdits(_analyser, v.$1, next);
-    await _writeSidecar(_sidecarFor(v.$3), next);
+    // The change applies to the sidecar as it is inside the writer's
+    // critical section, not to the scan's copy; a refused edit throws
+    // there and nothing is written.
+    await sidecars.update(id, _sidecarFor(v.$3), (current) {
+      final next = change(current);
+      _checkEdits(_analyser, v.$1, next);
+      return next;
+    });
     return (await load(id))!;
   }
 
@@ -580,7 +610,11 @@ class FileRunStore implements RunStore {
       final runFile = File('${runsDir.path}/run-${b.run.id}.json.gz');
       try {
         if (b.sidecar != null) {
-          await _writeSidecar(_sidecarFor(runFile), b.sidecar!);
+          await sidecars.update(
+            b.run.id,
+            _sidecarFor(runFile),
+            (_) => b.sidecar!,
+          );
         }
         final tmp = File('${runFile.path}.tmp');
         await tmp.writeAsBytes(
@@ -607,8 +641,7 @@ class FileRunStore implements RunStore {
     final scanned = await _scan();
     final v = scanned[id];
     if (v == null) return;
-    final sc = _sidecarFor(v.$3);
-    if (await sc.exists()) await sc.delete();
+    await sidecars.delete(id, _sidecarFor(v.$3));
     await v.$3.delete();
   }
 }

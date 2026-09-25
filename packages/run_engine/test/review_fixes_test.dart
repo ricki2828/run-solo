@@ -333,12 +333,27 @@ void main() {
     test('an engine bump moves the replaced verdict into history', () {
       final v = engine.analyze(run, now: fixedNow).verdict!;
       final stale = Verdict.fromJson(
-        v.toJson()..['engine_version'] = engineVersion - 1,
+        v.toJson()
+          ..['engine_version'] = engineVersion - 1
+          ..['subline'] = 'Words the last engine wrote.',
       );
       final sidecar = RunSidecar(runId: run.id, frozenVerdict: stale);
       final a = engine.analyze(run, sidecar: sidecar, now: fixedNow);
       final frozen = a.freezeInto(sidecar);
       expect(frozen.verdictHistory.single.engineVersion, engineVersion - 1);
+      expect(frozen.frozenVerdict!.engineVersion, engineVersion);
+    });
+
+    test('an engine bump with the same headline and text adds no history '
+        '(Phase 3 eng-review INFO)', () {
+      final v = engine.analyze(run, now: fixedNow).verdict!;
+      final stale = Verdict.fromJson(
+        v.toJson()..['engine_version'] = engineVersion - 1,
+      );
+      final sidecar = RunSidecar(runId: run.id, frozenVerdict: stale);
+      final a = engine.analyze(run, sidecar: sidecar, now: fixedNow);
+      final frozen = a.freezeInto(sidecar);
+      expect(frozen.verdictHistory, isEmpty);
       expect(frozen.frozenVerdict!.engineVersion, engineVersion);
     });
 

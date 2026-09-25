@@ -105,6 +105,13 @@ class Verdict {
         'override': override?.name,
       });
 
+  /// Same headline and wording (what a runner reads), whatever the numbers
+  /// or engine version behind them.
+  bool sameText(Verdict other) =>
+      headline == other.headline &&
+      subline == other.subline &&
+      hrLine == other.hrLine;
+
   bool get hasPaceVerdict =>
       stage != VerdictStage.none && headline != VerdictHeadline.indoorRun;
 
