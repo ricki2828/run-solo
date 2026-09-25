@@ -7,7 +7,7 @@ a visible notification, and a clear way to stop. Keep it under 60 seconds, no na
 needed, captions optional.
 
 Recorded from the founder's **real run** (the Tuesday or Saturday 4x4 in week 4) on the Pixel
-with the Play internal-track build (`app.runsolo`), not the dogfood package. Do the dry run
+with the Play internal-track build (`app.runsupreme`), not the dogfood package. Do the dry run
 first at the desk with **replay mode** on the dogfood build so the shot order is rehearsed and
 the screen recorder settings are right; the replay footage is not what gets uploaded.
 
@@ -57,7 +57,7 @@ the screen recorder settings are right; the replay footage is not what gets uplo
 
 ## Acceptance
 
-- [ ] Real run, Play-signed build, `app.runsolo` visible in Settings → Apps if asked.
+- [ ] Real run, Play-signed build, `app.runsupreme` visible in Settings → Apps if asked.
 - [ ] Start → notification → background → screen off → lock-screen LAP → Stop → notification gone, all in one recording.
 - [ ] Under 60 s in the edit, clock continuous across cuts, touches visible.
 - [ ] Unlisted YouTube link opens in a private browser window.

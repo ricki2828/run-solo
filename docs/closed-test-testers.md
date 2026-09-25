@@ -16,7 +16,7 @@ brands (≥ 1 Samsung, ≥ 1 Xiaomi/Oppo, the rest Pixel or anything). The 14 da
    run → artifact `run-solo-play-aab-<tag>`), release notes below, review and roll out. Play App
    Signing is enrolled at this first upload; then copy the **app-signing certificate SHA-1** into
    the Maps API key restriction (`docs/play-console.md` §12) or every tester sees "Map failed to load".
-4. Copy the **opt-in link** from the Testers tab (`https://play.google.com/apps/testing/app.runsolo`)
+4. Copy the **opt-in link** from the Testers tab (`https://play.google.com/apps/testing/app.runsupreme`)
    into the message below.
 5. Track the roster in a sheet: name, email, device, opted-in date, last-heard-from. The clock
    starts when the 12th person is in; note that date.
@@ -31,7 +31,7 @@ Release notes (first closed release):
 >
 > **To get it (two steps, both needed):**
 > 1. Open this link on your phone, signed in to the Google account your Play Store uses, and tap **Become a tester**: `<opt-in link>`
-> 2. Then install it from Play: `https://play.google.com/store/apps/details?id=app.runsolo` (the link on the opt-in page goes to the same place).
+> 2. Then install it from Play: `https://play.google.com/store/apps/details?id=app.runsupreme` (the link on the opt-in page goes to the same place).
 >
 > Google needs you to stay opted in and actually open the app now and then for 14 days, so please do not uninstall it before I say the test is done, even if you only run once a week.
 >

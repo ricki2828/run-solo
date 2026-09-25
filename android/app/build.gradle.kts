@@ -19,7 +19,9 @@ android {
     }
 
     defaultConfig {
-        applicationId = "app.runsolo"
+        // Brand: Run Supreme (founder, 25-Sep-2026). applicationId is the Play identity; the Kotlin
+        // namespace/packages stay app.runsolo (namespace and applicationId are independent).
+        applicationId = "app.runsupreme"
         // Plan §10: minSdk 29, targetSdk/compileSdk 36 (Play requires API 36 for new apps since 31-Aug-2026).
         minSdk = 29
         targetSdk = 36
@@ -90,7 +92,7 @@ android {
 
     flavorDimensions += "dist"
     productFlavors {
-        // Play track: applicationId app.runsolo (reserved for Play-signed builds).
+        // Play track: applicationId app.runsupreme (reserved for Play-signed builds).
         create("play") {
             dimension = "dist"
             buildConfigField("boolean", "REPLAY_ENABLED", "false")
