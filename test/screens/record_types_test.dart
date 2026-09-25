@@ -85,7 +85,9 @@ void main() {
     await pumpTimes(tester, 5);
     expect(find.text('LAP 2'), findsOneWidget);
     expect(find.textContaining('last lap'), findsOneWidget);
-    expect(find.textContaining('total'), findsOneWidget);
+    // Total time lives in the large vitals row, not the caption.
+    expect(find.text('this lap'), findsOneWidget);
+    expect(find.byKey(const ValueKey('vitals-total')), findsOneWidget);
   });
 
   testWidgets('4x4 keeps the countdown and LAP', (tester) async {

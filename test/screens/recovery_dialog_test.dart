@@ -89,7 +89,10 @@ void main() {
     expect(fake.state, RecorderState.recording);
     expect(fake.orphans, isEmpty);
     expect(find.byType(RecordingScreen), findsOneWidget);
-    expect(find.text('TOTAL 10:00'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('vitals-total'))).data,
+      '10:00',
+    );
     expect(find.text('REP 1 OF 4'), findsOneWidget, reason: 'phase rebuilt');
   });
 
@@ -162,7 +165,10 @@ void main() {
     await pumpApp(tester, services, checkRecoveryOnOpen: true);
     await pumpTimes(tester, 8);
     expect(find.byType(RecordingScreen), findsOneWidget);
-    expect(find.text('TOTAL 7:00'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('vitals-total'))).data,
+      '7:00',
+    );
   });
 
   testWidgets('paused-at-kill resumes paused', (tester) async {

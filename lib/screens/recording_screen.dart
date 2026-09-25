@@ -13,7 +13,6 @@ import '../theme/zones.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/gps_bar.dart';
 import '../widgets/hold_button.dart';
-import '../widgets/hr_badge.dart';
 import '../widgets/lap_button.dart';
 import '../widgets/pace_dial.dart';
 import '../widgets/zone_gauge.dart';
@@ -200,7 +199,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         const SizedBox(height: Space.x12),
-                        _Header(s: s, maxHr: maxHr),
+                        _Header(s: s, maxHr: maxHr, compact: compact),
                         if (_stopError != null)
                           _Banner(text: _stopError!, color: t.semDanger)
                         else if (s.fault != null)
@@ -262,6 +261,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                             ctl: ctl,
                             units: settings.units,
                             maxHr: maxHr,
+                            compact: compact,
                           ),
                         const SizedBox(height: Space.x12),
                         Visibility(
@@ -380,7 +380,8 @@ String gpsBannerCopy(RecordingSnapshot s) {
 }
 
 String timerCaption(RecordingSnapshot s) {
-  if (!s.isPreset) return 'this lap · total ${Fmt.clock(s.elapsedMs)}';
+  // Total time has its own large cell in the vitals row (tester 0.2).
+  if (!s.isPreset) return 'this lap';
   return switch (s.phase) {
     Phase.warmup => 'warm up, then tap START 4x4',
     Phase.work => 'remaining in rep',
@@ -391,9 +392,10 @@ String timerCaption(RecordingSnapshot s) {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.s, required this.maxHr});
+  const _Header({required this.s, required this.maxHr, this.compact = false});
   final RecordingSnapshot s;
   final int maxHr;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -404,46 +406,136 @@ class _Header extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(
-              child: s.hrPaired
-                  ? ZoneHeader(
-                      zone: s.zone,
-                      paired: s.hrPaired,
-                      // A1: the label reads the strap state as soon as the
-                      // reading drops; the background keeps the last zone
-                      // until the tracker's 5 s loss rule.
-                      dropped: s.hr == null,
-                      onZoneBackground: onZone,
-                    )
-                  : Text(
-                      'TOTAL ${Fmt.clock(s.elapsedMs)}',
-                      style: RunSoloType.micro11.copyWith(color: secondary),
-                    ),
-            ),
-            HrBadge(hr: s.hr, paired: s.hrPaired, maxHr: maxHr, onZone: onZone),
-          ],
+        if (s.hrPaired) ...[
+          ZoneHeader(
+            zone: s.zone,
+            paired: s.hrPaired,
+            // A1: the label reads the strap state as soon as the reading
+            // drops; the background keeps the last zone until the tracker's
+            // 5 s loss rule.
+            dropped: s.hr == null,
+            onZoneBackground: onZone,
+          ),
+          const SizedBox(height: Space.x4),
+        ],
+        Text(
+          phaseTitle(s),
+          style: RunSoloType.title28.copyWith(color: t.inkPrimary),
         ),
-        const SizedBox(height: Space.x4),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                phaseTitle(s),
-                style: RunSoloType.title28.copyWith(color: t.inkPrimary),
-              ),
-            ),
-            if (s.hrPaired && s.lapsEnabled)
-              Text(
-                'TOTAL ${Fmt.clock(s.elapsedMs)}',
-                style: RunSoloType.micro11.copyWith(color: secondary),
-              ),
-          ],
+        const SizedBox(height: Space.x8),
+        // Founder (tester 0.2): heart rate and total time readable at arm's
+        // length, not top-bar text. Free run's big timer already is the
+        // total, so it shows heart rate only.
+        _Vitals(
+          s: s,
+          maxHr: maxHr,
+          showTotal: s.mode != RecordMode.free,
+          compact: compact,
+          secondary: secondary,
         ),
+        const SizedBox(height: Space.x8),
       ],
     );
+  }
+}
+
+/// Heart rate and total time as a row of large tabular figures with small
+/// labels (founder, tester 0.2). Bone digits on every zone background
+/// (≥ 7:1, zone contrast test); a dropped strap reads "--" + reconnecting in
+/// warn, never 0.
+class _Vitals extends StatelessWidget {
+  const _Vitals({
+    required this.s,
+    required this.maxHr,
+    required this.showTotal,
+    required this.compact,
+    required this.secondary,
+  });
+  final RecordingSnapshot s;
+  final int maxHr;
+  final bool showTotal;
+  final bool compact;
+  final Color secondary;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final number = RunSoloType.display44.copyWith(
+      color: t.inkPrimary,
+      fontSize: compact ? 36 : 44,
+    );
+    final label = RunSoloType.micro11.copyWith(color: secondary);
+    final hr = s.hr;
+    final pct = hr == null || maxHr <= 0 ? null : (hr * 100 / maxHr).round();
+    Widget cell(String title, Widget value, {IconData? icon}) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 12, color: t.hrZone),
+              const SizedBox(width: Space.x4),
+            ],
+            Text(title, style: label),
+          ],
+        ),
+        value,
+      ],
+    );
+    final cells = <Widget>[
+      if (s.hrPaired)
+        Expanded(
+          child: Semantics(
+            label: hr == null
+                ? 'Heart rate strap reconnecting'
+                : 'Heart rate $hr',
+            child: cell(
+              'HEART RATE',
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    hr == null ? '--' : '$hr',
+                    key: const ValueKey('vitals-hr'),
+                    style: hr == null
+                        ? number.copyWith(color: secondary)
+                        : number,
+                  ),
+                  const SizedBox(width: Space.x8),
+                  Flexible(
+                    child: Text(
+                      hr == null ? 'reconnecting' : '$pct%',
+                      softWrap: false,
+                      overflow: TextOverflow.fade,
+                      style: RunSoloType.body15.copyWith(
+                        color: hr == null ? t.semWarn : secondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              icon: Icons.favorite,
+            ),
+          ),
+        ),
+      if (showTotal)
+        Expanded(
+          child: cell(
+            'TOTAL',
+            Text(
+              Fmt.clock(s.elapsedMs),
+              key: const ValueKey('vitals-total'),
+              softWrap: false,
+              style: number,
+            ),
+          ),
+        ),
+    ];
+    if (cells.isEmpty) return const SizedBox.shrink();
+    return Row(crossAxisAlignment: CrossAxisAlignment.end, children: cells);
   }
 }
 
@@ -454,19 +546,20 @@ class _FreeRunBlock extends StatelessWidget {
     required this.ctl,
     required this.units,
     required this.maxHr,
+    this.compact = false,
   });
   final RecordingSnapshot s;
   final RecordingController ctl;
   final Units units;
   final int maxHr;
 
+  /// Short screen (< 720 dp): each number one step down.
+  final bool compact;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
-    final pct = s.hr == null || maxHr <= 0
-        ? null
-        : (s.hr! * 100 / maxHr).round();
     final activeMs = ctl.displayElapsedMs;
     final runAverage = s.totalDistanceM > 20 && activeMs > 0
         ? activeMs / 1000 / (s.totalDistanceM / 1000)
@@ -480,23 +573,25 @@ class _FreeRunBlock extends StatelessWidget {
             Fmt.clock(ctl.displayElapsedMs),
             key: const ValueKey('timer'),
             softWrap: false,
-            style: RunSoloType.timer120.copyWith(color: t.inkPrimary),
+            style: (compact ? RunSoloType.display96 : RunSoloType.timer120)
+                .copyWith(color: t.inkPrimary),
           ),
         ),
-        const SizedBox(height: Space.x24),
+        SizedBox(height: compact ? Space.x8 : Space.x24),
         FittedBox(
           fit: BoxFit.scaleDown,
           child: Text(
             Fmt.distance(s.totalDistanceM, units),
             softWrap: false,
-            style: RunSoloType.display96.copyWith(color: t.inkPrimary),
+            style: (compact ? RunSoloType.display64 : RunSoloType.display96)
+                .copyWith(color: t.inkPrimary),
           ),
         ),
         const SizedBox(height: Space.x8),
         // Founder 25-Sep: the current-pace dial here too, needle against the
         // run's average so far.
         SizedBox(
-          width: 200,
+          width: compact ? 150 : 200,
           child: PaceDial(
             currentSecPerKm: s.livePaceSecPerKm,
             referenceSecPerKm: runAverage,
@@ -510,21 +605,6 @@ class _FreeRunBlock extends StatelessWidget {
               : 'run average ${Fmt.paceUnit(runAverage, units)}',
           style: RunSoloType.body15.copyWith(color: secondary),
         ),
-        const SizedBox(height: Space.x8),
-        if (s.hrPaired)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.favorite, size: 16, color: t.hrZone),
-              const SizedBox(width: Space.x8),
-              Text(
-                s.hr == null ? '-- · reconnecting' : '${s.hr} · $pct%',
-                style: RunSoloType.body17.copyWith(
-                  color: s.hr == null ? t.semWarn : secondary,
-                ),
-              ),
-            ],
-          ),
       ],
     );
   }

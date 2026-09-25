@@ -236,6 +236,22 @@ void main() {
     expect(find.text('0'), findsNothing);
   });
 
+  testWidgets('heart rate and total time are large figures (tester 0.2)', (
+    tester,
+  ) async {
+    final (fake, _) = await openRecording(tester, mode: RecordMode.laps);
+    fake.advance(const Duration(seconds: 65));
+    await settle(tester);
+    for (final key in ['vitals-hr', 'vitals-total']) {
+      final text = tester.widget<Text>(find.byKey(ValueKey(key)));
+      expect(text.style!.fontSize, greaterThanOrEqualTo(32), reason: key);
+    }
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('vitals-total'))).data,
+      '1:05',
+    );
+  });
+
   testWidgets('pause dims and offers RESUME; resume continues', (tester) async {
     final (fake, _) = await openRecording(tester, mode: RecordMode.laps);
     await tester.tap(find.text('PAUSE'));
