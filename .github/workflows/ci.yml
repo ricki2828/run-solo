@@ -1,5 +1,8 @@
 name: ci
 
+# Artifact hygiene: while the repo is public every artifact is downloadable, so PR runs keep
+# APKs for 3 days only; R8 mapping and symbols are uploaded only by the release-aab job
+# (tags / dispatch) and go to Play with the release.
 # CI diet (Actions minutes are metered on this private repo). Every PR push: analyze/test,
 # core-jvm, debug APK + 16 KB (~8 min). The emulator matrix, the dogfood build and its smoke
 # (~22 min) run only on main, on a v* tag, on workflow_dispatch, on a PR that is not a draft,
@@ -171,7 +174,7 @@ jobs:
           name: run-solo-debug-apk
           path: build/dist/app-debug.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: ${{ github.event_name == 'pull_request' && 3 || 30 }}
 
   build-dogfood:
     name: build dogfood APK (arm64, R8, signed)
@@ -237,13 +240,13 @@ jobs:
           name: run-solo-dogfood-apk
           path: build/app/outputs/flutter-apk/app-arm64-v8a-dogfood-release.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: ${{ github.event_name == 'pull_request' && 3 || 30 }}
       - uses: actions/upload-artifact@v4
         with:
           name: run-solo-dogfood-x64-apk
           path: build/app/outputs/flutter-apk/app-x86_64-dogfood-release.apk
           if-no-files-found: error
-          retention-days: 7
+          retention-days: ${{ github.event_name == 'pull_request' && 3 || 7 }}
 
   release-aab:
     # Play upload (plan §11): manual run or a v* tag. Signed with the upload key from the
