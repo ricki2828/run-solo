@@ -17,18 +17,18 @@ class EventTraceFixtureTest {
     }
 
     @Test
-    fun `trace shape - 10 laps, pause, one kill gap, phases in order, ticks monotonic`() {
+    fun `trace shape - 9 laps, pause, one kill gap, phases in order, ticks monotonic`() {
         val ev = lines()
         val laps = ev.filter { it["kind"] == "lap" }
-        assertEquals(9, laps.size, "9 lap markers → 10 laps in the file")
-        assertEquals(listOf("notification") + List(8) { "auto" }, laps.map { it["source"] })
+        assertEquals(8, laps.size, "8 lap markers → 9 laps in the file (4 work, 3 recovery, no recovery after rep 4)")
+        assertEquals(listOf("notification") + List(7) { "auto" }, laps.map { it["source"] })
         // Active lap time excludes the pause (rep 2 work) and the dark gap (rep 3 work): every work lap is 240 s.
         assertEquals(List(4) { 240_000L }, laps.filterIndexed { i, _ -> i % 2 == 1 }.map { it["activeMs"] })
-        assertEquals(listOf(60_000L) + List(4) { 180_000L }, laps.filterIndexed { i, _ -> i % 2 == 0 }.map { it["activeMs"] })
+        assertEquals(listOf(60_000L) + List(3) { 180_000L }, laps.filterIndexed { i, _ -> i % 2 == 0 }.map { it["activeMs"] })
         assertEquals(240_000L + 20_000L, (laps[3]["tMs"] as Long) - (laps[2]["tMs"] as Long), "wall time of rep 2 includes the pause")
         assertEquals(240_000L + 30_000L, (laps[5]["tMs"] as Long) - (laps[4]["tMs"] as Long), "wall time of rep 3 includes the gap")
         val phases = ev.filter { it["kind"] == "phase" }.map { it["phase"] }
-        assertEquals(listOf("warmup", "work", "recovery", "work", "recovery", "work", "recovery", "work", "recovery", "cooldown"), phases)
+        assertEquals(listOf("warmup", "work", "recovery", "work", "recovery", "work", "recovery", "work", "cooldown"), phases)
         val states = ev.filter { it["kind"] == "state" }.map { it["state"] }
         assertEquals(listOf("recording", "paused", "recording", "recording", "finalising", "idle"), states)
         val ticks = ev.filter { it["kind"] == "tick" }
@@ -48,11 +48,11 @@ class EventTraceFixtureTest {
         assertTrue((afterResume["phaseRemainingMs"] as Long) in 170_000L..180_000L, "remaining ${afterResume["phaseRemainingMs"]}")
         // Cue lines keep `kind: cue` and carry the cue name in `cue`.
         val cues = ev.filter { it["kind"] == "cue" }.map { it["cue"] }
-        assertEquals(4 * 8, cues.count { it != "stop" } - 1 + 1) // 4 cues per timed phase × 8 phases (rep 1's start rides with the LAP)
+        assertEquals(4 * 7, cues.count { it != "stop" } - 1 + 1) // 4 cues per timed phase × 7 phases (rep 1's start rides with the LAP)
         assertEquals("stop", cues.last())
         // Status snapshots carry laps and mode.
         val status = ev.last { it["kind"] == "status" }
         assertEquals("fourByFour", status["mode"])
-        assertEquals(9, (status["laps"] as List<*>).size)
+        assertEquals(8, (status["laps"] as List<*>).size)
     }
 }

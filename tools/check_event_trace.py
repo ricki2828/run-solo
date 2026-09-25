@@ -157,7 +157,8 @@ def main():
         errors.append(f"first state is {states[0]['state'] if states else 'missing'}, expected recording")
     if states and states[-1]["state"] != "idle":
         errors.append(f"last state is {states[-1]['state']}, expected idle")
-    expected_prefix = ["warmup", "work", "recovery", "work", "recovery", "work", "recovery", "work", "recovery", "cooldown"]
+    # 4 reps = 4 work + 3 recovery phases; the last rep goes straight to cool-down.
+    expected_prefix = ["warmup", "work", "recovery", "work", "recovery", "work", "recovery", "work", "cooldown"]
     if phases != expected_prefix[: len(phases)]:
         errors.append(f"phase order {phases}")
     # Every status snapshot lists exactly the laps emitted so far.

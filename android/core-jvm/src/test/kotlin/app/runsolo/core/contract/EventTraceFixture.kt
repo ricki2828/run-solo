@@ -48,7 +48,10 @@ object EventTraceFixture {
         val preset = Preset.DEFAULT_4X4
         val segments = ArrayList<Pair<Int, Double>>()
         segments.add(60 to 2.5)
-        repeat(preset.reps) { segments.add(preset.workSeconds to 4.2); segments.add(preset.recoverySeconds to 2.0) }
+        for (r in 1..preset.reps) {
+            segments.add(preset.workSeconds to 4.2)
+            if (r < preset.reps) segments.add(preset.recoverySeconds to 2.0)
+        }
         segments.add(60 to 2.5)
         val fixes = TraceFixture.straightLine(segments, accuracyM = 6.0, startT = 0)
         // Scenario points on the trace timeline (seconds).

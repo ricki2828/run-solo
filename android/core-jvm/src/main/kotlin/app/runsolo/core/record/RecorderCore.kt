@@ -76,7 +76,7 @@ class RecorderCore(
     var phase: Phase = Phase.none
         private set
 
-    /** 1-based rep number during work/recovery; 0 in warmup/none, preset.reps after the last recovery. */
+    /** 1-based rep number during work/recovery; 0 in warmup/none, preset.reps from the last rep through cool-down. */
     var repIndex: Int = 0
         private set
 
@@ -216,13 +216,17 @@ class RecorderCore(
         return out
     }
 
-    /** Move from the current timed phase to the next one. */
+    /**
+     * Move from the current timed phase to the next one. N reps have N−1 recoveries: the last
+     * work phase goes straight to cool-down (founder field test 25-Sep: a 4th recovery ran
+     * after rep 4 before the cool-down).
+     */
     private fun advance(t: Long): List<Output> {
         val p = preset ?: return emptyList()
         return when (phase) {
-            Phase.work -> enterPhase(t, Phase.recovery, repIndex)
-            Phase.recovery -> if (repIndex >= p.reps) enterPhase(t, Phase.cooldown, repIndex) else enterPhase(t, Phase.work, repIndex + 1)
-            else -> emptyList()
+            Phase.work -> if (repIndex >= p.reps) enterPhase(t, Phase.cooldown, repIndex) else enterPhase(t, Phase.recovery, repIndex)
+            Phase.recovery -> enterPhase(t, Phase.work, repIndex + 1)
+            Phase.none, Phase.warmup, Phase.cooldown -> emptyList()
         }
     }
 
