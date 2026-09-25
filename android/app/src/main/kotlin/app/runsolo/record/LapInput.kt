@@ -105,8 +105,24 @@ class LapInput(
     private fun enableStreamFallback() {
         if (audio.isMusicActive) reportUnavailable("music active on Android 14")
         val cb = object : AudioDeviceCallback() {
-            override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) { deviceChangeT = SystemClock.elapsedRealtime() }
-            override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>) { deviceChangeT = SystemClock.elapsedRealtime() }
+            // AudioManager invokes onAudioDevicesAdded once right after registration with the
+            // devices already connected; that is not a change and must not open the quiet window
+            // (it silenced the first 2 s of every run, and the Robolectric test).
+            private var initialListSeen = false
+
+            override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) {
+                if (!initialListSeen) {
+                    initialListSeen = true
+                    return
+                }
+                deviceChangeT = SystemClock.elapsedRealtime()
+                Log.i(TAG, "audio devices added (${added.size}); quiet window")
+            }
+
+            override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>) {
+                deviceChangeT = SystemClock.elapsedRealtime()
+                Log.i(TAG, "audio devices removed (${removed.size}); quiet window")
+            }
         }
         audio.registerAudioDeviceCallback(cb, Handler(Looper.getMainLooper()))
         deviceCallback = cb

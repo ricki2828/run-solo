@@ -50,7 +50,7 @@ class LapInputTest {
         advance(1_000) // Robolectric's elapsedRealtime starts near 0; the debounce must not eat the first press
         audio.setStreamVolume(AudioManager.STREAM_MUSIC, 7, 0)
         volumeChanged(AudioManager.STREAM_MUSIC, prev = 7, value = 8)
-        assertEquals(1, laps)
+        assertEquals("first one-step press must lap (laps=$laps lastPath=${li.lastPath} music=${audio.isMusicActive} vol=${audio.getStreamVolume(AudioManager.STREAM_MUSIC)})", 1, laps)
         assertEquals("stream", li.lastPath)
         assertEquals("volume restored", 7, audio.getStreamVolume(AudioManager.STREAM_MUSIC))
         // The restore's own broadcast (8→7 within the suppress window) is not a press.
@@ -76,7 +76,7 @@ class LapInputTest {
         shadowOf(android.os.Looper.getMainLooper()).idle()
         advance(500)
         volumeChanged(AudioManager.STREAM_MUSIC, prev = 6, value = 7) // headset just came out
-        assertEquals(0, laps)
+        assertEquals("change within the device-change quiet window must not lap (laps=$laps)", 0, laps)
         advance(LapInput.DEVICE_CHANGE_QUIET_MS)
         volumeChanged(AudioManager.STREAM_MUSIC, prev = 7, value = 8)
         assertEquals(1, laps)
