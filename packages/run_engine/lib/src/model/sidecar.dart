@@ -68,6 +68,13 @@ class LapEdit {
 
 /// `run-<uuid>.edits.json` (plan §4): every user-authored or frozen fact
 /// about a run, so a rebuild reproduces history instead of recomputing it.
+///
+/// Schema history (§18.7):
+/// - 1: lap edits, override (`fourByFour|free`, `free` meaning today's
+///   [RunMode.laps]), notes, frozen verdict, history.
+/// - 2: adds optional `weather` and `cooper` objects (Phase 3 fills them;
+///   this build carries them opaquely so a rewrite never drops them).
+///   Missing keys read as absent; a v1 sidecar is re-encoded as v2.
 class RunSidecar {
   const RunSidecar({
     required this.runId,
@@ -76,15 +83,28 @@ class RunSidecar {
     this.notes,
     this.frozenVerdict,
     this.verdictHistory = const [],
+    this.weather,
+    this.cooper,
+    this.readSchema = schema,
   });
 
-  static const int schema = 1;
+  static const int schema = 2;
+  static const int minReadSchema = 1;
+
+  /// The schema the decoded bytes carried; not serialised.
+  final int readSchema;
 
   final String runId;
   final List<LapEdit> lapEdits;
 
-  /// v1: only `fourByFour` <-> `free` flips.
+  /// Any of the run types (§18.2); a 4x4 override on a Laps file runs the
+  /// by-feel detector.
   final RunMode? runTypeOverride;
+
+  /// Reserved (§18.5, §18.4): opaque JSON objects owned by Phase 3. Kept
+  /// byte-for-byte through decode → encode.
+  final Map<String, Object?>? weather;
+  final Map<String, Object?>? cooper;
   final String? notes;
   final Verdict? frozenVerdict;
 
@@ -99,7 +119,9 @@ class RunSidecar {
       runTypeOverride == null &&
       notes == null &&
       frozenVerdict == null &&
-      verdictHistory.isEmpty;
+      verdictHistory.isEmpty &&
+      weather == null &&
+      cooper == null;
 
   RunSidecar copyWith({
     List<LapEdit>? lapEdits,
@@ -107,8 +129,16 @@ class RunSidecar {
     Object? notes = _unset,
     Object? frozenVerdict = _unset,
     List<Verdict>? verdictHistory,
+    Object? weather = _unset,
+    Object? cooper = _unset,
   }) => RunSidecar(
     runId: runId,
+    weather: identical(weather, _unset)
+        ? this.weather
+        : weather as Map<String, Object?>?,
+    cooper: identical(cooper, _unset)
+        ? this.cooper
+        : cooper as Map<String, Object?>?,
     verdictHistory: verdictHistory ?? this.verdictHistory,
     lapEdits: lapEdits ?? this.lapEdits,
     runTypeOverride: identical(runTypeOverride, _unset)
@@ -157,27 +187,44 @@ class RunSidecar {
     'notes': notes,
     'frozen_verdict': frozenVerdict?.toJson(),
     'verdict_history': verdictHistory.map((v) => v.toJson()).toList(),
+    'weather': weather,
+    'cooper': cooper,
   };
 
+  /// Newer than this build (W6): the app must treat the run as read-only and
+  /// never rewrite the sidecar, rather than call it damaged.
   factory RunSidecar.fromJson(Map<String, Object?> json) {
-    if (json['schema'] != schema) {
-      throw RunFileFormatException('sidecar schema must be $schema');
+    final schemaValue = json['schema'];
+    if (schemaValue is int && schemaValue > schema) {
+      throw RunFileNewerVersionException(
+        'sidecar schema $schemaValue is newer than $schema',
+      );
+    }
+    if (schemaValue is! int || schemaValue < minReadSchema) {
+      throw RunFileFormatException(
+        'sidecar schema must be $minReadSchema..$schema',
+      );
     }
     final runId = readStringField(json, 'run_id');
     if (!RunFile.idPattern.hasMatch(runId)) {
       throw RunFileFormatException('sidecar run_id must be a uuid');
     }
     final overrideName = json['run_type_override'];
-    RunMode? override;
-    if (overrideName != null) {
-      override = RunMode.values.cast<RunMode?>().firstWhere(
-        (m) => m!.name == overrideName,
-        orElse: () => null,
-      );
-      if (override == null) {
-        throw RunFileFormatException('run_type_override must be a RunMode');
-      }
+    if (overrideName != null && overrideName is! String) {
+      throw RunFileFormatException('run_type_override must be a string');
     }
+    final override = overrideName == null
+        ? null
+        : RunMode.decode(overrideName as String, schema: schemaValue);
+    Map<String, Object?>? optObject(String key) {
+      final v = json[key];
+      if (v == null) return null;
+      if (v is! Map<String, Object?>) {
+        throw RunFileFormatException('$key must be an object or null');
+      }
+      return v;
+    }
+
     final notes = json['notes'];
     if (notes != null && notes is! String) {
       throw RunFileFormatException('notes must be a string or null');
@@ -201,6 +248,9 @@ class RunSidecar {
       verdictHistory: history
           .map((v) => Verdict.fromJson(asMapField(v, 'verdict_history')))
           .toList(),
+      weather: optObject('weather'),
+      cooper: optObject('cooper'),
+      readSchema: schemaValue,
     );
   }
 }

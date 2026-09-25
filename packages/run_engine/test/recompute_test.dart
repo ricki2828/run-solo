@@ -332,11 +332,12 @@ void main() {
           )
           .fourByFour!;
       expect(bySetting.maxHrUsed, 190);
-      // No profile at all: no denominator, no zone metrics, but the run's
-      // own 30 s peak is reported so the store can fold it into settings.
+      // No profile at all: the 190 fallback (D3) so zones always resolve;
+      // the run's own 30 s peak is reported so the store can fold it into
+      // settings, never used as this run's denominator.
       final none = engine.analyze(hr, now: fixedNow).fourByFour!;
-      expect(none.maxHrUsed, isNull);
-      expect(none.timeInZoneSeconds, isNull);
+      expect(none.maxHrUsed, 190);
+      expect(none.timeInZoneSeconds, isNotNull);
       expect(none.observedMaxHrThisRun, closeTo(170, 3));
       // A user-level observed max above 220−age wins over the estimate;
       // this run's own peak never does (one denominator across history).

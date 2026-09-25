@@ -563,7 +563,7 @@ class TraceGenerator {
             works.length >= 3 &&
             works.length <= 6);
     final String headline;
-    if (spec.mode == RunMode.free) {
+    if (spec.mode != RunMode.fourByFour) {
       headline = 'none';
     } else if (spec.indoor) {
       headline = 'indoorRun';
@@ -711,6 +711,19 @@ class SyntheticSpecs {
       name: 'four_by_four_manual_clean',
       id: _id(2),
       lapStyle: LapStyle.manual,
+      segments: fourByFour(
+        workSpeeds: const [1000 / 282, 1000 / 283, 1000 / 285, 1000 / 288],
+      ),
+    ),
+    SyntheticSpec(
+      // §18.2: the same by-feel 4x4 shape recorded as a Laps run. The lap
+      // table lists every press; a sidecar override to 4x4 must reproduce
+      // the by-feel verdict of `four_by_four_manual_clean_hr` exactly.
+      name: 'laps_run_manual_clean_hr',
+      id: _id(35),
+      mode: RunMode.laps,
+      lapStyle: LapStyle.manual,
+      hr: true,
       segments: fourByFour(
         workSpeeds: const [1000 / 282, 1000 / 283, 1000 / 285, 1000 / 288],
       ),
