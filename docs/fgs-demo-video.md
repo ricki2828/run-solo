@@ -27,14 +27,14 @@ the screen recorder settings are right; the replay footage is not what gets uplo
 
 | # | Time | On screen | Purpose |
 |---|---|---|---|
-| 1 | 0:00 | Home screen of the phone, tap the Run Solo icon | App opened by the user |
-| 2 | 0:03 | Start screen: 4x4 selected. Tap **Start** | The user action that starts recording |
+| 1 | 0:00 | Home screen of the phone, tap the Run Supreme icon | App opened by the user |
+| 2 | 0:03 | Start screen: 4x4 selected. Tap **START WARM-UP**, then on the recording screen tap **START 4x4** | The user action that starts recording |
 | 3 | 0:06 | Recording screen: timer running, pace, GPS dot solid. Hold 5 s | Feature is live |
-| 4 | 0:11 | Swipe down the notification shade: the **Run Solo** recording notification with LAP and Stop actions. Hold 4 s | Persistent notification while the FGS runs |
+| 4 | 0:11 | Swipe down the notification shade: the **Run Supreme** recording notification with LAP, Pause and Stop actions. Hold 4 s | Persistent notification while the FGS runs |
 | 5 | 0:15 | Swipe shade closed, press **Home**. Open Spotify (or any other app), play a track. Hold 5 s | App in background, service continues |
 | 6 | 0:20 | Press the **power** button: screen off. Wait ~10 s (real run: this is a whole rep; trim in the edit to ~5 s of black with the wake at the end) | Screen off, service continues |
-| 7 | 0:30 | Wake. Lock screen shows the notification with the timer still counting; tap **LAP** from the lock screen (or use the volume key) | Notification action, no app in front |
-| 8 | 0:35 | Open Run Solo from the notification: recording screen shows Rep 2, timer continuous with what was on the lock screen | Proof it never stopped |
+| 7 | 0:30 | Wake. Lock screen shows the notification with the timer still counting and the phase moved on by itself (the 4x4 runs its reps and recoveries automatically) | Service kept running with no app in front |
+| 8 | 0:35 | Open Run Supreme from the notification: recording screen shows the current rep/recovery, timer continuous with what was on the lock screen | Proof it never stopped |
 | 9 | 0:40 | Tap **Stop**, confirm. Finalising, then the verdict / summary screen | Clear stop by the user |
 | 10 | 0:48 | Swipe down the shade: the recording notification is gone. Hold 3 s | Service ended when the user stopped |
 | 11 | 0:52 | (Optional) Settings → About → the privacy paragraph and the "Precise location: used only during a run you started" line | Policy alignment |
@@ -44,9 +44,9 @@ the screen recorder settings are right; the replay footage is not what gets uplo
 - Cut the middle of long reps but keep the status-bar clock readable across every cut so the
   timeline is obviously continuous. No music, no effects.
 - Export 1080p, MP4. Upload to YouTube as **Unlisted** (not Private; Play's reviewer must open it
-  without signing in). Title "Run Solo — foreground location service demo". Paste the link into
+  without signing in). Title "Run Supreme — foreground location service demo". Paste the link into
   the FGS form (`docs/play-console.md` §8).
-- Keep the raw recording in `~/Files/Run Solo/fgs-demo/` (not in this repo).
+- Keep the raw recording in `~/Files/Run Supreme/fgs-demo/` (not in this repo).
 
 ## Things the reviewer must NOT see
 

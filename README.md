@@ -1,6 +1,11 @@
-# Run Solo
+# Run Supreme
 
-**Run Solo: 4x4 Interval Run.** Free Android app: record a run, get a staged 4x4 verdict. No
+Formerly Run Solo: the Kotlin packages (`app.runsolo.*`), secret names (`RUN_SOLO_*`), keystore
+certificate CNs and the `~/.secrets/run-solo/` folder keep the old name on purpose; the visible
+brand and the store listing changed. The applicationId is still `app.runsolo` until the separate
+rebrand PR moves it to `app.runsupreme` (before the first Play upload).
+
+**Run Supreme: 4x4 Interval Run.** Free Android app: record a run, get a staged 4x4 verdict. No
 accounts, no ads, no analytics of our own; runs stay on the phone, the post-run map comes from
 Google Maps and weather from Open-Meteo (privacy: `docs/privacy/`). Plan:
 `~/ai/plans/run-solo-v1-plan.md`; visuals: `~/ai/plans/run-solo-design-brief.md`.

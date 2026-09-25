@@ -1,6 +1,6 @@
 # Play Console: App content and listing answers (week 4)
 
-Draft answers for every Play Console form Run Solo must submit before the first closed-track
+Draft answers for every Play Console form Run Supreme must submit before the first closed-track
 release. Source of truth for the claims: plan §10, §11, §18.3, §18.6 (v5.4) and the design brief
 §6 + addendum A7. Where two documents disagree the difference is flagged for the founder.
 
@@ -14,21 +14,22 @@ Founder approves the wording (plan §18.9 item 8) before anything is typed into 
 | Privacy policy URL | `https://runsolo.app/privacy` (served from this repo's `docs/` via GitHub Pages while the repo is public; when it goes private at launch the page moves to a public host with the same URL, see README) | founder: turn Pages on + DNS |
 | Play App Signing | Enrol at first upload; Google holds the app-signing key, we upload with `CN=Run Solo upload` | first AAB upload |
 | Upload key SHA-1 | `6D:E0:ED:82:5F:B7:80:73:3A:C5:EC:9D:37:5F:8F:63:1F:6E:D0:57` | for the Maps key restriction |
+| Trademark | "Supreme" is a well-known registered streetwear mark (Supreme / VF Corp). "Run Supreme" for a running app is a different class, but the founder should run the trademark search (plan Phase 0) again for the new name before the listing goes live, and avoid Supreme's red-box logo styling anywhere | founder: open |
+| Domain | `runsolo.app` URLs are kept until the founder decides on a Run Supreme domain; the privacy URL on the Play forms must not change afterwards, so decide before week 4 | founder: open |
 | Contact email in the listing | `privacy@runsolo.app` is used on the privacy page | founder: confirm the mailbox exists or change it |
 
 ## 1. Store listing
 
-- **App name (30 chars)**: two candidates exist, pick one and change the other document:
-  - design brief §6: `Run Solo: Norwegian 4x4 Run` (27)
-  - plan §10 / README: `Run Solo: 4x4 Interval Run` (26)
+- **App name (30 chars)**: `Run Supreme: 4x4 Interval Run` (29). The brief's alternative
+  `Run Supreme: Norwegian 4x4 Run` is 30, at the limit; founder picks.
 - **Short description (80)**: `4x4 interval timer with GPS pace. Tells you if you beat your last run.` (70)
 - **Long description**: design brief §6, with the A7 privacy paragraph replacing the older line:
 
-> Run Solo is a Norwegian 4x4 timer that records your pace with GPS and tells you, in one word, whether you beat your last 4x4.
+> Run Supreme is a Norwegian 4x4 timer that records your pace with GPS and tells you, in one word, whether you beat your last 4x4.
 >
-> Start a 4x4 and the app counts every rep and recovery with voice and vibration cues, so your phone can stay in your pocket. Tap the big LAP button, press a volume key, or lap from the lock screen. When you stop, you get the verdict: FASTER, HOLDING or SLOWER, with the rep paces, fade and recovery pace that decided it. Small differences inside GPS noise are called what they are: no real change.
+> Warm up as long as you like, tap START 4x4, and the app runs every rep and recovery with voice and vibration cues, so your phone can stay in your pocket. When you stop, you get the verdict: FASTER, HOLDING or SLOWER, with the rep paces, fade and recovery pace that decided it. Small differences inside GPS noise are called what they are: no real change.
 >
-> Pair any Bluetooth heart rate strap, including Whoop broadcast, and Run Solo adds time in zone and tells you when you ran faster at the same effort.
+> Pair any Bluetooth heart rate strap, including Whoop broadcast, and Run Supreme adds time in zone and tells you when you ran faster at the same effort.
 >
 > Free runs get a clean summary. Every 4x4 goes on a trend line with your bests. Follow a fixed 8-week 4x4 plan or a 5k plan: pick your days, tick sessions off, start the right session from the plan.
 >
@@ -108,7 +109,7 @@ Play Console → App content → **Foreground service permissions**. Declare the
 
 > **Which foreground service type(s) does your app use?** Location.
 >
-> **Describe the user-facing feature that uses the foreground service:** Run Solo records GPS pace and route during a running workout that the user starts by pressing Start. A persistent notification with LAP and Stop actions is shown for the whole run. The service starts only from the visible app in response to that tap, keeps recording while the screen is off or the user is in another app (music, for example), and stops when the user presses Stop in the app or the notification. There is no background location outside a run the user started, and recording never restarts on its own after the user stops it.
+> **Describe the user-facing feature that uses the foreground service:** Run Supreme records GPS pace and route during a running workout that the user starts by pressing Start. A persistent notification with LAP and Stop actions is shown for the whole run. The service starts only from the visible app in response to that tap, keeps recording while the screen is off or the user is in another app (music, for example), and stops when the user presses Stop in the app or the notification. There is no background location outside a run the user started, and recording never restarts on its own after the user stops it.
 >
 > **Why can this task not be completed without a foreground service?** Interval pace needs a continuous GPS sample stream for 30–60 minutes while the screen is off and the phone is in a pocket or armband; without a foreground service the process is suspended and pace and lap times are lost.
 >

@@ -27,7 +27,7 @@ Release notes (first closed release):
 
 ## Message to send testers (copy, paste, personalise the first line)
 
-> Hey, thanks for helping test Run Solo. It is a simple Android running app: a 4x4 interval timer that records your pace with GPS and tells you if you beat your last run. No account, no ads, your runs stay on your phone.
+> Hey, thanks for helping test Run Supreme. It is a simple Android running app: a 4x4 interval timer that records your pace with GPS and tells you if you beat your last run. No account, no ads, your runs stay on your phone.
 >
 > **To get it (two steps, both needed):**
 > 1. Open this link on your phone, signed in to the Google account your Play Store uses, and tap **Become a tester**: `<opt-in link>`
@@ -37,7 +37,8 @@ Release notes (first closed release):
 >
 > **What to try (any of these, in your own time):**
 > - Do one real run with the app: pick 4x4 if you do intervals, otherwise Free run. Put the phone in your pocket or armband with the screen off, like you normally would.
-> - Press LAP from the lock-screen notification or with a volume key at least once.
+> - 4x4: tap **START WARM-UP**, warm up, then tap **START 4x4**; the reps and recoveries run by themselves with voice and vibration cues.
+> - Laps run: press LAP from the lock-screen notification at least once. Volume-key laps work in Laps runs too, but not on Android 14.
 > - After the run: does the verdict/summary make sense? Does the route on the map look right?
 > - If you own a heart-rate strap (or Whoop), pair it in Settings and run with it.
 > - Kill the app mid-run once on purpose (swipe it away from recents) and reopen it: it should offer to recover the run.
@@ -48,13 +49,13 @@ Release notes (first closed release):
 
 ## Weekly nudge (days 7 and 12)
 
-> Quick one: still running with Run Solo? Even one short run or just opening the app this week keeps you counted for the test. Anything annoying you yet? Tell me, that is the whole point.
+> Quick one: still running with Run Supreme? Even one short run or just opening the app this week keeps you counted for the test. Anything annoying you yet? Tell me, that is the whole point.
 
 ## What to test, by device type (for the founder's tracker)
 
 | Device | Extra checks |
 |---|---|
-| Samsung | Screen-off run ≥ 30 min without the recording dying (battery killer). If it dies, ask them to screenshot Settings → Apps → Run Solo → Battery. |
+| Samsung | Screen-off run ≥ 30 min without the recording dying (battery killer). If it dies, ask them to screenshot Settings → Apps → Run Supreme → Battery. |
 | Xiaomi / Oppo / Realme | Same, plus notification LAP works from the lock screen; autostart/battery saver prompts noted. |
 | Pixel / others | HR strap pairing, map rendering, kill-and-recover flow. |
 | Any with a Whoop | Whoop broadcast pairing shows live bpm on the record screen. |
