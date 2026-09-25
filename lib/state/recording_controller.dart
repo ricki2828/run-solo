@@ -359,6 +359,8 @@ class RecordingController extends ChangeNotifier {
       FaultKind.gpsLost => _snap.copyWith(gpsLost: true, clearGps: true),
       // Debug-only signal that a LAP reached Free mode; the screen has no LAP there.
       FaultKind.gpsWeak || FaultKind.lapIgnored => _snap,
+      // Android 14 + music playing: volume-key laps off for this run (one-time note, app side).
+      FaultKind.volumeKeyUnavailable => _snap,
       FaultKind.hrDisconnected => _snap.copyWith(clearHr: true),
       FaultKind.journalWriteFailed ||
       FaultKind.lowStorage ||

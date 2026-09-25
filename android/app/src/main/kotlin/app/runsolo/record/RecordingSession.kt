@@ -85,7 +85,11 @@ class RecordingSession(
     private var snapshot: RecorderStatus? = null
     private val handler = Handler(thread.looper)
     private val cues = CuePlayer(this.context)
-    private val lapInput = LapInput(this.context) { lap(LapSource.volumeKey) }
+    private val lapInput = LapInput(
+        this.context,
+        onLap = { lap(LapSource.volumeKey) },
+        onUnavailable = { fault(FaultKind.VOLUME_KEY_UNAVAILABLE, "Volume-key laps don't work on Android 14 while music plays; use the lock-screen LAP") },
+    )
 
     /** Volume-key laps need a mode that takes laps at all (plan §18.2): Free never registers the MediaSession. */
     private val volumeKeyLapsEnabled = volumeKeyLaps && mode.lapInput

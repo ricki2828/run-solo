@@ -302,7 +302,13 @@ enum class FaultKind(val raw: Int) {
    * A LAP arrived in `free` (or `cooper`) mode and was ignored. Debug builds
    * only; a UI that shows a LAP control in that mode has a bug.
    */
-  LAP_IGNORED(7);
+  LAP_IGNORED(7),
+  /**
+   * Android 14 only: volume-key laps cannot work while another app's music
+   * plays (the key is the user's volume). Fired at most once per run; show a
+   * one-time note "use the lock-screen LAP".
+   */
+  VOLUME_KEY_UNAVAILABLE(8);
 
   companion object {
     fun ofRaw(raw: Int): FaultKind? {
