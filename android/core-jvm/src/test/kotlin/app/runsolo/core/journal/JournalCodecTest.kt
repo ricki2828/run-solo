@@ -63,9 +63,26 @@ class JournalCodecTest {
     }
 
     @Test
-    fun `header without preset (free run)`() {
-        val h = header.copy(mode = RunMode.free, preset = null)
-        assertEquals(h, JournalCodec.decode(JournalCodec.encode(h)))
+    fun `header without preset (laps, free, cooper)`() {
+        for (m in listOf(RunMode.laps, RunMode.free, RunMode.cooper)) {
+            val h = header.copy(mode = m, preset = null)
+            val text = JournalCodec.encode(h)
+            assertTrue(text.contains("\"schema\":2"), text)
+            assertEquals(h, JournalCodec.decode(text))
+        }
+    }
+
+    @Test
+    fun `schema-1 free maps to laps, schema-2 free stays free, newer schema or unknown mode is NewerSchema`() {
+        fun hdr(schema: Int, mode: String) =
+            """{"k":"hdr","schema":$schema,"t":1,"w":2,"id":"x","device":"d","app":"a","tz":"UTC","mode":"$mode","preset":null,"units":"km"}"""
+        assertEquals(RunMode.laps, (JournalCodec.decode(hdr(1, "free")) as JournalLine.Header).mode)
+        assertEquals(RunMode.free, (JournalCodec.decode(hdr(2, "free")) as JournalLine.Header).mode)
+        assertEquals(RunMode.laps, (JournalCodec.decode(hdr(2, "laps")) as JournalLine.Header).mode)
+        assertFailsWith<JournalCodec.NewerSchema> { JournalCodec.decode(hdr(3, "fourByFour")) }
+        assertFailsWith<JournalCodec.NewerSchema> { JournalCodec.decode(hdr(2, "hyrox")) }
+        // Schema 1 never wrote `laps`; if it appears, it is not a mapping case and decodes as itself.
+        assertEquals(RunMode.laps, JournalCodec.decodeMode("laps", 1))
     }
 
     @Test

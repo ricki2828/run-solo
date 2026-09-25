@@ -15,7 +15,11 @@ import app.runsolo.core.model.Units
 
 /** Line ↔ JSON. Keys are short because the journal is written at 1 Hz for an hour. */
 object JournalCodec {
-    const val SCHEMA = 1
+    /** Bumps with the run-file schema (plan §18.7): 2 = `mode` gained laps/free-without-laps/cooper. */
+    const val SCHEMA = 2
+
+    /** The header was written by a newer app (schema above [SCHEMA] or a mode this build does not know). */
+    class NewerSchema(message: String) : IllegalArgumentException(message)
 
     /** Non-finite doubles are not JSON; a NaN altitude/speed from the platform becomes "absent". */
     private fun Double?.finiteOrNull(): Double? = this?.takeIf { it.isFinite() }
@@ -63,7 +67,18 @@ object JournalCodec {
         return Json.write(m)
     }
 
-    /** Throws [Json.ParseException] or [IllegalArgumentException] on a malformed line. */
+    /**
+     * Schema-1 `free` was the lap-capable by-feel run (volume laps on, manual laps journaled), so
+     * it is `laps` now — always, not only when laps exist (plan §18.7 B1). Applied here, not in
+     * `RecorderCore.restore`, because `RunMode.valueOf` runs first. An unknown mode name comes
+     * from a newer app and is reported as such, never guessed.
+     */
+    fun decodeMode(name: String, schema: Long): RunMode {
+        if (schema <= 1 && name == "free") return RunMode.laps
+        return RunMode.values().firstOrNull { it.name == name } ?: throw NewerSchema("unknown run mode '$name'")
+    }
+
+    /** Throws [Json.ParseException] or [IllegalArgumentException] on a malformed line; [NewerSchema] for a header from a newer app. */
     fun decode(text: String): JournalLine {
         val m = Json.parseObject(text)
         val t = m.long("t")
@@ -71,17 +86,17 @@ object JournalCodec {
         return when (val k = m.string("k")) {
             "hdr" -> {
                 val schema = m.long("schema")
-                require(schema <= SCHEMA) { "journal schema $schema is newer than $SCHEMA" }
+                if (schema > SCHEMA) throw NewerSchema("journal schema $schema is newer than $SCHEMA")
                 JournalLine.Header(
-                t = t,
-                w = w,
-                id = m.string("id"),
-                device = m.string("device"),
-                app = m.string("app"),
-                tz = m.string("tz"),
-                mode = RunMode.valueOf(m.string("mode")),
-                preset = Preset.fromJson(m.obj("preset")),
-                units = Units.valueOf(m.string("units")),
+                    t = t,
+                    w = w,
+                    id = m.string("id"),
+                    device = m.string("device"),
+                    app = m.string("app"),
+                    tz = m.string("tz"),
+                    mode = decodeMode(m.string("mode"), schema),
+                    preset = Preset.fromJson(m.obj("preset")),
+                    units = Units.valueOf(m.string("units")),
                 )
             }
             "s" -> {

@@ -55,7 +55,10 @@ data class Replay(
 }
 
 object JournalReplay {
-    class NoHeader(message: String) : RuntimeException(message)
+    open class NoHeader(message: String) : RuntimeException(message)
+
+    /** The header is from a newer app (plan §18.7 W6): unreadable here, but never offered for discard. */
+    class NewerJournal(message: String) : NoHeader(message)
 
     /** A backward step in `t` bigger than this is a clock reset, not a late line. */
     const val CLOCK_JUMP_MS = 5_000L
@@ -93,6 +96,10 @@ object JournalReplay {
             val isLast = i == lines.lastIndex
             val line = try {
                 JournalCodec.decode(raw)
+            } catch (e: JournalCodec.NewerSchema) {
+                if (header == null) throw NewerJournal(e.message ?: "newer journal")
+                badLines++
+                continue
             } catch (_: Exception) {
                 if (isLast && !endsWithNewline) truncated = true else badLines++
                 continue

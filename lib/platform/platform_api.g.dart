@@ -97,10 +97,20 @@ int _deepHash(Object? value) {
 }
 
 
-/// Mode picked at Start. Mirrors `RunMode` in `package:run_engine`.
+/// Run type picked at Start (plan §18.2). Mirrors `RunMode` in `package:run_engine`.
+///
+/// - `fourByFour`: preset phases, cues, auto-laps, manual LAP overrides.
+/// - `laps`: by-feel laps; LAP button, notification LAP and volume keys (opt-in,
+///   default on). Schema-1 `free` files map here (plan §18.7).
+/// - `free`: no lap input at all — no LAP button, no notification LAP action, no
+///   MediaSession; `lap()` is a no-op (`FaultKind.lapIgnored` in debug builds).
+/// - `cooper`: schema-2 vocabulary for the Phase-3 12-minute test; until the
+///   protocol lands Kotlin records it like `free`. Not offered in the UI yet.
 enum RecordMode {
   fourByFour,
+  laps,
   free,
+  cooper,
 }
 
 enum Units {
@@ -151,6 +161,9 @@ enum FaultKind {
   /// The foreground service could not start after `start` returned a run id;
   /// the run was discarded (no file). Show the message, return to Start.
   startFailed,
+  /// A LAP arrived in `free` (or `cooper`) mode and was ignored. Debug builds
+  /// only; a UI that shows a LAP control in that mode has a bug.
+  lapIgnored,
 }
 
 /// Typed errors returned by `start` (plan §2). Never a stringly-typed map.
@@ -468,6 +481,7 @@ class OrphanJournal {
     required this.lastLineAgeMs,
     required this.mode,
     required this.readable,
+    required this.newer,
     required this.endedPaused,
     required this.elapsedMs,
   });
@@ -478,8 +492,14 @@ class OrphanJournal {
 
   RecordMode mode;
 
-  /// False when the journal has no decodable header: it can only be discarded.
+  /// False when the journal has no decodable header: it can only be discarded
+  /// (unless `newer`).
   bool readable;
+
+  /// The journal was written by a newer app (schema or mode this build does not
+  /// know). Unreadable here, but NEVER offered for discard: show "update the
+  /// app to recover this run"; `discardJournal` refuses it (plan §18.7 W6).
+  bool newer;
 
   /// The run was paused when the process died.
   bool endedPaused;
@@ -493,6 +513,7 @@ class OrphanJournal {
       lastLineAgeMs,
       mode,
       readable,
+      newer,
       endedPaused,
       elapsedMs,
     ];
@@ -508,8 +529,9 @@ class OrphanJournal {
       lastLineAgeMs: result[1]! as int,
       mode: result[2]! as RecordMode,
       readable: result[3]! as bool,
-      endedPaused: result[4]! as bool,
-      elapsedMs: result[5]! as int,
+      newer: result[4]! as bool,
+      endedPaused: result[5]! as bool,
+      elapsedMs: result[6]! as int,
     );
   }
 
@@ -522,7 +544,7 @@ class OrphanJournal {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(runId, other.runId) && _deepEquals(lastLineAgeMs, other.lastLineAgeMs) && _deepEquals(mode, other.mode) && _deepEquals(readable, other.readable) && _deepEquals(endedPaused, other.endedPaused) && _deepEquals(elapsedMs, other.elapsedMs);
+    return _deepEquals(runId, other.runId) && _deepEquals(lastLineAgeMs, other.lastLineAgeMs) && _deepEquals(mode, other.mode) && _deepEquals(readable, other.readable) && _deepEquals(newer, other.newer) && _deepEquals(endedPaused, other.endedPaused) && _deepEquals(elapsedMs, other.elapsedMs);
   }
 
   @override
@@ -817,6 +839,71 @@ class BleDevice {
       return true;
     }
     return _deepEquals(address, other.address) && _deepEquals(name, other.name);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// What the static Auto Backup rules would back up right now (plan §4, W3):
+/// `databases/runsolo.db` + `files/runs/` run files + sidecars. `files/state/`
+/// is a few KB and not counted. Over the 25 MB `quotaBytes` Android backs up
+/// nothing, so the app keeps the set under `budgetBytes` (15 MB) by archiving.
+class BackupStatus {
+  BackupStatus({
+    required this.backedUpBytes,
+    required this.budgetBytes,
+    required this.quotaBytes,
+    required this.archivedRunCount,
+    required this.overBudget,
+  });
+
+  int backedUpBytes;
+
+  int budgetBytes;
+
+  int quotaBytes;
+
+  /// Runs already in `files/runs-archive/` (on device, indexed, not backed up).
+  int archivedRunCount;
+
+  bool overBudget;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      backedUpBytes,
+      budgetBytes,
+      quotaBytes,
+      archivedRunCount,
+      overBudget,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static BackupStatus decode(Object result) {
+    result as List<Object?>;
+    return BackupStatus(
+      backedUpBytes: result[0]! as int,
+      budgetBytes: result[1]! as int,
+      quotaBytes: result[2]! as int,
+      archivedRunCount: result[3]! as int,
+      overBudget: result[4]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! BackupStatus || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(backedUpBytes, other.backedUpBytes) && _deepEquals(budgetBytes, other.budgetBytes) && _deepEquals(quotaBytes, other.quotaBytes) && _deepEquals(archivedRunCount, other.archivedRunCount) && _deepEquals(overBudget, other.overBudget);
   }
 
   @override
@@ -1239,23 +1326,26 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is BleDevice) {
       buffer.putUint8(148);
       writeValue(buffer, value.encode());
-    }    else if (value is TickEvent) {
+    }    else if (value is BackupStatus) {
       buffer.putUint8(149);
       writeValue(buffer, value.encode());
-    }    else if (value is LapEvent) {
+    }    else if (value is TickEvent) {
       buffer.putUint8(150);
       writeValue(buffer, value.encode());
-    }    else if (value is CueEvent) {
+    }    else if (value is LapEvent) {
       buffer.putUint8(151);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is CueEvent) {
       buffer.putUint8(152);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is FaultEvent) {
       buffer.putUint8(153);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is StateEvent) {
       buffer.putUint8(154);
+      writeValue(buffer, value.encode());
+    }    else if (value is PhaseEvent) {
+      buffer.putUint8(155);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -1316,16 +1406,18 @@ class _PigeonCodec extends StandardMessageCodec {
       case 148:
         return BleDevice.decode(readValue(buffer)!);
       case 149:
-        return TickEvent.decode(readValue(buffer)!);
+        return BackupStatus.decode(readValue(buffer)!);
       case 150:
-        return LapEvent.decode(readValue(buffer)!);
+        return TickEvent.decode(readValue(buffer)!);
       case 151:
-        return CueEvent.decode(readValue(buffer)!);
+        return LapEvent.decode(readValue(buffer)!);
       case 152:
-        return FaultEvent.decode(readValue(buffer)!);
+        return CueEvent.decode(readValue(buffer)!);
       case 153:
-        return StateEvent.decode(readValue(buffer)!);
+        return FaultEvent.decode(readValue(buffer)!);
       case 154:
+        return StateEvent.decode(readValue(buffer)!);
+      case 155:
         return PhaseEvent.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -1622,6 +1714,66 @@ class RecorderApi {
     )
     ;
     return pigeonVar_replyValue! as ExitDiagnosis;
+  }
+}
+
+/// Backup budget (plan §4). Journals live in `files/journals/`, run files in
+/// `files/runs/`, overflow in `files/runs-archive/`; the rules files exclude
+/// journals, the archive and the SQLite `-wal`/`-shm`/`-journal` side files.
+class StorageApi {
+  /// Constructor for [StorageApi].  The [binaryMessenger] named argument is
+  /// available for dependency injection.  If it is left null, the default
+  /// BinaryMessenger will be used which routes to the host platform.
+  StorageApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+      : pigeonVar_binaryMessenger = binaryMessenger,
+        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  final BinaryMessenger? pigeonVar_binaryMessenger;
+
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  final String pigeonVar_messageChannelSuffix;
+
+  Future<BackupStatus> backupStatus() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.StorageApi.backupStatus$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as BackupStatus;
+  }
+
+  /// Moves the oldest run files (with their sidecars) into `runs-archive/`
+  /// until the backed-up set fits the budget; returns the run ids moved. Call
+  /// after each finalise/import, then run the Reconciler (rows get `repath`).
+  /// Non-empty → show "export to keep older runs safe". Never touches the run
+  /// being recorded, never deletes anything.
+  Future<List<String>> enforceBackupBudget() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.StorageApi.enforceBackupBudget$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return (pigeonVar_replyValue! as List<Object?>).cast<String>();
   }
 }
 

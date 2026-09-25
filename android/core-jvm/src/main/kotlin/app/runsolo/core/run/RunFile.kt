@@ -17,7 +17,7 @@ import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 
 /**
- * Schema v1 run file (plan §4), built from a journal replay. All `t` are run-timeline millis
+ * Schema v2 run file (plan §4, §18.7: same shape as v1, `mode` vocabulary grown), built from a journal replay. All `t` are run-timeline millis
  * since `start`; `d` values are cumulative accepted-haversine metres.
  *
  * Laps are the segments between lap markers: `[start, m1], [m1, m2], …, [mn, end]`. A lap's
@@ -87,7 +87,7 @@ data class RunFile(
     }
 
     companion object {
-        const val SCHEMA = 1
+        const val SCHEMA = 2
 
         /** Builds the run file from a replay; distance is recomputed by [PointFilter] over raw samples. */
         fun fromReplay(r: Replay, endEpochMs: Long): RunFile {

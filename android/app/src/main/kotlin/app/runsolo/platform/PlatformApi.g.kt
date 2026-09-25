@@ -192,10 +192,22 @@ class FlutterError (
   val details: Any? = null
 ) : RuntimeException()
 
-/** Mode picked at Start. Mirrors `RunMode` in `package:run_engine`. */
+/**
+ * Run type picked at Start (plan §18.2). Mirrors `RunMode` in `package:run_engine`.
+ *
+ * - `fourByFour`: preset phases, cues, auto-laps, manual LAP overrides.
+ * - `laps`: by-feel laps; LAP button, notification LAP and volume keys (opt-in,
+ *   default on). Schema-1 `free` files map here (plan §18.7).
+ * - `free`: no lap input at all — no LAP button, no notification LAP action, no
+ *   MediaSession; `lap()` is a no-op (`FaultKind.lapIgnored` in debug builds).
+ * - `cooper`: schema-2 vocabulary for the Phase-3 12-minute test; until the
+ *   protocol lands Kotlin records it like `free`. Not offered in the UI yet.
+ */
 enum class RecordMode(val raw: Int) {
   FOUR_BY_FOUR(0),
-  FREE(1);
+  LAPS(1),
+  FREE(2),
+  COOPER(3);
 
   companion object {
     fun ofRaw(raw: Int): RecordMode? {
@@ -285,7 +297,12 @@ enum class FaultKind(val raw: Int) {
    * The foreground service could not start after `start` returned a run id;
    * the run was discarded (no file). Show the message, return to Start.
    */
-  START_FAILED(6);
+  START_FAILED(6),
+  /**
+   * A LAP arrived in `free` (or `cooper`) mode and was ignored. Debug builds
+   * only; a UI that shows a LAP control in that mode has a bug.
+   */
+  LAP_IGNORED(7);
 
   companion object {
     fun ofRaw(raw: Int): FaultKind? {
@@ -607,8 +624,17 @@ data class OrphanJournal (
   val runId: String,
   val lastLineAgeMs: Long,
   val mode: RecordMode,
-  /** False when the journal has no decodable header: it can only be discarded. */
+  /**
+   * False when the journal has no decodable header: it can only be discarded
+   * (unless `newer`).
+   */
   val readable: Boolean,
+  /**
+   * The journal was written by a newer app (schema or mode this build does not
+   * know). Unreadable here, but NEVER offered for discard: show "update the
+   * app to recover this run"; `discardJournal` refuses it (plan §18.7 W6).
+   */
+  val newer: Boolean,
   /** The run was paused when the process died. */
   val endedPaused: Boolean,
   /** Run time recorded before the kill (pauses and earlier gaps included). */
@@ -621,9 +647,10 @@ data class OrphanJournal (
       val lastLineAgeMs = pigeonVar_list[1] as Long
       val mode = pigeonVar_list[2] as RecordMode
       val readable = pigeonVar_list[3] as Boolean
-      val endedPaused = pigeonVar_list[4] as Boolean
-      val elapsedMs = pigeonVar_list[5] as Long
-      return OrphanJournal(runId, lastLineAgeMs, mode, readable, endedPaused, elapsedMs)
+      val newer = pigeonVar_list[4] as Boolean
+      val endedPaused = pigeonVar_list[5] as Boolean
+      val elapsedMs = pigeonVar_list[6] as Long
+      return OrphanJournal(runId, lastLineAgeMs, mode, readable, newer, endedPaused, elapsedMs)
     }
   }
   fun toList(): List<Any?> {
@@ -632,6 +659,7 @@ data class OrphanJournal (
       lastLineAgeMs,
       mode,
       readable,
+      newer,
       endedPaused,
       elapsedMs,
     )
@@ -644,7 +672,7 @@ data class OrphanJournal (
       return true
     }
     val other = other as OrphanJournal
-    return PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.lastLineAgeMs, other.lastLineAgeMs) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.readable, other.readable) && PlatformApiPigeonUtils.deepEquals(this.endedPaused, other.endedPaused) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs)
+    return PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.lastLineAgeMs, other.lastLineAgeMs) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.readable, other.readable) && PlatformApiPigeonUtils.deepEquals(this.newer, other.newer) && PlatformApiPigeonUtils.deepEquals(this.endedPaused, other.endedPaused) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs)
   }
 
   override fun hashCode(): Int {
@@ -653,6 +681,7 @@ data class OrphanJournal (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.lastLineAgeMs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.mode)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.readable)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.newer)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.endedPaused)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.elapsedMs)
     return result
@@ -912,6 +941,64 @@ data class BleDevice (
     var result = javaClass.hashCode()
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.address)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.name)
+    return result
+  }
+}
+
+/**
+ * What the static Auto Backup rules would back up right now (plan §4, W3):
+ * `databases/runsolo.db` + `files/runs/` run files + sidecars. `files/state/`
+ * is a few KB and not counted. Over the 25 MB `quotaBytes` Android backs up
+ * nothing, so the app keeps the set under `budgetBytes` (15 MB) by archiving.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class BackupStatus (
+  val backedUpBytes: Long,
+  val budgetBytes: Long,
+  val quotaBytes: Long,
+  /** Runs already in `files/runs-archive/` (on device, indexed, not backed up). */
+  val archivedRunCount: Long,
+  val overBudget: Boolean
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): BackupStatus {
+      val backedUpBytes = pigeonVar_list[0] as Long
+      val budgetBytes = pigeonVar_list[1] as Long
+      val quotaBytes = pigeonVar_list[2] as Long
+      val archivedRunCount = pigeonVar_list[3] as Long
+      val overBudget = pigeonVar_list[4] as Boolean
+      return BackupStatus(backedUpBytes, budgetBytes, quotaBytes, archivedRunCount, overBudget)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      backedUpBytes,
+      budgetBytes,
+      quotaBytes,
+      archivedRunCount,
+      overBudget,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as BackupStatus
+    return PlatformApiPigeonUtils.deepEquals(this.backedUpBytes, other.backedUpBytes) && PlatformApiPigeonUtils.deepEquals(this.budgetBytes, other.budgetBytes) && PlatformApiPigeonUtils.deepEquals(this.quotaBytes, other.quotaBytes) && PlatformApiPigeonUtils.deepEquals(this.archivedRunCount, other.archivedRunCount) && PlatformApiPigeonUtils.deepEquals(this.overBudget, other.overBudget)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.backedUpBytes)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.budgetBytes)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.quotaBytes)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.archivedRunCount)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.overBudget)
     return result
   }
 }
@@ -1320,30 +1407,35 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
       }
       149.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TickEvent.fromList(it)
+          BackupStatus.fromList(it)
         }
       }
       150.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapEvent.fromList(it)
+          TickEvent.fromList(it)
         }
       }
       151.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CueEvent.fromList(it)
+          LapEvent.fromList(it)
         }
       }
       152.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FaultEvent.fromList(it)
+          CueEvent.fromList(it)
         }
       }
       153.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StateEvent.fromList(it)
+          FaultEvent.fromList(it)
         }
       }
       154.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          StateEvent.fromList(it)
+        }
+      }
+      155.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           PhaseEvent.fromList(it)
         }
@@ -1433,28 +1525,32 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(148)
         writeValue(stream, value.toList())
       }
-      is TickEvent -> {
+      is BackupStatus -> {
         stream.write(149)
         writeValue(stream, value.toList())
       }
-      is LapEvent -> {
+      is TickEvent -> {
         stream.write(150)
         writeValue(stream, value.toList())
       }
-      is CueEvent -> {
+      is LapEvent -> {
         stream.write(151)
         writeValue(stream, value.toList())
       }
-      is FaultEvent -> {
+      is CueEvent -> {
         stream.write(152)
         writeValue(stream, value.toList())
       }
-      is StateEvent -> {
+      is FaultEvent -> {
         stream.write(153)
         writeValue(stream, value.toList())
       }
-      is PhaseEvent -> {
+      is StateEvent -> {
         stream.write(154)
+        writeValue(stream, value.toList())
+      }
+      is PhaseEvent -> {
+        stream.write(155)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -1743,6 +1839,66 @@ interface RecorderApi {
             val runIdArg = args[0] as String
             val wrapped: List<Any?> = try {
               listOf(api.exitDiagnosis(runIdArg))
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+    }
+  }
+}
+/**
+ * Backup budget (plan §4). Journals live in `files/journals/`, run files in
+ * `files/runs/`, overflow in `files/runs-archive/`; the rules files exclude
+ * journals, the archive and the SQLite `-wal`/`-shm`/`-journal` side files.
+ *
+ * Generated interface from Pigeon that represents a handler of messages from Flutter.
+ */
+interface StorageApi {
+  fun backupStatus(): BackupStatus
+  /**
+   * Moves the oldest run files (with their sidecars) into `runs-archive/`
+   * until the backed-up set fits the budget; returns the run ids moved. Call
+   * after each finalise/import, then run the Reconciler (rows get `repath`).
+   * Non-empty → show "export to keep older runs safe". Never touches the run
+   * being recorded, never deletes anything.
+   */
+  fun enforceBackupBudget(): List<String>
+
+  companion object {
+    /** The codec used by StorageApi. */
+    val codec: MessageCodec<Any?> by lazy {
+      PlatformApiPigeonCodec()
+    }
+    /** Sets up an instance of `StorageApi` to handle messages through the `binaryMessenger`. */
+    @JvmOverloads
+    fun setUp(binaryMessenger: BinaryMessenger, api: StorageApi?, messageChannelSuffix: String = "") {
+      val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.StorageApi.backupStatus$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              listOf(api.backupStatus())
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.StorageApi.enforceBackupBudget$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              listOf(api.enforceBackupBudget())
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)
             }

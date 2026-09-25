@@ -16,6 +16,7 @@ OrphanJournal orphan({
   lastLineAgeMs: ageMinutes * 60 * 1000,
   mode: RecordMode.fourByFour,
   readable: readable,
+  newer: false,
   endedPaused: endedPaused,
   elapsedMs: 10 * 60 * 1000,
 );
