@@ -18,6 +18,10 @@ dependencies:
   # Post-run route map (plan §18.3). The only network user besides Phase 3's
   # weather client. Sits behind `MapSurface`; tests never construct it.
   google_maps_flutter: ^2.10.0
+  # Move runs between Run Solo installs (dogfood → Play, plan §4 import): the
+  # share sheet writes RunBundle JSON files, SAF picks them back. No network.
+  share_plus: ^11.0.0
+  file_selector: ^1.0.3
 
 dev_dependencies:
   flutter_test:

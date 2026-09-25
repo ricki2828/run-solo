@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
 import '../app/routes.dart';
@@ -36,6 +39,76 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   PermissionSnapshot? _perms;
+  bool _busy = false;
+
+  void _toast(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  /// Plan §4 export: one `RunBundle` JSON per run (file + sidecar) through
+  /// the share sheet, so the dogfood build's runs reach the Play build.
+  Future<void> _moveRuns(BuildContext context) async {
+    final services = AppServices.of(context);
+    setState(() => _busy = true);
+    try {
+      final bundles = await services.history.exportBundles();
+      if (bundles.isEmpty) {
+        _toast('No runs to move yet.');
+        return;
+      }
+      final dir = await Directory.systemTemp.createTemp('runsolo-export-');
+      final paths = <String>[];
+      for (final b in bundles) {
+        final f = File('${dir.path}/run-${b.run.id}.runsolo.json');
+        await f.writeAsString(engine.RunBundleCodec.encode(b), flush: true);
+        paths.add(f.path);
+      }
+      await services.transfer.shareFiles(
+        paths,
+        subject:
+            'Run Solo: ${bundles.length} run${bundles.length == 1 ? '' : 's'}',
+      );
+    } catch (e) {
+      _toast('Could not move runs. $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Plan §4 import: SAF pick, decode each document (export or bare run
+  /// file, v1 or v2), uuid dedupe, write run + sidecar.
+  Future<void> _importRuns(BuildContext context) async {
+    final services = AppServices.of(context);
+    setState(() => _busy = true);
+    try {
+      final picked = await services.transfer.pickFiles();
+      if (picked.isEmpty) return;
+      final bundles = <engine.RunBundle>[];
+      var unreadable = 0;
+      for (final f in picked) {
+        try {
+          bundles.add(engine.RunBundleCodec.decode(f.text));
+        } on engine.RunFileNewerVersionException {
+          unreadable += 1;
+        } on engine.RunFileFormatException {
+          unreadable += 1;
+        }
+      }
+      final result = await services.history.importBundles(bundles);
+      final parts = <String>[
+        'Imported ${result.imported}',
+        if (result.skippedIds.isNotEmpty)
+          '${result.skippedIds.length} already here',
+        if (unreadable > 0) '$unreadable not Run Solo files',
+      ];
+      _toast('${parts.join(', ')}.');
+    } catch (e) {
+      _toast('Could not import. $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   void didChangeDependencies() {
@@ -182,6 +255,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: '',
                 onTap: () =>
                     Navigator.of(context).pushNamed(Routes.permissions),
+              ),
+              const _Section('Data'),
+              SettingsRow(
+                label: 'Move runs to another Run Solo',
+                value: _busy ? 'Working' : '',
+                onTap: _busy ? null : () => _moveRuns(context),
+              ),
+              SettingsRow(
+                label: 'Import runs',
+                value: _busy ? 'Working' : '',
+                onTap: _busy ? null : () => _importRuns(context),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: Space.x12),
+                child: Text(
+                  'Each run travels as one file with its edits and verdict. '
+                  'Runs already on the receiving phone are skipped.',
+                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                ),
               ),
               const _Section('Motion'),
               _Toggle(

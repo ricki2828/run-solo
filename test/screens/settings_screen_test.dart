@@ -1,11 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/platform/transfer_gateway.dart';
 import 'package:run_solo/screens/settings_screen.dart';
 import 'package:run_solo/state/settings.dart';
 
 import '../helpers.dart';
+import '../run_fixtures.dart';
 
 /// Settings (brief §4.11, plan D3, §18.6 copy, Phase 2 battery row).
 void main() {
@@ -153,6 +158,62 @@ void main() {
     expect(find.text(kNoAnalyticsLine), findsOneWidget);
     expect(find.text(kOpenMeteoAttribution), findsOneWidget);
     expect(find.textContaining('never leave your phone'), findsNothing);
+  });
+
+  testWidgets('Move runs shares one bundle file per run', (tester) async {
+    final r1 = fourByFourFile(n: 1, start: DateTime.utc(2026, 9, 10, 6));
+    final r2 = freeRunFile(n: 2, start: DateTime.utc(2026, 9, 12, 6));
+    final transfer = FakeTransferGateway();
+    await pumpApp(
+      tester,
+      fakeServices(files: [r1, r2], transfer: transfer),
+      home: SettingsScreen(now: now),
+    );
+    await pumpTimes(tester, 3);
+    await scrollTo(tester, find.text('Move runs to another Run Solo'));
+    // Real file I/O (temp dir) needs real async time.
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Move runs to another Run Solo'));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await pumpTimes(tester, 3);
+    expect(transfer.shared, hasLength(1));
+    expect(transfer.shared.single, hasLength(2));
+    final ids = {
+      for (final p in transfer.shared.single)
+        engine.RunBundleCodec.decode(File(p).readAsStringSync()).run.id,
+    };
+    expect(ids, {r1.id, r2.id});
+  });
+
+  testWidgets('Import runs: dedupes, reports, rejects junk', (tester) async {
+    final r1 = fourByFourFile(n: 1, start: DateTime.utc(2026, 9, 10, 6));
+    final r2 = freeRunFile(n: 2, start: DateTime.utc(2026, 9, 12, 6));
+    final transfer = FakeTransferGateway(
+      toPick: [
+        PickedFile(
+          name: 'a.json',
+          text: engine.RunBundleCodec.encode(engine.RunBundle(run: r1)),
+        ),
+        PickedFile(
+          name: 'b.json',
+          text: engine.RunBundleCodec.encode(engine.RunBundle(run: r2)),
+        ),
+        const PickedFile(name: 'junk.json', text: '{"hello": 1}'),
+      ],
+    );
+    final services = fakeServices(files: [r1], transfer: transfer);
+    await pumpApp(tester, services, home: SettingsScreen(now: now));
+    await pumpTimes(tester, 3);
+    await scrollTo(tester, find.text('Import runs'));
+    await tester.tap(find.text('Import runs'));
+    await pumpTimes(tester, 6);
+    expect(
+      find.text('Imported 1, 1 already here, 1 not Run Solo files.'),
+      findsOneWidget,
+    );
+    final listed = await services.history.list();
+    expect(listed.map((r) => r.id).toSet(), {r1.id, r2.id});
   });
 
   test('withdrawn privacy lines appear nowhere in the copy (A7 grep)', () {

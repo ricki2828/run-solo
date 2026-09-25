@@ -9,6 +9,7 @@ import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/main.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/platform/transfer_gateway.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/settings.dart';
 
@@ -28,6 +29,7 @@ AppServices fakeServices({
   List<engine.RunFile> files = const [],
   Map<String, engine.RunSidecar> sidecars = const {},
   MapSurfaceFactory? maps,
+  FakeTransferGateway? transfer,
 }) => AppServices.fake(
   recorder: recorder ?? FakeRecorderGateway(now: now),
   ble: ble,
@@ -46,6 +48,7 @@ AppServices fakeServices({
   files: files,
   sidecars: sidecars,
   maps: maps,
+  transfer: transfer,
   now: now,
 );
 

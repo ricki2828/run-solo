@@ -14,6 +14,7 @@ import '../map/map_surface.dart';
 import '../platform/fake_gateway.dart';
 import '../platform/gateway.dart';
 import '../platform/pigeon_gateway.dart';
+import '../platform/transfer_gateway.dart';
 import '../state/history_store.dart';
 import '../state/max_hr.dart';
 import '../state/recording_controller.dart';
@@ -29,6 +30,7 @@ class AppServices {
     required this.settings,
     required this.history,
     required this.maps,
+    required this.transfer,
     RecordingController? recording,
     DateTime Function()? now,
   }) : now = now ?? DateTime.now,
@@ -49,6 +51,7 @@ class AppServices {
   final SettingsController settings;
   final RunStore history;
   final MapSurfaceFactory maps;
+  final TransferGateway transfer;
   final RecordingController recording;
   final DateTime Function() now;
 
@@ -67,6 +70,7 @@ class AppServices {
     List<engine.RunFile> files = const [],
     Map<String, engine.RunSidecar> sidecars = const {},
     MapSurfaceFactory? maps,
+    FakeTransferGateway? transfer,
     DateTime Function()? now,
   }) {
     final rec = recorder ?? FakeRecorderGateway(autoTick: true, now: now);
@@ -89,6 +93,7 @@ class AppServices {
         now: clock,
       ),
       maps: maps ?? const FakeMapSurfaceFactory(),
+      transfer: transfer ?? FakeTransferGateway(),
       now: now,
     );
   }
@@ -109,6 +114,7 @@ class AppServices {
         profile: () => MaxHr.profileFor(settings.settings, DateTime.now()),
       ),
       maps: const GoogleMapSurfaceFactory(),
+      transfer: const ShareSheetTransferGateway(),
     );
   }
 

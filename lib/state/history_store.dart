@@ -117,8 +117,24 @@ abstract class HistoryStore {
   Future<List<RunSummary>> list();
 }
 
+/// Outcome of [RunStore.importBundles]: uuid dedupe never overwrites.
+@immutable
+class ImportResult {
+  const ImportResult({required this.imported, required this.skippedIds});
+  final int imported;
+  final List<String> skippedIds;
+}
+
 abstract class RunStore implements HistoryStore {
   Future<RunDetail?> load(String id);
+
+  /// Every readable run with its sidecar, for "Move runs to another Run
+  /// Solo" (plan §4 export; the receiving app dedupes by uuid).
+  Future<List<engine.RunBundle>> exportBundles();
+
+  /// Write bundles that are not already here (run file + sidecar). Returns
+  /// how many landed and which uuids were skipped as duplicates.
+  Future<ImportResult> importBundles(List<engine.RunBundle> bundles);
 
   /// Fix-laps: append an edit to the sidecar, re-analyse, freeze the new
   /// verdict (old text kept in history). Throws `LapEditException` when the
@@ -339,6 +355,30 @@ class MemoryRunStore implements RunStore {
 
   @override
   Future<void> delete(String id) async => _deleted.add(id);
+
+  @override
+  Future<List<engine.RunBundle>> exportBundles() async => [
+    for (final f in files.where((f) => !_deleted.contains(f.id)))
+      engine.RunBundle(run: f, sidecar: sidecars[f.id]),
+  ];
+
+  @override
+  Future<ImportResult> importBundles(List<engine.RunBundle> bundles) async {
+    final existing = {
+      for (final f in files.where((f) => !_deleted.contains(f.id))) f.id,
+      for (final r in runs) r.id,
+    };
+    final plan = engine.planBundleImport(bundles, existing);
+    for (final b in plan.toImport) {
+      _deleted.remove(b.run.id);
+      files.add(b.run);
+      if (b.sidecar != null) sidecars[b.run.id] = b.sidecar!;
+    }
+    return ImportResult(
+      imported: plan.toImport.length,
+      skippedIds: plan.skippedIds,
+    );
+  }
 }
 
 /// `files/runs/` + `files/runs-archive/`: `run-<id>.json.gz` written by
@@ -490,6 +530,45 @@ class FileRunStore implements RunStore {
   @override
   Future<RunDetail> setOverride(String id, RecordMode? mode) =>
       _mutate(id, (s) => s.withOverride(mode == null ? null : runModeOf(mode)));
+
+  @override
+  Future<List<engine.RunBundle>> exportBundles() async {
+    final scanned = await _scan();
+    final out = [
+      for (final v in scanned.values)
+        engine.RunBundle(run: v.$1, sidecar: v.$2),
+    ];
+    out.sort((a, b) => a.run.start.compareTo(b.run.start));
+    return out;
+  }
+
+  /// Sidecar first, then the run file (plan §4 dual-write order), each via
+  /// tmp → flush → rename, into `files/runs/`.
+  @override
+  Future<ImportResult> importBundles(List<engine.RunBundle> bundles) async {
+    final scanned = await _scan();
+    final plan = engine.planBundleImport(bundles, scanned.keys.toSet());
+    await runsDir.create(recursive: true);
+    var imported = 0;
+    for (final b in plan.toImport) {
+      final runFile = File('${runsDir.path}/run-${b.run.id}.json.gz');
+      try {
+        if (b.sidecar != null) {
+          await _writeSidecar(_sidecarFor(runFile), b.sidecar!);
+        }
+        final tmp = File('${runFile.path}.tmp');
+        await tmp.writeAsBytes(
+          gzip.encode(utf8.encode(engine.RunFileCodec.encode(b.run))),
+          flush: true,
+        );
+        await tmp.rename(runFile.path);
+        imported += 1;
+      } catch (e) {
+        debugPrint('import: could not write ${b.run.id} ($e)');
+      }
+    }
+    return ImportResult(imported: imported, skippedIds: plan.skippedIds);
+  }
 
   /// Deletes the run file and its sidecar together (plan §4: they move and
   /// go as a pair).
