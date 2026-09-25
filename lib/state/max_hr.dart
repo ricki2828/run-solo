@@ -72,8 +72,9 @@ abstract final class MaxHr {
   }
 
   /// Fold a run's highest 30 s HR into settings. Returns the new settings,
-  /// unchanged when nothing beats the stored value. Guard: above `typed + 15`
-  /// (typed only) or above 220 goes to `pending` instead.
+  /// unchanged when nothing beats the stored value. Guard: above `typed + 15`,
+  /// or with no typed max above `(220 − age ?? 190) + 10` or 200, or above
+  /// 220 goes to `pending` instead.
   static AppSettings foldObserved(
     AppSettings s,
     double? observedThisRun,
@@ -88,6 +89,7 @@ abstract final class MaxHr {
       before,
       runObserved30s: observedThisRun,
       typedMaxHr: s.typedMaxHr,
+      age: s.birthYear == null ? null : ageFor(s.birthYear!, at),
     );
     if (after == before) return s;
     return s.copyWith(

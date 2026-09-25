@@ -82,6 +82,31 @@ void main() {
     );
   });
 
+  test('no typed max: the guard uses 220 − age from the birth year', () {
+    final at = DateTime(2026, 9, 24);
+    const born1966 = 1966; // age 60 → default 160
+    // A 10 s burst lifting a 30 s window to 172 is held, not applied.
+    final s = MaxHr.foldObserved(
+      const AppSettings(birthYear: born1966),
+      172,
+      at,
+    );
+    expect(s.observedMaxHr, isNull);
+    expect(s.pendingObservedMaxHr, 172);
+    expect(MaxHr.resolve(s, at).maxHr, 160);
+    // A sustained 168 (inside +10) applies.
+    expect(
+      MaxHr.foldObserved(
+        const AppSettings(birthYear: born1966),
+        168,
+        at,
+      ).observedMaxHr,
+      168,
+    );
+    // No birth year: the 190 reference, so 172 applies.
+    expect(MaxHr.foldObserved(const AppSettings(), 172, at).observedMaxHr, 172);
+  });
+
   test('reset clears observed and pending', () {
     const s = AppSettings(observedMaxHr: 192, pendingObservedMaxHr: 205);
     final r = s.copyWith(

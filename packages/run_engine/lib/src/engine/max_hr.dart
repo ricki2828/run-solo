@@ -57,16 +57,29 @@ class ObservedMaxHrState {
 class ObservedMaxHrGuard {
   const ObservedMaxHrGuard({
     this.marginBpm = 15,
+    this.defaultMarginBpm = 10,
     this.absoluteCeilingBpm = 220,
+    this.untypedCeilingBpm = 200,
   });
 
-  /// An observed value more than this above the reference is held pending.
-  /// The reference is the typed max HR, or an already-accepted observed max
-  /// when that is higher (a confirmed 205 must not re-prompt on 206).
+  /// With a typed max: an observed value more than this above the
+  /// reference is held pending. The reference is the typed max HR, or an
+  /// already-accepted observed max when that is higher (a confirmed 205
+  /// must not re-prompt on 206).
   final double marginBpm;
+
+  /// Without a typed max the reference is the default the resolver would
+  /// use (220 − age, else 190) or an accepted observed max if higher, and
+  /// the margin is tighter: a default is a guess, so a 10 s burst that
+  /// lifts a 30 s window to 172 must not silently beat an older user's
+  /// 220 − age (review follow-up, 25-Sep-2026).
+  final double defaultMarginBpm;
 
   /// Nothing above this is ever applied silently.
   final double absoluteCeilingBpm;
+
+  /// Without a typed max, nothing above this is applied silently either.
+  final double untypedCeilingBpm;
 
   static const ObservedMaxHrGuard defaults = ObservedMaxHrGuard();
 
@@ -74,28 +87,41 @@ class ObservedMaxHrGuard {
   /// or [LapsSummary.observedMaxHrThisRun]) into the state.
   ///
   /// - null, or not above the accepted value → unchanged;
-  /// - above `absoluteCeilingBpm`, or above `typedMaxHr + margin` (with an
-  ///   accepted observed max raising that reference) → held as `pending`,
-  ///   the accepted value untouched; a higher pending value replaces a
-  ///   lower one;
+  /// - above `absoluteCeilingBpm`, or above `typedMaxHr + marginBpm` (with
+  ///   an accepted observed max raising that reference) → held as
+  ///   `pending`, the accepted value untouched; a higher pending value
+  ///   replaces a lower one;
+  /// - with no typed max: above `untypedCeilingBpm`, or above
+  ///   `(220 − age ?? 190) + defaultMarginBpm` (accepted max raising the
+  ///   reference) → pending likewise;
   /// - otherwise accepted at once.
   ///
-  /// With no typed value there is no "typed + 15" edge: only the 220
-  /// ceiling applies, because 220−age or the 190 fallback are guesses, not
-  /// evidence the strap could contradict.
+  /// [age] is required (null when unknown) so a caller cannot silently fall
+  /// back to the 190 reference when the user's age is on file.
   ObservedMaxHrState fold(
     ObservedMaxHrState state, {
     required double? runObserved30s,
     required int? typedMaxHr,
+    required int? age,
   }) {
     final value = runObserved30s;
     if (value == null) return state;
     final accepted = state.observed;
     if (accepted != null && value <= accepted) return state;
-    final reference = _reference(typedMaxHr, accepted);
-    final suspicious =
-        value > absoluteCeilingBpm ||
-        (reference != null && value > reference + marginBpm);
+    final bool suspicious;
+    if (typedMaxHr != null) {
+      final reference = _reference(typedMaxHr.toDouble(), accepted);
+      suspicious = value > absoluteCeilingBpm || value > reference + marginBpm;
+    } else {
+      final defaultMax = age == null
+          ? MetricsCalculator.fallbackMaxHr
+          : (220 - age).toDouble();
+      final reference = _reference(defaultMax, accepted);
+      suspicious =
+          value > absoluteCeilingBpm ||
+          value > untypedCeilingBpm ||
+          value > reference + defaultMarginBpm;
+    }
     if (suspicious) {
       final pending = state.pending;
       if (pending != null && pending >= value) return state;
@@ -122,10 +148,6 @@ class ObservedMaxHrGuard {
   /// falls back to typed → 220−age → 190.
   ObservedMaxHrState reset(ObservedMaxHrState state) => ObservedMaxHrState.none;
 
-  double? _reference(int? typedMaxHr, double? accepted) {
-    final typed = typedMaxHr?.toDouble();
-    if (typed == null) return accepted;
-    if (accepted == null) return typed;
-    return accepted > typed ? accepted : typed;
-  }
+  double _reference(double base, double? accepted) =>
+      accepted != null && accepted > base ? accepted : base;
 }
