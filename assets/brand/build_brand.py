@@ -337,9 +337,9 @@ def main():
         write(f"svg/{name}-mono-black.svg", svg(w, h, [("#000000", d_main), ("#000000", d_mono)]))
         write(f"svg/{name}-mono-white.svg", svg(w, h, [("#FFFFFF", d_main), ("#FFFFFF", d_mono)]))
 
-    # Adaptive launcher icon: 108 dp canvas, mark inside the 66 dp safe zone. Radius 30 of 33 (about a
-    # 9% inset) so the R does not look oversized next to other running apps on a home screen.
-    t = fit_circle([ICON_R, ICON_LINE], 108, 30)
+    # Adaptive launcher icon: 108 dp canvas, mark inside the 66 dp safe zone (radius 33, 1 dp margin).
+    # Founder kept the approved #20 size (32 dp), 26-Sep.
+    t = fit_circle([ICON_R, ICON_LINE], 108, 32)
     fg = [(BONE, to_d(ICON_R, *t)), (ARC, to_d(ICON_LINE, *t))]
     # Same transform as the colour layer, so the themed icon sits exactly where the colour one does.
     mono = [("#FFFFFFFF", to_d(ICON_R, *t)), ("#FFFFFFFF", to_d(ICON_TAIL, *t))]
