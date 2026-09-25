@@ -8,7 +8,7 @@ import '../map/map_surface.dart';
 import '../map/route_builder.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
-import '../state/laps_view.dart';
+import '../state/zone_histogram.dart';
 import '../theme/theme.dart';
 import '../theme/zones.dart';
 import '../widgets/chrome.dart';
@@ -145,10 +145,7 @@ class RunDetailBody extends StatelessWidget {
             units: units,
             onVerdict: onVerdict,
           ),
-          RecordMode.laps => _LapsTable(
-            view: LapsView.from(d.run, maxHrUsed: maxHr),
-            units: units,
-          ),
+          RecordMode.laps => _LapsTable(view: a.laps, units: units),
           RecordMode.free ||
           RecordMode.cooper => _Splits(free: free, units: units),
         },
@@ -553,25 +550,33 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
 
 class _LapsTable extends StatelessWidget {
   const _LapsTable({required this.view, required this.units});
-  final LapsView view;
+  final engine.LapsSummary? view;
   final Units units;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final view = this.view;
+    if (view == null) {
+      return Text(
+        'No laps recorded.',
+        style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _TableHeader(cells: const ['Lap', 'Time', 'Dist', 'Pace', 'HR']),
-        for (final r in view.rows)
+        for (final r in view.laps)
           _TableRow(
-            highlight: r.number == view.fastestNumber,
+            highlight: r.number == view.fastestLapNumber,
+            muted: !r.scored,
             cells: [
               '${r.number}',
-              Fmt.clock(r.durationMs),
+              Fmt.clock((r.movingSeconds * 1000).round()),
               Fmt.distance(r.distanceM, units),
               Fmt.pace(r.paceSecPerKm, units),
-              r.avgHr == null ? '--' : '${r.avgHr}',
+              r.meanHr == null ? '--' : '${r.meanHr!.round()}',
             ],
           ),
         const SizedBox(height: Space.x16),
@@ -579,10 +584,10 @@ class _LapsTable extends StatelessWidget {
           spacing: Space.x24,
           runSpacing: Space.x12,
           children: [
-            if (view.fastestNumber != null)
+            if (view.fastestLapNumber != null)
               StatTile(
                 label: 'fastest lap',
-                value: 'Lap ${view.fastestNumber}',
+                value: 'Lap ${view.fastestLapNumber}',
                 size: 28,
               ),
             if (view.spreadSecPerKm != null)
@@ -595,18 +600,18 @@ class _LapsTable extends StatelessWidget {
             if (view.avgHr != null)
               StatTile(
                 label: 'hr avg / max',
-                value: '${view.avgHr} / ${view.maxHr}',
+                value: '${view.avgHr!.round()} / ${view.maxHr}',
                 size: 28,
               ),
-            if (view.secondsInBand != null)
+            if (view.timeInBandSeconds != null)
               StatTile(
                 label: 'in 4x4 band',
-                value: Fmt.clock((view.secondsInBand! * 1000).round()),
+                value: Fmt.clock((view.timeInBandSeconds! * 1000).round()),
                 size: 28,
               ),
           ],
         ),
-        if (view.rows.isEmpty)
+        if (view.laps.isEmpty)
           Text(
             'No laps recorded.',
             style: RunSoloType.body15.copyWith(color: t.inkSecondary),

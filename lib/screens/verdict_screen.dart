@@ -55,7 +55,9 @@ class _VerdictScreenState extends State<VerdictScreen> {
     final all = await services.history.list();
     final previous = previousFourByFour(all, detail.summary);
     if (widget.justFinished) {
-      final observed = detail.analysis.fourByFour?.observedMaxHrThisRun;
+      final observed =
+          detail.analysis.fourByFour?.observedMaxHrThisRun ??
+          detail.analysis.laps?.observedMaxHrThisRun;
       if (observed != null) {
         await services.settings.update(
           (s) => MaxHr.foldObserved(s, observed, detail.run.end),

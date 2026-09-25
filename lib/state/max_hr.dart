@@ -54,6 +54,12 @@ abstract final class MaxHr {
       baseSource = MaxHrSource.fallback;
     }
     final observed = s.observedMaxHr;
+    // The number itself is the engine's resolver (one `maxHrFor`, D3 N1).
+    assert(
+      engine.MetricsCalculator.maxHrFor(profileFor(s, now)).round() ==
+          (observed != null && observed > base ? observed : base),
+      'UI max HR source label disagrees with the engine resolver',
+    );
     if (observed != null && observed > base) {
       return MaxHrResolution(
         maxHr: observed,
@@ -74,17 +80,21 @@ abstract final class MaxHr {
     DateTime at,
   ) {
     if (observedThisRun == null) return s;
-    final v = observedThisRun.round();
-    final current = s.observedMaxHr ?? 0;
-    if (v <= current) return s;
-    final typed = s.typedMaxHr;
-    final suspicious =
-        v > MaxHrRules.max ||
-        (typed != null && v > typed + MaxHrRules.artefactMargin);
-    if (suspicious) {
-      if ((s.pendingObservedMaxHr ?? 0) >= v) return s;
-      return s.copyWith(pendingObservedMaxHr: v);
-    }
-    return s.copyWith(observedMaxHr: v, observedMaxHrAt: at);
+    final before = engine.ObservedMaxHrState(
+      observed: s.observedMaxHr?.toDouble(),
+      pending: s.pendingObservedMaxHr?.toDouble(),
+    );
+    final after = engine.ObservedMaxHrGuard.defaults.fold(
+      before,
+      runObserved30s: observedThisRun,
+      typedMaxHr: s.typedMaxHr,
+    );
+    if (after == before) return s;
+    return s.copyWith(
+      observedMaxHr: after.observed?.round(),
+      observedMaxHrAt: after.observed != before.observed ? at : null,
+      pendingObservedMaxHr: after.pending?.round(),
+      clearPendingObservedMaxHr: after.pending == null,
+    );
   }
 }

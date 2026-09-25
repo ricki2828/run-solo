@@ -13,9 +13,9 @@ library;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 
 import '../platform/gateway.dart';
-import 'hr_zone_tracker.dart';
 
 @immutable
 class RecordingSnapshot {
@@ -167,17 +167,8 @@ class RecordingController extends ChangeNotifier {
     this._gateway, {
     DateTime Function()? now,
     int Function()? maxHr,
-    ZoneTracker Function({required int maxHr, int? seedZone, int? seedHr})?
-    trackerFactory,
   }) : _now = now ?? DateTime.now,
-       _maxHr = maxHr ?? (() => 190),
-       _trackerFactory = trackerFactory ?? _defaultTracker;
-
-  static ZoneTracker _defaultTracker({
-    required int maxHr,
-    int? seedZone,
-    int? seedHr,
-  }) => UiHrZoneTracker(maxHr: maxHr, seedZone: seedZone, seedHr: seedHr);
+       _maxHr = maxHr ?? (() => 190);
 
   final RecorderGateway _gateway;
   final DateTime Function() _now;
@@ -185,9 +176,10 @@ class RecordingController extends ChangeNotifier {
   /// Resolved max HR (plan D3 `maxHrFor`), read when a run starts or the
   /// screen re-attaches; a mid-run settings change applies on the next run.
   final int Function() _maxHr;
-  final ZoneTracker Function({required int maxHr, int? seedZone, int? seedHr})
-  _trackerFactory;
-  ZoneTracker? _tracker;
+
+  /// The engine's zone tracker (plan §18.1): hysteresis, dwell, loss and
+  /// first-sample rules live there, fixture-tested; this only feeds ticks.
+  engine.HrZoneTracker? _tracker;
   int? _lastHr;
 
   RecordingSnapshot _snap = const RecordingSnapshot();
@@ -216,11 +208,14 @@ class RecordingController extends ChangeNotifier {
     _sub ??= _gateway.events.listen(_onEvent);
     // Recreated UI (W4): seed the tracker with the last zone so the first
     // frame paints it instead of black for 5 s. `status()` carries no HR.
-    _tracker ??= _trackerFactory(
-      maxHr: _maxHr(),
-      seedZone: _snap.zone == 0 ? null : _snap.zone,
-      seedHr: _lastHr,
-    );
+    _tracker ??= _snap.zone == 0
+        ? engine.HrZoneTracker(maxHr: _maxHr().toDouble())
+        : engine.HrZoneTracker.seeded(
+            maxHr: _maxHr().toDouble(),
+            zone: _snap.zone,
+            hr: _lastHr,
+            atMs: _snap.elapsedMs,
+          );
     await refreshStatus();
   }
 
@@ -277,7 +272,7 @@ class RecordingController extends ChangeNotifier {
   void _reset(RecordMode mode, Preset? preset) {
     _lastLapDistanceM = 0;
     _lastHr = null;
-    _tracker = _trackerFactory(maxHr: _maxHr());
+    _tracker = engine.HrZoneTracker(maxHr: _maxHr().toDouble());
     _snap = RecordingSnapshot(
       mode: mode,
       preset: switch (mode) {
@@ -341,9 +336,9 @@ class RecordingController extends ChangeNotifier {
     _lastTickAt = _now();
     final fix = t.gpsAccuracyM != null;
     if (t.hr != null) _lastHr = t.hr;
-    final zone = (_tracker ??= _trackerFactory(
-      maxHr: _maxHr(),
-    )).update(t.elapsedMs, t.hr).zone;
+    final zone = (_tracker ??= engine.HrZoneTracker(
+      maxHr: _maxHr().toDouble(),
+    )).update(t.elapsedMs, t.hr).state.zone;
     _snap = _snap.copyWith(
       state: t.state,
       phase: t.phase,
