@@ -42,6 +42,7 @@ class RecordingSnapshot {
     this.repPaces = const [],
     this.zone = 0,
     this.fault,
+    this.notice,
     this.discarded = false,
   });
 
@@ -86,6 +87,10 @@ class RecordingSnapshot {
 
   /// Journal / storage faults the runner must see; null when fine.
   final String? fault;
+
+  /// A one-time, non-fatal note for this run (amber banner), e.g. Android 14
+  /// giving the volume keys to another app's music.
+  final String? notice;
 
   /// The service discarded the run (`FaultKind.startFailed`): leave the screen.
   final bool discarded;
@@ -134,6 +139,7 @@ class RecordingSnapshot {
     int? zone,
     String? fault,
     bool clearFault = false,
+    String? notice,
     bool? discarded,
   }) => RecordingSnapshot(
     state: state ?? this.state,
@@ -159,6 +165,7 @@ class RecordingSnapshot {
     repPaces: repPaces ?? this.repPaces,
     zone: zone ?? this.zone,
     fault: clearFault ? null : (fault ?? this.fault),
+    notice: notice ?? this.notice,
     discarded: discarded ?? this.discarded,
   );
 }
@@ -444,8 +451,13 @@ class RecordingController extends ChangeNotifier {
       FaultKind.gpsLost => _snap.copyWith(gpsLost: true, clearGps: true),
       // Debug-only signal that a LAP reached Free mode; the screen has no LAP there.
       FaultKind.gpsWeak || FaultKind.lapIgnored => _snap,
-      // Android 14 + music playing: volume-key laps off for this run (one-time note, app side).
-      FaultKind.volumeKeyUnavailable => _snap,
+      // Android 14 + music playing: the volume keys belong to the music, so
+      // volume-key laps are off for this run; notification LAP still works.
+      FaultKind.volumeKeyUnavailable => _snap.copyWith(
+        notice:
+            'Volume-key laps are off while music plays on Android 14. '
+            'Use the lock-screen LAP.',
+      ),
       FaultKind.hrDisconnected => _snap.copyWith(clearHr: true),
       FaultKind.journalWriteFailed ||
       FaultKind.lowStorage ||

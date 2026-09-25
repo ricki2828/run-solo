@@ -64,6 +64,10 @@ class FakeRecorderGateway implements RecorderGateway {
   /// Lap presses swallowed because the run is a Free run.
   int lapsIgnored = 0;
 
+  /// Scripted fault of any kind (tests for the one-time notices).
+  void emitFault(FaultKind kind, String message) =>
+      _emit(FaultEvent(kind: kind, message: message));
+
   /// Scripted HR for the next ticks (null = the phase-based default). Zone
   /// tests drive the tracker through this.
   int? scriptedHr;

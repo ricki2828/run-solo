@@ -240,6 +240,18 @@ void main() {
     },
   );
 
+  test('volumeKeyUnavailable becomes a one-time notice, not a fault', () async {
+    await ctl.start(RecordMode.laps, null, Units.km);
+    fake.emitFault(
+      FaultKind.volumeKeyUnavailable,
+      'Volume keys belong to music',
+    );
+    await settle();
+    expect(ctl.snapshot.fault, isNull);
+    expect(ctl.snapshot.notice, contains('lock-screen LAP'));
+    expect(ctl.snapshot.recording, isTrue);
+  });
+
   test('memento for another run is ignored', () async {
     final memento = MemoryZoneMementoStore()
       ..memento = const ZoneMemento(

@@ -206,7 +206,9 @@ class _RecordingScreenState extends State<RecordingScreen>
                         else if (s.fault != null)
                           _Banner(text: s.fault!, color: t.semDanger)
                         else if (s.gpsLost)
-                          _Banner(text: gpsBannerCopy(s), color: t.semWarn),
+                          _Banner(text: gpsBannerCopy(s), color: t.semWarn)
+                        else if (s.notice != null)
+                          _Banner(text: s.notice!, color: t.semWarn),
                         const Spacer(),
                         if (s.lapsEnabled) ...[
                           _TimerBlock(s: s, ctl: ctl),
