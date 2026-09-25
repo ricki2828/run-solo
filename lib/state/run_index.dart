@@ -144,7 +144,7 @@ class RunIndexEntry {
       durationMs: durationMs,
       distanceM: run.distanceM,
       headlineSecPerKm: mode == engine.RunMode.intervals
-          ? (a?.fourByFour?.avgWorkPaceSecPerKm ?? whole)
+          ? (a?.intervals?.avgWorkPaceSecPerKm ?? whole)
           : whole,
       verdictHash: shownVerdict == null
           ? null

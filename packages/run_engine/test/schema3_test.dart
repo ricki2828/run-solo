@@ -297,6 +297,28 @@ void main() {
       );
     });
 
+    test('autoStop (I2, parkrun): round-trips; a missing key reads false', () {
+      const parkrun = SessionSpec(
+        templateId: 'parkrun',
+        templateVersion: 1,
+        name: 'parkrun',
+        autoStop: true,
+        steps: [SessionStep.workDistance(5000, rep: 1)],
+      );
+      expect(parkrun.validate(), isEmpty);
+      expect(SessionSpec.fromJson(parkrun.toJson()), parkrun);
+      expect(parkrun.comparisonKey, 'parkrun');
+      final legacy = SessionSpec.norwegian4x4().toJson()..remove('autoStop');
+      expect(SessionSpec.fromJson(legacy).autoStop, isFalse);
+      expect(SessionSpec.fromJson(legacy), SessionSpec.norwegian4x4());
+      expect(
+        () => SessionSpec.fromJson(
+          SessionSpec.norwegian4x4().toJson()..['autoStop'] = 'yes',
+        ),
+        throwsA(isA<RunFileFormatException>()),
+      );
+    });
+
     test('wire shape is flat and in canonical key order', () {
       final j = SessionCatalogue.fourHundreds.defaults.toJson();
       expect(j.keys.toList(), [
@@ -306,6 +328,7 @@ void main() {
         'warmupSeconds',
         'cooldownSeconds',
         'lapLockout',
+        'autoStop',
         'cueProfile',
         'hrBand',
         'steps',
@@ -557,18 +580,23 @@ void main() {
       expect(same.asPrior(fixedNow)?.comparisonKey, 't240x*');
     });
 
-    test('a session the Phase 2 detector cannot judge gets no verdict yet '
-        '(I3), only its lap table and key', () {
+    test('a 4x4 recording judged as 8 × 400 m finds no 400 m reps: NO '
+        'VERDICT from the step detector (I3), never the 4x4 path', () {
       final run = lapsRun.copyWith(
         mode: RunMode.intervals,
         session: SessionCatalogue.fourHundreds.defaults,
       );
       expect(run.preset, isNull);
       final a = engine.analyze(run, now: fixedNow);
-      expect(a.verdict, isNull);
-      expect(a.laps, isNotNull);
       expect(a.comparisonKey, 'd400x*');
       expect(a.session!.templateId, '400s');
+      expect(a.detection!.consistent, isFalse);
+      expect(a.detection!.fromSpeedStream, isFalse);
+      expect(a.verdict!.headline, VerdictHeadline.noVerdict);
+      expect(
+        a.verdict!.subline,
+        'Laps do not match the session. Fix laps to get a verdict.',
+      );
     });
 
     test('legacy preset view', () {

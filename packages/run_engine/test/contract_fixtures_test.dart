@@ -106,8 +106,8 @@ void main() {
       );
       expect(a2.verdict!.hrLine, a1.verdict!.hrLine);
       expect(
-        a2.fourByFour!.avgWorkPaceSecPerKm,
-        closeTo(a1.fourByFour!.avgWorkPaceSecPerKm!, 1e-6),
+        a2.intervals!.avgWorkPaceSecPerKm,
+        closeTo(a1.intervals!.avgWorkPaceSecPerKm!, 1e-6),
       );
     });
 
@@ -231,7 +231,7 @@ void main() {
         isFalse,
         reason: a.detection!.inconsistencyDetail,
       );
-      final m = a.fourByFour!;
+      final m = a.intervals!;
       expect(m.reps.length, 4);
       expect(m.allRepsClean, isTrue);
       // 4.2 m/s = 238.1 s/km work, 2.0 m/s = 500 s/km recovery.
@@ -386,13 +386,17 @@ void main() {
     });
 
     test(
-      '8 × 400 m (shape only in I1): the catalogue expansion, key d400x*',
+      '8 × 400 m: the catalogue expansion, key d400x*, rep-time baseline',
       () {
         final run = load('session_8x400_shape', schema: 3);
         expect(run.session, SessionCatalogue.fourHundreds.defaults);
         final a = engine.analyze(run, now: fixedNow);
         expect(a.comparisonKey, 'd400x*');
-        expect(a.verdict, isNull, reason: 'distance detection is I3');
+        expect(a.detection!.consistent, isTrue);
+        expect(a.detection!.reps.length, 8);
+        expect(a.intervals!.kind, IntervalMetricKind.repTime);
+        expect(a.verdict!.headline, VerdictHeadline.baselineSet);
+        expect(a.verdict!.subline, startsWith('400 m in 1:40 average.'));
       },
     );
   });

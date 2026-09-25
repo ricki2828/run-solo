@@ -100,7 +100,7 @@ class RunSummary {
 
   /// Headline pace for the row: work pace for a 4x4, whole-run otherwise.
   double? get headlineSecPerKm => isFourByFour
-      ? (analysis?.fourByFour?.avgWorkPaceSecPerKm ?? avgSecPerKm)
+      ? (analysis?.intervals?.avgWorkPaceSecPerKm ?? avgSecPerKm)
       : avgSecPerKm;
 }
 

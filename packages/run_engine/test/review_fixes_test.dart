@@ -61,7 +61,7 @@ void main() {
           isFalse,
           reason: '$name: ${a.detection!.inconsistencyDetail}',
         );
-        expect(a.fourByFour!.reps.length, 4, reason: name);
+        expect(a.intervals!.reps.length, 4, reason: name);
       }
     });
 
@@ -91,7 +91,7 @@ void main() {
       test('$name: pace excludes the standstill, no "GPS dropped"', () {
         final f = fixture(name);
         final a = engine.analyze(f.run, now: fixedNow);
-        final m = a.fourByFour!;
+        final m = a.intervals!;
         expect(m.reps.every((r) => !r.interrupted), isTrue);
         expect(m.reps[2].pausedMs, f.run.pauses.single.durationMs);
         expect(m.reps[2].paceSecPerKm, closeTo(284, 0.5));
@@ -106,7 +106,7 @@ void main() {
 
     test('independent: the paused rep covers less ground in less time', () {
       final f = fixture('pause_15s_in_rep3');
-      final m = engine.analyze(f.run, now: fixedNow).fourByFour!;
+      final m = engine.analyze(f.run, now: fixedNow).intervals!;
       expect(m.reps[2].distanceM, lessThan(m.reps[0].distanceM - 40));
       expect(
         m.reps[2].trimmedSeconds,
@@ -116,7 +116,7 @@ void main() {
 
     test('a 30 s pause is "Paused", never "GPS dropped"', () {
       final a = engine.analyze(fixture('pause_mid_rep3').run, now: fixedNow);
-      expect(a.fourByFour!.reps[2].interruptReason, InterruptReason.paused);
+      expect(a.intervals!.reps[2].interruptReason, InterruptReason.paused);
       expect(
         a.verdict!.subline,
         'Paused in rep 3. Three clean reps are not enough to compare.',
@@ -135,7 +135,7 @@ void main() {
           )
           .run;
       final a = engine.analyze(run, now: fixedNow);
-      expect(a.fourByFour!.reps[2].interruptReason, InterruptReason.gpsDropped);
+      expect(a.intervals!.reps[2].interruptReason, InterruptReason.gpsDropped);
     });
   });
 
@@ -233,9 +233,7 @@ void main() {
     final d2 = DateTime.utc(2026, 9, 5);
     final d3 = DateTime.utc(2026, 9, 9);
     final run = runWithPaces([282, 283, 285, 287], hr: true, start: d3);
-    final own = engine
-        .analyze(run, profile: profile, now: fixedNow)
-        .fourByFour!;
+    final own = engine.analyze(run, profile: profile, now: fixedNow).intervals!;
     final pct = (own.meanWorkHrFraction! * 100).round();
 
     test('pace better and m/beat better → "Faster at the same HR"', () {
@@ -496,7 +494,7 @@ void main() {
   group('P2-10 trim and tolerance', () {
     test('with a 12 s GPS lag the trim is what makes the pace exact', () {
       final f = fixture('gps_lag_12s');
-      final trimmed = engine.analyze(f.run, now: fixedNow).fourByFour!;
+      final trimmed = engine.analyze(f.run, now: fixedNow).intervals!;
       expect(
         trimmed.avgWorkPaceSecPerKm,
         closeTo(f.expected.avgWorkPaceSecPerKm!, 0.5),
@@ -504,7 +502,7 @@ void main() {
       const untrimmed = RunEngine(
         constants: EngineConstants(trimStartMs: 0, trimEndMs: 0),
       );
-      final raw = untrimmed.analyze(f.run, now: fixedNow).fourByFour!;
+      final raw = untrimmed.analyze(f.run, now: fixedNow).intervals!;
       expect(
         (raw.avgWorkPaceSecPerKm! - f.expected.avgWorkPaceSecPerKm!).abs(),
         greaterThan(3),
@@ -529,7 +527,7 @@ void main() {
             segments: SyntheticSpecs.fourByFour(),
           ),
         );
-        final m = engine.analyze(s.run, now: fixedNow).fourByFour!;
+        final m = engine.analyze(s.run, now: fixedNow).intervals!;
         expect(
           m.avgWorkPaceSecPerKm,
           closeTo(

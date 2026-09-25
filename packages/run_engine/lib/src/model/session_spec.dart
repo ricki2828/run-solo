@@ -119,6 +119,7 @@ class SessionSpec {
     this.warmupSeconds,
     this.cooldownSeconds,
     this.lapLockout = false,
+    this.autoStop = false,
     this.cueProfile = CueProfile.standard,
     this.hrBandLow,
     this.hrBandHigh,
@@ -128,6 +129,7 @@ class SessionSpec {
   static const String norwegian4x4Id = 'norwegian-4x4';
   static const String cooperId = 'cooper';
   static const String fartlekId = 'fartlek';
+  static const String parkrunId = 'parkrun';
   static const String customPrefix = 'custom:';
 
   /// Most steps a session may expand to (40 reps + 39 recoveries).
@@ -146,6 +148,11 @@ class SessionSpec {
 
   /// Cooper: manual laps ignored during work.
   final bool lapLockout;
+
+  /// The recording stops itself when the last timed part ends (after the
+  /// last step, or after a fixed cool-down). Parkrun only (Phase 3 I2);
+  /// a schema-3 file without the key reads as false.
+  final bool autoStop;
   final CueProfile cueProfile;
 
   /// Fractions of max HR for time-in-zone (4x4: 0.85–0.95); both or neither.
@@ -317,6 +324,7 @@ class SessionSpec {
     'warmupSeconds': warmupSeconds,
     'cooldownSeconds': cooldownSeconds,
     'lapLockout': lapLockout,
+    'autoStop': autoStop,
     'cueProfile': cueProfile.name,
     'hrBand': hrBandLow == null ? null : [hrBandLow, hrBandHigh],
     'steps': steps.map((s) => s.toJson()).toList(),
@@ -329,6 +337,7 @@ class SessionSpec {
     'warmupSeconds',
     'cooldownSeconds',
     'lapLockout',
+    'autoStop',
     'cueProfile',
     'hrBand',
     'steps',
@@ -353,6 +362,10 @@ class SessionSpec {
     if (lockout is! bool) {
       throw RunFileFormatException('session.lapLockout must be bool');
     }
+    final autoStop = json['autoStop'] ?? false;
+    if (autoStop is! bool) {
+      throw RunFileFormatException('session.autoStop must be bool');
+    }
     final band = json['hrBand'];
     double? low;
     double? high;
@@ -370,6 +383,7 @@ class SessionSpec {
       warmupSeconds: optInt('warmupSeconds'),
       cooldownSeconds: optInt('cooldownSeconds'),
       lapLockout: lockout,
+      autoStop: autoStop,
       cueProfile: _enum(
         CueProfile.values,
         json['cueProfile'],
@@ -398,6 +412,7 @@ class SessionSpec {
       other.warmupSeconds == warmupSeconds &&
       other.cooldownSeconds == cooldownSeconds &&
       other.lapLockout == lapLockout &&
+      other.autoStop == autoStop &&
       other.cueProfile == cueProfile &&
       other.hrBandLow == hrBandLow &&
       other.hrBandHigh == hrBandHigh &&
@@ -411,6 +426,7 @@ class SessionSpec {
     warmupSeconds,
     cooldownSeconds,
     lapLockout,
+    autoStop,
     cueProfile,
     hrBandLow,
     hrBandHigh,
@@ -429,15 +445,27 @@ class SessionSpec {
 /// - every work step `D` metres → `d{D}x*`;
 /// - a time ladder → `pyr:60,120,…`; a distance ladder → `dpyr:400,800,…`;
 /// - mixed time and distance → `mix:t60,d400,…`;
-/// - fartlek → `fartlek`; Cooper → `cooper`.
+/// - fartlek → `fartlek`; Cooper → `cooper`;
+/// - parkrun → `parkrun` by template, never the generic `d5000x*` a custom
+///   1 × 5000 m gets (lead decision 26-Sep); K1 adds the course as
+///   `parkrun:<courseId>` through [parkrunOf].
 abstract final class ComparisonKey {
   static const String fartlek = 'fartlek';
   static const String cooper = 'cooper';
+  static const String parkrun = 'parkrun';
   static const String norwegian4x4 = 't240x*';
+
+  /// `parkrun`, or `parkrun:<courseId>` once K1 knows the course.
+  static String parkrunOf({String? courseId}) =>
+      courseId == null || courseId.isEmpty ? parkrun : '$parkrun:$courseId';
+
+  static bool isParkrun(String key) =>
+      key == parkrun || key.startsWith('$parkrun:');
 
   static String of(SessionSpec spec) {
     if (spec.templateId == SessionSpec.fartlekId) return fartlek;
     if (spec.templateId == SessionSpec.cooperId) return cooper;
+    if (spec.templateId == SessionSpec.parkrunId) return parkrunOf();
     final work = spec.workSteps.toList();
     if (work.isEmpty) return fartlek;
     final kinds = work.map((s) => s.target).toSet();

@@ -69,7 +69,7 @@ void main() {
       final a = engine.analyze(run, sidecar: sidecar, now: fixedNow);
       expect(a.mode, RunMode.free);
       expect(a.verdict, isNull);
-      expect(a.fourByFour, isNull);
+      expect(a.intervals, isNull);
       expect(a.freeRun.distanceM, greaterThan(0));
       expect(a.eligibleAsPrior, isFalse);
       // Recompute with priors: still free.
@@ -184,7 +184,7 @@ void main() {
         final fixed = engine.analyze(f.run, sidecar: sidecar, now: fixedNow);
         expect(fixed.verdictSource, VerdictSource.computed);
         expect(fixed.lapsInconsistent, isFalse);
-        expect(fixed.fourByFour!.reps.length, 4);
+        expect(fixed.intervals!.reps.length, 4);
         expect(fixed.verdict!.headline, VerdictHeadline.baselineSet);
       },
     );
@@ -218,8 +218,8 @@ void main() {
         expect(manual.verdict!.headline, auto.verdict!.headline);
         expect(manual.verdict!.subline, auto.verdict!.subline);
         expect(
-          manual.fourByFour!.avgWorkPaceSecPerKm,
-          closeTo(auto.fourByFour!.avgWorkPaceSecPerKm!, 0.01),
+          manual.intervals!.avgWorkPaceSecPerKm,
+          closeTo(auto.intervals!.avgWorkPaceSecPerKm!, 0.01),
         );
       },
     );
@@ -326,7 +326,7 @@ void main() {
       final hr = fixture('four_by_four_manual_clean_hr').run;
       final byAge = engine
           .analyze(hr, profile: const UserProfile(age: 40), now: fixedNow)
-          .fourByFour!;
+          .intervals!;
       expect(byAge.maxHrUsed, 180);
       final bySetting = engine
           .analyze(
@@ -334,12 +334,12 @@ void main() {
             profile: const UserProfile(age: 40, maxHr: 190),
             now: fixedNow,
           )
-          .fourByFour!;
+          .intervals!;
       expect(bySetting.maxHrUsed, 190);
       // No profile at all: the 190 fallback (D3) so zones always resolve;
       // the run's own 30 s peak is reported so the store can fold it into
       // settings, never used as this run's denominator.
-      final none = engine.analyze(hr, now: fixedNow).fourByFour!;
+      final none = engine.analyze(hr, now: fixedNow).intervals!;
       expect(none.maxHrUsed, 190);
       expect(none.timeInZoneSeconds, isNotNull);
       expect(none.observedMaxHrThisRun, closeTo(170, 3));
@@ -351,11 +351,11 @@ void main() {
             profile: const UserProfile(age: 60, observedMaxHr: 175),
             now: fixedNow,
           )
-          .fourByFour!;
+          .intervals!;
       expect(observed.maxHrUsed, 175);
       final older = engine
           .analyze(hr, profile: const UserProfile(age: 60), now: fixedNow)
-          .fourByFour!;
+          .intervals!;
       expect(older.maxHrUsed, 160);
       expect(byAge.timeInZoneSeconds, greaterThan(800));
       expect(byAge.timeInZoneSeconds, lessThanOrEqualTo(byAge.workSeconds));
@@ -374,8 +374,8 @@ void main() {
         profile: profile,
         now: fixedNow,
       );
-      expect(a.fourByFour!.hrPresent, isFalse);
-      expect(a.fourByFour!.timeInZoneSeconds, isNull);
+      expect(a.intervals!.hrPresent, isFalse);
+      expect(a.intervals!.timeInZoneSeconds, isNull);
       expect(a.verdict!.hrLine, isNull);
     });
 
@@ -397,7 +397,7 @@ void main() {
     });
 
     test('rep pace is Δd/Δt over the trimmed window', () {
-      final a = engine.analyze(run, now: fixedNow).fourByFour!;
+      final a = engine.analyze(run, now: fixedNow).intervals!;
       final r = a.reps.first;
       expect(r.trimmedT0Ms, r.lap.t0Ms + 12000);
       expect(r.trimmedT1Ms, r.lap.t1Ms - 5000);

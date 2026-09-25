@@ -122,7 +122,7 @@ List<TrendPoint> trendPoints(List<RunSummary> chronological) {
   final out = <TrendPoint>[];
   final prior = <double>[];
   for (final r in chronological) {
-    final pace = r.analysis?.fourByFour?.avgWorkPaceSecPerKm;
+    final pace = r.analysis?.intervals?.avgWorkPaceSecPerKm;
     if (pace == null) continue;
     final window = prior.length > 6 ? prior.sublist(prior.length - 6) : prior;
     out.add(
@@ -175,7 +175,7 @@ class _FourByFourTrend extends StatelessWidget {
     final floor =
         runs.last.verdict?.floorSecPerKm ??
         engine.EngineConstants.defaults.runFloorSecPerKm;
-    final metrics = runs.map((r) => r.analysis!.fourByFour!).toList();
+    final metrics = runs.map((r) => r.analysis!.intervals!).toList();
     double? bestRep;
     double? bestSession;
     double? lowestFade;

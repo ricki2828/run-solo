@@ -237,7 +237,7 @@ void main() {
       );
       expect(a.mode, RunMode.intervals);
       expect(a.verdict!.headline, VerdictHeadline.baselineSet);
-      expect(a.fourByFour!.reps.length, 4);
+      expect(a.intervals!.reps.length, 4);
       expect(a.laps, isNull);
     });
 
@@ -246,7 +246,7 @@ void main() {
       expect(a.mode, RunMode.laps);
       expect(a.verdict, isNull);
       expect(a.verdictSource, isNull);
-      expect(a.fourByFour, isNull);
+      expect(a.intervals, isNull);
       expect(a.detection, isNull);
       final l = a.laps!;
       // warm-up + 4 × (work, recovery) + cool-down, all manual presses.
@@ -305,8 +305,8 @@ void main() {
       expect(overridden.verdict!.subline, direct.verdict!.subline);
       expect(overridden.verdict!.hrLine, direct.verdict!.hrLine);
       expect(
-        overridden.fourByFour!.avgWorkPaceSecPerKm,
-        closeTo(direct.fourByFour!.avgWorkPaceSecPerKm!, 1e-9),
+        overridden.intervals!.avgWorkPaceSecPerKm,
+        closeTo(direct.intervals!.avgWorkPaceSecPerKm!, 1e-9),
       );
       expect(overridden.eligibleAsPrior, isTrue);
     });
@@ -331,7 +331,7 @@ void main() {
       expect(a.mode, RunMode.free);
       expect(a.verdict, isNull);
       expect(a.laps, isNull);
-      expect(a.fourByFour, isNull);
+      expect(a.intervals, isNull);
       expect(a.freeRun.splitsSecPerUnit, isNotEmpty);
       expect(a.freeRun.avgHr, isNotNull);
     });
@@ -345,7 +345,7 @@ void main() {
       expect(a.mode, RunMode.cooper);
       expect(a.verdict, isNull);
       expect(a.laps, isNull);
-      expect(a.fourByFour, isNull);
+      expect(a.intervals, isNull);
       expect(a.eligibleAsPrior, isFalse);
     });
 

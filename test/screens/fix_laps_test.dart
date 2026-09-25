@@ -68,7 +68,7 @@ void main() {
     final d = await services.history.load(r.id);
     expect(d!.sidecar.lapEdits.length, 1);
     expect(d.sidecar.lapEdits.single.isDrop, isTrue);
-    expect(d.analysis.fourByFour!.droppedRepCount, 1);
+    expect(d.analysis.intervals!.droppedRepCount, 1);
     expect(find.text('REP 1 · DROPPED'), findsOneWidget);
     await tester.tap(find.text('RESET'));
     await pumpTimes(tester, 6);

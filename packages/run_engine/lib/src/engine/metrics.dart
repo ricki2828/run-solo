@@ -1,4 +1,5 @@
 import '../model/run_file.dart';
+import '../model/session_spec.dart';
 import 'constants.dart';
 import 'rep_detector.dart';
 import 'trace.dart';
@@ -25,7 +26,7 @@ class UserProfile {
   final int? maxHr;
 
   /// Highest 30 s HR seen across the user's history (kept in settings by the
-  /// store from [FourByFourMetrics.observedMaxHrThisRun]). Wins over 220−age
+  /// store from [IntervalMetrics.observedMaxHrThisRun]). Wins over 220−age
   /// when higher. Never per run: every run must share one denominator so
   /// "same effort: 91% both runs" is comparable.
   final double? observedMaxHr;
@@ -110,9 +111,26 @@ class RecoveryMetrics {
   final bool dropped;
 }
 
-/// 4x4 metrics (plan §5). Aggregates use clean reps only.
-class FourByFourMetrics {
-  const FourByFourMetrics({
+/// How a session's headline number is measured (Phase 3 plan §3.7).
+enum IntervalMetricKind {
+  /// Norwegian 4x4 and time reps of 90 s or more: each rep trimmed (12 s
+  /// start, 5 s end), total trimmed distance ÷ total trimmed time.
+  trimmedPace,
+
+  /// Time reps under 90 s (30/30s, 1-minute reps): whole reps, untrimmed;
+  /// trimming 17 s off a 30 s rep leaves nothing.
+  untrimmedPace,
+
+  /// Uniform distance reps (400s, Yasso, 1 km): pace over the measured lap,
+  /// shown as the time for the nominal distance ("400 m in 1:31").
+  repTime,
+}
+
+/// Interval metrics (plan §5, Phase 3 §3.7). Aggregates use clean reps only.
+class IntervalMetrics {
+  const IntervalMetrics({
+    this.kind = IntervalMetricKind.trimmedPace,
+    this.nominalRepMetres,
     required this.reps,
     required this.recoveries,
     required this.avgWorkPaceSecPerKm,
@@ -131,11 +149,23 @@ class FourByFourMetrics {
     this.observedMaxHrThisRun,
   });
 
+  final IntervalMetricKind kind;
+
+  /// The rep distance of a [IntervalMetricKind.repTime] session.
+  final int? nominalRepMetres;
   final List<RepMetrics> reps;
   final List<RecoveryMetrics> recoveries;
 
-  /// Headline: total trimmed work distance ÷ total trimmed work time.
+  /// Headline pace: total (trimmed, per [kind]) work distance ÷ total work
+  /// time. Every comparison runs on this, also for rep-time sessions (rep
+  /// time = pace × nominal km, so the comparison is the same).
   final double? avgWorkPaceSecPerKm;
+
+  /// Average time for the nominal rep distance, seconds; rep-time sessions.
+  double? get avgRepSeconds =>
+      avgWorkPaceSecPerKm == null || nominalRepMetres == null
+      ? null
+      : avgWorkPaceSecPerKm! * nominalRepMetres! / 1000;
 
   /// Slowest minus fastest clean rep, s/km.
   final double? repSpreadSecPerKm;
@@ -271,29 +301,84 @@ class LapsSummary {
   int get scoredLapCount => laps.where((l) => l.scored).length;
 }
 
+/// Fartlek (Phase 3 §3.5, D3): a Laps run where the runner presses LAP at
+/// the start and the end of every surge. Lap 1 is the easy lead-in, so the
+/// even-numbered laps (2, 4, …) are surges and the odd ones between surges
+/// are easy. Summary only, no verdict word; the trend shows the average
+/// surge pace as an information line.
+class FartlekSummary {
+  const FartlekSummary({
+    required this.surgeCount,
+    required this.surgeSeconds,
+    required this.avgSurgePaceSecPerKm,
+    required this.avgEasyPaceSecPerKm,
+  });
+
+  final int surgeCount;
+
+  /// Moving seconds over all surges.
+  final double surgeSeconds;
+
+  /// Total surge distance ÷ total surge time, s/km; null without distance.
+  final double? avgSurgePaceSecPerKm;
+
+  /// Same over the easy laps between surges (not the lead-in, not the last
+  /// lap after the final surge); null when there are none.
+  final double? avgEasyPaceSecPerKm;
+
+  static FartlekSummary of(LapsSummary laps) {
+    final rows = laps.laps;
+    final surges = [for (var i = 1; i < rows.length; i += 2) rows[i]];
+    final lastSurge = surges.isEmpty ? -1 : rows.indexOf(surges.last);
+    final easy = [for (var i = 2; i < lastSurge; i += 2) rows[i]];
+    double? pace(List<LapRowMetrics> r) {
+      final d = r.fold<double>(0, (s, l) => s + l.distanceM);
+      final t = r.fold<double>(0, (s, l) => s + l.movingSeconds);
+      return d <= 0 || t <= 0 ? null : t / d * 1000;
+    }
+
+    return FartlekSummary(
+      surgeCount: surges.length,
+      surgeSeconds: surges.fold<double>(0, (s, l) => s + l.movingSeconds),
+      avgSurgePaceSecPerKm: pace(surges),
+      avgEasyPaceSecPerKm: pace(easy),
+    );
+  }
+}
+
 /// Computes metrics from a detection; pure.
 class MetricsCalculator {
   const MetricsCalculator(this.constants);
 
   final EngineConstants constants;
 
-  FourByFourMetrics fourByFour(
+  /// [kind] picks trimming and the headline (Phase 3 §3.7). [zone] is the
+  /// time-in-zone band as fractions of max HR: the session's `hrBand`, the
+  /// constants' 85–95% by default; `null` (short reps, no band) → no zone.
+  IntervalMetrics intervals(
     RunFile run,
     RepDetection detection,
     Trace trace,
-    UserProfile profile,
-  ) {
+    UserProfile profile, {
+    IntervalMetricKind kind = IntervalMetricKind.trimmedPace,
+    int? nominalRepMetres,
+    (double, double)? zone = _defaultZone,
+  }) {
     final hrPresent = run.hasHr;
     final maxHr = hrPresent ? maxHrFor(profile) : null;
-    final zoneLow = maxHr == null ? null : maxHr * constants.zoneLowFraction;
-    final zoneHigh = maxHr == null ? null : maxHr * constants.zoneHighFraction;
+    final band = identical(zone, _defaultZone)
+        ? (constants.zoneLowFraction, constants.zoneHighFraction)
+        : zone;
+    final zoneLow = maxHr == null || band == null ? null : maxHr * band.$1;
+    final zoneHigh = maxHr == null || band == null ? null : maxHr * band.$2;
+    final trim = kind == IntervalMetricKind.trimmedPace;
 
     final reps = <RepMetrics>[];
     final recoveries = <RecoveryMetrics>[];
     for (final rep in detection.reps) {
       final lap = rep.work;
-      var t0 = lap.t0Ms + constants.trimStartMs;
-      var t1 = lap.t1Ms - constants.trimEndMs;
+      var t0 = trim ? lap.t0Ms + constants.trimStartMs : lap.t0Ms;
+      var t1 = trim ? lap.t1Ms - constants.trimEndMs : lap.t1Ms;
       if (t1 <= t0) {
         // Too short to trim: fall back to the whole lap rather than nothing.
         t0 = lap.t0Ms;
@@ -320,7 +405,9 @@ class MetricsCalculator {
         if (atEnd != null && later != null) drop = (atEnd - later).toDouble();
       }
       final trimmedMeanHr = hrPresent ? trace.meanHr(t0, t1) : null;
-      final mpb = trimmedMeanHr == null || trimmedMeanHr <= 0 || d <= 0
+      // "Faster at the same HR" only for reps of 90 s or more (§3.7): HR
+      // lags a short effort too much for metres per beat to mean anything.
+      final mpb = !trim || trimmedMeanHr == null || trimmedMeanHr <= 0 || d <= 0
           ? null
           : d / (trimmedMeanHr * seconds / 60);
       reps.add(
@@ -345,8 +432,8 @@ class MetricsCalculator {
       );
       final rec = rep.recovery;
       if (rec != null) {
-        var r0 = rec.t0Ms + constants.trimStartMs;
-        var r1 = rec.t1Ms - constants.trimEndMs;
+        var r0 = trim ? rec.t0Ms + constants.trimStartMs : rec.t0Ms;
+        var r1 = trim ? rec.t1Ms - constants.trimEndMs : rec.t1Ms;
         if (r1 <= r0) {
           r0 = rec.t0Ms;
           r1 = rec.t1Ms;
@@ -387,14 +474,23 @@ class MetricsCalculator {
           paces.reduce((a, b) => a < b ? a : b);
       // Fade compares first and last full reps: a kept rep under half the
       // expected length (a bail-out) would only measure how short it was.
-      final expectedWorkMs =
+      final legacyWorkMs =
           (run.preset?.workSeconds ?? EngineConstants.byFeelWorkMinMs ~/ 1000) *
           1000;
-      final full = clean
-          .where((r) => r.lap.durationMs >= expectedWorkMs * 0.5)
-          .toList();
-      fade = full.length >= 2
-          ? full.last.paceSecPerKm! - full.first.paceSecPerKm!
+      bool full(RepMetrics r) {
+        final step = detection.reps
+            .firstWhere((d) => d.number == r.number)
+            .workStep;
+        return switch (step?.target) {
+          TargetKind.distance => r.lap.distanceM >= step!.value * 0.5,
+          TargetKind.time => r.lap.durationMs >= step!.value * 1000 * 0.5,
+          _ => r.lap.durationMs >= legacyWorkMs * 0.5,
+        };
+      }
+
+      final fullReps = clean.where(full).toList();
+      fade = fullReps.length >= 2
+          ? fullReps.last.paceSecPerKm! - fullReps.first.paceSecPerKm!
           : null;
     }
     for (final r in reps) {
@@ -413,8 +509,8 @@ class MetricsCalculator {
       var dist = 0.0;
       var secs = 0.0;
       for (final r in recWithPace) {
-        var a = r.lap.t0Ms + constants.trimStartMs;
-        var b = r.lap.t1Ms - constants.trimEndMs;
+        var a = trim ? r.lap.t0Ms + constants.trimStartMs : r.lap.t0Ms;
+        var b = trim ? r.lap.t1Ms - constants.trimEndMs : r.lap.t1Ms;
         if (b <= a) {
           a = r.lap.t0Ms;
           b = r.lap.t1Ms;
@@ -433,7 +529,7 @@ class MetricsCalculator {
     double? meanWorkHr;
     double? mpb;
     if (hrPresent && reps.isNotEmpty) {
-      tiz = maxHr == null
+      tiz = maxHr == null || zoneLow == null
           ? null
           : reps.fold<double>(0, (sum, r) => sum + (r.zoneSeconds ?? 0));
       var beats = 0.0;
@@ -455,7 +551,9 @@ class MetricsCalculator {
       mpb = mpbBeats == 0 ? null : mpbDist / mpbBeats;
     }
 
-    return FourByFourMetrics(
+    return IntervalMetrics(
+      kind: kind,
+      nominalRepMetres: nominalRepMetres,
       reps: reps,
       recoveries: recoveries,
       avgWorkPaceSecPerKm: avgPace,
@@ -476,6 +574,8 @@ class MetricsCalculator {
       observedMaxHrThisRun: hrPresent ? trace.highest30sHr() : null,
     );
   }
+
+  static const (double, double) _defaultZone = (-1, -1);
 
   /// Laps-run table and aggregates (§18.2) from the recorded laps (pause
   /// laps dropped and renumbered, like the 4x4 edit base). The run's laps

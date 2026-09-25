@@ -72,8 +72,8 @@ void main() {
       final original = engine.analyze(run, now: fixedNow);
       expect(a.verdict!.headline, original.verdict!.headline);
       expect(
-        a.fourByFour!.avgWorkPaceSecPerKm,
-        closeTo(original.fourByFour!.avgWorkPaceSecPerKm!, 0.5),
+        a.intervals!.avgWorkPaceSecPerKm,
+        closeTo(original.intervals!.avgWorkPaceSecPerKm!, 0.5),
       );
     });
 
@@ -166,7 +166,7 @@ void main() {
       );
       final a = engine.analyze(imported, now: fixedNow);
       expect(a.detection!.fromSpeedStream, isTrue);
-      expect(a.fourByFour!.reps.length, 4);
+      expect(a.intervals!.reps.length, 4);
       expect(a.verdict!.headline, VerdictHeadline.baselineSet);
     });
 

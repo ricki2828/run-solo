@@ -8,6 +8,7 @@ import 'constants.dart';
 import 'fix_laps.dart';
 import 'metrics.dart';
 import 'rep_detector.dart';
+import 'session_detector.dart';
 import 'trace.dart';
 import 'verdict_builder.dart';
 
@@ -50,13 +51,44 @@ String? comparisonKeyOf(SessionSpec? session, RunMode mode) => switch (mode) {
   RunMode.intervals || RunMode.cooper => session?.comparisonKey,
 };
 
+/// How [spec]'s headline is measured (Phase 3 §3.7): uniform distance reps
+/// → rep time; other distance work → untrimmed pace over the measured laps;
+/// a short-rep session (every rep under 90 s: 30/30s, 1-minute reps) →
+/// untrimmed pace; otherwise (tempo, pyramid, custom) trimmed pace. The 4x4
+/// key never gets here.
+IntervalMetricKind metricKindOf(SessionSpec spec) {
+  final work = spec.workSteps.toList();
+  final distance = work.where((s) => s.target == TargetKind.distance);
+  if (distance.isNotEmpty) {
+    final uniform =
+        distance.length == work.length &&
+        work.every((s) => s.value == work.first.value);
+    return uniform
+        ? IntervalMetricKind.repTime
+        : IntervalMetricKind.untrimmedPace;
+  }
+  return work.every((s) => s.value < 90)
+      ? IntervalMetricKind.untrimmedPace
+      : IntervalMetricKind.trimmedPace;
+}
+
+/// Clean reps a verdict needs: three for a 4x4 (as Phase 2), otherwise
+/// three or the whole session when it has fewer reps.
+int minCleanRepsFor(String key, SessionSpec? spec) {
+  if (key == ComparisonKey.norwegian4x4 || spec == null) {
+    return EngineConstants.minReps;
+  }
+  final n = spec.repCount;
+  return n < EngineConstants.minReps ? n : EngineConstants.minReps;
+}
+
 /// Engine output (plan §5): reps, recovery spans, metrics, verdict, flags.
 class RunAnalysis {
   const RunAnalysis({
     required this.runId,
     required this.mode,
     required this.detection,
-    required this.fourByFour,
+    required this.intervals,
     this.laps,
     required this.freeRun,
     required this.verdict,
@@ -68,9 +100,21 @@ class RunAnalysis {
     this.lapEditsInvalid = false,
     this.session,
     this.comparisonKey,
+    this.fartlek,
+    this.plannedRepCount,
+    this.plannedRecoveryLabel,
   });
 
   final String runId;
+
+  /// Fartlek (a Laps run with the fartlek session): surges and easy laps
+  /// summarised, no verdict word (D3).
+  final FartlekSummary? fartlek;
+
+  /// The run's own planned reps and recovery (null for a by-feel 4x4); a
+  /// prior carries them for the D4 "Last time: …" note.
+  final int? plannedRepCount;
+  final String? plannedRecoveryLabel;
 
   /// The session this run is judged as ([effectiveSession]); null for laps,
   /// free and summary-only runs.
@@ -85,7 +129,7 @@ class RunAnalysis {
 
   /// Only for the 4x4 path.
   final RepDetection? detection;
-  final FourByFourMetrics? fourByFour;
+  final IntervalMetrics? intervals;
 
   /// Only for a Laps run (§18.2): lap table, fastest lap, spread, HR band.
   final LapsSummary? laps;
@@ -118,19 +162,22 @@ class RunAnalysis {
       !noisy &&
       detection != null &&
       detection!.consistent &&
-      fourByFour != null &&
-      !fourByFour!.hasInterrupted &&
-      fourByFour!.cleanRepCount >= EngineConstants.minReps;
+      intervals != null &&
+      !intervals!.hasInterrupted &&
+      intervals!.cleanRepCount >=
+          minCleanRepsFor(comparisonKey ?? ComparisonKey.norwegian4x4, session);
 
   /// This run as a comparison input for later runs, or null if ineligible.
-  PriorRun? asPrior(DateTime start) => fourByFour == null
+  PriorRun? asPrior(DateTime start) => intervals == null
       ? null
       : PriorRun.fromMetrics(
           runId,
           start,
-          fourByFour!,
+          intervals!,
           eligible: eligibleAsPrior,
           comparisonKey: comparisonKey ?? ComparisonKey.norwegian4x4,
+          repCount: plannedRepCount ?? intervals!.reps.length,
+          recoveryLabel: plannedRecoveryLabel,
         );
 
   /// The sidecar with this verdict frozen (plan §4, §17 R3).
@@ -178,7 +225,7 @@ class RunEngine {
           runId: run.id,
           mode: mode,
           detection: null,
-          fourByFour: null,
+          intervals: null,
           freeRun: freeRun,
           verdict: null,
           verdictSource: null,
@@ -190,12 +237,16 @@ class RunEngine {
           comparisonKey: key,
         );
       case RunMode.laps:
+        final lapsSummary = calc.laps(run, trace, profile);
         return RunAnalysis(
           runId: run.id,
           mode: mode,
           detection: null,
-          fourByFour: null,
-          laps: calc.laps(run, trace, profile),
+          intervals: null,
+          laps: lapsSummary,
+          fartlek: key == ComparisonKey.fartlek
+              ? FartlekSummary.of(lapsSummary)
+              : null,
           freeRun: freeRun,
           verdict: null,
           verdictSource: null,
@@ -207,27 +258,14 @@ class RunEngine {
           comparisonKey: key,
         );
       case RunMode.intervals:
-        // Phase 3 I1: only the 4x4 key has a detector and floors yet; any
-        // other session reads as its lap table, no verdict, until I3.
-        if (key != ComparisonKey.norwegian4x4) {
-          return RunAnalysis(
-            runId: run.id,
-            mode: mode,
-            detection: null,
-            fourByFour: null,
-            laps: calc.laps(run, trace, profile),
-            freeRun: freeRun,
-            verdict: null,
-            verdictSource: null,
-            indoor: indoor,
-            noisy: noisy,
-            gpsQuality: quality,
-            engineVersion: engineVersion,
-            session: session,
-            comparisonKey: key,
-          );
-        }
+        break;
     }
+    // The Norwegian 4x4 key keeps the Phase 2 detector, windows, trimming
+    // and speed-stream fallback unchanged (migration golden); every other
+    // session goes through the step detector (Phase 3 §3.7).
+    final isFourByFour = key == ComparisonKey.norwegian4x4;
+    final spec = session!;
+    final planned = run.mode == RunMode.intervals ? run.session : null;
 
     // Edit base: recorded laps (pause laps dropped, renumbered), or laps
     // derived from the speed stream when too few were recorded. Fix-laps
@@ -235,7 +273,9 @@ class RunEngine {
     // ignored and flagged.
     final detector = RepDetector(constants);
     final editable = RepDetector.editableLaps(run.laps);
-    final fromSpeed = RepDetector.needsSpeedFallback(editable);
+    // The speed-stream fallback stays 4x4-only; any other session without
+    // laps gets no verdict.
+    final fromSpeed = isFourByFour && RepDetector.needsSpeedFallback(editable);
     final base = fromSpeed ? detector.deriveLapsFromSpeed(trace) : editable;
     final edits = sidecar?.lapEdits ?? const <LapEdit>[];
     EditedLaps edited;
@@ -246,15 +286,43 @@ class RunEngine {
       edited = EditedLaps(laps: base, kept: const {}, dropped: const {});
       lapEditsInvalid = true;
     }
-    final detection = detector.detect(
-      edited.laps,
-      run.preset,
-      fromSpeed: fromSpeed,
-      pauses: run.pauses,
-      accepted: edited.accepted,
-      dropped: edited.dropped,
-    );
-    final metrics = calc.fourByFour(run, detection, trace, profile);
+    final detection = isFourByFour
+        ? detector.detect(
+            edited.laps,
+            run.preset,
+            fromSpeed: fromSpeed,
+            pauses: run.pauses,
+            accepted: edited.accepted,
+            dropped: edited.dropped,
+          )
+        : SessionDetector(constants).detect(
+            edited.laps,
+            spec,
+            pauses: run.pauses,
+            accepted: edited.accepted,
+            dropped: edited.dropped,
+          );
+    final kind = isFourByFour
+        ? IntervalMetricKind.trimmedPace
+        : metricKindOf(spec);
+    final metrics = isFourByFour
+        ? calc.intervals(run, detection, trace, profile)
+        : calc.intervals(
+            run,
+            detection,
+            trace,
+            profile,
+            kind: kind,
+            nominalRepMetres: kind == IntervalMetricKind.repTime
+                ? spec.workSteps.first.value
+                : null,
+            // Short reps: HR lags a 30 s effort, so no zone (§3.7).
+            zone:
+                kind == IntervalMetricKind.untrimmedPace ||
+                    spec.hrBandLow == null
+                ? null
+                : (spec.hrBandLow!, spec.hrBandHigh!),
+          );
 
     final frozen = sidecar?.frozenVerdict;
     final inputsKey = Verdict.inputsKeyFor(edits, sidecar?.runTypeOverride);
@@ -275,7 +343,9 @@ class RunEngine {
         now: at,
         inputsKey: inputsKey,
         comparisonKey: key!,
-        templateDefault: session,
+        templateDefault: spec,
+        session: planned,
+        minCleanReps: minCleanRepsFor(key, spec),
       );
       source = VerdictSource.computed;
     }
@@ -284,7 +354,7 @@ class RunEngine {
       runId: run.id,
       mode: mode,
       detection: detection,
-      fourByFour: metrics,
+      intervals: metrics,
       freeRun: freeRun,
       verdict: verdict,
       verdictSource: source,
@@ -295,6 +365,10 @@ class RunEngine {
       session: session,
       comparisonKey: key,
       lapEditsInvalid: lapEditsInvalid,
+      plannedRepCount: planned?.repCount,
+      plannedRecoveryLabel: planned == null
+          ? null
+          : VerdictBuilder.recoveryLabelOf(planned),
     );
   }
 }

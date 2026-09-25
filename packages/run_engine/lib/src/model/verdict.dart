@@ -56,6 +56,8 @@ class Verdict {
     this.bestIn365Days = false,
     this.trendSecPerKmPerWeek,
     this.inputsKey = '',
+    this.comparisonNote,
+    this.nominalRepMetres,
   });
 
   final VerdictStage stage;
@@ -99,6 +101,15 @@ class Verdict {
   /// (e.g. edits merged in from a DB restore) is recomputed, never trusted.
   final String inputsKey;
 
+  /// D4: the runs compared share a rep length but not the rep count or the
+  /// recovery, e.g. "Last time: 5 reps, 2:30 recovery." Kept out of the
+  /// subline so the wording of every existing 4x4 verdict is unchanged.
+  final String? comparisonNote;
+
+  /// Set for rep-time sessions (400s, Yasso, 1 km): the paces above are per
+  /// km, the UI shows them as the time for this distance (pace × m ÷ 1000).
+  final int? nominalRepMetres;
+
   static String inputsKeyFor(
     List<LapEdit> edits,
     RunMode? override,
@@ -139,6 +150,8 @@ class Verdict {
     'best_365d': bestIn365Days,
     'trend_s_per_km_per_week': trendSecPerKmPerWeek,
     'inputs_key': inputsKey,
+    'comparison_note': comparisonNote,
+    'nominal_rep_m': nominalRepMetres,
   };
 
   factory Verdict.fromJson(Map<String, Object?> json) {
@@ -196,6 +209,8 @@ class Verdict {
       bestIn365Days: json['best_365d'] == true,
       trendSecPerKmPerWeek: optDouble('trend_s_per_km_per_week'),
       inputsKey: (json['inputs_key'] as String?) ?? '',
+      comparisonNote: json['comparison_note'] as String?,
+      nominalRepMetres: optInt('nominal_rep_m'),
     );
   }
 }
