@@ -46,14 +46,31 @@ void main() {
         expect(analysis.noisy, e.noisy);
       });
 
-      if (f.run.mode == RunMode.free) {
-        test('free run has a summary and no verdict', () {
-          expect(analysis.verdict, isNull);
-          expect(analysis.fourByFour, isNull);
-          expect(analysis.freeRun.distanceM, greaterThan(0));
-          expect(analysis.freeRun.avgPaceSecPerKm, isNotNull);
-        });
-        return;
+      switch (f.run.mode) {
+        case RunMode.free:
+        case RunMode.cooper:
+          test('free run has a summary and no verdict', () {
+            expect(analysis.verdict, isNull);
+            expect(analysis.fourByFour, isNull);
+            expect(analysis.laps, isNull);
+            expect(analysis.freeRun.distanceM, greaterThan(0));
+            expect(analysis.freeRun.avgPaceSecPerKm, isNotNull);
+          });
+          return;
+        case RunMode.laps:
+          test('laps run has a lap table and no verdict', () {
+            expect(analysis.verdict, isNull);
+            expect(analysis.fourByFour, isNull);
+            expect(
+              analysis.laps!.laps.length,
+              e.repCount * 2 + 2,
+              reason: 'warmup + work/recovery pairs + cooldown',
+            );
+            expect(analysis.freeRun.distanceM, greaterThan(0));
+          });
+          return;
+        case RunMode.fourByFour:
+          break;
       }
 
       final m = analysis.fourByFour!;
