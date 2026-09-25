@@ -30,7 +30,7 @@ class LapInput(
     context: Context,
     private val onLap: () -> Unit,
     private val onUnavailable: (() -> Unit)? = null,
-    private val keysReachSession: Boolean = Build.VERSION.SDK_INT != Build.VERSION_CODES.UPSIDE_DOWN_CAKE,
+    private val keysReachSession: Boolean = SUPPORTED,
 ) {
     private val context = context.applicationContext
     private var session: MediaSession? = null
@@ -91,5 +91,8 @@ class LapInput(
     companion object {
         private const val TAG = "RunSolo/lapinput"
         private const val DEBOUNCE_MS = 400L
+
+        /** Volume keys reach an app's session everywhere but Android 14 (see the class doc). */
+        val SUPPORTED: Boolean = Build.VERSION.SDK_INT != Build.VERSION_CODES.UPSIDE_DOWN_CAKE
     }
 }

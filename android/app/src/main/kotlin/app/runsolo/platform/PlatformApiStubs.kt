@@ -83,6 +83,8 @@ class PermissionsApiStub : PermissionsApi {
     override fun openAppSettings() = Unit
 
     override fun setKeepScreenOn(enabled: Boolean) = Unit
+
+    override fun volumeKeyLapsSupported() = true
 }
 
 class BleApiStub : BleApi {

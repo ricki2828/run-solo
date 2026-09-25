@@ -1961,6 +1961,12 @@ interface PermissionsApi {
    * Activity is recreated, so call it again from the recording screen.
    */
   fun setKeepScreenOn(enabled: Boolean)
+  /**
+   * Whether volume keys can land laps on this device. False on Android 14
+   * (API 34), where keys never reach an app's session: hide the volume-key
+   * LAP setting there and point at the lock-screen LAP instead.
+   */
+  fun volumeKeyLapsSupported(): Boolean
 
   companion object {
     /** The codec used by PermissionsApi. */
@@ -2047,6 +2053,21 @@ interface PermissionsApi {
             val wrapped: List<Any?> = try {
               api.setKeepScreenOn(enabledArg)
               listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.PermissionsApi.volumeKeyLapsSupported$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              listOf(api.volumeKeyLapsSupported())
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)
             }

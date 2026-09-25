@@ -403,6 +403,11 @@ abstract class PermissionsApi {
   /// on while recording, user setting). Cleared automatically when the
   /// Activity is recreated, so call it again from the recording screen.
   void setKeepScreenOn(bool enabled);
+
+  /// Whether volume keys can land laps on this device. False on Android 14
+  /// (API 34), where keys never reach an app's session: hide the volume-key
+  /// LAP setting there and point at the lock-screen LAP instead.
+  bool volumeKeyLapsSupported();
 }
 
 @HostApi()

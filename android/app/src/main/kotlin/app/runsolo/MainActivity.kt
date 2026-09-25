@@ -30,6 +30,7 @@ import app.runsolo.platform.ReplayConfig
 import app.runsolo.platform.StorageApi
 import app.runsolo.platform.StorageApiImpl
 import app.runsolo.platform.Units
+import app.runsolo.record.LapInput
 import app.runsolo.record.LocationSource
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.LocationServices
@@ -201,6 +202,8 @@ class MainActivity : FlutterActivity() {
             val w = window ?: return
             if (enabled) w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else w.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+
+        override fun volumeKeyLapsSupported(): Boolean = LapInput.SUPPORTED
     }
 
     private fun ask(code: Int, permissions: Array<String>, callback: (Result<Boolean>) -> Unit) {
