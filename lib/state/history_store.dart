@@ -120,9 +120,40 @@ abstract class HistoryStore {
 /// Outcome of [RunStore.importBundles]: uuid dedupe never overwrites.
 @immutable
 class ImportResult {
-  const ImportResult({required this.imported, required this.skippedIds});
+  const ImportResult({
+    required this.imported,
+    required this.alreadyOnDeviceIds,
+    required this.duplicateIds,
+  });
   final int imported;
-  final List<String> skippedIds;
+
+  /// Already here: kept as is, the incoming sidecar was not merged.
+  final List<String> alreadyOnDeviceIds;
+
+  /// Repeated within the batch (extra copies).
+  final List<String> duplicateIds;
+
+  List<String> get skippedIds => [...alreadyOnDeviceIds, ...duplicateIds];
+}
+
+/// The verdict a run shows (plan §5: verdicts are point-in-time and frozen).
+/// A sidecar's frozen verdict wins while its inputs (lap edits, override)
+/// still match, even after an engine version bump: the runner keeps the
+/// words they were shown. Only fix-laps / an override (which change the
+/// inputs key) or a run with no frozen verdict get the engine's fresh one.
+engine.Verdict? displayVerdict(
+  engine.RunSidecar? sidecar,
+  engine.RunAnalysis? analysis,
+) {
+  final frozen = sidecar?.frozenVerdict;
+  if (frozen != null && sidecar != null) {
+    final key = engine.Verdict.inputsKeyFor(
+      sidecar.lapEdits,
+      sidecar.runTypeOverride,
+    );
+    if (frozen.inputsKey == key) return frozen;
+  }
+  return analysis?.verdict;
 }
 
 abstract class RunStore implements HistoryStore {
@@ -187,8 +218,11 @@ class _Analyser {
         continue;
       }
       analyses[run.id] = a;
+      // Freeze only when nothing usable is frozen yet: an engine bump must
+      // not silently replace the verdict the runner already saw.
       if (a.verdict != null &&
-          a.verdictSource == engine.VerdictSource.computed) {
+          a.verdictSource == engine.VerdictSource.computed &&
+          displayVerdict(sidecar, a) == a.verdict) {
         frozen[run.id] = a.freezeInto(sidecar);
       }
       final prior = a.asPrior(run.start);
@@ -238,7 +272,7 @@ RunSummary _summaryOf(
   verdict:
       recordModeOf(sidecar?.runTypeOverride ?? a?.mode ?? run.mode) ==
           RecordMode.fourByFour
-      ? a?.verdict
+      ? displayVerdict(sidecar, a)
       : null,
   analysis: a,
 );
@@ -376,7 +410,8 @@ class MemoryRunStore implements RunStore {
     }
     return ImportResult(
       imported: plan.toImport.length,
-      skippedIds: plan.skippedIds,
+      alreadyOnDeviceIds: plan.alreadyOnDeviceIds,
+      duplicateIds: plan.duplicateIds,
     );
   }
 }
@@ -567,7 +602,11 @@ class FileRunStore implements RunStore {
         debugPrint('import: could not write ${b.run.id} ($e)');
       }
     }
-    return ImportResult(imported: imported, skippedIds: plan.skippedIds);
+    return ImportResult(
+      imported: imported,
+      alreadyOnDeviceIds: plan.alreadyOnDeviceIds,
+      duplicateIds: plan.duplicateIds,
+    );
   }
 
   /// Deletes the run file and its sidecar together (plan §4: they move and

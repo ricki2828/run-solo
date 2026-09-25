@@ -220,7 +220,7 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
     // widget tree never leaves a pending timer behind).
     if (_hapticsFired && !_secondPulseFired && ms >= 1080) {
       _secondPulseFired = true;
-      if (revealStateOf(widget.detail.analysis.verdict) == RevealState.faster &&
+      if (revealStateOf(widget.detail.summary.verdict) == RevealState.faster &&
           AppServices.of(context).settings.settings.haptics) {
         HapticFeedback.heavyImpact();
       }
@@ -230,7 +230,7 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
   void _fireHaptics() {
     _hapticsFired = true;
     if (!AppServices.of(context).settings.settings.haptics) return;
-    switch (revealStateOf(widget.detail.analysis.verdict)) {
+    switch (revealStateOf(widget.detail.summary.verdict)) {
       case RevealState.faster:
         HapticFeedback.heavyImpact();
       case RevealState.slower:
@@ -256,7 +256,7 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
     final services = AppServices.of(context);
     final units = services.settings.settings.units;
     final d = widget.detail;
-    final v = d.analysis.verdict;
+    final v = d.summary.verdict;
     final state = revealStateOf(v);
     final reps = repBarData(d, widget.previous);
     final tone = switch (state) {
@@ -490,7 +490,7 @@ class _Lines extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final a = detail.analysis;
-    final v = a.verdict;
+    final v = detail.summary.verdict;
     final lines = <String>[];
     if (v != null) {
       lines.add(v.subline);

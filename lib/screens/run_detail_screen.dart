@@ -421,7 +421,7 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
     final d = widget.detail;
     final a = d.analysis;
     final m = a.fourByFour;
-    final v = a.verdict;
+    final v = d.summary.verdict;
     final units = widget.units;
     if (m == null) {
       return Text(

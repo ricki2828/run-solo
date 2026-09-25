@@ -117,8 +117,10 @@ class _SettingsScreenState extends State<SettingsScreen>
       final result = await services.history.importBundles(bundles);
       final parts = <String>[
         'Imported ${result.imported}',
-        if (result.skippedIds.isNotEmpty)
-          '${result.skippedIds.length} already here',
+        if (result.alreadyOnDeviceIds.isNotEmpty)
+          '${result.alreadyOnDeviceIds.length} already here (edits not merged)',
+        if (result.duplicateIds.isNotEmpty)
+          '${result.duplicateIds.length} repeated in the files',
         if (unreadable > 0) '$unreadable not Run Solo files',
       ];
       _toast('${parts.join(', ')}.');

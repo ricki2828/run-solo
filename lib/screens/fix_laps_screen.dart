@@ -178,7 +178,7 @@ class _Status extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final a = detail.analysis;
-    final v = a.verdict;
+    final v = detail.summary.verdict;
     final detail0 = a.detection?.inconsistencyDetail;
     return AnimatedSwitcher(
       duration: MotionDurations.slow,

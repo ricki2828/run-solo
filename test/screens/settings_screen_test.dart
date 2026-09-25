@@ -216,7 +216,9 @@ void main() {
     await tester.tap(find.text('Import runs'));
     await pumpTimes(tester, 6);
     expect(
-      find.text('Imported 1, 1 already here, 1 not Run Solo files.'),
+      find.text(
+        'Imported 1, 1 already here (edits not merged), 1 not Run Solo files.',
+      ),
       findsOneWidget,
     );
     final listed = await services.history.list();
