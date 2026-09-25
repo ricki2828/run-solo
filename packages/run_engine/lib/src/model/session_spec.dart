@@ -119,6 +119,7 @@ class SessionSpec {
     this.warmupSeconds,
     this.cooldownSeconds,
     this.lapLockout = false,
+    this.autoStop = false,
     this.cueProfile = CueProfile.standard,
     this.hrBandLow,
     this.hrBandHigh,
@@ -146,6 +147,11 @@ class SessionSpec {
 
   /// Cooper: manual laps ignored during work.
   final bool lapLockout;
+
+  /// The recording stops itself when the last timed part ends (after the
+  /// last step, or after a fixed cool-down). Parkrun only (Phase 3 I2);
+  /// a schema-3 file without the key reads as false.
+  final bool autoStop;
   final CueProfile cueProfile;
 
   /// Fractions of max HR for time-in-zone (4x4: 0.85–0.95); both or neither.
@@ -317,6 +323,7 @@ class SessionSpec {
     'warmupSeconds': warmupSeconds,
     'cooldownSeconds': cooldownSeconds,
     'lapLockout': lapLockout,
+    'autoStop': autoStop,
     'cueProfile': cueProfile.name,
     'hrBand': hrBandLow == null ? null : [hrBandLow, hrBandHigh],
     'steps': steps.map((s) => s.toJson()).toList(),
@@ -329,6 +336,7 @@ class SessionSpec {
     'warmupSeconds',
     'cooldownSeconds',
     'lapLockout',
+    'autoStop',
     'cueProfile',
     'hrBand',
     'steps',
@@ -353,6 +361,10 @@ class SessionSpec {
     if (lockout is! bool) {
       throw RunFileFormatException('session.lapLockout must be bool');
     }
+    final autoStop = json['autoStop'] ?? false;
+    if (autoStop is! bool) {
+      throw RunFileFormatException('session.autoStop must be bool');
+    }
     final band = json['hrBand'];
     double? low;
     double? high;
@@ -370,6 +382,7 @@ class SessionSpec {
       warmupSeconds: optInt('warmupSeconds'),
       cooldownSeconds: optInt('cooldownSeconds'),
       lapLockout: lockout,
+      autoStop: autoStop,
       cueProfile: _enum(
         CueProfile.values,
         json['cueProfile'],
@@ -398,6 +411,7 @@ class SessionSpec {
       other.warmupSeconds == warmupSeconds &&
       other.cooldownSeconds == cooldownSeconds &&
       other.lapLockout == lapLockout &&
+      other.autoStop == autoStop &&
       other.cueProfile == cueProfile &&
       other.hrBandLow == hrBandLow &&
       other.hrBandHigh == hrBandHigh &&
@@ -411,6 +425,7 @@ class SessionSpec {
     warmupSeconds,
     cooldownSeconds,
     lapLockout,
+    autoStop,
     cueProfile,
     hrBandLow,
     hrBandHigh,

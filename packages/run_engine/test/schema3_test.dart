@@ -297,6 +297,28 @@ void main() {
       );
     });
 
+    test('autoStop (I2, parkrun): round-trips; a missing key reads false', () {
+      const parkrun = SessionSpec(
+        templateId: 'parkrun',
+        templateVersion: 1,
+        name: 'parkrun',
+        autoStop: true,
+        steps: [SessionStep.workDistance(5000, rep: 1)],
+      );
+      expect(parkrun.validate(), isEmpty);
+      expect(SessionSpec.fromJson(parkrun.toJson()), parkrun);
+      expect(parkrun.comparisonKey, 'd5000x*');
+      final legacy = SessionSpec.norwegian4x4().toJson()..remove('autoStop');
+      expect(SessionSpec.fromJson(legacy).autoStop, isFalse);
+      expect(SessionSpec.fromJson(legacy), SessionSpec.norwegian4x4());
+      expect(
+        () => SessionSpec.fromJson(
+          SessionSpec.norwegian4x4().toJson()..['autoStop'] = 'yes',
+        ),
+        throwsA(isA<RunFileFormatException>()),
+      );
+    });
+
     test('wire shape is flat and in canonical key order', () {
       final j = SessionCatalogue.fourHundreds.defaults.toJson();
       expect(j.keys.toList(), [
@@ -306,6 +328,7 @@ void main() {
         'warmupSeconds',
         'cooldownSeconds',
         'lapLockout',
+        'autoStop',
         'cueProfile',
         'hrBand',
         'steps',
