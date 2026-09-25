@@ -867,9 +867,13 @@ class _Stats extends StatelessWidget {
     String? delta;
     DeltaDirection? direction;
     if (showGhost && live != null) {
-      delta = Fmt.deltaVsLast(live, last, units);
       final d = live - last;
       direction = DeltaGlyph.forDelta(d);
+      // Holding (inside the 1 s dead zone): "±0 s" with no glyph. The flat
+      // dash in front of a number read as a minus ("−0 s").
+      delta = direction == DeltaDirection.flat
+          ? '±${Fmt.deltaVsLast(live, last, units)}'
+          : Fmt.deltaVsLast(live, last, units);
       // A1: Vermillion and Arc deltas are Bone with the arrow on a zone
       // background (Vermillion drops to 4.1:1 on Z3).
       deltaColor = onZone
@@ -951,17 +955,18 @@ class _Stats extends StatelessWidget {
                   child: Text.rich(
                     TextSpan(
                       children: [
-                        WidgetSpan(
-                          alignment: PlaceholderAlignment.middle,
-                          child: Padding(
-                            padding: const EdgeInsets.only(right: Space.x4),
-                            child: DeltaGlyph(
-                              direction: direction,
-                              color: deltaColor,
-                              size: 14,
+                        if (direction != DeltaDirection.flat)
+                          WidgetSpan(
+                            alignment: PlaceholderAlignment.middle,
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: Space.x4),
+                              child: DeltaGlyph(
+                                direction: direction,
+                                color: deltaColor,
+                                size: 14,
+                              ),
                             ),
                           ),
-                        ),
                         TextSpan(text: delta),
                       ],
                     ),
