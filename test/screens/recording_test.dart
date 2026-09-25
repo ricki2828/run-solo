@@ -53,7 +53,7 @@ void main() {
     final (fake, _) = await openRecording(tester);
     expect(find.text('WARM-UP'), findsOneWidget);
     expect(find.text('warm up, then tap START 4x4'), findsOneWidget);
-    expect(find.text('first rep sets the pace'), findsOneWidget);
+    expect(find.text('warm-up pace'), findsOneWidget);
     expect(find.byKey(const ValueKey('start-reps')), findsOneWidget);
     expect(find.text('START 4x4'), findsOneWidget);
 
@@ -75,6 +75,18 @@ void main() {
     expect(timer(tester), '2:47');
     expect(find.byKey(const ValueKey('segment-avg')), findsOneWidget);
     expect(find.byKey(const ValueKey('dial-pace')), findsOneWidget);
+    // Founder (tester 0.2): the rep average is the primary number, at least
+    // as tall as the countdown; the dial's pace is secondary.
+    final avgH = tester
+        .getSize(find.byKey(const ValueKey('segment-avg')))
+        .height;
+    expect(avgH, greaterThanOrEqualTo(tester.getSize(timerText()).height));
+    expect(
+      avgH,
+      greaterThan(
+        tester.getSize(find.byKey(const ValueKey('dial-pace'))).height,
+      ),
+    );
     expect(find.textContaining('4:4'), findsWidgets, reason: 'live pace');
     expect(find.text('0.26 km'), findsOneWidget);
   });

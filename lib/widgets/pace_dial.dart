@@ -22,6 +22,7 @@ class PaceDial extends StatelessWidget {
     this.spanSecPerKm = 30,
     this.onZone = false,
     this.label = 'CURRENT PACE',
+    this.paceStyle,
   });
 
   final double? currentSecPerKm;
@@ -30,6 +31,10 @@ class PaceDial extends StatelessWidget {
   final double spanSecPerKm;
   final bool onZone;
   final String label;
+
+  /// Style of the pace under the dial; defaults to display64. Smaller when
+  /// the dial sits beside a bigger primary number (4x4 segment average).
+  final TextStyle? paceStyle;
 
   /// −1 (slower by the whole span) … 0 (on reference) … +1 (faster).
   double? get position {
@@ -75,7 +80,9 @@ class PaceDial extends StatelessWidget {
               Fmt.pace(currentSecPerKm, units),
               key: const ValueKey('dial-pace'),
               softWrap: false,
-              style: RunSoloType.display64.copyWith(color: t.inkPrimary),
+              style: (paceStyle ?? RunSoloType.display64).copyWith(
+                color: t.inkPrimary,
+              ),
             ),
           ),
           Text(label, style: RunSoloType.micro11.copyWith(color: secondary)),

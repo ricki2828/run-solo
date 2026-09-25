@@ -77,6 +77,39 @@ void main() {
     await golden(tester, 'record_warmup');
   });
 
+  // Founder (tester 0.2): the segment average is the primary number; check
+  // the balance on a standard (360 x 800) and a short (360 x 640) phone.
+  for (final h in [800, 640]) {
+    testWidgets('record: 4x4 phases at 360 x $h', (tester) async {
+      final fake = FakeRecorderGateway(now: now);
+      final services = fakeServices(recorder: fake);
+      await services.recording.start(
+        RecordMode.fourByFour,
+        standardPreset(),
+        Units.km,
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 4);
+      fake.advance(const Duration(seconds: 95));
+      await pumpTimes(tester, 5);
+      await settleAnimations(tester);
+      await golden(tester, 'record_warmup_360x$h');
+      await fake.startReps();
+      await pumpTimes(tester, 5);
+      fake.advance(const Duration(seconds: 73));
+      await pumpTimes(tester, 5);
+      await settleAnimations(tester);
+      await golden(tester, 'record_rep_360x$h');
+      fake.advance(const Duration(seconds: 167 + 50));
+      await pumpTimes(tester, 5);
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 400));
+      await golden(tester, 'record_recovery_360x$h');
+    });
+  }
+
   testWidgets('record: recovery ring', (tester) async {
     final fake = FakeRecorderGateway(now: now);
     final services = fakeServices(recorder: fake);

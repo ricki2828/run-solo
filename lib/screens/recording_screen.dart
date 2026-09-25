@@ -174,9 +174,8 @@ class _RecordingScreenState extends State<RecordingScreen>
         builder: (context, _) {
           final s = ctl.snapshot;
           final zoneBg = HrZones.background(s.zone);
-          final lapHeight = MediaQuery.sizeOf(context).height < 720
-              ? 160.0
-              : 200.0;
+          final compact = MediaQuery.sizeOf(context).height < 720;
+          final lapHeight = compact ? 160.0 : 200.0;
           return Scaffold(
             backgroundColor: Colors.transparent,
             body: Stack(
@@ -217,7 +216,19 @@ class _RecordingScreenState extends State<RecordingScreen>
                           // their own and the screen shows the countdown,
                           // the segment's average pace and the current-pace
                           // dial. Lock-screen LAP still re-aligns a phase.
-                          _TimerBlock(s: s, ctl: ctl),
+                          // Timed phases (founder, tester 0.2): the segment
+                          // average is the primary number, at least as big
+                          // as the countdown; one step smaller on short
+                          // screens so both fit at 360 x 640.
+                          _TimerBlock(
+                            s: s,
+                            ctl: ctl,
+                            style: s.phase == Phase.warmup
+                                ? null
+                                : (compact
+                                      ? RunSoloType.display64
+                                      : RunSoloType.display96),
+                          ),
                           const Spacer(),
                           Visibility(
                             visible: !s.paused,
@@ -230,6 +241,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                                     s: s,
                                     ctl: ctl,
                                     units: settings.units,
+                                    compact: compact,
                                   ),
                           ),
                         ] else if (s.lapsEnabled) ...[
@@ -519,9 +531,12 @@ class _FreeRunBlock extends StatelessWidget {
 }
 
 class _TimerBlock extends StatelessWidget {
-  const _TimerBlock({required this.s, required this.ctl});
+  const _TimerBlock({required this.s, required this.ctl, this.style});
   final RecordingSnapshot s;
   final RecordingController ctl;
+
+  /// Digits style; timer120 unless a bigger primary number shares the screen.
+  final TextStyle? style;
 
   @override
   Widget build(BuildContext context) {
@@ -540,7 +555,7 @@ class _TimerBlock extends StatelessWidget {
         Fmt.clock(ms),
         key: const ValueKey('timer'),
         softWrap: false,
-        style: RunSoloType.timer120.copyWith(
+        style: (style ?? RunSoloType.timer120).copyWith(
           color: recovery ? secondary : t.inkPrimary,
         ),
         textAlign: TextAlign.center,
@@ -575,14 +590,25 @@ class _TimerBlock extends StatelessWidget {
   }
 }
 
-/// 4x4 in a timed phase (A2 revised, founder 25-Sep): the segment's average
-/// pace large on the left, the current-pace dial on the right, referenced
-/// to the last rep's pace (or the segment average until there is one).
+/// 4x4 in a timed phase (A2 revised, founder 25-Sep; tester 0.2): the
+/// segment's average pace is the primary number, full width and at least
+/// the countdown's size so it reads at arm's length mid-rep. Under it, the
+/// distance / last rep on the left and the current-pace dial on the right,
+/// referenced to the last rep's pace (or the segment average until there
+/// is one).
 class _SegmentPace extends StatelessWidget {
-  const _SegmentPace({required this.s, required this.ctl, required this.units});
+  const _SegmentPace({
+    required this.s,
+    required this.ctl,
+    required this.units,
+    this.compact = false,
+  });
   final RecordingSnapshot s;
   final RecordingController ctl;
   final Units units;
+
+  /// Short screen (< 720 dp): every number one step down, same order.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -601,48 +627,55 @@ class _SegmentPace extends StatelessWidget {
       Phase.recovery => 'RECOVERY AVERAGE',
       _ => 'SEGMENT AVERAGE',
     };
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  Fmt.pace(segmentAvg, units),
-                  key: const ValueKey('segment-avg'),
-                  softWrap: false,
-                  style: RunSoloType.display64.copyWith(color: t.inkPrimary),
-                ),
-              ),
-              Text(
-                '$title /${units == Units.mi ? 'mi' : 'km'}',
-                style: RunSoloType.micro11.copyWith(color: secondary),
-              ),
-              const SizedBox(height: Space.x8),
-              Text(
-                s.lastRepPaceSecPerKm == null
-                    ? Fmt.distance(s.lapDistanceM, units)
-                    : '${Fmt.distance(s.lapDistanceM, units)} · last rep '
-                          '${Fmt.pace(s.lastRepPaceSecPerKm, units)}',
-                style: RunSoloType.body15.copyWith(color: secondary),
-              ),
-            ],
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            Fmt.pace(segmentAvg, units),
+            key: const ValueKey('segment-avg'),
+            softWrap: false,
+            // Larger than any other number on the screen; the FittedBox only
+            // shrinks it for a wide value (10:05 /mi).
+            style: RunSoloType.timer120.copyWith(
+              color: t.inkPrimary,
+              fontWeight: FontWeight.w700,
+              fontSize: compact ? 128 : 168,
+            ),
           ),
         ),
-        const SizedBox(width: Space.x16),
-        SizedBox(
-          width: 150,
-          child: PaceDial(
-            currentSecPerKm: s.livePaceSecPerKm,
-            referenceSecPerKm: reference,
-            units: units,
-            onZone: onZone,
-          ),
+        Text(
+          '$title /${units == Units.mi ? 'mi' : 'km'}',
+          style: RunSoloType.label13.copyWith(color: secondary),
+        ),
+        SizedBox(height: compact ? Space.x8 : Space.x16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Text(
+                s.lastRepPaceSecPerKm == null
+                    ? Fmt.distance(s.lapDistanceM, units)
+                    : '${Fmt.distance(s.lapDistanceM, units)}\nlast rep '
+                          '${Fmt.pace(s.lastRepPaceSecPerKm, units)}',
+                style: RunSoloType.body17.copyWith(color: secondary),
+              ),
+            ),
+            const SizedBox(width: Space.x16),
+            SizedBox(
+              width: compact ? 112 : 136,
+              child: PaceDial(
+                currentSecPerKm: s.livePaceSecPerKm,
+                referenceSecPerKm: reference,
+                units: units,
+                onZone: onZone,
+                paceStyle: RunSoloType.display44,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -725,7 +758,7 @@ class _Stats extends StatelessWidget {
             Text(
               showGhost
                   ? '${s.isPreset ? 'last rep' : 'last lap'} ${Fmt.pace(last, units)}'
-                  : (s.isPreset ? 'first rep sets the pace' : 'first lap'),
+                  : (s.isPreset ? 'warm-up pace' : 'first lap'),
               style: RunSoloType.body15.copyWith(color: deltaColor),
             ),
             if (direction != null && delta != null) ...[
