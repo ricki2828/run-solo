@@ -24,7 +24,7 @@ const String kVolumeKeyUnavailableNote =
 
 /// Reason under the disabled "Volume-key lap" toggle (Start, Settings).
 const String kVolumeKeyToggleReason =
-    'Not available on Android 14. Use the lock-screen LAP.';
+    'Off on Android 14. Use the lock-screen LAP.';
 
 @immutable
 class RecordingSnapshot {
