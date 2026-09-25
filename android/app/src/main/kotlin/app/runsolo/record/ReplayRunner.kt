@@ -5,7 +5,8 @@ import android.os.Handler
 import android.os.SystemClock
 import app.runsolo.core.model.HrReading
 import app.runsolo.core.model.LocationFix
-import app.runsolo.core.model.Preset
+import app.runsolo.core.model.SessionSpec
+import app.runsolo.core.model.StepKind
 import app.runsolo.core.replay.Cancellable
 import app.runsolo.core.replay.ReplaySource
 import app.runsolo.core.replay.Scheduler
@@ -18,7 +19,7 @@ import app.runsolo.core.replay.TraceFixture
  * the journal all run on trace time; wall time only paces delivery and a slow main thread
  * slows everything together.
  *
- * Fixtures: `synthetic-4x4` (straight line: 60 s warmup @2.5 m/s, the preset's reps
+ * Fixtures: `synthetic-4x4` (straight line: 60 s warmup @2.5 m/s, the spec's steps
  * @4.2/2.0 m/s, 60 s cooldown, HR by phase) or `<name>` = `assets/replay/<name>.csv`.
  * The synthetic fixture also presses LAP at the end of the warmup so a hands-off replay
  * exercises the auto-lap path.
@@ -64,9 +65,10 @@ class ReplayRunner private constructor(
     companion object {
         const val SYNTHETIC_4X4 = "synthetic-4x4"
 
-        fun create(context: Context, fixture: String, speed: Double, preset: Preset?): ReplayRunner? {
+        /** [spec]: the run's session; the synthetic trace follows its steps (the standard 4x4 when it has none). */
+        fun create(context: Context, fixture: String, speed: Double, spec: SessionSpec?): ReplayRunner? {
             if (speed <= 0) return null
-            if (fixture == SYNTHETIC_4X4) return synthetic4x4(preset ?: Preset.DEFAULT_4X4, speed)
+            if (fixture == SYNTHETIC_4X4) return synthetic4x4(spec?.takeIf { it.steps.isNotEmpty() } ?: SessionSpec.norwegian4x4(), speed)
             if (!fixture.all { it.isLetterOrDigit() || it == '-' || it == '_' }) return null
             val text = try {
                 context.assets.open("replay/$fixture.csv").bufferedReader().readText()
@@ -78,13 +80,11 @@ class ReplayRunner private constructor(
             return ReplayRunner(trace.fixes, trace.hr, speed, emptyList())
         }
 
-        private fun synthetic4x4(preset: Preset, speed: Double): ReplayRunner {
+        private fun synthetic4x4(spec: SessionSpec, speed: Double): ReplayRunner {
             val segments = ArrayList<Pair<Int, Double>>()
             segments.add(60 to 2.5)
-            for (r in 1..preset.reps) {
-                segments.add(preset.workSeconds to 4.2)
-                if (r < preset.reps) segments.add(preset.recoverySeconds to 2.0)
-            }
+            // Time steps only (I1); a 0 s recovery adds nothing.
+            for (st in spec.steps) if (st.value > 0) segments.add(st.value to if (st.kind == StepKind.work) 4.2 else 2.0)
             segments.add(60 to 2.5)
             val fixes = TraceFixture.straightLine(segments, accuracyM = 6.0, startT = 0)
             val hr = ArrayList<HrReading>()

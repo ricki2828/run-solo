@@ -19,7 +19,7 @@ import app.runsolo.core.model.Phase
 import java.util.Locale
 
 /**
- * Speaks the preset cues (plan §3): TextToSpeech bound to the application context (it must
+ * Speaks the session cues (plan §3): TextToSpeech bound to the application context (it must
  * outlive the Activity — swiping the task away mid-run keeps the service alive), audio focus
  * `TRANSIENT_MAY_DUCK` held only for the utterance (music ducks for the cue, then recovers), a
  * tone fallback when TTS is missing or `speak` fails, and a short vibration on every cue so a
@@ -101,6 +101,8 @@ class CuePlayer(context: Context) {
             CueKind.thirtySeconds -> "Thirty seconds"
             CueKind.phaseEnd -> if (nextPhase == Phase.cooldown) "Done. Cool down" else null // the next `start` cue says what comes
             CueKind.stop -> "Run saved"
+            // Phase 3 cues (I2): the core never emits them yet; no wording until it does.
+            CueKind.distanceToGo, CueKind.lastRep, CueKind.minuteMark, CueKind.countdown, CueKind.projection -> null
         } ?: return
         requestFocus()
         inFlight++

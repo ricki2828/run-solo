@@ -5,12 +5,16 @@ import app.runsolo.core.journal.RunEvent
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.Phase
-import app.runsolo.core.model.Preset
 import app.runsolo.core.model.RecorderState
 import app.runsolo.core.model.RunMode
+import app.runsolo.core.model.SessionSpec
+import app.runsolo.core.model.StepKind
+import app.runsolo.core.model.TargetKind
+import app.runsolo.core.model.CueProfile
 
 /**
- * Lap state machine + preset phase timer + cue scheduler, device-independent (plan §3, §6).
+ * Lap state machine + session step timer + cue scheduler, device-independent (plan §3, §6;
+ * Phase 3 §3.6).
  *
  * The service owns the clock and calls [tick] at ≥ 1 Hz with device monotonic millis; the core
  * returns [Output]s (laps to journal, cues to speak, phase changes for the notification). It
@@ -24,18 +28,21 @@ import app.runsolo.core.model.RunMode
  *  - A timed phase ends by its `phaseEnd` cue (auto-lap) or early by a manual LAP from the
  *    button/notification, which re-aligns the phases (R5: the engine may then call the run
  *    `lapsInconsistent`; that is the user's choice).
- *  - Modes (plan §18.2): `fourByFour` = preset phases; `laps` = by-feel laps from any source;
- *    `free` (and `cooper` until Phase 3) = no lap input at all — every LAP is
- *    [LapDecision.ignoredModeNoLaps]. Every mode check is an exhaustive `when` (W7).
- *  - Volume-key laps: only when [Config.volumeKeyLaps] (default: Laps mode only). In preset
- *    mode they are recorded but never re-align the phase (pocket-bump guard, W8).
+ *  - Modes (plan §18.2): `intervals` = the phases walk [SessionSpec.steps] (work, recovery,
+ *    …, work; N reps have N−1 recoveries; a 0 s recovery goes straight into the next rep);
+ *    `laps` = by-feel laps from any source (a fartlek spec changes nothing here); `free` (and
+ *    `cooper` until I2) = no lap input at all — every LAP is [LapDecision.ignoredModeNoLaps].
+ *    Every mode check is an exhaustive `when` (W7).
+ *  - I1 runs time steps only; [unsupported] names what a spec needs that this core cannot do yet.
+ *  - Volume-key laps: only when [Config.volumeKeyLaps] (default: Laps mode only). In
+ *    a structured session they are recorded but never re-align the phase (pocket-bump guard, W8).
  *  - Double-lap guard: a manual press within [Config.doubleLapGuardMs] of an auto-lap is
  *    ignored; any manual press within [Config.debounceMs] of the previous manual lap is ignored.
  *  - Laps while paused are ignored.
  */
 class RecorderCore(
     val mode: RunMode,
-    val preset: Preset?,
+    val spec: SessionSpec?,
     private val config: Config = Config(volumeKeyLaps = mode.volumeKeyLapsDefault),
 ) {
     data class Config(
@@ -60,13 +67,15 @@ class RecorderCore(
         val phase: Phase,
         val repIndex: Int,
         val phaseRemainingMs: Long,
+        /** 0-based index into [SessionSpec.steps] during work/recovery; null in warm-up, cool-down and unstructured runs. */
+        val stepIndex: Int?,
+        val stepRemainingMs: Long?,
+        /** Metres left in a distance step; always null until distance steps land (I2). */
+        val stepRemainingM: Double?,
     )
 
     init {
-        when (mode) {
-            RunMode.fourByFour -> require(preset != null) { "4x4 mode needs a preset" }
-            RunMode.laps, RunMode.free, RunMode.cooper -> require(preset == null) { "$mode carries no preset" }
-        }
+        unsupported(mode, spec)?.let { throw IllegalArgumentException(it) }
     }
 
     var state: RecorderState = RecorderState.idle
@@ -76,8 +85,12 @@ class RecorderCore(
     var phase: Phase = Phase.none
         private set
 
-    /** 1-based rep number during work/recovery; 0 in warmup/none, preset.reps from the last rep through cool-down. */
+    /** 1-based rep number during work/recovery; 0 in warmup/none, the last rep through cool-down. */
     var repIndex: Int = 0
+        private set
+
+    /** 0-based index into [SessionSpec.steps] while a step runs; null otherwise. */
+    var stepIndex: Int? = null
         private set
 
     private var startT = 0L
@@ -104,7 +117,7 @@ class RecorderCore(
         lastT = t
         state = RecorderState.recording
         val out = ArrayList<Output>()
-        if (preset != null) {
+        if (mode.followsSteps) {
             phase = Phase.warmup
             out.add(Output.PhaseChanged(t, phase, 0, null))
         }
@@ -153,14 +166,14 @@ class RecorderCore(
     }
 
     /**
-     * The "Start 4x4" action: ends the untimed warm-up and starts rep 1 (plan §6). Journaled as
+     * The "Start reps" action: ends the untimed warm-up and starts rep 1 (plan §6). Journaled as
      * a button lap so the file is what a first LAP would have written; a no-op anywhere else
      * (a press mid-rep is never a lap, so a manual LAP cannot be confused with starting).
      */
     fun startReps(t: Long): Pair<LapDecision, List<Output>> {
         if (state == RecorderState.idle || state == RecorderState.finalising) return LapDecision.ignoredIdle to emptyList()
         if (state == RecorderState.paused) return LapDecision.ignoredPaused to emptyList()
-        if (preset == null || phase != Phase.warmup) return LapDecision.ignoredNotWarmup to emptyList()
+        if (!mode.followsSteps || phase != Phase.warmup) return LapDecision.ignoredNotWarmup to emptyList()
         return LapDecision.accepted to applyManualLap(LapSource.button, t)
     }
 
@@ -169,10 +182,10 @@ class RecorderCore(
         lastManualLapT = t
         val out = ArrayList<Output>()
         out.add(Output.Lap(lapCount++, t, source))
-        val realigns = preset != null && source != LapSource.volumeKey
+        val realigns = mode.followsSteps && source != LapSource.volumeKey
         if (realigns) {
             when (phase) {
-                Phase.warmup -> out.addAll(enterPhase(t, Phase.work, 1))
+                Phase.warmup -> out.addAll(enterStep(t, 0))
                 Phase.work, Phase.recovery -> out.addAll(advance(t))
                 Phase.cooldown, Phase.none -> Unit
             }
@@ -193,7 +206,7 @@ class RecorderCore(
             if (phaseElapsed < cue.atMs) break
             pendingCues.removeFirst()
             if (cue.kind == CueKind.phaseEnd) {
-                // Fire exactly at the boundary so the lap time is the preset time, not tick jitter.
+                // Fire exactly at the boundary so the lap time is the step time, not tick jitter.
                 val boundaryT = t - (phaseElapsed - dur)
                 out.add(Output.Cue(boundaryT, CueKind.phaseEnd))
                 out.addAll(endTimedPhase(boundaryT, auto = true, cueAlreadyEmitted = true))
@@ -214,6 +227,9 @@ class RecorderCore(
             phase = phase,
             repIndex = repIndex,
             phaseRemainingMs = remaining,
+            stepIndex = stepIndex,
+            stepRemainingMs = if (stepIndex != null) remaining else null,
+            stepRemainingM = null,
         )
     }
 
@@ -229,44 +245,71 @@ class RecorderCore(
     }
 
     /**
-     * Move from the current timed phase to the next one. N reps have N−1 recoveries: the last
-     * work phase goes straight to cool-down (founder field test 25-Sep: a 4th recovery ran
-     * after rep 4 before the cool-down).
+     * Move from the current step to the next one. The spec has no recovery after the last rep
+     * (founder field test 25-Sep), so the last work step goes straight to cool-down; a 0 s
+     * recovery is skipped (no phase, no lap).
      */
     private fun advance(t: Long): List<Output> {
-        val p = preset ?: return emptyList()
-        return when (phase) {
-            Phase.work -> if (repIndex >= p.reps) enterPhase(t, Phase.cooldown, repIndex) else enterPhase(t, Phase.recovery, repIndex)
-            Phase.recovery -> enterPhase(t, Phase.work, repIndex + 1)
-            Phase.none, Phase.warmup, Phase.cooldown -> emptyList()
-        }
+        val steps = spec?.steps ?: return emptyList()
+        val from = stepIndex ?: return emptyList()
+        var next = from + 1
+        while (next < steps.size && steps[next].durationMs == 0L) next++
+        return if (next < steps.size) enterStep(t, next) else enterCooldown(t)
     }
 
-    private fun enterPhase(t: Long, next: Phase, rep: Int): List<Output> {
-        val p = preset!!
-        phase = next
-        repIndex = rep
+    private fun enterStep(t: Long, index: Int): List<Output> {
+        val step = spec!!.steps[index]
+        phase = when (step.kind) {
+            StepKind.work -> Phase.work
+            StepKind.recovery -> Phase.recovery
+        }
+        repIndex = step.rep
+        stepIndex = index
         phaseStartActive = activeAt(t)
-        val dur = when (next) {
-            Phase.work -> p.workMs
-            Phase.recovery -> p.recoveryMs
-            else -> null
-        }
+        val dur = step.durationMs!! // I1: time steps only (see [unsupported])
         phaseDurationMs = dur
-        pendingCues = if (dur != null) ArrayDeque(CueScheduler.forPhase(dur)) else ArrayDeque()
-        val out = ArrayList<Output>()
-        out.add(Output.PhaseChanged(t, next, rep, dur))
-        if (dur != null) {
-            // The `start` cue is due at 0 — emit it now rather than on the next tick.
-            pendingCues.removeFirst()
-            out.add(Output.Cue(t, CueKind.start))
-        }
-        return out
+        pendingCues = ArrayDeque(CueScheduler.forPhase(dur))
+        // The `start` cue is due at 0 — emit it now rather than on the next tick.
+        pendingCues.removeFirst()
+        return listOf(Output.PhaseChanged(t, phase, repIndex, dur), Output.Cue(t, CueKind.start))
+    }
+
+    private fun enterCooldown(t: Long): List<Output> {
+        phase = Phase.cooldown
+        stepIndex = null
+        phaseStartActive = activeAt(t)
+        phaseDurationMs = null
+        pendingCues = ArrayDeque()
+        return listOf(Output.PhaseChanged(t, phase, repIndex, null))
     }
 
     companion object {
         /**
-         * Rebuild the machine from a replayed journal after a kill (plan §3: preset phase rebuilt
+         * Why this core cannot run [spec] in [mode], or null when it can. Invalid specs fail
+         * here too. I1 runs uniform-or-not time steps with an open warm-up/cool-down and the
+         * standard cue profile; distance and equal-time steps, fixed warm-up/cool-down, lap
+         * lockout and the short/Cooper cue profiles arrive with I2.
+         */
+        fun unsupported(mode: RunMode, spec: SessionSpec?): String? {
+            spec?.problems()?.takeIf { it.isNotEmpty() }?.let { return "invalid session: ${it.joinToString("; ")}" }
+            return when (mode) {
+                RunMode.intervals -> when {
+                    spec == null -> "intervals needs a session"
+                    spec.steps.isEmpty() -> "intervals needs steps"
+                    spec.steps.any { it.target != TargetKind.time } -> "distance and equal-time steps are not supported yet"
+                    spec.warmupSeconds != null || spec.cooldownSeconds != null -> "a fixed warm-up or cool-down is not supported yet"
+                    spec.lapLockout -> "lap lockout is not supported yet"
+                    spec.cueProfile != CueProfile.standard -> "cue profile ${spec.cueProfile.name} is not supported yet"
+                    else -> null
+                }
+                RunMode.laps -> if (spec == null || (spec.isFartlek && spec.steps.isEmpty())) null else "laps takes no session but a fartlek"
+                RunMode.free -> if (spec == null) null else "free takes no session"
+                RunMode.cooper -> if (spec == null || spec.templateId == SessionSpec.COOPER_ID) null else "cooper takes the Cooper session only"
+            }
+        }
+
+        /**
+         * Rebuild the machine from a replayed journal after a kill (plan §3: step phase rebuilt
          * from the lap lines; W12). [nowT] is the device time at which the `gap` line was
          * written, i.e. run time [Replay.endT] maps to device time [nowT]. Cues already spoken
          * before the kill are not re-spoken; the machine resumes in the paused state if the
@@ -274,7 +317,7 @@ class RecorderCore(
          */
         fun restore(replay: Replay, nowT: Long, config: Config? = null): RecorderCore {
             val h = replay.header
-            val core = if (config != null) RecorderCore(h.mode, h.preset, config) else RecorderCore(h.mode, h.preset)
+            val core = if (config != null) RecorderCore(h.mode, h.session, config) else RecorderCore(h.mode, h.session)
             val base = nowT - replay.endT // deviceT = runT + base
             core.start(base)
             for (e in replay.events) {

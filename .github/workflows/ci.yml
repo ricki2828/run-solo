@@ -366,7 +366,7 @@ jobs:
           disable-animations: true
           script: |
             tools/emulator_smoke.sh apk/app-debug.apk app.runsolo.debug
-            tools/emulator_lifecycle.sh apk/app-debug.apk app.runsolo.debug fourByFour
+            tools/emulator_lifecycle.sh apk/app-debug.apk app.runsolo.debug intervals
             tools/emulator_lifecycle.sh apk/app-debug.apk app.runsolo.debug laps
             tools/emulator_lifecycle.sh apk/app-debug.apk app.runsolo.debug free
 

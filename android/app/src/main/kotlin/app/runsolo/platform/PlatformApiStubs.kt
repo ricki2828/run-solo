@@ -5,10 +5,10 @@ package app.runsolo.platform
  * Real implementations (RecorderService, BleHrClient) land in Phase 1.
  */
 class RecorderApiStub : RecorderApi {
-    override fun start(mode: RecordMode, preset: Preset?, units: Units): StartResult =
+    override fun start(mode: RecordMode, spec: SessionSpec?, units: Units, lastCooperVo2: Double?): StartResult =
         StartResult(runId = null, error = StartError.NO_FINE_PERMISSION)
 
-    override fun startReplay(mode: RecordMode, preset: Preset?, units: Units, replay: ReplayConfig): StartResult =
+    override fun startReplay(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ReplayConfig): StartResult =
         StartResult(runId = null, error = StartError.REPLAY_UNAVAILABLE)
 
     override fun resumeRecovered(runId: String): StartResult =
@@ -37,7 +37,7 @@ class RecorderApiStub : RecorderApi {
             phase = Phase.NONE,
             repIndex = 0,
             phaseRemainingMs = 0,
-            preset = null,
+            spec = null,
             journalOk = true,
         )
 

@@ -2,7 +2,7 @@ package app.runsolo.core.journal
 
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.LapSource
-import app.runsolo.core.model.Preset
+import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.Units
 import kotlin.test.Test
@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 class JournalCodecTest {
     private val header = JournalLine.Header(
         t = 5_000, w = 1_700_000_000_000, id = "abc-123", device = "Pixel 8", app = "1.0.0 (1)",
-        tz = "Australia/Sydney", mode = RunMode.fourByFour, preset = Preset.DEFAULT_4X4, units = Units.km,
+        tz = "Australia/Sydney", mode = RunMode.intervals, session = SessionSpec.norwegian4x4(), units = Units.km,
     )
 
     @Test
@@ -55,21 +55,45 @@ class JournalCodecTest {
     }
 
     @Test
-    fun `preset reps are 3 to 6 on both sides`() {
-        assertFailsWith<IllegalArgumentException> { Preset(2, 240, 180) }
-        assertFailsWith<IllegalArgumentException> { Preset(7, 240, 180) }
-        Preset(3, 240, 120)
-        Preset(6, 240, 300)
+    fun `schema-3 header carries the full session and round trips it`() {
+        val text = JournalCodec.encode(header)
+        assertTrue(text.contains("\"schema\":3"), text)
+        assertTrue(text.contains("\"mode\":\"intervals\",\"session\":{\"templateId\":\"norwegian-4x4\""), text)
+        assertFalse(text.contains("preset"), text)
+        assertEquals(header, JournalCodec.decode(text))
     }
 
     @Test
-    fun `header without preset (laps, free, cooper)`() {
-        for (m in listOf(RunMode.laps, RunMode.free, RunMode.cooper)) {
-            val h = header.copy(mode = m, preset = null)
-            val text = JournalCodec.encode(h)
-            assertTrue(text.contains("\"schema\":2"), text)
-            assertEquals(h, JournalCodec.decode(text))
+    fun `header without a session (laps, free), cooper and fartlek sessions`() {
+        for (m in listOf(RunMode.laps, RunMode.free)) {
+            val h = header.copy(mode = m, session = null)
+            assertEquals(h, JournalCodec.decode(JournalCodec.encode(h)))
         }
+        for (h in listOf(header.copy(mode = RunMode.cooper, session = SessionSpec.COOPER), header.copy(mode = RunMode.laps, session = SessionSpec.FARTLEK))) {
+            assertEquals(h, JournalCodec.decode(JournalCodec.encode(h)))
+        }
+    }
+
+    private fun legacy(schema: Int, mode: String, preset: String) =
+        JournalCodec.decode("""{"k":"hdr","schema":$schema,"t":1,"w":2,"id":"x","device":"d","app":"a","tz":"UTC","mode":"$mode","preset":$preset,"units":"km"}""") as JournalLine.Header
+
+    @Test
+    fun `old journals - fourByFour + preset map to intervals + the norwegian-4x4 spec`() {
+        val h = legacy(2, "fourByFour", """{"reps":3,"workSeconds":240,"recoverySeconds":150}""")
+        assertEquals(RunMode.intervals, h.mode)
+        assertEquals(SessionSpec.norwegian4x4(3, 240, 150), h.session)
+        val s = h.session!!
+        assertEquals(listOf("work" to 240, "recovery" to 150, "work" to 240, "recovery" to 150, "work" to 240), s.steps.map { it.kind.name to it.value })
+        assertEquals(listOf(1, 1, 2, 2, 3), s.steps.map { it.rep })
+        assertEquals(0.85 to 0.95, s.hrBand)
+        // No preset: the standard 4 × 240/180.
+        assertEquals(SessionSpec.norwegian4x4(4, 240, 180), legacy(2, "fourByFour", "null").session)
+        assertEquals(SessionSpec.norwegian4x4(), legacy(1, "fourByFour", "null").session)
+        // Schema-2 cooper → the Cooper spec; laps/free → none; schema-1 free → laps.
+        assertEquals(SessionSpec.COOPER, legacy(2, "cooper", "null").session)
+        assertEquals(null, legacy(2, "laps", "null").session)
+        assertEquals(RunMode.laps, legacy(1, "free", "null").mode)
+        assertEquals(null, legacy(1, "free", "null").session)
     }
 
     @Test
@@ -80,6 +104,7 @@ class JournalCodecTest {
         assertEquals(RunMode.free, (JournalCodec.decode(hdr(2, "free")) as JournalLine.Header).mode)
         assertEquals(RunMode.laps, (JournalCodec.decode(hdr(2, "laps")) as JournalLine.Header).mode)
         assertFailsWith<JournalCodec.NewerSchema> { JournalCodec.decode(hdr(3, "fourByFour")) }
+        assertFailsWith<JournalCodec.NewerSchema> { JournalCodec.decode(hdr(4, "intervals")) }
         assertFailsWith<JournalCodec.NewerSchema> { JournalCodec.decode(hdr(2, "hyrox")) }
         // Schema 1 never wrote `laps`; if it appears, it is not a mapping case and decodes as itself.
         assertEquals(RunMode.laps, JournalCodec.decodeMode("laps", 1))

@@ -5,7 +5,8 @@ import app.runsolo.core.model.HrReading
 import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.LocationFix
 import app.runsolo.core.model.Phase
-import app.runsolo.core.model.Preset
+import app.runsolo.core.model.SessionSpec
+import app.runsolo.core.model.StepKind
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
@@ -81,13 +82,10 @@ class ReplaySourceTest {
     /** §12: a full 4x4 with auto-laps runs at the desk at 10×, on the replay clock end to end. */
     @Test
     fun `10x straight-line 4x4 through ticker and core - 7 auto laps on the boundaries, ground-truth distance`() {
-        val preset = Preset.DEFAULT_4X4
+        val preset = SessionSpec.norwegian4x4()
         val segments = ArrayList<Pair<Int, Double>>()
         segments.add(30 to 2.5)
-        for (r in 1..preset.reps) {
-            segments.add(preset.workSeconds to 4.2)
-            if (r < preset.reps) segments.add(preset.recoverySeconds to 2.0)
-        }
+        for (st in preset.steps) segments.add(st.value to if (st.kind == StepKind.work) 4.2 else 2.0)
         segments.add(30 to 2.5)
         val trace = TraceFixture.straightLine(segments)
         val truthM = segments.sumOf { it.first * it.second }
@@ -110,7 +108,7 @@ class ReplaySourceTest {
             },
             null,
         )
-        core = RecorderCore(RunMode.fourByFour, preset)
+        core = RecorderCore(RunMode.intervals, preset)
         core.start(s.now)
         src.start()
         s.pump()
@@ -120,7 +118,7 @@ class ReplaySourceTest {
         val auto = laps.filter { it.source == LapSource.auto }
         assertEquals(7, auto.size)
         val t0 = 1_000_000L + 30_000
-        val expected = (1..7).map { i -> t0 + ((i + 1) / 2) * preset.workMs + (i / 2) * preset.recoveryMs }
+        val expected = (1..7).map { i -> t0 + ((i + 1) / 2) * 240_000L + (i / 2) * 180_000L }
         assertEquals(expected, auto.map { it.t })
         assertEquals(Phase.cooldown, core.phase)
         assertEquals(truthM, ticker.distanceM, truthM * 0.01)

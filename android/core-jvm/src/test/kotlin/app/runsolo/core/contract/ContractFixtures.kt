@@ -4,12 +4,17 @@ import app.runsolo.core.fs.FakeFileSystem
 import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.journal.JournalWriter
 import app.runsolo.core.json.Json
+import app.runsolo.core.model.CueProfile
 import app.runsolo.core.model.HrReading
 import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.LocationFix
 import app.runsolo.core.model.Phase
-import app.runsolo.core.model.Preset
+import app.runsolo.core.model.RecoveryStyle
 import app.runsolo.core.model.RunMode
+import app.runsolo.core.model.SessionSpec
+import app.runsolo.core.model.Step
+import app.runsolo.core.model.StepKind
+import app.runsolo.core.model.TargetKind
 import app.runsolo.core.model.Units
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
@@ -25,15 +30,17 @@ import java.io.File
  * `FakeFileSystem` → `Finaliser` → the gzip'd run file, decoded back to JSON. Nothing is
  * hand-built. Checked into `src/test/fixtures/contract/` and copied verbatim into
  * `packages/run_engine/test/fixtures/contract/`; [ContractFixturesTest] fails when the
- * generator and the checked-in files drift, and CI compares the two copies. The four schema-1
- * files under `contract/schema1/` are frozen output of the Phase-1 writer (plan §18.7): never
- * regenerated, they pin the v1 `free` → `laps` mapping on the Dart side.
+ * generator and the checked-in files drift, and CI compares the two copies. The top level is
+ * schema 3 (Phase 3 §3.8). `contract/schema1/` and `contract/schema2/` are frozen output of the
+ * older writers: never regenerated, they pin the v1 `free` → `laps` and the v2 `fourByFour` +
+ * `preset` → `intervals` + norwegian-4x4 mappings on the Dart side.
  *
  * Regenerate: `java -cp <test classpath> app.runsolo.core.contract.ContractFixturesKt`.
  */
 object ContractFixtures {
     const val DIR = "src/test/fixtures/contract"
     const val SCHEMA1_DIR = "src/test/fixtures/contract/schema1"
+    const val SCHEMA2_DIR = "src/test/fixtures/contract/schema2"
     private const val T0 = 1_000_000L
     private const val W0 = 1_758_672_000_000L // 2025-09-24T00:00:00Z
     private const val LAT0 = -33.8688
@@ -41,6 +48,10 @@ object ContractFixtures {
 
     fun all(): Map<String, String> = linkedMapOf(
         "four_by_four_preset_auto_hr" to fourByFourPresetAutoHr(),
+        "four_by_four_3_reps" to fourByFourThreeReps(),
+        "cooper_12min" to cooper12Min(),
+        "fartlek_laps" to fartlekLaps(),
+        "session_8x400_shape" to eightBy400Shape(),
         "treadmill_no_fix_hr" to treadmillNoFixHr(),
         "gps_dropout_hr" to gpsDropoutHr(),
         "laps_run_pause_manual_laps" to lapsRunPauseManualLaps(),
@@ -48,11 +59,21 @@ object ContractFixtures {
     )
 
     /** One simulated recording: a service loop over the core, per second. */
-    private class Session(id: String, mode: RunMode, preset: Preset?) {
+    /**
+     * [coreMode]/[coreSession] default to the header's; a shape-only fixture (a session the I1
+     * core cannot run yet) records under a by-feel core and places its auto laps with [autoLap].
+     */
+    private class Session(
+        id: String,
+        mode: RunMode,
+        session: SessionSpec?,
+        coreMode: RunMode = mode,
+        coreSession: SessionSpec? = session,
+    ) {
         val fs = FakeFileSystem()
         val writer = JournalWriter(fs, id, onWriteFailed = { throw it })
         val ticker = SampleTicker(wall = { wall })
-        val core = RecorderCore(mode, preset)
+        val core = RecorderCore(coreMode, coreSession)
         private val id = id
         var t = T0
         var wall = W0
@@ -60,7 +81,7 @@ object ContractFixtures {
         init {
             fs.mkdirs(RunPaths.RUNS_DIR)
             writer.open()
-            writer.append(JournalLine.Header(T0, W0, id, "contract-fixture", "core-jvm-test", "Australia/Sydney", mode, preset, Units.km))
+            writer.append(JournalLine.Header(T0, W0, id, "contract-fixture", "core-jvm-test", "Australia/Sydney", mode, session, Units.km))
             emit(core.start(T0))
         }
 
@@ -86,6 +107,7 @@ object ContractFixtures {
         }
 
         fun lap(source: LapSource) = emit(core.lap(source, t).second)
+        fun autoLap() = writer.append(JournalLine.Lap(t, wall, LapSource.auto))
         fun pause() { core.pause(t); writer.append(JournalLine.Pause(t, wall)) }
         fun resume() { core.resume(t); writer.append(JournalLine.Resume(t, wall)) }
 
@@ -99,16 +121,13 @@ object ContractFixtures {
 
     /** 60 s warmup, notification LAP, 4×4:00 @4.2 m/s with 3×3:00 @2.0 m/s between them, auto-lapped by the core, 60 s cooldown; HR by phase. */
     private fun fourByFourPresetAutoHr(): String {
-        val preset = Preset.DEFAULT_4X4
+        val preset = SessionSpec.norwegian4x4()
         val segments = ArrayList<Pair<Int, Double>>()
         segments.add(60 to 2.5)
-        for (r in 1..preset.reps) {
-            segments.add(preset.workSeconds to 4.2)
-            if (r < preset.reps) segments.add(preset.recoverySeconds to 2.0)
-        }
+        for (st in preset.steps) segments.add(st.value to if (st.kind == StepKind.work) 4.2 else 2.0)
         segments.add(60 to 2.5)
         val fixes = TraceFixture.straightLine(segments, LAT0, LON0, 6.0, T0)
-        val s = Session("contract-4x4-preset", RunMode.fourByFour, preset)
+        val s = Session("contract-4x4-preset", RunMode.intervals, preset)
         for ((i, f) in fixes.withIndex()) {
             if (i == 0) continue // the generator's t=0 point is the start position; recording begins at second 1
             val hr = when (s.core.phase) {
@@ -117,6 +136,84 @@ object ContractFixtures {
                 else -> 130
             }
             s.second(f, hr) { if (i == 60) s.lap(LapSource.notification) }
+        }
+        return s.finish()
+    }
+
+    /** A 3-rep 4x4 (3 × 4:00 / 2:30): 60 s warmup, button LAP, auto laps, 60 s cool-down (migration golden, eng-review W1). */
+    private fun fourByFourThreeReps(): String {
+        val spec = SessionSpec.norwegian4x4(reps = 3, workSeconds = 240, recoverySeconds = 150)
+        val segments = ArrayList<Pair<Int, Double>>()
+        segments.add(60 to 2.5)
+        for (st in spec.steps) segments.add(st.value to if (st.kind == StepKind.work) 4.0 else 2.0)
+        segments.add(60 to 2.5)
+        val fixes = TraceFixture.straightLine(segments, LAT0, LON0, 6.0, T0)
+        val s = Session("contract-4x4-3reps", RunMode.intervals, spec)
+        for ((i, f) in fixes.withIndex()) {
+            if (i == 0) continue
+            val hr = when (s.core.phase) {
+                Phase.work -> 160 + (i % 5)
+                Phase.recovery -> 140
+                else -> 128
+            }
+            s.second(f, hr) { if (i == 60) s.lap(LapSource.button) }
+        }
+        return s.finish()
+    }
+
+    /** Cooper 12-minute test: the Cooper spec in the header; I1 records it like Free (no laps). 12 min @ 3.4 m/s, HR 170. */
+    private fun cooper12Min(): String {
+        val fixes = TraceFixture.straightLine(listOf(720 to 3.4), LAT0, LON0, 5.0, T0)
+        val s = Session("contract-cooper", RunMode.cooper, SessionSpec.COOPER)
+        for ((i, f) in fixes.withIndex()) {
+            if (i == 0) continue
+            s.second(f, 165 + (i % 6)) { if (i == 400) s.lap(LapSource.button) } // ignored: no lap input
+        }
+        return s.finish()
+    }
+
+    /** Fartlek: a Laps run with the steps-empty fartlek spec; manual laps at 2:00, 2:30, 5:00, 5:45. */
+    private fun fartlekLaps(): String {
+        val fixes = TraceFixture.straightLine(listOf(120 to 2.8, 30 to 4.5, 150 to 2.8, 45 to 4.6, 135 to 2.8), LAT0, LON0, 5.0, T0)
+        val s = Session("contract-fartlek", RunMode.laps, SessionSpec.FARTLEK)
+        for ((i, f) in fixes.withIndex()) {
+            if (i == 0) continue
+            s.second(f, 150) { if (i == 120 || i == 150 || i == 300 || i == 345) s.lap(LapSource.button) }
+        }
+        return s.finish()
+    }
+
+    /**
+     * SHAPE ONLY (the I1 core cannot run distance steps; I2 replaces this with a real recording):
+     * the schema-3 header/session of an 8 × 400 m with 200 m jog recoveries, the auto laps placed
+     * by this generator on the trace's 400/200 m boundaries (100 s @ 4 m/s, 100 s @ 2 m/s).
+     */
+    private fun eightBy400Shape(): String {
+        val spec = SessionSpec(
+            templateId = "400s", templateVersion = 1, name = "8 × 400 m",
+            warmupSeconds = null, cooldownSeconds = null, lapLockout = false, cueProfile = CueProfile.standard, hrBand = null,
+            steps = (1..8).flatMap { r ->
+                listOfNotNull(
+                    Step(StepKind.work, TargetKind.distance, 400, RecoveryStyle.run, r),
+                    if (r < 8) Step(StepKind.recovery, TargetKind.distance, 200, RecoveryStyle.jog, r) else null,
+                )
+            },
+        )
+        val segments = ArrayList<Pair<Int, Double>>()
+        segments.add(60 to 2.5)
+        for (st in spec.steps) segments.add(100 to if (st.kind == StepKind.work) 4.0 else 2.0)
+        segments.add(60 to 2.5)
+        val boundaries = HashSet<Int>()
+        var at = 60
+        for (st in spec.steps) { at += 100; boundaries.add(at) }
+        val fixes = TraceFixture.straightLine(segments, LAT0, LON0, 5.0, T0)
+        val s = Session("contract-8x400-shape", RunMode.intervals, spec, coreMode = RunMode.laps, coreSession = null)
+        for ((i, f) in fixes.withIndex()) {
+            if (i == 0) continue
+            s.second(f, if (i in 61..1560) 160 else 130) {
+                if (i == 60) s.lap(LapSource.button)
+                if (i in boundaries) s.autoLap()
+            }
         }
         return s.finish()
     }

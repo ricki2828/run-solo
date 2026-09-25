@@ -97,17 +97,20 @@ int _deepHash(Object? value) {
 }
 
 
-/// Run type picked at Start (plan §18.2). Mirrors `RunMode` in `package:run_engine`.
+/// Run type picked at Start (plan §18.2, Phase 3 §3.8). Mirrors `RunMode` in
+/// `package:run_engine`.
 ///
-/// - `fourByFour`: preset phases, cues, auto-laps, manual LAP overrides.
+/// - `intervals`: the phases follow a `SessionSpec` (cues, auto-laps, manual LAP
+///   overrides). Schema <= 2 `fourByFour` files map here.
 /// - `laps`: by-feel laps; LAP button, notification LAP and volume keys (opt-in,
-///   default on). Schema-1 `free` files map here (plan §18.7).
+///   default on). Schema-1 `free` files map here (plan §18.7). A fartlek is
+///   `laps` with the steps-empty fartlek spec.
 /// - `free`: no lap input at all — no LAP button, no notification LAP action, no
 ///   MediaSession; `lap()` is a no-op (`FaultKind.lapIgnored` in debug builds).
-/// - `cooper`: schema-2 vocabulary for the Phase-3 12-minute test; until the
-///   protocol lands Kotlin records it like `free`. Not offered in the UI yet.
+/// - `cooper`: the 12-minute test with the Cooper spec; until I2 Kotlin records
+///   it like `free`. Not offered in the UI yet.
 enum RecordMode {
-  fourByFour,
+  intervals,
   laps,
   free,
   cooper,
@@ -125,7 +128,7 @@ enum RecorderState {
   finalising,
 }
 
-/// Phase of a preset (4x4) run; `none` in free mode or outside a rep.
+/// Phase of an intervals run; `none` in the other modes.
 enum Phase {
   none,
   warmup,
@@ -141,12 +144,46 @@ enum LapSource {
   auto,
 }
 
+/// `distanceToGo`, `lastRep`, `minuteMark`, `countdown` and `projection` are
+/// Phase 3 cues (I2); I1 never emits them.
 enum CueKind {
   halfway,
   thirtySeconds,
   phaseEnd,
   start,
   stop,
+  distanceToGo,
+  lastRep,
+  minuteMark,
+  countdown,
+  projection,
+}
+
+enum StepKind {
+  work,
+  recovery,
+}
+
+/// `time`: value in seconds; `distance`: metres; `equalToPreviousWork`: value
+/// 0, lasts as long as the work step before it took (Yasso, pyramids).
+enum TargetKind {
+  time,
+  distance,
+  equalToPreviousWork,
+}
+
+/// Work steps are always `run`; recoveries `jog`, `walk` or `stand`.
+enum RecoveryStyle {
+  run,
+  jog,
+  walk,
+  stand,
+}
+
+enum CueProfile {
+  standard,
+  short,
+  cooper,
 }
 
 enum FaultKind {
@@ -192,6 +229,10 @@ enum StartError {
   /// `resumeRecovered` failed while reopening the journal. The journal is
   /// untouched and `recover()` will list it again.
   resumeFailed,
+  /// The session is invalid for the mode, or needs something this recorder
+  /// cannot run yet (I1: distance and equal-time steps, a fixed warm-up or
+  /// cool-down, lap lockout, the short/Cooper cue profiles). Nothing started.
+  unsupportedSession,
 }
 
 /// Runtime permissions the setup checklist can request (plan §10). Location is
@@ -214,50 +255,151 @@ enum ExitReason {
   other,
 }
 
-/// The 4x4 preset written into the file header; drives cues and the detector.
-class Preset {
-  Preset({
-    required this.reps,
-    required this.workSeconds,
-    required this.recoverySeconds,
+/// One expanded step. `repIndex` is 1-based; a recovery carries the rep number
+/// of the work step before it (run-file JSON key `rep`).
+class Step {
+  Step({
+    required this.kind,
+    required this.target,
+    required this.value,
+    required this.style,
+    required this.repIndex,
   });
 
-  int reps;
+  StepKind kind;
 
-  int workSeconds;
+  TargetKind target;
 
-  int recoverySeconds;
+  int value;
+
+  RecoveryStyle style;
+
+  int repIndex;
 
   List<Object?> _toList() {
     return <Object?>[
-      reps,
-      workSeconds,
-      recoverySeconds,
+      kind,
+      target,
+      value,
+      style,
+      repIndex,
     ];
   }
 
   Object encode() {
     return _toList();  }
 
-  static Preset decode(Object result) {
+  static Step decode(Object result) {
     result as List<Object?>;
-    return Preset(
-      reps: result[0]! as int,
-      workSeconds: result[1]! as int,
-      recoverySeconds: result[2]! as int,
+    return Step(
+      kind: result[0]! as StepKind,
+      target: result[1]! as TargetKind,
+      value: result[2]! as int,
+      style: result[3]! as RecoveryStyle,
+      repIndex: result[4]! as int,
     );
   }
 
   @override
   // ignore: avoid_equals_and_hash_code_on_mutable_classes
   bool operator ==(Object other) {
-    if (other is! Preset || other.runtimeType != runtimeType) {
+    if (other is! Step || other.runtimeType != runtimeType) {
       return false;
     }
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(reps, other.reps) && _deepEquals(workSeconds, other.workSeconds) && _deepEquals(recoverySeconds, other.recoverySeconds);
+    return _deepEquals(kind, other.kind) && _deepEquals(target, other.target) && _deepEquals(value, other.value) && _deepEquals(style, other.style) && _deepEquals(repIndex, other.repIndex);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// The expanded session (Phase 3 §3.3): Dart expands presets and custom
+/// templates, Kotlin validates, journals and runs the flat step list. Written
+/// to the run file as `session` (hrBand as `[low, high]`).
+class SessionSpec {
+  SessionSpec({
+    required this.templateId,
+    required this.templateVersion,
+    required this.name,
+    this.warmupSeconds,
+    this.cooldownSeconds,
+    required this.lapLockout,
+    required this.cueProfile,
+    this.hrBandLow,
+    this.hrBandHigh,
+    required this.steps,
+  });
+
+  String templateId;
+
+  int templateVersion;
+
+  String name;
+
+  /// null = open (ends on the first LAP / `startReps`); int = fixed seconds.
+  int? warmupSeconds;
+
+  /// null = open (runs until Stop); int = fixed seconds.
+  int? cooldownSeconds;
+
+  bool lapLockout;
+
+  CueProfile cueProfile;
+
+  double? hrBandLow;
+
+  double? hrBandHigh;
+
+  List<Step> steps;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      templateId,
+      templateVersion,
+      name,
+      warmupSeconds,
+      cooldownSeconds,
+      lapLockout,
+      cueProfile,
+      hrBandLow,
+      hrBandHigh,
+      steps,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static SessionSpec decode(Object result) {
+    result as List<Object?>;
+    return SessionSpec(
+      templateId: result[0]! as String,
+      templateVersion: result[1]! as int,
+      name: result[2]! as String,
+      warmupSeconds: result[3] as int?,
+      cooldownSeconds: result[4] as int?,
+      lapLockout: result[5]! as bool,
+      cueProfile: result[6]! as CueProfile,
+      hrBandLow: result[7] as double?,
+      hrBandHigh: result[8] as double?,
+      steps: (result[9]! as List<Object?>).cast<Step>(),
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! SessionSpec || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(templateId, other.templateId) && _deepEquals(templateVersion, other.templateVersion) && _deepEquals(name, other.name) && _deepEquals(warmupSeconds, other.warmupSeconds) && _deepEquals(cooldownSeconds, other.cooldownSeconds) && _deepEquals(lapLockout, other.lapLockout) && _deepEquals(cueProfile, other.cueProfile) && _deepEquals(hrBandLow, other.hrBandLow) && _deepEquals(hrBandHigh, other.hrBandHigh) && _deepEquals(steps, other.steps);
   }
 
   @override
@@ -389,7 +531,10 @@ class RecorderStatus {
     required this.phase,
     required this.repIndex,
     required this.phaseRemainingMs,
-    this.preset,
+    this.spec,
+    this.stepIndex,
+    this.stepRemainingMs,
+    this.stepRemainingM,
     required this.journalOk,
   });
 
@@ -397,8 +542,7 @@ class RecorderStatus {
 
   String? runId;
 
-  /// The mode picked at Start (a by-feel 4x4 has `mode == fourByFour` and a
-  /// null `preset`).
+  /// The mode picked at Start.
   RecordMode mode;
 
   List<LapSummary> laps;
@@ -417,7 +561,16 @@ class RecorderStatus {
 
   int phaseRemainingMs;
 
-  Preset? preset;
+  SessionSpec? spec;
+
+  /// 0-based index into `spec.steps` during work/recovery; null in warm-up,
+  /// cool-down and unstructured runs.
+  int? stepIndex;
+
+  int? stepRemainingMs;
+
+  /// Metres left in a distance step (I2; null until then).
+  double? stepRemainingM;
 
   bool journalOk;
 
@@ -434,7 +587,10 @@ class RecorderStatus {
       phase,
       repIndex,
       phaseRemainingMs,
-      preset,
+      spec,
+      stepIndex,
+      stepRemainingMs,
+      stepRemainingM,
       journalOk,
     ];
   }
@@ -456,8 +612,11 @@ class RecorderStatus {
       phase: result[8]! as Phase,
       repIndex: result[9]! as int,
       phaseRemainingMs: result[10]! as int,
-      preset: result[11] as Preset?,
-      journalOk: result[12]! as bool,
+      spec: result[11] as SessionSpec?,
+      stepIndex: result[12] as int?,
+      stepRemainingMs: result[13] as int?,
+      stepRemainingM: result[14] as double?,
+      journalOk: result[15]! as bool,
     );
   }
 
@@ -470,7 +629,7 @@ class RecorderStatus {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(preset, other.preset) && _deepEquals(journalOk, other.journalOk);
+    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk);
   }
 
   @override
@@ -558,7 +717,7 @@ class OrphanJournal {
 
 /// Replay mode (plan §12; debug builds only): a fixture trace fed through the
 /// recorder at `speed`x on a virtual clock. `fixture` is `synthetic-4x4`
-/// (straight line: 60 s warmup, the preset's reps, 60 s cooldown, HR by phase)
+/// (straight line: 60 s warmup, the spec's steps, 60 s cooldown, HR by phase)
 /// or the name of a CSV under the app's Android `assets/replay/`.
 class ReplayConfig {
   ReplayConfig({
@@ -1210,7 +1369,7 @@ class StateEvent extends RecorderEvent {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
-/// Preset phase change (warmup -> work 1 -> recovery 1 -> ... -> cooldown).
+/// Phase change (warmup -> work 1 -> recovery 1 -> ... -> cooldown).
 class PhaseEvent extends RecorderEvent {
   PhaseEvent({
     required this.phase,
@@ -1288,68 +1447,83 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is CueKind) {
       buffer.putUint8(134);
       writeValue(buffer, value.index);
-    }    else if (value is FaultKind) {
+    }    else if (value is StepKind) {
       buffer.putUint8(135);
       writeValue(buffer, value.index);
-    }    else if (value is StartError) {
+    }    else if (value is TargetKind) {
       buffer.putUint8(136);
       writeValue(buffer, value.index);
-    }    else if (value is PermissionKind) {
+    }    else if (value is RecoveryStyle) {
       buffer.putUint8(137);
       writeValue(buffer, value.index);
-    }    else if (value is ExitReason) {
+    }    else if (value is CueProfile) {
       buffer.putUint8(138);
       writeValue(buffer, value.index);
-    }    else if (value is Preset) {
+    }    else if (value is FaultKind) {
       buffer.putUint8(139);
-      writeValue(buffer, value.encode());
-    }    else if (value is StartResult) {
+      writeValue(buffer, value.index);
+    }    else if (value is StartError) {
       buffer.putUint8(140);
-      writeValue(buffer, value.encode());
-    }    else if (value is LapSummary) {
+      writeValue(buffer, value.index);
+    }    else if (value is PermissionKind) {
       buffer.putUint8(141);
-      writeValue(buffer, value.encode());
-    }    else if (value is RecorderStatus) {
+      writeValue(buffer, value.index);
+    }    else if (value is ExitReason) {
       buffer.putUint8(142);
-      writeValue(buffer, value.encode());
-    }    else if (value is OrphanJournal) {
+      writeValue(buffer, value.index);
+    }    else if (value is Step) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
-    }    else if (value is ReplayConfig) {
+    }    else if (value is SessionSpec) {
       buffer.putUint8(144);
       writeValue(buffer, value.encode());
-    }    else if (value is PermissionStatus) {
+    }    else if (value is StartResult) {
       buffer.putUint8(145);
       writeValue(buffer, value.encode());
-    }    else if (value is BleStatus) {
+    }    else if (value is LapSummary) {
       buffer.putUint8(146);
       writeValue(buffer, value.encode());
-    }    else if (value is ExitDiagnosis) {
+    }    else if (value is RecorderStatus) {
       buffer.putUint8(147);
       writeValue(buffer, value.encode());
-    }    else if (value is BleDevice) {
+    }    else if (value is OrphanJournal) {
       buffer.putUint8(148);
       writeValue(buffer, value.encode());
-    }    else if (value is BackupStatus) {
+    }    else if (value is ReplayConfig) {
       buffer.putUint8(149);
       writeValue(buffer, value.encode());
-    }    else if (value is TickEvent) {
+    }    else if (value is PermissionStatus) {
       buffer.putUint8(150);
       writeValue(buffer, value.encode());
-    }    else if (value is LapEvent) {
+    }    else if (value is BleStatus) {
       buffer.putUint8(151);
       writeValue(buffer, value.encode());
-    }    else if (value is CueEvent) {
+    }    else if (value is ExitDiagnosis) {
       buffer.putUint8(152);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is BleDevice) {
       buffer.putUint8(153);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is BackupStatus) {
       buffer.putUint8(154);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is TickEvent) {
       buffer.putUint8(155);
+      writeValue(buffer, value.encode());
+    }    else if (value is LapEvent) {
+      buffer.putUint8(156);
+      writeValue(buffer, value.encode());
+    }    else if (value is CueEvent) {
+      buffer.putUint8(157);
+      writeValue(buffer, value.encode());
+    }    else if (value is FaultEvent) {
+      buffer.putUint8(158);
+      writeValue(buffer, value.encode());
+    }    else if (value is StateEvent) {
+      buffer.putUint8(159);
+      writeValue(buffer, value.encode());
+    }    else if (value is PhaseEvent) {
+      buffer.putUint8(160);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -1379,49 +1553,63 @@ class _PigeonCodec extends StandardMessageCodec {
         return value == null ? null : CueKind.values[value];
       case 135:
         final value = readValue(buffer) as int?;
-        return value == null ? null : FaultKind.values[value];
+        return value == null ? null : StepKind.values[value];
       case 136:
         final value = readValue(buffer) as int?;
-        return value == null ? null : StartError.values[value];
+        return value == null ? null : TargetKind.values[value];
       case 137:
         final value = readValue(buffer) as int?;
-        return value == null ? null : PermissionKind.values[value];
+        return value == null ? null : RecoveryStyle.values[value];
       case 138:
         final value = readValue(buffer) as int?;
-        return value == null ? null : ExitReason.values[value];
+        return value == null ? null : CueProfile.values[value];
       case 139:
-        return Preset.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : FaultKind.values[value];
       case 140:
-        return StartResult.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : StartError.values[value];
       case 141:
-        return LapSummary.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : PermissionKind.values[value];
       case 142:
-        return RecorderStatus.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : ExitReason.values[value];
       case 143:
-        return OrphanJournal.decode(readValue(buffer)!);
+        return Step.decode(readValue(buffer)!);
       case 144:
-        return ReplayConfig.decode(readValue(buffer)!);
+        return SessionSpec.decode(readValue(buffer)!);
       case 145:
-        return PermissionStatus.decode(readValue(buffer)!);
+        return StartResult.decode(readValue(buffer)!);
       case 146:
-        return BleStatus.decode(readValue(buffer)!);
+        return LapSummary.decode(readValue(buffer)!);
       case 147:
-        return ExitDiagnosis.decode(readValue(buffer)!);
+        return RecorderStatus.decode(readValue(buffer)!);
       case 148:
-        return BleDevice.decode(readValue(buffer)!);
+        return OrphanJournal.decode(readValue(buffer)!);
       case 149:
-        return BackupStatus.decode(readValue(buffer)!);
+        return ReplayConfig.decode(readValue(buffer)!);
       case 150:
-        return TickEvent.decode(readValue(buffer)!);
+        return PermissionStatus.decode(readValue(buffer)!);
       case 151:
-        return LapEvent.decode(readValue(buffer)!);
+        return BleStatus.decode(readValue(buffer)!);
       case 152:
-        return CueEvent.decode(readValue(buffer)!);
+        return ExitDiagnosis.decode(readValue(buffer)!);
       case 153:
-        return FaultEvent.decode(readValue(buffer)!);
+        return BleDevice.decode(readValue(buffer)!);
       case 154:
-        return StateEvent.decode(readValue(buffer)!);
+        return BackupStatus.decode(readValue(buffer)!);
       case 155:
+        return TickEvent.decode(readValue(buffer)!);
+      case 156:
+        return LapEvent.decode(readValue(buffer)!);
+      case 157:
+        return CueEvent.decode(readValue(buffer)!);
+      case 158:
+        return FaultEvent.decode(readValue(buffer)!);
+      case 159:
+        return StateEvent.decode(readValue(buffer)!);
+      case 160:
         return PhaseEvent.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -1446,14 +1634,19 @@ class RecorderApi {
 
   /// Idempotent: a second call while recording returns the running id. Must be
   /// called while the Activity is visible (the FGS is started from it, B2).
-  Future<StartResult> start(RecordMode mode, Preset? preset, Units units) async {
+  ///
+  /// `spec`: required for `intervals` and `cooper`, the fartlek spec or null
+  /// for `laps`, null for `free`; anything else is `unsupportedSession`.
+  /// `lastCooperVo2`: the previous Cooper result for the projection cue (I2;
+  /// Kotlin does not read history).
+  Future<StartResult> start(RecordMode mode, SessionSpec? spec, Units units, double? lastCooperVo2) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.start$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[mode, preset, units]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[mode, spec, units, lastCooperVo2]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
@@ -1466,14 +1659,14 @@ class RecorderApi {
   }
 
   /// Debug builds only: like `start`, fed from a fixture instead of GPS/BLE.
-  Future<StartResult> startReplay(RecordMode mode, Preset? preset, Units units, ReplayConfig replay) async {
+  Future<StartResult> startReplay(RecordMode mode, SessionSpec? spec, Units units, ReplayConfig replay) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.startReplay$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[mode, preset, units, replay]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[mode, spec, units, replay]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
@@ -1486,7 +1679,7 @@ class RecorderApi {
   }
 
   /// Continue an orphaned journal after the user confirms (plan §3): writes the
-  /// `gap` line, rebuilds the preset phase from the journal, restarts the FGS.
+  /// `gap` line, rebuilds the step phase from the journal, restarts the FGS.
   /// Idempotent like `start`.
   Future<StartResult> resumeRecovered(String runId) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.resumeRecovered$pigeonVar_messageChannelSuffix';
@@ -1561,7 +1754,7 @@ class RecorderApi {
     ;
   }
 
-  /// The "Start 4x4" action: ends the untimed warm-up and starts rep 1 (same
+  /// The "Start reps" action: ends the untimed warm-up and starts rep 1 (same
   /// effect and journal line as a first `lap(button)`); a no-op anywhere else,
   /// so a manual LAP mid-rep can never be confused with starting.
   Future<void> startReps() async {
@@ -1702,8 +1895,8 @@ class RecorderApi {
 
   /// The user's volume-key LAP setting for Laps runs, persisted natively (the
   /// recorder reads it at start). Takes effect from the next run or resume,
-  /// not the live one. Unset means on. 4x4 and Free never use volume keys,
-  /// whatever this says. A no-op in effect where
+  /// not the live one. Unset means on. Intervals, Free and Cooper never use
+  /// volume keys, whatever this says. A no-op in effect where
   /// `PermissionsApi.volumeKeyLapsSupported()` is false.
   Future<void> setVolumeKeyLaps(bool enabled) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.setVolumeKeyLaps$pigeonVar_messageChannelSuffix';

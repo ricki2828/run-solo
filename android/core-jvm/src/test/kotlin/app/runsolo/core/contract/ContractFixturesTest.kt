@@ -2,6 +2,7 @@ package app.runsolo.core.contract
 
 import app.runsolo.core.json.Json
 import app.runsolo.core.json.list
+import app.runsolo.core.model.SessionSpec
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -41,12 +42,46 @@ class ContractFixturesTest {
     }
 
     @Test
-    fun `every schema-2 fixture is schema 2 with a schema-2 mode`() {
+    fun `schema-2 fixtures are frozen - five files, schema 2, fourByFour carries a preset`() {
+        val files = File(ContractFixtures.SCHEMA2_DIR).listFiles { f -> f.name.endsWith(".json") }!!.sortedBy { it.name }
+        assertEquals(
+            listOf("four_by_four_preset_auto_hr", "free_run_no_laps", "gps_dropout_hr", "laps_run_pause_manual_laps", "treadmill_no_fix_hr"),
+            files.map { it.nameWithoutExtension },
+        )
+        for (f in files) {
+            val m = Json.parseObject(f.readText())
+            assertEquals(2L, m["schema"], f.name)
+            assertTrue(m["mode"] in setOf("fourByFour", "laps", "free"), f.name)
+            assertEquals(m["mode"] == "fourByFour", m["preset"] != null, f.name)
+            assertTrue(!m.containsKey("session"), f.name)
+        }
+    }
+
+    @Test
+    fun `every schema-3 fixture is schema 3 - intervals and cooper carry a session, preset is gone`() {
         for ((name, json) in ContractFixtures.all()) {
             val m = Json.parseObject(json)
-            assertEquals(2L, m["schema"], name)
-            assertTrue(m["mode"] in setOf("fourByFour", "laps", "free"), "$name mode=${m["mode"]}")
-            assertEquals(m["mode"] == "fourByFour", m["preset"] != null, "$name preset")
+            assertEquals(3L, m["schema"], name)
+            assertTrue(m["mode"] in setOf("intervals", "laps", "free", "cooper"), "$name mode=${m["mode"]}")
+            assertTrue(!m.containsKey("preset"), "$name still has preset")
+            assertTrue(m.containsKey("session"), "$name has no session key")
+            val session = m["session"] as Map<*, *>?
+            when (m["mode"]) {
+                "intervals", "cooper" -> assertTrue(session != null, name)
+                "free" -> assertNull(session, name)
+                "laps" -> assertTrue(session == null || session["templateId"] == "fartlek", name)
+            }
+            // Canonical key order: ... mode, session, units ...
+            val keys = m.keys.toList()
+            assertEquals(keys.indexOf("mode") + 1, keys.indexOf("session"), name)
+            assertEquals(keys.indexOf("session") + 1, keys.indexOf("units"), name)
+            // Every session the writer emits parses back and validates.
+            if (session != null) {
+                @Suppress("UNCHECKED_CAST")
+                val spec = SessionSpec.fromJson(session as Map<String, Any?>)!!
+                assertEquals(emptyList(), spec.problems(), name)
+                assertEquals(session, Json.parseObject(Json.write(spec.toJson())), "$name session round trip")
+            }
         }
     }
 
@@ -84,7 +119,21 @@ class ContractFixturesTest {
         assertEquals(60 + 4 * 240 + 3 * 180 + 60, s.size) // recording starts at second 1; the last tick is the stop second
         assertTrue(s.all { it[7] != null && it[1] != null })
         assertTrue(s.zipWithNext().all { (a, b) -> (b[0] as Long) > (a[0] as Long) && (b[6] as Number).toDouble() >= (a[6] as Number).toDouble() })
-        assertEquals(mapOf("reps" to 4L, "workSeconds" to 240L, "recoverySeconds" to 180L), m["preset"])
+        assertEquals("intervals", m["mode"])
+        val session = m["session"] as Map<*, *>
+        assertEquals(
+            listOf("templateId", "templateVersion", "name", "warmupSeconds", "cooldownSeconds", "lapLockout", "cueProfile", "hrBand", "steps"),
+            session.keys.toList(),
+        )
+        assertEquals("norwegian-4x4", session["templateId"])
+        assertEquals(1L, session["templateVersion"])
+        assertEquals("Norwegian 4x4", session["name"])
+        assertEquals(listOf(0.85, 0.95), session["hrBand"])
+        val steps = session["steps"] as List<*>
+        assertEquals(7, steps.size)
+        assertEquals(mapOf("kind" to "work", "target" to "time", "value" to 240L, "style" to "run", "rep" to 1L), steps[0])
+        assertEquals(mapOf("kind" to "recovery", "target" to "time", "value" to 180L, "style" to "jog", "rep" to 1L), steps[1])
+        assertEquals(mapOf("kind" to "work", "target" to "time", "value" to 240L, "style" to "run", "rep" to 4L), steps[6])
         assertEquals("2025-09-24T00:00:00Z", m["start"])
         assertEquals("2025-09-24T00:27:00Z", m["end"])
     }
@@ -123,5 +172,49 @@ class ContractFixturesTest {
         assertEquals(listOf(0L, 180_000L, 360_000L), laps(m).map { it["t0"] })
         assertEquals(540_000L, laps(m).last()["t1"])
         assertNull(samples(m).first()[7])
+    }
+
+    @Test
+    fun `3-rep 4x4 - 7 laps, 5 auto, no recovery after rep 3`() {
+        val m = fixture("four_by_four_3_reps")
+        val laps = laps(m)
+        assertEquals(7, laps.size)
+        assertEquals(5, laps.count { it["kind"] == "auto" })
+        assertEquals(listOf(60_000L, 300_000L, 450_000L, 690_000L, 840_000L, 1_080_000L), laps.dropLast(1).map { it["t1"] })
+        @Suppress("UNCHECKED_CAST")
+        assertEquals(SessionSpec.norwegian4x4(3, 240, 150), SessionSpec.fromJson(m["session"] as Map<String, Any?>))
+    }
+
+    @Test
+    fun `cooper - the Cooper session, no lap input, 12 minutes`() {
+        val m = fixture("cooper_12min")
+        assertEquals("cooper", m["mode"])
+        assertEquals("cooper", (m["session"] as Map<*, *>)["templateId"])
+        assertEquals(true, (m["session"] as Map<*, *>)["lapLockout"])
+        assertEquals(1, laps(m).size)
+        assertEquals(720, samples(m).size)
+    }
+
+    @Test
+    fun `fartlek - laps with the steps-empty fartlek session and 5 manual segments`() {
+        val m = fixture("fartlek_laps")
+        assertEquals("laps", m["mode"])
+        assertEquals("fartlek", (m["session"] as Map<*, *>)["templateId"])
+        assertEquals(emptyList<Any?>(), (m["session"] as Map<*, *>)["steps"])
+        assertEquals(listOf(120_000L, 150_000L, 300_000L, 345_000L, 480_000L), laps(m).map { it["t1"] })
+    }
+
+    @Test
+    fun `8x400 shape - distance session, 15 auto laps on the generator's 400 and 200 m boundaries`() {
+        val m = fixture("session_8x400_shape")
+        assertEquals("intervals", m["mode"])
+        val steps = (m["session"] as Map<*, *>)["steps"] as List<*>
+        assertEquals(15, steps.size)
+        assertEquals(mapOf("kind" to "recovery", "target" to "distance", "value" to 200L, "style" to "jog", "rep" to 1L), steps[1])
+        val laps = laps(m)
+        assertEquals(17, laps.size) // warm-up, 15 steps, cool-down
+        assertEquals(15, laps.count { it["kind"] == "auto" })
+        val work = laps.subList(1, 16).filterIndexed { i, _ -> i % 2 == 0 }
+        assertTrue(work.all { l -> ((l["d1"] as Number).toDouble() - (l["d0"] as Number).toDouble()) in 395.0..405.0 }, "work laps ~400 m: ${work.map { (it["d1"] as Number).toDouble() - (it["d0"] as Number).toDouble() }}")
     }
 }

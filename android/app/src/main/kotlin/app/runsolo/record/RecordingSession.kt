@@ -22,7 +22,7 @@ import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.HrReading
 import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.Phase
-import app.runsolo.core.model.Preset
+import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.RecorderState
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.Units
@@ -53,7 +53,7 @@ class RecordingSession(
     context: Context,
     override val runId: String,
     val mode: RunMode,
-    val preset: Preset?,
+    val spec: SessionSpec?,
     val units: Units,
     private val replay: ReplayRunner?,
     volumeKeyLaps: Boolean,
@@ -140,8 +140,8 @@ class RecordingSession(
         val t = clock()
         startWallMs = System.currentTimeMillis()
         writer.open()
-        writer.append(JournalLine.Header(t, startWallMs, runId, device, app, tz, mode, preset, units))
-        core = RecorderCore(mode, preset, RecorderCore.Config(volumeKeyLaps = volumeKeyLapsEnabled))
+        writer.append(JournalLine.Header(t, startWallMs, runId, device, app, tz, mode, spec, units))
+        core = RecorderCore(mode, spec, RecorderCore.Config(volumeKeyLaps = volumeKeyLapsEnabled))
         handle(core.start(t), t)
         lapStartT = t
         ExitDiagnostics.noteStart(context, runId, startWallMs)
@@ -609,7 +609,10 @@ class RecordingSession(
             phase = st.phase.toPigeon(),
             repIndex = st.repIndex.toLong(),
             phaseRemainingMs = st.phaseRemainingMs,
-            preset = preset?.toPigeon(),
+            spec = spec?.toPigeon(),
+            stepIndex = st.stepIndex?.toLong(),
+            stepRemainingMs = st.stepRemainingMs,
+            stepRemainingM = st.stepRemainingM,
             journalOk = writer.ok,
         )
     }
@@ -623,7 +626,7 @@ class RecordingSession(
             state = st.state,
             phase = st.phase,
             repIndex = st.repIndex,
-            reps = preset?.reps,
+            reps = spec?.reps?.takeIf { mode.followsSteps },
             elapsedBaseRealtime = SystemClock.elapsedRealtime() - st.activeMs,
             phaseRemainingMs = if (timed && st.state == RecorderState.recording) st.phaseRemainingMs else null,
             lapIndex = st.lapIndex,

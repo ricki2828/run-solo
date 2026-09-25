@@ -52,7 +52,16 @@ class EventTraceFixtureTest {
         assertEquals("stop", cues.last())
         // Status snapshots carry laps and mode.
         val status = ev.last { it["kind"] == "status" }
-        assertEquals("fourByFour", status["mode"])
+        assertEquals("intervals", status["mode"])
         assertEquals(8, (status["laps"] as List<*>).size)
+        // ... and the session in the Pigeon shape, with the step being run.
+        assertEquals("norwegian-4x4", (status["spec"] as Map<*, *>)["templateId"])
+        assertEquals(7, ((status["spec"] as Map<*, *>)["steps"] as List<*>).size)
+        val recovery1 = ev.first { it["kind"] == "status" && it["phase"] == "recovery" }
+        assertEquals(1L, recovery1["stepIndex"])
+        assertEquals(180_000L, recovery1["stepRemainingMs"])
+        assertEquals(null, recovery1["stepRemainingM"])
+        val warmup = ev.first { it["kind"] == "status" }
+        assertEquals(null, warmup["stepIndex"])
     }
 }
