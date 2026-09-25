@@ -49,7 +49,7 @@ class LapInput(
     private var session: MediaSession? = null
     private var receiver: BroadcastReceiver? = null
     private var deviceCallback: AudioDeviceCallback? = null
-    private var lastPressT = 0L
+    private var lastPressT = -DEBOUNCE_MS // a press at elapsedRealtime < 400 ms (Robolectric's clock starts near 0) is not debounced
     private var unavailableReported = false
 
     /** Broadcasts caused by our own restore are ignored until this time. */

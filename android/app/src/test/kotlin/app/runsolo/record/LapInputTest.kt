@@ -47,6 +47,7 @@ class LapInputTest {
     fun `API 34 - one-step music change laps once, restores the volume, debounced`() {
         val li = input(fallback = true)
         li.enable()
+        advance(1_000) // Robolectric's elapsedRealtime starts near 0; the debounce must not eat the first press
         audio.setStreamVolume(AudioManager.STREAM_MUSIC, 7, 0)
         volumeChanged(AudioManager.STREAM_MUSIC, prev = 7, value = 8)
         assertEquals(1, laps)
