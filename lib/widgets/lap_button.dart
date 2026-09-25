@@ -132,6 +132,9 @@ class _LapButtonState extends State<LapButton> with TickerProviderStateMixin {
                     borderRadius: BorderRadius.circular(Radii.lap),
                   ),
                   alignment: Alignment.center,
+                  // Inset so a long label ("START 4x4") scales down clear of
+                  // the rounded edges instead of touching them.
+                  padding: const EdgeInsets.symmetric(horizontal: Space.x24),
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
