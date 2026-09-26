@@ -187,6 +187,46 @@ void main() {
     );
   });
 
+  test('change line rounds before the sign: no "-0.0"', () {
+    final d = DateTime.utc(2026, 9, 24);
+    final prior = [
+      (DateTime.utc(2026, 3, 1), 49.0),
+      (DateTime.utc(2026, 6, 10), 51.0),
+    ];
+    expect(
+      CooperResult.changeLine(50.96, d, prior),
+      'VO2 est. no change since June',
+    );
+    expect(
+      CooperResult.changeLine(51.04, d, prior),
+      'VO2 est. no change since June',
+    );
+    expect(
+      CooperResult.changeLine(50.94, d, prior),
+      'VO2 est. -0.1 since June',
+    );
+    expect(carriesEstimateMarker('VO2 est. no change since June'), isTrue);
+  });
+
+  test('change line adds the year when the earlier test is another year', () {
+    final d = DateTime.utc(2026, 2, 14);
+    expect(
+      CooperResult.changeLine(52.4, d, [
+        (DateTime.utc(2025, 3, 1), 49),
+        (DateTime.utc(2025, 6, 10), 51),
+      ]),
+      'VO2 est. +1.4 since June 2025',
+    );
+    // Same month number, different year: still the year, not the day.
+    expect(
+      CooperResult.changeLine(52.4, d, [
+        (DateTime.utc(2025, 1, 1), 49),
+        (DateTime.utc(2025, 2, 3), 51),
+      ]),
+      'VO2 est. +1.4 since February 2025',
+    );
+  });
+
   test('copy: every number carries an estimate marker; no em dashes', () {
     final c = CooperResult.of(cooperRun(), indoor: false, noisy: false);
     final strings = [

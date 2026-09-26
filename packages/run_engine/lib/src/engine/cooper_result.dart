@@ -128,12 +128,16 @@ class CooperResult {
   ) {
     if (prior.length < 2) return null;
     final (prevDate, prevVo2) = prior.last;
-    final d = vo2 - prevVo2;
-    final sign = d >= 0 ? '+' : '-';
-    final when = prevDate.year == date.year && prevDate.month == date.month
+    // Round first so the sign matches the shown figure (never "-0.0").
+    final r = ((vo2 - prevVo2) * 10).round() / 10;
+    final when = prevDate.year != date.year
+        ? '${_longMonths[prevDate.month - 1]} ${prevDate.year}'
+        : prevDate.month == date.month
         ? '${prevDate.day} ${_months[prevDate.month - 1]}'
         : _longMonths[prevDate.month - 1];
-    return 'VO2 est. $sign${d.abs().toStringAsFixed(1)} since $when';
+    if (r == 0) return 'VO2 est. no change since $when';
+    final sign = r > 0 ? '+' : '-';
+    return 'VO2 est. $sign${r.abs().toStringAsFixed(1)} since $when';
   }
 
   static const List<String> _months = [
