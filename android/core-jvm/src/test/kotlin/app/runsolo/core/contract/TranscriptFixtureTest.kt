@@ -76,7 +76,7 @@ class TranscriptFixtureTest {
 
     /** Founder 26-Sep: each nudge follows its split + rank as its own line, right after it. */
     @Test
-    fun `nudges follow their cue as their own line - fast start, HR drift, rep fade`() {
+    fun `nudges follow their cue as their own line, once per run - fast start, HR drift, rep fade`() {
         for ((kind, line) in listOf(
             "t4-free-5k-fast" to ReplayScenarios.T4.FAST_START_5K,
             "t4-free-10k-fade" to ReplayScenarios.T4.HR_DRIFT,
@@ -86,6 +86,7 @@ class TranscriptFixtureTest {
             val i = said.indexOf(line)
             assertTrue(i > 0, "$kind: no \"$line\" in $said")
             assertFalse(said[i - 1].contains(line), "$kind: the nudge is its own line")
+            assertEquals(1, said.count { it == line }, "$kind: each rule speaks once per run (#92)")
         }
         assertTrue(texts("t4-free-5k-fast")[texts("t4-free-5k-fast").indexOf(ReplayScenarios.T4.FAST_START_5K) - 1].startsWith("1 k,"), "after the km 1 split and rank")
     }
