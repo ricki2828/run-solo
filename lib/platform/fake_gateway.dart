@@ -213,6 +213,9 @@ class FakeRecorderGateway implements RecorderGateway {
     if (_state != RecorderState.idle) {
       return StartResult(runId: _runId, error: StartError.alreadyRunning);
     }
+    // As RecordingSession: no coaching without a context or with Coaching
+    // tips off in Settings.
+    tipsMuted = liveContext == null || liveContext.coachingMuted ? null : false;
     _runCounter += 1;
     _begin(
       'fake-${_runCounter.toString().padLeft(3, '0')}',
@@ -430,6 +433,7 @@ class FakeRecorderGateway implements RecorderGateway {
     journalOk: true,
     pausedAtElapsedMs: _state == RecorderState.paused ? _pausedAtMs : null,
     finishRequests: _finishRequests == 0 ? null : _finishRequests,
+    tipsMuted: _state == RecorderState.idle ? null : tipsMuted,
     mode: _state == RecorderState.idle ? RecordMode.free : _mode,
     laps: List.of(_laps),
   );
@@ -529,6 +533,17 @@ class FakeRecorderGateway implements RecorderGateway {
 
   @override
   Future<void> setKmSplits(bool enabled) async => kmSplits = enabled;
+
+  /// `RecorderStatus.tipsMuted` (LV2): set by [start] from its LiveContext;
+  /// tests may script it (a notification "Mute tips" is [muteTips]).
+  bool? tipsMuted;
+
+  @override
+  Future<void> muteTips() async {
+    if (_state == RecorderState.idle || tipsMuted != false) return;
+    tipsMuted = true;
+    _emitState();
+  }
 
   /// Last value passed to [setVolumeKeyLaps]; null until called.
   bool? volumeKeyLaps;
