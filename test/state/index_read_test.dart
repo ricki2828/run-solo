@@ -119,10 +119,9 @@ void main() {
     },
   );
 
-  test('the cascade decodes the edited run and later same-key runs, never '
-      'another key or an earlier run', () async {
+  test('a sidecar change that moves no prior (a note) rebuilds that run '
+      'only', () async {
     final store = await warm();
-    // Touch a2's sidecar directly (as another writer would).
     final sc = File('${runsDir.path}/run-${a2.id}.edits.json');
     sc.writeAsStringSync(
       engine.RunSidecarCodec.encode(
@@ -131,7 +130,46 @@ void main() {
       ),
     );
     await store.list();
-    expect(store.decoded.toSet(), {name(a2), name(a3)});
+    expect(store.decoded, [name(a2)]);
+  });
+
+  test('a weather write (W1 backfill) never cascades', () async {
+    final store = await warm();
+    for (final r in [a1, a2]) {
+      await store.setWeather(
+        r.id,
+        const engine.WeatherRecord(status: engine.WeatherStatus.skipped),
+      );
+    }
+    await store.list();
+    expect(store.decoded.toSet(), {name(a1), name(a2)});
+  });
+
+  test('a changed prior cascades to later runs of its key only', () async {
+    final store = await warm();
+    // a2 drops its last rep: its prior (pace, rep paces) changes.
+    await store.applyLapEdit(a2.id, const engine.LapEdit.drop(7));
+    expect(store.decoded.toSet(), containsAll({name(a2), name(a3)}));
+    expect(store.decoded, isNot(contains(name(a1))));
+    expect(store.decoded, isNot(contains(name(free))));
+  });
+
+  test('an event-name change rebuilds every entry', () async {
+    final store = await warm();
+    final before = (await store.readIndex()).inputs;
+    final other = FileRunStore(
+      runsDir,
+      profile: () => profile,
+      runEngine: const engine.RunEngine(
+        names: engine.EventNames(parkrun: 'Saturday 5K'),
+      ),
+    );
+    stores.add(other);
+    await other.list();
+    expect(other.decoded, hasLength(4));
+    final after = (await other.readIndex()).inputs;
+    expect(after, isNot(before));
+    expect(after, contains('Saturday 5K'));
   });
 
   test('a max-HR change rebuilds every entry and keeps derived data', () async {

@@ -24,6 +24,8 @@ void main() {
   /// Free runs long enough for the 5K board (40 min at 6:00/km).
   Future<FileRunStore> storeWithFreeRuns(int n) async {
     final store = FileRunStore(runsDir);
+    // The live context reads derived data: build it (tests default to none).
+    store.deriveBatch = FileRunStore.deriveInIsolate;
     await store.importBundles([
       for (var i = 1; i <= n; i++)
         engine.RunBundle(
