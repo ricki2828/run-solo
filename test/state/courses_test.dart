@@ -254,6 +254,43 @@ void main() {
       expect(damaged.nameOf('c-1'), isNull);
     });
   });
+
+  group('file store (W5b index)', () {
+    late Directory dir;
+    setUp(() => dir = Directory.systemTemp.createTempSync('courses-w5b'));
+    tearDown(() => dir.deleteSync(recursive: true));
+
+    test('import tags once, the index keys by course, a later list decodes '
+        'nothing, and the board folds from index rows', () async {
+      final runsDir = Directory('${dir.path}/runs');
+      final store = FileRunStore(runsDir);
+      final files = [event(1, mps: 3.4), event(2, mps: 3.6), event(3)];
+      await store.importBundles([
+        for (final f in files) engine.RunBundle(run: f),
+      ]);
+      final runs = await store.list();
+      final course = engine.ParkrunCourses.newCourseId(files.first);
+      for (final r in runs) {
+        expect(r.comparisonKey, 'parkrun:$course'); // event-name-ok
+        expect(courseIdOf(r), course);
+      }
+      expect(store.decoded, hasLength(3), reason: 'each file decoded once');
+      await store.derivedIdle;
+      store.decoded.clear();
+      final again = await store.list();
+      expect(store.decoded, isEmpty, reason: 'tagged: nothing to decode');
+      final board = CourseBoard.fold(again, course, now: week(4));
+      expect(board.ranked, hasLength(3));
+      expect(board.best!.run.id, files[1].id);
+
+      final d = await store.setOfficialTime(files[0].id, 1400);
+      expect(d.sidecar.parkrun?.courseId, course);
+      final after = CourseBoard.fold(await store.list(), course, now: week(4));
+      final e = after.ranked.firstWhere((x) => x.run.id == files[0].id);
+      expect(e.official, isTrue);
+      expect(e.finishSeconds, closeTo(1400, 0.5));
+    });
+  });
 }
 
 engine.RunSidecar _withCourse(String id, String course) =>
