@@ -498,6 +498,27 @@ void main() {
     await golden(tester, 'start_laps_android14');
   });
 
+  // Onboarding on a standard and a short phone: the body scrolls, CONTINUE
+  // stays pinned (the emulator showed a 26 px overflow at 360 x 640).
+  for (final h in [800, 640]) {
+    testWidgets('onboarding: every page at 360 x $h', (tester) async {
+      await pumpApp(
+        tester,
+        fakeServices(settings: const AppSettings()),
+        onboarding: true,
+      );
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await settleAnimations(tester);
+      await golden(tester, 'onboarding_intro_360x$h');
+      await tester.tap(find.text('CONTINUE'));
+      await settleAnimations(tester);
+      await golden(tester, 'onboarding_birth_year_360x$h');
+      await tester.tap(find.text('Skip'));
+      await settleAnimations(tester);
+      await golden(tester, 'onboarding_setup_360x$h');
+    });
+  }
+
   // B3 / brief A9: the Lap Draw intro over Home. The ticker starts on the
   // first frame after pumpApp, so frame times are from there.
   Future<void> introAt(

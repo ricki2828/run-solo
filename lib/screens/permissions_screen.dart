@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../theme/theme.dart';
+import '../widgets/chrome.dart';
 import '../widgets/setup_row.dart';
 import 'settings_screen.dart';
 
@@ -99,124 +100,123 @@ class _PermissionsScreenState extends State<PermissionsScreen>
         title: Text(widget.onboarding ? 'SET UP' : 'CHECKLIST'),
         automaticallyImplyLeading: !widget.onboarding,
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
-          children: [
-            const SizedBox(height: Space.x8),
-            Text(
-              kPrivacyParagraph,
-              style: text.bodyMedium?.copyWith(color: t.inkSecondary),
-            ),
-            if (widget.onboarding)
-              Padding(
-                padding: const EdgeInsets.only(top: Space.x8),
-                child: Text(
-                  kOnboardingInternetLine,
-                  style: text.bodyMedium?.copyWith(color: t.inkMuted),
-                ),
+      body: PinnedFooterLayout(
+        children: [
+          const SizedBox(height: Space.x8),
+          Text(
+            kPrivacyParagraph,
+            style: text.bodyMedium?.copyWith(color: t.inkSecondary),
+          ),
+          if (widget.onboarding)
+            Padding(
+              padding: const EdgeInsets.only(top: Space.x8),
+              child: Text(
+                kOnboardingInternetLine,
+                style: text.bodyMedium?.copyWith(color: t.inkMuted),
               ),
-            const SizedBox(height: Space.x24),
-            SetupRow(
-              icon: Icons.location_on_outlined,
-              title: 'Location while using',
-              why: 'GPS is the pace. Precise, only while you record.',
-              state: locationState,
-              detail: locationDetail,
-              onTap: () => _request(PermissionKind.location),
             ),
-            SetupRow(
-              icon: Icons.notifications_none,
-              title: 'Notifications',
-              why:
-                  'The run lives in a notification: LAP and Pause from the '
-                  'lock screen, phase countdown in your pocket.',
-              state: s.notifications ? SetupState.ok : SetupState.blocked,
-              detail: s.notifications
-                  ? null
-                  : _deniedHint(
-                          PermissionKind.notifications,
-                          'Denied: no lock-screen LAP. Allow it under',
-                        ) ??
-                        'Denied: no lock-screen LAP and Android may stop the run.',
-              onTap: () => _request(PermissionKind.notifications),
+          const SizedBox(height: Space.x24),
+          SetupRow(
+            icon: Icons.location_on_outlined,
+            title: 'Location while using',
+            why: 'GPS is the pace. Precise, only while you record.',
+            state: locationState,
+            detail: locationDetail,
+            onTap: () => _request(PermissionKind.location),
+          ),
+          SetupRow(
+            icon: Icons.notifications_none,
+            title: 'Notifications',
+            why:
+                'The run lives in a notification: LAP and Pause from the '
+                'lock screen, phase countdown in your pocket.',
+            state: s.notifications ? SetupState.ok : SetupState.blocked,
+            detail: s.notifications
+                ? null
+                : _deniedHint(
+                        PermissionKind.notifications,
+                        'Denied: no lock-screen LAP. Allow it under',
+                      ) ??
+                      'Denied: no lock-screen LAP and Android may stop the run.',
+            onTap: () => _request(PermissionKind.notifications),
+          ),
+          SetupRow(
+            icon: Icons.battery_saver_outlined,
+            title: 'Battery optimisation off',
+            why:
+                'Some phones kill a recording after a few minutes. '
+                'Tap to let Run Supreme keep recording with the screen off.',
+            state: s.batteryUnrestricted ? SetupState.ok : SetupState.needed,
+            onTap: () async {
+              // Phase 2 backlog: in-app exemption prompt (system dialog),
+              // the settings page is the gateway's own fallback.
+              await perms.requestBatteryExemption();
+              await _refresh();
+            },
+          ),
+          SetupRow(
+            icon: Icons.bluetooth,
+            title: 'Nearby devices',
+            why: 'Only for a heart-rate strap. Skip it if you run without one.',
+            detail: _deniedHint(
+              PermissionKind.bluetooth,
+              'Denied. Allow it under',
             ),
-            SetupRow(
-              icon: Icons.battery_saver_outlined,
-              title: 'Battery optimisation off',
-              why:
-                  'Some phones kill a recording after a few minutes. '
-                  'Tap to let Run Supreme keep recording with the screen off.',
-              state: s.batteryUnrestricted ? SetupState.ok : SetupState.needed,
-              onTap: () async {
-                // Phase 2 backlog: in-app exemption prompt (system dialog),
-                // the settings page is the gateway's own fallback.
-                await perms.requestBatteryExemption();
-                await _refresh();
-              },
-            ),
-            SetupRow(
-              icon: Icons.bluetooth,
-              title: 'Nearby devices',
-              why: 'Only for a heart-rate strap. Skip it if you run without one.',
-              detail: _deniedHint(
-                PermissionKind.bluetooth,
-                'Denied. Allow it under',
+            state: s.bluetooth ? SetupState.ok : SetupState.optional,
+            onTap: () => _request(PermissionKind.bluetooth),
+          ),
+          if (_denied.contains(PermissionKind.notifications) ||
+              _denied.contains(PermissionKind.bluetooth)) ...[
+            const SizedBox(height: Space.x12),
+            TextButton(
+              onPressed: perms.openAppSettings,
+              child: Text(
+                'Open app settings',
+                style: text.labelLarge?.copyWith(color: t.inkPrimary),
               ),
-              state: s.bluetooth ? SetupState.ok : SetupState.optional,
-              onTap: () => _request(PermissionKind.bluetooth),
             ),
-            if (_denied.contains(PermissionKind.notifications) ||
-                _denied.contains(PermissionKind.bluetooth)) ...[
-              const SizedBox(height: Space.x12),
-              TextButton(
-                onPressed: perms.openAppSettings,
-                child: Text(
-                  'Open app settings',
-                  style: text.labelLarge?.copyWith(color: t.inkPrimary),
-                ),
-              ),
-            ],
-            const SizedBox(height: Space.x32),
-            if (!s.canRecord)
-              Padding(
-                padding: const EdgeInsets.only(bottom: Space.x12),
-                child: Text(
-                  'Recording needs precise location. Everything else can wait.',
-                  style: text.labelLarge?.copyWith(color: t.semDanger),
-                ),
-              ),
-            FilledButton(
-              onPressed: s.canRecord
-                  ? () async {
-                      if (widget.onboarding) {
-                        await AppServices.of(context).settings
-                            .update((x) => x.copyWith(onboardingDone: true));
-                      }
-                      if (context.mounted) Navigator.of(context).pop(true);
-                    }
-                  : null,
-              child: Text(widget.onboarding ? 'CONTINUE' : 'DONE'),
-            ),
-            if (widget.onboarding) ...[
-              const SizedBox(height: Space.x12),
-              Center(
-                child: TextButton(
-                  onPressed: () async {
-                    await AppServices.of(context).settings
-                        .update((x) => x.copyWith(onboardingDone: true));
-                    if (context.mounted) Navigator.of(context).pop(false);
-                  },
-                  child: Text(
-                    'Skip for now',
-                    style: text.labelLarge?.copyWith(color: t.inkSecondary),
-                  ),
-                ),
-              ),
-            ],
-            const SizedBox(height: Space.x24),
           ],
-        ),
+          const SizedBox(height: Space.x24),
+        ],
+        footer: [
+          if (!s.canRecord)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Space.x12),
+              child: Text(
+                'Recording needs precise location. Everything else can wait.',
+                style: text.labelLarge?.copyWith(color: t.semDanger),
+              ),
+            ),
+          FilledButton(
+            onPressed: s.canRecord
+                ? () async {
+                    if (widget.onboarding) {
+                      await AppServices.of(context).settings
+                          .update((x) => x.copyWith(onboardingDone: true));
+                    }
+                    if (context.mounted) Navigator.of(context).pop(true);
+                  }
+                : null,
+            child: Text(widget.onboarding ? 'CONTINUE' : 'DONE'),
+          ),
+          if (widget.onboarding) ...[
+            const SizedBox(height: Space.x12),
+            Center(
+              child: TextButton(
+                onPressed: () async {
+                  await AppServices.of(context).settings
+                      .update((x) => x.copyWith(onboardingDone: true));
+                  if (context.mounted) Navigator.of(context).pop(false);
+                },
+                child: Text(
+                  'Skip for now',
+                  style: text.labelLarge?.copyWith(color: t.inkSecondary),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: Space.x24),
+        ],
       ),
     );
   }

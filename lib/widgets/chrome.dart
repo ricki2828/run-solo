@@ -228,3 +228,32 @@ class BottomNav extends StatelessWidget {
     );
   }
 }
+
+/// A page body that scrolls above a pinned footer (the CONTINUE button): on
+/// a short phone, at a large text size or with the keyboard up the content
+/// scrolls and the button stays on screen, never "BOTTOM OVERFLOWED".
+class PinnedFooterLayout extends StatelessWidget {
+  const PinnedFooterLayout({
+    super.key,
+    required this.children,
+    required this.footer,
+  });
+  final List<Widget> children;
+  final List<Widget> footer;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: ListView(children: children)),
+            ...footer,
+          ],
+        ),
+      ),
+    );
+  }
+}

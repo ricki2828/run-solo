@@ -103,6 +103,7 @@ Future<void> pumpApp(
   Object? pushArguments,
   bool checkRecoveryOnOpen = false,
   IntroKind intro = IntroKind.none,
+  bool onboarding = false,
 }) async {
   await loadRunSoloFonts();
   phoneViewport(tester);
@@ -116,6 +117,7 @@ Future<void> pumpApp(
       now: now,
       checkRecoveryOnOpen: checkRecoveryOnOpen,
       intro: intro,
+      onboarding: onboarding,
       home: pushRoute != null
           ? _Launcher(route: pushRoute, arguments: pushArguments)
           : home,
