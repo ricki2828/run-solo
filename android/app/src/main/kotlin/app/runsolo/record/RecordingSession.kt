@@ -28,8 +28,10 @@ import app.runsolo.core.model.RecorderState
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.Units
 import app.runsolo.core.record.CueWords
+import app.runsolo.core.record.LapDispatch
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
+import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.core.run.Finaliser
 import app.runsolo.platform.CueEvent
 import app.runsolo.platform.FaultEvent
@@ -125,15 +127,8 @@ class RecordingSession(
     private var lastNotificationRefreshWall = 0L
     private var gpsLostReported = false
 
-    /**
-     * Manual laps (button, notification, volume key, START REPS) wait for the next tick so their
-     * distance is interpolated at the press time from the two ticks around it, as the run file
-     * and engine see it (PR #26 review P3). The phase change the lap caused waits with it, so
-     * the app always sees a lap before its phase change. Auto laps land on a tick and go out at once.
-     */
-    private val pendingOut = ArrayList<RecorderCore.Output>()
-    private var prevTickT = 0L
-    private var prevTickD = 0.0
+    /** When lap and phase events go out: a manual lap waits for the next tick (see [LapDispatch]). */
+    private val dispatch = LapDispatch(onLap = ::publishLap, onPhase = ::publishPhase)
 
     /** Distance step whose "GPS weak" was already said (once per step, W3). */
     private var gpsWeakStep: Int? = null
@@ -168,7 +163,7 @@ class RecordingSession(
         liveContext?.let { writer.append(JournalLine.LiveContextLine(t, startWallMs, it)) }
         core = RecorderCore(mode, spec, RecorderCore.Config(volumeKeyLaps = volumeKeyLapsEnabled))
         handle(core.start(t), t)
-        prevTickT = t
+        dispatch.ticked(t, 0.0)
         lapStartT = t
         ExitDiagnostics.noteStart(context, runId, startWallMs)
         emitState()
@@ -234,8 +229,7 @@ class RecordingSession(
         }
         ticker.filter.reanchor() // the runner moved during the dark span; do not count the jump
         lapStartDist = lastLapDist
-        prevTickT = t
-        prevTickD = ticker.distanceM
+        dispatch.ticked(t, ticker.distanceM)
         if (core.state == RecorderState.paused) ticker.onPause()
         ExitDiagnostics.noteResume(context, runId, nowWall)
         scheduleTick()
@@ -369,18 +363,20 @@ class RecordingSession(
     private fun tick(t: Long) {
         if (finished) return
         val r = replay
-        if (r != null && replayLapsPressed < r.autoLapAtMs.size && core.status(t).elapsedMs >= r.autoLapAtMs[replayLapsPressed]) {
-            replayLapsPressed++
-            lap(LapSource.notification)
+        // As ReplayScenarios.Driver (the core-jvm fixture path): at most one due press per tick.
+        if (r != null && replayLapsPressed < r.presses.size && r.traceMs(t) >= r.presses[replayLapsPressed].atMs) {
+            when (r.presses[replayLapsPressed++].press) {
+                ReplayScenarios.Press.lap -> lap(LapSource.notification)
+                ReplayScenarios.Press.startReps -> startReps()
+            }
         }
         // Sample first: the core's distance steps need this second's distance (Phase 3 §3.6).
         val samples = ticker.tick(t)
         for (s in samples) writer.append(s)
         val lost = ticker.gpsLost(t)
-        flushLaps(t)
+        dispatch.flush(t, ticker.distanceM)
         handle(core.tick(t, ticker.distanceM, gpsOk = !lost), t)
-        prevTickT = t
-        prevTickD = ticker.distanceM
+        dispatch.ticked(t, ticker.distanceM)
         val last = samples.last()
         var pace: Double? = null
         if (last.hasFix) {
@@ -493,7 +489,7 @@ class RecordingSession(
         finished = true
         stopTicks()
         val t = clock()
-        flushLaps(t)
+        dispatch.flush(t, ticker.distanceM)
         val out = core.stop(t)
         refreshSnapshot()
         for (o in out) if (o is RecorderCore.Output.Cue) {
@@ -575,31 +571,20 @@ class RecordingSession(
                 is RecorderCore.Output.Lap -> {
                     writer.append(JournalLine.Lap(o.t, System.currentTimeMillis(), o.source))
                     lapCount = o.index + 1
-                    if (o.source == LapSource.auto) publishLap(o, ticker.distanceM) else pendingOut.add(o)
+                    dispatch.lap(o, t, ticker.distanceM)
                 }
                 is RecorderCore.Output.Cue -> {
                     writer.append(JournalLine.Cue(o.t, System.currentTimeMillis(), o.kind))
                     cues.play(o.kind, cueText(o))
                     RecorderEventBus.emit(CueEvent(kind = o.kind.toPigeon(), value = o.value))
                 }
-                is RecorderCore.Output.PhaseChanged -> if (pendingOut.isEmpty()) publishPhase(o) else pendingOut.add(o)
+                is RecorderCore.Output.PhaseChanged -> dispatch.phase(o)
                 is RecorderCore.Output.AutoStop -> {
                     Log.i(TAG, "auto-stop at ${core.status(o.t).elapsedMs} ms")
                     onAutoStop?.invoke()
                 }
             }
         }
-    }
-
-    /** Sends the manual laps pressed since the last tick, each at its interpolated distance, then their phase changes. */
-    private fun flushLaps(t: Long) {
-        if (pendingOut.isEmpty()) return
-        for (o in pendingOut) when (o) {
-            is RecorderCore.Output.Lap -> publishLap(o, core.distanceAtTime(o.t, prevTickT, prevTickD, t, ticker.distanceM))
-            is RecorderCore.Output.PhaseChanged -> publishPhase(o)
-            else -> Unit
-        }
-        pendingOut.clear()
     }
 
     private fun publishPhase(o: RecorderCore.Output.PhaseChanged) {

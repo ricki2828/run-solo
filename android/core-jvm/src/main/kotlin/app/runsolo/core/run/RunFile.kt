@@ -142,13 +142,26 @@ data class RunFile(
             )
         }
 
-        private fun distanceAt(samples: List<Sample>, t: Long): Double {
-            var d = 0.0
-            for (s in samples) {
-                if (s.t > t) break
-                d = s.distM
+        /**
+         * Cumulative distance at [t], linearly interpolated between the samples around it and
+         * clamped to the ends: the engine's `Trace.distAt` and the live LapEvent's distance. (It
+         * used to take the last sample at or before [t], which read every lap up to a sample
+         * short: 399.55 m for a 400 m auto lap.)
+         */
+        internal fun distanceAt(samples: List<Sample>, t: Long): Double {
+            if (samples.isEmpty()) return 0.0
+            if (t <= samples.first().t) return samples.first().distM
+            if (t >= samples.last().t) return samples.last().distM
+            var lo = 0
+            var hi = samples.size - 1
+            while (hi - lo > 1) {
+                val mid = (lo + hi) ushr 1
+                if (samples[mid].t <= t) lo = mid else hi = mid
             }
-            return d
+            val a = samples[lo]
+            val b = samples[hi]
+            if (a.t == t) return a.distM
+            return a.distM + (b.distM - a.distM) * (t - a.t).toDouble() / (b.t - a.t)
         }
 
         /** Decodes a gzip'd run file back to its JSON map (used by tests and the reconciler's sanity read). */

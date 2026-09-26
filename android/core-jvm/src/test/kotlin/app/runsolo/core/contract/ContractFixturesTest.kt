@@ -242,4 +242,97 @@ class ContractFixturesTest {
         assertEquals(19, laps.count { it["kind"] == "auto" })
         assertTrue(laps.subList(1, 20).all { (it["t1"] as Long) - (it["t0"] as Long) == 30_000L })
     }
+
+    // ---- I5 replay fixtures (one per session kind, closed-loop traces) ----
+
+    private fun dur(l: Map<*, *>) = (l["t1"] as Long) - (l["t0"] as Long)
+    private fun dist(l: Map<*, *>) = (l["d1"] as Number).toDouble() - (l["d0"] as Number).toDouble()
+
+    /** Warm-up lap (the press at 60 s), the steps as auto laps, the cool-down ended by the stop. */
+    private fun structuredLaps(name: String, steps: Int): List<Map<*, *>> {
+        val laps = laps(fixture(name))
+        assertEquals(steps + 2, laps.size, "$name laps ${laps.map { it["kind"] }}")
+        assertEquals("manual", laps[0]["kind"], name)
+        assertEquals(60_000L, laps[0]["t1"], "$name: rep 1 starts at the 60 s press")
+        assertEquals(List(steps) { "auto" }, laps.subList(1, steps + 1).map { it["kind"] }, name)
+        // The cool-down runs its 60 s after the last step, then the trace ends.
+        assertTrue(dur(laps.last()) in 58_000L..61_000L, "$name cool-down ${dur(laps.last())}")
+        return laps.subList(1, steps + 1)
+    }
+
+    private fun assertDistance(name: String, steps: List<Map<*, *>>, targets: (Int) -> Double?) {
+        for ((i, l) in steps.withIndex()) {
+            val target = targets(i) ?: continue
+            assertTrue(abs(dist(l) - target) <= 4.5, "$name step $i: ${dist(l)} m for $target (one sample at 4 m/s)")
+        }
+    }
+
+    @Test
+    fun `replay fixtures - one per kind`() {
+        val names = ContractFixtures.all().keys.filter { it.startsWith("replay_") }
+        assertEquals(8, names.size, names.toString())
+    }
+
+    @Test
+    fun `replay 4x4 - 3 reps, 5 auto laps on the exact time boundaries`() {
+        val steps = structuredLaps("replay_4x4", 5)
+        assertEquals(listOf(240_000L, 180_000L, 240_000L, 180_000L, 240_000L), steps.map { dur(it) })
+    }
+
+    @Test
+    fun `replay 400s - 4 x 400 m with 200 m jogs, every step within a sample of its target`() {
+        val steps = structuredLaps("replay_400s", 7)
+        assertDistance("replay_400s", steps) { if (it % 2 == 0) 400.0 else 200.0 }
+        // Closed loop: every rep is at work pace, so the reps take the same time (about 100 s).
+        val reps = steps.filterIndexed { i, _ -> i % 2 == 0 }.map { dur(it) }
+        assertTrue(reps.all { it in 99_000L..102_000L }, "rep times $reps")
+    }
+
+    @Test
+    fun `replay 30-30s - 10 reps, 19 auto laps of exactly 30 s`() {
+        val steps = structuredLaps("replay_30_30s", 19)
+        assertTrue(steps.all { dur(it) == 30_000L }, steps.map { dur(it) }.toString())
+        assertEquals("short", (fixture("replay_30_30s")["session"] as Map<*, *>)["cueProfile"])
+    }
+
+    @Test
+    fun `replay yasso - 4 x 800 m, each recovery as long as the rep before it`() {
+        val steps = structuredLaps("replay_yasso_800s", 7)
+        assertDistance("replay_yasso_800s", steps) { if (it % 2 == 0) 800.0 else null }
+        for (i in 1 until steps.size step 2) {
+            assertTrue(abs(dur(steps[i]) - dur(steps[i - 1])) <= 1, "recovery $i ${dur(steps[i])} vs rep ${dur(steps[i - 1])}")
+        }
+    }
+
+    @Test
+    fun `replay 1km repeats - 3 x 1000 m, 120 s recoveries`() {
+        val steps = structuredLaps("replay_1km_repeats", 5)
+        assertDistance("replay_1km_repeats", steps) { if (it % 2 == 0) 1000.0 else null }
+        assertEquals(listOf(120_000L, 120_000L), steps.filterIndexed { i, _ -> i % 2 == 1 }.map { dur(it) })
+    }
+
+    @Test
+    fun `replay parkrun - auto-stopped at 5 00 km, the 5 km lap is the last`() {
+        val laps = laps(fixture("replay_parkrun"))
+        assertEquals(2, laps.size, laps.toString())
+        assertEquals(60_000L, laps[0]["t1"])
+        assertTrue(dist(laps[1]) in 5_000.0..5_004.5, "5 km lap ${dist(laps[1])} m")
+    }
+
+    @Test
+    fun `replay cooper - START REPS at 60 s, a 12-minute test`() {
+        val m = fixture("replay_cooper")
+        assertEquals("cooper", m["mode"])
+        val laps = laps(m)
+        assertEquals(60_000L, laps[0]["t1"], laps.toString())
+        assertTrue(laps.any { it["kind"] == "auto" && dur(it) == 720_000L }, "no 12-minute test lap: ${laps.map { dur(it) }}")
+    }
+
+    @Test
+    fun `replay fartlek - a Laps run with 5 manual segments`() {
+        val m = fixture("replay_fartlek")
+        assertEquals("laps", m["mode"])
+        assertEquals(listOf(120_000L, 150_000L, 300_000L, 345_000L), laps(m).dropLast(1).map { it["t1"] })
+        assertTrue(laps(m).all { it["kind"] == "manual" })
+    }
 }

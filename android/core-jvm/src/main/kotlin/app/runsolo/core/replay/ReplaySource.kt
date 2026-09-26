@@ -76,6 +76,9 @@ class ReplaySource(
     /** Trace time of the last item, on the [now] timeline. */
     val endT: Long get() = tStart + (items.last().t - t0)
 
+    /** The stamp of the trace's first item (trace time 0); valid after [start]. */
+    val startT: Long get() = tStart
+
     fun start() {
         check(!running)
         running = true

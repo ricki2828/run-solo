@@ -33,8 +33,10 @@ import app.runsolo.platform.StorageApi
 import app.runsolo.platform.StorageApiImpl
 import app.runsolo.platform.toPigeon
 import app.runsolo.platform.Units
+import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.record.LapInput
 import app.runsolo.record.LocationSource
+import app.runsolo.record.ReplayRunner
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.LocationSettingsRequest
@@ -74,6 +76,8 @@ class MainActivity : FlutterActivity() {
     /**
      * Debug builds only (plan §12 replay mode + the CI lifecycle test). Extras:
      *  - `runsolo.replay=<fixture>` [`runsolo.speed=<x>`] [`runsolo.mode=intervals|laps|free`]: start a replay run now.
+     *  - `runsolo.kind=<kind>` (I5): replay that [ReplayScenarios] kind with its own mode and session
+     *    (`runsolo.replay` and `runsolo.mode` are then ignored).
      *  - `runsolo.lapEveryMs=<n>`: press a notification LAP every n ms of wall time while recording
      *    (Laps mode; in Free mode the presses must be ignored and logged as `lapIgnored`).
      *  - `runsolo.recover=true`: run recover(); resume the newest readable orphan, else finalise it.
@@ -82,7 +86,10 @@ class MainActivity : FlutterActivity() {
      */
     private fun handleDebugIntent(intent: Intent?) {
         if (!BuildConfig.REPLAY_ENABLED || intent == null || !::recorder.isInitialized) return
-        val fixture = intent.getStringExtra("runsolo.replay")
+        val kind = intent.getStringExtra("runsolo.kind")
+        val scenario = kind?.let { ReplayScenarios.create(it) }
+        if (kind != null && scenario == null) Log.w(DEBUG_TAG, "startReplay kind=$kind: no such kind (${ReplayScenarios.KINDS})")
+        val fixture = if (scenario != null) ReplayRunner.KIND_PREFIX + kind else intent.getStringExtra("runsolo.replay")
         val recover = intent.getBooleanExtra("runsolo.recover", false)
         val stopAfter = intent.getLongExtra("runsolo.stopAfterMs", -1)
         val lapEvery = intent.getLongExtra("runsolo.lapEveryMs", -1)
@@ -92,11 +99,15 @@ class MainActivity : FlutterActivity() {
             if (fixture != null) {
                 val speed = intent.getFloatExtra("runsolo.speed", 10f).toDouble() // `am start --ef`
                 val modeName = intent.getStringExtra("runsolo.mode") ?: "intervals"
-                val mode = RecordMode.values().firstOrNull { EventTraceName.dart(it) == modeName } ?: RecordMode.INTERVALS
-                // Intervals replays run the standard Norwegian 4x4 (the lifecycle test's timeline).
-                val spec = if (mode == RecordMode.INTERVALS) app.runsolo.core.model.SessionSpec.norwegian4x4().toPigeon() else null
+                val mode = scenario?.mode?.toPigeon() ?: RecordMode.values().firstOrNull { EventTraceName.dart(it) == modeName } ?: RecordMode.INTERVALS
+                // Intervals replays run the standard Norwegian 4x4 (the lifecycle test's timeline); a kind brings its own session.
+                val spec = when {
+                    scenario != null -> scenario.spec?.toPigeon()
+                    mode == RecordMode.INTERVALS -> app.runsolo.core.model.SessionSpec.norwegian4x4().toPigeon()
+                    else -> null
+                }
                 val r = recorder.startReplay(mode, spec, Units.KM, ReplayConfig(fixture, speed))
-                Log.i(DEBUG_TAG, "startReplay fixture=$fixture mode=${EventTraceName.dart(mode)} speed=$speed → runId=${r.runId} error=${r.error}")
+                Log.i(DEBUG_TAG, "startReplay fixture=$fixture kind=$kind mode=${EventTraceName.dart(mode)} speed=$speed → runId=${r.runId} error=${r.error}")
             }
             if (lapEvery > 0) {
                 val press = object : Runnable {

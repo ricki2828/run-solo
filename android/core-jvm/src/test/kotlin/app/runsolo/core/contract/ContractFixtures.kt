@@ -18,6 +18,7 @@ import app.runsolo.core.model.TargetKind
 import app.runsolo.core.model.Units
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
+import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.core.replay.TraceFixture
 import app.runsolo.core.run.Finaliser
 import app.runsolo.core.run.RunFile
@@ -58,7 +59,7 @@ object ContractFixtures {
         "gps_dropout_hr" to gpsDropoutHr(),
         "laps_run_pause_manual_laps" to lapsRunPauseManualLaps(),
         "free_run_no_laps" to freeRunNoLaps(),
-    )
+    ) + ReplayScenarios.KINDS.associate { "replay_${it.replace('-', '_')}" to replayKind(it) }
 
     /** One simulated recording: a service loop over the core, per second. */
     private class Session(id: String, mode: RunMode, session: SessionSpec?) {
@@ -250,6 +251,35 @@ object ContractFixtures {
         for ((i, f) in fixes.withIndex()) {
             if (i == 0) continue
             s.second(f, if (s.core.phase == Phase.work) 170 else 150) { if (i == 60) s.lap(LapSource.button) }
+        }
+        return s.finish()
+    }
+
+    /**
+     * I5: a [ReplayScenarios] scenario recorded here as the emulator job records it through the
+     * real service (same fixes, HR and presses, trace time shifted to [T0]); the job checks its
+     * run file against this one. An auto-stop ends the run at that tick, as the service does.
+     */
+    private fun replayKind(kind: String): String {
+        val sc = ReplayScenarios.create(kind) ?: error("no replay scenario $kind")
+        val s = Session("replay-$kind", sc.mode, sc.spec)
+        val driver = ReplayScenarios.Driver(
+            s.core, s.ticker, sc.presses,
+            onSamples = { for (x in it) s.writer.append(x) },
+            onOutputs = { s.emit(it) },
+        )
+        val hr = sc.hr.iterator()
+        var next = if (hr.hasNext()) hr.next() else null
+        for (f in sc.fixes) {
+            val t = T0 + f.t
+            s.t = t
+            s.wall = W0 + f.t
+            while (next != null && next.t <= f.t) { // HR items come first, as ReplaySource orders them
+                s.ticker.onHr(HrReading(T0 + next.t, next.bpm))
+                next = if (hr.hasNext()) hr.next() else null
+            }
+            driver.step(f.copy(t = t), null)
+            if (s.autoStopped) break
         }
         return s.finish()
     }

@@ -8,6 +8,7 @@ import app.runsolo.core.model.LocationFix
 import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.StepKind
 import app.runsolo.core.replay.Cancellable
+import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.core.replay.ReplaySource
 import app.runsolo.core.replay.Scheduler
 import app.runsolo.core.replay.TraceFixture
@@ -20,16 +21,17 @@ import app.runsolo.core.replay.TraceFixture
  * slows everything together.
  *
  * Fixtures: `synthetic-4x4` (straight line: 60 s warmup @2.5 m/s, the spec's steps
- * @4.2/2.0 m/s, 60 s cooldown, HR by phase) or `<name>` = `assets/replay/<name>.csv`.
- * The synthetic fixture also presses LAP at the end of the warmup so a hands-off replay
- * exercises the auto-lap path.
+ * @4.2/2.0 m/s, 60 s cooldown, HR by phase), `kind:<kind>` (a [ReplayScenarios] scenario, I5:
+ * the same trace and presses as the core-jvm `replay_<kind>.json` fixture) or `<name>` =
+ * `assets/replay/<name>.csv`. The synthetic and kind fixtures press LAP (or START REPS) at the
+ * end of the warmup so a hands-off replay exercises the auto-lap path.
  */
 class ReplayRunner private constructor(
     private val fixes: List<LocationFix>,
     private val hr: List<HrReading>,
     private val speed: Double,
-    /** Trace-time offsets (ms from the first fix) at which a notification LAP is pressed. */
-    val autoLapAtMs: List<Long>,
+    /** Presses at trace times: a notification LAP or START REPS. */
+    val presses: List<ReplayScenarios.ScriptedPress>,
 ) {
     private var source: ReplaySource? = null
 
@@ -37,6 +39,9 @@ class ReplayRunner private constructor(
     fun now(): Long = source?.now() ?: SystemClock.elapsedRealtime()
 
     val endT: Long get() = source?.endT ?: 0
+
+    /** Trace time (ms since the trace's first item) of the stamp [t]; what [presses] are keyed on. */
+    fun traceMs(t: Long): Long = source?.let { t - it.startT } ?: 0
     val running: Boolean get() = source?.running == true
 
     /** Items are delivered on [handler]'s thread (the recorder thread). */
@@ -64,11 +69,16 @@ class ReplayRunner private constructor(
 
     companion object {
         const val SYNTHETIC_4X4 = "synthetic-4x4"
+        const val KIND_PREFIX = "kind:"
 
         /** [spec]: the run's session; the synthetic trace follows its steps (the standard 4x4 when it has none). */
         fun create(context: Context, fixture: String, speed: Double, spec: SessionSpec?): ReplayRunner? {
             if (speed <= 0) return null
             if (fixture == SYNTHETIC_4X4) return synthetic4x4(spec?.takeIf { it.steps.isNotEmpty() } ?: SessionSpec.norwegian4x4(), speed)
+            if (fixture.startsWith(KIND_PREFIX)) {
+                val sc = ReplayScenarios.create(fixture.removePrefix(KIND_PREFIX)) ?: return null
+                return ReplayRunner(sc.fixes, sc.hr, speed, sc.presses)
+            }
             if (!fixture.all { it.isLetterOrDigit() || it == '-' || it == '_' }) return null
             val text = try {
                 context.assets.open("replay/$fixture.csv").bufferedReader().readText()
@@ -101,7 +111,7 @@ class ReplayRunner private constructor(
                     hr.add(HrReading(t - 300, bpm + ((t / 1000) % 4).toInt()))
                 }
             }
-            return ReplayRunner(fixes, hr, speed, autoLapAtMs = listOf(60_000L))
+            return ReplayRunner(fixes, hr, speed, listOf(ReplayScenarios.ScriptedPress(60_000L, ReplayScenarios.Press.lap)))
         }
     }
 }

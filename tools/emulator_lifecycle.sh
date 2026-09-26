@@ -235,13 +235,16 @@ if mode == "intervals":
     assert [(st["kind"], st["value"], st["rep"]) for st in s["steps"]] == [("work", 240, 1), ("recovery", 180, 1), ("work", 240, 2), ("recovery", 180, 2), ("work", 240, 3), ("recovery", 180, 3), ("work", 240, 4)], s["steps"]
     assert len(pre) >= 3, f"laps before the kill: {len(pre)}"
     assert sum(1 for l in pre if l["kind"] == "auto") >= 2, "need >= 2 auto laps before the kill"
-    # The warmup LAP is pressed on the first tick at/after 60 s of trace time (ticks are 1 s of
-    # trace apart), so its boundary carries up to a tick of slack; the auto-laps that follow are
-    # landed on the exact phase boundary by the core, so their durations are exact.
-    assert pre[0]["kind"] == "manual" and 60000 <= pre[0]["t1"] <= 63000, f"warmup lap {pre[0]}"
+    # The warmup LAP is pressed on the fix 60 s of trace time after the first one (I5: presses
+    # are keyed on trace time). The run clock starts when the service does, a few seconds before
+    # the first fix arrives, so every time below is measured from the first sample. The auto-laps
+    # that follow are landed on the exact phase boundary by the core, so their durations are exact.
+    off = samples[0][0]
+    assert 0 <= off <= 10000, f"first sample {off} ms after the start"
+    assert pre[0]["kind"] == "manual" and pre[0]["t1"] - off == 60000, f"warmup lap {pre[0]} (first sample at {off} ms)"
     assert pre[1]["kind"] == "auto" and pre[1]["t1"] - pre[1]["t0"] == 240000, f"rep 1 work lap {pre[1]}"
     assert pre[2]["kind"] == "auto" and pre[2]["t1"] - pre[2]["t0"] == 180000, f"rep 1 recovery lap {pre[2]}"
-    assert abs(pre[1]["t1"] - 300000) <= 3000 and abs(pre[2]["t1"] - 480000) <= 3000, "boundaries drifted"
+    assert abs(pre[1]["t1"] - off - 300000) <= 1 and abs(pre[2]["t1"] - off - 480000) <= 1, "boundaries drifted"
 elif mode == "laps":
     assert f["session"] is None, f["session"]
     assert len(pre) >= 3, f"manual laps before the kill: {len(pre)}"

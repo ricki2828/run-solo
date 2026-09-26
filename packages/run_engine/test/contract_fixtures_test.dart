@@ -402,4 +402,83 @@ void main() {
       },
     );
   });
+
+  /// I5: one fixture per session kind, recorded by core-jvm from the same
+  /// closed-loop trace the emulator job replays through the real service
+  /// (`ReplayScenarios`). The session is the catalogue expansion; the engine
+  /// keys, detects and measures each kind.
+  group('replay fixtures per session kind', () {
+    final structured = <String, (SessionSpec, String, int, IntervalMetricKind)>{
+      '4x4': (
+        SessionSpec.norwegian4x4(reps: 3),
+        't240x*',
+        3,
+        IntervalMetricKind.trimmedPace,
+      ),
+      '400s': (
+        SessionCatalogue.expand('400s', reps: 4),
+        'd400x*',
+        4,
+        IntervalMetricKind.repTime,
+      ),
+      '30_30s': (
+        SessionCatalogue.expand('30-30s', reps: 10),
+        't30x*',
+        10,
+        IntervalMetricKind.untrimmedPace,
+      ),
+      'yasso_800s': (
+        SessionCatalogue.expand('yasso-800s', reps: 4),
+        'd800x*',
+        4,
+        IntervalMetricKind.repTime,
+      ),
+      '1km_repeats': (
+        SessionCatalogue.expand('1km-repeats', reps: 3),
+        'd1000x*',
+        3,
+        IntervalMetricKind.repTime,
+      ),
+    };
+    for (final MapEntry(key: kind, value: (spec, key, reps, metric))
+        in structured.entries) {
+      test('$kind: catalogue session, key $key, $reps reps, baseline', () {
+        final run = load('replay_$kind', schema: 3);
+        expect(run.mode, RunMode.intervals);
+        expect(run.session, spec);
+        final a = engine.analyze(run, now: fixedNow);
+        expect(a.comparisonKey, key);
+        expect(a.detection!.reps.length, reps);
+        expect(a.detection!.consistent, isTrue);
+        expect(a.intervals!.kind, metric);
+        expect(a.verdict!.headline, VerdictHeadline.baselineSet);
+      });
+    }
+
+    test('parkrun: auto-stopped 5 km, key parkrun, baseline', () {
+      final run = load('replay_parkrun', schema: 3);
+      expect(run.session!.templateId, SessionSpec.parkrunId);
+      expect(run.session!.autoStop, isTrue);
+      final a = engine.analyze(run, now: fixedNow);
+      expect(a.comparisonKey, 'parkrun');
+      expect(a.verdict!.headline, VerdictHeadline.baselineSet);
+    });
+
+    test('cooper: the Cooper session, key cooper', () {
+      final run = load('replay_cooper', schema: 3);
+      expect(run.mode, RunMode.cooper);
+      expect(run.session, SessionSpec.cooper);
+      expect(engine.analyze(run, now: fixedNow).comparisonKey, 'cooper');
+    });
+
+    test('fartlek: a Laps run, 5 laps, no verdict', () {
+      final run = load('replay_fartlek', schema: 3);
+      expect(run.mode, RunMode.laps);
+      expect(run.session, SessionSpec.fartlek);
+      final a = engine.analyze(run, now: fixedNow);
+      expect(a.comparisonKey, 'fartlek');
+      expect(a.verdict, isNull);
+      expect(a.laps!.laps, hasLength(5));
+    });
+  });
 }

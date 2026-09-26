@@ -349,4 +349,18 @@ class RecorderCoreI2Test {
         val (out, _) = drive(core, t0 + 3_000, 140, 3.0, 9.0)
         assertEquals(t0 + 3_000 + 132_833, laps(out).single().t)
     }
+
+    @Test
+    fun `a press then a pause in the same second starts the step at the paused distance`() {
+        val core = RecorderCore(RunMode.intervals, spec(workM(400, 1)))
+        core.start(t0)
+        core.tick(t0 + 1_000, 3.0)
+        core.tick(t0 + 2_000, 6.0)
+        core.startReps(t0 + 2_300)
+        core.pause(t0 + 2_600) // distance frozen at 6 m from here
+        core.tick(t0 + 3_000, 6.0)
+        core.resume(t0 + 60_000)
+        core.tick(t0 + 61_000, 9.0) // not interpolated across the pause: the step began at 6 m
+        assertEquals(400.0 - 3.0, core.status(t0 + 61_000).stepRemainingM!!, 1e-9)
+    }
 }
