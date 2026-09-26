@@ -86,7 +86,24 @@ String? heatLineFor(WeatherRecord? w, IntervalMetrics? m, Units units) {
 }
 
 /// W2 notes under a verdict computed with "Compare heat-adjusted paces" on.
-const String heatComparedNote = 'Compared on heat-adjusted pace.';
+/// How many earlier runs of the key an adjusted verdict compared: the
+/// [withWeather] of [earlier] that have weather (older ones without are
+/// left out, #74 review P3).
+String heatComparedNote(int withWeather, int earlier) {
+  String runs(int n) => n == 1 ? 'run' : 'runs';
+  if (earlier == 0) return 'Heat-adjusted. No earlier runs to compare yet.';
+  if (withWeather == 0) {
+    return 'Heat-adjusted, but none of your earlier ${runs(earlier)} '
+        'have weather yet.';
+  }
+  if (withWeather == earlier) {
+    return 'Heat-adjusted, compared with your $earlier earlier '
+        '${runs(earlier)}.';
+  }
+  return 'Heat-adjusted, compared with $withWeather of your $earlier '
+      '${runs(earlier)} that have weather.';
+}
+
 const String heatMissingNote = 'No weather for this run, compared on raw pace.';
 const String heatTooHotNote = 'Too hot to adjust, compared on raw pace.';
 
@@ -508,6 +525,10 @@ class RunEngine {
       final fraction = weather?.heat?.fraction;
       final raw = headline.avgWorkPaceSecPerKm;
       final adjust = compareHeatAdjusted && fraction != null && raw != null;
+      final earlier = [
+        for (final p in priors)
+          if (p.comparisonKey == key && p.start.isBefore(run.start)) p,
+      ];
       verdict = VerdictBuilder(constants, names: names)
           .build(
             run: run,
@@ -539,7 +560,10 @@ class RunEngine {
             note: !compareHeatAdjusted
                 ? null
                 : adjust
-                ? heatComparedNote
+                ? heatComparedNote(
+                    earlier.where((p) => p.heatFraction != null).length,
+                    earlier.length,
+                  )
                 : weather?.heat?.tooHot == true
                 ? heatTooHotNote
                 : heatMissingNote,
