@@ -386,8 +386,10 @@ class RecorderCore(
     /** A due non-boundary cue, with its value; null when suppressed. */
     private fun cueOut(t: Long, cue: CueScheduler.CuePoint): Output.Cue? {
         if (cue.kind == CueKind.minuteMark) return Output.Cue(t, cue.kind, (cue.at / 60_000).toDouble(), (cue.at / 60_000).toInt())
-        if (cue.kind != CueKind.projection) return Output.Cue(t, cue.kind)
-        if (!gpsOk) return null
+        // A goal's "100 metres to go" carries its projected finish (the pace line, merged, §G).
+        val goalToGo = cue.kind == CueKind.distanceToGo && spec?.isGoal == true && (phaseTargetM ?: 0) >= 3_000
+        if (cue.kind != CueKind.projection && !goalToGo) return Output.Cue(t, cue.kind)
+        if (!gpsOk) return if (goalToGo) Output.Cue(t, cue.kind) else null
         val activeMs = activeAt(t) - phaseStartActive
         val covered = lastD - phaseStartD
         return when (val target = phaseTargetM) {
@@ -397,9 +399,11 @@ class RecorderCore(
                 Output.Cue(t, CueKind.projection, projected, (cue.at / 60_000).toInt())
             }
             else -> {
-                // Distance step: projected finish time of the step, from its own start; index = the km.
-                if (covered <= 0 || activeMs <= 0) return null
-                Output.Cue(t, CueKind.projection, activeMs / covered * target, (cue.at / 1_000).toInt())
+                // Distance step: projected finish time of the step, from its own start; index = the km
+                // (none for the goal's to-go line, which says "100 metres to go" without it).
+                if (covered <= 0 || activeMs <= 0) return if (goalToGo) Output.Cue(t, cue.kind) else null
+                val projected = activeMs / covered * target
+                if (goalToGo) Output.Cue(t, cue.kind, projected) else Output.Cue(t, CueKind.projection, projected, (cue.at / 1_000).toInt())
             }
         }
     }
@@ -491,7 +495,7 @@ class RecorderCore(
             TargetKind.distance -> {
                 phaseDurationMs = null
                 phaseTargetM = step.value.toLong()
-                pendingCues = ArrayDeque(CueScheduler.distance(step.value.toLong()))
+                pendingCues = ArrayDeque(CueScheduler.distance(step.value.toLong(), goal = s.isGoal))
             }
             TargetKind.time, TargetKind.equalToPreviousWork -> {
                 val dur = if (step.target == TargetKind.time) step.value * 1000L else lastWorkActiveMs.coerceAtLeast(1_000)

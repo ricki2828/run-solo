@@ -713,8 +713,10 @@ class RecordingSession(
      * extra); a compare also goes to the journal (`cf`, so a restore never repeats it) and to the
      * app as a [CompareEvent] for the overlay, muted or not. [kind] null = a Free run's km split.
      */
-    private fun speakFire(kind: CueKind?, base: String?, fire: LiveCoach.Fire?, t: Long, nudge: LiveCoach.Nudge? = null) {
+    private fun speakFire(kind: CueKind?, cueBase: String?, fire: LiveCoach.Fire?, t: Long, nudge: LiveCoach.Nudge? = null) {
         val extra = fire?.takeIf { it.speak }?.text
+        // A spoken goal-km compare replaces "On pace for …" with "3 k." (§G); muted, the cue stays.
+        val base = fire?.takeIf { it.speak }?.base ?: cueBase
         // A nudge waits in the player to follow this cue; it is journaled at the tick that says it
         // (the next run's `blocked` list comes from those lines), never when it is dropped.
         val said = if (kind != null || base != null || extra != null) cues.play(kind, base, extra, nudge) else null

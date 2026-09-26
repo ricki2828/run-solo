@@ -39,8 +39,12 @@ class LiveCoach(
     /** "Mute tips" for this run: compares still fire (overlay, journal) but are not spoken. */
     var muted: Boolean = context?.coachingMuted ?: false
 
-    /** One compare. [text] is what to append to the cue; [overlay] is false when a recovery is under 20 s (voice only). */
-    data class Fire(val result: CompareResult, val text: String, val overlay: Boolean = true, val speak: Boolean = true) {
+    /**
+     * One compare. [text] is what to append to the cue; [overlay] is false when a recovery is under
+     * 20 s (voice only); [base], when spoken, replaces the cue's own words (a goal km says "3 k."
+     * instead of "On pace for 1:28:00").
+     */
+    data class Fire(val result: CompareResult, val text: String, val overlay: Boolean = true, val speak: Boolean = true, val base: String? = null) {
         val key: String get() = result.boardKey
         val index: Int get() = result.index
     }
@@ -296,8 +300,9 @@ class LiveCoach(
     fun atCue(kind: CueKind, index: Int?, value: Double?, phase: Phase, stepIndex: Int?, stepElapsedMs: Long, nextDurationMs: Long?): Fire? {
         context ?: return null
         val s = spec ?: return null
-        // A GOAL run (§G) is one step, not reps: its end is the goal line (GoalCoach), no compare.
-        if (s.isGoal) return null
+        // A GOAL run (§G) is one step, not reps: its end is the goal line (GoalCoach); a km of a
+        // distance goal races the goal's own board at that split, as a Free run's km races the 5K.
+        if (s.isGoal) return goalKm(kind, index, s, stepElapsedMs)
         // Rep end: the recovery's start, or the cool-down cue after the last rep.
         val repEnd = isRepEnd(kind, phase, s)
         if (repEnd && mode == RunMode.intervals) {
@@ -328,6 +333,22 @@ class LiveCoach(
         val r = LiveCompare.target(target, index, stepElapsedMs) ?: return null
         if (!claim(r)) return null
         return Fire(r, LiveWords.compare(r), speak = !muted)
+    }
+
+    /**
+     * A whole km of a distance goal ([index] = the km, [activeMs] = active ms from Start: a goal
+     * has no warm-up) against the goal's board, by key ([GoalCoach.boardKey]): "3 k. Number 2 of
+     * 7, 12 seconds off your best." Entries without a split at this km sit it out. No board, no
+     * split, or muted: the cue keeps its own "On pace for …".
+     */
+    private fun goalKm(kind: CueKind, index: Int?, s: SessionSpec, activeMs: Long): Fire? {
+        if (kind != CueKind.projection || index == null || goalReached) return null
+        val step = s.steps.firstOrNull()?.takeIf { it.target == TargetKind.distance } ?: return null
+        val key = GoalCoach.boardKey(step)
+        val board = context?.boards?.firstOrNull { it.kind == LiveBoardKind.distance && it.key == key } ?: return null
+        val r = LiveCompare.distance(board, index, activeMs) ?: return null
+        if (!claim(r)) return null
+        return Fire(r, LiveWords.compare(r), speak = !muted, base = LiveWords.goalKm(index))
     }
 
     private fun claim(r: CompareResult): Boolean = done.add(doneKey(r.boardKey, r.index))

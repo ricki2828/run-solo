@@ -28,6 +28,9 @@ object LiveWords {
         return "$km k, $time$pace."
     }
 
+    /** A distance goal's km, when its compare follows: "3 k." (the compare says the rest). */
+    fun goalKm(km: Int): String = "$km k."
+
     fun compare(r: CompareResult): String = when (r.kind) {
         CompareKind.distance -> distance(r)
         CompareKind.intervals -> intervals(r)
