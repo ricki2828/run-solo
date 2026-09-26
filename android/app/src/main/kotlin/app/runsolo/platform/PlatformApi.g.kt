@@ -794,24 +794,38 @@ data class LiveTarget (
 }
 
 /**
- * In-run coaching nudges (Phase 4 §3.5). LC1 ships this stub with no rules
- * (WARN-6); CR1 fills it. `version` 0 = no rules.
+ * In-run coaching nudges (Phase 4 §3.5, CR1): the engine's thresholds
+ * (`NudgePlanSpec.toJson`, key for key); native compares live figures
+ * against them. A null rule is off. `version` 0 = the LC1 stub (no rules).
  *
  * Generated class from Pigeon that represents data sent in messages.
  */
 data class NudgePlan (
-  val version: Long
+  val version: Long,
+  val fastStart: FastStartRule? = null,
+  val repFade: RepFadeRule? = null,
+  val hrDrift: HrDriftRule? = null,
+  /** "rule:index" said on the previous run of this board (WARN-5). */
+  val blocked: List<String>? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): NudgePlan {
       val version = pigeonVar_list[0] as Long
-      return NudgePlan(version)
+      val fastStart = pigeonVar_list[1] as FastStartRule?
+      val repFade = pigeonVar_list[2] as RepFadeRule?
+      val hrDrift = pigeonVar_list[3] as HrDriftRule?
+      val blocked = pigeonVar_list[4] as List<String>?
+      return NudgePlan(version, fastStart, repFade, hrDrift, blocked)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       version,
+      fastStart,
+      repFade,
+      hrDrift,
+      blocked,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -822,12 +836,161 @@ data class NudgePlan (
       return true
     }
     val other = other as NudgePlan
-    return PlatformApiPigeonUtils.deepEquals(this.version, other.version)
+    return PlatformApiPigeonUtils.deepEquals(this.version, other.version) && PlatformApiPigeonUtils.deepEquals(this.fastStart, other.fastStart) && PlatformApiPigeonUtils.deepEquals(this.repFade, other.repFade) && PlatformApiPigeonUtils.deepEquals(this.hrDrift, other.hrDrift) && PlatformApiPigeonUtils.deepEquals(this.blocked, other.blocked)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.version)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.fastStart)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.repFade)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.hrDrift)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.blocked)
+    return result
+  }
+}
+
+/**
+ * Fire at km 1 when the live km-1 split (ms from Start) is under [km1MaxMs].
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class FastStartRule (
+  val km1MaxMs: Long,
+  val text: String
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): FastStartRule {
+      val km1MaxMs = pigeonVar_list[0] as Long
+      val text = pigeonVar_list[1] as String
+      return FastStartRule(km1MaxMs, text)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      km1MaxMs,
+      text,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as FastStartRule
+    return PlatformApiPigeonUtils.deepEquals(this.km1MaxMs, other.km1MaxMs) && PlatformApiPigeonUtils.deepEquals(this.text, other.text)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.km1MaxMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.text)
+    return result
+  }
+}
+
+/**
+ * At the end of rep r ≥ 3: fire when live rep r pace − rep 1 pace (s/km) is
+ * over `maxDropSecPerKm[r − 1]` (null = off for that rep).
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class RepFadeRule (
+  val maxDropSecPerKm: List<Double?>,
+  val text: String
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): RepFadeRule {
+      val maxDropSecPerKm = pigeonVar_list[0] as List<Double?>
+      val text = pigeonVar_list[1] as String
+      return RepFadeRule(maxDropSecPerKm, text)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      maxDropSecPerKm,
+      text,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as RepFadeRule
+    return PlatformApiPigeonUtils.deepEquals(this.maxDropSecPerKm, other.maxDropSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.text, other.text)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.maxDropSecPerKm)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.text)
+    return result
+  }
+}
+
+/**
+ * At km k ≥ [firstKm]: fire when the live km-k pace is within [paceBand] of
+ * `kmPaceSecPerKm[k − 1]` and the live mean HR over km k is at least
+ * `kmHr[k − 1]` + [bpmOver].
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class HrDriftRule (
+  val kmHr: List<Double?>,
+  val kmPaceSecPerKm: List<Double?>,
+  val bpmOver: Double,
+  val paceBand: Double,
+  val firstKm: Long,
+  val text: String
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): HrDriftRule {
+      val kmHr = pigeonVar_list[0] as List<Double?>
+      val kmPaceSecPerKm = pigeonVar_list[1] as List<Double?>
+      val bpmOver = pigeonVar_list[2] as Double
+      val paceBand = pigeonVar_list[3] as Double
+      val firstKm = pigeonVar_list[4] as Long
+      val text = pigeonVar_list[5] as String
+      return HrDriftRule(kmHr, kmPaceSecPerKm, bpmOver, paceBand, firstKm, text)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      kmHr,
+      kmPaceSecPerKm,
+      bpmOver,
+      paceBand,
+      firstKm,
+      text,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as HrDriftRule
+    return PlatformApiPigeonUtils.deepEquals(this.kmHr, other.kmHr) && PlatformApiPigeonUtils.deepEquals(this.kmPaceSecPerKm, other.kmPaceSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.bpmOver, other.bpmOver) && PlatformApiPigeonUtils.deepEquals(this.paceBand, other.paceBand) && PlatformApiPigeonUtils.deepEquals(this.firstKm, other.firstKm) && PlatformApiPigeonUtils.deepEquals(this.text, other.text)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.kmHr)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.kmPaceSecPerKm)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.bpmOver)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.paceBand)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.firstKm)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.text)
     return result
   }
 }
@@ -2163,100 +2326,115 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
       }
       150.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LiveContext.fromList(it)
+          FastStartRule.fromList(it)
         }
       }
       151.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StartResult.fromList(it)
+          RepFadeRule.fromList(it)
         }
       }
       152.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapSummary.fromList(it)
+          HrDriftRule.fromList(it)
         }
       }
       153.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          RecorderStatus.fromList(it)
+          LiveContext.fromList(it)
         }
       }
       154.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          OrphanJournal.fromList(it)
+          StartResult.fromList(it)
         }
       }
       155.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ReplayConfig.fromList(it)
+          LapSummary.fromList(it)
         }
       }
       156.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          PermissionStatus.fromList(it)
+          RecorderStatus.fromList(it)
         }
       }
       157.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BleStatus.fromList(it)
+          OrphanJournal.fromList(it)
         }
       }
       158.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ExitDiagnosis.fromList(it)
+          ReplayConfig.fromList(it)
         }
       }
       159.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BleDevice.fromList(it)
+          PermissionStatus.fromList(it)
         }
       }
       160.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BackupStatus.fromList(it)
+          BleStatus.fromList(it)
         }
       }
       161.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TickEvent.fromList(it)
+          ExitDiagnosis.fromList(it)
         }
       }
       162.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapEvent.fromList(it)
+          BleDevice.fromList(it)
         }
       }
       163.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapPendingEvent.fromList(it)
+          BackupStatus.fromList(it)
         }
       }
       164.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CueEvent.fromList(it)
+          TickEvent.fromList(it)
         }
       }
       165.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          GpsProbeEvent.fromList(it)
+          LapEvent.fromList(it)
         }
       }
       166.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CompareEvent.fromList(it)
+          LapPendingEvent.fromList(it)
         }
       }
       167.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FaultEvent.fromList(it)
+          CueEvent.fromList(it)
         }
       }
       168.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StateEvent.fromList(it)
+          GpsProbeEvent.fromList(it)
         }
       }
       169.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          CompareEvent.fromList(it)
+        }
+      }
+      170.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          FaultEvent.fromList(it)
+        }
+      }
+      171.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          StateEvent.fromList(it)
+        }
+      }
+      172.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           PhaseEvent.fromList(it)
         }
@@ -2350,84 +2528,96 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(149)
         writeValue(stream, value.toList())
       }
-      is LiveContext -> {
+      is FastStartRule -> {
         stream.write(150)
         writeValue(stream, value.toList())
       }
-      is StartResult -> {
+      is RepFadeRule -> {
         stream.write(151)
         writeValue(stream, value.toList())
       }
-      is LapSummary -> {
+      is HrDriftRule -> {
         stream.write(152)
         writeValue(stream, value.toList())
       }
-      is RecorderStatus -> {
+      is LiveContext -> {
         stream.write(153)
         writeValue(stream, value.toList())
       }
-      is OrphanJournal -> {
+      is StartResult -> {
         stream.write(154)
         writeValue(stream, value.toList())
       }
-      is ReplayConfig -> {
+      is LapSummary -> {
         stream.write(155)
         writeValue(stream, value.toList())
       }
-      is PermissionStatus -> {
+      is RecorderStatus -> {
         stream.write(156)
         writeValue(stream, value.toList())
       }
-      is BleStatus -> {
+      is OrphanJournal -> {
         stream.write(157)
         writeValue(stream, value.toList())
       }
-      is ExitDiagnosis -> {
+      is ReplayConfig -> {
         stream.write(158)
         writeValue(stream, value.toList())
       }
-      is BleDevice -> {
+      is PermissionStatus -> {
         stream.write(159)
         writeValue(stream, value.toList())
       }
-      is BackupStatus -> {
+      is BleStatus -> {
         stream.write(160)
         writeValue(stream, value.toList())
       }
-      is TickEvent -> {
+      is ExitDiagnosis -> {
         stream.write(161)
         writeValue(stream, value.toList())
       }
-      is LapEvent -> {
+      is BleDevice -> {
         stream.write(162)
         writeValue(stream, value.toList())
       }
-      is LapPendingEvent -> {
+      is BackupStatus -> {
         stream.write(163)
         writeValue(stream, value.toList())
       }
-      is CueEvent -> {
+      is TickEvent -> {
         stream.write(164)
         writeValue(stream, value.toList())
       }
-      is GpsProbeEvent -> {
+      is LapEvent -> {
         stream.write(165)
         writeValue(stream, value.toList())
       }
-      is CompareEvent -> {
+      is LapPendingEvent -> {
         stream.write(166)
         writeValue(stream, value.toList())
       }
-      is FaultEvent -> {
+      is CueEvent -> {
         stream.write(167)
         writeValue(stream, value.toList())
       }
-      is StateEvent -> {
+      is GpsProbeEvent -> {
         stream.write(168)
         writeValue(stream, value.toList())
       }
-      is PhaseEvent -> {
+      is CompareEvent -> {
         stream.write(169)
+        writeValue(stream, value.toList())
+      }
+      is FaultEvent -> {
+        stream.write(170)
+        writeValue(stream, value.toList())
+      }
+      is StateEvent -> {
+        stream.write(171)
+        writeValue(stream, value.toList())
+      }
+      is PhaseEvent -> {
+        stream.write(172)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)

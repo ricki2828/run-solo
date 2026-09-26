@@ -173,14 +173,87 @@ data class LiveTarget(val distanceM: Double, val targetMs: Long, val predicted: 
     }
 }
 
-/** In-run nudges (§3.5). LC1 stub with no rules (WARN-6); CR1 fills it. `version` 0 = none. */
-data class NudgePlan(val version: Int = 0) {
-    fun toJson(): Map<String, Any?> = linkedMapOf("version" to version)
+/**
+ * In-run nudges (§3.5, CR1): thresholds the engine built from the runner's own history
+ * (`NudgePlanSpec.toJson` in `coaching_rules.dart`, mirrored key for key); native only compares
+ * live figures against them. A null rule is off. [blocked] = "rule:index" said on the previous
+ * run of this board (WARN-5), never said again this run. `version` 0 = the LC1 stub (no rules).
+ */
+data class NudgePlan(
+    val version: Int = 0,
+    val fastStart: FastStartRule? = null,
+    val repFade: RepFadeRule? = null,
+    val hrDrift: HrDriftRule? = null,
+    val blocked: List<String> = emptyList(),
+) {
+    fun toJson(): Map<String, Any?> = linkedMapOf(
+        "version" to version,
+        "fastStart" to fastStart?.toJson(),
+        "repFade" to repFade?.toJson(),
+        "hrDrift" to hrDrift?.toJson(),
+        "blocked" to blocked,
+    )
 
     companion object {
-        fun fromJson(m: Map<String, Any?>) = NudgePlan(version = m.int("version"))
+        /** Rule names; they key the `cue_fired` lines the next run's [blocked] comes from. */
+        const val FAST_START = "fast_start"
+        const val REP_FADE = "rep_fade"
+        const val HR_DRIFT = "hr_drift"
+
+        fun fromJson(m: Map<String, Any?>) = NudgePlan(
+            version = m.int("version"),
+            fastStart = m.obj("fastStart")?.let { FastStartRule(it.long("km1MaxMs"), it.string("text")) },
+            repFade = m.obj("repFade")?.let { RepFadeRule(it.nullableDoubles("maxDropSecPerKm"), it.string("text")) },
+            hrDrift = m.obj("hrDrift")?.let {
+                HrDriftRule(
+                    kmHr = it.nullableDoubles("kmHr"),
+                    kmPaceSecPerKm = it.nullableDoubles("kmPaceSecPerKm"),
+                    bpmOver = (it["bpmOver"] as? Number)?.toDouble() ?: HrDriftRule.BPM_OVER,
+                    paceBand = (it["paceBand"] as? Number)?.toDouble() ?: HrDriftRule.PACE_BAND,
+                    firstKm = (it["firstKm"] as? Number)?.toInt() ?: HrDriftRule.FIRST_KM,
+                    text = it.string("text"),
+                )
+            },
+            blocked = (m["blocked"] as? List<*>)?.map { it as? String ?: bad("blocked") } ?: emptyList(),
+        )
     }
 }
+
+/** Fire at km 1 when the live km-1 split (ms from Start) is under [km1MaxMs]. */
+data class FastStartRule(val km1MaxMs: Long, val text: String) {
+    fun toJson(): Map<String, Any?> = linkedMapOf("km1MaxMs" to km1MaxMs, "text" to text)
+}
+
+/** At the end of rep r ≥ 3: fire when live rep r pace − rep 1 pace (s/km) > [maxDropSecPerKm] `[r − 1]` (null = off for r). */
+data class RepFadeRule(val maxDropSecPerKm: List<Double?>, val text: String) {
+    fun toJson(): Map<String, Any?> = linkedMapOf("maxDropSecPerKm" to maxDropSecPerKm, "text" to text)
+}
+
+/**
+ * At km k ≥ [firstKm]: fire when the live km-k pace is within [paceBand] of `kmPaceSecPerKm[k − 1]`
+ * and the live mean HR over km k is at least `kmHr[k − 1]` + [bpmOver].
+ */
+data class HrDriftRule(
+    val kmHr: List<Double?>,
+    val kmPaceSecPerKm: List<Double?>,
+    val bpmOver: Double = BPM_OVER,
+    val paceBand: Double = PACE_BAND,
+    val firstKm: Int = FIRST_KM,
+    val text: String,
+) {
+    fun toJson(): Map<String, Any?> = linkedMapOf(
+        "kmHr" to kmHr, "kmPaceSecPerKm" to kmPaceSecPerKm, "bpmOver" to bpmOver, "paceBand" to paceBand, "firstKm" to firstKm, "text" to text,
+    )
+
+    companion object {
+        const val BPM_OVER = 5.0
+        const val PACE_BAND = 0.05
+        const val FIRST_KM = 4
+    }
+}
+
+private fun Map<String, Any?>.nullableDoubles(key: String): List<Double?> =
+    (this[key] as? List<*> ?: throw IllegalArgumentException(key)).map { if (it == null) null else (it as? Number ?: bad(key)).toDouble() }
 
 private fun bad(what: String): Nothing = throw IllegalArgumentException("non-numeric value in $what")
 

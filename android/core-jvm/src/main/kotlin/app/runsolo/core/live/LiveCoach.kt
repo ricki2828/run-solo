@@ -13,6 +13,7 @@ import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.StepKind
 import app.runsolo.core.model.TargetKind
 import app.runsolo.core.record.RecorderCore
+import kotlin.math.abs
 import kotlin.math.floor
 
 /**
@@ -58,7 +59,7 @@ class LiveCoach(
     var kmSplits: Boolean = true
 
     /** A whole km of a Free or Laps run: the split to say ([base], Free only) and its compare, if any. */
-    data class KmCue(val km: Int, val base: String?, val fire: Fire?)
+    data class KmCue(val km: Int, val base: String?, val fire: Fire?, val nudge: Nudge? = null)
 
     /**
      * An intervals run with a board to race: a rep ended by a manual lap holds its following cue
@@ -77,6 +78,7 @@ class LiveCoach(
     fun resumeAt(distanceM: Double) {
         lastKm = maxOf(lastKm, floor(distanceM / 1_000).toInt())
         lastKmActiveMs = null // the next km's split pace spans the dark gap: not said
+        kmHr.clean = false // and its HR was not seen whole
     }
 
     /** A session with no warm-up begins step 1 at Start, from 0 m; otherwise the warm-up lap starts it. */
@@ -141,10 +143,13 @@ class LiveCoach(
      * one; a Laps run says nothing at a km (it has no km cue), so its compare is overlay only.
      * Two kms in one tick (a catch-up) give only the last. Compares stop after 10 km.
      */
-    fun onTick(prevT: Long, prevD: Double, t: Long, d: Double, activeAt: (Long) -> Long): KmCue? {
+    fun onTick(prevT: Long, prevD: Double, t: Long, d: Double, hr: Int? = null, activeAt: (Long) -> Long): KmCue? {
         if (spec?.steps?.isNotEmpty() == true || (mode != RunMode.free && mode != RunMode.laps)) return null
         val km = floor(d / 1_000).toInt()
-        if (km <= lastKm || d <= prevD) return null
+        if (km <= lastKm || d <= prevD) {
+            kmHr.add(hr)
+            return null
+        }
         val skipped = km > lastKm + 1
         lastKm = km
         val mark = km * 1_000.0
@@ -152,8 +157,94 @@ class LiveCoach(
         val active = activeAt(tk)
         val splitMs = lastKmActiveMs?.takeIf { !skipped }?.let { active - it }
         lastKmActiveMs = active
-        val base = if (mode == RunMode.free && kmSplits) LiveWords.kmSplit(km, active, splitMs) else null
-        return KmCue(km, base, compareAtKm(km, active)).takeIf { it.base != null || it.fire != null }
+        // This tick's sample is at or after the crossing: it opens the next km's HR.
+        val hrMean = kmHr.close(clean = !skipped)
+        kmHr.add(hr)
+        val speaks = mode == RunMode.free && kmSplits
+        val base = if (speaks) LiveWords.kmSplit(km, active, splitMs) else null
+        val nudge = if (speaks) kmNudge(km, active, splitMs, hrMean) else null
+        return KmCue(km, base, compareAtKm(km, active), nudge).takeIf { it.base != null || it.fire != null }
+    }
+
+    // ---- nudges (CR1): the engine's thresholds against live figures ----
+
+    /** A nudge to append to a cue (lowest priority); [rule] and [index] key its `cue_fired` line. */
+    data class Nudge(val rule: String, val index: Int, val text: String)
+
+    private val nudged = HashSet<String>().apply {
+        for (f in fired) if (f.kind == JournalLine.FiredKind.nudge) add("${f.key}:${f.index}")
+    }
+
+    /**
+     * Live HR over the current km, the engine's kmHr rule (#56): the plain mean of the HR-bearing
+     * samples with t in [start of the km, its end), km 1 from Start; null when under half the
+     * samples carry HR, or the km was not seen whole (a catch-up tick, a restore).
+     */
+    private class KmHr {
+        private var sum = 0.0
+        private var withHr = 0
+        private var samples = 0
+        var clean = true
+
+        fun add(hr: Int?) {
+            samples++
+            if (hr != null && hr > 0) {
+                withHr++
+                sum += hr
+            }
+        }
+
+        fun close(clean: Boolean): Double? {
+            val mean = if (this.clean && clean && samples > 0 && withHr * 2 >= samples) sum / withHr else null
+            sum = 0.0
+            withHr = 0
+            samples = 0
+            this.clean = true
+            return mean
+        }
+    }
+
+    private val kmHr = KmHr()
+
+    /** At a Free run's km: a fast first km (km 1), else HR up for the pace (km ≥ firstKm). One per km. */
+    private fun kmNudge(km: Int, activeAtKm: Long, splitMs: Long?, hrMean: Double?): Nudge? {
+        if (muted) return null
+        val plan = context?.nudges ?: return null
+        if (km == 1) plan.fastStart?.let { r -> if (activeAtKm < r.km1MaxMs) return claimNudge(NudgePlan.FAST_START, 1, r.text) }
+        val r = plan.hrDrift ?: return null
+        if (km < r.firstKm || splitMs == null || hrMean == null) return null
+        val want = r.kmPaceSecPerKm.getOrNull(km - 1) ?: return null
+        val usualHr = r.kmHr.getOrNull(km - 1) ?: return null
+        val pace = splitMs / 1_000.0
+        if (abs(pace - want) > r.paceBand * want || hrMean < usualHr + r.bpmOver) return null
+        return claimNudge(NudgePlan.HR_DRIFT, km, r.text)
+    }
+
+    /**
+     * At a rep end (the cue [atCue] would compare on): rep r ≥ 3 slower than rep 1 by more than
+     * the plan's limit for r. Never on a short-profile rep before the last, never in a Cooper.
+     */
+    fun nudgeAtCue(kind: CueKind, phase: Phase): Nudge? {
+        if (muted || mode != RunMode.intervals) return null
+        val s = spec ?: return null
+        if (!isRepEnd(kind, phase, s)) return null
+        val rep = livePaces.size
+        if (rep < 3 || (s.cueProfile == CueProfile.short && rep != s.reps)) return null
+        val rule = context?.nudges?.repFade ?: return null
+        val limit = rule.maxDropSecPerKm.getOrNull(rep - 1) ?: return null
+        val first = livePaces[0] ?: return null
+        val now = livePaces[rep - 1] ?: return null
+        if (now - first <= limit) return null
+        return claimNudge(NudgePlan.REP_FADE, rep, rule.text)
+    }
+
+    private fun isRepEnd(kind: CueKind, phase: Phase, s: SessionSpec) =
+        (kind == CueKind.start && phase == Phase.recovery) || (kind == CueKind.phaseEnd && phase == Phase.cooldown && s.steps.isNotEmpty())
+
+    private fun claimNudge(rule: String, index: Int, text: String): Nudge? {
+        val key = "$rule:$index"
+        if (context?.nudges?.blocked?.contains(key) == true || !nudged.add(key)) return null
+        return Nudge(rule, index, text)
     }
 
     private fun compareAtKm(km: Int, active: Long): Fire? {
@@ -174,7 +265,7 @@ class LiveCoach(
         context ?: return null
         val s = spec ?: return null
         // Rep end: the recovery's start, or the cool-down cue after the last rep.
-        val repEnd = (kind == CueKind.start && phase == Phase.recovery) || (kind == CueKind.phaseEnd && phase == Phase.cooldown && s.steps.isNotEmpty())
+        val repEnd = isRepEnd(kind, phase, s)
         if (repEnd && mode == RunMode.intervals) {
             val rep = livePaces.size
             val last = rep == s.reps
@@ -211,14 +302,4 @@ class LiveCoach(
         /** Cooper ranks against past tests only at these minutes (the projection speaks every minute). */
         val COOPER_RANK_MINUTES = setOf(3, 6, 9)
     }
-}
-
-/**
- * In-run nudges (Phase 4 §3.5, B5). LC1 ships the [NudgePlan] as an empty stub (WARN-6), so there
- * is no rule to evaluate yet: CR1 fills the plan and this evaluator. The cue path already carries
- * a nudge as the lowest-priority part ([CueComposer]).
- */
-object NudgeEvaluator {
-    @Suppress("UNUSED_PARAMETER")
-    fun evaluate(plan: NudgePlan?, kind: CueKind, index: Int?): String? = null
 }
