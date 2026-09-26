@@ -44,8 +44,39 @@ abstract final class ResearchNorms {
   /// Numeric second-half norm, off until sourced (§4 R5: NV).
   static const double? fadeNormPercent = null;
 
-  /// Null while [peopleYourAgeEnabled] is false.
-  static String? peopleYourAge({required double vo2, required int age}) => null;
+  /// The runner's place in the norms for their age (design A10.5): one
+  /// mark for a known [sex], both when it is not set and [whenSexUnset] is
+  /// [NormsWhenSexUnset.bothRanges]; null for [NormsWhenSexUnset.hidden].
+  /// Null while [peopleYourAgeEnabled] is false (no table to read yet).
+  static PeopleYourAge? peopleYourAge({
+    required double vo2,
+    required int age,
+    NormsSex? sex,
+    NormsWhenSexUnset whenSexUnset = NormsWhenSexUnset.bothRanges,
+  }) => null;
+}
+
+/// Sex for the fitness norms (Settings → Profile, CR2); null = not set.
+enum NormsSex { male, female }
+
+/// What "People your age" does when sex is not set (design A10.5, founder
+/// may switch it).
+enum NormsWhenSexUnset { bothRanges, hidden }
+
+/// One "People your age" result: the dots on the band and the line.
+class PeopleYourAge {
+  const PeopleYourAge({required this.marks, required this.line});
+
+  /// (who, percentile 0..100): one mark, or men and women when sex is
+  /// not set.
+  final List<(NormsSex, int)> marks;
+
+  /// "About the 60th percentile for men 40 to 49", or "About 60th (men) ·
+  /// 75th (women), 40 to 49".
+  final String line;
+
+  /// Shown under the line, always.
+  String get source => ResearchNorms.peopleYourAgeSource;
 }
 
 /// What the after-run coaching says: at most one observation.

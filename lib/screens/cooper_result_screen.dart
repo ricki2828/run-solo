@@ -14,11 +14,30 @@ import '../app/format.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
+import '../state/max_hr.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/board_chips.dart';
+import '../widgets/vo2_trend.dart';
 import 'run_detail_screen.dart';
 import 'settings_screen.dart' show kOpenMeteoAttribution;
+
+/// "People your age" (plan §3.6, design A10.5): the engine's norms, off
+/// until the FRIEND table is read. A test swaps in a lookup to check the
+/// section; the app never does.
+@visibleForTesting
+engine.PeopleYourAge? Function({
+  required double vo2,
+  required int age,
+  engine.NormsSex? sex,
+})
+debugPeopleYourAge = _enginePeopleYourAge;
+
+engine.PeopleYourAge? _enginePeopleYourAge({
+  required double vo2,
+  required int age,
+  engine.NormsSex? sex,
+}) => engine.ResearchNorms.peopleYourAge(vo2: vo2, age: age, sex: sex);
 
 /// A past valid test on this phone.
 typedef CooperTest = ({
@@ -92,6 +111,19 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
             final prior = i < 0
                 ? tests.where((x) => x.date.isBefore(d.run.start)).toList()
                 : tests.sublist(0, i);
+            // Every valid test up to and including this one, for the trend.
+            final upTo = [for (final p in prior) p.vo2, if (e != null) e.vo2];
+            final birthYear = AppServices.of(context)
+                .settings
+                .settings
+                .birthYear;
+            // Sex joins Settings with CR2; not set = both ranges (A10.5).
+            final norms = e == null || birthYear == null
+                ? null
+                : debugPeopleYourAge(
+                    vo2: e.vo2,
+                    age: MaxHr.ageFor(birthYear, d.run.start),
+                  );
             final change = e == null
                 ? null
                 : engine.CooperResult.changeLine(e.vo2, d.run.start, [
@@ -182,6 +214,22 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                         fontWeight: FontWeight.w500,
                       ),
                     ),
+                  if (upTo.length >= 2) ...[
+                    const SizedBox(height: Space.x16),
+                    Text(
+                      'VO2 BY TEST',
+                      style: RunSoloType.micro11.copyWith(
+                        color: t.inkSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: Space.x8),
+                    Vo2TrendChart(
+                      key: const ValueKey('cooper-result-trend'),
+                      values: upTo,
+                      highlight: upTo.length - 1,
+                      height: 72,
+                    ),
+                  ],
                 ] else if (c?.invalidLine != null)
                   Text(
                     c!.invalidLine!,
@@ -212,6 +260,10 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                         : 'vs your usual',
                     style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                   ),
+                ],
+                if (norms != null) ...[
+                  const SizedBox(height: Space.x24),
+                  _PeopleYourAge(norms: norms),
                 ],
                 const SizedBox(height: Space.x24),
                 Text(
@@ -322,6 +374,69 @@ class _HeatLine extends StatelessWidget {
             engine.CooperHeat.disclosure,
             style: RunSoloType.label13.copyWith(color: t.inkSecondary),
           ),
+      ],
+    );
+  }
+}
+
+/// A10.5 "People your age": a Bone rule with a dot per mark (one, or men
+/// and women when sex is not set), the line, and the source. Research-based,
+/// never a verdict: no Arc.
+class _PeopleYourAge extends StatelessWidget {
+  const _PeopleYourAge({required this.norms});
+  final engine.PeopleYourAge norms;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Column(
+      key: const ValueKey('people-your-age'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'PEOPLE YOUR AGE',
+          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+        ),
+        const SizedBox(height: Space.x12),
+        SizedBox(
+          height: 12,
+          child: LayoutBuilder(
+            builder: (context, box) => Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 5.5,
+                  child: Container(height: 1, color: t.inkPrimary),
+                ),
+                for (final (_, pct) in norms.marks)
+                  Positioned(
+                    left: (box.maxWidth - 12) * pct.clamp(0, 100) / 100,
+                    top: 0,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: t.inkPrimary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: Space.x12),
+        Text(
+          norms.line,
+          key: const ValueKey('people-your-age-line'),
+          style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+        ),
+        Text(
+          norms.source,
+          style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+        ),
       ],
     );
   }

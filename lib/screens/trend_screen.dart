@@ -10,6 +10,7 @@ import '../state/history_store.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
+import '../widgets/vo2_trend.dart';
 import 'cooper_result_screen.dart' show cooperTests;
 
 /// Trend per run type (design brief §4.9); Intervals group by comparison
@@ -521,17 +522,9 @@ class _CooperTrend extends StatelessWidget {
         ),
         if (tests.length >= 2) ...[
           const SizedBox(height: Space.x24),
-          SizedBox(
+          Vo2TrendChart(
             key: const ValueKey('cooper-trend-chart'),
-            height: 120,
-            width: double.infinity,
-            child: CustomPaint(
-              painter: _Vo2Painter(
-                [for (final x in tests) x.vo2],
-                line: t.inkPrimary,
-                grid: t.lineHair,
-              ),
-            ),
+            values: [for (final x in tests) x.vo2],
           ),
         ],
         const SizedBox(height: Space.x16),
@@ -561,43 +554,6 @@ class _CooperTrend extends StatelessWidget {
       ],
     );
   }
-}
-
-/// Raw VO2 estimates as dots joined by a 1 px line, on a padded scale.
-class _Vo2Painter extends CustomPainter {
-  _Vo2Painter(this.values, {required this.line, required this.grid});
-  final List<double> values;
-  final Color line;
-  final Color grid;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final lo = values.reduce(math.min) - 3;
-    final hi = values.reduce(math.max) + 3;
-    Offset at(int i) => Offset(
-      values.length == 1
-          ? size.width / 2
-          : size.width * i / (values.length - 1),
-      size.height * (1 - (values[i] - lo) / (hi - lo)),
-    );
-    canvas.drawLine(
-      Offset(0, size.height),
-      Offset(size.width, size.height),
-      Paint()..color = grid,
-    );
-    final p = Paint()
-      ..color = line
-      ..strokeWidth = 1;
-    for (var i = 1; i < values.length; i++) {
-      canvas.drawLine(at(i - 1), at(i), p);
-    }
-    for (var i = 0; i < values.length; i++) {
-      canvas.drawCircle(at(i), 4, Paint()..color = line);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_Vo2Painter old) => old.values != values;
 }
 
 /// Lane lines header ground (design brief §2.2: 1 px hairlines at 8 px, 6 %).
