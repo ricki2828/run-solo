@@ -8,7 +8,9 @@ package app.runsolo.core.live
  * at the TTS rate ([MS_PER_WORD]: 16 words in about 6 s).
  */
 class SpeechClock {
-    private var busyUntil = 0L
+    /** When the speech queued so far will be done (an estimate). */
+    var busyUntil = 0L
+        private set
 
     /** True when an utterance queued at [nowMs] would start within [STALE_MS]. */
     fun freshAt(nowMs: Long): Boolean = busyUntil - nowMs <= STALE_MS

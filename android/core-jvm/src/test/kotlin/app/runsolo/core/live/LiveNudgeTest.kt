@@ -175,8 +175,11 @@ class LiveNudgeTest {
         reps(coach, 240.0, 242.0)
         assertNull(coach.nudgeAtCue(CueKind.start, Phase.recovery), "rep 2: never before rep 3")
         val three = LiveCoach(ctx(plan), RunMode.intervals, fiveReps).also { reps(it, 240.0, 241.0, 245.0) }
-        assertEquals(NudgePlan.REP_FADE to 3, three.nudgeAtCue(CueKind.start, Phase.recovery)?.let { it.rule to it.index })
-        assertNull(three.nudgeAtCue(CueKind.start, Phase.recovery), "once per rep")
+        val n3 = three.nudgeAtCue(CueKind.start, Phase.recovery)
+        assertEquals(NudgePlan.REP_FADE to 3, n3?.let { it.rule to it.index })
+        assertEquals(n3, three.nudgeAtCue(CueKind.start, Phase.recovery), "offered, not claimed: a dropped nudge is not done")
+        three.nudgeSaid(n3!!)
+        assertNull(three.nudgeAtCue(CueKind.start, Phase.recovery), "once said, once per rep")
         val within = LiveCoach(ctx(plan), RunMode.intervals, fiveReps).also { reps(it, 240.0, 241.0, 243.9) }
         assertNull(within.nudgeAtCue(CueKind.start, Phase.recovery), "3.9 s/km is inside the 4 s/km limit")
         val offForRep5 = LiveCoach(ctx(plan), RunMode.intervals, fiveReps).also { reps(it, 240.0, 240.0, 240.0, 240.0, 260.0) }

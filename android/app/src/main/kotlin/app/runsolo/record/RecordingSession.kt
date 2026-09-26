@@ -415,6 +415,12 @@ class RecordingSession(
         coach.onTick(coachPrevT, coachPrevD, t, ticker.distanceM, samples.last().hr) { core.status(it).activeMs }?.let { speakFire(null, it.base, it.fire, t, it.nudge) }
         coachPrevT = t
         coachPrevD = ticker.distanceM
+        // A nudge follows its cue as its own line: done (journaled, never offered again) only once said.
+        cues.dueNudge()?.let { n ->
+            coach.nudgeSaid(n)
+            writer.append(JournalLine.CueFired(t, System.currentTimeMillis(), JournalLine.FiredKind.nudge, n.rule, n.index, core.status(t).elapsedMs))
+            Log.i(TAG, "nudge ${n.rule}#${n.index}")
+        }
         val last = samples.last()
         var pace: Double? = null
         if (last.hasFix) {
@@ -510,6 +516,7 @@ class RecordingSession(
         val t = clock()
         core.pause(t)
         ticker.onPause()
+        cues.dropNudge()
         writer.append(JournalLine.Pause(t, System.currentTimeMillis()))
         emitState()
         onNotificationChanged?.invoke()
@@ -687,13 +694,9 @@ class RecordingSession(
      */
     private fun speakFire(kind: CueKind?, base: String?, fire: LiveCoach.Fire?, t: Long, nudge: LiveCoach.Nudge? = null) {
         val extra = fire?.takeIf { it.speak }?.text
-        val said = if (kind != null || base != null || extra != null || nudge != null) cues.play(kind, base, extra, nudge?.text) else null
-        // A nudge is journaled only when it was said (the budget or the 3 s rule can drop it): the
-        // next run's `blocked` list comes from these lines.
-        if (nudge != null && said?.nudgeSpoken == true) {
-            writer.append(JournalLine.CueFired(t, System.currentTimeMillis(), JournalLine.FiredKind.nudge, nudge.rule, nudge.index, core.status(t).elapsedMs))
-            Log.i(TAG, "nudge ${nudge.rule}#${nudge.index}")
-        }
+        // A nudge waits in the player to follow this cue; it is journaled at the tick that says it
+        // (the next run's `blocked` list comes from those lines), never when it is dropped.
+        if (kind != null || base != null || extra != null) cues.play(kind, base, extra, nudge)
         fire ?: return
         val st = core.status(t)
         writer.append(JournalLine.CueFired(t, System.currentTimeMillis(), JournalLine.FiredKind.compare, fire.key, fire.index, st.elapsedMs))
@@ -741,6 +744,7 @@ class RecordingSession(
     fun muteTips() {
         if (finished || coach.muted) return
         coach.muted = true
+        cues.dropNudge()
         Log.i(TAG, "tips muted for $runId")
         onNotificationChanged?.invoke()
     }

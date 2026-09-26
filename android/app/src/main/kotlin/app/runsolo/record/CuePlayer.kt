@@ -16,6 +16,8 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import app.runsolo.core.live.CueComposer
+import app.runsolo.core.live.LiveCoach
+import app.runsolo.core.live.NudgeFollowUp
 import app.runsolo.core.live.SpeechClock
 import app.runsolo.core.model.CueKind
 import java.util.Locale
@@ -37,6 +39,7 @@ class CuePlayer(context: Context) {
     private var focus: AudioFocusRequest? = null
 
     private val speech = SpeechClock()
+    private val followUp = NudgeFollowUp()
 
     /** Utterances/tones in flight; focus is abandoned when it returns to zero. */
     private var inFlight = 0
@@ -104,27 +107,45 @@ class CuePlayer(context: Context) {
     }
 
     /**
-     * A cue with a live compare ([extra], Phase 4 §3.2) and a nudge ([nudge], §3.5) appended:
-     * composed within the 16-word budget (base > compare > nudge), both extras dropped when the
-     * speech queued ahead would make them start more than 3 s late ([SpeechClock]); the base cue
-     * is still said. [kind] null = a Free run's km split, with a short vibration. Returns what was
-     * composed (null when nothing was said), so a nudge is journaled only when spoken.
+     * A cue with a live compare ([extra], Phase 4 §3.2) appended, within the 16-word budget; the
+     * compare is dropped when the speech queued ahead would make it start more than 3 s late
+     * ([SpeechClock]), the base cue is still said. [kind] null = a Free run's km split, with a
+     * short vibration. A [nudge] (§3.5) is not appended: it follows as its own line once this cue
+     * is done ([NudgeFollowUp], [dueNudge]). Any cue, countdown tones included, drops a follow-up
+     * still waiting. Returns what was composed (null when nothing was said).
      */
     @Synchronized
-    fun play(kind: CueKind?, text: String?, extra: String?, nudge: String? = null): CueComposer.Composed? {
+    fun play(kind: CueKind?, text: String?, extra: String?, nudge: LiveCoach.Nudge? = null): CueComposer.Composed? {
         vibrate(kind ?: CueKind.minuteMark)
         if (!enabled) return null
+        followUp.cancel()
         if (kind == CueKind.countdown) {
             countdown()
             return null
         }
         val now = SystemClock.elapsedRealtime()
         val fresh = speech.freshAt(now)
-        val composed = CueComposer.compose(text, extra?.takeIf { fresh }, nudge?.takeIf { fresh })
+        val composed = CueComposer.compose(text, extra?.takeIf { fresh })
         val words = composed.text ?: return null
         speech.queued(now, CueComposer.words(words))
         say(kind, words)
+        nudge?.let { followUp.offer(it, speech.busyUntil) }
         return composed
+    }
+
+    /** A pause or Mute tips: a follow-up nudge still waiting is not said. */
+    @Synchronized
+    fun dropNudge() = followUp.cancel()
+
+    /** Once a tick: the follow-up nudge now due, said here; null when none is (or it was dropped). The caller journals it. */
+    @Synchronized
+    fun dueNudge(): LiveCoach.Nudge? {
+        val now = SystemClock.elapsedRealtime()
+        val n = followUp.due(now, speech.busyUntil) ?: return null
+        if (!enabled) return null
+        speech.queued(now, CueComposer.words(n.text))
+        say(null, n.text)
+        return n
     }
 
     /** The goal-reached line (§G): a long double buzz, then the words (spoken even over a queue: it is the moment). */
@@ -132,6 +153,7 @@ class CuePlayer(context: Context) {
     fun goal(text: String) {
         vibrate(longArrayOf(0, 400, 150, 400))
         if (!enabled) return
+        followUp.cancel()
         speech.queued(SystemClock.elapsedRealtime(), CueComposer.words(text))
         say(CueKind.phaseEnd, text)
     }
@@ -140,6 +162,7 @@ class CuePlayer(context: Context) {
     @Synchronized
     fun announce(text: String) {
         if (!enabled) return
+        followUp.cancel()
         speech.queued(SystemClock.elapsedRealtime(), CueComposer.words(text))
         say(null, text)
     }

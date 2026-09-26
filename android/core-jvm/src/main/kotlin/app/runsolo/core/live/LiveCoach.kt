@@ -180,11 +180,21 @@ class LiveCoach(
 
     // ---- nudges (CR1): the engine's thresholds against live figures ----
 
-    /** A nudge to append to a cue (lowest priority); [rule] and [index] key its `cue_fired` line. */
+    /**
+     * A nudge, said as its own line after the cue it belongs to ([NudgeFollowUp]); [rule] and
+     * [index] key its `cue_fired` line. Offered, not claimed: it is done only once [nudgeSaid].
+     */
     data class Nudge(val rule: String, val index: Int, val text: String)
 
+    /** [n] was actually spoken (and journaled): never offered again this run, restore included. */
+    fun nudgeSaid(n: Nudge) {
+        nudged.add(nudgeKey(n.rule, n.index))
+    }
+
+    private fun nudgeKey(rule: String, index: Int) = "$rule:$index"
+
     private val nudged = HashSet<String>().apply {
-        for (f in fired) if (f.kind == JournalLine.FiredKind.nudge) add("${f.key}:${f.index}")
+        for (f in fired) if (f.kind == JournalLine.FiredKind.nudge) add(nudgeKey(f.key, f.index))
     }
 
     /**
@@ -250,9 +260,10 @@ class LiveCoach(
     private fun isRepEnd(kind: CueKind, phase: Phase, s: SessionSpec) =
         (kind == CueKind.start && phase == Phase.recovery) || (kind == CueKind.phaseEnd && phase == Phase.cooldown && s.steps.isNotEmpty())
 
+    /** A nudge not blocked by the last run and not yet said this run (a dropped one stays unsaid). */
     private fun claimNudge(rule: String, index: Int, text: String): Nudge? {
-        val key = "$rule:$index"
-        if (context?.nudges?.blocked?.contains(key) == true || !nudged.add(key)) return null
+        val key = nudgeKey(rule, index)
+        if (context?.nudges?.blocked?.contains(key) == true || key in nudged) return null
         return Nudge(rule, index, text)
     }
 
