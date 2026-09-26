@@ -544,6 +544,9 @@ class _RecordingScreenState extends State<RecordingScreen>
                               MuteTipsButton(onTap: ctl.muteTips),
                               const SizedBox(width: Space.x12),
                             ],
+                            // With Mute tips beside them, HOLD TO STOP
+                            // keeps its label size (the longer label gets
+                            // the wider share).
                             Expanded(
                               child: _PauseButton(
                                 paused: s.paused,
