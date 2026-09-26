@@ -55,7 +55,7 @@ class LiveWordsTest {
     }
 
     @Test
-    fun `budget - the compare outranks the nudge; an extra that does not fit is dropped, never queued`() {
+    fun `budget - the compare outranks the nudge, an extra that does not fit is dropped, never queued`() {
         val base = "one two three four five six seven eight"
         val fits = CueComposer.compose(base, "a b c d e f", "x y z")
         assertTrue(fits.compareSpoken)
