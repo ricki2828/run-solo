@@ -36,7 +36,7 @@ void main() {
     expect(services.settings.settings.eventRun, isTrue, reason: 'default goal');
     expect(find.byKey(const ValueKey('goal-picker')), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('event-gps')),
+      find.byKey(const ValueKey('event-card')),
       200,
       scrollable: find.byType(Scrollable).first,
     );
@@ -175,7 +175,7 @@ void main() {
   });
 
   testWidgets('GOAL: the event and 10K under Distance, 30 min under Time; '
-      'goals waiting for G1 cannot start', (tester) async {
+      'every goal starts once GPS is ready', (tester) async {
     final fake = FakeRecorderGateway(now: now);
     final services = fakeServices(recorder: fake);
     await pumpApp(tester, services, pushRoute: Routes.start);
@@ -187,17 +187,18 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('goal-d10000')));
     await pumpTimes(tester, 4);
     expect(services.settings.settings.goalId, 'd10000');
-    expect(find.text('Coming with the next build.'), findsOneWidget);
-    fake.emitGpsProbe(GpsProbeEvent(fix: true, accuracyM: 5));
-    await pumpTimes(tester, 2);
-    final start = tester.widget<FilledButton>(
+    FilledButton start() => tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'START GOAL'),
     );
-    expect(start.onPressed, isNull, reason: '10K waits for G1 (#63)');
+    expect(start().onPressed, isNull, reason: 'waits for GPS');
+    fake.emitGpsProbe(GpsProbeEvent(fix: true, accuracyM: 5));
+    await pumpTimes(tester, 2);
+    expect(start().onPressed, isNotNull, reason: 'G1 specs are in (#63)');
     await tester.tap(find.byKey(const ValueKey('goal-time')));
     await pumpTimes(tester, 4);
     expect(find.byKey(const ValueKey('goal-t1800')), findsOneWidget);
     expect(find.byKey(const ValueKey('goal-t3600')), findsOneWidget);
+    expect(find.byKey(const ValueKey('goal-tcustom')), findsOneWidget);
     expect(services.settings.settings.goalId, 't1800');
   });
 

@@ -58,6 +58,8 @@ class RecordingSnapshot {
     this.phaseDurationMs = 0,
     this.stepIndex,
     this.stepRemainingM,
+    this.goalLapMs,
+    this.goalLapM,
   });
 
   final RecorderState state;
@@ -129,6 +131,15 @@ class RecordingSnapshot {
   /// Native's metres left in a distance step (I2); null for time steps.
   final double? stepRemainingM;
 
+  /// G3: the goal step's lap once it closed (the goal reached): its active
+  /// time and distance, for the "GOAL 49:12" card in the cool-down. The
+  /// saved result comes from the run file (G1), not from these.
+  final int? goalLapMs;
+  final double? goalLapM;
+
+  /// A GOAL run (plan §G): one step from Start, then an open cool-down.
+  bool get isGoal => spec?.templateId == engine.SessionSpec.goalId;
+
   /// The session step being run: `spec.steps[stepIndex]` as native sends
   /// it (work and recovery steps both counted; null in warm-up, cool-down
   /// and unstructured runs). Only in the gap between a PhaseEvent and the
@@ -171,10 +182,13 @@ class RecordingSnapshot {
       spec?.steps.any((s) => s.target == TargetKind.distance) ?? false;
 
   /// END REP (A8, plan §3.6 W3): a distance step with GPS weak or lost for
-  /// more than 10 s.
+  /// more than 10 s. Never on a goal or the event (#75 review P2): one tap
+  /// would close a Half or Marathon lap early; its distance waits for GPS.
   bool get showEndRep =>
       recording &&
       distanceStep &&
+      !isGoal &&
+      spec?.templateId != engine.SessionSpec.parkrunId &&
       gpsBadSinceMs != null &&
       elapsedMs - gpsBadSinceMs! > 10000;
 
@@ -241,6 +255,8 @@ class RecordingSnapshot {
     bool clearStepIndex = false,
     double? stepRemainingM,
     bool clearStepRemainingM = false,
+    int? goalLapMs,
+    double? goalLapM,
   }) => RecordingSnapshot(
     state: state ?? this.state,
     runId: runId ?? this.runId,
@@ -274,6 +290,8 @@ class RecordingSnapshot {
     stepRemainingM: clearStepRemainingM
         ? null
         : (stepRemainingM ?? this.stepRemainingM),
+    goalLapMs: goalLapMs ?? this.goalLapMs,
+    goalLapM: goalLapM ?? this.goalLapM,
   );
 }
 
@@ -379,6 +397,11 @@ class RecordingController extends ChangeNotifier {
       final last = s.laps.last;
       _lastLapDistanceM = last.distanceM;
     }
+    // A goal's first lap is the goal step (no warm-up): after a restore the
+    // cool-down card still has it.
+    final goalLap = s.spec?.templateId == engine.SessionSpec.goalId
+        ? s.laps.firstOrNull
+        : null;
     _snap = _snap.copyWith(
       state: s.state,
       runId: s.runId,
@@ -398,6 +421,8 @@ class RecordingController extends ChangeNotifier {
       stepRemainingM: s.stepRemainingM,
       clearStepRemainingM: s.stepRemainingM == null,
       hrPaired: s.hrConnected || _snap.hrPaired,
+      goalLapMs: goalLap?.activeMs,
+      goalLapM: goalLap?.distanceM,
       gpsLost: !s.gpsFix,
       hadFix: _snap.hadFix || s.gpsFix,
       fault: s.journalOk ? null : 'Journal write failed',
@@ -635,6 +660,11 @@ class RecordingController extends ChangeNotifier {
     };
     if (counts && lapDistanceM > 0 && lapMs > 0) {
       paces.add(lapMs / 1000 / (lapDistanceM / 1000));
+    }
+    // G3: a goal's first lap closes the goal step (distance is cumulative
+    // from Start, so it is the goal's own).
+    if (_snap.isGoal && l.index == 0) {
+      _snap = _snap.copyWith(goalLapMs: l.activeMs, goalLapM: l.distanceM);
     }
     if (shown != null) {
       // Already on screen since the press: fill in, no second ring.

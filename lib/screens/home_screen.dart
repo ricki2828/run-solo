@@ -137,7 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   selected: settings.lastMode,
                   session: services.pickedSession,
                   goal: settings.goalRun,
-                  goalLabel: goalLabel(settings.goalId),
+                  goalLabel: goalLabel(settings),
                   onGoal: () => services.settings.update(
                     (s) => s.copyWith(goalRun: true),
                   ),
