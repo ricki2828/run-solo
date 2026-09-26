@@ -102,14 +102,22 @@ class LiveContextSource {
 
   /// The context for a Start of [mode] with [spec] (and [courseKey] for the
   /// Saturday 5 km when the app knows it), or null. Never throws, never
-  /// waits longer than [budget].
+  /// waits longer than [budget]. [preferAlternative]: the runner tapped
+  /// the Start target over to its other choice (A10.10, "your PB" vs
+  /// predicted), so that one is raced; ignored when there is none.
   Future<LiveContext?> build({
     required RecordMode mode,
     SessionSpec? spec,
     String? courseKey,
+    bool preferAlternative = false,
   }) async {
     try {
-      return await _build(mode, spec, courseKey).timeout(budget);
+      return await _build(
+        mode,
+        spec,
+        courseKey,
+        preferAlternative,
+      ).timeout(budget);
     } on TimeoutException {
       debugPrint('live: context over ${budget.inMilliseconds} ms, none');
       return null;
@@ -123,6 +131,7 @@ class LiveContextSource {
     RecordMode mode,
     SessionSpec? spec,
     String? courseKey,
+    bool preferAlternative,
   ) async {
     final version = _cachedVersion == _preparedForTest
         ? _preparedForTest
@@ -146,13 +155,14 @@ class LiveContextSource {
     );
     // PD2: the event or a goal races its target even before any board has
     // two entries.
-    final target = engine.StartTarget.forSession(
+    final shown = engine.StartTarget.forSession(
       session,
       runs: _cached,
       now: now(),
       names: names,
       courseKey: courseKey,
     );
+    final target = preferAlternative ? shown?.alternative ?? shown : shown;
     if (plan.isEmpty && target?.liveTargetMs == null) return null;
     return toPigeon(plan, builtAt: now(), target: target);
   }
