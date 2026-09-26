@@ -28,3 +28,5 @@ export 'src/model/session_spec.dart';
 export 'src/model/sidecar.dart';
 export 'src/model/verdict.dart';
 export 'src/run_mode.dart';
+export 'src/weather/heat_model.dart';
+export 'src/weather/weather.dart';

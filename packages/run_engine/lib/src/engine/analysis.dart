@@ -4,6 +4,9 @@ import '../model/session_spec.dart';
 import '../model/sidecar.dart';
 import '../model/verdict.dart';
 import '../run_mode.dart';
+import '../weather/heat_model.dart';
+import '../weather/weather.dart';
+import 'format.dart';
 import 'constants.dart';
 import 'fix_laps.dart';
 import 'metrics.dart';
@@ -50,6 +53,26 @@ String? comparisonKeyOf(SessionSpec? session, RunMode mode) => switch (mode) {
     session?.templateId == SessionSpec.fartlekId ? ComparisonKey.fartlek : null,
   RunMode.intervals || RunMode.cooper => session?.comparisonKey,
 };
+
+/// The line under a verdict when the run has weather (v1 plan §18.5):
+/// the adjusted headline in the verdict's own unit, with the conditions.
+String? heatLineFor(WeatherRecord? w, IntervalMetrics? m, Units units) {
+  final heat = w?.heat;
+  if (heat == null) return null;
+  final conditions =
+      '${heat.tempC.round()} °C, dew point ${heat.dewPointC.round()}';
+  if (heat.tooHot) return 'Too hot to compare ($conditions).';
+  final pace = m?.avgWorkPaceSecPerKm;
+  if (!heat.adjusts || pace == null) return null;
+  final adjusted = heat.pace(pace)!;
+  final metres = m!.kind == IntervalMetricKind.repTime
+      ? m.nominalRepMetres
+      : null;
+  final value = metres == null
+      ? PaceFormat.pace(adjusted, units)
+      : PaceFormat.mmss(adjusted * metres / 1000);
+  return 'Heat-adjusted estimate: $value ($conditions).';
+}
 
 /// How [spec]'s headline is measured (Phase 3 §3.7): uniform distance reps
 /// → rep time; other distance work → untrimmed pace over the measured laps;
@@ -103,7 +126,28 @@ class RunAnalysis {
     this.fartlek,
     this.plannedRepCount,
     this.plannedRecoveryLabel,
+    this.weather,
+    this.heatLine,
   });
+
+  /// The sidecar's weather (W1): pending, ok, failed or skipped; null
+  /// before the first fetch. Never an input to the verdict (plan §18.5:
+  /// computed and frozen without weather).
+  final WeatherRecord? weather;
+
+  /// "Heat-adjusted estimate: 4:41/km (28 °C, dew point 21)." shown under the
+  /// verdict; "Too hot to compare …" above the table; null without weather
+  /// or when the heat did not slow anything.
+  final String? heatLine;
+
+  HeatAdjustment? get heat => weather?.heat;
+
+  /// The heat-adjusted twin of the headline work pace (and, through [heat],
+  /// of any per-rep pace); null without usable weather.
+  double? get heatAdjustedWorkPaceSecPerKm {
+    final p = intervals?.avgWorkPaceSecPerKm;
+    return p == null ? null : heat?.pace(p);
+  }
 
   final String runId;
 
@@ -213,6 +257,7 @@ class RunEngine {
     final freeRun = calc.freeRun(run, trace);
     final session = effectiveSession(run, mode);
     final key = comparisonKeyOf(session, mode);
+    final weather = WeatherRecord.fromJson(sidecar?.weather);
 
     // Exhaustive (W7): a new mode fails to compile here instead of being
     // mislabelled as a 4x4.
@@ -233,6 +278,7 @@ class RunEngine {
           noisy: noisy,
           gpsQuality: quality,
           engineVersion: engineVersion,
+          weather: weather,
           session: session,
           comparisonKey: key,
         );
@@ -254,6 +300,7 @@ class RunEngine {
           noisy: noisy,
           gpsQuality: quality,
           engineVersion: engineVersion,
+          weather: weather,
           session: session,
           comparisonKey: key,
         );
@@ -362,6 +409,8 @@ class RunEngine {
       noisy: noisy,
       gpsQuality: quality,
       engineVersion: engineVersion,
+      weather: weather,
+      heatLine: heatLineFor(weather, metrics, run.units),
       session: session,
       comparisonKey: key,
       lapEditsInvalid: lapEditsInvalid,

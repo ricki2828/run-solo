@@ -299,6 +299,11 @@ class _SettingsScreenState extends State<SettingsScreen>
                     Navigator.of(context).pushNamed(Routes.permissions),
               ),
               const _Section('Data'),
+              _Toggle(
+                label: 'Weather for each run',
+                value: s.weatherPerRun,
+                onChanged: (v) => set((x) => x.copyWith(weatherPerRun: v)),
+              ),
               SettingsRow(
                 label: 'Move runs to another Run Supreme',
                 value: _busy ? 'Working' : '',

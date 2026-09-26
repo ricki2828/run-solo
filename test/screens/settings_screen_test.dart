@@ -204,6 +204,28 @@ void main() {
     expect(sw.value, isTrue);
   });
 
+  testWidgets('"Weather for each run" defaults on and switches off (§18.6)', (
+    tester,
+  ) async {
+    final services = fakeServices();
+    await pumpApp(tester, services, home: SettingsScreen(now: now));
+    await pumpTimes(tester, 3);
+    await scrollTo(tester, find.text('Weather for each run'));
+    final toggle = find.descendant(
+      of: find
+          .ancestor(
+            of: find.text('Weather for each run'),
+            matching: find.byType(Row),
+          )
+          .first,
+      matching: find.byType(Switch),
+    );
+    expect(tester.widget<Switch>(toggle).value, isTrue);
+    await tester.tap(toggle);
+    await pumpTimes(tester, 3);
+    expect(services.settings.settings.weatherPerRun, isFalse);
+  });
+
   testWidgets('About carries the §18.6 paragraph and attribution', (
     tester,
   ) async {

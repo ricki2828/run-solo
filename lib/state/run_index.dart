@@ -40,6 +40,10 @@ class RunIndexEntry {
     this.sidecarMtimeMs,
     this.sidecarHash,
     this.prior,
+    this.weatherStatus,
+    this.tempC,
+    this.dewPointC,
+    this.heatAdj,
   });
 
   final String id;
@@ -69,6 +73,14 @@ class RunIndexEntry {
   /// What this run contributes as a prior to later verdicts of its key.
   final engine.PriorRun? prior;
 
+  /// Weather (W1, v1 plan §18.5 index columns); null before any fetch.
+  final engine.WeatherStatus? weatherStatus;
+  final double? tempC;
+  final double? dewPointC;
+
+  /// Slowdown fraction; null when not ok or too hot to compare.
+  final double? heatAdj;
+
   /// Fresh when the run file, the sidecar and the engine are all unchanged.
   bool isFresh(FileStamp s) =>
       engineVersion == engine.engineVersion &&
@@ -94,6 +106,10 @@ class RunIndexEntry {
     'sidecar_mtime_ms': sidecarMtimeMs,
     'sidecar_hash': sidecarHash,
     'prior': prior?.toJson(),
+    'weather_status': weatherStatus?.name,
+    'temp_c': tempC,
+    'dew_point_c': dewPointC,
+    'adj': heatAdj,
   };
 
   factory RunIndexEntry.fromJson(Map<String, Object?> j) => RunIndexEntry(
@@ -118,6 +134,12 @@ class RunIndexEntry {
     prior: j['prior'] == null
         ? null
         : engine.PriorRun.fromJson(j['prior']! as Map<String, Object?>),
+    weatherStatus: engine.WeatherStatus.values
+        .where((s) => s.name == j['weather_status'])
+        .firstOrNull,
+    tempC: (j['temp_c'] as num?)?.toDouble(),
+    dewPointC: (j['dew_point_c'] as num?)?.toDouble(),
+    heatAdj: (j['adj'] as num?)?.toDouble(),
   );
 
   /// Built from a fresh analysis ([a] null when the run could not be
@@ -131,6 +153,7 @@ class RunIndexEntry {
   }) {
     final mode = sidecar?.runTypeOverride ?? a?.mode ?? run.mode;
     final durationMs = run.end.difference(run.start).inMilliseconds;
+    final weather = engine.WeatherRecord.fromJson(sidecar?.weather);
     final whole = run.distanceM > 0
         ? durationMs / 1000 / (run.distanceM / 1000)
         : null;
@@ -155,6 +178,10 @@ class RunIndexEntry {
       sidecarMtimeMs: stamp.sidecarMtimeMs,
       sidecarHash: stamp.sidecarHash,
       prior: a?.asPrior(run.start),
+      weatherStatus: weather?.status,
+      tempC: weather?.tempC,
+      dewPointC: weather?.dewPointC,
+      heatAdj: weather?.adj,
     );
   }
 
