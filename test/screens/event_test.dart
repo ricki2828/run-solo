@@ -86,7 +86,7 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('official-save')));
     await pumpTimes(tester, 4);
-    expect(find.textContaining('more than 20% off'), findsOneWidget);
+    expect(find.textContaining('long way from your GPS time'), findsOneWidget);
     expect(
       (await services.history.load(a.id))!.sidecar.parkrun?.officialTimeSeconds,
       isNull,

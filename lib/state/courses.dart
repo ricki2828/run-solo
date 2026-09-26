@@ -168,27 +168,19 @@ double? gpsFinishSeconds(engine.IntervalMetrics? m) {
   return pace * m.nominalRepMetres! / 1000;
 }
 
-/// Why an official time cannot be used, or null when it is fine. Said
-/// plainly rather than dropped silently: #49's engine ignores an official
-/// time more than 20% off the GPS finish (`ParkrunInfo.plausibleOfficial`,
-/// `officialTimeProblem`). Until #49 lands this mirrors its ±20% bound;
-/// then it calls the engine's check.
+/// Why an official time cannot be used, or null when it is fine: the
+/// engine's own rule (`ParkrunInfo.officialTimeProblem`, 12:00 to 1:30:00
+/// and within 20% of the GPS finish), so the entry screen and the verdict
+/// never disagree. Said plainly rather than dropped silently.
 String? officialTimeProblem(int? seconds, double? gpsSeconds) {
   if (seconds == null) {
     return 'Type the time as minutes and seconds, like 23:20.';
   }
-  if (gpsSeconds == null || gpsSeconds <= 0) return null;
-  if ((seconds - gpsSeconds).abs() <= gpsSeconds * officialTolerance) {
-    return null;
-  }
-  return 'That is more than 20% off your GPS time of '
-      '${_clock(gpsSeconds.round())}. Check the time and try again.';
+  return engine.ParkrunInfo.officialTimeProblem(
+    seconds,
+    gpsSeconds: gpsSeconds,
+  );
 }
-
-/// #49 `ParkrunInfo.plausibleOfficial`: ±20% of the GPS finish.
-const double officialTolerance = 0.2;
-
-String _clock(int s) => '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
 
 @immutable
 class CourseBoardEntry {

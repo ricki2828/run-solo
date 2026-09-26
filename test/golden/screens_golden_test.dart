@@ -860,7 +860,10 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('official-save')));
       await pumpTimes(tester, 4);
-      expect(find.textContaining('more than 20% off'), findsOneWidget);
+      expect(
+        find.textContaining('long way from your GPS time'),
+        findsOneWidget,
+      );
       await tester.pump(const Duration(milliseconds: 300)); // error fades in
       await golden(tester, 'event_official_refused_360x$h');
       await pumpApp(

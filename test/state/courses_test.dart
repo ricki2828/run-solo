@@ -107,11 +107,11 @@ void main() {
       }
     });
 
-    test('more than 20% off the GPS finish is refused with the reason', () {
+    test('the engine rule: 12:00 to 1:30:00 and within 20% of GPS', () {
       expect(officialTimeProblem(1400, 1400), isNull);
       expect(officialTimeProblem(1680, 1400), isNull); // +20%
-      expect(officialTimeProblem(1681, 1400), contains('20%'));
-      expect(officialTimeProblem(1681, 1400), contains('23:20'));
+      expect(officialTimeProblem(1681, 1400), contains('GPS time'));
+      expect(officialTimeProblem(700, null), contains('12:00'));
       expect(officialTimeProblem(null, 1400), contains('23:20'));
       expect(officialTimeProblem(1400, null), isNull);
     });
