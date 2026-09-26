@@ -235,7 +235,8 @@ class LiveEntry {
 }
 
 /// A board the live compare ranks against: at most 20 entries (top 10 +
-/// last 10, deduped). The app only sends a board with 2 or more entries.
+/// last 10, deduped). The app sends a race board with 2 or more entries; a
+/// goal's board may have 1 (a second Half can still be a new best, #78).
 class LiveBoard {
   LiveBoard({
     required this.key,
