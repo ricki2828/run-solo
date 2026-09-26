@@ -54,6 +54,8 @@ data class Replay(
     val liveContext: LiveContext? = null,
     /** Every `cf` line, in journal order: live cues already spoken, never repeated on restore. */
     val cuesFired: List<JournalLine.CueFired> = emptyList(),
+    /** A `tm` line: tips were muted for this run (LV2); restore keeps them muted. */
+    val tipsMuted: Boolean = false,
 ) {
     val isPaused: Boolean
         get() = events.lastOrNull { it is RunEvent.Pause || it is RunEvent.Resume } is RunEvent.Pause
@@ -90,6 +92,7 @@ object JournalReplay {
         var badLines = 0
         var liveContext: LiveContext? = null
         val cuesFired = ArrayList<JournalLine.CueFired>()
+        var tipsMuted = false
         var clockJumps = 0
         var outOfOrder = 0
         var truncated = false
@@ -122,6 +125,7 @@ object JournalReplay {
             // Live-compare bookkeeping, not run events: kept aside, never on the run timeline.
             if (line is JournalLine.LiveContextLine) { if (liveContext == null) liveContext = line.context; continue }
             if (line is JournalLine.CueFired) { cuesFired.add(line); continue }
+            if (line is JournalLine.TipsMuted) { tipsMuted = true; continue }
             val runT: Long
             if (line is JournalLine.Gap) {
                 // Run time continues through the dark span; the new device base is line.t.
@@ -150,7 +154,8 @@ object JournalReplay {
                         is JournalLine.Cue -> RunEvent.Cue(runT, line.kind)
                         is JournalLine.HrLink -> RunEvent.HrLink(runT, line.connected)
                         is JournalLine.Header, is JournalLine.Gap,
-                        is JournalLine.LiveContextLine, is JournalLine.CueFired -> throw IllegalStateException()
+                        is JournalLine.LiveContextLine, is JournalLine.CueFired,
+                        is JournalLine.TipsMuted -> throw IllegalStateException()
                     },
                 )
             }
@@ -175,6 +180,7 @@ object JournalReplay {
             outOfOrder = outOfOrder,
             liveContext = liveContext,
             cuesFired = cuesFired,
+            tipsMuted = tipsMuted,
         )
     }
 }

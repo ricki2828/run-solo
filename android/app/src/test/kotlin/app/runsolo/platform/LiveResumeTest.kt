@@ -48,7 +48,7 @@ class LiveResumeTest {
     )
 
     /** A Free run killed at 2.5 km (3.5 m/s east), with compares journaled for km 1 and 2. */
-    private fun writeOrphan(id: String) {
+    private fun writeOrphan(id: String, muted: Boolean = false) {
         fs.mkdirs(RunPaths.journalDir(id))
         val lat0 = -33.8688
         val lon0 = 151.2093
@@ -60,6 +60,7 @@ class LiveResumeTest {
             val t = s * 1_000L
             lines.add(JournalLine.Sample(t, w0 + t, lat0, lon0 + 3.5 * s / mPerDegLon, null, 5.0, 3.5, 150))
             if (s == 286 || s == 572) lines.add(JournalLine.CueFired(t, w0 + t, JournalLine.FiredKind.compare, "be:5k", s / 286, t))
+            if (muted && s == 600) lines.add(JournalLine.TipsMuted(t, w0 + t))
         }
         fs.openAppend(RunPaths.journal(id)).use { a -> for (l in lines) a.write((JournalCodec.encode(l) + "\n").toByteArray()) }
     }
@@ -79,6 +80,22 @@ class LiveResumeTest {
         val k3 = coach.onTick(0, 2_999.0, 1_000, 3_001.0) { 880_000 }
         assertNotNull(k3?.fire)
         assertEquals(listOf(2, 4), listOf(k3!!.fire!!.result.rank, k3.fire!!.result.of))
+        session.abortStart()
+    }
+
+    @Test
+    fun `a journaled Mute tips stays muted after the kill`() {
+        writeOrphan("live-2", muted = true)
+        val replayed = JournalReplay.read(fs.readBytes(RunPaths.journal("live-2")))
+        assertTrue(replayed.tipsMuted)
+        val session = RecorderApiImpl(context).resumeSession("live-2", replayed)
+        session.startResumed(replayed)
+        val coach = session.liveCoach
+        assertTrue("still muted after the restore", coach.muted)
+        // The km 3 compare still fires for the journal and the app, but is not spoken.
+        val k3 = coach.onTick(0, 2_999.0, 1_000, 3_001.0) { 880_000 }
+        assertEquals(false, k3?.fire?.speak)
+        assertEquals(true, session.status().tipsMuted)
         session.abortStart()
     }
 }

@@ -73,6 +73,7 @@ object JournalCodec {
                 m["k"] = "cf"; m["t"] = line.t; m["w"] = line.w
                 m["kind"] = line.kind.name; m["key"] = line.key; m["i"] = line.index; m["at"] = line.atMs
             }
+            is JournalLine.TipsMuted -> { m["k"] = "tm"; m["t"] = line.t; m["w"] = line.w }
         }
         return Json.write(m)
     }
@@ -154,6 +155,7 @@ object JournalCodec {
             "hr" -> JournalLine.HrLink(t, w, m["on"] as? Boolean ?: throw IllegalArgumentException("hr.on"))
             "lctx" -> JournalLine.LiveContextLine(t, w, LiveContext.fromJson(m.obj("ctx") ?: throw IllegalArgumentException("lctx.ctx")))
             "cf" -> JournalLine.CueFired(t, w, JournalLine.FiredKind.valueOf(m.string("kind")), m.string("key"), m.int("i"), m.long("at"))
+            "tm" -> JournalLine.TipsMuted(t, w)
             else -> throw IllegalArgumentException("Unknown journal line kind '$k'")
         }
     }

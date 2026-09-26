@@ -254,7 +254,11 @@ class RecordingSession(
         // reps run so far give the live rep paces back, each by the step its lap ended; a rep
         // with a kill gap inside it (this one included: the gap line is already journaled) is
         // unclean.
-        coach = LiveCoach(liveContext, mode, spec, replayed.cuesFired).also { it.kmSplits = kmSplits }
+        coach = LiveCoach(liveContext, mode, spec, replayed.cuesFired).also {
+            it.kmSplits = kmSplits
+            // A journaled "Mute tips" survives the kill: nothing is spoken again after a restore.
+            if (replayed.tipsMuted) it.muted = true
+        }
         var cumActive = 0L
         coach.restoreReps(replayed.events, core, laps.map { l -> cumActive += l.activeMs; l.distanceM to cumActive })
         coach.resumeAt(ticker.distanceM)
@@ -776,6 +780,7 @@ class RecordingSession(
         if (finished || coach.muted) return
         coach.muted = true
         cues.dropNudge()
+        writer.append(JournalLine.TipsMuted(clock(), System.currentTimeMillis()))
         Log.i(TAG, "tips muted for $runId")
         onNotificationChanged?.invoke()
         // The app re-reads status() on a state event: its Mute tips button and the card go.
