@@ -268,7 +268,9 @@ class RecorderCore(
     private fun applyManualLap(source: LapSource, t: Long): List<Output> {
         lastManualLapT = t
         val out = ArrayList<Output>()
-        val realigns = structured && source != LapSource.volumeKey
+        // A goal's step ends on its distance or time only (§G): a LAP in it marks a lap, no more.
+        val goalStep = spec?.isGoal == true && phase == Phase.work
+        val realigns = structured && source != LapSource.volumeKey && !goalStep
         noteLapStep(lapCount, realigns)
         out.add(Output.Lap(lapCount++, t, source))
         if (realigns) {
@@ -360,6 +362,16 @@ class RecorderCore(
             startsStep = realigns && (inStep || phase == Phase.warmup),
         )
     }
+
+    /**
+     * Where the session's last step ended: its (back-dated) time, active run ms and distance. A
+     * goal's reached point (§G: moving time at the goal distance, distance at the goal time).
+     * Set once when the last step closes; [restore] sets it again from the journal.
+     */
+    data class StepEnd(val t: Long, val activeMs: Long, val distanceM: Double)
+
+    var finalStepEnd: StepEnd? = null
+        private set
 
     /** The time a step that started inside this tick began (the last boundary emitted), for interpolation. */
     private var lastBoundaryT = 0L
@@ -456,7 +468,8 @@ class RecorderCore(
         val from = stepIndex ?: return emptyList()
         if (phase == Phase.work) lastWorkActiveMs = activeAt(t) - phaseStartActive
         val next = nextStepIndex(from)
-        return if (next < spec!!.steps.size) enterStep(t, next, startD) else enterCooldown(t)
+        if (next >= spec!!.steps.size) finalStepEnd = StepEnd(t, activeAt(t), startD)
+        return if (next < spec.steps.size) enterStep(t, next, startD) else enterCooldown(t)
     }
 
     private fun enterStep(t: Long, index: Int, startD: Double): List<Output> {

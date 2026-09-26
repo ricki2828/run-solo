@@ -2087,6 +2087,76 @@ data class CompareEvent (
   }
 }
 
+/**
+ * A GOAL run reached its goal (§G): the step closed on its distance or time;
+ * the recording goes on as an open cool-down. The engine's goal result from
+ * the run file is the one of record; this is the live moment (the goal card).
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class GoalEvent (
+  /** True for a distance goal, false for a time goal. */
+  val distanceGoal: Boolean,
+  /** The goal: metres or seconds. */
+  val goalValue: Long,
+  /** Moving time at the goal point (pauses and gaps out). */
+  val timeMs: Long,
+  val distanceM: Double,
+  /** Beats every entry on the goal's board (never when [interrupted]). */
+  val newBest: Boolean,
+  /** A kill gap fell before the goal (WARN-G2): the result may be off. */
+  val interrupted: Boolean,
+  /** What was said. */
+  val text: String
+) : RecorderEvent()
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): GoalEvent {
+      val distanceGoal = pigeonVar_list[0] as Boolean
+      val goalValue = pigeonVar_list[1] as Long
+      val timeMs = pigeonVar_list[2] as Long
+      val distanceM = pigeonVar_list[3] as Double
+      val newBest = pigeonVar_list[4] as Boolean
+      val interrupted = pigeonVar_list[5] as Boolean
+      val text = pigeonVar_list[6] as String
+      return GoalEvent(distanceGoal, goalValue, timeMs, distanceM, newBest, interrupted, text)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      distanceGoal,
+      goalValue,
+      timeMs,
+      distanceM,
+      newBest,
+      interrupted,
+      text,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as GoalEvent
+    return PlatformApiPigeonUtils.deepEquals(this.distanceGoal, other.distanceGoal) && PlatformApiPigeonUtils.deepEquals(this.goalValue, other.goalValue) && PlatformApiPigeonUtils.deepEquals(this.timeMs, other.timeMs) && PlatformApiPigeonUtils.deepEquals(this.distanceM, other.distanceM) && PlatformApiPigeonUtils.deepEquals(this.newBest, other.newBest) && PlatformApiPigeonUtils.deepEquals(this.interrupted, other.interrupted) && PlatformApiPigeonUtils.deepEquals(this.text, other.text)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.distanceGoal)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.goalValue)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.timeMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.distanceM)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.newBest)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.interrupted)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.text)
+    return result
+  }
+}
+
 /** Generated class from Pigeon that represents data sent in messages. */
 data class FaultEvent (
   val kind: FaultKind,
@@ -2428,15 +2498,20 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
       }
       170.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FaultEvent.fromList(it)
+          GoalEvent.fromList(it)
         }
       }
       171.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StateEvent.fromList(it)
+          FaultEvent.fromList(it)
         }
       }
       172.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          StateEvent.fromList(it)
+        }
+      }
+      173.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           PhaseEvent.fromList(it)
         }
@@ -2610,16 +2685,20 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(169)
         writeValue(stream, value.toList())
       }
-      is FaultEvent -> {
+      is GoalEvent -> {
         stream.write(170)
         writeValue(stream, value.toList())
       }
-      is StateEvent -> {
+      is FaultEvent -> {
         stream.write(171)
         writeValue(stream, value.toList())
       }
-      is PhaseEvent -> {
+      is StateEvent -> {
         stream.write(172)
+        writeValue(stream, value.toList())
+      }
+      is PhaseEvent -> {
+        stream.write(173)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)

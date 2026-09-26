@@ -49,7 +49,7 @@ object ReplayScenarios {
         val presses: List<ScriptedPress>,
     )
 
-    val KINDS = listOf("4x4", "400s", "30-30s", "yasso-800s", "1km-repeats", "fartlek", "cooper", "parkrun") // event-name-ok: debug replay ids, never in a store build
+    val KINDS = listOf("4x4", "400s", "30-30s", "yasso-800s", "1km-repeats", "fartlek", "cooper", "parkrun", "goal-10k", "goal-30min") // event-name-ok: debug replay ids, never in a store build
 
     private const val LAT0 = -33.8688
     private const val LON0 = 151.2093
@@ -72,6 +72,9 @@ object ReplayScenarios {
         "parkrun" -> structured(kind, PARKRUN, workMps = 4.0, start = null) // event-name-ok: debug replay ids, never in a store build
         "cooper" -> structured(kind, SessionSpec.COOPER, workMps = 3.4, mode = RunMode.cooper, start = Press.startReps)
         "fartlek" -> fartlek()
+        // GOAL runs (§G): one step from Start, then an open cool-down (60 s here, then the trace ends).
+        "goal-10k" -> structured(kind, SessionSpec.goalDistance(10_000, "10K"), workMps = 4.0, start = null)
+        "goal-30min" -> structured(kind, SessionSpec.goalTime(1_800, "30 minutes"), workMps = 3.5, start = null)
         else -> null
     }
 

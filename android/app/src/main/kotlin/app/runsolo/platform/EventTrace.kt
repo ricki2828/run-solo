@@ -120,6 +120,16 @@ object EventTrace {
                 m["text"] = e.text
                 m["overlay"] = e.overlay
             }
+            is GoalEvent -> {
+                m["kind"] = "goal"
+                m["distanceGoal"] = e.distanceGoal
+                m["goalValue"] = e.goalValue
+                m["timeMs"] = e.timeMs
+                m["distanceM"] = e.distanceM
+                m["newBest"] = e.newBest
+                m["interrupted"] = e.interrupted
+                m["text"] = e.text
+            }
             is FaultEvent -> {
                 m["kind"] = "fault"
                 m["fault"] = dartName(e.kind)

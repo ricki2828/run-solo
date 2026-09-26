@@ -64,6 +64,13 @@ class SessionSpecTest {
         valid(SessionSpec.norwegian4x4().copy(warmupSeconds = 300, cooldownSeconds = 1200))
         invalid(SessionSpec.norwegian4x4().copy(warmupSeconds = 299))
         valid(SessionSpec.norwegian4x4().copy(warmupSeconds = 0)) // no warm-up (parkrun)
+        // GOAL runs (§G): one step, a distance up to 100 km or a time up to 24 h; never auto-stop.
+        valid(SessionSpec.goalDistance(42_195, "Marathon"))
+        valid(SessionSpec.goalTime(3_600, "1 hour"))
+        invalid(SessionSpec.goalDistance(100_001, "far"))
+        invalid(SessionSpec.goalTime(59, "short"))
+        invalid(SessionSpec.goalDistance(10_000, "10K").copy(autoStop = true))
+        invalid(SessionSpec.goalDistance(10_000, "10K").copy(steps = SessionSpec.norwegian4x4().steps))
         invalid(SessionSpec.norwegian4x4().copy(cooldownSeconds = 0)) // 0 means none for the warm-up only
         invalid(SessionSpec.norwegian4x4().copy(cooldownSeconds = 1201))
         // Fartlek may be steps-empty; nothing else may.

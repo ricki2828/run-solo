@@ -882,6 +882,40 @@ class CompareEvent extends RecorderEvent {
   bool overlay;
 }
 
+/// A GOAL run reached its goal (§G): the step closed on its distance or time;
+/// the recording goes on as an open cool-down. The engine's goal result from
+/// the run file is the one of record; this is the live moment (the goal card).
+class GoalEvent extends RecorderEvent {
+  GoalEvent({
+    required this.distanceGoal,
+    required this.goalValue,
+    required this.timeMs,
+    required this.distanceM,
+    required this.newBest,
+    required this.interrupted,
+    required this.text,
+  });
+
+  /// True for a distance goal, false for a time goal.
+  bool distanceGoal;
+
+  /// The goal: metres or seconds.
+  int goalValue;
+
+  /// Moving time at the goal point (pauses and gaps out).
+  int timeMs;
+  double distanceM;
+
+  /// Beats every entry on the goal's board (never when [interrupted]).
+  bool newBest;
+
+  /// A kill gap fell before the goal (WARN-G2): the result may be off.
+  bool interrupted;
+
+  /// What was said.
+  String text;
+}
+
 class FaultEvent extends RecorderEvent {
   FaultEvent({required this.kind, required this.message});
   FaultKind kind;

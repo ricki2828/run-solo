@@ -127,6 +127,15 @@ class CuePlayer(context: Context) {
         return composed
     }
 
+    /** The goal-reached line (§G): a long double buzz, then the words (spoken even over a queue: it is the moment). */
+    @Synchronized
+    fun goal(text: String) {
+        vibrate(longArrayOf(0, 400, 150, 400))
+        if (!enabled) return
+        speech.queued(SystemClock.elapsedRealtime(), CueComposer.words(text))
+        say(CueKind.phaseEnd, text)
+    }
+
     /** Spoken without a vibration pattern of its own (e.g. "GPS weak"). */
     @Synchronized
     fun announce(text: String) {
@@ -165,12 +174,15 @@ class CuePlayer(context: Context) {
         if (inFlight == 0) abandonFocus()
     }
 
-    private fun vibrate(kind: CueKind) {
-        val pattern = when (kind) {
+    private fun vibrate(kind: CueKind) = vibrate(
+        when (kind) {
             CueKind.start, CueKind.phaseEnd -> longArrayOf(0, 120, 80, 120)
             CueKind.stop -> longArrayOf(0, 300)
             else -> longArrayOf(0, 80)
-        }
+        },
+    )
+
+    private fun vibrate(pattern: LongArray) {
         try {
             val v = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator

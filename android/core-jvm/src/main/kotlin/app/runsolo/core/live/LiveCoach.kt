@@ -57,6 +57,17 @@ class LiveCoach(
     /** Settings → Voice → "Km splits" (default on): Free runs say each km. */
     var kmSplits: Boolean = true
 
+    /** A GOAL run past its goal (§G): the open cool-down says km splits and nothing else. */
+    var goalReached: Boolean = false
+        private set
+
+    /** The goal was reached at [distanceM] / [activeMs] (or, after a restore, is already behind): km splits count on from there. */
+    fun goalReachedAt(distanceM: Double, activeMs: Long?) {
+        goalReached = true
+        lastKm = maxOf(lastKm, floor(distanceM / 1_000).toInt())
+        lastKmActiveMs = activeMs
+    }
+
     /** A whole km of a Free or Laps run: the split to say ([base], Free only) and its compare, if any. */
     data class KmCue(val km: Int, val base: String?, val fire: Fire?, val nudge: Nudge? = null)
 
@@ -143,7 +154,8 @@ class LiveCoach(
      * Two kms in one tick (a catch-up) give only the last. Compares stop after 10 km.
      */
     fun onTick(prevT: Long, prevD: Double, t: Long, d: Double, hr: Int? = null, activeAt: (Long) -> Long): KmCue? {
-        if (spec?.steps?.isNotEmpty() == true || (mode != RunMode.free && mode != RunMode.laps)) return null
+        val goalCooldown = goalReached && spec?.isGoal == true
+        if (!goalCooldown && (spec?.steps?.isNotEmpty() == true || (mode != RunMode.free && mode != RunMode.laps))) return null
         val km = floor(d / 1_000).toInt()
         if (km <= lastKm || d <= prevD) {
             kmHr.add(hr)
@@ -159,10 +171,11 @@ class LiveCoach(
         // This tick's sample is at or after the crossing: it opens the next km's HR.
         val hrMean = kmHr.close(clean = !skipped)
         kmHr.add(hr)
-        val speaks = mode == RunMode.free && kmSplits
-        val base = if (speaks) LiveWords.kmSplit(km, active, splitMs) else null
-        val nudge = if (speaks) kmNudge(km, active, splitMs, hrMean) else null
-        return KmCue(km, base, compareAtKm(km, active), nudge).takeIf { it.base != null || it.fire != null }
+        // A goal's open cool-down says km splits only: no compare, no nudge.
+        val base = if ((mode == RunMode.free || goalCooldown) && kmSplits) LiveWords.kmSplit(km, active, splitMs) else null
+        val nudge = if (mode == RunMode.free && kmSplits) kmNudge(km, active, splitMs, hrMean) else null
+        val fire = if (goalCooldown) null else compareAtKm(km, active)
+        return KmCue(km, base, fire, nudge).takeIf { it.base != null || it.fire != null }
     }
 
     // ---- nudges (CR1): the engine's thresholds against live figures ----

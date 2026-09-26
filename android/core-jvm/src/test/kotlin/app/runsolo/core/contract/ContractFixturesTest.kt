@@ -272,7 +272,7 @@ class ContractFixturesTest {
     @Test
     fun `replay fixtures - one per kind`() {
         val names = ContractFixtures.all().keys.filter { it.startsWith("replay_") }
-        assertEquals(8, names.size, names.toString())
+        assertEquals(10, names.size, names.toString())
     }
 
     @Test
@@ -336,5 +336,24 @@ class ContractFixturesTest {
         assertEquals("laps", m["mode"])
         assertEquals(listOf(120_000L, 150_000L, 300_000L, 345_000L), laps(m).dropLast(1).map { it["t1"] })
         assertTrue(laps(m).all { it["kind"] == "manual" })
+    }
+
+    @Test
+    fun `replay goal 10K - the goal lap from Start is 10 km, then the open cool-down lap`() {
+        val m = fixture("replay_goal_10k")
+        assertEquals("goal", (m["session"] as Map<*, *>)["templateId"])
+        assertEquals(false, (m["session"] as Map<*, *>)["autoStop"])
+        val laps = laps(m)
+        assertEquals(listOf("auto", "manual"), laps.map { it["kind"] }, laps.toString())
+        assertEquals(0L, laps[0]["t0"])
+        assertTrue(abs(dist(laps[0]) - 10_000.0) <= 0.01, "goal lap ${dist(laps[0])} m")
+        assertTrue(dur(laps[1]) in 58_000L..61_000L, "cool-down ${dur(laps[1])}")
+    }
+
+    @Test
+    fun `replay goal 30 min - the goal lap is 30 minutes from Start, then the cool-down`() {
+        val laps = laps(fixture("replay_goal_30min"))
+        assertEquals(listOf("auto", "manual"), laps.map { it["kind"] }, laps.toString())
+        assertEquals(1_800_000L, dur(laps[0]))
     }
 }
