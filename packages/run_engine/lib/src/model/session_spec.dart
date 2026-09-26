@@ -527,7 +527,11 @@ abstract final class ComparisonKey {
     if (spec.templateId == SessionSpec.parkrunId) return parkrunOf();
     if (spec.isGoal && spec.workSteps.length == 1) {
       final w = spec.workSteps.single;
-      return '$goalPrefix${w.target == TargetKind.time ? 't' : 'd'}${w.value}';
+      // Custom distances key to the nearest 0.1 km (founder, 26-Sep), so a
+      // 12.34 km and a 12.3 km goal share a board.
+      return w.target == TargetKind.time
+          ? '${goalPrefix}t${w.value}'
+          : '${goalPrefix}d${(w.value / 100).round() * 100}';
     }
     final work = spec.workSteps.toList();
     if (work.isEmpty) return fartlek;

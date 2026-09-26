@@ -6,6 +6,7 @@ import '../run_mode.dart';
 import 'analysis.dart';
 import 'best_efforts.dart';
 import 'event_names.dart';
+import 'goal.dart';
 
 /// Words that mark a research-derived number as an estimate (Phase 4 plan
 /// §2, WARN-4). Every engine string carrying such a number contains one;
@@ -29,7 +30,14 @@ final RegExp _estimateMarker = RegExp(
 bool carriesEstimateMarker(String s) => _estimateMarker.hasMatch(s);
 
 /// Where a prediction input came from, for the source line.
-enum PredictionSourceKind { bestEffort5k, bestEffort10k, parkrun, wholeRun }
+enum PredictionSourceKind {
+  bestEffort5k,
+  bestEffort10k,
+  parkrun,
+  wholeRun,
+  bestEffortHalf,
+  bestEffortMarathon,
+}
 
 /// One continuous effort of 3 km or more that can seed a prediction.
 class PredictionInput {
@@ -112,6 +120,12 @@ class PredictionInput {
           k10.elapsedMs,
           PredictionSourceKind.bestEffort10k,
         ),
+      for (final (d, kind) in [
+        (BestEffortDistance.half, PredictionSourceKind.bestEffortHalf),
+        (BestEffortDistance.marathon, PredictionSourceKind.bestEffortMarathon),
+      ])
+        if (efforts.efforts[d] case final e?)
+          if (freeOrLaps || goal) of(d.metres, e.elapsedMs, kind),
       if (freeOrLaps &&
           run.pauses.isEmpty &&
           run.gaps.isEmpty &&
@@ -188,6 +202,8 @@ class Prediction {
   String _sourceName() => switch (source.kind) {
     PredictionSourceKind.bestEffort5k => '5K',
     PredictionSourceKind.bestEffort10k => '10K',
+    PredictionSourceKind.bestEffortHalf => 'half',
+    PredictionSourceKind.bestEffortMarathon => 'marathon',
     PredictionSourceKind.parkrun => names.parkrun,
     PredictionSourceKind.wholeRun =>
       units == Units.mi
@@ -351,5 +367,162 @@ class ParkrunTarget {
     }
     if (prediction == null) return null;
     return ParkrunTarget._(prediction.seconds, false, prediction.targetLine);
+  }
+}
+
+/// A GOAL run's target (plan §G, founder 26-Sep): the predicted finish (a
+/// distance goal) or predicted distance (a time goal), from the runner's
+/// fastest recent effort. Up to 10 km it is the §3.4 prediction ("Target
+/// 49:30 (predicted)"). Beyond 10 km it is a wider-band estimate ("Target
+/// about 1:52 (1:48 to 1:58), estimate"), only from an effort of 10 km or
+/// more in the last 6 weeks, else no target.
+class GoalTarget {
+  const GoalTarget({
+    required this.kind,
+    required this.value,
+    required this.low,
+    required this.high,
+    required this.long,
+    required this.source,
+  });
+
+  final GoalKind kind;
+
+  /// Seconds (distance goal) or metres (time goal).
+  final double value;
+  final double low;
+  final double high;
+
+  /// Beyond 10 km: the wider band and "about … estimate" wording.
+  final bool long;
+  final PredictionInput source;
+
+  String _num(double v) => kind == GoalKind.distance
+      ? Prediction.clock(v)
+      : (v / 1000).toStringAsFixed(long ? 1 : 2);
+
+  String get _unit => kind == GoalKind.distance ? '' : ' km';
+
+  /// "Target about 1:52:10 (1:50:40 to 1:55:30), estimate",
+  /// "Target about 13.1 km (13.1 to 13.2 km), estimate",
+  /// "Target 49:30 (predicted)", "Target 5.94 km (predicted)".
+  String get line => long
+      ? 'Target about ${_num(value)}$_unit (${_num(low)} to ${_num(high)}$_unit), estimate'
+      : 'Target ${_num(value)}$_unit (predicted)';
+
+  /// Long efforts only use inputs at least this long.
+  static const double minLongInputM = 10000;
+
+  /// Where "long" starts (§3.4 keeps Riegel to 10K).
+  static const double longFromM = 10000;
+
+  /// Exponents beyond 10 km. Vickers & Vertosick 2016 (full text, §4 R6)
+  /// report no per-runner exponent spread, so the band is set from what it
+  /// does report (needs verification):
+  /// - to 30 km (half, 1 hour): Riegel was well calibrated to the half
+  ///   marathon, so the ≤ 10K headline 1.06 and band 1.05–1.08 stand;
+  /// - beyond 30 km (marathon): Riegel ran ≥ 10 min too fast for half of
+  ///   runners (about +5% at 3:30, i.e. exponent ≈ 1.09–1.10 from a 10K
+  ///   input), so the headline is Vickers' average 1.07 and the band
+  ///   1.05–1.12 covers that slow side.
+  static (double, double, double) exponentsFor(double metres) => metres > 30000
+      ? (1.07, 1.05, 1.12)
+      : (Predictor.exponent, Predictor.exponentLow, Predictor.exponentHigh);
+}
+
+extension GoalTargets on Predictor {
+  /// The target for [spec] (a `goal` template) from [inputs], or null.
+  GoalTarget? goalTarget(
+    SessionSpec spec,
+    List<PredictionInput> inputs, {
+    required DateTime now,
+  }) {
+    if (!spec.isGoal || spec.workSteps.length != 1) return null;
+    final w = spec.workSteps.single;
+    final today = DateTime(now.year, now.month, now.day);
+    final since = DateTime(
+      today.year,
+      today.month,
+      today.day - Predictor.windowDays,
+    );
+    final recent = [
+      for (final i in inputs)
+        if (i.distanceM >= Predictor.minInputM &&
+            !DateTime(i.date.year, i.date.month, i.date.day).isBefore(since) &&
+            !i.date.isAfter(now))
+          i,
+    ];
+    if (recent.isEmpty) return null;
+    if (w.target == TargetKind.distance) {
+      final d2 = w.value.toDouble();
+      final long = d2 > GoalTarget.longFromM;
+      final pool = long
+          ? recent
+                .where((i) => i.distanceM >= GoalTarget.minLongInputM)
+                .toList()
+          : recent;
+      if (pool.isEmpty) return null;
+      final (e, lo, hi) = GoalTarget.exponentsFor(d2);
+      PredictionInput? best;
+      double? bestT;
+      for (final i in pool) {
+        final t = Predictor.riegel(i.effectiveMs / 1000, i.distanceM, d2, e);
+        if (bestT == null || t < bestT - 1e-9) {
+          best = i;
+          bestT = t;
+        }
+      }
+      final t1 = best!.effectiveMs / 1000;
+      final a = Predictor.riegel(t1, best.distanceM, d2, lo);
+      final b = Predictor.riegel(t1, best.distanceM, d2, hi);
+      return GoalTarget(
+        kind: GoalKind.distance,
+        value: bestT!,
+        low: math.min(a, b),
+        high: math.max(a, b),
+        long: long,
+        source: best,
+      );
+    }
+    // Time goal: invert Riegel, D2 = D1 × (T2/T1)^(1/e); the farthest wins.
+    final t2 = w.value.toDouble();
+    double dist(PredictionInput i, double e) =>
+        i.distanceM * math.pow(t2 / (i.effectiveMs / 1000), 1 / e);
+    PredictionInput? best;
+    double? bestD;
+    for (final i in recent) {
+      final d = dist(i, Predictor.exponent);
+      if (bestD == null || d > bestD + 1e-9) {
+        best = i;
+        bestD = d;
+      }
+    }
+    var long = bestD! > GoalTarget.longFromM;
+    if (long) {
+      final pool = recent.where((i) => i.distanceM >= GoalTarget.minLongInputM);
+      if (pool.isEmpty) return null;
+      best = null;
+      bestD = null;
+      final (e, _, _) = GoalTarget.exponentsFor(20000);
+      for (final i in pool) {
+        final d = dist(i, e);
+        if (bestD == null || d > bestD + 1e-9) {
+          best = i;
+          bestD = d;
+        }
+      }
+      long = true;
+    }
+    final (_, lo, hi) = GoalTarget.exponentsFor(bestD!);
+    final a = dist(best!, lo);
+    final b = dist(best, hi);
+    return GoalTarget(
+      kind: GoalKind.time,
+      value: bestD,
+      low: math.min(a, b),
+      high: math.max(a, b),
+      long: long,
+      source: best,
+    );
   }
 }

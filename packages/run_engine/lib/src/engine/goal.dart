@@ -1,6 +1,8 @@
 import '../model/run_file.dart';
 import '../model/session_spec.dart';
+import 'best_efforts.dart';
 import 'format.dart';
+import 'leaderboards.dart';
 import 'trace.dart';
 
 /// What a GOAL run is after (Phase 4 plan §G).
@@ -20,7 +22,17 @@ class GoalResult {
     this.goalDistanceM,
     this.atRunMs,
     required this.stoppedAtM,
+    this.interrupted = false,
   });
+
+  /// A kill→resume gap before the goal: the runner kept moving while the
+  /// recorder was dead, so the goal time counts time with no distance
+  /// behind it (plan §G, WARN-G2). The card says so.
+  final bool interrupted;
+
+  /// Shown under [resultLine] when [interrupted].
+  static const String interruptedNote =
+      'The recording stopped for a while before the goal, so this may be off.';
 
   final GoalKind kind;
 
@@ -86,9 +98,12 @@ class GoalResult {
       return p;
     }
 
+    bool gapBefore(int t) => run.gaps.any((g) => g.t0Ms < t);
+
     if (step.target == TargetKind.distance) {
       final at = _timeAtDistance(run.samples, d0 + step.value);
       return GoalResult(
+        interrupted: gapBefore(at ?? run.elapsedMs),
         kind: GoalKind.distance,
         target: step.value,
         name: spec.name,
@@ -106,6 +121,7 @@ class GoalResult {
     }
     final reached = run.elapsedMs >= t;
     return GoalResult(
+      interrupted: gapBefore(reached ? t : run.elapsedMs),
       kind: GoalKind.time,
       target: step.value,
       name: spec.name,
@@ -141,5 +157,74 @@ class GoalResult {
         : double.parse(goalDistanceM!.toStringAsFixed(1)),
     'at_run_ms': atRunMs,
     'stopped_at_m': double.parse(stoppedAtM.toStringAsFixed(1)),
+    'interrupted': interrupted,
   };
+}
+
+/// The standard GOAL choices and which board each ranks on (plan §G).
+abstract final class GoalCatalogue {
+  /// Standard distance goals (step metres) ride the best-effort boards.
+  static const Map<int, BestEffortDistance> distances = {
+    5000: BestEffortDistance.k5,
+    10000: BestEffortDistance.k10,
+    21098: BestEffortDistance.half,
+    42195: BestEffortDistance.marathon,
+  };
+
+  /// Standard time goals ride the distance-in-time boards.
+  static const Map<int, BestTimeWindow> times = {
+    1800: BestTimeWindow.min30,
+    3600: BestTimeWindow.min60,
+  };
+
+  /// The board a goal [spec] ranks on: `be:*` for a standard goal, its own
+  /// goal key for a custom one (founder, 26-Sep: every custom distance and
+  /// time gets a board; distances to the nearest 0.1 km).
+  static String boardKeyOf(SessionSpec spec) {
+    final w = spec.workSteps.single;
+    final std = w.target == TargetKind.time
+        ? times[w.value]?.key
+        : distances[w.value]?.key;
+    return std ?? ComparisonKey.of(spec);
+  }
+
+  static bool isStandard(SessionSpec spec) =>
+      boardKeyOf(spec) != ComparisonKey.of(spec);
+}
+
+/// The goal result headline (founder, 26-Sep: result, rank, gap to best;
+/// no verdict word): "10K in 49:12 · #2 of 7 · 38 s off your best",
+/// "30 min: 7.21 km · #1 of 4 · new best, 120 m further", or the bare
+/// result on a board with no other runs.
+String goalHeadline(GoalResult g, Leaderboard? board, String runId) {
+  if (!g.reached || board == null) return g.resultLine;
+  final mine = g.kind == GoalKind.distance
+      ? g.goalMs! / 1000
+      : g.goalDistanceM!;
+  final others = [
+    for (final r in board.ranked)
+      if (r.runId != runId) r.metric,
+  ];
+  if (others.isEmpty) return g.resultLine;
+  final higherBetter = g.kind == GoalKind.time;
+  final better = others.where((m) => higherBetter ? m > mine : m < mine).length;
+  final rank = better + 1;
+  final best = higherBetter
+      ? others.reduce((a, b) => a > b ? a : b)
+      : others.reduce((a, b) => a < b ? a : b);
+  final of = others.length + 1;
+  final gap = (mine - best).abs();
+  final String tail;
+  if (g.kind == GoalKind.distance) {
+    final s = gap.round();
+    tail = rank == 1
+        ? (s == 0 ? 'equals your best' : 'new best, $s s faster')
+        : '$s s off your best';
+  } else {
+    final m = gap.round();
+    tail = rank == 1
+        ? (m == 0 ? 'equals your best' : 'new best, $m m further')
+        : '$m m short of your best';
+  }
+  return '${g.resultLine} · #$rank of $of · $tail';
 }

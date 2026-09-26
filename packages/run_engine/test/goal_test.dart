@@ -152,6 +152,37 @@ void main() {
     });
   });
 
+  test('a kill gap before the goal marks the result interrupted '
+      '(WARN-G2)', () {
+    final r = run([(2500, 4.0)], session: tenK);
+    final gapped = r.copyWith(gaps: const [Span(1000000, 1030000)]);
+    final g = engine.analyze(gapped, now: fixedNow).goal!;
+    expect(g.interrupted, isTrue);
+    expect(engine.analyze(r, now: fixedNow).goal!.interrupted, isFalse);
+    // A gap in the cool-down, after the goal, does not count.
+    final late = run([
+      (2500, 4.0),
+      (600, 2.0),
+    ], session: tenK).copyWith(gaps: const [Span(2800000, 2830000)]);
+    expect(engine.analyze(late, now: fixedNow).goal!.interrupted, isFalse);
+    expect(
+      carriesEstimateMarker(GoalResult.interruptedNote),
+      isFalse,
+      reason: 'no research number in it; plain copy',
+    );
+  });
+
+  test('derived data is versioned: old index data refills once (WARN-G1)', () {
+    final r = run([(2500, 4.0)], mode: RunMode.free);
+    final d = RunDerived.of(r, engine.analyze(r, now: fixedNow));
+    expect(d.version, RunDerived.currentVersion);
+    expect(d.isCurrent, isTrue);
+    final old = Map<String, Object?>.of(d.toJson())..remove('v');
+    final back = RunDerived.fromJson(old);
+    expect(back.version, 1);
+    expect(back.isCurrent, isFalse);
+  });
+
   group('best efforts and boards', () {
     test('a goal run is searched whole; half and marathon windows', () {
       final r = run([
@@ -230,6 +261,129 @@ void main() {
         PredictionSourceKind.bestEffort5k,
         PredictionSourceKind.bestEffort10k,
       ]);
+    });
+  });
+
+  group('founder answers 26-Sep: targets, headline, custom boards', () {
+    final now = DateTime(2026, 9, 26, 9);
+    const predictor = Predictor(names: EventNames(parkrun: 'parkrun'));
+    PredictionInput input(double m, int s, PredictionSourceKind k) =>
+        PredictionInput(
+          runId: 'i$m',
+          date: DateTime(2026, 9, 12),
+          distanceM: m,
+          elapsedMs: s * 1000,
+          kind: k,
+        );
+    final fiveK = input(5000, 1500, PredictionSourceKind.bestEffort5k);
+    final tenKIn = input(10000, 2700, PredictionSourceKind.bestEffort10k);
+    final halfIn = input(21097.5, 6000, PredictionSourceKind.bestEffortHalf);
+
+    test('up to 10 km: the §3.4 prediction', () {
+      final t = predictor.goalTarget(tenK, [fiveK], now: now)!;
+      expect(t.long, isFalse);
+      expect(t.line, 'Target 52:07 (predicted)');
+    });
+
+    test('half: a wider-band estimate from a 10 km+ effort', () {
+      final half = SessionSpec.goalDistance(21098, 'Half');
+      final t = predictor.goalTarget(half, [fiveK, tenKIn], now: now)!;
+      expect(t.long, isTrue);
+      expect(t.line, 'Target about 1:39:17 (1:38:33 to 1:40:47), estimate');
+      expect(carriesEstimateMarker(t.line), isTrue);
+    });
+
+    test('marathon: Vickers average 1.07, band 1.05 to 1.12', () {
+      final m = SessionSpec.goalDistance(42195, 'Marathon');
+      final t = predictor.goalTarget(m, [halfIn], now: now)!;
+      expect(t.line, 'Target about 3:29:57 (3:27:03 to 3:37:21), estimate');
+    });
+
+    test('no target beyond 10 km without a 10 km+ run in 6 weeks', () {
+      final half = SessionSpec.goalDistance(21098, 'Half');
+      expect(predictor.goalTarget(half, [fiveK], now: now), isNull);
+      final old = PredictionInput(
+        runId: 'old',
+        date: DateTime(2026, 7, 1),
+        distanceM: 10000,
+        elapsedMs: 2700000,
+        kind: PredictionSourceKind.bestEffort10k,
+      );
+      expect(predictor.goalTarget(half, [fiveK, old], now: now), isNull);
+    });
+
+    test('time goals: predicted distance; an hour is a long estimate', () {
+      expect(
+        predictor.goalTarget(thirty, [fiveK], now: now)!.line,
+        'Target 5.94 km (predicted)',
+      );
+      final hour = SessionSpec.goalTime(3600, '1 hour');
+      final t = predictor.goalTarget(hour, [tenKIn], now: now)!;
+      expect(t.long, isTrue);
+      expect(t.line, 'Target about 13.1 km (13.1 to 13.2 km), estimate');
+      expect(predictor.goalTarget(hour, [fiveK], now: now), isNull);
+    });
+
+    test('headline: result, rank, gap to best; no verdict word', () {
+      final g = engine
+          .analyze(run([(2952, 3.3898)], session: tenK), now: fixedNow)
+          .goal!;
+      final day = DateTime.utc(2026, 9, 1);
+      Leaderboard board(List<(String, double)> rows) =>
+          Leaderboard.of('be:10000', BoardKind.bestEffort, [
+            for (final (id, sec) in rows)
+              BoardRun(runId: id, date: day, metric: sec),
+          ], metres: 10000);
+      final secs = g.goalMs! / 1000;
+      expect(
+        goalHeadline(
+          g,
+          board([('a', secs - 38), ('b', secs + 10), ('c', secs + 20)]),
+          'me',
+        ),
+        '${g.resultLine} · #2 of 4 · 38 s off your best',
+      );
+      expect(
+        goalHeadline(g, board([('a', secs + 12)]), 'me'),
+        '${g.resultLine} · #1 of 2 · new best, 12 s faster',
+      );
+      expect(goalHeadline(g, board(const []), 'me'), g.resultLine);
+    });
+
+    test('custom goals get their own board, keyed to 0.1 km', () {
+      final custom = SessionSpec.goalDistance(12345, '12.3 km');
+      expect(ComparisonKey.of(custom), 'goal:d12300');
+      expect(GoalCatalogue.boardKeyOf(custom), 'goal:d12300');
+      expect(GoalCatalogue.boardKeyOf(tenK), 'be:10000');
+      expect(GoalCatalogue.boardKeyOf(thirty), 'be:t1800');
+      expect(
+        GoalCatalogue.boardKeyOf(SessionSpec.goalTime(2700, '45 min')),
+        'goal:t2700',
+      );
+      final day = DateTime.utc(2026, 9, 1);
+      GoalResult result(int ms) => GoalResult(
+        kind: GoalKind.distance,
+        target: 12345,
+        name: '12.3 km',
+        reached: true,
+        goalMs: ms,
+        stoppedAtM: 12400,
+      );
+      final boards = Leaderboards.fold([
+        for (final (id, ms) in [('a', 3700000), ('b', 3650000)])
+          BoardInput(
+            runId: id,
+            date: day,
+            mode: RunMode.intervals,
+            comparisonKey: 'goal:d12300',
+            goal: result(ms),
+            goalBoardKey: 'goal:d12300',
+          ),
+      ]);
+      final b = boards['goal:d12300']!;
+      expect(b.kind, BoardKind.goalDistance);
+      expect(b.pb!.runId, 'b');
+      expect(Leaderboards.metresOf('goal:d12300'), 12300);
     });
   });
 }
