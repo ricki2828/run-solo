@@ -382,4 +382,57 @@ void main() {
       expect(line.contains('neither gets your route'), isFalse);
     }
   });
+
+  testWidgets('Voice (A10.7): above Recording; coaching tips need voice cues', (
+    tester,
+  ) async {
+    final services = fakeServices();
+    await pumpApp(tester, services, home: SettingsScreen(now: now));
+    await pumpTimes(tester, 3);
+    // A tall surface so every row is built at once.
+    tester.view.physicalSize = const Size(1080, 9000);
+    await pumpTimes(tester, 3);
+    // VOICE, its rows, then RECORDING (headers render in capitals).
+    final y = [
+      for (final f in [
+        find.text('VOICE'),
+        find.text('Voice cues'),
+        find.text('Coaching tips'),
+        find.text('Show while running'),
+        find.text('RECORDING'),
+      ])
+        tester.getTopLeft(f).dy,
+    ];
+    expect(y, orderedEquals([...y]..sort()));
+    expect(find.text(kCoachingTipsLine), findsOneWidget);
+    expect(find.text(kShowWhileRunningLine), findsOneWidget);
+
+    Finder switchOf(String label) => find.descendant(
+      of: find.ancestor(of: find.text(label), matching: find.byType(Row)).first,
+      matching: find.byType(Switch),
+    );
+    Switch toggle(String label) => tester.widget<Switch>(switchOf(label));
+    expect(toggle('Coaching tips').value, isTrue);
+    await tester.tap(switchOf('Coaching tips'));
+    await pumpTimes(tester, 3);
+    expect(services.settings.settings.coachingTips, isFalse);
+    expect(services.settings.settings.tipsSpoken, isFalse);
+
+    await tester.tap(switchOf('Show while running'));
+    await pumpTimes(tester, 3);
+    expect(services.settings.settings.showWhileRunning, isFalse);
+
+    await tester.tap(switchOf('Voice cues'));
+    await pumpTimes(tester, 3);
+    expect(find.text('Needs voice cues'), findsOneWidget);
+    expect(toggle('Coaching tips').onChanged, isNull);
+  });
+
+  test('Voice settings persist', () {
+    const s = AppSettings(coachingTips: false, showWhileRunning: false);
+    final back = AppSettings.fromJson(s.toJson());
+    expect(back.coachingTips, isFalse);
+    expect(back.showWhileRunning, isFalse);
+    expect(AppSettings.fromJson(const {}).coachingTips, isTrue);
+  });
 }

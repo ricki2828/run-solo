@@ -12,6 +12,7 @@ import '../platform/gateway.dart';
 import '../state/recording_controller.dart';
 import '../theme/theme.dart';
 import '../theme/zones.dart';
+import '../widgets/compare_card.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/gps_bar.dart';
 import '../widgets/lap_button.dart';
@@ -41,6 +42,10 @@ class _RecordingScreenState extends State<RecordingScreen>
   bool _stopping = false;
   String? _stopError;
   bool _wakelock = false;
+
+  /// LV2: ties the card (drawn on top of the screen) to the secondary
+  /// number of whichever layout is showing.
+  final LayerLink _cardLink = LayerLink();
 
   /// M3: 120 ms Bone flash when a work rep ends.
   late final AnimationController _invert = AnimationController(
@@ -277,6 +282,33 @@ class _RecordingScreenState extends State<RecordingScreen>
           final compact = MediaQuery.sizeOf(context).height < 720;
           // 148 on short screens: the 36 sp last-lap line (A8) needs the room.
           final lapHeight = compact ? 148.0 : 200.0;
+          // LV2 (A10.1): the live compare card, in the secondary slot of
+          // whichever layout is showing.
+          final cardEnabled =
+              settings.showWhileRunning &&
+              compareCardAllowed(s, ctl.displayRemainingMs);
+          // While the card shows, the recovery average's label under it is
+          // hidden too, so no half line peeks out (A10.1: covered = hidden).
+          final shown = ctl.lastCompare.value;
+          final shownAt = ctl.lastCompareAt;
+          final cardShowing =
+              cardEnabled &&
+              shown != null &&
+              shown.overlay &&
+              shownAt != null &&
+              ctl.now().difference(shownAt) < CompareCardHost.shown;
+          final card = CompareCardHost(
+            key: const ValueKey('compare-host'),
+            events: ctl.lastCompare,
+            receivedAt: () => ctl.lastCompareAt,
+            now: ctl.now,
+            enabled: cardEnabled,
+            compact: compact,
+            reduced: reduced,
+            units: settings.units,
+            targetM: isEventRun(s) ? s.currentStep?.value.toDouble() : null,
+            backdrop: zoneBg,
+          );
           return Scaffold(
             backgroundColor: Colors.transparent,
             body: Stack(
@@ -301,7 +333,14 @@ class _RecordingScreenState extends State<RecordingScreen>
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         const SizedBox(height: Space.x12),
-                        _Header(s: s, maxHr: maxHr, compact: compact),
+                        _Header(
+                          s: s,
+                          maxHr: maxHr,
+                          compact: compact,
+                          onMuteTips: s.tipsMuted == false
+                              ? ctl.muteTips
+                              : null,
+                        ),
                         if (_stopError != null)
                           _Banner(text: _stopError!, color: t.semDanger)
                         else if (s.fault != null)
@@ -324,6 +363,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                               units: settings.units,
                               compact: compact,
                               reduced: reduced,
+                              card: _cardLink,
                             ),
                           ),
                           const Spacer(),
@@ -367,19 +407,23 @@ class _RecordingScreenState extends State<RecordingScreen>
                             ),
                           ),
                           const Spacer(),
-                          Visibility(
-                            visible: !s.paused,
-                            maintainSize: true,
-                            maintainAnimation: true,
-                            maintainState: true,
-                            child: s.phase == Phase.warmup
-                                ? _Stats(s: s, units: settings.units)
-                                : _SegmentPace(
-                                    s: s,
-                                    ctl: ctl,
-                                    units: settings.units,
-                                    compact: compact,
-                                  ),
+                          CompareSlot(
+                            link: s.phase == Phase.warmup ? null : _cardLink,
+                            child: Visibility(
+                              visible: !s.paused,
+                              maintainSize: true,
+                              maintainAnimation: true,
+                              maintainState: true,
+                              child: s.phase == Phase.warmup
+                                  ? _Stats(s: s, units: settings.units)
+                                  : _SegmentPace(
+                                      s: s,
+                                      ctl: ctl,
+                                      units: settings.units,
+                                      compact: compact,
+                                      hideAverage: cardShowing,
+                                    ),
+                            ),
                           ),
                         ] else if (s.isCooper) ...[
                           // Scales down rather than overflow when a banner
@@ -410,12 +454,15 @@ class _RecordingScreenState extends State<RecordingScreen>
                           const Spacer(),
                           // The PAUSED card sits here; keep the space, hide
                           // the numbers so nothing peeks out around it.
-                          Visibility(
-                            visible: !s.paused,
-                            maintainSize: true,
-                            maintainAnimation: true,
-                            maintainState: true,
-                            child: _Stats(s: s, units: settings.units),
+                          CompareSlot(
+                            link: _cardLink,
+                            child: Visibility(
+                              visible: !s.paused,
+                              maintainSize: true,
+                              maintainAnimation: true,
+                              maintainState: true,
+                              child: _Stats(s: s, units: settings.units),
+                            ),
                           ),
                         ] else
                           _FreeRunBlock(
@@ -424,6 +471,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                             units: settings.units,
                             maxHr: maxHr,
                             compact: compact,
+                            card: _cardLink,
                           ),
                         // END REP: the banner already says GPS is lost,
                         // and the short phone needs the bar's height.
@@ -527,6 +575,13 @@ class _RecordingScreenState extends State<RecordingScreen>
                     ),
                   ),
                 ),
+                CompareCardLayer(
+                  link: _cardLink,
+                  width:
+                      MediaQuery.sizeOf(context).width - 2 * Space.recordGutter,
+                  anchorBottom: !s.isPreset && s.lapsEnabled,
+                  card: card,
+                ),
                 // The PAUSED card leaves the Pause / STOP row live below it,
                 // so STOP from a pause opens the finish screen (#89 review).
                 if (s.paused && !_finishing)
@@ -583,6 +638,23 @@ String metresText(double metres) {
   final m = metres.floor();
   final r = m < 100 ? m - m % 5 : m - m % 10;
   return '$r m';
+}
+
+/// Where the live compare card may show (A10.1 "When it shows"): only while
+/// recording, never with END REP, never in a rep or warm-up (it would cover
+/// the primary), never in the last 10 s of a timed recovery, never in the
+/// timed 5 km's last 400 m, and not once tips are muted for this run.
+bool compareCardAllowed(RecordingSnapshot s, int remainingMs) {
+  if (s.tipsMuted == true || !s.recording || s.showEndRep) return false;
+  if (isEventRun(s)) return s.phase == Phase.work && !eventLastStretch(s);
+  if (s.isPreset) {
+    return switch (s.phase) {
+      Phase.recovery => s.distanceStep || remainingMs > 10000,
+      Phase.cooldown => true,
+      _ => false,
+    };
+  }
+  return true;
 }
 
 /// Size of a 4x4 timed phase's two big numbers: the primary (rep average in
@@ -710,10 +782,18 @@ String timerCaption(RecordingSnapshot s) {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.s, required this.maxHr, this.compact = false});
+  const _Header({
+    required this.s,
+    required this.maxHr,
+    this.compact = false,
+    this.onMuteTips,
+  });
   final RecordingSnapshot s;
   final int maxHr;
   final bool compact;
+
+  /// In-app "Mute tips" (LV2): only while this run's tips are on.
+  final Future<void> Function()? onMuteTips;
 
   @override
   Widget build(BuildContext context) {
@@ -750,6 +830,10 @@ class _Header extends StatelessWidget {
           showTotal: s.mode != RecordMode.free,
           compact: compact,
           secondary: secondary,
+          // At the row's end: the header never grows on a short phone.
+          trailing: onMuteTips == null
+              ? null
+              : MuteTipsButton(onTap: onMuteTips!),
         ),
         const SizedBox(height: Space.x8),
       ],
@@ -804,12 +888,16 @@ class _Vitals extends StatelessWidget {
     required this.showTotal,
     required this.compact,
     required this.secondary,
+    this.trailing,
   });
   final RecordingSnapshot s;
   final int maxHr;
   final bool showTotal;
   final bool compact;
   final Color secondary;
+
+  /// The Mute tips button (LV2), when this run's tips are on.
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -896,8 +984,19 @@ class _Vitals extends StatelessWidget {
           ),
         ),
     ];
-    if (cells.isEmpty) return const SizedBox.shrink();
-    return Row(crossAxisAlignment: CrossAxisAlignment.end, children: cells);
+    final end = trailing;
+    if (cells.isEmpty && end == null) return const SizedBox.shrink();
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        ...cells,
+        if (end != null) ...[
+          if (cells.isEmpty) const Spacer(),
+          const SizedBox(width: Space.x8),
+          end,
+        ],
+      ],
+    );
   }
 }
 
@@ -986,11 +1085,16 @@ class _FreeRunBlock extends StatelessWidget {
     required this.units,
     required this.maxHr,
     this.compact = false,
+    this.card,
   });
   final RecordingSnapshot s;
   final RecordingController ctl;
   final Units units;
   final int maxHr;
+
+  /// The live compare card's slot link, over the distance (A10.1: elapsed
+  /// is primary).
+  final LayerLink? card;
 
   /// Short screen (< 720 dp): each number one step down.
   final bool compact;
@@ -1017,13 +1121,20 @@ class _FreeRunBlock extends StatelessWidget {
           ),
         ),
         SizedBox(height: compact ? Space.x8 : Space.x24),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            Fmt.distance(s.totalDistanceM, units),
-            softWrap: false,
-            style: (compact ? RunSoloType.display64 : RunSoloType.display96)
-                .copyWith(color: t.inkPrimary),
+        CompareSlot(
+          link: card,
+          child: SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                Fmt.distance(s.totalDistanceM, units),
+                key: const ValueKey('free-distance'),
+                softWrap: false,
+                style: (compact ? RunSoloType.display64 : RunSoloType.display96)
+                    .copyWith(color: t.inkPrimary),
+              ),
+            ),
           ),
         ),
         const SizedBox(height: Space.x8),
@@ -1165,6 +1276,7 @@ class _SegmentPace extends StatelessWidget {
     required this.ctl,
     required this.units,
     this.compact = false,
+    this.hideAverage = false,
   });
   final RecordingSnapshot s;
   final RecordingController ctl;
@@ -1172,6 +1284,10 @@ class _SegmentPace extends StatelessWidget {
 
   /// Short screen (< 720 dp): every number one step down, same order.
   final bool compact;
+
+  /// The live compare card is over the average (LV2): hide it and its
+  /// label, keeping their space.
+  final bool hideAverage;
 
   @override
   Widget build(BuildContext context) {
@@ -1194,25 +1310,42 @@ class _SegmentPace extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Text(
-            Fmt.pace(segmentAvg, units),
-            key: const ValueKey('segment-avg'),
-            softWrap: false,
-            // The biggest number in a rep; second to the countdown in a
-            // recovery. The FittedBox only shrinks it for a wide value.
-            style: primaryStyle(compact, secondary: s.phase == Phase.recovery)
-                .copyWith(
-                  color: s.phase == Phase.recovery ? secondary : t.inkPrimary,
-                  fontWeight: FontWeight.w700,
+        Visibility(
+          visible: !hideAverage,
+          maintainSize: true,
+          maintainAnimation: true,
+          maintainState: true,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  Fmt.pace(segmentAvg, units),
+                  key: const ValueKey('segment-avg'),
+                  softWrap: false,
+                  // The biggest number in a rep; second to the countdown in a
+                  // recovery. The FittedBox only shrinks it for a wide value.
+                  style:
+                      primaryStyle(
+                        compact,
+                        secondary: s.phase == Phase.recovery,
+                      ).copyWith(
+                        color: s.phase == Phase.recovery
+                            ? secondary
+                            : t.inkPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
+              ),
+              Text(
+                '$title /${units == Units.mi ? 'mi' : 'km'}',
+                style: RunSoloType.label13.copyWith(color: secondary),
+              ),
+            ],
           ),
-        ),
-        Text(
-          '$title /${units == Units.mi ? 'mi' : 'km'}',
-          style: RunSoloType.label13.copyWith(color: secondary),
         ),
         // With no fix there is no live pace or distance to show here, and
         // the GPS banner (and END REP) need the room on a short phone.
@@ -1831,12 +1964,17 @@ class EventBlock extends StatelessWidget {
     required this.units,
     this.compact = false,
     this.reduced = false,
+    this.card,
   });
   final RecordingSnapshot s;
   final RecordingController ctl;
   final Units units;
   final bool compact;
   final bool reduced;
+
+  /// The live compare card, over the projected finish (secondary) before
+  /// the last 400 m; none after the swap (A10.1). The slot's link.
+  final LayerLink? card;
 
   @override
   Widget build(BuildContext context) {
@@ -1886,7 +2024,13 @@ class EventBlock extends StatelessWidget {
     }
 
     final toGo = number('event-to-go', toGoText, 'to go', big: !last);
-    final finish = number('event-finish', finishText, 'on pace for', big: last);
+    final finish = CompareSlot(
+      link: last ? null : card,
+      child: SizedBox(
+        width: double.infinity,
+        child: number('event-finish', finishText, 'on pace for', big: last),
+      ),
+    );
     return AnimatedSwitcher(
       duration: reduced ? Duration.zero : const Duration(milliseconds: 240),
       child: Column(
@@ -1974,6 +2118,42 @@ class GoalDoneBlock extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// In-app "Mute tips" (LV2, lead 26-Sep): Laps and Intervals notifications
+/// have no room for the action, so the record screen carries it while this
+/// run's tips are on. Coaching off for this run only: no compare speech, no
+/// nudges, no card; the Settings toggle is left as it is.
+class MuteTipsButton extends StatelessWidget {
+  const MuteTipsButton({super.key, required this.onTap});
+  final Future<void> Function() onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Semantics(
+      button: true,
+      label: 'Mute tips for this run',
+      child: InkWell(
+        key: const ValueKey('mute-tips'),
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: ExcludeSemantics(
+          // Icon only (48 dp): the phase title keeps the header's width.
+          child: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: t.lineHair),
+              color: t.bgRaised.withValues(alpha: 0.6),
+            ),
+            child: Icon(Icons.volume_off, size: 22, color: t.inkPrimary),
+          ),
+        ),
+      ),
     );
   }
 }
