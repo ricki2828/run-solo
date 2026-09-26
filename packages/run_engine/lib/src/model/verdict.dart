@@ -112,13 +112,16 @@ class Verdict {
 
   static String inputsKeyFor(
     List<LapEdit> edits,
-    RunMode? override,
-  ) => jsonEncode({
+    RunMode? override, {
+    Map<String, Object?>? parkrun,
+  }) => jsonEncode({
     'edits': edits.map((e) => e.toJson()).toList(),
     // Spelled as schema ≤ 2 did (Phase 3 renamed fourByFour →
     // intervals), so a verdict frozen under an override before the
     // rename still matches and is restored, not recomputed.
     'override': override == RunMode.intervals ? 'fourByFour' : override?.name,
+    // K1: only when set, so every earlier key is byte-for-byte unchanged.
+    'parkrun': ?parkrun, // event-name-ok: data key
   });
 
   /// Same headline and wording (what a runner reads), whatever the numbers

@@ -6,6 +6,7 @@ import '../model/run_file.dart';
 import '../model/session_spec.dart';
 import '../model/verdict.dart';
 import 'constants.dart';
+import 'event_names.dart';
 import 'format.dart';
 import 'metrics.dart';
 import 'rep_detector.dart';
@@ -154,6 +155,8 @@ class _Ctx {
     required this.nominalRepMetres,
     required this.parkrun,
     required this.singleRep,
+    required this.names,
+    this.officialTime = false,
   });
 
   /// Run 3+ floor for the key (plan §3.7 W1); run 2 uses ×√2.
@@ -167,9 +170,13 @@ class _Ctx {
   /// Set only for rep-time sessions.
   final int? nominalRepMetres;
 
-  /// Parkrun: the headline is the finish time (K1: the official time from
-  /// the sidecar will override the GPS one).
+  /// Parkrun: the headline is the finish time; with [officialTime] it is
+  /// the runner's official time from the sidecar, not the GPS one (K1).
   final bool parkrun;
+  final bool officialTime;
+
+  /// The event's flavour name; never a literal here (K1).
+  final EventNames names;
 
   /// One rep: no spread sentence, no "average".
   final bool singleRep;
@@ -181,12 +188,12 @@ class _Ctx {
   String get one => isFourByFour
       ? '4x4'
       : parkrun
-      ? 'parkrun'
+      ? names.parkrun
       : '$sessionName session';
   String get many => isFourByFour
       ? '4x4s'
       : parkrun
-      ? 'parkruns'
+      ? names.parkrunPlural
       : '$sessionName sessions';
   String get mismatch => isFourByFour
       ? 'Laps do not match a 4x4. Fix laps to get a verdict.'
@@ -228,9 +235,10 @@ class _Ctx {
 /// Stateless: every call derives its floor and copy from its own inputs
 /// (#21 review P3), so one builder can serve concurrent analyses.
 class VerdictBuilder {
-  const VerdictBuilder(this.constants);
+  const VerdictBuilder(this.constants, {this.names = EventNames.generic});
 
   final EngineConstants constants;
+  final EventNames names;
 
   /// [session] is the run's own planned session (null for a by-feel 4x4):
   /// its name labels the copy and its reps/recovery feed the D4 note.
@@ -247,11 +255,13 @@ class VerdictBuilder {
     SessionSpec? templateDefault,
     SessionSpec? session,
     int minCleanReps = EngineConstants.minReps,
+    bool officialTime = false,
   }) {
     final c = _Ctx(
       floor: constants.floorSecPerKmForKey(
         comparisonKey,
         templateDefault: templateDefault,
+        officialTime: officialTime,
       ),
       band: constants.repBandSecPerKm,
       inputsKey: inputsKey,
@@ -262,6 +272,8 @@ class VerdictBuilder {
           ? metrics.nominalRepMetres
           : null,
       parkrun: ComparisonKey.isParkrun(comparisonKey),
+      officialTime: officialTime && ComparisonKey.isParkrun(comparisonKey),
+      names: names,
       singleRep: (session?.repCount ?? metrics.reps.length) == 1,
     );
     final same = [
@@ -396,7 +408,7 @@ class VerdictBuilder {
         : ' Recovery ${PaceFormat.paceBare(recovery, units)}.';
     final avg = m.avgWorkPaceSecPerKm!;
     final lead = c.parkrun
-        ? 'Finish ${c.value(avg)}.'
+        ? 'Finish ${c.value(avg)}${c.officialTime ? ' (official)' : ''}.'
         : c.repTime
         ? '${c.nominalRepMetres} m in ${c.value(avg)}${c.singleRep ? '' : ' average'}.'
         : '${c.value(avg)} work pace.';

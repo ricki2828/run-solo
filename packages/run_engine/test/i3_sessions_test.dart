@@ -505,11 +505,17 @@ void main() {
       expect(a[0].intervals!.kind, IntervalMetricKind.repTime);
       expect(
         a[0].verdict!.subline,
-        matches(RegExp(r'^Finish 2\d:\d\d\. Next parkrun gets a verdict\.$')),
+        // The engine's generic event name; the app injects the flavour's (K1).
+        matches(
+          RegExp(r'^Finish 2\d:\d\d\. Next 5K time trial gets a verdict\.$'),
+        ),
       );
       expect(a[1].verdict!.headline, VerdictHeadline.faster);
       expect(a[1].verdict!.subline, startsWith('Finish time '));
-      expect(a[1].verdict!.subline, contains('than your first parkrun ('));
+      expect(
+        a[1].verdict!.subline,
+        contains('than your first 5K time trial ('),
+      );
       // A custom 5 km never sees the parkruns as priors.
       final c = analyze(
         sessionRun(custom5k, n: 3, workMps: 3.6),

@@ -9,6 +9,7 @@ export 'src/engine/best_efforts.dart';
 export 'src/engine/constants.dart';
 export 'src/engine/cooper_projection.dart';
 export 'src/engine/event_names.dart';
+export 'src/engine/parkrun_courses.dart';
 export 'src/engine/fix_laps.dart';
 export 'src/engine/format.dart';
 export 'src/engine/hr_zone.dart';

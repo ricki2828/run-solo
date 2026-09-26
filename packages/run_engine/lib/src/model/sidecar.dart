@@ -78,6 +78,8 @@ class LapEdit {
 /// - 3 (Phase 3 §3.8): `run_type_override` uses the schema-3 vocabulary
 ///   (`fourByFour` → `intervals`, mapped on read); adds `comparison_key`, a
 ///   cache of the run's comparison key for the index (never an input).
+///   K1 adds an optional `parkrun` object (course id, official time); an
+///   older schema-3 reader ignores it.
 class RunSidecar {
   const RunSidecar({
     required this.runId,
@@ -89,6 +91,7 @@ class RunSidecar {
     this.weather,
     this.cooper,
     this.comparisonKey,
+    this.parkrun,
     this.readSchema = schema,
   });
 
@@ -116,6 +119,10 @@ class RunSidecar {
   /// the run file and override, never from here.
   final String? comparisonKey;
 
+  /// K1: the course and the runner's official time. An input: both feed
+  /// the verdict (key and headline), so changing either unfreezes it.
+  final ParkrunInfo? parkrun;
+
   /// Earlier verdicts, oldest first: every verdict that was unfrozen by a
   /// fix-laps edit or override, or replaced by an engine bump (plan §5
   /// "previous text kept in verdict history"), so a rebuild from sidecars
@@ -130,7 +137,8 @@ class RunSidecar {
       verdictHistory.isEmpty &&
       weather == null &&
       cooper == null &&
-      comparisonKey == null;
+      comparisonKey == null &&
+      parkrun == null;
 
   RunSidecar copyWith({
     List<LapEdit>? lapEdits,
@@ -141,8 +149,12 @@ class RunSidecar {
     Object? weather = _unset,
     Object? cooper = _unset,
     Object? comparisonKey = _unset,
+    Object? parkrun = _unset,
   }) => RunSidecar(
     runId: runId,
+    parkrun: identical(parkrun, _unset)
+        ? this.parkrun
+        : parkrun as ParkrunInfo?,
     comparisonKey: identical(comparisonKey, _unset)
         ? this.comparisonKey
         : comparisonKey as String?,
@@ -172,6 +184,19 @@ class RunSidecar {
   /// Override the run type; also unfreezes the verdict.
   RunSidecar withOverride(RunMode? mode) =>
       _unfrozen().copyWith(runTypeOverride: mode);
+
+  /// What the verdict was computed from ([Verdict.inputsKey]): edits,
+  /// override and (K1, only when set) the parkrun course and official time.
+  String get inputsKey => Verdict.inputsKeyFor(
+    lapEdits,
+    runTypeOverride,
+    parkrun: parkrun?.toJson(),
+  );
+
+  /// Set the course or the official time (K1); unfreezes the verdict, which
+  /// moves to history, like an override.
+  RunSidecar withParkrun(ParkrunInfo? info) =>
+      _unfrozen().copyWith(parkrun: info == null || info.isEmpty ? null : info);
 
   /// Freeze [verdict]; a different verdict already frozen moves to history
   /// (an engine bump recomputed it). An engine bump that leaves the headline
@@ -206,6 +231,7 @@ class RunSidecar {
     'weather': weather,
     'cooper': cooper,
     'comparison_key': comparisonKey,
+    _parkrunKey: ?parkrun?.toJson(),
   };
 
   /// Newer than this build (W6): the app must treat the run as read-only and
@@ -272,12 +298,69 @@ class RunSidecar {
       weather: optObject('weather'),
       cooper: optObject('cooper'),
       comparisonKey: key as String?,
+      parkrun: ParkrunInfo.fromJson(optObject(_parkrunKey)),
       readSchema: schemaValue,
     );
   }
 }
 
+/// A parkrun's course and official time (K1), both optional.
+class ParkrunInfo {
+  const ParkrunInfo({this.courseId, this.officialTimeSeconds});
+
+  /// Auto-tagged by start point (ParkrunCourses) or picked by the runner.
+  final String? courseId;
+
+  /// The runner's official time, whole seconds; replaces the GPS finish.
+  final int? officialTimeSeconds;
+
+  bool get isEmpty => courseId == null && officialTimeSeconds == null;
+
+  ParkrunInfo copyWith({
+    Object? courseId = _unset,
+    Object? officialTimeSeconds = _unset,
+  }) => ParkrunInfo(
+    courseId: identical(courseId, _unset) ? this.courseId : courseId as String?,
+    officialTimeSeconds: identical(officialTimeSeconds, _unset)
+        ? this.officialTimeSeconds
+        : officialTimeSeconds as int?,
+  );
+
+  Map<String, Object?> toJson() => {
+    'course_id': ?courseId,
+    'official_time_s': ?officialTimeSeconds,
+  };
+
+  static ParkrunInfo? fromJson(Map<String, Object?>? j) {
+    if (j == null) return null;
+    final course = j['course_id'];
+    final official = j['official_time_s'];
+    if (course != null && (course is! String || course.isEmpty)) {
+      throw RunFileFormatException('course_id must be a string');
+    }
+    if (official != null && (official is! int || official <= 0)) {
+      throw RunFileFormatException('official_time_s must be a positive int');
+    }
+    final info = ParkrunInfo(
+      courseId: course as String?,
+      officialTimeSeconds: official as int?,
+    );
+    return info.isEmpty ? null : info;
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is ParkrunInfo &&
+      other.courseId == courseId &&
+      other.officialTimeSeconds == officialTimeSeconds;
+
+  @override
+  int get hashCode => Object.hash(courseId, officialTimeSeconds);
+}
+
 const _unset = Object();
+
+const _parkrunKey = 'parkrun'; // event-name-ok: data key
 
 class RunSidecarCodec {
   const RunSidecarCodec._();
