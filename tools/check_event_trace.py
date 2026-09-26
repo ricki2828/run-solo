@@ -18,6 +18,8 @@ from collections import defaultdict
 ENUMS = {
     "state": {"idle", "recording", "paused", "finalising"},
     "phase": {"none", "warmup", "work", "recovery", "cooldown"},
+    "endedPhase": {"none", "warmup", "work", "recovery", "cooldown"},
+    "nextPhase": {"none", "warmup", "work", "recovery", "cooldown"},
     "source": {"button", "notification", "volumeKey", "auto"},
     "cue": {"halfway", "thirtySeconds", "phaseEnd", "start", "stop", "distanceToGo", "lastRep", "minuteMark", "countdown", "projection"},
     "mode": {"intervals", "laps", "free", "cooper"},

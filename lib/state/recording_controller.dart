@@ -313,6 +313,17 @@ class RecordingController extends ChangeNotifier {
 
   /// Cumulative distance at the previous lap, for the lap distance delta.
   double _lastLapDistanceM = 0;
+
+  /// Manual laps shown at the press (`LapPendingEvent`) whose `LapEvent`
+  /// has not landed yet: lap index -> the phase that lap closes, so its pace
+  /// is attributed by the lap, never by what arrived first.
+  final Map<int, Phase> _pendingLaps = {};
+
+  /// Per pending lap: re-read `status()` if its LapEvent never lands.
+  final Map<int, Timer> _reconcile = {};
+
+  /// The LapEvent follows within one tick (≤ 1 s); past this, trust status().
+  static const Duration lapReconcileAfter = Duration(seconds: 3);
   DateTime? _lastTickAt;
   Future<void>? _refreshing;
 
@@ -410,6 +421,7 @@ class RecordingController extends ChangeNotifier {
 
   void _reset(RecordMode mode, SessionSpec? spec) {
     _lastLapDistanceM = 0;
+    _clearPending();
     _tracker = engine.HrZoneTracker(maxHr: _maxHr().toDouble());
     _snap = RecordingSnapshot(
       mode: mode,
@@ -471,6 +483,8 @@ class RecordingController extends ChangeNotifier {
     switch (e) {
       case TickEvent():
         _onTick(e);
+      case LapPendingEvent():
+        _onLapPending(e);
       case LapEvent():
         _onLap(e);
       case PhaseEvent():
@@ -538,6 +552,39 @@ class RecordingController extends ChangeNotifier {
     );
   }
 
+  /// A manual lap at the press (#26 review P1): native holds its LapEvent
+  /// for up to 1 s so the distance is interpolated at the press, but a
+  /// runner who sees nothing presses again. Show the new lap now: ring,
+  /// "LAP n", lap clock from 0, and the phase it starts; distance and pace
+  /// fill in when the LapEvent lands.
+  void _onLapPending(LapPendingEvent p) {
+    if (p.index < _snap.lapIndex) return; // its LapEvent already landed
+    _pendingLaps[p.index] = p.endedPhase;
+    _reconcile[p.index]?.cancel();
+    _reconcile[p.index] = Timer(lapReconcileAfter, () {
+      _reconcile.remove(p.index);
+      if (_pendingLaps.remove(p.index) != null) unawaited(refreshStatus());
+    });
+    // The clocks read snapshot + time since the last tick; offset them so
+    // the lap clock starts at 0 and a new phase's countdown starts full.
+    final since = _sinceTickMs();
+    _snap = _snap.copyWith(
+      lapIndex: p.index + 1,
+      lapElapsedMs: -since,
+      lapDistanceM: 0,
+    );
+    final next = p.nextPhase;
+    if (next != null) {
+      _applyPhase(
+        next,
+        p.nextRepIndex ?? _snap.repIndex,
+        p.nextPhaseDurationMs ?? 0,
+        remainingMs: (p.nextPhaseDurationMs ?? 0) + since,
+      );
+    }
+    lapPulse.value += 1;
+  }
+
   void _onLap(LapEvent l) {
     // distanceM is cumulative run distance (RecordingSession.kt), so the
     // lap's own distance is a delta; activeMs is the lap's duration without
@@ -545,14 +592,22 @@ class RecordingController extends ChangeNotifier {
     final lapDistanceM = l.distanceM - _lastLapDistanceM;
     final lapMs = l.activeMs;
     _lastLapDistanceM = l.distanceM;
+    _reconcile.remove(l.index)?.cancel();
+    final shown = _pendingLaps.remove(l.index);
+    final ended = shown ?? _snap.phase;
     final paces = List.of(_snap.repPaces);
     final counts = switch (_snap.mode) {
-      RecordMode.intervals => _snap.phase == Phase.work,
+      RecordMode.intervals => ended == Phase.work,
       RecordMode.laps => true,
       RecordMode.free || RecordMode.cooper => false,
     };
     if (counts && lapDistanceM > 0 && lapMs > 0) {
       paces.add(lapMs / 1000 / (lapDistanceM / 1000));
+    }
+    if (shown != null) {
+      // Already on screen since the press: fill in, no second ring.
+      _snap = _snap.copyWith(repPaces: paces);
+      return;
     }
     _snap = _snap.copyWith(
       lapIndex: l.index + 1,
@@ -564,26 +619,50 @@ class RecordingController extends ChangeNotifier {
   }
 
   void _onPhase(PhaseEvent p) {
+    // Shown at the press already (LapPendingEvent): keep the running
+    // countdown rather than jump it back to full.
+    final shown = p.phase == _snap.phase && p.repIndex == _snap.repIndex;
+    if (!shown) _applyPhase(p.phase, p.repIndex, p.phaseDurationMs);
+    // Laps + remaining from the service (a manual lap mid-phase re-aligns).
+    unawaited(refreshStatus());
+  }
+
+  /// A new phase, from its PhaseEvent or at the press (LapPendingEvent).
+  /// [durationMs] is the phase's length; [remainingMs] the countdown as
+  /// shown (at the press it is offset by the time since the last tick).
+  void _applyPhase(
+    Phase phase,
+    int repIndex,
+    int durationMs, {
+    int? remainingMs,
+  }) {
     final previous = _snap.phase;
     _snap = _snap.copyWith(
-      phase: p.phase,
-      repIndex: p.repIndex,
-      phaseRemainingMs: p.phaseDurationMs,
-      phaseDurationMs: p.phaseDurationMs,
+      phase: phase,
+      repIndex: repIndex,
+      phaseRemainingMs: remainingMs ?? durationMs,
+      phaseDurationMs: durationMs,
       clearStepMaxHr: true,
       // The next tick carries the new step's index and metres; until then
-      // currentStep is looked up by phase and rep.
+      // currentStep is looked up by phase and rep (#28). At the press this
+      // matters most: the old step's caption and metres must not linger.
       clearStepIndex: true,
       clearStepRemainingM: true,
     );
     if (previous == Phase.work &&
-        (p.phase == Phase.recovery || p.phase == Phase.cooldown)) {
+        (phase == Phase.recovery || phase == Phase.cooldown)) {
       repCompletePulse.value += 1;
-    } else if (previous == Phase.recovery && p.phase == Phase.work) {
+    } else if (previous == Phase.recovery && phase == Phase.work) {
       repStartPulse.value += 1;
     }
-    // Laps + remaining from the service (a manual lap mid-phase re-aligns).
-    unawaited(refreshStatus());
+  }
+
+  void _clearPending() {
+    for (final t in _reconcile.values) {
+      t.cancel();
+    }
+    _reconcile.clear();
+    _pendingLaps.clear();
   }
 
   void _onState(StateEvent s) {
@@ -641,6 +720,7 @@ class RecordingController extends ChangeNotifier {
   @override
   void dispose() {
     _sub?.cancel();
+    _clearPending();
     lapPulse.dispose();
     repCompletePulse.dispose();
     repStartPulse.dispose();

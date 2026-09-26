@@ -34,4 +34,25 @@ class LapDispatchTest {
         dispatch.flush(2_000, 14.0)
         assertEquals(2, events.size)
     }
+
+    @Test
+    fun `pressed - a manual lap with the phase it starts, active time from the previous lap still waiting`() {
+        val active = { t: Long -> t - 100 } // 100 ms paused before anything here
+        dispatch.ticked(1_000, 10.0)
+        val a = lap(0, 1_250, LapSource.button)
+        dispatch.lap(a, 1_250, 10.0)
+        val next = phase(1_250, Phase.work)
+        dispatch.phase(next)
+        val p0 = dispatch.pressed(listOf(a, next), lastLapActiveMs = 0, activeAt = active)!!
+        assertEquals(a, p0.lap)
+        assertEquals(1_150L, p0.activeMs)
+        assertEquals(next, p0.next)
+        // A second press before the tick: its active time starts at the first, not the last sent lap.
+        val b = lap(1, 1_900, LapSource.notification)
+        dispatch.lap(b, 1_900, 10.0)
+        assertEquals(650L, dispatch.pressed(listOf(b), lastLapActiveMs = 0, activeAt = active)!!.activeMs)
+        // An auto lap is not a press.
+        assertEquals(null, dispatch.pressed(listOf(lap(2, 2_000, LapSource.auto)), 0, active))
+        assertEquals(null, dispatch.pressed(emptyList(), 0, active))
+    }
 }

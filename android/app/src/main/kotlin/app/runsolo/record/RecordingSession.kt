@@ -37,6 +37,7 @@ import app.runsolo.platform.CueEvent
 import app.runsolo.platform.FaultEvent
 import app.runsolo.platform.FaultKind
 import app.runsolo.platform.LapEvent
+import app.runsolo.platform.LapPendingEvent
 import app.runsolo.platform.LapSummary
 import app.runsolo.platform.PhaseEvent
 import app.runsolo.platform.RecorderEventBus
@@ -439,6 +440,8 @@ class RecordingSession(
     fun lap(source: LapSource) {
         if (finished) return
         val t = clock()
+        val endedPhase = core.phase
+        val endedRep = core.repIndex
         val (decision, out) = core.lap(source, t)
         Log.i(TAG, "lap $source → $decision")
         if (decision == RecorderCore.LapDecision.ignoredModeNoLaps && BuildConfig.DEBUG) {
@@ -446,6 +449,7 @@ class RecordingSession(
             fault(FaultKind.LAP_IGNORED, "LAP from $source ignored in $mode mode")
         }
         handle(out, t)
+        emitLapPending(out, endedPhase, endedRep)
         refreshSnapshot()
     }
 
@@ -454,9 +458,12 @@ class RecordingSession(
     fun startReps() {
         if (finished) return
         val t = clock()
+        val endedPhase = core.phase
+        val endedRep = core.repIndex
         val (decision, out) = core.startReps(t)
         Log.i(TAG, "startReps → $decision")
         handle(out, t)
+        emitLapPending(out, endedPhase, endedRep)
         refreshSnapshot()
     }
 
@@ -585,6 +592,28 @@ class RecordingSession(
                 }
             }
         }
+    }
+
+    /**
+     * The press, now: a manual lap's [LapEvent] waits for the next tick (up to 1 s) so its distance
+     * is interpolated at the press, but the runner must see the lap at once or presses again. The
+     * UI shows the new lap (and the phase it starts) from this; the LapEvent fills in distance.
+     */
+    private fun emitLapPending(out: List<RecorderCore.Output>, endedPhase: Phase, endedRep: Int) {
+        val p = dispatch.pressed(out, lapStartActive) { core.status(it).activeMs } ?: return
+        RecorderEventBus.emit(
+            LapPendingEvent(
+                index = p.lap.index.toLong(),
+                tMs = core.status(p.lap.t).elapsedMs,
+                activeMs = p.activeMs,
+                source = p.lap.source.toPigeon(),
+                endedPhase = endedPhase.toPigeon(),
+                endedRepIndex = endedRep.toLong(),
+                nextPhase = p.next?.phase?.toPigeon(),
+                nextRepIndex = p.next?.repIndex?.toLong(),
+                nextPhaseDurationMs = p.next?.let { it.phaseDurationMs ?: 0L },
+            ),
+        )
     }
 
     private fun publishPhase(o: RecorderCore.Output.PhaseChanged) {

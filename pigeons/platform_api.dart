@@ -703,6 +703,39 @@ class LapEvent extends RecorderEvent {
   LapSource source;
 }
 
+/// A manual lap (button, notification, volume key, "Start reps") the core
+/// accepted, sent at the press. The [LapEvent] with the same [index] follows
+/// on the next tick (up to 1 s later, so its distance is interpolated at the
+/// press); until then the UI shows the new lap from this. [endedPhase] and
+/// [endedRepIndex] are the phase the lap closes, so the lap's pace is
+/// attributed by the lap itself, never by arrival order. [nextPhase] is set
+/// when the lap re-aligns a structured session (its [PhaseEvent] also
+/// follows the [LapEvent]).
+class LapPendingEvent extends RecorderEvent {
+  LapPendingEvent({
+    required this.index,
+    required this.tMs,
+    required this.activeMs,
+    required this.source,
+    required this.endedPhase,
+    required this.endedRepIndex,
+    this.nextPhase,
+    this.nextRepIndex,
+    this.nextPhaseDurationMs,
+  });
+  int index;
+  int tMs;
+  int activeMs;
+  LapSource source;
+  Phase endedPhase;
+  int endedRepIndex;
+  Phase? nextPhase;
+  int? nextRepIndex;
+
+  /// 0 for untimed phases, like [PhaseEvent.phaseDurationMs].
+  int? nextPhaseDurationMs;
+}
+
 class CueEvent extends RecorderEvent {
   CueEvent({required this.kind, this.value});
   CueKind kind;

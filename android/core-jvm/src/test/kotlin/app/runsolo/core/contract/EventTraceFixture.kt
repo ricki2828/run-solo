@@ -34,7 +34,7 @@ import java.io.File
  * device: the Android session maps the same core outputs to the same Pigeon fields, so a
  * divergence there is a bug on the Android side, not in this file.
  *
- * NDJSON, one object per line: `{"t": <elapsedMs>, "kind": "tick|lap|phase|state|cue|fault|status", ...}`
+ * NDJSON, one object per line: `{"t": <elapsedMs>, "kind": "tick|lapPending|lap|phase|state|cue|fault|status", ...}`
  * with the Pigeon field names and enums as their Dart names; a cue line carries its kind as
  * `cue`, a fault line as `fault` (the `kind` key is the line type). Ticks are 1 Hz here (the
  * device emits ≤ 2 Hz).
@@ -144,6 +144,20 @@ object EventTraceFixture {
             }
         }
 
+        // As RecordingSession.emitLapPending: the press, at once; its lap line follows on the next tick.
+        fun lapPending(out: List<RecorderCore.Output>, endedPhase: Phase, endedRep: Int) {
+            val p = dispatch.pressed(out, lapStartActive) { core.status(it).activeMs } ?: return
+            val nx = p.next
+            emit(
+                "lapPending", core.status(p.lap.t).elapsedMs,
+                linkedMapOf(
+                    "index" to p.lap.index, "tMs" to core.status(p.lap.t).elapsedMs, "activeMs" to p.activeMs, "source" to p.lap.source.name,
+                    "endedPhase" to endedPhase.name, "endedRepIndex" to endedRep,
+                    "nextPhase" to nx?.phase?.name, "nextRepIndex" to nx?.repIndex, "nextPhaseDurationMs" to nx?.let { it.phaseDurationMs ?: 0L },
+                ),
+            )
+        }
+
         fun tick(t: Long, fix: LocationFix?, hr: Int?) {
             hr?.let { ticker.onHr(HrReading(t - 200, it)) }
             fix?.let { ticker.onFix(it) }
@@ -183,7 +197,13 @@ object EventTraceFixture {
         while (i < killAt) {
             val t = i * 1000L
             val f = fixes[i]
-            if (i == lapAt) handle(core.lap(LapSource.notification, t).second, t)
+            if (i == lapAt) {
+                val endedPhase = core.phase
+                val endedRep = core.repIndex
+                val out = core.lap(LapSource.notification, t).second
+                handle(out, t)
+                lapPending(out, endedPhase, endedRep)
+            }
             if (i == pauseAt) {
                 core.pause(t); ticker.onPause(); paused = true
                 writer.append(JournalLine.Pause(t, W0 + t))
