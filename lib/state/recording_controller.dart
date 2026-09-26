@@ -495,6 +495,8 @@ class RecordingController extends ChangeNotifier {
         break; // audio + haptics are the service's job (plan §3)
       case FaultEvent():
         _onFault(e);
+      case GpsProbeEvent():
+        break; // the Start screen's (pre-start readiness), not the run's
     }
     notifyListeners();
   }

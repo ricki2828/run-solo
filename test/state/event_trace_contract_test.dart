@@ -260,6 +260,10 @@ class TraceGateway implements RecorderGateway {
   @override
   Future<void> setCues(bool e) => throw UnimplementedError();
   @override
+  Future<void> startGpsProbe() => throw UnimplementedError();
+  @override
+  Future<void> stopGpsProbe() => throw UnimplementedError();
+  @override
   Future<void> setVolumeKeyLaps(bool e) => throw UnimplementedError();
 }
 

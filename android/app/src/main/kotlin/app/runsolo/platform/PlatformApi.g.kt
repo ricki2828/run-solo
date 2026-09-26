@@ -1768,6 +1768,56 @@ data class CueEvent (
   }
 }
 
+/**
+ * Pre-start GPS readiness, about 1 Hz while the probe runs. The "ready"
+ * threshold is the screen's; native sends the raw values.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class GpsProbeEvent (
+  /** A location arrived within the last 5 s. */
+  val fix: Boolean,
+  /** That fix's accuracy (m); null without a fresh fix. */
+  val accuracyM: Double? = null,
+  /** How long ago the last fix arrived; null if none yet. */
+  val fixAgeMs: Long? = null
+) : RecorderEvent()
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): GpsProbeEvent {
+      val fix = pigeonVar_list[0] as Boolean
+      val accuracyM = pigeonVar_list[1] as Double?
+      val fixAgeMs = pigeonVar_list[2] as Long?
+      return GpsProbeEvent(fix, accuracyM, fixAgeMs)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      fix,
+      accuracyM,
+      fixAgeMs,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as GpsProbeEvent
+    return PlatformApiPigeonUtils.deepEquals(this.fix, other.fix) && PlatformApiPigeonUtils.deepEquals(this.accuracyM, other.accuracyM) && PlatformApiPigeonUtils.deepEquals(this.fixAgeMs, other.fixAgeMs)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.fix)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.accuracyM)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.fixAgeMs)
+    return result
+  }
+}
+
 /** Generated class from Pigeon that represents data sent in messages. */
 data class FaultEvent (
   val kind: FaultKind,
@@ -2084,15 +2134,20 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
       }
       165.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FaultEvent.fromList(it)
+          GpsProbeEvent.fromList(it)
         }
       }
       166.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StateEvent.fromList(it)
+          FaultEvent.fromList(it)
         }
       }
       167.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          StateEvent.fromList(it)
+        }
+      }
+      168.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           PhaseEvent.fromList(it)
         }
@@ -2246,16 +2301,20 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(164)
         writeValue(stream, value.toList())
       }
-      is FaultEvent -> {
+      is GpsProbeEvent -> {
         stream.write(165)
         writeValue(stream, value.toList())
       }
-      is StateEvent -> {
+      is FaultEvent -> {
         stream.write(166)
         writeValue(stream, value.toList())
       }
-      is PhaseEvent -> {
+      is StateEvent -> {
         stream.write(167)
+        writeValue(stream, value.toList())
+      }
+      is PhaseEvent -> {
+        stream.write(168)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -2314,6 +2373,14 @@ interface RecorderApi {
   /** Delete an unreadable orphan (`readable == false`). Never touches a run file. */
   fun discardJournal(runId: String)
   fun setCues(enabled: Boolean)
+  /**
+   * Pre-start location readiness (the Start screen): fixes with the
+   * recording's provider settings, a [GpsProbeEvent] about once a second.
+   * Idempotent. Stopped by [stopGpsProbe], by any start, and when the app
+   * leaves the foreground; foreground only, no service.
+   */
+  fun startGpsProbe()
+  fun stopGpsProbe()
   /**
    * The user's volume-key LAP setting for Laps runs, persisted natively (the
    * recorder reads it at start). Takes effect from the next run or resume,
@@ -2550,6 +2617,38 @@ interface RecorderApi {
             val enabledArg = args[0] as Boolean
             val wrapped: List<Any?> = try {
               api.setCues(enabledArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.startGpsProbe$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.startGpsProbe()
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.stopGpsProbe$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.stopGpsProbe()
               listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)

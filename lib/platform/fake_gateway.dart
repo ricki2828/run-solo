@@ -178,6 +178,7 @@ class FakeRecorderGateway implements RecorderGateway {
     LiveContext? liveContext,
   }) async {
     startCalls.add((mode: mode, spec: spec, liveContext: liveContext));
+    gpsProbeRunning = false; // as native: any start ends the probe
     if (startError != null) return StartResult(error: startError);
     if (_state != RecorderState.idle) {
       return StartResult(runId: _runId, error: StartError.alreadyRunning);
@@ -461,6 +462,17 @@ class FakeRecorderGateway implements RecorderGateway {
 
   @override
   Future<void> setCues(bool enabled) async => cuesEnabled = enabled;
+
+  /// Pre-start probe: running flag for tests; [emitGpsProbe] scripts readiness.
+  bool gpsProbeRunning = false;
+
+  @override
+  Future<void> startGpsProbe() async => gpsProbeRunning = true;
+
+  @override
+  Future<void> stopGpsProbe() async => gpsProbeRunning = false;
+
+  void emitGpsProbe(GpsProbeEvent e) => _emit(e);
 
   /// Last value passed to [setVolumeKeyLaps]; null until called.
   bool? volumeKeyLaps;

@@ -48,6 +48,10 @@ class RecorderApiStub : RecorderApi {
     override fun discardJournal(runId: String) = Unit
 
     override fun setCues(enabled: Boolean) = Unit
+
+    override fun startGpsProbe() = Unit
+
+    override fun stopGpsProbe() = Unit
     override fun setVolumeKeyLaps(enabled: Boolean) = Unit
 
     override fun listRunFiles(): Map<String, String> = emptyMap()
