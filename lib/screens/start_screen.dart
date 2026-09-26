@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
@@ -42,6 +44,9 @@ class _StartScreenState extends State<StartScreen> {
     super.didChangeDependencies();
     if (_volumeKeyChecked) return;
     _volumeKeyChecked = true;
+    // LC1: get the live compare's candidates ready off the UI isolate, so
+    // the Start press only plans over them (#59 review P2).
+    if (kLiveCompare) unawaited(AppServices.of(context).live?.prepare());
     AppServices.of(context).permissions.volumeKeyLapsSupported().then((ok) {
       if (mounted && ok != _volumeKeyLaps) setState(() => _volumeKeyLaps = ok);
     });
