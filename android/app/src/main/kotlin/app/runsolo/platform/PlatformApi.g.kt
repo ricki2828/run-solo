@@ -1202,7 +1202,12 @@ data class RecorderStatus (
   val stepRemainingMs: Long? = null,
   /** Metres left in a distance step (I2; null until then). */
   val stepRemainingM: Double? = null,
-  val journalOk: Boolean
+  val journalOk: Boolean,
+  /**
+   * Paused: the elapsed time the pause began at (the finish screen's end
+   * time), also after a kill and restore. Null when not paused.
+   */
+  val pausedAtElapsedMs: Long? = null
 )
  {
   companion object {
@@ -1223,7 +1228,8 @@ data class RecorderStatus (
       val stepRemainingMs = pigeonVar_list[13] as Long?
       val stepRemainingM = pigeonVar_list[14] as Double?
       val journalOk = pigeonVar_list[15] as Boolean
-      return RecorderStatus(state, runId, mode, laps, elapsedMs, lapIndex, gpsFix, hrConnected, phase, repIndex, phaseRemainingMs, spec, stepIndex, stepRemainingMs, stepRemainingM, journalOk)
+      val pausedAtElapsedMs = pigeonVar_list[16] as Long?
+      return RecorderStatus(state, runId, mode, laps, elapsedMs, lapIndex, gpsFix, hrConnected, phase, repIndex, phaseRemainingMs, spec, stepIndex, stepRemainingMs, stepRemainingM, journalOk, pausedAtElapsedMs)
     }
   }
   fun toList(): List<Any?> {
@@ -1244,6 +1250,7 @@ data class RecorderStatus (
       stepRemainingMs,
       stepRemainingM,
       journalOk,
+      pausedAtElapsedMs,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -1254,7 +1261,7 @@ data class RecorderStatus (
       return true
     }
     val other = other as RecorderStatus
-    return PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.laps, other.laps) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapIndex, other.lapIndex) && PlatformApiPigeonUtils.deepEquals(this.gpsFix, other.gpsFix) && PlatformApiPigeonUtils.deepEquals(this.hrConnected, other.hrConnected) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.spec, other.spec) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.journalOk, other.journalOk)
+    return PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.laps, other.laps) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapIndex, other.lapIndex) && PlatformApiPigeonUtils.deepEquals(this.gpsFix, other.gpsFix) && PlatformApiPigeonUtils.deepEquals(this.hrConnected, other.hrConnected) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.spec, other.spec) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.journalOk, other.journalOk) && PlatformApiPigeonUtils.deepEquals(this.pausedAtElapsedMs, other.pausedAtElapsedMs)
   }
 
   override fun hashCode(): Int {
@@ -1275,6 +1282,7 @@ data class RecorderStatus (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.stepRemainingMs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.stepRemainingM)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.journalOk)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.pausedAtElapsedMs)
     return result
   }
 }

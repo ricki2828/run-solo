@@ -819,6 +819,7 @@ class RecordingSession(
             stepRemainingMs = st.stepRemainingMs,
             stepRemainingM = st.stepRemainingM,
             journalOk = writer.ok,
+            pausedAtElapsedMs = core.pausedAtElapsedMs,
         )
     }
 
