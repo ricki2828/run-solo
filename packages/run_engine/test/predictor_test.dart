@@ -268,6 +268,45 @@ void main() {
     });
   });
 
+  test('the marker check matches whole words only', () {
+    for (final ok in [
+      'Estimated 5K 24:30',
+      'VO2 est. 50',
+      'about 2,740',
+      'Research-based norms',
+      'Target 24:30 (predicted)',
+      'Heat-adjusted estimate 52.8',
+    ]) {
+      expect(carriesEstimateMarker(ok), isTrue, reason: ok);
+    }
+    for (final bad in [
+      'Your best.',
+      'Your fastest.',
+      'Take a rest.',
+      'Roundabout 24:30',
+      'Unpredicted 24:30',
+    ]) {
+      expect(carriesEstimateMarker(bad), isFalse, reason: bad);
+    }
+  });
+
+  test('same distance: no collapsed band on the card', () {
+    final p = predictor.predict(PredictionTarget.k5, [
+      input(5000, 1470),
+    ], now: now)!;
+    expect(p.cardLine, 'Estimated 5K 24:30 · from your 5K on 12 Sep');
+  });
+
+  test('a run on day 42 counts all day', () {
+    final early = DateTime(2026, 8, 15, 6);
+    expect(
+      predictor.predict(PredictionTarget.k5, [
+        input(5000, 1470, date: early),
+      ], now: DateTime(2026, 9, 26, 23)),
+      isNotNull,
+    );
+  });
+
   test('string lint (WARN-4): every predicted-number string is labelled', () {
     final strings = <String>[];
     for (final kind in PredictionSourceKind.values) {

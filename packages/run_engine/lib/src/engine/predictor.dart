@@ -11,16 +11,20 @@ import 'best_efforts.dart';
 /// the string-lint test enforces it.
 const List<String> estimateMarkers = [
   'estimate',
+  'estimated',
   'est.',
   'about',
   'research-based',
   'predicted',
 ];
 
-bool carriesEstimateMarker(String s) {
-  final lower = s.toLowerCase();
-  return estimateMarkers.any(lower.contains);
-}
+/// Whole words only: "est." inside "best." or "fastest." is no marker.
+final RegExp _estimateMarker = RegExp(
+  r'(?<![a-z])(estimated?|est\.|about|research-based|predicted)(?![a-z])',
+  caseSensitive: false,
+);
+
+bool carriesEstimateMarker(String s) => _estimateMarker.hasMatch(s);
 
 /// Where a prediction input came from, for the source line.
 enum PredictionSourceKind { bestEffort5k, bestEffort10k, parkrun, wholeRun }
@@ -152,8 +156,12 @@ class Prediction {
   /// "from your 5K on 12 Sep".
   String get sourceLine => 'from your ${_sourceName()} on ${_date()}';
 
-  /// "Estimated 5K 24:30 (24:10 to 24:55) · from your 5K on 12 Sep".
-  String get cardLine => '$headline ($band) · $sourceLine';
+  /// "Estimated 5K 24:30 (24:10 to 24:55) · from your 5K on 12 Sep". The
+  /// band is left out when it rounds to one time (same distance as the
+  /// input).
+  String get cardLine => clock(lowSeconds) == clock(highSeconds)
+      ? '$headline · $sourceLine'
+      : '$headline ($band) · $sourceLine';
 
   /// Shown under the card when the input was heat-adjusted.
   String? get conditionsNote => source.heatAdjusted
@@ -239,9 +247,12 @@ class Predictor {
   }) {
     PredictionInput? best;
     double? bestT;
-    final since = now.subtract(window);
+    // Whole days: a run on day 42 counts all day.
+    final today = DateTime(now.year, now.month, now.day);
+    final since = today.subtract(window);
     for (final i in inputs) {
-      if (i.distanceM < minInputM || i.date.isBefore(since)) continue;
+      final day = DateTime(i.date.year, i.date.month, i.date.day);
+      if (i.distanceM < minInputM || day.isBefore(since)) continue;
       if (i.date.isAfter(now)) continue;
       final t = riegel(
         i.effectiveMs / 1000,
