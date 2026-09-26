@@ -63,7 +63,7 @@ class FreeModeTest {
         s.startNew(device = "t", app = "t", tz = "UTC")
         assertTrue(s.notificationContent().lapAction)
         s.lap(LapSource.button)
-        org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(450)) // core debounce is 400 ms of device time
+        org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(1_600)) // a Laps run ignores a re-press within 1.5 s of device time
         s.lap(LapSource.volumeKey)
         val replay = JournalReplay.read(fs.readBytes(RunPaths.journal("laps-1")))
         assertEquals(RunMode.laps, replay.header.mode)

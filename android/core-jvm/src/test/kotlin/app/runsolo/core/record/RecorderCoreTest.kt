@@ -285,11 +285,12 @@ class RecorderCoreTest {
         core.start(t0)
         assertEquals(Phase.none, core.phase)
         assertTrue(run(core, t0, t0 + 3_600_000, 10_000).isEmpty())
+        // 2 s apart: a Laps run ignores a re-press within 1.5 s.
         core.lap(LapSource.button, t0 + 1_000)
-        core.lap(LapSource.notification, t0 + 2_000)
-        core.lap(LapSource.volumeKey, t0 + 3_000)
+        core.lap(LapSource.notification, t0 + 3_000)
+        core.lap(LapSource.volumeKey, t0 + 5_000)
         assertEquals(3, core.lapCount)
-        assertEquals(0, core.status(t0 + 5000).phaseRemainingMs)
+        assertEquals(0, core.status(t0 + 7000).phaseRemainingMs)
     }
 
     @Test
