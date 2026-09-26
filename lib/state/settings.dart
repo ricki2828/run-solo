@@ -72,6 +72,8 @@ class AppSettings {
     this.goalId = GoalChoice.eventId,
     this.goalCustomMetres = GoalChoice.defaultCustomMetres,
     this.goalCustomSeconds = GoalChoice.defaultCustomSeconds,
+    this.profileSex = ProfileSex.notSet,
+    this.tryNextDismissed,
     this.cues = true,
     this.kmSplits = true,
     this.haptics = true,
@@ -112,6 +114,13 @@ class AppSettings {
 
   /// GOAL > Time > Custom: whole minutes, within the engine's limits.
   final int goalCustomSeconds;
+
+  /// Settings → Profile → "Sex (for fitness norms)" (CR2, A10.7). Only the
+  /// VO2 research-norm line reads it; it stays on this phone.
+  final ProfileSex profileSex;
+
+  /// The run whose Home "try next" card the runner dismissed (A10.4).
+  final String? tryNextDismissed;
 
   /// The event (K1) is the picked goal.
   bool get eventRun => goalRun && goalId == GoalChoice.eventId;
@@ -274,6 +283,8 @@ class AppSettings {
     String? goalId,
     int? goalCustomMetres,
     int? goalCustomSeconds,
+    ProfileSex? profileSex,
+    String? tryNextDismissed,
     bool? cues,
     bool? kmSplits,
     bool? haptics,
@@ -306,6 +317,8 @@ class AppSettings {
     goalId: goalId ?? this.goalId,
     goalCustomMetres: goalCustomMetres ?? this.goalCustomMetres,
     goalCustomSeconds: goalCustomSeconds ?? this.goalCustomSeconds,
+    profileSex: profileSex ?? this.profileSex,
+    tryNextDismissed: tryNextDismissed ?? this.tryNextDismissed,
     cues: cues ?? this.cues,
     kmSplits: kmSplits ?? this.kmSplits,
     haptics: haptics ?? this.haptics,
@@ -341,6 +354,8 @@ class AppSettings {
     'goalId': goalId,
     'goalCustomMetres': goalCustomMetres,
     'goalCustomSeconds': goalCustomSeconds,
+    'profileSex': profileSex.name,
+    'tryNextDismissed': tryNextDismissed,
     'cues': cues,
     'kmSplits': kmSplits,
     'haptics': haptics,
@@ -407,6 +422,11 @@ class AppSettings {
       goalCustomSeconds: GoalChoice.clampSeconds(
         pick('goalCustomSeconds', d.goalCustomSeconds),
       ),
+      profileSex:
+          ProfileSex.values.asNameMap()[pick('profileSex', '')] ?? d.profileSex,
+      tryNextDismissed: j['tryNextDismissed'] is String
+          ? j['tryNextDismissed'] as String
+          : null,
       cues: pick('cues', d.cues),
       kmSplits: pick('kmSplits', d.kmSplits),
       haptics: pick('haptics', d.haptics),
@@ -579,4 +599,23 @@ class GoalChoice {
     }
     return null;
   }
+}
+
+/// Settings → Profile (A10.7): "Not set" / "Male" / "Female" / "Prefer not
+/// to say".
+enum ProfileSex {
+  notSet('Not set'),
+  male('Male'),
+  female('Female'),
+  preferNot('Prefer not to say');
+
+  const ProfileSex(this.label);
+  final String label;
+
+  /// For the research norms: null unless male or female.
+  engine.NormsSex? get norms => switch (this) {
+    ProfileSex.male => engine.NormsSex.male,
+    ProfileSex.female => engine.NormsSex.female,
+    ProfileSex.notSet || ProfileSex.preferNot => null,
+  };
 }

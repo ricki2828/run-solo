@@ -9,6 +9,9 @@ import app.runsolo.core.model.CueKind
  * which also fires the auto-lap.
  */
 object CueScheduler {
+    /** A goal's km this close to the goal is left out; the `distanceToGo` line carries the pace (§G). */
+    const val GOAL_FINAL_KM_M = 250L
+
     data class CuePoint(val kind: CueKind, val at: Long)
 
     /** Minutes of a 12-minute Cooper test that speak the projected score instead of the minute (Phase 4 §3.3: every minute 2–11). */
@@ -60,8 +63,10 @@ object CueScheduler {
      * Distance step, in metres: `start`, `halfway` for ≥ 800 m, `distanceToGo` 100 m out for
      * ≥ 300 m, a `projection` (finish time) at each whole km of a step ≥ 3 km, `phaseEnd` at the
      * target. Stable order when two land on the same metre (halfway before a km projection).
+     * A [goal] has no km within [GOAL_FINAL_KM_M] of the goal (the Half's km 21 is 98 m out, the
+     * marathon's km 42 195 m): its to-go line says the pace instead, one line, not two.
      */
-    fun distance(targetM: Long): List<CuePoint> {
+    fun distance(targetM: Long, goal: Boolean = false): List<CuePoint> {
         require(targetM > 0)
         val points = ArrayList<CuePoint>()
         points.add(CuePoint(CueKind.start, 0))
@@ -69,7 +74,7 @@ object CueScheduler {
         if (targetM >= 3_000) {
             var km = 1_000L
             while (km < targetM) {
-                points.add(CuePoint(CueKind.projection, km))
+                if (!goal || targetM - km >= GOAL_FINAL_KM_M) points.add(CuePoint(CueKind.projection, km))
                 km += 1_000
             }
         }

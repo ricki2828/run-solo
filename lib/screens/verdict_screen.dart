@@ -11,10 +11,11 @@ import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/max_hr.dart';
 import '../theme/theme.dart';
+import '../widgets/board_chips.dart';
 import '../widgets/chrome.dart';
+import '../widgets/coaching.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/rep_bars.dart';
-import '../widgets/board_chips.dart';
 import 'cooper_result_screen.dart';
 import 'course_board_screen.dart';
 import 'run_detail_screen.dart';
@@ -448,6 +449,9 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                   ],
                 ),
                 const SizedBox(height: Space.x24),
+                // A10.6: coaching below Details, in the scroll, so the
+                // verdict hero and its goldens do not move.
+                CoachingSection(runId: d.run.id),
               ],
             ),
           ),

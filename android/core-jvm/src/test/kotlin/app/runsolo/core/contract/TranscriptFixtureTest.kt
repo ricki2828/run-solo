@@ -31,8 +31,8 @@ class TranscriptFixtureTest {
         for (kind in ReplayScenarios.T4_KINDS) {
             val s = run(kind)
             assertTrue(s.said.isNotEmpty(), kind)
-            // Goals have no live compare yet (the goal-compare PR adds it); every other T4 kind does.
-            if (!kind.startsWith("t4-goal-")) assertTrue(s.spokenExtras.any { it.key.startsWith("compare:") }, "$kind: no compare spoken")
+            // A distance goal races its board at each km; a time goal has no km cue to carry one.
+            if (kind != "t4-goal-30min-best") assertTrue(s.spokenExtras.any { it.key.startsWith("compare:") }, "$kind: no compare spoken")
             for (l in s.said) {
                 assertTrue(CueComposer.words(l.text) <= CueComposer.MAX_WORDS, "$kind: ${l.text}")
                 assertFalse(l.text.contains('—'), "$kind: ${l.text}")

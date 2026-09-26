@@ -262,6 +262,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                   style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
               ),
+              // A10.7: Profile, under Heart rate (birth year stays there).
+              const _Section('Profile'),
+              SettingsRow(
+                key: const ValueKey('profile-sex'),
+                label: 'Sex (for fitness norms)',
+                value: s.profileSex.label,
+                onTap: () => _pickSex(context, s.profileSex, set),
+              ),
               const _Section('Recording'),
               _Toggle(
                 label: 'Keep screen on',
@@ -405,6 +413,60 @@ class _SettingsScreenState extends State<SettingsScreen>
         );
       },
     );
+  }
+
+  /// A10.7: three choices and why it is asked; "Not set" stays until one
+  /// is picked.
+  Future<void> _pickSex(
+    BuildContext context,
+    ProfileSex current,
+    Future<void> Function(AppSettings Function(AppSettings)) set,
+  ) async {
+    final picked = await showModalBottomSheet<ProfileSex>(
+      context: context,
+      builder: (context) {
+        final t = Theme.of(context).extension<RunSoloTokens>()!;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(Space.screenGutter),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('SEX (FOR FITNESS NORMS)', style: RunSoloType.title28),
+                const SizedBox(height: Space.x8),
+                Text(
+                  'Only used to compare your VO2 estimate with research '
+                  'norms. It stays on this phone.',
+                  style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                ),
+                const SizedBox(height: Space.x8),
+                RadioGroup<ProfileSex>(
+                  groupValue: current,
+                  onChanged: (v) => Navigator.of(context).pop(v),
+                  child: Column(
+                    children: [
+                      for (final o in const [
+                        ProfileSex.male,
+                        ProfileSex.female,
+                        ProfileSex.preferNot,
+                      ])
+                        RadioListTile<ProfileSex>(
+                          key: ValueKey('sex-${o.name}'),
+                          value: o,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(o.label),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (picked != null) await set((x) => x.copyWith(profileSex: picked));
   }
 
   Future<void> _editNumber(
