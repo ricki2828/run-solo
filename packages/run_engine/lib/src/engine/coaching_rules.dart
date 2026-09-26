@@ -70,39 +70,63 @@ class RepFadeRule {
   };
 }
 
-/// HR drift (plan §3.5): at km k (k ≥ 4, after km 3), fires when the live
-/// pace over km k is within ±[paceBand] of `kmPaceSecPerKm[k − 1]` and the
-/// live mean HR over km k is at least `kmHr[k − 1]` + [bpmOver]. Both lists
-/// are the runner's own medians at that km on this board.
+/// HR drift (plan §3.5, "HR above your median for runs of similar pace"):
+/// at km k (k ≥ [firstKm], after km 3) native takes the prior (pace, HR)
+/// pairs at that km, `kmSamples[k − 1]`, keeps those whose pace is within
+/// ±[paceBand] of the live km-k pace, and fires when there are at least
+/// [minSimilar] of them and the live km-k mean HR is at least their median
+/// HR + [bpmOver]. Pairing at run time, not a median pace with a median HR:
+/// with easy and hard runs in the history those medians describe a run
+/// nobody ran (#56 review P2). Live km HR uses the same rule as the engine
+/// (`LiveFigures.kmHr`: mean of HR samples in the km, none under half
+/// coverage).
 class HrDriftRule {
-  const HrDriftRule({
-    required this.kmHr,
-    required this.kmPaceSecPerKm,
-    required this.text,
-  });
+  const HrDriftRule({required this.kmSamples, required this.text});
 
-  final List<double?> kmHr;
-  final List<double?> kmPaceSecPerKm;
+  /// Per km (index k − 1): the last ≤ 6 board runs' (pace s/km, mean HR) at
+  /// that km; empty before [firstKm] or where no run had HR.
+  final List<List<(double, double)>> kmSamples;
   final String text;
 
   static const double bpmOver = 5;
   static const double paceBand = 0.05;
   static const int firstKm = 4;
+  static const int minSimilar = 3;
 
   Map<String, Object?> toJson() => {
-    'kmHr': [
-      for (final v in kmHr)
-        v == null ? null : double.parse(v.toStringAsFixed(1)),
-    ],
-    'kmPaceSecPerKm': [
-      for (final v in kmPaceSecPerKm)
-        v == null ? null : double.parse(v.toStringAsFixed(1)),
+    'kmSamples': [
+      for (final km in kmSamples)
+        [
+          for (final (pace, hr) in km)
+            [
+              double.parse(pace.toStringAsFixed(1)),
+              double.parse(hr.toStringAsFixed(1)),
+            ],
+        ],
     ],
     'bpmOver': bpmOver,
     'paceBand': paceBand,
     'firstKm': firstKm,
+    'minSimilar': minSimilar,
     'text': text,
   };
+
+  /// What native computes live, for the shared fixture: whether the rule
+  /// fires at [km] (1-based) for a live pace and HR.
+  bool firesAt(int km, {required double paceSecPerKm, required double hr}) {
+    if (km < firstKm || km > kmSamples.length) return false;
+    final similar = [
+      for (final (p, h) in kmSamples[km - 1])
+        if ((p - paceSecPerKm).abs() <= paceBand * paceSecPerKm) h,
+    ];
+    if (similar.length < minSimilar) return false;
+    similar.sort();
+    final m = similar.length ~/ 2;
+    final median = similar.length.isOdd
+        ? similar[m]
+        : (similar[m - 1] + similar[m]) / 2;
+    return hr >= median + bpmOver;
+  }
 }
 
 /// The in-run nudge plan (plan §3.5, fills LC1's `NudgePlan` stub). Built by
@@ -185,7 +209,7 @@ class CoachingRules {
     final plan = NudgePlanSpec(
       fastStart: fast,
       hrDrift: hr,
-      blocked: _blocked(history),
+      blocked: _blocked(ghosts),
     );
     return plan.isEmpty ? null : plan;
   }
@@ -256,35 +280,29 @@ class CoachingRules {
     final recent = ([...ghosts]..sort((a, b) => a.date.compareTo(b.date)))
         .skip(math.max(0, ghosts.length - usualOver))
         .toList();
-    final hr = <double?>[];
-    final pace = <double?>[];
+    final kms = <List<(double, double)>>[];
     for (var k = 1; k <= boardKm; k++) {
-      if (k < HrDriftRule.firstKm) {
-        hr.add(null);
-        pace.add(null);
-        continue;
+      final pairs = <(double, double)>[];
+      if (k >= HrDriftRule.firstKm) {
+        for (final r in recent) {
+          final kmHr = r.derived.live.kmHr;
+          if (k > kmHr.length || kmHr[k - 1] == null) continue;
+          final s = r.fromStartSplitsMs;
+          pairs.add(((s[k - 1] - s[k - 2]) / 1000, kmHr[k - 1]!));
+        }
       }
-      final hs = <double>[];
-      final ps = <double>[];
-      for (final r in recent) {
-        final kmHr = r.derived.live.kmHr;
-        if (k > kmHr.length || kmHr[k - 1] == null) continue;
-        hs.add(kmHr[k - 1]!);
-        final s = r.fromStartSplitsMs;
-        ps.add((s[k - 1] - s[k - 2]) / 1000);
-      }
-      final ok = hs.length >= minEntries;
-      hr.add(ok ? _median(hs) : null);
-      pace.add(ok ? _median(ps) : null);
+      kms.add(pairs);
     }
-    if (hr.every((h) => h == null)) return null;
-    return HrDriftRule(kmHr: hr, kmPaceSecPerKm: pace, text: hrDriftText);
+    // Some km must have enough runs to ever reach minSimilar.
+    if (kms.every((p) => p.length < HrDriftRule.minSimilar)) return null;
+    return HrDriftRule(kmSamples: kms, text: hrDriftText);
   }
 
-  /// The previous run's fired nudges (the newest run in [history]).
-  static List<String> _blocked(List<CoachRun> history) {
-    if (history.isEmpty) return const [];
-    final last = history.reduce((a, b) => b.date.isAfter(a.date) ? b : a);
+  /// The fired nudges of the newest run on this board ([board] is the
+  /// board's own history only, #56 review P3).
+  static List<String> _blocked(List<CoachRun> board) {
+    if (board.isEmpty) return const [];
+    final last = board.reduce((a, b) => b.date.isAfter(a.date) ? b : a);
     return [for (final n in last.derived.nudgesFired) '${n.rule}:${n.index}'];
   }
 

@@ -137,7 +137,7 @@ void main() {
       expect(plan?.fastStart, isNull);
     });
 
-    test('HR drift: medians from km 4, paired with the median pace', () {
+    test('HR drift: prior (pace, HR) pairs per km from km 4', () {
       List<double?> hr(double base) => [base, base, base, base + 2, base + 4];
       final plan = rules.forDistanceBoard(
         boardKm: 5,
@@ -149,14 +149,40 @@ void main() {
         ],
       )!;
       final h = plan.hrDrift!;
-      expect(h.kmHr.take(3), everyElement(isNull));
-      expect(h.kmHr[3], 154);
-      expect(h.kmHr[4], 156);
-      expect(h.kmPaceSecPerKm[3], 305);
+      expect(h.kmSamples.take(3), everyElement(isEmpty));
+      expect(h.kmSamples[3], [(300.0, 152.0), (310.0, 154.0), (305.0, 156.0)]);
       expect(
         h.text,
         "Heart rate's up for this pace today. Fine to ease a touch.",
       );
+      // Median HR of the similar-pace runs at km 4 is 154: fires at 159.
+      expect(h.firesAt(4, paceSecPerKm: 305, hr: 159), isTrue);
+      expect(h.firesAt(4, paceSecPerKm: 305, hr: 158), isFalse);
+      expect(h.firesAt(3, paceSecPerKm: 305, hr: 190), isFalse, reason: 'km 3');
+    });
+
+    test('HR drift with mixed easy and hard history compares like with '
+        'like (#56 review P2)', () {
+      List<double?> hr(double v) => [v, v, v, v, v];
+      final plan = rules.forDistanceBoard(
+        boardKm: 5,
+        boardLabel: '5K',
+        history: [
+          // Three hard 5Ks at 4:30 and HR 170, three easy ones at 6:00, 140.
+          for (var i = 0; i < 3; i++)
+            distanceRun('hard$i', i * 2, even(5, 270000), kmHr: hr(170)),
+          for (var i = 0; i < 3; i++)
+            distanceRun('easy$i', i * 2 + 1, even(5, 360000), kmHr: hr(140)),
+        ],
+      )!;
+      final h = plan.hrDrift!;
+      // An easy run at 6:00 with HR 150 is 10 bpm over its like: fires.
+      expect(h.firesAt(4, paceSecPerKm: 360, hr: 150), isTrue);
+      // A hard run at 4:30 with HR 172 is only 2 over: never fires. (A
+      // median of all six, 155 bpm at 5:15, would have fired here.)
+      expect(h.firesAt(4, paceSecPerKm: 270, hr: 172), isFalse);
+      // A pace nobody ran (5:15): fewer than 3 similar, never fires.
+      expect(h.firesAt(4, paceSecPerKm: 315, hr: 200), isFalse);
     });
 
     test('never an HR rule without a strap on 3 ghosts', () {
@@ -177,6 +203,13 @@ void main() {
         boardKm: 5,
         boardLabel: '5K',
         history: [
+          // Not a 5K ghost (3 km): its nudges are another board's.
+          distanceRun(
+            'short',
+            12,
+            even(3, 300000),
+            fired: const [FiredNudge(NudgeRule.hrDrift, 2)],
+          ),
           distanceRun(
             'old',
             0,
