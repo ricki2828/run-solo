@@ -119,6 +119,14 @@ object TranscriptFixture {
                 val out = when (sc.presses[pressed++].press) {
                     ReplayScenarios.Press.lap -> core.lap(LapSource.notification, t).second
                     ReplayScenarios.Press.startReps -> core.startReps(t).second
+                    ReplayScenarios.Press.pause -> {
+                        // As RecordingSession.pause (no T4 kind pauses today).
+                        core.pause(t)
+                        ticker.onPause()
+                        followUp.cancel()
+                        lines.add(JournalLine.Pause(t, t))
+                        emptyList()
+                    }
                 }
                 handle(out, t)
             }
