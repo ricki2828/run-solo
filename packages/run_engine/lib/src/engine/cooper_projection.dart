@@ -63,9 +63,12 @@ abstract final class CooperProjection {
 
   /// When the test itself started, in ms since the run start. The test is
   /// one lap of 12:00 (± 5 s), found in this order:
-  /// 1. the lap right after the warm-up lap ("Start reps" ends the warm-up,
-  ///    I2), so a warm-up that itself lasted about 12:00 is never taken;
-  /// 2. a 12:00 lap the recorder ended itself (auto: the step's own end);
+  /// 1. the lap right after a warm-up the runner ended ("Start reps" is a
+  ///    manual lap, I2), so a warm-up that itself lasted about 12:00 is
+  ///    never taken, and a 12:00 cool-down after a test with no warm-up
+  ///    (the test ends auto) is never taken either;
+  /// 2. the last 12:00 lap the recorder ended itself (auto: the step's own
+  ///    end);
   /// 3. any 12:00 lap (a pre-I2 file: one manual lap).
   /// With none: the end of the first lap when there are several, else 0.
   static int testStartMs(RunFile run) {
@@ -74,10 +77,12 @@ abstract final class CooperProjection {
         if (l.kind != LapKind.pause) l,
     ];
     bool twelve(Lap l) => (l.durationMs - testSeconds * 1000).abs() <= 5000;
-    if (laps.length >= 2 && twelve(laps[1])) return laps[1].t0Ms;
+    if (laps.length >= 2 && laps[0].kind == LapKind.manual && twelve(laps[1])) {
+      return laps[1].t0Ms;
+    }
     final candidates = laps.where(twelve).toList();
     final auto = candidates.where((l) => l.kind == LapKind.auto);
-    if (auto.isNotEmpty) return auto.first.t0Ms;
+    if (auto.isNotEmpty) return auto.last.t0Ms;
     if (candidates.isNotEmpty) return candidates.first.t0Ms;
     return laps.length >= 2 ? laps.first.t1Ms : 0;
   }

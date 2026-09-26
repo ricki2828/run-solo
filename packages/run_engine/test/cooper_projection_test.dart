@@ -293,6 +293,32 @@ void main() {
       expect(CooperProjection.testStartMs(autoWarmup), 722000);
     });
 
+    test('no warm-up, then a 12:00 cool-down: the test, not the cool-down', () {
+      final base = cooperRun(testS: 1440);
+      final d = Trace(base.samples).distAt(720000);
+      final run = base.copyWith(
+        laps: [
+          Lap(
+            index: 0,
+            t0Ms: 0,
+            t1Ms: 720000,
+            d0M: 0,
+            d1M: d,
+            kind: LapKind.auto,
+          ),
+          Lap(
+            index: 1,
+            t0Ms: 720000,
+            t1Ms: 1440000,
+            d0M: d,
+            d1M: base.distanceM,
+            kind: LapKind.manual,
+          ),
+        ],
+      );
+      expect(CooperProjection.testStartMs(run), 0);
+    });
+
     test('the I5 replay (warm-up LAP, START REPS at 1:00, cool-down)', () {
       final run = RunFile.fromJson(
         jsonDecode(
