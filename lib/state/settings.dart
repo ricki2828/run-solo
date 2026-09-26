@@ -105,8 +105,8 @@ class AppSettings {
   /// `t<s>`.
   final String goalId;
 
-  /// GOAL > Distance > Custom: whole 100 m (the board key's 0.1 km, plan
-  /// §G), within the engine's goal limits.
+  /// GOAL > Distance > Custom: whole metres within the engine's goal
+  /// limits, entered in the runner's units (0.1 km or 0.1 mi).
   final int goalCustomMetres;
 
   /// GOAL > Time > Custom: whole minutes, within the engine's limits.
@@ -124,6 +124,23 @@ class AppSettings {
     return (distance: g.distance, value: v);
   }
 
+  /// The picked goal's shown and spoken name: G1's catalogue names ("10K",
+  /// "45 min"); a custom distance in the runner's units ("12.3 km",
+  /// "7.5 mi"). Null for the event and when nothing is picked.
+  String? get goalName {
+    final g = GoalChoice.byId(goalId);
+    final step = goalStep;
+    if (g == null || step == null) return null;
+    if (g.id == GoalChoice.customDistanceId && units == Units.mi) {
+      final mi = step.value / GoalChoice.metresPerMile;
+      return '${mi.toStringAsFixed(1)} mi';
+    }
+    return engine.GoalCatalogue.nameFor(
+      step.distance ? engine.TargetKind.distance : engine.TargetKind.time,
+      step.value,
+    );
+  }
+
   /// The spec a goal run records (plan §G, G1's specs and names); the
   /// event's is `SessionSpec.parkrun(eventName)`. Null when GOAL is not
   /// the picked run type.
@@ -131,10 +148,7 @@ class AppSettings {
     if (!goalRun) return null;
     final step = goalStep;
     if (step == null) return engine.SessionSpec.parkrun(eventName);
-    final kind = step.distance
-        ? engine.TargetKind.distance
-        : engine.TargetKind.time;
-    final name = engine.GoalCatalogue.nameFor(kind, step.value);
+    final name = goalName!;
     return step.distance
         ? engine.SessionSpec.goalDistance(step.value, name)
         : engine.SessionSpec.goalTime(step.value, name);
@@ -505,8 +519,10 @@ class GoalChoice {
   static const int defaultCustomMetres = 12000;
   static const int defaultCustomSeconds = 2700;
 
-  /// Whole 100 m within the engine's goal limits.
-  static int clampMetres(int m) => ((m / 100).round() * 100).clamp(
+  static const double metresPerMile = 1609.344;
+
+  /// Whole metres within the engine's goal limits.
+  static int clampMetres(int m) => m.clamp(
     engine.SessionSpec.goalMinMetres,
     engine.SessionSpec.goalMaxMetres,
   );

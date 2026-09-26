@@ -103,6 +103,36 @@ void main() {
     expect(spec.name, '12.3 km');
   });
 
+  testWidgets('Custom distance in miles: entered, shown and named in miles, '
+      'stored and run in metres', (tester) async {
+    final fake = await openGoal(
+      tester,
+      settings: const AppSettings(
+        onboardingDone: true,
+        goalRun: true,
+        units: Units.mi,
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('goal-dcustom')));
+    await pumpTimes(tester, 4);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('mi'), findsOneWidget, reason: 'field suffix');
+    await tester.enterText(
+      find.byKey(const ValueKey('goal-custom-field')),
+      '7.5',
+    );
+    await tester.tap(find.byKey(const ValueKey('goal-custom-save')));
+    await pumpTimes(tester, 4);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('7.5 mi'), findsNWidgets(2), reason: 'chip + GOAL');
+    await ready(tester, fake);
+    await tester.tap(find.text('START GOAL'));
+    await pumpTimes(tester, 6);
+    final spec = fake.startCalls.single.spec!;
+    expect(spec.steps.single.value, 12070);
+    expect(spec.name, '7.5 mi');
+  });
+
   testWidgets('Custom time: "1:15" is 75 minutes', (tester) async {
     final fake = await openGoal(
       tester,
@@ -150,13 +180,17 @@ void main() {
   });
 
   test('custom entry parsing and limits', () {
-    expect(parseGoalKm('12.34'), 12300);
-    expect(parseGoalKm('12,36'), 12400);
-    expect(parseGoalKm('0.1'), 100);
-    expect(parseGoalKm('0.04'), isNull);
-    expect(parseGoalKm('100'), 100000);
-    expect(parseGoalKm('100.1'), isNull);
-    expect(parseGoalKm('x'), isNull);
+    expect(parseGoalDistance('12.34', Units.km), 12300);
+    expect(parseGoalDistance('12,36', Units.km), 12400);
+    expect(parseGoalDistance('0.1', Units.km), 100);
+    expect(parseGoalDistance('0.04', Units.km), isNull);
+    expect(parseGoalDistance('100', Units.km), 100000);
+    expect(parseGoalDistance('100.1', Units.km), isNull);
+    expect(parseGoalDistance('x', Units.km), isNull);
+    expect(parseGoalDistance('7.5', Units.mi), 12070);
+    expect(parseGoalDistance('7.46', Units.mi), 12070, reason: 'to 0.1 mi');
+    expect(parseGoalDistance('62.1', Units.mi), 99940);
+    expect(parseGoalDistance('62.2', Units.mi), isNull);
     expect(parseGoalMinutes('45'), 2700);
     expect(parseGoalMinutes('1:15'), 4500);
     expect(parseGoalMinutes('1:75'), isNull);

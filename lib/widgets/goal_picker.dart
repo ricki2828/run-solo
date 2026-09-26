@@ -2,28 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/event_names.dart';
+import '../platform/gateway.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
 
 /// The GOAL chip's subtitle: the picked goal ("10K", "30 min", "12.3 km",
-/// the event's own name from `kEventNames`).
+/// "7.5 mi", the event's own name from `kEventNames`).
 String goalLabel(AppSettings s) {
   final g = GoalChoice.byId(s.goalId);
   if (g == null) return 'Distance or time';
   if (g.id == GoalChoice.eventId) return kEventNames.parkrun;
-  final step = s.goalStep!;
-  return engine.GoalCatalogue.nameFor(
-    step.distance ? engine.TargetKind.distance : engine.TargetKind.time,
-    step.value,
-  );
+  return s.goalName!;
 }
 
-/// "12.3" or "12,3" km → whole 100 m within the engine's limits; null when
-/// it is not a number or out of range.
-int? parseGoalKm(String text) {
+/// "12.3" or "12,3" in the runner's units, to 0.1 km or 0.1 mi → whole
+/// metres within the engine's limits; null when it is not a number or out
+/// of range.
+int? parseGoalDistance(String text, Units units) {
   final v = double.tryParse(text.trim().replaceAll(',', '.'));
   if (v == null || !v.isFinite) return null;
-  final m = (v * 10).round() * 100;
+  final tenths = (v * 10).round() / 10;
+  final m = units == Units.mi
+      ? (tenths * GoalChoice.metresPerMile).round()
+      : (tenths * 1000).round();
   if (m < engine.SessionSpec.goalMinMetres ||
       m > engine.SessionSpec.goalMaxMetres) {
     return null;
@@ -128,6 +129,7 @@ class GoalPicker extends StatelessWidget {
     final v = await showCustomGoalSheet(
       context,
       distance: distance,
+      units: settings.units,
       current: distance
           ? settings.goalCustomMetres
           : settings.goalCustomSeconds,
@@ -137,16 +139,19 @@ class GoalPicker extends StatelessWidget {
   }
 }
 
-/// Custom goal entry: km (one decimal) or minutes ("45", "1:15"). Returns
-/// metres or seconds, null when dismissed.
+/// Custom goal entry: km or miles to one decimal (the runner's units), or
+/// minutes ("45", "1:15"). Returns metres or seconds, null when dismissed.
 Future<int?> showCustomGoalSheet(
   BuildContext context, {
   required bool distance,
   required int current,
+  Units units = Units.km,
 }) {
+  final mi = units == Units.mi;
+  final unit = mi ? 'mi' : 'km';
   final text = TextEditingController(
     text: distance
-        ? (current / 1000).toStringAsFixed(1)
+        ? (current / (mi ? GoalChoice.metresPerMile : 1000)).toStringAsFixed(1)
         : current % 3600 == 0 || current < 3600
         ? '${current ~/ 60}'
         : '${current ~/ 3600}:${(current % 3600 ~/ 60).toString().padLeft(2, '0')}',
@@ -160,12 +165,12 @@ Future<int?> showCustomGoalSheet(
         final t = Theme.of(context).extension<RunSoloTokens>()!;
         void save() {
           final v = distance
-              ? parseGoalKm(text.text)
+              ? parseGoalDistance(text.text, units)
               : parseGoalMinutes(text.text);
           if (v == null) {
             setSheet(
               () => error = distance
-                  ? 'Pick 0.1 to 100 km.'
+                  ? (mi ? 'Pick 0.1 to 62.1 mi.' : 'Pick 0.1 to 100 km.')
                   : 'Pick 1 minute to 24 hours, like 45 or 1:15.',
             );
             return;
@@ -191,7 +196,8 @@ Future<int?> showCustomGoalSheet(
               const SizedBox(height: Space.x8),
               Text(
                 distance
-                    ? 'In km, to one decimal. Each distance gets its own board.'
+                    ? 'In $unit, to one decimal. Each distance gets its own '
+                          'board.'
                     : 'In minutes, or hours and minutes like 1:15. Each time '
                           'gets its own board.',
                 style: RunSoloType.body15.copyWith(color: t.inkSecondary),
@@ -206,7 +212,7 @@ Future<int?> showCustomGoalSheet(
                     : TextInputType.datetime,
                 style: RunSoloType.display44,
                 decoration: InputDecoration(
-                  suffixText: distance ? 'km' : 'min',
+                  suffixText: distance ? unit : 'min',
                   errorText: error,
                   errorMaxLines: 3,
                 ),
