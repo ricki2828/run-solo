@@ -223,12 +223,20 @@ class CoachReporter {
               'usual is $theirs%.',
             );
     }
+    // No usual yet (0 to 2 earlier efforts on this board): the runner's own
+    // halves first, then, after a real fade, the elite norm line, which is
+    // research-based and about elite racing, not them (#102 review P2).
+    final own = f.abs() < 0.005
+        ? 'You ran even halves.'
+        : f < 0
+        ? 'You finished faster than you started.'
+        : 'You slowed ${_pct(f)}% in the second half.';
     return f >= fadeAt
-        ? const CoachObservation(
-            ResearchNorms.fadeNormLine,
+        ? CoachObservation(
+            '$own ${ResearchNorms.fadeNormLine}',
             researchBased: true,
           )
-        : null;
+        : CoachObservation(own);
   }
 
   CoachObservation? _repObservation(CoachRun run, List<CoachRun> earlier) {
