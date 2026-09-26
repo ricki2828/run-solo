@@ -82,8 +82,8 @@ class GoalCoach(private val spec: SessionSpec?, private val context: LiveContext
         /**
          * The board a goal step ranks on; mirrors the engine's `GoalCatalogue.boardKeyOf`
          * (pinned by the shared `fixtures/phase4/goal_live_context.json`): a standard distance its
-         * best-effort board, a standard time its distance-in-time board, else `goal:d<nearest 100 m>`
-         * or `goal:t<seconds>`.
+         * best-effort board, a standard time its distance-in-time board, else `goal:d<exact metres>`
+         * (the app takes them to 0.1 of the runner's unit: 7.5 mi is d12070) or `goal:t<seconds>`.
          */
         fun boardKey(step: Step): String = when (step.target) {
             TargetKind.time -> when (step.value) {
@@ -96,7 +96,7 @@ class GoalCoach(private val spec: SessionSpec?, private val context: LiveContext
                 10_000 -> "be:10000"
                 21_098 -> "be:21097"
                 42_195 -> "be:42195"
-                else -> "goal:d${(step.value + 50) / 100 * 100}"
+                else -> "goal:d${step.value}"
             }
         }
     }

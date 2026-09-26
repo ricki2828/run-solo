@@ -22,13 +22,18 @@
     },
     {
       "kind": "distance",
-      "value": 12340,
+      "value": 12300,
       "key": "goal:d12300"
     },
     {
       "kind": "distance",
-      "value": 12250,
-      "key": "goal:d12300"
+      "value": 12070,
+      "key": "goal:d12070"
+    },
+    {
+      "kind": "distance",
+      "value": 12100,
+      "key": "goal:d12100"
     },
     {
       "kind": "time",

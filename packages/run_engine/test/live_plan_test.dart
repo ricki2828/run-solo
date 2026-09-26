@@ -456,11 +456,11 @@ void main() {
     });
 
     test('custom goals race their own goal: board', () {
-      final d = SessionSpec.goalDistance(12340, '12.3 km');
+      final d = SessionSpec.goalDistance(12070, '7.5 mi');
       GoalResult dr(int ms) => GoalResult(
         kind: GoalKind.distance,
-        target: 12340,
-        name: '12.3 km',
+        target: 12070,
+        name: '7.5 mi',
         reached: true,
         goalMs: ms,
         stoppedAtM: 13000,
@@ -470,9 +470,10 @@ void main() {
         session: d,
         runs: [customGoal(1, d, dr(3700000)), customGoal(2, d, dr(3600000))],
       );
-      expect(dp.boards.single.key, 'goal:d12300');
+      // Exact metres: 7.5 mi is its own board, not 12.1 km's.
+      expect(dp.boards.single.key, 'goal:d12070');
       expect(dp.boards.single.kind, LiveBoardPlanKind.distance);
-      expect(dp.boards.single.targetM, 12300);
+      expect(dp.boards.single.targetM, 12070);
       expect(dp.boards.single.entries.map((e) => e.finalMetric), [
         3600000,
         3700000,
@@ -539,8 +540,9 @@ void main() {
         SessionSpec.goalDistance(10000, '10K'),
         half,
         SessionSpec.goalDistance(42195, 'Marathon'),
-        SessionSpec.goalDistance(12340, '12.3 km'),
-        SessionSpec.goalDistance(12250, '12.3 km'),
+        SessionSpec.goalDistance(12300, '12.3 km'),
+        SessionSpec.goalDistance(12070, '7.5 mi'),
+        SessionSpec.goalDistance(12100, '12.1 km'),
         SessionSpec.goalTime(1800, '30 min'),
         SessionSpec.goalTime(3600, '1 hour'),
         SessionSpec.goalTime(2700, '45 min'),
