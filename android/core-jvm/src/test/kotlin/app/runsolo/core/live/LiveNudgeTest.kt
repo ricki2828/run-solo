@@ -107,6 +107,25 @@ class LiveNudgeTest {
     }
 
     @Test
+    fun `hrDrift shared vectors - the engine's JSON decodes and firesAt agrees on every case`() {
+        val fx = app.runsolo.core.json.Json.parseObject(java.io.File("../../packages/run_engine/test/fixtures/phase4/hr_drift_vectors.json").readText())
+        @Suppress("UNCHECKED_CAST")
+        val plans = (fx["plans"] as Map<String, Any?>).mapValues { (_, v) ->
+            NudgePlan.fromJson(mapOf("version" to 1L, "hrDrift" to v)).hrDrift!!
+        }
+        @Suppress("UNCHECKED_CAST")
+        val cases = fx["cases"] as List<Map<String, Any?>>
+        assertEquals(14, cases.size)
+        for (c in cases) {
+            val rule = plans.getValue(c["plan"] as String)
+            val km = (c["km"] as Number).toInt()
+            val pace = (c["pace"] as Number).toDouble()
+            val hr = (c["hr"] as Number).toDouble()
+            assertEquals(c["fires"], rule.firesAt(km, pace, hr), "$c")
+        }
+    }
+
+    @Test
     fun `hr drift - after a restore the km in progress was not seen whole, no nudge`() {
         val coach = LiveCoach(ctx(NudgePlan(version = 1, hrDrift = drift)), RunMode.free, null)
         coach.resumeAt(3_600.0)
