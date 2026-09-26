@@ -20,10 +20,21 @@ void main() {
     dir = await Directory.systemTemp.createTemp('runsolo-index-');
     runsDir = Directory('${dir.path}/runs');
   });
-  tearDown(() => dir.delete(recursive: true));
+  // Stores that build derived data in the background: wait for them before
+  // the directory goes.
+  final stores = <FileRunStore>[];
+  tearDown(() async {
+    for (final s in stores) {
+      await s.derivedIdle;
+    }
+    stores.clear();
+    await dir.delete(recursive: true);
+  });
 
   Future<FileRunStore> storeWith(List<engine.RunFile> runs) async {
     final store = FileRunStore(runsDir);
+    store.deriveBatch = FileRunStore.deriveInIsolate;
+    stores.add(store);
     await store.importBundles([for (final r in runs) engine.RunBundle(run: r)]);
     return store;
   }
