@@ -16,7 +16,7 @@ import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
-import '../widgets/rank_chip.dart';
+import '../widgets/board_chips.dart';
 import 'run_detail_screen.dart';
 import 'settings_screen.dart' show kOpenMeteoAttribution;
 
@@ -45,32 +45,6 @@ List<CooperTest> cooperTests(List<RunSummary> runs) {
   }
   out.sort((a, b) => a.date.compareTo(b.date));
   return out;
-}
-
-/// The A10.3 chip for test [id] among [tests]: ranked on the Cooper board as
-/// it stood that day (tests up to and including it), so an old best stays a
-/// best. Null when [id] is not a valid test.
-({String label, bool pb})? cooperChip(String id, List<CooperTest> tests) {
-  final i = tests.indexWhere((t) => t.id == id);
-  if (i < 0) return null;
-  final upTo = tests.sublist(0, i + 1);
-  final board = engine.Leaderboard.of(
-    engine.ComparisonKey.cooper,
-    engine.BoardKind.cooper,
-    [
-      for (final t in upTo)
-        engine.BoardRun(runId: t.id, date: t.date, metric: t.vo2),
-    ],
-  );
-  final rank = board.rankOf(id)!;
-  if (board.length == 1) return (label: 'First test on your board', pb: false);
-  if (rank == 1) {
-    return (
-      label: 'New best test · VO2 est. ${tests[i].vo2.round()}',
-      pb: true,
-    );
-  }
-  return (label: '#$rank of ${board.length} tests', pb: false);
 }
 
 /// "2 880 m".
@@ -105,7 +79,6 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final services = AppServices.of(context);
     final d = widget.detail;
     final c = d.analysis.cooper;
     final e = c?.estimate;
@@ -119,7 +92,6 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
             final prior = i < 0
                 ? tests.where((x) => x.date.isBefore(d.run.start)).toList()
                 : tests.sublist(0, i);
-            final chip = cooperChip(d.run.id, tests);
             final change = e == null
                 ? null
                 : engine.CooperResult.changeLine(e.vo2, d.run.start, [
@@ -195,15 +167,12 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                     'ml/kg/min',
                     style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                   ),
-                  if (chip != null) ...[
-                    const SizedBox(height: Space.x8),
-                    RankChip(
-                      label: chip.label,
-                      pb: chip.pb,
-                      celebrate: widget.justFinished,
-                      haptics: services.settings.settings.haptics,
-                    ),
-                  ],
+                  const SizedBox(height: Space.x8),
+                  // A10.3 via the shared board fold (LB3).
+                  BoardChips(
+                    runId: d.run.id,
+                    justFinished: widget.justFinished,
+                  ),
                   if (change != null)
                     Text(
                       change,

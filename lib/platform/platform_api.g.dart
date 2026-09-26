@@ -1067,6 +1067,7 @@ class RecorderStatus {
     this.stepRemainingMs,
     this.stepRemainingM,
     required this.journalOk,
+    this.pausedAtElapsedMs,
   });
 
   RecorderState state;
@@ -1105,6 +1106,10 @@ class RecorderStatus {
 
   bool journalOk;
 
+  /// Paused: the elapsed time the pause began at (the finish screen's end
+  /// time), also after a kill and restore. Null when not paused.
+  int? pausedAtElapsedMs;
+
   List<Object?> _toList() {
     return <Object?>[
       state,
@@ -1123,6 +1128,7 @@ class RecorderStatus {
       stepRemainingMs,
       stepRemainingM,
       journalOk,
+      pausedAtElapsedMs,
     ];
   }
 
@@ -1148,6 +1154,7 @@ class RecorderStatus {
       stepRemainingMs: result[13] as int?,
       stepRemainingM: result[14] as double?,
       journalOk: result[15]! as bool,
+      pausedAtElapsedMs: result[16] as int?,
     );
   }
 
@@ -1160,7 +1167,7 @@ class RecorderStatus {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk);
+    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs);
   }
 
   @override
