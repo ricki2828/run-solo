@@ -248,7 +248,12 @@ void main() {
       expect(marked(at(22, 14, sw: 800, wind: 1).line(52.8)!), isTrue);
       expect(marked(CooperHeat.disclosure), isTrue);
       expect(marked(CooperHeat.caveat), isTrue);
-      expect(CooperHeat.caveat, endsWith('treat it as a rough estimate.'));
+      expect(CooperHeat.caveat, contains('treat it as a rough estimate.'));
+      expect(
+        CooperHeat.caveat,
+        endsWith('so for most people this undercounts.'),
+        reason: 'RV4 C7',
+      );
       expect(CooperHeat.caveat, contains('may not fit'));
       for (final s in [
         CooperHeat.caveat,

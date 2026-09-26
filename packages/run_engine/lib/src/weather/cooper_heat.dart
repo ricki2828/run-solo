@@ -67,10 +67,13 @@ abstract final class CooperHeat {
       'Heat estimate from temperature, humidity, sun and wind. It can be off '
       'on patchy-cloud days.';
 
-  /// ⓘ copy under the heat line (plan §3.3, Science 6).
+  /// ⓘ copy under the heat line (plan §3.3, Science 6; RV4 C7: the slope
+  /// comes from elite and well-trained racers, and slower runners are hit
+  /// harder, Ely 2007).
   static const String caveat =
       'Based on 5K race data in the heat. It may not fit a 12-minute test '
-      'exactly, so treat it as a rough estimate.';
+      'exactly, so treat it as a rough estimate. Slower runners are usually '
+      'hit harder by heat, so for most people this undercounts.';
 
   /// Replaces the heat line above the Hadley "too hot" edge.
   static const String tooHotLine = 'Too hot to compare, raw only';
