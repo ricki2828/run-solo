@@ -244,15 +244,7 @@ void main() {
       expect(h.fraction, isNot(0.023), reason: 'stored unrounded');
     });
     test('strings with a heat number carry an estimate marker', () {
-      // Same list as PD1's carriesEstimateMarker (#32); switch to it once
-      // PD1 merges.
-      bool marked(String s) => const [
-        'estimate',
-        'est.',
-        'about',
-        'research-based',
-        'predicted',
-      ].any(s.toLowerCase().contains);
+      const marked = carriesEstimateMarker;
       expect(marked(at(22, 14, sw: 800, wind: 1).line(52.8)!), isTrue);
       expect(marked(CooperHeat.disclosure), isTrue);
       expect(marked(CooperHeat.caveat), isTrue);

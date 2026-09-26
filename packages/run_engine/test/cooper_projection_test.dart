@@ -138,6 +138,7 @@ void main() {
       expect(fx['range_half_width'], CooperProjection.rangeHalfWidth);
       expect(e.vo2High - e.vo2Low, 10);
       expect(e.rangeText, '51 (46 to 56)');
+      expect(e.rangeLine, 'VO2 estimate 51 (46 to 56)');
     });
   });
 
@@ -260,6 +261,48 @@ void main() {
       expect(CooperProjection.testStartMs(run), 300000);
       final m = CooperProjection.minuteDistances(run)!;
       expect(m, [for (var i = 1; i <= 12; i++) 240.0 * i]);
+    });
+
+    test('a warm-up that itself lasted 12:02 is not the test', () {
+      final base = cooperRun(warmupS: 722, testS: 780);
+      Lap lap(int i, int t0, int t1, LapKind k) => Lap(
+        index: i,
+        t0Ms: t0 * 1000,
+        t1Ms: t1 * 1000,
+        d0M: Trace(base.samples).distAt(t0 * 1000),
+        d1M: Trace(base.samples).distAt(t1 * 1000),
+        kind: k,
+      );
+      final run = base.copyWith(
+        laps: [
+          lap(0, 0, 722, LapKind.manual),
+          lap(1, 722, 1442, LapKind.auto),
+          lap(2, 1442, 1502, LapKind.manual),
+        ],
+      );
+      expect(CooperProjection.testStartMs(run), 722000);
+      expect(CooperProjection.minuteDistances(run)!.first, 240);
+      // Same when the warm-up lap is the recorder's own (no LAP pressed).
+      final autoWarmup = run.copyWith(
+        laps: [
+          lap(0, 0, 722, LapKind.auto),
+          lap(1, 722, 1442, LapKind.auto),
+          lap(2, 1442, 1502, LapKind.manual),
+        ],
+      );
+      expect(CooperProjection.testStartMs(autoWarmup), 722000);
+    });
+
+    test('the I5 replay (warm-up LAP, START REPS at 1:00, cool-down)', () {
+      final run = RunFile.fromJson(
+        jsonDecode(
+          File('test/fixtures/contract/replay_cooper.json').readAsStringSync(),
+        ) as Map<String, Object?>,
+      );
+      expect(CooperProjection.testStartMs(run), 60000);
+      final m = CooperProjection.minuteDistances(run)!;
+      expect(m.last, closeTo(run.laps[1].distanceM, 0.5));
+      expect(CooperCurve.fromMinuteDistances(m), isNotNull);
     });
 
     test('the I2 contract Cooper (one 12:00 lap) starts at 0', () {
