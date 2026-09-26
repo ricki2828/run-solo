@@ -164,6 +164,9 @@ void main() {
           phase: Phase.work,
           repIndex: 1,
           lapDistanceM: lap,
+          // Native's metres left from the exact boundary (#45).
+          stepIndex: 0,
+          stepRemainingM: 5000 - lap,
           gpsLost: lost,
         );
     expect(eventProjectedSeconds(snap(lap: 150), 36000), isNull);
