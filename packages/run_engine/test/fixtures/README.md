@@ -44,3 +44,9 @@ read-only under `contract/schema1/` (§18.7) and must decode with v1 `free` → 
 as `laps`, never 4x4 by lap count, so each carries a sidecar `run_type_override: fourByFour`), checked
 against an independent reading (stopwatch / second-device splits). Not yet populated:
 needs the first real runs (plan §13 P0 verify).
+
+**`cooper/cooper_projection.json`** (Phase 4 CO1): the Cooper fade table shared by Dart
+`CooperProjection` and Kotlin `CooperProjection.kt`. Default curve, projections with cue
+text, VO2, and a personal curve from four tests' minute distances. Computed independently
+in Python from the plan §3.3 rules, never by either engine; the default magnitudes are
+placeholders (needs verification).
