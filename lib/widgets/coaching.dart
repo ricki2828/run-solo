@@ -90,15 +90,23 @@ class _CoachingSectionState extends State<CoachingSection>
             style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
           ),
           const SizedBox(height: Space.x8),
-          if (o != null)
+          if (o != null) ...[
+            // A10.6: the runner's own figure first, Bone; the research
+            // norm (when the rule table uses it) under it as context.
             Text(
               o.text,
               key: const ValueKey('coaching-observation'),
-              // The research norm is context, not the runner's own number.
-              style: o.researchBased
-                  ? RunSoloType.body15.copyWith(color: t.inkSecondary)
-                  : RunSoloType.body17.copyWith(color: t.inkPrimary),
+              style: RunSoloType.body17.copyWith(color: t.inkPrimary),
             ),
+            if (o.norm != null) ...[
+              const SizedBox(height: Space.x8),
+              Text(
+                o.norm!,
+                key: const ValueKey('coaching-norm'),
+                style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+              ),
+            ],
+          ],
           if (s != null) ...[
             if (o != null) const SizedBox(height: Space.x8),
             Text(

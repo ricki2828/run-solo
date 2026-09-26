@@ -66,7 +66,8 @@ void main() {
     final c = await (await store(runs)).coaching();
     final report = c.reportFor(runs.last.id)!;
     expect(report.observation!.researchBased, isTrue);
-    expect(report.observation!.text, contains('research-based'));
+    expect(report.observation!.text, startsWith('You slowed '));
+    expect(report.observation!.norm, contains('research-based'));
     expect(report.suggestion!.kind, engine.SuggestionKind.zone2LongRun);
     final next = c.tryNext()!;
     expect(next.runId, runs.last.id);
