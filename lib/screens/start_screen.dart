@@ -21,6 +21,11 @@ import '../widgets/value_stepper.dart';
 import 'custom_builder_screen.dart';
 import 'intervals_sheet.dart';
 
+/// The live compare at Start ([kLiveCompare]); tests turn it on to check
+/// what `start()` is handed.
+@visibleForTesting
+bool debugLiveCompareAtStart = kLiveCompare;
+
 /// Start (plan §3.2, design brief A8): INTERVALS / LAPS / FREE. Tapping
 /// INTERVALS opens the sheet; the picked session shows as the session card
 /// (reps and recovery steppers only, D2; anything else is Save as custom).
@@ -168,8 +173,15 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         RecordMode.laps || RecordMode.free => null,
       };
       // LC1: the live compare's history, 150 ms or none; off until LV2.
-      final live = kLiveCompare
-          ? await services.live?.build(mode: mode, spec: spec)
+      // PD2 (#84 review P1): the target raced is the one shown, so a tap
+      // over to the other choice goes in too.
+      final live = debugLiveCompareAtStart
+          ? await services.live?.build(
+              mode: mode,
+              spec: spec,
+              preferAlternative:
+                  s.goalRun && _targetGoal == s.goalId && _targetSwapped,
+            )
           : null;
       result = await services.recording.start(
         mode,

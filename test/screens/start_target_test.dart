@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/app/routes.dart';
+import 'package:run_solo/platform/fake_gateway.dart';
+import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/screens/start_screen.dart';
 import 'package:run_solo/state/live_context.dart';
 import 'package:run_solo/state/settings.dart';
 
@@ -34,10 +37,12 @@ void main() {
     );
   }
 
-  Future<void> open(WidgetTester tester, String goalId) async {
+  Future<FakeRecorderGateway> open(WidgetTester tester, String goalId) async {
+    final fake = FakeRecorderGateway(now: now);
     await pumpApp(
       tester,
       fakeServices(
+        recorder: fake,
         live: LiveContextSource.prepared([fiveK('a', 1470)], now: now),
         settings: AppSettings(
           onboardingDone: true,
@@ -48,6 +53,7 @@ void main() {
       pushRoute: Routes.start,
     );
     await pumpTimes(tester, 6);
+    return fake;
   }
 
   testWidgets('a 5K goal shows its target under the card', (tester) async {
@@ -77,5 +83,20 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('goal-d5000')));
     await pumpTimes(tester, 4);
     expect(find.byKey(const ValueKey('start-target')), findsOneWidget);
+  });
+
+  testWidgets('the target START hands the recorder is the one shown '
+      '(#84 review P1)', (tester) async {
+    debugLiveCompareAtStart = true;
+    addTearDown(() => debugLiveCompareAtStart = false);
+    final fake = await open(tester, 'd5000');
+    expect(find.textContaining('24:30'), findsWidgets);
+    fake.emitGpsProbe(GpsProbeEvent(fix: true, accuracyM: 5));
+    await pumpTimes(tester, 2);
+    await tester.tap(find.text('START GOAL'));
+    await pumpTimes(tester, 6);
+    final target = fake.startCalls.single.liveContext!.target!;
+    expect(target.targetMs, 1470000);
+    expect(target.predicted, isTrue);
   });
 }
