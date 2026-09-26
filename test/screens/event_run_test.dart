@@ -35,6 +35,28 @@ void main() {
     expect(services.settings.settings.eventRun, isTrue);
     expect(find.byKey(const ValueKey('event-card')), findsOneWidget);
     expect(find.text('START 5 KM'), findsOneWidget);
+
+    // A10.10 / #54: START waits for a pre-start fix at 20 m or better.
+    expect(fake.gpsProbeRunning, isTrue);
+    FilledButton start() => tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'START 5 KM'),
+    );
+    expect(start().onPressed, isNull);
+    expect(find.textContaining('Waiting for GPS'), findsOneWidget);
+    fake.emitGpsProbe(GpsProbeEvent(fix: true, accuracyM: 35));
+    await pumpTimes(tester, 2);
+    expect(start().onPressed, isNull, reason: '35 m is not ready');
+    fake.emitGpsProbe(
+      GpsProbeEvent(fix: true, lat: -37.8, lon: 144.9, accuracyM: 6),
+    );
+    await pumpTimes(tester, 2);
+    expect(find.text('GPS ready · 6 m'), findsOneWidget);
+    expect(start().onPressed, isNotNull);
+    fake.emitGpsProbe(GpsProbeEvent(fix: false));
+    await pumpTimes(tester, 2);
+    expect(start().onPressed, isNull, reason: 'the fix went stale');
+    fake.emitGpsProbe(GpsProbeEvent(fix: true, accuracyM: 8));
+    await pumpTimes(tester, 2);
     await tester.tap(find.text('START 5 KM'));
     await pumpTimes(tester, 6);
     final call = fake.startCalls.single;
@@ -54,9 +76,12 @@ void main() {
     await pumpTimes(tester, 4);
     await tester.tap(find.byKey(const ValueKey('event-chip')));
     await pumpTimes(tester, 4);
+    final fake = services.recorder as FakeRecorderGateway;
+    expect(fake.gpsProbeRunning, isTrue);
     await tester.tap(find.text('LAPS'));
     await pumpTimes(tester, 4);
     expect(services.settings.settings.eventRun, isFalse);
+    expect(fake.gpsProbeRunning, isFalse, reason: 'probe only for the event');
     expect(services.settings.settings.recordMode, RecordMode.laps);
   });
 

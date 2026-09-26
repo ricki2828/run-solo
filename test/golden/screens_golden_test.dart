@@ -818,6 +818,11 @@ void main() {
       tester.view.physicalSize = Size(1080, h * 3.0);
       await pumpTimes(tester, 6);
       await settleAnimations(tester);
+      await golden(tester, 'start_event_nofix_360x$h');
+      (services.recorder as FakeRecorderGateway).emitGpsProbe(
+        GpsProbeEvent(fix: true, accuracyM: 6),
+      );
+      await pumpTimes(tester, 4);
       await golden(tester, 'start_event_360x$h');
 
       final fake = FakeRecorderGateway(now: now)

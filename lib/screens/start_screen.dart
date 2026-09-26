@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
@@ -30,9 +32,76 @@ class StartScreen extends StatefulWidget {
   State<StartScreen> createState() => _StartScreenState();
 }
 
-class _StartScreenState extends State<StartScreen> {
+class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   bool _starting = false;
   String? _error;
+
+  /// K1 / A10.10: the event's START waits for a fix (pre-start probe,
+  /// #54). Ready = a fix in the last 5 s at 20 m or better.
+  static const double gpsReadyAccuracyM = 20;
+  StreamSubscription<RecorderEvent>? _probeSub;
+  bool _probing = false;
+  GpsProbeEvent? _probe;
+
+  bool get _gpsReady {
+    final p = _probe;
+    return p != null &&
+        p.fix &&
+        p.accuracyM != null &&
+        p.accuracyM! <= gpsReadyAccuracyM;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopProbe();
+    super.dispose();
+  }
+
+  /// The probe runs only while the event is picked and Start is in front.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _syncProbe();
+    } else {
+      _stopProbe();
+    }
+  }
+
+  void _syncProbe() {
+    if (!mounted) return;
+    final want = AppServices.of(context).settings.settings.eventRun;
+    if (want && !_probing) {
+      final rec = AppServices.of(context).recorder;
+      _probing = true;
+      _probeSub = rec.events.listen((e) {
+        if (e is GpsProbeEvent && mounted) setState(() => _probe = e);
+      });
+      unawaited(rec.startGpsProbe().catchError((_) {}));
+    } else if (!want && _probing) {
+      _stopProbe();
+    }
+  }
+
+  void _stopProbe() {
+    if (!_probing) return;
+    _probing = false;
+    _probeSub?.cancel();
+    _probeSub = null;
+    _probe = null;
+    final services = _services;
+    if (services != null) {
+      unawaited(services.recorder.stopGpsProbe().catchError((_) {}));
+    }
+  }
+
+  AppServices? _services;
 
   /// False on Android 14: the toggle is disabled with a reason.
   bool _volumeKeyLaps = true;
@@ -41,6 +110,8 @@ class _StartScreenState extends State<StartScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _services = AppServices.of(context);
+    _syncProbe();
     if (_volumeKeyChecked) return;
     _volumeKeyChecked = true;
     AppServices.of(context).permissions.volumeKeyLapsSupported().then((ok) {
@@ -222,10 +293,13 @@ class _StartScreenState extends State<StartScreen> {
                   selected: mode,
                   session: services.pickedSession,
                   event: event,
-                  onEvent: () => set((x) => x.copyWith(eventRun: true)),
+                  onEvent: () =>
+                      set((x) => x.copyWith(eventRun: true))
+                          .then((_) => _syncProbe()),
                   onSelect: (m) => m == RecordMode.intervals
                       ? _openSheet()
-                      : set((x) => x.copyWith(lastMode: m, eventRun: false)),
+                      : set((x) => x.copyWith(lastMode: m, eventRun: false))
+                            .then((_) => _syncProbe()),
                 ),
                 const SizedBox(height: Space.x24),
                 if (event) ...[
@@ -236,11 +310,17 @@ class _StartScreenState extends State<StartScreen> {
                     style: text.bodyMedium?.copyWith(color: t.inkSecondary),
                   ),
                   const SizedBox(height: Space.x8),
-                  // A10.10: the Start GPS gate needs a pre-start fix from
-                  // native; until then this is advice.
+                  // A10.10: START waits for GPS (distance counts from the
+                  // first fix, so an early START would end past the line).
                   Text(
-                    'Wait for GPS at the start line before you tap START.',
-                    style: RunSoloType.label13.copyWith(color: t.semWarn),
+                    _gpsReady
+                        ? 'GPS ready · ${_probe!.accuracyM!.round()} m'
+                        : 'Waiting for GPS. The 5 km needs a fix at the '
+                              'start line.',
+                    key: const ValueKey('event-gps'),
+                    style: RunSoloType.label13.copyWith(
+                      color: _gpsReady ? t.inkSecondary : t.semWarn,
+                    ),
                   ),
                   const SizedBox(height: Space.x16),
                   _Toggle(
@@ -350,7 +430,9 @@ class _StartScreenState extends State<StartScreen> {
                       ),
                     ),
                   FilledButton(
-                    onPressed: _starting ? null : _start,
+                    onPressed: _starting || (event && !_gpsReady)
+                        ? null
+                        : _start,
                     child: Text(switch (mode) {
                       _ when event => 'START 5 KM',
                       RecordMode.intervals
