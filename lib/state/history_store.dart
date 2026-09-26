@@ -17,6 +17,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
+import '../app/event_names.dart';
 import '../platform/fake_gateway.dart';
 import '../platform/gateway.dart';
 import '../platform/session_codec.dart';
@@ -210,7 +211,7 @@ class _Analyser {
     required this.profile,
     required this.now,
     engine.RunEngine? runEngine,
-  }) : runEngine = runEngine ?? const engine.RunEngine();
+  }) : runEngine = runEngine ?? const engine.RunEngine(names: kEventNames);
 
   final engine.UserProfile Function() profile;
   final DateTime Function() now;
@@ -267,11 +268,7 @@ class _Analyser {
 engine.RunSidecar Function(engine.RunSidecar) freezeTransform(
   engine.Verdict verdict,
 ) => (current) {
-  final inputs = engine.Verdict.inputsKeyFor(
-    current.lapEdits,
-    current.runTypeOverride,
-  );
-  if (inputs != verdict.inputsKey) return current;
+  if (current.inputsKey != verdict.inputsKey) return current;
   final f = current.frozenVerdict;
   if (f != null && jsonEncode(f.toJson()) == jsonEncode(verdict.toJson())) {
     return current;

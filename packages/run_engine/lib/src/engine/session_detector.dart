@@ -49,7 +49,11 @@ class SessionDetector {
           s,
     ];
     final expectedReps = spec.repCount;
-    if (laps.length < 2 || expected.isEmpty) {
+    // One lap can only be a one-step session with nothing around it (K1: a
+    // parkrun started on the line and stopped at 5 km).
+    if (laps.isEmpty ||
+        expected.isEmpty ||
+        (laps.length < 2 && expected.length > 1)) {
       return RepDetection(
         warmup: laps,
         reps: const [],

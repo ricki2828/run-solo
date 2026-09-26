@@ -8,6 +8,7 @@ import '../weather/heat_model.dart';
 import '../weather/weather.dart';
 import 'format.dart';
 import 'constants.dart';
+import 'event_names.dart';
 import 'fix_laps.dart';
 import 'metrics.dart';
 import 'rep_detector.dart';
@@ -46,12 +47,21 @@ SessionSpec? effectiveSession(RunFile run, RunMode mode) {
 }
 
 /// The comparison key of [session] under [mode]; null for laps and free
-/// (a fartlek groups as `fartlek`).
-String? comparisonKeyOf(SessionSpec? session, RunMode mode) => switch (mode) {
+/// (a fartlek groups as `fartlek`). A parkrun with a course ([courseId],
+/// K1) races only that course: `parkrun:<courseId>`.
+String? comparisonKeyOf(
+  SessionSpec? session,
+  RunMode mode, {
+  String? courseId,
+}) => switch (mode) {
   RunMode.free => null,
   RunMode.laps =>
     session?.templateId == SessionSpec.fartlekId ? ComparisonKey.fartlek : null,
-  RunMode.intervals || RunMode.cooper => session?.comparisonKey,
+  RunMode.intervals =>
+    session?.templateId == SessionSpec.parkrunId
+        ? ComparisonKey.parkrunOf(courseId: courseId)
+        : session?.comparisonKey,
+  RunMode.cooper => session?.comparisonKey,
 };
 
 /// The line under a verdict when the run has weather (v1 plan §18.5):
@@ -72,6 +82,47 @@ String? heatLineFor(WeatherRecord? w, IntervalMetrics? m, Units units) {
       ? PaceFormat.pace(adjusted, units)
       : PaceFormat.mmss(adjusted * metres / 1000);
   return 'Heat-adjusted estimate: $value ($conditions).';
+}
+
+/// A parkrun recorded without its lap boundaries (Start pressed at the
+/// line, no warm-up LAP; or an imported file): the 5 km from the start and,
+/// when the runner kept going, the rest as a cool-down lap. Null when the
+/// trace never reached the distance (no verdict, as before).
+List<Lap>? parkrunLapsFromTrace(Trace trace, int metres) {
+  final samples = trace.samples;
+  if (samples.isEmpty || samples.last.distM < metres) return null;
+  final d0 = samples.first.distM;
+  var finishMs = samples.last.tMs;
+  for (var i = 1; i < samples.length; i++) {
+    final a = samples[i - 1], b = samples[i];
+    if (b.distM - d0 >= metres) {
+      final f = b.distM == a.distM
+          ? 1.0
+          : (d0 + metres - a.distM) / (b.distM - a.distM);
+      finishMs = (a.tMs + (b.tMs - a.tMs) * f).round();
+      break;
+    }
+  }
+  final t0 = samples.first.tMs;
+  return [
+    Lap(
+      index: 0,
+      t0Ms: t0,
+      t1Ms: finishMs,
+      d0M: d0,
+      d1M: d0 + metres,
+      kind: LapKind.auto,
+    ),
+    if (samples.last.tMs - finishMs >= 1000)
+      Lap(
+        index: 1,
+        t0Ms: finishMs,
+        t1Ms: samples.last.tMs,
+        d0M: d0 + metres,
+        d1M: samples.last.distM,
+        kind: LapKind.auto,
+      ),
+  ];
 }
 
 /// How [spec]'s headline is measured (Phase 3 §3.7): uniform distance reps
@@ -232,9 +283,15 @@ class RunAnalysis {
 /// The engine entry point. Pure and deterministic: the same inputs give the
 /// same output; `now` is injectable so `computed_at` is reproducible.
 class RunEngine {
-  const RunEngine({this.constants = EngineConstants.defaults});
+  const RunEngine({
+    this.constants = EngineConstants.defaults,
+    this.names = EventNames.generic,
+  });
 
   final EngineConstants constants;
+
+  /// Flavour event names for verdict copy (K1); the app injects them.
+  final EventNames names;
 
   RunAnalysis analyze(
     RunFile run, {
@@ -256,7 +313,8 @@ class RunEngine {
     final noisy = !indoor && quality < constants.noisyQualityBelow;
     final freeRun = calc.freeRun(run, trace);
     final session = effectiveSession(run, mode);
-    final key = comparisonKeyOf(session, mode);
+    final parkrunInfo = sidecar?.parkrun;
+    final key = comparisonKeyOf(session, mode, courseId: parkrunInfo?.courseId);
     final weather = WeatherRecord.fromJson(sidecar?.weather);
 
     // Exhaustive (W7): a new mode fails to compile here instead of being
@@ -323,7 +381,14 @@ class RunEngine {
     // The speed-stream fallback stays 4x4-only; any other session without
     // laps gets no verdict.
     final fromSpeed = isFourByFour && RepDetector.needsSpeedFallback(editable);
-    final base = fromSpeed ? detector.deriveLapsFromSpeed(trace) : editable;
+    // K1: a parkrun with no lap boundary is still one 5 km from the start.
+    final isParkrun = spec.templateId == SessionSpec.parkrunId;
+    final parkrunLaps = isParkrun && editable.length < 2
+        ? parkrunLapsFromTrace(trace, spec.workSteps.first.value)
+        : null;
+    final base = fromSpeed
+        ? detector.deriveLapsFromSpeed(trace)
+        : parkrunLaps ?? editable;
     final edits = sidecar?.lapEdits ?? const <LapEdit>[];
     EditedLaps edited;
     var lapEditsInvalid = false;
@@ -371,8 +436,19 @@ class RunEngine {
                 : (spec.hrBandLow!, spec.hrBandHigh!),
           );
 
+    // K1: the runner's official time replaces the GPS finish as the headline
+    // (the rep's own GPS numbers stay for the detail table).
+    final official = isParkrun ? parkrunInfo?.officialTimeSeconds : null;
+    final headline =
+        official != null &&
+            metrics.nominalRepMetres != null &&
+            metrics.avgWorkPaceSecPerKm != null
+        ? metrics.withHeadlinePace(official * 1000 / metrics.nominalRepMetres!)
+        : metrics;
+
     final frozen = sidecar?.frozenVerdict;
-    final inputsKey = Verdict.inputsKeyFor(edits, sidecar?.runTypeOverride);
+    final inputsKey =
+        sidecar?.inputsKey ?? Verdict.inputsKeyFor(const [], null);
     final Verdict verdict;
     final VerdictSource source;
     if (frozen != null &&
@@ -381,10 +457,10 @@ class RunEngine {
       verdict = frozen;
       source = VerdictSource.frozen;
     } else {
-      verdict = VerdictBuilder(constants).build(
+      verdict = VerdictBuilder(constants, names: names).build(
         run: run,
         detection: detection,
-        metrics: metrics,
+        metrics: headline,
         gates: VerdictGates(indoor: indoor, noisy: noisy, gpsQuality: quality),
         priors: priors,
         now: at,
@@ -393,6 +469,7 @@ class RunEngine {
         templateDefault: spec,
         session: planned,
         minCleanReps: minCleanRepsFor(key, spec),
+        officialTime: !identical(headline, metrics),
       );
       source = VerdictSource.computed;
     }
@@ -401,7 +478,7 @@ class RunEngine {
       runId: run.id,
       mode: mode,
       detection: detection,
-      intervals: metrics,
+      intervals: headline,
       freeRun: freeRun,
       verdict: verdict,
       verdictSource: source,
@@ -410,7 +487,7 @@ class RunEngine {
       gpsQuality: quality,
       engineVersion: engineVersion,
       weather: weather,
-      heatLine: heatLineFor(weather, metrics, run.units),
+      heatLine: heatLineFor(weather, headline, run.units),
       session: session,
       comparisonKey: key,
       lapEditsInvalid: lapEditsInvalid,

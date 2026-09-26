@@ -42,6 +42,8 @@ jobs:
         run: |
           dart format --output=none --set-exit-if-changed \
             lib/main.dart lib/screens lib/theme lib/platform/platform.dart test pigeons packages/run_engine
+      - name: Event names come from the flavour config (K1 trademark rule)
+        run: python3 tools/check_event_names.py
       - name: Analyze
         run: flutter analyze
       - name: App tests

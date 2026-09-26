@@ -129,7 +129,7 @@ class SessionSpec {
   static const String norwegian4x4Id = 'norwegian-4x4';
   static const String cooperId = 'cooper';
   static const String fartlekId = 'fartlek';
-  static const String parkrunId = 'parkrun';
+  static const String parkrunId = 'parkrun'; // event-name-ok: data key
   static const String customPrefix = 'custom:';
 
   /// Most steps a session may expand to (40 reps + 39 recoveries).
@@ -199,6 +199,17 @@ class SessionSpec {
     lapLockout: true,
     cueProfile: CueProfile.cooper,
     steps: [SessionStep.work(720, rep: 1)],
+  );
+
+  /// The Saturday 5 km time trial (K1): one 5000 m step from the Start
+  /// press, auto-stop at 5.00 km. [name] is the flavour's event name
+  /// (`EventNames.parkrun`), never a literal here.
+  static SessionSpec parkrun(String name) => SessionSpec(
+    templateId: parkrunId,
+    templateVersion: 1,
+    name: name,
+    autoStop: true,
+    steps: const [SessionStep.workDistance(5000, rep: 1)],
   );
 
   /// By-feel speed play, recorded as a Laps run: no steps, no timing.
@@ -452,7 +463,7 @@ class SessionSpec {
 abstract final class ComparisonKey {
   static const String fartlek = 'fartlek';
   static const String cooper = 'cooper';
-  static const String parkrun = 'parkrun';
+  static const String parkrun = 'parkrun'; // event-name-ok: data key
   static const String norwegian4x4 = 't240x*';
 
   /// `parkrun`, or `parkrun:<courseId>` once K1 knows the course.

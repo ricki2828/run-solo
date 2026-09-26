@@ -193,6 +193,29 @@ class IntervalMetrics {
   /// `UserProfile.observedMaxHr` (settings) when it exceeds the stored value.
   final double? observedMaxHrThisRun;
 
+  /// The same metrics with another headline pace (K1: a parkrun's official
+  /// time replaces the GPS finish); reps keep their measured numbers.
+  IntervalMetrics withHeadlinePace(double secPerKm) => IntervalMetrics(
+    kind: kind,
+    nominalRepMetres: nominalRepMetres,
+    reps: reps,
+    recoveries: recoveries,
+    avgWorkPaceSecPerKm: secPerKm,
+    repSpreadSecPerKm: repSpreadSecPerKm,
+    fadeSecPerKm: fadeSecPerKm,
+    recoveryPaceSecPerKm: recoveryPaceSecPerKm,
+    workRecoveryRatio: workRecoveryRatio,
+    workDistanceM: workDistanceM,
+    workSeconds: workSeconds,
+    hrPresent: hrPresent,
+    maxHrUsed: maxHrUsed,
+    timeInZoneSeconds: timeInZoneSeconds,
+    meanWorkHr: meanWorkHr,
+    meanWorkHrFraction: meanWorkHrFraction,
+    metresPerBeat: metresPerBeat,
+    observedMaxHrThisRun: observedMaxHrThisRun,
+  );
+
   int get cleanRepCount => reps.where((r) => r.clean).length;
   bool get allRepsClean => reps.isNotEmpty && cleanRepCount == reps.length;
   bool get hasInterrupted => reps.any((r) => r.interrupted);
