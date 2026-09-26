@@ -34,7 +34,7 @@ import java.io.File
  * device: the Android session maps the same core outputs to the same Pigeon fields, so a
  * divergence there is a bug on the Android side, not in this file.
  *
- * NDJSON, one object per line: `{"t": <elapsedMs>, "kind": "tick|lap|phase|state|cue|fault|status", ...}`
+ * NDJSON, one object per line: `{"t": <elapsedMs>, "kind": "tick|lapPending|lap|phase|state|cue|fault|status", ...}`
  * with the Pigeon field names and enums as their Dart names; a cue line carries its kind as
  * `cue`, a fault line as `fault` (the `kind` key is the line type). Ticks are 1 Hz here (the
  * device emits ≤ 2 Hz).
@@ -144,6 +144,24 @@ object EventTraceFixture {
             }
         }
 
+        // As RecordingSession.emitLapPending: the press, at once; its lap line follows on the next tick.
+        fun lapPending(out: List<RecorderCore.Output>, endedPhase: Phase, endedRep: Int) {
+            val lap = out.filterIsInstance<RecorderCore.Output.Lap>().firstOrNull() ?: return
+            if (lap.source == LapSource.auto) return
+            val next = out.filterIsInstance<RecorderCore.Output.PhaseChanged>().firstOrNull()
+            val prev = pendingOut.filterIsInstance<RecorderCore.Output.Lap>().lastOrNull { it.index < lap.index }
+            val startActive = prev?.let { core.status(it.t).activeMs } ?: lapStartActive
+            val st = core.status(lap.t)
+            emit(
+                "lapPending", st.elapsedMs,
+                linkedMapOf(
+                    "index" to lap.index, "tMs" to st.elapsedMs, "activeMs" to (st.activeMs - startActive), "source" to lap.source.name,
+                    "endedPhase" to endedPhase.name, "endedRepIndex" to endedRep,
+                    "nextPhase" to next?.phase?.name, "nextRepIndex" to next?.repIndex, "nextPhaseDurationMs" to next?.let { it.phaseDurationMs ?: 0L },
+                ),
+            )
+        }
+
         fun tick(t: Long, fix: LocationFix?, hr: Int?) {
             hr?.let { ticker.onHr(HrReading(t - 200, it)) }
             fix?.let { ticker.onFix(it) }
@@ -183,7 +201,13 @@ object EventTraceFixture {
         while (i < killAt) {
             val t = i * 1000L
             val f = fixes[i]
-            if (i == lapAt) handle(core.lap(LapSource.notification, t).second, t)
+            if (i == lapAt) {
+                val endedPhase = core.phase
+                val endedRep = core.repIndex
+                val out = core.lap(LapSource.notification, t).second
+                handle(out, t)
+                lapPending(out, endedPhase, endedRep)
+            }
             if (i == pauseAt) {
                 core.pause(t); ticker.onPause(); paused = true
                 writer.append(JournalLine.Pause(t, W0 + t))

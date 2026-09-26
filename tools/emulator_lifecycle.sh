@@ -113,6 +113,21 @@ case "$MODE" in
       landed=0
       # The key reached us: a VolumeProvider `direction=` line.
       keys_seen() { adb logcat -d -s RunSolo/lapinput | grep -c "direction=" || true; }
+      n_log() { adb logcat -d | grep -c "$1" || true; }
+      # Press at a fixed point of the lap cycle: 1.5 s of wall time (30 s of run time at 20x)
+      # after a notification LAP, 2.5 s before the next one. A Laps run ignores any manual press
+      # within 1.5 s of run time of the previous one (RecorderCore), so a press at a random
+      # moment would sometimes be a re-press by design.
+      after_fresh_notification_lap() {
+        local n waited=0
+        n="$(n_log 'lap notification → accepted')"
+        until [ "$(n_log 'lap notification → accepted')" -gt "$n" ]; do
+          sleep 0.2
+          waited=$((waited + 1))
+          [ "$waited" -lt 50 ] || fail "no notification LAP within 10 s to time the volume key against"
+        done
+        sleep 1.5
+      }
       media_state() { # what the system thinks the volume/media-key target is right now
         echo "--- dumpsys media_session ---" >&2
         adb shell dumpsys media_session 2>&1 | head -n 80 >&2 || true
@@ -127,6 +142,7 @@ case "$MODE" in
         adb logcat -d -s MediaSessionService MediaSessionStack MediaSessionRecord MediaSessionLegacyHelper AudioService WindowManager PhoneWindowManager 2>/dev/null | grep -iE "volume|session|KEYCODE" | tail -n 30 >&2 || true
       }
       for attempt in 1 2 3; do
+        after_fresh_notification_lap
         before_keys="$(keys_seen)"
         adb shell input keyevent KEYCODE_VOLUME_UP
         if wait_for_log 'RunSolo/session.*lap volumeKey → accepted' 10; then landed=1; break; fi
@@ -164,7 +180,29 @@ case "$MODE" in
       accepted_after="$(adb logcat -d | grep -c 'lap volumeKey → accepted' || true)"
       [ "$accepted_after" = "$accepted_before" ] || fail "an adb volume change without a key press produced a lap"
       set_music_volume "$vol_before"
-      log "manual + volume-key laps landed via $path (volume-key lap at run time ${vk_t} ms; volume $vol_before kept; adb change ignored)"
+      # Lockout (#40): two presses back to back, in one `input` call (a few ms apart, inside
+      # 1.5 s of run time even at 20x), must record exactly one lap. Inconclusive only when the
+      # emulator delivered fewer than two keys; that is retried with a ::warning::.
+      lockout=0
+      for attempt in 1 2 3; do
+        after_fresh_notification_lap
+        k0="$(keys_seen)"
+        a0="$(n_log 'lap volumeKey → accepted')"
+        d0="$(n_log 'lap volumeKey → ignoredDebounce')"
+        adb shell input keyevent KEYCODE_VOLUME_UP KEYCODE_VOLUME_UP
+        sleep 2
+        keys=$(( $(keys_seen) - k0 ))
+        acc=$(( $(n_log 'lap volumeKey → accepted') - a0 ))
+        deb=$(( $(n_log 'lap volumeKey → ignoredDebounce') - d0 ))
+        if [ "$keys" -ge 2 ]; then
+          [ "$acc" = 1 ] && [ "$deb" -ge 1 ] || fail "double press: $keys keys reached the session, $acc laps accepted, $deb ignored by the lockout; expected exactly 1 lap"
+          lockout=1
+          break
+        fi
+        echo "::warning::double press $attempt on API $sdk delivered $keys key(s) to the session; retrying"
+      done
+      [ "$lockout" = 1 ] || fail "the emulator never delivered both keys of a double press in 3 attempts; lockout unverified"
+      log "manual + volume-key laps landed via $path (volume-key lap at run time ${vk_t} ms; volume $vol_before kept; adb change ignored; double press = 1 lap)"
     fi
     ;;
   free)

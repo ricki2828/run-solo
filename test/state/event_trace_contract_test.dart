@@ -78,6 +78,28 @@ class TraceGateway implements RecorderGateway {
     }
   }
 
+  /// Like [playUntil], but stops right after the first line of [kind] (the
+  /// rest of its timestamp group stays queued): the state between a press
+  /// and its deferred lap line.
+  Future<void> playThroughFirst(String kind) async {
+    final j = lines.indexWhere((e) => e['kind'] == kind, _pos);
+    expect(j, greaterThanOrEqualTo(0), reason: 'no $kind line left');
+    final t = lines[j]['t'] as int;
+    await playUntil(t - 1);
+    for (var k = _pos; k < lines.length && lines[k]['t'] == t; k++) {
+      if (lines[k]['kind'] == 'status') _status = _parseStatus(lines[k]);
+    }
+    for (; _pos <= j; _pos++) {
+      final e = lines[_pos];
+      final k = e['kind'] as String;
+      if (k == 'status') continue;
+      _controller.add(_parseEvent(e, k));
+      for (var i = 0; i < 4; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+  }
+
   RecorderEvent _parseEvent(Map<String, Object?> e, String kind) {
     switch (kind) {
       case 'tick':
@@ -101,6 +123,19 @@ class TraceGateway implements RecorderGateway {
           activeMs: e['activeMs'] as int,
           distanceM: (e['distanceM'] as num).toDouble(),
           source: LapSource.values.byName(e['source'] as String),
+        );
+      case 'lapPending':
+        final next = e['nextPhase'] as String?;
+        return LapPendingEvent(
+          index: e['index'] as int,
+          tMs: e['tMs'] as int,
+          activeMs: e['activeMs'] as int,
+          source: LapSource.values.byName(e['source'] as String),
+          endedPhase: Phase.values.byName(e['endedPhase'] as String),
+          endedRepIndex: e['endedRepIndex'] as int,
+          nextPhase: next == null ? null : Phase.values.byName(next),
+          nextRepIndex: e['nextRepIndex'] as int?,
+          nextPhaseDurationMs: e['nextPhaseDurationMs'] as int?,
         );
       case 'phase':
         return PhaseEvent(
@@ -277,7 +312,13 @@ void main() {
       expect(ctl.snapshot.spec?.templateId, 'norwegian-4x4');
       expect(phaseTitle(ctl.snapshot), 'WARM-UP');
 
-      // Notification LAP at 60 s starts rep 1; the ring fires for it too.
+      // Notification LAP at 60 s starts rep 1. The press (lapPending) shows
+      // it at once, before the deferred lap line; the ring fires once.
+      await trace.playThroughFirst('lapPending');
+      expect(phaseTitle(ctl.snapshot), 'REP 1 OF 4');
+      expect(ctl.lapPulse.value, 1);
+      expect(ctl.snapshot.lapIndex, 1);
+      expect(ctl.snapshot.phaseRemainingMs, 240000);
       await trace.playUntil(61000);
       expect(phaseTitle(ctl.snapshot), 'REP 1 OF 4 · 4:00');
       expect(ctl.lapPulse.value, 1);

@@ -68,6 +68,15 @@ class EventTraceFixtureTest {
             }
             assertEquals(at, (lap["distanceM"] as Number).toDouble(), 0.1, "lap ${lap["index"]}")
         }
+        // The manual lap's press goes out at once (lapPending) and names what the lap ends and
+        // starts; its lap line (same index, time, active time and source) follows.
+        val pending = ev.filter { it["kind"] == "lapPending" }
+        assertEquals(1, pending.size)
+        val p = pending.single()
+        val lap0 = laps.first()
+        for (k in listOf("index", "tMs", "activeMs", "source")) assertEquals(lap0[k], p[k], k)
+        assertTrue(ev.indexOf(p) < ev.indexOf(lap0), "lapPending before its lap")
+        assertEquals(listOf("warmup", 0L, "work", 1L, 240_000L), listOf(p["endedPhase"], p["endedRepIndex"], p["nextPhase"], p["nextRepIndex"], p["nextPhaseDurationMs"]))
         // ... and the session in the Pigeon shape, with the step being run.
         assertEquals("norwegian-4x4", (status["spec"] as Map<*, *>)["templateId"])
         assertEquals(7, ((status["spec"] as Map<*, *>)["steps"] as List<*>).size)
