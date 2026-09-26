@@ -22,6 +22,7 @@ export 'src/engine/live_figures.dart';
 export 'src/engine/max_hr.dart';
 export 'src/engine/metrics.dart';
 export 'src/engine/predictor.dart';
+export 'src/engine/start_target.dart';
 export 'src/engine/rep_detector.dart';
 export 'src/engine/trace.dart';
 export 'src/engine/verdict_builder.dart';

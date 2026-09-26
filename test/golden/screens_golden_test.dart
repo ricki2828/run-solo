@@ -20,6 +20,7 @@ import 'package:run_solo/screens/settings_screen.dart';
 import 'package:run_solo/screens/shell_screen.dart';
 import 'package:run_solo/screens/trend_screen.dart';
 import 'package:run_solo/splash/intro_gate.dart';
+import 'package:run_solo/state/live_context.dart';
 import 'package:run_solo/state/sessions.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/theme/theme.dart';
@@ -181,6 +182,44 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
     await tester.pump(const Duration(milliseconds: 100));
     await golden(tester, 'record_lap_ring');
+  });
+
+  testWidgets('home: ESTIMATED TIMES, closed and with the band (PD2)', (
+    tester,
+  ) async {
+    final e = engine.RunBestEfforts(
+      efforts: {
+        engine.BestEffortDistance.k5: engine.BestEffort(
+          distance: engine.BestEffortDistance.k5,
+          elapsedMs: 1470000,
+          startMs: 0,
+          startOffsetM: 0,
+          splitsMs: const [],
+        ),
+      },
+      fromStartSplitsMs: const [],
+    );
+    final services = fakeServices(
+      live: LiveContextSource.prepared([
+        engine.LiveCandidate(
+          engine.BoardInput(
+            runId: 'a',
+            date: DateTime(2026, 9, 12, 12).toUtc(),
+            mode: engine.RunMode.free,
+            efforts: e.efforts,
+            heatFraction: 0,
+          ),
+          engine.RunDerived(bestEfforts: e),
+        ),
+      ], now: now),
+    );
+    await pumpApp(tester, services, home: HomeScreen(now: now));
+    await pumpTimes(tester, 4);
+    await golden(tester, 'home_estimates');
+    await tester.tap(find.text('ESTIMATED TIMES'));
+    await pumpTimes(tester, 4);
+    await settleAnimations(tester);
+    await golden(tester, 'home_estimates_band');
   });
 
   testWidgets('home: empty and with a last run', (tester) async {
