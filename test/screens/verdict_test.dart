@@ -218,4 +218,40 @@ void main() {
     expect(find.byType(RunDetailScreen), findsOneWidget);
     expect(find.byKey(const ValueKey('fake-map')), findsOneWidget);
   });
+
+  // A6: with weather, one line after the HR line; the verdict word is the
+  // raw one (the engine test pins it word for word).
+  testWidgets('warm run: heat-adjusted estimate line under the verdict', (
+    tester,
+  ) async {
+    final r1 = fourByFourFile(n: 1, start: d1);
+    final weather = engine.WeatherRecord(
+      status: engine.WeatherStatus.ok,
+      fetchedAt: d1,
+      tempC: 28,
+      rh: 62,
+      dewPointC: 21,
+      adj: engine.HeatModel.of(tempC: 28, dewPointC: 21).fraction,
+    );
+    await pumpApp(
+      tester,
+      fakeServices(
+        files: [r1],
+        sidecars: {
+          r1.id: engine.RunSidecar(runId: r1.id, weather: weather.toJson()),
+        },
+      ),
+      pushRoute: Routes.verdict,
+      pushArguments: r1.id,
+    );
+    await pumpTimes(tester, 6);
+    await reveal(tester);
+    expect(word(tester), 'BASELINE SET');
+    final line = find.textContaining('Heat-adjusted estimate: ');
+    expect(line, findsOneWidget);
+    expect(
+      engine.carriesEstimateMarker(tester.widget<Text>(line).data!),
+      isTrue,
+    );
+  });
 }
