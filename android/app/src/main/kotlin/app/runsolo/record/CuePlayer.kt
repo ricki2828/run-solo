@@ -29,7 +29,11 @@ import java.util.Locale
  * tone fallback when TTS is missing or `speak` fails, and a short vibration on every cue so a
  * pocketed phone still registers. [enabled] mirrors `setCues`.
  */
-class CuePlayer(context: Context) {
+/**
+ * [now]: the session's clock for the 3 s stale rule; a replay passes its trace clock, so what is
+ * dropped depends on trace time only, as in the JVM transcript fixture (T4).
+ */
+class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.elapsedRealtime() }) {
     private val context = context.applicationContext
     private val audio = this.context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val main = Handler(Looper.getMainLooper())
@@ -123,11 +127,11 @@ class CuePlayer(context: Context) {
             countdown()
             return null
         }
-        val now = SystemClock.elapsedRealtime()
-        val fresh = speech.freshAt(now)
+        val t = now()
+        val fresh = speech.freshAt(t)
         val composed = CueComposer.compose(text, extra?.takeIf { fresh })
         val words = composed.text ?: return null
-        speech.queued(now, CueComposer.words(words))
+        speech.queued(t, CueComposer.words(words))
         say(kind, words)
         nudge?.let { followUp.offer(it, speech.busyUntil) }
         return composed
@@ -140,10 +144,10 @@ class CuePlayer(context: Context) {
     /** Once a tick: the follow-up nudge now due, said here; null when none is (or it was dropped). The caller journals it. */
     @Synchronized
     fun dueNudge(): LiveCoach.Nudge? {
-        val now = SystemClock.elapsedRealtime()
-        val n = followUp.due(now, speech.busyUntil) ?: return null
+        val t = now()
+        val n = followUp.due(t, speech.busyUntil) ?: return null
         if (!enabled) return null
-        speech.queued(now, CueComposer.words(n.text))
+        speech.queued(t, CueComposer.words(n.text))
         say(null, n.text)
         return n
     }
@@ -154,7 +158,7 @@ class CuePlayer(context: Context) {
         vibrate(longArrayOf(0, 400, 150, 400))
         if (!enabled) return
         followUp.cancel()
-        speech.queued(SystemClock.elapsedRealtime(), CueComposer.words(text))
+        speech.queued(now(), CueComposer.words(text))
         say(CueKind.phaseEnd, text)
     }
 
@@ -163,7 +167,7 @@ class CuePlayer(context: Context) {
     fun announce(text: String) {
         if (!enabled) return
         followUp.cancel()
-        speech.queued(SystemClock.elapsedRealtime(), CueComposer.words(text))
+        speech.queued(now(), CueComposer.words(text))
         say(null, text)
     }
 

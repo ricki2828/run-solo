@@ -3,8 +3,17 @@ package app.runsolo.core.replay
 import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.model.CueProfile
 import app.runsolo.core.model.HrReading
+import app.runsolo.core.model.FastStartRule
+import app.runsolo.core.model.HrDriftRule
 import app.runsolo.core.model.LapSource
+import app.runsolo.core.model.LiveBoard
+import app.runsolo.core.model.LiveBoardKind
+import app.runsolo.core.model.LiveContext
+import app.runsolo.core.model.LiveEntry
+import app.runsolo.core.model.LiveTarget
 import app.runsolo.core.model.LocationFix
+import app.runsolo.core.model.NudgePlan
+import app.runsolo.core.model.RepFadeRule
 import app.runsolo.core.model.Phase
 import app.runsolo.core.model.RecoveryStyle
 import app.runsolo.core.model.RunMode
@@ -15,6 +24,7 @@ import app.runsolo.core.model.TargetKind
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
 import kotlin.math.cos
+import kotlin.math.floor
 
 /**
  * One replay scenario per session kind (Phase 3 §3.9, I5): the same trace and presses go through
@@ -29,6 +39,10 @@ import kotlin.math.cos
  *
  * Specs equal the Dart `SessionCatalogue.expand(id, reps: n)` (reps cut to the catalogue
  * minimum to keep the emulator job short), plus fartlek, Cooper and parkrun.
+ *
+ * The `t4-*` kinds (Phase 4 §5 T4) carry a [LiveContext] as the app would pack it at Start, so
+ * the live compares and nudges run: the JVM transcript fixture pins what is said and when, and
+ * the emulator job checks the service says the same.
  */
 object ReplayScenarios {
     enum class Press { lap, startReps, pause }
@@ -47,9 +61,14 @@ object ReplayScenarios {
         val fixes: List<LocationFix>,
         val hr: List<HrReading>,
         val presses: List<ScriptedPress>,
+        /** T4: the live compare's history for this replay (null: a silent run, as I5). */
+        val context: LiveContext? = null,
     )
 
-    val KINDS = listOf("4x4", "400s", "30-30s", "yasso-800s", "1km-repeats", "fartlek", "cooper", "parkrun", "goal-10k", "goal-30min", "pause-end") // event-name-ok: debug replay ids, never in a store build
+    /** Phase 4 T4: replays with a LiveContext, each with a transcript fixture (declared first: [KINDS] reads it). */
+    val T4_KINDS = listOf("t4-free-5k-fast", "t4-free-10k-fade", "t4-400s-fade", "t4-cooper-fast", "t4-5k-target", "t4-goal-half-best", "t4-goal-30min-best")
+
+    val KINDS = listOf("4x4", "400s", "30-30s", "yasso-800s", "1km-repeats", "fartlek", "cooper", "parkrun", "goal-10k", "goal-30min", "pause-end") + T4_KINDS // event-name-ok: debug replay ids, never in a store build
 
     private const val LAT0 = -33.8688
     private const val LON0 = 151.2093
@@ -78,7 +97,123 @@ object ReplayScenarios {
         // GOAL runs (§G): one step from Start, then an open cool-down (60 s here, then the trace ends).
         "goal-10k" -> structured(kind, SessionSpec.goalDistance(10_000, "10K"), workMps = 4.0, start = null)
         "goal-30min" -> structured(kind, SessionSpec.goalTime(1_800, "30 min"), workMps = 3.5, start = null)
+        // T4: Free 5K out too fast (km 1 at 3:47/km), then 5:08/km; the 5K board and a fast-start rule.
+        "t4-free-5k-fast" -> free(kind, 5_050.0, T4.free5k, hr = { _ -> 152 }) { d -> if (d < 1_000) 4.4 else 3.25 }
+        // T4: Free 10K fading from 4:38/km to 5:39/km, HR climbing 2 a km; the 5K and 10K boards and HR drift.
+        "t4-free-10k-fade" -> free(kind, 10_050.0, T4.free10k, hr = { d -> T4.fadeHr(d) }) { d -> T4.fadeMps(d) }
+        // T4: 8 x 400 m, each rep 0.08 m/s slower than the last; the 8 x 400 board and the rep-fade rule.
+        "t4-400s-fade" -> structured(
+            kind, distanceSpec("400s", "8 × 400 m", 8, 400, Step(StepKind.recovery, TargetKind.distance, 200, RecoveryStyle.jog, 1)),
+            workMps = 0.0, context = T4.eightBy400, work = { rep, _ -> 4.3 - 0.08 * (rep - 1) },
+        )
+        // T4: a Cooper out hard (3.9 m/s for 3 min) that settles at 3.2 m/s; three past tests.
+        "t4-cooper-fast" -> structured(
+            kind, SessionSpec.COOPER, workMps = 0.0, mode = RunMode.cooper, start = Press.startReps, context = T4.cooper,
+            work = { _, s -> if (s < 180) 3.9 else 3.2 },
+        )
+        // T4: the timed 5 km against a predicted 23:00 (4:36/km even), km 1 fast, then a touch slow.
+        "t4-5k-target" -> structured(kind, PARKRUN, workMps = 0.0, start = null, context = T4.target5k, work = { _, s -> if (s < 220) 4.5 else 3.55 })
+        // T4 (#78, lead): goals that beat their board, so the goal line says "new best" end to end.
+        "t4-goal-half-best" -> structured(
+            kind, SessionSpec.goalDistance(21_098, "Half").copy(spokenName = "Half marathon"), workMps = 4.0, start = null, context = T4.halfBoard,
+        )
+        "t4-goal-30min-best" -> structured(
+            kind, SessionSpec.goalTime(1_800, "30 min").copy(spokenName = "30 minutes"), workMps = 3.6, start = null, context = T4.thirtyMinBoard,
+        )
         else -> null
+    }
+
+    /**
+     * T4 contexts, as the engine packs them at Start (plan §3.2 / §3.5): boards of three runs, the
+     * CR1 nudge rules with the engine's own lines (`CoachingRules` in `coaching_rules.dart`).
+     */
+    object T4 {
+        const val FAST_START_5K = "Easy start. Your best 5K went out slower than this."
+        const val REP_FADE = "That one dropped off a bit. Hold your form on the next."
+        const val HR_DRIFT = "Heart rate's up for this pace today. Fine to ease a touch."
+        private const val DAY = 86_400_000L
+
+        /** Even-paced entries: one per pace (s/km), [km] whole-km splits from Start. */
+        private fun distanceBoard(key: String, label: String, km: Int, paces: List<Int>) = LiveBoard(
+            key = key, label = label, kind = LiveBoardKind.distance, targetM = km * 1_000.0,
+            entries = paces.mapIndexed { i, p ->
+                LiveEntry("t4-$key-$i", (i + 1) * DAY, fromStartSplitsMs = (1..km).map { k -> k * p * 1_000L }, finalMetric = km * p * 1_000.0)
+            },
+        )
+
+        val free5k = LiveContext(
+            boards = listOf(distanceBoard("be:5000", "5K", 5, listOf(288, 294, 300))),
+            nudges = NudgePlan(version = 1, fastStart = FastStartRule(km1MaxMs = 276_480, text = FAST_START_5K)),
+            builtAtMs = 0, engineVersion = 3,
+        )
+
+        fun fadeMps(d: Double): Double = 3.6 - 0.065 * floor(d / 1_000)
+        fun fadeHr(d: Double): Int = 148 + 2 * floor(d / 1_000).toInt()
+
+        /** Three recent runs per km at the live pace (within 2%), their HR 7 to 9 under the live km's. */
+        val free10k = LiveContext(
+            boards = listOf(distanceBoard("be:5000", "5K", 5, listOf(285, 292, 300)), distanceBoard("be:10000", "10K", 10, listOf(290, 300, 310))),
+            nudges = NudgePlan(
+                version = 1,
+                hrDrift = HrDriftRule(
+                    kmSamples = (0 until 10).map { k ->
+                        val pace = 1_000 / fadeMps(k * 1_000.0)
+                        val hr = fadeHr(k * 1_000.0).toDouble()
+                        listOf(pace to hr - 8, pace * 1.02 to hr - 9, pace * 0.98 to hr - 7)
+                    },
+                    text = HR_DRIFT,
+                ),
+            ),
+            builtAtMs = 0, engineVersion = 3,
+        )
+
+        val eightBy400 = LiveContext(
+            boards = listOf(
+                LiveBoard(
+                    key = "d400x8", label = "8 × 400 m", kind = LiveBoardKind.intervals,
+                    entries = listOf(240.0, 245.0, 250.0).mapIndexed { i, p ->
+                        LiveEntry("t4-d400x8-$i", (i + 1) * DAY, liveRepPacesSecPerKm = List(8) { p }, finalMetric = p)
+                    },
+                ),
+            ),
+            nudges = NudgePlan(version = 1, repFade = RepFadeRule(listOf(null, null, 8.0, 8.0, 10.0, 10.0, 12.0, 12.0), REP_FADE)),
+            builtAtMs = 0, engineVersion = 3,
+        )
+
+        val cooper = LiveContext(boards = emptyList(), cooperHistory = listOf(44.0, 46.5, 47.2), builtAtMs = 0, engineVersion = 3)
+
+        /** Two earlier Halves, 1:30:00 and 1:33:20 (the runner's 4 m/s is 1:27:55): a new best. */
+        val halfBoard = LiveContext(
+            boards = listOf(
+                LiveBoard(
+                    key = "be:21097", label = "Half", kind = LiveBoardKind.distance, targetM = 21_097.5,
+                    entries = listOf(5_400L, 5_600L).mapIndexed { i, s ->
+                        LiveEntry("t4-half-$i", (i + 1) * DAY, fromStartSplitsMs = (1..21).map { k -> k * s * 1_000 * 1_000 / 21_098 }, finalMetric = s * 1_000.0)
+                    },
+                ),
+            ),
+            builtAtMs = 0, engineVersion = 3,
+        )
+
+        /** Two earlier best 30 minutes, 6.30 and 6.10 km (the runner's 3.6 m/s is 6.48 km): a new best. */
+        val thirtyMinBoard = LiveContext(
+            boards = listOf(
+                LiveBoard(
+                    key = "be:t1800", label = "30 min", kind = LiveBoardKind.distanceInTime,
+                    entries = listOf(6_300.0, 6_100.0).mapIndexed { i, m ->
+                        LiveEntry("t4-t30-$i", (i + 1) * DAY, cooperMinuteM = (1..30).map { k -> m * k / 30 }, finalMetric = m)
+                    },
+                ),
+            ),
+            builtAtMs = 0, engineVersion = 3,
+        )
+
+        /** The predicted 23:00 to race, and the course's board (best 24:00) the end line ranks on (#83). */
+        val target5k = LiveContext(
+            boards = listOf(distanceBoard("${SessionSpec.EVENT_ID}:c-1", "5K time trial", 5, listOf(288, 300))),
+            target = LiveTarget(distanceM = 5_000.0, targetMs = 1_380_000, predicted = true),
+            builtAtMs = 0, engineVersion = 3,
+        )
     }
 
     /**
@@ -105,10 +240,36 @@ object ReplayScenarios {
      * [workMps] / recovery jog as the core moves through them, then a cool-down jog. Ends
      * [COOLDOWN_S] into the cool-down, or 3 s after the core asked to auto-stop.
      */
-    private fun structured(kind: String, spec: SessionSpec, workMps: Double, mode: RunMode = RunMode.intervals, start: Press? = Press.lap): Scenario {
+    private fun structured(
+        kind: String,
+        spec: SessionSpec,
+        workMps: Double,
+        mode: RunMode = RunMode.intervals,
+        start: Press? = Press.lap,
+        context: LiveContext? = null,
+        /** Work pace by (rep, seconds into the work step); [workMps] throughout by default. */
+        work: (rep: Int, workS: Int) -> Double = { _, _ -> workMps },
+    ): Scenario {
         val presses = listOfNotNull(start?.let { ScriptedPress(WARMUP_S * 1000L, it) })
-        val (fixes, hr) = closedLoop(mode, spec, presses, workMps)
-        return Scenario(kind, mode, spec, fixes, hr, presses)
+        val (fixes, hr) = closedLoop(mode, spec, presses, work)
+        return Scenario(kind, mode, spec, fixes, hr, presses, context)
+    }
+
+    /** T4: a Free run at [mps] by distance so far, one fix and one HR reading a second, to [endM]. */
+    private fun free(kind: String, endM: Double, context: LiveContext, hr: (Double) -> Int, mps: (Double) -> Double): Scenario {
+        val mPerDegLon = 111_320.0 * cos(Math.toRadians(LAT0))
+        val fixes = arrayListOf(LocationFix(0, LAT0, LON0, 10.0, ACCURACY_M, 0.0))
+        val readings = ArrayList<HrReading>()
+        var eastM = 0.0
+        var i = 0
+        while (eastM < endM) {
+            i++
+            val v = mps(eastM)
+            readings.add(HrReading(i * 1000L - 300, hr(eastM)))
+            eastM += v
+            fixes.add(LocationFix(i * 1000L, LAT0, LON0 + eastM / mPerDegLon, 10.0, ACCURACY_M, v))
+        }
+        return Scenario(kind, RunMode.free, null, fixes, readings, emptyList(), context)
     }
 
     /** A Laps run with the fartlek session: fixed surges, a LAP at the start and end of each. */
@@ -126,7 +287,7 @@ object ReplayScenarios {
         return Scenario("pause-end", RunMode.free, null, fixes, hr, listOf(ScriptedPress(240_000, Press.pause)))
     }
 
-    private fun closedLoop(mode: RunMode, spec: SessionSpec, presses: List<ScriptedPress>, workMps: Double): Pair<List<LocationFix>, List<HrReading>> {
+    private fun closedLoop(mode: RunMode, spec: SessionSpec, presses: List<ScriptedPress>, work: (Int, Int) -> Double): Pair<List<LocationFix>, List<HrReading>> {
         val core = RecorderCore(mode, spec)
         val ticker = SampleTicker(wall = { 0L })
         val driver = Driver(core, ticker, presses)
@@ -139,13 +300,15 @@ object ReplayScenarios {
         var eastM = 0.0
         var cooldownLeft = COOLDOWN_S
         var stopIn = -1
+        var workS = 0
         var i = 0
         while (true) {
             i++
             check(i < 4 * 3600) { "replay scenario for ${spec.templateId} never finished" }
             val phase = core.phase
+            if (phase != Phase.work) workS = 0
             val mps = when (phase) {
-                Phase.work -> workMps
+                Phase.work -> work(core.repIndex, workS++)
                 Phase.recovery -> RECOVERY_MPS
                 Phase.warmup, Phase.cooldown, Phase.none -> WARMUP_MPS
             }
