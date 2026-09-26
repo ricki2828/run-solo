@@ -231,6 +231,39 @@ void main() {
     });
   });
 
+  group('nudges (CR1 on the first board)', () {
+    test('three even 5Ks: a fast-start rule for the 5K board', () {
+      final plan = LivePlanner.plan(
+        mode: RunMode.free,
+        runs: [freeRun(1, 1500), freeRun(2, 1480), freeRun(3, 1470)],
+      );
+      expect(plan.boards.first.key, 'be:5000');
+      final n = plan.nudges!;
+      expect(n.fastStart, isNotNull);
+      // The best 5K (1470 s) went out at 294 s a km; 4% quicker fires.
+      expect(n.fastStart!.km1MaxMs, lessThan(294000));
+      expect(n.fastStart!.text, contains('5K'));
+    });
+
+    test('two runs: no rule has enough history', () {
+      final plan = LivePlanner.plan(
+        mode: RunMode.free,
+        runs: [freeRun(1, 1500), freeRun(2, 1480)],
+      );
+      expect(plan.boards, isNotEmpty);
+      expect(plan.nudges, isNull);
+    });
+
+    test('Cooper never gets nudges', () {
+      final plan = LivePlanner.plan(
+        mode: RunMode.cooper,
+        runs: [for (var n = 1; n <= 4; n++) cooper(n, 48.0 + n, minutes(230))],
+      );
+      expect(plan.boards, isNotEmpty);
+      expect(plan.nudges, isNull);
+    });
+  });
+
   test('never more than 3 boards', () {
     expect(LivePlanner.maxBoards, 3);
   });
