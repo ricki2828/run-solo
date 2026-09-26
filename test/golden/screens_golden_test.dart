@@ -1078,4 +1078,35 @@ void main() {
     await pumpTimes(tester, 2);
     await golden(tester, 'start_goal_target_360x640');
   });
+
+  // K1 course at Start (A10.10, #76 review): the known course from the
+  // probe's position, pinned above START with the GPS line.
+  testWidgets('event: Start with a known course at 360 x 640', (tester) async {
+    final day0 = DateTime.utc(2026, 8, 1, 22);
+    final files = [
+      for (var i = 1; i <= 3; i++)
+        eventRunFile(
+          n: i,
+          start: day0.add(Duration(days: 7 * i)),
+          eventName: kEventNames.parkrun,
+        ),
+    ];
+    final course = engine.ParkrunCourses.newCourseId(files.first);
+    final services = fakeServices(
+      files: files,
+      courseNames: {course: 'Albert Park'},
+      settings: const AppSettings(onboardingDone: true, goalRun: true),
+    );
+    await pumpApp(tester, services, pushRoute: Routes.start);
+    tester.view.physicalSize = const Size(1080, 1920);
+    await pumpTimes(tester, 6);
+    final start = engine.ParkrunCourses.startOf(files.first)!;
+    (services.recorder as FakeRecorderGateway).emitGpsProbe(
+      GpsProbeEvent(fix: true, accuracyM: 6, lat: start.lat, lon: start.lon),
+    );
+    await pumpTimes(tester, 4);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Course: Albert Park'), findsOneWidget);
+    await golden(tester, 'start_event_course_360x640');
+  });
 }
