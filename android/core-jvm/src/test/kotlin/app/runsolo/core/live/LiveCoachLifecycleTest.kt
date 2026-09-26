@@ -343,6 +343,20 @@ class LiveCoachLifecycleTest {
     }
 
     @Test
+    fun `a 30-minute goal - new best only against its distance-in-time board`() {
+        fun board(key: String, kind: LiveBoardKind) = LiveBoard(
+            key = key, label = "30 min", kind = kind,
+            entries = listOf(6_900.0, 7_000.0).mapIndexed { i, m -> LiveEntry("r$i", 0, cooperMinuteM = List(30) { k -> m * (k + 1) / 30 }, finalMetric = m) },
+        )
+        val onBoard = LiveContext(boards = listOf(board("be:t1800", LiveBoardKind.distanceInTime)), builtAtMs = 0, engineVersion = 1)
+        val best = goalRun(SessionSpec.goalTime(1_800, "30 min"), 1_800 + 60, onBoard).goals.single()
+        assertTrue(best.newBest)
+        assertTrue(best.text.endsWith(", new best."), best.text)
+        val otherKind = LiveContext(boards = listOf(board("be:t1800", LiveBoardKind.cooper)), builtAtMs = 0, engineVersion = 1)
+        assertTrue(!goalRun(SessionSpec.goalTime(1_800, "30 min"), 1_800 + 60, otherKind).goals.single().newBest)
+    }
+
+    @Test
     fun `a LAP in a goal marks a lap and never ends the goal early`() {
         val sh = Shell(RunMode.intervals, SessionSpec.goalDistance(3_000, "3K"), null)
         sh.start(0)

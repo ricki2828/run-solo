@@ -458,11 +458,16 @@ enum class ExitReason(val raw: Int) {
   }
 }
 
-/** Which kind of board a run races live (Phase 4 §3.2). */
+/**
+ * Which kind of board a run races live (Phase 4 §3.2). `distanceInTime`
+ * (Phase 4 §G) ranks the most distance in a fixed time (`be:t1800`, a
+ * custom time goal's `goal:t2700`); its entries carry `cooperMinuteM`.
+ */
 enum class LiveBoardKind(val raw: Int) {
   DISTANCE(0),
   INTERVALS(1),
-  COOPER(2);
+  COOPER(2),
+  DISTANCE_IN_TIME(3);
 
   companion object {
     fun ofRaw(raw: Int): LiveBoardKind? {
@@ -621,8 +626,8 @@ data class SessionSpec (
  * by the board's kind: `fromStartSplitsMs` (distance: cumulative ms from
  * the Start press at each whole km, WARN-1), `liveRepPacesSecPerKm`
  * (intervals: untrimmed lap distance / lap time per work rep, null for an
- * unclean rep, BLOCK-2), `cooperMinuteM` (Cooper: cumulative metres at each
- * whole minute of the test).
+ * unclean rep, BLOCK-2), `cooperMinuteM` (Cooper and distance-in-time:
+ * cumulative metres at each whole minute from the Start).
  *
  * Generated class from Pigeon that represents data sent in messages.
  */

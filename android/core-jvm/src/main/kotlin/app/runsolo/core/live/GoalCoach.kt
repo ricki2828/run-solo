@@ -69,7 +69,7 @@ class GoalCoach(private val spec: SessionSpec?, private val context: LiveContext
 
     /** The distance-in-time board for this time (key `…t<seconds>`, finalMetric = metres, higher is better). */
     private fun beatsTimeBoard(seconds: Int, distanceM: Double): Boolean {
-        val board = context?.boards?.firstOrNull { it.key.endsWith("t$seconds") } ?: return false
+        val board = context?.boards?.firstOrNull { it.kind == LiveBoardKind.distanceInTime && it.key.endsWith("t$seconds") } ?: return false
         return board.entries.isNotEmpty() && board.entries.all { distanceM > it.finalMetric }
     }
 }

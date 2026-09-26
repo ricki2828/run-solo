@@ -255,11 +255,14 @@ enum ExitReason {
   other,
 }
 
-/// Which kind of board a run races live (Phase 4 §3.2).
+/// Which kind of board a run races live (Phase 4 §3.2). `distanceInTime`
+/// (Phase 4 §G) ranks the most distance in a fixed time (`be:t1800`, a
+/// custom time goal's `goal:t2700`); its entries carry `cooperMinuteM`.
 enum LiveBoardKind {
   distance,
   intervals,
   cooper,
+  distanceInTime,
 }
 
 /// One expanded step (named `SessionStep`: a generated `Step` would clash
@@ -427,8 +430,8 @@ class SessionSpec {
 /// by the board's kind: `fromStartSplitsMs` (distance: cumulative ms from
 /// the Start press at each whole km, WARN-1), `liveRepPacesSecPerKm`
 /// (intervals: untrimmed lap distance / lap time per work rep, null for an
-/// unclean rep, BLOCK-2), `cooperMinuteM` (Cooper: cumulative metres at each
-/// whole minute of the test).
+/// unclean rep, BLOCK-2), `cooperMinuteM` (Cooper and distance-in-time:
+/// cumulative metres at each whole minute from the Start).
 class LiveEntry {
   LiveEntry({
     required this.runId,
