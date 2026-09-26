@@ -220,7 +220,14 @@ class WeatherChip extends StatelessWidget {
     return Container(
       key: const ValueKey('weather-chip'),
       width: double.infinity,
-      padding: const EdgeInsets.all(Space.x12),
+      // With the ⓘ (a 48 dp tap target) the note row is its own vertical
+      // padding, so the text sits centred between the figures and the edge.
+      padding: EdgeInsets.fromLTRB(
+        Space.x12,
+        Space.x12,
+        v.sheet.isEmpty ? Space.x12 : 0,
+        v.sheet.isEmpty ? Space.x12 : 0,
+      ),
       decoration: BoxDecoration(
         color: t.bgRaised,
         borderRadius: BorderRadius.circular(Radii.button),
@@ -239,7 +246,7 @@ class WeatherChip extends StatelessWidget {
           ],
           if (v.raw != null)
             Padding(
-              padding: const EdgeInsets.only(bottom: Space.x8),
+              padding: EdgeInsets.only(bottom: v.sheet.isEmpty ? Space.x8 : 0),
               child: Row(
                 children: [
                   column(v.rawLabel!, v.raw!),
