@@ -188,6 +188,13 @@ class RecorderCore(
         state = RecorderState.paused
         pauseStartT = t
         lastT = t
+        // A press earlier in this second starts its step at the distance the pause froze: no
+        // later sample counts while paused (the shell's next tick, the replay's next sample and
+        // the run file all read this distance), so do not wait for a tick after the resume.
+        if (pendingStartT != null) {
+            phaseStartD = lastD
+            pendingStartT = null
+        }
         return emptyList()
     }
 

@@ -68,6 +68,34 @@ void main() {
   });
 
   test(
+    'a rep ended by a manual LAP keeps its pace through the recovery',
+    () async {
+      // The service sends a manual lap and the phase change it caused
+      // together, lap first (LapDispatch, PR #26 review); the rep's pace must
+      // be counted and must survive every status refresh in the recovery.
+      await ctl.start(RecordMode.intervals, standardPreset(), Units.km);
+      await settle();
+      await ctl.lap(); // start reps
+      await settle();
+      fake.advance(const Duration(seconds: 100));
+      await settle();
+      await ctl.lap(); // ends rep 1 early
+      await settle();
+      expect(ctl.snapshot.phase, Phase.recovery);
+      expect(ctl.snapshot.repPaces, hasLength(1));
+      expect(ctl.snapshot.repPaces.single, closeTo(285, 1));
+      for (final s in [30, 60, 60]) {
+        fake.advance(Duration(seconds: s));
+        await ctl.refreshStatus();
+        await settle();
+        expect(ctl.snapshot.phase, Phase.recovery);
+        expect(ctl.snapshot.repPaces, hasLength(1));
+        expect(ctl.snapshot.repPaces.single, closeTo(285, 1));
+      }
+    },
+  );
+
+  test(
     'a pause mid-rep freezes the countdown while elapsed keeps running',
     () async {
       await ctl.start(RecordMode.intervals, standardPreset(), Units.km);

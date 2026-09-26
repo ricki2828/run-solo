@@ -16,6 +16,7 @@ import app.runsolo.core.model.StepKind
 import app.runsolo.core.model.RecorderState
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.Units
+import app.runsolo.core.record.LapDispatch
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
 import app.runsolo.core.replay.TraceFixture
@@ -105,10 +106,6 @@ object EventTraceFixture {
             emit("status", core.status(t).elapsedMs, status(t))
         }
 
-        val pendingOut = ArrayList<RecorderCore.Output>()
-        var prevTickT = 0L
-        var prevTickD = 0.0
-
         fun publishLap(o: RecorderCore.Output.Lap, distanceM: Double) {
             val st = core.status(o.t)
             val el = st.elapsedMs
@@ -125,14 +122,8 @@ object EventTraceFixture {
             emit("status", core.status(o.t).elapsedMs, status(o.t))
         }
 
-        fun flushLaps(t: Long) {
-            for (o in pendingOut) when (o) {
-                is RecorderCore.Output.Lap -> publishLap(o, core.distanceAtTime(o.t, prevTickT, prevTickD, t, ticker.distanceM))
-                is RecorderCore.Output.PhaseChanged -> publishPhase(o)
-                else -> Unit
-            }
-            pendingOut.clear()
-        }
+        // The service's own dispatch (a manual lap and its phase change wait for the next tick).
+        val dispatch = LapDispatch(onLap = { o, d -> publishLap(o, d) }, onPhase = { publishPhase(it) })
 
         fun handle(out: List<RecorderCore.Output>, t: Long) {
             for (o in out) {
@@ -141,13 +132,13 @@ object EventTraceFixture {
                         writer.append(JournalLine.Lap(o.t, W0 + o.t, o.source))
                         // As RecordingSession: a manual lap goes out at the next tick, at its interpolated
                         // distance, and the phase change it caused waits with it (lap first).
-                        if (o.source == LapSource.auto) publishLap(o, ticker.distanceM) else pendingOut.add(o)
+                        dispatch.lap(o, ticker.distanceM)
                     }
                     is RecorderCore.Output.Cue -> {
                         writer.append(JournalLine.Cue(o.t, W0 + o.t, o.kind))
                         emit("cue", core.status(o.t).elapsedMs, linkedMapOf("cue" to o.kind.name, "value" to o.value))
                     }
-                    is RecorderCore.Output.PhaseChanged -> if (pendingOut.isEmpty()) publishPhase(o) else pendingOut.add(o)
+                    is RecorderCore.Output.PhaseChanged -> dispatch.phase(o)
                     is RecorderCore.Output.AutoStop -> Unit // no auto-stop in this 4x4
                 }
             }
@@ -158,10 +149,9 @@ object EventTraceFixture {
             fix?.let { ticker.onFix(it) }
             val samples = ticker.tick(t)
             for (s in samples) writer.append(s)
-            flushLaps(t)
+            dispatch.flush(t, ticker.distanceM)
             handle(core.tick(t, ticker.distanceM, !ticker.gpsLost(t)), t)
-            prevTickT = t
-            prevTickD = ticker.distanceM
+            dispatch.ticked(t, ticker.distanceM)
             val last = samples.last()
             val pace = if (last.hasFix) livePace.update(last.t, ticker.distanceM) else null
             hrLast = last.hr
@@ -232,8 +222,7 @@ object EventTraceFixture {
         }
         ticker.filter.reanchor()
         lapStartDist = lastLapDist
-        prevTickT = resumeDeviceT
-        prevTickD = ticker.distanceM
+        dispatch.ticked(resumeDeviceT, ticker.distanceM)
         val lastLapRunT = replayed.events.filterIsInstance<RunEvent.Lap>().last().t
         lapStartT = resumeDeviceT - (replayed.endT - lastLapRunT) // endT includes the gap
         // As RecordingSession: active time at the last lap = its run time minus pauses/gaps before it.
@@ -258,7 +247,7 @@ object EventTraceFixture {
             tick(dt, fixes[traceIdx].copy(t = dt), hrFor())
             traceIdx++
         }
-        flushLaps(dt)
+        dispatch.flush(dt, ticker.distanceM)
         val out = core.stop(dt)
         for (o in out) if (o is RecorderCore.Output.Cue) emit("cue", core.status(dt).elapsedMs, linkedMapOf("cue" to o.kind.name, "value" to o.value))
         state(dt, RecorderState.finalising)
