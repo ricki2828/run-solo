@@ -36,6 +36,7 @@ import app.runsolo.platform.Units
 import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.record.LapInput
 import app.runsolo.record.LocationSource
+import app.runsolo.record.RecorderService
 import app.runsolo.record.ReplayRunner
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.LocationServices
