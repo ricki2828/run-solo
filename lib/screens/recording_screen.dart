@@ -105,6 +105,9 @@ class _RecordingScreenState extends State<RecordingScreen>
   void _onSnapshot() {
     final s = _ctl!.snapshot;
     _applyKeepScreenOn();
+    // #90: the paused notification's "tap to finish" lands on the finish
+    // screen directly.
+    if (_ctl!.takeFinishRequest() && mounted) unawaited(_tapStop());
     if (s.active && s.runId != null) _liveRunId = s.runId;
     if (s.state == RecorderState.finalising) _sawFinalising = true;
     // Auto-stop (K1 event at 5.00 km, plan §3.6): native ends the run on

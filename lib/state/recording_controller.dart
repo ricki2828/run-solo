@@ -396,6 +396,19 @@ class RecordingController extends ChangeNotifier {
 
   Future<void> _readStatus() async {
     final s = await _gateway.status();
+    // #90: the paused notification's "tap to finish" bumps a count that is
+    // never cleared. A rise while paused is a request for the finish
+    // screen; a rise seen while recording (resumed since) is not.
+    // #91: native's pause start is the truth (it survives a new isolate,
+    // e.g. a cold start from "tap to finish"); the local one fills in
+    // only until the first status read.
+    final pausedAt = s.pausedAtElapsedMs;
+    if (pausedAt != null) _pausedAtMs = pausedAt;
+    final finish = s.finishRequests ?? 0;
+    if (finish > _finishSeen) {
+      _finishSeen = finish;
+      if (s.state == RecorderState.paused) _finishPending = true;
+    }
     if (s.laps.isNotEmpty) {
       final last = s.laps.last;
       _lastLapDistanceM = last.distanceM;
@@ -461,6 +474,8 @@ class RecordingController extends ChangeNotifier {
 
   void _reset(RecordMode mode, SessionSpec? spec) {
     _lastLapDistanceM = 0;
+    _finishSeen = 0;
+    _finishPending = false;
     _clearPending();
     _tracker = engine.HrZoneTracker(maxHr: _maxHr().toDouble());
     _snap = RecordingSnapshot(
@@ -493,6 +508,17 @@ class RecordingController extends ChangeNotifier {
   /// manual lap; the engine flags the rep if the gap was long (W3).
   Future<void> endRep() =>
       _snap.distanceStep ? _gateway.lap(LapSource.button) : Future.value();
+  int _finishSeen = 0;
+  bool _finishPending = false;
+
+  /// True once per "tap to finish" from the paused notification (#90),
+  /// cold start included: the record screen then opens its finish screen.
+  bool takeFinishRequest() {
+    final r = _finishPending;
+    _finishPending = false;
+    return r;
+  }
+
   Future<void> pause() {
     _pausedAtMs ??= displayElapsedMs;
     return _gateway.pause();
@@ -500,9 +526,9 @@ class RecordingController extends ChangeNotifier {
 
   Future<void> resume() => _gateway.resume();
 
-  /// TOTAL when the current pause began (the in-app PAUSE, STOP, or a
-  /// pause seen on a tick, e.g. the notification's); null while recording
-  /// or when the pause began before this screen attached. A run stopped
+  /// TOTAL when the current pause began: native's (#91) from the last
+  /// status read, else the in-app PAUSE / STOP or a pause seen on a tick;
+  /// null while recording. A run stopped
   /// while paused ends here (#88), so the finish screen shows this.
   int? get pausedAtElapsedMs => _snap.paused ? _pausedAtMs : null;
   int? _pausedAtMs;
