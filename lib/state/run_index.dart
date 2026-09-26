@@ -46,9 +46,15 @@ class RunIndexEntry {
     this.heatAdj,
     this.derived,
     this.derivedFailed = false,
+    this.row,
   });
 
   final String id;
+
+  /// Everything a History row, the trend and the verdict ghost read (W5b),
+  /// so `list()` never decodes a fresh run. null in an entry written before
+  /// W5b: such an entry is stale once and rebuilt.
+  final IndexRow? row;
 
   /// Effective mode (the override when set), wire name.
   final engine.RunMode mode;
@@ -100,6 +106,23 @@ class RunIndexEntry {
     'derived_failed': d == null,
   });
 
+  /// Marked stale without touching its files' stamps: rebuilt on the next
+  /// `list()`, derived data kept (W5b).
+  RunIndexEntry withoutRow() =>
+      RunIndexEntry.fromJson({...toJson(), 'row': null});
+
+  /// This entry rebuilt for a reason that is not its own files (max HR, a
+  /// setting, a prior of the same key: W5b) keeps [o]'s derived data, which
+  /// depends only on the run file, the sidecar and the engine.
+  RunIndexEntry keepingDerivedOf(RunIndexEntry? o) =>
+      o == null || !sameStampAs(o) || (o.derived == null && !o.derivedFailed)
+      ? this
+      : RunIndexEntry.fromJson({
+          ...toJson(),
+          'derived': o.derived?.toJson(),
+          if (o.derivedFailed) 'derived_failed': true,
+        });
+
   /// Same run file, sidecar and engine as [o] (built from the same inputs).
   bool sameStampAs(RunIndexEntry o) =>
       engineVersion == o.engineVersion &&
@@ -108,8 +131,10 @@ class RunIndexEntry {
       sidecarMtimeMs == o.sidecarMtimeMs &&
       sidecarHash == o.sidecarHash;
 
-  /// Fresh when the run file, the sidecar and the engine are all unchanged.
+  /// Fresh when the run file, the sidecar and the engine are all unchanged
+  /// (and the entry carries the W5b row).
   bool isFresh(FileStamp s) =>
+      row?.version == IndexRow.currentVersion &&
       engineVersion == engine.engineVersion &&
       runMtimeMs == s.runMtimeMs &&
       runBytes == s.runBytes &&
@@ -139,6 +164,7 @@ class RunIndexEntry {
     'adj': heatAdj,
     'derived': derived?.toJson(),
     if (derivedFailed) 'derived_failed': true,
+    'row': row?.toJson(),
   };
 
   factory RunIndexEntry.fromJson(Map<String, Object?> j) => RunIndexEntry(
@@ -173,6 +199,7 @@ class RunIndexEntry {
         ? null
         : engine.RunDerived.fromJson(j['derived']! as Map<String, Object?>),
     derivedFailed: j['derived_failed'] == true,
+    row: IndexRow.fromJson(j['row'] as Map<String, Object?>?),
   );
 
   /// Built from a fresh analysis ([a] null when the run could not be
@@ -215,6 +242,7 @@ class RunIndexEntry {
       tempC: weather?.tempC,
       dewPointC: weather?.dewPointC,
       heatAdj: weather?.adj,
+      row: IndexRow.of(run, a, shownVerdict),
     );
   }
 
@@ -239,6 +267,123 @@ class RunIndexEntry {
 
   @override
   int get hashCode => jsonEncode(toJson()).hashCode;
+}
+
+/// The History-row part of an index entry (W5b): what `RunSummary` needs
+/// without the analysis. Figures are the analysis's own, not recomputed.
+@immutable
+class IndexRow {
+  const IndexRow({
+    this.version = currentVersion,
+    required this.lapCount,
+    this.session,
+    this.verdict,
+    this.detectedReps,
+    this.workPaceSecPerKm,
+    this.fadeSecPerKm,
+    this.recoveryPaceSecPerKm,
+    this.repPacesSecPerKm = const [],
+    this.repClean = const [],
+    this.eligibleAsPrior = false,
+  });
+
+  /// Bump when a field is added, so old rows are rebuilt once.
+  static const int currentVersion = 1;
+
+  final int version;
+  final int lapCount;
+
+  /// The recorded session (run file `session`).
+  final engine.SessionSpec? session;
+
+  /// The verdict the row shows (intervals only).
+  final engine.Verdict? verdict;
+
+  /// Intervals: reps the detector found, headline work pace, fade and
+  /// recovery pace; every rep's pace (null when it has none) and whether it
+  /// was clean.
+  final int? detectedReps;
+  final double? workPaceSecPerKm;
+  final double? fadeSecPerKm;
+  final double? recoveryPaceSecPerKm;
+  final List<double?> repPacesSecPerKm;
+  final List<bool> repClean;
+
+  /// Counts towards later verdicts and the trend's rolling median.
+  final bool eligibleAsPrior;
+
+  factory IndexRow.of(
+    engine.RunFile run,
+    engine.RunAnalysis? a,
+    engine.Verdict? shownVerdict,
+  ) {
+    final m = a?.intervals;
+    return IndexRow(
+      lapCount: run.laps.length,
+      session: run.session,
+      verdict: shownVerdict,
+      detectedReps: m?.reps.length,
+      workPaceSecPerKm: m?.avgWorkPaceSecPerKm,
+      fadeSecPerKm: m?.fadeSecPerKm,
+      recoveryPaceSecPerKm: m?.recoveryPaceSecPerKm,
+      repPacesSecPerKm: [
+        for (final r in m?.reps ?? const <engine.RepMetrics>[]) r.paceSecPerKm,
+      ],
+      repClean: [
+        for (final r in m?.reps ?? const <engine.RepMetrics>[]) r.clean,
+      ],
+      eligibleAsPrior: a?.eligibleAsPrior ?? false,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'v': version,
+    'laps': lapCount,
+    'session': session?.toJson(),
+    'verdict': verdict?.toJson(),
+    'reps': detectedReps,
+    'work_s_per_km': workPaceSecPerKm,
+    'fade_s_per_km': fadeSecPerKm,
+    'recovery_s_per_km': recoveryPaceSecPerKm,
+    'rep_paces_s_per_km': repPacesSecPerKm,
+    'rep_clean': repClean,
+    'eligible': eligibleAsPrior,
+  };
+
+  /// null for a missing or unreadable row (the entry is then stale).
+  static IndexRow? fromJson(Map<String, Object?>? j) {
+    if (j == null) return null;
+    try {
+      double? d(String k) => (j[k] as num?)?.toDouble();
+      return IndexRow(
+        version: j['v']! as int,
+        lapCount: j['laps']! as int,
+        session: j['session'] == null
+            ? null
+            : engine.SessionSpec.fromJson(
+                j['session']! as Map<String, Object?>,
+              ),
+        verdict: j['verdict'] == null
+            ? null
+            : engine.Verdict.fromJson(j['verdict']! as Map<String, Object?>),
+        detectedReps: j['reps'] as int?,
+        workPaceSecPerKm: d('work_s_per_km'),
+        fadeSecPerKm: d('fade_s_per_km'),
+        recoveryPaceSecPerKm: d('recovery_s_per_km'),
+        repPacesSecPerKm: [
+          for (final v in (j['rep_paces_s_per_km'] as List?) ?? const [])
+            (v as num?)?.toDouble(),
+        ],
+        repClean: [
+          for (final v in (j['rep_clean'] as List?) ?? const []) v == true,
+        ],
+        eligibleAsPrior: j['eligible'] == true,
+      );
+    } catch (e) {
+      debugPrint('index: unreadable row ($e)');
+      return null;
+    }
+  }
 }
 
 /// What the cache checks on disk for one run.
@@ -275,7 +420,7 @@ class FileStamp {
 /// cache: the next `list()` rebuilds it from the files).
 @immutable
 class RunIndex {
-  const RunIndex(this.entries);
+  const RunIndex(this.entries, {this.inputs});
 
   /// Phase 4 `derived` is an optional field filled in the background, so it
   /// needs no bump (a bump would force a full synchronous rebuild on the
@@ -285,8 +430,14 @@ class RunIndex {
 
   final Map<String, RunIndexEntry> entries;
 
+  /// Fingerprint of everything outside the files that changes an analysis
+  /// (max-HR inputs, event names, later the heat-compare setting: W5b).
+  /// When it differs, every entry is rebuilt (derived data kept).
+  final String? inputs;
+
   String encode() => jsonEncode({
     'schema': schema,
+    'inputs': ?inputs,
     'runs': [
       for (final id in (entries.keys.toList()..sort())) entries[id]!.toJson(),
     ],
@@ -302,7 +453,7 @@ class RunIndex {
           (e! as Map<String, Object?>)['id']! as String: RunIndexEntry.fromJson(
             e as Map<String, Object?>,
           ),
-      });
+      }, inputs: j['inputs'] as String?);
     } catch (e) {
       debugPrint('index: unreadable, rebuilding ($e)');
       return empty;

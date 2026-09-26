@@ -80,7 +80,7 @@ class _IntervalsSheetState extends State<IntervalsSheet> {
           setState(() {
             _keys = {
               for (final r in runs)
-                if (r.analysis?.comparisonKey ?? r.spec?.comparisonKey
+                if (r.comparisonKey ?? r.spec?.comparisonKey
                     case final String k)
                   k,
             };

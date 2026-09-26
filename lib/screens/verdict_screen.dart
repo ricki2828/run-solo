@@ -108,12 +108,12 @@ class _VerdictScreenState extends State<VerdictScreen> {
 /// The nearest earlier Intervals run of the same comparison key (plan
 /// §3.7: like with like) with metrics, for the ghost bars.
 RunSummary? previousFourByFour(List<RunSummary> all, RunSummary current) {
-  final key = current.analysis?.comparisonKey ?? current.spec?.comparisonKey;
+  final key = current.comparisonKey ?? current.spec?.comparisonKey;
   for (final r in all) {
     if (r.id == current.id) continue;
     if (!r.start.isBefore(current.start)) continue;
-    if (!r.isFourByFour || r.analysis?.intervals == null) continue;
-    final k = r.analysis?.comparisonKey ?? r.spec?.comparisonKey;
+    if (!r.isFourByFour || !r.hasIntervals) continue;
+    final k = r.comparisonKey ?? r.spec?.comparisonKey;
     if (key == null || k == null || k == key) return r;
   }
   return null;
@@ -139,7 +139,7 @@ RevealState revealStateOf(engine.Verdict? v) {
 List<RepBarDatum> repBarData(RunDetail detail, RunSummary? previous) {
   final m = detail.analysis.intervals;
   if (m == null) return const [];
-  final ghost = previous?.analysis?.intervals?.reps;
+  final ghost = previous?.repPacesSecPerKm;
   return [
     for (final r in m.reps)
       RepBarDatum(
@@ -149,7 +149,7 @@ List<RepBarDatum> repBarData(RunDetail detail, RunSummary? previous) {
             ? m.nominalRepMetres
             : null,
         ghostSecPerKm: ghost != null && r.number - 1 < ghost.length
-            ? ghost[r.number - 1].paceSecPerKm
+            ? ghost[r.number - 1]
             : null,
         excluded: !r.clean,
         reason: r.dropped

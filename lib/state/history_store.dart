@@ -96,7 +96,23 @@ class RunSummary {
     this.missing = false,
     this.verdict,
     this.analysis,
+    this.row,
+    this.indexedComparisonKey,
   });
+
+  /// From the index (W5b): no file decoded, no analysis.
+  factory RunSummary.fromEntry(RunIndexEntry e) => RunSummary(
+    id: e.id,
+    mode: recordModeOf(e.mode),
+    start: e.start,
+    durationMs: e.durationMs,
+    distanceM: e.distanceM,
+    laps: e.row!.lapCount,
+    spec: e.row!.session,
+    verdict: e.row!.verdict,
+    row: e.row,
+    indexedComparisonKey: e.comparisonKey,
+  );
 
   final String id;
 
@@ -117,9 +133,54 @@ class RunSummary {
   /// The 4x4 verdict (frozen or computed); null for other types / missing.
   final engine.Verdict? verdict;
 
-  /// Full analysis when the file was readable (History rows and Trend read
-  /// medians, fade and bests off it).
+  /// Full analysis, only on the memory store and tests. The file store
+  /// lists from the index (W5b): read the figures below, never this.
   final engine.RunAnalysis? analysis;
+
+  /// The index row the figures come from (file store).
+  final IndexRow? row;
+
+  /// The key from the index (file store); the analysis's otherwise.
+  final String? indexedComparisonKey;
+
+  String? get comparisonKey => indexedComparisonKey ?? analysis?.comparisonKey;
+
+  /// Intervals figures (null when the run has no interval metrics).
+  int? get detectedReps =>
+      row?.detectedReps ?? analysis?.intervals?.reps.length;
+  double? get workPaceSecPerKm =>
+      row?.workPaceSecPerKm ?? analysis?.intervals?.avgWorkPaceSecPerKm;
+  double? get fadeSecPerKm =>
+      row?.fadeSecPerKm ?? analysis?.intervals?.fadeSecPerKm;
+  double? get recoveryPaceSecPerKm =>
+      row?.recoveryPaceSecPerKm ?? analysis?.intervals?.recoveryPaceSecPerKm;
+
+  /// Every rep's pace (null when it has none), and the clean ones only.
+  List<double?> get repPacesSecPerKm =>
+      row?.repPacesSecPerKm ??
+      [
+        for (final r
+            in analysis?.intervals?.reps ?? const <engine.RepMetrics>[])
+          r.paceSecPerKm,
+      ];
+  List<double?> get cleanRepPacesSecPerKm {
+    final clean =
+        row?.repClean ??
+        [
+          for (final r
+              in analysis?.intervals?.reps ?? const <engine.RepMetrics>[])
+            r.clean,
+        ];
+    final paces = repPacesSecPerKm;
+    return [
+      for (var i = 0; i < paces.length; i++)
+        i < clean.length && clean[i] ? paces[i] : null,
+    ];
+  }
+
+  bool get eligibleAsPrior =>
+      row?.eligibleAsPrior ?? analysis?.eligibleAsPrior ?? false;
+  bool get hasIntervals => detectedReps != null;
 
   bool get isFourByFour => mode == RecordMode.intervals;
 
@@ -128,9 +189,8 @@ class RunSummary {
       distanceM > 0 ? durationMs / 1000 / (distanceM / 1000) : null;
 
   /// Headline pace for the row: work pace for a 4x4, whole-run otherwise.
-  double? get headlineSecPerKm => isFourByFour
-      ? (analysis?.intervals?.avgWorkPaceSecPerKm ?? avgSecPerKm)
-      : avgSecPerKm;
+  double? get headlineSecPerKm =>
+      isFourByFour ? (workPaceSecPerKm ?? avgSecPerKm) : avgSecPerKm;
 }
 
 /// A loaded run: file, sidecar and analysis, for detail / verdict / fix-laps.
@@ -225,9 +285,15 @@ class _Analyser {
     Map<String, engine.RunAnalysis> analyses,
     Map<String, engine.Verdict> frozen,
   })
-  run(List<engine.RunFile> runs, Map<String, engine.RunSidecar> sidecars) {
+  run(
+    List<engine.RunFile> runs,
+    Map<String, engine.RunSidecar> sidecars, {
+    List<engine.PriorRun> seedPriors = const [],
+  }) {
     final ordered = List.of(runs)..sort((a, b) => a.start.compareTo(b.start));
-    final priors = <engine.PriorRun>[];
+    // Priors of runs not analysed here (W5b: from the index). The engine
+    // only compares earlier runs of the same key, so all may be passed.
+    final priors = List.of(seedPriors);
     final analyses = <String, engine.RunAnalysis>{};
     final frozen = <String, engine.Verdict>{};
     final p = profile();
@@ -496,42 +562,210 @@ class FileRunStore implements RunStore {
   /// The summary cache as last written (empty when missing or damaged).
   Future<RunIndex> readIndex() => RunIndex.read(indexFile);
 
-  /// Brings the cache in line with the files after an analysis pass: an
-  /// entry is rebuilt only when its run file, its sidecar or the engine
-  /// changed (run AND sidecar mtime, re-check INFO); runs that are gone
-  /// drop out. Written only when something changed. A cache failure never
-  /// fails the list.
-  Future<void> _updateIndex(
-    Map<String, (engine.RunFile, engine.RunSidecar?, File)> scanned,
-    Map<String, engine.RunAnalysis> analyses,
-  ) async {
-    try {
-      final old = await readIndex();
-      final next = <String, RunIndexEntry>{};
-      for (final e in scanned.entries) {
-        final (run, sidecar, file) = e.value;
-        final stamp = await FileStamp.of(file, _sidecarFor(file));
-        if (stamp == null) continue;
-        final have = old.entries[e.key];
-        if (have != null && have.isFresh(stamp)) {
-          next[e.key] = have;
-          continue;
-        }
-        final a = analyses[e.key];
-        next[e.key] = RunIndexEntry.of(
-          run: run,
-          sidecar: sidecar,
-          a: a,
-          shownVerdict: _summaryOf(run, sidecar, a).verdict,
-          stamp: stamp,
-        );
+  /// Fingerprint of the analysis inputs that live outside the files (W5b):
+  /// the max-HR resolver's inputs and the event names. The heat-compare
+  /// setting (W2) joins it when it lands. A change rebuilds every entry.
+  String _inputs() {
+    final p = _analyser.profile();
+    return 'p:${p.age}|${p.maxHr}|${p.observedMaxHr};'
+        'n:${_analyser.runEngine.names.parkrun}';
+  }
+
+  /// Run files by id, from their names only (nothing decoded).
+  Future<Map<String, File>> _files() async {
+    final out = <String, File>{};
+    for (final dir in [runsDir, archiveDir]) {
+      if (!await dir.exists()) continue;
+      await for (final entity in dir.list()) {
+        if (entity is! File) continue;
+        final m = _name.firstMatch(entity.uri.pathSegments.last);
+        if (m != null) out[m.group(1)!] = entity;
       }
-      final text = RunIndex(next).encode();
-      await sidecars.replaceText('index.json', indexFile, (_) => text);
-      _queueDerived(next, scanned, analyses);
+    }
+    return out;
+  }
+
+  Future<File?> _fileFor(String id) async {
+    for (final dir in [runsDir, archiveDir]) {
+      final f = File('${dir.path}/run-$id.json.gz');
+      if (await f.exists()) return f;
+    }
+    return null;
+  }
+
+  /// Test seam (W5b): the file names `_decode` read, in order.
+  @visibleForTesting
+  final List<String> decoded = [];
+
+  Future<(engine.RunFile, engine.RunSidecar?)?> _decode(File f) async {
+    decoded.add(f.uri.pathSegments.last);
+    try {
+      final text = utf8.decode(gzip.decode(await f.readAsBytes()));
+      final run = engine.RunFileCodec.decode(text);
+      return (run, await _readSidecar(_sidecarFor(f)));
+    } catch (e) {
+      // A newer-schema or damaged file is the Reconciler's problem later;
+      // the list must never crash on one bad file.
+      debugPrint('history: skipped ${f.uri.pathSegments.last} ($e)');
+      return null;
+    }
+  }
+
+  /// Leftovers of a crash between a tmp write and its rename (#21 review
+  /// P3): sidecar and index tmp files older than a minute count against the
+  /// `runs/` backup budget and are never read.
+  Future<void> _sweepTmp() async {
+    final cutoff = DateTime.now().subtract(const Duration(minutes: 1));
+    final tmp = RegExp(r'(\.edits\.json|index\.json)\.[^/]*\.tmp$');
+    for (final dir in [runsDir, archiveDir, indexFile.parent]) {
+      if (!await dir.exists()) continue;
+      await for (final e in dir.list()) {
+        if (e is! File || !tmp.hasMatch(e.path)) continue;
+        try {
+          if ((await e.stat()).modified.isBefore(cutoff)) await e.delete();
+        } catch (_) {}
+      }
+    }
+  }
+
+  /// Brings the cache in line with the files and returns it (W5b). Only
+  /// stale entries are decoded and analysed:
+  /// - no entry, or the run file, sidecar, engine or row version changed;
+  /// - every entry when the inputs fingerprint changed ([_inputs]);
+  /// - every later run of a key whose earlier run was rebuilt or deleted
+  ///   (its priors changed; old and new key both count).
+  /// Earlier runs that stay fresh feed their index priors. Computed
+  /// verdicts are frozen, then stamped. An entry rebuilt only for inputs or
+  /// priors keeps its derived data. Written only when something changed; a
+  /// cache failure falls back to what was read.
+  Future<RunIndex> _refresh() async {
+    await _sweepTmp();
+    final files = await _files();
+    final old = await readIndex();
+    final inputs = _inputs();
+    final allStale = old.inputs != inputs;
+    final stamps = <String, FileStamp>{};
+    for (final e in files.entries) {
+      final stamp = await FileStamp.of(e.value, _sidecarFor(e.value));
+      if (stamp != null) stamps[e.key] = stamp;
+    }
+    final affected = <String>{
+      for (final id in stamps.keys)
+        if (allStale || !(old.entries[id]?.isFresh(stamps[id]!) ?? false)) id,
+    };
+    final gone = [
+      for (final e in old.entries.values)
+        if (!stamps.containsKey(e.id)) e,
+    ];
+
+    final decoded = <String, (engine.RunFile, engine.RunSidecar?)>{};
+    var analyses = <String, engine.RunAnalysis>{};
+    var frozen = <String, engine.Verdict>{};
+    while (true) {
+      for (final id in affected) {
+        if (decoded.containsKey(id)) continue;
+        final d = await _decode(files[id]!);
+        if (d != null) decoded[id] = d;
+      }
+      final r = _analyser.run(
+        [for (final id in affected) ?decoded[id]?.$1],
+        {
+          for (final id in affected)
+            if (decoded[id]?.$2 != null) id: decoded[id]!.$2!,
+        },
+        seedPriors: [
+          for (final e in old.entries.values)
+            if (!affected.contains(e.id) && stamps.containsKey(e.id)) ?e.prior,
+        ],
+      );
+      analyses = r.analyses;
+      frozen = r.frozen;
+      // Earliest changed start per key (old and new keys, deleted runs).
+      final since = <String, DateTime>{};
+      void mark(String? key, DateTime start) {
+        if (key == null) return;
+        final s = since[key];
+        if (s == null || start.isBefore(s)) since[key] = start;
+      }
+
+      for (final e in gone) {
+        mark(e.comparisonKey, e.start);
+      }
+      for (final id in affected) {
+        final start = decoded[id]?.$1.start ?? old.entries[id]?.start;
+        if (start == null) continue;
+        mark(old.entries[id]?.comparisonKey, start);
+        mark(analyses[id]?.comparisonKey, start);
+      }
+      final more = [
+        for (final e in old.entries.values)
+          if (stamps.containsKey(e.id) &&
+              !affected.contains(e.id) &&
+              since[e.comparisonKey]?.isBefore(e.start) == true)
+            e.id,
+      ];
+      if (more.isEmpty) break;
+      affected.addAll(more);
+    }
+
+    await afterAnalyse?.call();
+    for (final e in frozen.entries) {
+      final file = files[e.key]!;
+      try {
+        final now = await sidecars.update(
+          e.key,
+          _sidecarFor(file),
+          freezeTransform(e.value),
+          runFile: file,
+        );
+        decoded[e.key] = (decoded[e.key]!.$1, now);
+      } catch (err) {
+        debugPrint('history: could not freeze verdict for ${e.key} ($err)');
+      }
+    }
+
+    final next = <String, RunIndexEntry>{};
+    for (final id in stamps.keys) {
+      if (!affected.contains(id)) {
+        next[id] = old.entries[id]!;
+        continue;
+      }
+      final d = decoded[id];
+      if (d == null) continue;
+      final file = files[id]!;
+      final stamp = await FileStamp.of(file, _sidecarFor(file));
+      if (stamp == null) continue;
+      final (run, sidecar) = d;
+      final a = analyses[id];
+      next[id] = RunIndexEntry.of(
+        run: run,
+        sidecar: sidecar,
+        a: a,
+        shownVerdict: _summaryOf(run, sidecar, a).verdict,
+        stamp: stamp,
+      ).keepingDerivedOf(old.entries[id]);
+    }
+    final index = RunIndex(next, inputs: inputs);
+    if (affected.isEmpty && gone.isEmpty && !allStale) {
+      _queueDerived(next, files);
+      return old;
+    }
+    try {
+      await sidecars.replaceText('index.json', indexFile, (current) {
+        // A derived batch may have landed since we read: keep its data on
+        // every entry built from the same files.
+        final now = RunIndex.decode(current);
+        return RunIndex({
+          for (final e in next.entries)
+            e.key: e.value.keepingDerivedOf(now.entries[e.key]),
+        }, inputs: inputs).encode();
+      });
     } catch (e) {
       debugPrint('index: not updated ($e)');
     }
+    final written = await readIndex();
+    _queueDerived(written.entries, files);
+    return written.inputs == inputs ? written : index;
   }
 
   /// Builds Phase 4 derived data for [jobs] and returns it by run id (null
@@ -559,19 +793,18 @@ class FileRunStore implements RunStore {
   /// batch at a time; a list during a batch leaves the rest to the next.
   void _queueDerived(
     Map<String, RunIndexEntry> entries,
-    Map<String, (engine.RunFile, engine.RunSidecar?, File)> scanned,
-    Map<String, engine.RunAnalysis> analyses,
+    Map<String, File> files,
   ) {
     if (_deriving != null) return;
     final jobs = <DeriveJob>[];
     final at = <String, RunIndexEntry>{};
     for (final e in entries.entries) {
-      if (e.value.derived != null ||
-          e.value.derivedFailed ||
-          analyses[e.key] == null) {
+      // The worker re-reads and re-analyses from the paths; a run it cannot
+      // analyse comes back as failed and is not retried until it changes.
+      final file = files[e.key];
+      if (e.value.derived != null || e.value.derivedFailed || file == null) {
         continue;
       }
-      final file = scanned[e.key]!.$3;
       jobs.add(
         DeriveJob(
           id: e.key,
@@ -608,7 +841,7 @@ class FileRunStore implements RunStore {
           next[r.key] = now.withDerived(r.value);
           changed = true;
         }
-        return changed ? RunIndex(next).encode() : null;
+        return changed ? RunIndex(next, inputs: index.inputs).encode() : null;
       });
     } catch (e) {
       debugPrint('index: derived data not built ($e)');
@@ -649,60 +882,44 @@ class FileRunStore implements RunStore {
   /// rewritten); a damaged one reads as null.
   Future<engine.RunSidecar?> _readSidecar(File f) => SidecarWriter.read(f);
 
-  Future<
-    ({
-      Map<String, (engine.RunFile, engine.RunSidecar?, File)> scanned,
-      Map<String, engine.RunAnalysis> analyses,
-    })
-  >
-  _scanAndAnalyse() async {
-    final scanned = await _scan();
-    final r = _analyser.run(scanned.values.map((v) => v.$1).toList(), {
-      for (final v in scanned.values)
-        if (v.$2 != null) v.$1.id: v.$2!,
-    });
-    await afterAnalyse?.call();
-    for (final e in r.frozen.entries) {
-      final entry = scanned[e.key]!;
-      try {
-        final now = await sidecars.update(
-          e.key,
-          _sidecarFor(entry.$3),
-          freezeTransform(e.value),
-          runFile: entry.$3,
-        );
-        scanned[e.key] = (entry.$1, now, entry.$3);
-      } catch (err) {
-        debugPrint('history: could not freeze verdict for ${e.key} ($err)');
-      }
-    }
-    return (scanned: scanned, analyses: r.analyses);
-  }
-
   @override
   Future<List<RunSummary>> list() async {
-    final r = await _scanAndAnalyse();
-    await _updateIndex(r.scanned, r.analyses);
+    final index = await _refresh();
     final out = [
-      for (final v in r.scanned.values)
-        _summaryOf(v.$1, v.$2, r.analyses[v.$1.id]),
+      for (final e in index.entries.values)
+        if (e.row != null) RunSummary.fromEntry(e),
     ];
     out.sort((a, b) => b.start.compareTo(a.start));
     return out;
   }
 
+  /// One run in full: the cache is brought up to date first (so its frozen
+  /// verdict and the priors are current), then only this file is decoded
+  /// and analysed, with the other runs' priors from the index.
   @override
   Future<RunDetail?> load(String id) async {
-    final r = await _scanAndAnalyse();
-    final v = r.scanned[id];
+    final index = await _refresh();
+    final file = await _fileFor(id);
+    if (file == null) return null;
+    final d = await _decode(file);
+    if (d == null) return null;
+    final (run, sc) = d;
+    final r = _analyser.run(
+      [run],
+      {id: ?sc},
+      seedPriors: [
+        for (final e in index.entries.values)
+          if (e.id != id) ?e.prior,
+      ],
+    );
     final a = r.analyses[id];
-    if (v == null || a == null) return null;
-    final sidecar = v.$2 ?? engine.RunSidecar(runId: id);
+    if (a == null) return null;
+    final sidecar = sc ?? engine.RunSidecar(runId: id);
     return RunDetail(
-      run: v.$1,
+      run: run,
       sidecar: sidecar,
       analysis: a,
-      summary: _summaryOf(v.$1, sidecar, a),
+      summary: _summaryOf(run, sidecar, a),
     );
   }
 
@@ -710,17 +927,17 @@ class FileRunStore implements RunStore {
     String id,
     engine.RunSidecar Function(engine.RunSidecar) change,
   ) async {
-    final scanned = await _scan();
-    final v = scanned[id];
-    if (v == null) throw StateError('run $id not found');
+    final file = await _fileFor(id);
+    final d = file == null ? null : await _decode(file);
+    if (file == null || d == null) throw StateError('run $id not found');
     // The change applies to the sidecar as it is inside the writer's
     // critical section, not to the scan's copy; a refused edit throws
     // there and nothing is written.
-    await sidecars.update(id, _sidecarFor(v.$3), (current) {
+    await sidecars.update(id, _sidecarFor(file), (current) {
       final next = change(current);
-      _checkEdits(_analyser, v.$1, next);
+      _checkEdits(_analyser, d.$1, next);
       return next;
-    }, runFile: v.$3);
+    }, runFile: file);
     return (await load(id))!;
   }
 
@@ -748,14 +965,13 @@ class FileRunStore implements RunStore {
   /// written once the run is deleted). Weather never touches the verdict:
   /// the frozen one stays as it is (plan §18.5).
   Future<void> setWeather(String id, engine.WeatherRecord weather) async {
-    final scanned = await _scan();
-    final v = scanned[id];
-    if (v == null) return;
+    final file = await _fileFor(id);
+    if (file == null) return;
     await sidecars.update(
       id,
-      _sidecarFor(v.$3),
+      _sidecarFor(file),
       (current) => current.copyWith(weather: weather.toJson()),
-      runFile: v.$3,
+      runFile: file,
     );
   }
 
@@ -774,8 +990,10 @@ class FileRunStore implements RunStore {
   /// tmp → flush → rename, into `files/runs/`.
   @override
   Future<ImportResult> importBundles(List<engine.RunBundle> bundles) async {
-    final scanned = await _scan();
-    final plan = engine.planBundleImport(bundles, scanned.keys.toSet());
+    final plan = engine.planBundleImport(
+      bundles,
+      (await _files()).keys.toSet(),
+    );
     await runsDir.create(recursive: true);
     var imported = 0;
     for (final b in plan.toImport) {
@@ -810,14 +1028,25 @@ class FileRunStore implements RunStore {
   /// go as a pair).
   @override
   Future<void> delete(String id) async {
-    final scanned = await _scan();
-    final v = scanned[id];
-    if (v == null) return;
-    await sidecars.deleteRun(id, v.$3, _sidecarFor(v.$3));
+    final file = await _fileFor(id);
+    if (file == null) return;
+    await sidecars.deleteRun(id, file, _sidecarFor(file));
+    // The entry goes now; later runs of its key lose a prior, so their rows
+    // are dropped and rebuilt on the next list (W5b).
     await sidecars.replaceText('index.json', indexFile, (current) {
       final index = RunIndex.decode(current);
-      if (!index.entries.containsKey(id)) return null;
-      return RunIndex({...index.entries}..remove(id)).encode();
+      final gone = index.entries[id];
+      if (gone == null) return null;
+      return RunIndex({
+        for (final e in index.entries.values)
+          if (e.id != id)
+            e.id:
+                e.comparisonKey != null &&
+                    e.comparisonKey == gone.comparisonKey &&
+                    e.start.isAfter(gone.start)
+                ? e.withoutRow()
+                : e,
+      }, inputs: index.inputs).encode();
     });
   }
 }
