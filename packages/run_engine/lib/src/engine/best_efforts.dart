@@ -142,7 +142,15 @@ class RunBestEfforts {
     required this.efforts,
     required this.fromStartSplitsMs,
     this.distances = const {},
+    this.wholeRunM,
+    this.wholeRunMs,
   });
+
+  /// A Free or Laps run with no pause and no gap, as one continuous effort
+  /// (a PD1 prediction input; the Home card reads it from the index, PD2).
+  /// Null otherwise.
+  final double? wholeRunM;
+  final int? wholeRunMs;
 
   static const RunBestEfforts none = RunBestEfforts(
     efforts: {},
@@ -168,6 +176,11 @@ class RunBestEfforts {
   Map<String, Object?> toJson() => {
     'efforts': {for (final e in efforts.values) e.distance.key: e.toJson()},
     'from_start_splits_ms': fromStartSplitsMs,
+    if (wholeRunM != null)
+      'whole_run': {
+        'm': double.parse(wholeRunM!.toStringAsFixed(1)),
+        'ms': wholeRunMs,
+      },
     if (distances.isNotEmpty)
       'distances': {for (final d in distances.values) d.window.key: d.toJson()},
   };
@@ -192,6 +205,8 @@ class RunBestEfforts {
           s as int,
       ],
       distances: distances,
+      wholeRunM: ((json['whole_run'] as Map?)?['m'] as num?)?.toDouble(),
+      wholeRunMs: (json['whole_run'] as Map?)?['ms'] as int?,
     );
   }
 }
@@ -265,6 +280,10 @@ class BestEffortFinder {
         avgHr: run.hasHr ? Trace(run.samples).meanHr(startMs, endMs) : null,
       );
     }
+    final continuous =
+        (analysis.mode == RunMode.free || analysis.mode == RunMode.laps) &&
+        run.pauses.isEmpty &&
+        run.gaps.isEmpty;
     final distances = <BestTimeWindow, BestDistance>{};
     for (final w in BestTimeWindow.values) {
       final best = _mostDistance(pool, w.seconds * 1000.0);
@@ -282,6 +301,8 @@ class BestEffortFinder {
           ? _fromStartSplits(run, stretches)
           : const [],
       distances: distances,
+      wholeRunM: continuous ? run.distanceM - run.samples.first.distM : null,
+      wholeRunMs: continuous ? run.elapsedMs : null,
     );
   }
 

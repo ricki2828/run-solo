@@ -39,6 +39,21 @@ class LiveContextSource {
     DateTime Function()? now,
   }) : now = now ?? DateTime.now;
 
+  /// Test seam: a source already prepared over [candidates] (no index).
+  @visibleForTesting
+  LiveContextSource.prepared(
+    List<engine.LiveCandidate> candidates, {
+    this.names = kEventNames,
+    DateTime Function()? now,
+  }) : indexFile = File('/nonexistent/index.json'),
+       budget = const Duration(milliseconds: 150),
+       now = now ?? DateTime.now {
+    _cached = candidates;
+    _cachedVersion = _preparedForTest;
+  }
+
+  static const String _preparedForTest = 'prepared';
+
   final File indexFile;
   final Duration budget;
   final engine.EventNames names;
@@ -51,8 +66,9 @@ class LiveContextSource {
   /// Reads the index into candidates in a background isolate when it has
   /// changed since the last prepare. Call when Start opens; cheap when
   /// nothing changed (one stat). Never throws.
-  Future<void> prepare() =>
-      _preparing ??= _prepare().whenComplete(() => _preparing = null);
+  Future<void> prepare() => _cachedVersion == _preparedForTest
+      ? Future<void>.value()
+      : _preparing ??= _prepare().whenComplete(() => _preparing = null);
 
   Future<void> _prepare() async {
     try {
@@ -108,7 +124,9 @@ class LiveContextSource {
     SessionSpec? spec,
     String? courseKey,
   ) async {
-    final version = await _versionOf(indexFile);
+    final version = _cachedVersion == _preparedForTest
+        ? _preparedForTest
+        : await _versionOf(indexFile);
     if (version == null) return null;
     if (version != _cachedVersion) {
       // Never decode on the UI isolate at Start. The index moved since the
@@ -118,22 +136,74 @@ class LiveContextSource {
       if (_cachedVersion == null) return null;
     }
     await beforeFold?.call();
+    final session = spec?.toEngine();
     final plan = engine.LivePlanner.plan(
       mode: runModeOf(mode),
-      session: spec?.toEngine(),
+      session: session,
       courseKey: courseKey,
       runs: _cached,
       names: names,
     );
-    if (plan.isEmpty) return null;
-    return toPigeon(plan, builtAt: now());
+    // PD2: the event or a goal races its target even before any board has
+    // two entries.
+    final target = engine.StartTarget.forSession(
+      session,
+      runs: _cached,
+      now: now(),
+      names: names,
+      courseKey: courseKey,
+    );
+    if (plan.isEmpty && target?.liveTargetMs == null) return null;
+    return toPigeon(plan, builtAt: now(), target: target);
   }
+
+  /// Whether any run in the last prepare has an event course (K1): the
+  /// Home card's event row shows only then (A10.4).
+  bool get hasEventCourse => _cached.any((c) {
+    final k = c.input.comparisonKey;
+    return k != null &&
+        engine.ComparisonKey.isParkrun(k) &&
+        k != engine.ComparisonKey.parkrun;
+  });
+
+  /// The Home ESTIMATED TIMES card (A10.4) from the last prepare, or null
+  /// when never prepared. Cheap (no I/O): call [prepare] first.
+  engine.HomeEstimates? homeEstimates({bool includeEvent = false}) =>
+      _cachedVersion == null
+      ? null
+      : engine.HomeEstimates.of(
+          _cached,
+          now: now(),
+          names: names,
+          includeEvent: includeEvent,
+        );
+
+  /// The Start card's target for [spec] (the event or a goal), from the
+  /// last prepare; null for other sessions or with nothing to go on.
+  engine.StartTarget? targetFor(SessionSpec? spec, {String? courseKey}) =>
+      _cachedVersion == null
+      ? null
+      : engine.StartTarget.forSession(
+          spec?.toEngine(),
+          runs: _cached,
+          now: now(),
+          names: names,
+          courseKey: courseKey,
+        );
 
   /// The engine's plan as the Pigeon struct `start()` takes.
   static LiveContext toPigeon(
     engine.LivePlan plan, {
     required DateTime builtAt,
+    engine.StartTarget? target,
   }) => LiveContext(
+    target: target?.liveTargetMs == null
+        ? null
+        : LiveTarget(
+            distanceM: target!.liveDistanceM!,
+            targetMs: target.liveTargetMs!,
+            predicted: target.predicted,
+          ),
     boards: [
       for (final b in plan.boards)
         LiveBoard(

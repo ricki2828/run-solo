@@ -140,6 +140,7 @@ class AppServices {
     DateTime Function()? now,
     List<CustomSession> customSessions = const [],
     Map<String, String> courseNames = const {},
+    LiveContextSource? live,
   }) {
     final rec = recorder ?? FakeRecorderGateway(autoTick: true, now: now);
     final settingsCtl = SettingsController(
@@ -170,6 +171,7 @@ class AppServices {
       )..preload(customSessions),
       courseNames: CourseNamesController(MemoryCourseNamesStore(courseNames))
         ..preload(courseNames),
+      live: live,
     );
   }
 

@@ -77,26 +77,45 @@ class PredictionInput {
     RunBestEfforts efforts, {
     required DateTime localDate,
     double? heatFraction,
+  }) => analysis.indoor || analysis.noisy
+      ? const []
+      : ofDerived(
+          runId: run.id,
+          localDate: localDate,
+          mode: analysis.mode,
+          comparisonKey: analysis.comparisonKey,
+          efforts: efforts,
+          heatFraction: heatFraction,
+        );
+
+  /// The same inputs from what the index keeps per run (PD2: the Home card
+  /// never decodes a run file). Indoor and noisy runs have no efforts and
+  /// no whole run in the index, so they offer nothing here either.
+  static List<PredictionInput> ofDerived({
+    required String runId,
+    required DateTime localDate,
+    required RunMode mode,
+    required String? comparisonKey,
+    required RunBestEfforts efforts,
+    double? heatFraction,
   }) {
-    if (analysis.indoor || analysis.noisy) return const [];
     final parkrun =
-        analysis.mode == RunMode.intervals &&
-        analysis.comparisonKey != null &&
-        ComparisonKey.isParkrun(analysis.comparisonKey!);
-    final freeOrLaps =
-        analysis.mode == RunMode.free || analysis.mode == RunMode.laps;
+        mode == RunMode.intervals &&
+        comparisonKey != null &&
+        ComparisonKey.isParkrun(comparisonKey);
+    final freeOrLaps = mode == RunMode.free || mode == RunMode.laps;
     // A GOAL run (§G) offers its 5K and 10K windows like a Free run; never
     // the whole run (it carries an open cool-down after the goal).
     final goal =
-        analysis.mode == RunMode.intervals &&
-        analysis.comparisonKey != null &&
-        ComparisonKey.isGoal(analysis.comparisonKey!);
+        mode == RunMode.intervals &&
+        comparisonKey != null &&
+        ComparisonKey.isGoal(comparisonKey);
     if (!parkrun && !freeOrLaps && !goal) return const [];
     int? adj(int ms) =>
         heatFraction == null ? null : (ms * (1 - heatFraction)).round();
     PredictionInput of(double metres, int ms, PredictionSourceKind kind) =>
         PredictionInput(
-          runId: run.id,
+          runId: runId,
           date: localDate,
           distanceM: metres,
           elapsedMs: ms,
@@ -105,6 +124,8 @@ class PredictionInput {
         );
     final k5 = efforts.efforts[BestEffortDistance.k5];
     final k10 = efforts.efforts[BestEffortDistance.k10];
+    final wholeM = efforts.wholeRunM;
+    final wholeMs = efforts.wholeRunMs;
     return [
       if (k5 != null)
         of(
@@ -127,10 +148,10 @@ class PredictionInput {
         if (efforts.efforts[d] case final e?)
           if (freeOrLaps || goal) of(d.metres, e.elapsedMs, kind),
       if (freeOrLaps &&
-          run.pauses.isEmpty &&
-          run.gaps.isEmpty &&
-          run.distanceM >= Predictor.minInputM)
-        of(run.distanceM, run.elapsedMs, PredictionSourceKind.wholeRun),
+          wholeM != null &&
+          wholeMs != null &&
+          wholeM >= Predictor.minInputM)
+        of(wholeM, wholeMs, PredictionSourceKind.wholeRun),
     ];
   }
 }
@@ -182,7 +203,7 @@ class Prediction {
   String get band => '${clock(lowSeconds)} to ${clock(highSeconds)}';
 
   /// "from your 5K on 12 Sep".
-  String get sourceLine => 'from your ${_sourceName()} on ${_date()}';
+  String get sourceLine => 'from your $sourceName on ${_date()}';
 
   /// "Estimated 5K 24:30 (24:10 to 24:55) · from your 5K on 12 Sep". The
   /// band is left out when it rounds to one time (same distance as the
@@ -199,7 +220,8 @@ class Prediction {
   /// "Target 24:30 (predicted)" on the parkrun Start card.
   String get targetLine => 'Target ${clock(seconds)} (predicted)';
 
-  String _sourceName() => switch (source.kind) {
+  /// "5K", "10K", the event name, "half", "8.2 km run".
+  String get sourceName => switch (source.kind) {
     PredictionSourceKind.bestEffort5k => '5K',
     PredictionSourceKind.bestEffort10k => '10K',
     PredictionSourceKind.bestEffortHalf => 'half',

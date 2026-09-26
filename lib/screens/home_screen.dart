@@ -6,8 +6,10 @@ import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
+import '../state/live_context.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
+import '../widgets/estimated_times_card.dart';
 import '../widgets/goal_picker.dart';
 import '../widgets/mode_chip.dart';
 import 'settings_screen.dart';
@@ -27,7 +29,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   Future<List<RunSummary>>? _runs;
+  Future<engine.HomeEstimates?>? _estimates;
   PermissionSnapshot? _perms;
+
+  /// The event row shows only once a course exists (A10.4, K1).
+  static bool _hasEventCourse(LiveContextSource live) => live.hasEventCourse;
 
   DateTime get _now => (widget.now ?? DateTime.now)();
 
@@ -40,6 +46,14 @@ class _HomeScreenState extends State<HomeScreen> {
   void _refresh() {
     final services = AppServices.of(context);
     _runs = services.history.list();
+    // PD2: ESTIMATED TIMES read the index's derived data, prepared off the
+    // UI isolate; the card shows once the first prepare lands.
+    final live = services.live;
+    if (live != null) {
+      _estimates = live.prepare().then(
+        (_) => live.homeEstimates(includeEvent: _hasEventCourse(live)),
+      );
+    }
     services.permissions.status().then((p) {
       if (mounted) setState(() => _perms = p);
     });
@@ -104,6 +118,17 @@ class _HomeScreenState extends State<HomeScreen> {
                           ? null
                           : () => Navigator.of(context)
                                 .pushNamed(Routes.verdict, arguments: last.id),
+                    );
+                  },
+                ),
+                FutureBuilder<engine.HomeEstimates?>(
+                  future: _estimates,
+                  builder: (context, snap) {
+                    final e = snap.data;
+                    if (e == null) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(top: Space.x24),
+                      child: EstimatedTimesCard(estimates: e),
                     );
                   },
                 ),
