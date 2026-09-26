@@ -184,6 +184,11 @@ void main() {
               ),
           isTrue,
         );
+        // #77 P3: the pace line (label and figure) stays fully visible.
+        expect(
+          tester.getRect(card).bottom,
+          lessThanOrEqualTo(tester.getRect(find.text('PACE')).top),
+        );
       });
 
       testWidgets('timed 5 km at 360 x $h', (tester) async {

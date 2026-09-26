@@ -1035,19 +1035,31 @@ class _CooperBlock extends StatelessWidget {
         SizedBox(height: compact ? Space.x8 : Space.x16),
         CompareSlot(
           link: testing ? card : null,
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              testing ? '${metres.round()} m' : Fmt.distance(metres, units),
-              key: const ValueKey('cooper-distance-live'),
-              softWrap: false,
-              // The test's metres are the figure that matters; around it the
-              // distance steps down a size.
-              style: switch ((testing, compact)) {
-                (true, false) => RunSoloType.display96,
-                (true, true) || (false, false) => RunSoloType.display64,
-                (false, true) => RunSoloType.display44,
-              }.copyWith(color: testing ? t.inkPrimary : secondary),
+          // In the test the slot is at least the card's height, so the card
+          // ends above the pace line and never half covers it (#77 P3).
+          // Always this tall in the test: nothing jumps when a card shows.
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: testing ? CompareCard.heightFor(compact: compact) : 0,
+            ),
+            child: Align(
+              alignment: Alignment.topCenter,
+              heightFactor: 1,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  testing ? '${metres.round()} m' : Fmt.distance(metres, units),
+                  key: const ValueKey('cooper-distance-live'),
+                  softWrap: false,
+                  // The test's metres are the figure that matters; around it the
+                  // distance steps down a size.
+                  style: switch ((testing, compact)) {
+                    (true, false) => RunSoloType.display96,
+                    (true, true) || (false, false) => RunSoloType.display64,
+                    (false, true) => RunSoloType.display44,
+                  }.copyWith(color: testing ? t.inkPrimary : secondary),
+                ),
+              ),
             ),
           ),
         ),
