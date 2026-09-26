@@ -4,9 +4,9 @@
 /// from run files. The expensive part (reading and decoding the index into
 /// candidates) is [LiveContextSource.prepare]d ahead, off the UI isolate:
 /// when the Start screen opens and whenever the index has changed. Start
-/// itself only plans over the ready candidates, inside a 150 ms budget
-/// (WARN-3); with nothing ready for the current index, a timeout, an empty
-/// plan or any error the answer is null: Start goes ahead with no compare,
+/// itself only plans over the candidates it has (the last prepare's, even
+/// if the index moved since), inside a 150 ms budget (WARN-3); never
+/// prepared, a timeout, an empty plan or any error: the answer is null: Start goes ahead with no compare,
 /// no overlay and nothing said (#59 review P2).
 ///
 /// Off by default ([kLiveCompare]): comparisons fire only once the in-app
@@ -111,9 +111,11 @@ class LiveContextSource {
     final version = await _versionOf(indexFile);
     if (version == null) return null;
     if (version != _cachedVersion) {
-      // Not ready for this index: never decode on the UI isolate at Start.
+      // Never decode on the UI isolate at Start. The index moved since the
+      // last prepare (a derived batch landing after Start opened): race the
+      // candidates we have, refresh for next time; never prepared: none.
       unawaited(prepare());
-      return null;
+      if (_cachedVersion == null) return null;
     }
     await beforeFold?.call();
     final plan = engine.LivePlanner.plan(

@@ -122,22 +122,31 @@ void main() {
     expect(sw.elapsedMilliseconds, lessThan(1000));
   });
 
-  test('a changed index is prepared again; the old one is not used', () async {
-    final store = await storeWithFreeRuns(2);
-    final src = LiveContextSource(indexFile: store.indexFile);
-    await src.prepare();
-    expect(
-      (await src.build(mode: RecordMode.free))!.boards.single.entries,
-      hasLength(2),
-    );
-    await storeWithFreeRuns(1, from: 9);
-    expect(await src.build(mode: RecordMode.free), isNull);
-    await src.prepare();
-    expect(
-      (await src.build(mode: RecordMode.free))!.boards.single.entries,
-      hasLength(3),
-    );
-  });
+  test(
+    'a changed index: the last candidates race, then the new ones',
+    () async {
+      final store = await storeWithFreeRuns(2);
+      final src = LiveContextSource(indexFile: store.indexFile);
+      await src.prepare();
+      expect(
+        (await src.build(mode: RecordMode.free))!.boards.single.entries,
+        hasLength(2),
+      );
+      await storeWithFreeRuns(1, from: 9);
+      // The index moved after prepare: the candidates we had still race
+      // (a derived batch landing after Start opened must not lose the
+      // compare), and a fresh prepare starts.
+      expect(
+        (await src.build(mode: RecordMode.free))!.boards.single.entries,
+        hasLength(2),
+      );
+      await src.prepare();
+      expect(
+        (await src.build(mode: RecordMode.free))!.boards.single.entries,
+        hasLength(3),
+      );
+    },
+  );
 
   test(
     '200 runs: prepare off the UI isolate, Start plans fast (host)',
