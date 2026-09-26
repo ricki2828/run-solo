@@ -17,6 +17,7 @@ import '../platform/gateway.dart';
 import '../platform/pigeon_gateway.dart';
 import '../platform/transfer_gateway.dart';
 import '../state/history_store.dart';
+import '../state/live_context.dart';
 import '../state/max_hr.dart';
 import '../state/recording_controller.dart';
 import '../state/sessions.dart';
@@ -41,6 +42,7 @@ class AppServices {
     DateTime Function()? now,
     ZoneMementoStore? zoneMemento,
     this.weather,
+    this.live,
   }) : now = now ?? DateTime.now,
        sessions = sessions ?? SessionsController(MemorySessionsStore()),
        recording =
@@ -68,6 +70,10 @@ class AppServices {
 
   /// Weather per finished run (W1); null in tests and the fake APK.
   final WeatherQueue? weather;
+
+  /// The live compare's context at Start (LC1); null in tests and the fake
+  /// APK. Only used when `kLiveCompare` is on.
+  final LiveContextSource? live;
   String? _lastFinishedRunId;
 
   /// Queues and drains weather: once on open (runs finished or imported
@@ -181,6 +187,7 @@ class AppServices {
       transfer: const ShareSheetTransferGateway(),
       storage: PigeonStorageGateway(),
       zoneMemento: FileZoneMementoStore(Directory('${support.path}/state')),
+      live: LiveContextSource(indexFile: history.indexFile),
       weather: WeatherQueue(
         file: File('${support.path}/state/weather-queue.json'),
         store: history,
