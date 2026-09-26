@@ -59,6 +59,11 @@ class FreeModeTest {
             val tap = org.robolectric.Shadows.shadowOf(paused.contentIntent)
             assertTrue(tap.isActivityIntent)
             assertEquals(app.runsolo.MainActivity.ACTION_FINISH, tap.savedIntent.action)
+            // What MainActivity does with that tap: the app is told to open its finish screen.
+            assertEquals(null, session.status().finishRequests)
+            session.requestFinish()
+            assertEquals(1L, session.status().finishRequests)
+            assertEquals(app.runsolo.platform.RecorderState.PAUSED, session.status().state)
         } finally {
             RecorderService.session = null
             session.abortStart() // a brand-new session: its journal goes

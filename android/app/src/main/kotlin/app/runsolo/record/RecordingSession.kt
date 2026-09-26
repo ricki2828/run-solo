@@ -511,6 +511,17 @@ class RecordingSession(
         refreshSnapshot()
     }
 
+    /** The notification's "tap to finish" (ACTION_FINISH) this run; `status().finishRequests`. */
+    private var finishRequests = 0
+
+    /** "Tap to finish": pause if not yet, and tell the app (status and a state event) to open its finish screen. */
+    @Synchronized
+    fun requestFinish() {
+        if (finished) return
+        finishRequests++
+        if (core.state == RecorderState.recording) pause() else emitState()
+    }
+
     @Synchronized
     fun pause() {
         if (finished || core.state != RecorderState.recording) return
@@ -825,6 +836,7 @@ class RecordingSession(
             stepRemainingM = st.stepRemainingM,
             journalOk = writer.ok,
             pausedAtElapsedMs = core.pausedAtElapsedMs,
+            finishRequests = finishRequests.takeIf { it > 0 }?.toLong(),
         )
     }
 

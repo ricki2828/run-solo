@@ -412,6 +412,7 @@ class RecorderStatus {
     this.stepRemainingM,
     required this.journalOk,
     this.pausedAtElapsedMs,
+    this.finishRequests,
   });
   RecorderState state;
   String? runId;
@@ -440,6 +441,11 @@ class RecorderStatus {
   /// Paused: the elapsed time the pause began at (the finish screen's end
   /// time), also after a kill and restore. Null when not paused.
   int? pausedAtElapsedMs;
+
+  /// How many times the paused notification's "tap to finish" opened the app
+  /// this run (null = none). The app opens its finish screen when this goes up;
+  /// it also works on a cold start, where an event would be missed.
+  int? finishRequests;
 }
 
 /// An in-progress journal found on app open without a finalised run file.

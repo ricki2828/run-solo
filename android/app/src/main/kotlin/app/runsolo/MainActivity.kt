@@ -83,11 +83,11 @@ class MainActivity : FlutterActivity() {
         handleDebugIntent(intent)
     }
 
-    /** The notification's "Stop": pause the run; the app, now in front, shows its paused card and finish screen. */
+    /** The paused notification's tap: the run pauses (if not yet) and the app opens its finish screen (`finishRequests`). */
     private fun handleFinish(intent: Intent?) {
         if (intent?.action != ACTION_FINISH) return
         intent.action = null // a recreated activity must not pause again
-        RecorderService.session?.pause()
+        RecorderService.session?.requestFinish()
     }
 
     /**
