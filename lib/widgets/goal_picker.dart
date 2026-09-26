@@ -106,21 +106,24 @@ class _Choice extends StatelessWidget {
         child: Container(
           constraints: const BoxConstraints(minHeight: 56, minWidth: 72),
           padding: const EdgeInsets.symmetric(horizontal: Space.x16),
-          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected ? t.inkPrimary : t.bgRaised,
             borderRadius: BorderRadius.circular(Radii.button),
             border: Border.all(color: selected ? t.inkPrimary : t.lineHair),
           ),
-          child: Text(
-            label,
-            style: RunSoloType.body15.copyWith(
-              color: selected
-                  ? t.bgBase
-                  : muted
-                  ? t.inkMuted
-                  : t.inkPrimary,
-              fontWeight: FontWeight.w500,
+          // Sized to its label (a Wrap chip), centred in the 56 dp height.
+          child: Align(
+            widthFactor: 1,
+            child: Text(
+              label,
+              style: RunSoloType.body15.copyWith(
+                color: selected
+                    ? t.bgBase
+                    : muted
+                    ? t.inkMuted
+                    : t.inkPrimary,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ),
