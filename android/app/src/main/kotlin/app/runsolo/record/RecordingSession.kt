@@ -737,6 +737,11 @@ class RecordingSession(
      */
     private fun publishGoal(g: GoalCoach.Reached) {
         cues.goal(g.text)
+        // The timed 5 km says its result line and stops: no goal card, no cool-down.
+        if (spec?.isEvent == true) {
+            Log.i(TAG, "event finished: ${g.text} interrupted=${g.interrupted}")
+            return
+        }
         RecorderEventBus.emit(
             GoalEvent(
                 distanceGoal = g.distanceGoal, goalValue = g.goalValue.toLong(), timeMs = g.timeMs, distanceM = g.distanceM,

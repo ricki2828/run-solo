@@ -12,14 +12,25 @@ void main() {
     engine.SessionSpec.parkrun(kEventNames.parkrun),
     engine.SessionSpec.cooper,
     engine.SessionSpec.fartlek,
+    // Goals carry the engine's spoken name to the recorder's voice (#86).
+    engine.SessionSpec.goalDistance(21098, 'Half'),
+    engine.SessionSpec.goalTime(1800, '30 min'),
   ];
   for (final s in specs) {
     test('round trip: ${s.templateId}', () {
       final back = s.toPigeon().toEngine();
       expect(back, s);
       expect(back.autoStop, s.autoStop);
+      expect(back.spokenName, s.spokenName);
     });
   }
+
+  test('a goal reaches the recorder with its spoken name', () {
+    expect(
+      engine.SessionSpec.goalTime(1800, '30 min').toPigeon().spokenName,
+      '30 minutes',
+    );
+  });
 
   test('the event session reaches the recorder with autoStop on', () {
     expect(
