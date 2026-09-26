@@ -60,6 +60,7 @@ class RecordingSnapshot {
     this.stepRemainingM,
     this.goalLapMs,
     this.goalLapM,
+    this.tipsMuted,
   });
 
   final RecorderState state;
@@ -139,6 +140,10 @@ class RecordingSnapshot {
 
   /// A GOAL run (plan §G): one step from Start, then an open cool-down.
   bool get isGoal => spec?.templateId == engine.SessionSpec.goalId;
+
+  /// `RecorderStatus.tipsMuted` (LV2): null = no live coaching this run,
+  /// false = tips on (the Mute tips button shows), true = muted this run.
+  final bool? tipsMuted;
 
   /// The session step being run: `spec.steps[stepIndex]` as native sends
   /// it (work and recovery steps both counted; null in warm-up, cool-down
@@ -260,6 +265,8 @@ class RecordingSnapshot {
     bool clearStepRemainingM = false,
     int? goalLapMs,
     double? goalLapM,
+    bool? tipsMuted,
+    bool clearTipsMuted = false,
   }) => RecordingSnapshot(
     state: state ?? this.state,
     runId: runId ?? this.runId,
@@ -295,6 +302,7 @@ class RecordingSnapshot {
         : (stepRemainingM ?? this.stepRemainingM),
     goalLapMs: goalLapMs ?? this.goalLapMs,
     goalLapM: goalLapM ?? this.goalLapM,
+    tipsMuted: clearTipsMuted ? null : (tipsMuted ?? this.tipsMuted),
   );
 }
 
@@ -341,6 +349,13 @@ class RecordingController extends ChangeNotifier {
 
   /// The goal reached in a GOAL run (§G), for the "GOAL 49:12" lock card (G3).
   final ValueNotifier<GoalEvent?> lastGoal = ValueNotifier(null);
+
+  /// When [lastCompare] arrived: a card older than 2 s is never shown (a
+  /// screen that wakes or is recreated late drops it, A10.1).
+  DateTime? lastCompareAt;
+
+  /// The controller's clock ([lastCompareAt] is on it).
+  DateTime now() => _now();
 
   StreamSubscription<RecorderEvent>? _sub;
 
@@ -436,6 +451,8 @@ class RecordingController extends ChangeNotifier {
       clearStepIndex: s.stepIndex == null,
       stepRemainingM: s.stepRemainingM,
       clearStepRemainingM: s.stepRemainingM == null,
+      tipsMuted: s.tipsMuted,
+      clearTipsMuted: s.tipsMuted == null,
       hrPaired: s.hrConnected || _snap.hrPaired,
       goalLapMs: goalLap?.activeMs,
       goalLapM: goalLap?.distanceM,
@@ -477,6 +494,8 @@ class RecordingController extends ChangeNotifier {
     _finishSeen = 0;
     _finishPending = false;
     _clearPending();
+    lastCompare.value = null; // never a card from the previous run
+    lastCompareAt = null;
     _tracker = engine.HrZoneTracker(maxHr: _maxHr().toDouble());
     _snap = RecordingSnapshot(
       mode: mode,
@@ -519,6 +538,11 @@ class RecordingController extends ChangeNotifier {
     return r;
   }
 
+  /// "Mute tips" for this run (LV2): native stops the compare speech and
+  /// nudges and answers with a state event, so `tipsMuted` turns true (the
+  /// button and the card go). Shown only while tips are on.
+  Future<void> muteTips() =>
+      _snap.tipsMuted == false ? _gateway.muteTips() : Future.value();
   Future<void> pause() {
     _pausedAtMs ??= displayElapsedMs;
     return _gateway.pause();
@@ -598,6 +622,7 @@ class RecordingController extends ChangeNotifier {
       case CueEvent():
         break; // audio + haptics are the service's job (plan §3)
       case CompareEvent():
+        lastCompareAt = _now();
         lastCompare.value = e;
       case GoalEvent():
         lastGoal.value = e;
