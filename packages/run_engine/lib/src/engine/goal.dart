@@ -159,6 +159,19 @@ class GoalResult {
     'stopped_at_m': double.parse(stoppedAtM.toStringAsFixed(1)),
     'interrupted': interrupted,
   };
+
+  /// Decodes [toJson] (the app's index row carries it for the boards).
+  factory GoalResult.fromJson(Map<String, Object?> j) => GoalResult(
+    kind: GoalKind.values.byName(j['kind']! as String),
+    target: j['target']! as int,
+    name: j['name']! as String,
+    reached: j['reached'] == true,
+    goalMs: j['goal_ms'] as int?,
+    goalDistanceM: (j['goal_distance_m'] as num?)?.toDouble(),
+    atRunMs: j['at_run_ms'] as int?,
+    stoppedAtM: (j['stopped_at_m']! as num).toDouble(),
+    interrupted: j['interrupted'] == true,
+  );
 }
 
 /// The standard GOAL choices and which board each ranks on (plan §G).

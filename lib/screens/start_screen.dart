@@ -229,6 +229,26 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     });
   }
 
+  /// A5 pre-test sheet: what the test is, the health note, and the only
+  /// way to start one.
+  Future<void> _openTestSheet() async {
+    final services = AppServices.of(context);
+    final go = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).extension<RunSoloTokens>()!.bgRaised,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Radii.sheet)),
+      ),
+      builder: (ctx) => const _TestSheet(),
+    );
+    if (go != true || !mounted) return;
+    await services.settings.update(
+      (x) => x.copyWith(lastMode: RecordMode.cooper),
+    );
+    if (mounted) await _start();
+  }
+
   Future<void> _start() async {
     final services = AppServices.of(context);
     final s = services.settings.settings;
@@ -596,6 +616,13 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                         color: t.inkSecondary,
                       ),
                     ),
+                ] else if (mode == RecordMode.cooper) ...[
+                  Text(
+                    'Warm up, then tap START TEST. Run as far as you can for '
+                    '12 minutes; no LAP while the test runs. You get a VO2 '
+                    'max estimate.',
+                    style: text.bodyMedium?.copyWith(color: t.inkSecondary),
+                  ),
                 ] else ...[
                   Text(
                     'Free run: time, distance, pace and heart rate. No laps. '
@@ -620,6 +647,20 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                       tone: PillTone.ok,
                     ),
                   ],
+                ),
+                const SizedBox(height: Space.x16),
+                // A5: the test sits apart, under its own eyebrow, at the end
+                // of the options (lead 26-Sep): the occasional test never
+                // pushes a mode's details off the screen.
+                const SizedBox(height: Space.x8),
+                Text(
+                  'TESTS',
+                  style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+                ),
+                const SizedBox(height: Space.x8),
+                _TestChip(
+                  selected: mode == RecordMode.cooper,
+                  onTap: _openTestSheet,
                 ),
                 const SizedBox(height: Space.x16),
               ],
@@ -673,8 +714,11 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                       ),
                     ),
                   FilledButton(
+                    // The test always goes through its health note first.
                     onPressed: _starting || (goal && !_gpsReady)
                         ? null
+                        : mode == RecordMode.cooper
+                        ? _openTestSheet
                         : _start,
                     child: Text(switch (mode) {
                       _ when s.eventRun => 'START 5 KM',
@@ -1000,6 +1044,114 @@ class _Choice extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A5 "12-MIN TEST" chip: 96 dp, an ink.secondary border, not a mode
+/// chip colour.
+class _TestChip extends StatelessWidget {
+  const _TestChip({required this.selected, required this.onTap});
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '12-minute test',
+      excludeSemantics: true,
+      child: InkWell(
+        key: const ValueKey('test-chip'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Radii.button),
+        child: Container(
+          height: 96,
+          padding: const EdgeInsets.symmetric(horizontal: Space.x16),
+          decoration: BoxDecoration(
+            color: t.bgRaised,
+            borderRadius: BorderRadius.circular(Radii.button),
+            border: Border.all(
+              color: selected ? t.inkPrimary : t.inkSecondary,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '12-MIN TEST',
+                      style: RunSoloType.title28.copyWith(color: t.inkPrimary),
+                    ),
+                    Text(
+                      'VO2 max estimate',
+                      style: RunSoloType.label13.copyWith(
+                        color: t.inkSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: t.inkSecondary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The pre-test sheet (A5). Cues each minute from 2:00 (Phase 4 §3.3
+/// supersedes the 3/6/9/11 list).
+class _TestSheet extends StatelessWidget {
+  const _TestSheet();
+
+  static const List<String> lines = [
+    'Run as far as you can in 12 minutes on flat ground.',
+    'Warm up first. A voice update each minute from 2:00.',
+    'Healthy and used to hard running? If unsure, check with a doctor.',
+    'Estimate. Not a medical measurement.',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(Space.screenGutter),
+        child: Column(
+          key: const ValueKey('test-sheet'),
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '12-MINUTE TEST',
+              style: RunSoloType.title28.copyWith(color: t.inkPrimary),
+            ),
+            for (final l in lines) ...[
+              const SizedBox(height: Space.x12),
+              Text(
+                l,
+                style: RunSoloType.body17.copyWith(
+                  color: l == lines.last ? t.inkSecondary : t.inkPrimary,
+                ),
+              ),
+            ],
+            const SizedBox(height: Space.x24),
+            FilledButton(
+              key: const ValueKey('test-go'),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('WARM UP, THEN START'),
+            ),
+          ],
+        ),
       ),
     );
   }

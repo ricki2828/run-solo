@@ -137,9 +137,12 @@ class FakeRecorderGateway implements RecorderGateway {
   RecordMode _mode = RecordMode.free;
   SessionSpec? _spec;
 
-  /// Interval phases run only for an intervals spec (Cooper is one timed
-  /// work step with no phases in I1; fartlek is Laps).
-  SessionSpec? get _timed => _mode == RecordMode.intervals ? _spec : null;
+  /// Phases run for an intervals spec and, since I2, for the Cooper test
+  /// (warm-up, START TEST, one 12:00 work step, cool-down); fartlek is Laps.
+  SessionSpec? get _timed =>
+      _mode == RecordMode.intervals || _mode == RecordMode.cooper
+      ? _spec
+      : null;
   DateTime? _startedAt;
   int _elapsedMs = 0; // wall time incl. pauses
 
@@ -348,12 +351,14 @@ class FakeRecorderGateway implements RecorderGateway {
     // Plan §18.2: Free run has no lap input at all; the service ignores any
     // press (debug builds log `lapIgnored`), nothing is recorded.
     switch (_mode) {
+      // Plan §18.2 / A5: no lap input in a Free run or a 12-minute test
+      // (RunMode.lapInput); START TEST is startReps, never a lap.
       case RecordMode.free:
+      case RecordMode.cooper:
         lapsIgnored += 1;
         return;
       case RecordMode.intervals:
       case RecordMode.laps:
-      case RecordMode.cooper:
         break;
     }
     // RecorderCore default config: volume-key laps only in Laps mode (W8);

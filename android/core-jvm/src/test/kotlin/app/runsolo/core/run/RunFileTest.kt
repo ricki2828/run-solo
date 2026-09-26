@@ -56,6 +56,21 @@ class RunFileTest {
     }
 
     @Test
+    fun `spoken nudges reach the run file, compares do not, none writes no key`() {
+        val cues = StringBuilder(String(journal()))
+            .append(JournalCodec.encode(JournalLine.CueFired(t0 + 10_000, w0 + 10_000, JournalLine.FiredKind.nudge, "fast_start", 1, 10_000))).append('\n')
+            .append(JournalCodec.encode(JournalLine.CueFired(t0 + 20_000, w0 + 20_000, JournalLine.FiredKind.compare, "be:5000", 1, 20_000))).append('\n')
+            .append(JournalCodec.encode(JournalLine.CueFired(t0 + 30_000, w0 + 30_000, JournalLine.FiredKind.nudge, "hr_drift", 4, 30_000))).append('\n')
+            .toString().toByteArray()
+        val f = RunFile.fromReplay(JournalReplay.read(cues), w0 + 50_000)
+        assertEquals(listOf("fast_start" to 1, "hr_drift" to 4), f.nudgesFired)
+        assertEquals(listOf(listOf("fast_start", 1), listOf("hr_drift", 4)), f.toJson()["nudges_fired"])
+        val none = RunFile.fromReplay(JournalReplay.read(journal()), w0 + 50_000)
+        assertTrue(none.nudgesFired.isEmpty())
+        assertTrue("nudges_fired" !in none.toJson())
+    }
+
+    @Test
     fun `gzip json round trip matches schema v3`() {
         val f = RunFile.fromReplay(JournalReplay.read(journal()), w0 + 50_000)
         val m = RunFile.readJson(f.toGzipBytes())
