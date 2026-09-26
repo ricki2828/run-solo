@@ -1034,4 +1034,48 @@ void main() {
       await golden(tester, 'record_goal_half_360x$h');
     });
   }
+
+  // PD2 on Start (A10.10, #84 review): the goal card's target line.
+  testWidgets('goal: Start with a target line at 360 x 640', (tester) async {
+    final efforts = engine.RunBestEfforts(
+      efforts: {
+        engine.BestEffortDistance.k5: engine.BestEffort(
+          distance: engine.BestEffortDistance.k5,
+          elapsedMs: 1470000,
+          startMs: 0,
+          startOffsetM: 0,
+          splitsMs: const [],
+        ),
+      },
+      fromStartSplitsMs: const [],
+    );
+    final services = fakeServices(
+      live: LiveContextSource.prepared([
+        engine.LiveCandidate(
+          engine.BoardInput(
+            runId: 'a',
+            date: DateTime(2026, 9, 12, 12).toUtc(),
+            mode: engine.RunMode.free,
+            efforts: efforts.efforts,
+          ),
+          engine.RunDerived(bestEfforts: efforts),
+        ),
+      ], now: now),
+      settings: const AppSettings(
+        onboardingDone: true,
+        goalRun: true,
+        goalId: 'd10000',
+      ),
+    );
+    await pumpApp(tester, services, pushRoute: Routes.start);
+    tester.view.physicalSize = const Size(1080, 1920);
+    await pumpTimes(tester, 6);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('start-target')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await pumpTimes(tester, 2);
+    await golden(tester, 'start_goal_target_360x640');
+  });
 }

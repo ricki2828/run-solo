@@ -106,7 +106,8 @@ object LiveWords {
 /**
  * One spoken cue with its extras (WARN-2): at most [MAX_WORDS] words (about 6 s at the TTS
  * rate). Priority base > compare > nudge; an extra that would go over is dropped, never queued
- * as a cue of its own.
+ * as a cue of its own. The recorder no longer appends nudges: a nudge follows the cue as its own
+ * line ([NudgeFollowUp], founder 26-Sep), the one exception to "never queued".
  */
 object CueComposer {
     const val MAX_WORDS = 16

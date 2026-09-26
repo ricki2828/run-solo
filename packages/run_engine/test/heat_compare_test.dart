@@ -97,7 +97,11 @@ void main() {
     expect(v.setIds, isNot(contains(runs[2].id)));
     expect(v.setIds, containsAll([runs[0].id, runs[1].id, runs[3].id]));
     expect(v.heatCompare, isTrue);
-    expect(v.heatNote, heatComparedNote);
+    // Four earlier runs, three with weather.
+    expect(
+      v.heatNote,
+      'Heat-adjusted, compared with 3 of your 4 runs that have weather.',
+    );
     expect(off.deltaSecPerKm, lessThan(0)); // raw: slower
     expect(v.deltaSecPerKm, greaterThan(0)); // adjusted: quicker
     expect(v.sameText(off), isFalse);
@@ -182,6 +186,37 @@ void main() {
       expect(a.verdict!.setIds, isNot(contains('tempo-1')));
       final p = a.asPrior(r.start);
       if (p != null) priors.add(p);
+    }
+  });
+
+  test('the note counts the earlier runs compared (#74 review P3)', () {
+    expect(
+      heatComparedNote(4, 9),
+      'Heat-adjusted, compared with 4 of your 9 runs that have weather.',
+    );
+    expect(
+      heatComparedNote(3, 3),
+      'Heat-adjusted, compared with your 3 earlier runs.',
+    );
+    expect(
+      heatComparedNote(1, 1),
+      'Heat-adjusted, compared with your 1 earlier run.',
+    );
+    expect(
+      heatComparedNote(0, 2),
+      'Heat-adjusted, but none of your earlier runs have weather yet.',
+    );
+    expect(
+      heatComparedNote(0, 0),
+      'Heat-adjusted. No earlier runs to compare yet.',
+    );
+    // The first run under the setting, with weather: no earlier runs.
+    expect(
+      pass(fresh(), heat: true).first.verdict!.heatNote,
+      heatComparedNote(0, 0),
+    );
+    for (final n in [heatComparedNote(4, 9), heatComparedNote(0, 2)]) {
+      expect(n.contains('\u2014'), isFalse, reason: 'no em dashes');
     }
   });
 
