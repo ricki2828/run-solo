@@ -146,18 +146,14 @@ object EventTraceFixture {
 
         // As RecordingSession.emitLapPending: the press, at once; its lap line follows on the next tick.
         fun lapPending(out: List<RecorderCore.Output>, endedPhase: Phase, endedRep: Int) {
-            val lap = out.filterIsInstance<RecorderCore.Output.Lap>().firstOrNull() ?: return
-            if (lap.source == LapSource.auto) return
-            val next = out.filterIsInstance<RecorderCore.Output.PhaseChanged>().firstOrNull()
-            val prev = pendingOut.filterIsInstance<RecorderCore.Output.Lap>().lastOrNull { it.index < lap.index }
-            val startActive = prev?.let { core.status(it.t).activeMs } ?: lapStartActive
-            val st = core.status(lap.t)
+            val p = dispatch.pressed(out, lapStartActive) { core.status(it).activeMs } ?: return
+            val nx = p.next
             emit(
-                "lapPending", st.elapsedMs,
+                "lapPending", core.status(p.lap.t).elapsedMs,
                 linkedMapOf(
-                    "index" to lap.index, "tMs" to st.elapsedMs, "activeMs" to (st.activeMs - startActive), "source" to lap.source.name,
+                    "index" to p.lap.index, "tMs" to core.status(p.lap.t).elapsedMs, "activeMs" to p.activeMs, "source" to p.lap.source.name,
                     "endedPhase" to endedPhase.name, "endedRepIndex" to endedRep,
-                    "nextPhase" to next?.phase?.name, "nextRepIndex" to next?.repIndex, "nextPhaseDurationMs" to next?.let { it.phaseDurationMs ?: 0L },
+                    "nextPhase" to nx?.phase?.name, "nextRepIndex" to nx?.repIndex, "nextPhaseDurationMs" to nx?.let { it.phaseDurationMs ?: 0L },
                 ),
             )
         }

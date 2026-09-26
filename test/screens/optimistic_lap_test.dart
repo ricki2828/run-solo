@@ -109,4 +109,50 @@ void main() {
     expect(ctl.snapshot.repPaces, hasLength(1), reason: 'from status().laps');
     expect(find.text('LAP 2'), findsOneWidget);
   });
+
+  // #40 review (rebase on #28): the optimistic phase must drop native's
+  // step fields, or the new title shows with the previous step's caption
+  // and metres-to-go until the next tick.
+  testWidgets('8x400: START REPS and a LAP-ended rep show the new step at '
+      'once, never the old step\'s metres', (tester) async {
+    final fake = FakeRecorderGateway(now: now)..deferManualLaps = true;
+    final services = fakeServices(recorder: fake);
+    await services.recording.start(
+      RecordMode.intervals,
+      presetSpec('400s'),
+      Units.km,
+    );
+    await pumpApp(tester, services, pushRoute: Routes.recording);
+    await pumpTimes(tester, 4);
+    fake.advance(const Duration(seconds: 30));
+    await pumpTimes(tester, 3);
+    final ctl = services.recording;
+
+    await ctl.startReps();
+    await pumpTimes(tester, 3);
+    var s = ctl.snapshot;
+    expect(s.phase, Phase.work);
+    expect(s.currentStep!.kind, StepKind.work);
+    expect(s.currentStep!.repIndex, 1);
+    expect(s.metresToGo, 400);
+
+    // Into rep 1: native now sends the step's index and metres left.
+    fake.advance(const Duration(seconds: 30));
+    await pumpTimes(tester, 3);
+    s = ctl.snapshot;
+    expect(s.stepIndex, isNotNull);
+    expect(s.metresToGo, lessThan(400));
+
+    // LAP ends rep 1 early: before any tick, the 200 m recovery is the
+    // step, not rep 1 with its metres left.
+    await ctl.lap();
+    await pumpTimes(tester, 3);
+    s = ctl.snapshot;
+    expect(s.phase, Phase.recovery);
+    expect(s.stepIndex, isNull);
+    expect(s.stepRemainingM, isNull);
+    expect(s.currentStep!.kind, StepKind.recovery);
+    expect(s.currentStep!.repIndex, 1);
+    expect(s.metresToGo, 200, reason: 'the 200 m recovery, from its start');
+  });
 }
