@@ -90,7 +90,12 @@ data class RunFile(
     companion object {
         const val SCHEMA = 3
 
-        /** Builds the run file from a replay; distance is recomputed by [PointFilter] over raw samples. */
+        /**
+         * Builds the run file from a replay; distance is recomputed by [PointFilter] over raw
+         * samples. A run stopped (or killed) while paused ends at the pause: the finish screen's
+         * tap pauses, SAVE stops, and the time spent on that screen is not part of the run, so the
+         * end, the last lap and the samples stop at the pause and no trailing pause is written.
+         */
         fun fromReplay(r: Replay, endEpochMs: Long): RunFile {
             val h: JournalLine.Header = r.header
             val filter = PointFilter()
@@ -122,8 +127,12 @@ data class RunFile(
                     is RunEvent.Cue, is RunEvent.HrLink -> Unit
                 }
             }
-            val endT = r.endT
-            pauseStart?.let { pauses.add(longArrayOf(it, endT)) } // still paused at kill/stop
+            // Still paused at stop / kill: the run ends where it paused.
+            val endT = pauseStart ?: r.endT
+            pauseStart?.let { p ->
+                samples.removeAll { it.t > p }
+                gaps.removeAll { it[0] >= p }
+            }
             val laps = ArrayList<Lap>()
             var t0 = 0L
             var d0 = 0.0
@@ -136,7 +145,7 @@ data class RunFile(
             laps.add(Lap(laps.size, t0, endT, d0, filter.totalM, LapKind.manual))
             return RunFile(
                 id = h.id, device = h.device, app = h.app,
-                startEpochMs = h.w, endEpochMs = endEpochMs, tz = h.tz,
+                startEpochMs = h.w, endEpochMs = endEpochMs - (r.endT - endT), tz = h.tz,
                 mode = h.mode, session = h.session, units = h.units,
                 laps = laps, pauses = pauses, gaps = gaps, samples = samples,
             )

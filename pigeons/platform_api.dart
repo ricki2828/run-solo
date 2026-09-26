@@ -619,6 +619,11 @@ abstract class RecorderApi {
 
   /// Delete an unreadable orphan (`readable == false`). Never touches a run file.
   void discardJournal(String runId);
+
+  /// Throw the live run away (the finish screen's DISCARD): recording stops,
+  /// the journal is deleted and no run file is written. False when no run is
+  /// on.
+  bool discardRun();
   void setCues(bool enabled);
 
   /// Pre-start location readiness (the Start screen): fixes with the
