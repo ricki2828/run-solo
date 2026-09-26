@@ -485,6 +485,13 @@ void main() {
       expect(button, findsOneWidget);
       expect(find.byKey(const ValueKey('mute-tips')), findsOneWidget);
       expect(tester.getSize(button).height, greaterThanOrEqualTo(48));
+      // The control row keeps HOLD TO STOP readable beside it: not scaled
+      // below 13 sp (natural 15 sp, so at least 13/15 of its height).
+      final hold = find.text('HOLD TO STOP');
+      expect(
+        tester.getRect(hold).height,
+        greaterThanOrEqualTo(tester.getSize(hold).height * 13 / 15),
+      );
       await show(tester, fake, km3());
       expect(card, findsOneWidget);
       await tester.tap(button);
