@@ -346,8 +346,7 @@ class ParkrunInfo {
         gpsSeconds > 0 &&
         (officialSeconds - gpsSeconds).abs() >
             maxOfficialDeviation * gpsSeconds) {
-      return 'That is a long way from your watch time. Check it and try '
-          'again.';
+      return "That's a long way from your GPS time. Check it and try again.";
     }
     return null;
   }

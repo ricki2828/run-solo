@@ -298,7 +298,7 @@ void main() {
       expect(ParkrunInfo.officialTimeProblem(90 * 60 + 1), isNotNull);
       expect(
         ParkrunInfo.officialTimeProblem(1700, gpsSeconds: 1389),
-        'That is a long way from your watch time. Check it and try again.',
+        "That's a long way from your GPS time. Check it and try again.",
       );
       // A slow walker's GPS 1:20:00 with an official 1:31:00: out of range.
       expect(ParkrunInfo.plausibleOfficial(91 * 60, 80 * 60), isFalse);
