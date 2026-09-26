@@ -214,7 +214,7 @@ class LiveCoachLifecycleTest {
 
     // ---- nudges as their own line after the cue (founder 26-Sep, plan §3.2) ----
 
-    private val fastStart = FastStartRule(km1MaxMs = 300_000, text = "Easy start. Your best 5K went out slower than this.")
+    private val fastStart = FastStartRule(km1MaxMs = 300_000, text = "Fast start. Ease off a little. Your best 5K started slower.")
 
     /** km 4 at 3.5 m/s (286 s/km): three earlier runs at that pace with HR 150, so HR 160 fires. */
     private val hrDrift = HrDriftRule(kmSamples = List(5) { listOf(283.0 to 150.0, 286.0 to 150.0, 289.0 to 150.0) }, text = "Heart rate's up for this pace today. Fine to ease a touch.")

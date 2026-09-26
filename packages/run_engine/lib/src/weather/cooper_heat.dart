@@ -8,22 +8,39 @@ import 'weather.dart';
 /// The Hadley table (§18.5, [HeatModel]) is built for steady runs and
 /// over-corrects a 12-minute maximal effort, so the Cooper uses the
 /// Mantzios et al. 2022 per-discipline slope for 5000 m instead: about
-/// 0.3% per °C WBGT above the 15 °C WBGT top of the optimum band (verified
-/// from full text), capped at 3% (reached at WBGT 25 °C). Never a cold
-/// bonus. When the Hadley table says "too hot to compare" there is no
-/// adjustment at all.
+/// 0.3% per °C WBGT above 15 °C WBGT, capped at 3% (reached at WBGT 25 °C).
+/// Never a cold bonus. When the Hadley table says "too hot to compare"
+/// there is no adjustment at all.
+///
+/// Sources (RV4 C6, plan §4 R3):
+/// - The slope and the 15 °C optimum are **verified** from the full text,
+///   and the optimum is the 5000 m's own (Fig. S12), not a cross-event
+///   average. Carrying it over to a 12-minute test is needs verification.
+/// - Mantzios computed full outdoor WBGT with sun (Liljegren), so the
+///   blend below aims at the same quantity.
+/// - Mantzios analysed elite and well-trained racers. Slower runners are
+///   hit harder by heat (Ely 2007), so this probably under-corrects for
+///   most people: the conservative side for a VO2 bonus.
 ///
 /// Open-Meteo gives no WBGT, so it is estimated from the hour's air, dew
 /// point, sun and wind (WARN-10, plan v2.2): a no-sun estimate
-/// `WBGT_0 = 0.7·Tw + 0.3·T` (Stull 2011 wet bulb) blended towards the
-/// Australian Bureau of Meteorology approximation
-/// `WBGT_bom = 0.567·T + 0.393·e + 3.94` (which assumes sun and light
-/// wind) by `w = w_sun · w_wind`, so two near-identical mornings never get
-/// visibly different lines (no hard switch).
+/// `WBGT_0 = 0.7·Tw + 0.3·T` blended towards the Australian Bureau of
+/// Meteorology approximation `WBGT_bom = 0.567·T + 0.393·e + 3.94` by
+/// `w = w_sun · w_wind`, so two near-identical mornings never get visibly
+/// different lines (no hard switch).
+/// - BoM: formula and bias **verified** on the BoM page (it assumes a
+///   moderately high radiation level in light wind, and reads high when
+///   cloudy or windy, at night and early morning).
+/// - `Tw` is Stull 2011's wet bulb (primary not readable, needs
+///   verification). It is the psychrometric wet bulb, which reads a
+///   little below WBGT's natural wet bulb in sun or still air, so the
+///   no-sun branch errs low.
+/// - The 0.7 / 0.3 weights are ISO 7243's indoor form with the globe
+///   temperature taken as the air temperature, not Stull's.
 ///
-/// Needs verification (health-endurance signed off the approach and the
-/// cap 26-Sep): both approximations, the blend bands and their linear
-/// shape, the 15 °C optimum for a 12-minute effort and the 3% cap. The adjusted value is always a separate "heat-adjusted
+/// Still needs verification: the blend bands and their linear shape, and
+/// the 3% cap (health-endurance signed off the approach and the cap
+/// 26-Sep). The adjusted value is always a separate "heat-adjusted
 /// estimate" line; the raw VO2 stays the headline, board value, trend and
 /// rank.
 abstract final class CooperHeat {
@@ -50,10 +67,13 @@ abstract final class CooperHeat {
       'Heat estimate from temperature, humidity, sun and wind. It can be off '
       'on patchy-cloud days.';
 
-  /// ⓘ copy under the heat line (plan §3.3, Science 6).
+  /// ⓘ copy under the heat line (plan §3.3, Science 6; RV4 C7: the slope
+  /// comes from elite and well-trained racers, and slower runners are hit
+  /// harder, Ely 2007).
   static const String caveat =
       'Based on 5K race data in the heat. It may not fit a 12-minute test '
-      'exactly, so treat it as a rough estimate.';
+      'exactly, so treat it as a rough estimate. Slower runners are usually '
+      'hit harder by heat, so for most people this undercounts.';
 
   /// Replaces the heat line above the Hadley "too hot" edge.
   static const String tooHotLine = 'Too hot to compare, raw only';

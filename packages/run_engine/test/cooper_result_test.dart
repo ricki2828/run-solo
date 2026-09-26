@@ -72,14 +72,14 @@ void main() {
     expect(CooperProjection.vo2(2000), closeTo(33.42, 0.005));
   });
 
-  test('a clean test: 12:00 at 4 m/s is 2880 m, VO2 est. 53 (48 to 58)', () {
+  test('a clean test: 12:00 at 4 m/s is 2880 m, VO2 est. 53 (47 to 59)', () {
     final a = engine.analyze(cooperRun(cooldownS: 120), now: start);
     final c = a.cooper!;
     expect(c.valid, isTrue);
     expect(c.testDistanceM, closeTo(2880, 1e-6));
     expect(c.minuteM, [for (var i = 1; i <= 12; i++) 240.0 * i]);
     expect(c.estimate!.vo2, closeTo((2880 - 504.9) / 44.73, 1e-9));
-    expect(c.estimate!.rangeLine, 'VO2 estimate 53 (48 to 58)');
+    expect(c.estimate!.rangeLine, 'VO2 estimate 53 (47 to 59)');
     expect(c.invalidLine, isNull);
     expect(a.verdict, isNull, reason: 'a test is a measurement');
   });
