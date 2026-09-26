@@ -65,7 +65,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
           );
         }
         return Scaffold(
-          appBar: AppBar(title: Text(modeTitle(d.summary.mode).toUpperCase())),
+          appBar: AppBar(title: Text(runTitle(d.summary).toUpperCase())),
           body: SafeArea(
             child: RunDetailBody(
               detail: d,
@@ -145,6 +145,22 @@ class RunDetailBody extends StatelessWidget {
             units: units,
             onVerdict: onVerdict,
           ),
+          RecordMode.laps
+              when d.summary.spec?.templateId == engine.SessionSpec.fartlekId =>
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                FartlekBlock(
+                  summary: a.fartlek,
+                  timeInBandSeconds: a.laps?.hrPresent == true
+                      ? a.laps?.timeInBandSeconds
+                      : null,
+                  units: units,
+                ),
+                const SizedBox(height: Space.x24),
+                _LapsTable(view: a.laps, units: units),
+              ],
+            ),
           RecordMode.laps => _LapsTable(view: a.laps, units: units),
           RecordMode.free ||
           RecordMode.cooper => _Splits(free: free, units: units),
@@ -193,7 +209,7 @@ class _Header extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '${modeLabel(d.summary.mode)} · ${Fmt.dayDate(d.run.start)} · ${Fmt.hhmm(d.run.start)}',
+          '${runLabel(d.summary)} · ${Fmt.dayDate(d.run.start)} · ${Fmt.hhmm(d.run.start)}',
           style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
         ),
         const SizedBox(height: Space.x12),
@@ -429,6 +445,10 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
         style: RunSoloType.body17.copyWith(color: t.inkSecondary),
       );
     }
+    final repTime =
+        m.kind == engine.IntervalMetricKind.repTime &&
+        m.nominalRepMetres != null;
+    final short = m.kind == engine.IntervalMetricKind.untrimmedPace;
     final prevReps = <int, double?>{};
     // vs last: the verdict's comparison is run-level; per-rep ghosts come
     // from the previous 4x4 when the caller has it (verdict screen). Here we
@@ -475,15 +495,31 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
               style: RunSoloType.body15.copyWith(color: t.inkSecondary),
             ),
           ),
-        _TableHeader(cells: const ['Rep', 'Pace', 'Avg HR', 'In band']),
+        // I3: rep-time sessions list the time for the rep distance; short
+        // reps (untrimmed) show peak HR, since HR lags a 30 s effort and
+        // there is no time in zone.
+        _TableHeader(
+          cells: [
+            'Rep',
+            repTime ? 'Time' : 'Pace',
+            short ? 'Peak HR' : 'Avg HR',
+            short ? '' : 'In band',
+          ],
+        ),
         for (final r in m.reps)
           _TableRow(
             muted: !r.clean,
             cells: [
               'Rep ${r.number}',
-              Fmt.pace(r.paceSecPerKm, units),
-              r.meanHr == null ? '--' : '${r.meanHr!.round()}',
-              r.zoneSeconds == null
+              repTime && r.paceSecPerKm != null
+                  ? Fmt.clock((r.paceSecPerKm! * m.nominalRepMetres!).round())
+                  : Fmt.pace(r.paceSecPerKm, units),
+              short
+                  ? (r.peakHr == null ? '--' : '${r.peakHr}')
+                  : (r.meanHr == null ? '--' : '${r.meanHr!.round()}'),
+              short
+                  ? ''
+                  : r.zoneSeconds == null
                   ? '--'
                   : '${(r.zoneSeconds! / (r.trimmedSeconds == 0 ? 1 : r.trimmedSeconds) * 100).clamp(0, 100).round()}%',
             ],
@@ -504,11 +540,20 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
           spacing: Space.x24,
           runSpacing: Space.x12,
           children: [
-            StatTile(
-              label: 'work pace',
-              value: Fmt.pace(m.avgWorkPaceSecPerKm, units),
-              size: 28,
-            ),
+            if (repTime)
+              StatTile(
+                label: '${m.nominalRepMetres} m average',
+                value: m.avgRepSeconds == null
+                    ? '--'
+                    : Fmt.clock((m.avgRepSeconds! * 1000).round()),
+                size: 28,
+              )
+            else
+              StatTile(
+                label: 'work pace',
+                value: Fmt.pace(m.avgWorkPaceSecPerKm, units),
+                size: 28,
+              ),
             StatTile(
               label: 'fade',
               value: m.fadeSecPerKm == null
@@ -523,7 +568,9 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
             ),
             if (m.timeInZoneSeconds != null)
               StatTile(
-                label: 'in 4x4 band',
+                label: runHeaderTitle(d.summary) == '4x4'
+                    ? 'in 4x4 band'
+                    : 'in band',
                 value:
                     '${(m.timeInZoneSeconds! / (m.workSeconds == 0 ? 1 : m.workSeconds) * 100).clamp(0, 100).round()}%',
                 size: 28,
@@ -886,6 +933,86 @@ class _Row extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Fartlek summary (plan §3.5): surge count, surge time, surge pace against
+/// easy pace, HR time in band. Informational only; no verdict word.
+class FartlekBlock extends StatelessWidget {
+  const FartlekBlock({
+    super.key,
+    required this.summary,
+    required this.units,
+    this.timeInBandSeconds,
+  });
+
+  /// The engine's summary (I3 `RunAnalysis.fartlek`); null = no surges.
+  final engine.FartlekSummary? summary;
+  final Units units;
+
+  /// HR time in the Laps band (85–95 % of max), when a strap was on.
+  final double? timeInBandSeconds;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final s = summary;
+    if (s == null || s.surgeCount == 0) {
+      return Text(
+        'No surges marked. Press LAP at the start and end of each surge.',
+        key: const ValueKey('fartlek-empty'),
+        style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+      );
+    }
+    final unit = units == Units.mi ? '/mi' : '/km';
+    return Column(
+      key: const ValueKey('fartlek-summary'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'FARTLEK',
+          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+        ),
+        const SizedBox(height: Space.x8),
+        Row(
+          children: [
+            Expanded(
+              child: StatTile(label: 'SURGES', value: '${s.surgeCount}'),
+            ),
+            Expanded(
+              child: StatTile(
+                label: 'SURGE TIME',
+                value: Fmt.clock((s.surgeSeconds * 1000).round()),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: Space.x16),
+        Row(
+          children: [
+            Expanded(
+              child: StatTile(
+                label: 'SURGE PACE $unit',
+                value: Fmt.pace(s.avgSurgePaceSecPerKm, units),
+              ),
+            ),
+            Expanded(
+              child: StatTile(
+                label: 'EASY PACE $unit',
+                value: Fmt.pace(s.avgEasyPaceSecPerKm, units),
+              ),
+            ),
+          ],
+        ),
+        if (timeInBandSeconds != null) ...[
+          const SizedBox(height: Space.x16),
+          StatTile(
+            label: 'HR 85-95%',
+            value: Fmt.clock((timeInBandSeconds! * 1000).round()),
+          ),
+        ],
+      ],
     );
   }
 }

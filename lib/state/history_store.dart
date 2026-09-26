@@ -41,18 +41,45 @@ engine.RunMode runModeOf(RecordMode m) => switch (m) {
 
 /// Short label per run type ("4x4", "LAPS", "FREE", "TEST").
 String modeLabel(RecordMode m) => switch (m) {
-  RecordMode.intervals => '4x4',
+  RecordMode.intervals => 'INT',
   RecordMode.laps => 'LAPS',
   RecordMode.free => 'FREE',
   RecordMode.cooper => 'TEST',
 };
 
 String modeTitle(RecordMode m) => switch (m) {
-  RecordMode.intervals => '4x4',
+  RecordMode.intervals => 'Intervals',
   RecordMode.laps => 'Laps run',
   RecordMode.free => 'Free run',
   RecordMode.cooper => '12-minute test',
 };
+
+/// Short tag for a run in History (4x4 keeps its own, fartlek is a Laps
+/// run carrying the fartlek session, plan §3.5).
+String runLabel(RunSummary r) => switch (r.mode) {
+  RecordMode.intervals when _isFourByFour(r) => '4x4',
+  RecordMode.laps when r.spec?.templateId == engine.SessionSpec.fartlekId =>
+    'FRT',
+  _ => modeLabel(r.mode),
+};
+
+/// Title for a run: the session's name for Intervals and fartlek. A Phase 1
+/// by-feel 4x4 (no session, analysed as a 4x4) is still a Norwegian 4x4.
+String runTitle(RunSummary r) => switch (r.mode) {
+  RecordMode.intervals || RecordMode.laps when r.spec != null => r.spec!.name,
+  RecordMode.intervals when _isFourByFour(r) =>
+    engine.SessionCatalogue.norwegian4x4.name,
+  _ => modeTitle(r.mode),
+};
+
+/// Header title: a 4x4 keeps its Phase 1 name "4x4" (existing screens
+/// word for word); every other session uses [runTitle].
+String runHeaderTitle(RunSummary r) =>
+    runLabel(r) == '4x4' ? '4x4' : runTitle(r);
+
+/// A spec-less Intervals run predates I4, when the 4x4 was the only session.
+bool _isFourByFour(RunSummary r) =>
+    r.spec == null || r.spec!.templateId == engine.SessionSpec.norwegian4x4Id;
 
 @immutable
 class RunSummary {

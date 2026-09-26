@@ -279,14 +279,14 @@ void main() {
 
       // Notification LAP at 60 s starts rep 1; the ring fires for it too.
       await trace.playUntil(61000);
-      expect(phaseTitle(ctl.snapshot), 'REP 1 OF 4');
+      expect(phaseTitle(ctl.snapshot), 'REP 1 OF 4 · 4:00');
       expect(ctl.lapPulse.value, 1);
       expect(ctl.snapshot.phaseRemainingMs, 239000);
 
       // Rep 1 ends at 300 s: auto lap, recovery, M3, rep pace from the delta of
       // the cumulative lap distance.
       await trace.playUntil(301000);
-      expect(phaseTitle(ctl.snapshot), 'RECOVERY 1 OF 3');
+      expect(phaseTitle(ctl.snapshot), 'RECOVERY 1 OF 3 · JOG');
       expect(ctl.repCompletePulse.value, 1);
       expect(ctl.snapshot.repPaces, hasLength(1));
       expect(ctl.snapshot.repPaces.single, closeTo(238.4, 0.5));
@@ -294,7 +294,7 @@ void main() {
       // Pause at rep 2 + 90 s: countdown frozen at 150 s while elapsed runs.
       await trace.playUntil(571000);
       expect(ctl.snapshot.paused, isTrue);
-      expect(phaseTitle(ctl.snapshot), 'REP 2 OF 4');
+      expect(phaseTitle(ctl.snapshot), 'REP 2 OF 4 · 4:00');
       final frozen = ctl.snapshot.phaseRemainingMs;
       expect(frozen, 150000);
       await trace.playUntil(589000);
@@ -308,9 +308,9 @@ void main() {
       expect(ctl.snapshot.recording, isTrue);
       expect(ctl.snapshot.phaseRemainingMs, 140000);
       await trace.playUntil(739000);
-      expect(phaseTitle(ctl.snapshot), 'REP 2 OF 4');
+      expect(phaseTitle(ctl.snapshot), 'REP 2 OF 4 · 4:00');
       await trace.playUntil(741000);
-      expect(phaseTitle(ctl.snapshot), 'RECOVERY 2 OF 3');
+      expect(phaseTitle(ctl.snapshot), 'RECOVERY 2 OF 3 · JOG');
       expect(ctl.snapshot.repPaces, hasLength(2));
 
       // Kill at rep 3 + 60 s, 30 s dark, resumeRecovered: elapsed jumps, the
@@ -324,7 +324,7 @@ void main() {
         hasLength(2),
         reason: 'from status().laps',
       );
-      expect(phaseTitle(fresh.snapshot), 'REP 3 OF 4');
+      expect(phaseTitle(fresh.snapshot), 'REP 3 OF 4 · 4:00');
       await trace.playUntil(1011000);
       expect(fresh.snapshot.elapsedMs, greaterThanOrEqualTo(1010000));
       expect(fresh.snapshot.phaseRemainingMs, lessThanOrEqualTo(180000));
@@ -336,9 +336,9 @@ void main() {
       // straight to cool-down (no recovery after the last rep); the run stops
       // at 27:00 with 8 laps.
       await trace.playUntil(1191000);
-      expect(phaseTitle(fresh.snapshot), 'RECOVERY 3 OF 3');
+      expect(phaseTitle(fresh.snapshot), 'RECOVERY 3 OF 3 · JOG');
       await trace.playUntil(1371000);
-      expect(phaseTitle(fresh.snapshot), 'REP 4 OF 4');
+      expect(phaseTitle(fresh.snapshot), 'REP 4 OF 4 · 4:00');
       await trace.playUntil(1611000);
       expect(phaseTitle(fresh.snapshot), 'COOL-DOWN');
       // Ghost paces use activeMs, so the 20 s pause in rep 2 and the 30 s

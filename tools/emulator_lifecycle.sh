@@ -119,6 +119,10 @@ case "$MODE" in
         echo "--- display/keyguard ---" >&2
         adb shell dumpsys power 2>&1 | grep -E "mWakefulness=|Display Power: state=" | head -n 4 >&2 || true
         adb shell dumpsys window 2>&1 | grep -E "mDreamingLockscreen|isStatusBarKeyguard|mKeyguardShowing|mFocusedApp|mAwake" | head -n 6 >&2 || true
+        echo "--- on screen (uiautomator text/desc) ---" >&2
+        adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 && adb shell cat /sdcard/ui.xml 2>/dev/null | grep -oE '(text|content-desc)="[^"]+"|focused="true"[^>]*' | head -n 40 >&2 || true
+        echo "--- flutter log ---" >&2
+        adb logcat -d -s flutter 2>/dev/null | tail -n 30 >&2 || true
         echo "--- system media/audio key logs ---" >&2
         adb logcat -d -s MediaSessionService MediaSessionStack MediaSessionRecord MediaSessionLegacyHelper AudioService WindowManager PhoneWindowManager 2>/dev/null | grep -iE "volume|session|KEYCODE" | tail -n 30 >&2 || true
       }

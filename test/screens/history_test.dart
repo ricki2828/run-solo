@@ -67,7 +67,7 @@ void main() {
     expect(find.byType(HistoryRow), findsOneWidget);
     expect(find.text('AUGUST 2026'), findsNothing);
 
-    await tester.tap(find.text('4x4'));
+    await tester.tap(find.text('Intervals'));
     await pumpTimes(tester);
     expect(find.byType(HistoryRow), findsNWidgets(2));
   });

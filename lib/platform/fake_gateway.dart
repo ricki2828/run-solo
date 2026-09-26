@@ -130,6 +130,14 @@ class FakeRecorderGateway implements RecorderGateway {
   Phase _phase = Phase.none;
   int _repIndex = 0;
   int? _phaseDurationMs;
+
+  /// Metres a distance step runs to (null for time steps and open phases).
+  /// Plan §3.6: the step ends at the first sample at or past it; with no
+  /// fix it never ends on its own and is never time-extrapolated (W3).
+  double? _phaseTargetM;
+
+  /// Active time of the last work step, for an equal-time recovery (Yasso).
+  int _lastWorkActiveMs = 0;
   int _phaseStartActiveMs = 0;
   bool _halfwayCued = false;
   bool _thirtyCued = false;
@@ -192,12 +200,24 @@ class FakeRecorderGateway implements RecorderGateway {
     _laps.clear();
     _repIndex = 0;
     _phaseDurationMs = null;
+    _phaseTargetM = null;
+    _lastWorkActiveMs = 0;
     _phase = Phase.none;
     _state = RecorderState.recording;
     _emitState();
     if (_timed != null) {
       _phase = Phase.warmup;
-      _emit(PhaseEvent(phase: _phase, repIndex: 0, phaseDurationMs: 0));
+      // A fixed warm-up counts down and starts rep 1 on its own.
+      final w = _timed!.warmupSeconds;
+      _phaseDurationMs = w == null ? null : w * 1000;
+      _phaseStartActiveMs = 0;
+      _emit(
+        PhaseEvent(
+          phase: _phase,
+          repIndex: 0,
+          phaseDurationMs: _phaseDurationMs ?? 0,
+        ),
+      );
     }
     if (autoTick) {
       _timer = Timer.periodic(tickInterval, (_) => advance(tickInterval));
@@ -256,6 +276,7 @@ class FakeRecorderGateway implements RecorderGateway {
         _enter(Phase.work, 1);
       case Phase.work:
       case Phase.recovery:
+        // Ends the step early, a distance step included (END REP, W3).
         _advancePhase();
       case Phase.cooldown:
       case Phase.none:
@@ -302,6 +323,13 @@ class FakeRecorderGateway implements RecorderGateway {
     repIndex: _repIndex,
     phaseRemainingMs: _remaining,
     spec: _state == RecorderState.idle ? null : _spec,
+    stepIndex: _stepIndex,
+    stepRemainingMs: _phaseDurationMs == null || _stepIndex == null
+        ? null
+        : _remaining,
+    stepRemainingM: _phaseTargetM == null
+        ? null
+        : math.max(0, _phaseTargetM! - _stepDistanceM),
     journalOk: true,
     mode: _state == RecorderState.idle ? RecordMode.free : _mode,
     laps: List.of(_laps),
@@ -394,17 +422,29 @@ class FakeRecorderGateway implements RecorderGateway {
       return;
     }
     while (remaining > 0) {
-      final toBoundary = _phaseDurationMs == null ? remaining : _remaining;
+      final target = _phaseTargetM;
+      final toBoundary = target != null
+          ? (_gpsLost
+                ? remaining
+                : ((target - _stepDistanceM) * liveSecPerKm).ceil())
+          : _phaseDurationMs == null
+          ? remaining
+          : _remaining;
       final step = toBoundary > 0 ? math.min(remaining, toBoundary) : remaining;
       _elapsedMs += step;
       _activeMs += step;
       if (!_gpsLost) _totalDistanceM += step / liveSecPerKm;
       remaining -= step;
-      if (_phaseDurationMs != null) {
-        _cueCountdown();
-        if (_remaining <= 0) {
-          _emit(CueEvent(kind: CueKind.phaseEnd));
-          _emitLap(LapSource.auto);
+      final ended = target != null
+          ? !_gpsLost && _stepDistanceM >= target - 0.01
+          : _phaseDurationMs != null && _remaining <= 0;
+      if (_phaseDurationMs != null) _cueCountdown();
+      if (ended) {
+        _emit(CueEvent(kind: CueKind.phaseEnd));
+        _emitLap(LapSource.auto);
+        if (_phase == Phase.warmup) {
+          _enter(Phase.work, 1);
+        } else {
           _advancePhase();
         }
       }
@@ -472,18 +512,52 @@ class FakeRecorderGateway implements RecorderGateway {
     }
   }
 
+  /// Distance since the current step began (the step's own lap).
+  double get _stepDistanceM => _totalDistanceM - _lapStartDistanceM;
+
+  /// 0-based index of the current step in `spec.steps`; null outside reps.
+  int? get _stepIndex {
+    final p = _timed;
+    if (p == null) return null;
+    final kind = switch (_phase) {
+      Phase.work => StepKind.work,
+      Phase.recovery => StepKind.recovery,
+      _ => null,
+    };
+    if (kind == null) return null;
+    final i = p.steps.indexWhere(
+      (s) => s.kind == kind && s.repIndex == _repIndex,
+    );
+    return i < 0 ? null : i;
+  }
+
   void _enter(Phase phase, int repIndex) {
     final p = _timed!;
+    if (_phase == Phase.work) {
+      _lastWorkActiveMs = _activeMs - _phaseStartActiveMs;
+    }
     _phase = phase;
     _repIndex = repIndex;
     _phaseStartActiveMs = _activeMs;
     _halfwayCued = false;
     _thirtyCued = false;
-    _phaseDurationMs = switch (phase) {
-      Phase.work => (p.timedSeconds(StepKind.work, repIndex) ?? 0) * 1000,
-      Phase.recovery =>
-        (p.timedSeconds(StepKind.recovery, repIndex) ?? 0) * 1000,
+    final kind = switch (phase) {
+      Phase.work => StepKind.work,
+      Phase.recovery => StepKind.recovery,
       _ => null,
+    };
+    final step = kind == null
+        ? null
+        : p.steps
+              .where((s) => s.kind == kind && s.repIndex == repIndex)
+              .firstOrNull;
+    _phaseTargetM = step?.target == TargetKind.distance
+        ? step!.value.toDouble()
+        : null;
+    _phaseDurationMs = switch (step?.target) {
+      TargetKind.time => step!.value * 1000,
+      TargetKind.equalToPreviousWork => _lastWorkActiveMs,
+      TargetKind.distance || null => null,
     };
     _emit(
       PhaseEvent(
@@ -515,6 +589,13 @@ class FakeRecorderGateway implements RecorderGateway {
         phase: _phase,
         repIndex: _repIndex,
         phaseRemainingMs: _remaining,
+        stepIndex: _stepIndex,
+        stepRemainingMs: _phaseDurationMs == null || _stepIndex == null
+            ? null
+            : _remaining,
+        stepRemainingM: _phaseTargetM == null
+            ? null
+            : math.max(0, _phaseTargetM! - _stepDistanceM),
       ),
     );
   }

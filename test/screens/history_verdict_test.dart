@@ -61,7 +61,7 @@ void main() {
     await tester.tap(find.text('Free'));
     await pumpTimes(tester, 2);
     expect(find.byType(HistoryRow), findsOneWidget);
-    await tester.tap(find.text('4x4'));
+    await tester.tap(find.text('Intervals'));
     await pumpTimes(tester, 2);
     expect(find.byType(HistoryRow), findsOneWidget);
     await tester.tap(find.text('All'));

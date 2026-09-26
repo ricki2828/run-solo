@@ -109,8 +109,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: Space.x24),
                 ModeChipRow(
                   selected: settings.lastMode,
-                  reps: settings.reps,
-                  recoverySeconds: settings.recoverySeconds,
+                  session: services.pickedSession,
                   onSelect: (m) =>
                       services.settings.update((s) => s.copyWith(lastMode: m)),
                 ),
@@ -199,16 +198,17 @@ class _LastRunCard extends StatelessWidget {
       null => t.inkPrimary,
       _ => t.inkPrimary,
     };
+    final title = runHeaderTitle(r);
     return Semantics(
       button: onTap != null,
-      label: 'Last 4x4${word == null ? '' : ', $word'}',
+      label: 'Last $title${word == null ? '' : ', $word'}',
       child: InkWell(
         onTap: onTap,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'LAST 4x4 · ${Fmt.ago(r.start, now).toUpperCase()}',
+              'LAST ${title == '4x4' ? title : title.toUpperCase()} · ${Fmt.ago(r.start, now).toUpperCase()}',
               style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
             ),
             const SizedBox(height: Space.x8),
@@ -219,7 +219,7 @@ class _LastRunCard extends StatelessWidget {
             const SizedBox(height: Space.x8),
             Text(
               v?.subline ??
-                  '${r.laps} laps · ${Fmt.clock(r.durationMs)} · verdict after your next 4x4',
+                  '${r.laps} laps · ${Fmt.clock(r.durationMs)} · verdict after your next ${title == '4x4' ? '4x4' : 'one'}',
               style: text.bodyMedium?.copyWith(color: t.inkSecondary),
             ),
           ],

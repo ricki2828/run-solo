@@ -47,15 +47,15 @@ Finder timerText() => find.byKey(const ValueKey('timer'));
 String timer(WidgetTester tester) => tester.widget<Text>(timerText()).data!;
 
 void main() {
-  testWidgets('4x4: warm-up counts up, START 4x4 begins rep 1, no big LAP', (
+  testWidgets('4x4: warm-up counts up, START REPS begins rep 1, no big LAP', (
     tester,
   ) async {
     final (fake, _) = await openRecording(tester);
     expect(find.text('WARM-UP'), findsOneWidget);
-    expect(find.text('warm up, then tap START 4x4'), findsOneWidget);
+    expect(find.text('warm up, then tap START REPS'), findsOneWidget);
     expect(find.text('warm-up pace'), findsOneWidget);
     expect(find.byKey(const ValueKey('start-reps')), findsOneWidget);
-    expect(find.text('START 4x4'), findsOneWidget);
+    expect(find.text('START REPS'), findsOneWidget);
 
     fake.advance(const Duration(seconds: 65));
     await settle(tester);
@@ -64,8 +64,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('start-reps')));
     await settle(tester);
     expect(fake.startRepsCalls, 1);
-    expect(find.text('REP 1 OF 4'), findsOneWidget);
-    expect(find.text('remaining in rep'), findsOneWidget);
+    expect(find.text('REP 1 OF 4 · 4:00'), findsOneWidget);
+    expect(find.text('left in rep'), findsOneWidget);
     expect(timer(tester), '4:00');
     // Founder field test: the phases run on their own, no big LAP button.
     expect(find.byType(LapButton), findsNothing);
@@ -100,8 +100,8 @@ void main() {
     fake.advance(const Duration(seconds: 240));
     await settle(tester);
 
-    expect(find.text('RECOVERY 1 OF 3'), findsOneWidget);
-    expect(find.text('remaining in recovery'), findsOneWidget);
+    expect(find.text('RECOVERY 1 OF 3 · JOG'), findsOneWidget);
+    expect(find.text('to rep 2'), findsOneWidget);
     expect(timer(tester), '3:00');
     // Founder 25-Sep: in a recovery the countdown to the next rep is the
     // biggest number, above the recovery average.
@@ -144,7 +144,7 @@ void main() {
     // pace swings the needle right (position > 0).
     fake.advance(const Duration(seconds: 180));
     await settle(tester);
-    expect(find.text('REP 2 OF 4'), findsOneWidget);
+    expect(find.text('REP 2 OF 4 · 4:00'), findsOneWidget);
     expect(find.text('LAST REP'), findsOneWidget);
     expect(find.text('4:45'), findsWidgets);
     fake.liveSecPerKm = 275;
@@ -176,7 +176,7 @@ void main() {
       ),
     );
     expect(fade.opacity.value, 0);
-    expect(find.text('RECOVERY 1 OF 3'), findsOneWidget);
+    expect(find.text('RECOVERY 1 OF 3 · JOG'), findsOneWidget);
   });
 
   testWidgets('M2: LAP ring plays for a tap and for a notification lap', (

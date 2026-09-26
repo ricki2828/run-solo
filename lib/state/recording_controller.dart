@@ -53,6 +53,11 @@ class RecordingSnapshot {
     this.fault,
     this.notice,
     this.discarded = false,
+    this.gpsBadSinceMs,
+    this.stepMaxHr,
+    this.phaseDurationMs = 0,
+    this.stepIndex,
+    this.stepRemainingM,
   });
 
   final RecorderState state;
@@ -107,6 +112,70 @@ class RecordingSnapshot {
   /// The service discarded the run (`FaultKind.startFailed`): leave the screen.
   final bool discarded;
 
+  /// Elapsed time when GPS last went weak or lost; null while it is good.
+  final int? gpsBadSinceMs;
+
+  /// Highest HR in the current step (short reps show it, plan §3.7).
+  final int? stepMaxHr;
+
+  /// Length of the current timed phase from its PhaseEvent (time or
+  /// equal-time steps); 0 when untimed. The recovery ring's full circle.
+  final int phaseDurationMs;
+
+  /// Native's index into `spec.steps` (I2 TickEvent / RecorderStatus); null
+  /// in warm-up, cool-down and unstructured runs.
+  final int? stepIndex;
+
+  /// Native's metres left in a distance step (I2); null for time steps.
+  final double? stepRemainingM;
+
+  /// The session step being run (work or recovery): native's [stepIndex]
+  /// when it has sent one, else looked up by phase and rep.
+  SessionStep? get currentStep {
+    final s = spec;
+    if (s == null || !timed) return null;
+    final i = stepIndex;
+    if (i != null && i >= 0 && i < s.steps.length) return s.steps[i];
+    final kind = phase == Phase.work ? StepKind.work : StepKind.recovery;
+    for (final st in s.steps) {
+      if (st.kind == kind && st.repIndex == repIndex) return st;
+    }
+    return null;
+  }
+
+  /// The current step ends by distance (plan §3.6).
+  bool get distanceStep => currentStep?.target == TargetKind.distance;
+
+  /// Metres left in a distance step: native's [stepRemainingM], else the
+  /// step's own lap distance against its target; never negative, never
+  /// extrapolated (W3).
+  double? get metresToGo {
+    final st = currentStep;
+    if (st == null || st.target != TargetKind.distance) return null;
+    final native = stepRemainingM;
+    if (native != null) return native.clamp(0, st.value.toDouble());
+    return (st.value - lapDistanceM).clamp(0, st.value.toDouble());
+  }
+
+  /// Short reps (< 60 s, e.g. 30/30s): HR lags, so the vitals row shows the
+  /// step's max HR (plan §3.7, A8).
+  bool get shortReps => spec?.cueProfile == CueProfile.short;
+
+  /// The session has distance steps: START REPS waits for a GPS fix (W3).
+  bool get needsGps =>
+      spec?.steps.any((s) => s.target == TargetKind.distance) ?? false;
+
+  /// END REP (A8, plan §3.6 W3): a distance step with GPS weak or lost for
+  /// more than 10 s.
+  bool get showEndRep =>
+      recording &&
+      distanceStep &&
+      gpsBadSinceMs != null &&
+      elapsedMs - gpsBadSinceMs! > 10000;
+
+  /// Fartlek is a Laps run carrying the fartlek session (plan §3.5).
+  bool get fartlek => spec?.templateId == 'fartlek';
+
   /// Timed interval phases (warm-up, reps, recoveries, cool-down).
   bool get isPreset => mode == RecordMode.intervals && spec != null;
   int get reps => isPreset ? spec!.repCount : 0;
@@ -158,6 +227,15 @@ class RecordingSnapshot {
     bool clearFault = false,
     String? notice,
     bool? discarded,
+    int? gpsBadSinceMs,
+    bool clearGpsBad = false,
+    int? stepMaxHr,
+    bool clearStepMaxHr = false,
+    int? phaseDurationMs,
+    int? stepIndex,
+    bool clearStepIndex = false,
+    double? stepRemainingM,
+    bool clearStepRemainingM = false,
   }) => RecordingSnapshot(
     state: state ?? this.state,
     runId: runId ?? this.runId,
@@ -184,6 +262,13 @@ class RecordingSnapshot {
     fault: clearFault ? null : (fault ?? this.fault),
     notice: notice ?? this.notice,
     discarded: discarded ?? this.discarded,
+    gpsBadSinceMs: clearGpsBad ? null : (gpsBadSinceMs ?? this.gpsBadSinceMs),
+    stepMaxHr: clearStepMaxHr ? null : (stepMaxHr ?? this.stepMaxHr),
+    phaseDurationMs: phaseDurationMs ?? this.phaseDurationMs,
+    stepIndex: clearStepIndex ? null : (stepIndex ?? this.stepIndex),
+    stepRemainingM: clearStepRemainingM
+        ? null
+        : (stepRemainingM ?? this.stepRemainingM),
   );
 }
 
@@ -285,6 +370,10 @@ class RecordingController extends ChangeNotifier {
       lapIndex: s.lapIndex,
       elapsedMs: s.elapsedMs,
       phaseRemainingMs: s.phaseRemainingMs,
+      stepIndex: s.stepIndex,
+      clearStepIndex: s.stepIndex == null,
+      stepRemainingM: s.stepRemainingM,
+      clearStepRemainingM: s.stepRemainingM == null,
       hrPaired: s.hrConnected || _snap.hrPaired,
       gpsLost: !s.gpsFix,
       hadFix: _snap.hadFix || s.gpsFix,
@@ -337,10 +426,19 @@ class RecordingController extends ChangeNotifier {
   Future<void> lap() =>
       _snap.lapsEnabled ? _gateway.lap(LapSource.button) : Future.value();
 
-  /// "Start 4x4" in warm-up; nothing otherwise.
-  Future<void> startReps() => _snap.isPreset && _snap.phase == Phase.warmup
+  /// START REPS in warm-up; nothing otherwise. A session with distance
+  /// steps waits for a GPS fix (plan §3.6 W3), so the first rep can end.
+  Future<void> startReps() =>
+      _snap.isPreset &&
+          _snap.phase == Phase.warmup &&
+          !(_snap.needsGps && _snap.gpsLost)
       ? _gateway.startReps()
       : Future.value();
+
+  /// END REP (distance step, GPS weak or lost > 10 s): ends the step as a
+  /// manual lap; the engine flags the rep if the gap was long (W3).
+  Future<void> endRep() =>
+      _snap.distanceStep ? _gateway.lap(LapSource.button) : Future.value();
   Future<void> pause() => _gateway.pause();
   Future<void> resume() => _gateway.resume();
 
@@ -406,6 +504,14 @@ class RecordingController extends ChangeNotifier {
         ),
       );
     }
+    final bad = !fix || t.gpsAccuracyM! > 20;
+    final hr = t.hr;
+    final prevMax = _snap.stepMaxHr;
+    _snap = _snap.copyWith(
+      gpsBadSinceMs: bad ? (_snap.gpsBadSinceMs ?? t.elapsedMs) : null,
+      clearGpsBad: !bad,
+      stepMaxHr: hr != null && (prevMax == null || hr > prevMax) ? hr : null,
+    );
     _snap = _snap.copyWith(
       state: t.state,
       phase: t.phase,
@@ -424,6 +530,10 @@ class RecordingController extends ChangeNotifier {
       gpsLost: !fix,
       hadFix: _snap.hadFix || fix,
       phaseRemainingMs: t.phaseRemainingMs,
+      stepIndex: t.stepIndex,
+      clearStepIndex: t.stepIndex == null,
+      stepRemainingM: t.stepRemainingM,
+      clearStepRemainingM: t.stepRemainingM == null,
       zone: zone,
     );
   }
@@ -459,6 +569,12 @@ class RecordingController extends ChangeNotifier {
       phase: p.phase,
       repIndex: p.repIndex,
       phaseRemainingMs: p.phaseDurationMs,
+      phaseDurationMs: p.phaseDurationMs,
+      clearStepMaxHr: true,
+      // The next tick carries the new step's index and metres; until then
+      // currentStep is looked up by phase and rep.
+      clearStepIndex: true,
+      clearStepRemainingM: true,
     );
     if (previous == Phase.work &&
         (p.phase == Phase.recovery || p.phase == Phase.cooldown)) {

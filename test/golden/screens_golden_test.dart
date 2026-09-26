@@ -7,6 +7,8 @@ import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
+import 'package:run_engine/run_engine.dart' as engine;
+import 'package:run_solo/screens/custom_builder_screen.dart';
 import 'package:run_solo/screens/home_screen.dart';
 import 'package:run_solo/screens/permissions_screen.dart';
 import 'package:run_solo/screens/run_detail_screen.dart';
@@ -14,6 +16,7 @@ import 'package:run_solo/screens/settings_screen.dart';
 import 'package:run_solo/screens/shell_screen.dart';
 import 'package:run_solo/screens/trend_screen.dart';
 import 'package:run_solo/splash/intro_gate.dart';
+import 'package:run_solo/state/sessions.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/theme/theme.dart';
 import 'package:run_solo/theme/zones.dart';
@@ -61,7 +64,7 @@ void main() {
     await golden(tester, 'record_rep');
   });
 
-  testWidgets('record: 4x4 warm-up with the big START 4x4', (tester) async {
+  testWidgets('record: 4x4 warm-up with the big START REPS', (tester) async {
     final fake = FakeRecorderGateway(now: now);
     final services = fakeServices(recorder: fake);
     await services.recording.start(
@@ -74,7 +77,7 @@ void main() {
     fake.advance(const Duration(seconds: 95));
     await pumpTimes(tester, 5);
     await settleAnimations(tester);
-    expect(find.text('START 4x4'), findsOneWidget);
+    expect(find.text('START REPS'), findsOneWidget);
     await golden(tester, 'record_warmup');
   });
 
@@ -596,4 +599,108 @@ void main() {
     expect(ratio(t.inkPrimary, t.bgRaised), greaterThan(7), reason: 'banner');
     expect(ratio(t.accentArc, t.bgBase), greaterThan(7));
   });
+
+  // Phase 3 I4 (design brief A8): Intervals sheet, session card, builder
+  // and the step layouts, on a standard and a short phone.
+  for (final h in [800, 640]) {
+    testWidgets('intervals: sheet, 400s card, builder at 360 x $h', (
+      tester,
+    ) async {
+      final services = fakeServices(
+        settings: const AppSettings(onboardingDone: true, sessionId: '400s'),
+        customSessions: [
+          CustomSession(
+            id: 'g1',
+            name: 'Hill sixes',
+            reps: 6,
+            workValue: 90,
+            createdAt: DateTime.utc(2026, 9, 20),
+          ),
+        ],
+      );
+      await pumpApp(tester, services, pushRoute: Routes.start);
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 6);
+      await settleAnimations(tester);
+      await golden(tester, 'start_session_400s_360x$h');
+      await tester.tap(find.text('INTERVALS'));
+      await pumpTimes(tester, 6);
+      await tester.pump(const Duration(milliseconds: 600));
+      await golden(tester, 'intervals_sheet_360x$h');
+      await tester.pageBack();
+      await pumpTimes(tester, 6);
+      await tester.pump(const Duration(milliseconds: 600));
+      await pumpApp(
+        tester,
+        services,
+        home: const CustomBuilderScreen(
+          initial: CustomSession(
+            id: 'b1',
+            name: '',
+            reps: 6,
+            workTarget: engine.TargetKind.distance,
+            workValue: 800,
+            recoveryValue: 120,
+          ),
+        ),
+      );
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 6);
+      await golden(tester, 'custom_builder_360x$h');
+    });
+
+    testWidgets(
+      'record: distance rep, distance recovery, END REP at 360 x $h',
+      (tester) async {
+        final fake = FakeRecorderGateway(now: now);
+        final services = fakeServices(recorder: fake);
+        await services.recording.start(
+          RecordMode.intervals,
+          presetSpec('400s'),
+          Units.km,
+        );
+        await pumpApp(tester, services, pushRoute: Routes.recording);
+        tester.view.physicalSize = Size(1080, h * 3.0);
+        await pumpTimes(tester, 4);
+        await stepSeconds(tester, fake, 60);
+        await fake.startReps();
+        await pumpTimes(tester, 5);
+        await stepSeconds(tester, fake, 55);
+        await settleAnimations(tester);
+        await golden(tester, 'record_distance_rep_360x$h');
+        await stepSeconds(tester, fake, 59 + 20);
+        await tester.pump(const Duration(milliseconds: 16));
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pump(const Duration(milliseconds: 400));
+        await golden(tester, 'record_distance_recovery_360x$h');
+        await stepSeconds(tester, fake, 40);
+        fake.gpsLost = true;
+        await stepSeconds(tester, fake, 12);
+        await settleAnimations(tester);
+        await golden(tester, 'record_end_rep_360x$h');
+      },
+    );
+
+    testWidgets('record: 30/30s short rep at 360 x $h', (tester) async {
+      final fake = FakeRecorderGateway(now: now);
+      final services = fakeServices(recorder: fake);
+      await services.recording.start(
+        RecordMode.intervals,
+        presetSpec('30-30s'),
+        Units.km,
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 4);
+      await stepSeconds(tester, fake, 30);
+      await fake.startReps();
+      await pumpTimes(tester, 5);
+      await stepSeconds(tester, fake, 3);
+      await settleAnimations(tester);
+      await golden(tester, 'record_short_rep_start_360x$h');
+      await stepSeconds(tester, fake, 15);
+      await settleAnimations(tester);
+      await golden(tester, 'record_short_rep_360x$h');
+    });
+  }
 }

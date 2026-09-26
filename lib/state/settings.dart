@@ -10,6 +10,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../platform/gateway.dart';
 import '../platform/session_codec.dart';
+import 'sessions.dart';
 
 /// 4x4 editor bounds (plan §6): reps 3–6, work locked 4:00, recovery
 /// 2:00–5:00 in 15 s steps. Match `SessionCatalogue.norwegian4x4`.
@@ -81,6 +82,8 @@ class AppSettings {
     this.onboardingDone = false,
     this.strap,
     this.introSeenVersion,
+    this.sessionId = engine.SessionSpec.norwegian4x4Id,
+    this.presetEdits = const {},
   });
 
   final Units units;
@@ -122,6 +125,42 @@ class AppSettings {
   /// null or older than the running version = full intro, else 0.6 s.
   final String? introSeenVersion;
 
+  /// The Intervals session picked in the sheet (A8): a catalogue id,
+  /// `custom:<id>` or `fartlek`. The Norwegian 4x4's edits stay in [reps] /
+  /// [recoverySeconds] (the Phase 2 fields, already on phones).
+  final String sessionId;
+
+  /// Edits to the other presets (D2: reps and recovery only), by preset id.
+  final Map<String, PresetEdit> presetEdits;
+
+  /// Every preset's edits, the 4x4 included.
+  Map<String, PresetEdit> get allPresetEdits => {
+    ...presetEdits,
+    engine.SessionSpec.norwegian4x4Id: PresetEdit(
+      reps: reps,
+      recovery: engine.SessionStep.recovery(recoverySeconds, rep: 1),
+    ),
+  };
+
+  /// The picked session, expanded; falls back to the 4x4 when a custom
+  /// template was deleted. Fartlek expands to its empty spec.
+  engine.SessionSpec session(List<CustomSession> customs) =>
+      SessionChoice.resolve(
+        sessionId,
+        edits: allPresetEdits,
+        customs: customs,
+      ) ??
+      SessionChoice.resolve(
+        engine.SessionSpec.norwegian4x4Id,
+        edits: allPresetEdits,
+      )!;
+
+  /// Fartlek records as a Laps run with the fartlek session (plan §3.5).
+  RecordMode get recordMode =>
+      lastMode == RecordMode.intervals && SessionChoice.isFartlek(sessionId)
+      ? RecordMode.laps
+      : lastMode;
+
   /// The 4x4 session to record, expanded by the engine catalogue from the
   /// saved reps and recovery (CONTRACT.md I1: Kotlin never expands).
   SessionSpec get spec => engine.SessionCatalogue.expand(
@@ -161,6 +200,8 @@ class AppSettings {
     SavedStrap? strap,
     bool clearStrap = false,
     String? introSeenVersion,
+    String? sessionId,
+    Map<String, PresetEdit>? presetEdits,
   }) => AppSettings(
     units: units ?? this.units,
     reps: reps ?? this.reps,
@@ -186,6 +227,8 @@ class AppSettings {
     onboardingDone: onboardingDone ?? this.onboardingDone,
     strap: clearStrap ? null : (strap ?? this.strap),
     introSeenVersion: introSeenVersion ?? this.introSeenVersion,
+    sessionId: sessionId ?? this.sessionId,
+    presetEdits: presetEdits ?? this.presetEdits,
   );
 
   Map<String, Object?> toJson() => {
@@ -207,6 +250,10 @@ class AppSettings {
     'onboardingDone': onboardingDone,
     'strap': strap?.toJson(),
     'introSeenVersion': introSeenVersion,
+    'sessionId': sessionId,
+    'presetEdits': {
+      for (final e in presetEdits.entries) e.key: e.value.toJson(),
+    },
   };
 
   /// Lenient: unknown or malformed keys fall back to defaults, never throw.
@@ -265,8 +312,25 @@ class AppSettings {
       introSeenVersion: j['introSeenVersion'] is String
           ? j['introSeenVersion'] as String
           : null,
+      sessionId: pick('sessionId', d.sessionId),
+      presetEdits: _edits(j['presetEdits']),
     );
   }
+}
+
+Map<String, PresetEdit> _edits(Object? raw) {
+  if (raw is! Map<String, Object?>) return const {};
+  final out = <String, PresetEdit>{};
+  for (final e in raw.entries) {
+    final v = e.value;
+    if (v is! Map<String, Object?>) continue;
+    try {
+      out[e.key] = PresetEdit.fromJson(v);
+    } catch (_) {
+      // A damaged edit falls back to the preset's defaults.
+    }
+  }
+  return out;
 }
 
 abstract class SettingsStore {

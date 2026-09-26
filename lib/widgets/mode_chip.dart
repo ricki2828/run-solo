@@ -1,23 +1,26 @@
 import 'package:flutter/material.dart';
 
-import '../app/format.dart';
+import 'package:run_engine/run_engine.dart' as engine;
+
 import '../platform/gateway.dart';
 import '../theme/theme.dart';
+import 'structure_glyph.dart';
 
-/// Three chips at Start and Home (plan §18.2, addendum A2): 4x4, Laps,
-/// Free. Cooper (12-minute test) is Phase 3 and not offered here.
+/// Three chips at Start and Home (plan §3.2, design brief A8): INTERVALS
+/// (the old 4x4 slot, showing the last-used session and its glyph), LAPS,
+/// FREE. Cooper (12-minute test) sits under the "Tests" eyebrow (A5).
 class ModeChipRow extends StatelessWidget {
   const ModeChipRow({
     super.key,
     required this.selected,
     required this.onSelect,
-    required this.reps,
-    required this.recoverySeconds,
+    required this.session,
   });
   final RecordMode selected;
   final ValueChanged<RecordMode> onSelect;
-  final int reps;
-  final int recoverySeconds;
+
+  /// The last-used Intervals session (name + glyph on the chip).
+  final engine.SessionSpec session;
 
   static const List<RecordMode> offered = [
     RecordMode.intervals,
@@ -34,19 +37,21 @@ class ModeChipRow extends StatelessWidget {
           Expanded(
             child: ModeChip(
               title: switch (m) {
-                RecordMode.intervals => '4x4',
+                RecordMode.intervals => 'INTERVALS',
                 RecordMode.laps => 'LAPS',
                 RecordMode.free => 'FREE',
                 RecordMode.cooper => 'TEST',
               },
               subtitle: switch (m) {
-                RecordMode.intervals =>
-                  '$reps × 4:00\n${Fmt.recovery(recoverySeconds)} rec',
+                RecordMode.intervals => session.name,
                 RecordMode.laps => 'LAP by hand',
                 RecordMode.free => 'Just run',
                 RecordMode.cooper => '12 minutes',
               },
               selected: selected == m,
+              glyph: m == RecordMode.intervals && session.steps.isNotEmpty
+                  ? session
+                  : null,
               onTap: () => onSelect(m),
             ),
           ),
@@ -64,8 +69,11 @@ class ModeChip extends StatelessWidget {
     required this.subtitle,
     required this.selected,
     required this.onTap,
+    this.glyph,
   });
 
+  /// Structure glyph under the subtitle (the INTERVALS chip, A8).
+  final engine.SessionSpec? glyph;
   final String title;
   final String subtitle;
   final bool selected;
@@ -110,15 +118,35 @@ class ModeChip extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: Space.x4),
-              Text(
-                subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: RunSoloType.label13.copyWith(
-                  color: t.inkSecondary,
-                  height: 1.2,
+              if (glyph == null)
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: RunSoloType.label13.copyWith(
+                    color: t.inkSecondary,
+                    height: 1.2,
+                  ),
+                )
+              else
+                // One line above the glyph: shrink rather than cut the
+                // session name ("Norwegian 4x4" at 360 dp, A8).
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    subtitle,
+                    softWrap: false,
+                    style: RunSoloType.label13.copyWith(
+                      color: t.inkSecondary,
+                      height: 1.2,
+                    ),
+                  ),
                 ),
-              ),
+              if (glyph != null) ...[
+                const SizedBox(height: Space.x4),
+                StructureGlyph(spec: glyph!, height: 12),
+              ],
             ],
           ),
         ),

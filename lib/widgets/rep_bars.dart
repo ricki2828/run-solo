@@ -14,8 +14,14 @@ class RepBarDatum {
     this.ghostSecPerKm,
     this.excluded = false,
     this.reason,
+    this.repMetres,
   });
   final String label;
+
+  /// Rep-time sessions (I3 `IntervalMetricKind.repTime`): the label reads
+  /// the time for this distance ("1:31"), not a pace. Bars still scale by
+  /// pace, which orders the same.
+  final int? repMetres;
 
   /// Null = no pace (interrupted rep, no GPS): hatched bar.
   final double? paceSecPerKm;
@@ -94,8 +100,12 @@ class RepBars extends StatelessWidget {
             // As shown: whole seconds in the display unit, "▲16" / "▼12".
             // Flat only when that is 0 ("±0", no glyph), the record screen's
             // rule, so a dash never sits beside "1".
+            // Rep-time sessions: whole seconds over the rep distance.
             final delta = r.ghostSecPerKm == null || r.paceSecPerKm == null
                 ? null
+                : r.repMetres != null
+                ? ((r.paceSecPerKm! - r.ghostSecPerKm!) * r.repMetres! / 1000)
+                      .round()
                 : Fmt.deltaSecondsVsLast(
                     r.paceSecPerKm!,
                     r.ghostSecPerKm!,
@@ -155,7 +165,11 @@ class RepBars extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             Text(
-                              Fmt.pace(r.paceSecPerKm, units),
+                              r.repMetres != null && r.paceSecPerKm != null
+                                  ? Fmt.clock(
+                                      (r.paceSecPerKm! * r.repMetres!).round(),
+                                    )
+                                  : Fmt.pace(r.paceSecPerKm, units),
                               style: RunSoloType.label13.copyWith(
                                 color: r.excluded ? t.semNoise : t.inkPrimary,
                                 fontSize: 15,
@@ -174,7 +188,11 @@ class RepBars extends StatelessWidget {
                                 const SizedBox(width: 2),
                               ],
                               Text(
-                                delta == 0 ? '±0' : '${delta.abs()}',
+                                delta == 0
+                                    ? '±0'
+                                    : r.repMetres != null
+                                    ? '${delta.abs()} s'
+                                    : '${delta.abs()}',
                                 style: RunSoloType.label13.copyWith(
                                   color: deltaColor,
                                 ),
