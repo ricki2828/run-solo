@@ -393,63 +393,39 @@ void main() {
       expect(r.observation, isNull);
     });
 
-    test('no usual yet (0 to 2 earlier runs): own halves first, then the '
-        'elite norm, labelled (#102 review P2)', () {
+    test('no usual yet (0 to 2 earlier runs): own figure, the elite norm as '
+        'a separate line (#102 review P2, #103 review)', () {
       final earlier = [
         distanceRun('a', 0, faded(300000, 0.02)),
         distanceRun('b', 5, faded(300000, 0.02)),
       ];
       for (var n = 0; n <= 2; n++) {
         final history = earlier.take(n).toList();
-        final faded6 = reporter.report(
-          run: distanceRun('now', 12, faded(300000, 0.06)),
-          history: history,
-        );
-        expect(
-          faded6.observation!.text,
-          'You slowed 6% in the second half. ${ResearchNorms.fadeNormLine}',
-          reason: '$n earlier',
-        );
-        expect(faded6.observation!.researchBased, isTrue);
-        expect(
-          faded6.observation!.text,
-          startsWith('You slowed'),
-          reason: 'their own run leads',
-        );
-        expect(faded6.observation!.text, contains('Elite'));
-        expect(faded6.observation!.text, contains('research-based'));
-
-        final even10 = reporter.report(
-          run: distanceRun('now', 12, even(10, 300000)),
-          history: history,
-        );
-        expect(even10.observation!.text, 'You ran even halves.');
-        expect(
-          even10.observation!.researchBased,
-          isFalse,
-          reason: 'an even run needs no norm',
-        );
-        expect(
-          reporter
-              .report(
-                run: distanceRun('now', 12, faded(300000, -0.02)),
-                history: history,
-              )
-              .observation!
-              .text,
-          'You finished faster than you started.',
-        );
-        expect(
-          reporter
-              .report(
-                run: distanceRun('now', 12, faded(300000, 0.02)),
-                history: history,
-              )
-              .observation!
-              .text,
-          'You slowed 2% in the second half.',
-          reason: 'under the fade line: their own figure, no norm',
-        );
+        final o = reporter
+            .report(
+              run: distanceRun('now', 12, faded(300000, 0.06)),
+              history: history,
+            )
+            .observation!;
+        expect(o.text, 'You slowed 6% in the second half.', reason: '$n');
+        expect(o.norm, ResearchNorms.fadeNormLine);
+        expect(o.researchBased, isTrue);
+        expect(o.norm, contains('Elite'));
+        expect(o.norm, contains('research-based'));
+        // Under the fade line, even, or a negative split: nothing yet.
+        for (final kms in [
+          faded(300000, 0.02),
+          even(10, 300000),
+          faded(300000, -0.02),
+        ]) {
+          expect(
+            reporter
+                .report(run: distanceRun('now', 12, kms), history: history)
+                .observation,
+            isNull,
+            reason: '$n earlier',
+          );
+        }
       }
     });
 
@@ -463,6 +439,7 @@ void main() {
         ],
       );
       expect(r.observation!.researchBased, isFalse);
+      expect(r.observation!.norm, isNull);
       expect(
         r.observation!.text,
         'You slowed 6% in the second half. Your usual is 2%.',
