@@ -130,7 +130,12 @@ fun LiveContext.toCore(): CoreLiveContext = CoreLiveContext(
             version = n.version.toInt(),
             fastStart = n.fastStart?.let { CoreFastStart(it.km1MaxMs, it.text) },
             repFade = n.repFade?.let { CoreRepFade(it.maxDropSecPerKm, it.text) },
-            hrDrift = n.hrDrift?.let { CoreHrDrift(it.kmHr, it.kmPaceSecPerKm, it.bpmOver, it.paceBand, it.firstKm.toInt(), it.text) },
+            hrDrift = n.hrDrift?.let { h ->
+                CoreHrDrift(
+                    kmSamples = h.kmSamples.map { km -> km.map { require(it.size == 2) { "kmSamples pairs are [pace, hr]" }; it[0] to it[1] } },
+                    bpmOver = h.bpmOver, paceBand = h.paceBand, firstKm = h.firstKm.toInt(), minSimilar = h.minSimilar.toInt(), text = h.text,
+                )
+            },
             blocked = n.blocked.orEmpty(),
         )
     },

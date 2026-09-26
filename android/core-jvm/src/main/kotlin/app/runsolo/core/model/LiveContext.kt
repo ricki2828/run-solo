@@ -206,11 +206,17 @@ data class NudgePlan(
             repFade = m.obj("repFade")?.let { RepFadeRule(it.nullableDoubles("maxDropSecPerKm"), it.string("text")) },
             hrDrift = m.obj("hrDrift")?.let {
                 HrDriftRule(
-                    kmHr = it.nullableDoubles("kmHr"),
-                    kmPaceSecPerKm = it.nullableDoubles("kmPaceSecPerKm"),
+                    kmSamples = it.list("kmSamples").map { km ->
+                        (km as? List<*> ?: bad("kmSamples")).map { pair ->
+                            val p = pair as? List<*> ?: bad("kmSamples")
+                            require(p.size == 2) { "kmSamples pairs are [pace, hr]" }
+                            (p[0] as? Number ?: bad("kmSamples")).toDouble() to (p[1] as? Number ?: bad("kmSamples")).toDouble()
+                        }
+                    },
                     bpmOver = (it["bpmOver"] as? Number)?.toDouble() ?: HrDriftRule.BPM_OVER,
                     paceBand = (it["paceBand"] as? Number)?.toDouble() ?: HrDriftRule.PACE_BAND,
                     firstKm = (it["firstKm"] as? Number)?.toInt() ?: HrDriftRule.FIRST_KM,
+                    minSimilar = (it["minSimilar"] as? Number)?.toInt() ?: HrDriftRule.MIN_SIMILAR,
                     text = it.string("text"),
                 )
             },
@@ -230,25 +236,41 @@ data class RepFadeRule(val maxDropSecPerKm: List<Double?>, val text: String) {
 }
 
 /**
- * At km k ≥ [firstKm]: fire when the live km-k pace is within [paceBand] of `kmPaceSecPerKm[k − 1]`
- * and the live mean HR over km k is at least `kmHr[k − 1]` + [bpmOver].
+ * HR up for this pace (#56 review P2: like with like): [kmSamples] `[k − 1]` = the recent board
+ * runs' (pace s/km, mean HR) at km k. The engine's `HrDriftRule.firesAt`, mirrored.
  */
 data class HrDriftRule(
-    val kmHr: List<Double?>,
-    val kmPaceSecPerKm: List<Double?>,
+    val kmSamples: List<List<Pair<Double, Double>>>,
     val bpmOver: Double = BPM_OVER,
     val paceBand: Double = PACE_BAND,
     val firstKm: Int = FIRST_KM,
+    val minSimilar: Int = MIN_SIMILAR,
     val text: String,
 ) {
+    /**
+     * At km [km] (1-based) with the live km pace and mean HR: the HRs of runs whose pace was within
+     * [paceBand] of this one; with at least [minSimilar] of them, fire when [hr] ≥ their median +
+     * [bpmOver].
+     */
+    fun firesAt(km: Int, paceSecPerKm: Double, hr: Double): Boolean {
+        if (km < firstKm || km > kmSamples.size) return false
+        val similar = kmSamples[km - 1].filter { (p, _) -> abs(p - paceSecPerKm) <= paceBand * paceSecPerKm }.map { it.second }.sorted()
+        if (similar.size < minSimilar) return false
+        val m = similar.size / 2
+        val median = if (similar.size % 2 == 1) similar[m] else (similar[m - 1] + similar[m]) / 2
+        return hr >= median + bpmOver
+    }
+
     fun toJson(): Map<String, Any?> = linkedMapOf(
-        "kmHr" to kmHr, "kmPaceSecPerKm" to kmPaceSecPerKm, "bpmOver" to bpmOver, "paceBand" to paceBand, "firstKm" to firstKm, "text" to text,
+        "kmSamples" to kmSamples.map { km -> km.map { (p, h) -> listOf(p, h) } },
+        "bpmOver" to bpmOver, "paceBand" to paceBand, "firstKm" to firstKm, "minSimilar" to minSimilar, "text" to text,
     )
 
     companion object {
         const val BPM_OVER = 5.0
         const val PACE_BAND = 0.05
         const val FIRST_KM = 4
+        const val MIN_SIMILAR = 3
     }
 }
 

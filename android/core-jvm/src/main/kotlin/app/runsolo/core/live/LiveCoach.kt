@@ -13,7 +13,6 @@ import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.StepKind
 import app.runsolo.core.model.TargetKind
 import app.runsolo.core.record.RecorderCore
-import kotlin.math.abs
 import kotlin.math.floor
 
 /**
@@ -212,11 +211,7 @@ class LiveCoach(
         val plan = context?.nudges ?: return null
         if (km == 1) plan.fastStart?.let { r -> if (activeAtKm < r.km1MaxMs) return claimNudge(NudgePlan.FAST_START, 1, r.text) }
         val r = plan.hrDrift ?: return null
-        if (km < r.firstKm || splitMs == null || hrMean == null) return null
-        val want = r.kmPaceSecPerKm.getOrNull(km - 1) ?: return null
-        val usualHr = r.kmHr.getOrNull(km - 1) ?: return null
-        val pace = splitMs / 1_000.0
-        if (abs(pace - want) > r.paceBand * want || hrMean < usualHr + r.bpmOver) return null
+        if (splitMs == null || hrMean == null || !r.firesAt(km, splitMs / 1_000.0, hrMean)) return null
         return claimNudge(NudgePlan.HR_DRIFT, km, r.text)
     }
 

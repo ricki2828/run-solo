@@ -46,7 +46,12 @@ data class SessionSpec(
     val warmupSeconds: Int?,
     val cooldownSeconds: Int?,
     val lapLockout: Boolean,
-    /** The recording stops itself when the last timed part ends (parkrun: 5.00 km). */
+    /**
+     * The recording stops itself when the last timed part ends (parkrun: 5.00 km). No lap is
+     * written at the finish (the stop ends the last lap), so the last step never gets a live rep
+     * pace (#48 review P3): a live compare or rep nudge at the finish of an autoStop session
+     * cannot use one; the run file's last lap has the figure.
+     */
     val autoStop: Boolean = false,
     val cueProfile: CueProfile,
     val hrBand: Pair<Double, Double>?,

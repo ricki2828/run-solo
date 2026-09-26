@@ -773,22 +773,22 @@ class RepFadeRule {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
-/// At km k ≥ [firstKm]: fire when the live km-k pace is within [paceBand] of
-/// `kmPaceSecPerKm[k − 1]` and the live mean HR over km k is at least
-/// `kmHr[k − 1]` + [bpmOver].
+/// HR up for this pace, like with like (#56 review P2): `kmSamples[k − 1]` =
+/// the recent board runs' [pace s/km, mean HR] pairs at km k. At km
+/// k ≥ [firstKm]: of the runs whose pace was within [paceBand] of the live km
+/// pace, with at least [minSimilar] of them, fire when the live km HR is at
+/// least their median + [bpmOver].
 class HrDriftRule {
   HrDriftRule({
-    required this.kmHr,
-    required this.kmPaceSecPerKm,
+    required this.kmSamples,
     required this.bpmOver,
     required this.paceBand,
     required this.firstKm,
+    required this.minSimilar,
     required this.text,
   });
 
-  List<double?> kmHr;
-
-  List<double?> kmPaceSecPerKm;
+  List<List<List<double>>> kmSamples;
 
   double bpmOver;
 
@@ -796,15 +796,17 @@ class HrDriftRule {
 
   int firstKm;
 
+  int minSimilar;
+
   String text;
 
   List<Object?> _toList() {
     return <Object?>[
-      kmHr,
-      kmPaceSecPerKm,
+      kmSamples,
       bpmOver,
       paceBand,
       firstKm,
+      minSimilar,
       text,
     ];
   }
@@ -815,11 +817,11 @@ class HrDriftRule {
   static HrDriftRule decode(Object result) {
     result as List<Object?>;
     return HrDriftRule(
-      kmHr: (result[0]! as List<Object?>).cast<double?>(),
-      kmPaceSecPerKm: (result[1]! as List<Object?>).cast<double?>(),
-      bpmOver: result[2]! as double,
-      paceBand: result[3]! as double,
-      firstKm: result[4]! as int,
+      kmSamples: (result[0]! as List<Object?>).cast<List<List<double>>>(),
+      bpmOver: result[1]! as double,
+      paceBand: result[2]! as double,
+      firstKm: result[3]! as int,
+      minSimilar: result[4]! as int,
       text: result[5]! as String,
     );
   }
@@ -833,7 +835,7 @@ class HrDriftRule {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(kmHr, other.kmHr) && _deepEquals(kmPaceSecPerKm, other.kmPaceSecPerKm) && _deepEquals(bpmOver, other.bpmOver) && _deepEquals(paceBand, other.paceBand) && _deepEquals(firstKm, other.firstKm) && _deepEquals(text, other.text);
+    return _deepEquals(kmSamples, other.kmSamples) && _deepEquals(bpmOver, other.bpmOver) && _deepEquals(paceBand, other.paceBand) && _deepEquals(firstKm, other.firstKm) && _deepEquals(minSimilar, other.minSimilar) && _deepEquals(text, other.text);
   }
 
   @override

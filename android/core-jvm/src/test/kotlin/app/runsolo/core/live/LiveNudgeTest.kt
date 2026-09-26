@@ -25,8 +25,13 @@ import kotlin.test.assertNull
 class LiveNudgeTest {
     private val fast = FastStartRule(km1MaxMs = 290_000, text = "Easy start. Your best 5K went out slower than this.")
     private val fade = RepFadeRule(listOf(null, null, 4.0, 6.0, null), "That one dropped off a bit. Hold your form on the next.")
+    /** Three earlier runs at ~5:00 per km: km 4 HRs 152/155/158 (median 155), km 5 154/156/158 (156). */
     private val drift = HrDriftRule(
-        kmHr = listOf(150.0, 152.0, 154.0, 155.0, 156.0), kmPaceSecPerKm = listOf(300.0, 300.0, 300.0, 300.0, 300.0),
+        kmSamples = listOf(
+            emptyList(), emptyList(), emptyList(),
+            listOf(298.0 to 152.0, 300.0 to 155.0, 303.0 to 158.0),
+            listOf(298.0 to 154.0, 300.0 to 156.0, 303.0 to 158.0),
+        ),
         text = "Heart rate's up for this pace today. Fine to ease a touch.",
     )
 
@@ -70,12 +75,12 @@ class LiveNudgeTest {
     }
 
     @Test
-    fun `hr drift - from firstKm, at the usual pace, HR at least 5 over the usual for that km`() {
+    fun `hr drift - from firstKm, like with like, HR at least 5 over the similar runs' median`() {
         val plan = NudgePlan(version = 1, hrDrift = drift)
-        // km 4 at 300 s/km with HR 161 (usual 155 + 5 = 160): fires; km 3 would too but is before firstKm.
+        // km 4 at 300 s/km with HR 161 (median 155 + 5 = 160): fires; km 5 too (156 + 5); km 3 is before firstKm.
         val cues = free(LiveCoach(ctx(plan), RunMode.free, null), 5, { 300 }) { km, _ -> if (km >= 3) 161 else 150 }
         assertEquals(listOf(NudgePlan.HR_DRIFT to 4, NudgePlan.HR_DRIFT to 5), cues.mapNotNull { it.nudge }.map { it.rule to it.index })
-        // Pace off the usual by more than 5 % (320 vs 300): no nudge.
+        // At 320 s/km no earlier run was within 5 %: fewer than 3 similar, no nudge.
         val offPace = free(LiveCoach(ctx(plan), RunMode.free, null), 4, { if (it == 4) 320 else 300 }) { _, _ -> 170 }
         assertNull(offPace.last().nudge)
         // Under half the km's samples carry HR: null HR, no nudge (the engine's kmHr rule).
@@ -84,6 +89,21 @@ class LiveNudgeTest {
         // Exactly half with HR still counts.
         val half = free(LiveCoach(ctx(plan), RunMode.free, null), 4, { 300 }) { km, i -> if (km == 4 && i % 2 == 0) null else 170 }
         assertEquals(NudgePlan.HR_DRIFT, half.last().nudge?.rule)
+    }
+
+    @Test
+    fun `firesAt mirrors the engine's cases (coaching_test, #56 review P2)`() {
+        // Median HR of the similar-pace runs at km 4 is 154: fires at 159, not 158; never at km 3.
+        val h = HrDriftRule(kmSamples = listOf(emptyList(), emptyList(), emptyList(), listOf(300.0 to 152.0, 305.0 to 154.0, 310.0 to 156.0)), text = "t")
+        assertEquals(true, h.firesAt(4, 305.0, 159.0))
+        assertEquals(false, h.firesAt(4, 305.0, 158.0))
+        assertEquals(false, h.firesAt(3, 305.0, 190.0))
+        // Mixed history: three hard 5Ks at 4:30 and HR 170, three easy at 6:00 and HR 140.
+        val km4 = List(3) { 270.0 to 170.0 } + List(3) { 360.0 to 140.0 }
+        val mixed = HrDriftRule(kmSamples = listOf(km4, km4, km4, km4, km4), text = "t")
+        assertEquals(true, mixed.firesAt(4, 360.0, 150.0), "an easy run 10 over its like")
+        assertEquals(false, mixed.firesAt(4, 270.0, 172.0), "a hard run only 2 over (a median of all six would fire)")
+        assertEquals(false, mixed.firesAt(4, 315.0, 200.0), "a pace nobody ran: fewer than 3 similar")
     }
 
     @Test

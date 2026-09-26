@@ -936,39 +936,41 @@ data class RepFadeRule (
 }
 
 /**
- * At km k ≥ [firstKm]: fire when the live km-k pace is within [paceBand] of
- * `kmPaceSecPerKm[k − 1]` and the live mean HR over km k is at least
- * `kmHr[k − 1]` + [bpmOver].
+ * HR up for this pace, like with like (#56 review P2): `kmSamples[k − 1]` =
+ * the recent board runs' [pace s/km, mean HR] pairs at km k. At km
+ * k ≥ [firstKm]: of the runs whose pace was within [paceBand] of the live km
+ * pace, with at least [minSimilar] of them, fire when the live km HR is at
+ * least their median + [bpmOver].
  *
  * Generated class from Pigeon that represents data sent in messages.
  */
 data class HrDriftRule (
-  val kmHr: List<Double?>,
-  val kmPaceSecPerKm: List<Double?>,
+  val kmSamples: List<List<List<Double>>>,
   val bpmOver: Double,
   val paceBand: Double,
   val firstKm: Long,
+  val minSimilar: Long,
   val text: String
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): HrDriftRule {
-      val kmHr = pigeonVar_list[0] as List<Double?>
-      val kmPaceSecPerKm = pigeonVar_list[1] as List<Double?>
-      val bpmOver = pigeonVar_list[2] as Double
-      val paceBand = pigeonVar_list[3] as Double
-      val firstKm = pigeonVar_list[4] as Long
+      val kmSamples = pigeonVar_list[0] as List<List<List<Double>>>
+      val bpmOver = pigeonVar_list[1] as Double
+      val paceBand = pigeonVar_list[2] as Double
+      val firstKm = pigeonVar_list[3] as Long
+      val minSimilar = pigeonVar_list[4] as Long
       val text = pigeonVar_list[5] as String
-      return HrDriftRule(kmHr, kmPaceSecPerKm, bpmOver, paceBand, firstKm, text)
+      return HrDriftRule(kmSamples, bpmOver, paceBand, firstKm, minSimilar, text)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
-      kmHr,
-      kmPaceSecPerKm,
+      kmSamples,
       bpmOver,
       paceBand,
       firstKm,
+      minSimilar,
       text,
     )
   }
@@ -980,16 +982,16 @@ data class HrDriftRule (
       return true
     }
     val other = other as HrDriftRule
-    return PlatformApiPigeonUtils.deepEquals(this.kmHr, other.kmHr) && PlatformApiPigeonUtils.deepEquals(this.kmPaceSecPerKm, other.kmPaceSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.bpmOver, other.bpmOver) && PlatformApiPigeonUtils.deepEquals(this.paceBand, other.paceBand) && PlatformApiPigeonUtils.deepEquals(this.firstKm, other.firstKm) && PlatformApiPigeonUtils.deepEquals(this.text, other.text)
+    return PlatformApiPigeonUtils.deepEquals(this.kmSamples, other.kmSamples) && PlatformApiPigeonUtils.deepEquals(this.bpmOver, other.bpmOver) && PlatformApiPigeonUtils.deepEquals(this.paceBand, other.paceBand) && PlatformApiPigeonUtils.deepEquals(this.firstKm, other.firstKm) && PlatformApiPigeonUtils.deepEquals(this.minSimilar, other.minSimilar) && PlatformApiPigeonUtils.deepEquals(this.text, other.text)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
-    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.kmHr)
-    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.kmPaceSecPerKm)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.kmSamples)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.bpmOver)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.paceBand)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.firstKm)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.minSimilar)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.text)
     return result
   }

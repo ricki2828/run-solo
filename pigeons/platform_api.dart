@@ -300,23 +300,25 @@ class RepFadeRule {
   String text;
 }
 
-/// At km k ≥ [firstKm]: fire when the live km-k pace is within [paceBand] of
-/// `kmPaceSecPerKm[k − 1]` and the live mean HR over km k is at least
-/// `kmHr[k − 1]` + [bpmOver].
+/// HR up for this pace, like with like (#56 review P2): `kmSamples[k − 1]` =
+/// the recent board runs' [pace s/km, mean HR] pairs at km k. At km
+/// k ≥ [firstKm]: of the runs whose pace was within [paceBand] of the live km
+/// pace, with at least [minSimilar] of them, fire when the live km HR is at
+/// least their median + [bpmOver].
 class HrDriftRule {
   HrDriftRule({
-    required this.kmHr,
-    required this.kmPaceSecPerKm,
+    required this.kmSamples,
     required this.bpmOver,
     required this.paceBand,
     required this.firstKm,
+    required this.minSimilar,
     required this.text,
   });
-  List<double?> kmHr;
-  List<double?> kmPaceSecPerKm;
+  List<List<List<double>>> kmSamples;
   double bpmOver;
   double paceBand;
   int firstKm;
+  int minSimilar;
   String text;
 }
 
