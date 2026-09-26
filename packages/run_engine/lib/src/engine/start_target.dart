@@ -36,7 +36,7 @@ class StartTarget {
   });
 
   /// "Target 24:30 (predicted)", "Target 24:12 (your PB)", "Target about
-  /// 1:39:17 (1:38:33 to 1:40:47), estimate", "Target 5.94 km (predicted)".
+  /// 1:40:02 (1:38:33 to 1:40:47), estimate", "Target 5.93 km (predicted)".
   final String line;
 
   /// The other choice when both a prediction and a fresh PB exist (A10.10:

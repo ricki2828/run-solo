@@ -17,9 +17,10 @@ abstract final class CooperProjection {
   static const int firstProjectionSeconds = 60;
 
   /// The likely range on the result, ± this many ml/kg/min (plan §3.3, §4
-  /// R2: r = 0.78 → about ±4.4, plus ~2% GPS distance error). Derived,
-  /// needs verification.
-  static const double rangeHalfWidth = 5;
+  /// R2; RV4 C1): SEE = SD·√(1 − r²) at r = 0.78 with FRIEND 2015's decade
+  /// SDs of 8–11 gives 5.0–6.9, so ± 6 is about one SEE (roughly 2 in 3
+  /// people); individual 95% errors in the studies reach about ± 12.
+  static const double rangeHalfWidth = 6;
 
   /// Valid prior tests needed before the personal curve replaces the
   /// default (founder decision: switch after 2, so from test 3 on).
@@ -127,11 +128,11 @@ class CooperEstimate {
   /// the number never appears without it).
   static const String rangeLabel = 'VO2 estimate';
 
-  /// "VO2 estimate 50 (45 to 55)": the range as a runner reads it, label
+  /// "VO2 estimate 50 (44 to 56)": the range as a runner reads it, label
   /// included; what the string lint checks.
   String get rangeLine => '$rangeLabel $rangeText';
 
-  /// "50 (45 to 55)": only ever shown under [rangeLabel].
+  /// "50 (44 to 56)": only ever shown under [rangeLabel].
   String get rangeText =>
       '${vo2.round()} (${vo2Low.round()} to ${vo2High.round()})';
 

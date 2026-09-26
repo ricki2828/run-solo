@@ -12,7 +12,9 @@ abstract final class ResearchNorms {
   /// "People your age" stays off until the FRIEND 2022 per-decade
   /// percentile table is read from the primary paper (plan §3.6, §4 R4: the
   /// publisher blocks automated access; founder download or ACSM
-  /// Guidelines 11th ed.). While off, [peopleYourAge] returns null.
+  /// Guidelines 11th ed.). RV4 read the 2015 table (C11) but main chose
+  /// option (b): wait for 2022, which reads 1.5–4.6 lower, rather than ship
+  /// 2015 bands. While off, [peopleYourAge] returns null.
   static const bool peopleYourAgeEnabled = false;
 
   static const String peopleYourAgeSource =
@@ -32,10 +34,12 @@ abstract final class ResearchNorms {
   /// The qualitative pacing norm (§4 R5). No verified recreational 5K/10K
   /// second-half number exists, so no number ships; the rule table keeps a
   /// slot for one once a primary source is read.
+  /// Elite racing only (RV4 C4): the sources are world-record and
+  /// championship races, so it must not read as a norm for everyday runs.
   static const String fadeNormLine =
-      'Faster runners tend to run fairly even halves with a quick finish '
-      '(research-based, from 5K and 10K races; may not apply to short '
-      'efforts).';
+      'Elite 5K and 10K runners usually hold an even pace through the '
+      'middle and finish fast (research-based, from world-record and '
+      'championship races; may not fit everyday runs).';
 
   /// Numeric second-half norm, off until sourced (§4 R5: NV).
   static const double? fadeNormPercent = null;

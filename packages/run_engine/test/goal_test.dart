@@ -315,21 +315,21 @@ void main() {
     test('up to 10 km: the §3.4 prediction', () {
       final t = predictor.goalTarget(tenK, [fiveK], now: now)!;
       expect(t.long, isFalse);
-      expect(t.line, 'Target 52:07 (predicted)');
+      expect(t.line, 'Target 52:29 (predicted)');
     });
 
     test('half: a wider-band estimate from a 10 km+ effort', () {
       final half = SessionSpec.goalDistance(21098, 'Half');
       final t = predictor.goalTarget(half, [fiveK, tenKIn], now: now)!;
       expect(t.long, isTrue);
-      expect(t.line, 'Target about 1:39:17 (1:38:33 to 1:40:47), estimate');
+      expect(t.line, 'Target about 1:40:02 (1:38:33 to 1:40:47), estimate');
       expect(carriesEstimateMarker(t.line), isTrue);
     });
 
-    test('marathon: Vickers average 1.07, band 1.05 to 1.12', () {
+    test('marathon: 1.10, band 1.07 to 1.13 (RV4 C9)', () {
       final m = SessionSpec.goalDistance(42195, 'Marathon');
       final t = predictor.goalTarget(m, [halfIn], now: now)!;
-      expect(t.line, 'Target about 3:29:57 (3:27:03 to 3:37:21), estimate');
+      expect(t.line, 'Target about 3:34:21 (3:29:57 to 3:38:52), estimate');
     });
 
     test('no target beyond 10 km without a 10 km+ run in 6 weeks', () {
@@ -348,7 +348,7 @@ void main() {
     test('time goals: predicted distance; an hour is a long estimate', () {
       expect(
         predictor.goalTarget(thirty, [fiveK], now: now)!.line,
-        'Target 5.94 km (predicted)',
+        'Target 5.93 km (predicted)',
       );
       final hour = SessionSpec.goalTime(3600, '1 hour');
       final t = predictor.goalTarget(hour, [tenKIn], now: now)!;

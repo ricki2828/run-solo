@@ -38,7 +38,7 @@
  "vo2": {
   "2800": 51.31008271853342
  },
- "range_half_width": 5,
+ "range_half_width": 6,
  "default_projections": [
   {
    "elapsed_s": 120,
