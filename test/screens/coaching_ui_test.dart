@@ -41,7 +41,7 @@ void main() {
     tenK(3, 300, 332),
   ];
 
-  testWidgets('the result shows FROM THIS RUN: the research-based line, then '
+  testWidgets('the result shows FROM THIS RUN: your own figure, the research norm under it, then '
       'the suggestion, saved to Home', (tester) async {
     final files = fading();
     await pumpApp(
@@ -59,12 +59,20 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('FROM THIS RUN'), findsOneWidget);
-    expect(
-      tester
-          .widget<Text>(find.byKey(const ValueKey('coaching-observation')))
-          .data,
-      contains('research-based'),
+    // #103: the runner's own figure in Bone 17, the norm under it in
+    // ink.secondary 15 (never the whole observation greyed).
+    final own = tester.widget<Text>(
+      find.byKey(const ValueKey('coaching-observation')),
     );
+    final norm = tester.widget<Text>(
+      find.byKey(const ValueKey('coaching-norm')),
+    );
+    expect(own.data, startsWith('You slowed '));
+    expect(own.data, isNot(contains('research-based')));
+    expect(norm.data, contains('research-based'));
+    expect(own.style!.fontSize, 17);
+    expect(norm.style!.fontSize, 15);
+    expect(own.style!.color, isNot(norm.style!.color));
     expect(
       find.text(
         'Next time: try a longer easy run this week, Zone 2, 60 to 75 min. '
