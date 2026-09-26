@@ -2,6 +2,9 @@ cue.start.time-rep	3	Go. Rep 4
 cue.start.distance-rep	6	Rep 20 of 20, 400 metres
 cue.start.short-rep	1	Go
 cue.start.cooper	3	Twelve minutes. Go
+cue.start.goal-distance	3	Half marathon. Go
+cue.start.goal-time	5	1 hour 15 minutes. Go
+cue.start.event	4	5K time trial. Go
 cue.start.recover	1	Recover
 cue.start.short-recover	1	Easy
 cue.start.walk	1	Walk
@@ -50,7 +53,13 @@ compare.target.level	5	Level with your predicted 23:00.
 goal.distance	3	10K done, 49:12.
 goal.distance.new-best	5	10K done, 49:12, new best.
 goal.distance.marathon	3	Marathon done, 4:59:59.
-goal.time	5	30 min done, 7.21 km.
+goal.time	5	30 minutes done, 7.21 km.
+goal.distance.miles	4	7.5 miles done, 59:59.
+event.end.new-best	7	5K time trial done, 23:40, new best.
+event.end.seconds-off	10	5K time trial done, 24:59, 59 seconds off your best.
+event.end.one-second-off	10	5K time trial done, 24:01, 1 second off your best.
+event.end.level	9	5K time trial done, 24:00, level with your best.
+event.end.no-board	5	5K time trial done, 24:00.
 nudge.fast-start	10	Easy start. Your best 5K went out slower than this.
 nudge.rep-fade	12	That one dropped off a bit. Hold your form on the next.
 nudge.hr-drift	12	Heart rate's up for this pace today. Fine to ease a touch.
