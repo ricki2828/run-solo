@@ -89,8 +89,16 @@ void main() {
     // Total time lives in the large vitals row, not the caption.
     expect(find.text('this lap'), findsOneWidget);
     expect(find.byKey(const ValueKey('vitals-total')), findsOneWidget);
-    // The delta glyph sits on the digits' centre line, not floating above
-    // (lead P3: "holding" rendered like a raised bar).
+    // Holding: "±0 s" and no glyph (a flat dash before 0 read as "−0 s").
+    expect(find.text('±0 s', findRichText: true), findsOneWidget);
+    expect(find.byType(DeltaGlyph), findsNothing);
+    // Faster than the last lap: the arrow, centred on the digits (it floated
+    // above them in a baseline Row).
+    fake.liveSecPerKm = 270;
+    fake.advance(const Duration(seconds: 1));
+    await pumpTimes(tester, 5);
+    expect(find.byType(DeltaGlyph), findsOneWidget);
+    expect(find.textContaining('±', findRichText: true), findsNothing);
     final glyph = tester.getCenter(find.byType(DeltaGlyph));
     final delta = tester.getRect(find.byKey(const ValueKey('ghost-delta')));
     expect((glyph.dy - delta.center.dy).abs(), lessThan(4));
