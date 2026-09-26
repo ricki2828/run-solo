@@ -268,8 +268,9 @@ class RecorderCore(
     private fun applyManualLap(source: LapSource, t: Long): List<Output> {
         lastManualLapT = t
         val out = ArrayList<Output>()
-        out.add(Output.Lap(lapCount++, t, source))
         val realigns = structured && source != LapSource.volumeKey
+        noteLapStep(lapCount, realigns)
+        out.add(Output.Lap(lapCount++, t, source))
         if (realigns) {
             when (phase) {
                 Phase.warmup -> out.addAll(enterFirstStep(t, lastD))
@@ -338,6 +339,28 @@ class RecorderCore(
         return out
     }
 
+    /**
+     * What lap [Output.Lap.index] did to the session's steps (LV1: a live rep pace belongs to the
+     * step its lap ended, not to "lap i − 1"): [endedStep] = the step it ended (null for the
+     * warm-up lap, a lap in the cool-down, a volume-key lap mid-step, an unstructured run);
+     * [startsStep] = a new step or the cool-down begins at it. A 0 s recovery has no lap, and a
+     * lap that does not re-align ends nothing, so neither shifts the reps that follow. Kept for
+     * every lap, and rebuilt by [restore] (which replays the laps through the same code).
+     */
+    data class LapStep(val endedStep: Int?, val startsStep: Boolean)
+
+    private val lapSteps = HashMap<Int, LapStep>()
+
+    fun lapStep(index: Int): LapStep? = lapSteps[index]
+
+    private fun noteLapStep(index: Int, realigns: Boolean) {
+        val inStep = phase == Phase.work || phase == Phase.recovery
+        lapSteps[index] = LapStep(
+            endedStep = if (realigns && inStep) stepIndex else null,
+            startsStep = realigns && (inStep || phase == Phase.warmup),
+        )
+    }
+
     /** The time a step that started inside this tick began (the last boundary emitted), for interpolation. */
     private var lastBoundaryT = 0L
     private fun boundaryStartT(prevT: Long, t: Long) = lastBoundaryT.coerceIn(prevT, t)
@@ -389,6 +412,7 @@ class RecorderCore(
         val out = ArrayList<Output>()
         if (auto && !(spec?.autoStop == true && isFinalTimedPart())) {
             lastAutoLapT = t
+            noteLapStep(lapCount, realigns = true)
             out.add(Output.Lap(lapCount++, t, LapSource.auto))
         }
         lastBoundaryT = t

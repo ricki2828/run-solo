@@ -4,6 +4,7 @@ import app.runsolo.core.journal.JournalCodec
 import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.journal.JournalReplay
 import app.runsolo.core.journal.RunEvent
+import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.LiveBoard
 import app.runsolo.core.model.LiveBoardKind
 import app.runsolo.core.model.LiveContext
@@ -37,6 +38,12 @@ class LiveCoachLifecycleTest {
 
     private inner class Shell(val mode: RunMode, val spec: SessionSpec?, val ctx: LiveContext?) {
         val lines = ArrayList<JournalLine>()
+
+        /** Device time lost to kills so far (a hook-driven kill shifts every later second). */
+        var offsetMs = 0L
+
+        /** Cumulative (distance, active ms) at each lap, as the shell's lap summaries hold them. */
+        val lapTotals = ArrayList<Pair<Double, Long>>()
         val said = ArrayList<Said>()
         var core = RecorderCore(mode, spec, config())
         var ticker = SampleTicker(wall = { 0L })
@@ -46,7 +53,7 @@ class LiveCoachLifecycleTest {
         var eastM = 0.0
 
         fun config(curve: List<Double>? = ctx?.cooperCurve) =
-            RecorderCore.Config(volumeKeyLaps = false, cooperCurve = CooperCurve.fromFractions(curve) ?: CooperCurve.DEFAULT)
+            RecorderCore.Config(volumeKeyLaps = true, cooperCurve = CooperCurve.fromFractions(curve) ?: CooperCurve.DEFAULT)
 
         fun start(t: Long) {
             lines.add(JournalLine.Header(t, t, "run", "d", "a", "UTC", mode, spec, Units.km))
@@ -68,11 +75,21 @@ class LiveCoachLifecycleTest {
             prevD = d
         }
 
+        /** A LAP press between ticks, as the service's lap(): journaled with the core's outputs. */
+        fun press(t: Long, source: LapSource) = handle(core.lap(source, t).second, t)
+
         fun startReps(t: Long) = handle(core.startReps(t).second, t)
 
         private fun handle(out: List<RecorderCore.Output>, t: Long) {
             for (o in out) when (o) {
-                is RecorderCore.Output.Lap -> lines.add(JournalLine.Lap(o.t, o.t, o.source))
+                is RecorderCore.Output.Lap -> {
+                    lines.add(JournalLine.Lap(o.t, o.t, o.source))
+                    // As LapDispatch: the distance interpolated at the lap's (back-dated) time.
+                    val d = if (t <= prevT) ticker.distanceM else prevD + (ticker.distanceM - prevD) * (o.t - prevT).toDouble() / (t - prevT)
+                    val a = core.status(o.t).activeMs
+                    lapTotals.add(d to a)
+                    coach.lapEnded(core.lapStep(o.index), d, a)
+                }
                 is RecorderCore.Output.Cue -> {
                     lines.add(JournalLine.Cue(o.t, o.t, o.kind))
                     val base = CueWords.text(o.kind, o.value, spec, core.phase, core.repIndex, core.stepIndex, o.index)
@@ -92,6 +109,7 @@ class LiveCoachLifecycleTest {
         /** kill -9 at [t], dark for [gapMs], then resumeRecovered: everything rebuilt from the journal. */
         fun killAndResume(t: Long, gapMs: Long) {
             val now = t + gapMs
+            offsetMs += gapMs
             // As startResumed: the gap line first, so the restored clock excludes the dark span.
             lines.add(JournalLine.Gap(now, now, gapMs))
             val bytes = lines.joinToString("") { JournalCodec.encode(it) + "\n" }.toByteArray()
@@ -100,7 +118,10 @@ class LiveCoachLifecycleTest {
             ticker = SampleTicker(wall = { 0L })
             for (e in replay.events) if (e is RunEvent.Sample && e.hasFix) ticker.filter.offer(LocationFix(e.t, e.lat!!, e.lon!!, e.altM, e.accuracyM!!, e.speedMps))
             ticker.filter.reanchor() // the runner moved in the dark; the jump is not counted
-            coach = LiveCoach(replay.liveContext, mode, spec, replay.cuesFired).also { it.resumeAt(core.distanceM) }
+            coach = LiveCoach(replay.liveContext, mode, spec, replay.cuesFired).also {
+                it.restoreReps(replay.events, core, lapTotals)
+                it.resumeAt(core.distanceM)
+            }
             prevT = now
             prevD = ticker.distanceM
             eastM += 3.5 * gapMs / 1_000 // kept running in the dark
@@ -191,5 +212,65 @@ class LiveCoachLifecycleTest {
         assertEquals(6, six.single().fire!!.index)
         assertEquals(listOf(3, 6, 9), sh.compares().map { it.index }, "rank at 3, 6 and 9 only, once each")
         assertEquals(1, sh.said.count { it.text.startsWith("5 minutes.") }, "no minute is said again (or late) after the restore")
+    }
+
+    // ---- live rep paces by step (#48 review P1, P2), through the real core and a restore ----
+
+    private fun intervals(recoveryS: Int) = SessionSpec(
+        templateId = "custom:t", templateVersion = 1, name = "3 × 400 m", warmupSeconds = null, cooldownSeconds = null,
+        lapLockout = false, cueProfile = app.runsolo.core.model.CueProfile.standard, hrBand = null,
+        steps = (1..3).flatMap { r ->
+            listOfNotNull(
+                app.runsolo.core.model.Step(app.runsolo.core.model.StepKind.work, app.runsolo.core.model.TargetKind.distance, 400, app.runsolo.core.model.RecoveryStyle.run, r),
+                if (r < 3) app.runsolo.core.model.Step(app.runsolo.core.model.StepKind.recovery, app.runsolo.core.model.TargetKind.time, recoveryS, app.runsolo.core.model.RecoveryStyle.jog, r) else null,
+            )
+        },
+    )
+
+    /** 60 s warm-up, LAP, then 4 m/s in work and 2 m/s otherwise until [seconds]; hooks per second. */
+    private fun intervalRun(spec: SessionSpec, seconds: Int, each: (Shell, Int) -> Unit = { _, _ -> }): Shell {
+        val sh = Shell(RunMode.intervals, spec, null)
+        sh.start(0)
+        var s = 1
+        while (s <= seconds) {
+            val mps = if (sh.core.phase == app.runsolo.core.model.Phase.work) 4.0 else 2.0
+            sh.second(s * 1_000L + sh.offsetMs, mps)
+            if (s == 60) sh.press(60_000, LapSource.button)
+            each(sh, s)
+            s++
+        }
+        return sh
+    }
+
+    @Test
+    fun `0 s recoveries - three reps back to back, each its own 400 m at work pace`() {
+        val sh = intervalRun(intervals(0), 60 + 3 * 105)
+        val paces = sh.coach.repPaces
+        assertEquals(3, paces.size, paces.toString())
+        assertTrue(paces.all { it != null && it in 245.0..256.0 }, "4 m/s is 250 s/km: $paces")
+    }
+
+    @Test
+    fun `a volume-key lap mid-rep splits the lap, not the rep`() {
+        val sh = intervalRun(intervals(60), 60 + 3 * 105 + 2 * 60 + 10) { shell, s -> if (s == 110) shell.press(110_500, LapSource.volumeKey) }
+        val paces = sh.coach.repPaces
+        assertEquals(3, paces.size, paces.toString())
+        assertTrue(paces.all { it != null && it in 245.0..256.0 }, "no half rep, no shift: $paces")
+    }
+
+    @Test
+    fun `restore - the reps before the kill come back by step, the rep the kill cut is unclean`() {
+        var killed = false
+        val sh = intervalRun(intervals(0), 60 + 3 * 105 + 40) { shell, s ->
+            if (!killed && s == 60 + 150) { // mid rep 2
+                killed = true
+                shell.killAndResume(s * 1_000L + shell.offsetMs, 10_000)
+            }
+        }
+        val paces = sh.coach.repPaces
+        assertEquals(3, paces.size, paces.toString())
+        assertTrue(paces[0] != null && paces[0]!! in 245.0..256.0, "rep 1 rebuilt from the journal: $paces")
+        assertEquals(null, paces[1], "rep 2 spanned the kill")
+        assertTrue(paces[2] != null && paces[2]!! in 245.0..256.0, "rep 3 is clean: $paces")
     }
 }

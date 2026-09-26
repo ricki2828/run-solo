@@ -245,13 +245,12 @@ class RecordingSession(
         lapStartDist = lastLapDist
         dispatch.ticked(t, ticker.distanceM)
         // Compares already said stay said; a point passed while dead is dropped (BLOCK-1). The
-        // reps run so far give the live rep paces back.
+        // reps run so far give the live rep paces back, each by the step its lap ended; a rep
+        // with a kill gap inside it (this one included: the gap line is already journaled) is
+        // unclean.
         coach = LiveCoach(liveContext, mode, spec, replayed.cuesFired).also { it.kmSplits = kmSplits }
-        var prevLapD = 0.0
-        for (l in laps) {
-            coach.lapEnded(l.index.toInt(), l.distanceM - prevLapD, l.activeMs)
-            prevLapD = l.distanceM
-        }
+        var cumActive = 0L
+        coach.restoreReps(replayed.events, core, laps.map { l -> cumActive += l.activeMs; l.distanceM to cumActive })
         coach.resumeAt(ticker.distanceM)
         coachPrevT = t
         coachPrevD = ticker.distanceM
@@ -653,7 +652,7 @@ class RecordingSession(
         lapStartT = o.t
         val st = core.status(o.t)
         val activeMs = st.activeMs - lapStartActive
-        coach.lapEnded(o.index, distanceM - lapStartDist, activeMs)
+        coach.lapEnded(core.lapStep(o.index), distanceM, st.activeMs)
         lapStartDist = distanceM
         lapStartActive = st.activeMs
         laps.add(LapSummary(index = o.index.toLong(), tMs = st.elapsedMs, activeMs = activeMs, distanceM = distanceM, source = o.source.toPigeon()))

@@ -15,6 +15,7 @@ import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Step
 import app.runsolo.core.model.StepKind
 import app.runsolo.core.model.TargetKind
+import app.runsolo.core.record.RecorderCore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -120,8 +121,20 @@ class LiveCoachTest {
         entries = paces.mapIndexed { i, p -> LiveEntry("p$i", 0, liveRepPacesSecPerKm = p, finalMetric = 0.0) },
     )
 
-    /** Laps: 0 = warm-up, then work / recovery alternating. A 400 m rep at [pace] s/km. */
-    private fun rep(coach: LiveCoach, lapIndex: Int, pace: Double) = coach.lapEnded(lapIndex, 400.0, (pace * 400).toLong())
+    /** Laps as the shell publishes them: cumulative distance and active time, with the core's [RecorderCore.LapStep]. */
+    private class Laps(val coach: LiveCoach) {
+        var d = 0.0
+        var a = 0L
+        fun lap(step: RecorderCore.LapStep, metres: Double, ms: Long) {
+            d += metres
+            a += ms
+            coach.lapEnded(step, d, a)
+        }
+        fun warmUp() = lap(RecorderCore.LapStep(null, true), 150.0, 60_000)
+        /** Work step [step] (400 m) at [pace] s/km ends here. */
+        fun rep(step: Int, pace: Double) = lap(RecorderCore.LapStep(step, true), 400.0, (pace * 400).toLong())
+        fun recovery(step: Int) = lap(RecorderCore.LapStep(step, true), 180.0, 90_000)
+    }
 
     private fun repEnd(coach: LiveCoach, recoveryStep: Int?, nextMs: Long? = 90_000, last: Boolean = false) =
         if (last) coach.atCue(CueKind.phaseEnd, null, null, Phase.cooldown, null, 0, null)
@@ -131,13 +144,14 @@ class LiveCoachTest {
     fun `rep ends - mean of reps 1 to r ranked, a prior with an unclean rep dropped for that r`() {
         val board = reps(listOf(240.0, 240.0, 240.0, 240.0), listOf(230.0, 250.0, 235.0), listOf(250.0, null, 245.0, 240.0))
         val coach = LiveCoach(ctx(board), RunMode.intervals, fourHundreds)
-        coach.lapEnded(0, 150.0, 60_000) // warm-up: no rep
-        rep(coach, 1, 235.0)
+        val l = Laps(coach)
+        l.warmUp()
+        l.rep(0, 235.0)
         val r1 = assertNotNull(repEnd(coach, 1)).result
         assertEquals(listOf(2, 4), listOf(r1.rank, r1.of), "235: behind 230, ahead of 240 and 250")
         assertEquals(5.0, r1.deltaSecPerKm!!, 1e-9)
-        coach.lapEnded(2, 180.0, 90_000) // recovery lap: not a rep
-        rep(coach, 3, 245.0)
+        l.recovery(1)
+        l.rep(2, 245.0)
         val r2 = assertNotNull(repEnd(coach, 3)).result
         // Mean 240 vs 240 (first), 240 (second), third dropped (null in rep 2): of = 3.
         assertEquals(listOf(1, 3), listOf(r2.rank, r2.of))
@@ -148,12 +162,17 @@ class LiveCoachTest {
         val short = fourHundreds.copy(cueProfile = CueProfile.short)
         val board = reps(listOf(240.0, 240.0, 240.0, 240.0), listOf(250.0, 250.0, 250.0, 250.0))
         val coach = LiveCoach(ctx(board), RunMode.intervals, short)
-        rep(coach, 1, 235.0)
+        val l = Laps(coach)
+        l.warmUp()
+        l.rep(0, 235.0)
         assertNull(repEnd(coach, 1))
         val std = LiveCoach(ctx(board), RunMode.intervals, fourHundreds)
-        rep(std, 1, 235.0)
+        Laps(std).apply { warmUp(); rep(0, 235.0) }
         assertFalse(repEnd(std, 1, nextMs = 15_000)!!.overlay)
-        for (l in listOf(3, 5, 7)) rep(coach, l, 235.0)
+        for (step in listOf(2, 4, 6)) {
+            l.recovery(step - 1)
+            l.rep(step, 235.0)
+        }
         val last = assertNotNull(repEnd(coach, null, last = true))
         assertEquals("Best start to this session you've had.", last.text)
     }
@@ -161,8 +180,33 @@ class LiveCoachTest {
     @Test
     fun `an unclean live rep stops the compare`() {
         val coach = LiveCoach(ctx(reps(listOf(240.0, 240.0), listOf(250.0, 250.0))), RunMode.intervals, fourHundreds)
-        coach.lapEnded(1, 0.0, 90_000)
+        Laps(coach).apply { warmUp(); lap(RecorderCore.LapStep(0, true), 0.0, 90_000) }
         assertNull(repEnd(coach, 1))
+    }
+
+    @Test
+    fun `a rep is its step - a 0 s recovery (no lap) and a volume-key lap mid-rep shift nothing (review P1)`() {
+        val coach = LiveCoach(null, RunMode.intervals, fourHundreds)
+        val l = Laps(coach)
+        l.warmUp()
+        // Rep 1 split by a volume-key lap (ends nothing, starts nothing): one rep over both parts.
+        l.lap(RecorderCore.LapStep(null, false), 200.0, 50_000)
+        l.lap(RecorderCore.LapStep(0, true), 200.0, 50_000)
+        // A 0 s recovery: the next lap ends work step 2 directly after step 0 (no recovery lap).
+        l.rep(2, 240.0)
+        assertEquals(listOf(250.0, 240.0), coach.repPaces.map { it!! })
+    }
+
+    @Test
+    fun `a rep with a kill gap inside it is unclean, the next one is clean again (review P2)`() {
+        val coach = LiveCoach(null, RunMode.intervals, fourHundreds)
+        val l = Laps(coach)
+        l.warmUp()
+        coach.gap()
+        l.rep(0, 250.0)
+        l.recovery(1)
+        l.rep(2, 240.0)
+        assertEquals(listOf(null, 240.0), coach.repPaces)
     }
 
     // ---- Cooper, target ----

@@ -1,6 +1,7 @@
 package app.runsolo.core.live
 
 import app.runsolo.core.journal.JournalLine
+import app.runsolo.core.journal.RunEvent
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.CueProfile
 import app.runsolo.core.model.LiveBoardKind
@@ -11,6 +12,7 @@ import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.StepKind
 import app.runsolo.core.model.TargetKind
+import app.runsolo.core.record.RecorderCore
 import kotlin.math.floor
 
 /**
@@ -77,17 +79,59 @@ class LiveCoach(
         lastKmActiveMs = null // the next km's split pace spans the dark gap: not said
     }
 
+    /** A session with no warm-up begins step 1 at Start, from 0 m; otherwise the warm-up lap starts it. */
+    private var stepStartD: Double? = if (spec?.warmupSeconds == 0) 0.0 else null
+    private var stepStartActiveMs = 0L
+    private var stepHadGap = false
+
     /**
-     * A lap was published (live distance and active time of the lap itself). A lap that ended a
-     * work step adds that rep's live untrimmed pace (lap distance ÷ lap time), null when there is
-     * no distance to speak of.
+     * A lap was published: [step] = what it did to the steps ([RecorderCore.lapStep]),
+     * [totalDistanceM] / [activeMs] = the run's cumulative live distance and active time at it.
+     * A lap that ended a work step adds that rep's live untrimmed pace: the step's distance over
+     * its active time, from the lap that started the step, so a 0 s recovery (no lap) or a
+     * volume-key lap mid-rep (ends nothing) never shifts the reps (#48 review P1). A rep that
+     * spanned a kill gap is null, unclean, as I3 and LB2 treat it; so is one with no distance.
      */
-    fun lapEnded(lapIndex: Int, distanceM: Double, activeMs: Long) {
+    fun lapEnded(step: RecorderCore.LapStep?, totalDistanceM: Double, activeMs: Long) {
         val s = spec ?: return
-        if (s.steps.isEmpty()) return
-        val step = s.steps.getOrNull(lapIndex - 1) ?: return // lap 0 is the warm-up
-        if (step.kind != StepKind.work) return
-        livePaces.add(if (distanceM >= 1.0 && activeMs > 0) activeMs / 1_000.0 / (distanceM / 1_000) else null)
+        if (s.steps.isEmpty() || step == null) return
+        val ended = step.endedStep?.let { s.steps.getOrNull(it) }
+        if (ended?.kind == StepKind.work) {
+            val d0 = stepStartD
+            val d = d0?.let { totalDistanceM - it } ?: 0.0
+            val ms = activeMs - stepStartActiveMs
+            livePaces.add(if (d0 == null || stepHadGap || d < 1.0 || ms <= 0) null else ms / 1_000.0 / (d / 1_000))
+        }
+        if (step.startsStep) {
+            stepStartD = totalDistanceM
+            stepStartActiveMs = activeMs
+            stepHadGap = false
+        }
+    }
+
+    /** A kill gap (the process was dead) inside the current step: its rep, if it is one, is unclean. */
+    fun gap() {
+        stepHadGap = true
+    }
+
+    /**
+     * After a restore: the reps before the kill, in journal order, each by the step its lap ended
+     * ([core] replayed the laps, so [RecorderCore.lapStep] holds them); a gap marks the step it
+     * falls in unclean, the resume's own gap (journaled first) included. [lapTotals] = the run's
+     * cumulative (distance m, active ms) at each journaled lap.
+     */
+    fun restoreReps(events: List<RunEvent>, core: RecorderCore, lapTotals: List<Pair<Double, Long>>) {
+        var i = 0
+        for (e in events) {
+            when (e) {
+                is RunEvent.Gap -> gap()
+                is RunEvent.Lap -> {
+                    lapTotals.getOrNull(i)?.let { (d, a) -> lapEnded(core.lapStep(i), d, a) }
+                    i++
+                }
+                else -> Unit
+            }
+        }
     }
 
     /**
