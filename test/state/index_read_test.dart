@@ -164,6 +164,7 @@ void main() {
         names: engine.EventNames(parkrun: 'Saturday 5K'),
       ),
     );
+    stores.add(other);
     await other.list();
     expect(other.decoded, hasLength(4));
     final after = (await other.readIndex()).inputs;
