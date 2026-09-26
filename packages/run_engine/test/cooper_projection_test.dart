@@ -262,6 +262,42 @@ void main() {
       expect(m, [for (var i = 1; i <= 12; i++) 240.0 * i]);
     });
 
+    test('the I2 contract Cooper (one 12:00 lap) starts at 0', () {
+      final raw = jsonDecode(
+        File('test/fixtures/contract/cooper_12min.json').readAsStringSync(),
+      ) as Map<String, Object?>;
+      final run = RunFile.fromJson(raw);
+      expect(CooperProjection.testStartMs(run), 0);
+      final m = CooperProjection.minuteDistances(run)!;
+      expect(m.last, closeTo(run.distanceM, 1e-6));
+    });
+
+    test('no warm-up, then a cool-down lap: the 12:00 lap, not its end', () {
+      final base = cooperRun(testS: 900);
+      final run = base.copyWith(
+        laps: [
+          Lap(
+            index: 0,
+            t0Ms: 0,
+            t1Ms: 720000,
+            d0M: 0,
+            d1M: 2880,
+            kind: LapKind.manual,
+          ),
+          Lap(
+            index: 1,
+            t0Ms: 720000,
+            t1Ms: 900000,
+            d0M: 2880,
+            d1M: base.distanceM,
+            kind: LapKind.auto,
+          ),
+        ],
+      );
+      expect(CooperProjection.testStartMs(run), 0);
+      expect(CooperProjection.minuteDistances(run)!.last, 2880);
+    });
+
     test('a pre-I2 file with no lap boundary starts at 0', () {
       final run = cooperRun();
       expect(CooperProjection.testStartMs(run), 0);

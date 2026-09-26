@@ -61,14 +61,20 @@ abstract final class CooperProjection {
     );
   }
 
-  /// When the test itself started, in ms since the run start: the end of
-  /// the warm-up lap (native journals "Start reps" as a button lap), or 0
-  /// for a Cooper file with no lap boundary (recorded before I2).
+  /// When the test itself started, in ms since the run start. The lap that
+  /// lasts 12:00 (± 5 s) is the test (I2 writes the work step as one lap:
+  /// the whole file when the test starts at once, after the warm-up lap
+  /// when "Start reps" ended one, before a cool-down lap if the runner kept
+  /// going). With no such lap: the end of the first lap when there are
+  /// several, else 0 (a file with one open lap, or none).
   static int testStartMs(RunFile run) {
     final laps = [
       for (final l in run.laps)
         if (l.kind != LapKind.pause) l,
     ];
+    for (final l in laps) {
+      if ((l.durationMs - testSeconds * 1000).abs() <= 5000) return l.t0Ms;
+    }
     return laps.length >= 2 ? laps.first.t1Ms : 0;
   }
 
