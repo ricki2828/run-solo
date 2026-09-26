@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../engine/live_figures.dart' show FiredNudge;
 import '../run_mode.dart';
 import 'session_spec.dart';
 
@@ -311,6 +312,7 @@ class RunFile {
     this.pauses = const [],
     this.gaps = const [],
     required this.samples,
+    this.nudgesFired = const [],
     this.readSchema = schema,
   });
 
@@ -344,6 +346,12 @@ class RunFile {
   final List<Lap> laps;
   final List<Span> pauses;
   final List<Span> gaps;
+
+  /// The nudges the recorder spoke (the journal's `cue_fired` nudge lines,
+  /// copied at finalise): CR1 blocks them on the next run of the board.
+  /// Optional key `nudges_fired`, written only when there are some, so a
+  /// run without nudges is byte-for-byte what schema 3 always wrote.
+  final List<FiredNudge> nudgesFired;
   final List<Sample> samples;
 
   int get elapsedMs => samples.isEmpty ? 0 : samples.last.tMs;
@@ -360,6 +368,7 @@ class RunFile {
     List<Span>? pauses,
     List<Span>? gaps,
     List<Sample>? samples,
+    List<FiredNudge>? nudgesFired,
   }) => RunFile(
     id: id ?? this.id,
     device: device,
@@ -376,6 +385,7 @@ class RunFile {
     pauses: pauses ?? this.pauses,
     gaps: gaps ?? this.gaps,
     samples: samples ?? this.samples,
+    nudgesFired: nudgesFired ?? this.nudgesFired,
   );
 
   Map<String, Object?> toJson() => {
@@ -393,6 +403,8 @@ class RunFile {
     'pauses': pauses.map((p) => p.toJson()).toList(),
     'gaps': gaps.map((g) => g.toJson()).toList(),
     'samples': samples.map((s) => s.toJson()).toList(),
+    if (nudgesFired.isNotEmpty)
+      'nudges_fired': [for (final n in nudgesFired) n.toJson()],
   };
 
   /// Strict: unknown schema, unknown or missing keys, wrong types, naive
@@ -414,6 +426,7 @@ class RunFile {
     'pauses',
     'gaps',
     'samples',
+    'nudges_fired',
   };
 
   factory RunFile.fromJson(Map<String, Object?> json) {
@@ -486,8 +499,21 @@ class RunFile {
       pauses: _readList(json, 'pauses').map(Span.fromJson).toList(),
       gaps: _readList(json, 'gaps').map(Span.fromJson).toList(),
       samples: samples,
+      nudgesFired: _readNudges(json['nudges_fired']),
       readSchema: schemaValue,
     );
+  }
+
+  static List<FiredNudge> _readNudges(Object? raw) {
+    if (raw == null) return const [];
+    if (raw is! List) {
+      throw RunFileFormatException('nudges_fired must be a list');
+    }
+    try {
+      return [for (final n in raw) FiredNudge.fromJson(n)];
+    } catch (e) {
+      throw RunFileFormatException('nudges_fired: $e');
+    }
   }
 
   /// Schema 3 reads `session`; schema ≤ 2 maps `preset` forward (plan §3.8).
