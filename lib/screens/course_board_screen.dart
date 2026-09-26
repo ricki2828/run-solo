@@ -74,12 +74,13 @@ class EventPanel extends StatelessWidget {
           _Row(
             key: const ValueKey('event-rank'),
             label: 'ON THIS COURSE',
+            semanticsHint: 'Opens the course board',
             // Rank on the board as it is now; a later run can have moved
             // it, so the verdict's NEW BEST and "#2" never read as a clash.
             value:
                 board.ranked.any((e) => e.run.start.isAfter(detail.run.start))
-                ? '#$rank of ${board.ranked.length} today · See the board'
-                : '#$rank of ${board.ranked.length} · See the board',
+                ? '#$rank of ${board.ranked.length} today'
+                : '#$rank of ${board.ranked.length}',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => CourseBoardScreen(courseId: courseId!),
@@ -101,9 +102,16 @@ class EventPanel extends StatelessWidget {
 }
 
 class _Row extends StatelessWidget {
-  const _Row({super.key, required this.label, required this.value, this.onTap});
+  const _Row({
+    super.key,
+    required this.label,
+    required this.value,
+    this.onTap,
+    this.semanticsHint,
+  });
   final String label;
   final String value;
+  final String? semanticsHint;
   final VoidCallback? onTap;
 
   @override
@@ -112,6 +120,7 @@ class _Row extends StatelessWidget {
     return Semantics(
       button: onTap != null,
       label: '$label, $value',
+      hint: semanticsHint,
       excludeSemantics: true,
       child: InkWell(
         onTap: onTap,
