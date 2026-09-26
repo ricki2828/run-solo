@@ -78,6 +78,28 @@ void main() {
     );
   });
 
+  test(
+    'the worker gets file paths only, and a job rebuilds from them',
+    () async {
+      final r1 = fourByFourFile(n: 1, start: d1);
+      final store = await storeWith([r1]);
+      List<DeriveJob>? seen;
+      store.deriveBatch = (jobs) async {
+        seen = jobs;
+        return {for (final j in jobs) j.id: null};
+      };
+      await store.list();
+      await store.derivedIdle;
+      final job = seen!.single;
+      expect(job.id, r1.id);
+      expect(File(job.runPath).existsSync(), isTrue);
+      expect(job.sidecarPath, endsWith('.edits.json'));
+      // What the worker runs: read, decode, analyse, derive, from the paths.
+      final d = job.run()!;
+      expect(d.live.repPacesSecPerKm, hasLength(4));
+    },
+  );
+
   test('list() never waits for a slow derived builder', () async {
     final r1 = fourByFourFile(n: 1, start: d1);
     final store = await storeWith([r1]);
@@ -114,7 +136,7 @@ void main() {
     var calls = 0;
     store.deriveBatch = (jobs) async {
       calls++;
-      return {for (final (run, _) in jobs) run.id: null};
+      return {for (final j in jobs) j.id: null};
     };
     await store.list();
     await store.derivedIdle;

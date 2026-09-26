@@ -534,23 +534,19 @@ class FileRunStore implements RunStore {
     }
   }
 
-  /// Builds Phase 4 derived data for [jobs] (run, analysis) and returns it
-  /// by run id (null = it threw). Default: one background isolate per
-  /// batch, never the UI isolate (plan WARN-3; ~50 ms per 2 h run, ~10 s
-  /// for 200 runs after an engine bump). Test seam.
+  /// Builds Phase 4 derived data for [jobs] and returns it by run id (null
+  /// = it threw). Default: one background isolate per batch, never the UI
+  /// isolate (plan WARN-3; ~50 ms per 2 h run, ~10 s for 200 runs after an
+  /// engine bump). Only paths cross into the worker (a few hundred bytes
+  /// per run): it reads, gunzips, decodes and analyses there, so the UI
+  /// isolate never copies a sample array. Test seam.
   @visibleForTesting
-  Future<Map<String, engine.RunDerived?>> Function(
-    List<(engine.RunFile, engine.RunAnalysis)> jobs,
-  )
+  Future<Map<String, engine.RunDerived?>> Function(List<DeriveJob> jobs)
   deriveBatch = _deriveInIsolate;
 
   static Future<Map<String, engine.RunDerived?>> _deriveInIsolate(
-    List<(engine.RunFile, engine.RunAnalysis)> jobs,
-  ) => Isolate.run(
-    () => {
-      for (final (run, a) in jobs) run.id: RunIndexEntry.deriveOrNull(run, a),
-    },
-  );
+    List<DeriveJob> jobs,
+  ) => Isolate.run(() => {for (final j in jobs) j.id: j.run()});
 
   Future<void>? _deriving;
 
@@ -567,14 +563,23 @@ class FileRunStore implements RunStore {
     Map<String, engine.RunAnalysis> analyses,
   ) {
     if (_deriving != null) return;
-    final jobs = <(engine.RunFile, engine.RunAnalysis)>[];
+    final jobs = <DeriveJob>[];
     final at = <String, RunIndexEntry>{};
     for (final e in entries.entries) {
-      final a = analyses[e.key];
-      if (e.value.derived != null || e.value.derivedFailed || a == null) {
+      if (e.value.derived != null ||
+          e.value.derivedFailed ||
+          analyses[e.key] == null) {
         continue;
       }
-      jobs.add((scanned[e.key]!.$1, a));
+      final file = scanned[e.key]!.$3;
+      jobs.add(
+        DeriveJob(
+          id: e.key,
+          runPath: file.path,
+          sidecarPath: _sidecarFor(file).path,
+          runEngine: _analyser.runEngine,
+        ),
+      );
       at[e.key] = e.value;
     }
     if (jobs.isEmpty) return;
@@ -582,7 +587,7 @@ class FileRunStore implements RunStore {
   }
 
   Future<void> _fillDerived(
-    List<(engine.RunFile, engine.RunAnalysis)> jobs,
+    List<DeriveJob> jobs,
     Map<String, RunIndexEntry> at,
   ) async {
     try {
@@ -820,3 +825,49 @@ class FileRunStore implements RunStore {
 /// Phase 1 name, kept for callers; the store is the same object.
 typedef MemoryHistoryStore = MemoryRunStore;
 typedef FileHistoryStore = FileRunStore;
+
+/// One run's Phase 4 derived-data job: file paths only, so the message to
+/// the worker isolate is tiny. [run] executes in the worker.
+@immutable
+class DeriveJob {
+  const DeriveJob({
+    required this.id,
+    required this.runPath,
+    required this.sidecarPath,
+    this.runEngine = const engine.RunEngine(),
+  });
+
+  final String id;
+  final String runPath;
+  final String sidecarPath;
+
+  /// The store's engine (same constants as the UI-side analysis).
+  final engine.RunEngine runEngine;
+
+  /// Read, decode and analyse the run, then derive; null when any step
+  /// throws. The analysis has no priors and no profile: neither changes
+  /// the reps, laps or gates the derived data reads (only the verdict word
+  /// and HR zones, which it does not use).
+  engine.RunDerived? run() {
+    try {
+      final text = utf8.decode(gzip.decode(File(runPath).readAsBytesSync()));
+      final r = engine.RunFileCodec.decode(text);
+      final sc = File(sidecarPath);
+      engine.RunSidecar? sidecar;
+      if (sc.existsSync()) {
+        try {
+          sidecar = engine.RunSidecarCodec.decode(sc.readAsStringSync());
+        } catch (_) {
+          sidecar = null;
+        }
+      }
+      return RunIndexEntry.deriveOrNull(
+        r,
+        runEngine.analyze(r, sidecar: sidecar),
+      );
+    } catch (e) {
+      debugPrint('index: derived job $id failed ($e)');
+      return null;
+    }
+  }
+}
