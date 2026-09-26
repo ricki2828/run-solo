@@ -28,16 +28,20 @@ typedef CooperTest = ({
   List<double> minuteM,
 });
 
-/// Every valid test in [runs], oldest first.
+/// Every valid test in [runs], oldest first. Reads the index row (W5b: a
+/// History summary carries no analysis on the file store).
 List<CooperTest> cooperTests(List<RunSummary> runs) {
   final out = <CooperTest>[];
   for (final r in runs) {
-    final c = r.analysis?.cooper;
-    final e = c?.estimate;
-    if (r.mode != RecordMode.cooper || e == null || c!.minuteM == null) {
+    final c = r.cooper;
+    if (r.mode != RecordMode.cooper ||
+        c == null ||
+        !c.valid ||
+        c.vo2 == null ||
+        c.minuteM.length != engine.CooperProjection.minutes) {
       continue;
     }
-    out.add((id: r.id, date: r.start, vo2: e.vo2, minuteM: c.minuteM!));
+    out.add((id: r.id, date: r.start, vo2: c.vo2!, minuteM: c.minuteM));
   }
   out.sort((a, b) => a.date.compareTo(b.date));
   return out;

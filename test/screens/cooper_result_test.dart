@@ -84,6 +84,10 @@ void main() {
     final b = cooperTestFile(n: 2, start: d2, mps: 3.9);
     await openResult(tester, [a, b], b.id);
     expect(find.text('#2 of 2 tests'), findsOneWidget);
+    // The ghost stays the typical curve until test 3 (curveFor switches
+    // after two valid tests).
+    expect(find.text('vs typical curve (research-based)'), findsOneWidget);
+    expect(find.text('vs your usual'), findsNothing);
     expect(
       find.byKey(const ValueKey('cooper-change')),
       findsNothing,

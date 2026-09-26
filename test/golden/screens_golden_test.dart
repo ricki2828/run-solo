@@ -545,7 +545,9 @@ void main() {
     );
     await pumpTimes(tester, 6);
     await tester.tap(find.text('Test'));
-    await pumpTimes(tester, 4);
+    // Let the chips' selected outline finish moving (#61 review P3: the
+    // golden caught Intervals mid-fade).
+    await settleAnimations(tester);
     await golden(tester, 'trend_cooper');
   });
 
