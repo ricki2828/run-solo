@@ -617,17 +617,21 @@ class RecordingSession(
     // ---- outputs ----
 
     private fun handle(outputs: List<RecorderCore.Output>, t: Long) {
+        // The journal keeps the core's order; what goes out puts a step's end cue after its lap.
         for (o in outputs) {
             when (o) {
+                is RecorderCore.Output.Lap -> writer.append(JournalLine.Lap(o.t, System.currentTimeMillis(), o.source))
+                is RecorderCore.Output.Cue -> writer.append(JournalLine.Cue(o.t, System.currentTimeMillis(), o.kind))
+                else -> Unit
+            }
+        }
+        for (o in LapDispatch.ordered(outputs)) {
+            when (o) {
                 is RecorderCore.Output.Lap -> {
-                    writer.append(JournalLine.Lap(o.t, System.currentTimeMillis(), o.source))
                     lapCount = o.index + 1
                     dispatch.lap(o, t, ticker.distanceM)
                 }
-                is RecorderCore.Output.Cue -> {
-                    writer.append(JournalLine.Cue(o.t, System.currentTimeMillis(), o.kind))
-                    dispatch.cue(o, hold = coach.holdsRepEndCues)
-                }
+                is RecorderCore.Output.Cue -> dispatch.cue(o, hold = coach.holdsRepEndCues)
                 is RecorderCore.Output.PhaseChanged -> dispatch.phase(o)
                 is RecorderCore.Output.AutoStop -> {
                     Log.i(TAG, "auto-stop at ${core.status(o.t).elapsedMs} ms")

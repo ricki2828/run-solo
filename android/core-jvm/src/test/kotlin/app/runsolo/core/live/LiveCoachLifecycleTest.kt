@@ -17,6 +17,7 @@ import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
 import app.runsolo.core.record.CueWords
+import app.runsolo.core.record.LapDispatch
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
 import kotlin.math.cos
@@ -97,9 +98,14 @@ class LiveCoachLifecycleTest {
         fun startReps(t: Long) = handle(core.startReps(t).second, t)
 
         private fun handle(out: List<RecorderCore.Output>, t: Long) {
+            // As RecordingSession: journaled in the core's order, sent with a step's end cue after its lap.
             for (o in out) when (o) {
+                is RecorderCore.Output.Lap -> lines.add(JournalLine.Lap(o.t, o.t, o.source))
+                is RecorderCore.Output.Cue -> lines.add(JournalLine.Cue(o.t, o.t, o.kind))
+                else -> Unit
+            }
+            for (o in LapDispatch.ordered(out)) when (o) {
                 is RecorderCore.Output.Lap -> {
-                    lines.add(JournalLine.Lap(o.t, o.t, o.source))
                     // As LapDispatch: the distance interpolated at the lap's (back-dated) time.
                     val d = if (t <= prevT) ticker.distanceM else prevD + (ticker.distanceM - prevD) * (o.t - prevT).toDouble() / (t - prevT)
                     val a = core.status(o.t).activeMs
@@ -107,7 +113,6 @@ class LiveCoachLifecycleTest {
                     coach.lapEnded(core.lapStep(o.index), d, a)
                 }
                 is RecorderCore.Output.Cue -> {
-                    lines.add(JournalLine.Cue(o.t, o.t, o.kind))
                     goal.atCue(o.kind, core.phase, core.finalStepEnd)?.let {
                         goals.add(it)
                         followUp.cancel()
@@ -295,20 +300,20 @@ class LiveCoachLifecycleTest {
 
     // ---- live rep paces by step (#48 review P1, P2), through the real core and a restore ----
 
-    private fun intervals(recoveryS: Int) = SessionSpec(
-        templateId = "custom:t", templateVersion = 1, name = "3 × 400 m", warmupSeconds = null, cooldownSeconds = null,
+    private fun intervals(recoveryS: Int, reps: Int = 3) = SessionSpec(
+        templateId = "custom:t", templateVersion = 1, name = "$reps × 400 m", warmupSeconds = null, cooldownSeconds = null,
         lapLockout = false, cueProfile = app.runsolo.core.model.CueProfile.standard, hrBand = null,
-        steps = (1..3).flatMap { r ->
+        steps = (1..reps).flatMap { r ->
             listOfNotNull(
                 app.runsolo.core.model.Step(app.runsolo.core.model.StepKind.work, app.runsolo.core.model.TargetKind.distance, 400, app.runsolo.core.model.RecoveryStyle.run, r),
-                if (r < 3) app.runsolo.core.model.Step(app.runsolo.core.model.StepKind.recovery, app.runsolo.core.model.TargetKind.time, recoveryS, app.runsolo.core.model.RecoveryStyle.jog, r) else null,
+                if (r < reps) app.runsolo.core.model.Step(app.runsolo.core.model.StepKind.recovery, app.runsolo.core.model.TargetKind.time, recoveryS, app.runsolo.core.model.RecoveryStyle.jog, r) else null,
             )
         },
     )
 
     /** 60 s warm-up, LAP, then 4 m/s in work and 2 m/s otherwise until [seconds]; hooks per second. */
-    private fun intervalRun(spec: SessionSpec, seconds: Int, each: (Shell, Int) -> Unit = { _, _ -> }): Shell {
-        val sh = Shell(RunMode.intervals, spec, null)
+    private fun intervalRun(spec: SessionSpec, seconds: Int, ctx: LiveContext? = null, each: (Shell, Int) -> Unit = { _, _ -> }): Shell {
+        val sh = Shell(RunMode.intervals, spec, ctx)
         sh.start(0)
         var s = 1
         while (s <= seconds) {
@@ -351,6 +356,45 @@ class LiveCoachLifecycleTest {
         assertTrue(paces[0] != null && paces[0]!! in 245.0..256.0, "rep 1 rebuilt from the journal: $paces")
         assertEquals(null, paces[1], "rep 2 spanned the kill")
         assertTrue(paces[2] != null && paces[2]!! in 245.0..256.0, "rep 3 is clean: $paces")
+    }
+
+    @Test
+    fun `the last rep's compare rides the cool-down cue and counts every rep`() {
+        val board = LiveBoard(
+            key = "d400x3", label = "3 × 400 m", kind = LiveBoardKind.intervals,
+            entries = listOf(240.0, 260.0).mapIndexed { i, p -> LiveEntry("r$i", 0, liveRepPacesSecPerKm = List(3) { p }, finalMetric = p) },
+        )
+        val ctx = LiveContext(boards = listOf(board), builtAtMs = 0, engineVersion = 1)
+        val sh = intervalRun(intervals(60), 60 + 3 * 105 + 2 * 60 + 30, ctx)
+        assertEquals(listOf(1, 2, 3), sh.compares().map { it.index }, sh.said.toString())
+        val last = sh.said.single { it.fire?.index == 3 }
+        assertTrue(last.text.startsWith("Done. Cool down."), last.text)
+        assertEquals(2, last.fire!!.result.rank, "250 s/km over all 3 reps: behind 240, ahead of 260")
+    }
+
+    @Test
+    fun `a kill during rep 3 of 8 x 400 - rep 3 has no compare, reps 4 to 8 compare on the clean reps, the last included`() {
+        val board = LiveBoard(
+            key = "d400x8", label = "8 × 400 m", kind = LiveBoardKind.intervals,
+            entries = listOf(240.0, 260.0).mapIndexed { i, p -> LiveEntry("r$i", 0, liveRepPacesSecPerKm = List(8) { p }, finalMetric = p) },
+        )
+        val ctx = LiveContext(boards = listOf(board), builtAtMs = 0, engineVersion = 1)
+        // 60 s warm-up, then 100 s reps at 4 m/s and 60 s recoveries: rep 3 runs from about 380 s to 480 s.
+        var killed = false
+        val sh = intervalRun(intervals(60, reps = 8), 60 + 8 * 100 + 7 * 60 + 60, ctx) { shell, s ->
+            if (!killed && s == 420) {
+                killed = true
+                shell.killAndResume(s * 1_000L + shell.offsetMs, 10_000)
+            }
+        }
+        assertEquals(listOf(1, 2, 4, 5, 6, 7, 8), sh.compares().map { it.index }, sh.said.toString())
+        val paces = sh.coach.repPaces
+        assertEquals(null, paces[2], "rep 3 spanned the kill: $paces")
+        assertTrue(paces.filterIndexed { i, _ -> i != 2 }.all { it != null }, "$paces")
+        val last = sh.said.single { it.fire?.index == 8 }
+        assertTrue(last.text.startsWith("Done. Cool down."), last.text)
+        assertEquals(2, last.fire!!.result.rank, "250 s/km over the 7 clean reps: behind 240, ahead of 260")
+        assertEquals(2, sh.compares().single { it.index == 4 }.result.rank)
     }
 
     // ---- GOAL runs (§G, G2) ----
