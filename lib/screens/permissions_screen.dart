@@ -272,7 +272,9 @@ class _PermissionsScreenState extends State<PermissionsScreen>
   }
 }
 
-/// A 2 dp warn outline around a row CONTINUE pointed at.
+/// A warn tint behind the row CONTINUE pointed at. A background, not a
+/// border: a border moves the row (2 dp) or, as a foreground, cuts through
+/// the NEEDED pill at the row's edge.
 class _Marked extends StatelessWidget {
   const _Marked({super.key, required this.marked, required this.child});
   final bool marked;
@@ -281,16 +283,11 @@ class _Marked extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    // Foreground: the outline never moves the row (an unmarked border would
-    // shift every row below it by 2 dp).
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
-      foregroundDecoration: BoxDecoration(
+      decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(Radii.button),
-        border: Border.all(
-          color: marked ? t.semWarn : Colors.transparent,
-          width: 2,
-        ),
+        color: marked ? t.semWarn.withValues(alpha: 0.16) : Colors.transparent,
       ),
       child: child,
     );
