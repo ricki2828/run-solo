@@ -20,6 +20,8 @@ import app.runsolo.core.run.Finaliser
 import app.runsolo.core.run.JournalMigration
 import app.runsolo.core.run.RunPaths
 import app.runsolo.record.ExitDiagnostics
+import app.runsolo.record.GpsProbe
+import app.runsolo.record.LocationSource
 import app.runsolo.record.RecorderService
 import app.runsolo.record.RecordingSession
 import app.runsolo.record.ReplayRunner
@@ -35,6 +37,19 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     private val prefs = context.getSharedPreferences(RecorderService.PREFS, Context.MODE_PRIVATE)
 
     private fun active(): RecordingSession? = RecorderService.session ?: RecorderService.pending
+
+    /** Pre-start GPS readiness for the Start screen (main thread; see [GpsProbe]). */
+    private val probe by lazy {
+        GpsProbe(
+            hasPermission = { granted(Manifest.permission.ACCESS_FINE_LOCATION) },
+            source = { LocationSource.create(context, prefs.getBoolean(RecorderService.PREF_RAW_GPS, false)) },
+            emit = { RecorderEventBus.emit(it) },
+        )
+    }
+
+    override fun startGpsProbe() = probe.start()
+
+    override fun stopGpsProbe() = probe.stop()
 
     private fun granted(p: String) = ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
 
@@ -110,6 +125,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         mode == app.runsolo.core.model.RunMode.laps && prefs.getBoolean(RecorderService.PREF_VOLUME_KEY_LAPS, mode.volumeKeyLapsDefault)
 
     private fun startWith(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ((CoreSpec?) -> ReplayRunner?)?, liveContext: LiveContext? = null): StartResult {
+        probe.stop() // the run's own location request takes over
         active()?.let { return StartResult(runId = it.runId, error = null) }
         val coreMode = mode.toCore()
         val coreSpec = coreSpec(coreMode, spec).getOrElse {
@@ -143,6 +159,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     }
 
     override fun resumeRecovered(runId: String): StartResult {
+        probe.stop()
         active()?.let { return StartResult(runId = it.runId, error = if (it.runId == runId) null else StartError.ALREADY_RUNNING) }
         if (!RunPaths.isSafeId(runId) || !fs.exists(RunPaths.journal(runId))) return StartResult(runId = null, error = StartError.NO_SUCH_JOURNAL)
         val replayed = try {

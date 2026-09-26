@@ -216,21 +216,21 @@ object ContractFixtures {
     }
 
     /**
-     * parkrun (K1 reuses I2): one 5000 m distance step with auto-stop. 120 s warm-up jog, button
-     * LAP on the start line, 5 km at 4 m/s; the core stops the recording at 5.00 km (no lap on
-     * the finish line: the stop ends the 5 km lap).
+     * parkrun (K1 reuses I2): one 5000 m distance step with auto-stop and no warm-up (founder
+     * 26-Sep): Start on the start line begins the step, 5 km at 4 m/s; the core stops the
+     * recording at 5.00 km (no lap on the finish line: the stop ends the one lap).
      */
     private fun parkrun5kAutoStop(): String {
         val spec = SessionSpec(
-            templateId = "parkrun", templateVersion = 1, name = "parkrun",
-            warmupSeconds = null, cooldownSeconds = null, lapLockout = false, autoStop = true, cueProfile = CueProfile.standard, hrBand = null,
+            templateId = "parkrun", templateVersion = 1, name = "5K time trial",
+            warmupSeconds = 0, cooldownSeconds = null, lapLockout = false, autoStop = true, cueProfile = CueProfile.standard, hrBand = null,
             steps = listOf(Step(StepKind.work, TargetKind.distance, 5_000, RecoveryStyle.run, 1)),
         )
-        val fixes = TraceFixture.straightLine(listOf(120 to 2.0, 1_400 to 4.0), LAT0, LON0, 5.0, T0)
+        val fixes = TraceFixture.straightLine(listOf(1_400 to 4.0), LAT0, LON0, 5.0, T0)
         val s = Session("contract-parkrun", RunMode.intervals, spec)
         for ((i, f) in fixes.withIndex()) {
             if (i == 0) continue
-            s.second(f, if (i > 120) 168 else 128) { if (i == 120) s.lap(LapSource.button) }
+            s.second(f, 168)
             if (s.autoStopped) break
         }
         check(s.autoStopped) { "parkrun fixture never auto-stopped" }

@@ -178,7 +178,8 @@ class SessionSpec {
   int templateVersion;
   String name;
 
-  /// null = open (ends on the first LAP / `startReps`); int = fixed seconds.
+  /// null = open (ends on the first LAP / `startReps`); 0 = none, step 1
+  /// starts at `start()` (parkrun); otherwise fixed seconds (300..1200).
   int? warmupSeconds;
 
   /// null = open (runs until Stop); int = fixed seconds.
@@ -568,6 +569,13 @@ abstract class RecorderApi {
   void discardJournal(String runId);
   void setCues(bool enabled);
 
+  /// Pre-start location readiness (the Start screen): fixes with the
+  /// recording's provider settings, a [GpsProbeEvent] about once a second.
+  /// Idempotent. Stopped by [stopGpsProbe], by any start, and when the app
+  /// leaves the foreground; foreground only, no service.
+  void startGpsProbe();
+  void stopGpsProbe();
+
   /// The user's volume-key LAP setting for Laps runs, persisted natively (the
   /// recorder reads it at start). Takes effect from the next run or resume,
   /// not the live one. Unset means on. Intervals, Free and Cooper never use
@@ -743,6 +751,33 @@ class CueEvent extends RecorderEvent {
   /// `projection`: the projected Cooper distance in metres, or a distance
   /// step's projected finish in ms; `minuteMark`: the minute. Null otherwise.
   double? value;
+}
+
+/// Pre-start GPS readiness, about 1 Hz while the probe runs. The "ready"
+/// threshold is the screen's; native sends the raw values.
+class GpsProbeEvent extends RecorderEvent {
+  GpsProbeEvent({
+    required this.fix,
+    this.lat,
+    this.lon,
+    this.accuracyM,
+    this.fixAgeMs,
+  });
+
+  /// A location arrived within the last 5 s.
+  bool fix;
+
+  /// Where the runner is now (with a fresh fix only): the app picks the event
+  /// course by its nearest known start. In memory only; nothing is stored
+  /// until the run records.
+  double? lat;
+  double? lon;
+
+  /// That fix's accuracy (m); null without a fresh fix.
+  double? accuracyM;
+
+  /// How long ago the last fix arrived; null if none yet.
+  int? fixAgeMs;
 }
 
 class FaultEvent extends RecorderEvent {

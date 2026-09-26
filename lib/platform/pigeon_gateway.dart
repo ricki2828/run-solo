@@ -56,6 +56,12 @@ class PigeonRecorderGateway implements RecorderGateway {
   Future<void> setCues(bool enabled) => _api.setCues(enabled);
 
   @override
+  Future<void> startGpsProbe() => _api.startGpsProbe();
+
+  @override
+  Future<void> stopGpsProbe() => _api.stopGpsProbe();
+
+  @override
   Future<void> setVolumeKeyLaps(bool enabled) => _api.setVolumeKeyLaps(enabled);
 }
 

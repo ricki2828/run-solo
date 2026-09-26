@@ -63,6 +63,8 @@ class SessionSpecTest {
         // Warm-up / cool-down: open, or fixed 300..1200 s.
         valid(SessionSpec.norwegian4x4().copy(warmupSeconds = 300, cooldownSeconds = 1200))
         invalid(SessionSpec.norwegian4x4().copy(warmupSeconds = 299))
+        valid(SessionSpec.norwegian4x4().copy(warmupSeconds = 0)) // no warm-up (parkrun)
+        invalid(SessionSpec.norwegian4x4().copy(cooldownSeconds = 0)) // 0 means none for the warm-up only
         invalid(SessionSpec.norwegian4x4().copy(cooldownSeconds = 1201))
         // Fartlek may be steps-empty; nothing else may.
         invalid(SessionSpec.FARTLEK.copy(templateId = "custom:x"))

@@ -223,15 +223,17 @@ class ContractFixturesTest {
     }
 
     @Test
-    fun `parkrun - auto-stopped at 5 00 km - the 5 km lap is the last, nothing dropped`() {
+    fun `parkrun - no warm-up, auto-stopped at 5 00 km - one lap from 0, nothing dropped`() {
         val m = fixture("parkrun_5k_autostop")
-        assertEquals(true, (m["session"] as Map<*, *>)["autoStop"])
+        val session = m["session"] as Map<*, *>
+        assertEquals(true, session["autoStop"])
+        assertEquals(0L, session["warmupSeconds"])
         val laps = laps(m)
-        assertEquals(2, laps.size) // warm-up, then the 5 km ended by the stop
-        assertEquals(120_000L, laps[0]["t1"])
-        val fiveK = (laps[1]["d1"] as Number).toDouble() - (laps[1]["d0"] as Number).toDouble()
+        assertEquals(1, laps.size, "the step began at Start; the stop ends the one lap: $laps")
+        assertEquals(0L, laps[0]["t0"])
+        val fiveK = (laps[0]["d1"] as Number).toDouble() - (laps[0]["d0"] as Number).toDouble()
         assertTrue(fiveK in 5_000.0..5_004.5, "5 km lap $fiveK m: at least 5 km, at most one sample over")
-        assertTrue((laps[1]["t1"] as Long) in 1_369_000L..1_373_000L, "stopped at ${laps[1]["t1"]} (1250 s at 4 m/s after the 120 s start, filter distance)")
+        assertTrue((laps[0]["t1"] as Long) in 1_248_000L..1_256_000L, "stopped at ${laps[0]["t1"]} (about 1250 s at 4 m/s, filter distance)")
     }
 
     @Test
@@ -312,11 +314,11 @@ class ContractFixturesTest {
     }
 
     @Test
-    fun `replay parkrun - auto-stopped at 5 00 km, the 5 km lap is the last`() {
+    fun `replay parkrun - no warm-up, auto-stopped at 5 00 km, one lap`() {
         val laps = laps(fixture("replay_parkrun"))
-        assertEquals(2, laps.size, laps.toString())
-        assertEquals(60_000L, laps[0]["t1"])
-        assertTrue(dist(laps[1]) in 5_000.0..5_004.5, "5 km lap ${dist(laps[1])} m")
+        assertEquals(1, laps.size, laps.toString())
+        assertEquals(0L, laps[0]["t0"])
+        assertTrue(dist(laps[0]) in 5_000.0..5_004.5, "5 km lap ${dist(laps[0])} m")
     }
 
     @Test

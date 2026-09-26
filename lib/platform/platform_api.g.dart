@@ -349,7 +349,8 @@ class SessionSpec {
 
   String name;
 
-  /// null = open (ends on the first LAP / `startReps`); int = fixed seconds.
+  /// null = open (ends on the first LAP / `startReps`); 0 = none, step 1
+  /// starts at `start()` (parkrun); otherwise fixed seconds (300..1200).
   int? warmupSeconds;
 
   /// null = open (runs until Stop); int = fixed seconds.
@@ -1719,6 +1720,74 @@ class CueEvent extends RecorderEvent {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// Pre-start GPS readiness, about 1 Hz while the probe runs. The "ready"
+/// threshold is the screen's; native sends the raw values.
+class GpsProbeEvent extends RecorderEvent {
+  GpsProbeEvent({
+    required this.fix,
+    this.lat,
+    this.lon,
+    this.accuracyM,
+    this.fixAgeMs,
+  });
+
+  /// A location arrived within the last 5 s.
+  bool fix;
+
+  /// Where the runner is now (with a fresh fix only): the app picks the event
+  /// course by its nearest known start. In memory only; nothing is stored
+  /// until the run records.
+  double? lat;
+
+  double? lon;
+
+  /// That fix's accuracy (m); null without a fresh fix.
+  double? accuracyM;
+
+  /// How long ago the last fix arrived; null if none yet.
+  int? fixAgeMs;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      fix,
+      lat,
+      lon,
+      accuracyM,
+      fixAgeMs,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static GpsProbeEvent decode(Object result) {
+    result as List<Object?>;
+    return GpsProbeEvent(
+      fix: result[0]! as bool,
+      lat: result[1] as double?,
+      lon: result[2] as double?,
+      accuracyM: result[3] as double?,
+      fixAgeMs: result[4] as int?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! GpsProbeEvent || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(fix, other.fix) && _deepEquals(lat, other.lat) && _deepEquals(lon, other.lon) && _deepEquals(accuracyM, other.accuracyM) && _deepEquals(fixAgeMs, other.fixAgeMs);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 class FaultEvent extends RecorderEvent {
   FaultEvent({
     required this.kind,
@@ -1984,14 +2053,17 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is CueEvent) {
       buffer.putUint8(164);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is GpsProbeEvent) {
       buffer.putUint8(165);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is FaultEvent) {
       buffer.putUint8(166);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is StateEvent) {
       buffer.putUint8(167);
+      writeValue(buffer, value.encode());
+    }    else if (value is PhaseEvent) {
+      buffer.putUint8(168);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -2089,10 +2161,12 @@ class _PigeonCodec extends StandardMessageCodec {
       case 164:
         return CueEvent.decode(readValue(buffer)!);
       case 165:
-        return FaultEvent.decode(readValue(buffer)!);
+        return GpsProbeEvent.decode(readValue(buffer)!);
       case 166:
-        return StateEvent.decode(readValue(buffer)!);
+        return FaultEvent.decode(readValue(buffer)!);
       case 167:
+        return StateEvent.decode(readValue(buffer)!);
+      case 168:
         return PhaseEvent.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -2369,6 +2443,46 @@ class RecorderApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[enabled]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// Pre-start location readiness (the Start screen): fixes with the
+  /// recording's provider settings, a [GpsProbeEvent] about once a second.
+  /// Idempotent. Stopped by [stopGpsProbe], by any start, and when the app
+  /// leaves the foreground; foreground only, no service.
+  Future<void> startGpsProbe() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.startGpsProbe$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  Future<void> stopGpsProbe() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.stopGpsProbe$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(

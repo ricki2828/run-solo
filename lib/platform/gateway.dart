@@ -113,6 +113,11 @@ abstract class RecorderGateway {
   Future<void> discardJournal(String runId);
   Future<void> setCues(bool enabled);
 
+  /// Pre-start GPS readiness: [GpsProbeEvent]s on [events] about 1 Hz until
+  /// [stopGpsProbe] (or any start). Call stop when the screen closes.
+  Future<void> startGpsProbe();
+  Future<void> stopGpsProbe();
+
   /// Saved volume-key lap choice for Laps runs (4x4 and Free never hook the
   /// volume keys). Native applies it from the next start or resume, never
   /// mid-run; Start sends it before every Laps start.

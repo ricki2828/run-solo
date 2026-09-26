@@ -56,6 +56,12 @@ class MainActivity : FlutterActivity() {
         super.onCreate(savedInstanceState)
     }
 
+    /** The pre-start GPS probe never runs in the background (no service, no battery drain). */
+    override fun onStop() {
+        super.onStop()
+        if (::recorder.isInitialized) recorder.stopGpsProbe()
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         // Application context: the recorder outlives this Activity (swipe from Recents mid-run).

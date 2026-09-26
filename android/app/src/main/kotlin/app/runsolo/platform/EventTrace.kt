@@ -97,6 +97,14 @@ object EventTrace {
                 m["cue"] = dartName(e.kind)
                 m["value"] = e.value
             }
+            is GpsProbeEvent -> {
+                m["kind"] = "gpsProbe"
+                m["fix"] = e.fix
+                m["lat"] = e.lat
+                m["lon"] = e.lon
+                m["accuracyM"] = e.accuracyM
+                m["fixAgeMs"] = e.fixAgeMs
+            }
             is FaultEvent -> {
                 m["kind"] = "fault"
                 m["fault"] = dartName(e.kind)

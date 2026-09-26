@@ -515,6 +515,8 @@ class _SessionCard extends StatelessWidget {
                   'surge summary, not a verdict.'
             : spec.warmupSeconds == null
             ? 'Warm-up: open. Tap START REPS when you are ready.'
+            : spec.warmupSeconds == 0
+            ? 'No warm-up. The clock starts when you tap Start.'
             : 'Warm-up: ${SessionText.clock(spec.warmupSeconds!)}, then the '
                   'reps start on their own.',
         style: RunSoloType.body15.copyWith(color: t.inkSecondary),

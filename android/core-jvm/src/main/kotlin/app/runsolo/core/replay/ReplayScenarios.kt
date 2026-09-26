@@ -69,16 +69,20 @@ object ReplayScenarios {
         )
         "yasso-800s" -> structured(kind, distanceSpec("yasso-800s", "Yasso 800s", 4, 800, Step(StepKind.recovery, TargetKind.equalToPreviousWork, 0, RecoveryStyle.jog, 1)), workMps = 4.0)
         "1km-repeats" -> structured(kind, distanceSpec("1km-repeats", "1 km repeats", 3, 1000, Step(StepKind.recovery, TargetKind.time, 120, RecoveryStyle.jog, 1)), workMps = 4.0)
-        "parkrun" -> structured(kind, PARKRUN, workMps = 4.0) // event-name-ok: debug replay ids, never in a store build
+        "parkrun" -> structured(kind, PARKRUN, workMps = 4.0, start = null) // event-name-ok: debug replay ids, never in a store build
         "cooper" -> structured(kind, SessionSpec.COOPER, workMps = 3.4, mode = RunMode.cooper, start = Press.startReps)
         "fartlek" -> fartlek()
         else -> null
     }
 
-    /** parkrun (K1 reuses I2): one 5000 m distance step; the core stops the recording at 5.00 km. */
+    /**
+     * parkrun (K1 reuses I2): no warm-up (founder 26-Sep: the 5000 m step begins at Start), and the
+     * core stops the recording at 5.00 km. The name is neutral so the event's name is not in the
+     * binary as copy (#49 review P3); the template id is a data key.
+     */
     val PARKRUN = SessionSpec(
-        templateId = "parkrun", templateVersion = 1, name = "parkrun", // event-name-ok: debug replay ids, never in a store build
-        warmupSeconds = null, cooldownSeconds = null, lapLockout = false, autoStop = true, cueProfile = CueProfile.standard, hrBand = null,
+        templateId = "parkrun", templateVersion = 1, name = "5K time trial", // event-name-ok: a data key, never shown or spoken
+        warmupSeconds = 0, cooldownSeconds = null, lapLockout = false, autoStop = true, cueProfile = CueProfile.standard, hrBand = null,
         steps = listOf(Step(StepKind.work, TargetKind.distance, 5_000, RecoveryStyle.run, 1)),
     )
 
@@ -95,8 +99,8 @@ object ReplayScenarios {
      * [workMps] / recovery jog as the core moves through them, then a cool-down jog. Ends
      * [COOLDOWN_S] into the cool-down, or 3 s after the core asked to auto-stop.
      */
-    private fun structured(kind: String, spec: SessionSpec, workMps: Double, mode: RunMode = RunMode.intervals, start: Press = Press.lap): Scenario {
-        val presses = listOf(ScriptedPress(WARMUP_S * 1000L, start))
+    private fun structured(kind: String, spec: SessionSpec, workMps: Double, mode: RunMode = RunMode.intervals, start: Press? = Press.lap): Scenario {
+        val presses = listOfNotNull(start?.let { ScriptedPress(WARMUP_S * 1000L, it) })
         val (fixes, hr) = closedLoop(mode, spec, presses, workMps)
         return Scenario(kind, mode, spec, fixes, hr, presses)
     }
