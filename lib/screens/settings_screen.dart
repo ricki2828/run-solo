@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
+import '../app/perf_diagnostics.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
@@ -376,6 +377,28 @@ class _SettingsScreenState extends State<SettingsScreen>
                 kOpenMeteoAttribution,
                 style: RunSoloType.label13.copyWith(color: t.inkSecondary),
               ),
+              if (kPerfDiagnostics) ...[
+                const _Section('Diagnostics'),
+                ListenableBuilder(
+                  listenable: PerfDiagnostics.instance,
+                  builder: (context, _) => Column(
+                    key: const ValueKey('perf-diagnostics'),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final line in PerfDiagnostics.instance.lines)
+                        Padding(
+                          padding: const EdgeInsets.only(top: Space.x8),
+                          child: Text(
+                            line,
+                            style: RunSoloType.label13.copyWith(
+                              color: t.inkSecondary,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: Space.x32),
             ],
           ),
