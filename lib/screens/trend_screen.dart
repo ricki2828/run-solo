@@ -79,26 +79,30 @@ class _TrendScreenState extends State<TrendScreen> {
               ),
               children: [
                 const SizedBox(height: Space.x8),
-                // A wrap, not a row: four chips must never overflow a
+                // Scrolls sideways rather than overflow: four chips on a
                 // narrow phone at a large text size.
-                Wrap(
-                  spacing: Space.x8,
-                  runSpacing: Space.x8,
-                  children: [
-                    for (final m in [
-                      RecordMode.intervals,
-                      RecordMode.laps,
-                      RecordMode.free,
-                      RecordMode.cooper,
-                    ])
-                      _TypeChip(
-                        label: m == RecordMode.cooper
-                            ? 'Test'
-                            : modeTitle(m).split(' ').first,
-                        selected: _type == m,
-                        onTap: () => setState(() => _type = m),
-                      ),
-                  ],
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final m in [
+                        RecordMode.intervals,
+                        RecordMode.laps,
+                        RecordMode.free,
+                        RecordMode.cooper,
+                      ]) ...[
+                        if (m != RecordMode.intervals)
+                          const SizedBox(width: Space.x8),
+                        _TypeChip(
+                          label: m == RecordMode.cooper
+                              ? 'Test'
+                              : modeTitle(m).split(' ').first,
+                          selected: _type == m,
+                          onTap: () => setState(() => _type = m),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
                 if (keys.length > 1) ...[
                   const SizedBox(height: Space.x12),

@@ -70,39 +70,56 @@ class _RankChipState extends State<RankChip>
         borderRadius: BorderRadius.circular(Radii.pill),
         border: widget.pb ? null : Border.all(color: t.lineHair),
       ),
-      child: Text(
-        widget.pb ? '◆ ${widget.label}' : widget.label,
-        style: RunSoloType.body15.copyWith(
-          color: widget.pb ? t.accentArcInk : t.inkPrimary,
-          fontWeight: FontWeight.w500,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // A drawn diamond: the bundled fonts carry no ◆ glyph.
+          if (widget.pb) ...[
+            Transform.rotate(
+              angle: 0.785398,
+              child: Container(width: 7, height: 7, color: t.accentArcInk),
+            ),
+            const SizedBox(width: Space.x8),
+          ],
+          Text(
+            widget.label,
+            style: RunSoloType.body15.copyWith(
+              color: widget.pb ? t.accentArcInk : t.inkPrimary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
-    return Semantics(
-      button: widget.onTap != null,
-      label: widget.label,
-      excludeSemantics: true,
-      child: InkWell(
-        onTap: widget.onTap,
-        borderRadius: BorderRadius.circular(Radii.pill),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 56),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            widthFactor: 1,
-            child: !widget.pb
-                ? chip
-                : AnimatedBuilder(
-                    animation: _m5,
-                    builder: (context, child) => CustomPaint(
-                      foregroundPainter: _M5Painter(
-                        progress: _m5.value,
-                        color: t.accentArc,
+    // Sized to its label, left-aligned: a list gives it the full width.
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Semantics(
+        button: widget.onTap != null,
+        label: widget.label,
+        excludeSemantics: true,
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(Radii.pill),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 56),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              widthFactor: 1,
+              child: !widget.pb
+                  ? chip
+                  : AnimatedBuilder(
+                      animation: _m5,
+                      builder: (context, child) => CustomPaint(
+                        foregroundPainter: _M5Painter(
+                          progress: _m5.value,
+                          color: t.accentArc,
+                        ),
+                        child: child,
                       ),
-                      child: child,
+                      child: chip,
                     ),
-                    child: chip,
-                  ),
+            ),
           ),
         ),
       ),

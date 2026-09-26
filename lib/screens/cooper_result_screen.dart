@@ -249,6 +249,11 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                   alignment: Alignment.centerLeft,
                   child: TextButton(
                     key: const ValueKey('cooper-method'),
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(0, 48),
+                      alignment: Alignment.centerLeft,
+                    ),
                     onPressed: () => _sheet(
                       context,
                       'HOW THIS IS ESTIMATED',
