@@ -383,10 +383,14 @@ void main() {
       expect(goalHeadline(g, board(const []), 'me'), g.resultLine);
     });
 
-    test('custom goals get their own board, keyed to 0.1 km', () {
-      final custom = SessionSpec.goalDistance(12345, '12.3 km');
+    test('custom goals get their own board, keyed by their exact metres', () {
+      final custom = SessionSpec.goalDistance(12300, '12.3 km');
       expect(ComparisonKey.of(custom), 'goal:d12300');
       expect(GoalCatalogue.boardKeyOf(custom), 'goal:d12300');
+      // 7.5 mi (12 070 m) is its own board, not 12.1 km's.
+      final miles = SessionSpec.goalDistance(12070, '7.5 mi');
+      expect(ComparisonKey.of(miles), 'goal:d12070');
+      expect(GoalCatalogue.boardKeyOf(miles), 'goal:d12070');
       expect(GoalCatalogue.boardKeyOf(tenK), 'be:10000');
       expect(GoalCatalogue.boardKeyOf(thirty), 'be:t1800');
       expect(

@@ -148,9 +148,9 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         // K1: the event records as Intervals with its one 5 km step; its
         // name comes only from the flavour config. The LC1 builder sees
         // `templateId == parkrun` in this same spec (#59).
-        _ when s.goalRun => engine.SessionSpec.parkrun(
-          kEventNames.parkrun,
-        ).toPigeon(),
+        // G3: every other goal is G1's one-step spec (goalDistance /
+        // goalTime with the catalogue's name).
+        _ when s.goalRun => s.goalSpec(kEventNames.parkrun)!.toPigeon(),
         RecordMode.intervals => services.pickedSession.toPigeon(),
         RecordMode.cooper => engine.SessionSpec.cooper.toPigeon(),
         RecordMode.laps || RecordMode.free => null,
@@ -299,7 +299,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                   selected: mode,
                   session: services.pickedSession,
                   goal: goal,
-                  goalLabel: goalLabel(s.goalId),
+                  goalLabel: goalLabel(s),
                   onGoal: () =>
                       set((x) => x.copyWith(goalRun: true))
                           .then((_) => _syncProbe()),
@@ -311,31 +311,24 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                 const SizedBox(height: Space.x24),
                 if (goal) ...[
                   GoalPicker(
-                    goalId: s.goalId,
+                    settings: s,
                     onPick: (id) => set((x) => x.copyWith(goalId: id)),
+                    onCustom: ({metres, seconds}) => set(
+                      (x) => x.copyWith(
+                        goalCustomMetres: metres,
+                        goalCustomSeconds: seconds,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: Space.x16),
                   Text(
                     s.eventRun
                         ? '${kEventNames.parkrun} · 5 km, timed from START. '
                               'Stand on the start line, then tap START.'
-                        : 'Distance and time goals come with the next build. '
-                              'The ${kEventNames.parkrun} works now.',
+                        : '${goalLabel(s)}, timed from START. After the '
+                              'goal the recording keeps going until you stop.',
                     key: const ValueKey('event-card'),
                     style: text.bodyMedium?.copyWith(color: t.inkSecondary),
-                  ),
-                  const SizedBox(height: Space.x8),
-                  // A10.10: START waits for GPS (distance counts from the
-                  // first fix, so an early START would end past the line).
-                  Text(
-                    _gpsReady
-                        ? 'GPS ready · ${_probe!.accuracyM!.round()} m'
-                        : 'Waiting for GPS. The 5 km needs a fix at the '
-                              'start line.',
-                    key: const ValueKey('event-gps'),
-                    style: RunSoloType.label13.copyWith(
-                      color: _gpsReady ? t.inkSecondary : t.semWarn,
-                    ),
                   ),
                   const SizedBox(height: Space.x16),
                   _Toggle(
@@ -436,6 +429,27 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // A10.10, #53 review P2: the GPS gate's reason sits right
+                  // above START, so a greyed START on a short phone always
+                  // says why (distance counts from the first fix, so an
+                  // early START would end past the line).
+                  if (goal)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: Space.x12),
+                      child: Text(
+                        _gpsReady
+                            ? 'GPS ready · ${_probe!.accuracyM!.round()} m'
+                            : s.eventRun
+                            ? 'Waiting for GPS. The 5 km needs a fix at the '
+                                  'start line.'
+                            : 'Waiting for GPS. The goal needs a fix before '
+                                  'you start.',
+                        key: const ValueKey('event-gps'),
+                        style: RunSoloType.label13.copyWith(
+                          color: _gpsReady ? t.inkSecondary : t.semWarn,
+                        ),
+                      ),
+                    ),
                   if (_error != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: Space.x12),
@@ -445,12 +459,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                       ),
                     ),
                   FilledButton(
-                    onPressed:
-                        _starting ||
-                            (goal &&
-                                (!_gpsReady ||
-                                    !(GoalChoice.byId(s.goalId)?.available ??
-                                        false)))
+                    onPressed: _starting || (goal && !_gpsReady)
                         ? null
                         : _start,
                     child: Text(switch (mode) {

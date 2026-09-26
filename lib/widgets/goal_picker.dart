@@ -1,28 +1,72 @@
 import 'package:flutter/material.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/event_names.dart';
+import '../platform/gateway.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
 
-/// The GOAL chip's subtitle: the picked goal ("10K", "30 min", the event's
-/// own name from `kEventNames`).
-String goalLabel(String goalId) {
-  final g = GoalChoice.byId(goalId);
+/// The GOAL chip's subtitle: the picked goal ("10K", "30 min", "12.3 km",
+/// "7.5 mi", the event's own name from `kEventNames`).
+String goalLabel(AppSettings s) {
+  final g = GoalChoice.byId(s.goalId);
   if (g == null) return 'Distance or time';
-  return g.id == GoalChoice.eventId ? kEventNames.parkrun : g.label;
+  if (g.id == GoalChoice.eventId) return kEventNames.parkrun;
+  return s.goalName!;
 }
 
-/// GOAL (plan §G): Distance | Time, then the goal chips. Every chip is at
-/// least 56 dp tall and its text 15 sp; goals that need the engine's G1
-/// specs show but cannot be picked yet.
+/// "12.3" or "12,3" in the runner's units, to 0.1 km or 0.1 mi → whole
+/// metres within the engine's limits; null when it is not a number or out
+/// of range.
+int? parseGoalDistance(String text, Units units) {
+  final v = double.tryParse(text.trim().replaceAll(',', '.'));
+  if (v == null || !v.isFinite) return null;
+  final tenths = (v * 10).round() / 10;
+  final m = units == Units.mi
+      ? (tenths * GoalChoice.metresPerMile).round()
+      : (tenths * 1000).round();
+  if (m < engine.SessionSpec.goalMinMetres ||
+      m > engine.SessionSpec.goalMaxMetres) {
+    return null;
+  }
+  return m;
+}
+
+/// Hours and minutes from two fields (either may be empty, minutes 0 to
+/// 59) → seconds within the engine's limits; null otherwise. Two fields,
+/// never "1:15", so a time can't read as 1 min 15 s (#75 review).
+int? parseGoalHoursMinutes(String hours, String minutes) {
+  int? part(String t) => t.trim().isEmpty ? 0 : int.tryParse(t.trim());
+  final h = part(hours);
+  final m = part(minutes);
+  if (h == null || m == null || h < 0 || m < 0 || m > 59) return null;
+  final s = (h * 60 + m) * 60;
+  if (s < engine.SessionSpec.goalMinSeconds ||
+      s > engine.SessionSpec.goalMaxSeconds) {
+    return null;
+  }
+  return s;
+}
+
+/// GOAL (plan §G): Distance | Time, then the goal chips (G1's names and
+/// specs), Custom last. Every chip is at least 56 dp tall and its text
+/// 15 sp. A picked Custom shows its value on the chip.
 class GoalPicker extends StatelessWidget {
-  const GoalPicker({super.key, required this.goalId, required this.onPick});
-  final String goalId;
+  const GoalPicker({
+    super.key,
+    required this.settings,
+    required this.onPick,
+    required this.onCustom,
+  });
+  final AppSettings settings;
   final ValueChanged<String> onPick;
+
+  /// A new custom value: metres for distance, seconds for time.
+  final void Function({int? metres, int? seconds}) onCustom;
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final goalId = settings.goalId;
     final picked = GoalChoice.byId(goalId);
     final byDistance = picked?.distance ?? true;
     final list = byDistance ? GoalChoice.distances : GoalChoice.times;
@@ -31,11 +75,7 @@ class GoalPicker extends StatelessWidget {
         key: ValueKey('goal-${label.toLowerCase()}'),
         label: label,
         selected: on,
-        onTap: on
-            ? null
-            : () => onPick(
-                to.firstWhere((g) => g.available, orElse: () => to.first).id,
-              ),
+        onTap: on ? null : () => onPick(to.first.id),
       ),
     );
     return Column(
@@ -57,26 +97,174 @@ class GoalPicker extends StatelessWidget {
             for (final g in list)
               _Choice(
                 key: ValueKey('goal-${g.id}'),
+                // A picked Custom shows its value; tapping it again edits.
                 label: g.id == GoalChoice.eventId
                     ? kEventNames.parkrun
+                    : g.custom && g.id == goalId
+                    ? goalLabel(settings)
                     : g.label,
                 selected: g.id == goalId,
-                muted: !g.available,
-                onTap: () => onPick(g.id),
+                semanticsLabel: g.custom && g.id == goalId
+                    ? 'Custom, ${goalLabel(settings)}, tap to change'
+                    : null,
+                // Custom opens its entry at once (the last value stays
+                // picked if the sheet is dismissed).
+                onTap: () {
+                  if (g.id != goalId) onPick(g.id);
+                  if (g.custom) _editCustom(context, g.distance);
+                },
               ),
           ],
         ),
-        if (picked != null && !picked.available)
-          Padding(
-            padding: const EdgeInsets.only(top: Space.x8),
-            child: Text(
-              'Coming with the next build.',
-              style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-            ),
-          ),
       ],
     );
   }
+
+  Future<void> _editCustom(BuildContext context, bool distance) async {
+    final v = await showCustomGoalSheet(
+      context,
+      distance: distance,
+      units: settings.units,
+      current: distance
+          ? settings.goalCustomMetres
+          : settings.goalCustomSeconds,
+    );
+    if (v == null) return;
+    distance ? onCustom(metres: v) : onCustom(seconds: v);
+  }
+}
+
+/// Custom goal entry: km or miles to one decimal (the runner's units), or
+/// hours and minutes in two fields. Returns metres or seconds, null when
+/// dismissed.
+Future<int?> showCustomGoalSheet(
+  BuildContext context, {
+  required bool distance,
+  required int current,
+  Units units = Units.km,
+}) {
+  final mi = units == Units.mi;
+  final unit = mi ? 'mi' : 'km';
+  final text = TextEditingController(
+    text: (current / (mi ? GoalChoice.metresPerMile : 1000)).toStringAsFixed(1),
+  );
+  final hours = TextEditingController(
+    text: current >= 3600 ? '${current ~/ 3600}' : '',
+  );
+  final minutes = TextEditingController(text: '${current % 3600 ~/ 60}');
+  String? error;
+  return showModalBottomSheet<int>(
+    context: context,
+    isScrollControlled: true,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setSheet) {
+        final t = Theme.of(context).extension<RunSoloTokens>()!;
+        void save() {
+          final v = distance
+              ? parseGoalDistance(text.text, units)
+              : parseGoalHoursMinutes(hours.text, minutes.text);
+          if (v == null) {
+            setSheet(
+              () => error = distance
+                  ? (mi ? 'Pick 0.1 to 62.1 mi.' : 'Pick 0.1 to 100 km.')
+                  : 'Pick 1 minute to 24 hours (minutes 0 to 59).',
+            );
+            return;
+          }
+          Navigator.of(context).pop(v);
+        }
+
+        Widget field(
+          String key,
+          TextEditingController c,
+          String suffix, {
+          bool autofocus = false,
+          String? errorText,
+        }) => TextField(
+          key: ValueKey(key),
+          controller: c,
+          autofocus: autofocus,
+          keyboardType: distance
+              ? const TextInputType.numberWithOptions(decimal: true)
+              : TextInputType.number,
+          style: RunSoloType.display44,
+          decoration: InputDecoration(
+            suffixText: suffix,
+            errorText: errorText,
+            errorMaxLines: 3,
+          ),
+          onSubmitted: (_) => save(),
+        );
+
+        return Padding(
+          padding: EdgeInsets.only(
+            left: Space.screenGutter,
+            right: Space.screenGutter,
+            top: Space.x24,
+            bottom: MediaQuery.of(context).viewInsets.bottom + Space.x24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                distance ? 'CUSTOM DISTANCE' : 'CUSTOM TIME',
+                style: RunSoloType.title28,
+              ),
+              const SizedBox(height: Space.x8),
+              Text(
+                distance
+                    ? 'In $unit, to one decimal. Each distance gets its own '
+                          'board.'
+                    : 'Hours and minutes. Each time gets its own board.',
+                style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+              ),
+              const SizedBox(height: Space.x16),
+              if (distance)
+                field(
+                  'goal-custom-field',
+                  text,
+                  unit,
+                  autofocus: true,
+                  errorText: error,
+                )
+              else ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: field('goal-custom-hours', hours, 'h')),
+                    const SizedBox(width: Space.x16),
+                    Expanded(
+                      child: field(
+                        'goal-custom-minutes',
+                        minutes,
+                        'min',
+                        autofocus: true,
+                      ),
+                    ),
+                  ],
+                ),
+                if (error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: Space.x8),
+                    child: Text(
+                      error!,
+                      style: RunSoloType.label13.copyWith(color: t.semDanger),
+                    ),
+                  ),
+              ],
+              const SizedBox(height: Space.x16),
+              FilledButton(
+                key: const ValueKey('goal-custom-save'),
+                onPressed: save,
+                child: const Text('SAVE'),
+              ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
 }
 
 class _Choice extends StatelessWidget {
@@ -85,12 +273,12 @@ class _Choice extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
-    this.muted = false,
+    this.semanticsLabel,
   });
   final String label;
   final bool selected;
-  final bool muted;
   final VoidCallback? onTap;
+  final String? semanticsLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -98,7 +286,7 @@ class _Choice extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: muted ? '$label, coming with the next build' : label,
+      label: semanticsLabel ?? label,
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -117,11 +305,7 @@ class _Choice extends StatelessWidget {
             child: Text(
               label,
               style: RunSoloType.body15.copyWith(
-                color: selected
-                    ? t.bgBase
-                    : muted
-                    ? t.inkMuted
-                    : t.inkPrimary,
+                color: selected ? t.bgBase : t.inkPrimary,
                 fontWeight: FontWeight.w500,
               ),
             ),

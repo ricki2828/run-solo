@@ -238,10 +238,11 @@ class _RecordingScreenState extends State<RecordingScreen>
                         else if (s.notice != null)
                           _Banner(text: s.notice!, color: t.semWarn),
                         const Spacer(),
-                        if (isEventRun(s) && s.phase == Phase.work) ...[
-                          // K1 / A10.10: distance to go is the biggest
-                          // number, projected finish second; they swap for
-                          // the last 400 m.
+                        if ((isEventRun(s) || s.isGoal) &&
+                            s.phase == Phase.work) ...[
+                          // K1 / A10.10, G3 (A8): distance or time to go is
+                          // the biggest number, projected finish second;
+                          // they swap for the last 400 m / last minute.
                           _PausedHidden(
                             paused: s.paused,
                             child: EventBlock(
@@ -250,6 +251,19 @@ class _RecordingScreenState extends State<RecordingScreen>
                               units: settings.units,
                               compact: compact,
                               reduced: reduced,
+                            ),
+                          ),
+                          const Spacer(),
+                        ] else if (s.isGoal && s.phase == Phase.cooldown) ...[
+                          // G3: after the goal, the cool-down's time is
+                          // primary and the goal's result sits locked below.
+                          _PausedHidden(
+                            paused: s.paused,
+                            child: GoalDoneBlock(
+                              s: s,
+                              ctl: ctl,
+                              units: settings.units,
+                              compact: compact,
                             ),
                           ),
                           const Spacer(),
@@ -464,6 +478,14 @@ String phaseTitle(RecordingSnapshot s) {
   if (isEventRun(s) && s.phase == Phase.work) {
     final name = kEventNames.parkrun.toUpperCase();
     return eventLastStretch(s) ? '$name · LAST 400 M' : '$name · 5 KM';
+  }
+  if (s.isGoal) {
+    final name = (s.spec?.name ?? '').toUpperCase();
+    if (s.phase == Phase.cooldown) return 'COOL-DOWN · $name DONE';
+    if (s.phase == Phase.work) {
+      if (!eventLastStretch(s)) return 'GOAL · $name';
+      return s.distanceStep ? 'GOAL · LAST 400 M' : 'GOAL · LAST MINUTE';
+    }
   }
   final step = s.currentStep;
   final detail = step == null ? '' : ' · ${stepDetail(step)}';
@@ -1354,10 +1376,32 @@ class _WaitingForGps extends StatelessWidget {
 bool isEventRun(RecordingSnapshot s) =>
     s.spec?.templateId == engine.SessionSpec.parkrunId;
 
-/// The last 400 m (A10.10): projected finish becomes the primary number.
+/// The last 400 m (A10.10), or a time goal's last minute (G3): projected
+/// finish becomes the primary number.
 bool eventLastStretch(RecordingSnapshot s) {
+  final st = s.currentStep;
+  if (st != null && st.target == TargetKind.time) {
+    return s.phaseRemainingMs <= 60000;
+  }
   final m = s.metresToGo;
   return m != null && m <= 400;
+}
+
+/// "6.21 km" / "3.86 mi": a time goal's distance, two decimals.
+String goalDistanceText(double metres, Units units) => units == Units.mi
+    ? '${(metres / 1609.344).toStringAsFixed(2)} mi'
+    : '${(metres / 1000).toStringAsFixed(2)} km';
+
+/// A time goal's projected distance at the goal time: step distance ÷ step
+/// time × goal time; null for the first 200 m and without a good fix
+/// (never extrapolated, as the event).
+double? goalProjectedMetres(RecordingSnapshot s, int stepActiveMs) {
+  final st = s.currentStep;
+  if (st == null || st.target != TargetKind.time) return null;
+  if (s.gpsLost || s.gpsWeak) return null;
+  final run = s.lapDistanceM;
+  if (run < 200 || stepActiveMs <= 0) return null;
+  return run / stepActiveMs * st.value * 1000;
 }
 
 /// "2.58 km" to 1.00 km, then metres rounded down to 10 m (5 m under
@@ -1404,14 +1448,26 @@ class EventBlock extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final muted = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
     final togo = s.metresToGo;
-    final projected = eventProjectedSeconds(s, ctl.displayLapActiveMs);
     final last = eventLastStretch(s);
-    final toGoText = togo == null || s.gpsLost
-        ? '--'
-        : eventDistanceToGo(togo, units);
-    final finishText = projected == null
-        ? '--'
-        : Fmt.clock(projected.round() * 1000);
+    final String toGoText;
+    final String finishText;
+    if (s.distanceStep || togo != null) {
+      final projected = eventProjectedSeconds(s, ctl.displayLapActiveMs);
+      toGoText = togo == null || s.gpsLost
+          ? '--'
+          : eventDistanceToGo(togo, units);
+      finishText = projected == null
+          ? '--'
+          : Fmt.clock(projected.round() * 1000);
+    } else {
+      // G3 time goal: time to go counts down on its own (no GPS needed);
+      // the projection is the distance at the goal time.
+      final projected = goalProjectedMetres(s, ctl.displayLapActiveMs);
+      toGoText = Fmt.clock(ctl.displayRemainingMs + 999);
+      finishText = projected == null
+          ? '--'
+          : goalDistanceText(projected, units);
+    }
     Widget number(String key, String text, String label, {required bool big}) {
       final dashed = text == '--';
       return Column(
@@ -1445,6 +1501,84 @@ class EventBlock extends StatelessWidget {
             ? [finish, SizedBox(height: compact ? Space.x8 : Space.x16), toGo]
             : [toGo, SizedBox(height: compact ? Space.x8 : Space.x16), finish],
       ),
+    );
+  }
+}
+
+/// G3: after the goal (open cool-down). The cool-down's time is primary; the
+/// goal's result is locked in a card ("10K DONE 49:12", "30 MIN DONE
+/// 6.21 km"), secondary size.
+class GoalDoneBlock extends StatelessWidget {
+  const GoalDoneBlock({
+    super.key,
+    required this.s,
+    required this.ctl,
+    required this.units,
+    this.compact = false,
+  });
+  final RecordingSnapshot s;
+  final RecordingController ctl;
+  final Units units;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final muted = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
+    final byTime = s.spec?.steps.firstOrNull?.target == TargetKind.time;
+    final ms = s.goalLapMs;
+    final m = s.goalLapM;
+    final result = byTime
+        ? (m == null ? '--' : goalDistanceText(m, units))
+        : (ms == null ? '--' : Fmt.clock(ms));
+    return Column(
+      key: const ValueKey('goal-done'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            Fmt.clock(ctl.displayLapElapsedMs),
+            key: const ValueKey('goal-cooldown'),
+            softWrap: false,
+            style: primaryStyle(compact).copyWith(color: t.inkPrimary),
+          ),
+        ),
+        Text('cool-down', style: RunSoloType.label13.copyWith(color: muted)),
+        SizedBox(height: compact ? Space.x8 : Space.x16),
+        Container(
+          key: const ValueKey('goal-lock'),
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.x16,
+            vertical: Space.x8,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(Radii.card),
+            border: Border.all(color: muted),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'GOAL · ${(s.spec?.name ?? '').toUpperCase()}',
+                style: RunSoloType.label13.copyWith(color: muted),
+              ),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  result,
+                  key: const ValueKey('goal-result'),
+                  softWrap: false,
+                  style: primaryStyle(
+                    compact,
+                    secondary: true,
+                  ).copyWith(color: muted),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

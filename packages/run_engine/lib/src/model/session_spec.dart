@@ -558,11 +558,12 @@ abstract final class ComparisonKey {
     if (spec.templateId == SessionSpec.parkrunId) return parkrunOf();
     if (spec.isGoal && spec.workSteps.length == 1) {
       final w = spec.workSteps.single;
-      // Custom distances key to the nearest 0.1 km (founder, 26-Sep), so a
-      // 12.34 km and a 12.3 km goal share a board.
+      // Custom distances key by their exact step metres. The app takes them
+      // to 0.1 of the runner's unit (founder 26-Sep, lead 26-Sep): 12.3 km
+      // is d12300, 7.5 mi is d12070 with its own board, not 12.1 km's.
       return w.target == TargetKind.time
           ? '${goalPrefix}t${w.value}'
-          : '${goalPrefix}d${(w.value / 100).round() * 100}';
+          : '${goalPrefix}d${w.value}';
     }
     final work = spec.workSteps.toList();
     if (work.isEmpty) return fartlek;
