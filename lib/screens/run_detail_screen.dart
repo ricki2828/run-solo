@@ -12,6 +12,7 @@ import '../state/zone_histogram.dart';
 import '../theme/theme.dart';
 import '../theme/zones.dart';
 import '../widgets/chrome.dart';
+import '../widgets/coaching.dart';
 import '../widgets/hold_button.dart';
 import '../widgets/rep_bars.dart';
 import '../widgets/weather_chip.dart';
@@ -139,6 +140,8 @@ class RunDetailBody extends StatelessWidget {
           const SizedBox(height: Space.x8),
           _Header(detail: d, units: units),
           const SizedBox(height: Space.x16),
+          // A10.6: on run detail the coaching follows the header.
+          CoachingSection(runId: d.run.id),
         ],
         // A6: the weather chip sits under the header, before the map.
         if (weather != null) ...[
