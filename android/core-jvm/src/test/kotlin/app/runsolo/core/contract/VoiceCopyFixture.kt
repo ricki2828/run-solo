@@ -79,7 +79,13 @@ object VoiceCopyFixture {
         // Free run km splits (LiveWords.kmSplit).
         add("km.split", LiveWords.kmSplit(3, 920_000, 307_000))
         // A goal km with its compare (§G): the km replaces "On pace for", the longest two-digit case.
-        add("km.goal", CueComposer.compose(LiveWords.goalKm(41), "Number 12 of 21, 125 seconds off your best.").text!!)
+        add(
+            "km.goal",
+            CueComposer.compose(
+                LiveWords.goalKm(41),
+                LiveWords.compare(CompareResult("be:42195", "Marathon", CompareKind.distance, 41, rank = 12, of = 21, deltaMs = 137_000)),
+            ).text!!,
+        )
         add("km.split.whole-minutes", LiveWords.kmSplit(2, 600_000, 300_000))
         add("km.split.over-an-hour", LiveWords.kmSplit(12, 3_845_000, 320_000))
         add("km.split.longest", LiveWords.kmSplit(10, 7_199_000, 599_000))

@@ -41,10 +41,10 @@ class GoalKmCompareTest {
         assertEquals(2, f.result.rank)
         assertEquals(4, f.result.of)
         assertEquals("5 k.", f.base)
-        assertEquals("Number 2 of 4, 40 seconds off your best.", f.text)
+        assertEquals("2nd of 4, 40 seconds off your best.", f.text)
         assertTrue(f.speak)
         val line = CueComposer.compose(f.base, f.text).text!!
-        assertEquals("5 k. Number 2 of 4, 40 seconds off your best.", line)
+        assertEquals("5 k. 2nd of 4, 40 seconds off your best.", line)
         assertTrue(CueComposer.words(line) <= CueComposer.MAX_WORDS)
     }
 
@@ -53,6 +53,13 @@ class GoalKmCompareTest {
         val f = assertNotNull(km(LiveCoach(half, RunMode.intervals, halfGoal), 1, 270_000))
         assertEquals(1, f.result.rank)
         assertEquals("Best of 4 so far, 12 seconds up.", f.text)
+    }
+
+    @Test
+    fun `past a minute the gap reads in minutes, as every compare does (#98)`() {
+        // Board km-20 splits: 5 828 000 and 5 922 000 (half-2 stops at km 12); 137 s behind the quickest.
+        val f = assertNotNull(km(LiveCoach(half, RunMode.intervals, halfGoal), 20, 5_965_000))
+        assertEquals("3rd of 3, 2 minutes 17 off your best.", f.text)
     }
 
     @Test
