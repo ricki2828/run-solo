@@ -159,6 +159,7 @@ class AppServices {
         fake: rec,
         profile: () => MaxHr.profileFor(settingsCtl.settings, clock()),
         now: clock,
+        heatCompare: () => settingsCtl.settings.compareHeatAdjusted,
       ),
       maps: maps ?? const FakeMapSurfaceFactory(),
       transfer: transfer ?? FakeTransferGateway(),
@@ -190,6 +191,7 @@ class AppServices {
     final history = FileRunStore(
       Directory('${support.path}/runs'),
       profile: () => MaxHr.profileFor(settings.settings, DateTime.now()),
+      heatCompare: () => settings.settings.compareHeatAdjusted,
     );
     final services = AppServices(
       recorder: PigeonRecorderGateway(),

@@ -521,6 +521,9 @@ class _Lines extends StatelessWidget {
     final lines = <String>[];
     if (v != null) {
       lines.add(v.subline);
+      // W2: "Compared on heat-adjusted pace." once, under the subline, when
+      // the verdict was computed with the heat-compare setting on.
+      if (v.heatNote != null) lines.add(v.heatNote!);
       // I3: "Last time: 4 reps, 3:00 recovery." on its own line (D4).
       if (v.comparisonNote != null) lines.add(v.comparisonNote!);
       if (v.hrLine != null) lines.add(v.hrLine!);

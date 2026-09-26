@@ -41,7 +41,9 @@ class _TrendScreenState extends State<TrendScreen> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final units = AppServices.of(context).settings.settings.units;
+    final settings = AppServices.of(context).settings.settings;
+    final units = settings.units;
+    final heatAdjusted = settings.compareHeatAdjusted;
     return Scaffold(
       appBar: AppBar(title: const Text('TREND')),
       body: SafeArea(
@@ -123,6 +125,7 @@ class _TrendScreenState extends State<TrendScreen> {
                   RecordMode.intervals => _FourByFourTrend(
                     runs: runs,
                     units: units,
+                    heatAdjusted: heatAdjusted,
                     emptyText:
                         key == null || key == engine.ComparisonKey.norwegian4x4
                         ? 'Two 4x4s draw the first line.'
@@ -162,20 +165,35 @@ class TrendPoint {
     required this.paceSecPerKm,
     required this.medianSecPerKm,
     required this.best,
+    this.ghostSecPerKm,
   });
   final int index;
   final DateTime start;
+
+  /// The pace the verdict compared: heat-adjusted with "Compare
+  /// heat-adjusted paces" on and weather for the run (W2), raw otherwise.
   final double paceSecPerKm;
   final double? medianSecPerKm;
   final bool best;
+
+  /// The other twin, drawn behind in ink.secondary (design brief A6): the
+  /// adjusted pace with the setting off, the raw one with it on. Null
+  /// without usable weather, or when the heat slowed nothing.
+  final double? ghostSecPerKm;
 }
 
-List<TrendPoint> trendPoints(List<RunSummary> chronological) {
+List<TrendPoint> trendPoints(
+  List<RunSummary> chronological, {
+  bool heatAdjusted = false,
+}) {
   final out = <TrendPoint>[];
   final prior = <double>[];
   for (final r in chronological) {
-    final pace = r.workPaceSecPerKm;
-    if (pace == null) continue;
+    final raw = r.workPaceSecPerKm;
+    if (raw == null) continue;
+    final adj = r.heatAdjustedWorkPaceSecPerKm;
+    final twin = adj == null || adj == raw ? null : adj;
+    final pace = heatAdjusted && twin != null ? twin : raw;
     final window = prior.length > 6 ? prior.sublist(prior.length - 6) : prior;
     out.add(
       TrendPoint(
@@ -184,6 +202,11 @@ List<TrendPoint> trendPoints(List<RunSummary> chronological) {
         paceSecPerKm: pace,
         medianSecPerKm: window.isEmpty ? null : median(window),
         best: r.verdict?.bestIn365Days ?? false,
+        ghostSecPerKm: twin == null
+            ? null
+            : heatAdjusted
+            ? raw
+            : twin,
       ),
     );
     if (r.eligibleAsPrior) prior.add(pace);
@@ -201,16 +224,21 @@ class _FourByFourTrend extends StatelessWidget {
   const _FourByFourTrend({
     required this.runs,
     required this.units,
+    this.heatAdjusted = false,
     this.emptyText = 'Two 4x4s draw the first line.',
   });
   final String emptyText;
   final List<RunSummary> runs;
   final Units units;
 
+  /// "Compare heat-adjusted paces" (W2): the adjusted series leads.
+  final bool heatAdjusted;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final points = trendPoints(runs);
+    final points = trendPoints(runs, heatAdjusted: heatAdjusted);
+    final ghost = points.any((p) => p.ghostSecPerKm != null);
     if (points.length < 2) {
       return Text(
         emptyText,
@@ -264,7 +292,8 @@ class _FourByFourTrend extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'MEDIAN WORK PACE, LAST ${recent.length}',
+          'MEDIAN WORK PACE, LAST ${recent.length}'
+          '${heatAdjusted && ghost ? ', HEAT-ADJUSTED' : ''}',
           style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
         ),
         const SizedBox(height: Space.x8),
@@ -317,6 +346,10 @@ class _FourByFourTrend extends StatelessWidget {
             child: const SizedBox.expand(),
           ),
         ),
+        if (ghost) ...[
+          const SizedBox(height: Space.x8),
+          _TrendLegend(heatAdjusted: heatAdjusted),
+        ],
         const SizedBox(height: Space.x24),
         Text(
           'BESTS',
@@ -359,6 +392,37 @@ class _FourByFourTrend extends StatelessWidget {
       units == Units.mi ? engine.Units.mi : engine.Units.km,
     ).round();
     return '${d.abs()} s';
+  }
+}
+
+/// Two micro labels under the chart when it draws both twins (brief A6):
+/// the leading series in Bone, the ghost in ink.secondary.
+class _TrendLegend extends StatelessWidget {
+  const _TrendLegend({required this.heatAdjusted});
+  final bool heatAdjusted;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    Widget item(String label, Color color) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(width: 16, height: 2, color: color),
+        const SizedBox(width: Space.x4),
+        Text(label, style: RunSoloType.micro11.copyWith(color: color)),
+      ],
+    );
+    final (lead, back) = heatAdjusted
+        ? ('HEAT-ADJ', 'RAW')
+        : ('RAW', 'HEAT-ADJ');
+    return Row(
+      key: const ValueKey('trend-legend'),
+      children: [
+        item(lead, t.inkPrimary),
+        const SizedBox(width: Space.x16),
+        item(back, t.inkSecondary),
+      ],
+    );
   }
 }
 
@@ -485,7 +549,9 @@ class _TrendPainter extends CustomPainter {
     const left = 44.0, bottom = 24.0, top = 8.0;
     final w = size.width - left;
     final h = size.height - bottom - top;
-    final paces = points.map((p) => p.paceSecPerKm).toList();
+    final paces = [
+      for (final p in points) ...[p.paceSecPerKm, ?p.ghostSecPerKm],
+    ];
     var lo = paces.reduce(math.min) - floor;
     var hi = paces.reduce(math.max) + floor;
     if (hi - lo < 30) {
@@ -547,6 +613,24 @@ class _TrendPainter extends CustomPainter {
           canvas.drawLine(Offset(x0, yy), Offset(x1, yy), dash);
         }
       }
+    }
+    // The ghost twin behind (W2): thin line and small dots, broken where a
+    // run has none.
+    final ghostPaint = Paint()
+      ..color = secondary
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    Offset? last;
+    for (var i = 0; i < points.length; i++) {
+      final g = points[i].ghostSecPerKm;
+      if (g == null) {
+        last = null;
+        continue;
+      }
+      final o = Offset(x(i), y(g));
+      if (last != null) canvas.drawLine(last, o, ghostPaint);
+      canvas.drawCircle(o, 3, Paint()..color = secondary);
+      last = o;
     }
     // Line + dots.
     final line = Path();

@@ -85,6 +85,11 @@ String? heatLineFor(WeatherRecord? w, IntervalMetrics? m, Units units) {
   return 'Heat-adjusted estimate: $value ($conditions).';
 }
 
+/// W2 notes under a verdict computed with "Compare heat-adjusted paces" on.
+const String heatComparedNote = 'Compared on heat-adjusted pace.';
+const String heatMissingNote = 'No weather for this run, compared on raw pace.';
+const String heatTooHotNote = 'Too hot to adjust, compared on raw pace.';
+
 /// A parkrun recorded without its lap boundaries (Start pressed at the
 /// line, no warm-up LAP; or an imported file): the 5 km from the start and,
 /// when the runner kept going, the rest as a cool-down lap. Null when the
@@ -285,6 +290,7 @@ class RunAnalysis {
           repCount: plannedRepCount ?? intervals!.reps.length,
           recoveryLabel: plannedRecoveryLabel,
           officialTime: officialTime,
+          heatFraction: heat?.fraction,
         );
 
   /// The sidecar with this verdict frozen (plan §4, §17 R3).
@@ -311,6 +317,7 @@ class RunEngine {
     List<PriorRun> priors = const [],
     UserProfile profile = UserProfile.none,
     DateTime? now,
+    bool compareHeatAdjusted = false,
   }) {
     final at = now ?? DateTime.now().toUtc();
     final trace = Trace(run.samples);
@@ -489,24 +496,54 @@ class RunEngine {
     final VerdictSource source;
     if (frozen != null &&
         frozen.engineVersion == engineVersion &&
-        frozen.inputsKey == inputsKey) {
+        frozen.inputsKey == inputsKey &&
+        frozen.heatCompare == compareHeatAdjusted) {
       verdict = frozen;
       source = VerdictSource.frozen;
     } else {
-      verdict = VerdictBuilder(constants, names: names).build(
-        run: run,
-        detection: detection,
-        metrics: headline,
-        gates: VerdictGates(indoor: indoor, noisy: noisy, gpsQuality: quality),
-        priors: priors,
-        now: at,
-        inputsKey: inputsKey,
-        comparisonKey: key!,
-        templateDefault: spec,
-        session: planned,
-        minCleanReps: minCleanRepsFor(key, spec),
-        officialTime: officialTime,
-      );
+      // W2: with the setting on, a run with usable weather compares its
+      // heat-adjusted headline with the adjusted twins of priors that have
+      // weather too; a run without (none, pending, failed, too hot) keeps
+      // its raw verdict against raw priors, and says so.
+      final fraction = weather?.heat?.fraction;
+      final raw = headline.avgWorkPaceSecPerKm;
+      final adjust = compareHeatAdjusted && fraction != null && raw != null;
+      verdict = VerdictBuilder(constants, names: names)
+          .build(
+            run: run,
+            detection: detection,
+            metrics: adjust
+                ? headline.withHeadlinePace(raw * (1 - fraction))
+                : headline,
+            gates: VerdictGates(
+              indoor: indoor,
+              noisy: noisy,
+              gpsQuality: quality,
+            ),
+            priors: adjust
+                ? [
+                    for (final p in priors)
+                      if (p.heatFraction != null) p.heatAdjusted(),
+                  ]
+                : priors,
+            now: at,
+            inputsKey: inputsKey,
+            comparisonKey: key!,
+            templateDefault: spec,
+            session: planned,
+            minCleanReps: minCleanRepsFor(key, spec),
+            officialTime: officialTime,
+          )
+          .withHeat(
+            compare: compareHeatAdjusted,
+            note: !compareHeatAdjusted
+                ? null
+                : adjust
+                ? heatComparedNote
+                : weather?.heat?.tooHot == true
+                ? heatTooHotNote
+                : heatMissingNote,
+          );
       source = VerdictSource.computed;
     }
 

@@ -312,6 +312,21 @@ class _SettingsScreenState extends State<SettingsScreen>
                 value: s.weatherPerRun,
                 onChanged: (v) => set((x) => x.copyWith(weatherPerRun: v)),
               ),
+              _Toggle(
+                label: 'Compare heat-adjusted paces',
+                value: s.compareHeatAdjusted,
+                onChanged: (v) =>
+                    set((x) => x.copyWith(compareHeatAdjusted: v)),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: Space.x12),
+                child: Text(
+                  'Verdicts compare paces adjusted for heat and humidity '
+                  '(research-based estimate). Runs without weather compare '
+                  'on raw pace.',
+                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                ),
+              ),
               SettingsRow(
                 label: 'Move runs to another Run Supreme',
                 value: _busy ? 'Working' : '',
