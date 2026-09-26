@@ -79,8 +79,9 @@ class LivePlan {
 
   final List<LiveBoardPlan> boards;
 
-  /// CR1's nudge plan for the first board (never for a Cooper); null when
-  /// no rule has enough history.
+  /// CR1's nudge plan for the first board (never for a Cooper); a Free /
+  /// Laps run switches to the 10K board's plan past 5 km (#70 review P3).
+  /// Null when no rule has enough history.
   final NudgePlanSpec? nudges;
 
   /// Cooper: the fade curve for this test (default, or personal from test 3).
@@ -180,14 +181,62 @@ abstract final class LivePlanner {
         ]).fractions;
         history = [for (final t in tests) ?t.input.cooperVo2];
     }
+    NudgePlanSpec? nudgesOf(LiveBoardPlan b) =>
+        _nudges(b, boards[b.key]!, byId, session);
     return LivePlan(
       boards: out,
       nudges: mode == RunMode.cooper || out.isEmpty
           ? null
-          : _nudges(out.first, boards[out.first.key]!, byId, session),
+          : _handOver(nudgesOf(out.first), switch (out) {
+              [LiveBoardPlan(key: final a), final b, ...]
+                  when a == k5.key && b.key == k10.key =>
+                nudgesOf(b),
+              _ => null,
+            }),
       cooperCurve: curve,
       cooperHistory: history == null || history.isEmpty ? null : history,
     );
+  }
+
+  /// Free / Laps race the 5K board to km 5, then the 10K board: km 1 to 5
+  /// nudge off [k5]'s plan, km 6 on off [k10]'s. Only the HR drift rule
+  /// reaches past km 5; fast start is km 1, so it stays the 5K's.
+  static NudgePlanSpec? _handOver(NudgePlanSpec? k5, NudgePlanSpec? k10) {
+    final hr10 = k10?.hrDrift;
+    if (hr10 == null || hr10.kmSamples.length <= _handOverKm) return k5;
+    final hr5 = k5?.hrDrift;
+    final kms = [
+      for (var k = 0; k < _handOverKm; k++)
+        hr5 == null || k >= hr5.kmSamples.length
+            ? const <(double, double)>[]
+            : hr5.kmSamples[k],
+      ...hr10.kmSamples.skip(_handOverKm),
+    ];
+    final plan = NudgePlanSpec(
+      fastStart: k5?.fastStart,
+      hrDrift: kms.every((p) => p.length < HrDriftRule.minSimilar)
+          ? null
+          : HrDriftRule(kmSamples: kms, text: hr10.text),
+      // Each board blocks its own kms: the 5K's newest run to km 5, the
+      // 10K's past it.
+      blocked: [
+        for (final b in k5?.blocked ?? const <String>[])
+          if ((_blockedKm(b) ?? 0) <= _handOverKm) b,
+        for (final b in k10!.blocked)
+          if ((_blockedKm(b) ?? 0) > _handOverKm) b,
+      ],
+    );
+    return plan.isEmpty ? null : plan;
+  }
+
+  static const int _handOverKm = 5;
+
+  /// The km of a "hr_drift:k" blocked pair; null for any other rule.
+  static int? _blockedKm(String pair) {
+    const prefix = '${NudgeRule.hrDrift}:';
+    return pair.startsWith(prefix)
+        ? int.tryParse(pair.substring(prefix.length))
+        : null;
   }
 
   /// CR1 (plan §3.5) over every earlier run on [plan]'s board, not just the

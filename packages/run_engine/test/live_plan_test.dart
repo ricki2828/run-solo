@@ -8,7 +8,14 @@ void main() {
   const names = EventNames(parkrun: 'parkrun');
 
   /// A Free run with a 5K effort of [secs] and [km] from-start splits.
-  LiveCandidate freeRun(int n, int secs, {int km = 10, int? k10}) {
+  LiveCandidate freeRun(
+    int n,
+    int secs, {
+    int km = 10,
+    int? k10,
+    List<double?> kmHr = const [],
+    List<FiredNudge> fired = const [],
+  }) {
     final splits = [for (var k = 1; k <= km; k++) k * secs * 200];
     return LiveCandidate(
       BoardInput(
@@ -38,6 +45,8 @@ void main() {
           efforts: const {},
           fromStartSplitsMs: splits,
         ),
+        live: LiveFigures(kmHr: kmHr),
+        nudgesFired: fired,
       ),
     );
   }
@@ -252,6 +261,83 @@ void main() {
       );
       expect(plan.boards, isNotEmpty);
       expect(plan.nudges, isNull);
+    });
+
+    group('Free past 5 km: the 10K board takes over (#70 review P3)', () {
+      List<double?> hr(int km, double bpm) => [
+        for (var k = 0; k < km; k++) bpm,
+      ];
+
+      test('HR drift km 1 to 5 off the 5K runs, km 6 on off the 10K runs', () {
+        final plan = LivePlanner.plan(
+          mode: RunMode.free,
+          runs: [
+            for (var n = 1; n <= 3; n++)
+              freeRun(n, 1500, km: 5, kmHr: hr(5, 150)),
+            for (var n = 4; n <= 6; n++)
+              freeRun(n, 1500, k10: 3100, kmHr: hr(10, 160)),
+          ],
+        );
+        expect([for (final b in plan.boards) b.key], ['be:5000', 'be:10000']);
+        final kms = plan.nudges!.hrDrift!.kmSamples;
+        expect(kms, hasLength(10));
+        // The 5K board holds all six runs; the 10K board only the 10 km ones.
+        expect(kms[4].map((p) => p.$2), containsAll([150.0, 160.0]));
+        expect(kms[4], hasLength(6));
+        for (var k = 5; k < 10; k++) {
+          expect(kms[k].map((p) => p.$2).toSet(), {
+            160.0,
+          }, reason: 'km ${k + 1}');
+        }
+        expect(plan.nudges!.fastStart!.text, contains('5K'));
+      });
+
+      test('no 10K board: the 5K plan alone, 5 km long', () {
+        final plan = LivePlanner.plan(
+          mode: RunMode.free,
+          runs: [
+            for (var n = 1; n <= 3; n++)
+              freeRun(n, 1500, km: 5, kmHr: hr(5, 150)),
+          ],
+        );
+        expect(plan.nudges!.hrDrift!.kmSamples, hasLength(5));
+      });
+
+      test('blocked: the 5K board\'s pairs, plus the 10K\'s past km 5', () {
+        final plan = LivePlanner.plan(
+          mode: RunMode.free,
+          runs: [
+            for (var n = 1; n <= 3; n++)
+              freeRun(n, 1500, km: 5, kmHr: hr(5, 150)),
+            for (var n = 4; n <= 5; n++)
+              freeRun(n, 1500, k10: 3100, kmHr: hr(10, 160)),
+            freeRun(
+              6,
+              1500,
+              k10: 3100,
+              kmHr: hr(10, 160),
+              fired: const [
+                FiredNudge(NudgeRule.hrDrift, 4),
+                FiredNudge(NudgeRule.hrDrift, 7),
+              ],
+            ),
+          ],
+        );
+        // Run 6 is the newest on both boards: its km 4 comes via the 5K
+        // board, its km 7 via the 10K board; neither is doubled.
+        expect(plan.nudges!.blocked, ['hr_drift:4', 'hr_drift:7']);
+      });
+
+      test('Laps hands over the same way', () {
+        final plan = LivePlanner.plan(
+          mode: RunMode.laps,
+          runs: [
+            for (var n = 1; n <= 3; n++)
+              freeRun(n, 1500, k10: 3100, kmHr: hr(10, 160)),
+          ],
+        );
+        expect(plan.nudges!.hrDrift!.kmSamples, hasLength(10));
+      });
     });
 
     test('Cooper never gets nudges', () {
