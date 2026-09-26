@@ -6,7 +6,7 @@ import kotlin.test.assertNull
 
 /** The nudge's own line (founder 26-Sep): 2 s after the cue is done, within 6 s of it, never behind other speech. */
 class NudgeFollowUpTest {
-    private val n = LiveCoach.Nudge("fast_start", 1, "Easy start. Your best 5K went out slower than this.")
+    private val n = LiveCoach.Nudge("fast_start", 1, "Fast start. Ease off a little. Your best 5K started slower.")
 
     @Test
     fun `said at the first tick 2 s after the cue is done, once`() {

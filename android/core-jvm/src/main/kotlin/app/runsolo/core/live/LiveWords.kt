@@ -37,24 +37,30 @@ object LiveWords {
 
     private fun seconds(ms: Long): Long = abs(ms / 1_000.0).roundToLong()
 
-    private fun secondsWord(s: Long) = if (s == 1L) "1 second" else "$s seconds"
+    /** "2nd", "11th", "21st": said as "second", "eleventh", one word each (TTS). */
+    private fun ordinal(n: Int): String {
+        val suffix = if (n % 100 in 11..13) "th" else when (n % 10) { 1 -> "st"; 2 -> "nd"; 3 -> "rd"; else -> "th" }
+        return "$n$suffix"
+    }
 
     private fun distance(r: CompareResult): String {
         val d = r.deltaMs!!
         val s = seconds(d)
-        // At most 9 words: it rides a 7-word km split inside the 16-word budget.
+        // At most 9 words: it rides a 7-word km split inside the 16-word budget. A gap of a minute
+        // or more is 3 words ("2 minutes 17"), so the rank is an ordinal ("2nd of 7") and a
+        // two-run board says "last time" (the other run; no board label to lengthen it).
         return if (r.of > 2) {
             when {
                 r.rank == 1 && s == 0L -> "Best of ${r.of} so far, level with your best."
-                r.rank == 1 -> "Best of ${r.of} so far, ${secondsWord(s)} up."
-                s == 0L -> "Number ${r.rank} of ${r.of}, level with your best."
-                else -> "Number ${r.rank} of ${r.of}, ${secondsWord(s)} off your best."
+                r.rank == 1 -> "Best of ${r.of} so far, ${CueWords.gap(s)} up."
+                s == 0L -> "${ordinal(r.rank)} of ${r.of}, level with your best."
+                else -> "${ordinal(r.rank)} of ${r.of}, ${CueWords.gap(s)} off your best."
             }
         } else {
             when {
-                s == 0L -> "Level with your only other ${r.boardLabel}."
-                d < 0 -> "${secondsWord(s)} up on your only other ${r.boardLabel}."
-                else -> "${secondsWord(s)} behind your only other ${r.boardLabel}."
+                s == 0L -> "Level with last time."
+                d < 0 -> "${CueWords.gap(s)} up on last time."
+                else -> "${CueWords.gap(s)} behind last time."
             }
         }
     }
@@ -97,8 +103,8 @@ object LiveWords {
         val what = "your ${r.boardLabel} ${CueWords.clock(r.value!!)}"
         return when {
             s == 0L -> "Level with $what."
-            d < 0 -> "${secondsWord(s)} up on $what."
-            else -> "${secondsWord(s)} behind $what."
+            d < 0 -> "${CueWords.gap(s)} up on $what."
+            else -> "${CueWords.gap(s)} behind $what."
         }
     }
 }

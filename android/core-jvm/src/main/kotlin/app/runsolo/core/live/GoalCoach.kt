@@ -77,8 +77,7 @@ class GoalCoach(private val spec: SessionSpec?, private val context: LiveContext
         val s = ((timeMs - best) / 1_000).roundToLong()
         return when {
             s <= 0L -> ", level with your best"
-            s == 1L -> ", 1 second off your best"
-            else -> ", $s seconds off your best"
+            else -> ", ${CueWords.gap(s)} off your best"
         }
     }
 

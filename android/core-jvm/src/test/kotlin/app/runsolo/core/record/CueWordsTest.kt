@@ -112,6 +112,7 @@ class CueWordsTest {
         assertEquals("5K time trial done, 23:40, new best.", end(board(1_440_000, 1_500_000), 1_420_000))
         assertEquals("5K time trial done, 23:52, 12 seconds off your best.", end(board(1_420_000, 1_500_000), 1_432_000))
         assertEquals("5K time trial done, 23:41, 1 second off your best.", end(board(1_420_000), 1_421_000))
+        assertEquals("5K time trial done, 26:17, 2 minutes 37 off your best.", end(board(1_420_000), 1_577_000))
         assertEquals("5K time trial done, 23:40, level with your best.", end(board(1_420_000), 1_420_000))
         assertEquals("5K time trial done, 23:40.", end(null, 1_420_000))
         assertEquals("5K time trial done, 23:40.", end(board(1_440_000).copy(boards = emptyList()), 1_420_000))

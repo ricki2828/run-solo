@@ -49,7 +49,7 @@ class LiveCoachTest {
         val f = assertNotNull(k.fire)
         assertEquals(listOf(2, 7), listOf(f.result.rank, f.result.of))
         assertEquals(875_000L - 870_000L, f.result.deltaMs)
-        assertEquals("Number 2 of 7, 5 seconds off your best.", f.text)
+        assertEquals("2nd of 7, 5 seconds off your best.", f.text)
         assertTrue(f.speak)
         assertNull(cross(coach, 3, 876_000), "each km once")
         assertEquals("4 k, 19 minutes 30, pace 4:55.", cross(coach, 4, 1_170_000)!!.base)
@@ -66,7 +66,7 @@ class LiveCoachTest {
         val coach = LiveCoach(ctx(fiveK(split(300_000, 600_000, 912_000, 1_210_000, 1_512_000))), RunMode.laps, null)
         val k = assertNotNull(cross(coach, 3, 900_000))
         assertNull(k.base)
-        assertEquals("12 seconds up on your only other 5K.", k.fire!!.text)
+        assertEquals("12 seconds up on last time.", k.fire!!.text)
         assertFalse(k.fire!!.speak)
         assertNull(cross(LiveCoach(null, RunMode.laps, null), 3, 900_000))
     }

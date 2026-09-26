@@ -9,6 +9,7 @@ import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.StepKind
 import app.runsolo.core.model.TargetKind
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
@@ -77,6 +78,20 @@ object CueWords {
 
     private fun metres(m: Double): String =
         if (m >= 1_000 && m % 1_000 == 0.0) "${(m / 1_000).toInt()} kilometres" else "${m.toInt()} metres"
+
+    /**
+     * A spoken gap in whole seconds (#79 review): under a minute "1 second" / "17 seconds", from
+     * a minute on in minutes and seconds, "1 minute", "2 minutes 17", never "137 seconds".
+     * Pinned with the engine by `fixtures/phase4/spoken_gaps.json`.
+     */
+    fun gap(seconds: Long): String {
+        val s = abs(seconds)
+        if (s < 60) return if (s == 1L) "1 second" else "$s seconds"
+        val m = s / 60
+        val rest = s % 60
+        val mins = if (m == 1L) "1 minute" else "$m minutes"
+        return if (rest == 0L) mins else "$mins $rest"
+    }
 
     /** mm:ss (h:mm:ss past an hour) of a duration in ms. */
     fun clock(ms: Double): String {
