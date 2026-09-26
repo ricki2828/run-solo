@@ -75,13 +75,32 @@ class LiveFigures {
       kmHr: run.hasHr
           ? [
               for (var k = 0; k < fromStartSplitsMs.length; k++)
-                trace.meanHr(
+                _kmHr(
+                  trace,
                   k == 0 ? 0 : fromStartSplitsMs[k - 1],
                   fromStartSplitsMs[k],
                 ),
             ]
           : const [],
     );
+  }
+
+  /// Mean HR over one km, the rule native mirrors live (CR1, shared with
+  /// rs-native-opus): the plain mean of the 1 Hz samples with `t` in
+  /// `[aMs, bMs)` that carry HR, null when fewer than half of the samples
+  /// in the km carry HR (a strap dropout says nothing about drift).
+  static double? _kmHr(Trace trace, int aMs, int bMs) {
+    var n = 0;
+    var withHr = 0;
+    var sum = 0.0;
+    for (final s in trace.between(aMs, bMs)) {
+      n++;
+      if (s.hr == null) continue;
+      withHr++;
+      sum += s.hr!;
+    }
+    if (n == 0 || withHr * 2 < n) return null;
+    return sum / withHr;
   }
 
   static double? _lapPace(RunFile run, Trace trace, int t0, int t1) {

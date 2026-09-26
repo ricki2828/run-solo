@@ -496,6 +496,38 @@ void main() {
     });
   });
 
+  test('km HR: plain mean of HR samples in the km; null under half '
+      'coverage (the rule native mirrors)', () {
+    final samples = [
+      for (var t = 0; t <= 600; t++)
+        Sample(
+          tMs: t * 1000,
+          lat: -33.87,
+          lon: 151.21,
+          accM: 5,
+          distM: t * 4.0,
+          // km 1 (0-250 s): HR 150; km 2 (250-500 s): strap drops for 60%.
+          hr: t < 250 ? 150 : (t < 400 ? null : 160),
+        ),
+    ];
+    final run = RunFile(
+      id: '00000000-0000-4000-8000-0000000000c1',
+      device: 'test',
+      app: 'test',
+      start: fixedNow,
+      end: fixedNow.add(const Duration(seconds: 600)),
+      tz: 'UTC',
+      mode: RunMode.free,
+      units: Units.km,
+      laps: const [],
+      samples: samples,
+    );
+    final d = RunDerived.of(run, engine.analyze(run, now: fixedNow));
+    expect(d.bestEfforts.fromStartSplitsMs.take(2), [250000, 500000]);
+    expect(d.live.kmHr[0], 150);
+    expect(d.live.kmHr[1], isNull);
+  });
+
   test('live figures carry per-km HR from Start (for HR drift)', () {
     final f = fixture('easy_free_run');
     final a = engine.analyze(f.run, now: fixedNow);
