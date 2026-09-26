@@ -580,7 +580,11 @@ class FakeRecorderGateway implements RecorderGateway {
     if (p == null) return;
     switch (_phase) {
       case Phase.work:
-        if (_repIndex >= p.repCount) {
+        if (_repIndex >= p.repCount && p.autoStop == true) {
+          // RecorderCore auto-stop (K1 event): the session is over, the
+          // shell finalises; the app sees the state go idle.
+          scheduleMicrotask(() => stop());
+        } else if (_repIndex >= p.repCount) {
           _enter(Phase.cooldown, _repIndex);
         } else {
           _enter(Phase.recovery, _repIndex);

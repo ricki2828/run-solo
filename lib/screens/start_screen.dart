@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
+import '../app/event_names.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
@@ -13,6 +14,7 @@ import '../state/sessions.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
+import '../widgets/goal_picker.dart';
 import '../widgets/mode_chip.dart';
 import '../widgets/structure_glyph.dart';
 import '../widgets/value_stepper.dart';
@@ -31,9 +33,78 @@ class StartScreen extends StatefulWidget {
   State<StartScreen> createState() => _StartScreenState();
 }
 
-class _StartScreenState extends State<StartScreen> {
+class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   bool _starting = false;
   String? _error;
+
+  /// K1 / A10.10: the event's START waits for a fix (pre-start probe,
+  /// #54). Ready = a fix in the last 5 s at 20 m or better.
+  static const double gpsReadyAccuracyM = 20;
+  StreamSubscription<RecorderEvent>? _probeSub;
+  bool _probing = false;
+  GpsProbeEvent? _probe;
+
+  bool get _gpsReady {
+    final p = _probe;
+    return p != null &&
+        p.fix &&
+        p.accuracyM != null &&
+        p.accuracyM! <= gpsReadyAccuracyM;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopProbe();
+    super.dispose();
+  }
+
+  /// The probe runs only while the event is picked and Start is in front.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _syncProbe();
+    } else {
+      _stopProbe();
+    }
+  }
+
+  void _syncProbe() {
+    if (!mounted) return;
+    // The probe runs for every goal: each starts at the Start press and
+    // counts distance from the first fix (plan §G, Q1).
+    final want = AppServices.of(context).settings.settings.goalRun;
+    if (want && !_probing) {
+      final rec = AppServices.of(context).recorder;
+      _probing = true;
+      _probeSub = rec.events.listen((e) {
+        if (e is GpsProbeEvent && mounted) setState(() => _probe = e);
+      });
+      unawaited(rec.startGpsProbe().catchError((_) {}));
+    } else if (!want && _probing) {
+      _stopProbe();
+    }
+  }
+
+  void _stopProbe() {
+    if (!_probing) return;
+    _probing = false;
+    _probeSub?.cancel();
+    _probeSub = null;
+    _probe = null;
+    final services = _services;
+    if (services != null) {
+      unawaited(services.recorder.stopGpsProbe().catchError((_) {}));
+    }
+  }
+
+  AppServices? _services;
 
   /// False on Android 14: the toggle is disabled with a reason.
   bool _volumeKeyLaps = true;
@@ -42,6 +113,8 @@ class _StartScreenState extends State<StartScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _services = AppServices.of(context);
+    _syncProbe();
     if (_volumeKeyChecked) return;
     _volumeKeyChecked = true;
     // LC1: get the live compare's candidates ready off the UI isolate, so
@@ -72,6 +145,12 @@ class _StartScreenState extends State<StartScreen> {
       // Fartlek is a Laps run carrying the fartlek session (plan §3.5).
       final mode = s.recordMode;
       final spec = switch (s.lastMode) {
+        // K1: the event records as Intervals with its one 5 km step; its
+        // name comes only from the flavour config. The LC1 builder sees
+        // `templateId == parkrun` in this same spec (#59).
+        _ when s.goalRun => engine.SessionSpec.parkrun(
+          kEventNames.parkrun,
+        ).toPigeon(),
         RecordMode.intervals => services.pickedSession.toPigeon(),
         RecordMode.cooper => engine.SessionSpec.cooper.toPigeon(),
         RecordMode.laps || RecordMode.free => null,
@@ -150,7 +229,11 @@ class _StartScreenState extends State<StartScreen> {
     switch (r) {
       case PickSession(:final id):
         await services.settings.update(
-          (x) => x.copyWith(lastMode: RecordMode.intervals, sessionId: id),
+          (x) => x.copyWith(
+            lastMode: RecordMode.intervals,
+            sessionId: id,
+            goalRun: false,
+          ),
         );
       case BuildCustom():
         await _build(null);
@@ -183,6 +266,7 @@ class _StartScreenState extends State<StartScreen> {
       (x) => x.copyWith(
         lastMode: RecordMode.intervals,
         sessionId: stored.templateId,
+        goalRun: false,
       ),
     );
     if (r.start && mounted) await _start();
@@ -198,7 +282,8 @@ class _StartScreenState extends State<StartScreen> {
       builder: (context, _) {
         final s = services.settings.settings;
         final mode = s.lastMode;
-        final preset = mode == RecordMode.intervals;
+        final goal = s.goalRun;
+        final preset = !goal && mode == RecordMode.intervals;
         Future<void> set(AppSettings Function(AppSettings) f) =>
             services.settings.update(f);
         return Scaffold(
@@ -213,12 +298,52 @@ class _StartScreenState extends State<StartScreen> {
                 ModeChipRow(
                   selected: mode,
                   session: services.pickedSession,
+                  goal: goal,
+                  goalLabel: goalLabel(s.goalId),
+                  onGoal: () =>
+                      set((x) => x.copyWith(goalRun: true))
+                          .then((_) => _syncProbe()),
                   onSelect: (m) => m == RecordMode.intervals
                       ? _openSheet()
-                      : set((x) => x.copyWith(lastMode: m)),
+                      : set((x) => x.copyWith(lastMode: m, goalRun: false))
+                            .then((_) => _syncProbe()),
                 ),
                 const SizedBox(height: Space.x24),
-                if (preset) ...[
+                if (goal) ...[
+                  GoalPicker(
+                    goalId: s.goalId,
+                    onPick: (id) => set((x) => x.copyWith(goalId: id)),
+                  ),
+                  const SizedBox(height: Space.x16),
+                  Text(
+                    s.eventRun
+                        ? '${kEventNames.parkrun} · 5 km, timed from START. '
+                              'Stand on the start line, then tap START.'
+                        : 'Distance and time goals come with the next build. '
+                              'The ${kEventNames.parkrun} works now.',
+                    key: const ValueKey('event-card'),
+                    style: text.bodyMedium?.copyWith(color: t.inkSecondary),
+                  ),
+                  const SizedBox(height: Space.x8),
+                  // A10.10: START waits for GPS (distance counts from the
+                  // first fix, so an early START would end past the line).
+                  Text(
+                    _gpsReady
+                        ? 'GPS ready · ${_probe!.accuracyM!.round()} m'
+                        : 'Waiting for GPS. The 5 km needs a fix at the '
+                              'start line.',
+                    key: const ValueKey('event-gps'),
+                    style: RunSoloType.label13.copyWith(
+                      color: _gpsReady ? t.inkSecondary : t.semWarn,
+                    ),
+                  ),
+                  const SizedBox(height: Space.x16),
+                  _Toggle(
+                    label: 'Voice cues',
+                    value: s.cues,
+                    onChanged: (v) => set((x) => x.copyWith(cues: v)),
+                  ),
+                ] else if (preset) ...[
                   _SessionCard(
                     spec: services.pickedSession,
                     settings: s,
@@ -320,8 +445,17 @@ class _StartScreenState extends State<StartScreen> {
                       ),
                     ),
                   FilledButton(
-                    onPressed: _starting ? null : _start,
+                    onPressed:
+                        _starting ||
+                            (goal &&
+                                (!_gpsReady ||
+                                    !(GoalChoice.byId(s.goalId)?.available ??
+                                        false)))
+                        ? null
+                        : _start,
                     child: Text(switch (mode) {
+                      _ when s.eventRun => 'START 5 KM',
+                      _ when goal => 'START GOAL',
                       RecordMode.intervals
                           when SessionChoice.isFartlek(s.sessionId) =>
                         'START FARTLEK',
