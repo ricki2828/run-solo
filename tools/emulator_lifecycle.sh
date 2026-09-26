@@ -180,26 +180,30 @@ case "$MODE" in
       accepted_after="$(adb logcat -d | grep -c 'lap volumeKey → accepted' || true)"
       [ "$accepted_after" = "$accepted_before" ] || fail "an adb volume change without a key press produced a lap"
       set_music_volume "$vol_before"
-      # Lockout (#40): two presses back to back, in one `input` call (a few ms apart, inside
-      # 1.5 s of run time even at 20x), must record exactly one lap. Inconclusive only when the
-      # emulator delivered fewer than two keys; that is retried with a ::warning::.
+      # Lockout (#40): two presses back to back, in one `input` call (a few ms apart), must record
+      # exactly one lap. The second press dies in LapInput's 400 ms wall-clock debounce or, past
+      # it, in RecorderCore's 1.5 s Laps lockout (run time; at 20x that is 75 ms of wall time, so
+      # the emulator cannot separate the two: the exact boundaries are pinned in RecorderCoreTest).
+      # Inconclusive only when fewer than two key-downs reached the session: retried, ::warning::.
+      downs() { adb logcat -d -s RunSolo/lapinput | grep -c "direction=1" || true; }
       lockout=0
       for attempt in 1 2 3; do
         after_fresh_notification_lap
-        k0="$(keys_seen)"
+        k0="$(downs)"
         a0="$(n_log 'lap volumeKey → accepted')"
         d0="$(n_log 'lap volumeKey → ignoredDebounce')"
         adb shell input keyevent KEYCODE_VOLUME_UP KEYCODE_VOLUME_UP
         sleep 2
-        keys=$(( $(keys_seen) - k0 ))
+        keys=$(( $(downs) - k0 ))
         acc=$(( $(n_log 'lap volumeKey → accepted') - a0 ))
         deb=$(( $(n_log 'lap volumeKey → ignoredDebounce') - d0 ))
         if [ "$keys" -ge 2 ]; then
-          [ "$acc" = 1 ] && [ "$deb" -ge 1 ] || fail "double press: $keys keys reached the session, $acc laps accepted, $deb ignored by the lockout; expected exactly 1 lap"
+          [ "$acc" = 1 ] || fail "double press: $keys key-downs reached the session and $acc laps were accepted; expected exactly 1"
+          log "double press: $keys key-downs, 1 lap ($deb ignored by the core lockout, the rest by the LapInput debounce)"
           lockout=1
           break
         fi
-        echo "::warning::double press $attempt on API $sdk delivered $keys key(s) to the session; retrying"
+        echo "::warning::double press $attempt on API $sdk delivered $keys key-down(s) to the session; retrying"
       done
       [ "$lockout" = 1 ] || fail "the emulator never delivered both keys of a double press in 3 attempts; lockout unverified"
       log "manual + volume-key laps landed via $path (volume-key lap at run time ${vk_t} ms; volume $vol_before kept; adb change ignored; double press = 1 lap)"
