@@ -25,7 +25,15 @@ Future<void> main() async {
   // Decided before the first frame (plan §4): no intro while a run is live
   // or a recovery journal waits. Start-up work runs under the intro.
   final intro = await IntroGate.read(services);
-  runApp(RunSoloApp(services: services, intro: intro));
+  // The first route is decided here too, so a first launch goes splash,
+  // intro, onboarding with no Home frame in between.
+  runApp(
+    RunSoloApp(
+      services: services,
+      intro: intro,
+      onboarding: !services.settings.settings.onboardingDone,
+    ),
+  );
 }
 
 class RunSoloApp extends StatelessWidget {
@@ -36,6 +44,7 @@ class RunSoloApp extends StatelessWidget {
     this.checkRecoveryOnOpen = true,
     this.home,
     this.intro = IntroKind.none,
+    this.onboarding = false,
   });
 
   final AppServices services;
@@ -49,6 +58,9 @@ class RunSoloApp extends StatelessWidget {
 
   /// The Lap Draw intro for this cold start; tests default to none.
   final IntroKind intro;
+
+  /// Open on onboarding instead of Home (first launch); tests default to Home.
+  final bool onboarding;
 
   @override
   Widget build(BuildContext context) {
@@ -76,7 +88,11 @@ class RunSoloApp extends StatelessWidget {
             },
             home:
                 home ??
-                ShellScreen(now: now, checkRecoveryOnOpen: checkRecoveryOnOpen),
+                ShellScreen(
+                  now: now,
+                  checkRecoveryOnOpen: checkRecoveryOnOpen,
+                  onboarding: onboarding,
+                ),
             onGenerateRoute: (settings) {
               final page = switch (settings.name) {
                 Routes.start => const StartScreen(),
