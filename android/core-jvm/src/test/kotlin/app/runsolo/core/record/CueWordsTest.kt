@@ -100,7 +100,7 @@ class CueWordsTest {
         fun board(vararg ms: Long) = app.runsolo.core.model.LiveContext(
             boards = listOf(
                 app.runsolo.core.model.LiveBoard(
-                    "course:x", "5K time trial", app.runsolo.core.model.LiveBoardKind.distance, 5_000.0,
+                    "${SessionSpec.EVENT_ID}:c-1", "5K time trial", app.runsolo.core.model.LiveBoardKind.distance, 5_000.0,
                     ms.mapIndexed { i, m -> app.runsolo.core.model.LiveEntry("r$i", 0, fromStartSplitsMs = List(5) { k -> m * (k + 1) / 5 }, finalMetric = m.toDouble()) },
                 ),
             ),
