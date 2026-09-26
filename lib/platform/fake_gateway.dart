@@ -87,6 +87,9 @@ class FakeRecorderGateway implements RecorderGateway {
   /// Scripted live compare (Phase 4 LV1), for overlay tests.
   void emitCompare(CompareEvent e) => _emit(e);
 
+  /// Scripted goal reached (§G), for the goal card tests.
+  void emitGoal(GoalEvent e) => _emit(e);
+
   /// Scripted HR for the next ticks (null = the phase-based default). Zone
   /// tests drive the tracker through this.
   int? scriptedHr;

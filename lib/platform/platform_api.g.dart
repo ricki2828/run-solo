@@ -255,11 +255,14 @@ enum ExitReason {
   other,
 }
 
-/// Which kind of board a run races live (Phase 4 §3.2).
+/// Which kind of board a run races live (Phase 4 §3.2). `distanceInTime`
+/// (Phase 4 §G) ranks the most distance in a fixed time (`be:t1800`, a
+/// custom time goal's `goal:t2700`); its entries carry `cooperMinuteM`.
 enum LiveBoardKind {
   distance,
   intervals,
   cooper,
+  distanceInTime,
 }
 
 /// One expanded step (named `SessionStep`: a generated `Step` would clash
@@ -427,8 +430,8 @@ class SessionSpec {
 /// by the board's kind: `fromStartSplitsMs` (distance: cumulative ms from
 /// the Start press at each whole km, WARN-1), `liveRepPacesSecPerKm`
 /// (intervals: untrimmed lap distance / lap time per work rep, null for an
-/// unclean rep, BLOCK-2), `cooperMinuteM` (Cooper: cumulative metres at each
-/// whole minute of the test).
+/// unclean rep, BLOCK-2), `cooperMinuteM` (Cooper and distance-in-time:
+/// cumulative metres at each whole minute from the Start).
 class LiveEntry {
   LiveEntry({
     required this.runId,
@@ -2078,6 +2081,85 @@ class CompareEvent extends RecorderEvent {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// A GOAL run reached its goal (§G): the step closed on its distance or time;
+/// the recording goes on as an open cool-down. The engine's goal result from
+/// the run file is the one of record; this is the live moment (the goal card).
+class GoalEvent extends RecorderEvent {
+  GoalEvent({
+    required this.distanceGoal,
+    required this.goalValue,
+    required this.timeMs,
+    required this.distanceM,
+    required this.newBest,
+    required this.interrupted,
+    required this.text,
+  });
+
+  /// True for a distance goal, false for a time goal.
+  bool distanceGoal;
+
+  /// The goal: metres or seconds.
+  int goalValue;
+
+  /// Moving time at the goal point (pauses and gaps out).
+  int timeMs;
+
+  double distanceM;
+
+  /// Beats every entry on the goal's board (never when [interrupted]).
+  bool newBest;
+
+  /// A kill gap fell before the goal (WARN-G2): the result may be off.
+  bool interrupted;
+
+  /// What was said.
+  String text;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      distanceGoal,
+      goalValue,
+      timeMs,
+      distanceM,
+      newBest,
+      interrupted,
+      text,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static GoalEvent decode(Object result) {
+    result as List<Object?>;
+    return GoalEvent(
+      distanceGoal: result[0]! as bool,
+      goalValue: result[1]! as int,
+      timeMs: result[2]! as int,
+      distanceM: result[3]! as double,
+      newBest: result[4]! as bool,
+      interrupted: result[5]! as bool,
+      text: result[6]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! GoalEvent || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(distanceGoal, other.distanceGoal) && _deepEquals(goalValue, other.goalValue) && _deepEquals(timeMs, other.timeMs) && _deepEquals(distanceM, other.distanceM) && _deepEquals(newBest, other.newBest) && _deepEquals(interrupted, other.interrupted) && _deepEquals(text, other.text);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 class FaultEvent extends RecorderEvent {
   FaultEvent({
     required this.kind,
@@ -2358,14 +2440,17 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is CompareEvent) {
       buffer.putUint8(169);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is GoalEvent) {
       buffer.putUint8(170);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is FaultEvent) {
       buffer.putUint8(171);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is StateEvent) {
       buffer.putUint8(172);
+      writeValue(buffer, value.encode());
+    }    else if (value is PhaseEvent) {
+      buffer.putUint8(173);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -2473,10 +2558,12 @@ class _PigeonCodec extends StandardMessageCodec {
       case 169:
         return CompareEvent.decode(readValue(buffer)!);
       case 170:
-        return FaultEvent.decode(readValue(buffer)!);
+        return GoalEvent.decode(readValue(buffer)!);
       case 171:
-        return StateEvent.decode(readValue(buffer)!);
+        return FaultEvent.decode(readValue(buffer)!);
       case 172:
+        return StateEvent.decode(readValue(buffer)!);
+      case 173:
         return PhaseEvent.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);

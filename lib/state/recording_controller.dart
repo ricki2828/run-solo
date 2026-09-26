@@ -318,6 +318,9 @@ class RecordingController extends ChangeNotifier {
   /// card (LV2). Muted tips still arrive here; `overlay` false = voice only.
   final ValueNotifier<CompareEvent?> lastCompare = ValueNotifier(null);
 
+  /// The goal reached in a GOAL run (§G), for the "GOAL 49:12" lock card (G3).
+  final ValueNotifier<GoalEvent?> lastGoal = ValueNotifier(null);
+
   StreamSubscription<RecorderEvent>? _sub;
 
   /// Cumulative distance at the previous lap, for the lap distance delta.
@@ -512,6 +515,8 @@ class RecordingController extends ChangeNotifier {
         break; // audio + haptics are the service's job (plan §3)
       case CompareEvent():
         lastCompare.value = e;
+      case GoalEvent():
+        lastGoal.value = e;
       case FaultEvent():
         _onFault(e);
       case GpsProbeEvent():
@@ -750,6 +755,7 @@ class RecordingController extends ChangeNotifier {
     _clearPending();
     lapPulse.dispose();
     lastCompare.dispose();
+    lastGoal.dispose();
     repCompletePulse.dispose();
     repStartPulse.dispose();
     super.dispose();

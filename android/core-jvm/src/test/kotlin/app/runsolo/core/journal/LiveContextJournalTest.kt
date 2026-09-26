@@ -80,6 +80,21 @@ class LiveContextJournalTest {
     }
 
     @Test
+    fun `a distance-in-time board round trips on its minute series`() {
+        val board = LiveBoard(
+            key = "be:t1800",
+            label = "30 min",
+            kind = LiveBoardKind.distanceInTime,
+            entries = listOf(LiveEntry("e", w0, cooperMinuteM = (1..30).map { it * 240.0 }, finalMetric = 7_200.0)),
+        )
+        val line = JournalLine.LiveContextLine(t0, w0, context.copy(boards = listOf(board)))
+        assertEquals(line, JournalCodec.decode(JournalCodec.encode(line)))
+        assertFailsWith<IllegalArgumentException> {
+            board.copy(entries = listOf(entry("f", listOf(300_000L), 7_000.0)))
+        }
+    }
+
+    @Test
     fun `line formats are pinned`() {
         val cf = JournalCodec.encode(JournalLine.CueFired(5, 6, JournalLine.FiredKind.compare, "be:5000", 3, 880_500))
         assertEquals("""{"k":"cf","t":5,"w":6,"kind":"compare","key":"be:5000","i":3,"at":880500}""", cf)

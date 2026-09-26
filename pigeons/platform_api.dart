@@ -195,15 +195,17 @@ class SessionSpec {
   List<SessionStep> steps;
 }
 
-/// Which kind of board a run races live (Phase 4 §3.2).
-enum LiveBoardKind { distance, intervals, cooper }
+/// Which kind of board a run races live (Phase 4 §3.2). `distanceInTime`
+/// (Phase 4 §G) ranks the most distance in a fixed time (`be:t1800`, a
+/// custom time goal's `goal:t2700`); its entries carry `cooperMinuteM`.
+enum LiveBoardKind { distance, intervals, cooper, distanceInTime }
 
 /// One prior run on a live board. Exactly one of the three series is set,
 /// by the board's kind: `fromStartSplitsMs` (distance: cumulative ms from
 /// the Start press at each whole km, WARN-1), `liveRepPacesSecPerKm`
 /// (intervals: untrimmed lap distance / lap time per work rep, null for an
-/// unclean rep, BLOCK-2), `cooperMinuteM` (Cooper: cumulative metres at each
-/// whole minute of the test).
+/// unclean rep, BLOCK-2), `cooperMinuteM` (Cooper and distance-in-time:
+/// cumulative metres at each whole minute from the Start).
 class LiveEntry {
   LiveEntry({
     required this.runId,
@@ -880,6 +882,40 @@ class CompareEvent extends RecorderEvent {
 
   /// False when a recovery is under 20 s: voice only, no card.
   bool overlay;
+}
+
+/// A GOAL run reached its goal (§G): the step closed on its distance or time;
+/// the recording goes on as an open cool-down. The engine's goal result from
+/// the run file is the one of record; this is the live moment (the goal card).
+class GoalEvent extends RecorderEvent {
+  GoalEvent({
+    required this.distanceGoal,
+    required this.goalValue,
+    required this.timeMs,
+    required this.distanceM,
+    required this.newBest,
+    required this.interrupted,
+    required this.text,
+  });
+
+  /// True for a distance goal, false for a time goal.
+  bool distanceGoal;
+
+  /// The goal: metres or seconds.
+  int goalValue;
+
+  /// Moving time at the goal point (pauses and gaps out).
+  int timeMs;
+  double distanceM;
+
+  /// Beats every entry on the goal's board (never when [interrupted]).
+  bool newBest;
+
+  /// A kill gap fell before the goal (WARN-G2): the result may be off.
+  bool interrupted;
+
+  /// What was said.
+  String text;
 }
 
 class FaultEvent extends RecorderEvent {

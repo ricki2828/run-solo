@@ -4,8 +4,9 @@ recorded from the same ReplayScenarios trace (I5, Phase 3 §3.9).
 
 Usage: check_replay_run.py <run.json.gz> <replay_<kind>.json>
 
-The service starts its clock a moment before the first fix arrives, so every time in the device
-file is the fixture's time plus one constant offset (the service start, a few seconds at most); everything else must match:
+Replay anchors trace time 0 at the session's Start (G2: a step timed from Start must end on the
+same fix), so the offset is 0 today; the check still allows one constant offset (a few seconds at
+most) and applies it to every time in the device file; everything else must match:
 mode, session, lap count and kinds, lap times (after the offset), lap distances, and the sample
 stream (positions, cumulative distance, HR). An auto-stopped run (parkrun) may run a few more
 samples on the device before the stop lands, so its last lap end and the sample tail are bounded,

@@ -28,6 +28,7 @@ import app.runsolo.core.model.RecorderState
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.Units
 import app.runsolo.core.live.CooperCurve
+import app.runsolo.core.live.GoalCoach
 import app.runsolo.core.live.LiveCoach
 import app.runsolo.core.record.CueWords
 import app.runsolo.core.record.LapDispatch
@@ -39,6 +40,7 @@ import app.runsolo.platform.CompareEvent
 import app.runsolo.platform.CueEvent
 import app.runsolo.platform.FaultEvent
 import app.runsolo.platform.FaultKind
+import app.runsolo.platform.GoalEvent
 import app.runsolo.platform.LapEvent
 import app.runsolo.platform.LapPendingEvent
 import app.runsolo.platform.LapSummary
@@ -140,6 +142,9 @@ class RecordingSession(
 
     /** Live "you vs you" (LV1); rebuilt from the journal's `cf` lines on resume. */
     private var coach = LiveCoach(liveContext, mode, spec)
+
+    /** GOAL runs (§G): the goal-reached line, once; rebuilt on resume. */
+    private var goal = GoalCoach(spec, liveContext)
     private var coachPrevT = 0L
     private var coachPrevD = 0.0
 
@@ -170,6 +175,7 @@ class RecordingSession(
     @Synchronized
     fun startNew(device: String, app: String, tz: String) {
         val t = clock()
+        replay?.anchorAt(t)
         startWallMs = System.currentTimeMillis()
         writer.open()
         writer.append(JournalLine.Header(t, startWallMs, runId, device, app, tz, mode, spec, units))
@@ -252,6 +258,10 @@ class RecordingSession(
         var cumActive = 0L
         coach.restoreReps(replayed.events, core, laps.map { l -> cumActive += l.activeMs; l.distanceM to cumActive })
         coach.resumeAt(ticker.distanceM)
+        // A goal already reached before the kill is never said again; a kill before it marks the
+        // result interrupted (WARN-G2).
+        goal = GoalCoach(spec, liveContext).also { it.restored(reachedBeforeKill = core.finalStepEnd != null) }
+        if (core.finalStepEnd != null) coach.goalReachedAt(ticker.distanceM, null)
         coachPrevT = t
         coachPrevD = ticker.distanceM
         if (core.state == RecorderState.paused) ticker.onPause()
@@ -662,6 +672,7 @@ class RecordingSession(
     }
 
     private fun publishCue(o: RecorderCore.Output.Cue) {
+        goal.atCue(o.kind, core.phase, core.finalStepEnd)?.let { publishGoal(it) }
         val st = core.status(o.t)
         val next = if (st.stepRemainingM != null) null else st.phaseRemainingMs
         val fire = coach.atCue(o.kind, o.index, o.value, core.phase, core.stepIndex, st.phaseActiveMs, next)
@@ -707,6 +718,23 @@ class RecordingSession(
 
     /** The live coach as restored (tests: the resume path keeps the context and the fired cues). */
     internal val liveCoach: LiveCoach get() = coach
+
+    /**
+     * The goal is reached (§G): a long buzz and one line, the app's goal card, then the open
+     * cool-down says km splits only (from the goal on: a whole-km distance goal keeps the split
+     * pace going, a time goal starts it again at the next km).
+     */
+    private fun publishGoal(g: GoalCoach.Reached) {
+        cues.goal(g.text)
+        RecorderEventBus.emit(
+            GoalEvent(
+                distanceGoal = g.distanceGoal, goalValue = g.goalValue.toLong(), timeMs = g.timeMs, distanceM = g.distanceM,
+                newBest = g.newBest, interrupted = g.interrupted, text = g.text,
+            ),
+        )
+        coach.goalReachedAt(g.distanceM, if (g.distanceGoal && g.goalValue % 1_000 == 0) g.timeMs else null)
+        Log.i(TAG, "goal reached: ${g.text} interrupted=${g.interrupted}")
+    }
 
     /** "Mute tips" for this run (notification action): compares keep firing for the overlay, not the voice. */
     @Synchronized

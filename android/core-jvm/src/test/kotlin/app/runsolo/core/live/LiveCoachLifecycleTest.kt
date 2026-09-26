@@ -48,6 +48,8 @@ class LiveCoachLifecycleTest {
         var core = RecorderCore(mode, spec, config())
         var ticker = SampleTicker(wall = { 0L })
         var coach = LiveCoach(ctx, mode, spec)
+        var goal = GoalCoach(spec, ctx)
+        val goals = ArrayList<GoalCoach.Reached>()
         var prevT = 0L
         var prevD = 0.0
         var eastM = 0.0
@@ -92,6 +94,11 @@ class LiveCoachLifecycleTest {
                 }
                 is RecorderCore.Output.Cue -> {
                     lines.add(JournalLine.Cue(o.t, o.t, o.kind))
+                    goal.atCue(o.kind, core.phase, core.finalStepEnd)?.let {
+                        goals.add(it)
+                        said.add(Said(t, it.text, null, ticker.distanceM))
+                        coach.goalReachedAt(it.distanceM, if (it.distanceGoal && it.goalValue % 1_000 == 0) it.timeMs else null)
+                    }
                     val base = CueWords.text(o.kind, o.value, spec, core.phase, core.repIndex, core.stepIndex, o.index)
                     val fire = coach.atCue(o.kind, o.index, o.value, core.phase, core.stepIndex, 0L, null)
                     if (base != null || fire != null) speak(t, base, fire)
@@ -122,6 +129,8 @@ class LiveCoachLifecycleTest {
                 it.restoreReps(replay.events, core, lapTotals)
                 it.resumeAt(core.distanceM)
             }
+            goal = GoalCoach(spec, replay.liveContext).also { it.restored(reachedBeforeKill = core.finalStepEnd != null) }
+            if (core.finalStepEnd != null) coach.goalReachedAt(core.distanceM, null)
             prevT = now
             prevD = ticker.distanceM
             eastM += 3.5 * gapMs / 1_000 // kept running in the dark
@@ -272,5 +281,91 @@ class LiveCoachLifecycleTest {
         assertTrue(paces[0] != null && paces[0]!! in 245.0..256.0, "rep 1 rebuilt from the journal: $paces")
         assertEquals(null, paces[1], "rep 2 spanned the kill")
         assertTrue(paces[2] != null && paces[2]!! in 245.0..256.0, "rep 3 is clean: $paces")
+    }
+
+    // ---- GOAL runs (§G, G2) ----
+
+    private fun goalRun(spec: SessionSpec, seconds: Int, ctx: LiveContext? = null, killAtS: Int? = null): Shell {
+        val sh = Shell(RunMode.intervals, spec, ctx)
+        sh.start(0)
+        var s = 1
+        while (s <= seconds) {
+            sh.second(s * 1_000L + sh.offsetMs, if (sh.core.phase == app.runsolo.core.model.Phase.work) 4.0 else 2.0)
+            if (s == killAtS) sh.killAndResume(s * 1_000L + sh.offsetMs, 10_000)
+            s++
+        }
+        return sh
+    }
+
+    @Test
+    fun `a 5K goal - said once at 5 km with the time, then km splits only in the open cool-down`() {
+        val sh = goalRun(SessionSpec.goalDistance(5_000, "5K"), 1_252 + 600)
+        val g = sh.goals.single()
+        assertTrue(g.distanceGoal)
+        assertEquals(5_000.0, g.distanceM, 0.01)
+        assertTrue(g.timeMs in 1_250_000L..1_253_000L, "about 1250 s at 4 m/s (filter): ${g.timeMs}")
+        assertEquals("5K done, ${CueWords.clock(g.timeMs.toDouble())}.", g.text)
+        assertEquals(1, sh.said.count { it.text.startsWith("5K done") })
+        // The cool-down runs at 2 m/s: 6 k comes 500 s after the goal; no "5 k" split after "5K done".
+        assertEquals(listOf("6 k,"), sh.said.filter { Regex("^\\d+ k,").containsMatchIn(it.text) }.map { it.text.substringBefore(" k,") + " k," })
+    }
+
+    @Test
+    fun `new best only against the goal's own board, and never when a kill fell before the goal`() {
+        val board = LiveBoard(
+            key = "be:5000", label = "5K", kind = LiveBoardKind.distance, targetM = 5_000.0,
+            entries = listOf(1_300_000L, 1_400_000L).mapIndexed { i, ms -> LiveEntry("r$i", 0, fromStartSplitsMs = List(5) { k -> ms * (k + 1) / 5 }, finalMetric = ms.toDouble()) },
+        )
+        val ctx = LiveContext(boards = listOf(board), builtAtMs = 0, engineVersion = 1)
+        val best = goalRun(SessionSpec.goalDistance(5_000, "5K"), 1_300, ctx).goals.single()
+        assertTrue(best.newBest)
+        assertTrue(best.text.endsWith(", new best."), best.text)
+        val interrupted = goalRun(SessionSpec.goalDistance(5_000, "5K"), 1_320, ctx, killAtS = 600).goals.single()
+        assertTrue(interrupted.interrupted)
+        assertTrue(!interrupted.newBest, "a kill before the goal: goal time with no distance behind it")
+    }
+
+    @Test
+    fun `restore after the goal - never said again, the cool-down goes on`() {
+        val sh = goalRun(SessionSpec.goalDistance(5_000, "5K"), 1_252 + 600, killAtS = 1_300)
+        assertEquals(1, sh.goals.size, sh.said.toString())
+        assertEquals(1, sh.said.count { it.text.startsWith("5K done") })
+    }
+
+    @Test
+    fun `a 30-minute goal - the distance at 30 minutes, said once`() {
+        val sh = goalRun(SessionSpec.goalTime(1_800, "30 min"), 1_800 + 120)
+        val g = sh.goals.single()
+        assertTrue(!g.distanceGoal)
+        assertEquals(1_800_000L, g.timeMs)
+        assertEquals("30 min done, ${String.format(java.util.Locale.US, "%.2f", g.distanceM / 1_000)} km.", g.text)
+        assertTrue(g.distanceM in 7_150.0..7_210.0, "about 30 min at 4 m/s: ${g.distanceM}")
+    }
+
+    @Test
+    fun `a 30-minute goal - new best only against its distance-in-time board`() {
+        fun board(key: String, kind: LiveBoardKind) = LiveBoard(
+            key = key, label = "30 min", kind = kind,
+            entries = listOf(6_900.0, 7_000.0).mapIndexed { i, m -> LiveEntry("r$i", 0, cooperMinuteM = List(30) { k -> m * (k + 1) / 30 }, finalMetric = m) },
+        )
+        val onBoard = LiveContext(boards = listOf(board("be:t1800", LiveBoardKind.distanceInTime)), builtAtMs = 0, engineVersion = 1)
+        val best = goalRun(SessionSpec.goalTime(1_800, "30 min"), 1_800 + 60, onBoard).goals.single()
+        assertTrue(best.newBest)
+        assertTrue(best.text.endsWith(", new best."), best.text)
+        val otherKind = LiveContext(boards = listOf(board("be:t1800", LiveBoardKind.cooper)), builtAtMs = 0, engineVersion = 1)
+        assertTrue(!goalRun(SessionSpec.goalTime(1_800, "30 min"), 1_800 + 60, otherKind).goals.single().newBest)
+    }
+
+    @Test
+    fun `a LAP in a goal marks a lap and never ends the goal early`() {
+        val sh = Shell(RunMode.intervals, SessionSpec.goalDistance(3_000, "3K"), null)
+        sh.start(0)
+        for (s in 1..900) {
+            sh.second(s * 1_000L, 4.0)
+            if (s == 300) sh.press(300_500, LapSource.button)
+        }
+        val g = sh.goals.single()
+        assertEquals(3_000.0, g.distanceM, 0.01)
+        assertTrue(g.timeMs > 700_000, "the goal ended at 3 km, not at the LAP: ${g.timeMs}")
     }
 }

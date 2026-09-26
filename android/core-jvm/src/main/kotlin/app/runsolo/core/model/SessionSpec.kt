@@ -61,6 +61,9 @@ data class SessionSpec(
     val reps: Int get() = workSteps.size
     val isFartlek: Boolean get() = templateId == FARTLEK_ID
 
+    /** A GOAL run (§G): one distance or time step from Start, then an open cool-down. */
+    val isGoal: Boolean get() = templateId == GOAL_ID
+
     /**
      * The contract's validation rules, a line-for-line mirror of the Dart `SessionSpec.validate()`
      * (same order, same messages); a list of problems, empty when valid.
@@ -75,6 +78,22 @@ data class SessionSpec(
         if (cooldownSeconds != null && cooldownSeconds !in 300..1200) out.add("cooldown must be open or 300..1200 s")
         if (steps.isEmpty()) {
             if (!isFartlek) out.add("only fartlek may have no steps")
+            return out
+        }
+        if (isGoal) {
+            // A GOAL (§G): exactly one work step, the goal's own limits; mirrors the Dart validate().
+            val w = steps.first()
+            if (steps.size != 1 || w.kind != StepKind.work || w.rep != 1) {
+                out.add("a goal is exactly one work step, rep 1")
+                return out
+            }
+            when (w.target) {
+                TargetKind.distance -> if (w.value !in GOAL_METRES) out.add("goal distance must be ${GOAL_METRES.first}..${GOAL_METRES.last} m")
+                TargetKind.time -> if (w.value !in GOAL_SECONDS) out.add("goal time must be ${GOAL_SECONDS.first}..${GOAL_SECONDS.last} s")
+                TargetKind.equalToPreviousWork -> out.add("a goal is a distance or a time")
+            }
+            if (w.style != RecoveryStyle.run) out.add("goal step style is run")
+            if (autoStop) out.add("a goal never auto-stops")
             return out
         }
         if (steps.size > MAX_STEPS) out.add("more than $MAX_STEPS steps")
@@ -132,6 +151,11 @@ data class SessionSpec(
         const val NORWEGIAN_4X4_ID = "norwegian-4x4"
         const val COOPER_ID = "cooper"
         const val FARTLEK_ID = "fartlek"
+        const val GOAL_ID = "goal"
+
+        /** Goal step limits (§G, custom goals included). */
+        val GOAL_METRES = 100..100_000
+        val GOAL_SECONDS = 60..86_400
 
         fun fromJson(m: Map<String, Any?>?): SessionSpec? {
             m ?: return null
@@ -184,6 +208,25 @@ data class SessionSpec(
             cueProfile = CueProfile.cooper,
             hrBand = null,
             steps = listOf(Step(StepKind.work, TargetKind.time, 720, RecoveryStyle.run, 1)),
+        )
+
+        /** A distance goal (§G): one [metres] work step from Start (no warm-up), then an open cool-down until Stop. */
+        fun goalDistance(metres: Int, name: String) = goal(name, Step(StepKind.work, TargetKind.distance, metres, RecoveryStyle.run, 1))
+
+        /** A time goal (§G): one [seconds] work step from Start, then an open cool-down until Stop. */
+        fun goalTime(seconds: Int, name: String) = goal(name, Step(StepKind.work, TargetKind.time, seconds, RecoveryStyle.run, 1))
+
+        private fun goal(name: String, step: Step) = SessionSpec(
+            templateId = GOAL_ID,
+            templateVersion = 1,
+            name = name,
+            warmupSeconds = 0,
+            cooldownSeconds = null,
+            lapLockout = false,
+            autoStop = false,
+            cueProfile = CueProfile.standard,
+            hrBand = null,
+            steps = listOf(step),
         )
 
         val FARTLEK = SessionSpec(

@@ -37,6 +37,11 @@ REQUIRED_KINDS = {"tick", "lap", "phase", "state", "status", "cue"}
 # no GPS, so `gpsLost` fires). Their shape is pinned here instead: field -> JSON types.
 KNOWN_SHAPES = {
     "fault": {"t": {"int"}, "kind": {"str"}, "fault": {"str"}, "message": {"str"}},
+    # GOAL runs (§G): the goal reached (only in a goal run; the 4x4 trace has none).
+    "goal": {
+        "t": {"int"}, "kind": {"str"}, "distanceGoal": {"bool"}, "goalValue": {"int"}, "timeMs": {"int"},
+        "distanceM": {"num"}, "newBest": {"bool"}, "interrupted": {"bool"}, "text": {"str"},
+    },
     # Pre-start GPS probe (Start screen only; never during a run).
     "gpsProbe": {"t": {"int"}, "kind": {"str"}, "fix": {"bool"}, "lat": {"num"}, "lon": {"num"}, "accuracyM": {"num"}, "fixAgeMs": {"int"}},
     # Phase 4 LV1: a live compare fired (only with a LiveContext; the 4x4 trace has none).

@@ -62,6 +62,17 @@ class ReplaySourceTest {
     }
 
     @Test
+    fun `an anchor maps trace time 0 to the recorder's Start, however late delivery begins`() {
+        val s = InstantScheduler()
+        val stamps = ArrayList<Long>()
+        val src = ReplaySource(TraceFixture.straightLine(listOf(2 to 3.0)), emptyList(), 1.0, s.scheduler, { s.now }, { stamps.add(it.t) }, null)
+        src.start(anchorT = 997_774L) // the Start came 2226 ms before the service began delivery
+        s.pump()
+        assertEquals(listOf(997_774L, 998_774L, 999_774L), stamps)
+        assertEquals(997_774L, src.startT)
+    }
+
+    @Test
     fun `10x - wall delays shrink, stamps and now() stay on trace time`() {
         val s = InstantScheduler()
         val trace = TraceFixture.straightLine(listOf(5 to 3.0))

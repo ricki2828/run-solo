@@ -71,7 +71,8 @@ data class LiveContext(
     }
 }
 
-enum class LiveBoardKind { distance, intervals, cooper }
+/** [distanceInTime] (Phase 4 §G): most distance in a fixed time; entries carry [LiveEntry.cooperMinuteM]. */
+enum class LiveBoardKind { distance, intervals, cooper, distanceInTime }
 
 /** A board the live compare ranks against: at most [LiveContext.MAX_ENTRIES] entries. */
 data class LiveBoard(
@@ -89,7 +90,7 @@ data class LiveBoard(
             val series = when (kind) {
                 LiveBoardKind.distance -> e.fromStartSplitsMs
                 LiveBoardKind.intervals -> e.liveRepPacesSecPerKm
-                LiveBoardKind.cooper -> e.cooperMinuteM
+                LiveBoardKind.cooper, LiveBoardKind.distanceInTime -> e.cooperMinuteM
             }
             require(series != null) { "a $kind entry needs its series (${e.runId})" }
         }
@@ -117,7 +118,7 @@ data class LiveBoard(
 /**
  * One prior run on a board. The series matching the board's kind is set: [fromStartSplitsMs]
  * (ms from the Start press at each whole km, WARN-1), [liveRepPacesSecPerKm] (untrimmed per work
- * rep, null = unclean rep, BLOCK-2) or [cooperMinuteM] (metres at each whole test minute).
+ * rep, null = unclean rep, BLOCK-2) or [cooperMinuteM] (metres at each whole minute; Cooper and distance-in-time).
  */
 data class LiveEntry(
     val runId: String,
