@@ -122,6 +122,13 @@ class RunIndexEntry {
       mode: mode,
       comparisonKey: comparisonKey,
       efforts: derived?.bestEfforts.efforts ?? const {},
+      // §G time boards (30 min, 1 hour, custom time goals) read these.
+      distances: derived?.bestEfforts.distances ?? const {},
+      goal: row?.goal,
+      goalBoardKey:
+          row?.session?.isGoal == true && row!.session!.workSteps.length == 1
+          ? engine.GoalCatalogue.boardKeyOf(row!.session!)
+          : null,
       headlineSecPerKm: headlineSecPerKm,
       verdictGrade: row?.eligibleAsPrior ?? prior != null,
       officialTimeMs: official && headlineSecPerKm != null
@@ -336,7 +343,8 @@ class IndexRow {
   /// Bump when a field is added, so old rows are rebuilt once.
   /// 2: the event run's start point (K1 course pick at Start).
   /// 3: [cooper] (C1).
-  static const int currentVersion = 3;
+  /// 4: [goal] (LB3b).
+  static const int currentVersion = 4;
 
   final int version;
   final int lapCount;
@@ -369,6 +377,10 @@ class IndexRow {
   /// A 12-minute test's result (C1); null for every other run.
   final CooperFigures? cooper;
 
+  /// A GOAL run's locked-in result (§G); null for every other run. Custom
+  /// goal boards rank it.
+  final engine.GoalResult? goal;
+
   factory IndexRow.of(
     engine.RunFile run,
     engine.RunAnalysis? a,
@@ -397,6 +409,7 @@ class IndexRow {
       eventStartLat: start == null ? null : dp5(start.lat),
       eventStartLon: start == null ? null : dp5(start.lon),
       cooper: CooperFigures.of(a?.cooper),
+      goal: a?.goal,
     );
   }
 
@@ -415,6 +428,7 @@ class IndexRow {
     'start_lat': ?eventStartLat,
     'start_lon': ?eventStartLon,
     'cooper': cooper?.toJson(),
+    'goal': goal?.toJson(),
   };
 
   /// null for a missing or unreadable row (the entry is then stale).
@@ -448,6 +462,9 @@ class IndexRow {
         eventStartLat: d('start_lat'),
         eventStartLon: d('start_lon'),
         cooper: CooperFigures.fromJson(j['cooper'] as Map<String, Object?>?),
+        goal: j['goal'] == null
+            ? null
+            : engine.GoalResult.fromJson(j['goal']! as Map<String, Object?>),
       );
     } catch (e) {
       debugPrint('index: unreadable row ($e)');
