@@ -589,6 +589,13 @@ class FakeRecorderGateway implements RecorderGateway {
         phase: _phase,
         repIndex: _repIndex,
         phaseRemainingMs: _remaining,
+        stepIndex: _stepIndex,
+        stepRemainingMs: _phaseDurationMs == null || _stepIndex == null
+            ? null
+            : _remaining,
+        stepRemainingM: _phaseTargetM == null
+            ? null
+            : math.max(0, _phaseTargetM! - _stepDistanceM),
       ),
     );
   }

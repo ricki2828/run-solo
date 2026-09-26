@@ -99,6 +99,7 @@ class AppServices {
       debugPrint('weather: pass failed ($e)');
     }
   }
+
   /// Saved custom Intervals templates (`state/sessions.json`, plan §3.4).
   final SessionsController sessions;
 
