@@ -165,12 +165,25 @@ void main() {
           tester,
           mode: RecordMode.cooper,
           spec: engine.SessionSpec.cooper.toPigeon(),
-          seconds: 360,
+          seconds: 300,
         );
         tester.view.physicalSize = Size(1080, h * 3.0);
-        await pumpTimes(tester, 3);
+        // C1b: warm up, then START TEST; minute 6 of the test.
+        await fake.startReps();
+        await step(tester, fake, 360);
         await show(tester, fake, km3(kind: 'cooper'));
+        // The countdown is primary; the card sits over the metres.
         expectClear(tester, timer());
+        expect(
+          tester
+              .getRect(card)
+              .overlaps(
+                tester.getRect(
+                  find.byKey(const ValueKey('cooper-distance-live')),
+                ),
+              ),
+          isTrue,
+        );
       });
 
       testWidgets('timed 5 km at 360 x $h', (tester) async {
