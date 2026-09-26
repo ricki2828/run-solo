@@ -11,8 +11,8 @@ import app.runsolo.core.model.CueKind
 object CueScheduler {
     data class CuePoint(val kind: CueKind, val at: Long)
 
-    /** Minutes of a 12-minute Cooper test that speak the projected score instead of the minute. */
-    val COOPER_PROJECTION_MINUTES = listOf(3, 6, 9, 11)
+    /** Minutes of a 12-minute Cooper test that speak the projected score instead of the minute (Phase 4 §3.3: every minute 2–11). */
+    val COOPER_PROJECTION_MINUTES = (2..11).toList()
 
     /** Standard profile, time step: `start` at 0, `halfway`, `thirtySeconds` at duration − 30 s, `phaseEnd`. For 4:00 that is 0:00, 2:00, 3:30, 4:00; the −30 s cue is dropped when it would not come after halfway (steps ≤ 60 s). */
     fun forPhase(durationMs: Long): List<CuePoint> {
@@ -38,9 +38,9 @@ object CueScheduler {
     }
 
     /**
-     * Cooper profile (the 12-minute test): `start`, a `minuteMark` each whole minute, the
-     * `projection` at 3, 6, 9 and 11 minutes instead of the minute (the core suppresses it
-     * before 2:00 and while GPS is weak), a 3-2-1 `countdown`, `phaseEnd`.
+     * Cooper profile (the 12-minute test): `start`, a `minuteMark` at 1:00, the `projection`
+     * each minute 2–11 instead of the minute (the core suppresses it while GPS is weak), a
+     * 3-2-1 `countdown`, `phaseEnd`.
      */
     fun cooper(durationMs: Long): List<CuePoint> {
         require(durationMs > 0)

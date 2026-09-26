@@ -27,12 +27,15 @@ import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.RecorderState
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.Units
+import app.runsolo.core.live.CooperCurve
+import app.runsolo.core.live.LiveCoach
 import app.runsolo.core.record.CueWords
 import app.runsolo.core.record.LapDispatch
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
 import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.core.run.Finaliser
+import app.runsolo.platform.CompareEvent
 import app.runsolo.platform.CueEvent
 import app.runsolo.platform.FaultEvent
 import app.runsolo.platform.FaultKind
@@ -64,8 +67,8 @@ class RecordingSession(
     volumeKeyLaps: Boolean,
     /**
      * The live compare's history (Phase 4 §3.2): journaled as the `lctx` line right after the
-     * header, handed back from the journal on resume. Its last Cooper VO2 feeds the projection
-     * cue's "up 2 on last time". LV1 adds the compare itself.
+     * header, handed back from the journal on resume. [LiveCoach] compares against it; its
+     * Cooper curve drives the minute projections.
      */
     private val liveContext: LiveContext? = null,
 ) : app.runsolo.platform.StartGuard.Session {
@@ -128,8 +131,17 @@ class RecordingSession(
     private var lastNotificationRefreshWall = 0L
     private var gpsLostReported = false
 
-    /** When lap and phase events go out: a manual lap waits for the next tick (see [LapDispatch]). */
-    private val dispatch = LapDispatch(onLap = ::publishLap, onPhase = ::publishPhase)
+    /** When lap, phase and cue events go out: a manual lap waits for the next tick (see [LapDispatch]). */
+    private val dispatch = LapDispatch(onLap = ::publishLap, onPhase = ::publishPhase, onCue = ::publishCue)
+
+    /** The Cooper fade curve: the engine's personal curve from the LiveContext, else the default (§3.3). */
+    private val coreConfig: RecorderCore.Config
+        get() = RecorderCore.Config(volumeKeyLaps = volumeKeyLapsEnabled, cooperCurve = CooperCurve.fromFractions(liveContext?.cooperCurve) ?: CooperCurve.DEFAULT)
+
+    /** Live "you vs you" (LV1); rebuilt from the journal's `cf` lines on resume. */
+    private var coach = LiveCoach(liveContext, mode, spec)
+    private var coachPrevT = 0L
+    private var coachPrevD = 0.0
 
     /** Distance step whose "GPS weak" was already said (once per step, W3). */
     private var gpsWeakStep: Int? = null
@@ -162,9 +174,10 @@ class RecordingSession(
         writer.open()
         writer.append(JournalLine.Header(t, startWallMs, runId, device, app, tz, mode, spec, units))
         liveContext?.let { writer.append(JournalLine.LiveContextLine(t, startWallMs, it)) }
-        core = RecorderCore(mode, spec, RecorderCore.Config(volumeKeyLaps = volumeKeyLapsEnabled))
+        core = RecorderCore(mode, spec, coreConfig)
         handle(core.start(t), t)
         dispatch.ticked(t, 0.0)
+        coachPrevT = t
         lapStartT = t
         ExitDiagnostics.noteStart(context, runId, startWallMs)
         emitState()
@@ -188,7 +201,7 @@ class RecordingSession(
         } catch (_: Exception) {
             orphan
         }
-        core = RecorderCore.restore(replayed, t, RecorderCore.Config(volumeKeyLaps = volumeKeyLapsEnabled))
+        core = RecorderCore.restore(replayed, t, coreConfig)
         lapCount = core.lapCount
         lapStartT = t
         // Laps from the journal, with active time (pauses and gaps excluded) per lap.
@@ -231,6 +244,17 @@ class RecordingSession(
         ticker.filter.reanchor() // the runner moved during the dark span; do not count the jump
         lapStartDist = lastLapDist
         dispatch.ticked(t, ticker.distanceM)
+        // Compares already said stay said; a point passed while dead is dropped (BLOCK-1). The
+        // reps run so far give the live rep paces back.
+        coach = LiveCoach(liveContext, mode, spec, replayed.cuesFired)
+        var prevLapD = 0.0
+        for (l in laps) {
+            coach.lapEnded(l.index.toInt(), l.distanceM - prevLapD, l.activeMs)
+            prevLapD = l.distanceM
+        }
+        coach.resumeAt(ticker.distanceM)
+        coachPrevT = t
+        coachPrevD = ticker.distanceM
         if (core.state == RecorderState.paused) ticker.onPause()
         ExitDiagnostics.noteResume(context, runId, nowWall)
         scheduleTick()
@@ -378,6 +402,10 @@ class RecordingSession(
         dispatch.flush(t, ticker.distanceM)
         handle(core.tick(t, ticker.distanceM, gpsOk = !lost), t)
         dispatch.ticked(t, ticker.distanceM)
+        // Free / Laps: a whole km crossed in this tick says its compare, if there is one.
+        coach.onTick(coachPrevT, coachPrevD, t, ticker.distanceM) { core.status(it).activeMs }?.let { speakFire(null, null, it, t) }
+        coachPrevT = t
+        coachPrevD = ticker.distanceM
         val last = samples.last()
         var pace: Double? = null
         if (last.hasFix) {
@@ -582,8 +610,7 @@ class RecordingSession(
                 }
                 is RecorderCore.Output.Cue -> {
                     writer.append(JournalLine.Cue(o.t, System.currentTimeMillis(), o.kind))
-                    cues.play(o.kind, cueText(o))
-                    RecorderEventBus.emit(CueEvent(kind = o.kind.toPigeon(), value = o.value))
+                    dispatch.cue(o, hold = coach.holdsRepEndCues)
                 }
                 is RecorderCore.Output.PhaseChanged -> dispatch.phase(o)
                 is RecorderCore.Output.AutoStop -> {
@@ -624,9 +651,10 @@ class RecordingSession(
 
     private fun publishLap(o: RecorderCore.Output.Lap, distanceM: Double) {
         lapStartT = o.t
-        lapStartDist = distanceM
         val st = core.status(o.t)
         val activeMs = st.activeMs - lapStartActive
+        coach.lapEnded(o.index, distanceM - lapStartDist, activeMs)
+        lapStartDist = distanceM
         lapStartActive = st.activeMs
         laps.add(LapSummary(index = o.index.toLong(), tMs = st.elapsedMs, activeMs = activeMs, distanceM = distanceM, source = o.source.toPigeon()))
         RecorderEventBus.emit(LapEvent(index = o.index.toLong(), tMs = st.elapsedMs, activeMs = activeMs, distanceM = distanceM, source = o.source.toPigeon()))
@@ -634,8 +662,48 @@ class RecordingSession(
         onNotificationChanged?.invoke()
     }
 
+    private fun publishCue(o: RecorderCore.Output.Cue) {
+        val st = core.status(o.t)
+        val next = if (st.stepRemainingM != null) null else st.phaseRemainingMs
+        val fire = coach.atCue(o.kind, o.index, o.value, core.phase, core.stepIndex, st.phaseActiveMs, next)
+        speakFire(o.kind, cueText(o), fire, o.t)
+        RecorderEventBus.emit(CueEvent(kind = o.kind.toPigeon(), value = o.value))
+    }
+
+    /**
+     * Says a cue with its compare appended ([CuePlayer] keeps the 16-word budget and drops a stale
+     * extra); a compare also goes to the journal (`cf`, so a restore never repeats it) and to the
+     * app as a [CompareEvent] for the overlay, muted or not. [kind] null = the compare's own km cue.
+     */
+    private fun speakFire(kind: CueKind?, base: String?, fire: LiveCoach.Fire?, t: Long) {
+        val text = fire?.base ?: base
+        val extra = fire?.takeIf { it.speak }?.text
+        if (kind != null || extra != null) cues.play(kind, text, extra)
+        fire ?: return
+        val st = core.status(t)
+        writer.append(JournalLine.CueFired(t, System.currentTimeMillis(), JournalLine.FiredKind.compare, fire.key, fire.index, st.elapsedMs))
+        val r = fire.result
+        RecorderEventBus.emit(
+            CompareEvent(
+                boardKey = r.boardKey, boardLabel = r.boardLabel, kind = r.kind.name, index = r.index.toLong(),
+                rank = r.rank.toLong(), of = r.of.toLong(), deltaMs = r.deltaMs, deltaSecPerKm = r.deltaSecPerKm,
+                deltaVo2 = r.deltaVo2, value = r.value, text = fire.text, overlay = fire.overlay,
+            ),
+        )
+        Log.i(TAG, "compare ${r.boardKey}#${r.index} rank ${r.rank}/${r.of} spoken=${fire.speak}")
+    }
+
+    /** "Mute tips" for this run (notification action): compares keep firing for the overlay, not the voice. */
+    @Synchronized
+    fun muteTips() {
+        if (finished || coach.muted) return
+        coach.muted = true
+        Log.i(TAG, "tips muted for $runId")
+        onNotificationChanged?.invoke()
+    }
+
     private fun cueText(o: RecorderCore.Output.Cue): String? =
-        CueWords.text(o.kind, o.value, spec, core.phase, core.repIndex, core.stepIndex, liveContext?.lastCooperVo2)
+        CueWords.text(o.kind, o.value, spec, core.phase, core.repIndex, core.stepIndex, o.index)
 
     private fun emitState() {
         refreshSnapshot()
@@ -717,6 +785,7 @@ class RecordingSession(
             lapIndex = st.lapIndex,
             hr = lastHr,
             lapAction = mode.lapInput,
+            muteTipsAction = coach.active && !coach.muted,
         )
     }
 

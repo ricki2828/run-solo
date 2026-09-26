@@ -23,8 +23,8 @@ class CueWordsTest {
         },
     )
 
-    private fun say(kind: CueKind, spec: SessionSpec?, phase: Phase, rep: Int, step: Int?, value: Double? = null, last: Double? = null) =
-        CueWords.text(kind, value, spec, phase, rep, step, last)
+    private fun say(kind: CueKind, spec: SessionSpec?, phase: Phase, rep: Int, step: Int?, value: Double? = null, index: Int? = null) =
+        CueWords.text(kind, value, spec, phase, rep, step, index)
 
     @Test
     fun `starts - distance rep, time rep, recovery styles, short, Cooper`() {
@@ -54,14 +54,12 @@ class CueWordsTest {
     }
 
     @Test
-    fun `projections - parkrun finish time, Cooper distance with VO2 and the gap to last time`() {
+    fun `projections - parkrun finish time, Cooper minute with the projected distance and VO2`() {
         val parkrun = eight400.copy(templateId = "parkrun", steps = listOf(Step(StepKind.work, TargetKind.distance, 5000, RecoveryStyle.run, 1)))
         assertEquals("On pace for 24:10", say(CueKind.projection, parkrun, Phase.work, 1, 0, 1_450_000.0))
         assertEquals("On pace for 1:02:05", say(CueKind.projection, parkrun, Phase.work, 1, 0, 3_725_000.0))
-        // 2,800 m → VO2 (2800 − 504.9) / 44.73 = 51.3.
-        assertEquals("On pace for 2,800 metres, VO2 max 51", say(CueKind.projection, SessionSpec.COOPER, Phase.work, 1, 0, 2_801.0))
-        assertEquals("On pace for 2,800 metres, VO2 max 51, up 2 on last time", say(CueKind.projection, SessionSpec.COOPER, Phase.work, 1, 0, 2_801.0, 49.4))
-        assertEquals("On pace for 2,800 metres, VO2 max 51, down 1 on last time", say(CueKind.projection, SessionSpec.COOPER, Phase.work, 1, 0, 2_801.0, 52.1))
-        assertEquals("On pace for 2,800 metres, VO2 max 51, level with last time", say(CueKind.projection, SessionSpec.COOPER, Phase.work, 1, 0, 2_801.0, 51.2))
+        // 2,800 m → VO2 (2800 − 504.9) / 44.73 = 51.3 (the CO1 table's cue).
+        assertEquals("5 minutes. Heading for about 2,800. VO2 about 51.", say(CueKind.projection, SessionSpec.COOPER, Phase.work, 1, 0, 2_801.0, 5))
+        assertEquals("2 minutes. Heading for about 3,690. VO2 about 71.", say(CueKind.projection, SessionSpec.COOPER, Phase.work, 1, 0, 3_690.9, 2))
     }
 }

@@ -1,5 +1,6 @@
 package app.runsolo.core.record
 
+import app.runsolo.core.live.CooperCurve
 import app.runsolo.core.gps.PointFilter
 import app.runsolo.core.journal.JournalCodec
 import app.runsolo.core.journal.JournalLine
@@ -202,7 +203,7 @@ class RecorderCoreI2Test {
     }
 
     @Test
-    fun `Cooper - LAP ignored, startReps starts 12 00, minute marks, projections from 3 00, suppressed on weak GPS`() {
+    fun `Cooper - LAP ignored, startReps starts 12 00, minute 1 mark, fade-curve projections each minute 2-11, suppressed on weak GPS`() {
         val core = RecorderCore(RunMode.cooper, SessionSpec.COOPER)
         core.start(t0)
         assertEquals(Phase.warmup, core.phase)
@@ -217,10 +218,15 @@ class RecorderCoreI2Test {
         val (c, _) = drive(core, w + 370_000, 360, 3.5, d2)
         val all = a + b + c
         val kinds = cues(all).map { it.kind to (it.t - w) / 1000 }
-        assertEquals(listOf(60L, 120L, 240L, 300L, 420L, 480L, 600L), kinds.filter { it.first == CueKind.minuteMark }.map { it.second })
+        assertEquals(listOf(60L), kinds.filter { it.first == CueKind.minuteMark }.map { it.second })
         val proj = cues(all).filter { it.kind == CueKind.projection }
-        assertEquals(listOf(180L, 540L, 660L), proj.map { (it.t - w) / 1000 }, "6:00 suppressed on weak GPS")
-        assertTrue(proj.all { abs(it.value!! - 3.5 * 720) < 1.0 }, proj.map { it.value }.toString())
+        assertEquals(listOf(120L, 180L, 240L, 300L, 420L, 480L, 540L, 600L, 660L), proj.map { (it.t - w) / 1000 }, "6:00 suppressed on weak GPS")
+        assertEquals(listOf(2, 3, 4, 5, 7, 8, 9, 10, 11), proj.map { it.index })
+        // Even pace through the default (U-shaped) curve: d(t) / F(t), not the linear 3.5 × 720.
+        for (p in proj) {
+            val s = (p.t - w) / 1000.0
+            assertEquals(3.5 * s / CooperCurve.DEFAULT.fractionAt(s / 60), p.value!!, 2.0, "at $s s")
+        }
         assertEquals(1, cues(all).count { it.kind == CueKind.countdown })
         assertEquals(w + 720_000, laps(all).single().t, "the 12:00 auto lap")
         assertEquals(Phase.cooldown, core.phase)

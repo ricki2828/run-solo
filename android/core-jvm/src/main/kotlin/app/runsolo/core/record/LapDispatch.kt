@@ -13,11 +13,15 @@ import app.runsolo.core.model.LapSource
  * pressed between two ticks, so it waits for the next tick; the phase change it caused waits with
  * it, so the app always sees a lap before its phase change.
  *
+ * A cue can be held with them too (LV1): a rep ended by a manual lap speaks its compare with the
+ * cue that follows it, and that compare needs the rep's pace at the interpolated distance.
+ *
  * The caller journals and speaks; this only decides the order and the lap's distance.
  */
 class LapDispatch(
     private val onLap: (RecorderCore.Output.Lap, distanceM: Double) -> Unit,
     private val onPhase: (RecorderCore.Output.PhaseChanged) -> Unit,
+    private val onCue: (RecorderCore.Output.Cue) -> Unit = {},
 ) {
     private val pending = ArrayList<RecorderCore.Output>()
     private var prevTickT = 0L
@@ -32,6 +36,11 @@ class LapDispatch(
         if (pending.isEmpty()) onPhase(o) else pending.add(o)
     }
 
+    /** A cue; [hold] = wait behind a pending manual lap (only when a compare needs its pace). */
+    fun cue(o: RecorderCore.Output.Cue, hold: Boolean) {
+        if (hold && pending.isNotEmpty()) pending.add(o) else onCue(o)
+    }
+
     /** The tick at [t] has its sample in ([distanceM]): send what waited for it. Call before the core tick. */
     fun flush(t: Long, distanceM: Double) {
         if (pending.isEmpty()) return
@@ -40,6 +49,7 @@ class LapDispatch(
         for (o in out) when (o) {
             is RecorderCore.Output.Lap -> onLap(o, interpolate(o.t, t, distanceM))
             is RecorderCore.Output.PhaseChanged -> onPhase(o)
+            is RecorderCore.Output.Cue -> onCue(o)
             else -> Unit
         }
     }

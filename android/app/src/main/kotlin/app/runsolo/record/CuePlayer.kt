@@ -8,12 +8,15 @@ import android.media.ToneGenerator
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import app.runsolo.core.live.CueComposer
+import app.runsolo.core.live.SpeechClock
 import app.runsolo.core.model.CueKind
 import java.util.Locale
 
@@ -32,6 +35,8 @@ class CuePlayer(context: Context) {
     private var ttsReady = false
     private var tone: ToneGenerator? = null
     private var focus: AudioFocusRequest? = null
+
+    private val speech = SpeechClock()
 
     /** Utterances/tones in flight; focus is abandoned when it returns to zero. */
     private var inFlight = 0
@@ -94,20 +99,34 @@ class CuePlayer(context: Context) {
      * tones a second apart. Called from the recorder thread; [done] from main.
      */
     @Synchronized
-    fun play(kind: CueKind, text: String?) {
-        vibrate(kind)
+    fun play(kind: CueKind, text: String?) = play(kind, text, null)
+
+    /**
+     * A cue with a live compare or nudge appended ([extra], Phase 4 §3.2): composed within the
+     * 16-word budget, and the extra dropped when the speech queued ahead would make it start
+     * more than 3 s late ([SpeechClock]); the base cue is still said. [kind] null = a cue of the
+     * compare's own (the Free/Laps km), with a short vibration.
+     */
+    @Synchronized
+    fun play(kind: CueKind?, text: String?, extra: String?) {
+        vibrate(kind ?: CueKind.minuteMark)
         if (!enabled) return
         if (kind == CueKind.countdown) {
             countdown()
             return
         }
-        say(kind, text ?: return)
+        val now = SystemClock.elapsedRealtime()
+        val composed = CueComposer.compose(text, extra?.takeIf { speech.freshAt(now) }).text ?: return
+        speech.queued(now, CueComposer.words(composed))
+        say(kind, composed)
     }
 
     /** Spoken without a vibration pattern of its own (e.g. "GPS weak"). */
     @Synchronized
     fun announce(text: String) {
-        if (enabled) say(null, text)
+        if (!enabled) return
+        speech.queued(SystemClock.elapsedRealtime(), CueComposer.words(text))
+        say(null, text)
     }
 
     private fun countdown() {

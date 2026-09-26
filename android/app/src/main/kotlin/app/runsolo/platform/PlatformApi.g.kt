@@ -1831,6 +1831,97 @@ data class GpsProbeEvent (
   }
 }
 
+/**
+ * A live "you vs you" compare fired (Phase 4 §3.2, LV1), for the overlay card.
+ * Sent whether or not tips are muted; [text] is the spoken phrase.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class CompareEvent (
+  val boardKey: String,
+  val boardLabel: String,
+  /** `distance`, `intervals`, `cooper` or `target`. */
+  val kind: String,
+  /** The km, rep or minute. */
+  val index: Long,
+  /** This run's place among itself and [of] − 1 compared entries. */
+  val rank: Long,
+  val of: Long,
+  /** distance / target: live − best entry (or the target's split); negative = ahead. */
+  val deltaMs: Long? = null,
+  /** intervals: live mean rep pace − the best prior's, s/km; negative = faster. */
+  val deltaSecPerKm: Double? = null,
+  /** cooper: projected VO2 − the best past test. */
+  val deltaVo2: Double? = null,
+  /** cooper: the projected VO2; target: the target time in ms. */
+  val value: Double? = null,
+  val text: String,
+  /** False when a recovery is under 20 s: voice only, no card. */
+  val overlay: Boolean
+) : RecorderEvent()
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): CompareEvent {
+      val boardKey = pigeonVar_list[0] as String
+      val boardLabel = pigeonVar_list[1] as String
+      val kind = pigeonVar_list[2] as String
+      val index = pigeonVar_list[3] as Long
+      val rank = pigeonVar_list[4] as Long
+      val of = pigeonVar_list[5] as Long
+      val deltaMs = pigeonVar_list[6] as Long?
+      val deltaSecPerKm = pigeonVar_list[7] as Double?
+      val deltaVo2 = pigeonVar_list[8] as Double?
+      val value = pigeonVar_list[9] as Double?
+      val text = pigeonVar_list[10] as String
+      val overlay = pigeonVar_list[11] as Boolean
+      return CompareEvent(boardKey, boardLabel, kind, index, rank, of, deltaMs, deltaSecPerKm, deltaVo2, value, text, overlay)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      boardKey,
+      boardLabel,
+      kind,
+      index,
+      rank,
+      of,
+      deltaMs,
+      deltaSecPerKm,
+      deltaVo2,
+      value,
+      text,
+      overlay,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as CompareEvent
+    return PlatformApiPigeonUtils.deepEquals(this.boardKey, other.boardKey) && PlatformApiPigeonUtils.deepEquals(this.boardLabel, other.boardLabel) && PlatformApiPigeonUtils.deepEquals(this.kind, other.kind) && PlatformApiPigeonUtils.deepEquals(this.index, other.index) && PlatformApiPigeonUtils.deepEquals(this.rank, other.rank) && PlatformApiPigeonUtils.deepEquals(this.of, other.of) && PlatformApiPigeonUtils.deepEquals(this.deltaMs, other.deltaMs) && PlatformApiPigeonUtils.deepEquals(this.deltaSecPerKm, other.deltaSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.deltaVo2, other.deltaVo2) && PlatformApiPigeonUtils.deepEquals(this.value, other.value) && PlatformApiPigeonUtils.deepEquals(this.text, other.text) && PlatformApiPigeonUtils.deepEquals(this.overlay, other.overlay)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.boardKey)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.boardLabel)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.kind)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.index)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.rank)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.of)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.deltaMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.deltaSecPerKm)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.deltaVo2)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.value)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.text)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.overlay)
+    return result
+  }
+}
+
 /** Generated class from Pigeon that represents data sent in messages. */
 data class FaultEvent (
   val kind: FaultKind,
@@ -2152,15 +2243,20 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
       }
       166.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FaultEvent.fromList(it)
+          CompareEvent.fromList(it)
         }
       }
       167.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StateEvent.fromList(it)
+          FaultEvent.fromList(it)
         }
       }
       168.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          StateEvent.fromList(it)
+        }
+      }
+      169.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           PhaseEvent.fromList(it)
         }
@@ -2318,16 +2414,20 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(165)
         writeValue(stream, value.toList())
       }
-      is FaultEvent -> {
+      is CompareEvent -> {
         stream.write(166)
         writeValue(stream, value.toList())
       }
-      is StateEvent -> {
+      is FaultEvent -> {
         stream.write(167)
         writeValue(stream, value.toList())
       }
-      is PhaseEvent -> {
+      is StateEvent -> {
         stream.write(168)
+        writeValue(stream, value.toList())
+      }
+      is PhaseEvent -> {
+        stream.write(169)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)

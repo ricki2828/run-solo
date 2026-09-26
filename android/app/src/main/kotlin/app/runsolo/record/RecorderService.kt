@@ -145,6 +145,7 @@ class RecorderService : Service() {
         const val ACTION_PAUSE = "app.runsolo.action.PAUSE"
         const val ACTION_RESUME = "app.runsolo.action.RESUME"
         const val ACTION_STOP = "app.runsolo.action.STOP"
+        const val ACTION_MUTE_TIPS = "app.runsolo.action.MUTE_TIPS"
         const val PREFS = "runsolo.settings"
         const val PREF_RAW_GPS = "rawGps"
         const val PREF_CUES = "cues"

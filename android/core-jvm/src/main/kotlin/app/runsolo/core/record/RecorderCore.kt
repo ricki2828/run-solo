@@ -3,6 +3,8 @@ package app.runsolo.core.record
 import app.runsolo.core.gps.PointFilter
 import app.runsolo.core.journal.Replay
 import app.runsolo.core.journal.RunEvent
+import app.runsolo.core.live.CooperCurve
+import app.runsolo.core.live.CooperProjection
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.CueProfile
 import app.runsolo.core.model.LapSource
@@ -63,6 +65,8 @@ class RecorderCore(
         val doubleLapGuardMs: Long = 5_000,
         val debounceMs: Long = 400,
         val unstructuredDebounceMs: Long = 1_500,
+        /** The Cooper fade curve (Phase 4 §3.3): the LiveContext's personal curve, else the default. */
+        val cooperCurve: CooperCurve = CooperCurve.DEFAULT,
     )
 
     sealed class Output {
@@ -73,7 +77,7 @@ class RecorderCore(
          * in ms (distance step); `minuteMark` = the minute; `phaseEnd` = [CueWords.COOLDOWN_OVER]
          * when it closes a fixed cool-down.
          */
-        data class Cue(val t: Long, val kind: CueKind, val value: Double? = null) : Output()
+        data class Cue(val t: Long, val kind: CueKind, val value: Double? = null, val index: Int? = null) : Output()
         data class PhaseChanged(val t: Long, val phase: Phase, val repIndex: Int, val phaseDurationMs: Long?) : Output()
 
         /** The session is over ([SessionSpec.autoStop]); the shell stops the recording. */
@@ -96,6 +100,8 @@ class RecorderCore(
         val stepRemainingMs: Long?,
         /** Metres left in a distance step; null otherwise. */
         val stepRemainingM: Double?,
+        /** Active time into the current phase (pauses and gaps excluded). */
+        val phaseActiveMs: Long = 0,
     )
 
     init {
@@ -134,6 +140,9 @@ class RecorderCore(
 
     /** Distance (m) and device time of the last tick: the interpolation base for distance boundaries. */
     private var lastD = 0.0
+
+    /** The distance as of the last tick (after a restore: rebuilt from the journal's samples). */
+    val distanceM: Double get() = lastD
     private var lastDT = 0L
     private var gpsOk = true
 
@@ -338,22 +347,21 @@ class RecorderCore(
 
     /** A due non-boundary cue, with its value; null when suppressed. */
     private fun cueOut(t: Long, cue: CueScheduler.CuePoint): Output.Cue? {
-        if (cue.kind == CueKind.minuteMark) return Output.Cue(t, cue.kind, (cue.at / 60_000).toDouble())
+        if (cue.kind == CueKind.minuteMark) return Output.Cue(t, cue.kind, (cue.at / 60_000).toDouble(), (cue.at / 60_000).toInt())
         if (cue.kind != CueKind.projection) return Output.Cue(t, cue.kind)
         if (!gpsOk) return null
         val activeMs = activeAt(t) - phaseStartActive
         val covered = lastD - phaseStartD
         return when (val target = phaseTargetM) {
             null -> {
-                // Cooper: projected 12-minute distance; nothing before 2:00.
-                val dur = phaseDurationMs ?: return null
-                if (activeMs < COOPER_PROJECTION_MIN_MS || covered <= 0) return null
-                Output.Cue(t, CueKind.projection, covered / activeMs * dur)
+                // Cooper: projected 12-minute distance through the fade curve (§3.3), index = the minute.
+                val projected = CooperProjection.project(config.cooperCurve, activeMs / 1_000.0, covered) ?: return null
+                Output.Cue(t, CueKind.projection, projected, (cue.at / 60_000).toInt())
             }
             else -> {
-                // Distance step: projected finish time of the step, from its own start.
+                // Distance step: projected finish time of the step, from its own start; index = the km.
                 if (covered <= 0 || activeMs <= 0) return null
-                Output.Cue(t, CueKind.projection, activeMs / covered * target)
+                Output.Cue(t, CueKind.projection, activeMs / covered * target, (cue.at / 1_000).toInt())
             }
         }
     }
@@ -372,6 +380,7 @@ class RecorderCore(
             stepIndex = stepIndex,
             stepRemainingMs = if (stepIndex != null) remainingMs else null,
             stepRemainingM = if (stepIndex != null) remainingM else null,
+            phaseActiveMs = if (state == RecorderState.idle) 0 else activeAt(t) - phaseStartActive,
         )
     }
 
@@ -493,9 +502,6 @@ class RecorderCore(
     }
 
     companion object {
-        /** Cooper projection is silent before 2:00 (too little distance to project from). */
-        const val COOPER_PROJECTION_MIN_MS = 120_000L
-
         /**
          * Why this core cannot run [spec] in [mode], or null when it can: an invalid spec, or
          * one that does not fit the mode.
