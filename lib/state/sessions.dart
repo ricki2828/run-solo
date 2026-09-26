@@ -592,12 +592,14 @@ class SessionsController extends ChangeNotifier {
     await _persist();
   }
 
-  List<CustomSession> _sorted(List<CustomSession> l) => l
-    ..sort((a, b) {
-      final ta = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final tb = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      return tb.compareTo(ta);
-    });
+  /// A sorted copy: the store hands back `const []` for a missing or
+  /// damaged file, which cannot be sorted in place.
+  List<CustomSession> _sorted(List<CustomSession> l) =>
+      List.of(l)..sort((a, b) {
+        final ta = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final tb = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return tb.compareTo(ta);
+      });
 
   /// Writes are serialised so two quick edits never race on the file.
   Future<void> _persist() {

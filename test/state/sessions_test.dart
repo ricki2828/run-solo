@@ -227,6 +227,24 @@ void main() {
       },
     );
 
+    test(
+      'first launch (no file) and a damaged file load through the controller',
+      () async {
+        // CI API 29 smoke: the store's const [] used to be sorted in place,
+        // so AppServices.production threw and the app never started.
+        final c = SessionsController(FileSessionsStore(dir));
+        await c.load();
+        expect(c.sessions, isEmpty);
+        await c.save(const CustomSession(id: 'a', name: 'A'));
+        expect(c.sessions.map((s) => s.id), ['a']);
+
+        File('${dir.path}/sessions.json').writeAsStringSync('{not json');
+        final d = SessionsController(FileSessionsStore(dir));
+        await d.load();
+        expect(d.sessions, isEmpty);
+      },
+    );
+
     test('at most 20 templates', () async {
       final c = SessionsController(MemorySessionsStore());
       for (var i = 0; i < SessionRules.maxCustom; i++) {
