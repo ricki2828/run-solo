@@ -334,11 +334,11 @@ class LiveCoachLifecycleTest {
 
     @Test
     fun `a 30-minute goal - the distance at 30:00, said once`() {
-        val sh = goalRun(SessionSpec.goalTime(1_800, "30 minutes"), 1_800 + 120)
+        val sh = goalRun(SessionSpec.goalTime(1_800, "30 min"), 1_800 + 120)
         val g = sh.goals.single()
         assertTrue(!g.distanceGoal)
         assertEquals(1_800_000L, g.timeMs)
-        assertEquals("30 minutes done, ${String.format(java.util.Locale.US, "%.2f", g.distanceM / 1_000)} km.", g.text)
+        assertEquals("30 min done, ${String.format(java.util.Locale.US, "%.2f", g.distanceM / 1_000)} km.", g.text)
         assertTrue(g.distanceM in 7_150.0..7_210.0, "about 30 min at 4 m/s: ${g.distanceM}")
     }
 

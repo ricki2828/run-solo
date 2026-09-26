@@ -235,6 +235,7 @@ class LiveCoach(
     fun nudgeAtCue(kind: CueKind, phase: Phase): Nudge? {
         if (muted || mode != RunMode.intervals) return null
         val s = spec ?: return null
+        if (s.isGoal) return null
         if (!isRepEnd(kind, phase, s)) return null
         val rep = livePaces.size
         if (rep < 3 || (s.cueProfile == CueProfile.short && rep != s.reps)) return null
@@ -272,6 +273,8 @@ class LiveCoach(
     fun atCue(kind: CueKind, index: Int?, value: Double?, phase: Phase, stepIndex: Int?, stepElapsedMs: Long, nextDurationMs: Long?): Fire? {
         context ?: return null
         val s = spec ?: return null
+        // A GOAL run (§G) is one step, not reps: its end is the goal line (GoalCoach), no compare.
+        if (s.isGoal) return null
         // Rep end: the recovery's start, or the cool-down cue after the last rep.
         val repEnd = isRepEnd(kind, phase, s)
         if (repEnd && mode == RunMode.intervals) {

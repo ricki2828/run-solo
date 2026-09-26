@@ -74,7 +74,7 @@ object ReplayScenarios {
         "fartlek" -> fartlek()
         // GOAL runs (§G): one step from Start, then an open cool-down (60 s here, then the trace ends).
         "goal-10k" -> structured(kind, SessionSpec.goalDistance(10_000, "10K"), workMps = 4.0, start = null)
-        "goal-30min" -> structured(kind, SessionSpec.goalTime(1_800, "30 minutes"), workMps = 3.5, start = null)
+        "goal-30min" -> structured(kind, SessionSpec.goalTime(1_800, "30 min"), workMps = 3.5, start = null)
         else -> null
     }
 
