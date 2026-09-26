@@ -50,7 +50,7 @@ class _TrendScreenState extends State<TrendScreen> {
           builder: (context, snap) {
             final all = snap.data ?? const <RunSummary>[];
             final typed =
-                all.where((r) => r.mode == _type && r.analysis != null).toList()
+                all.where((r) => r.mode == _type && !r.missing).toList()
                   ..sort((a, b) => a.start.compareTo(b.start));
             // Intervals: one trend per comparison key, newest key first,
             // titled by the latest run's session name.
@@ -149,9 +149,9 @@ class _TrendScreenState extends State<TrendScreen> {
 
 /// The comparison key a run's trend groups under (plan §3.8).
 String? trendKey(RunSummary r) =>
-    r.analysis?.comparisonKey ??
+    r.comparisonKey ??
     r.spec?.comparisonKey ??
-    (r.analysis?.intervals != null ? engine.ComparisonKey.norwegian4x4 : null);
+    (r.hasIntervals ? engine.ComparisonKey.norwegian4x4 : null);
 
 /// Session medians for the 4x4 trend: the engine's work pace per run and the
 /// rolling median of the previous 6 (the verdict's comparison set).
@@ -174,7 +174,7 @@ List<TrendPoint> trendPoints(List<RunSummary> chronological) {
   final out = <TrendPoint>[];
   final prior = <double>[];
   for (final r in chronological) {
-    final pace = r.analysis?.intervals?.avgWorkPaceSecPerKm;
+    final pace = r.workPaceSecPerKm;
     if (pace == null) continue;
     final window = prior.length > 6 ? prior.sublist(prior.length - 6) : prior;
     out.add(
@@ -186,7 +186,7 @@ List<TrendPoint> trendPoints(List<RunSummary> chronological) {
         best: r.verdict?.bestIn365Days ?? false,
       ),
     );
-    if (r.analysis!.eligibleAsPrior) prior.add(pace);
+    if (r.eligibleAsPrior) prior.add(pace);
   }
   return out;
 }
@@ -232,18 +232,17 @@ class _FourByFourTrend extends StatelessWidget {
     final floor =
         runs.last.verdict?.floorSecPerKm ??
         engine.EngineConstants.defaults.runFloorSecPerKm;
-    final metrics = runs.map((r) => r.analysis!.intervals!).toList();
     double? bestRep;
     double? bestSession;
     double? lowestFade;
     double? bestRecovery;
-    for (final m in metrics) {
-      for (final r in m.reps) {
-        if (r.clean && (bestRep == null || r.paceSecPerKm! < bestRep)) {
-          bestRep = r.paceSecPerKm;
+    for (final m in runs.where((r) => r.hasIntervals)) {
+      for (final pace in m.cleanRepPacesSecPerKm) {
+        if (pace != null && (bestRep == null || pace < bestRep)) {
+          bestRep = pace;
         }
       }
-      final p = m.avgWorkPaceSecPerKm;
+      final p = m.workPaceSecPerKm;
       if (p != null && (bestSession == null || p < bestSession)) {
         bestSession = p;
       }
