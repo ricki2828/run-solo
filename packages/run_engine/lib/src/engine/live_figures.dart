@@ -31,6 +31,7 @@ class LiveFigures {
   const LiveFigures({
     this.repPacesSecPerKm = const [],
     this.cooperMinuteM = const [],
+    this.kmHr = const [],
   });
 
   static const LiveFigures none = LiveFigures();
@@ -49,7 +50,16 @@ class LiveFigures {
   /// short or unusable test gives none (LC1 requires 12 points).
   final List<double> cooperMinuteM;
 
-  static LiveFigures of(RunFile run, RunAnalysis a) {
+  /// Mean HR over each whole km from the Start press, aligned with
+  /// [RunBestEfforts.fromStartSplitsMs] (same length; null for a km with no
+  /// HR). Empty without from-start splits. For the HR-drift nudge (CR1).
+  final List<double?> kmHr;
+
+  static LiveFigures of(
+    RunFile run,
+    RunAnalysis a, {
+    List<int> fromStartSplitsMs = const [],
+  }) {
     if (a.indoor || a.noisy) return none;
     final trace = Trace(run.samples);
     return LiveFigures(
@@ -62,7 +72,35 @@ class LiveFigures {
       cooperMinuteM: a.mode == RunMode.cooper
           ? CooperProjection.minuteDistances(run) ?? const []
           : const [],
+      kmHr: run.hasHr
+          ? [
+              for (var k = 0; k < fromStartSplitsMs.length; k++)
+                _kmHr(
+                  trace,
+                  k == 0 ? 0 : fromStartSplitsMs[k - 1],
+                  fromStartSplitsMs[k],
+                ),
+            ]
+          : const [],
     );
+  }
+
+  /// Mean HR over one km, the rule native mirrors live (CR1, shared with
+  /// rs-native-opus): the plain mean of the 1 Hz samples with `t` in
+  /// `[aMs, bMs)` that carry HR, null when fewer than half of the samples
+  /// in the km carry HR (a strap dropout says nothing about drift).
+  static double? _kmHr(Trace trace, int aMs, int bMs) {
+    var n = 0;
+    var withHr = 0;
+    var sum = 0.0;
+    for (final s in trace.between(aMs, bMs)) {
+      n++;
+      if (s.hr == null) continue;
+      withHr++;
+      sum += s.hr!;
+    }
+    if (n == 0 || withHr * 2 < n) return null;
+    return sum / withHr;
   }
 
   static double? _lapPace(RunFile run, Trace trace, int t0, int t1) {
@@ -86,6 +124,10 @@ class LiveFigures {
     'cooper_minute_m': [
       for (final m in cooperMinuteM) double.parse(m.toStringAsFixed(1)),
     ],
+    'km_hr': [
+      for (final h in kmHr)
+        h == null ? null : double.parse(h.toStringAsFixed(1)),
+    ],
   };
 
   factory LiveFigures.fromJson(Map<String, Object?> j) => LiveFigures(
@@ -96,6 +138,10 @@ class LiveFigures {
     cooperMinuteM: [
       for (final m in (j['cooper_minute_m'] as List? ?? const []))
         (m as num).toDouble(),
+    ],
+    kmHr: [
+      for (final h in (j['km_hr'] as List? ?? const []))
+        (h as num?)?.toDouble(),
     ],
   );
 }
@@ -119,11 +165,18 @@ class RunDerived {
     RunAnalysis a, {
     List<FiredNudge> nudgesFired = const [],
     BestEffortFinder finder = const BestEffortFinder(),
-  }) => RunDerived(
-    bestEfforts: finder.find(run, a),
-    live: LiveFigures.of(run, a),
-    nudgesFired: nudgesFired,
-  );
+  }) {
+    final efforts = finder.find(run, a);
+    return RunDerived(
+      bestEfforts: efforts,
+      live: LiveFigures.of(
+        run,
+        a,
+        fromStartSplitsMs: efforts.fromStartSplitsMs,
+      ),
+      nudgesFired: nudgesFired,
+    );
+  }
 
   Map<String, Object?> toJson() => {
     'best_efforts': bestEfforts.toJson(),
