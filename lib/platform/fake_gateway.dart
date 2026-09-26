@@ -407,6 +407,7 @@ class FakeRecorderGateway implements RecorderGateway {
         ? null
         : math.max(0, _phaseTargetM! - _stepDistanceM),
     journalOk: true,
+    pausedAtElapsedMs: _state == RecorderState.paused ? _pausedAtMs : null,
     mode: _state == RecorderState.idle ? RecordMode.free : _mode,
     laps: List.of(_laps),
   );

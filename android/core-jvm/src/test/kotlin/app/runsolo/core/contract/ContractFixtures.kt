@@ -267,6 +267,7 @@ object ContractFixtures {
             s.core, s.ticker, sc.presses,
             onSamples = { for (x in it) s.writer.append(x) },
             onOutputs = { s.emit(it) },
+            onPause = { t -> s.writer.append(JournalLine.Pause(t, W0 + (t - T0))) },
         )
         val hr = sc.hr.iterator()
         var next = if (hr.hasNext()) hr.next() else null
