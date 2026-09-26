@@ -212,6 +212,16 @@ void main() {
     expect(k5.startMs <= 606000 && k5.endMs >= 788000, isFalse);
   });
 
+  test('documented behaviour (review #31 P2): a 4:00 km surge inside a '
+      '6:00 run reads 1.37x every 5K window\'s average, so the 5K is '
+      'rejected. Change this only with a deliberate calibration', () {
+    final r = find(
+      build([(1440, 1000 / 360), (240, 1000 / 240), (612, 1000 / 360)]),
+    );
+    expect(r.rejected[BestEffortDistance.k5], BestEffortRejection.gpsGuard);
+    expect(r.efforts.containsKey(BestEffortDistance.km1), isTrue);
+  });
+
   group('genuine finishing kicks must pass (review #31 P1-1)', () {
     test('mile at 52 s per 200 m, last 200 m in 41 s', () {
       const easy = (300, 2.5);
