@@ -41,6 +41,15 @@ class FreeModeTest {
     }
 
     @Test
+    fun `notification Stop opens the app to finish (pause there), never a broadcast that finalises`() {
+        val n = RecorderNotification(context).also { it.createChannel() }
+        val stop = n.build(content(RunMode.free, lapAction = false)).actions.single { it.title.toString() == "Stop" }
+        val shadow = org.robolectric.Shadows.shadowOf(stop.actionIntent)
+        assertTrue(shadow.isActivityIntent)
+        assertEquals(app.runsolo.MainActivity.ACTION_FINISH, shadow.savedIntent.action)
+    }
+
+    @Test
     fun `session in free mode - lap from every source is a no-op, journal has no lap line, notification content has no LAP`() {
         fs.mkdirs(RunPaths.RUNS_DIR)
         val s = RecordingSession(context, "free-1", RunMode.free, null, Units.km, null, volumeKeyLaps = true)

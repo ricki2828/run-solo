@@ -73,7 +73,7 @@ class RecorderNotification(private val context: Context) {
             .setContentIntent(openApp())
         if (c.lapAction) b.addAction(0, "LAP", serviceAction(RecorderService.ACTION_LAP))
         b.addAction(0, if (c.state == RecorderState.paused) "Resume" else "Pause", serviceAction(if (c.state == RecorderState.paused) RecorderService.ACTION_RESUME else RecorderService.ACTION_PAUSE))
-            .addAction(0, "Stop", serviceAction(RecorderService.ACTION_STOP))
+            .addAction(0, "Stop", finishInApp())
         if (c.muteTipsAction && !c.lapAction) b.addAction(0, "Mute tips", serviceAction(RecorderService.ACTION_MUTE_TIPS))
         if (c.state == RecorderState.paused) {
             b.setUsesChronometer(false)
@@ -117,6 +117,17 @@ class RecorderNotification(private val context: Context) {
     private fun openApp(): PendingIntent {
         val i = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         return PendingIntent.getActivity(context, 0, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    /**
+     * "Stop" pauses and opens the app on its finish screen (SAVE / RESUME / DISCARD, #89), the
+     * same as the in-app STOP; it never finalises from the notification. An activity
+     * PendingIntent, since Android 12 blocks starting an activity from a receiver: on a locked
+     * phone the pause lands once the runner unlocks and the app opens.
+     */
+    private fun finishInApp(): PendingIntent {
+        val i = Intent(context, MainActivity::class.java).setAction(MainActivity.ACTION_FINISH).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        return PendingIntent.getActivity(context, 1, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
     /** Broadcast to [RecorderActionReceiver]: reaches the running process, never starts the service. */

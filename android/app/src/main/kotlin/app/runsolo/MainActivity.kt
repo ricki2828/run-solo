@@ -71,12 +71,22 @@ class MainActivity : FlutterActivity() {
         PermissionsApi.setUp(flutterEngine.dartExecutor.binaryMessenger, Permissions())
         StorageApi.setUp(flutterEngine.dartExecutor.binaryMessenger, StorageApiImpl(applicationContext))
         RecorderEventsStreamHandler.register(flutterEngine.dartExecutor.binaryMessenger, RecorderEventBus)
+        handleFinish(intent)
         handleDebugIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
+        handleFinish(intent)
         handleDebugIntent(intent)
+    }
+
+    /** The notification's "Stop": pause the run; the app, now in front, shows its paused card and finish screen. */
+    private fun handleFinish(intent: Intent?) {
+        if (intent?.action != ACTION_FINISH) return
+        intent.action = null // a recreated activity must not pause again
+        RecorderService.session?.pause()
     }
 
     /**
@@ -300,6 +310,8 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
+        /** The notification's "Stop" (see [handleFinish]). */
+        const val ACTION_FINISH = "app.runsolo.action.FINISH"
         private const val DEBUG_TAG = "RunSolo/debug"
         private const val REQ_LOCATION = 41
         private const val REQ_NOTIFICATIONS = 42
