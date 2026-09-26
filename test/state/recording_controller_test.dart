@@ -187,7 +187,7 @@ void main() {
     final ctx = LiveContext(
       boards: [
         LiveBoard(
-          key: 'be:5k',
+          key: 'be:5000',
           label: '5K',
           kind: LiveBoardKind.distance,
           targetM: 5000,
@@ -463,24 +463,35 @@ void main() {
     expect(ctl.snapshot.active, isFalse);
   });
 
-  test('step fields: native stepIndex and stepRemainingM win (I2)', () {
-    final spec = engine.SessionCatalogue.expand('400s').toPigeon();
-    final base = RecordingSnapshot(
-      state: RecorderState.recording,
-      mode: RecordMode.intervals,
-      spec: spec,
-      phase: Phase.work,
-      repIndex: 1,
-      lapDistanceM: 100,
-    );
-    // No native fields yet: looked up by phase and rep, metres from the lap.
-    expect(base.currentStep!.kind, StepKind.work);
-    expect(base.currentStep!.value, 400);
-    expect(base.metresToGo, 300);
-    // Native says 120 m left (its own step distance), step index 0.
-    final nat = base.copyWith(stepIndex: 0, stepRemainingM: 120);
-    expect(nat.metresToGo, 120);
-    expect(nat.copyWith(stepRemainingM: -5).metresToGo, 0);
-    expect(nat.copyWith(clearStepRemainingM: true).metresToGo, 300);
-  });
+  test(
+    'step fields: spec.steps[stepIndex] and stepRemainingM from native (I2)',
+    () {
+      final spec = engine.SessionCatalogue.expand('400s').toPigeon();
+      // Native counts recovery steps: index 3 is the 2nd recovery.
+      expect(spec.steps[3].kind, StepKind.recovery);
+      final base = RecordingSnapshot(
+        state: RecorderState.recording,
+        mode: RecordMode.intervals,
+        spec: spec,
+        phase: Phase.recovery,
+        repIndex: 2,
+        lapDistanceM: 100,
+      );
+      final nat = base.copyWith(stepIndex: 3, stepRemainingM: 120);
+      expect(identical(nat.currentStep, spec.steps[3]), isTrue);
+      // Native metres, not step value minus the app's lap distance (which
+      // starts one sample late after an auto lap).
+      expect(nat.metresToGo, 120);
+      expect(nat.copyWith(stepRemainingM: -5).metresToGo, 0);
+      // Between the PhaseEvent and the new step's first tick: the whole step,
+      // never the lap-distance estimate.
+      final gap = base.copyWith(stepIndex: null, stepRemainingM: null);
+      expect(gap.currentStep!.kind, StepKind.recovery);
+      expect(gap.metresToGo, spec.steps[3].value);
+      // Warm-up: no step, no metres.
+      final warm = nat.copyWith(phase: Phase.warmup, clearStepIndex: true);
+      expect(warm.currentStep, isNull);
+      expect(warm.metresToGo, isNull);
+    },
+  );
 }

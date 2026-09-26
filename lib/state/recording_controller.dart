@@ -129,13 +129,16 @@ class RecordingSnapshot {
   /// Native's metres left in a distance step (I2); null for time steps.
   final double? stepRemainingM;
 
-  /// The session step being run (work or recovery): native's [stepIndex]
-  /// when it has sent one, else looked up by phase and rep.
+  /// The session step being run: `spec.steps[stepIndex]` as native sends
+  /// it (work and recovery steps both counted; null in warm-up, cool-down
+  /// and unstructured runs). Only in the gap between a PhaseEvent and the
+  /// next tick (≤ 1 s, native sends the new index with that tick) is it
+  /// looked up by phase and rep.
   SessionStep? get currentStep {
     final s = spec;
     if (s == null || !timed) return null;
     final i = stepIndex;
-    if (i != null && i >= 0 && i < s.steps.length) return s.steps[i];
+    if (i != null) return i >= 0 && i < s.steps.length ? s.steps[i] : null;
     final kind = phase == Phase.work ? StepKind.work : StepKind.recovery;
     for (final st in s.steps) {
       if (st.kind == kind && st.repIndex == repIndex) return st;
@@ -146,15 +149,17 @@ class RecordingSnapshot {
   /// The current step ends by distance (plan §3.6).
   bool get distanceStep => currentStep?.target == TargetKind.distance;
 
-  /// Metres left in a distance step: native's [stepRemainingM], else the
-  /// step's own lap distance against its target; never negative, never
+  /// Metres left in a distance step: native's [stepRemainingM], measured
+  /// from the exact boundary (the app's lap distance starts at the tick
+  /// after an auto lap, so it would read high by up to one sample). Before
+  /// the new step's first tick it is the whole step. Never negative, never
   /// extrapolated (W3).
   double? get metresToGo {
     final st = currentStep;
     if (st == null || st.target != TargetKind.distance) return null;
     final native = stepRemainingM;
-    if (native != null) return native.clamp(0, st.value.toDouble());
-    return (st.value - lapDistanceM).clamp(0, st.value.toDouble());
+    if (native == null) return st.value.toDouble();
+    return native.clamp(0, st.value.toDouble());
   }
 
   /// Short reps (< 60 s, e.g. 30/30s): HR lags, so the vitals row shows the
