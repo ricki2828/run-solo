@@ -21,6 +21,11 @@ import '../widgets/value_stepper.dart';
 import 'custom_builder_screen.dart';
 import 'intervals_sheet.dart';
 
+/// The live compare at Start ([kLiveCompare]); tests turn it on to check
+/// what `start()` is handed.
+@visibleForTesting
+bool debugLiveCompareAtStart = kLiveCompare;
+
 /// Start (plan §3.2, design brief A8): INTERVALS / LAPS / FREE. Tapping
 /// INTERVALS opens the sheet; the picked session shows as the session card
 /// (reps and recovery steppers only, D2; anything else is Save as custom).
@@ -106,6 +111,11 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
 
   AppServices? _services;
 
+  /// PD2 / A10.10: the runner swapped the event's target to its other
+  /// choice (prediction vs PB), for [_targetGoal] only.
+  bool _targetSwapped = false;
+  String? _targetGoal;
+
   /// False on Android 14: the toggle is disabled with a reason.
   bool _volumeKeyLaps = true;
   bool _volumeKeyChecked = false;
@@ -118,8 +128,15 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     if (_volumeKeyChecked) return;
     _volumeKeyChecked = true;
     // LC1: get the live compare's candidates ready off the UI isolate, so
-    // the Start press only plans over them (#59 review P2).
-    if (kLiveCompare) unawaited(AppServices.of(context).live?.prepare());
+    // the Start press only plans over them (#59 review P2). PD2's target
+    // line reads the same candidates, so it prepares with or without the
+    // live compare, and redraws once they land.
+    final live = AppServices.of(context).live;
+    if (live != null) {
+      live.prepare().then((_) {
+        if (mounted) setState(() {});
+      }, onError: (_) {});
+    }
     AppServices.of(context).permissions.volumeKeyLapsSupported().then((ok) {
       if (mounted && ok != _volumeKeyLaps) setState(() => _volumeKeyLaps = ok);
     });
@@ -156,8 +173,15 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         RecordMode.laps || RecordMode.free => null,
       };
       // LC1: the live compare's history, 150 ms or none; off until LV2.
-      final live = kLiveCompare
-          ? await services.live?.build(mode: mode, spec: spec)
+      // PD2 (#84 review P1): the target raced is the one shown, so a tap
+      // over to the other choice goes in too.
+      final live = debugLiveCompareAtStart
+          ? await services.live?.build(
+              mode: mode,
+              spec: spec,
+              preferAlternative:
+                  s.goalRun && _targetGoal == s.goalId && _targetSwapped,
+            )
           : null;
       result = await services.recording.start(
         mode,
@@ -272,6 +296,55 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     if (r.start && mounted) await _start();
   }
 
+  /// PD2: "Target 24:30 (predicted)" under the goal card (A10.10), from
+  /// the last prepare (pure, no I/O); nothing without a target. When the
+  /// event has a prediction and a fresh PB, tapping swaps between them.
+  Widget _targetLine(AppSettings s, RunSoloTokens t) {
+    final spec = s.goalSpec(kEventNames.parkrun);
+    final live = AppServices.of(context).live;
+    if (spec == null || live == null) return const SizedBox.shrink();
+    if (_targetGoal != s.goalId) {
+      _targetGoal = s.goalId;
+      _targetSwapped = false;
+    }
+    final first = live.targetFor(spec.toPigeon());
+    if (first == null) return const SizedBox.shrink();
+    final alt = first.alternative;
+    final shown = _targetSwapped && alt != null ? alt : first;
+    final other = identical(shown, first) ? alt : first;
+    return Padding(
+      padding: const EdgeInsets.only(top: Space.x8),
+      child: Semantics(
+        button: other != null,
+        hint: other == null ? null : 'Switches to ${other.line}',
+        child: InkWell(
+          key: const ValueKey('start-target'),
+          onTap: other == null
+              ? null
+              : () => setState(() => _targetSwapped = !_targetSwapped),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: other == null ? 0 : 48),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    shown.line,
+                    style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+                  ),
+                ),
+                if (other != null)
+                  Text(
+                    other.predicted ? 'Use predicted ›' : 'Use your PB ›',
+                    style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
@@ -330,6 +403,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                     key: const ValueKey('event-card'),
                     style: text.bodyMedium?.copyWith(color: t.inkSecondary),
                   ),
+                  _targetLine(s, t),
                   const SizedBox(height: Space.x16),
                   _Toggle(
                     label: 'Voice cues',
