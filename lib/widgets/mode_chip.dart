@@ -118,15 +118,31 @@ class ModeChip extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: Space.x4),
-              Text(
-                subtitle,
-                maxLines: glyph == null ? 2 : 1,
-                overflow: TextOverflow.ellipsis,
-                style: RunSoloType.label13.copyWith(
-                  color: t.inkSecondary,
-                  height: 1.2,
+              if (glyph == null)
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: RunSoloType.label13.copyWith(
+                    color: t.inkSecondary,
+                    height: 1.2,
+                  ),
+                )
+              else
+                // One line above the glyph: shrink rather than cut the
+                // session name ("Norwegian 4x4" at 360 dp, A8).
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    subtitle,
+                    softWrap: false,
+                    style: RunSoloType.label13.copyWith(
+                      color: t.inkSecondary,
+                      height: 1.2,
+                    ),
+                  ),
                 ),
-              ),
               if (glyph != null) ...[
                 const SizedBox(height: Space.x4),
                 StructureGlyph(spec: glyph!, height: 12),
