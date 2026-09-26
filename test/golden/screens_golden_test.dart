@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/app/event_names.dart';
 import 'package:run_solo/app/routes.dart';
+import 'package:run_solo/app/services.dart';
 import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
@@ -923,6 +924,75 @@ void main() {
       await pumpTimes(tester, 6);
       await tester.pump(const Duration(milliseconds: 400));
       await golden(tester, 'record_event_last400_360x$h');
+    });
+  }
+
+  // G3 (plan §G, A8): a standard goal on Start (GPS reason pinned above
+  // START), Custom, and the goal record screens: time goal before the goal
+  // and in the cool-down, the Half's long numbers.
+  for (final h in [800, 640]) {
+    testWidgets('goal: Start, custom, and the record screens at 360 x $h', (
+      tester,
+    ) async {
+      final services = fakeServices(
+        settings: const AppSettings(
+          onboardingDone: true,
+          goalRun: true,
+          goalId: 'd10000',
+        ),
+      );
+      await pumpApp(tester, services, pushRoute: Routes.start);
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 6);
+      await settleAnimations(tester);
+      await golden(tester, 'start_goal_nofix_360x$h');
+      await services.settings.update(
+        (x) => x.copyWith(goalId: 'dcustom', goalCustomMetres: 12300),
+      );
+      (services.recorder as FakeRecorderGateway).emitGpsProbe(
+        GpsProbeEvent(fix: true, accuracyM: 6),
+      );
+      await pumpTimes(tester, 4);
+      await tester.pump(const Duration(milliseconds: 400));
+      await golden(tester, 'start_goal_custom_360x$h');
+
+      Future<(FakeRecorderGateway, AppServices)> record(
+        engine.SessionSpec spec,
+      ) async {
+        final fake = FakeRecorderGateway(now: now)
+          ..liveSecPerKm = 285
+          ..scriptedHr = 165;
+        final run = fakeServices(recorder: fake);
+        await run.recording.start(
+          RecordMode.intervals,
+          spec.toPigeon(),
+          Units.km,
+        );
+        return (fake, run);
+      }
+
+      Future<void> show(
+        (FakeRecorderGateway, AppServices) r,
+        int seconds,
+      ) async {
+        final (fake, run) = r;
+        for (var i = 0; i < seconds; i++) {
+          fake.advance(const Duration(seconds: 1));
+        }
+        await pumpApp(tester, run, pushRoute: Routes.recording);
+        tester.view.physicalSize = Size(1080, h * 3.0);
+        await pumpTimes(tester, 6);
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+
+      final time = await record(engine.SessionSpec.goalTime(1800, '30 min'));
+      await show(time, 600);
+      await golden(tester, 'record_goal_time_360x$h');
+      await show(time, 1260);
+      await golden(tester, 'record_goal_cooldown_360x$h');
+      final half = await record(engine.SessionSpec.goalDistance(21098, 'Half'));
+      await show(half, 3000);
+      await golden(tester, 'record_goal_half_360x$h');
     });
   }
 }

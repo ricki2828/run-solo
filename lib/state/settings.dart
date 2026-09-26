@@ -70,6 +70,8 @@ class AppSettings {
     this.lastMode = RecordMode.intervals,
     this.goalRun = false,
     this.goalId = GoalChoice.eventId,
+    this.goalCustomMetres = GoalChoice.defaultCustomMetres,
+    this.goalCustomSeconds = GoalChoice.defaultCustomSeconds,
     this.cues = true,
     this.kmSplits = true,
     this.haptics = true,
@@ -103,8 +105,41 @@ class AppSettings {
   /// `t<s>`.
   final String goalId;
 
+  /// GOAL > Distance > Custom: whole 100 m (the board key's 0.1 km, plan
+  /// §G), within the engine's goal limits.
+  final int goalCustomMetres;
+
+  /// GOAL > Time > Custom: whole minutes, within the engine's limits.
+  final int goalCustomSeconds;
+
   /// The event (K1) is the picked goal.
   bool get eventRun => goalRun && goalId == GoalChoice.eventId;
+
+  /// The picked goal's step: (distance?, metres or seconds); null for the
+  /// event, which runs its own spec.
+  ({bool distance, int value})? get goalStep {
+    final g = GoalChoice.byId(goalId);
+    if (g == null || g.id == GoalChoice.eventId) return null;
+    final v = g.value ?? (g.distance ? goalCustomMetres : goalCustomSeconds);
+    return (distance: g.distance, value: v);
+  }
+
+  /// The spec a goal run records (plan §G, G1's specs and names); the
+  /// event's is `SessionSpec.parkrun(eventName)`. Null when GOAL is not
+  /// the picked run type.
+  engine.SessionSpec? goalSpec(String eventName) {
+    if (!goalRun) return null;
+    final step = goalStep;
+    if (step == null) return engine.SessionSpec.parkrun(eventName);
+    final kind = step.distance
+        ? engine.TargetKind.distance
+        : engine.TargetKind.time;
+    final name = engine.GoalCatalogue.nameFor(kind, step.value);
+    return step.distance
+        ? engine.SessionSpec.goalDistance(step.value, name)
+        : engine.SessionSpec.goalTime(step.value, name);
+  }
+
   final bool cues;
 
   /// Voice → "Km splits": a Free run says each km (Phase 4 LV1). Default on.
@@ -202,6 +237,8 @@ class AppSettings {
     RecordMode? lastMode,
     bool? goalRun,
     String? goalId,
+    int? goalCustomMetres,
+    int? goalCustomSeconds,
     bool? cues,
     bool? kmSplits,
     bool? haptics,
@@ -231,6 +268,8 @@ class AppSettings {
     lastMode: lastMode ?? this.lastMode,
     goalRun: goalRun ?? this.goalRun,
     goalId: goalId ?? this.goalId,
+    goalCustomMetres: goalCustomMetres ?? this.goalCustomMetres,
+    goalCustomSeconds: goalCustomSeconds ?? this.goalCustomSeconds,
     cues: cues ?? this.cues,
     kmSplits: kmSplits ?? this.kmSplits,
     haptics: haptics ?? this.haptics,
@@ -263,6 +302,8 @@ class AppSettings {
     'lastMode': lastMode.name,
     'goalRun': goalRun,
     'goalId': goalId,
+    'goalCustomMetres': goalCustomMetres,
+    'goalCustomSeconds': goalCustomSeconds,
     'cues': cues,
     'kmSplits': kmSplits,
     'haptics': haptics,
@@ -322,6 +363,12 @@ class AppSettings {
       goalId: GoalChoice.byId(pick('goalId', d.goalId)) == null
           ? d.goalId
           : pick('goalId', d.goalId),
+      goalCustomMetres: GoalChoice.clampMetres(
+        pick('goalCustomMetres', d.goalCustomMetres),
+      ),
+      goalCustomSeconds: GoalChoice.clampSeconds(
+        pick('goalCustomSeconds', d.goalCustomSeconds),
+      ),
       cues: pick('cues', d.cues),
       kmSplits: pick('kmSplits', d.kmSplits),
       haptics: pick('haptics', d.haptics),
@@ -439,24 +486,50 @@ class SettingsController extends ChangeNotifier {
 /// goal specs (G1, #63) run everything but the event; until they land only
 /// the event can be picked.
 class GoalChoice {
-  const GoalChoice(this.id, this.label, {required this.distance});
+  const GoalChoice(this.id, this.label, {required this.distance, this.value});
   final String id;
   final String label;
   final bool distance;
 
+  /// Step metres or seconds; null for Custom (the settings hold it) and for
+  /// the event (its own spec).
+  final int? value;
+
+  bool get custom => id == customDistanceId || id == customTimeId;
+
   /// The Saturday 5 km event (K1), labelled from `kEventNames` by the UI.
   static const String eventId = 'parkrun'; // event-name-ok: data key
+  static const String customDistanceId = 'dcustom';
+  static const String customTimeId = 'tcustom';
 
+  static const int defaultCustomMetres = 12000;
+  static const int defaultCustomSeconds = 2700;
+
+  /// Whole 100 m within the engine's goal limits.
+  static int clampMetres(int m) => ((m / 100).round() * 100).clamp(
+    engine.SessionSpec.goalMinMetres,
+    engine.SessionSpec.goalMaxMetres,
+  );
+
+  /// Whole minutes within the engine's goal limits.
+  static int clampSeconds(int s) => ((s / 60).round() * 60).clamp(
+    engine.SessionSpec.goalMinSeconds,
+    engine.SessionSpec.goalMaxSeconds,
+  );
+
+  /// Standard names and values are G1's (`GoalCatalogue`).
   static const List<GoalChoice> distances = [
-    GoalChoice('d5000', '5K', distance: true),
+    GoalChoice('d5000', '5K', distance: true, value: 5000),
     GoalChoice(eventId, '', distance: true),
-    GoalChoice('d10000', '10K', distance: true),
-    GoalChoice('d21098', 'Half', distance: true),
-    GoalChoice('d42195', 'Marathon', distance: true),
+    GoalChoice('d10000', '10K', distance: true, value: 10000),
+    GoalChoice('d21098', 'Half', distance: true, value: 21098),
+    GoalChoice('d42195', 'Marathon', distance: true, value: 42195),
+    GoalChoice(customDistanceId, 'Custom', distance: true),
   ];
   static const List<GoalChoice> times = [
-    GoalChoice('t1800', '30 min', distance: false),
-    GoalChoice('t3600', '1 hour', distance: false),
+    GoalChoice('t1800', '30 min', distance: false, value: 1800),
+    GoalChoice('t3600', '1 hour', distance: false, value: 3600),
+    GoalChoice(customTimeId, 'Custom', distance: false),
   ];
 
   static GoalChoice? byId(String id) {
@@ -465,7 +538,4 @@ class GoalChoice {
     }
     return null;
   }
-
-  /// Runnable in this build: the event now; the rest with G1 (#63).
-  bool get available => id == eventId;
 }
