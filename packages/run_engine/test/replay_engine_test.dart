@@ -113,8 +113,9 @@ void main() {
     final run = load('replay_parkrun');
     final a = engine.analyze(run, now: fixedNow);
 
-    test('warm-up then the 5 km, no cool-down (auto-stop)', () {
-      expect(a.detection!.warmup, hasLength(1));
+    test('no warm-up: the 5 km from Start, no cool-down (auto-stop)', () {
+      expect(a.detection!.warmup, isEmpty);
+      expect(run.laps.single.t0Ms, 0);
       expect(a.detection!.cooldown, isEmpty);
       expect(a.detection!.reps.single.work.distanceM, closeTo(5000, 5));
       expect(run.laps.last.t1Ms, run.elapsedMs, reason: 'stopped at 5 km');
