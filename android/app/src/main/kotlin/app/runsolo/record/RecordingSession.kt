@@ -100,7 +100,7 @@ class RecordingSession(
     @Volatile
     private var snapshot: RecorderStatus? = null
     private val handler = Handler(thread.looper)
-    private val cues = CuePlayer(this.context)
+    private val cues = CuePlayer(this.context) { clock() }
     internal val lapInput = LapInput(
         this.context,
         onLap = { lap(LapSource.volumeKey) },
@@ -418,6 +418,7 @@ class RecordingSession(
         coachPrevD = ticker.distanceM
         // A nudge follows its cue as its own line: done (journaled, never offered again) only once said.
         cues.dueNudge()?.let { n ->
+            logSaid(n.text)
             coach.nudgeSaid(n)
             writer.append(JournalLine.CueFired(t, System.currentTimeMillis(), JournalLine.FiredKind.nudge, n.rule, n.index, core.status(t).elapsedMs))
             Log.i(TAG, "nudge ${n.rule}#${n.index}")
@@ -705,7 +706,8 @@ class RecordingSession(
         val extra = fire?.takeIf { it.speak }?.text
         // A nudge waits in the player to follow this cue; it is journaled at the tick that says it
         // (the next run's `blocked` list comes from those lines), never when it is dropped.
-        if (kind != null || base != null || extra != null) cues.play(kind, base, extra, nudge)
+        val said = if (kind != null || base != null || extra != null) cues.play(kind, base, extra, nudge) else null
+        said?.text?.let { logSaid(it) }
         fire ?: return
         val st = core.status(t)
         writer.append(JournalLine.CueFired(t, System.currentTimeMillis(), JournalLine.FiredKind.compare, fire.key, fire.index, st.elapsedMs))
@@ -738,6 +740,7 @@ class RecordingSession(
      */
     private fun publishGoal(g: GoalCoach.Reached) {
         cues.goal(g.text)
+        if (cues.enabled) logSaid(g.text)
         // The timed 5 km says its result line and stops: no goal card, no cool-down.
         if (spec?.isEvent == true) {
             Log.i(TAG, "event finished: ${g.text} interrupted=${g.interrupted}")
@@ -761,6 +764,12 @@ class RecordingSession(
         cues.dropNudge()
         Log.i(TAG, "tips muted for $runId")
         onNotificationChanged?.invoke()
+    }
+
+    /** Replay only (T4): what was said, at trace ms, for the emulator's transcript check. */
+    private fun logSaid(text: String) {
+        val r = replay ?: return
+        Log.i(TAG, "said ${r.traceMs(clock())} $text")
     }
 
     private fun cueText(o: RecorderCore.Output.Cue): String? =
