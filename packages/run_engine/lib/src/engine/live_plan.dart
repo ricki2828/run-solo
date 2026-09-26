@@ -111,8 +111,9 @@ class LivePlan {
 ///   standard distance its best-effort board, a standard time its
 ///   distance-in-time board, a custom goal its `goal:` board). Native
 ///   races nothing during a goal; the board is for "new best" at the goal
-///   (`GoalCoach`, matched by key), so every entry counts, series or not.
-/// A board needs [minEntries]; it carries at most [maxEntries] (the top 10
+///   (`GoalCoach`, matched by key), so every entry counts, series or not,
+///   and one earlier run is enough.
+/// A board needs [minEntries] (a goal board 1); it carries at most [maxEntries] (the top 10
 /// and the newest 10, deduped), and only entries that have the series the
 /// live compare reads (a 5K entry needs 5 from-start splits). Pure.
 abstract final class LivePlanner {
@@ -143,7 +144,9 @@ abstract final class LivePlanner {
       final board = boards[key];
       if (board == null || out.length >= maxBoards) return;
       final entries = _entries(board, byId, kind, m, goal: goal);
-      if (entries.length < minEntries) return;
+      // A goal board needs one entry: GoalCoach only checks "beats every
+      // entry" and nothing races it, so a second Half can hear "new best".
+      if (entries.length < (goal ? 1 : minEntries)) return;
       out.add(
         LiveBoardPlan(
           key: key,

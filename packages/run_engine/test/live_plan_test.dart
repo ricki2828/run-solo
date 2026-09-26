@@ -498,13 +498,23 @@ void main() {
       expect(tp.boards.single.entries.map((e) => e.finalMetric), [9400, 9000]);
     });
 
-    test('one earlier Half: no board (the contract needs 2)', () {
+    test('one earlier Half is a board: the second Half can be a new best', () {
       final plan = LivePlanner.plan(
         mode: RunMode.intervals,
         session: half,
         runs: [halfRun(1, 6300)],
       );
-      expect(plan.isEmpty, isTrue);
+      expect(plan.boards.single.key, 'be:21097');
+      expect(plan.boards.single.entries.single.finalMetric, 6300000);
+      // No earlier Half at all: no board.
+      expect(
+        LivePlanner.plan(
+          mode: RunMode.intervals,
+          session: half,
+          runs: [freeRun(1, 1500), freeRun(2, 1480)],
+        ).isEmpty,
+        isTrue,
+      );
     });
 
     // Shared with core-jvm GoalCoachFixtureTest: the goal board keys and a
