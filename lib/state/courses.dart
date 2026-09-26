@@ -118,6 +118,25 @@ String? courseIdOf(RunSummary r) {
       : null;
 }
 
+/// K1 at Start: the course whose known start (any of its runs' first fix)
+/// is nearest to where the runner stands, within the engine's 150 m
+/// cluster radius; null when no course is that close.
+String? courseAt(List<RunSummary> runs, double lat, double lon) {
+  String? best;
+  var bestM = double.infinity;
+  for (final r in runs) {
+    final id = courseIdOf(r);
+    final s = r.eventStart;
+    if (id == null || s == null || r.missing) continue;
+    final d = engine.haversineM(lat, lon, s.lat, s.lon);
+    if (d <= engine.ParkrunCourses.clusterRadiusM && d < bestM) {
+      bestM = d;
+      best = id;
+    }
+  }
+  return best;
+}
+
 /// Default labels: "Course 1", "Course 2" … in order of each course's first
 /// run, so they stay put as runs are added.
 class CourseLabels {

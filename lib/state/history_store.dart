@@ -101,6 +101,7 @@ class RunSummary {
     this.indexedOfficialTime,
     this.parkrun,
     this.indexedHeatFraction,
+    this.eventStart,
   });
 
   /// From the index (W5b): no file decoded, no analysis.
@@ -117,6 +118,9 @@ class RunSummary {
     indexedComparisonKey: e.comparisonKey,
     indexedOfficialTime: e.prior?.officialTime,
     indexedHeatFraction: e.heatAdj,
+    eventStart: e.row!.eventStartLat == null || e.row!.eventStartLon == null
+        ? null
+        : (lat: e.row!.eventStartLat!, lon: e.row!.eventStartLon!),
   );
 
   final String id;
@@ -147,6 +151,9 @@ class RunSummary {
 
   /// The key from the index (file store); the analysis's otherwise.
   final String? indexedComparisonKey;
+
+  /// K1: an event run's first fix; null otherwise or without a fix.
+  final ({double lat, double lon})? eventStart;
 
   String? get comparisonKey => indexedComparisonKey ?? analysis?.comparisonKey;
 
@@ -474,6 +481,9 @@ RunSummary _summaryOf(
   laps: run.laps.length,
   spec: run.session,
   parkrun: sidecar?.parkrun,
+  eventStart: run.session?.templateId == engine.SessionSpec.parkrunId
+      ? engine.ParkrunCourses.startOf(run)
+      : null,
   // Only a 4x4 carries a verdict word (plan §18.2); guard by the effective
   // mode so nothing else ever shows one.
   verdict:
