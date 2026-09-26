@@ -140,7 +140,7 @@ class _OnboardingIntro extends StatelessWidget {
         final units = services.settings.settings.units;
         return Scaffold(
           body: PinnedFooterLayout(
-            children: [
+            content: [
               const SizedBox(height: Space.x48),
               const TallyMark(height: 48),
               const SizedBox(height: Space.x32),
@@ -251,7 +251,7 @@ class _BirthYearStepState extends State<_BirthYearStep> {
     final services = AppServices.of(context);
     return Scaffold(
       body: PinnedFooterLayout(
-        children: [
+        content: [
           const SizedBox(height: Space.x48),
           Text('YOUR BIRTH YEAR', style: text.displayMedium),
           const SizedBox(height: Space.x16),

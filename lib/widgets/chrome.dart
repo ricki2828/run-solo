@@ -235,10 +235,10 @@ class BottomNav extends StatelessWidget {
 class PinnedFooterLayout extends StatelessWidget {
   const PinnedFooterLayout({
     super.key,
-    required this.children,
+    required this.content,
     required this.footer,
   });
-  final List<Widget> children;
+  final List<Widget> content;
   final List<Widget> footer;
 
   @override
@@ -249,7 +249,7 @@ class PinnedFooterLayout extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(child: ListView(children: children)),
+            Expanded(child: ListView(children: content)),
             ...footer,
           ],
         ),

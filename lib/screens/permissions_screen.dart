@@ -101,7 +101,7 @@ class _PermissionsScreenState extends State<PermissionsScreen>
         automaticallyImplyLeading: !widget.onboarding,
       ),
       body: PinnedFooterLayout(
-        children: [
+        content: [
           const SizedBox(height: Space.x8),
           Text(
             kPrivacyParagraph,
