@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:run_engine/run_engine.dart';
 import 'package:test/test.dart';
 
@@ -6,7 +8,7 @@ import 'helpers.dart';
 /// Phase 4 PD1 (plan §3.4): Riegel predictions, candidate selection, heat
 /// inputs, the parkrun target and "estimate" wording (WARN-4).
 void main() {
-  const predictor = Predictor();
+  const predictor = Predictor(names: EventNames(parkrun: 'parkrun'));
   final now = DateTime(2026, 9, 26, 9);
   final sep12 = DateTime(2026, 9, 12);
 
@@ -266,6 +268,27 @@ void main() {
     test('nothing to go on → no target', () {
       expect(ParkrunTarget.choose(now: now), isNull);
     });
+  });
+
+  test('the event name is injected, never a literal (play flavour)', () {
+    const play = Predictor(names: EventNames(parkrun: '5K time trial'));
+    final p = play.predict(PredictionTarget.parkrun, [
+      input(5000, 1470, kind: PredictionSourceKind.parkrun),
+    ], now: now)!;
+    expect(
+      p.cardLine,
+      'Estimated 5K time trial 24:30 · from your 5K time '
+      'trial on 12 Sep',
+    );
+    expect(p.cardLine.toLowerCase().contains('parkrun'), isFalse);
+  });
+
+  test('no event literal in PD1 source outside the injected names', () {
+    final code = File('lib/src/engine/predictor.dart')
+        .readAsLinesSync()
+        .where((l) => !l.trimLeft().startsWith('//'));
+    final literal = RegExp(r"'[^'\n]*parkrun[^'\n]*'", caseSensitive: false);
+    expect(code.where(literal.hasMatch), isEmpty);
   });
 
   test('the marker check matches whole words only', () {

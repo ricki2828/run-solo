@@ -5,6 +5,7 @@ import '../model/session_spec.dart';
 import '../run_mode.dart';
 import 'analysis.dart';
 import 'best_efforts.dart';
+import 'event_names.dart';
 
 /// Words that mark a research-derived number as an estimate (Phase 4 plan
 /// §2, WARN-4). Every engine string carrying such a number contains one;
@@ -113,16 +114,19 @@ class PredictionInput {
   }
 }
 
-/// A distance the Home card predicts (plan §3.4). parkrun and 5K share one
-/// distance but are labelled apart.
+/// A distance the Home card predicts (plan §3.4). The Saturday event and
+/// 5K share one distance but are labelled apart; the event's label is the
+/// injected [EventNames.parkrun], never a literal.
 enum PredictionTarget {
-  parkrun('parkrun', 5000),
+  parkrun(null, 5000),
   k5('5K', 5000),
   k10('10K', 10000);
 
-  const PredictionTarget(this.label, this.metres);
-  final String label;
+  const PredictionTarget(this._label, this.metres);
+  final String? _label;
   final double metres;
+
+  String labelFor(EventNames names) => _label ?? names.parkrun;
 }
 
 /// One predicted time with its exponent band and source.
@@ -134,9 +138,11 @@ class Prediction {
     required this.highSeconds,
     required this.source,
     required this.units,
+    required this.names,
   });
 
   final PredictionTarget target;
+  final EventNames names;
 
   /// Riegel with the headline exponent.
   final double seconds;
@@ -148,7 +154,8 @@ class Prediction {
   final Units units;
 
   /// "Estimated 5K 24:30".
-  String get headline => 'Estimated ${target.label} ${clock(seconds)}';
+  String get headline =>
+      'Estimated ${target.labelFor(names)} ${clock(seconds)}';
 
   /// "24:10 to 24:55" (shown on tap).
   String get band => '${clock(lowSeconds)} to ${clock(highSeconds)}';
@@ -174,7 +181,7 @@ class Prediction {
   String _sourceName() => switch (source.kind) {
     PredictionSourceKind.bestEffort5k => '5K',
     PredictionSourceKind.bestEffort10k => '10K',
-    PredictionSourceKind.parkrun => 'parkrun',
+    PredictionSourceKind.parkrun => names.parkrun,
     PredictionSourceKind.wholeRun =>
       units == Units.mi
           ? '${(source.distanceM / 1609.344).toStringAsFixed(1)} mi run'
@@ -218,7 +225,10 @@ class Prediction {
 /// aged 40–70, hence the headline 1.06 and the 1.05–1.08 band. Only up to
 /// 10K (Riegel is weaker at the marathon).
 class Predictor {
-  const Predictor();
+  const Predictor({required this.names});
+
+  /// Flavour-dependent event names for the copy.
+  final EventNames names;
 
   static const double exponent = 1.06;
   static const double exponentLow = 1.05;
@@ -276,6 +286,7 @@ class Predictor {
       highSeconds: math.max(a, b),
       source: best,
       units: units,
+      names: names,
     );
   }
 
