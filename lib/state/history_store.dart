@@ -98,6 +98,8 @@ class RunSummary {
     this.analysis,
     this.row,
     this.indexedComparisonKey,
+    this.indexedOfficialTime,
+    this.parkrun,
   });
 
   /// From the index (W5b): no file decoded, no analysis.
@@ -112,6 +114,7 @@ class RunSummary {
     verdict: e.row!.verdict,
     row: e.row,
     indexedComparisonKey: e.comparisonKey,
+    indexedOfficialTime: e.prior?.officialTime,
   );
 
   final String id;
@@ -144,6 +147,10 @@ class RunSummary {
   final String? indexedComparisonKey;
 
   String? get comparisonKey => indexedComparisonKey ?? analysis?.comparisonKey;
+
+  /// K1: the headline is the runner's official time (index prior, file
+  /// store); null when the index does not say (memory store, no prior).
+  final bool? indexedOfficialTime;
 
   /// Intervals figures (null when the run has no interval metrics).
   int? get detectedReps =>
@@ -182,7 +189,13 @@ class RunSummary {
       row?.eligibleAsPrior ?? analysis?.eligibleAsPrior ?? false;
   bool get hasIntervals => detectedReps != null;
 
+  /// K1: course and official time from the sidecar; null when neither.
+  final engine.ParkrunInfo? parkrun;
+
   bool get isFourByFour => mode == RecordMode.intervals;
+
+  /// The Saturday 5 km event (K1), by its session template.
+  bool get isParkrun => spec?.templateId == engine.SessionSpec.parkrunId;
 
   /// Whole-run average pace, s/km; null when no distance.
   double? get avgSecPerKm =>
@@ -263,8 +276,71 @@ abstract class RunStore implements HistoryStore {
   /// Drop every lap edit (fix-laps "Reset").
   Future<RunDetail> clearLapEdits(String id);
   Future<RunDetail> setOverride(String id, RecordMode? mode);
+
+  /// K1: the runner's official time in whole seconds (null clears it). The
+  /// verdict is recomputed with it; callers validate first.
+  Future<RunDetail> setOfficialTime(String id, int? seconds);
+
+  /// K1: move an event run to another course (the runner's pick).
+  Future<RunDetail> setCourse(String id, String courseId);
   Future<void> delete(String id);
 }
+
+/// K1: [info] with one field changed, keeping the other.
+engine.ParkrunInfo _parkrunWith(
+  engine.ParkrunInfo? info, {
+  Object? courseId = _keep,
+  Object? officialTimeSeconds = _keep,
+}) {
+  final base = info ?? const engine.ParkrunInfo();
+  return engine.ParkrunInfo(
+    courseId: identical(courseId, _keep) ? base.courseId : courseId as String?,
+    officialTimeSeconds: identical(officialTimeSeconds, _keep)
+        ? base.officialTimeSeconds
+        : officialTimeSeconds as int?,
+  );
+}
+
+const _keep = Object();
+
+/// K1 course tags still to write: every event run without a course gets
+/// one, oldest first, so a new course's first run names the id and later
+/// runs join it (`ParkrunCourses.assign`, 150 m). Runs without a fix stay
+/// untagged (retried on the next pass). Pure; returns id → course id.
+Map<String, String> pendingCourseTags(
+  List<engine.RunFile> runs,
+  engine.RunSidecar? Function(String id) sidecarOf,
+) {
+  final events =
+      runs
+          .where((r) => r.session?.templateId == engine.SessionSpec.parkrunId)
+          .toList()
+        ..sort((a, b) => a.start.compareTo(b.start));
+  final known = <engine.ParkrunCourseStart>[];
+  final out = <String, String>{};
+  for (final run in events) {
+    final have = sidecarOf(run.id)?.parkrun?.courseId;
+    final start = engine.ParkrunCourses.startOf(run);
+    final id = have ?? engine.ParkrunCourses.assign(run, known);
+    if (id == null) continue;
+    if (have == null) out[run.id] = id;
+    if (start != null) {
+      known.add(
+        engine.ParkrunCourseStart(courseId: id, lat: start.lat, lon: start.lon),
+      );
+    }
+  }
+  return out;
+}
+
+/// Sidecar transform for a course tag: only while the run is still
+/// untagged (a runner's pick that landed meanwhile wins).
+engine.RunSidecar Function(engine.RunSidecar) courseTagTransform(
+  String courseId,
+) =>
+    (current) => current.parkrun?.courseId != null
+    ? current
+    : current.withParkrun(_parkrunWith(current.parkrun, courseId: courseId));
 
 /// Shared analysis pass over decoded runs (memory and file stores).
 class _Analyser {
@@ -372,6 +448,7 @@ RunSummary _summaryOf(
   distanceM: run.distanceM,
   laps: run.laps.length,
   spec: run.session,
+  parkrun: sidecar?.parkrun,
   // Only a 4x4 carries a verdict word (plan §18.2); guard by the effective
   // mode so nothing else ever shows one.
   verdict:
@@ -415,6 +492,12 @@ class MemoryRunStore implements RunStore {
 
   Map<String, engine.RunAnalysis> _analyse() {
     final live = files.where((f) => !_deleted.contains(f.id)).toList();
+    for (final e in pendingCourseTags(live, (id) => sidecars[id]).entries) {
+      final current = sidecars[e.key] ?? engine.RunSidecar(runId: e.key);
+      final next = courseTagTransform(e.value)(current);
+      sidecars[e.key] = next;
+      written.add(next);
+    }
     final r = _analyser.run(live, sidecars);
     for (final e in r.frozen.entries) {
       final current = sidecars[e.key] ?? engine.RunSidecar(runId: e.key);
@@ -494,6 +577,18 @@ class MemoryRunStore implements RunStore {
   @override
   Future<RunDetail> setOverride(String id, RecordMode? mode) =>
       _mutate(id, (s) => s.withOverride(mode == null ? null : runModeOf(mode)));
+
+  @override
+  Future<RunDetail> setOfficialTime(String id, int? seconds) => _mutate(
+    id,
+    (s) => s.withParkrun(_parkrunWith(s.parkrun, officialTimeSeconds: seconds)),
+  );
+
+  @override
+  Future<RunDetail> setCourse(String id, String courseId) => _mutate(
+    id,
+    (s) => s.withParkrun(_parkrunWith(s.parkrun, courseId: courseId)),
+  );
 
   @override
   Future<void> delete(String id) async => _deleted.add(id);
@@ -645,6 +740,10 @@ class FileRunStore implements RunStore {
     await _sweepTmp();
     final files = await _files();
     final old = await readIndex();
+    // K1: tag event runs with a course before anything is stamped, so a
+    // tag's sidecar write makes its entry stale in this same pass.
+    // The files it had to decode are reused below (never decoded twice).
+    final tagDecoded = await _tagCourses(files, old);
     final inputs = _inputs();
     final allStale = old.inputs != inputs;
     final stamps = <String, FileStamp>{};
@@ -661,7 +760,9 @@ class FileRunStore implements RunStore {
         if (!stamps.containsKey(e.id)) e,
     ];
 
-    final decoded = <String, (engine.RunFile, engine.RunSidecar?)>{};
+    final decoded = <String, (engine.RunFile, engine.RunSidecar?)>{
+      ...tagDecoded,
+    };
     var analyses = <String, engine.RunAnalysis>{};
     var frozen = <String, engine.Verdict>{};
     while (true) {
@@ -976,6 +1077,74 @@ class FileRunStore implements RunStore {
   @override
   Future<RunDetail> setOverride(String id, RecordMode? mode) =>
       _mutate(id, (s) => s.withOverride(mode == null ? null : runModeOf(mode)));
+
+  @override
+  Future<RunDetail> setOfficialTime(String id, int? seconds) => _mutate(
+    id,
+    (s) => s.withParkrun(_parkrunWith(s.parkrun, officialTimeSeconds: seconds)),
+  );
+
+  @override
+  Future<RunDetail> setCourse(String id, String courseId) => _mutate(
+    id,
+    (s) => s.withParkrun(_parkrunWith(s.parkrun, courseId: courseId)),
+  );
+
+  /// K1: tag finished or imported event runs with a course, once, through
+  /// the writer (plan: the app assigns after finalise, imports included).
+  /// Only decodes when there is something to tag: a file the index does
+  /// not know yet, or an event entry still keyed without a course. A run
+  /// without a fix stays untagged and is looked at again next time; a
+  /// failed write only logs.
+  Future<Map<String, (engine.RunFile, engine.RunSidecar?)>> _tagCourses(
+    Map<String, File> files,
+    RunIndex old,
+  ) async {
+    bool isEvent(RunIndexEntry e) =>
+        e.templateId == engine.SessionSpec.parkrunId;
+    final unknown = [
+      for (final id in files.keys)
+        if (!old.entries.containsKey(id)) id,
+    ];
+    final untagged = old.entries.values.any(
+      (e) =>
+          isEvent(e) &&
+          files.containsKey(e.id) &&
+          e.comparisonKey == engine.ComparisonKey.parkrun,
+    );
+    if (unknown.isEmpty && !untagged) return {};
+    final ids = {
+      ...unknown,
+      for (final e in old.entries.values)
+        if (isEvent(e) && files.containsKey(e.id)) e.id,
+    };
+    final decoded = <String, (engine.RunFile, engine.RunSidecar?)>{};
+    for (final id in ids) {
+      final d = await _decode(files[id]!);
+      if (d != null) decoded[id] = d;
+    }
+    final events = [
+      for (final d in decoded.values)
+        if (d.$1.session?.templateId == engine.SessionSpec.parkrunId) d.$1,
+    ];
+    final tags = pendingCourseTags(events, (id) => decoded[id]?.$2);
+    for (final e in tags.entries) {
+      try {
+        decoded[e.key] = (
+          decoded[e.key]!.$1,
+          await sidecars.update(
+            e.key,
+            _sidecarFor(files[e.key]!),
+            courseTagTransform(e.value),
+            runFile: files[e.key],
+          ),
+        );
+      } catch (err) {
+        debugPrint('history: could not tag the course for ${e.key} ($err)');
+      }
+    }
+    return decoded;
+  }
 
   /// Every readable run with its sidecar, for the weather queue (W1).
   Future<List<(engine.RunFile, engine.RunSidecar?)>> weatherCandidates() async {

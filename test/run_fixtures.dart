@@ -110,3 +110,44 @@ engine.RunFile lapsRunFile({
       ),
     )
     .run;
+
+/// Event run ids differ in their first 8 hex digits, as real uuids do: a
+/// new course takes its id from them (`ParkrunCourses.newCourseId`).
+String eventRunId(int n) =>
+    '${(0xa0000000 + n).toRadixString(16)}-0000-4000-8000-${n.toString().padLeft(12, '0')}';
+
+/// K1: a timed 5 km (the event session) at [mps] after a 10 min warm-up LAP,
+/// starting [latShiftDeg] north of the generator's start line (0.002° ≈
+/// 220 m, another course).
+engine.RunFile eventRunFile({
+  required int n,
+  required DateTime start,
+  required String eventName,
+  double mps = 3.5,
+  double latShiftDeg = 0,
+  bool indoor = false,
+}) {
+  final run = generator
+      .generate(
+        synth.SyntheticSpec(
+          name: 'event_$n',
+          id: eventRunId(n),
+          session: engine.SessionSpec.parkrun(eventName),
+          segments: [
+            synth.Segment.warmup(600, 2.8),
+            synth.Segment.work((5000 / mps).round(), mps),
+          ],
+          hr: true,
+          indoor: indoor,
+          start: start,
+        ),
+      )
+      .run;
+  if (latShiftDeg == 0) return run;
+  return run.copyWith(
+    samples: [
+      for (final s in run.samples)
+        s.copyWith(lat: s.lat == null ? null : s.lat! + latShiftDeg),
+    ],
+  );
+}

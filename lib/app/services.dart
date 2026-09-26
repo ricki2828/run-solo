@@ -16,6 +16,7 @@ import '../platform/fake_gateway.dart';
 import '../platform/gateway.dart';
 import '../platform/pigeon_gateway.dart';
 import '../platform/transfer_gateway.dart';
+import '../state/courses.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../state/max_hr.dart';
@@ -38,6 +39,7 @@ class AppServices {
     required this.transfer,
     required this.storage,
     SessionsController? sessions,
+    CourseNamesController? courseNames,
     RecordingController? recording,
     DateTime Function()? now,
     ZoneMementoStore? zoneMemento,
@@ -45,6 +47,8 @@ class AppServices {
     this.live,
   }) : now = now ?? DateTime.now,
        sessions = sessions ?? SessionsController(MemorySessionsStore()),
+       courseNames =
+           courseNames ?? CourseNamesController(MemoryCourseNamesStore()),
        recording =
            recording ??
            RecordingController(
@@ -106,6 +110,9 @@ class AppServices {
     }
   }
 
+  /// K1: the runner's names for event courses (`state/courses.json`).
+  final CourseNamesController courseNames;
+
   /// Saved custom Intervals templates (`state/sessions.json`, plan §3.4).
   final SessionsController sessions;
 
@@ -132,6 +139,7 @@ class AppServices {
     FakeStorageGateway? storage,
     DateTime Function()? now,
     List<CustomSession> customSessions = const [],
+    Map<String, String> courseNames = const {},
   }) {
     final rec = recorder ?? FakeRecorderGateway(autoTick: true, now: now);
     final settingsCtl = SettingsController(
@@ -160,6 +168,8 @@ class AppServices {
         MemorySessionsStore(customSessions),
         now: now,
       )..preload(customSessions),
+      courseNames: CourseNamesController(MemoryCourseNamesStore(courseNames))
+        ..preload(courseNames),
     );
   }
 
@@ -173,6 +183,10 @@ class AppServices {
       FileSessionsStore(Directory('${support.path}/state')),
     );
     await sessions.load();
+    final courseNames = CourseNamesController(
+      FileCourseNamesStore(Directory('${support.path}/state')),
+    );
+    await courseNames.load();
     final history = FileRunStore(
       Directory('${support.path}/runs'),
       profile: () => MaxHr.profileFor(settings.settings, DateTime.now()),
@@ -195,6 +209,7 @@ class AppServices {
         enabled: () => settings.settings.weatherPerRun,
       ),
       sessions: sessions,
+      courseNames: courseNames,
     );
     services.startWeather();
     return services;

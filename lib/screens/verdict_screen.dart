@@ -14,6 +14,7 @@ import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/rep_bars.dart';
+import 'course_board_screen.dart';
 import 'run_detail_screen.dart';
 
 /// Post-run screen (design brief §4.6). A 4x4 gets the verdict with the M4
@@ -40,7 +41,7 @@ class VerdictScreen extends StatefulWidget {
 }
 
 class _VerdictScreenState extends State<VerdictScreen> {
-  Future<(RunDetail?, RunSummary?)>? _load;
+  Future<(RunDetail?, RunSummary?, List<RunSummary>)>? _load;
 
   @override
   void didChangeDependencies() {
@@ -48,10 +49,10 @@ class _VerdictScreenState extends State<VerdictScreen> {
     _load ??= _loadDetail();
   }
 
-  Future<(RunDetail?, RunSummary?)> _loadDetail() async {
+  Future<(RunDetail?, RunSummary?, List<RunSummary>)> _loadDetail() async {
     final services = AppServices.of(context);
     final detail = await services.history.load(widget.runId);
-    if (detail == null) return (null, null);
+    if (detail == null) return (null, null, const <RunSummary>[]);
     final all = await services.history.list();
     final previous = previousFourByFour(all, detail.summary);
     // Fold on every load, not only right after Stop: the guard ignores
@@ -66,19 +67,19 @@ class _VerdictScreenState extends State<VerdictScreen> {
         (s) => MaxHr.foldObserved(s, observed, detail.run.end),
       );
     }
-    return (detail, previous);
+    return (detail, previous, all);
   }
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return FutureBuilder<(RunDetail?, RunSummary?)>(
+    return FutureBuilder<(RunDetail?, RunSummary?, List<RunSummary>)>(
       future: _load,
       builder: (context, snap) {
         if (!snap.hasData) {
           return const Scaffold(body: SizedBox.shrink());
         }
-        final (detail, previous) = snap.data!;
+        final (detail, previous, all) = snap.data!;
         if (detail == null) {
           return Scaffold(
             appBar: AppBar(title: const Text('RUN')),
@@ -95,7 +96,12 @@ class _VerdictScreenState extends State<VerdictScreen> {
           RecordMode.intervals => _FourByFourVerdict(
             detail: detail,
             previous: previous,
+            all: all,
             justFinished: widget.justFinished,
+            // K1: an official time or a course move recomputes the verdict.
+            onChanged: () => setState(() {
+              _load = _loadDetail();
+            }),
           ),
           RecordMode.laps || RecordMode.free || RecordMode.cooper =>
             _SummaryScreen(detail: detail, justFinished: widget.justFinished),
@@ -169,10 +175,16 @@ class _FourByFourVerdict extends StatefulWidget {
     required this.detail,
     required this.previous,
     required this.justFinished,
+    this.all = const [],
+    this.onChanged,
   });
   final RunDetail detail;
   final RunSummary? previous;
   final bool justFinished;
+
+  /// Every run (K1 course labels and rank).
+  final List<RunSummary> all;
+  final VoidCallback? onChanged;
 
   @override
   State<_FourByFourVerdict> createState() => _FourByFourVerdictState();
@@ -386,6 +398,14 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                     child: _ArcChip(label: 'New best'),
                   ),
                 const SizedBox(height: Space.x24),
+                if (d.summary.isParkrun) ...[
+                  EventPanel(
+                    detail: d,
+                    all: widget.all,
+                    onChanged: widget.onChanged ?? () {},
+                  ),
+                  const SizedBox(height: Space.x24),
+                ],
                 if (flagged && d.analysis.lapsInconsistent)
                   Padding(
                     padding: const EdgeInsets.only(bottom: Space.x12),
