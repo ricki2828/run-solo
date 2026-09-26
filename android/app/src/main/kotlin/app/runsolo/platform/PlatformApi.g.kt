@@ -2761,6 +2761,12 @@ interface RecorderApi {
   fun finalise(runId: String): String?
   /** Delete an unreadable orphan (`readable == false`). Never touches a run file. */
   fun discardJournal(runId: String)
+  /**
+   * Throw the live run away (the finish screen's DISCARD): recording stops,
+   * the journal is deleted and no run file is written. False when no run is
+   * on.
+   */
+  fun discardRun(): Boolean
   fun setCues(enabled: Boolean)
   /**
    * Pre-start location readiness (the Start screen): fixes with the
@@ -2995,6 +3001,21 @@ interface RecorderApi {
             val wrapped: List<Any?> = try {
               api.discardJournal(runIdArg)
               listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.discardRun$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              listOf(api.discardRun())
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)
             }
