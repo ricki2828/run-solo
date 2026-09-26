@@ -92,4 +92,28 @@ class CueWordsTest {
         assertEquals(spoken, SessionSpec.fromJson(spoken.toJson()))
         assertEquals(plain, SessionSpec.fromJson(plain.toJson()))
     }
+
+    /** The timed 5 km's end line, pinned (lead 26-Sep): the result against its board, never "Cool down". */
+    @Test
+    fun `the timed 5 km ends with its result line - new best, seconds off, level, no board`() {
+        val event = app.runsolo.core.replay.ReplayScenarios.PARKRUN
+        fun board(vararg ms: Long) = app.runsolo.core.model.LiveContext(
+            boards = listOf(
+                app.runsolo.core.model.LiveBoard(
+                    "course:x", "5K time trial", app.runsolo.core.model.LiveBoardKind.distance, 5_000.0,
+                    ms.mapIndexed { i, m -> app.runsolo.core.model.LiveEntry("r$i", 0, fromStartSplitsMs = List(5) { k -> m * (k + 1) / 5 }, finalMetric = m.toDouble()) },
+                ),
+            ),
+            builtAtMs = 0, engineVersion = 3,
+        )
+        fun end(ctx: app.runsolo.core.model.LiveContext?, activeMs: Long) =
+            app.runsolo.core.live.GoalCoach(event, ctx).atCue(CueKind.phaseEnd, Phase.cooldown, RecorderCore.StepEnd(0, activeMs, 5_000.0))!!.text
+        assertNull(CueWords.text(CueKind.phaseEnd, null, event, Phase.cooldown, 1, null), "no \"Done. Cool down\": the run stops")
+        assertEquals("5K time trial done, 23:40, new best.", end(board(1_440_000, 1_500_000), 1_420_000))
+        assertEquals("5K time trial done, 23:52, 12 seconds off your best.", end(board(1_420_000, 1_500_000), 1_432_000))
+        assertEquals("5K time trial done, 23:41, 1 second off your best.", end(board(1_420_000), 1_421_000))
+        assertEquals("5K time trial done, 23:40, level with your best.", end(board(1_420_000), 1_420_000))
+        assertEquals("5K time trial done, 23:40.", end(null, 1_420_000))
+        assertEquals("5K time trial done, 23:40.", end(board(1_440_000).copy(boards = emptyList()), 1_420_000))
+    }
 }

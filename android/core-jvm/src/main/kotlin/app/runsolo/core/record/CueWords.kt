@@ -57,7 +57,7 @@ object CueWords {
             CueKind.phaseEnd -> when {
                 value == COOLDOWN_OVER -> "Cool-down done"
                 phase != Phase.cooldown -> null
-                spec?.isGoal == true -> null // the goal-reached line (GoalCoach) says it
+                spec?.isGoal == true || spec?.isEvent == true -> null // the goal-reached line (GoalCoach) says it
                 cooper -> "Time. Cool down"
                 else -> "Done. Cool down"
             }
