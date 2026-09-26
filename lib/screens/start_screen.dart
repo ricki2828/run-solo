@@ -5,6 +5,7 @@ import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../platform/session_codec.dart';
+import '../state/live_context.dart';
 import '../state/recording_controller.dart';
 import '../state/sessions.dart';
 import '../state/settings.dart';
@@ -65,11 +66,21 @@ class _StartScreenState extends State<StartScreen> {
       // CONTRACT.md I1: the app expands the session; Kotlin runs it.
       // Fartlek is a Laps run carrying the fartlek session (plan §3.5).
       final mode = s.recordMode;
-      result = await services.recording.start(mode, switch (s.lastMode) {
+      final spec = switch (s.lastMode) {
         RecordMode.intervals => services.pickedSession.toPigeon(),
         RecordMode.cooper => engine.SessionSpec.cooper.toPigeon(),
         RecordMode.laps || RecordMode.free => null,
-      }, s.units);
+      };
+      // LC1: the live compare's history, 150 ms or none; off until LV2.
+      final live = kLiveCompare
+          ? await services.live?.build(mode: mode, spec: spec)
+          : null;
+      result = await services.recording.start(
+        mode,
+        spec,
+        s.units,
+        liveContext: live,
+      );
     } catch (e) {
       // A PlatformException must never strand the button in "starting".
       if (mounted) {

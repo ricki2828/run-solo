@@ -106,6 +106,29 @@ class RunIndexEntry {
     'derived_failed': d == null,
   });
 
+  /// What a board fold needs (LB2 `BoardInput`, LB3 and the LC1 builder).
+  engine.BoardInput boardInput() {
+    final official = prior?.officialTime ?? false;
+    return engine.BoardInput(
+      runId: id,
+      date: start,
+      mode: mode,
+      comparisonKey: comparisonKey,
+      efforts: derived?.bestEfforts.efforts ?? const {},
+      headlineSecPerKm: headlineSecPerKm,
+      verdictGrade: row?.eligibleAsPrior ?? prior != null,
+      officialTimeMs: official && headlineSecPerKm != null
+          ? (headlineSecPerKm! * 5000).round()
+          : null,
+      heatFraction: heatAdj,
+    );
+  }
+
+  /// The live compare's view of this run (LC1); null until the background
+  /// batch has built its derived data.
+  engine.LiveCandidate? liveCandidate() =>
+      derived == null ? null : engine.LiveCandidate(boardInput(), derived!);
+
   /// Marked stale without touching its files' stamps: rebuilt on the next
   /// `list()`, derived data kept (W5b).
   RunIndexEntry withoutRow() =>
