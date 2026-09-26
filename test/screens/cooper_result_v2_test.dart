@@ -88,21 +88,41 @@ void main() {
     expect(trend, findsNothing);
   });
 
-  testWidgets('third test: the trend of all three from the index, this one '
-      'ringed', (tester) async {
-    await open(tester, [a, b, c], c.id);
+  testWidgets(
+    'third test: bars for all three from the index, this one the best',
+    (tester) async {
+      await open(tester, [a, b, c], c.id);
+      await tester.scrollUntilVisible(trend, 200);
+      expect(trend, findsOneWidget);
+      expect(find.text('VO2 BY TEST'), findsOneWidget);
+      final chart = tester.widget<Vo2Bars>(trend);
+      expect(chart.values.length, 3);
+      // Taller is better: this test is the best, so its bar is the Arc one.
+      expect(chart.bestIndex, 2);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('vo2-bars-axis'))).data,
+        'Axis starts at VO2 ${Vo2Bars.baselineOf(chart.values)}',
+      );
+    },
+  );
+
+  testWidgets('a slower test: the older best bar is Arc, this one Bone', (
+    tester,
+  ) async {
+    final fast = cooperTestFile(n: 4, start: d1, mps: 4.2);
+    final slow = cooperTestFile(n: 5, start: d2, mps: 3.8);
+    await open(tester, [fast, slow], slow.id);
     await tester.scrollUntilVisible(trend, 200);
-    expect(trend, findsOneWidget);
-    expect(find.text('VO2 BY TEST'), findsOneWidget);
-    final chart = tester.widget<Vo2TrendChart>(trend);
-    expect(chart.values.length, 3);
-    expect(chart.highlight, 2);
+    final chart = tester.widget<Vo2Bars>(trend);
+    expect(chart.values.length, 2);
+    expect(chart.bestIndex, 0);
+    expect(chart.values.last, lessThan(chart.values.first));
   });
 
   testWidgets('an older test trends only up to itself', (tester) async {
     await open(tester, [a, b, c], b.id);
     await tester.scrollUntilVisible(trend, 200);
-    final chart = tester.widget<Vo2TrendChart>(trend);
+    final chart = tester.widget<Vo2Bars>(trend);
     expect(chart.values.length, 2);
   });
 

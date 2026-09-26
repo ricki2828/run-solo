@@ -111,7 +111,8 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
             final prior = i < 0
                 ? tests.where((x) => x.date.isBefore(d.run.start)).toList()
                 : tests.sublist(0, i);
-            // Every valid test up to and including this one, for the trend.
+            // Every valid test up to and including this one: the bars show
+            // the last 10, the best counts over all of them (A11).
             final upTo = [for (final p in prior) p.vo2, if (e != null) e.vo2];
             final birthYear = AppServices.of(context)
                 .settings
@@ -223,11 +224,12 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                       ),
                     ),
                     const SizedBox(height: Space.x8),
-                    Vo2TrendChart(
+                    Vo2Bars(
                       key: const ValueKey('cooper-result-trend'),
-                      values: upTo,
-                      highlight: upTo.length - 1,
-                      height: 72,
+                      values: upTo.length > Vo2Bars.maxBars
+                          ? upTo.sublist(upTo.length - Vo2Bars.maxBars)
+                          : upTo,
+                      best: upTo.reduce(math.max),
                     ),
                   ],
                 ] else if (c?.invalidLine != null)
