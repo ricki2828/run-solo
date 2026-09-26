@@ -105,7 +105,6 @@ void main() {
     expect(k5.startOffsetM, 0);
     expect(effort(r, BestEffortDistance.k10).elapsedMs, 2500000);
     expect(r.fromStartSplitsMs, [for (var k = 1; k <= 10; k++) k * 250000]);
-    expect(r.rejected, isEmpty);
   });
 
   test('window edges between samples are interpolated', () {
@@ -142,7 +141,6 @@ void main() {
       1650000,
       2050000,
     ]);
-    expect(r.rejected, isEmpty, reason: 'an easy warm-up must not reject');
   });
 
   test('a pause breaks every window and ends the from-start splits', () {
@@ -183,7 +181,6 @@ void main() {
     final km = effort(r, BestEffortDistance.km1);
     expect(km.elapsedMs, 250000);
     expect(km.startMs >= 401000 || km.endMs <= 400000, isTrue);
-    expect(r.rejected, isEmpty);
   });
 
   test('a jump smeared over 12 samples (9.5 m/s steps, under the step cap) '
@@ -197,26 +194,31 @@ void main() {
     final km = effort(r, BestEffortDistance.km1);
     expect(km.elapsedMs, 250000);
     expect(km.startMs >= 412000 || km.endMs <= 400000, isTrue);
-    expect(r.rejected, isEmpty);
   });
 
-  test('a 5K whose fastest window holds a km far above its average falls '
-      'back to the next-fastest window that passes', () {
-    // A 2 km stretch at 3.9 m/s with GPS drift adding 1.6 m/s for 1 km
-    // (5.5 m/s: under every cap) inside 7 km at 3.3 m/s.
+  test('an easy run with one hard km keeps its 5K (review #31 P2): '
+      'pace change is never a GPS guard', () {
+    // 4 km at 6:00, one 4:00 km, 1.7 km at 6:00.
+    final r = find(
+      build([(1440, 1000 / 360), (240, 1000 / 240), (612, 1000 / 360)]),
+    );
+    final k5 = effort(r, BestEffortDistance.k5);
+    expect(k5.elapsedMs, 1680000);
+    expect(effort(r, BestEffortDistance.km1).elapsedMs, 240000);
+  });
+
+  test('known limit: drift under every cap reads as a real surge and '
+      'stays in', () {
+    // 1 km at 5.5 m/s (under every cap) inside a 3.3 m/s run.
     final r = find(build([(606, 3.3), (182, 5.5), (212, 3.3), (1300, 3.3)]));
     final k5 = effort(r, BestEffortDistance.k5);
-    expect(r.rejected, isEmpty);
-    // It may still hold part of the drift (a known limit, seeded ratio),
-    // never all of it.
-    expect(k5.startMs <= 606000 && k5.endMs >= 788000, isFalse);
+    expect(k5.startMs <= 606000 && k5.endMs >= 788000, isTrue);
   });
 
   group('genuine finishing kicks must pass (review #31 P1-1)', () {
     test('mile at 52 s per 200 m, last 200 m in 41 s', () {
       const easy = (300, 2.5);
       final r = find(build([easy, (366, 200 / 52), (41, 200 / 41), easy]));
-      expect(r.rejected, isEmpty);
       expect(
         effort(r, BestEffortDistance.mile).elapsedMs,
         closeTo(407000, 3000),
@@ -226,13 +228,11 @@ void main() {
     test('1 km at 48 s per 200 m, last 200 m in 38 s', () {
       const easy = (300, 2.5);
       final r = find(build([easy, (192, 200 / 48), (38, 200 / 38), easy]));
-      expect(r.rejected, isEmpty);
       expect(effort(r, BestEffortDistance.km1).elapsedMs, 230000);
     });
 
     test('5K of 5:00 kms with a 4:15 last km', () {
       final r = find(build([(1200, 1000 / 300), (255, 1000 / 255)]));
-      expect(r.rejected, isEmpty);
       expect(effort(r, BestEffortDistance.k5).elapsedMs, 1455000);
     });
   });
@@ -291,7 +291,6 @@ void main() {
     final r = find(
       build([(334, 3.0), (222, 4.5)], mode: RunMode.laps, laps: laps),
     );
-    expect(r.rejected, isEmpty);
     expect(effort(r, BestEffortDistance.km1).elapsedMs, closeTo(222000, 500));
   });
 
