@@ -576,6 +576,11 @@ abstract class RecorderApi {
   void startGpsProbe();
   void stopGpsProbe();
 
+  /// Settings → Voice → "Km splits" (default on): a Free run says each km
+  /// ("3 k, 15 minutes 20, pace 5:07."). Persisted natively; applies to a run
+  /// in progress too.
+  void setKmSplits(bool enabled);
+
   /// The user's volume-key LAP setting for Laps runs, persisted natively (the
   /// recorder reads it at start). Takes effect from the next run or resume,
   /// not the live one. Unset means on. Intervals, Free and Cooper never use

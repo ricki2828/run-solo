@@ -246,7 +246,7 @@ class RecordingSession(
         dispatch.ticked(t, ticker.distanceM)
         // Compares already said stay said; a point passed while dead is dropped (BLOCK-1). The
         // reps run so far give the live rep paces back.
-        coach = LiveCoach(liveContext, mode, spec, replayed.cuesFired)
+        coach = LiveCoach(liveContext, mode, spec, replayed.cuesFired).also { it.kmSplits = kmSplits }
         var prevLapD = 0.0
         for (l in laps) {
             coach.lapEnded(l.index.toInt(), l.distanceM - prevLapD, l.activeMs)
@@ -403,7 +403,7 @@ class RecordingSession(
         handle(core.tick(t, ticker.distanceM, gpsOk = !lost), t)
         dispatch.ticked(t, ticker.distanceM)
         // Free / Laps: a whole km crossed in this tick says its compare, if there is one.
-        coach.onTick(coachPrevT, coachPrevD, t, ticker.distanceM) { core.status(it).activeMs }?.let { speakFire(null, null, it, t) }
+        coach.onTick(coachPrevT, coachPrevD, t, ticker.distanceM) { core.status(it).activeMs }?.let { speakFire(null, it.base, it.fire, t) }
         coachPrevT = t
         coachPrevD = ticker.distanceM
         val last = samples.last()
@@ -673,12 +673,11 @@ class RecordingSession(
     /**
      * Says a cue with its compare appended ([CuePlayer] keeps the 16-word budget and drops a stale
      * extra); a compare also goes to the journal (`cf`, so a restore never repeats it) and to the
-     * app as a [CompareEvent] for the overlay, muted or not. [kind] null = the compare's own km cue.
+     * app as a [CompareEvent] for the overlay, muted or not. [kind] null = a Free run's km split.
      */
     private fun speakFire(kind: CueKind?, base: String?, fire: LiveCoach.Fire?, t: Long) {
-        val text = fire?.base ?: base
         val extra = fire?.takeIf { it.speak }?.text
-        if (kind != null || extra != null) cues.play(kind, text, extra)
+        if (kind != null || base != null || extra != null) cues.play(kind, base, extra)
         fire ?: return
         val st = core.status(t)
         writer.append(JournalLine.CueFired(t, System.currentTimeMillis(), JournalLine.FiredKind.compare, fire.key, fire.index, st.elapsedMs))
@@ -692,6 +691,17 @@ class RecordingSession(
         )
         Log.i(TAG, "compare ${r.boardKey}#${r.index} rank ${r.rank}/${r.of} spoken=${fire.speak}")
     }
+
+    /** Settings → Voice → "Km splits" (default on): a Free run says each km. Set before start and on change. */
+    @Volatile
+    var kmSplits: Boolean = true
+        set(value) {
+            field = value
+            synchronized(this) { coach.kmSplits = value }
+        }
+
+    /** The live coach as restored (tests: the resume path keeps the context and the fired cues). */
+    internal val liveCoach: LiveCoach get() = coach
 
     /** "Mute tips" for this run (notification action): compares keep firing for the overlay, not the voice. */
     @Synchronized

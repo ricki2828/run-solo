@@ -12,13 +12,20 @@ import kotlin.math.roundToLong
  * longest numbers and checks that it fits.
  */
 object LiveWords {
-    /** The base cue for a Free or Laps km that has something to compare (no km cue otherwise). */
-    fun km(km: Int): String = "$km k."
-
-    /** At the board's own distance (5 k of the 5K board): "5K in 24:10, your number 2." */
-    fun finish(r: CompareResult, activeMs: Long): String {
-        val time = CueWords.clock(activeMs.toDouble())
-        return if (r.of > 2) "${r.boardLabel} in $time, your number ${r.rank}." else "${r.boardLabel} in $time. ${compare(r)}"
+    /**
+     * A Free run's km split: "3 k, 15 minutes 20, pace 5:07." (time from Start, pauses and gaps
+     * out; the pace of this km, left out when it is unknown, e.g. right after a restore). Over an
+     * hour: "12 k, 1 hour 4, pace 5:20." At most 7 words.
+     */
+    fun kmSplit(km: Int, activeMs: Long, splitMs: Long?): String {
+        val s = (activeMs / 1_000.0).roundToLong()
+        val time = when {
+            s >= 3_600 -> "${s / 3_600} ${if (s / 3_600 == 1L) "hour" else "hours"} ${(s % 3_600) / 60}"
+            s % 60 == 0L -> "${s / 60} ${if (s / 60 == 1L) "minute" else "minutes"}"
+            else -> "${s / 60} ${if (s / 60 == 1L) "minute" else "minutes"} ${s % 60}"
+        }
+        val pace = splitMs?.takeIf { it > 0 }?.let { ", pace ${CueWords.clock(it.toDouble())}" } ?: ""
+        return "$km k, $time$pace."
     }
 
     fun compare(r: CompareResult): String = when (r.kind) {
@@ -35,13 +42,14 @@ object LiveWords {
     private fun distance(r: CompareResult): String {
         val d = r.deltaMs!!
         val s = seconds(d)
+        // At most 9 words: it rides a 7-word km split inside the 16-word budget.
         return if (r.of > 2) {
-            val gap = when {
-                s == 0L -> "Level with your best."
-                d < 0 -> "${secondsWord(s)} up on your best."
-                else -> "${secondsWord(s)} behind your best."
+            when {
+                r.rank == 1 && s == 0L -> "Best of ${r.of} so far, level with your best."
+                r.rank == 1 -> "Best of ${r.of} so far, ${secondsWord(s)} up."
+                s == 0L -> "Number ${r.rank} of ${r.of}, level with your best."
+                else -> "Number ${r.rank} of ${r.of}, ${secondsWord(s)} off your best."
             }
-            "On pace for number ${r.rank} of ${r.of}. $gap"
         } else {
             when {
                 s == 0L -> "Level with your only other ${r.boardLabel}."

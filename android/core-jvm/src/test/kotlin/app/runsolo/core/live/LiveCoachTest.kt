@@ -41,57 +41,68 @@ class LiveCoachTest {
         coach.onTick(atMs - 500, km * 1_000.0 - 2.0, atMs + 500, km * 1_000.0 + 2.0) { it }
 
     @Test
-    fun `free km 3 - on pace for number 2 of 7, behind the best by the gap at km 3`() {
+    fun `free km 3 - the split, then number 2 of 7, off the best by the gap at km 3`() {
         val coach = LiveCoach(ctx(six), RunMode.free, null)
-        val f = assertNotNull(cross(coach, 3, 875_000))
-        assertEquals("3 k.", f.base)
-        assertEquals(2, f.result.rank)
-        assertEquals(7, f.result.of)
+        val k = assertNotNull(cross(coach, 3, 875_000))
+        assertEquals("3 k, 14 minutes 35.", k.base, "no pace: kms 1 and 2 were not seen")
+        val f = assertNotNull(k.fire)
+        assertEquals(listOf(2, 7), listOf(f.result.rank, f.result.of))
         assertEquals(875_000L - 870_000L, f.result.deltaMs)
-        assertEquals("On pace for number 2 of 7. 5 seconds behind your best.", f.text)
-        assertNull(cross(coach, 3, 876_000), "each km fires once")
+        assertEquals("Number 2 of 7, 5 seconds off your best.", f.text)
+        assertTrue(f.speak)
+        assertNull(cross(coach, 3, 876_000), "each km once")
+        assertEquals("4 k, 19 minutes 30, pace 4:55.", cross(coach, 4, 1_170_000)!!.base)
     }
 
     @Test
-    fun `free km 5 - the board's own distance says the time and the place`() {
+    fun `free km 5 - best of 7 so far`() {
         val coach = LiveCoach(ctx(six), RunMode.free, null)
-        val f = assertNotNull(cross(coach, 5, 1_440_000))
-        assertNull(f.base)
-        assertEquals("5K in 24:00, your number 1.", f.text)
+        assertEquals("Best of 7 so far, 10 seconds up.", cross(coach, 5, 1_440_000)!!.fire!!.text)
     }
 
     @Test
-    fun `one prior - vs your only other 5K, ahead`() {
+    fun `laps run - no km cue, the compare goes to the overlay only`() {
         val coach = LiveCoach(ctx(fiveK(split(300_000, 600_000, 912_000, 1_210_000, 1_512_000))), RunMode.laps, null)
-        assertEquals("12 seconds up on your only other 5K.", cross(coach, 3, 900_000)!!.text)
+        val k = assertNotNull(cross(coach, 3, 900_000))
+        assertNull(k.base)
+        assertEquals("12 seconds up on your only other 5K.", k.fire!!.text)
+        assertFalse(k.fire!!.speak)
+        assertNull(cross(LiveCoach(null, RunMode.laps, null), 3, 900_000))
     }
 
     @Test
-    fun `no context, no board, beyond 10 km, entries too short - silent`() {
-        assertNull(cross(LiveCoach(null, RunMode.free, null), 3, 875_000))
-        assertNull(cross(LiveCoach(ctx(), RunMode.free, null), 3, 875_000))
+    fun `free km splits for everyone, compares only with a board - off in settings, nothing`() {
+        val plain = LiveCoach(null, RunMode.free, null)
+        assertEquals("1 k, 5 minutes 7, pace 5:07.", cross(plain, 1, 307_000)!!.base)
+        assertEquals("2 k, 10 minutes, pace 4:53.", cross(plain, 2, 600_000)!!.base)
+        assertNull(cross(plain, 2, 600_000)?.fire)
+        assertEquals("12 k, 1 hour 4, pace 5:00.", LiveWords.kmSplit(12, 3_845_000, 300_000))
         val short = fiveK(split(290_000, 580_000))
-        assertNull(cross(LiveCoach(ctx(short), RunMode.free, null), 3, 875_000), "no entry has a km-3 split")
-        val coach = LiveCoach(ctx(six), RunMode.free, null)
-        assertNull(cross(coach, 6, 1_800_000), "km 6 races the 10K board, which is absent")
+        assertNull(cross(LiveCoach(ctx(short), RunMode.free, null), 3, 875_000)!!.fire, "no entry has a km-3 split")
+        assertNull(cross(LiveCoach(ctx(six), RunMode.free, null), 6, 1_800_000)!!.fire, "km 6 races the 10K board, which is absent")
+        val off = LiveCoach(null, RunMode.free, null).also { it.kmSplits = false }
+        assertNull(cross(off, 1, 307_000))
+        val offWithBoard = LiveCoach(ctx(six), RunMode.free, null).also { it.kmSplits = false }
+        assertFalse(cross(offWithBoard, 3, 875_000)!!.fire!!.speak, "no km cue to ride: overlay only")
     }
 
     @Test
     fun `muted - fires (overlay, journal) but is not spoken`() {
         val coach = LiveCoach(ctx(six, muted = true), RunMode.free, null)
-        val f = assertNotNull(cross(coach, 3, 875_000))
-        assertFalse(f.speak)
+        assertFalse(cross(coach, 3, 875_000)!!.fire!!.speak)
     }
 
     @Test
     fun `restore - journaled compares and passed kms never fire again`() {
         val fired = listOf(JournalLine.CueFired(0, 0, JournalLine.FiredKind.compare, "be:5k", 3, 875_000))
         val coach = LiveCoach(ctx(six), RunMode.free, null, fired)
-        assertNull(cross(coach, 3, 875_000), "fired before the kill")
+        assertNull(cross(coach, 3, 875_000)!!.fire, "fired before the kill")
         val resumed = LiveCoach(ctx(six), RunMode.free, null)
         resumed.resumeAt(3_400.0)
         assertNull(cross(resumed, 3, 875_000), "passed while dead: dropped, never late")
-        assertNotNull(cross(resumed, 4, 1_170_000))
+        val k4 = assertNotNull(cross(resumed, 4, 1_170_000))
+        assertEquals("4 k, 19 minutes 30.", k4.base, "the first split after a restore has no pace")
+        assertNotNull(k4.fire)
     }
 
     // ---- intervals ----

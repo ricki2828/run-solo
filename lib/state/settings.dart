@@ -69,6 +69,7 @@ class AppSettings {
     this.recoverySeconds = 180,
     this.lastMode = RecordMode.intervals,
     this.cues = true,
+    this.kmSplits = true,
     this.haptics = true,
     this.volumeKeyLap,
     this.keepScreenOn = true,
@@ -91,6 +92,9 @@ class AppSettings {
   final int recoverySeconds;
   final RecordMode lastMode;
   final bool cues;
+
+  /// Voice → "Km splits": a Free run says each km (Phase 4 LV1). Default on.
+  final bool kmSplits;
   final bool haptics;
 
   /// Null = the run type's default (plan §18.2: on for Laps, off for 4x4,
@@ -182,6 +186,7 @@ class AppSettings {
     int? recoverySeconds,
     RecordMode? lastMode,
     bool? cues,
+    bool? kmSplits,
     bool? haptics,
     bool? volumeKeyLap,
     bool? keepScreenOn,
@@ -208,6 +213,7 @@ class AppSettings {
     recoverySeconds: recoverySeconds ?? this.recoverySeconds,
     lastMode: lastMode ?? this.lastMode,
     cues: cues ?? this.cues,
+    kmSplits: kmSplits ?? this.kmSplits,
     haptics: haptics ?? this.haptics,
     volumeKeyLap: volumeKeyLap ?? this.volumeKeyLap,
     keepScreenOn: keepScreenOn ?? this.keepScreenOn,
@@ -237,6 +243,7 @@ class AppSettings {
     'recoverySeconds': recoverySeconds,
     'lastMode': lastMode.name,
     'cues': cues,
+    'kmSplits': kmSplits,
     'haptics': haptics,
     'volumeKeyLap': volumeKeyLap,
     'keepScreenOn': keepScreenOn,
@@ -291,6 +298,7 @@ class AppSettings {
         final String name => RecordMode.values.asNameMap()[name] ?? d.lastMode,
       },
       cues: pick('cues', d.cues),
+      kmSplits: pick('kmSplits', d.kmSplits),
       haptics: pick('haptics', d.haptics),
       volumeKeyLap: j['volumeKeyLap'] is bool
           ? j['volumeKeyLap'] as bool

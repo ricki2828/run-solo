@@ -2495,6 +2495,12 @@ interface RecorderApi {
   fun startGpsProbe()
   fun stopGpsProbe()
   /**
+   * Settings → Voice → "Km splits" (default on): a Free run says each km
+   * ("3 k, 15 minutes 20, pace 5:07."). Persisted natively; applies to a run
+   * in progress too.
+   */
+  fun setKmSplits(enabled: Boolean)
+  /**
    * The user's volume-key LAP setting for Laps runs, persisted natively (the
    * recorder reads it at start). Takes effect from the next run or resume,
    * not the live one. Unset means on. Intervals, Free and Cooper never use
@@ -2762,6 +2768,24 @@ interface RecorderApi {
           channel.setMessageHandler { _, reply ->
             val wrapped: List<Any?> = try {
               api.stopGpsProbe()
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.setKmSplits$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val enabledArg = args[0] as Boolean
+            val wrapped: List<Any?> = try {
+              api.setKmSplits(enabledArg)
               listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)

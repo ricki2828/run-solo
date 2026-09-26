@@ -281,6 +281,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                 onChanged: (v) => set((x) => x.copyWith(cues: v)),
               ),
               _Toggle(
+                label: 'Km splits (Free run)',
+                value: s.cues && s.kmSplits,
+                onChanged: s.cues
+                    ? (v) => set((x) => x.copyWith(kmSplits: v))
+                    : null,
+                reason: s.cues ? null : 'Turn on voice cues first',
+              ),
+              _Toggle(
                 label: 'Haptics',
                 value: s.haptics,
                 onChanged: (v) => set((x) => x.copyWith(haptics: v)),

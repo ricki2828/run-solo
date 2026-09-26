@@ -63,7 +63,7 @@ class LiveCoachLifecycleTest {
             val d = ticker.distanceM
             val out = core.tick(t, d)
             handle(out, t)
-            coach.onTick(prevT, prevD, t, d) { core.status(it).activeMs }?.let { f -> speak(t, f.base, f) }
+            coach.onTick(prevT, prevD, t, d) { core.status(it).activeMs }?.let { k -> speak(t, k.base, k.fire) }
             prevT = t
             prevD = d
         }
@@ -141,6 +141,7 @@ class LiveCoachLifecycleTest {
         assertEquals(4, km3.single().result.of)
         assertTrue(km3.single().result.deltaMs!! in 50_000L..70_000L, "${km3.single().result.deltaMs}")
         assertEquals(listOf(1, 2, 3, 4), sh.compares().map { it.index }, "km 1-2 before the kill, 3-4 after, each once")
+        for (km in 1..4) assertEquals(1, sh.said.count { it.text.startsWith("$km k,") }, "km $km split said once: ${sh.said}")
     }
 
     @Test
@@ -153,9 +154,10 @@ class LiveCoachLifecycleTest {
     }
 
     @Test
-    fun `restore of a journal with no live context stays silent`() {
+    fun `restore of a journal with no live context compares nothing, the splits go on`() {
         val sh = freeRun(null, killAtS = 714)
-        assertTrue(sh.said.isEmpty(), sh.said.toString())
+        assertTrue(sh.compares().isEmpty(), sh.said.toString())
+        assertEquals(listOf("1 k,", "2 k,", "3 k,", "4 k,"), sh.said.map { it.text.substringBefore(" ") + " k," })
         val bytes = sh.lines.joinToString("") { JournalCodec.encode(it) + "\n" }.toByteArray()
         assertEquals(null, JournalReplay.read(bytes).liveContext)
     }

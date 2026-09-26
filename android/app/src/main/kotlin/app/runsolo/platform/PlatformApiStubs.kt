@@ -52,6 +52,8 @@ class RecorderApiStub : RecorderApi {
     override fun startGpsProbe() = Unit
 
     override fun stopGpsProbe() = Unit
+
+    override fun setKmSplits(enabled: Boolean) = Unit
     override fun setVolumeKeyLaps(enabled: Boolean) = Unit
 
     override fun listRunFiles(): Map<String, String> = emptyMap()

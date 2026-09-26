@@ -2603,6 +2603,27 @@ class RecorderApi {
     ;
   }
 
+  /// Settings → Voice → "Km splits" (default on): a Free run says each km
+  /// ("3 k, 15 minutes 20, pace 5:07."). Persisted natively; applies to a run
+  /// in progress too.
+  Future<void> setKmSplits(bool enabled) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.setKmSplits$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[enabled]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
   /// The user's volume-key LAP setting for Laps runs, persisted natively (the
   /// recorder reads it at start). Takes effect from the next run or resume,
   /// not the live one. Unset means on. Intervals, Free and Cooper never use

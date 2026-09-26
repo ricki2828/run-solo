@@ -37,11 +37,8 @@ class LiveCoach(
     /** "Mute tips" for this run: compares still fire (overlay, journal) but are not spoken. */
     var muted: Boolean = context?.coachingMuted ?: false
 
-    /**
-     * One compare. [text] is what to append to the cue ([base] is set when the compare brings its
-     * own cue: the Free/Laps km); [overlay] is false when a recovery is under 20 s (voice only).
-     */
-    data class Fire(val result: CompareResult, val text: String, val base: String? = null, val overlay: Boolean = true, val speak: Boolean = true) {
+    /** One compare. [text] is what to append to the cue; [overlay] is false when a recovery is under 20 s (voice only). */
+    data class Fire(val result: CompareResult, val text: String, val overlay: Boolean = true, val speak: Boolean = true) {
         val key: String get() = result.boardKey
         val index: Int get() = result.index
     }
@@ -51,6 +48,15 @@ class LiveCoach(
     }
     private val livePaces = ArrayList<Double?>()
     private var lastKm = 0
+
+    /** Active run ms at the last whole km (null after a restore until the next km), for the split pace. */
+    private var lastKmActiveMs: Long? = 0
+
+    /** Settings → Voice → "Km splits" (default on): Free runs say each km. */
+    var kmSplits: Boolean = true
+
+    /** A whole km of a Free or Laps run: the split to say ([base], Free only) and its compare, if any. */
+    data class KmCue(val km: Int, val base: String?, val fire: Fire?)
 
     /**
      * An intervals run with a board to race: a rep ended by a manual lap holds its following cue
@@ -68,6 +74,7 @@ class LiveCoach(
     /** After a restore: every km already passed is done, so none is spoken late. */
     fun resumeAt(distanceM: Double) {
         lastKm = maxOf(lastKm, floor(distanceM / 1_000).toInt())
+        lastKmActiveMs = null // the next km's split pace spans the dark gap: not said
     }
 
     /**
@@ -84,25 +91,34 @@ class LiveCoach(
     }
 
     /**
-     * Free / Laps: the tick moved the distance from [prevD] at [prevT] to [d] at [t]. A whole km
-     * crossed here fires its compare (at the km's interpolated time; [activeAt] maps a time to
-     * active run ms). Two kms in one tick (a catch-up) speak only the last.
+     * Free / Laps: the tick moved the distance from [prevD] at [prevT] to [d] at [t]; a whole km
+     * crossed here (at its interpolated time; [activeAt] maps a time to active run ms). A Free run
+     * says the split ("3 k, 15 minutes 20, pace 5:07.") with the rank appended when a board has
+     * one; a Laps run says nothing at a km (it has no km cue), so its compare is overlay only.
+     * Two kms in one tick (a catch-up) give only the last. Compares stop after 10 km.
      */
-    fun onTick(prevT: Long, prevD: Double, t: Long, d: Double, activeAt: (Long) -> Long): Fire? {
-        if (context == null || spec?.steps?.isNotEmpty() == true || mode == RunMode.cooper || mode == RunMode.intervals) return null
+    fun onTick(prevT: Long, prevD: Double, t: Long, d: Double, activeAt: (Long) -> Long): KmCue? {
+        if (spec?.steps?.isNotEmpty() == true || (mode != RunMode.free && mode != RunMode.laps)) return null
         val km = floor(d / 1_000).toInt()
-        if (km <= lastKm) return null
+        if (km <= lastKm || d <= prevD) return null
+        val skipped = km > lastKm + 1
         lastKm = km
-        if (km > 10 || d <= prevD) return null
         val mark = km * 1_000.0
         val tk = if (prevD >= mark) prevT else prevT + ((mark - prevD) / (d - prevD) * (t - prevT)).toLong()
         val active = activeAt(tk)
+        val splitMs = lastKmActiveMs?.takeIf { !skipped }?.let { active - it }
+        lastKmActiveMs = active
+        val base = if (mode == RunMode.free && kmSplits) LiveWords.kmSplit(km, active, splitMs) else null
+        return KmCue(km, base, compareAtKm(km, active)).takeIf { it.base != null || it.fire != null }
+    }
+
+    private fun compareAtKm(km: Int, active: Long): Fire? {
+        if (context == null || km > 10) return null
         val boardM = if (km <= 5) 5_000.0 else 10_000.0
         val board = context.boards.firstOrNull { it.kind == LiveBoardKind.distance && it.targetM == boardM } ?: return null
         val r = LiveCompare.distance(board, km, active) ?: return null
         if (!claim(r)) return null
-        val atBoardEnd = board.targetM != null && km * 1_000.0 == board.targetM
-        return if (atBoardEnd) Fire(r, LiveWords.finish(r, active), speak = !muted) else Fire(r, LiveWords.compare(r), base = LiveWords.km(km), speak = !muted)
+        return Fire(r, LiveWords.compare(r), speak = !muted && mode == RunMode.free && kmSplits)
     }
 
     /**

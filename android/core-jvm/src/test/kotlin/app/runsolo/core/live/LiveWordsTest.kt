@@ -17,7 +17,7 @@ class LiveWordsTest {
 
     /** The longest base cue each kind can ride on. */
     private val longestBase = mapOf(
-        CompareKind.distance to LiveWords.km(10),
+        CompareKind.distance to LiveWords.kmSplit(10, 7_199_000, 599_000),
         CompareKind.intervals to CueWords.text(CueKind.phaseEnd, null, SessionSpec.norwegian4x4(), Phase.cooldown, 4, null)!!,
         CompareKind.cooper to CooperProjection.cue(11, 9_999.0),
         CompareKind.target to CueWords.text(CueKind.projection, 7_199_000.0, SessionSpec.norwegian4x4().copy(cueProfile = CueProfile.standard), Phase.work, 1, 0, 9)!!,
@@ -39,19 +39,21 @@ class LiveWordsTest {
             assertTrue(CueComposer.words(composed.text) <= CueComposer.MAX_WORDS, "${CueComposer.words(composed.text)} words: ${composed.text}")
             assertFalse(composed.text!!.contains('—'), composed.text!!)
         }
-        val finish = LiveWords.finish(r(CompareKind.distance, 20, 21, deltaMs = 999_000), 7_199_000)
-        assertTrue(CueComposer.words(finish) <= CueComposer.MAX_WORDS, finish)
+        assertEquals(7, CueComposer.words(LiveWords.kmSplit(10, 7_199_000, 599_000)), "the longest km split")
     }
 
     @Test
     fun `the plan's copy`() {
-        assertEquals("3 k. On pace for number 2 of 7. 6 seconds behind your best.", CueComposer.compose(LiveWords.km(3), LiveWords.compare(r(CompareKind.distance, 2, 7, label = "5K", deltaMs = 6_000))).text)
-        assertEquals("4 k. On pace for number 1 of 7. 9 seconds up on your best.", CueComposer.compose(LiveWords.km(4), LiveWords.compare(r(CompareKind.distance, 1, 7, label = "5K", deltaMs = -9_000))).text)
-        assertEquals("3 k. 12 seconds behind your only other 5K.", CueComposer.compose(LiveWords.km(3), LiveWords.compare(r(CompareKind.distance, 2, 2, label = "5K", deltaMs = 12_000))).text)
+        assertEquals(
+            "3 k, 15 minutes 20, pace 5:07. Number 2 of 7, 6 seconds off your best.",
+            CueComposer.compose(LiveWords.kmSplit(3, 920_000, 307_000), LiveWords.compare(r(CompareKind.distance, 2, 7, label = "5K", deltaMs = 6_000))).text,
+        )
+        assertEquals("Best of 7 so far, 9 seconds up.", LiveWords.compare(r(CompareKind.distance, 1, 7, label = "5K", deltaMs = -9_000)))
+        assertEquals("12 seconds behind your only other 5K.", LiveWords.compare(r(CompareKind.distance, 2, 2, label = "5K", deltaMs = 12_000)))
         assertEquals("6 minutes. Heading for about 2,780. VO2 about 51. Second best so far.", CueComposer.compose(CooperProjection.cue(6, 2_780.0), LiveWords.compare(r(CompareKind.cooper, 2, 4, deltaVo2 = -1.0))).text)
         assertEquals("On pace for 24:12. 8 seconds up on your predicted 24:30.", CueComposer.compose("On pace for 24:12", LiveWords.compare(r(CompareKind.target, 1, 1, label = "predicted", deltaMs = -8_000, value = 1_470_000.0))).text)
         assertEquals("Recover. Best start to this session you've had.", CueComposer.compose("Recover", LiveWords.compare(r(CompareKind.intervals, 1, 5, index = 3, deltaSec = -2.0))).text)
-        assertEquals("1 second behind your best.", LiveWords.compare(r(CompareKind.distance, 3, 7, deltaMs = 1_000)).substringAfter(". "))
+        assertEquals("Number 3 of 7, 1 second off your best.", LiveWords.compare(r(CompareKind.distance, 3, 7, deltaMs = 1_000)))
     }
 
     @Test

@@ -118,6 +118,9 @@ abstract class RecorderGateway {
   Future<void> startGpsProbe();
   Future<void> stopGpsProbe();
 
+  /// Voice → "Km splits": a Free run says each km. Persisted natively.
+  Future<void> setKmSplits(bool enabled);
+
   /// Saved volume-key lap choice for Laps runs (4x4 and Free never hook the
   /// volume keys). Native applies it from the next start or resume, never
   /// mid-run; Start sends it before every Laps start.

@@ -477,6 +477,11 @@ class FakeRecorderGateway implements RecorderGateway {
 
   void emitGpsProbe(GpsProbeEvent e) => _emit(e);
 
+  bool kmSplits = true;
+
+  @override
+  Future<void> setKmSplits(bool enabled) async => kmSplits = enabled;
+
   /// Last value passed to [setVolumeKeyLaps]; null until called.
   bool? volumeKeyLaps;
 

@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import app.runsolo.BuildConfig
 import app.runsolo.core.fs.JvmFileSystem
 import app.runsolo.core.journal.JournalReplay
+import app.runsolo.core.journal.Replay
 import app.runsolo.core.model.SessionSpec as CoreSpec
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.reconcile.Reconciler
@@ -115,6 +116,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
 
     private fun newSession(mode: app.runsolo.core.model.RunMode, spec: CoreSpec?, units: Units, replay: ReplayRunner?, liveContext: CoreLiveContext?): RecordingSession =
         RecordingSession(context, UUID.randomUUID().toString(), mode, spec, units.toCore(), replay, volumeKeyLaps(mode), liveContext)
+            .also { it.kmSplits = prefs.getBoolean(RecorderService.PREF_KM_SPLITS, true) }
 
     /**
      * Volume-key laps are a Laps-run feature only (W8): the user's setting, default on, applies
@@ -170,10 +172,14 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
             return StartResult(runId = null, error = StartError.NO_SUCH_JOURNAL)
         }
         precondition()?.let { return StartResult(runId = null, error = it) }
+        return begin(resumeSession(runId, replayed)) { it.startResumed(replayed) }
+    }
+
+    /** The session [resumeRecovered] continues: the journaled live context comes back with the run (BLOCK-1), so it keeps comparing. */
+    internal fun resumeSession(runId: String, replayed: Replay): RecordingSession {
         val h = replayed.header
-        // The journaled live context comes back with the run (BLOCK-1): a resumed session keeps comparing.
-        val session = RecordingSession(context, runId, h.mode, h.session, h.units, null, volumeKeyLaps(h.mode), replayed.liveContext)
-        return begin(session) { it.startResumed(replayed) }
+        return RecordingSession(context, runId, h.mode, h.session, h.units, null, volumeKeyLaps(h.mode), replayed.liveContext)
+            .also { it.kmSplits = prefs.getBoolean(RecorderService.PREF_KM_SPLITS, true) }
     }
 
     override fun pause() {
@@ -294,6 +300,12 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     override fun setCues(enabled: Boolean) {
         prefs.edit().putBoolean(RecorderService.PREF_CUES, enabled).apply()
         active()?.setCues(enabled)
+    }
+
+    override fun setKmSplits(enabled: Boolean) {
+        // commit(), not apply(): the next start() may come from a new process.
+        prefs.edit().putBoolean(RecorderService.PREF_KM_SPLITS, enabled).commit()
+        active()?.kmSplits = enabled
     }
 
     override fun setVolumeKeyLaps(enabled: Boolean) {

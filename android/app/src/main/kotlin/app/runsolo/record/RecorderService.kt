@@ -150,6 +150,7 @@ class RecorderService : Service() {
         const val PREF_RAW_GPS = "rawGps"
         const val PREF_CUES = "cues"
         const val PREF_VOLUME_KEY_LAPS = "volumeKeyLaps"
+        const val PREF_KM_SPLITS = "kmSplits"
 
         /** Session handed from the Activity to the service on ACTION_START. Main thread only. */
         @Volatile
