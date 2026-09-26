@@ -333,14 +333,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         const SizedBox(height: Space.x12),
-                        _Header(
-                          s: s,
-                          maxHr: maxHr,
-                          compact: compact,
-                          onMuteTips: s.tipsMuted == false
-                              ? ctl.muteTips
-                              : null,
-                        ),
+                        _Header(s: s, maxHr: maxHr, compact: compact),
                         if (_stopError != null)
                           _Banner(text: _stopError!, color: t.semDanger)
                         else if (s.fault != null)
@@ -545,6 +538,12 @@ class _RecordingScreenState extends State<RecordingScreen>
                         const SizedBox(height: Space.x12),
                         Row(
                           children: [
+                            // LV2: in the control row, where it costs no
+                            // height and squeezes no number (#77 goldens).
+                            if (s.tipsMuted == false) ...[
+                              MuteTipsButton(onTap: ctl.muteTips),
+                              const SizedBox(width: Space.x12),
+                            ],
                             Expanded(
                               child: _PauseButton(
                                 paused: s.paused,
@@ -782,18 +781,10 @@ String timerCaption(RecordingSnapshot s) {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({
-    required this.s,
-    required this.maxHr,
-    this.compact = false,
-    this.onMuteTips,
-  });
+  const _Header({required this.s, required this.maxHr, this.compact = false});
   final RecordingSnapshot s;
   final int maxHr;
   final bool compact;
-
-  /// In-app "Mute tips" (LV2): only while this run's tips are on.
-  final Future<void> Function()? onMuteTips;
 
   @override
   Widget build(BuildContext context) {
@@ -830,10 +821,6 @@ class _Header extends StatelessWidget {
           showTotal: s.mode != RecordMode.free,
           compact: compact,
           secondary: secondary,
-          // At the row's end: the header never grows on a short phone.
-          trailing: onMuteTips == null
-              ? null
-              : MuteTipsButton(onTap: onMuteTips!),
         ),
         const SizedBox(height: Space.x8),
       ],
@@ -888,16 +875,12 @@ class _Vitals extends StatelessWidget {
     required this.showTotal,
     required this.compact,
     required this.secondary,
-    this.trailing,
   });
   final RecordingSnapshot s;
   final int maxHr;
   final bool showTotal;
   final bool compact;
   final Color secondary;
-
-  /// The Mute tips button (LV2), when this run's tips are on.
-  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -984,19 +967,8 @@ class _Vitals extends StatelessWidget {
           ),
         ),
     ];
-    final end = trailing;
-    if (cells.isEmpty && end == null) return const SizedBox.shrink();
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        ...cells,
-        if (end != null) ...[
-          if (cells.isEmpty) const Spacer(),
-          const SizedBox(width: Space.x8),
-          end,
-        ],
-      ],
-    );
+    if (cells.isEmpty) return const SizedBox.shrink();
+    return Row(crossAxisAlignment: CrossAxisAlignment.end, children: cells);
   }
 }
 
@@ -2139,16 +2111,16 @@ class MuteTipsButton extends StatelessWidget {
       child: InkWell(
         key: const ValueKey('mute-tips'),
         onTap: onTap,
-        customBorder: const CircleBorder(),
+        borderRadius: BorderRadius.circular(Radii.button),
         child: ExcludeSemantics(
-          // Icon only (48 dp): the phase title keeps the header's width.
+          // Icon only, 56 dp like Pause and Hold to stop beside it.
           child: Container(
-            width: 48,
-            height: 48,
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
+              color: t.bgRaised,
+              borderRadius: BorderRadius.circular(Radii.button),
               border: Border.all(color: t.lineHair),
-              color: t.bgRaised.withValues(alpha: 0.6),
             ),
             child: Icon(Icons.volume_off, size: 22, color: t.inkPrimary),
           ),
