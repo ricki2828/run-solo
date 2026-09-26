@@ -423,4 +423,66 @@ void main() {
       expect(Leaderboards.metresOf('goal:d12300'), 12300);
     });
   });
+  group('spokenName (voice never reads an abbreviation)', () {
+    test('standard and custom goals', () {
+      String d(int m, {bool miles = false}) =>
+          GoalCatalogue.spokenNameFor(TargetKind.distance, m, miles: miles);
+      String t(int s) => GoalCatalogue.spokenNameFor(TargetKind.time, s);
+      expect(d(5000), '5 K');
+      expect(d(10000), '10 K');
+      expect(d(21098), 'Half marathon');
+      expect(d(42195), 'Marathon');
+      expect(d(12300), '12.3 kilometres');
+      expect(d(12000), '12 kilometres');
+      expect(d(1000), '1 kilometre');
+      expect(d(12070, miles: true), '7.5 miles');
+      expect(d(1609, miles: true), '1 mile');
+      expect(t(1800), '30 minutes');
+      expect(t(60), '1 minute');
+      expect(t(3600), '1 hour');
+      expect(t(4500), '1 hour 15 minutes');
+      expect(t(7200), '2 hours');
+      expect(t(7260), '2 hours 1 minute');
+    });
+
+    test('goal specs fill it; the app can pass the miles one', () {
+      expect(
+        SessionSpec.goalDistance(21098, 'Half').spokenName,
+        'Half marathon',
+      );
+      expect(SessionSpec.goalTime(1800, '30 min').spokenName, '30 minutes');
+      expect(
+        SessionSpec.goalDistance(
+          12070,
+          '7.5 mi',
+          spokenName: '7.5 miles',
+        ).spokenName,
+        '7.5 miles',
+      );
+      expect(SessionSpec.parkrun('parkrun').spokenName, isNull);
+      expect(SessionSpec.norwegian4x4().spokenName, isNull);
+    });
+
+    test('JSON: right after name, left out when null, strict type', () {
+      final half = SessionSpec.goalDistance(21098, 'Half');
+      final j = half.toJson();
+      expect(j.keys.take(4), [
+        'templateId',
+        'templateVersion',
+        'name',
+        'spokenName',
+      ]);
+      expect(SessionSpec.fromJson(jsonDecode(jsonEncode(j))), half);
+      final plain = SessionSpec.norwegian4x4().toJson();
+      expect(plain.containsKey('spokenName'), isFalse);
+      // A native file with no spokenName reads as null, not a newer writer.
+      final noKey = Map<String, Object?>.of(j)..remove('spokenName');
+      expect(SessionSpec.fromJson(noKey).spokenName, isNull);
+      expect(SessionSpec.fromJson(noKey), isNot(half));
+      expect(
+        () => SessionSpec.fromJson({...j, 'spokenName': 3}),
+        throwsA(isA<RunFileFormatException>()),
+      );
+    });
+  });
 }
