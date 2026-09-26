@@ -11,6 +11,7 @@ import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_engine/run_engine.dart' as engine;
+import 'package:run_engine/testing.dart' as synth;
 import 'package:run_solo/screens/course_board_screen.dart';
 import 'package:run_solo/screens/custom_builder_screen.dart';
 import 'package:run_solo/screens/verdict_screen.dart';
@@ -1235,5 +1236,116 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Course: Albert Park'), findsOneWidget);
     await golden(tester, 'start_event_course_360x640');
+  });
+
+  // CR2 (A10.8): Home with TRY NEXT and ESTIMATED TIMES, the verdict's
+  // coaching section, Settings → Profile and the sex sheet.
+  group('coaching', () {
+    final c0 = DateTime.utc(2026, 8, 1, 6);
+    engine.RunFile tenK(int n, int first, int second) => generator
+        .generate(
+          synth.SyntheticSpec(
+            name: 'cr2g_$n',
+            id: runId(n),
+            mode: engine.RunMode.free,
+            lapStyle: synth.LapStyle.none,
+            start: c0.add(Duration(days: 3 * n)),
+            segments: [
+              synth.Segment.free(first * 51 ~/ 10, speedFor(first)),
+              synth.Segment.free(second * 51 ~/ 10, speedFor(second)),
+            ],
+          ),
+        )
+        .run;
+    List<engine.RunFile> fading() => [
+      tenK(1, 300, 330),
+      tenK(2, 300, 330),
+      tenK(3, 300, 332),
+    ];
+
+    testWidgets('Home with try next + estimated times at 360 x 640', (
+      tester,
+    ) async {
+      final efforts = engine.RunBestEfforts(
+        efforts: {
+          engine.BestEffortDistance.k5: engine.BestEffort(
+            distance: engine.BestEffortDistance.k5,
+            elapsedMs: 1470000,
+            startMs: 0,
+            startOffsetM: 0,
+            splitsMs: const [],
+          ),
+        },
+        fromStartSplitsMs: const [],
+      );
+      final services = fakeServices(
+        files: fading(),
+        live: LiveContextSource.prepared([
+          engine.LiveCandidate(
+            engine.BoardInput(
+              runId: 'a',
+              date: DateTime(2026, 9, 12, 12).toUtc(),
+              mode: engine.RunMode.free,
+              efforts: efforts.efforts,
+            ),
+            engine.RunDerived(bestEfforts: efforts),
+          ),
+        ], now: now),
+      );
+      await pumpApp(tester, services, home: HomeScreen(now: now));
+      tester.view.physicalSize = const Size(1080, 1920);
+      await pumpTimes(tester, 8);
+      // Both cards on screen: TRY NEXT at the top, ESTIMATED TIMES under.
+      await Scrollable.ensureVisible(
+        tester.element(find.byKey(const ValueKey('try-next'))),
+      );
+      await pumpTimes(tester, 2);
+      expect(find.text('ESTIMATED TIMES').hitTestable(), findsOneWidget);
+      await golden(tester, 'home_try_next_360x640');
+    });
+
+    for (final h in [800, 640]) {
+      testWidgets('verdict with the coaching section at 360 x $h', (
+        tester,
+      ) async {
+        final files = fading();
+        await pumpApp(
+          tester,
+          fakeServices(files: files),
+          pushRoute: Routes.verdict,
+          pushArguments: files.last.id,
+        );
+        tester.view.physicalSize = Size(1080, h * 3.0);
+        await pumpTimes(tester, 8);
+        await tester.pump(const Duration(seconds: 2));
+        await tester.scrollUntilVisible(
+          find.byKey(const ValueKey('coaching')),
+          200,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await pumpTimes(tester, 2);
+        await golden(tester, 'verdict_coaching_360x$h');
+      });
+    }
+
+    testWidgets('Settings Profile and the sex sheet', (tester) async {
+      await pumpApp(tester, fakeServices(), home: SettingsScreen(now: now));
+      tester.view.physicalSize = const Size(1080, 2400);
+      await pumpTimes(tester, 4);
+      final row = find.byKey(const ValueKey('profile-sex'));
+      await tester.scrollUntilVisible(
+        row,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      // The PROFILE heading and the Heart rate rows above it in view.
+      await Scrollable.ensureVisible(tester.element(row), alignment: 0.5);
+      await pumpTimes(tester, 2);
+      await golden(tester, 'settings_profile');
+      await tester.tap(row);
+      await pumpTimes(tester, 2);
+      await tester.pump(const Duration(milliseconds: 600));
+      await golden(tester, 'settings_sex_sheet');
+    });
   });
 }
