@@ -271,7 +271,7 @@ class _CustomBuilderScreenState extends State<CustomBuilderScreen> {
               key: const ValueKey('builder-cooldown'),
               label: 'Cool-down',
               seconds: _s.cooldownSeconds,
-              openNote: 'Open: hold Stop when done.',
+              openNote: 'Open: tap Stop when done.',
               onChanged: (v) => _set(
                 (x) => v == null
                     ? x.copyWith(openCooldown: true)

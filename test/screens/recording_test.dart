@@ -8,7 +8,6 @@ import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/theme/theme.dart';
 import 'package:run_solo/theme/zones.dart';
-import 'package:run_solo/widgets/hold_button.dart';
 import 'package:run_solo/widgets/lap_button.dart';
 import 'package:run_solo/widgets/pace_dial.dart';
 
@@ -45,6 +44,14 @@ Finder ringPainter() => find.byWidgetPredicate(
 Finder timerText() => find.byKey(const ValueKey('timer'));
 
 String timer(WidgetTester tester) => tester.widget<Text>(timerText()).data!;
+
+/// STOP (one tap) then SAVE on the finish screen (Ricki 26-Sep).
+Future<void> tapStopThenSave(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('stop')));
+  await pumpTimes(tester, 4);
+  await tester.tap(find.byKey(const ValueKey('finish-save')));
+  await pumpTimes(tester, 5);
+}
 
 void main() {
   testWidgets('4x4: warm-up counts up, START REPS begins rep 1, no big LAP', (
@@ -320,38 +327,101 @@ void main() {
     await services.recording.start(RecordMode.laps, null, Units.km);
     await pumpApp(tester, services, pushRoute: Routes.recording);
     await pumpTimes(tester, 4);
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.byType(HoldButton)),
-    );
-    await settleAnimations(tester, const Duration(seconds: 2));
-    await gesture.up();
-    await pumpTimes(tester, 5);
+    await tapStopThenSave(tester);
     expect(fake.finalised, hasLength(1));
     expect(storage.enforceCalls, 1);
   });
 
-  testWidgets('hold-to-stop: a short press does nothing, 2 s finalises', (
-    tester,
-  ) async {
+  testWidgets('STOP is one tap: the clock stops there, the finish screen '
+      'offers SAVE, RESUME and a confirmed DISCARD', (tester) async {
     final (fake, _) = await openRecording(tester, mode: RecordMode.laps);
-    final stop = find.byType(HoldButton);
-
-    final short = await tester.startGesture(tester.getCenter(stop));
-    await tester.pump(const Duration(milliseconds: 16));
-    await tester.pump(const Duration(milliseconds: 500));
-    await short.up();
-    await settleAnimations(tester);
-    expect(fake.finalised, isEmpty);
-    expect(find.byType(RecordingScreen), findsOneWidget);
-
-    final long = await tester.startGesture(tester.getCenter(stop));
-    await tester.pump(const Duration(milliseconds: 16));
-    await tester.pump(const Duration(milliseconds: 2100));
+    fake.advance(const Duration(seconds: 90));
     await settle(tester);
-    await long.up();
+    await tester.tap(find.byKey(const ValueKey('stop')));
+    await pumpTimes(tester, 4);
+    expect(find.byKey(const ValueKey('finish-screen')), findsOneWidget);
+    expect(fake.state, RecorderState.paused, reason: 'clock stopped at tap');
+    expect(fake.finalised, isEmpty);
+    // A8: the finish time reads at ≥ 36 sp.
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('finish-time')))
+          .style!
+          .fontSize!,
+      greaterThanOrEqualTo(36),
+    );
+    final frozen = tester
+        .widget<Text>(find.byKey(const ValueKey('finish-time')))
+        .data;
+    fake.advance(const Duration(seconds: 30));
+    await settle(tester);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('finish-time'))).data,
+      frozen,
+      reason: 'nothing accrues on the finish screen',
+    );
+
+    // RESUME (a pocket tap): recording carries on.
+    await tester.tap(find.byKey(const ValueKey('finish-resume')));
+    await pumpTimes(tester, 4);
+    expect(find.byKey(const ValueKey('finish-screen')), findsNothing);
+    expect(fake.state, RecorderState.recording);
+
+    // DISCARD asks first; KEEP changes nothing.
+    await tester.tap(find.byKey(const ValueKey('stop')));
+    await pumpTimes(tester, 4);
+    await tester.tap(find.byKey(const ValueKey('finish-discard')));
+    await settleAnimations(tester);
+    await tester.tap(find.byKey(const ValueKey('discard-keep')));
+    await settleAnimations(tester);
+    expect(fake.liveDiscarded, isEmpty);
+    expect(find.byKey(const ValueKey('finish-screen')), findsOneWidget);
+
+    // SAVE finalises and goes to the result.
+    await tester.tap(find.byKey(const ValueKey('finish-save')));
+    await pumpTimes(tester, 5);
     expect(fake.finalised, hasLength(1));
     expect(fake.state, RecorderState.idle);
     await settleAnimations(tester);
+    expect(find.byType(RecordingScreen), findsNothing);
+  });
+
+  testWidgets('STOP tapped while paused shows the time the pause began '
+      '(the run ends there, #88; #89 review P1)', (tester) async {
+    final (fake, _) = await openRecording(tester, mode: RecordMode.laps);
+    fake.advance(const Duration(seconds: 90));
+    await settle(tester);
+    await tester.tap(find.text('PAUSE'));
+    await pumpTimes(tester, 4);
+    expect(fake.state, RecorderState.paused);
+    fake.advance(const Duration(seconds: 45));
+    await settle(tester);
+    // The PAUSED card leaves the Pause / STOP row live.
+    await tester.tap(find.byKey(const ValueKey('stop')));
+    await pumpTimes(tester, 4);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('finish-time'))).data,
+      '1:30',
+      reason: 'not 2:15: the 45 s paused before STOP never counts',
+    );
+  });
+
+  testWidgets('DISCARD, confirmed, drops the live run: no run file', (
+    tester,
+  ) async {
+    final (fake, _) = await openRecording(tester, mode: RecordMode.laps);
+    fake.advance(const Duration(seconds: 60));
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('stop')));
+    await pumpTimes(tester, 4);
+    await tester.tap(find.byKey(const ValueKey('finish-discard')));
+    await settleAnimations(tester);
+    await tester.tap(find.byKey(const ValueKey('discard-confirm')));
+    await pumpTimes(tester, 5);
+    await settleAnimations(tester);
+    expect(fake.liveDiscarded, hasLength(1));
+    expect(fake.finalised, isEmpty);
+    expect(fake.state, RecorderState.idle);
     expect(find.byType(RecordingScreen), findsNothing);
   });
 
@@ -361,12 +431,7 @@ void main() {
     final (fake, services) = await openRecording(tester, mode: RecordMode.laps);
     final perms = services.permissions as FakePermissionsGateway;
     expect(perms.keepScreenOn, isTrue);
-    final stop = find.byType(HoldButton);
-    final long = await tester.startGesture(tester.getCenter(stop));
-    await tester.pump(const Duration(milliseconds: 16));
-    await tester.pump(const Duration(milliseconds: 2100));
-    await settle(tester);
-    await long.up();
+    await tapStopThenSave(tester);
     await settleAnimations(tester);
     expect(fake.state, RecorderState.idle);
     expect(perms.keepScreenOn, isFalse);

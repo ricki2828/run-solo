@@ -80,6 +80,7 @@ fun CoreSpec.toPigeon(): SessionSpec = SessionSpec(
     hrBandLow = hrBand?.first,
     hrBandHigh = hrBand?.second,
     steps = steps.map { it.toPigeon() },
+    spokenName = spokenName,
 )
 
 /** Throws [IllegalArgumentException] for a half-given HR band; the caller reports `unsupportedSession`. */
@@ -98,6 +99,7 @@ fun SessionSpec.toCore(): CoreSpec {
         cueProfile = CoreCueProfile.valueOf(cueProfile.name.toCamel()),
         hrBand = if (lo != null && hi != null) lo to hi else null,
         steps = steps.map { it.toCore() },
+        spokenName = spokenName,
     )
 }
 

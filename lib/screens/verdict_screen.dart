@@ -14,6 +14,7 @@ import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/rep_bars.dart';
+import 'cooper_result_screen.dart';
 import 'course_board_screen.dart';
 import 'run_detail_screen.dart';
 
@@ -103,8 +104,15 @@ class _VerdictScreenState extends State<VerdictScreen> {
               _load = _loadDetail();
             }),
           ),
-          RecordMode.laps || RecordMode.free || RecordMode.cooper =>
-            _SummaryScreen(detail: detail, justFinished: widget.justFinished),
+          // C1: the test result replaces the verdict (A5, A10.5).
+          RecordMode.cooper => CooperResultScreen(
+            detail: detail,
+            justFinished: widget.justFinished,
+          ),
+          RecordMode.laps || RecordMode.free => _SummaryScreen(
+            detail: detail,
+            justFinished: widget.justFinished,
+          ),
         };
       },
     );

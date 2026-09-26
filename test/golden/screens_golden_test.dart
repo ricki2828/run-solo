@@ -488,6 +488,69 @@ void main() {
     await golden(tester, 'detail_weather');
   });
 
+  // C1 (A10.5): the 12-minute test result, a new best on a warm hour
+  // after two tests; a paused test; the Test trend.
+  testWidgets('cooper result: new best with heat, paused, trend', (
+    tester,
+  ) async {
+    final a = cooperTestFile(
+      n: 11,
+      start: DateTime.utc(2026, 6, 10, 6),
+      mps: 3.8,
+    );
+    final b = cooperTestFile(
+      n: 12,
+      start: DateTime.utc(2026, 7, 15, 6),
+      mps: 3.9,
+    );
+    final c = cooperTestFile(n: 13, start: d1, mps: 4.1);
+    await pumpApp(
+      tester,
+      fakeServices(
+        files: [a, b, c],
+        sidecars: {
+          c.id: engine.RunSidecar(
+            runId: c.id,
+            weather: const engine.WeatherRecord(
+              status: engine.WeatherStatus.ok,
+              tempC: 24,
+              rh: 60,
+              dewPointC: 16,
+            ).toJson(),
+          ),
+        },
+      ),
+      pushRoute: Routes.verdict,
+      pushArguments: c.id,
+    );
+    await pumpTimes(tester, 6);
+    await tester.pump(const Duration(seconds: 1));
+    await golden(tester, 'cooper_result_best_heat');
+
+    final p = cooperTestFile(n: 14, start: d1, pausedAtS: 400);
+    await pumpApp(
+      tester,
+      fakeServices(files: [p]),
+      pushRoute: Routes.verdict,
+      pushArguments: p.id,
+    );
+    await pumpTimes(tester, 6);
+    await tester.pump(const Duration(seconds: 1));
+    await golden(tester, 'cooper_result_paused');
+
+    await pumpApp(
+      tester,
+      fakeServices(files: [a, b, c]),
+      home: const TrendScreen(),
+    );
+    await pumpTimes(tester, 6);
+    await tester.tap(find.text('Test'));
+    // Let the chips' selected outline finish moving (#61 review P3: the
+    // golden caught Intervals mid-fade).
+    await settleAnimations(tester);
+    await golden(tester, 'trend_cooper');
+  });
+
   testWidgets('run detail: map failed to load, no Play services', (
     tester,
   ) async {
@@ -1079,6 +1142,25 @@ void main() {
     await golden(tester, 'start_goal_target_360x640');
   });
 
+  // Single-tap STOP (Ricki 26-Sep): the finish screen at both sizes.
+  for (final h in [800, 640]) {
+    testWidgets('finish screen after STOP at 360 x $h', (tester) async {
+      final fake = FakeRecorderGateway(now: now)
+        ..liveSecPerKm = 285
+        ..scriptedHr = 165;
+      final run = fakeServices(recorder: fake);
+      await run.recording.start(RecordMode.free, null, Units.km);
+      for (var i = 0; i < 1500; i++) {
+        fake.advance(const Duration(seconds: 1));
+      }
+      await pumpApp(tester, run, pushRoute: Routes.recording);
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 6);
+      await tester.tap(find.byKey(const ValueKey('stop')));
+      await pumpTimes(tester, 6);
+      await golden(tester, 'record_finish_360x$h');
+    });
+  }
   // K1 course at Start (A10.10, #76 review): the known course from the
   // probe's position, pinned above START with the GPS line.
   testWidgets('event: Start with a known course at 360 x 640', (tester) async {
