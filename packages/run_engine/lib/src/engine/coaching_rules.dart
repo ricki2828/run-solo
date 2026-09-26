@@ -210,9 +210,12 @@ class CoachingRules {
   static const int usualOver = 6;
 
   /// The spoken lines (Aussie casual, no numbers; engine-owned, pinned in
-  /// fixtures). [boardLabel] is injected ("5K", or the event name).
+  /// fixtures). [boardLabel] is injected ("5K", or the event name). The
+  /// fast start is an instruction, never praise (#79 review: "Easy start"
+  /// after a 3:48 km read as "that was easy"); 13 words with the longest
+  /// label, "5K time trial".
   static String fastStartText(String boardLabel) =>
-      'Easy start. Your best $boardLabel went out slower than this.';
+      'Fast start. Ease off a little. Your best $boardLabel started slower.';
   static const String repFadeText =
       'That one dropped off a bit. Hold your form on the next.';
   static const String hrDriftText =

@@ -1,0 +1,42 @@
+{
+  "_note": "Spoken copy shared by the engine (Dart builds the nudge text) and core-jvm (speaks gaps). #79 review: a gap of a minute or more is said in minutes and seconds; the fast start is an instruction. Every line is 16 words or fewer, no em dashes.",
+  "gaps": [
+    [
+      1,
+      "1 second"
+    ],
+    [
+      17,
+      "17 seconds"
+    ],
+    [
+      59,
+      "59 seconds"
+    ],
+    [
+      60,
+      "1 minute"
+    ],
+    [
+      61,
+      "1 minute 1"
+    ],
+    [
+      137,
+      "2 minutes 17"
+    ],
+    [
+      600,
+      "10 minutes"
+    ],
+    [
+      999,
+      "16 minutes 39"
+    ]
+  ],
+  "fastStart": {
+    "5K": "Fast start. Ease off a little. Your best 5K started slower.",
+    "10K": "Fast start. Ease off a little. Your best 10K started slower.",
+    "5K time trial": "Fast start. Ease off a little. Your best 5K time trial started slower."
+  }
+}

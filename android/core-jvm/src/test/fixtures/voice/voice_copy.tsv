@@ -1,5 +1,5 @@
-cue.start.time-rep	3	Go. Rep 4
-cue.start.distance-rep	6	Rep 20 of 20, 400 metres
+cue.start.time-rep	6	Go. Last rep, 4 of 4
+cue.start.distance-rep	7	Last rep, 20 of 20, 400 metres
 cue.start.short-rep	1	Go
 cue.start.cooper	3	Twelve minutes. Go
 cue.start.goal-distance	3	Half marathon. Go
@@ -16,7 +16,6 @@ cue.phase-end.cooper	3	Time. Cool down
 cue.phase-end.cooldown-over	2	Cool-down done
 cue.stop	2	Run saved
 cue.distance-to-go	4	100 metres to go
-cue.last-rep	2	Last rep
 cue.minute-mark.1	2	1 minute
 cue.minute-mark.11	2	11 minutes
 cue.projection.target	4	On pace for 1:59:59
@@ -26,29 +25,29 @@ km.split.whole-minutes	6	2 k, 10 minutes, pace 5:00.
 km.split.over-an-hour	7	12 k, 1 hour 4, pace 5:20.
 km.split.longest	7	10 k, 1 hour 59, pace 9:59.
 km.split.no-pace	5	4 k, 20 minutes 20.
-compare.distance.best	8	Best of 21 so far, 999 seconds up.
+compare.distance.best	9	Best of 21 so far, 16 minutes 39 up.
 compare.distance.best-level	9	Best of 21 so far, level with your best.
-compare.distance.rank	9	Number 20 of 21, 999 seconds off your best.
-compare.distance.rank-1s	9	Number 3 of 7, 1 second off your best.
-compare.distance.rank-level	8	Number 2 of 21, level with your best.
-compare.distance.one-other-up	8	999 seconds up on your only other 10K.
-compare.distance.one-other-behind	7	999 seconds behind your only other 10K.
-compare.distance.one-other-level	6	Level with your only other 10K.
+compare.distance.rank	9	20th of 21, 16 minutes 39 off your best.
+compare.distance.rank-1s	8	3rd of 7, 1 second off your best.
+compare.distance.rank-level	7	2nd of 21, level with your best.
+compare.distance.one-other-up	7	16 minutes 39 up on last time.
+compare.distance.one-other-behind	6	16 minutes 39 behind last time.
+compare.distance.one-other-level	4	Level with last time.
 compare.intervals.best	7	Best start to this session you've had.
-compare.intervals.rank	7	Number 20 of 21 after 20 reps.
-compare.intervals.rank-1-rep	7	Number 2 of 21 after 1 rep.
+compare.intervals.rank	6	20th of 21 after 20 reps.
+compare.intervals.rank-1-rep	6	2nd of 21 after 1 rep.
 compare.intervals.one-other-ahead	7	Ahead of your last one so far.
 compare.intervals.one-other-behind	6	Behind your last one so far.
 compare.intervals.one-other-level	7	Level with your last one so far.
-compare.cooper.best	3	Best so far.
-compare.cooper.second	4	Second best so far.
-compare.cooper.third	4	Third best so far.
-compare.cooper.rank	6	Number 20 of 21 so far.
+compare.cooper.best	5	Best of 21 so far.
+compare.cooper.second	5	2nd of 21 so far.
+compare.cooper.third	5	3rd of 21 so far.
+compare.cooper.rank	5	20th of 21 so far.
 compare.cooper.last-up	5	Up 30 on last time.
 compare.cooper.last-down	5	Down 30 on last time.
 compare.cooper.last-level	4	Level with last time.
-compare.target.up	7	999 seconds up on your predicted 1:59:59.
-compare.target.behind	6	999 seconds behind your target 1:59:59.
+compare.target.up	8	16 minutes 39 up on your predicted 1:59:59.
+compare.target.behind	7	16 minutes 39 behind your target 1:59:59.
 compare.target.level	5	Level with your predicted 23:00.
 goal.distance	3	10K done, 49:12.
 goal.distance.new-best	5	10K done, 49:12, new best.
@@ -60,6 +59,6 @@ event.end.seconds-off	10	5K time trial done, 24:59, 59 seconds off your best.
 event.end.one-second-off	10	5K time trial done, 24:01, 1 second off your best.
 event.end.level	9	5K time trial done, 24:00, level with your best.
 event.end.no-board	5	5K time trial done, 24:00.
-nudge.fast-start	10	Easy start. Your best 5K went out slower than this.
+nudge.fast-start	11	Fast start. Ease off a little. Your best 5K started slower.
 nudge.rep-fade	12	That one dropped off a bit. Hold your form on the next.
 nudge.hr-drift	12	Heart rate's up for this pace today. Fine to ease a touch.

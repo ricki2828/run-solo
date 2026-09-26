@@ -79,11 +79,16 @@ class PeopleYourAge {
   String get source => ResearchNorms.peopleYourAgeSource;
 }
 
-/// What the after-run coaching says: at most one observation.
+/// What the after-run coaching says: at most one observation, about the
+/// runner's own run ([text], the Bone line), and optionally the research
+/// norm that goes with it ([norm], shown under it as context, #103 review).
 class CoachObservation {
-  const CoachObservation(this.text, {this.researchBased = false});
+  const CoachObservation(this.text, {this.norm});
   final String text;
-  final bool researchBased;
+  final String? norm;
+
+  /// Carries a research-based norm line.
+  bool get researchBased => norm != null;
 }
 
 /// A "try next" suggestion: never a schedule, at most one.
@@ -223,10 +228,13 @@ class CoachReporter {
               'usual is $theirs%.',
             );
     }
+    // No usual yet (0 to 2 earlier efforts on this board): only a real fade
+    // is worth a line. The runner's own figure is the observation; the elite,
+    // research-based norm rides with it as context (#102 review P2, #103).
     return f >= fadeAt
-        ? const CoachObservation(
-            ResearchNorms.fadeNormLine,
-            researchBased: true,
+        ? CoachObservation(
+            'You slowed ${_pct(f)}% in the second half.',
+            norm: ResearchNorms.fadeNormLine,
           )
         : null;
   }

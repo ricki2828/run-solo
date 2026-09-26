@@ -121,7 +121,7 @@ void main() {
       expect(plan.fastStart!.km1MaxMs, 288000);
       expect(
         plan.fastStart!.text,
-        'Easy start. Your best 5K time trial went out slower than this.',
+        'Fast start. Ease off a little. Your best 5K time trial started slower.',
       );
       expect(plan.repFade, isNull);
     });
@@ -393,22 +393,56 @@ void main() {
       expect(r.observation, isNull);
     });
 
-    test('no usual yet: the qualitative research line, labelled', () {
-      final r = reporter.report(
-        run: distanceRun('now', 12, faded(300000, 0.05)),
-        history: const [],
-      );
-      expect(r.observation!.researchBased, isTrue);
-      expect(r.observation!.text, ResearchNorms.fadeNormLine);
-      expect(
-        reporter
+    test('no usual yet (0 to 2 earlier runs): own figure, the elite norm as '
+        'a separate line (#102 review P2, #103 review)', () {
+      final earlier = [
+        distanceRun('a', 0, faded(300000, 0.02)),
+        distanceRun('b', 5, faded(300000, 0.02)),
+      ];
+      for (var n = 0; n <= 2; n++) {
+        final history = earlier.take(n).toList();
+        final o = reporter
             .report(
-              run: distanceRun('now', 12, even(10, 300000)),
-              history: const [],
+              run: distanceRun('now', 12, faded(300000, 0.06)),
+              history: history,
             )
-            .observation,
-        isNull,
-        reason: 'an even run needs no norm',
+            .observation!;
+        expect(o.text, 'You slowed 6% in the second half.', reason: '$n');
+        expect(o.norm, ResearchNorms.fadeNormLine);
+        expect(o.researchBased, isTrue);
+        expect(o.norm, contains('Elite'));
+        expect(o.norm, contains('research-based'));
+        // Under the fade line, even, or a negative split: nothing yet.
+        for (final kms in [
+          faded(300000, 0.02),
+          even(10, 300000),
+          faded(300000, -0.02),
+        ]) {
+          expect(
+            reporter
+                .report(run: distanceRun('now', 12, kms), history: history)
+                .observation,
+            isNull,
+            reason: '$n earlier',
+          );
+        }
+      }
+    });
+
+    test('three earlier runs: the usual takes over, no norm line', () {
+      final r = reporter.report(
+        run: distanceRun('now', 12, faded(300000, 0.06)),
+        history: [
+          distanceRun('a', 0, faded(300000, 0.02)),
+          distanceRun('b', 5, faded(300000, 0.02)),
+          distanceRun('c', 9, faded(300000, 0.02)),
+        ],
+      );
+      expect(r.observation!.researchBased, isFalse);
+      expect(r.observation!.norm, isNull);
+      expect(
+        r.observation!.text,
+        'You slowed 6% in the second half. Your usual is 2%.',
       );
     });
   });
@@ -549,13 +583,14 @@ void main() {
       ]) {
         expect(s.contains('\u2014'), isFalse, reason: s);
       }
-      // Spoken nudges fit the per-cue budget on their own (WARN-2).
+      // Spoken nudges are their own line since #80, so the per-line budget
+      // (WARN-2, 16 words) applies; keep them short.
       for (final s in [
         CoachingRules.fastStartText('5K time trial'),
         CoachingRules.repFadeText,
         CoachingRules.hrDriftText,
       ]) {
-        expect(s.split(' ').length, lessThanOrEqualTo(12), reason: s);
+        expect(s.split(' ').length, lessThanOrEqualTo(16), reason: s);
       }
     });
   });
@@ -601,4 +636,22 @@ void main() {
     expect(d.live.kmHr, hasLength(splits.length));
     expect(d.live.kmHr.whereType<double>(), isNotEmpty);
   });
+
+  // Shared with core-jvm SpokenCopyFixtureTest (#79 review).
+  test(
+    'fixtures/phase4/spoken_copy.json: the fast start is an instruction',
+    () {
+      final fx = jsonDecode(
+        File('test/fixtures/phase4/spoken_copy.json').readAsStringSync(),
+      ) as Map<String, Object?>;
+      final lines = (fx['fastStart']! as Map).cast<String, String>();
+      expect(lines, isNotEmpty);
+      for (final MapEntry(key: label, value: line) in lines.entries) {
+        expect(CoachingRules.fastStartText(label), line);
+        expect(line, startsWith('Fast start. Ease off'));
+        expect(line.split(RegExp(r'\s+')).length, lessThanOrEqualTo(16));
+        expect(line, isNot(contains('\u2014')));
+      }
+    },
+  );
 }
