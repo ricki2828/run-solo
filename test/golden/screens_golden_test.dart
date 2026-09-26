@@ -832,7 +832,7 @@ void main() {
         tester,
         services,
         pushRoute: Routes.verdict,
-        pushArguments: files[3].id,
+        pushArguments: files[4].id, // the course best: NEW BEST and #1 of 5
       );
       tester.view.physicalSize = Size(1080, h * 3.0);
       await pumpTimes(tester, 6);
@@ -871,6 +871,8 @@ void main() {
         services,
         home: CourseBoardScreen(courseId: course),
       );
+      // pumpApp resets the surface (review P2): size it again.
+      tester.view.physicalSize = Size(1080, h * 3.0);
       await pumpTimes(tester, 6);
       await golden(tester, 'course_board_360x$h');
     });

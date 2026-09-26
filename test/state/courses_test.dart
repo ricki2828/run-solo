@@ -264,7 +264,12 @@ void main() {
         'nothing, and the board folds from index rows', () async {
       final runsDir = Directory('${dir.path}/runs');
       final store = FileRunStore(runsDir);
-      final files = [event(1, mps: 3.4), event(2, mps: 3.6), event(3)];
+      // Run 2 starts ~100 m north of run 1 (0.0009° lat): same course.
+      final files = [
+        event(1, mps: 3.4),
+        event(2, mps: 3.6, shift: 0.0009),
+        event(3),
+      ];
       await store.importBundles([
         for (final f in files) engine.RunBundle(run: f),
       ]);
