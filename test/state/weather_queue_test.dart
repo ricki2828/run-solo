@@ -49,7 +49,16 @@ void main() {
     dir = await Directory.systemTemp.createTemp('runsolo-weather-');
     runsDir = Directory('${dir.path}/runs');
   });
-  tearDown(() => dir.delete(recursive: true));
+  final stores = <FileRunStore>[];
+  tearDown(() async {
+    // Background derived-data writes (LB2) must land before the directory
+    // goes: one wrote an index tmp mid-delete on CI.
+    for (final st in stores) {
+      await st.derivedIdle;
+    }
+    stores.clear();
+    await dir.delete(recursive: true);
+  });
 
   Future<(FileRunStore, WeatherQueue, FakeWeatherProvider)> setup(
     List<engine.RunFile> runs,
@@ -57,6 +66,7 @@ void main() {
     bool Function()? enabled,
   }) async {
     final store = FileRunStore(runsDir);
+    stores.add(store);
     await store.importBundles([for (final r in runs) engine.RunBundle(run: r)]);
     final provider = FakeWeatherProvider(answers);
     final q = WeatherQueue(
@@ -205,6 +215,7 @@ void main() {
   test('429 waits for Retry-After, then fetches; never failed', () async {
     final r = fourByFourFile(n: 1, start: d1);
     final store = FileRunStore(runsDir);
+    stores.add(store);
     await store.importBundles([engine.RunBundle(run: r)]);
     var clock = d1.add(const Duration(days: 1));
     final provider = FakeWeatherProvider([
