@@ -435,6 +435,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                                   ctl: ctl,
                                   units: settings.units,
                                   compact: compact,
+                                  card: _cardLink,
                                 ),
                               ),
                             ),
@@ -986,11 +987,16 @@ class _CooperBlock extends StatelessWidget {
     required this.ctl,
     required this.units,
     this.compact = false,
+    this.card,
   });
   final RecordingSnapshot s;
   final RecordingController ctl;
   final Units units;
   final bool compact;
+
+  /// LV2 (A10.1): during the test the card covers the metres (the countdown
+  /// is primary).
+  final LayerLink? card;
 
   /// "Cool down, then stop" (A5).
   static const String cooldownCaption = 'Cool down, then stop';
@@ -1027,19 +1033,22 @@ class _CooperBlock extends StatelessWidget {
           style: RunSoloType.body15.copyWith(color: secondary),
         ),
         SizedBox(height: compact ? Space.x8 : Space.x16),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            testing ? '${metres.round()} m' : Fmt.distance(metres, units),
-            key: const ValueKey('cooper-distance-live'),
-            softWrap: false,
-            // The test's metres are the figure that matters; around it the
-            // distance steps down a size.
-            style: switch ((testing, compact)) {
-              (true, false) => RunSoloType.display96,
-              (true, true) || (false, false) => RunSoloType.display64,
-              (false, true) => RunSoloType.display44,
-            }.copyWith(color: testing ? t.inkPrimary : secondary),
+        CompareSlot(
+          link: testing ? card : null,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              testing ? '${metres.round()} m' : Fmt.distance(metres, units),
+              key: const ValueKey('cooper-distance-live'),
+              softWrap: false,
+              // The test's metres are the figure that matters; around it the
+              // distance steps down a size.
+              style: switch ((testing, compact)) {
+                (true, false) => RunSoloType.display96,
+                (true, true) || (false, false) => RunSoloType.display64,
+                (false, true) => RunSoloType.display44,
+              }.copyWith(color: testing ? t.inkPrimary : secondary),
+            ),
           ),
         ),
         const SizedBox(height: Space.x8),

@@ -1400,7 +1400,15 @@ void main() {
         tester,
         RecordMode.cooper,
         engine.SessionSpec.cooper.toPigeon(),
-        seconds: 360,
+        seconds: 300,
+        then: (f) async {
+          // C1b: START TEST after the warm-up, then minute 6.
+          await f.startReps();
+          for (var i = 0; i < 360; i++) {
+            f.advance(const Duration(seconds: 1));
+            await tester.pump();
+          }
+        },
       );
       await card(
         tester,

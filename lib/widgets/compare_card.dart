@@ -316,8 +316,15 @@ class CompareCardLayer extends StatelessWidget {
       child: CompositedTransformFollower(
         link: link,
         showWhenUnlinked: false,
-        targetAnchor: anchorBottom ? Alignment.bottomLeft : Alignment.topLeft,
-        followerAnchor: anchorBottom ? Alignment.bottomLeft : Alignment.topLeft,
+        // Centred on the slot: a full-width slot puts the card on the
+        // gutters, and a centred number (the 12-minute test's metres, inside
+        // its FittedBox) gets the card centred over it.
+        targetAnchor: anchorBottom
+            ? Alignment.bottomCenter
+            : Alignment.topCenter,
+        followerAnchor: anchorBottom
+            ? Alignment.bottomCenter
+            : Alignment.topCenter,
         child: card,
       ),
     ),
