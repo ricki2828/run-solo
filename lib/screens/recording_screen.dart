@@ -473,8 +473,14 @@ class _RecordingScreenState extends State<RecordingScreen>
                     ),
                   ),
                 ),
+                // The PAUSED card leaves the Pause / STOP row live below it,
+                // so STOP from a pause opens the finish screen (#89 review).
                 if (s.paused && !_finishing)
-                  _PausedOverlay(onResume: ctl.resume, onStop: _tapStop),
+                  Positioned.fill(
+                    bottom:
+                        MediaQuery.paddingOf(context).bottom + 56 + Space.x16,
+                    child: _PausedOverlay(onResume: ctl.resume),
+                  ),
                 if (_finishing)
                   _FinishScreen(
                     ctl: ctl,
@@ -1487,12 +1493,8 @@ class _FinishScreen extends StatelessWidget {
 }
 
 class _PausedOverlay extends StatelessWidget {
-  const _PausedOverlay({required this.onResume, required this.onStop});
+  const _PausedOverlay({required this.onResume});
   final Future<void> Function() onResume;
-
-  /// STOP from a pause (a paused run, e.g. from the notification): the
-  /// finish screen, with the time the pause began.
-  final Future<void> Function() onStop;
 
   @override
   Widget build(BuildContext context) {
@@ -1517,19 +1519,6 @@ class _PausedOverlay extends StatelessWidget {
                 ),
                 onPressed: onResume,
                 child: const Text('RESUME'),
-              ),
-              const SizedBox(height: Space.x12),
-              OutlinedButton(
-                key: const ValueKey('paused-stop'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(64),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(Radii.button),
-                  ),
-                  textStyle: RunSoloType.title28,
-                ),
-                onPressed: onStop,
-                child: const Text('STOP'),
               ),
             ],
           ),

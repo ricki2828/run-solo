@@ -396,8 +396,8 @@ void main() {
     expect(fake.state, RecorderState.paused);
     fake.advance(const Duration(seconds: 45));
     await settle(tester);
-    // The PAUSED card covers the controls: its STOP opens the finish screen.
-    await tester.tap(find.byKey(const ValueKey('paused-stop')));
+    // The PAUSED card leaves the Pause / STOP row live.
+    await tester.tap(find.byKey(const ValueKey('stop')));
     await pumpTimes(tester, 4);
     expect(
       tester.widget<Text>(find.byKey(const ValueKey('finish-time'))).data,
