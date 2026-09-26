@@ -61,20 +61,24 @@ abstract final class CooperProjection {
     );
   }
 
-  /// When the test itself started, in ms since the run start. The lap that
-  /// lasts 12:00 (± 5 s) is the test (I2 writes the work step as one lap:
-  /// the whole file when the test starts at once, after the warm-up lap
-  /// when "Start reps" ended one, before a cool-down lap if the runner kept
-  /// going). With no such lap: the end of the first lap when there are
-  /// several, else 0 (a file with one open lap, or none).
+  /// When the test itself started, in ms since the run start. The test is
+  /// one lap of 12:00 (± 5 s), found in this order:
+  /// 1. the lap right after the warm-up lap ("Start reps" ends the warm-up,
+  ///    I2), so a warm-up that itself lasted about 12:00 is never taken;
+  /// 2. a 12:00 lap the recorder ended itself (auto: the step's own end);
+  /// 3. any 12:00 lap (a pre-I2 file: one manual lap).
+  /// With none: the end of the first lap when there are several, else 0.
   static int testStartMs(RunFile run) {
     final laps = [
       for (final l in run.laps)
         if (l.kind != LapKind.pause) l,
     ];
-    for (final l in laps) {
-      if ((l.durationMs - testSeconds * 1000).abs() <= 5000) return l.t0Ms;
-    }
+    bool twelve(Lap l) => (l.durationMs - testSeconds * 1000).abs() <= 5000;
+    if (laps.length >= 2 && twelve(laps[1])) return laps[1].t0Ms;
+    final candidates = laps.where(twelve).toList();
+    final auto = candidates.where((l) => l.kind == LapKind.auto);
+    if (auto.isNotEmpty) return auto.first.t0Ms;
+    if (candidates.isNotEmpty) return candidates.first.t0Ms;
     return laps.length >= 2 ? laps.first.t1Ms : 0;
   }
 
@@ -114,7 +118,15 @@ class CooperEstimate {
         'VO2 about ${vo2.round()}.';
   }
 
-  /// Result line: "50 (45 to 55)".
+  /// Label the result screen renders [rangeText] under (plan §3.3, WARN-4:
+  /// the number never appears without it).
+  static const String rangeLabel = 'VO2 estimate';
+
+  /// "VO2 estimate 50 (45 to 55)": the range as a runner reads it, label
+  /// included; what the string lint checks.
+  String get rangeLine => '$rangeLabel $rangeText';
+
+  /// "50 (45 to 55)": only ever shown under [rangeLabel].
   String get rangeText =>
       '${vo2.round()} (${vo2Low.round()} to ${vo2High.round()})';
 
