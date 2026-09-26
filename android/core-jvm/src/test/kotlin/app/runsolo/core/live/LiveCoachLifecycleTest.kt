@@ -14,6 +14,7 @@ import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
 import app.runsolo.core.record.CueWords
+import app.runsolo.core.record.LapDispatch
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
 import kotlin.math.cos
@@ -83,9 +84,14 @@ class LiveCoachLifecycleTest {
         fun startReps(t: Long) = handle(core.startReps(t).second, t)
 
         private fun handle(out: List<RecorderCore.Output>, t: Long) {
+            // As RecordingSession: journaled in the core's order, sent with a step's end cue after its lap.
             for (o in out) when (o) {
+                is RecorderCore.Output.Lap -> lines.add(JournalLine.Lap(o.t, o.t, o.source))
+                is RecorderCore.Output.Cue -> lines.add(JournalLine.Cue(o.t, o.t, o.kind))
+                else -> Unit
+            }
+            for (o in LapDispatch.ordered(out)) when (o) {
                 is RecorderCore.Output.Lap -> {
-                    lines.add(JournalLine.Lap(o.t, o.t, o.source))
                     // As LapDispatch: the distance interpolated at the lap's (back-dated) time.
                     val d = if (t <= prevT) ticker.distanceM else prevD + (ticker.distanceM - prevD) * (o.t - prevT).toDouble() / (t - prevT)
                     val a = core.status(o.t).activeMs
@@ -93,7 +99,6 @@ class LiveCoachLifecycleTest {
                     coach.lapEnded(core.lapStep(o.index), d, a)
                 }
                 is RecorderCore.Output.Cue -> {
-                    lines.add(JournalLine.Cue(o.t, o.t, o.kind))
                     goal.atCue(o.kind, core.phase, core.finalStepEnd)?.let {
                         goals.add(it)
                         said.add(Said(t, it.text, null, ticker.distanceM))
@@ -237,8 +242,8 @@ class LiveCoachLifecycleTest {
     )
 
     /** 60 s warm-up, LAP, then 4 m/s in work and 2 m/s otherwise until [seconds]; hooks per second. */
-    private fun intervalRun(spec: SessionSpec, seconds: Int, each: (Shell, Int) -> Unit = { _, _ -> }): Shell {
-        val sh = Shell(RunMode.intervals, spec, null)
+    private fun intervalRun(spec: SessionSpec, seconds: Int, ctx: LiveContext? = null, each: (Shell, Int) -> Unit = { _, _ -> }): Shell {
+        val sh = Shell(RunMode.intervals, spec, ctx)
         sh.start(0)
         var s = 1
         while (s <= seconds) {
@@ -281,6 +286,20 @@ class LiveCoachLifecycleTest {
         assertTrue(paces[0] != null && paces[0]!! in 245.0..256.0, "rep 1 rebuilt from the journal: $paces")
         assertEquals(null, paces[1], "rep 2 spanned the kill")
         assertTrue(paces[2] != null && paces[2]!! in 245.0..256.0, "rep 3 is clean: $paces")
+    }
+
+    @Test
+    fun `the last rep's compare rides the cool-down cue and counts every rep`() {
+        val board = LiveBoard(
+            key = "d400x3", label = "3 × 400 m", kind = LiveBoardKind.intervals,
+            entries = listOf(240.0, 260.0).mapIndexed { i, p -> LiveEntry("r$i", 0, liveRepPacesSecPerKm = List(3) { p }, finalMetric = p) },
+        )
+        val ctx = LiveContext(boards = listOf(board), builtAtMs = 0, engineVersion = 1)
+        val sh = intervalRun(intervals(60), 60 + 3 * 105 + 2 * 60 + 30, ctx)
+        assertEquals(listOf(1, 2, 3), sh.compares().map { it.index }, sh.said.toString())
+        val last = sh.said.single { it.fire?.index == 3 }
+        assertTrue(last.text.startsWith("Done. Cool down."), last.text)
+        assertEquals(2, last.fire!!.result.rank, "250 s/km over all 3 reps: behind 240, ahead of 260")
     }
 
     // ---- GOAL runs (§G, G2) ----
