@@ -378,6 +378,16 @@ class _RecordingScreenState extends State<RecordingScreen>
                                     compact: compact,
                                   ),
                           ),
+                        ] else if (s.isCooper) ...[
+                          _PausedHidden(
+                            paused: s.paused,
+                            child: _CooperBlock(
+                              s: s,
+                              ctl: ctl,
+                              units: settings.units,
+                              compact: compact,
+                            ),
+                          ),
                         ] else if (s.lapsEnabled) ...[
                           _PausedHidden(
                             paused: s.paused,
@@ -417,13 +427,28 @@ class _RecordingScreenState extends State<RecordingScreen>
                           ),
                         ],
                         const SizedBox(height: Space.x16),
-                        if (s.isPreset &&
+                        if ((s.isPreset || s.isCooper) &&
                             s.phase == Phase.warmup &&
-                            s.needsGps &&
+                            (s.needsGps || s.isCooper) &&
                             s.gpsLost)
                           // W3: distance reps cannot end without GPS, so
                           // START REPS waits for a fix.
                           _WaitingForGps(height: lapHeight)
+                        else if (s.isCooper && s.phase == Phase.warmup)
+                          // A5: the LAP button's slot; its own action,
+                          // not a lap.
+                          LapButton(
+                            key: const ValueKey('start-test'),
+                            label: 'START TEST',
+                            onLap: ctl.startReps,
+                            pulse: ctl.lapPulse,
+                            haptics: settings.haptics,
+                            height: lapHeight,
+                          )
+                        else if (s.isCooper)
+                          // No LAP anywhere for the 12 minutes (A5): nothing
+                          // can end the test early.
+                          const Spacer()
                         else if (s.isPreset && s.phase == Phase.warmup)
                           LapButton(
                             key: const ValueKey('start-reps'),
@@ -468,6 +493,21 @@ class _RecordingScreenState extends State<RecordingScreen>
                             Expanded(child: _StopButton(onTap: _tapStop)),
                           ],
                         ),
+                        // A5: pausing is allowed, but it ends the test.
+                        if (s.isCooper && s.phase == Phase.work && !s.paused)
+                          Padding(
+                            padding: const EdgeInsets.only(top: Space.x8),
+                            child: Text(
+                              kCooperPauseWarning,
+                              key: const ValueKey('cooper-pause-warning'),
+                              textAlign: TextAlign.center,
+                              style: RunSoloType.label13.copyWith(
+                                color: s.zone > 0
+                                    ? HrZones.secondaryOnZone
+                                    : t.inkSecondary,
+                              ),
+                            ),
+                          ),
                         const SizedBox(height: Space.x16),
                       ],
                     ),
@@ -479,7 +519,12 @@ class _RecordingScreenState extends State<RecordingScreen>
                   Positioned.fill(
                     bottom:
                         MediaQuery.paddingOf(context).bottom + 56 + Space.x16,
-                    child: _PausedOverlay(onResume: ctl.resume),
+                    child: _PausedOverlay(
+                      onResume: ctl.resume,
+                      note: s.isCooper && s.phase == Phase.work
+                          ? kCooperPausedNote
+                          : null,
+                    ),
                   ),
                 if (_finishing)
                   _FinishScreen(
@@ -550,7 +595,11 @@ String phaseTitle(RecordingSnapshot s) {
     case RecordMode.free:
       return 'FREE RUN';
     case RecordMode.cooper:
-      return '12-MINUTE TEST';
+      return switch (s.phase) {
+        Phase.warmup => 'WARM-UP',
+        Phase.cooldown => 'COOL-DOWN',
+        _ => '12-MINUTE TEST',
+      };
     case RecordMode.intervals:
       break;
   }
@@ -611,9 +660,19 @@ String stepDetail(SessionStep st) {
         );
 }
 
+/// Under Pause during the 12-minute test (A5).
+const String kCooperPauseWarning = 'Pausing ends the test';
+
+/// On the PAUSED card when the test was paused (A5: no estimate).
+const String kCooperPausedNote =
+    'The test ended when you paused, so this one gives no estimate.';
+
 /// "Rep flagged" only means something inside a rep; elsewhere say what it is.
 String gpsBannerCopy(RecordingSnapshot s) {
   if (s.showEndRep) return 'GPS lost. Tap END REP at the end of the rep.';
+  if (s.isCooper && s.phase == Phase.warmup && s.gpsLost) {
+    return 'The test needs GPS. Wait for a fix to start it.';
+  }
   if (s.phase == Phase.warmup && s.needsGps && s.gpsLost) {
     return 'Distance reps need GPS. Wait for a fix to start reps.';
   }
@@ -829,6 +888,78 @@ class _Vitals extends StatelessWidget {
 }
 
 /// Free run (A2): exactly four numbers, no lap counter, no ghost line.
+/// The 12-minute test (C1, A5): in the warm-up a count-up and the run's
+/// distance; in the test the count-down from 12:00 and the test's own
+/// distance; after 0:00 a cool-down count-up with "Cool down, then stop".
+class _CooperBlock extends StatelessWidget {
+  const _CooperBlock({
+    required this.s,
+    required this.ctl,
+    required this.units,
+    this.compact = false,
+  });
+  final RecordingSnapshot s;
+  final RecordingController ctl;
+  final Units units;
+  final bool compact;
+
+  /// "Cool down, then stop" (A5).
+  static const String cooldownCaption = 'Cool down, then stop';
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
+    final testing = s.phase == Phase.work;
+    final (clockMs, caption) = switch (s.phase) {
+      Phase.work => (ctl.displayRemainingMs, 'left in the test'),
+      Phase.cooldown => (ctl.displayLapElapsedMs, cooldownCaption),
+      _ => (ctl.displayElapsedMs, 'warm up, then tap START TEST'),
+    };
+    final metres = testing || s.phase == Phase.cooldown
+        ? s.lapDistanceM
+        : s.totalDistanceM;
+    return Column(
+      key: const ValueKey('cooper-block'),
+      children: [
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            Fmt.clock(clockMs),
+            key: const ValueKey('timer'),
+            softWrap: false,
+            style: (compact ? RunSoloType.display96 : RunSoloType.timer120)
+                .copyWith(color: t.inkPrimary),
+          ),
+        ),
+        Text(
+          caption,
+          key: const ValueKey('cooper-caption'),
+          style: RunSoloType.body15.copyWith(color: secondary),
+        ),
+        SizedBox(height: compact ? Space.x8 : Space.x16),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            testing ? '${metres.round()} m' : Fmt.distance(metres, units),
+            key: const ValueKey('cooper-distance-live'),
+            softWrap: false,
+            style: (compact ? RunSoloType.display64 : RunSoloType.display96)
+                .copyWith(color: testing ? t.inkPrimary : secondary),
+          ),
+        ),
+        const SizedBox(height: Space.x8),
+        AuxFigure(
+          label: 'PACE',
+          value: Fmt.pace(s.livePaceSecPerKm, units),
+          labelColor: secondary,
+          valueColor: t.inkPrimary,
+        ),
+      ],
+    );
+  }
+}
+
 class _FreeRunBlock extends StatelessWidget {
   const _FreeRunBlock({
     required this.s,
@@ -1493,8 +1624,11 @@ class _FinishScreen extends StatelessWidget {
 }
 
 class _PausedOverlay extends StatelessWidget {
-  const _PausedOverlay({required this.onResume});
+  const _PausedOverlay({required this.onResume, this.note});
   final Future<void> Function() onResume;
+
+  /// One line under PAUSED (a paused 12-minute test gives no estimate).
+  final String? note;
 
   @override
   Widget build(BuildContext context) {
@@ -1511,6 +1645,15 @@ class _PausedOverlay extends StatelessWidget {
                 'PAUSED',
                 style: RunSoloType.display44.copyWith(color: t.inkSecondary),
               ),
+              if (note != null) ...[
+                const SizedBox(height: Space.x12),
+                Text(
+                  note!,
+                  key: const ValueKey('paused-note'),
+                  textAlign: TextAlign.center,
+                  style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+                ),
+              ],
               const SizedBox(height: Space.x24),
               FilledButton(
                 style: FilledButton.styleFrom(

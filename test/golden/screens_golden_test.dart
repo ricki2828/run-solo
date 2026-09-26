@@ -551,6 +551,47 @@ void main() {
     await golden(tester, 'trend_cooper');
   });
 
+  // C1b (A5): the 12-minute test mid-test on a standard and a short phone,
+  // its cool-down, and the pre-test sheet on Start.
+  for (final h in [800, 640]) {
+    testWidgets('cooper: 3:00 into the test at 360 x $h', (tester) async {
+      final fake = FakeRecorderGateway(now: now)..scriptedHr = 172;
+      final services = fakeServices(recorder: fake);
+      await services.recording.start(
+        RecordMode.cooper,
+        engine.SessionSpec.cooper.toPigeon(),
+        Units.km,
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 4);
+      fake.advance(const Duration(minutes: 5));
+      await pumpTimes(tester, 3);
+      await services.recording.startReps();
+      await pumpTimes(tester, 3);
+      for (var i = 0; i < 180; i++) {
+        fake.advance(const Duration(seconds: 1));
+        await tester.pump();
+      }
+      await settleAnimations(tester);
+      await golden(tester, 'record_cooper_test_360x$h');
+      if (h == 800) {
+        fake.advance(const Duration(minutes: 9, seconds: 30));
+        await pumpTimes(tester, 3);
+        await settleAnimations(tester, const Duration(milliseconds: 900));
+        await golden(tester, 'record_cooper_cooldown');
+      }
+    });
+  }
+
+  testWidgets('start: the test chip and its pre-test sheet', (tester) async {
+    await pumpApp(tester, fakeServices(), pushRoute: Routes.start);
+    await pumpTimes(tester, 4);
+    await tester.tap(find.byKey(const ValueKey('test-chip')));
+    await settleAnimations(tester);
+    await golden(tester, 'start_test_sheet');
+  });
+
   testWidgets('run detail: map failed to load, no Play services', (
     tester,
   ) async {
