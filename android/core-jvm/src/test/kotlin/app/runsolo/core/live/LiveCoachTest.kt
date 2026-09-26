@@ -8,8 +8,10 @@ import app.runsolo.core.model.LiveBoardKind
 import app.runsolo.core.model.LiveContext
 import app.runsolo.core.model.LiveEntry
 import app.runsolo.core.model.LiveTarget
+import app.runsolo.core.model.NudgePlan
 import app.runsolo.core.model.Phase
 import app.runsolo.core.model.RecoveryStyle
+import app.runsolo.core.model.RepFadeRule
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Step
@@ -49,7 +51,7 @@ class LiveCoachTest {
         val f = assertNotNull(k.fire)
         assertEquals(listOf(2, 7), listOf(f.result.rank, f.result.of))
         assertEquals(875_000L - 870_000L, f.result.deltaMs)
-        assertEquals("Number 2 of 7, 5 seconds off your best.", f.text)
+        assertEquals("2nd of 7, 5 seconds off your best.", f.text)
         assertTrue(f.speak)
         assertNull(cross(coach, 3, 876_000), "each km once")
         assertEquals("4 k, 19 minutes 30, pace 4:55.", cross(coach, 4, 1_170_000)!!.base)
@@ -66,7 +68,7 @@ class LiveCoachTest {
         val coach = LiveCoach(ctx(fiveK(split(300_000, 600_000, 912_000, 1_210_000, 1_512_000))), RunMode.laps, null)
         val k = assertNotNull(cross(coach, 3, 900_000))
         assertNull(k.base)
-        assertEquals("12 seconds up on your only other 5K.", k.fire!!.text)
+        assertEquals("12 seconds up on last time.", k.fire!!.text)
         assertFalse(k.fire!!.speak)
         assertNull(cross(LiveCoach(null, RunMode.laps, null), 3, 900_000))
     }
@@ -178,6 +180,38 @@ class LiveCoachTest {
     }
 
     @Test
+    fun `best start is said once a run, and never on the rep a fade nudge fires (#79 review)`() {
+        val slow = reps(listOf(250.0, 250.0, 250.0, 250.0), listOf(251.0, 251.0, 251.0, 251.0), listOf(252.0, 252.0, 252.0, 252.0))
+        val once = LiveCoach(ctx(slow), RunMode.intervals, fourHundreds)
+        val lo = Laps(once)
+        lo.warmUp()
+        lo.rep(0, 235.0)
+        val r1 = assertNotNull(repEnd(once, 1))
+        assertEquals("Best start to this session you've had.", r1.text)
+        assertTrue(r1.speak)
+        lo.recovery(1)
+        lo.rep(2, 236.0)
+        val r2 = assertNotNull(repEnd(once, 3))
+        assertEquals(1, r2.result.rank)
+        assertFalse(r2.speak, "said once; the overlay still shows it")
+        assertTrue(r2.overlay)
+
+        // Best for the first time at rep 3, the rep the fade nudge fires: quiet.
+        val late = reps(listOf(230.0, 230.0, 270.0), listOf(231.0, 231.0, 272.0), listOf(232.0, 232.0, 275.0))
+        val fade = RepFadeRule(listOf(null, null, 5.0, 5.0), "That one dropped off a bit. Hold your form on the next.")
+        val coach = LiveCoach(ctx(late).copy(nudges = NudgePlan(version = 1, repFade = fade)), RunMode.intervals, fourHundreds)
+        val l = Laps(coach)
+        l.warmUp()
+        l.rep(0, 235.0); repEnd(coach, 1); l.recovery(1)
+        l.rep(2, 235.0); repEnd(coach, 3); l.recovery(3)
+        l.rep(4, 245.0)
+        val r3 = assertNotNull(repEnd(coach, 5))
+        assertEquals(1, r3.result.rank)
+        assertFalse(r3.speak, "a best line next to a fade nudge contradicts it")
+        assertNotNull(coach.nudgeAtCue(CueKind.start, Phase.recovery), "the fade nudge still fires")
+    }
+
+    @Test
     fun `an unclean live rep has no compare, and the clean reps after it compare without it`() {
         val board = reps(listOf(240.0, 200.0, 240.0, 240.0), listOf(250.0, 250.0, 250.0, 250.0), listOf(230.0, null, 230.0, 230.0))
         val coach = LiveCoach(ctx(board), RunMode.intervals, fourHundreds)
@@ -226,7 +260,7 @@ class LiveCoachTest {
         val metres = 504.9 + 44.73 * 51.0 // VO2 51: second of four
         assertNull(coach.atCue(CueKind.projection, 2, metres, Phase.work, 0, 120_000, null))
         val f = assertNotNull(coach.atCue(CueKind.projection, 3, metres, Phase.work, 0, 180_000, null))
-        assertEquals("Second best so far.", f.text)
+        assertEquals("2nd of 4 so far.", f.text)
         assertNull(coach.atCue(CueKind.projection, 4, metres, Phase.work, 0, 240_000, null))
         val one = LiveCoach(ctx(history = listOf(49.4)), RunMode.cooper, SessionSpec.COOPER)
         assertEquals("Up 2 on last time.", one.atCue(CueKind.projection, 6, metres, Phase.work, 0, 360_000, null)!!.text)

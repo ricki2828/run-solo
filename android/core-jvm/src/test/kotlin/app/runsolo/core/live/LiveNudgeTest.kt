@@ -23,7 +23,7 @@ import kotlin.test.assertNull
 
 /** CR1's native half: the engine's NudgePlan (#56 JSON) against live figures, the §3.5 limits. */
 class LiveNudgeTest {
-    private val fast = FastStartRule(km1MaxMs = 290_000, text = "Easy start. Your best 5K went out slower than this.")
+    private val fast = FastStartRule(km1MaxMs = 290_000, text = "Fast start. Ease off a little. Your best 5K started slower.")
     private val fade = RepFadeRule(listOf(null, null, 4.0, 6.0, null), "That one dropped off a bit. Hold your form on the next.")
     /** Three earlier runs at ~5:00 per km: km 4 HRs 152/155/158 (median 155), km 5 154/156/158 (156). */
     private val drift = HrDriftRule(

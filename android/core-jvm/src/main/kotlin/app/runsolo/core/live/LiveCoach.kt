@@ -51,6 +51,9 @@ class LiveCoach(
     private val livePaces = ArrayList<Double?>()
     private var lastKm = 0
 
+    /** "Best start to this session you've had" is said once a run (#79 review), not after every rep it holds. */
+    private var bestStartSaid = false
+
     /** Active run ms at the last whole km (null after a restore until the next km), for the split pace. */
     private var lastKmActiveMs: Long? = 0
 
@@ -253,13 +256,18 @@ class LiveCoach(
         if (s.isGoal) return null
         if (!isRepEnd(kind, phase, s)) return null
         val rep = livePaces.size
-        if (rep < 3 || (s.cueProfile == CueProfile.short && rep != s.reps)) return null
-        val rule = context?.nudges?.repFade ?: return null
-        val limit = rule.maxDropSecPerKm.getOrNull(rep - 1) ?: return null
-        val first = livePaces[0] ?: return null
-        val now = livePaces[rep - 1] ?: return null
-        if (now - first <= limit) return null
-        return claimNudge(NudgePlan.REP_FADE, rep, rule.text)
+        if (!repFadeDue(s, rep)) return null
+        return claimNudge(NudgePlan.REP_FADE, rep, context!!.nudges!!.repFade!!.text)
+    }
+
+    /** The rep-fade nudge would fire at the end of [rep] (and has not spoken this run). */
+    private fun repFadeDue(s: SessionSpec, rep: Int): Boolean {
+        if (muted || rep < 3 || (s.cueProfile == CueProfile.short && rep != s.reps)) return false
+        val rule = context?.nudges?.repFade ?: return false
+        val limit = rule.maxDropSecPerKm.getOrNull(rep - 1) ?: return false
+        val first = livePaces[0] ?: return false
+        val now = livePaces[rep - 1] ?: return false
+        return now - first > limit && claimNudge(NudgePlan.REP_FADE, rep, rule.text) != null
     }
 
     private fun isRepEnd(kind: CueKind, phase: Phase, s: SessionSpec) =
@@ -301,7 +309,12 @@ class LiveCoach(
             if (!claim(r)) return null
             val recoveryStep = stepIndex?.let { s.steps.getOrNull(it) }
             val shortRecovery = !last && recoveryStep?.target != TargetKind.distance && (nextDurationMs ?: Long.MAX_VALUE) < SHORT_RECOVERY_MS
-            return Fire(r, LiveWords.compare(r), overlay = !shortRecovery, speak = !muted)
+            // "Best start to this session" (#79 review): said once, and never on the rep a fade
+            // nudge fires (the two contradict). The overlay still shows the rank.
+            val bestLine = r.of > 2 && r.rank == 1
+            val quiet = bestLine && (bestStartSaid || repFadeDue(s, rep))
+            if (bestLine && !quiet && !muted) bestStartSaid = true
+            return Fire(r, LiveWords.compare(r), overlay = !shortRecovery, speak = !muted && !quiet)
         }
         if (kind != CueKind.projection || index == null || value == null) return null
         if (s.cueProfile == CueProfile.cooper) {
