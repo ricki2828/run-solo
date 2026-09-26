@@ -99,26 +99,32 @@ class CuePlayer(context: Context) {
      * tones a second apart. Called from the recorder thread; [done] from main.
      */
     @Synchronized
-    fun play(kind: CueKind, text: String?) = play(kind, text, null)
+    fun play(kind: CueKind, text: String?) {
+        play(kind, text, null)
+    }
 
     /**
-     * A cue with a live compare or nudge appended ([extra], Phase 4 §3.2): composed within the
-     * 16-word budget, and the extra dropped when the speech queued ahead would make it start
-     * more than 3 s late ([SpeechClock]); the base cue is still said. [kind] null = a cue of the
-     * compare's own (the Free/Laps km), with a short vibration.
+     * A cue with a live compare ([extra], Phase 4 §3.2) and a nudge ([nudge], §3.5) appended:
+     * composed within the 16-word budget (base > compare > nudge), both extras dropped when the
+     * speech queued ahead would make them start more than 3 s late ([SpeechClock]); the base cue
+     * is still said. [kind] null = a Free run's km split, with a short vibration. Returns what was
+     * composed (null when nothing was said), so a nudge is journaled only when spoken.
      */
     @Synchronized
-    fun play(kind: CueKind?, text: String?, extra: String?) {
+    fun play(kind: CueKind?, text: String?, extra: String?, nudge: String? = null): CueComposer.Composed? {
         vibrate(kind ?: CueKind.minuteMark)
-        if (!enabled) return
+        if (!enabled) return null
         if (kind == CueKind.countdown) {
             countdown()
-            return
+            return null
         }
         val now = SystemClock.elapsedRealtime()
-        val composed = CueComposer.compose(text, extra?.takeIf { speech.freshAt(now) }).text ?: return
-        speech.queued(now, CueComposer.words(composed))
-        say(kind, composed)
+        val fresh = speech.freshAt(now)
+        val composed = CueComposer.compose(text, extra?.takeIf { fresh }, nudge?.takeIf { fresh })
+        val words = composed.text ?: return null
+        speech.queued(now, CueComposer.words(words))
+        say(kind, words)
+        return composed
     }
 
     /** Spoken without a vibration pattern of its own (e.g. "GPS weak"). */

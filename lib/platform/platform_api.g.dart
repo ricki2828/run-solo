@@ -616,18 +616,36 @@ class LiveTarget {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
-/// In-run coaching nudges (Phase 4 §3.5). LC1 ships this stub with no rules
-/// (WARN-6); CR1 fills it. `version` 0 = no rules.
+/// In-run coaching nudges (Phase 4 §3.5, CR1): the engine's thresholds
+/// (`NudgePlanSpec.toJson`, key for key); native compares live figures
+/// against them. A null rule is off. `version` 0 = the LC1 stub (no rules).
 class NudgePlan {
   NudgePlan({
     required this.version,
+    this.fastStart,
+    this.repFade,
+    this.hrDrift,
+    this.blocked,
   });
 
   int version;
 
+  FastStartRule? fastStart;
+
+  RepFadeRule? repFade;
+
+  HrDriftRule? hrDrift;
+
+  /// "rule:index" said on the previous run of this board (WARN-5).
+  List<String>? blocked;
+
   List<Object?> _toList() {
     return <Object?>[
       version,
+      fastStart,
+      repFade,
+      hrDrift,
+      blocked,
     ];
   }
 
@@ -638,6 +656,10 @@ class NudgePlan {
     result as List<Object?>;
     return NudgePlan(
       version: result[0]! as int,
+      fastStart: result[1] as FastStartRule?,
+      repFade: result[2] as RepFadeRule?,
+      hrDrift: result[3] as HrDriftRule?,
+      blocked: (result[4] as List<Object?>?)?.cast<String>(),
     );
   }
 
@@ -650,7 +672,170 @@ class NudgePlan {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(version, other.version);
+    return _deepEquals(version, other.version) && _deepEquals(fastStart, other.fastStart) && _deepEquals(repFade, other.repFade) && _deepEquals(hrDrift, other.hrDrift) && _deepEquals(blocked, other.blocked);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// Fire at km 1 when the live km-1 split (ms from Start) is under [km1MaxMs].
+class FastStartRule {
+  FastStartRule({
+    required this.km1MaxMs,
+    required this.text,
+  });
+
+  int km1MaxMs;
+
+  String text;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      km1MaxMs,
+      text,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static FastStartRule decode(Object result) {
+    result as List<Object?>;
+    return FastStartRule(
+      km1MaxMs: result[0]! as int,
+      text: result[1]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! FastStartRule || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(km1MaxMs, other.km1MaxMs) && _deepEquals(text, other.text);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// At the end of rep r ≥ 3: fire when live rep r pace − rep 1 pace (s/km) is
+/// over `maxDropSecPerKm[r − 1]` (null = off for that rep).
+class RepFadeRule {
+  RepFadeRule({
+    required this.maxDropSecPerKm,
+    required this.text,
+  });
+
+  List<double?> maxDropSecPerKm;
+
+  String text;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      maxDropSecPerKm,
+      text,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static RepFadeRule decode(Object result) {
+    result as List<Object?>;
+    return RepFadeRule(
+      maxDropSecPerKm: (result[0]! as List<Object?>).cast<double?>(),
+      text: result[1]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! RepFadeRule || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(maxDropSecPerKm, other.maxDropSecPerKm) && _deepEquals(text, other.text);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// HR up for this pace, like with like (#56 review P2): `kmSamples[k − 1]` =
+/// the recent board runs' [pace s/km, mean HR] pairs at km k. At km
+/// k ≥ [firstKm]: of the runs whose pace was within [paceBand] of the live km
+/// pace, with at least [minSimilar] of them, fire when the live km HR is at
+/// least their median + [bpmOver].
+class HrDriftRule {
+  HrDriftRule({
+    required this.kmSamples,
+    required this.bpmOver,
+    required this.paceBand,
+    required this.firstKm,
+    required this.minSimilar,
+    required this.text,
+  });
+
+  List<List<List<double>>> kmSamples;
+
+  double bpmOver;
+
+  double paceBand;
+
+  int firstKm;
+
+  int minSimilar;
+
+  String text;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      kmSamples,
+      bpmOver,
+      paceBand,
+      firstKm,
+      minSimilar,
+      text,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static HrDriftRule decode(Object result) {
+    result as List<Object?>;
+    return HrDriftRule(
+      kmSamples: (result[0]! as List<Object?>).cast<List<List<double>>>(),
+      bpmOver: result[1]! as double,
+      paceBand: result[2]! as double,
+      firstKm: result[3]! as int,
+      minSimilar: result[4]! as int,
+      text: result[5]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HrDriftRule || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(kmSamples, other.kmSamples) && _deepEquals(bpmOver, other.bpmOver) && _deepEquals(paceBand, other.paceBand) && _deepEquals(firstKm, other.firstKm) && _deepEquals(minSimilar, other.minSimilar) && _deepEquals(text, other.text);
   }
 
   @override
@@ -2113,65 +2298,74 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is NudgePlan) {
       buffer.putUint8(149);
       writeValue(buffer, value.encode());
-    }    else if (value is LiveContext) {
+    }    else if (value is FastStartRule) {
       buffer.putUint8(150);
       writeValue(buffer, value.encode());
-    }    else if (value is StartResult) {
+    }    else if (value is RepFadeRule) {
       buffer.putUint8(151);
       writeValue(buffer, value.encode());
-    }    else if (value is LapSummary) {
+    }    else if (value is HrDriftRule) {
       buffer.putUint8(152);
       writeValue(buffer, value.encode());
-    }    else if (value is RecorderStatus) {
+    }    else if (value is LiveContext) {
       buffer.putUint8(153);
       writeValue(buffer, value.encode());
-    }    else if (value is OrphanJournal) {
+    }    else if (value is StartResult) {
       buffer.putUint8(154);
       writeValue(buffer, value.encode());
-    }    else if (value is ReplayConfig) {
+    }    else if (value is LapSummary) {
       buffer.putUint8(155);
       writeValue(buffer, value.encode());
-    }    else if (value is PermissionStatus) {
+    }    else if (value is RecorderStatus) {
       buffer.putUint8(156);
       writeValue(buffer, value.encode());
-    }    else if (value is BleStatus) {
+    }    else if (value is OrphanJournal) {
       buffer.putUint8(157);
       writeValue(buffer, value.encode());
-    }    else if (value is ExitDiagnosis) {
+    }    else if (value is ReplayConfig) {
       buffer.putUint8(158);
       writeValue(buffer, value.encode());
-    }    else if (value is BleDevice) {
+    }    else if (value is PermissionStatus) {
       buffer.putUint8(159);
       writeValue(buffer, value.encode());
-    }    else if (value is BackupStatus) {
+    }    else if (value is BleStatus) {
       buffer.putUint8(160);
       writeValue(buffer, value.encode());
-    }    else if (value is TickEvent) {
+    }    else if (value is ExitDiagnosis) {
       buffer.putUint8(161);
       writeValue(buffer, value.encode());
-    }    else if (value is LapEvent) {
+    }    else if (value is BleDevice) {
       buffer.putUint8(162);
       writeValue(buffer, value.encode());
-    }    else if (value is LapPendingEvent) {
+    }    else if (value is BackupStatus) {
       buffer.putUint8(163);
       writeValue(buffer, value.encode());
-    }    else if (value is CueEvent) {
+    }    else if (value is TickEvent) {
       buffer.putUint8(164);
       writeValue(buffer, value.encode());
-    }    else if (value is GpsProbeEvent) {
+    }    else if (value is LapEvent) {
       buffer.putUint8(165);
       writeValue(buffer, value.encode());
-    }    else if (value is CompareEvent) {
+    }    else if (value is LapPendingEvent) {
       buffer.putUint8(166);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is CueEvent) {
       buffer.putUint8(167);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is GpsProbeEvent) {
       buffer.putUint8(168);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is CompareEvent) {
       buffer.putUint8(169);
+      writeValue(buffer, value.encode());
+    }    else if (value is FaultEvent) {
+      buffer.putUint8(170);
+      writeValue(buffer, value.encode());
+    }    else if (value is StateEvent) {
+      buffer.putUint8(171);
+      writeValue(buffer, value.encode());
+    }    else if (value is PhaseEvent) {
+      buffer.putUint8(172);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -2239,44 +2433,50 @@ class _PigeonCodec extends StandardMessageCodec {
       case 149:
         return NudgePlan.decode(readValue(buffer)!);
       case 150:
-        return LiveContext.decode(readValue(buffer)!);
+        return FastStartRule.decode(readValue(buffer)!);
       case 151:
-        return StartResult.decode(readValue(buffer)!);
+        return RepFadeRule.decode(readValue(buffer)!);
       case 152:
-        return LapSummary.decode(readValue(buffer)!);
+        return HrDriftRule.decode(readValue(buffer)!);
       case 153:
-        return RecorderStatus.decode(readValue(buffer)!);
+        return LiveContext.decode(readValue(buffer)!);
       case 154:
-        return OrphanJournal.decode(readValue(buffer)!);
+        return StartResult.decode(readValue(buffer)!);
       case 155:
-        return ReplayConfig.decode(readValue(buffer)!);
+        return LapSummary.decode(readValue(buffer)!);
       case 156:
-        return PermissionStatus.decode(readValue(buffer)!);
+        return RecorderStatus.decode(readValue(buffer)!);
       case 157:
-        return BleStatus.decode(readValue(buffer)!);
+        return OrphanJournal.decode(readValue(buffer)!);
       case 158:
-        return ExitDiagnosis.decode(readValue(buffer)!);
+        return ReplayConfig.decode(readValue(buffer)!);
       case 159:
-        return BleDevice.decode(readValue(buffer)!);
+        return PermissionStatus.decode(readValue(buffer)!);
       case 160:
-        return BackupStatus.decode(readValue(buffer)!);
+        return BleStatus.decode(readValue(buffer)!);
       case 161:
-        return TickEvent.decode(readValue(buffer)!);
+        return ExitDiagnosis.decode(readValue(buffer)!);
       case 162:
-        return LapEvent.decode(readValue(buffer)!);
+        return BleDevice.decode(readValue(buffer)!);
       case 163:
-        return LapPendingEvent.decode(readValue(buffer)!);
+        return BackupStatus.decode(readValue(buffer)!);
       case 164:
-        return CueEvent.decode(readValue(buffer)!);
+        return TickEvent.decode(readValue(buffer)!);
       case 165:
-        return GpsProbeEvent.decode(readValue(buffer)!);
+        return LapEvent.decode(readValue(buffer)!);
       case 166:
-        return CompareEvent.decode(readValue(buffer)!);
+        return LapPendingEvent.decode(readValue(buffer)!);
       case 167:
-        return FaultEvent.decode(readValue(buffer)!);
+        return CueEvent.decode(readValue(buffer)!);
       case 168:
-        return StateEvent.decode(readValue(buffer)!);
+        return GpsProbeEvent.decode(readValue(buffer)!);
       case 169:
+        return CompareEvent.decode(readValue(buffer)!);
+      case 170:
+        return FaultEvent.decode(readValue(buffer)!);
+      case 171:
+        return StateEvent.decode(readValue(buffer)!);
+      case 172:
         return PhaseEvent.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);

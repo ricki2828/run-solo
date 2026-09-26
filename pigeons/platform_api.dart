@@ -265,11 +265,61 @@ class LiveTarget {
   bool predicted;
 }
 
-/// In-run coaching nudges (Phase 4 §3.5). LC1 ships this stub with no rules
-/// (WARN-6); CR1 fills it. `version` 0 = no rules.
+/// In-run coaching nudges (Phase 4 §3.5, CR1): the engine's thresholds
+/// (`NudgePlanSpec.toJson`, key for key); native compares live figures
+/// against them. A null rule is off. `version` 0 = the LC1 stub (no rules).
 class NudgePlan {
-  NudgePlan({required this.version});
+  NudgePlan({
+    required this.version,
+    this.fastStart,
+    this.repFade,
+    this.hrDrift,
+    this.blocked,
+  });
   int version;
+  FastStartRule? fastStart;
+  RepFadeRule? repFade;
+  HrDriftRule? hrDrift;
+
+  /// "rule:index" said on the previous run of this board (WARN-5).
+  List<String>? blocked;
+}
+
+/// Fire at km 1 when the live km-1 split (ms from Start) is under [km1MaxMs].
+class FastStartRule {
+  FastStartRule({required this.km1MaxMs, required this.text});
+  int km1MaxMs;
+  String text;
+}
+
+/// At the end of rep r ≥ 3: fire when live rep r pace − rep 1 pace (s/km) is
+/// over `maxDropSecPerKm[r − 1]` (null = off for that rep).
+class RepFadeRule {
+  RepFadeRule({required this.maxDropSecPerKm, required this.text});
+  List<double?> maxDropSecPerKm;
+  String text;
+}
+
+/// HR up for this pace, like with like (#56 review P2): `kmSamples[k − 1]` =
+/// the recent board runs' [pace s/km, mean HR] pairs at km k. At km
+/// k ≥ [firstKm]: of the runs whose pace was within [paceBand] of the live km
+/// pace, with at least [minSimilar] of them, fire when the live km HR is at
+/// least their median + [bpmOver].
+class HrDriftRule {
+  HrDriftRule({
+    required this.kmSamples,
+    required this.bpmOver,
+    required this.paceBand,
+    required this.firstKm,
+    required this.minSimilar,
+    required this.text,
+  });
+  List<List<List<double>>> kmSamples;
+  double bpmOver;
+  double paceBand;
+  int firstKm;
+  int minSimilar;
+  String text;
 }
 
 /// Everything the live "you vs you" needs, built by the app at Start within
