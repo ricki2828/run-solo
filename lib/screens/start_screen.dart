@@ -537,17 +537,6 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                       : set((x) => x.copyWith(lastMode: m, goalRun: false))
                             .then((_) => _syncProbe()),
                 ),
-                // A5: the test sits apart, under its own eyebrow.
-                const SizedBox(height: Space.x16),
-                Text(
-                  'TESTS',
-                  style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-                ),
-                const SizedBox(height: Space.x8),
-                _TestChip(
-                  selected: mode == RecordMode.cooper,
-                  onTap: _openTestSheet,
-                ),
                 const SizedBox(height: Space.x24),
                 if (goal) ...[
                   GoalPicker(
@@ -658,6 +647,20 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                       tone: PillTone.ok,
                     ),
                   ],
+                ),
+                const SizedBox(height: Space.x16),
+                // A5: the test sits apart, under its own eyebrow, at the end
+                // of the options (lead 26-Sep): the occasional test never
+                // pushes a mode's details off the screen.
+                const SizedBox(height: Space.x8),
+                Text(
+                  'TESTS',
+                  style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+                ),
+                const SizedBox(height: Space.x8),
+                _TestChip(
+                  selected: mode == RecordMode.cooper,
+                  onTap: _openTestSheet,
                 ),
                 const SizedBox(height: Space.x16),
               ],

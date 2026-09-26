@@ -36,6 +36,10 @@ void main() {
     final services = fakeServices(recorder: fake);
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
+    // TESTS sits at the end of the Start scroll (lead 26-Sep).
+    await scrollTo(tester, find.byKey(const ValueKey('test-chip')));
+    await tester.ensureVisible(find.byKey(const ValueKey('test-chip')));
+    await tester.pump();
     expect(find.text('TESTS'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('test-chip')));
     await tester.pumpAndSettle();
