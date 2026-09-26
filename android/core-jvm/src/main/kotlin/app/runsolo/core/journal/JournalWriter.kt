@@ -74,7 +74,8 @@ class JournalWriter(
             return
         }
         val forced = line is JournalLine.Lap || line is JournalLine.Pause ||
-            line is JournalLine.Resume || line is JournalLine.Gap || line is JournalLine.Header
+            line is JournalLine.Resume || line is JournalLine.Gap || line is JournalLine.Header ||
+            line is JournalLine.LiveContextLine || line is JournalLine.CueFired
         if (!ok) {
             enqueue(bytes)
             if (line.t - lastRetryT >= retryIntervalMs || lastRetryT == Long.MIN_VALUE) {

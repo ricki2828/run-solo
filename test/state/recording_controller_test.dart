@@ -155,6 +155,37 @@ void main() {
     expect(ctl.snapshot.lapsEnabled, isTrue);
   });
 
+  test('the live context goes to start() as given; none by default', () async {
+    final ctx = LiveContext(
+      boards: [
+        LiveBoard(
+          key: 'be:5k',
+          label: '5K',
+          kind: LiveBoardKind.distance,
+          targetM: 5000,
+          entries: [
+            LiveEntry(
+              runId: 'a',
+              dateMs: 0,
+              fromStartSplitsMs: [300000],
+              finalMetric: 1500000,
+            ),
+          ],
+        ),
+      ],
+      coachingMuted: false,
+      builtAtMs: 0,
+      engineVersion: 3,
+    );
+    await ctl.start(RecordMode.free, null, Units.km, liveContext: ctx);
+    expect(fake.startCalls.single.liveContext, same(ctx));
+  });
+
+  test('no live context: start() gets null', () async {
+    await ctl.start(RecordMode.free, null, Units.km);
+    expect(fake.startCalls.single.liveContext, isNull);
+  });
+
   test('free run: no lap input at all (plan §18.2)', () async {
     await ctl.start(RecordMode.free, null, Units.km);
     fake.advance(const Duration(seconds: 30));

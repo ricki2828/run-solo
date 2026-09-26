@@ -2,6 +2,7 @@ package app.runsolo.core.journal
 
 import app.runsolo.core.json.Json
 import app.runsolo.core.json.double
+import app.runsolo.core.json.int
 import app.runsolo.core.json.doubleOrNull
 import app.runsolo.core.json.long
 import app.runsolo.core.json.longOrNull
@@ -9,6 +10,7 @@ import app.runsolo.core.json.obj
 import app.runsolo.core.json.string
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.LapSource
+import app.runsolo.core.model.LiveContext
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
@@ -66,6 +68,11 @@ object JournalCodec {
             is JournalLine.Cue -> { m["k"] = "cue"; m["t"] = line.t; m["w"] = line.w; m["kind"] = line.kind.name }
             is JournalLine.Gap -> { m["k"] = "gap"; m["t"] = line.t; m["w"] = line.w; m["wall"] = line.wallGapMs }
             is JournalLine.HrLink -> { m["k"] = "hr"; m["t"] = line.t; m["w"] = line.w; m["on"] = line.connected }
+            is JournalLine.LiveContextLine -> { m["k"] = "lctx"; m["t"] = line.t; m["w"] = line.w; m["ctx"] = line.context.toJson() }
+            is JournalLine.CueFired -> {
+                m["k"] = "cf"; m["t"] = line.t; m["w"] = line.w
+                m["kind"] = line.kind.name; m["key"] = line.key; m["i"] = line.index; m["at"] = line.atMs
+            }
         }
         return Json.write(m)
     }
@@ -145,6 +152,8 @@ object JournalCodec {
             "cue" -> JournalLine.Cue(t, w, CueKind.valueOf(m.string("kind")))
             "gap" -> JournalLine.Gap(t, w, m.long("wall"))
             "hr" -> JournalLine.HrLink(t, w, m["on"] as? Boolean ?: throw IllegalArgumentException("hr.on"))
+            "lctx" -> JournalLine.LiveContextLine(t, w, LiveContext.fromJson(m.obj("ctx") ?: throw IllegalArgumentException("lctx.ctx")))
+            "cf" -> JournalLine.CueFired(t, w, JournalLine.FiredKind.valueOf(m.string("kind")), m.string("key"), m.int("i"), m.long("at"))
             else -> throw IllegalArgumentException("Unknown journal line kind '$k'")
         }
     }

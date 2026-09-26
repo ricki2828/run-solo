@@ -298,13 +298,13 @@ class RecordingController extends ChangeNotifier {
     RecordMode mode,
     SessionSpec? spec,
     Units units, {
-    double? lastCooperVo2,
+    LiveContext? liveContext,
   }) async {
     final result = await _gateway.start(
       mode,
       spec,
       units,
-      lastCooperVo2: lastCooperVo2,
+      liveContext: liveContext,
     );
     if (result.error == null || result.error == StartError.alreadyRunning) {
       _reset(mode, spec);

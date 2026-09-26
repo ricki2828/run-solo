@@ -154,9 +154,9 @@ class FakeRecorderGateway implements RecorderGateway {
     RecordMode mode,
     SessionSpec? spec,
     Units units, {
-    double? lastCooperVo2,
+    LiveContext? liveContext,
   }) async {
-    startCalls.add((mode: mode, spec: spec, lastCooperVo2: lastCooperVo2));
+    startCalls.add((mode: mode, spec: spec, liveContext: liveContext));
     if (startError != null) return StartResult(error: startError);
     if (_state != RecorderState.idle) {
       return StartResult(runId: _runId, error: StartError.alreadyRunning);
@@ -174,7 +174,7 @@ class FakeRecorderGateway implements RecorderGateway {
   }
 
   /// Every `start` call, for tests that check what the app sent.
-  final List<({RecordMode mode, SessionSpec? spec, double? lastCooperVo2})>
+  final List<({RecordMode mode, SessionSpec? spec, LiveContext? liveContext})>
   startCalls = [];
 
   void _begin(String runId, RecordMode mode, SessionSpec? spec) {

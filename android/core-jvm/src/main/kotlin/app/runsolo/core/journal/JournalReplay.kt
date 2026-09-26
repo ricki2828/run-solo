@@ -2,6 +2,7 @@ package app.runsolo.core.journal
 
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.LapSource
+import app.runsolo.core.model.LiveContext
 
 /**
  * A journal event on the RUN timeline (millis since the header, pauses and gaps included).
@@ -49,6 +50,10 @@ data class Replay(
     val clockJumps: Int,
     /** Lines written slightly out of time order (a back-dated auto-lap after a sample); re-sorted, counted. */
     val outOfOrder: Int,
+    /** The `lctx` line's context (Phase 4 BLOCK-1); null = none journaled, the run stays silent. */
+    val liveContext: LiveContext? = null,
+    /** Every `cf` line, in journal order: live cues already spoken, never repeated on restore. */
+    val cuesFired: List<JournalLine.CueFired> = emptyList(),
 ) {
     val isPaused: Boolean
         get() = events.lastOrNull { it is RunEvent.Pause || it is RunEvent.Resume } is RunEvent.Pause
@@ -83,6 +88,8 @@ object JournalReplay {
         var header: JournalLine.Header? = null
         val events = ArrayList<RunEvent>()
         var badLines = 0
+        var liveContext: LiveContext? = null
+        val cuesFired = ArrayList<JournalLine.CueFired>()
         var clockJumps = 0
         var outOfOrder = 0
         var truncated = false
@@ -112,6 +119,9 @@ object JournalReplay {
                 continue
             }
             if (line is JournalLine.Header) { badLines++; continue } // duplicate header
+            // Live-compare bookkeeping, not run events: kept aside, never on the run timeline.
+            if (line is JournalLine.LiveContextLine) { if (liveContext == null) liveContext = line.context; continue }
+            if (line is JournalLine.CueFired) { cuesFired.add(line); continue }
             val runT: Long
             if (line is JournalLine.Gap) {
                 // Run time continues through the dark span; the new device base is line.t.
@@ -139,7 +149,8 @@ object JournalReplay {
                         is JournalLine.Resume -> RunEvent.Resume(runT)
                         is JournalLine.Cue -> RunEvent.Cue(runT, line.kind)
                         is JournalLine.HrLink -> RunEvent.HrLink(runT, line.connected)
-                        is JournalLine.Header, is JournalLine.Gap -> throw IllegalStateException()
+                        is JournalLine.Header, is JournalLine.Gap,
+                        is JournalLine.LiveContextLine, is JournalLine.CueFired -> throw IllegalStateException()
                     },
                 )
             }
@@ -162,6 +173,8 @@ object JournalReplay {
             badLines = badLines,
             clockJumps = clockJumps,
             outOfOrder = outOfOrder,
+            liveContext = liveContext,
+            cuesFired = cuesFired,
         )
     }
 }
