@@ -173,6 +173,7 @@ class SessionSpec {
     this.hrBandLow,
     this.hrBandHigh,
     required this.steps,
+    this.spokenName,
   });
   String templateId;
   int templateVersion;
@@ -193,6 +194,11 @@ class SessionSpec {
   double? hrBandLow;
   double? hrBandHigh;
   List<SessionStep> steps;
+
+  /// What the voice calls the session when it differs from the compact
+  /// [name] the UI shows (goals: "30 minutes" for "30 min"); the engine fills
+  /// it. Null = say [name].
+  String? spokenName;
 }
 
 /// Which kind of board a run races live (Phase 4 §3.2). `distanceInTime`

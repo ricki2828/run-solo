@@ -71,5 +71,25 @@ class CueWordsTest {
         assertEquals("30 min. Go", start(SessionSpec.goalTime(1_800, "30 min")))
         assertEquals("5K time trial. Go", start(app.runsolo.core.replay.ReplayScenarios.PARKRUN))
         assertEquals("Rep 1 of 8, 400 metres", start(eight400), "a one-of-many distance rep is unchanged")
+        // The engine's spoken name wins over the compact UI name.
+        assertEquals("30 minutes. Go", start(SessionSpec.goalTime(1_800, "30 min").copy(spokenName = "30 minutes")))
+        assertEquals("10 K. Go", start(SessionSpec.goalDistance(10_000, "10K").copy(spokenName = "10 K")))
+    }
+
+    @Test
+    fun `the goal-reached line says the spoken name`() {
+        val spec = SessionSpec.goalTime(1_800, "30 min").copy(spokenName = "30 minutes")
+        val g = app.runsolo.core.live.GoalCoach(spec, null).atCue(CueKind.phaseEnd, Phase.cooldown, RecorderCore.StepEnd(0, 1_800_000, 7_210.0))
+        assertEquals("30 minutes done, 7.21 km.", g!!.text)
+    }
+
+    @Test
+    fun `spokenName - after name in the session JSON, left out when null, round trips`() {
+        val plain = SessionSpec.goalDistance(10_000, "10K")
+        assertEquals(false, "spokenName" in plain.toJson(), "older files stay byte for byte")
+        val spoken = plain.copy(spokenName = "10 K")
+        assertEquals(listOf("templateId", "templateVersion", "name", "spokenName", "warmupSeconds"), spoken.toJson().keys.take(5))
+        assertEquals(spoken, SessionSpec.fromJson(spoken.toJson()))
+        assertEquals(plain, SessionSpec.fromJson(plain.toJson()))
     }
 }

@@ -344,6 +344,7 @@ class SessionSpec {
     this.hrBandLow,
     this.hrBandHigh,
     required this.steps,
+    this.spokenName,
   });
 
   String templateId;
@@ -373,6 +374,11 @@ class SessionSpec {
 
   List<SessionStep> steps;
 
+  /// What the voice calls the session when it differs from the compact
+  /// [name] the UI shows (goals: "30 minutes" for "30 min"); the engine fills
+  /// it. Null = say [name].
+  String? spokenName;
+
   List<Object?> _toList() {
     return <Object?>[
       templateId,
@@ -386,6 +392,7 @@ class SessionSpec {
       hrBandLow,
       hrBandHigh,
       steps,
+      spokenName,
     ];
   }
 
@@ -406,6 +413,7 @@ class SessionSpec {
       hrBandLow: result[8] as double?,
       hrBandHigh: result[9] as double?,
       steps: (result[10]! as List<Object?>).cast<SessionStep>(),
+      spokenName: result[11] as String?,
     );
   }
 
@@ -418,7 +426,7 @@ class SessionSpec {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(templateId, other.templateId) && _deepEquals(templateVersion, other.templateVersion) && _deepEquals(name, other.name) && _deepEquals(warmupSeconds, other.warmupSeconds) && _deepEquals(cooldownSeconds, other.cooldownSeconds) && _deepEquals(lapLockout, other.lapLockout) && _deepEquals(autoStop, other.autoStop) && _deepEquals(cueProfile, other.cueProfile) && _deepEquals(hrBandLow, other.hrBandLow) && _deepEquals(hrBandHigh, other.hrBandHigh) && _deepEquals(steps, other.steps);
+    return _deepEquals(templateId, other.templateId) && _deepEquals(templateVersion, other.templateVersion) && _deepEquals(name, other.name) && _deepEquals(warmupSeconds, other.warmupSeconds) && _deepEquals(cooldownSeconds, other.cooldownSeconds) && _deepEquals(lapLockout, other.lapLockout) && _deepEquals(autoStop, other.autoStop) && _deepEquals(cueProfile, other.cueProfile) && _deepEquals(hrBandLow, other.hrBandLow) && _deepEquals(hrBandHigh, other.hrBandHigh) && _deepEquals(steps, other.steps) && _deepEquals(spokenName, other.spokenName);
   }
 
   @override

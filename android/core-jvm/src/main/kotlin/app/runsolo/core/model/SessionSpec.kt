@@ -56,7 +56,15 @@ data class SessionSpec(
     val cueProfile: CueProfile,
     val hrBand: Pair<Double, Double>?,
     val steps: List<Step>,
+    /**
+     * What the voice calls the session when it differs from the compact [name] the UI shows (a
+     * goal: "30 minutes" for "30 min"); the engine fills it. JSON key after `name`, left out when null.
+     */
+    val spokenName: String? = null,
 ) {
+    /** The session's name as the voice says it. */
+    val spoken: String get() = spokenName ?: name
+
     val workSteps: List<Step> get() = steps.filter { it.kind == StepKind.work }
     val reps: Int get() = workSteps.size
     val isFartlek: Boolean get() = templateId == FARTLEK_ID
@@ -135,18 +143,18 @@ data class SessionSpec(
         return out
     }
 
-    fun toJson(): Map<String, Any?> = linkedMapOf(
-        "templateId" to templateId,
-        "templateVersion" to templateVersion,
-        "name" to name,
-        "warmupSeconds" to warmupSeconds,
-        "cooldownSeconds" to cooldownSeconds,
-        "lapLockout" to lapLockout,
-        "autoStop" to autoStop,
-        "cueProfile" to cueProfile.name,
-        "hrBand" to hrBand?.let { listOf(it.first, it.second) },
-        "steps" to steps.map { it.toJson() },
-    )
+    fun toJson(): Map<String, Any?> {
+        val m = linkedMapOf<String, Any?>("templateId" to templateId, "templateVersion" to templateVersion, "name" to name)
+        spokenName?.let { m["spokenName"] = it } // left out when null: older files stay byte for byte
+        m["warmupSeconds"] = warmupSeconds
+        m["cooldownSeconds"] = cooldownSeconds
+        m["lapLockout"] = lapLockout
+        m["autoStop"] = autoStop
+        m["cueProfile"] = cueProfile.name
+        m["hrBand"] = hrBand?.let { listOf(it.first, it.second) }
+        m["steps"] = steps.map { it.toJson() }
+        return m
+    }
 
     companion object {
         const val MAX_STEPS = 80
@@ -176,6 +184,7 @@ data class SessionSpec(
                 cueProfile = CueProfile.valueOf(m.string("cueProfile")),
                 hrBand = band?.let { (it[0] as Number).toDouble() to (it[1] as Number).toDouble() },
                 steps = m.list("steps").map { @Suppress("UNCHECKED_CAST") Step.fromJson(it as Map<String, Any?>) },
+                spokenName = m["spokenName"]?.let { it as? String ?: throw IllegalArgumentException("session.spokenName") },
             )
         }
 

@@ -55,9 +55,9 @@ class GoalCoach(private val spec: SessionSpec?, private val context: LiveContext
         val newBest = !interrupted && (if (distanceGoal) beatsDistanceBoard(step, end.activeMs) else beatsTimeBoard(step, end.distanceM))
         val best = if (newBest) ", new best" else ""
         val text = if (distanceGoal) {
-            "${s.name} done, ${CueWords.clock(end.activeMs.toDouble())}$best."
+            "${s.spoken} done, ${CueWords.clock(end.activeMs.toDouble())}$best."
         } else {
-            "${s.name} done, ${String.format(Locale.US, "%.2f", end.distanceM / 1_000)} km$best."
+            "${s.spoken} done, ${String.format(Locale.US, "%.2f", end.distanceM / 1_000)} km$best."
         }
         return Reached(distanceGoal, step.value, end.activeMs, end.distanceM, newBest, interrupted, text)
     }

@@ -38,8 +38,8 @@ object CueWords {
             CueKind.start -> when {
                 step == null -> null
                 step.kind == StepKind.work && cooper -> "Twelve minutes. Go"
-                // A goal or the timed 5 km is one step, not reps: say what it is ("10K. Go", "30 min. Go").
-                step.kind == StepKind.work && (spec!!.isGoal || spec.isEvent) -> "${spec.name}. Go"
+                // A goal or the timed 5 km is one step, not reps: say what it is ("10 K. Go", "30 minutes. Go").
+                step.kind == StepKind.work && (spec!!.isGoal || spec.isEvent) -> "${spec.spoken}. Go"
                 step.kind == StepKind.work && short -> "Go"
                 step.kind == StepKind.work && step.target == TargetKind.distance ->
                     "Rep $repIndex of ${spec!!.reps}, ${metres(step.value.toDouble())}"

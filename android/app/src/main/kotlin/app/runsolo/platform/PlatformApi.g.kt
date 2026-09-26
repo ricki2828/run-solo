@@ -559,7 +559,13 @@ data class SessionSpec (
   val cueProfile: CueProfile,
   val hrBandLow: Double? = null,
   val hrBandHigh: Double? = null,
-  val steps: List<SessionStep>
+  val steps: List<SessionStep>,
+  /**
+   * What the voice calls the session when it differs from the compact
+   * [name] the UI shows (goals: "30 minutes" for "30 min"); the engine fills
+   * it. Null = say [name].
+   */
+  val spokenName: String? = null
 )
  {
   companion object {
@@ -575,7 +581,8 @@ data class SessionSpec (
       val hrBandLow = pigeonVar_list[8] as Double?
       val hrBandHigh = pigeonVar_list[9] as Double?
       val steps = pigeonVar_list[10] as List<SessionStep>
-      return SessionSpec(templateId, templateVersion, name, warmupSeconds, cooldownSeconds, lapLockout, autoStop, cueProfile, hrBandLow, hrBandHigh, steps)
+      val spokenName = pigeonVar_list[11] as String?
+      return SessionSpec(templateId, templateVersion, name, warmupSeconds, cooldownSeconds, lapLockout, autoStop, cueProfile, hrBandLow, hrBandHigh, steps, spokenName)
     }
   }
   fun toList(): List<Any?> {
@@ -591,6 +598,7 @@ data class SessionSpec (
       hrBandLow,
       hrBandHigh,
       steps,
+      spokenName,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -601,7 +609,7 @@ data class SessionSpec (
       return true
     }
     val other = other as SessionSpec
-    return PlatformApiPigeonUtils.deepEquals(this.templateId, other.templateId) && PlatformApiPigeonUtils.deepEquals(this.templateVersion, other.templateVersion) && PlatformApiPigeonUtils.deepEquals(this.name, other.name) && PlatformApiPigeonUtils.deepEquals(this.warmupSeconds, other.warmupSeconds) && PlatformApiPigeonUtils.deepEquals(this.cooldownSeconds, other.cooldownSeconds) && PlatformApiPigeonUtils.deepEquals(this.lapLockout, other.lapLockout) && PlatformApiPigeonUtils.deepEquals(this.autoStop, other.autoStop) && PlatformApiPigeonUtils.deepEquals(this.cueProfile, other.cueProfile) && PlatformApiPigeonUtils.deepEquals(this.hrBandLow, other.hrBandLow) && PlatformApiPigeonUtils.deepEquals(this.hrBandHigh, other.hrBandHigh) && PlatformApiPigeonUtils.deepEquals(this.steps, other.steps)
+    return PlatformApiPigeonUtils.deepEquals(this.templateId, other.templateId) && PlatformApiPigeonUtils.deepEquals(this.templateVersion, other.templateVersion) && PlatformApiPigeonUtils.deepEquals(this.name, other.name) && PlatformApiPigeonUtils.deepEquals(this.warmupSeconds, other.warmupSeconds) && PlatformApiPigeonUtils.deepEquals(this.cooldownSeconds, other.cooldownSeconds) && PlatformApiPigeonUtils.deepEquals(this.lapLockout, other.lapLockout) && PlatformApiPigeonUtils.deepEquals(this.autoStop, other.autoStop) && PlatformApiPigeonUtils.deepEquals(this.cueProfile, other.cueProfile) && PlatformApiPigeonUtils.deepEquals(this.hrBandLow, other.hrBandLow) && PlatformApiPigeonUtils.deepEquals(this.hrBandHigh, other.hrBandHigh) && PlatformApiPigeonUtils.deepEquals(this.steps, other.steps) && PlatformApiPigeonUtils.deepEquals(this.spokenName, other.spokenName)
   }
 
   override fun hashCode(): Int {
@@ -617,6 +625,7 @@ data class SessionSpec (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.hrBandLow)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.hrBandHigh)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.steps)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.spokenName)
     return result
   }
 }
