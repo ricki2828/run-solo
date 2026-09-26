@@ -356,4 +356,28 @@ void main() {
       );
     });
   });
+
+  test('spokenName: the voice says the goal in words, custom in the '
+      "runner's units", () {
+    AppSettings pick(String id, {Units units = Units.km}) => AppSettings(
+      onboardingDone: true,
+      goalRun: true,
+      goalId: id,
+      units: units,
+      goalCustomMetres: 12070,
+    );
+    expect(pick('d21098').goalSpec('parkrun')!.spokenName, 'Half marathon');
+    expect(pick('t1800').goalSpec('parkrun')!.spokenName, '30 minutes');
+    expect(
+      pick(
+        GoalChoice.customDistanceId,
+        units: Units.mi,
+      ).goalSpec('parkrun')!.spokenName,
+      '7.5 miles',
+    );
+    expect(
+      pick(GoalChoice.customDistanceId).goalSpec('parkrun')!.spokenName,
+      '12.1 kilometres',
+    );
+  });
 }

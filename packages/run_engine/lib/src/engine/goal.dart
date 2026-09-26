@@ -210,6 +210,41 @@ abstract final class GoalCatalogue {
         : '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${m % 60} min'}';
   }
 
+  /// What the voice says for a goal (`SessionSpec.spokenName`), never an
+  /// abbreviation TTS may misread: "5 K", "10 K", "Half marathon",
+  /// "Marathon", "12.3 kilometres" / "7.5 miles" ([miles]: the runner's
+  /// units for a custom distance), "30 minutes", "1 hour", "1 hour 15
+  /// minutes".
+  static String spokenNameFor(
+    TargetKind kind,
+    int value, {
+    bool miles = false,
+  }) {
+    if (kind == TargetKind.distance) {
+      switch (value) {
+        case 5000:
+          return '5 K';
+        case 10000:
+          return '10 K';
+        case 21098:
+          return 'Half marathon';
+        case 42195:
+          return 'Marathon';
+      }
+      final n = miles ? value / metresPerMile : value / 1000;
+      final text = n.toStringAsFixed(1).replaceFirst(RegExp(r'\.0$'), '');
+      final unit = miles ? 'mile' : 'kilometre';
+      return '$text ${text == '1' ? unit : '${unit}s'}';
+    }
+    String plural(int n, String unit) => '$n ${n == 1 ? unit : '${unit}s'}';
+    final m = (value / 60).round();
+    if (m < 60) return plural(m, 'minute');
+    final h = plural(m ~/ 60, 'hour');
+    return m % 60 == 0 ? h : '$h ${plural(m % 60, 'minute')}';
+  }
+
+  static const double metresPerMile = 1609.344;
+
   static bool isStandard(SessionSpec spec) =>
       boardKeyOf(spec) != ComparisonKey.of(spec);
 }

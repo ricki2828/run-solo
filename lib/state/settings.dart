@@ -150,8 +150,22 @@ class AppSettings {
     final step = goalStep;
     if (step == null) return engine.SessionSpec.parkrun(eventName);
     final name = goalName!;
+    final miles =
+        GoalChoice.byId(goalId)?.id == GoalChoice.customDistanceId &&
+        units == Units.mi;
     return step.distance
-        ? engine.SessionSpec.goalDistance(step.value, name)
+        ? engine.SessionSpec.goalDistance(
+            step.value,
+            name,
+            // "7.5 miles", not the km default (the voice says spokenName).
+            spokenName: miles
+                ? engine.GoalCatalogue.spokenNameFor(
+                    engine.TargetKind.distance,
+                    step.value,
+                    miles: true,
+                  )
+                : null,
+          )
         : engine.SessionSpec.goalTime(step.value, name);
   }
 
