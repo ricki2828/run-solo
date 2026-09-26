@@ -14,5 +14,7 @@ fun main() {
     ContractFixtures.write(File(dart, "contract"))
     EventTraceFixture.write()
     EventTraceFixture.write(File(dart, "contract-events"))
-    println("wrote ${ContractFixtures.all().size} contract fixtures + ${EventTraceFixture.NAME}.ndjson to core-jvm and ${dart.path}")
+    TranscriptFixture.write()
+    VoiceCopyFixture.write()
+    println("wrote ${ContractFixtures.all().size} contract fixtures + ${EventTraceFixture.NAME}.ndjson to core-jvm and ${dart.path}, T4 transcripts + voice copy to core-jvm")
 }

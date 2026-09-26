@@ -31,6 +31,8 @@ tasks.test {
     useJUnitPlatform()
     testLogging {
         events("passed", "failed", "skipped")
+        // The assertion message and cause in the CI log (the host cannot run Gradle to see them).
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }
 

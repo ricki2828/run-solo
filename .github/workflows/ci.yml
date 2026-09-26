@@ -45,7 +45,7 @@ jobs:
           echo "$changed"
           # android/ includes android/core-jvm. The workflow itself and pubspec (plugins ship
           # native code) count too, so a CI or plugin change is always tested in full.
-          if echo "$changed" | grep -qE '^(android/|pigeons/|packages/run_engine/test/fixtures/contract|tools/emulator_|tools/check_replay_run\.py|\.github/workflows/|pubspec\.(yaml|lock)$)'; then
+          if echo "$changed" | grep -qE '^(android/|pigeons/|packages/run_engine/test/fixtures/contract|tools/emulator_|tools/check_replay_(run|transcript)\.py|\.github/workflows/|pubspec\.(yaml|lock)$)'; then
             echo "native=true" >> "$GITHUB_OUTPUT"; echo "native paths changed: full emulator set"
           else
             echo "native=false" >> "$GITHUB_OUTPUT"; echo "no native paths: API 34 smoke only"
@@ -472,7 +472,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        kind: [4x4, 400s, 30-30s, yasso-800s, 1km-repeats, fartlek, cooper, parkrun, goal-10k, goal-30min, pause-end]
+        # t4: the Phase 4 T4 replays with a LiveContext, one after another, each also checked against its transcript.
+        kind: [4x4, 400s, 30-30s, yasso-800s, 1km-repeats, fartlek, cooper, parkrun, goal-10k, goal-30min, pause-end, t4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

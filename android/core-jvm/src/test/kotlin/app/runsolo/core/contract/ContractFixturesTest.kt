@@ -272,7 +272,7 @@ class ContractFixturesTest {
     @Test
     fun `replay fixtures - one per kind`() {
         val names = ContractFixtures.all().keys.filter { it.startsWith("replay_") }
-        assertEquals(11, names.size, names.toString())
+        assertEquals(18, names.size, names.toString())
     }
 
     @Test
