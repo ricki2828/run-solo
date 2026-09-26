@@ -255,7 +255,21 @@ check_fatal "recover/resume/stop"
 runs="$(shell "run-as $PKG ls files/runs")"
 echo "$runs" | grep -q "run-$run_id.json.gz" || fail "run file not committed"
 shell "run-as $PKG ls files/journals" | grep -qx "$run_id" && fail "journal directory still present after finalise"
-echo "$runs" | grep -q ".tmp" && fail "tmp file left behind"
+# A run file's own tmp must be gone once stop returned (Finaliser renames it before). The
+# index and sidecar tmps are atomic writes the app finishes right after, so listing 0.6 s after
+# finalise can catch one mid-write (#77 API 29, #61 API 34): those fail only if one outlives 60 s.
+tmps="$(echo "$runs" | grep '\.tmp$' || true)"
+if [ -n "$tmps" ]; then
+  log "tmp files right after finalise: $(echo $tmps)"
+  echo "$tmps" | grep -q '^run-.*\.json\.gz\.tmp$' && fail "run file tmp left behind: $(echo $tmps)"
+  i=0
+  while [ -n "$tmps" ] && [ "$i" -lt 60 ]; do
+    sleep 1; i=$((i + 1))
+    tmps="$(shell "run-as $PKG ls files/runs" | grep '\.tmp$' || true)"
+  done
+  [ -z "$tmps" ] || fail "tmp file left behind for 60 s: $(echo $tmps)"
+  log "tmp files gone after ${i} s"
+fi
 shell pidof "$PKG" > /dev/null || fail "process died after finalise"
 
 log "verify the run file contents"
