@@ -70,7 +70,8 @@ class RecorderNotification(private val context: Context) {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .setContentIntent(openApp())
+            // Paused (the notification's Stop, or Pause): a tap opens the app on its finish screen.
+            .setContentIntent(if (c.state == RecorderState.paused) finishInApp() else openApp())
         if (c.lapAction) b.addAction(0, "LAP", serviceAction(RecorderService.ACTION_LAP))
         b.addAction(0, if (c.state == RecorderState.paused) "Resume" else "Pause", serviceAction(if (c.state == RecorderState.paused) RecorderService.ACTION_RESUME else RecorderService.ACTION_PAUSE))
             .addAction(0, "Stop", serviceAction(RecorderService.ACTION_STOP))
@@ -95,7 +96,7 @@ class RecorderNotification(private val context: Context) {
         val rep = "Rep ${c.repIndex}${c.reps?.let { "/$it" } ?: ""}"
         val toGo = c.metresToGo?.let { " · ${it.toInt()} m to go" }
         return when {
-            c.state == RecorderState.paused -> "Paused"
+            c.state == RecorderState.paused -> "Paused · tap to finish"
             c.cooper && c.phase == Phase.work -> "12-minute test"
             c.phase == Phase.work -> rep + (toGo ?: " · work")
             c.phase == Phase.recovery -> "Recover" + (toGo ?: " · $rep")
@@ -117,6 +118,17 @@ class RecorderNotification(private val context: Context) {
     private fun openApp(): PendingIntent {
         val i = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         return PendingIntent.getActivity(context, 0, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    /**
+     * The paused notification's tap: the app on its finish screen (SAVE / RESUME / DISCARD, #89).
+     * "Stop" itself is a broadcast that pauses at the tap, locked or not (an exact finish at the
+     * line); Android 12 blocks opening an activity from that receiver, so the finish screen is
+     * one tap on the notification away.
+     */
+    private fun finishInApp(): PendingIntent {
+        val i = Intent(context, MainActivity::class.java).setAction(MainActivity.ACTION_FINISH).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        return PendingIntent.getActivity(context, 1, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
     /** Broadcast to [RecorderActionReceiver]: reaches the running process, never starts the service. */

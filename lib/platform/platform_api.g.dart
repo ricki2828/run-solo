@@ -1068,6 +1068,7 @@ class RecorderStatus {
     this.stepRemainingM,
     required this.journalOk,
     this.pausedAtElapsedMs,
+    this.finishRequests,
   });
 
   RecorderState state;
@@ -1110,6 +1111,11 @@ class RecorderStatus {
   /// time), also after a kill and restore. Null when not paused.
   int? pausedAtElapsedMs;
 
+  /// How many times the paused notification's "tap to finish" opened the app
+  /// this run (null = none). The app opens its finish screen when this goes up;
+  /// it also works on a cold start, where an event would be missed.
+  int? finishRequests;
+
   List<Object?> _toList() {
     return <Object?>[
       state,
@@ -1129,6 +1135,7 @@ class RecorderStatus {
       stepRemainingM,
       journalOk,
       pausedAtElapsedMs,
+      finishRequests,
     ];
   }
 
@@ -1155,6 +1162,7 @@ class RecorderStatus {
       stepRemainingM: result[14] as double?,
       journalOk: result[15]! as bool,
       pausedAtElapsedMs: result[16] as int?,
+      finishRequests: result[17] as int?,
     );
   }
 
@@ -1167,7 +1175,7 @@ class RecorderStatus {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs);
+    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests);
   }
 
   @override

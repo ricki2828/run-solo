@@ -36,6 +36,7 @@ import app.runsolo.platform.Units
 import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.record.LapInput
 import app.runsolo.record.LocationSource
+import app.runsolo.record.RecorderService
 import app.runsolo.record.ReplayRunner
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.LocationServices
@@ -71,12 +72,22 @@ class MainActivity : FlutterActivity() {
         PermissionsApi.setUp(flutterEngine.dartExecutor.binaryMessenger, Permissions())
         StorageApi.setUp(flutterEngine.dartExecutor.binaryMessenger, StorageApiImpl(applicationContext))
         RecorderEventsStreamHandler.register(flutterEngine.dartExecutor.binaryMessenger, RecorderEventBus)
+        handleFinish(intent)
         handleDebugIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
+        handleFinish(intent)
         handleDebugIntent(intent)
+    }
+
+    /** The paused notification's tap: the run pauses (if not yet) and the app opens its finish screen (`finishRequests`). */
+    private fun handleFinish(intent: Intent?) {
+        if (intent?.action != ACTION_FINISH) return
+        intent.action = null // a recreated activity must not pause again
+        RecorderService.session?.requestFinish()
     }
 
     /**
@@ -300,6 +311,8 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
+        /** The notification's "Stop" (see [handleFinish]). */
+        const val ACTION_FINISH = "app.runsolo.action.FINISH"
         private const val DEBUG_TAG = "RunSolo/debug"
         private const val REQ_LOCATION = 41
         private const val REQ_NOTIFICATIONS = 42

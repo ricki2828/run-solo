@@ -148,6 +148,21 @@ class FakeRecorderGateway implements RecorderGateway {
 
   /// Elapsed at the open pause, if any: a stop while paused ends the run there (as native).
   int? _pausedAtMs;
+
+  /// As native's "tap to finish" count; see [emitFinishRequested].
+  int _finishRequests = 0;
+
+  /// The paused notification was tapped: pause if recording, count it in
+  /// `status().finishRequests` and send a state event (as native).
+  Future<void> emitFinishRequested() async {
+    if (_state == RecorderState.idle) return;
+    _finishRequests += 1;
+    if (_state == RecorderState.recording) {
+      await pause();
+    } else {
+      _emitState();
+    }
+  }
   int _activeMs = 0; // recording time only
   int _lapStartElapsedMs = 0;
   int _lapStartActiveMs = 0;
@@ -221,6 +236,7 @@ class FakeRecorderGateway implements RecorderGateway {
     _startedAt = _now();
     _elapsedMs = 0;
     _pausedAtMs = null;
+    _finishRequests = 0;
     _activeMs = 0;
     _lapStartElapsedMs = 0;
     _lapStartActiveMs = 0;
@@ -413,6 +429,7 @@ class FakeRecorderGateway implements RecorderGateway {
         : math.max(0, _phaseTargetM! - _stepDistanceM),
     journalOk: true,
     pausedAtElapsedMs: _state == RecorderState.paused ? _pausedAtMs : null,
+    finishRequests: _finishRequests == 0 ? null : _finishRequests,
     mode: _state == RecorderState.idle ? RecordMode.free : _mode,
     laps: List.of(_laps),
   );
