@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
+import '../app/event_names.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
@@ -67,6 +68,12 @@ class _StartScreenState extends State<StartScreen> {
       // Fartlek is a Laps run carrying the fartlek session (plan §3.5).
       final mode = s.recordMode;
       final spec = switch (s.lastMode) {
+        // K1: the event records as Intervals with its one 5 km step; its
+        // name comes only from the flavour config. The LC1 builder sees
+        // `templateId == parkrun` in this same spec (#59).
+        _ when s.eventRun => engine.SessionSpec.parkrun(
+          kEventNames.parkrun,
+        ).toPigeon(),
         RecordMode.intervals => services.pickedSession.toPigeon(),
         RecordMode.cooper => engine.SessionSpec.cooper.toPigeon(),
         RecordMode.laps || RecordMode.free => null,
@@ -145,7 +152,11 @@ class _StartScreenState extends State<StartScreen> {
     switch (r) {
       case PickSession(:final id):
         await services.settings.update(
-          (x) => x.copyWith(lastMode: RecordMode.intervals, sessionId: id),
+          (x) => x.copyWith(
+            lastMode: RecordMode.intervals,
+            sessionId: id,
+            eventRun: false,
+          ),
         );
       case BuildCustom():
         await _build(null);
@@ -178,6 +189,7 @@ class _StartScreenState extends State<StartScreen> {
       (x) => x.copyWith(
         lastMode: RecordMode.intervals,
         sessionId: stored.templateId,
+        eventRun: false,
       ),
     );
     if (r.start && mounted) await _start();
@@ -193,7 +205,8 @@ class _StartScreenState extends State<StartScreen> {
       builder: (context, _) {
         final s = services.settings.settings;
         final mode = s.lastMode;
-        final preset = mode == RecordMode.intervals;
+        final event = s.eventRun;
+        final preset = !event && mode == RecordMode.intervals;
         Future<void> set(AppSettings Function(AppSettings) f) =>
             services.settings.update(f);
         return Scaffold(
@@ -208,12 +221,34 @@ class _StartScreenState extends State<StartScreen> {
                 ModeChipRow(
                   selected: mode,
                   session: services.pickedSession,
+                  event: event,
+                  onEvent: () => set((x) => x.copyWith(eventRun: true)),
                   onSelect: (m) => m == RecordMode.intervals
                       ? _openSheet()
-                      : set((x) => x.copyWith(lastMode: m)),
+                      : set((x) => x.copyWith(lastMode: m, eventRun: false)),
                 ),
                 const SizedBox(height: Space.x24),
-                if (preset) ...[
+                if (event) ...[
+                  Text(
+                    '${kEventNames.parkrun} · 5 km, timed from START. Stand '
+                    'on the start line, then tap START.',
+                    key: const ValueKey('event-card'),
+                    style: text.bodyMedium?.copyWith(color: t.inkSecondary),
+                  ),
+                  const SizedBox(height: Space.x8),
+                  // A10.10: the Start GPS gate needs a pre-start fix from
+                  // native; until then this is advice.
+                  Text(
+                    'Wait for GPS at the start line before you tap START.',
+                    style: RunSoloType.label13.copyWith(color: t.semWarn),
+                  ),
+                  const SizedBox(height: Space.x16),
+                  _Toggle(
+                    label: 'Voice cues',
+                    value: s.cues,
+                    onChanged: (v) => set((x) => x.copyWith(cues: v)),
+                  ),
+                ] else if (preset) ...[
                   _SessionCard(
                     spec: services.pickedSession,
                     settings: s,
@@ -317,6 +352,7 @@ class _StartScreenState extends State<StartScreen> {
                   FilledButton(
                     onPressed: _starting ? null : _start,
                     child: Text(switch (mode) {
+                      _ when event => 'START 5 KM',
                       RecordMode.intervals
                           when SessionChoice.isFartlek(s.sessionId) =>
                         'START FARTLEK',

@@ -16,6 +16,7 @@ extension EngineSessionToPigeon on engine.SessionSpec {
     warmupSeconds: warmupSeconds,
     cooldownSeconds: cooldownSeconds,
     lapLockout: lapLockout,
+    autoStop: autoStop,
     cueProfile: p.CueProfile.values.byName(cueProfile.name),
     hrBandLow: hrBandLow,
     hrBandHigh: hrBandHigh,
@@ -40,6 +41,8 @@ extension PigeonSessionToEngine on p.SessionSpec {
     warmupSeconds: warmupSeconds,
     cooldownSeconds: cooldownSeconds,
     lapLockout: lapLockout,
+    // Null from an older recorder = off, as the engine's JSON default.
+    autoStop: autoStop ?? false,
     cueProfile: engine.CueProfile.values.byName(cueProfile.name),
     hrBandLow: hrBandLow,
     hrBandHigh: hrBandHigh,

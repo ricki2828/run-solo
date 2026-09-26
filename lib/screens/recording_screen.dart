@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 
+import '../app/event_names.dart';
 import '../app/format.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
@@ -63,6 +65,9 @@ class _RecordingScreenState extends State<RecordingScreen>
     });
   }
 
+  /// The run this screen watched while it was live (auto-stop hand-off).
+  String? _liveRunId;
+
   bool get _haptics => AppServices.of(context).settings.settings.haptics;
 
   bool get _reduced =>
@@ -97,6 +102,23 @@ class _RecordingScreenState extends State<RecordingScreen>
   void _onSnapshot() {
     final s = _ctl!.snapshot;
     _applyKeepScreenOn();
+    if (s.active && s.runId != null) _liveRunId = s.runId;
+    // Auto-stop (K1 event at 5.00 km, plan §3.6): native ends the run on
+    // its own; straight to the result, as after Hold to stop.
+    final auto = _liveRunId;
+    if (auto != null &&
+        s.state == RecorderState.idle &&
+        !s.discarded &&
+        !_stopping &&
+        mounted) {
+      _stopping = true;
+      unawaited(
+        _services!.storage.enforceBackupBudget().catchError((_) => <String>[]),
+      );
+      Navigator.of(context)
+          .pushReplacementNamed(Routes.verdictJustFinished, arguments: auto);
+      return;
+    }
     if (s.discarded && mounted && !_stopping) {
       _stopping = true;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -210,7 +232,22 @@ class _RecordingScreenState extends State<RecordingScreen>
                         else if (s.notice != null)
                           _Banner(text: s.notice!, color: t.semWarn),
                         const Spacer(),
-                        if (s.isPreset) ...[
+                        if (isEventRun(s) && s.phase == Phase.work) ...[
+                          // K1 / A10.10: distance to go is the biggest
+                          // number, projected finish second; they swap for
+                          // the last 400 m.
+                          _PausedHidden(
+                            paused: s.paused,
+                            child: EventBlock(
+                              s: s,
+                              ctl: ctl,
+                              units: settings.units,
+                              compact: compact,
+                              reduced: reduced,
+                            ),
+                          ),
+                          const Spacer(),
+                        ] else if (s.isPreset) ...[
                           // 4x4 (founder field test 25-Sep): no big LAP.
                           // Warm-up → big START 4x4; then the phases run on
                           // their own and the screen shows the countdown,
@@ -418,6 +455,10 @@ String phaseTitle(RecordingSnapshot s) {
       break;
   }
   if (!s.isPreset) return 'LAP ${s.lapIndex + 1}';
+  if (isEventRun(s) && s.phase == Phase.work) {
+    final name = kEventNames.parkrun.toUpperCase();
+    return eventLastStretch(s) ? '$name · LAST 400 M' : '$name · 5 KM';
+  }
   final step = s.currentStep;
   final detail = step == null ? '' : ' · ${stepDetail(step)}';
   return switch (s.phase) {
@@ -1298,6 +1339,105 @@ class _WaitingForGps extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// K1: the timed 5 km event (one 5000 m step from START, auto-stop).
+bool isEventRun(RecordingSnapshot s) =>
+    s.spec?.templateId == engine.SessionSpec.parkrunId;
+
+/// The last 400 m (A10.10): projected finish becomes the primary number.
+bool eventLastStretch(RecordingSnapshot s) {
+  final m = s.metresToGo;
+  return m != null && m <= 400;
+}
+
+/// "2.58 km" to 1.00 km, then metres rounded down to 10 m (5 m under
+/// 100 m), as the A8 distance countdown; miles mode "1.60 mi" to 0.10 mi.
+String eventDistanceToGo(double metres, Units units) {
+  if (units == Units.mi && metres >= 160.9344) {
+    return '${(metres / 1609.344).toStringAsFixed(2)} mi';
+  }
+  if (units == Units.km && metres >= 1000) {
+    return '${(metres / 1000).toStringAsFixed(2)} km';
+  }
+  final step = metres < 100 ? 5 : 10;
+  return '${(metres ~/ step) * step} m';
+}
+
+/// Projected finish: step time ÷ distance run × 5000; null for the first
+/// 200 m and without a good fix (A10.10: never extrapolated).
+double? eventProjectedSeconds(RecordingSnapshot s, int stepElapsedMs) {
+  final st = s.currentStep;
+  final togo = s.metresToGo;
+  if (st == null || togo == null || s.gpsLost || s.gpsWeak) return null;
+  final run = st.value - togo;
+  if (run < 200 || stepElapsedMs <= 0) return null;
+  return stepElapsedMs / 1000 / run * st.value;
+}
+
+class EventBlock extends StatelessWidget {
+  const EventBlock({
+    super.key,
+    required this.s,
+    required this.ctl,
+    required this.units,
+    this.compact = false,
+    this.reduced = false,
+  });
+  final RecordingSnapshot s;
+  final RecordingController ctl;
+  final Units units;
+  final bool compact;
+  final bool reduced;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final muted = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
+    final togo = s.metresToGo;
+    final projected = eventProjectedSeconds(s, ctl.displayLapElapsedMs);
+    final last = eventLastStretch(s);
+    final toGoText = togo == null || s.gpsLost
+        ? '--'
+        : eventDistanceToGo(togo, units);
+    final finishText = projected == null
+        ? '--'
+        : Fmt.clock(projected.round() * 1000);
+    Widget number(String key, String text, String label, {required bool big}) {
+      final dashed = text == '--';
+      return Column(
+        key: ValueKey(key),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              text,
+              softWrap: false,
+              style: primaryStyle(
+                compact,
+                secondary: !big,
+              ).copyWith(color: big && !dashed ? t.inkPrimary : muted),
+            ),
+          ),
+          Text(label, style: RunSoloType.label13.copyWith(color: muted)),
+        ],
+      );
+    }
+
+    final toGo = number('event-to-go', toGoText, 'to go', big: !last);
+    final finish = number('event-finish', finishText, 'on pace for', big: last);
+    return AnimatedSwitcher(
+      duration: reduced ? Duration.zero : const Duration(milliseconds: 240),
+      child: Column(
+        key: ValueKey(last),
+        mainAxisSize: MainAxisSize.min,
+        children: last
+            ? [finish, SizedBox(height: compact ? Space.x8 : Space.x16), toGo]
+            : [toGo, SizedBox(height: compact ? Space.x8 : Space.x16), finish],
       ),
     );
   }

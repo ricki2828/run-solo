@@ -3,10 +3,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_solo/app/event_names.dart';
 import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/screens/custom_builder_screen.dart';
 import 'package:run_solo/screens/home_screen.dart';
@@ -802,6 +804,44 @@ void main() {
       await stepSeconds(tester, fake, 15);
       await settleAnimations(tester);
       await golden(tester, 'record_short_rep_360x$h');
+    });
+  }
+
+  // K1 / A10.10: the event as a run type on Start, and its record screen
+  // (distance to go primary; the last 400 m swap).
+  for (final h in [800, 640]) {
+    testWidgets('event: Start and the timed 5 km at 360 x $h', (tester) async {
+      final services = fakeServices(
+        settings: const AppSettings(onboardingDone: true, eventRun: true),
+      );
+      await pumpApp(tester, services, pushRoute: Routes.start);
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 6);
+      await settleAnimations(tester);
+      await golden(tester, 'start_event_360x$h');
+
+      final fake = FakeRecorderGateway(now: now)
+        ..liveSecPerKm = 285
+        ..scriptedHr = 171;
+      final run = fakeServices(recorder: fake);
+      await run.recording.start(
+        RecordMode.intervals,
+        engine.SessionSpec.parkrun(kEventNames.parkrun).toPigeon()
+          ..warmupSeconds = 0,
+        Units.km,
+      );
+      for (var i = 0; i < 700; i++) {
+        fake.advance(const Duration(seconds: 1));
+      }
+      await pumpApp(tester, run, pushRoute: Routes.recording);
+      await pumpTimes(tester, 6);
+      await golden(tester, 'record_event_360x$h');
+      for (var i = 0; i < 660; i++) {
+        fake.advance(const Duration(seconds: 1));
+      }
+      await pumpTimes(tester, 6);
+      await tester.pump(const Duration(milliseconds: 400));
+      await golden(tester, 'record_event_last400_360x$h');
     });
   }
 }

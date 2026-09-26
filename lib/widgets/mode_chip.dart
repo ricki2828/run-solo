@@ -2,25 +2,36 @@ import 'package:flutter/material.dart';
 
 import 'package:run_engine/run_engine.dart' as engine;
 
+import '../app/event_names.dart';
 import '../platform/gateway.dart';
 import '../theme/theme.dart';
 import 'structure_glyph.dart';
 
-/// Three chips at Start and Home (plan §3.2, design brief A8): INTERVALS
-/// (the old 4x4 slot, showing the last-used session and its glyph), LAPS,
-/// FREE. Cooper (12-minute test) sits under the "Tests" eyebrow (A5).
+/// The run types at Start and Home (plan §3.2, design brief A8, A10.10):
+/// INTERVALS (the old 4x4 slot, showing the last-used session and its
+/// glyph), LAPS, FREE and the timed 5 km event, named from `kEventNames`
+/// (founder 26-Sep: a run type of its own). Cooper (12-minute test) sits
+/// under the "Tests" eyebrow (A5).
 class ModeChipRow extends StatelessWidget {
   const ModeChipRow({
     super.key,
     required this.selected,
     required this.onSelect,
     required this.session,
+    this.event = false,
+    this.onEvent,
   });
   final RecordMode selected;
   final ValueChanged<RecordMode> onSelect;
 
   /// The last-used Intervals session (name + glyph on the chip).
   final engine.SessionSpec session;
+
+  /// The event chip is the picked one (then no mode chip is).
+  final bool event;
+
+  /// Picks the event; null hides its chip.
+  final VoidCallback? onEvent;
 
   static const List<RecordMode> offered = [
     RecordMode.intervals,
@@ -48,11 +59,23 @@ class ModeChipRow extends StatelessWidget {
                 RecordMode.free => 'Just run',
                 RecordMode.cooper => '12 minutes',
               },
-              selected: selected == m,
+              selected: !event && selected == m,
               glyph: m == RecordMode.intervals && session.steps.isNotEmpty
                   ? session
                   : null,
               onTap: () => onSelect(m),
+            ),
+          ),
+        ],
+        if (onEvent != null) ...[
+          const SizedBox(width: Space.x8),
+          Expanded(
+            child: ModeChip(
+              key: const ValueKey('event-chip'),
+              title: kEventNames.parkrun.toUpperCase(),
+              subtitle: '5 km timed',
+              selected: event,
+              onTap: onEvent!,
             ),
           ),
         ],

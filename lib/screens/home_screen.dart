@@ -110,8 +110,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 ModeChipRow(
                   selected: settings.lastMode,
                   session: services.pickedSession,
-                  onSelect: (m) =>
-                      services.settings.update((s) => s.copyWith(lastMode: m)),
+                  event: settings.eventRun,
+                  onEvent: () => services.settings.update(
+                    (s) => s.copyWith(eventRun: true),
+                  ),
+                  onSelect: (m) => services.settings.update(
+                    (s) => s.copyWith(lastMode: m, eventRun: false),
+                  ),
                 ),
                 const SizedBox(height: Space.x16),
                 if (settings.pendingObservedMaxHr != null)

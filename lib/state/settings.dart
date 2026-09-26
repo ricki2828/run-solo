@@ -68,6 +68,7 @@ class AppSettings {
     this.reps = 4,
     this.recoverySeconds = 180,
     this.lastMode = RecordMode.intervals,
+    this.eventRun = false,
     this.cues = true,
     this.kmSplits = true,
     this.haptics = true,
@@ -91,6 +92,11 @@ class AppSettings {
   final int reps;
   final int recoverySeconds;
   final RecordMode lastMode;
+
+  /// K1: the timed 5 km event is the picked run type (founder 26-Sep: a
+  /// run type of its own on Start). It records as Intervals carrying the
+  /// event session; [lastMode] keeps the other chips' choice.
+  final bool eventRun;
   final bool cues;
 
   /// Voice → "Km splits": a Free run says each km (Phase 4 LV1). Default on.
@@ -160,8 +166,9 @@ class AppSettings {
       )!;
 
   /// Fartlek records as a Laps run with the fartlek session (plan §3.5).
-  RecordMode get recordMode =>
-      lastMode == RecordMode.intervals && SessionChoice.isFartlek(sessionId)
+  RecordMode get recordMode => eventRun
+      ? RecordMode.intervals
+      : lastMode == RecordMode.intervals && SessionChoice.isFartlek(sessionId)
       ? RecordMode.laps
       : lastMode;
 
@@ -185,6 +192,7 @@ class AppSettings {
     int? reps,
     int? recoverySeconds,
     RecordMode? lastMode,
+    bool? eventRun,
     bool? cues,
     bool? kmSplits,
     bool? haptics,
@@ -212,6 +220,7 @@ class AppSettings {
     reps: reps ?? this.reps,
     recoverySeconds: recoverySeconds ?? this.recoverySeconds,
     lastMode: lastMode ?? this.lastMode,
+    eventRun: eventRun ?? this.eventRun,
     cues: cues ?? this.cues,
     kmSplits: kmSplits ?? this.kmSplits,
     haptics: haptics ?? this.haptics,
@@ -242,6 +251,7 @@ class AppSettings {
     'reps': reps,
     'recoverySeconds': recoverySeconds,
     'lastMode': lastMode.name,
+    'eventRun': eventRun,
     'cues': cues,
     'kmSplits': kmSplits,
     'haptics': haptics,
@@ -297,6 +307,7 @@ class AppSettings {
         'fourByFour' => RecordMode.intervals,
         final String name => RecordMode.values.asNameMap()[name] ?? d.lastMode,
       },
+      eventRun: pick('eventRun', d.eventRun),
       cues: pick('cues', d.cues),
       kmSplits: pick('kmSplits', d.kmSplits),
       haptics: pick('haptics', d.haptics),
