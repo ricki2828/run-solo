@@ -14,6 +14,7 @@ import '../theme/zones.dart';
 import '../widgets/chrome.dart';
 import '../widgets/hold_button.dart';
 import '../widgets/rep_bars.dart';
+import '../widgets/weather_chip.dart';
 import 'verdict_screen.dart';
 
 /// Run detail (design brief §4.7, addendum A4): header, post-run map, rep /
@@ -126,12 +127,22 @@ class RunDetailBody extends StatelessWidget {
       d.run,
       detection: d.summary.isFourByFour ? a.detection : null,
     );
+    final weather = weatherChipView(
+      analysis: a,
+      units: units,
+      fetchEnabled: services.settings.settings.weatherPerRun,
+    );
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
       children: [
         if (showHeader) ...[
           const SizedBox(height: Space.x8),
           _Header(detail: d, units: units),
+          const SizedBox(height: Space.x16),
+        ],
+        // A6: the weather chip sits under the header, before the map.
+        if (weather != null) ...[
+          WeatherChip(view: weather),
           const SizedBox(height: Space.x16),
         ],
         AspectRatio(
@@ -484,15 +495,6 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
                   ],
                 ),
               ),
-            ),
-          ),
-        if (a.heatLine != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: Space.x16),
-            child: Text(
-              a.heatLine!,
-              key: const ValueKey('heat-line'),
-              style: RunSoloType.body15.copyWith(color: t.inkSecondary),
             ),
           ),
         // I3: rep-time sessions list the time for the rep distance; short

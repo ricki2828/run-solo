@@ -504,6 +504,9 @@ class _Lines extends StatelessWidget {
       // I3: "Last time: 4 reps, 3:00 recovery." on its own line (D4).
       if (v.comparisonNote != null) lines.add(v.comparisonNote!);
       if (v.hrLine != null) lines.add(v.hrLine!);
+      // A6: "Heat-adjusted estimate: 4:28/km (28 °C, dew point 21)." after
+      // the HR line; the verdict itself stays on the raw pace.
+      if (a.heatLine != null) lines.add(a.heatLine!);
     }
     if (flagged) {
       final why = a.detection?.inconsistencyDetail;

@@ -21,6 +21,7 @@ import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/theme/theme.dart';
 import 'package:run_solo/theme/zones.dart';
 import 'package:run_solo/widgets/lap_button.dart';
+import 'package:run_solo/widgets/weather_chip.dart';
 
 import '../helpers.dart';
 import '../run_fixtures.dart';
@@ -368,6 +369,79 @@ void main() {
   testWidgets('verdict: indoor run', (tester) async {
     final indoor = fourByFourFile(n: 6, start: d1, indoor: true);
     await verdictGolden(tester, [indoor], indoor.id, 'verdict_indoor');
+  });
+
+  // A6 weather chip: every state on one page, and run detail with the
+  // adjusted chip under the header, before the map.
+  engine.WeatherRecord weatherOk(double temp, double dew) =>
+      engine.WeatherRecord(
+        status: engine.WeatherStatus.ok,
+        fetchedAt: d1,
+        latR: -33.9,
+        lonR: 151.2,
+        tempC: temp,
+        rh: 62,
+        dewPointC: dew,
+        adj: engine.HeatModel.of(tempC: temp, dewPointC: dew).fraction,
+      );
+
+  testWidgets('weather chip: pending, unavailable, cool, too hot, adjusted', (
+    tester,
+  ) async {
+    final run = fourByFourFile(n: 1, start: d1);
+    WeatherChipView v(engine.WeatherRecord? w) => weatherChipView(
+      analysis: const engine.RunEngine().analyze(
+        run,
+        sidecar: engine.RunSidecar(runId: run.id, weather: w?.toJson()),
+        now: now(),
+      ),
+      units: Units.km,
+      fetchEnabled: true,
+    )!;
+    final views = [
+      v(null),
+      v(const engine.WeatherRecord(status: engine.WeatherStatus.failed)),
+      v(weatherOk(12, 5)),
+      v(weatherOk(38, 28)),
+      v(weatherOk(28, 21)),
+    ];
+    await pumpApp(
+      tester,
+      fakeServices(),
+      home: Scaffold(
+        body: ListView(
+          padding: const EdgeInsets.all(Space.screenGutter),
+          children: [
+            for (final view in views) ...[
+              WeatherChip(view: view),
+              const SizedBox(height: Space.x12),
+            ],
+          ],
+        ),
+      ),
+    );
+    await pumpTimes(tester, 3);
+    await golden(tester, 'weather_chip_states');
+  });
+
+  testWidgets('run detail: weather chip before the map', (tester) async {
+    final r1 = fourByFourFile(n: 1, start: d1);
+    await pumpApp(
+      tester,
+      fakeServices(
+        files: [r1],
+        sidecars: {
+          r1.id: engine.RunSidecar(
+            runId: r1.id,
+            weather: weatherOk(28, 21).toJson(),
+          ),
+        },
+      ),
+      home: RunDetailScreen(runId: r1.id),
+    );
+    await pumpTimes(tester, 6);
+    expect(find.byKey(const ValueKey('weather-chip')), findsOneWidget);
+    await golden(tester, 'detail_weather');
   });
 
   testWidgets('run detail: map failed to load, no Play services', (
