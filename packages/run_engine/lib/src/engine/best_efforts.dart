@@ -1,4 +1,5 @@
 import '../model/run_file.dart';
+import '../model/session_spec.dart';
 import '../run_mode.dart';
 import 'analysis.dart';
 import 'constants.dart';
@@ -82,9 +83,8 @@ class BestEffort {
 
 /// Why a run has no best effort for a distance it covered.
 enum BestEffortRejection {
-  /// Faster than the run's own evidence allows (plan §3.1 GPS guard): a
-  /// piece of the window far faster than the window's median piece, or the
-  /// window > 12% faster than the fastest verified lap or rep.
+  /// Every window of this distance holds a piece far faster than the
+  /// window's own average (plan §3.1 GPS guard).
   gpsGuard,
 }
 
@@ -149,7 +149,8 @@ class RunBestEfforts {
 }
 
 /// Finds the fastest 1 km, mile, 5K and 10K inside any run (Phase 4 plan
-/// §3.1, LB1). Pure and O(n) per distance.
+/// §3.1, LB1). Pure; O(n log n) per distance (candidates are sorted so a
+/// window failing the guard falls back to the next-fastest).
 ///
 /// Distance is the recorder's own filtered, pause-frozen `distM` stream,
 /// the one native ranks live, never a re-filtered one (BLOCK-2). Window
@@ -159,33 +160,41 @@ class RunBestEfforts {
 ///
 /// A window qualifies only inside one clean stretch: no pause, no
 /// kill→resume gap, no sample gap > [EngineConstants.sampleGapInterruptMs],
-/// and no GPS jump (any 200 m covered faster than [maxSpeedMps]). In an
+/// and no GPS jump (one sample step faster than [maxStepMps], or a break
+/// of any [speedCaps]). In an
 /// intervals session the window must also lie inside one clean work rep, so
-/// a 1 km repeat can set a 1 km best, a parkrun (one 5 km step) a 5K, and a
-/// 4x4 never a 5K. Indoor and noisy runs get nothing (the verdict gates).
+/// a 1 km repeat can set a 1 km best and a 4x4 never a 5K; a parkrun (one
+/// continuous 5 km step from Start) is searched whole. Indoor and noisy runs get nothing (the verdict gates).
 class BestEffortFinder {
   const BestEffortFinder([this.constants = EngineConstants.defaults]);
 
   final EngineConstants constants;
 
-  /// A jump: 200 m faster than 8 m/s (25 s) anywhere is not running.
-  static const double jumpWindowM = 200;
-  static const double maxSpeedMps = 8;
+  /// Plausibility caps, cut out of the stream wherever they are broken:
+  /// 100 m faster than 9 m/s (a fast sprint, not a Free-run kick) and 200 m
+  /// faster than 8 m/s. They catch a jump smeared over several samples that
+  /// the one-step cap below misses.
+  static const List<(double, double)> speedCaps = [(100, 9), (200, 8)];
 
-  /// Consistency guard, every run (WARN-7): no piece of the window may be
-  /// more than this speed ratio faster than the window's own median piece.
-  /// Pieces are whole kms for 5K/10K and 200 m for 1 km/mile (a short
-  /// window needs a finer grain to see a jump; 200 m pieces vary more, so
-  /// the ratio is looser). The window's own median, not the run's: a Free
-  /// run with an easy warm-up and a hard 5K must keep its 5K. Seeded;
+  /// A single-sample spike: one step between samples faster than this is
+  /// a GPS jump, not a stride (Bolt's top speed is ~12 m/s; a 1 Hz step
+  /// over 10 m/s from a recreational runner is the fix moving).
+  static const double maxStepMps = 10;
+
+  /// Consistency guard for 5K and 10K (WARN-7): the window's fastest km,
+  /// at any alignment, may not be more than this speed ratio above the
+  /// window's own average. The window's own, not the run's: a Free run with
+  /// an easy warm-up and a hard 5K must keep its 5K. Set above a genuine
+  /// finishing kick (a 4:15 last km after 5:00s reads 1.14; review #31).
+  /// 1 km and mile windows get no ratio check: a short window mixing jog
+  /// and a real sprint finish reads far above its average, so there the
+  /// plausibility caps ([speedCaps], [maxStepMps]) are the guard. Seeded;
   /// calibrated on founder runs (plan §8).
-  static const double maxRatioVsMedianKm = 1.15;
-  static const double maxRatioVsMedian200m = 1.25;
-  static const double finePieceM = 200;
+  static const double maxRatioVsWindowKm = 1.25;
 
-  /// Runs with verified laps or reps: the window may also not be more than
-  /// this speed ratio faster than the fastest of them.
-  static const double maxRatioVsFastestLap = 1.12;
+  /// A window that fails the guard falls back to the next-fastest window;
+  /// this bounds the search on a pathological trace.
+  static const int maxGuardAttempts = 400;
 
   RunBestEfforts find(RunFile run, RunAnalysis analysis) {
     if (analysis.indoor || analysis.noisy) return RunBestEfforts.none;
@@ -193,30 +202,24 @@ class BestEffortFinder {
     if (pts.length < 2) return RunBestEfforts.none;
 
     final stretches = _cutJumps(_cleanStretches(run));
-    final pool = analysis.mode == RunMode.intervals
+    // A parkrun is one continuous 5 km step from the Start press, so the
+    // whole run is its work; it does not wait on rep detection (a
+    // single-lap session has none).
+    final pool = analysis.mode == RunMode.intervals && !_isParkrun(analysis)
         ? _clipToWorkReps(stretches, analysis)
         : stretches;
-
-    final lapRef = _fastestVerifiedMps(analysis);
 
     final efforts = <BestEffortDistance, BestEffort>{};
     final rejected = <BestEffortDistance, BestEffortRejection>{};
     for (final d in BestEffortDistance.values) {
-      _Window? best;
-      List<_Pt>? home;
-      for (final s in pool) {
-        final w = _fastest(s, d.metres);
-        if (w != null && (best == null || w.elapsed < best.elapsed)) {
-          best = w;
-          home = s;
-        }
-      }
-      if (best == null) continue;
-      final splits = _splits(home!, best, d);
-      if (!_passesGuard(home, d, best, lapRef)) {
+      final found = _fastestPassing(pool, d);
+      if (found == null) continue;
+      final (home, best, ok) = found;
+      if (!ok) {
         rejected[d] = BestEffortRejection.gpsGuard;
         continue;
       }
+      final splits = _splits(home, best, d);
       final startMs = best.start.round();
       final endMs = best.end.round();
       efforts[d] = BestEffort(
@@ -237,15 +240,18 @@ class BestEffortFinder {
     );
   }
 
+  static bool _isParkrun(RunAnalysis a) =>
+      a.comparisonKey != null && ComparisonKey.isParkrun(a.comparisonKey!);
+
   static bool _racesDistanceBoards(RunAnalysis a) => switch (a.mode) {
     RunMode.free || RunMode.laps => true,
     RunMode.cooper => false,
-    RunMode.intervals =>
-      a.comparisonKey != null && a.comparisonKey!.startsWith('parkrun'),
+    RunMode.intervals => _isParkrun(a),
   };
 
-  /// Runs of consecutive samples with no pause, gap span or long sample gap
-  /// between them. Samples written inside a pause are dropped.
+  /// Runs of consecutive samples with no pause, gap span, long sample gap
+  /// or single-sample spike between them. Samples written inside a pause
+  /// are dropped.
   List<List<_Pt>> _cleanStretches(RunFile run) {
     final breaks = [...run.pauses, ...run.gaps];
     bool inside(int t) => breaks.any((b) => t >= b.t0Ms && t < b.t1Ms);
@@ -261,7 +267,9 @@ class BestEffortFinder {
       }
       if (prev != null &&
           (s.tMs - prev.tMs > constants.sampleGapInterruptMs ||
-              breaks.any((b) => b.overlaps(prev!.tMs + 1, s.tMs)))) {
+              breaks.any((b) => b.overlaps(prev!.tMs + 1, s.tMs)) ||
+              (s.distM - prev.distM) / ((s.tMs - prev.tMs) / 1000) >
+                  maxStepMps)) {
         if (cur.length >= 2) out.add(cur);
         cur = [];
       }
@@ -279,30 +287,11 @@ class BestEffortFinder {
   List<List<_Pt>> _cutJumps(List<List<_Pt>> stretches) {
     final out = <List<_Pt>>[];
     for (final p in stretches) {
-      final bad = <(double, double)>[];
-      var k = 0;
-      for (var i = 0; i < p.length; i++) {
-        final target = p[i].d + jumpWindowM;
-        if (p.last.d < target) break;
-        if (k < i) k = i;
-        while (p[k].d < target) {
-          k++;
-        }
-        final t = _tAtD(p, k, target);
-        if (t - p[i].t < jumpWindowM / maxSpeedMps * 1000) {
-          bad.add((p[i].t, t));
-        }
-      }
-      k = 0;
-      for (var j = 0; j < p.length; j++) {
-        final target = p[j].d - jumpWindowM;
-        if (target < p.first.d) continue;
-        while (k + 1 < p.length && p[k + 1].d <= target) {
-          k++;
-        }
-        final s = _tAtDBack(p, k, target);
-        if (p[j].t - s < jumpWindowM / maxSpeedMps * 1000) bad.add((s, p[j].t));
-      }
+      final bad = <(double, double)>[
+        for (final (metres, mps) in speedCaps)
+          for (final c in _candidates(p, metres))
+            if (c.elapsed < metres / mps * 1000) (c.start, c.end),
+      ];
       if (bad.isEmpty) {
         out.add(p);
         continue;
@@ -331,7 +320,7 @@ class BestEffortFinder {
     final reps = a.intervals?.reps ?? const [];
     final out = <List<_Pt>>[];
     for (final r in reps) {
-      if (r.interrupted || r.dropped) continue;
+      if (!r.clean) continue;
       for (final s in stretches) {
         _addClip(out, s, r.lap.t0Ms.toDouble(), r.lap.t1Ms.toDouble());
       }
@@ -352,18 +341,12 @@ class BestEffortFinder {
     out.add(seg);
   }
 
-  /// The fastest window of [metres] in [p]. The window time is piecewise
-  /// linear in its start, so the minimum sits where the start or the end is
-  /// on a sample: both are tried. Ties keep the earliest window.
-  static _Window? _fastest(List<_Pt> p, double metres) {
-    if (p.last.d - p.first.d < metres) return null;
-    _Window? best;
-    void consider(double s, double sd, double e) {
-      if (best == null || e - s < best!.elapsed - 1e-6) {
-        best = _Window(s, e, sd);
-      }
-    }
-
+  /// Every candidate window of [metres] in [p]. The window time is
+  /// piecewise linear in its start, so the fastest sits where the start or
+  /// the end is on a sample: those are the candidates.
+  static List<_Window> _candidates(List<_Pt> p, double metres) {
+    final out = <_Window>[];
+    if (p.last.d - p.first.d < metres) return out;
     var k = 0;
     for (var i = 0; i < p.length; i++) {
       final target = p[i].d + metres;
@@ -372,7 +355,7 @@ class BestEffortFinder {
       while (p[k].d < target) {
         k++;
       }
-      consider(p[i].t, p[i].d, _tAtD(p, k, target));
+      out.add(_Window(p[i].t, _tAtD(p, k, target), p[i].d));
     }
     k = 0;
     for (var j = 0; j < p.length; j++) {
@@ -381,9 +364,49 @@ class BestEffortFinder {
       while (k + 1 < p.length && p[k + 1].d <= target) {
         k++;
       }
-      consider(_tAtDBack(p, k, target), target, p[j].t);
+      out.add(_Window(_tAtDBack(p, k, target), p[j].t, target));
     }
-    return best;
+    return out;
+  }
+
+  /// The fastest window of [d] across [pool] that passes the guard (ties
+  /// keep the earliest). The usual case is one O(n) scan and one check;
+  /// only when the fastest fails are all candidates sorted and tried in
+  /// order. A failing window marks its offending piece, and every later
+  /// candidate holding that piece is skipped, so a jump costs a few checks,
+  /// not one per sample. Null when [pool] has no window of [d];
+  /// `ok == false` when none passes.
+  (List<_Pt>, _Window, bool)? _fastestPassing(
+    List<List<_Pt>> pool,
+    BestEffortDistance d,
+  ) {
+    final all = <(List<_Pt>, _Window)>[
+      for (final s in pool)
+        for (final w in _candidates(s, d.metres)) (s, w),
+    ];
+    if (all.isEmpty) return null;
+    int order((List<_Pt>, _Window) a, (List<_Pt>, _Window) b) {
+      final c = a.$2.elapsed.compareTo(b.$2.elapsed);
+      return c != 0 ? c : a.$2.start.compareTo(b.$2.start);
+    }
+
+    var first = all.first;
+    for (final c in all) {
+      if (order(c, first) < 0) first = c;
+    }
+    final firstFail = _guardFailure(first.$1, d, first.$2);
+    if (firstFail == null) return (first.$1, first.$2, true);
+    all.sort(order);
+    final bad = <(double, double)>[firstFail];
+    var attempts = 1;
+    for (final (home, w) in all) {
+      if (bad.any((b) => w.start <= b.$1 && w.end >= b.$2)) continue;
+      if (++attempts > maxGuardAttempts) break;
+      final fail = _guardFailure(home, d, w);
+      if (fail == null) return (home, w, true);
+      bad.add(fail);
+    }
+    return (first.$1, first.$2, false);
   }
 
   /// Times at each split mark strictly inside the window.
@@ -404,57 +427,28 @@ class BestEffortFinder {
     return out;
   }
 
-  bool _passesGuard(
+  /// The span of the window's fastest piece when that piece is too fast
+  /// for the window's average speed, else null. The piece slides (any
+  /// alignment), so a smeared jump cannot hide across two fixed pieces.
+  (double, double)? _guardFailure(
     List<_Pt> p,
     BestEffortDistance d,
     _Window w,
-    double? lapRefMps,
   ) {
-    final mps = d.metres / (w.elapsed / 1000);
-    if (lapRefMps != null && mps > lapRefMps * maxRatioVsFastestLap) {
-      return false;
+    if (d.splitEveryM != 1000) return null;
+    const piece = 1000.0;
+    const ratio = maxRatioVsWindowKm;
+    final inside = <List<_Pt>>[];
+    _addClip(inside, p, w.start, w.end);
+    if (inside.isEmpty) return null;
+    _Window? fastest;
+    for (final c in _candidates(inside.single, piece)) {
+      if (fastest == null || c.elapsed < fastest.elapsed) fastest = c;
     }
-    final fine = d.splitEveryM != 1000;
-    final piece = fine ? finePieceM : 1000.0;
-    final ratio = fine ? maxRatioVsMedian200m : maxRatioVsMedianKm;
-    final speeds = <double>[];
-    var k = 0;
-    var prevT = w.start;
-    var prevD = 0.0;
-    for (var mark = piece; mark <= d.metres + 1e-6; mark += piece) {
-      final m = mark > d.metres ? d.metres : mark;
-      while (p[k].d < w.startD + m - 1e-9) {
-        k++;
-      }
-      final t = m == d.metres ? w.end : _tAtD(p, k, w.startD + m);
-      if (t > prevT) speeds.add((m - prevD) / ((t - prevT) / 1000));
-      prevT = t;
-      prevD = m;
-    }
-    // A mile's last 9 m is too short to judge; ignored.
-    if (speeds.length < 2) return true;
-    final sorted = [...speeds]..sort();
-    final h = sorted.length ~/ 2;
-    final median = sorted.length.isOdd
-        ? sorted[h]
-        : (sorted[h - 1] + sorted[h]) / 2;
-    return speeds.every((v) => v <= median * ratio);
-  }
-
-  /// Fastest scored lap (Laps) or clean rep (intervals), m/s; null when the
-  /// run has none.
-  static double? _fastestVerifiedMps(RunAnalysis a) {
-    final paces = <double>[
-      if (a.laps != null)
-        for (final l in a.laps!.laps)
-          if (l.scored && l.paceSecPerKm != null) l.paceSecPerKm!,
-      if (a.intervals != null)
-        for (final r in a.intervals!.reps)
-          if (r.clean) r.paceSecPerKm!,
-    ];
-    if (paces.isEmpty) return null;
-    final fastest = paces.reduce((x, y) => x < y ? x : y);
-    return fastest <= 0 ? null : 1000 / fastest;
+    if (fastest == null) return null;
+    final avg = d.metres / w.elapsed;
+    final top = piece / fastest.elapsed;
+    return top > avg * ratio ? (fastest.start, fastest.end) : null;
   }
 
   /// Whole-km times from run time 0 inside the first clean stretch, which

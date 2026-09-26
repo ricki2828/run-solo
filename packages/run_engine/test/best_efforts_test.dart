@@ -22,22 +22,29 @@ void main() {
     Map<int, double> jumpAtSecond = const {},
     List<Lap> laps = const [],
     bool hr = false,
+    SessionSpec? session,
+    int noFixSeconds = 0,
   }) {
     final samples = <Sample>[];
     final pauses = <Span>[];
     var t = 0;
     var d = 0.0;
     var second = 0;
-    void add() => samples.add(
+    void add({bool fix = true}) => samples.add(
       Sample(
         tMs: t,
-        lat: -33.87,
-        lon: 151.21,
-        accM: 5,
+        lat: fix ? -33.87 : null,
+        lon: fix ? 151.21 : null,
+        accM: fix ? 5 : null,
         distM: d,
         hr: hr ? 150 : null,
       ),
     );
+    // No fix yet: the recorder writes samples but no distance.
+    for (var i = 0; i < noFixSeconds; i++) {
+      add(fix: false);
+      t += 1000;
+    }
     add();
     for (var i = 0; i < pieces.length; i++) {
       final (secs, mps) = pieces[i];
@@ -67,6 +74,7 @@ void main() {
       end: fixedNow.add(Duration(milliseconds: t)),
       tz: 'UTC',
       mode: mode,
+      session: session,
       units: Units.km,
       laps: laps,
       pauses: pauses,
@@ -170,13 +178,63 @@ void main() {
     expect(r.fromStartSplitsMs, [250000, 500000]);
   });
 
-  test('a small jump the 8 m/s cap misses is caught by the consistency '
-      'guard', () {
-    // 60 m in one sample: the 200 m piece holding it runs at ~5.7 m/s
-    // against a 4 m/s median.
+  test('a one-sample spike (60 m in 1 s) is cut out, not a rejection', () {
     final r = find(build([(900, 4.0)], jumpAtSecond: {400: 60}));
-    expect(r.efforts.containsKey(BestEffortDistance.km1), isFalse);
-    expect(r.rejected[BestEffortDistance.km1], BestEffortRejection.gpsGuard);
+    final km = effort(r, BestEffortDistance.km1);
+    expect(km.elapsedMs, 250000);
+    expect(km.startMs >= 401000 || km.endMs <= 400000, isTrue);
+    expect(r.rejected, isEmpty);
+  });
+
+  test('a jump smeared over 12 samples (9.5 m/s steps, under the step cap) '
+      'is cut by the 100 m cap', () {
+    final r = find(
+      build(
+        [(900, 4.0)],
+        jumpAtSecond: {for (var i = 400; i < 412; i++) i: 5.5},
+      ),
+    );
+    final km = effort(r, BestEffortDistance.km1);
+    expect(km.elapsedMs, 250000);
+    expect(km.startMs >= 412000 || km.endMs <= 400000, isTrue);
+    expect(r.rejected, isEmpty);
+  });
+
+  test('a 5K whose fastest window holds a km far above its average falls '
+      'back to the next-fastest window that passes', () {
+    // A 2 km stretch at 3.9 m/s with GPS drift adding 1.6 m/s for 1 km
+    // (5.5 m/s: under every cap) inside 7 km at 3.3 m/s.
+    final r = find(build([(606, 3.3), (182, 5.5), (212, 3.3), (1300, 3.3)]));
+    final k5 = effort(r, BestEffortDistance.k5);
+    expect(r.rejected, isEmpty);
+    // It may still hold part of the drift (a known limit, seeded ratio),
+    // never all of it.
+    expect(k5.startMs <= 606000 && k5.endMs >= 788000, isFalse);
+  });
+
+  group('genuine finishing kicks must pass (review #31 P1-1)', () {
+    test('mile at 52 s per 200 m, last 200 m in 41 s', () {
+      const easy = (300, 2.5);
+      final r = find(build([easy, (366, 200 / 52), (41, 200 / 41), easy]));
+      expect(r.rejected, isEmpty);
+      expect(
+        effort(r, BestEffortDistance.mile).elapsedMs,
+        closeTo(407000, 3000),
+      );
+    });
+
+    test('1 km at 48 s per 200 m, last 200 m in 38 s', () {
+      const easy = (300, 2.5);
+      final r = find(build([easy, (192, 200 / 48), (38, 200 / 38), easy]));
+      expect(r.rejected, isEmpty);
+      expect(effort(r, BestEffortDistance.km1).elapsedMs, 230000);
+    });
+
+    test('5K of 5:00 kms with a 4:15 last km', () {
+      final r = find(build([(1200, 1000 / 300), (255, 1000 / 255)]));
+      expect(r.rejected, isEmpty);
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, 1455000);
+    });
   });
 
   test('a genuinely fast km in a Laps run passes', () {
@@ -218,9 +276,8 @@ void main() {
     expect(km.startMs, 333000);
   });
 
-  test('a window far faster than every verified lap is rejected', () {
-    // One 2 km lap at 3.6 m/s average holding a 4.5 m/s km: the km is 25%
-    // faster than the fastest lap (> 12%).
+  test('a hard last km inside one long lap is kept (laps come from the '
+      'same GPS stream, so they are no guard; review #31 P1-2)', () {
     final laps = [
       const Lap(
         index: 0,
@@ -234,7 +291,44 @@ void main() {
     final r = find(
       build([(334, 3.0), (222, 4.5)], mode: RunMode.laps, laps: laps),
     );
-    expect(r.rejected[BestEffortDistance.km1], BestEffortRejection.gpsGuard);
+    expect(r.rejected, isEmpty);
+    expect(effort(r, BestEffortDistance.km1).elapsedMs, closeTo(222000, 500));
+  });
+
+  test('parkrun: first fix 5 s after Start, auto-stop at 5.00 km', () {
+    const parkrun = SessionSpec(
+      templateId: SessionSpec.parkrunId,
+      templateVersion: 1,
+      name: 'parkrun',
+      warmupSeconds: 0,
+      cooldownSeconds: 0,
+      autoStop: true,
+      steps: [SessionStep.workDistance(5000, rep: 1)],
+    );
+    final run = build(
+      [(1250, 4.0)],
+      mode: RunMode.intervals,
+      session: parkrun,
+      noFixSeconds: 5,
+      laps: const [
+        Lap(
+          index: 0,
+          t0Ms: 0,
+          t1Ms: 1255000,
+          d0M: 0,
+          d1M: 5000,
+          kind: LapKind.auto,
+        ),
+      ],
+    );
+    final a = engine.analyze(run, now: fixedNow);
+    expect(a.comparisonKey, ComparisonKey.parkrun);
+    final r = finder.find(run, a);
+    final k5 = effort(r, BestEffortDistance.k5);
+    expect(k5.elapsedMs, 1250000);
+    expect(k5.startMs, 5000);
+    // The ghost counts from Start, the 5 s without a fix included.
+    expect(r.fromStartSplitsMs, [255000, 505000, 755000, 1005000, 1255000]);
   });
 
   test('intervals: a window must sit inside one clean work rep', () {
