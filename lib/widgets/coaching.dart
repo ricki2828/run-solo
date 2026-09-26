@@ -50,8 +50,16 @@ String nextTimeLine(engine.CoachSuggestion s) =>
 /// all (no heading) when the engine has nothing to say. Advice, not a
 /// result: no Arc, no verdict colours, no arrows.
 class CoachingSection extends StatefulWidget {
-  const CoachingSection({super.key, required this.runId});
+  const CoachingSection({
+    super.key,
+    required this.runId,
+    this.padding = const EdgeInsets.only(bottom: Space.x24),
+  });
   final String runId;
+
+  /// Space around the section, only when it shows (no gap otherwise, so
+  /// a screen without coaching looks as before).
+  final EdgeInsets padding;
 
   @override
   State<CoachingSection> createState() => _CoachingSectionState();
@@ -72,7 +80,7 @@ class _CoachingSectionState extends State<CoachingSection>
         coaching!.tryNext(dismissedRunId: settings.tryNextDismissed)?.runId ==
             widget.runId;
     return Padding(
-      padding: const EdgeInsets.only(bottom: Space.x24),
+      padding: widget.padding,
       child: Column(
         key: const ValueKey('coaching'),
         crossAxisAlignment: CrossAxisAlignment.start,

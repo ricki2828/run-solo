@@ -218,8 +218,10 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                     ),
                   // A10.6: on the test result, coaching sits under the
                   // rank chip (the flat-VO2 suggestion lands here).
-                  const SizedBox(height: Space.x16),
-                  CoachingSection(runId: d.run.id),
+                  CoachingSection(
+                    runId: d.run.id,
+                    padding: const EdgeInsets.only(top: Space.x16),
+                  ),
                   if (upTo.length >= 2) ...[
                     const SizedBox(height: Space.x16),
                     Text(
