@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:run_engine/run_engine.dart';
 import 'package:test/test.dart';
 
@@ -102,7 +105,8 @@ void main() {
       expect(k5.targetM, 5000);
       expect(k5.entries.map((e) => e.runId), ['free-3', 'free-2', 'free-1']);
       expect(k5.entries.first.fromStartSplitsMs, hasLength(5));
-      expect(k5.entries.first.finalMetric, 1470);
+      // Finish ms, the Pigeon LiveEntry unit (native GoalCoach reads it).
+      expect(k5.entries.first.finalMetric, 1470000);
       expect(plan.boards[1].entries, hasLength(2));
       expect(plan.boards[1].entries.first.fromStartSplitsMs, hasLength(10));
     });
@@ -352,5 +356,237 @@ void main() {
 
   test('never more than 3 boards', () {
     expect(LivePlanner.maxBoards, 3);
+  });
+
+  group('GOAL (§G)', () {
+    /// A Free run with a half effort of [secs] and [km] from-start splits.
+    LiveCandidate halfRun(int n, int secs, {int km = 21}) => LiveCandidate(
+      BoardInput(
+        runId: 'half-$n',
+        date: day0.add(Duration(days: n)),
+        mode: RunMode.free,
+        efforts: {
+          BestEffortDistance.half: BestEffort(
+            distance: BestEffortDistance.half,
+            elapsedMs: secs * 1000,
+            startMs: 0,
+            startOffsetM: 0,
+            splitsMs: const [],
+          ),
+        },
+      ),
+      RunDerived(
+        bestEfforts: RunBestEfforts(
+          efforts: const {},
+          fromStartSplitsMs: [for (var k = 1; k <= km; k++) k * secs * 47],
+        ),
+      ),
+    );
+
+    LiveCandidate thirtyMin(int n, double metres) => LiveCandidate(
+      BoardInput(
+        runId: 't30-$n',
+        date: day0.add(Duration(days: n)),
+        mode: RunMode.free,
+        distances: {
+          BestTimeWindow.min30: BestDistance(
+            window: BestTimeWindow.min30,
+            metres: metres,
+            startMs: 0,
+            startOffsetM: 0,
+          ),
+        },
+      ),
+      const RunDerived(bestEfforts: RunBestEfforts.none),
+    );
+
+    LiveCandidate customGoal(int n, SessionSpec spec, GoalResult g) =>
+        LiveCandidate(
+          BoardInput(
+            runId: 'goal-$n',
+            date: day0.add(Duration(days: n)),
+            mode: RunMode.intervals,
+            comparisonKey: ComparisonKey.of(spec),
+            goal: g,
+            goalBoardKey: GoalCatalogue.boardKeyOf(spec),
+          ),
+          const RunDerived(bestEfforts: RunBestEfforts.none),
+        );
+
+    final half = SessionSpec.goalDistance(21098, 'Half');
+    final halfRuns = [
+      halfRun(1, 6300),
+      halfRun(2, 6000, km: 12), // the PB, from a run with a pause at 12 km
+      halfRun(3, 6200),
+    ];
+
+    test('a Half rides be:21097 by key; the PB counts with no full ghost', () {
+      final plan = LivePlanner.plan(
+        mode: RunMode.intervals,
+        session: half,
+        runs: [...halfRuns, freeRun(4, 1500), freeRun(5, 1480)],
+      );
+      // Only the goal board, never the 5K / 10K ones.
+      expect(plan.boards.map((b) => b.key), ['be:21097']);
+      final b = plan.boards.single;
+      expect(b.kind, LiveBoardPlanKind.distance);
+      expect(b.label, 'Half');
+      // The window is 21 097.5 m, the goal step 21 098 m: native matches
+      // the key, never targetM (#68 review P2).
+      expect(b.targetM, 21097.5);
+      expect(b.entries.map((e) => e.runId), ['half-2', 'half-3', 'half-1']);
+      expect(b.entries.first.finalMetric, 6000000);
+      expect(b.entries.first.fromStartSplitsMs, hasLength(12));
+      expect(plan.nudges, isNull);
+    });
+
+    test('30 min rides be:t1800 as distance in time, metres', () {
+      final plan = LivePlanner.plan(
+        mode: RunMode.intervals,
+        session: SessionSpec.goalTime(1800, '30 min'),
+        runs: [thirtyMin(1, 6100), thirtyMin(2, 6300), freeRun(3, 1500)],
+      );
+      final b = plan.boards.single;
+      expect(b.key, 'be:t1800');
+      expect(b.kind, LiveBoardPlanKind.distanceInTime);
+      expect(b.targetM, isNull);
+      expect(b.entries.map((e) => e.finalMetric), [6300, 6100]);
+      expect(b.entries.every((e) => e.cooperMinuteM != null), isTrue);
+      expect(plan.nudges, isNull);
+    });
+
+    test('custom goals race their own goal: board', () {
+      final d = SessionSpec.goalDistance(12070, '7.5 mi');
+      GoalResult dr(int ms) => GoalResult(
+        kind: GoalKind.distance,
+        target: 12070,
+        name: '7.5 mi',
+        reached: true,
+        goalMs: ms,
+        stoppedAtM: 13000,
+      );
+      final dp = LivePlanner.plan(
+        mode: RunMode.intervals,
+        session: d,
+        runs: [customGoal(1, d, dr(3700000)), customGoal(2, d, dr(3600000))],
+      );
+      // Exact metres: 7.5 mi is its own board, not 12.1 km's.
+      expect(dp.boards.single.key, 'goal:d12070');
+      expect(dp.boards.single.kind, LiveBoardPlanKind.distance);
+      expect(dp.boards.single.targetM, 12070);
+      expect(dp.boards.single.entries.map((e) => e.finalMetric), [
+        3600000,
+        3700000,
+      ]);
+
+      final t = SessionSpec.goalTime(2700, '45 min');
+      GoalResult tr(double m) => GoalResult(
+        kind: GoalKind.time,
+        target: 2700,
+        name: '45 min',
+        reached: true,
+        goalDistanceM: m,
+        stoppedAtM: m + 500,
+      );
+      final tp = LivePlanner.plan(
+        mode: RunMode.intervals,
+        session: t,
+        runs: [customGoal(1, t, tr(9000)), customGoal(2, t, tr(9400))],
+      );
+      expect(tp.boards.single.key, 'goal:t2700');
+      expect(tp.boards.single.kind, LiveBoardPlanKind.distanceInTime);
+      expect(tp.boards.single.entries.map((e) => e.finalMetric), [9400, 9000]);
+    });
+
+    test('one earlier Half is a board: the second Half can be a new best', () {
+      final plan = LivePlanner.plan(
+        mode: RunMode.intervals,
+        session: half,
+        runs: [halfRun(1, 6300)],
+      );
+      expect(plan.boards.single.key, 'be:21097');
+      expect(plan.boards.single.entries.single.finalMetric, 6300000);
+      // No earlier Half at all: no board.
+      expect(
+        LivePlanner.plan(
+          mode: RunMode.intervals,
+          session: half,
+          runs: [freeRun(1, 1500), freeRun(2, 1480)],
+        ).isEmpty,
+        isTrue,
+      );
+    });
+
+    // Shared with core-jvm GoalCoachFixtureTest: the goal board keys and a
+    // Dart-built LiveContext per goal, as the native journal JSON.
+    // UPDATE_GOAL_FIXTURE=1 rewrites it.
+    test('fixtures/phase4/goal_live_context.json is current', () {
+      Map<String, Object?> ctx(LivePlan p) => {
+        'boards': [
+          for (final b in p.boards)
+            {
+              'key': b.key,
+              'label': b.label,
+              'kind': b.kind.name,
+              'targetM': b.targetM,
+              'entries': [
+                for (final e in b.entries)
+                  {
+                    'runId': e.runId,
+                    'dateMs': e.date.millisecondsSinceEpoch,
+                    'fromStartSplitsMs': e.fromStartSplitsMs,
+                    'cooperMinuteM': e.cooperMinuteM,
+                    'finalMetric': e.finalMetric,
+                  },
+              ],
+            },
+        ],
+        'coachingMuted': false,
+        'builtAtMs': 0,
+        'engineVersion': engineVersion,
+      };
+      final specs = [
+        SessionSpec.goalDistance(5000, '5K'),
+        SessionSpec.goalDistance(10000, '10K'),
+        half,
+        SessionSpec.goalDistance(42195, 'Marathon'),
+        SessionSpec.goalDistance(12300, '12.3 km'),
+        SessionSpec.goalDistance(12070, '7.5 mi'),
+        SessionSpec.goalDistance(12100, '12.1 km'),
+        SessionSpec.goalTime(1800, '30 min'),
+        SessionSpec.goalTime(3600, '1 hour'),
+        SessionSpec.goalTime(2700, '45 min'),
+      ];
+      final fixture = {
+        'boardKeys': [
+          for (final s in specs)
+            {
+              'kind': s.workSteps.single.target.name,
+              'value': s.workSteps.single.value,
+              'key': GoalCatalogue.boardKeyOf(s),
+            },
+        ],
+        'half': ctx(
+          LivePlanner.plan(
+            mode: RunMode.intervals,
+            session: half,
+            runs: halfRuns,
+          ),
+        ),
+        'thirtyMin': ctx(
+          LivePlanner.plan(
+            mode: RunMode.intervals,
+            session: SessionSpec.goalTime(1800, '30 min'),
+            runs: [thirtyMin(1, 6100), thirtyMin(2, 6300)],
+          ),
+        ),
+      };
+      final text = '${const JsonEncoder.withIndent('  ').convert(fixture)}\n';
+      final file = File('test/fixtures/phase4/goal_live_context.json');
+      if (Platform.environment['UPDATE_GOAL_FIXTURE'] == '1') {
+        file.writeAsStringSync(text);
+      }
+      expect(file.readAsStringSync(), text);
+    });
   });
 }

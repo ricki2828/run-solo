@@ -1,0 +1,176 @@
+{
+  "boardKeys": [
+    {
+      "kind": "distance",
+      "value": 5000,
+      "key": "be:5000"
+    },
+    {
+      "kind": "distance",
+      "value": 10000,
+      "key": "be:10000"
+    },
+    {
+      "kind": "distance",
+      "value": 21098,
+      "key": "be:21097"
+    },
+    {
+      "kind": "distance",
+      "value": 42195,
+      "key": "be:42195"
+    },
+    {
+      "kind": "distance",
+      "value": 12300,
+      "key": "goal:d12300"
+    },
+    {
+      "kind": "distance",
+      "value": 12070,
+      "key": "goal:d12070"
+    },
+    {
+      "kind": "distance",
+      "value": 12100,
+      "key": "goal:d12100"
+    },
+    {
+      "kind": "time",
+      "value": 1800,
+      "key": "be:t1800"
+    },
+    {
+      "kind": "time",
+      "value": 3600,
+      "key": "be:t3600"
+    },
+    {
+      "kind": "time",
+      "value": 2700,
+      "key": "goal:t2700"
+    }
+  ],
+  "half": {
+    "boards": [
+      {
+        "key": "be:21097",
+        "label": "Half",
+        "kind": "distance",
+        "targetM": 21097.5,
+        "entries": [
+          {
+            "runId": "half-2",
+            "dateMs": 1780466400000,
+            "fromStartSplitsMs": [
+              282000,
+              564000,
+              846000,
+              1128000,
+              1410000,
+              1692000,
+              1974000,
+              2256000,
+              2538000,
+              2820000,
+              3102000,
+              3384000
+            ],
+            "cooperMinuteM": null,
+            "finalMetric": 6000000.0
+          },
+          {
+            "runId": "half-3",
+            "dateMs": 1780552800000,
+            "fromStartSplitsMs": [
+              291400,
+              582800,
+              874200,
+              1165600,
+              1457000,
+              1748400,
+              2039800,
+              2331200,
+              2622600,
+              2914000,
+              3205400,
+              3496800,
+              3788200,
+              4079600,
+              4371000,
+              4662400,
+              4953800,
+              5245200,
+              5536600,
+              5828000,
+              6119400
+            ],
+            "cooperMinuteM": null,
+            "finalMetric": 6200000.0
+          },
+          {
+            "runId": "half-1",
+            "dateMs": 1780380000000,
+            "fromStartSplitsMs": [
+              296100,
+              592200,
+              888300,
+              1184400,
+              1480500,
+              1776600,
+              2072700,
+              2368800,
+              2664900,
+              2961000,
+              3257100,
+              3553200,
+              3849300,
+              4145400,
+              4441500,
+              4737600,
+              5033700,
+              5329800,
+              5625900,
+              5922000,
+              6218100
+            ],
+            "cooperMinuteM": null,
+            "finalMetric": 6300000.0
+          }
+        ]
+      }
+    ],
+    "coachingMuted": false,
+    "builtAtMs": 0,
+    "engineVersion": 4
+  },
+  "thirtyMin": {
+    "boards": [
+      {
+        "key": "be:t1800",
+        "label": "30 min",
+        "kind": "distanceInTime",
+        "targetM": null,
+        "entries": [
+          {
+            "runId": "t30-2",
+            "dateMs": 1780466400000,
+            "fromStartSplitsMs": null,
+            "cooperMinuteM": [],
+            "finalMetric": 6300.0
+          },
+          {
+            "runId": "t30-1",
+            "dateMs": 1780380000000,
+            "fromStartSplitsMs": null,
+            "cooperMinuteM": [],
+            "finalMetric": 6100.0
+          }
+        ]
+      }
+    ],
+    "coachingMuted": false,
+    "builtAtMs": 0,
+    "engineVersion": 4
+  }
+}
