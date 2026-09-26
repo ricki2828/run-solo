@@ -16,11 +16,13 @@ cue.phase-end.cooper	3	Time. Cool down
 cue.phase-end.cooldown-over	2	Cool-down done
 cue.stop	2	Run saved
 cue.distance-to-go	4	100 metres to go
+cue.distance-to-go.goal	8	100 metres to go, on pace for 4:59:59
 cue.minute-mark.1	2	1 minute
 cue.minute-mark.11	2	11 minutes
 cue.projection.target	4	On pace for 1:59:59
 cue.projection.cooper	9	11 minutes. Heading for about 10,000. VO2 about 212.
 km.split	7	3 k, 15 minutes 20, pace 5:07.
+km.goal	11	41 k. 12th of 21, 2 minutes 17 off your best.
 km.split.whole-minutes	6	2 k, 10 minutes, pace 5:00.
 km.split.over-an-hour	7	12 k, 1 hour 4, pace 5:20.
 km.split.longest	7	10 k, 1 hour 59, pace 9:59.

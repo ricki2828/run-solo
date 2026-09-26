@@ -66,7 +66,8 @@ object CueWords {
                 else -> "Done. Cool down"
             }
             CueKind.stop -> "Run saved"
-            CueKind.distanceToGo -> "100 metres to go"
+            // A goal's merges the pace line: "100 metres to go, on pace for 1:28:00" (§G).
+            CueKind.distanceToGo -> if (value != null && spec?.isGoal == true) "100 metres to go, on pace for ${clock(value)}" else "100 metres to go"
             CueKind.lastRep -> null
             CueKind.minuteMark -> value?.let { m -> val n = m.roundToInt(); if (n == 1) "1 minute" else "$n minutes" }
             CueKind.countdown -> null // three tones, no words

@@ -184,8 +184,9 @@ object TranscriptFixture {
         }
 
         /** `RecordingSession.speakFire` + `CuePlayer.play`: a [nudge] waits to follow the cue. */
-        private fun speakFire(kind: CueKind?, base: String?, fire: LiveCoach.Fire?, t: Long, nudge: LiveCoach.Nudge?) {
+        private fun speakFire(kind: CueKind?, cueBase: String?, fire: LiveCoach.Fire?, t: Long, nudge: LiveCoach.Nudge?) {
             val extra = fire?.takeIf { it.speak }?.text
+            val base = fire?.takeIf { it.speak }?.base ?: cueBase
             val composed = if (kind != null || base != null || extra != null) play(kind, base, extra, nudge) else null
             fire ?: return
             lines.add(JournalLine.CueFired(t, t, JournalLine.FiredKind.compare, fire.key, fire.index, core.status(t).elapsedMs))
