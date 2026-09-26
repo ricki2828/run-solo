@@ -132,9 +132,16 @@ void main() {
     final spec = fake.startCalls.single.spec!;
     expect(spec.steps.single.value, 12070);
     expect(spec.name, '7.5 mi');
+    expect(
+      engine.ComparisonKey.of(spec.toEngine()),
+      'goal:d12070',
+      reason: 'its own board, not 12.1 km\'s',
+    );
   });
 
-  testWidgets('Custom time: "1:15" is 75 minutes', (tester) async {
+  testWidgets('Custom time: 1 h and 15 min fields make 75 minutes', (
+    tester,
+  ) async {
     final fake = await openGoal(
       tester,
       settings: const AppSettings(
@@ -147,8 +154,12 @@ void main() {
     await pumpTimes(tester, 4);
     await tester.pump(const Duration(milliseconds: 400));
     await tester.enterText(
-      find.byKey(const ValueKey('goal-custom-field')),
-      '1:15',
+      find.byKey(const ValueKey('goal-custom-hours')),
+      '1',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('goal-custom-minutes')),
+      '15',
     );
     await tester.tap(find.byKey(const ValueKey('goal-custom-save')));
     await pumpTimes(tester, 4);
@@ -192,12 +203,14 @@ void main() {
     expect(parseGoalDistance('7.46', Units.mi), 12070, reason: 'to 0.1 mi');
     expect(parseGoalDistance('62.1', Units.mi), 99940);
     expect(parseGoalDistance('62.2', Units.mi), isNull);
-    expect(parseGoalMinutes('45'), 2700);
-    expect(parseGoalMinutes('1:15'), 4500);
-    expect(parseGoalMinutes('1:75'), isNull);
-    expect(parseGoalMinutes('0'), isNull);
-    expect(parseGoalMinutes('1440'), 86400);
-    expect(parseGoalMinutes('1441'), isNull);
+    expect(parseGoalHoursMinutes('', '45'), 2700);
+    expect(parseGoalHoursMinutes('1', '15'), 4500);
+    expect(parseGoalHoursMinutes('1', ''), 3600);
+    expect(parseGoalHoursMinutes('1', '75'), isNull);
+    expect(parseGoalHoursMinutes('', '0'), isNull);
+    expect(parseGoalHoursMinutes('24', '0'), 86400);
+    expect(parseGoalHoursMinutes('24', '1'), isNull);
+    expect(parseGoalHoursMinutes('x', '5'), isNull);
   });
 
   test('settings keep the custom values, clamped to the engine limits', () {

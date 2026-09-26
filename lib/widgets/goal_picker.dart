@@ -32,20 +32,15 @@ int? parseGoalDistance(String text, Units units) {
   return m;
 }
 
-/// "45" (minutes) or "1:15" (h:mm) → seconds within the engine's limits;
-/// null otherwise.
-int? parseGoalMinutes(String text) {
-  final t = text.trim();
-  final hm = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(t);
-  final int? minutes;
-  if (hm != null) {
-    final m = int.parse(hm.group(2)!);
-    minutes = m < 60 ? int.parse(hm.group(1)!) * 60 + m : null;
-  } else {
-    minutes = int.tryParse(t);
-  }
-  if (minutes == null) return null;
-  final s = minutes * 60;
+/// Hours and minutes from two fields (either may be empty, minutes 0 to
+/// 59) → seconds within the engine's limits; null otherwise. Two fields,
+/// never "1:15", so a time can't read as 1 min 15 s (#75 review).
+int? parseGoalHoursMinutes(String hours, String minutes) {
+  int? part(String t) => t.trim().isEmpty ? 0 : int.tryParse(t.trim());
+  final h = part(hours);
+  final m = part(minutes);
+  if (h == null || m == null || h < 0 || m < 0 || m > 59) return null;
+  final s = (h * 60 + m) * 60;
   if (s < engine.SessionSpec.goalMinSeconds ||
       s > engine.SessionSpec.goalMaxSeconds) {
     return null;
@@ -140,7 +135,8 @@ class GoalPicker extends StatelessWidget {
 }
 
 /// Custom goal entry: km or miles to one decimal (the runner's units), or
-/// minutes ("45", "1:15"). Returns metres or seconds, null when dismissed.
+/// hours and minutes in two fields. Returns metres or seconds, null when
+/// dismissed.
 Future<int?> showCustomGoalSheet(
   BuildContext context, {
   required bool distance,
@@ -150,12 +146,12 @@ Future<int?> showCustomGoalSheet(
   final mi = units == Units.mi;
   final unit = mi ? 'mi' : 'km';
   final text = TextEditingController(
-    text: distance
-        ? (current / (mi ? GoalChoice.metresPerMile : 1000)).toStringAsFixed(1)
-        : current % 3600 == 0 || current < 3600
-        ? '${current ~/ 60}'
-        : '${current ~/ 3600}:${(current % 3600 ~/ 60).toString().padLeft(2, '0')}',
+    text: (current / (mi ? GoalChoice.metresPerMile : 1000)).toStringAsFixed(1),
   );
+  final hours = TextEditingController(
+    text: current >= 3600 ? '${current ~/ 3600}' : '',
+  );
+  final minutes = TextEditingController(text: '${current % 3600 ~/ 60}');
   String? error;
   return showModalBottomSheet<int>(
     context: context,
@@ -166,17 +162,39 @@ Future<int?> showCustomGoalSheet(
         void save() {
           final v = distance
               ? parseGoalDistance(text.text, units)
-              : parseGoalMinutes(text.text);
+              : parseGoalHoursMinutes(hours.text, minutes.text);
           if (v == null) {
             setSheet(
               () => error = distance
                   ? (mi ? 'Pick 0.1 to 62.1 mi.' : 'Pick 0.1 to 100 km.')
-                  : 'Pick 1 minute to 24 hours, like 45 or 1:15.',
+                  : 'Pick 1 minute to 24 hours (minutes 0 to 59).',
             );
             return;
           }
           Navigator.of(context).pop(v);
         }
+
+        Widget field(
+          String key,
+          TextEditingController c,
+          String suffix, {
+          bool autofocus = false,
+          String? errorText,
+        }) => TextField(
+          key: ValueKey(key),
+          controller: c,
+          autofocus: autofocus,
+          keyboardType: distance
+              ? const TextInputType.numberWithOptions(decimal: true)
+              : TextInputType.number,
+          style: RunSoloType.display44,
+          decoration: InputDecoration(
+            suffixText: suffix,
+            errorText: errorText,
+            errorMaxLines: 3,
+          ),
+          onSubmitted: (_) => save(),
+        );
 
         return Padding(
           padding: EdgeInsets.only(
@@ -198,29 +216,43 @@ Future<int?> showCustomGoalSheet(
                 distance
                     ? 'In $unit, to one decimal. Each distance gets its own '
                           'board.'
-                    : 'In minutes, or hours and minutes like 1:15. Each time '
-                          'gets its own board.',
+                    : 'Hours and minutes. Each time gets its own board.',
                 style: RunSoloType.body15.copyWith(color: t.inkSecondary),
               ),
               const SizedBox(height: Space.x16),
-              TextField(
-                key: const ValueKey('goal-custom-field'),
-                controller: text,
-                autofocus: true,
-                keyboardType: distance
-                    ? const TextInputType.numberWithOptions(decimal: true)
-                    : TextInputType.datetime,
-                style: RunSoloType.display44,
-                decoration: InputDecoration(
-                  // "1:15 min" would read as 1 min 15 s: the time field
-                  // gets a hint, not a unit.
-                  suffixText: distance ? unit : null,
-                  hintText: distance ? null : '45 or 1:15',
+              if (distance)
+                field(
+                  'goal-custom-field',
+                  text,
+                  unit,
+                  autofocus: true,
                   errorText: error,
-                  errorMaxLines: 3,
+                )
+              else ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: field('goal-custom-hours', hours, 'h')),
+                    const SizedBox(width: Space.x16),
+                    Expanded(
+                      child: field(
+                        'goal-custom-minutes',
+                        minutes,
+                        'min',
+                        autofocus: true,
+                      ),
+                    ),
+                  ],
                 ),
-                onSubmitted: (_) => save(),
-              ),
+                if (error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: Space.x8),
+                    child: Text(
+                      error!,
+                      style: RunSoloType.label13.copyWith(color: t.semDanger),
+                    ),
+                  ),
+              ],
               const SizedBox(height: Space.x16),
               FilledButton(
                 key: const ValueKey('goal-custom-save'),

@@ -179,7 +179,8 @@ abstract final class GoalCatalogue {
 
   /// The board a goal [spec] ranks on: `be:*` for a standard goal, its own
   /// goal key for a custom one (founder, 26-Sep: every custom distance and
-  /// time gets a board; distances to the nearest 0.1 km).
+  /// time gets a board; distances by their exact metres, which the app
+  /// takes to 0.1 of the runner's unit).
   static String boardKeyOf(SessionSpec spec) {
     final w = spec.workSteps.single;
     final std = w.target == TargetKind.time
@@ -189,7 +190,7 @@ abstract final class GoalCatalogue {
   }
 
   /// The shown and spoken goal name ("10K done, 49:12"): the standard
-  /// names, else "12.3 km" (nearest 0.1 km, as the board key) or "45 min" /
+  /// names, else "12.3 km" (nearest 0.1 km) or "45 min" /
   /// "1 h 15 min".
   static String nameFor(TargetKind kind, int value) {
     if (kind == TargetKind.distance) {
