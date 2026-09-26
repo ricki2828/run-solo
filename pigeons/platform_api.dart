@@ -576,6 +576,11 @@ abstract class RecorderApi {
   void startGpsProbe();
   void stopGpsProbe();
 
+  /// Settings → Voice → "Km splits" (default on): a Free run says each km
+  /// ("3 k, 15 minutes 20, pace 5:07."). Persisted natively; applies to a run
+  /// in progress too.
+  void setKmSplits(bool enabled);
+
   /// The user's volume-key LAP setting for Laps runs, persisted natively (the
   /// recorder reads it at start). Takes effect from the next run or resume,
   /// not the live one. Unset means on. Intervals, Free and Cooper never use
@@ -778,6 +783,53 @@ class GpsProbeEvent extends RecorderEvent {
 
   /// How long ago the last fix arrived; null if none yet.
   int? fixAgeMs;
+}
+
+/// A live "you vs you" compare fired (Phase 4 §3.2, LV1), for the overlay card.
+/// Sent whether or not tips are muted; [text] is the spoken phrase.
+class CompareEvent extends RecorderEvent {
+  CompareEvent({
+    required this.boardKey,
+    required this.boardLabel,
+    required this.kind,
+    required this.index,
+    required this.rank,
+    required this.of,
+    this.deltaMs,
+    this.deltaSecPerKm,
+    this.deltaVo2,
+    this.value,
+    required this.text,
+    required this.overlay,
+  });
+  String boardKey;
+  String boardLabel;
+
+  /// `distance`, `intervals`, `cooper` or `target`.
+  String kind;
+
+  /// The km, rep or minute.
+  int index;
+
+  /// This run's place among itself and [of] − 1 compared entries.
+  int rank;
+  int of;
+
+  /// distance / target: live − best entry (or the target's split); negative = ahead.
+  int? deltaMs;
+
+  /// intervals: live mean rep pace − the best prior's, s/km; negative = faster.
+  double? deltaSecPerKm;
+
+  /// cooper: projected VO2 − the best past test.
+  double? deltaVo2;
+
+  /// cooper: the projected VO2; target: the target time in ms.
+  double? value;
+  String text;
+
+  /// False when a recovery is under 20 s: voice only, no card.
+  bool overlay;
 }
 
 class FaultEvent extends RecorderEvent {

@@ -39,6 +39,12 @@ KNOWN_SHAPES = {
     "fault": {"t": {"int"}, "kind": {"str"}, "fault": {"str"}, "message": {"str"}},
     # Pre-start GPS probe (Start screen only; never during a run).
     "gpsProbe": {"t": {"int"}, "kind": {"str"}, "fix": {"bool"}, "lat": {"num"}, "lon": {"num"}, "accuracyM": {"num"}, "fixAgeMs": {"int"}},
+    # Phase 4 LV1: a live compare fired (only with a LiveContext; the 4x4 trace has none).
+    "compare": {
+        "t": {"int"}, "kind": {"str"}, "boardKey": {"str"}, "boardLabel": {"str"}, "compare": {"str"},
+        "index": {"int"}, "rank": {"int"}, "of": {"int"}, "deltaMs": {"int"}, "deltaSecPerKm": {"num"},
+        "deltaVo2": {"num"}, "value": {"num"}, "text": {"str"}, "overlay": {"bool"},
+    },
 }
 
 

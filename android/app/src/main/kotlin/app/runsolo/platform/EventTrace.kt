@@ -105,6 +105,21 @@ object EventTrace {
                 m["accuracyM"] = e.accuracyM
                 m["fixAgeMs"] = e.fixAgeMs
             }
+            is CompareEvent -> {
+                m["kind"] = "compare"
+                m["boardKey"] = e.boardKey
+                m["boardLabel"] = e.boardLabel
+                m["compare"] = e.kind
+                m["index"] = e.index
+                m["rank"] = e.rank
+                m["of"] = e.of
+                m["deltaMs"] = e.deltaMs
+                m["deltaSecPerKm"] = e.deltaSecPerKm
+                m["deltaVo2"] = e.deltaVo2
+                m["value"] = e.value
+                m["text"] = e.text
+                m["overlay"] = e.overlay
+            }
             is FaultEvent -> {
                 m["kind"] = "fault"
                 m["fault"] = dartName(e.kind)

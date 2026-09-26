@@ -434,6 +434,28 @@ void main() {
     expect(RecordingController.repPacesFromLaps(const [], null), isEmpty);
   });
 
+  test('a live compare lands in lastCompare for the overlay', () async {
+    await ctl.start(RecordMode.free, null, Units.km);
+    await settle();
+    expect(ctl.lastCompare.value, isNull);
+    fake.emitCompare(
+      CompareEvent(
+        boardKey: 'be:5k',
+        boardLabel: '5K',
+        kind: 'distance',
+        index: 3,
+        rank: 2,
+        of: 7,
+        deltaMs: 6000,
+        text: 'On pace for number 2 of 7. 6 seconds behind your best.',
+        overlay: true,
+      ),
+    );
+    await settle();
+    expect(ctl.lastCompare.value?.rank, 2);
+    expect(ctl.lastCompare.value?.of, 7);
+  });
+
   test('typed start errors pass through untouched', () async {
     fake.startError = StartError.approximateOnly;
     final r = await ctl.start(RecordMode.free, null, Units.km);

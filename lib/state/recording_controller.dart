@@ -309,6 +309,10 @@ class RecordingController extends ChangeNotifier {
   /// Bumps when a recovery ends ("Rep n, go": single pulse).
   final ValueNotifier<int> repStartPulse = ValueNotifier(0);
 
+  /// The latest live "you vs you" compare (Phase 4 §3.2, LV1), for the overlay
+  /// card (LV2). Muted tips still arrive here; `overlay` false = voice only.
+  final ValueNotifier<CompareEvent?> lastCompare = ValueNotifier(null);
+
   StreamSubscription<RecorderEvent>? _sub;
 
   /// Cumulative distance at the previous lap, for the lap distance delta.
@@ -493,6 +497,8 @@ class RecordingController extends ChangeNotifier {
         _onState(e);
       case CueEvent():
         break; // audio + haptics are the service's job (plan §3)
+      case CompareEvent():
+        lastCompare.value = e;
       case FaultEvent():
         _onFault(e);
       case GpsProbeEvent():
@@ -724,6 +730,7 @@ class RecordingController extends ChangeNotifier {
     _sub?.cancel();
     _clearPending();
     lapPulse.dispose();
+    lastCompare.dispose();
     repCompletePulse.dispose();
     repStartPulse.dispose();
     super.dispose();

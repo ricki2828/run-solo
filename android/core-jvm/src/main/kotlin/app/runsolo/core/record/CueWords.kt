@@ -1,5 +1,6 @@
 package app.runsolo.core.record
 
+import app.runsolo.core.live.CooperProjection
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.CueProfile
 import app.runsolo.core.model.Phase
@@ -8,7 +9,6 @@ import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.StepKind
 import app.runsolo.core.model.TargetKind
 import java.util.Locale
-import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
@@ -29,7 +29,7 @@ object CueWords {
         phase: Phase,
         repIndex: Int,
         stepIndex: Int?,
-        lastCooperVo2: Double?,
+        index: Int? = null,
     ): String? {
         val step = stepIndex?.let { spec?.steps?.getOrNull(it) }
         val cooper = spec?.cueProfile == CueProfile.cooper
@@ -63,25 +63,14 @@ object CueWords {
             CueKind.lastRep -> "Last rep"
             CueKind.minuteMark -> value?.let { m -> val n = m.roundToInt(); if (n == 1) "1 minute" else "$n minutes" }
             CueKind.countdown -> null // three tones, no words
-            CueKind.projection -> value?.let { v -> if (cooper) cooperProjection(v, lastCooperVo2) else "On pace for ${clock(v)}" }
+            // Cooper: "5 minutes. Heading for about 2,740. VO2 about 50." (index = the minute); the
+            // rank against past tests is LiveCoach's, at 3, 6 and 9 minutes.
+            CueKind.projection -> value?.let { v -> if (cooper && index != null) CooperProjection.cue(index, v) else if (cooper) null else "On pace for ${clock(v)}" }
         }
     }
 
     /** Cooper (1968): VO2max ≈ (d − 504.9) / 44.73, d in metres over 12 minutes. */
-    fun cooperVo2(metres: Double): Double = (metres - 504.9) / 44.73
-
-    private fun cooperProjection(metres: Double, lastVo2: Double?): String {
-        val rounded = (metres / 10).roundToLong() * 10
-        val vo2 = cooperVo2(metres)
-        val base = "On pace for ${String.format(Locale.US, "%,d", rounded)} metres, VO2 max ${vo2.roundToInt()}"
-        lastVo2 ?: return base
-        val gap = (vo2 - lastVo2).roundToInt()
-        return when {
-            gap == 0 -> "$base, level with last time"
-            gap > 0 -> "$base, up $gap on last time"
-            else -> "$base, down ${abs(gap)} on last time"
-        }
-    }
+    fun cooperVo2(metres: Double): Double = CooperProjection.vo2(metres)
 
     private fun metres(m: Double): String =
         if (m >= 1_000 && m % 1_000 == 0.0) "${(m / 1_000).toInt()} kilometres" else "${m.toInt()} metres"

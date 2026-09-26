@@ -56,6 +56,7 @@ class _StartScreenState extends State<StartScreen> {
     StartResult result;
     try {
       await services.recorder.setCues(s.cues);
+      await services.recorder.setKmSplits(s.kmSplits);
       if (s.recordMode == RecordMode.laps) {
         await services.recorder.setVolumeKeyLaps(
           s.volumeKeyLapFor(RecordMode.laps),

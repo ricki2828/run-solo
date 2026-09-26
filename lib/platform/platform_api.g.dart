@@ -1788,6 +1788,111 @@ class GpsProbeEvent extends RecorderEvent {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// A live "you vs you" compare fired (Phase 4 §3.2, LV1), for the overlay card.
+/// Sent whether or not tips are muted; [text] is the spoken phrase.
+class CompareEvent extends RecorderEvent {
+  CompareEvent({
+    required this.boardKey,
+    required this.boardLabel,
+    required this.kind,
+    required this.index,
+    required this.rank,
+    required this.of,
+    this.deltaMs,
+    this.deltaSecPerKm,
+    this.deltaVo2,
+    this.value,
+    required this.text,
+    required this.overlay,
+  });
+
+  String boardKey;
+
+  String boardLabel;
+
+  /// `distance`, `intervals`, `cooper` or `target`.
+  String kind;
+
+  /// The km, rep or minute.
+  int index;
+
+  /// This run's place among itself and [of] − 1 compared entries.
+  int rank;
+
+  int of;
+
+  /// distance / target: live − best entry (or the target's split); negative = ahead.
+  int? deltaMs;
+
+  /// intervals: live mean rep pace − the best prior's, s/km; negative = faster.
+  double? deltaSecPerKm;
+
+  /// cooper: projected VO2 − the best past test.
+  double? deltaVo2;
+
+  /// cooper: the projected VO2; target: the target time in ms.
+  double? value;
+
+  String text;
+
+  /// False when a recovery is under 20 s: voice only, no card.
+  bool overlay;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      boardKey,
+      boardLabel,
+      kind,
+      index,
+      rank,
+      of,
+      deltaMs,
+      deltaSecPerKm,
+      deltaVo2,
+      value,
+      text,
+      overlay,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static CompareEvent decode(Object result) {
+    result as List<Object?>;
+    return CompareEvent(
+      boardKey: result[0]! as String,
+      boardLabel: result[1]! as String,
+      kind: result[2]! as String,
+      index: result[3]! as int,
+      rank: result[4]! as int,
+      of: result[5]! as int,
+      deltaMs: result[6] as int?,
+      deltaSecPerKm: result[7] as double?,
+      deltaVo2: result[8] as double?,
+      value: result[9] as double?,
+      text: result[10]! as String,
+      overlay: result[11]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! CompareEvent || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(boardKey, other.boardKey) && _deepEquals(boardLabel, other.boardLabel) && _deepEquals(kind, other.kind) && _deepEquals(index, other.index) && _deepEquals(rank, other.rank) && _deepEquals(of, other.of) && _deepEquals(deltaMs, other.deltaMs) && _deepEquals(deltaSecPerKm, other.deltaSecPerKm) && _deepEquals(deltaVo2, other.deltaVo2) && _deepEquals(value, other.value) && _deepEquals(text, other.text) && _deepEquals(overlay, other.overlay);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 class FaultEvent extends RecorderEvent {
   FaultEvent({
     required this.kind,
@@ -2056,14 +2161,17 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is GpsProbeEvent) {
       buffer.putUint8(165);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is CompareEvent) {
       buffer.putUint8(166);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is FaultEvent) {
       buffer.putUint8(167);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is StateEvent) {
       buffer.putUint8(168);
+      writeValue(buffer, value.encode());
+    }    else if (value is PhaseEvent) {
+      buffer.putUint8(169);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -2163,10 +2271,12 @@ class _PigeonCodec extends StandardMessageCodec {
       case 165:
         return GpsProbeEvent.decode(readValue(buffer)!);
       case 166:
-        return FaultEvent.decode(readValue(buffer)!);
+        return CompareEvent.decode(readValue(buffer)!);
       case 167:
-        return StateEvent.decode(readValue(buffer)!);
+        return FaultEvent.decode(readValue(buffer)!);
       case 168:
+        return StateEvent.decode(readValue(buffer)!);
+      case 169:
         return PhaseEvent.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -2483,6 +2593,27 @@ class RecorderApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// Settings → Voice → "Km splits" (default on): a Free run says each km
+  /// ("3 k, 15 minutes 20, pace 5:07."). Persisted natively; applies to a run
+  /// in progress too.
+  Future<void> setKmSplits(bool enabled) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.setKmSplits$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[enabled]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(

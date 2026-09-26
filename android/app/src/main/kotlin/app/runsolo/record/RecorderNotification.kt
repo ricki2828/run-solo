@@ -46,6 +46,11 @@ class RecorderNotification(private val context: Context) {
         /** Metres left in a distance step (the title shows them instead of a countdown). */
         val metresToGo: Double? = null,
         val cooper: Boolean = false,
+        /**
+         * "Mute tips" for this run (Phase 4 §3.5, LV1) while live compares are on. A notification
+         * shows at most three actions, so it only fits beside Pause and Stop when there is no LAP.
+         */
+        val muteTipsAction: Boolean = false,
     )
 
     fun build(c: Content): Notification {
@@ -69,6 +74,7 @@ class RecorderNotification(private val context: Context) {
         if (c.lapAction) b.addAction(0, "LAP", serviceAction(RecorderService.ACTION_LAP))
         b.addAction(0, if (c.state == RecorderState.paused) "Resume" else "Pause", serviceAction(if (c.state == RecorderState.paused) RecorderService.ACTION_RESUME else RecorderService.ACTION_PAUSE))
             .addAction(0, "Stop", serviceAction(RecorderService.ACTION_STOP))
+        if (c.muteTipsAction && !c.lapAction) b.addAction(0, "Mute tips", serviceAction(RecorderService.ACTION_MUTE_TIPS))
         if (c.state == RecorderState.paused) {
             b.setUsesChronometer(false)
         } else if (c.phaseRemainingMs != null) {

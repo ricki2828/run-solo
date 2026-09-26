@@ -145,10 +145,12 @@ class RecorderService : Service() {
         const val ACTION_PAUSE = "app.runsolo.action.PAUSE"
         const val ACTION_RESUME = "app.runsolo.action.RESUME"
         const val ACTION_STOP = "app.runsolo.action.STOP"
+        const val ACTION_MUTE_TIPS = "app.runsolo.action.MUTE_TIPS"
         const val PREFS = "runsolo.settings"
         const val PREF_RAW_GPS = "rawGps"
         const val PREF_CUES = "cues"
         const val PREF_VOLUME_KEY_LAPS = "volumeKeyLaps"
+        const val PREF_KM_SPLITS = "kmSplits"
 
         /** Session handed from the Activity to the service on ACTION_START. Main thread only. */
         @Volatile

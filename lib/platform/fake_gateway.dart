@@ -84,6 +84,9 @@ class FakeRecorderGateway implements RecorderGateway {
   void emitFault(FaultKind kind, String message) =>
       _emit(FaultEvent(kind: kind, message: message));
 
+  /// Scripted live compare (Phase 4 LV1), for overlay tests.
+  void emitCompare(CompareEvent e) => _emit(e);
+
   /// Scripted HR for the next ticks (null = the phase-based default). Zone
   /// tests drive the tracker through this.
   int? scriptedHr;
@@ -473,6 +476,11 @@ class FakeRecorderGateway implements RecorderGateway {
   Future<void> stopGpsProbe() async => gpsProbeRunning = false;
 
   void emitGpsProbe(GpsProbeEvent e) => _emit(e);
+
+  bool kmSplits = true;
+
+  @override
+  Future<void> setKmSplits(bool enabled) async => kmSplits = enabled;
 
   /// Last value passed to [setVolumeKeyLaps]; null until called.
   bool? volumeKeyLaps;

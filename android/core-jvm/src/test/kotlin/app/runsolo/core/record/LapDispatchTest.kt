@@ -1,5 +1,6 @@
 package app.runsolo.core.record
 
+import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.Phase
 import kotlin.test.Test
@@ -10,6 +11,7 @@ class LapDispatchTest {
     private val dispatch = LapDispatch(
         onLap = { o, d -> events.add("lap${o.index}@${"%.1f".format(d)}") },
         onPhase = { events.add("phase ${it.phase}") },
+        onCue = { events.add("cue ${it.kind}") },
     )
 
     private fun lap(i: Int, t: Long, source: LapSource) = RecorderCore.Output.Lap(i, t, source)
@@ -54,5 +56,19 @@ class LapDispatchTest {
         // An auto lap is not a press.
         assertEquals(null, dispatch.pressed(listOf(lap(2, 2_000, LapSource.auto)), 0, active))
         assertEquals(null, dispatch.pressed(emptyList(), 0, active))
+    }
+
+    @Test
+    fun `a held cue waits behind a pending manual lap, an unheld one goes at once`() {
+        dispatch.ticked(1_000, 10.0)
+        dispatch.lap(lap(1, 1_250, LapSource.button), 1_250, 10.0)
+        dispatch.phase(phase(1_250, Phase.recovery))
+        dispatch.cue(RecorderCore.Output.Cue(1_250, CueKind.halfway), hold = false)
+        dispatch.cue(RecorderCore.Output.Cue(1_250, CueKind.start), hold = true)
+        assertEquals(listOf("cue halfway"), events)
+        dispatch.flush(2_000, 14.0)
+        assertEquals(listOf("cue halfway", "lap1@11.0", "phase recovery", "cue start"), events)
+        dispatch.cue(RecorderCore.Output.Cue(2_000, CueKind.halfway), hold = true)
+        assertEquals("cue halfway", events.last(), "nothing pending: a held cue goes at once")
     }
 }
