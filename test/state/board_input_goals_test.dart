@@ -67,6 +67,20 @@ void main() {
     expect(boards[key]?.rankOf(run.id), 1, reason: 'boards: ${boards.keys}');
   });
 
+  test('a 12-minute test lands on the Cooper board (A11.6 item 3)', () async {
+    final slow = cooperTestFile(n: 4, start: d1, mps: 3.8);
+    final fast = cooperTestFile(
+      n: 5,
+      start: d1.add(const Duration(days: 7)),
+      mps: 4.2,
+    );
+    final boards = await boardsOf([slow, fast]);
+    final b = boards[engine.ComparisonKey.cooper];
+    expect(b, isNotNull, reason: 'boards: ${boards.keys}');
+    expect(b!.length, 2);
+    expect(b.pb!.runId, fast.id);
+  });
+
   test('the goal result round-trips through the index row', () async {
     final run = goalRun(3, engine.SessionSpec.goalTime(1800, '30 min'));
     await boardsOf([run]);

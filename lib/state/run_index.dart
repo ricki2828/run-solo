@@ -338,6 +338,7 @@ class IndexRow {
     this.eventStartLat,
     this.eventStartLon,
     this.cooper,
+    this.goal,
   });
 
   /// Bump when a field is added, so old rows are rebuilt once.
