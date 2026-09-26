@@ -184,25 +184,37 @@ void main() {
   });
 
   group('heat-adjusted boards (W2 setting on)', () {
-    test('rank by the twin; the raw time stays alongside; no weather is '
-        'unranked', () {
+    test('rank by the twin; the raw time stays alongside; a run without '
+        'weather stays ranked on its raw time', () {
       final runs = [
         free('hot', 0, 1500, heat: 0.05), // 1425 adjusted
         free('cool', 1, 1490, heat: 0), // 1490
-        free('none', 2, 1400), // fastest raw, no weather
+        free('none', 2, 1450), // no weather: ranks on raw 1450
       ];
       final off = Leaderboards.fold(runs)['be:5000']!;
       expect(off.heatAdjusted, isFalse);
       expect(off.ranked.map((r) => r.runId), ['none', 'cool', 'hot']);
-      expect(off.unranked, isEmpty);
+      expect(off.ranked.any(off.onRawValue), isFalse);
 
       final on = Leaderboards.fold(runs, heatAdjusted: true)['be:5000']!;
       expect(on.heatAdjusted, isTrue);
-      expect(on.ranked.map((r) => r.runId), ['hot', 'cool']);
+      expect(on.ranked.map((r) => r.runId), ['hot', 'none', 'cool']);
       expect(on.pb!.metric, 1500);
       expect(on.rankValue(on.pb!), closeTo(1425, 1e-9));
-      expect(on.unranked.map((r) => r.runId), ['none']);
-      expect(on.rankOf('none'), isNull);
+      final none = on.ranked[1];
+      expect(on.onRawValue(none), isTrue);
+      expect(on.rankValue(none), 1450);
+      expect(on.onRawValue(on.pb!), isFalse);
+    });
+
+    test('a no-weather PB never drops off because of the setting', () {
+      final on = Leaderboards.fold([
+        free('pb', 0, 1400), // no weather, the raw PB
+        free('hot', 1, 1500, heat: 0.05),
+      ], heatAdjusted: true)['be:5000']!;
+      expect(on.length, 2);
+      expect(on.pb!.runId, 'pb');
+      expect(on.onRawValue(on.pb!), isTrue);
     });
 
     test('course boards rank the adjusted official time', () {

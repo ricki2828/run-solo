@@ -119,16 +119,15 @@ class Leaderboard {
     this.metres,
     this.ranked, {
     this.heatAdjusted = false,
-    this.unranked = const [],
   });
 
   /// Rank [runs] on [key]. Ties: the earlier date ranks higher.
   ///
   /// [heatAdjusted] ("Compare heat-adjusted paces", W2): a board with a
-  /// heat twin ranks by [BoardRun.adjMetric]; runs without one (no usable
-  /// weather, too hot) are left off the ranking, into [unranked], as W2
-  /// leaves them out of adjusted verdicts. Goal boards have no twin and
-  /// stay raw.
+  /// heat twin ranks by [BoardRun.adjMetric]. A run without one (no usable
+  /// weather, too hot) stays ranked on its raw value ([onRawValue], shown
+  /// with a "no weather" tag), so a PB never drops off a board because of
+  /// a setting. Goal boards have no twin and stay raw.
   factory Leaderboard.of(
     String key,
     BoardKind kind,
@@ -138,27 +137,18 @@ class Leaderboard {
   }) {
     final adjusted = heatAdjusted && Leaderboards.hasHeatTwin(key);
     final higher = kind == BoardKind.cooper || kind == BoardKind.distanceInTime;
-    double v(BoardRun r) => adjusted ? r.adjMetric! : r.metric;
-    final ranked =
-        [
-          for (final r in runs)
-            if (!adjusted || r.adjMetric != null) r,
-        ]..sort((a, b) {
-          final c = higher ? v(b).compareTo(v(a)) : v(a).compareTo(v(b));
-          return c != 0 ? c : a.date.compareTo(b.date);
-        });
+    double v(BoardRun r) => adjusted ? (r.adjMetric ?? r.metric) : r.metric;
+    final ranked = [...runs]
+      ..sort((a, b) {
+        final c = higher ? v(b).compareTo(v(a)) : v(a).compareTo(v(b));
+        return c != 0 ? c : a.date.compareTo(b.date);
+      });
     return Leaderboard._(
       key,
       kind,
       metres,
       List.unmodifiable(ranked),
       heatAdjusted: adjusted,
-      unranked: adjusted
-          ? List.unmodifiable([
-              for (final r in runs)
-                if (r.adjMetric == null) r,
-            ])
-          : const [],
     );
   }
 
@@ -166,11 +156,12 @@ class Leaderboard {
   /// one). [BoardRun.metric] stays raw, to show alongside.
   final bool heatAdjusted;
 
-  /// On a heat-adjusted board, the runs without a twin: not ranked.
-  final List<BoardRun> unranked;
+  /// On a heat-adjusted board, [r] has no twin and ranks on its raw value.
+  bool onRawValue(BoardRun r) => heatAdjusted && r.adjMetric == null;
 
   /// The value this board ranks [r] by.
-  double rankValue(BoardRun r) => heatAdjusted ? r.adjMetric! : r.metric;
+  double rankValue(BoardRun r) =>
+      heatAdjusted ? (r.adjMetric ?? r.metric) : r.metric;
 
   final String key;
   final BoardKind kind;
