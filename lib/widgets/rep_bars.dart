@@ -100,7 +100,8 @@ class RepBars extends StatelessWidget {
             // As shown: whole seconds in the display unit, "▲16" / "▼12".
             // Flat only when that is 0 ("±0", no glyph), the record screen's
             // rule, so a dash never sits beside "1".
-            // Rep-time sessions: whole seconds over the rep distance.
+            // Rep-time sessions: whole seconds per rep (the label is the rep
+            // time, so the bare number reads as seconds, as on a pace).
             final delta = r.ghostSecPerKm == null || r.paceSecPerKm == null
                 ? null
                 : r.repMetres != null
@@ -188,11 +189,7 @@ class RepBars extends StatelessWidget {
                                 const SizedBox(width: 2),
                               ],
                               Text(
-                                delta == 0
-                                    ? '±0'
-                                    : r.repMetres != null
-                                    ? '${delta.abs()} s'
-                                    : '${delta.abs()}',
+                                delta == 0 ? '±0' : '${delta.abs()}',
                                 style: RunSoloType.label13.copyWith(
                                   color: deltaColor,
                                 ),

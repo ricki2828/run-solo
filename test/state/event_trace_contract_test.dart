@@ -115,6 +115,9 @@ class TraceGateway implements RecorderGateway {
           phase: Phase.values.byName(e['phase'] as String),
           repIndex: e['repIndex'] as int,
           phaseRemainingMs: e['phaseRemainingMs'] as int,
+          stepIndex: e['stepIndex'] as int?,
+          stepRemainingMs: e['stepRemainingMs'] as int?,
+          stepRemainingM: (e['stepRemainingM'] as num?)?.toDouble(),
         );
       case 'lap':
         return LapEvent(
@@ -409,6 +412,39 @@ void main() {
       expect(ctl.lapPulse.value, 8);
       expect(ctl.snapshot.fault, isNull);
       fresh.dispose();
+    },
+  );
+
+  test(
+    'every recorded tick: the step on screen is native spec.steps[stepIndex] '
+    '(recoveries counted), none in warm-up and cool-down',
+    () async {
+      await ctl.attach();
+      final ticks = lines.where((e) => e['kind'] == 'tick').toList();
+      var checked = 0;
+      for (final e in ticks) {
+        await trace.playUntil(e['t'] as int);
+        final snap = ctl.snapshot;
+        final i = e['stepIndex'] as int?;
+        expect(snap.stepIndex, i, reason: 't=${e['t']}');
+        if (i == null) {
+          expect(snap.currentStep, isNull, reason: 't=${e['t']}');
+        } else {
+          expect(
+            identical(snap.currentStep, snap.spec!.steps[i]),
+            isTrue,
+            reason: 't=${e['t']}',
+          );
+          expect(
+            snap.currentStep!.kind,
+            e['phase'] == 'work' ? StepKind.work : StepKind.recovery,
+          );
+          checked++;
+        }
+        // Time steps: no metres to go (stepRemainingM is null in a 4x4).
+        expect(snap.metresToGo, isNull);
+      }
+      expect(checked, greaterThan(1000));
     },
   );
 }
