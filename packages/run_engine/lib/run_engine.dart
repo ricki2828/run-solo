@@ -10,6 +10,7 @@ export 'src/engine/coach_report.dart';
 export 'src/engine/coaching_rules.dart';
 export 'src/engine/constants.dart';
 export 'src/engine/cooper_projection.dart';
+export 'src/engine/cooper_result.dart';
 export 'src/engine/event_names.dart';
 export 'src/engine/parkrun_courses.dart';
 export 'src/engine/fix_laps.dart';

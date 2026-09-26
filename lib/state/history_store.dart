@@ -175,6 +175,10 @@ class RunSummary {
     return p == null || f == null ? null : p * (1 - f);
   }
 
+  /// A 12-minute test's figures (C1): the row's, else the analysis's.
+  CooperFigures? get cooper =>
+      row?.cooper ?? CooperFigures.of(analysis?.cooper);
+
   /// Intervals figures (null when the run has no interval metrics).
   int? get detectedReps =>
       row?.detectedReps ?? analysis?.intervals?.reps.length;
