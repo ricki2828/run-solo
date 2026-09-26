@@ -382,8 +382,9 @@ class _RecordingScreenState extends State<RecordingScreen>
                           // Scales down rather than overflow when a banner
                           // and the GPS wait share a short screen with it;
                           // the high flex keeps it at full size otherwise
-                          // (the spacers around it share what is left).
-                          Flexible(
+                          // (the spacers around it share what is left), and
+                          // Expanded keeps Pause / Stop at the bottom.
+                          Expanded(
                             flex: 20,
                             child: FittedBox(
                               fit: BoxFit.scaleDown,
