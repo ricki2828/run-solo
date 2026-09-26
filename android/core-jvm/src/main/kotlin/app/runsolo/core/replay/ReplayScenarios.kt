@@ -31,7 +31,7 @@ import kotlin.math.cos
  * minimum to keep the emulator job short), plus fartlek, Cooper and parkrun.
  */
 object ReplayScenarios {
-    enum class Press { lap, startReps }
+    enum class Press { lap, startReps, pause }
 
     /**
      * A press on the first fix whose trace time (ms since the trace's first fix) reaches [atMs],
@@ -49,7 +49,7 @@ object ReplayScenarios {
         val presses: List<ScriptedPress>,
     )
 
-    val KINDS = listOf("4x4", "400s", "30-30s", "yasso-800s", "1km-repeats", "fartlek", "cooper", "parkrun", "goal-10k", "goal-30min") // event-name-ok: debug replay ids, never in a store build
+    val KINDS = listOf("4x4", "400s", "30-30s", "yasso-800s", "1km-repeats", "fartlek", "cooper", "parkrun", "goal-10k", "goal-30min", "pause-end") // event-name-ok: debug replay ids, never in a store build
 
     private const val LAT0 = -33.8688
     private const val LON0 = 151.2093
@@ -72,6 +72,9 @@ object ReplayScenarios {
         "parkrun" -> structured(kind, PARKRUN, workMps = 4.0, start = null) // event-name-ok: debug replay ids, never in a store build
         "cooper" -> structured(kind, SessionSpec.COOPER, workMps = 3.4, mode = RunMode.cooper, start = Press.startReps)
         "fartlek" -> fartlek()
+        // #88: a Free run paused at 4:00 (the finish screen's tap) that never resumes; the trace
+        // runs on a minute, the replay's end stops it while paused, so the file ends at the pause.
+        "pause-end" -> pauseEnd()
         // GOAL runs (§G): one step from Start, then an open cool-down (60 s here, then the trace ends).
         "goal-10k" -> structured(kind, SessionSpec.goalDistance(10_000, "10K"), workMps = 4.0, start = null)
         "goal-30min" -> structured(kind, SessionSpec.goalTime(1_800, "30 min"), workMps = 3.5, start = null)
@@ -115,6 +118,12 @@ object ReplayScenarios {
         val hr = (1..fixes.size - 1).map { i -> HrReading(i * 1000L - 300, if (fixes[i].speedMps!! > 4.0) 168 else 148) }
         val presses = listOf(120, 150, 300, 345).map { ScriptedPress(it * 1000L, Press.lap) }
         return Scenario("fartlek", RunMode.laps, SessionSpec.FARTLEK, fixes, hr, presses)
+    }
+
+    private fun pauseEnd(): Scenario {
+        val fixes = TraceFixture.straightLine(listOf(300 to 3.0), LAT0, LON0, ACCURACY_M, startT = 0)
+        val hr = (1 until fixes.size).map { i -> HrReading(i * 1000L - 300, 150) }
+        return Scenario("pause-end", RunMode.free, null, fixes, hr, listOf(ScriptedPress(240_000, Press.pause)))
     }
 
     private fun closedLoop(mode: RunMode, spec: SessionSpec, presses: List<ScriptedPress>, workMps: Double): Pair<List<LocationFix>, List<HrReading>> {
@@ -169,6 +178,8 @@ object ReplayScenarios {
         private val presses: List<ScriptedPress>,
         private val onSamples: (List<JournalLine.Sample>) -> Unit = {},
         private val onOutputs: (List<RecorderCore.Output>) -> Unit = {},
+        /** A scripted pause at this time (the caller journals it). */
+        private val onPause: (Long) -> Unit = {},
     ) {
         private var pressed = 0
         private var firstT: Long? = null
@@ -184,6 +195,13 @@ object ReplayScenarios {
                     when (p.press) {
                         Press.lap -> core.lap(LapSource.notification, t).second
                         Press.startReps -> core.startReps(t).second
+                        Press.pause -> {
+                            // As RecordingSession.pause: the core and the ticker stop measuring.
+                            core.pause(t)
+                            ticker.onPause()
+                            onPause(t)
+                            emptyList()
+                        }
                     },
                 )
             }

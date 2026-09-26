@@ -402,6 +402,7 @@ class RecordingSession(
             when (r.presses[replayLapsPressed++].press) {
                 ReplayScenarios.Press.lap -> lap(LapSource.notification)
                 ReplayScenarios.Press.startReps -> startReps()
+                ReplayScenarios.Press.pause -> pause()
             }
         }
         // Sample first: the core's distance steps need this second's distance (Phase 3 §3.6).
