@@ -10,7 +10,8 @@ import app.runsolo.platform.GpsProbeEvent
 /**
  * Location readiness before Start (the event run's Start button waits for "GPS ready"): while
  * the Start screen is open the app asks for fixes with the recording's own provider settings and
- * gets a [GpsProbeEvent] about once a second. Foreground only, no service: it stops when the
+ * gets a [GpsProbeEvent] about once a second, with the current position (the app picks the event
+ * course by its nearest known start; kept in memory only, nothing is written until a run records). Foreground only, no service: it stops when the
  * screen closes, the app leaves the foreground, or a run starts, so it never drains the battery
  * in the background. Without location permission it reports no fix and asks for nothing.
  * Main thread only.
@@ -70,7 +71,8 @@ class GpsProbe(
         val at = lastAtMs
         val age = at?.let { clock() - it }
         val fresh = age != null && age <= FRESH_MS
-        return GpsProbeEvent(fix = fresh, accuracyM = if (fresh) last?.accuracyM else null, fixAgeMs = age)
+        val f = last.takeIf { fresh }
+        return GpsProbeEvent(fix = fresh, lat = f?.lat, lon = f?.lon, accuracyM = f?.accuracyM, fixAgeMs = age)
     }
 
     companion object {

@@ -1725,12 +1725,21 @@ class CueEvent extends RecorderEvent {
 class GpsProbeEvent extends RecorderEvent {
   GpsProbeEvent({
     required this.fix,
+    this.lat,
+    this.lon,
     this.accuracyM,
     this.fixAgeMs,
   });
 
   /// A location arrived within the last 5 s.
   bool fix;
+
+  /// Where the runner is now (with a fresh fix only): the app picks the event
+  /// course by its nearest known start. In memory only; nothing is stored
+  /// until the run records.
+  double? lat;
+
+  double? lon;
 
   /// That fix's accuracy (m); null without a fresh fix.
   double? accuracyM;
@@ -1741,6 +1750,8 @@ class GpsProbeEvent extends RecorderEvent {
   List<Object?> _toList() {
     return <Object?>[
       fix,
+      lat,
+      lon,
       accuracyM,
       fixAgeMs,
     ];
@@ -1753,8 +1764,10 @@ class GpsProbeEvent extends RecorderEvent {
     result as List<Object?>;
     return GpsProbeEvent(
       fix: result[0]! as bool,
-      accuracyM: result[1] as double?,
-      fixAgeMs: result[2] as int?,
+      lat: result[1] as double?,
+      lon: result[2] as double?,
+      accuracyM: result[3] as double?,
+      fixAgeMs: result[4] as int?,
     );
   }
 
@@ -1767,7 +1780,7 @@ class GpsProbeEvent extends RecorderEvent {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(fix, other.fix) && _deepEquals(accuracyM, other.accuracyM) && _deepEquals(fixAgeMs, other.fixAgeMs);
+    return _deepEquals(fix, other.fix) && _deepEquals(lat, other.lat) && _deepEquals(lon, other.lon) && _deepEquals(accuracyM, other.accuracyM) && _deepEquals(fixAgeMs, other.fixAgeMs);
   }
 
   @override

@@ -756,10 +756,22 @@ class CueEvent extends RecorderEvent {
 /// Pre-start GPS readiness, about 1 Hz while the probe runs. The "ready"
 /// threshold is the screen's; native sends the raw values.
 class GpsProbeEvent extends RecorderEvent {
-  GpsProbeEvent({required this.fix, this.accuracyM, this.fixAgeMs});
+  GpsProbeEvent({
+    required this.fix,
+    this.lat,
+    this.lon,
+    this.accuracyM,
+    this.fixAgeMs,
+  });
 
   /// A location arrived within the last 5 s.
   bool fix;
+
+  /// Where the runner is now (with a fresh fix only): the app picks the event
+  /// course by its nearest known start. In memory only; nothing is stored
+  /// until the run records.
+  double? lat;
+  double? lon;
 
   /// That fix's accuracy (m); null without a fresh fix.
   double? accuracyM;

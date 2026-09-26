@@ -1777,6 +1777,13 @@ data class CueEvent (
 data class GpsProbeEvent (
   /** A location arrived within the last 5 s. */
   val fix: Boolean,
+  /**
+   * Where the runner is now (with a fresh fix only): the app picks the event
+   * course by its nearest known start. In memory only; nothing is stored
+   * until the run records.
+   */
+  val lat: Double? = null,
+  val lon: Double? = null,
   /** That fix's accuracy (m); null without a fresh fix. */
   val accuracyM: Double? = null,
   /** How long ago the last fix arrived; null if none yet. */
@@ -1786,14 +1793,18 @@ data class GpsProbeEvent (
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): GpsProbeEvent {
       val fix = pigeonVar_list[0] as Boolean
-      val accuracyM = pigeonVar_list[1] as Double?
-      val fixAgeMs = pigeonVar_list[2] as Long?
-      return GpsProbeEvent(fix, accuracyM, fixAgeMs)
+      val lat = pigeonVar_list[1] as Double?
+      val lon = pigeonVar_list[2] as Double?
+      val accuracyM = pigeonVar_list[3] as Double?
+      val fixAgeMs = pigeonVar_list[4] as Long?
+      return GpsProbeEvent(fix, lat, lon, accuracyM, fixAgeMs)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       fix,
+      lat,
+      lon,
       accuracyM,
       fixAgeMs,
     )
@@ -1806,12 +1817,14 @@ data class GpsProbeEvent (
       return true
     }
     val other = other as GpsProbeEvent
-    return PlatformApiPigeonUtils.deepEquals(this.fix, other.fix) && PlatformApiPigeonUtils.deepEquals(this.accuracyM, other.accuracyM) && PlatformApiPigeonUtils.deepEquals(this.fixAgeMs, other.fixAgeMs)
+    return PlatformApiPigeonUtils.deepEquals(this.fix, other.fix) && PlatformApiPigeonUtils.deepEquals(this.lat, other.lat) && PlatformApiPigeonUtils.deepEquals(this.lon, other.lon) && PlatformApiPigeonUtils.deepEquals(this.accuracyM, other.accuracyM) && PlatformApiPigeonUtils.deepEquals(this.fixAgeMs, other.fixAgeMs)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.fix)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.lat)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.lon)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.accuracyM)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.fixAgeMs)
     return result

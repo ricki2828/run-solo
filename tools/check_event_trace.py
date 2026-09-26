@@ -38,7 +38,7 @@ REQUIRED_KINDS = {"tick", "lap", "phase", "state", "status", "cue"}
 KNOWN_SHAPES = {
     "fault": {"t": {"int"}, "kind": {"str"}, "fault": {"str"}, "message": {"str"}},
     # Pre-start GPS probe (Start screen only; never during a run).
-    "gpsProbe": {"t": {"int"}, "kind": {"str"}, "fix": {"bool"}, "accuracyM": {"num"}, "fixAgeMs": {"int"}},
+    "gpsProbe": {"t": {"int"}, "kind": {"str"}, "fix": {"bool"}, "lat": {"num"}, "lon": {"num"}, "accuracyM": {"num"}, "fixAgeMs": {"int"}},
 }
 
 

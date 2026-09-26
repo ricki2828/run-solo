@@ -56,9 +56,12 @@ class GpsProbeTest {
         idle(1_000)
         assertTrue(events.last().fix)
         assertEquals(6.0, events.last().accuracyM!!, 0.0)
+        assertEquals(-33.8, events.last().lat!!, 0.0)
+        assertEquals(151.2, events.last().lon!!, 0.0)
         idle(6_000) // no fix for more than 5 s
         assertFalse("a stale fix is not ready", events.last().fix)
         assertNull(events.last().accuracyM)
+        assertNull("no stale position either", events.last().lat)
         p.stop()
         p.stop()
         assertEquals(1, src.stops)

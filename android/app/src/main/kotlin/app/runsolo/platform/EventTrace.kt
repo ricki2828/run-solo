@@ -100,6 +100,8 @@ object EventTrace {
             is GpsProbeEvent -> {
                 m["kind"] = "gpsProbe"
                 m["fix"] = e.fix
+                m["lat"] = e.lat
+                m["lon"] = e.lon
                 m["accuracyM"] = e.accuracyM
                 m["fixAgeMs"] = e.fixAgeMs
             }
