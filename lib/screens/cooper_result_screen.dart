@@ -16,8 +16,9 @@ import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/max_hr.dart';
 import '../theme/theme.dart';
-import '../widgets/chrome.dart';
 import '../widgets/board_chips.dart';
+import '../widgets/chrome.dart';
+import '../widgets/coaching.dart';
 import '../widgets/vo2_trend.dart';
 import 'run_detail_screen.dart';
 import 'settings_screen.dart' show kOpenMeteoAttribution;
@@ -215,6 +216,12 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                         fontWeight: FontWeight.w500,
                       ),
                     ),
+                  // A10.6: on the test result, coaching sits under the
+                  // rank chip (the flat-VO2 suggestion lands here).
+                  CoachingSection(
+                    runId: d.run.id,
+                    padding: const EdgeInsets.only(top: Space.x16),
+                  ),
                   if (upTo.length >= 2) ...[
                     const SizedBox(height: Space.x16),
                     Text(

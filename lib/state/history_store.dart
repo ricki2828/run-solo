@@ -24,6 +24,7 @@ import '../platform/fake_gateway.dart';
 import '../platform/gateway.dart';
 import '../platform/session_codec.dart';
 import 'boards.dart';
+import 'coaching.dart';
 import 'run_index.dart';
 import 'sidecar_writer.dart';
 
@@ -258,6 +259,11 @@ abstract class HistoryStore {
   /// A fold made before the background batch has built some run's best
   /// efforts says so ([Boards.updating]); fold again on [derivedChanged].
   Future<Boards> boards();
+
+  /// CR2: after-run coaching and Home's "try next" over the same entries
+  /// as [boards]; a run without derived data yet has none (fold again on
+  /// [derivedChanged]).
+  Future<Coaching> coaching();
 
   /// Fires each time a background batch writes derived data (best efforts)
   /// into the index, however long after the run it lands (#71 review P1):
@@ -582,9 +588,15 @@ class MemoryRunStore implements RunStore {
   }
 
   @override
-  Future<Boards> boards() async {
+  Future<Boards> boards() async => Boards.fold(_entries());
+
+  @override
+  Future<Coaching> coaching() async => Coaching.fold(_entries());
+
+  /// What the index would hold for every run (boards, coaching).
+  List<RunIndexEntry> _entries() {
     final analyses = _analyse();
-    return Boards.fold([
+    return [
       for (final f in files.where((f) => !_deleted.contains(f.id)))
         if (analyses[f.id] case final a?)
           if (RunIndexEntry.of(
@@ -599,7 +611,7 @@ class MemoryRunStore implements RunStore {
             underived.contains(f.id)
                 ? e
                 : e.withDerived(RunIndexEntry.deriveOrNull(f, a)),
-    ]);
+    ];
   }
 
   @override
@@ -1128,6 +1140,10 @@ class FileRunStore implements RunStore {
   @override
   Future<Boards> boards() async =>
       Boards.fold((await _refresh()).entries.values);
+
+  @override
+  Future<Coaching> coaching() async =>
+      Coaching.fold((await _refresh()).entries.values);
 
   /// Bumps once per batch written.
   final ValueNotifier<int> _derivedChanged = ValueNotifier(0);
