@@ -439,6 +439,13 @@ jobs:
       # AVD snapshot cache (reactivecircus pattern): a miss boots once and saves a snapshot; a
       # hit cold-loads it, and the test boot never saves back (-no-snapshot-save), so every run
       # starts from the same clean snapshot.
+      # The system image (~50 s of install per job) is cached on its own key; sdkmanager skips an
+      # installed package, so a hit goes straight to AVD creation or snapshot load.
+      - name: System image cache
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/system-images/android-${{ matrix.api-level }}/google_apis/x86_64
+          key: sysimg-${{ matrix.api-level }}-google_apis-x86_64-v1
       - name: AVD cache
         uses: actions/cache@v4
         id: avd-cache
@@ -513,6 +520,13 @@ jobs:
       # AVD snapshot cache (reactivecircus pattern): a miss boots once and saves a snapshot; a
       # hit cold-loads it, and the test boot never saves back (-no-snapshot-save), so every run
       # starts from the same clean snapshot.
+      # The system image (~50 s of install per job) is cached on its own key; sdkmanager skips an
+      # installed package, so a hit goes straight to AVD creation or snapshot load.
+      - name: System image cache
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/system-images/android-34/google_apis/x86_64
+          key: sysimg-34-google_apis-x86_64-v1
       - name: AVD cache
         uses: actions/cache@v4
         id: avd-cache
@@ -568,6 +582,13 @@ jobs:
       # AVD snapshot cache (reactivecircus pattern): a miss boots once and saves a snapshot; a
       # hit cold-loads it, and the test boot never saves back (-no-snapshot-save), so every run
       # starts from the same clean snapshot.
+      # The system image (~50 s of install per job) is cached on its own key; sdkmanager skips an
+      # installed package, so a hit goes straight to AVD creation or snapshot load.
+      - name: System image cache
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/system-images/android-36/google_apis/x86_64
+          key: sysimg-36-google_apis-x86_64-v1
       - name: AVD cache
         uses: actions/cache@v4
         id: avd-cache
