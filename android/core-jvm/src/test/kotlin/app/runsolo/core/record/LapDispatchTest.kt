@@ -18,7 +18,7 @@ class LapDispatchTest {
     @Test
     fun `a manual lap and its phase change wait for the next tick, lap first, at the interpolated distance`() {
         dispatch.ticked(1_000, 10.0)
-        dispatch.lap(lap(0, 1_250, LapSource.button), 10.0)
+        dispatch.lap(lap(0, 1_250, LapSource.button), 1_250, 10.0)
         dispatch.phase(phase(1_250, Phase.recovery))
         assertEquals(emptyList(), events)
         dispatch.flush(2_000, 14.0)
@@ -26,9 +26,9 @@ class LapDispatchTest {
     }
 
     @Test
-    fun `an auto lap and its phase change go out at once`() {
+    fun `an auto lap and its phase change go out at once, the lap at its back-dated crossing`() {
         dispatch.ticked(1_000, 10.0)
-        dispatch.lap(lap(0, 1_600, LapSource.auto), 12.4)
+        dispatch.lap(lap(0, 1_600, LapSource.auto), 2_000, 14.0) // crossed 60% into the tick
         dispatch.phase(phase(1_600, Phase.work))
         assertEquals(listOf("lap0@12.4", "phase work"), events)
         dispatch.flush(2_000, 14.0)

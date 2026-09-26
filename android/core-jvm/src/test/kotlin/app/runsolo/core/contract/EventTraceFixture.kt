@@ -132,7 +132,7 @@ object EventTraceFixture {
                         writer.append(JournalLine.Lap(o.t, W0 + o.t, o.source))
                         // As RecordingSession: a manual lap goes out at the next tick, at its interpolated
                         // distance, and the phase change it caused waits with it (lap first).
-                        dispatch.lap(o, ticker.distanceM)
+                        dispatch.lap(o, t, ticker.distanceM)
                     }
                     is RecorderCore.Output.Cue -> {
                         writer.append(JournalLine.Cue(o.t, W0 + o.t, o.kind))

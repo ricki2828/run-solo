@@ -6,10 +6,12 @@ import app.runsolo.core.model.LapSource
  * When the live lap and phase events go out (PR #26 review P3), shared by `RecordingSession` and
  * the event-trace generator so the byte-for-byte trace proves the service's real ordering.
  *
- * A manual lap (button, notification, volume key, START REPS) is pressed between two ticks, so it
- * waits for the next tick and gets its distance interpolated at the press time from the two ticks
- * around it, as the run file and engine read it. The phase change the lap caused waits with it, so
- * the app always sees a lap before its phase change. Auto laps land on a tick and go out at once.
+ * Every lap's distance is the tick-stream total interpolated at the lap time, as the run file and
+ * engine read it (BLOCK-2). An auto lap is emitted inside the tick that crossed its boundary, with
+ * its time back-dated to the crossing, so it goes out at once at the distance interpolated between
+ * the previous tick and this one. A manual lap (button, notification, volume key, START REPS) is
+ * pressed between two ticks, so it waits for the next tick; the phase change it caused waits with
+ * it, so the app always sees a lap before its phase change.
  *
  * The caller journals and speaks; this only decides the order and the lap's distance.
  */
@@ -21,9 +23,9 @@ class LapDispatch(
     private var prevTickT = 0L
     private var prevTickD = 0.0
 
-    /** A lap from the core; [distanceM] is the distance as of the last tick. */
-    fun lap(o: RecorderCore.Output.Lap, distanceM: Double) {
-        if (o.source == LapSource.auto) onLap(o, distanceM) else pending.add(o)
+    /** A lap from the core, during the tick (or press) at [t] with the ticker at [distanceM]. */
+    fun lap(o: RecorderCore.Output.Lap, t: Long, distanceM: Double) {
+        if (o.source == LapSource.auto) onLap(o, interpolate(o.t, t, distanceM)) else pending.add(o)
     }
 
     fun phase(o: RecorderCore.Output.PhaseChanged) {

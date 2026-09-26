@@ -565,7 +565,7 @@ class RecordingSession(
                 is RecorderCore.Output.Lap -> {
                     writer.append(JournalLine.Lap(o.t, System.currentTimeMillis(), o.source))
                     lapCount = o.index + 1
-                    dispatch.lap(o, ticker.distanceM)
+                    dispatch.lap(o, t, ticker.distanceM)
                 }
                 is RecorderCore.Output.Cue -> {
                     writer.append(JournalLine.Cue(o.t, System.currentTimeMillis(), o.kind))
