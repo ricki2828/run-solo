@@ -62,4 +62,58 @@ class CueWordsTest {
         assertEquals("5 minutes. Heading for about 2,800. VO2 about 51.", say(CueKind.projection, SessionSpec.COOPER, Phase.work, 1, 0, 2_801.0, 5))
         assertEquals("2 minutes. Heading for about 3,690. VO2 about 71.", say(CueKind.projection, SessionSpec.COOPER, Phase.work, 1, 0, 3_690.9, 2))
     }
+
+    @Test
+    fun `a goal or the timed 5 km starts with its name, never Rep 1 of 1`() {
+        fun start(spec: SessionSpec) = CueWords.text(CueKind.start, null, spec, Phase.work, 1, 0)
+        assertEquals("10K. Go", start(SessionSpec.goalDistance(10_000, "10K")))
+        assertEquals("Half marathon. Go", start(SessionSpec.goalDistance(21_097, "Half marathon")))
+        assertEquals("30 min. Go", start(SessionSpec.goalTime(1_800, "30 min")))
+        assertEquals("5K time trial. Go", start(app.runsolo.core.replay.ReplayScenarios.PARKRUN))
+        assertEquals("Rep 1 of 8, 400 metres", start(eight400), "a one-of-many distance rep is unchanged")
+        // The engine's spoken name wins over the compact UI name.
+        assertEquals("30 minutes. Go", start(SessionSpec.goalTime(1_800, "30 min").copy(spokenName = "30 minutes")))
+        assertEquals("10 K. Go", start(SessionSpec.goalDistance(10_000, "10K").copy(spokenName = "10 K")))
+    }
+
+    @Test
+    fun `the goal-reached line says the spoken name`() {
+        val spec = SessionSpec.goalTime(1_800, "30 min").copy(spokenName = "30 minutes")
+        val g = app.runsolo.core.live.GoalCoach(spec, null).atCue(CueKind.phaseEnd, Phase.cooldown, RecorderCore.StepEnd(0, 1_800_000, 7_210.0))
+        assertEquals("30 minutes done, 7.21 km.", g!!.text)
+    }
+
+    @Test
+    fun `spokenName - after name in the session JSON, left out when null, round trips`() {
+        val plain = SessionSpec.goalDistance(10_000, "10K")
+        assertEquals(false, "spokenName" in plain.toJson(), "older files stay byte for byte")
+        val spoken = plain.copy(spokenName = "10 K")
+        assertEquals(listOf("templateId", "templateVersion", "name", "spokenName", "warmupSeconds"), spoken.toJson().keys.take(5))
+        assertEquals(spoken, SessionSpec.fromJson(spoken.toJson()))
+        assertEquals(plain, SessionSpec.fromJson(plain.toJson()))
+    }
+
+    /** The timed 5 km's end line, pinned (lead 26-Sep): the result against its board, never "Cool down". */
+    @Test
+    fun `the timed 5 km ends with its result line - new best, seconds off, level, no board`() {
+        val event = app.runsolo.core.replay.ReplayScenarios.PARKRUN
+        fun board(vararg ms: Long) = app.runsolo.core.model.LiveContext(
+            boards = listOf(
+                app.runsolo.core.model.LiveBoard(
+                    "${SessionSpec.EVENT_ID}:c-1", "5K time trial", app.runsolo.core.model.LiveBoardKind.distance, 5_000.0,
+                    ms.mapIndexed { i, m -> app.runsolo.core.model.LiveEntry("r$i", 0, fromStartSplitsMs = List(5) { k -> m * (k + 1) / 5 }, finalMetric = m.toDouble()) },
+                ),
+            ),
+            builtAtMs = 0, engineVersion = 3,
+        )
+        fun end(ctx: app.runsolo.core.model.LiveContext?, activeMs: Long) =
+            app.runsolo.core.live.GoalCoach(event, ctx).atCue(CueKind.phaseEnd, Phase.cooldown, RecorderCore.StepEnd(0, activeMs, 5_000.0))!!.text
+        assertNull(CueWords.text(CueKind.phaseEnd, null, event, Phase.cooldown, 1, null), "no \"Done. Cool down\": the run stops")
+        assertEquals("5K time trial done, 23:40, new best.", end(board(1_440_000, 1_500_000), 1_420_000))
+        assertEquals("5K time trial done, 23:52, 12 seconds off your best.", end(board(1_420_000, 1_500_000), 1_432_000))
+        assertEquals("5K time trial done, 23:41, 1 second off your best.", end(board(1_420_000), 1_421_000))
+        assertEquals("5K time trial done, 23:40, level with your best.", end(board(1_420_000), 1_420_000))
+        assertEquals("5K time trial done, 23:40.", end(null, 1_420_000))
+        assertEquals("5K time trial done, 23:40.", end(board(1_440_000).copy(boards = emptyList()), 1_420_000))
+    }
 }

@@ -488,8 +488,36 @@ class RecordingController extends ChangeNotifier {
   /// manual lap; the engine flags the rep if the gap was long (W3).
   Future<void> endRep() =>
       _snap.distanceStep ? _gateway.lap(LapSource.button) : Future.value();
-  Future<void> pause() => _gateway.pause();
+  Future<void> pause() {
+    _pausedAtMs ??= displayElapsedMs;
+    return _gateway.pause();
+  }
+
   Future<void> resume() => _gateway.resume();
+
+  /// TOTAL when the current pause began (the in-app PAUSE, STOP, or a
+  /// pause seen on a tick, e.g. the notification's); null while recording
+  /// or when the pause began before this screen attached. A run stopped
+  /// while paused ends here (#88), so the finish screen shows this.
+  int? get pausedAtElapsedMs => _snap.paused ? _pausedAtMs : null;
+  int? _pausedAtMs;
+
+  void _trackPause(RecorderState next) {
+    if (next == RecorderState.recording) {
+      _pausedAtMs = null;
+    } else if (next == RecorderState.paused && _snap.recording) {
+      _pausedAtMs ??= _snap.elapsedMs;
+    }
+  }
+
+  /// DISCARD on the finish screen (confirmed): the live run is dropped, no
+  /// run file, journal deleted (native). Throws what the platform throws.
+  Future<void> discard() async {
+    await _gateway.discard();
+    unawaited(_zoneMemento.save(null));
+    _snap = _snap.copyWith(state: RecorderState.idle);
+    notifyListeners();
+  }
 
   /// Throws what the platform throws; the screen decides what to show.
   Future<String?> stop() async {
@@ -551,6 +579,7 @@ class RecordingController extends ChangeNotifier {
   }
 
   void _onTick(TickEvent t) {
+    _trackPause(t.state);
     _lastTickAt = _now();
     final last = _lastTickElapsedMs;
     if (last != null && t.state == RecorderState.paused && _snap.paused) {
@@ -728,6 +757,7 @@ class RecordingController extends ChangeNotifier {
   }
 
   void _onState(StateEvent s) {
+    _trackPause(s.state);
     _snap = _snap.copyWith(state: s.state, runId: s.runId, phase: s.phase);
     // Idle is final: the run is finalised, nothing left to read (and a late
     // read could still answer `finalising`).

@@ -172,4 +172,25 @@ class FinaliseReconcileTest {
     fun `unsafe ids are refused`() {
         assertFailsWith<IllegalArgumentException> { Finaliser(fs).finalise("../x", now, activeRunId = null) }
     }
+
+    /** #88 review P3: a killed run finalised much later ends at its journal's last wall time, or at its pause. */
+    @Test
+    fun `a killed run finalised an hour later ends at its last journaled line, or at the pause it was in`() {
+        writeJournal("killed")
+        Finaliser(fs).finalise("killed", w0 + 3_600_000, activeRunId = null)
+        val m = RunFile.readJson(fs.readBytes(RunPaths.runFile("killed")))
+        assertEquals(java.time.Instant.ofEpochMilli(w0 + 3000).toString(), m["end"], "the last line, not the recovery")
+
+        writeJournal("paused")
+        val tail = listOf(
+            JournalLine.Pause(t0 + 4000, w0 + 4000),
+            JournalLine.Sample(t0 + 5000, w0 + 5000, 0.0, 0.002, null, 5.0, null, null),
+            JournalLine.Sample(t0 + 6000, w0 + 6000, 0.0, 0.003, null, 5.0, null, null),
+        )
+        fs.openAppend(RunPaths.journal("paused")).use { a -> for (l in tail) a.write((JournalCodec.encode(l) + "\n").toByteArray()) }
+        Finaliser(fs).finalise("paused", w0 + 3_600_000, activeRunId = null)
+        val p = RunFile.readJson(fs.readBytes(RunPaths.runFile("paused")))
+        assertEquals(java.time.Instant.ofEpochMilli(w0 + 4000).toString(), p["end"], "killed while paused: ends at the pause")
+        assertEquals(emptyList<Any?>(), p["pauses"])
+    }
 }

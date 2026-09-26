@@ -173,6 +173,7 @@ class SessionSpec {
     this.hrBandLow,
     this.hrBandHigh,
     required this.steps,
+    this.spokenName,
   });
   String templateId;
   int templateVersion;
@@ -193,6 +194,11 @@ class SessionSpec {
   double? hrBandLow;
   double? hrBandHigh;
   List<SessionStep> steps;
+
+  /// What the voice calls the session when it differs from the compact
+  /// [name] the UI shows (goals: "30 minutes" for "30 min"); the engine fills
+  /// it. Null = say [name].
+  String? spokenName;
 }
 
 /// Which kind of board a run races live (Phase 4 §3.2). `distanceInTime`
@@ -229,7 +235,8 @@ class LiveEntry {
 }
 
 /// A board the live compare ranks against: at most 20 entries (top 10 +
-/// last 10, deduped). The app only sends a board with 2 or more entries.
+/// last 10, deduped). The app sends a race board with 2 or more entries; a
+/// goal's board may have 1 (a second Half can still be a new best, #78).
 class LiveBoard {
   LiveBoard({
     required this.key,
@@ -404,6 +411,7 @@ class RecorderStatus {
     this.stepRemainingMs,
     this.stepRemainingM,
     required this.journalOk,
+    this.pausedAtElapsedMs,
   });
   RecorderState state;
   String? runId;
@@ -428,6 +436,10 @@ class RecorderStatus {
   /// Metres left in a distance step (I2; null until then).
   double? stepRemainingM;
   bool journalOk;
+
+  /// Paused: the elapsed time the pause began at (the finish screen's end
+  /// time), also after a kill and restore. Null when not paused.
+  int? pausedAtElapsedMs;
 }
 
 /// An in-progress journal found on app open without a finalised run file.

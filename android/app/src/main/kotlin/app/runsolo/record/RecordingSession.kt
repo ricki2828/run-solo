@@ -402,6 +402,7 @@ class RecordingSession(
             when (r.presses[replayLapsPressed++].press) {
                 ReplayScenarios.Press.lap -> lap(LapSource.notification)
                 ReplayScenarios.Press.startReps -> startReps()
+                ReplayScenarios.Press.pause -> pause()
             }
         }
         // Sample first: the core's distance steps need this second's distance (Phase 3 §3.6).
@@ -737,6 +738,11 @@ class RecordingSession(
      */
     private fun publishGoal(g: GoalCoach.Reached) {
         cues.goal(g.text)
+        // The timed 5 km says its result line and stops: no goal card, no cool-down.
+        if (spec?.isEvent == true) {
+            Log.i(TAG, "event finished: ${g.text} interrupted=${g.interrupted}")
+            return
+        }
         RecorderEventBus.emit(
             GoalEvent(
                 distanceGoal = g.distanceGoal, goalValue = g.goalValue.toLong(), timeMs = g.timeMs, distanceM = g.distanceM,
@@ -818,6 +824,7 @@ class RecordingSession(
             stepRemainingMs = st.stepRemainingMs,
             stepRemainingM = st.stepRemainingM,
             journalOk = writer.ok,
+            pausedAtElapsedMs = core.pausedAtElapsedMs,
         )
     }
 

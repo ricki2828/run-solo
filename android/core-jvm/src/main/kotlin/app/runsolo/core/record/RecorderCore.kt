@@ -136,6 +136,9 @@ class RecorderCore(
     private var startT = 0L
     private var pausedTotalMs = 0L
     private var pauseStartT: Long? = null
+
+    /** Elapsed run time at which the open pause began (null when not paused); restore rebuilds it from the journal. */
+    val pausedAtElapsedMs: Long? get() = pauseStartT?.takeIf { state == RecorderState.paused }?.let { elapsedAt(it) }
     private var lastT = 0L
 
     /** Distance (m) and device time of the last tick: the interpolation base for distance boundaries. */

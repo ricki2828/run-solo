@@ -517,6 +517,21 @@ void main() {
       );
     });
 
+    /// A timed 5 km on course c-1 in [secs].
+    LiveCandidate eventRun(int n, int secs) {
+      final f = freeRun(n, secs, km: 5);
+      return LiveCandidate(
+        BoardInput(
+          runId: 'event-$n',
+          date: f.input.date,
+          mode: RunMode.intervals,
+          comparisonKey: 'parkrun:c-1', // event-name-ok: data key
+          efforts: f.input.efforts,
+        ),
+        f.derived,
+      );
+    }
+
     // Shared with core-jvm GoalCoachFixtureTest: the goal board keys and a
     // Dart-built LiveContext per goal, as the native journal JSON.
     // UPDATE_GOAL_FIXTURE=1 rewrites it.
@@ -578,6 +593,17 @@ void main() {
             mode: RunMode.intervals,
             session: SessionSpec.goalTime(1800, '30 min'),
             runs: [thirtyMin(1, 6100), thirtyMin(2, 6300)],
+          ),
+        ),
+        // The timed 5 km on a known course (#83 review): its course board,
+        // best 24:00, for GoalCoach's end line.
+        'event': ctx(
+          LivePlanner.plan(
+            mode: RunMode.intervals,
+            session: SessionSpec.parkrun(EventNames.generic.parkrun),
+            courseKey: 'parkrun:c-1', // event-name-ok: data key
+            runs: [eventRun(1, 1440), eventRun(2, 1500)],
+            names: EventNames.generic,
           ),
         ),
       };

@@ -51,4 +51,18 @@ class GoalCoachFixtureTest {
         assertTrue(reached(goal, ctx, 1_800_000, 6_301.0).newBest)
         assertFalse(reached(goal, ctx, 1_800_000, 6_299.0).newBest)
     }
+
+    /** #83 review: the event ranks on its course board (the engine's `parkrun:<courseId>`), in ms, before any 5K board. */
+    @Test
+    fun `the timed 5 km ends against its course board - new best, seconds off, level`() {
+        val event = app.runsolo.core.replay.ReplayScenarios.PARKRUN
+        val ctx = ctx("event")
+        assertTrue(ctx.boards.single().key.startsWith("${SessionSpec.EVENT_ID}:"))
+        assertEquals("5K time trial done, 23:50, new best.", reached(event, ctx, 1_430_000, 5_000.0).text)
+        assertEquals("5K time trial done, 24:12, 12 seconds off your best.", reached(event, ctx, 1_452_000, 5_000.0).text)
+        assertEquals("5K time trial done, 24:00, level with your best.", reached(event, ctx, 1_440_000, 5_000.0).text)
+        // A 5K board next to it never wins: the course's is the event's board.
+        val with5k = ctx.copy(boards = listOf(ctx.boards.single().copy(key = "be:5000", entries = ctx.boards.single().entries.map { it.copy(finalMetric = 1_000_000.0) })) + ctx.boards)
+        assertEquals("5K time trial done, 23:50, new best.", reached(event, with5k, 1_430_000, 5_000.0).text)
+    }
 }
