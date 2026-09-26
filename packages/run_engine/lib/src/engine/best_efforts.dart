@@ -21,7 +21,7 @@ enum BestEffortDistance {
   /// Cumulative splits are taken every this many metres inside the window.
   final double splitEveryM;
 
-  static const String keyPrefix = 'be:';
+  static const String keyPrefix = ComparisonKey.reservedBoardPrefix;
 
   static BestEffortDistance? ofKey(String key) {
     for (final d in values) {

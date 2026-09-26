@@ -13,6 +13,8 @@ export 'src/engine/parkrun_courses.dart';
 export 'src/engine/fix_laps.dart';
 export 'src/engine/format.dart';
 export 'src/engine/hr_zone.dart';
+export 'src/engine/leaderboards.dart';
+export 'src/engine/live_figures.dart';
 export 'src/engine/max_hr.dart';
 export 'src/engine/metrics.dart';
 export 'src/engine/predictor.dart';

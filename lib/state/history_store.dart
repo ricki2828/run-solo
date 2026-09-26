@@ -13,6 +13,7 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:run_engine/run_engine.dart' as engine;
@@ -527,8 +528,85 @@ class FileRunStore implements RunStore {
       }
       final text = RunIndex(next).encode();
       await sidecars.replaceText('index.json', indexFile, (_) => text);
+      _queueDerived(next, scanned, analyses);
     } catch (e) {
       debugPrint('index: not updated ($e)');
+    }
+  }
+
+  /// Builds Phase 4 derived data for [jobs] (run, analysis) and returns it
+  /// by run id (null = it threw). Default: one background isolate per
+  /// batch, never the UI isolate (plan WARN-3; ~50 ms per 2 h run, ~10 s
+  /// for 200 runs after an engine bump). Test seam.
+  @visibleForTesting
+  Future<Map<String, engine.RunDerived?>> Function(
+    List<(engine.RunFile, engine.RunAnalysis)> jobs,
+  )
+  deriveBatch = _deriveInIsolate;
+
+  static Future<Map<String, engine.RunDerived?>> _deriveInIsolate(
+    List<(engine.RunFile, engine.RunAnalysis)> jobs,
+  ) => Isolate.run(
+    () => {
+      for (final (run, a) in jobs) run.id: RunIndexEntry.deriveOrNull(run, a),
+    },
+  );
+
+  Future<void>? _deriving;
+
+  /// Completes when no derived-data batch is running (tests, diagnostics).
+  @visibleForTesting
+  Future<void> get derivedIdle => _deriving ?? Future<void>.value();
+
+  /// Starts one background batch for every entry still missing derived
+  /// data. `list()` never waits for it: boards fill in when it lands. One
+  /// batch at a time; a list during a batch leaves the rest to the next.
+  void _queueDerived(
+    Map<String, RunIndexEntry> entries,
+    Map<String, (engine.RunFile, engine.RunSidecar?, File)> scanned,
+    Map<String, engine.RunAnalysis> analyses,
+  ) {
+    if (_deriving != null) return;
+    final jobs = <(engine.RunFile, engine.RunAnalysis)>[];
+    final at = <String, RunIndexEntry>{};
+    for (final e in entries.entries) {
+      final a = analyses[e.key];
+      if (e.value.derived != null || e.value.derivedFailed || a == null) {
+        continue;
+      }
+      jobs.add((scanned[e.key]!.$1, a));
+      at[e.key] = e.value;
+    }
+    if (jobs.isEmpty) return;
+    _deriving = _fillDerived(jobs, at).whenComplete(() => _deriving = null);
+  }
+
+  Future<void> _fillDerived(
+    List<(engine.RunFile, engine.RunAnalysis)> jobs,
+    Map<String, RunIndexEntry> at,
+  ) async {
+    try {
+      final built = await deriveBatch(jobs);
+      // The store's directory can be gone by now (a test tore it down).
+      if (!await indexFile.parent.exists()) return;
+      await sidecars.replaceText('index.json', indexFile, (current) {
+        final index = RunIndex.decode(current);
+        var changed = false;
+        final next = {...index.entries};
+        for (final r in built.entries) {
+          final now = next[r.key];
+          final then = at[r.key];
+          // Only onto the same version of the entry it was built from; a
+          // run edited meanwhile is rebuilt and queued again.
+          if (now == null || then == null || !now.sameStampAs(then)) continue;
+          if (now.derived != null) continue;
+          next[r.key] = now.withDerived(r.value);
+          changed = true;
+        }
+        return changed ? RunIndex(next).encode() : null;
+      });
+    } catch (e) {
+      debugPrint('index: derived data not built ($e)');
     }
   }
 

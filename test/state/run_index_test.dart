@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -59,9 +60,78 @@ void main() {
     expect(RunIndex.decode(index.encode()).entries[r2.id], e);
   });
 
+  test('Phase 4 derived data is built in the background isolate after '
+      'list() (LB2, WARN-3)', () async {
+    final r1 = fourByFourFile(n: 1, start: d1);
+    final store = await storeWith([r1]);
+    await store.list();
+    await store.derivedIdle;
+    final e = (await store.readIndex()).entries[r1.id]!;
+    expect(e.derived, isNotNull);
+    expect(e.derivedFailed, isFalse);
+    expect(e.derived!.live.repPacesSecPerKm, hasLength(4));
+    expect(e.derived!.bestEfforts.fromStartSplitsMs, isEmpty);
+    expect(rawEntry(store, r1.id)['derived'], isA<Map<String, Object?>>());
+    expect(
+      RunIndex.decode((await store.readIndex()).encode()).entries[r1.id],
+      e,
+    );
+  });
+
+  test('list() never waits for a slow derived builder', () async {
+    final r1 = fourByFourFile(n: 1, start: d1);
+    final store = await storeWith([r1]);
+    final gate = Completer<Map<String, engine.RunDerived?>>();
+    var calls = 0;
+    store.deriveBatch = (jobs) {
+      calls++;
+      return gate.future;
+    };
+    final sw = Stopwatch()..start();
+    final runs = await store.list();
+    expect(runs, hasLength(1));
+    expect(calls, 1);
+    expect(
+      (await store.readIndex()).entries[r1.id]!.derived,
+      isNull,
+      reason: 'list() returned before the builder finished',
+    );
+    // A second list during the batch starts no second batch.
+    await store.list();
+    expect(calls, 1);
+    gate.complete({
+      r1.id: engine.RunDerived(bestEfforts: engine.RunBestEfforts.none),
+    });
+    await store.derivedIdle;
+    expect((await store.readIndex()).entries[r1.id]!.derived, isNotNull);
+    expect(sw.elapsed, lessThan(const Duration(seconds: 30)));
+  });
+
+  test('a builder failure is counted and not retried until the run '
+      'changes', () async {
+    final r1 = fourByFourFile(n: 1, start: d1);
+    final store = await storeWith([r1]);
+    var calls = 0;
+    store.deriveBatch = (jobs) async {
+      calls++;
+      return {for (final (run, _) in jobs) run.id: null};
+    };
+    await store.list();
+    await store.derivedIdle;
+    final e = (await store.readIndex()).entries[r1.id]!;
+    expect(e.derived, isNull);
+    expect(e.derivedFailed, isTrue);
+    expect(rawEntry(store, r1.id)['derived_failed'], isTrue);
+    await store.list();
+    await store.derivedIdle;
+    expect(calls, 1);
+  });
+
   test('a second list() with nothing changed does not rewrite it', () async {
     final store = await storeWith([fourByFourFile(n: 1, start: d1)]);
     await store.list();
+    // The one background write that adds the Phase 4 derived data.
+    await store.derivedIdle;
     final text = store.indexFile.readAsStringSync();
     final stamp = store.indexFile.statSync().modified;
     await Future<void>.delayed(const Duration(milliseconds: 1100));

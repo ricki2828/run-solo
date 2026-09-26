@@ -44,6 +44,8 @@ class RunIndexEntry {
     this.tempC,
     this.dewPointC,
     this.heatAdj,
+    this.derived,
+    this.derivedFailed = false,
   });
 
   final String id;
@@ -81,6 +83,31 @@ class RunIndexEntry {
   /// Slowdown fraction; null when not ok or too hot to compare.
   final double? heatAdj;
 
+  /// Phase 4 per-run data (LB2, plan §3.1): best efforts, from-start splits,
+  /// live rep paces, Cooper minute marks, fired nudges. Boards fold over
+  /// it. Filled in the background after `list()` (WARN-3), so null until
+  /// then, and null when the run could not be analysed.
+  final engine.RunDerived? derived;
+
+  /// Building [derived] threw for this entry: it stays off the boards and
+  /// is not retried until the entry is rebuilt. Kept in the file so a
+  /// systematic bug shows up as a count, not silently as "no boards".
+  final bool derivedFailed;
+
+  RunIndexEntry withDerived(engine.RunDerived? d) => RunIndexEntry.fromJson({
+    ...toJson(),
+    'derived': d?.toJson(),
+    'derived_failed': d == null,
+  });
+
+  /// Same run file, sidecar and engine as [o] (built from the same inputs).
+  bool sameStampAs(RunIndexEntry o) =>
+      engineVersion == o.engineVersion &&
+      runMtimeMs == o.runMtimeMs &&
+      runBytes == o.runBytes &&
+      sidecarMtimeMs == o.sidecarMtimeMs &&
+      sidecarHash == o.sidecarHash;
+
   /// Fresh when the run file, the sidecar and the engine are all unchanged.
   bool isFresh(FileStamp s) =>
       engineVersion == engine.engineVersion &&
@@ -110,6 +137,8 @@ class RunIndexEntry {
     'temp_c': tempC,
     'dew_point_c': dewPointC,
     'adj': heatAdj,
+    'derived': derived?.toJson(),
+    if (derivedFailed) 'derived_failed': true,
   };
 
   factory RunIndexEntry.fromJson(Map<String, Object?> j) => RunIndexEntry(
@@ -140,6 +169,10 @@ class RunIndexEntry {
     tempC: (j['temp_c'] as num?)?.toDouble(),
     dewPointC: (j['dew_point_c'] as num?)?.toDouble(),
     heatAdj: (j['adj'] as num?)?.toDouble(),
+    derived: j['derived'] == null
+        ? null
+        : engine.RunDerived.fromJson(j['derived']! as Map<String, Object?>),
+    derivedFailed: j['derived_failed'] == true,
   );
 
   /// Built from a fresh analysis ([a] null when the run could not be
@@ -183,6 +216,20 @@ class RunIndexEntry {
       dewPointC: weather?.dewPointC,
       heatAdj: weather?.adj,
     );
+  }
+
+  /// The derived data for one run, or null when building it threw (~50 ms
+  /// for a 2 h run on the A-series phone). Runs in the background isolate.
+  static engine.RunDerived? deriveOrNull(
+    engine.RunFile run,
+    engine.RunAnalysis a,
+  ) {
+    try {
+      return engine.RunDerived.of(run, a);
+    } catch (e) {
+      debugPrint('index: no derived data for ${run.id} ($e)');
+      return null;
+    }
   }
 
   @override
@@ -230,6 +277,9 @@ class FileStamp {
 class RunIndex {
   const RunIndex(this.entries);
 
+  /// Phase 4 `derived` is an optional field filled in the background, so it
+  /// needs no bump (a bump would force a full synchronous rebuild on the
+  /// first open).
   static const int schema = 1;
   static const RunIndex empty = RunIndex({});
 
