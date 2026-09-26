@@ -194,4 +194,32 @@ void main() {
     }
     expect(c.semantics, '#2 OF 7. ON PACE FOR · 5Ks. 6 s behind your best.');
   });
+
+  test('a time goal: #1 of 3, about 6.4 km at the finish', () {
+    final c = LiveCard.of(
+      kind: 'distanceInTime',
+      boardLabel: '30 min',
+      index: 12,
+      rank: 1,
+      of: 3,
+      value: 6412,
+    )!;
+    expect(c.rank, '#1 OF 3');
+    expect(c.eyebrow, 'ON PACE FOR · 30 MIN');
+    expect(c.detail, 'About 6.4 km at the finish');
+    expect(carriesEstimateMarker(c.detail), isTrue);
+  });
+
+  test('a distance goal races its board like any distance', () {
+    final c = LiveCard.of(
+      kind: 'distance',
+      boardLabel: 'Half',
+      index: 8,
+      rank: 2,
+      of: 5,
+      deltaMs: 40000,
+    )!;
+    expect(c.rank, '#2 OF 5');
+    expect(c.eyebrow, 'ON PACE FOR · HALF MARATHONS');
+  });
 }

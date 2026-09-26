@@ -777,7 +777,9 @@ class RecordingSession(
      */
     @Synchronized
     fun muteTips() {
-        if (finished || coach.muted) return
+        // Not started yet (a pending session): no core, no journal header, so nothing to mute and
+        // no `tm` line ahead of the header. No coaching this run: nothing to journal (#77 review).
+        if (finished || !::core.isInitialized || !coach.active || coach.muted) return
         coach.muted = true
         cues.dropNudge()
         writer.append(JournalLine.TipsMuted(clock(), System.currentTimeMillis()))

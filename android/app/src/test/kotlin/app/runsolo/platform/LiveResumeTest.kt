@@ -98,4 +98,32 @@ class LiveResumeTest {
         assertEquals(true, session.status().tipsMuted)
         session.abortStart()
     }
+
+    @Test
+    fun `Mute tips before the run starts is a no-op, never a line ahead of the header`() {
+        val session = app.runsolo.record.RecordingSession(
+            context, "live-3", RunMode.free, null, Units.km, null, volumeKeyLaps = false, liveContext = ctx,
+        )
+        session.muteTips() // a pending session: no core, no header yet
+        assertTrue("nothing written", !fs.exists(RunPaths.journal("live-3")))
+        session.startNew("d", "a", "UTC")
+        session.muteTips()
+        val replayed = JournalReplay.read(fs.readBytes(RunPaths.journal("live-3")))
+        assertTrue("the tm line follows the header", replayed.tipsMuted)
+        assertEquals(0, replayed.badLines)
+        session.abortStart()
+    }
+
+    @Test
+    fun `Mute tips on a run with no coaching writes nothing`() {
+        val session = app.runsolo.record.RecordingSession(
+            context, "live-4", RunMode.free, null, Units.km, null, volumeKeyLaps = false, liveContext = null,
+        )
+        session.startNew("d", "a", "UTC")
+        session.muteTips()
+        val replayed = JournalReplay.read(fs.readBytes(RunPaths.journal("live-4")))
+        assertTrue(!replayed.tipsMuted)
+        assertNull(session.status().tipsMuted)
+        session.abortStart()
+    }
 }
