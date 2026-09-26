@@ -172,13 +172,22 @@ case "$MODE" in
       # The key went to our session, not the music stream.
       vol_after="$(music_volume)"
       [ "$vol_after" = "$vol_before" ] || fail "music volume changed by the volume-key lap: $vol_before -> $vol_after"
-      # A volume change that is not a key press (adb, 3 steps) must not lap.
-      accepted_before="$(adb logcat -d | grep -c 'lap volumeKey → accepted' || true)"
+      # A volume change that is not a key press (adb, 3 steps) must not lap. Looked for after a
+      # marker line, not as a before/after difference of whole-buffer counts: on main edcc78c
+      # (API 36) the two counts once differed while the dump held only the key press's own lap,
+      # most likely a `logcat -d` read racing logd pruning the busy 2 MB buffer (not proven).
+      mark="vol-adb-$(date +%s%N)"
+      adb shell log -t RunSolo/test "$mark"
       if [ "$vol_before" -ge 3 ]; then target=$((vol_before - 3)); else target=$((vol_before + 3)); fi
       set_music_volume "$target"
       sleep 3
-      accepted_after="$(adb logcat -d | grep -c 'lap volumeKey → accepted' || true)"
-      [ "$accepted_after" = "$accepted_before" ] || fail "an adb volume change without a key press produced a lap"
+      after_mark="$(adb logcat -d | sed -n "/$mark/,\$p")"
+      [ -n "$after_mark" ] || fail "marker $mark missing from logcat (pruned?): the adb volume check is inconclusive"
+      stray="$(printf '%s\n' "$after_mark" | grep 'lap volumeKey → accepted' || true)"
+      if [ -n "$stray" ]; then
+        printf '%s\n' "$stray" >&2
+        fail "an adb volume change without a key press produced a lap"
+      fi
       set_music_volume "$vol_before"
       # Lockout (#40): two presses back to back, in one `input` call (a few ms apart), must record
       # exactly one lap. The second press dies in LapInput's 400 ms wall-clock debounce or, past
