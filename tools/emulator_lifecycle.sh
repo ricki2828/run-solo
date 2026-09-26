@@ -194,18 +194,20 @@ case "$MODE" in
       # it, in RecorderCore's 1.5 s Laps lockout (run time; at 20x that is 75 ms of wall time, so
       # the emulator cannot separate the two: the exact boundaries are pinned in RecorderCoreTest).
       # Inconclusive only when fewer than two key-downs reached the session: retried, ::warning::.
-      downs() { adb logcat -d -s RunSolo/lapinput | grep -c "direction=1" || true; }
+      # Counted after a marker line (as the adb check above), never as whole-buffer differences.
       lockout=0
       for attempt in 1 2 3; do
         after_fresh_notification_lap
-        k0="$(downs)"
-        a0="$(n_log 'lap volumeKey → accepted')"
-        d0="$(n_log 'lap volumeKey → ignoredDebounce')"
+        mark="dbl-$attempt-$(date +%s%N)"
+        adb shell log -t RunSolo/test "$mark"
         adb shell input keyevent KEYCODE_VOLUME_UP KEYCODE_VOLUME_UP
         sleep 2
-        keys=$(( $(downs) - k0 ))
-        acc=$(( $(n_log 'lap volumeKey → accepted') - a0 ))
-        deb=$(( $(n_log 'lap volumeKey → ignoredDebounce') - d0 ))
+        after_mark="$(adb logcat -d | sed -n "/$mark/,\$p")"
+        [ -n "$after_mark" ] || fail "marker $mark missing from logcat (pruned?): the double-press check is inconclusive"
+        since() { printf '%s\n' "$after_mark" | grep -c "$1" || true; }
+        keys="$(since 'RunSolo/lapinput: volume key direction=1')"
+        acc="$(since 'lap volumeKey → accepted')"
+        deb="$(since 'lap volumeKey → ignoredDebounce')"
         if [ "$keys" -ge 2 ]; then
           [ "$acc" = 1 ] || fail "double press: $keys key-downs reached the session and $acc laps were accepted; expected exactly 1"
           log "double press: $keys key-downs, 1 lap ($deb ignored by the core lockout, the rest by the LapInput debounce)"
