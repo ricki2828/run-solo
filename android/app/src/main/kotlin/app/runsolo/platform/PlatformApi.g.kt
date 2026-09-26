@@ -203,8 +203,8 @@ class FlutterError (
  *   `laps` with the steps-empty fartlek spec.
  * - `free`: no lap input at all — no LAP button, no notification LAP action, no
  *   MediaSession; `lap()` is a no-op (`FaultKind.lapIgnored` in debug builds).
- * - `cooper`: the 12-minute test with the Cooper spec; until I2 Kotlin records
- *   it like `free`. Not offered in the UI yet.
+ * - `cooper`: the 12-minute test with the Cooper spec: no LAP, `startReps`
+ *   starts the 12:00, projection cues. Not offered in the UI yet.
  */
 enum class RecordMode(val raw: Int) {
   INTERVALS(0),
@@ -411,9 +411,9 @@ enum class StartError(val raw: Int) {
    */
   RESUME_FAILED(10),
   /**
-   * The session is invalid for the mode, or needs something this recorder
-   * cannot run yet (I1: distance and equal-time steps, a fixed warm-up or
-   * cool-down, lap lockout, the short/Cooper cue profiles). Nothing started.
+   * The session fails validation or does not fit the mode (intervals and
+   * cooper need their session, laps takes only the fartlek, free none).
+   * Nothing started.
    */
   UNSUPPORTED_SESSION(11);
 
@@ -530,6 +530,11 @@ data class SessionSpec (
   /** null = open (runs until Stop); int = fixed seconds. */
   val cooldownSeconds: Long? = null,
   val lapLockout: Boolean,
+  /**
+   * The recording stops itself when the last timed part ends (the last step,
+   * or a fixed cool-down): parkrun stops at 5.00 km. Null = false.
+   */
+  val autoStop: Boolean? = null,
   val cueProfile: CueProfile,
   val hrBandLow: Double? = null,
   val hrBandHigh: Double? = null,
@@ -544,11 +549,12 @@ data class SessionSpec (
       val warmupSeconds = pigeonVar_list[3] as Long?
       val cooldownSeconds = pigeonVar_list[4] as Long?
       val lapLockout = pigeonVar_list[5] as Boolean
-      val cueProfile = pigeonVar_list[6] as CueProfile
-      val hrBandLow = pigeonVar_list[7] as Double?
-      val hrBandHigh = pigeonVar_list[8] as Double?
-      val steps = pigeonVar_list[9] as List<SessionStep>
-      return SessionSpec(templateId, templateVersion, name, warmupSeconds, cooldownSeconds, lapLockout, cueProfile, hrBandLow, hrBandHigh, steps)
+      val autoStop = pigeonVar_list[6] as Boolean?
+      val cueProfile = pigeonVar_list[7] as CueProfile
+      val hrBandLow = pigeonVar_list[8] as Double?
+      val hrBandHigh = pigeonVar_list[9] as Double?
+      val steps = pigeonVar_list[10] as List<SessionStep>
+      return SessionSpec(templateId, templateVersion, name, warmupSeconds, cooldownSeconds, lapLockout, autoStop, cueProfile, hrBandLow, hrBandHigh, steps)
     }
   }
   fun toList(): List<Any?> {
@@ -559,6 +565,7 @@ data class SessionSpec (
       warmupSeconds,
       cooldownSeconds,
       lapLockout,
+      autoStop,
       cueProfile,
       hrBandLow,
       hrBandHigh,
@@ -573,7 +580,7 @@ data class SessionSpec (
       return true
     }
     val other = other as SessionSpec
-    return PlatformApiPigeonUtils.deepEquals(this.templateId, other.templateId) && PlatformApiPigeonUtils.deepEquals(this.templateVersion, other.templateVersion) && PlatformApiPigeonUtils.deepEquals(this.name, other.name) && PlatformApiPigeonUtils.deepEquals(this.warmupSeconds, other.warmupSeconds) && PlatformApiPigeonUtils.deepEquals(this.cooldownSeconds, other.cooldownSeconds) && PlatformApiPigeonUtils.deepEquals(this.lapLockout, other.lapLockout) && PlatformApiPigeonUtils.deepEquals(this.cueProfile, other.cueProfile) && PlatformApiPigeonUtils.deepEquals(this.hrBandLow, other.hrBandLow) && PlatformApiPigeonUtils.deepEquals(this.hrBandHigh, other.hrBandHigh) && PlatformApiPigeonUtils.deepEquals(this.steps, other.steps)
+    return PlatformApiPigeonUtils.deepEquals(this.templateId, other.templateId) && PlatformApiPigeonUtils.deepEquals(this.templateVersion, other.templateVersion) && PlatformApiPigeonUtils.deepEquals(this.name, other.name) && PlatformApiPigeonUtils.deepEquals(this.warmupSeconds, other.warmupSeconds) && PlatformApiPigeonUtils.deepEquals(this.cooldownSeconds, other.cooldownSeconds) && PlatformApiPigeonUtils.deepEquals(this.lapLockout, other.lapLockout) && PlatformApiPigeonUtils.deepEquals(this.autoStop, other.autoStop) && PlatformApiPigeonUtils.deepEquals(this.cueProfile, other.cueProfile) && PlatformApiPigeonUtils.deepEquals(this.hrBandLow, other.hrBandLow) && PlatformApiPigeonUtils.deepEquals(this.hrBandHigh, other.hrBandHigh) && PlatformApiPigeonUtils.deepEquals(this.steps, other.steps)
   }
 
   override fun hashCode(): Int {
@@ -584,6 +591,7 @@ data class SessionSpec (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.warmupSeconds)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.cooldownSeconds)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.lapLockout)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.autoStop)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.cueProfile)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.hrBandLow)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.hrBandHigh)
@@ -1203,7 +1211,15 @@ data class TickEvent (
   val phase: Phase,
   val repIndex: Long,
   /** Active-time countdown of the current timed phase (0 when untimed). */
-  val phaseRemainingMs: Long
+  val phaseRemainingMs: Long,
+  /**
+   * As `RecorderStatus`: the 0-based step (null in warm-up/cool-down), the
+   * time left in a time step, the metres left in a distance step (whose
+   * `phaseRemainingMs` is 0).
+   */
+  val stepIndex: Long? = null,
+  val stepRemainingMs: Long? = null,
+  val stepRemainingM: Double? = null
 ) : RecorderEvent()
  {
   companion object {
@@ -1219,7 +1235,10 @@ data class TickEvent (
       val phase = pigeonVar_list[8] as Phase
       val repIndex = pigeonVar_list[9] as Long
       val phaseRemainingMs = pigeonVar_list[10] as Long
-      return TickEvent(elapsedMs, lapElapsedMs, lapDistanceM, lapPaceLiveSecPerKm, totalDistanceM, hr, gpsAccuracyM, state, phase, repIndex, phaseRemainingMs)
+      val stepIndex = pigeonVar_list[11] as Long?
+      val stepRemainingMs = pigeonVar_list[12] as Long?
+      val stepRemainingM = pigeonVar_list[13] as Double?
+      return TickEvent(elapsedMs, lapElapsedMs, lapDistanceM, lapPaceLiveSecPerKm, totalDistanceM, hr, gpsAccuracyM, state, phase, repIndex, phaseRemainingMs, stepIndex, stepRemainingMs, stepRemainingM)
     }
   }
   fun toList(): List<Any?> {
@@ -1235,6 +1254,9 @@ data class TickEvent (
       phase,
       repIndex,
       phaseRemainingMs,
+      stepIndex,
+      stepRemainingMs,
+      stepRemainingM,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -1245,7 +1267,7 @@ data class TickEvent (
       return true
     }
     val other = other as TickEvent
-    return PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapElapsedMs, other.lapElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapDistanceM, other.lapDistanceM) && PlatformApiPigeonUtils.deepEquals(this.lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.totalDistanceM, other.totalDistanceM) && PlatformApiPigeonUtils.deepEquals(this.hr, other.hr) && PlatformApiPigeonUtils.deepEquals(this.gpsAccuracyM, other.gpsAccuracyM) && PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs)
+    return PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapElapsedMs, other.lapElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapDistanceM, other.lapDistanceM) && PlatformApiPigeonUtils.deepEquals(this.lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.totalDistanceM, other.totalDistanceM) && PlatformApiPigeonUtils.deepEquals(this.hr, other.hr) && PlatformApiPigeonUtils.deepEquals(this.gpsAccuracyM, other.gpsAccuracyM) && PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM)
   }
 
   override fun hashCode(): Int {
@@ -1261,6 +1283,9 @@ data class TickEvent (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.phase)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.repIndex)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.phaseRemainingMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.stepIndex)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.stepRemainingMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.stepRemainingM)
     return result
   }
 }
@@ -1318,18 +1343,25 @@ data class LapEvent (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class CueEvent (
-  val kind: CueKind
+  val kind: CueKind,
+  /**
+   * `projection`: the projected Cooper distance in metres, or a distance
+   * step's projected finish in ms; `minuteMark`: the minute. Null otherwise.
+   */
+  val value: Double? = null
 ) : RecorderEvent()
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): CueEvent {
       val kind = pigeonVar_list[0] as CueKind
-      return CueEvent(kind)
+      val value = pigeonVar_list[1] as Double?
+      return CueEvent(kind, value)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       kind,
+      value,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -1340,12 +1372,13 @@ data class CueEvent (
       return true
     }
     val other = other as CueEvent
-    return PlatformApiPigeonUtils.deepEquals(this.kind, other.kind)
+    return PlatformApiPigeonUtils.deepEquals(this.kind, other.kind) && PlatformApiPigeonUtils.deepEquals(this.value, other.value)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.kind)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.value)
     return result
   }
 }
@@ -1793,8 +1826,8 @@ interface RecorderApi {
    *
    * `spec`: required for `intervals` and `cooper`, the fartlek spec or null
    * for `laps`, null for `free`; anything else is `unsupportedSession`.
-   * `lastCooperVo2`: the previous Cooper result for the projection cue (I2;
-   * Kotlin does not read history).
+   * `lastCooperVo2`: the previous Cooper result for the projection cue's gap
+   * to last time (Kotlin does not read history).
    */
   fun start(mode: RecordMode, spec: SessionSpec?, units: Units, lastCooperVo2: Double?): StartResult
   /** Debug builds only: like `start`, fed from a fixture instead of GPS/BLE. */

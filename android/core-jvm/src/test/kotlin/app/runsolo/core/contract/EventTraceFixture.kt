@@ -49,7 +49,7 @@ object EventTraceFixture {
     fun pigeonShape(spec: SessionSpec): Map<String, Any?> = linkedMapOf(
         "templateId" to spec.templateId, "templateVersion" to spec.templateVersion, "name" to spec.name,
         "warmupSeconds" to spec.warmupSeconds, "cooldownSeconds" to spec.cooldownSeconds,
-        "lapLockout" to spec.lapLockout, "cueProfile" to spec.cueProfile.name,
+        "lapLockout" to spec.lapLockout, "autoStop" to spec.autoStop, "cueProfile" to spec.cueProfile.name,
         "hrBandLow" to spec.hrBand?.first, "hrBandHigh" to spec.hrBand?.second,
         "steps" to spec.steps.map { linkedMapOf("kind" to it.kind.name, "target" to it.target.name, "value" to it.value, "style" to it.style.name, "repIndex" to it.rep) },
     )
@@ -105,28 +105,50 @@ object EventTraceFixture {
             emit("status", core.status(t).elapsedMs, status(t))
         }
 
+        val pendingOut = ArrayList<RecorderCore.Output>()
+        var prevTickT = 0L
+        var prevTickD = 0.0
+
+        fun publishLap(o: RecorderCore.Output.Lap, distanceM: Double) {
+            val st = core.status(o.t)
+            val el = st.elapsedMs
+            val lap = linkedMapOf<String, Any?>("index" to o.index, "tMs" to el, "activeMs" to (st.activeMs - lapStartActive), "distanceM" to distanceM, "source" to o.source.name)
+            lapStartActive = st.activeMs
+            laps.add(lap)
+            lapStartT = o.t
+            lapStartDist = distanceM
+            emit("lap", el, lap)
+        }
+
+        fun publishPhase(o: RecorderCore.Output.PhaseChanged) {
+            emit("phase", core.status(o.t).elapsedMs, mapOf("phase" to o.phase.name, "repIndex" to o.repIndex, "phaseDurationMs" to (o.phaseDurationMs ?: 0L)))
+            emit("status", core.status(o.t).elapsedMs, status(o.t))
+        }
+
+        fun flushLaps(t: Long) {
+            for (o in pendingOut) when (o) {
+                is RecorderCore.Output.Lap -> publishLap(o, core.distanceAtTime(o.t, prevTickT, prevTickD, t, ticker.distanceM))
+                is RecorderCore.Output.PhaseChanged -> publishPhase(o)
+                else -> Unit
+            }
+            pendingOut.clear()
+        }
+
         fun handle(out: List<RecorderCore.Output>, t: Long) {
             for (o in out) {
                 when (o) {
                     is RecorderCore.Output.Lap -> {
                         writer.append(JournalLine.Lap(o.t, W0 + o.t, o.source))
-                        val st = core.status(o.t)
-                        val el = st.elapsedMs
-                        val lap = linkedMapOf<String, Any?>("index" to o.index, "tMs" to el, "activeMs" to (st.activeMs - lapStartActive), "distanceM" to ticker.distanceM, "source" to o.source.name)
-                        lapStartActive = st.activeMs
-                        laps.add(lap)
-                        lapStartT = o.t
-                        lapStartDist = ticker.distanceM
-                        emit("lap", el, lap)
+                        // As RecordingSession: a manual lap goes out at the next tick, at its interpolated
+                        // distance, and the phase change it caused waits with it (lap first).
+                        if (o.source == LapSource.auto) publishLap(o, ticker.distanceM) else pendingOut.add(o)
                     }
                     is RecorderCore.Output.Cue -> {
                         writer.append(JournalLine.Cue(o.t, W0 + o.t, o.kind))
-                        emit("cue", core.status(o.t).elapsedMs, mapOf("cue" to o.kind.name))
+                        emit("cue", core.status(o.t).elapsedMs, linkedMapOf("cue" to o.kind.name, "value" to o.value))
                     }
-                    is RecorderCore.Output.PhaseChanged -> {
-                        emit("phase", core.status(o.t).elapsedMs, mapOf("phase" to o.phase.name, "repIndex" to o.repIndex, "phaseDurationMs" to (o.phaseDurationMs ?: 0L)))
-                        emit("status", core.status(o.t).elapsedMs, status(o.t))
-                    }
+                    is RecorderCore.Output.PhaseChanged -> if (pendingOut.isEmpty()) publishPhase(o) else pendingOut.add(o)
+                    is RecorderCore.Output.AutoStop -> Unit // no auto-stop in this 4x4
                 }
             }
         }
@@ -134,9 +156,12 @@ object EventTraceFixture {
         fun tick(t: Long, fix: LocationFix?, hr: Int?) {
             hr?.let { ticker.onHr(HrReading(t - 200, it)) }
             fix?.let { ticker.onFix(it) }
-            handle(core.tick(t), t)
             val samples = ticker.tick(t)
             for (s in samples) writer.append(s)
+            flushLaps(t)
+            handle(core.tick(t, ticker.distanceM, !ticker.gpsLost(t)), t)
+            prevTickT = t
+            prevTickD = ticker.distanceM
             val last = samples.last()
             val pace = if (last.hasFix) livePace.update(last.t, ticker.distanceM) else null
             hrLast = last.hr
@@ -147,6 +172,7 @@ object EventTraceFixture {
                     "elapsedMs" to st.elapsedMs, "lapElapsedMs" to (t - lapStartT), "lapDistanceM" to (ticker.distanceM - lapStartDist),
                     "lapPaceLiveSecPerKm" to pace, "totalDistanceM" to ticker.distanceM, "hr" to last.hr, "gpsAccuracyM" to last.accuracyM,
                     "state" to st.state.name, "phase" to st.phase.name, "repIndex" to st.repIndex, "phaseRemainingMs" to st.phaseRemainingMs,
+                    "stepIndex" to st.stepIndex, "stepRemainingMs" to st.stepRemainingMs, "stepRemainingM" to st.stepRemainingM,
                 ),
             )
         }
@@ -206,6 +232,8 @@ object EventTraceFixture {
         }
         ticker.filter.reanchor()
         lapStartDist = lastLapDist
+        prevTickT = resumeDeviceT
+        prevTickD = ticker.distanceM
         val lastLapRunT = replayed.events.filterIsInstance<RunEvent.Lap>().last().t
         lapStartT = resumeDeviceT - (replayed.endT - lastLapRunT) // endT includes the gap
         // As RecordingSession: active time at the last lap = its run time minus pauses/gaps before it.
@@ -230,8 +258,9 @@ object EventTraceFixture {
             tick(dt, fixes[traceIdx].copy(t = dt), hrFor())
             traceIdx++
         }
+        flushLaps(dt)
         val out = core.stop(dt)
-        for (o in out) if (o is RecorderCore.Output.Cue) emit("cue", core.status(dt).elapsedMs, mapOf("cue" to o.kind.name))
+        for (o in out) if (o is RecorderCore.Output.Cue) emit("cue", core.status(dt).elapsedMs, linkedMapOf("cue" to o.kind.name, "value" to o.value))
         state(dt, RecorderState.finalising)
         writer.close()
         emit("state", core.status(dt).elapsedMs, mapOf("state" to RecorderState.idle.name, "runId" to RUN_ID, "phase" to Phase.none.name))

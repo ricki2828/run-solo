@@ -55,6 +55,9 @@ object EventTrace {
                 m["phase"] = dartName(e.phase)
                 m["repIndex"] = e.repIndex
                 m["phaseRemainingMs"] = e.phaseRemainingMs
+                m["stepIndex"] = e.stepIndex
+                m["stepRemainingMs"] = e.stepRemainingMs
+                m["stepRemainingM"] = e.stepRemainingM
             }
             is LapEvent -> {
                 m["kind"] = "lap"
@@ -79,6 +82,7 @@ object EventTrace {
             is CueEvent -> {
                 m["kind"] = "cue"
                 m["cue"] = dartName(e.kind)
+                m["value"] = e.value
             }
             is FaultEvent -> {
                 m["kind"] = "fault"
@@ -111,7 +115,7 @@ object EventTrace {
             linkedMapOf(
                 "templateId" to spec.templateId, "templateVersion" to spec.templateVersion, "name" to spec.name,
                 "warmupSeconds" to spec.warmupSeconds, "cooldownSeconds" to spec.cooldownSeconds,
-                "lapLockout" to spec.lapLockout, "cueProfile" to dartName(spec.cueProfile),
+                "lapLockout" to spec.lapLockout, "autoStop" to spec.autoStop, "cueProfile" to dartName(spec.cueProfile),
                 "hrBandLow" to spec.hrBandLow, "hrBandHigh" to spec.hrBandHigh,
                 "steps" to spec.steps.map { st ->
                     linkedMapOf("kind" to dartName(st.kind), "target" to dartName(st.target), "value" to st.value, "style" to dartName(st.style), "repIndex" to st.repIndex)

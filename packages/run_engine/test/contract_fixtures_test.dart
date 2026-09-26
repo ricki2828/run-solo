@@ -396,7 +396,9 @@ void main() {
         expect(a.detection!.reps.length, 8);
         expect(a.intervals!.kind, IntervalMetricKind.repTime);
         expect(a.verdict!.headline, VerdictHeadline.baselineSet);
-        expect(a.verdict!.subline, startsWith('400 m in 1:40 average.'));
+        // 100.7 s average: the trace's speed segments are a fixed 100 s while
+        // the core ends each step on distance, so the reps drift a little late.
+        expect(a.verdict!.subline, startsWith('400 m in 1:41 average.'));
       },
     );
   });

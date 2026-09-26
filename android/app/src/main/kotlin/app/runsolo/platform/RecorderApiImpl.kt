@@ -97,8 +97,8 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         return Result.success(core)
     }
 
-    private fun newSession(mode: app.runsolo.core.model.RunMode, spec: CoreSpec?, units: Units, replay: ReplayRunner?): RecordingSession =
-        RecordingSession(context, UUID.randomUUID().toString(), mode, spec, units.toCore(), replay, volumeKeyLaps(mode))
+    private fun newSession(mode: app.runsolo.core.model.RunMode, spec: CoreSpec?, units: Units, replay: ReplayRunner?, lastCooperVo2: Double?): RecordingSession =
+        RecordingSession(context, UUID.randomUUID().toString(), mode, spec, units.toCore(), replay, volumeKeyLaps(mode), lastCooperVo2)
 
     /**
      * Volume-key laps are a Laps-run feature only (W8): the user's setting, default on, applies
@@ -108,7 +108,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     internal fun volumeKeyLaps(mode: app.runsolo.core.model.RunMode): Boolean =
         mode == app.runsolo.core.model.RunMode.laps && prefs.getBoolean(RecorderService.PREF_VOLUME_KEY_LAPS, mode.volumeKeyLapsDefault)
 
-    private fun startWith(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ((CoreSpec?) -> ReplayRunner?)?): StartResult {
+    private fun startWith(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ((CoreSpec?) -> ReplayRunner?)?, lastCooperVo2: Double? = null): StartResult {
         active()?.let { return StartResult(runId = it.runId, error = null) }
         val coreMode = mode.toCore()
         val coreSpec = coreSpec(coreMode, spec).getOrElse {
@@ -117,19 +117,19 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         }
         precondition()?.let { return StartResult(runId = null, error = it) }
         val runner = replay?.let { make -> make(coreSpec) ?: return StartResult(runId = null, error = StartError.REPLAY_UNAVAILABLE) }
-        val session = newSession(coreMode, coreSpec, units, runner)
+        val session = newSession(coreMode, coreSpec, units, runner, lastCooperVo2)
         return begin(session) {
             it.startNew(device = "${Build.MANUFACTURER} ${Build.MODEL}", app = BuildConfig.VERSION_NAME, tz = TimeZone.getDefault().id)
         }
     }
 
-    /** [lastCooperVo2] feeds the Cooper projection cue (I2); unused until then. */
+    /** [lastCooperVo2] feeds the Cooper projection cue's gap to the last test. */
     override fun start(mode: RecordMode, spec: SessionSpec?, units: Units, lastCooperVo2: Double?): StartResult =
-        startWith(mode, spec, units, null)
+        startWith(mode, spec, units, null, lastCooperVo2)
 
     override fun startReplay(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ReplayConfig): StartResult {
         if (!BuildConfig.REPLAY_ENABLED) return StartResult(runId = null, error = StartError.REPLAY_UNAVAILABLE)
-        return startWith(mode, spec, units) { s -> ReplayRunner.create(context, replay.fixture, replay.speed, s) }
+        return startWith(mode, spec, units, replay = { s -> ReplayRunner.create(context, replay.fixture, replay.speed, s) })
     }
 
     override fun resumeRecovered(runId: String): StartResult {

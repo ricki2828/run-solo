@@ -52,6 +52,8 @@ object ContractFixtures {
         "cooper_12min" to cooper12Min(),
         "fartlek_laps" to fartlekLaps(),
         "session_8x400_shape" to eightBy400Shape(),
+        "parkrun_5k_autostop" to parkrun5kAutoStop(),
+        "thirty_thirty_short" to thirtyThirtyShort(),
         "treadmill_no_fix_hr" to treadmillNoFixHr(),
         "gps_dropout_hr" to gpsDropoutHr(),
         "laps_run_pause_manual_laps" to lapsRunPauseManualLaps(),
@@ -59,21 +61,11 @@ object ContractFixtures {
     )
 
     /** One simulated recording: a service loop over the core, per second. */
-    /**
-     * [coreMode]/[coreSession] default to the header's; a shape-only fixture (a session the I1
-     * core cannot run yet) records under a by-feel core and places its auto laps with [autoLap].
-     */
-    private class Session(
-        id: String,
-        mode: RunMode,
-        session: SessionSpec?,
-        coreMode: RunMode = mode,
-        coreSession: SessionSpec? = session,
-    ) {
+    private class Session(id: String, mode: RunMode, session: SessionSpec?) {
         val fs = FakeFileSystem()
         val writer = JournalWriter(fs, id, onWriteFailed = { throw it })
         val ticker = SampleTicker(wall = { wall })
-        val core = RecorderCore(coreMode, coreSession)
+        val core = RecorderCore(mode, session)
         private val id = id
         var t = T0
         var wall = W0
@@ -91,6 +83,7 @@ object ContractFixtures {
                     is RecorderCore.Output.Lap -> writer.append(JournalLine.Lap(o.t, wall, o.source))
                     is RecorderCore.Output.Cue -> writer.append(JournalLine.Cue(o.t, wall, o.kind))
                     is RecorderCore.Output.PhaseChanged -> Unit
+                    is RecorderCore.Output.AutoStop -> autoStopped = true
                 }
             }
         }
@@ -102,12 +95,15 @@ object ContractFixtures {
             hr?.let { ticker.onHr(HrReading(t - 200, it)) }
             fix?.let { ticker.onFix(it.copy(t = t)) }
             before()
-            emit(core.tick(t))
+            // As RecordingSession: sample first, so the core sees this second's distance.
             for (s in ticker.tick(t)) writer.append(s)
+            emit(core.tick(t, ticker.distanceM, !ticker.gpsLost(t)))
         }
 
+        /** The core asked to stop ([RecorderCore.Output.AutoStop]); the generator calls [finish]. */
+        var autoStopped = false
+
         fun lap(source: LapSource) = emit(core.lap(source, t).second)
-        fun autoLap() = writer.append(JournalLine.Lap(t, wall, LapSource.auto))
         fun pause() { core.pause(t); writer.append(JournalLine.Pause(t, wall)) }
         fun resume() { core.resume(t); writer.append(JournalLine.Resume(t, wall)) }
 
@@ -184,9 +180,10 @@ object ContractFixtures {
     }
 
     /**
-     * SHAPE ONLY (the I1 core cannot run distance steps; I2 replaces this with a real recording):
-     * the schema-3 header/session of an 8 × 400 m with 200 m jog recoveries, the auto laps placed
-     * by this generator on the trace's 400/200 m boundaries (100 s @ 4 m/s, 100 s @ 2 m/s).
+     * 8 × 400 m with 200 m jog recoveries, recorded by the real core (I2 distance steps): 60 s
+     * warm-up, button LAP, 400 m at 4 m/s and 200 m at 2 m/s (100 s each), auto laps where the
+     * core crossed each target, 60 s cool-down. (The name keeps its I1 "shape" suffix; the Dart
+     * pins read it by name.)
      */
     private fun eightBy400Shape(): String {
         val spec = SessionSpec(
@@ -203,17 +200,56 @@ object ContractFixtures {
         segments.add(60 to 2.5)
         for (st in spec.steps) segments.add(100 to if (st.kind == StepKind.work) 4.0 else 2.0)
         segments.add(60 to 2.5)
-        val boundaries = HashSet<Int>()
-        var at = 60
-        for (st in spec.steps) { at += 100; boundaries.add(at) }
         val fixes = TraceFixture.straightLine(segments, LAT0, LON0, 5.0, T0)
-        val s = Session("contract-8x400-shape", RunMode.intervals, spec, coreMode = RunMode.laps, coreSession = null)
+        val s = Session("contract-8x400-shape", RunMode.intervals, spec)
         for ((i, f) in fixes.withIndex()) {
             if (i == 0) continue
-            s.second(f, if (i in 61..1560) 160 else 130) {
-                if (i == 60) s.lap(LapSource.button)
-                if (i in boundaries) s.autoLap()
+            val hr = when (s.core.phase) {
+                Phase.work -> 160 + (i % 5)
+                Phase.recovery -> 140
+                else -> 130
             }
+            s.second(f, hr) { if (i == 60) s.lap(LapSource.button) }
+        }
+        return s.finish()
+    }
+
+    /**
+     * parkrun (K1 reuses I2): one 5000 m distance step with auto-stop. 120 s warm-up jog, button
+     * LAP on the start line, 5 km at 4 m/s; the core stops the recording at 5.00 km (no lap on
+     * the finish line: the stop ends the 5 km lap).
+     */
+    private fun parkrun5kAutoStop(): String {
+        val spec = SessionSpec(
+            templateId = "parkrun", templateVersion = 1, name = "parkrun",
+            warmupSeconds = null, cooldownSeconds = null, lapLockout = false, autoStop = true, cueProfile = CueProfile.standard, hrBand = null,
+            steps = listOf(Step(StepKind.work, TargetKind.distance, 5_000, RecoveryStyle.run, 1)),
+        )
+        val fixes = TraceFixture.straightLine(listOf(120 to 2.0, 1_400 to 4.0), LAT0, LON0, 5.0, T0)
+        val s = Session("contract-parkrun", RunMode.intervals, spec)
+        for ((i, f) in fixes.withIndex()) {
+            if (i == 0) continue
+            s.second(f, if (i > 120) 168 else 128) { if (i == 120) s.lap(LapSource.button) }
+            if (s.autoStopped) break
+        }
+        check(s.autoStopped) { "parkrun fixture never auto-stopped" }
+        return s.finish()
+    }
+
+    /** 30/30 × 10 on the short cue profile: 60 s warm-up, button LAP, 30 s @ 4.5 m/s / 30 s @ 2 m/s, 60 s cool-down. */
+    private fun thirtyThirtyShort(): String {
+        val spec = SessionSpec.norwegian4x4(10, 30, 30).copy(
+            templateId = "30-30", name = "30/30 × 10", hrBand = null, cueProfile = CueProfile.short,
+        )
+        val segments = ArrayList<Pair<Int, Double>>()
+        segments.add(60 to 2.5)
+        for (st in spec.steps) segments.add(st.value to if (st.kind == StepKind.work) 4.5 else 2.0)
+        segments.add(60 to 2.5)
+        val fixes = TraceFixture.straightLine(segments, LAT0, LON0, 5.0, T0)
+        val s = Session("contract-30-30", RunMode.intervals, spec)
+        for ((i, f) in fixes.withIndex()) {
+            if (i == 0) continue
+            s.second(f, if (s.core.phase == Phase.work) 170 else 150) { if (i == 60) s.lap(LapSource.button) }
         }
         return s.finish()
     }

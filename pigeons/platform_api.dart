@@ -25,8 +25,8 @@ import 'package:pigeon/pigeon.dart';
 ///   `laps` with the steps-empty fartlek spec.
 /// - `free`: no lap input at all — no LAP button, no notification LAP action, no
 ///   MediaSession; `lap()` is a no-op (`FaultKind.lapIgnored` in debug builds).
-/// - `cooper`: the 12-minute test with the Cooper spec; until I2 Kotlin records
-///   it like `free`. Not offered in the UI yet.
+/// - `cooper`: the 12-minute test with the Cooper spec: no LAP, `startReps`
+///   starts the 12:00, projection cues. Not offered in the UI yet.
 enum RecordMode { intervals, laps, free, cooper }
 
 enum Units { km, mi }
@@ -117,9 +117,9 @@ enum StartError {
   /// untouched and `recover()` will list it again.
   resumeFailed,
 
-  /// The session is invalid for the mode, or needs something this recorder
-  /// cannot run yet (I1: distance and equal-time steps, a fixed warm-up or
-  /// cool-down, lap lockout, the short/Cooper cue profiles). Nothing started.
+  /// The session fails validation or does not fit the mode (intervals and
+  /// cooper need their session, laps takes only the fartlek, free none).
+  /// Nothing started.
   unsupportedSession,
 }
 
@@ -168,6 +168,7 @@ class SessionSpec {
     this.warmupSeconds,
     this.cooldownSeconds,
     required this.lapLockout,
+    this.autoStop,
     required this.cueProfile,
     this.hrBandLow,
     this.hrBandHigh,
@@ -183,6 +184,10 @@ class SessionSpec {
   /// null = open (runs until Stop); int = fixed seconds.
   int? cooldownSeconds;
   bool lapLockout;
+
+  /// The recording stops itself when the last timed part ends (the last step,
+  /// or a fixed cool-down): parkrun stops at 5.00 km. Null = false.
+  bool? autoStop;
   CueProfile cueProfile;
   double? hrBandLow;
   double? hrBandHigh;
@@ -404,8 +409,8 @@ abstract class RecorderApi {
   ///
   /// `spec`: required for `intervals` and `cooper`, the fartlek spec or null
   /// for `laps`, null for `free`; anything else is `unsupportedSession`.
-  /// `lastCooperVo2`: the previous Cooper result for the projection cue (I2;
-  /// Kotlin does not read history).
+  /// `lastCooperVo2`: the previous Cooper result for the projection cue's gap
+  /// to last time (Kotlin does not read history).
   StartResult start(
     RecordMode mode,
     SessionSpec? spec,
@@ -536,6 +541,9 @@ class TickEvent extends RecorderEvent {
     required this.phase,
     required this.repIndex,
     required this.phaseRemainingMs,
+    this.stepIndex,
+    this.stepRemainingMs,
+    this.stepRemainingM,
   });
 
   /// Wall time since Start, pauses included.
@@ -556,6 +564,13 @@ class TickEvent extends RecorderEvent {
 
   /// Active-time countdown of the current timed phase (0 when untimed).
   int phaseRemainingMs;
+
+  /// As `RecorderStatus`: the 0-based step (null in warm-up/cool-down), the
+  /// time left in a time step, the metres left in a distance step (whose
+  /// `phaseRemainingMs` is 0).
+  int? stepIndex;
+  int? stepRemainingMs;
+  double? stepRemainingM;
 }
 
 class LapEvent extends RecorderEvent {
@@ -576,8 +591,12 @@ class LapEvent extends RecorderEvent {
 }
 
 class CueEvent extends RecorderEvent {
-  CueEvent({required this.kind});
+  CueEvent({required this.kind, this.value});
   CueKind kind;
+
+  /// `projection`: the projected Cooper distance in metres, or a distance
+  /// step's projected finish in ms; `minuteMark`: the minute. Null otherwise.
+  double? value;
 }
 
 class FaultEvent extends RecorderEvent {

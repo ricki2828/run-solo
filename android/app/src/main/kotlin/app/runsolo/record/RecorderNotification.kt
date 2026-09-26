@@ -43,17 +43,13 @@ class RecorderNotification(private val context: Context) {
         val hr: Int?,
         /** False in Free mode (plan §18.2): no LAP action at all, on the shade or the lock screen. */
         val lapAction: Boolean = true,
+        /** Metres left in a distance step (the title shows them instead of a countdown). */
+        val metresToGo: Double? = null,
+        val cooper: Boolean = false,
     )
 
     fun build(c: Content): Notification {
-        val title = when {
-            c.state == RecorderState.paused -> "Paused"
-            c.phase == Phase.work -> "Rep ${c.repIndex}${c.reps?.let { " of $it" } ?: ""} · work"
-            c.phase == Phase.recovery -> "Rep ${c.repIndex}${c.reps?.let { " of $it" } ?: ""} · recover"
-            c.phase == Phase.warmup -> "Warm up · Start 4x4 when ready"
-            c.phase == Phase.cooldown -> "Cool down"
-            else -> "Recording"
-        }
+        val title = title(c)
         val text = buildString {
             if (c.lapAction) append("Lap ${c.lapIndex + 1}") else append("Free run")
             c.hr?.let { append("  ·  $it bpm") }
@@ -87,6 +83,21 @@ class RecorderNotification(private val context: Context) {
     }
 
     fun update(c: Content) = manager.notify(NOTIFICATION_ID, build(c))
+
+    /** "Rep 3/8 · 212 m to go" for a distance step; "Rep 3/10 · work" (the countdown ticks beside it) for a time step. */
+    internal fun title(c: Content): String {
+        val rep = "Rep ${c.repIndex}${c.reps?.let { "/$it" } ?: ""}"
+        val toGo = c.metresToGo?.let { " · ${it.toInt()} m to go" }
+        return when {
+            c.state == RecorderState.paused -> "Paused"
+            c.cooper && c.phase == Phase.work -> "12-minute test"
+            c.phase == Phase.work -> rep + (toGo ?: " · work")
+            c.phase == Phase.recovery -> "Recover" + (toGo ?: " · $rep")
+            c.phase == Phase.warmup -> if (c.cooper) "Warm up · start the test when ready" else "Warm up · start reps when ready"
+            c.phase == Phase.cooldown -> "Cool down"
+            else -> "Recording"
+        }
+    }
 
     /** Momentary notification for a service start that has nothing to record. */
     fun buildIdle(): Notification = NotificationCompat.Builder(context, CHANNEL_ID)

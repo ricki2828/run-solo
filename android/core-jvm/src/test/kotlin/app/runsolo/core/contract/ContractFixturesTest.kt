@@ -4,6 +4,7 @@ import app.runsolo.core.json.Json
 import app.runsolo.core.json.list
 import app.runsolo.core.model.SessionSpec
 import java.io.File
+import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -122,7 +123,7 @@ class ContractFixturesTest {
         assertEquals("intervals", m["mode"])
         val session = m["session"] as Map<*, *>
         assertEquals(
-            listOf("templateId", "templateVersion", "name", "warmupSeconds", "cooldownSeconds", "lapLockout", "cueProfile", "hrBand", "steps"),
+            listOf("templateId", "templateVersion", "name", "warmupSeconds", "cooldownSeconds", "lapLockout", "autoStop", "cueProfile", "hrBand", "steps"),
             session.keys.toList(),
         )
         assertEquals("norwegian-4x4", session["templateId"])
@@ -205,7 +206,7 @@ class ContractFixturesTest {
     }
 
     @Test
-    fun `8x400 shape - distance session, 15 auto laps on the generator's 400 and 200 m boundaries`() {
+    fun `8x400 - recorded by the core - 15 auto laps within a sample of each 400 and 200 m target`() {
         val m = fixture("session_8x400_shape")
         assertEquals("intervals", m["mode"])
         val steps = (m["session"] as Map<*, *>)["steps"] as List<*>
@@ -214,7 +215,31 @@ class ContractFixturesTest {
         val laps = laps(m)
         assertEquals(17, laps.size) // warm-up, 15 steps, cool-down
         assertEquals(15, laps.count { it["kind"] == "auto" })
-        val work = laps.subList(1, 16).filterIndexed { i, _ -> i % 2 == 0 }
-        assertTrue(work.all { l -> ((l["d1"] as Number).toDouble() - (l["d0"] as Number).toDouble()) in 395.0..405.0 }, "work laps ~400 m: ${work.map { (it["d1"] as Number).toDouble() - (it["d0"] as Number).toDouble() }}")
+        val dist = laps.subList(1, 16).map { (it["d1"] as Number).toDouble() - (it["d0"] as Number).toDouble() }
+        for ((i, d) in dist.withIndex()) {
+            val target = if (i % 2 == 0) 400.0 else 200.0
+            assertTrue(abs(d - target) <= 4.5, "step $i: $d m for $target (one sample at 4 m/s)")
+        }
+    }
+
+    @Test
+    fun `parkrun - auto-stopped at 5 00 km - the 5 km lap is the last, nothing dropped`() {
+        val m = fixture("parkrun_5k_autostop")
+        assertEquals(true, (m["session"] as Map<*, *>)["autoStop"])
+        val laps = laps(m)
+        assertEquals(2, laps.size) // warm-up, then the 5 km ended by the stop
+        assertEquals(120_000L, laps[0]["t1"])
+        val fiveK = (laps[1]["d1"] as Number).toDouble() - (laps[1]["d0"] as Number).toDouble()
+        assertTrue(fiveK in 5_000.0..5_004.5, "5 km lap $fiveK m: at least 5 km, at most one sample over")
+        assertTrue((laps[1]["t1"] as Long) in 1_369_000L..1_373_000L, "stopped at ${laps[1]["t1"]} (1250 s at 4 m/s after the 120 s start, filter distance)")
+    }
+
+    @Test
+    fun `30-30 short - 19 auto laps of exactly 30 s`() {
+        val m = fixture("thirty_thirty_short")
+        val laps = laps(m)
+        assertEquals(21, laps.size)
+        assertEquals(19, laps.count { it["kind"] == "auto" })
+        assertTrue(laps.subList(1, 20).all { (it["t1"] as Long) - (it["t0"] as Long) == 30_000L })
     }
 }

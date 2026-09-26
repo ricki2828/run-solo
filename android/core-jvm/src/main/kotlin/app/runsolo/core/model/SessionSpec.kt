@@ -46,6 +46,8 @@ data class SessionSpec(
     val warmupSeconds: Int?,
     val cooldownSeconds: Int?,
     val lapLockout: Boolean,
+    /** The recording stops itself when the last timed part ends (parkrun: 5.00 km). */
+    val autoStop: Boolean = false,
     val cueProfile: CueProfile,
     val hrBand: Pair<Double, Double>?,
     val steps: List<Step>,
@@ -113,6 +115,7 @@ data class SessionSpec(
         "warmupSeconds" to warmupSeconds,
         "cooldownSeconds" to cooldownSeconds,
         "lapLockout" to lapLockout,
+        "autoStop" to autoStop,
         "cueProfile" to cueProfile.name,
         "hrBand" to hrBand?.let { listOf(it.first, it.second) },
         "steps" to steps.map { it.toJson() },
@@ -128,6 +131,7 @@ data class SessionSpec(
         fun fromJson(m: Map<String, Any?>?): SessionSpec? {
             m ?: return null
             val band = m["hrBand"] as? List<*>
+            require(band == null || (band.size == 2 && band.all { it is Number })) { "session.hrBand must be [low, high], got $band" }
             return SessionSpec(
                 templateId = m.string("templateId"),
                 templateVersion = m.int("templateVersion"),
@@ -135,6 +139,7 @@ data class SessionSpec(
                 warmupSeconds = (m["warmupSeconds"] as? Number)?.toInt(),
                 cooldownSeconds = (m["cooldownSeconds"] as? Number)?.toInt(),
                 lapLockout = m["lapLockout"] as? Boolean ?: throw IllegalArgumentException("session.lapLockout"),
+                autoStop = m["autoStop"] as? Boolean ?: false,
                 cueProfile = CueProfile.valueOf(m.string("cueProfile")),
                 hrBand = band?.let { (it[0] as Number).toDouble() to (it[1] as Number).toDouble() },
                 steps = m.list("steps").map { @Suppress("UNCHECKED_CAST") Step.fromJson(it as Map<String, Any?>) },

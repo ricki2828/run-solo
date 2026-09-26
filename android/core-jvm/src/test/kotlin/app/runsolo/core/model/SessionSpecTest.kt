@@ -73,7 +73,7 @@ class SessionSpecTest {
         val text = Json.write(SessionSpec.norwegian4x4(3, 240, 150).toJson())
         assertEquals(
             """{"templateId":"norwegian-4x4","templateVersion":1,"name":"Norwegian 4x4","warmupSeconds":null,"cooldownSeconds":null,""" +
-                """"lapLockout":false,"cueProfile":"standard","hrBand":[0.85,0.95],"steps":[""" +
+                """"lapLockout":false,"autoStop":false,"cueProfile":"standard","hrBand":[0.85,0.95],"steps":[""" +
                 """{"kind":"work","target":"time","value":240,"style":"run","rep":1},""" +
                 """{"kind":"recovery","target":"time","value":150,"style":"jog","rep":1},""" +
                 """{"kind":"work","target":"time","value":240,"style":"run","rep":2},""" +
@@ -86,7 +86,7 @@ class SessionSpecTest {
         }
         assertEquals(
             """{"templateId":"cooper","templateVersion":1,"name":"12-minute test","warmupSeconds":null,"cooldownSeconds":null,""" +
-                """"lapLockout":true,"cueProfile":"cooper","hrBand":null,"steps":[{"kind":"work","target":"time","value":720,"style":"run","rep":1}]}""",
+                """"lapLockout":true,"autoStop":false,"cueProfile":"cooper","hrBand":null,"steps":[{"kind":"work","target":"time","value":720,"style":"run","rep":1}]}""",
             Json.write(SessionSpec.COOPER.toJson()),
         )
     }

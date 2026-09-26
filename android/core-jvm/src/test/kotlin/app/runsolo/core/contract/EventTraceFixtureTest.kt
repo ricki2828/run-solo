@@ -48,12 +48,26 @@ class EventTraceFixtureTest {
         assertTrue((afterResume["phaseRemainingMs"] as Long) in 170_000L..180_000L, "remaining ${afterResume["phaseRemainingMs"]}")
         // Cue lines keep `kind: cue` and carry the cue name in `cue`.
         val cues = ev.filter { it["kind"] == "cue" }.map { it["cue"] }
-        assertEquals(4 * 7, cues.count { it != "stop" } - 1 + 1) // 4 cues per timed phase × 7 phases (rep 1's start rides with the LAP)
+        assertEquals(4 * 7, cues.count { it != "stop" && it != "lastRep" }) // 4 cues per timed phase × 7 phases (rep 1's start rides with the LAP)
+        assertEquals(1, cues.count { it == "lastRep" }) // at the start of rep 4
         assertEquals("stop", cues.last())
         // Status snapshots carry laps and mode.
         val status = ev.last { it["kind"] == "status" }
         assertEquals("intervals", status["mode"])
         assertEquals(8, (status["laps"] as List<*>).size)
+        // Every live lap's distance is the tick-stream total at the lap time (PR #26 review P3):
+        // manual laps wait for the next tick and are interpolated, auto laps land on a tick.
+        val tickTs = ticks.map { it["elapsedMs"] as Long }
+        for (lap in ev.filter { it["kind"] == "lap" }) {
+            val tMs = lap["tMs"] as Long
+            val i = tickTs.indexOfFirst { it >= tMs }
+            val at = if (tickTs[i] == tMs) (ticks[i]["totalDistanceM"] as Number).toDouble() else {
+                val (t0, t1) = tickTs[i - 1] to tickTs[i]
+                val (d0, d1) = (ticks[i - 1]["totalDistanceM"] as Number).toDouble() to (ticks[i]["totalDistanceM"] as Number).toDouble()
+                d0 + (d1 - d0) * (tMs - t0) / (t1 - t0)
+            }
+            assertEquals(at, (lap["distanceM"] as Number).toDouble(), 0.1, "lap ${lap["index"]}")
+        }
         // ... and the session in the Pigeon shape, with the step being run.
         assertEquals("norwegian-4x4", (status["spec"] as Map<*, *>)["templateId"])
         assertEquals(7, ((status["spec"] as Map<*, *>)["steps"] as List<*>).size)
