@@ -522,6 +522,33 @@ void main() {
     });
   }
 
+  // Lead P2 on #30: CONTINUE with the battery step undone scrolls to it and
+  // marks it, and the footer says a step is left.
+  testWidgets('set up: CONTINUE points at the undone battery step, 360 x 640', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      fakeServices(
+        settings: const AppSettings(),
+        permissions: FakePermissionsGateway(
+          snapshot: const PermissionSnapshot(
+            fineLocation: true,
+            notifications: true,
+            bluetooth: true,
+          ),
+        ),
+      ),
+      pushRoute: Routes.permissions,
+      pushArguments: true,
+    );
+    tester.view.physicalSize = const Size(1080, 640 * 3.0);
+    await settleAnimations(tester);
+    await tester.tap(find.text('CONTINUE'));
+    await settleAnimations(tester);
+    await golden(tester, 'setup_needed_step_360x640');
+  });
+
   // B3 / brief A9: the Lap Draw intro over Home. The ticker starts on the
   // first frame after pumpApp, so frame times are from there.
   Future<void> introAt(

@@ -231,10 +231,11 @@ class BottomNav extends StatelessWidget {
 
 /// A page body that scrolls above a pinned footer (the CONTINUE button): on
 /// a short phone, at a large text size or with the keyboard up the content
-/// scrolls and the button stays on screen, never "BOTTOM OVERFLOWED". The
-/// list fades out over its last 32 px so clipped text reads as "more below",
-/// not as a cut line.
-class PinnedFooterLayout extends StatelessWidget {
+/// scrolls and the button stays on screen, never "BOTTOM OVERFLOWED". While
+/// there is more below, the list fades out over its last 32 px so clipped
+/// text reads as "more below", not as a cut line; content that fits, or a
+/// list scrolled to its end, is never faded.
+class PinnedFooterLayout extends StatefulWidget {
   const PinnedFooterLayout({
     super.key,
     required this.content,
@@ -244,7 +245,27 @@ class PinnedFooterLayout extends StatelessWidget {
   final List<Widget> footer;
 
   @override
+  State<PinnedFooterLayout> createState() => _PinnedFooterLayoutState();
+}
+
+class _PinnedFooterLayoutState extends State<PinnedFooterLayout> {
+  bool _moreBelow = false;
+
+  bool _onMetrics(ScrollMetrics m) {
+    final more = m.extentAfter > 0.5;
+    if (more != _moreBelow) setState(() => _moreBelow = more);
+    return false;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final list = NotificationListener<ScrollMetricsNotification>(
+      onNotification: (n) => _onMetrics(n.metrics),
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (n) => _onMetrics(n.metrics),
+        child: ListView(children: widget.content),
+      ),
+    );
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
@@ -252,23 +273,32 @@ class PinnedFooterLayout extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
-              child: ShaderMask(
-                blendMode: BlendMode.dstIn,
-                shaderCallback: (rect) => LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: const [
-                    Colors.white,
-                    Colors.white,
-                    Colors.transparent,
-                  ],
-                  stops: [0, 1 - (32 / rect.height).clamp(0.0, 1.0), 1],
-                ).createShader(rect),
-                child: ListView(children: content),
+              // One tree either way: remounting the list would reset its
+              // scroll position, so only the gradient changes.
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ShaderMask(
+                    blendMode: BlendMode.dstIn,
+                    shaderCallback: (rect) => LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white,
+                        Colors.white,
+                        _moreBelow ? Colors.transparent : Colors.white,
+                      ],
+                      stops: [0, 1 - (32 / rect.height).clamp(0.0, 1.0), 1],
+                    ).createShader(rect),
+                    child: list,
+                  ),
+                  if (_moreBelow)
+                    const SizedBox.shrink(key: ValueKey('more-below-fade')),
+                ],
               ),
             ),
             const SizedBox(height: Space.x12),
-            ...footer,
+            ...widget.footer,
           ],
         ),
       ),
