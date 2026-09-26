@@ -41,12 +41,28 @@ class FreeModeTest {
     }
 
     @Test
-    fun `notification Stop opens the app to finish (pause there), never a broadcast that finalises`() {
-        val n = RecorderNotification(context).also { it.createChannel() }
-        val stop = n.build(content(RunMode.free, lapAction = false)).actions.single { it.title.toString() == "Stop" }
-        val shadow = org.robolectric.Shadows.shadowOf(stop.actionIntent)
-        assertTrue(shadow.isActivityIntent)
-        assertEquals(app.runsolo.MainActivity.ACTION_FINISH, shadow.savedIntent.action)
+    fun `notification Stop pauses at the tap without an activity, then the paused notification opens the finish screen`() {
+        fs.mkdirs(RunPaths.RUNS_DIR)
+        val session = RecordingSession(context, "stop-1", RunMode.free, null, Units.km, null, volumeKeyLaps = false)
+        session.startNew(device = "t", app = "t", tz = "UTC")
+        RecorderService.session = session
+        try {
+            val n = RecorderNotification(context).also { it.createChannel() }
+            val stop = n.build(content(RunMode.free, lapAction = false)).actions.single { it.title.toString() == "Stop" }
+            val shadow = org.robolectric.Shadows.shadowOf(stop.actionIntent)
+            assertTrue("a broadcast, not an activity", shadow.isBroadcastIntent)
+            RecorderActionReceiver().onReceive(context, shadow.savedIntent)
+            assertEquals(app.runsolo.platform.RecorderState.PAUSED, session.status().state)
+            assertTrue("no run file: Stop never finalises", !fs.exists(RunPaths.runFile("stop-1")))
+            val paused = n.build(content(RunMode.free, lapAction = false).copy(state = RecorderState.paused))
+            assertEquals("Paused · tap to finish", paused.extras.getCharSequence(android.app.Notification.EXTRA_TITLE).toString())
+            val tap = org.robolectric.Shadows.shadowOf(paused.contentIntent)
+            assertTrue(tap.isActivityIntent)
+            assertEquals(app.runsolo.MainActivity.ACTION_FINISH, tap.savedIntent.action)
+        } finally {
+            RecorderService.session = null
+            session.abortStart() // a brand-new session: its journal goes
+        }
     }
 
     @Test
