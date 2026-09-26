@@ -226,6 +226,32 @@ void main() {
     expect(services.settings.settings.weatherPerRun, isFalse);
   });
 
+  testWidgets('"Compare heat-adjusted paces" defaults off and switches on '
+      '(W2)', (tester) async {
+    final services = fakeServices();
+    await pumpApp(tester, services, home: SettingsScreen(now: now));
+    await pumpTimes(tester, 3);
+    await scrollTo(tester, find.text('Compare heat-adjusted paces'));
+    final toggle = find.descendant(
+      of: find
+          .ancestor(
+            of: find.text('Compare heat-adjusted paces'),
+            matching: find.byType(Row),
+          )
+          .first,
+      matching: find.byType(Switch),
+    );
+    expect(tester.widget<Switch>(toggle).value, isFalse);
+    await tester.tap(toggle);
+    await pumpTimes(tester, 3);
+    expect(services.settings.settings.compareHeatAdjusted, isTrue);
+    expect(
+      AppSettings.fromJson(services.settings.settings.toJson())
+          .compareHeatAdjusted,
+      isTrue,
+    );
+  });
+
   testWidgets('About carries the §18.6 paragraph and attribution', (
     tester,
   ) async {

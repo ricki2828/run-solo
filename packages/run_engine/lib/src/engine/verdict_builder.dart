@@ -32,9 +32,34 @@ class PriorRun {
     this.repCount,
     this.recoveryLabel,
     this.officialTime = false,
+    this.heatFraction,
   });
 
   final String id;
+
+  /// W2: the run's heat slowdown (0.047 = 4.7%, 0 when cool); null without
+  /// usable weather or when too hot to compare, which keeps it out of
+  /// heat-adjusted comparisons.
+  final double? heatFraction;
+
+  /// This prior with its headline pace heat-adjusted ([heatFraction] set).
+  PriorRun heatAdjusted() => PriorRun(
+    id: id,
+    start: start,
+    avgWorkPaceSecPerKm: avgWorkPaceSecPerKm * (1 - heatFraction!),
+    fadeSecPerKm: fadeSecPerKm,
+    recoveryPaceSecPerKm: recoveryPaceSecPerKm,
+    timeInZoneSeconds: timeInZoneSeconds,
+    meanWorkHr: meanWorkHr,
+    meanWorkHrFraction: meanWorkHrFraction,
+    metresPerBeat: metresPerBeat,
+    repPacesSecPerKm: repPacesSecPerKm,
+    comparisonKey: comparisonKey,
+    repCount: repCount,
+    recoveryLabel: recoveryLabel,
+    officialTime: officialTime,
+    heatFraction: heatFraction,
+  );
 
   /// K1: [avgWorkPaceSecPerKm] comes from the runner's official time, not
   /// GPS; the tighter floor needs both sides official.
@@ -78,6 +103,7 @@ class PriorRun {
     'rep_count': repCount,
     'recovery_label': recoveryLabel,
     if (officialTime) 'official': true,
+    'heat_adj': ?heatFraction,
   };
 
   factory PriorRun.fromJson(Map<String, Object?> j) {
@@ -101,6 +127,7 @@ class PriorRun {
       repCount: j['rep_count'] as int?,
       recoveryLabel: j['recovery_label'] as String?,
       officialTime: j['official'] == true,
+      heatFraction: d('heat_adj'),
     );
   }
 
@@ -113,6 +140,7 @@ class PriorRun {
     int? repCount,
     String? recoveryLabel,
     bool officialTime = false,
+    double? heatFraction,
   }) {
     if (!eligible || m.avgWorkPaceSecPerKm == null) return null;
     return PriorRun(
@@ -132,6 +160,7 @@ class PriorRun {
       repCount: repCount,
       recoveryLabel: recoveryLabel,
       officialTime: officialTime,
+      heatFraction: heatFraction,
     );
   }
 }

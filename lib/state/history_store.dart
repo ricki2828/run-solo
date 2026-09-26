@@ -100,6 +100,7 @@ class RunSummary {
     this.indexedComparisonKey,
     this.indexedOfficialTime,
     this.parkrun,
+    this.indexedHeatFraction,
   });
 
   /// From the index (W5b): no file decoded, no analysis.
@@ -115,6 +116,7 @@ class RunSummary {
     row: e.row,
     indexedComparisonKey: e.comparisonKey,
     indexedOfficialTime: e.prior?.officialTime,
+    indexedHeatFraction: e.heatAdj,
   );
 
   final String id;
@@ -151,6 +153,20 @@ class RunSummary {
   /// K1: the headline is the runner's official time (index prior, file
   /// store); null when the index does not say (memory store, no prior).
   final bool? indexedOfficialTime;
+
+  /// The heat slowdown from the index (file store; null without usable
+  /// weather or when too hot to compare).
+  final double? indexedHeatFraction;
+
+  /// W1/W2: this run's heat slowdown (0.047 = 4.7%, 0 when cool); null
+  /// without usable weather or when too hot to compare.
+  double? get heatFraction => indexedHeatFraction ?? analysis?.heat?.fraction;
+
+  /// The heat-adjusted twin of [workPaceSecPerKm] (W2 trend).
+  double? get heatAdjustedWorkPaceSecPerKm {
+    final p = workPaceSecPerKm, f = heatFraction;
+    return p == null || f == null ? null : p * (1 - f);
+  }
 
   /// Intervals figures (null when the run has no interval metrics).
   int? get detectedReps =>
@@ -347,11 +363,18 @@ class _Analyser {
   _Analyser({
     required this.profile,
     required this.now,
+    bool Function()? heatCompare,
     engine.RunEngine? runEngine,
-  }) : runEngine = runEngine ?? const engine.RunEngine(names: kEventNames);
+  }) : heatCompare = heatCompare ?? _off,
+       runEngine = runEngine ?? const engine.RunEngine(names: kEventNames);
+
+  static bool _off() => false;
 
   final engine.UserProfile Function() profile;
   final DateTime Function() now;
+
+  /// "Compare heat-adjusted paces" (W2), read at each pass.
+  final bool Function() heatCompare;
   final engine.RunEngine runEngine;
 
   /// Oldest → newest; returns analyses keyed by id plus the computed
@@ -373,6 +396,7 @@ class _Analyser {
     final analyses = <String, engine.RunAnalysis>{};
     final frozen = <String, engine.Verdict>{};
     final p = profile();
+    final heat = heatCompare();
     for (final run in ordered) {
       final sidecar = sidecars[run.id] ?? engine.RunSidecar(runId: run.id);
       engine.RunAnalysis a;
@@ -383,6 +407,7 @@ class _Analyser {
           priors: List.of(priors),
           profile: p,
           now: now().toUtc(),
+          compareHeatAdjusted: heat,
         );
       } catch (e) {
         debugPrint('history: analysis failed for ${run.id} ($e)');
@@ -470,12 +495,14 @@ class MemoryRunStore implements RunStore {
     this.fake,
     engine.UserProfile Function()? profile,
     DateTime Function()? now,
+    bool Function()? heatCompare,
   }) : runs = runs ?? [],
        files = files ?? [],
        sidecars = sidecars ?? {},
        _analyser = _Analyser(
          profile: profile ?? (() => engine.UserProfile.none),
          now: now ?? DateTime.now,
+         heatCompare: heatCompare,
        );
 
   final List<RunSummary> runs;
@@ -628,6 +655,7 @@ class FileRunStore implements RunStore {
     SidecarWriter? sidecarWriter,
     engine.UserProfile Function()? profile,
     DateTime Function()? now,
+    bool Function()? heatCompare,
     engine.RunEngine? runEngine,
   }) : archiveDir =
            archiveDir ?? Directory('${runsDir.parent.path}/runs-archive'),
@@ -635,6 +663,7 @@ class FileRunStore implements RunStore {
        _analyser = _Analyser(
          profile: profile ?? (() => engine.UserProfile.none),
          now: now ?? DateTime.now,
+         heatCompare: heatCompare,
          runEngine: runEngine,
        );
 
@@ -660,12 +689,14 @@ class FileRunStore implements RunStore {
   Future<RunIndex> readIndex() => RunIndex.read(indexFile);
 
   /// Fingerprint of the analysis inputs that live outside the files (W5b):
-  /// the max-HR resolver's inputs and the event names. The heat-compare
-  /// setting (W2) joins it when it lands. A change rebuilds every entry.
+  /// the max-HR resolver's inputs, the event names and (W2) the
+  /// heat-compare setting, spelled only when on so an update with it off
+  /// rebuilds nothing. A change rebuilds every entry.
   String _inputs() {
     final p = _analyser.profile();
     return 'p:${p.age}|${p.maxHr}|${p.observedMaxHr};'
-        'n:${_analyser.runEngine.names.parkrun}';
+        'n:${_analyser.runEngine.names.parkrun}'
+        '${_analyser.heatCompare() ? ';h:1' : ''}';
   }
 
   /// Run files by id, from their names only (nothing decoded).

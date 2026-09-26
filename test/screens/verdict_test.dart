@@ -254,4 +254,36 @@ void main() {
       isTrue,
     );
   });
+
+  testWidgets('W2 on: the heat note sits under the subline, once', (
+    tester,
+  ) async {
+    final r1 = fourByFourFile(n: 1, start: d1);
+    final weather = engine.WeatherRecord(
+      status: engine.WeatherStatus.ok,
+      fetchedAt: d1,
+      tempC: 28,
+      rh: 62,
+      dewPointC: 21,
+      adj: engine.HeatModel.of(tempC: 28, dewPointC: 21).fraction,
+    );
+    await pumpApp(
+      tester,
+      fakeServices(
+        files: [r1],
+        sidecars: {
+          r1.id: engine.RunSidecar(runId: r1.id, weather: weather.toJson()),
+        },
+        settings: const AppSettings(
+          onboardingDone: true,
+          compareHeatAdjusted: true,
+        ),
+      ),
+      pushRoute: Routes.verdict,
+      pushArguments: r1.id,
+    );
+    await pumpTimes(tester, 6);
+    await reveal(tester);
+    expect(find.text(engine.heatComparedNote), findsOneWidget);
+  });
 }

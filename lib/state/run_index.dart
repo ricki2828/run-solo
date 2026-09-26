@@ -468,7 +468,7 @@ class RunIndex {
   final Map<String, RunIndexEntry> entries;
 
   /// Fingerprint of everything outside the files that changes an analysis
-  /// (max-HR inputs, event names, later the heat-compare setting: W5b).
+  /// (max-HR inputs, event names, the heat-compare setting: W5b, W2).
   /// When it differs, every entry is rebuilt (derived data kept).
   final String? inputs;
 

@@ -58,6 +58,8 @@ class Verdict {
     this.inputsKey = '',
     this.comparisonNote,
     this.nominalRepMetres,
+    this.heatCompare = false,
+    this.heatNote,
   });
 
   final VerdictStage stage;
@@ -110,6 +112,40 @@ class Verdict {
   /// km, the UI shows them as the time for this distance (pace × m ÷ 1000).
   final int? nominalRepMetres;
 
+  /// W2: computed with "Compare heat-adjusted paces" on. A frozen verdict
+  /// from the other setting is recomputed (the flip is like an engine bump).
+  final bool heatCompare;
+
+  /// W2, only with [heatCompare]: which pace the verdict compared,
+  /// "Compared on heat-adjusted pace." or why it fell back to raw.
+  final String? heatNote;
+
+  /// This verdict, stamped with the heat-compare setting it was computed
+  /// under and its note.
+  Verdict withHeat({required bool compare, String? note}) => Verdict(
+    stage: stage,
+    headline: headline,
+    subline: subline,
+    hrLine: hrLine,
+    currentSecPerKm: currentSecPerKm,
+    baselineSecPerKm: baselineSecPerKm,
+    deltaSecPerKm: deltaSecPerKm,
+    rank: rank,
+    setSize: setSize,
+    setIds: setIds,
+    floorSecPerKm: floorSecPerKm,
+    bandSecPerKm: bandSecPerKm,
+    engineVersion: engineVersion,
+    computedAt: computedAt,
+    bestIn365Days: bestIn365Days,
+    trendSecPerKmPerWeek: trendSecPerKmPerWeek,
+    inputsKey: inputsKey,
+    comparisonNote: comparisonNote,
+    nominalRepMetres: nominalRepMetres,
+    heatCompare: compare,
+    heatNote: note,
+  );
+
   static String inputsKeyFor(
     List<LapEdit> edits,
     RunMode? override, {
@@ -155,6 +191,9 @@ class Verdict {
     'inputs_key': inputsKey,
     'comparison_note': comparisonNote,
     'nominal_rep_m': nominalRepMetres,
+    // W2: only when on, so every raw verdict is byte-for-byte unchanged.
+    if (heatCompare) 'heat_compare': true,
+    'heat_note': ?heatNote,
   };
 
   factory Verdict.fromJson(Map<String, Object?> json) {
@@ -214,6 +253,8 @@ class Verdict {
       inputsKey: (json['inputs_key'] as String?) ?? '',
       comparisonNote: json['comparison_note'] as String?,
       nominalRepMetres: optInt('nominal_rep_m'),
+      heatCompare: json['heat_compare'] == true,
+      heatNote: json['heat_note'] as String?,
     );
   }
 }
