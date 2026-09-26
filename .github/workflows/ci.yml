@@ -436,7 +436,26 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-      - name: Boot, install, launch
+      # AVD snapshot cache (reactivecircus pattern): a miss boots once and saves a snapshot; a
+      # hit cold-loads it, and the test boot never saves back (-no-snapshot-save), so every run
+      # starts from the same clean snapshot.
+      # The system image (~50 s of install per job) is cached on its own key; sdkmanager skips an
+      # installed package, so a hit goes straight to AVD creation or snapshot load.
+      - name: System image cache
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/system-images/android-${{ matrix.api-level }}/google_apis/x86_64
+          key: sysimg-${{ matrix.api-level }}-google_apis-x86_64-v1
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ matrix.api-level }}-google_apis-x86_64-v1
+      - name: Create AVD and snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
@@ -444,6 +463,16 @@ jobs:
           target: google_apis
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "AVD snapshot created for caching."
+      - name: Boot, install, launch
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
             tools/emulator_smoke.sh apk/app-debug.apk app.runsolo.debug
@@ -488,7 +517,26 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-      - name: Boot, replay ${{ matrix.kind }}, compare with the fixture
+      # AVD snapshot cache (reactivecircus pattern): a miss boots once and saves a snapshot; a
+      # hit cold-loads it, and the test boot never saves back (-no-snapshot-save), so every run
+      # starts from the same clean snapshot.
+      # The system image (~50 s of install per job) is cached on its own key; sdkmanager skips an
+      # installed package, so a hit goes straight to AVD creation or snapshot load.
+      - name: System image cache
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/system-images/android-34/google_apis/x86_64
+          key: sysimg-34-google_apis-x86_64-v1
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-34-google_apis-x86_64-v1
+      - name: Create AVD and snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -496,6 +544,16 @@ jobs:
           target: google_apis
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "AVD snapshot created for caching."
+      - name: Boot, replay ${{ matrix.kind }}, compare with the fixture
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: tools/emulator_replay_kind.sh apk/app-debug.apk app.runsolo.debug ${{ matrix.kind }}
 
@@ -521,6 +579,35 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
+      # AVD snapshot cache (reactivecircus pattern): a miss boots once and saves a snapshot; a
+      # hit cold-loads it, and the test boot never saves back (-no-snapshot-save), so every run
+      # starts from the same clean snapshot.
+      # The system image (~50 s of install per job) is cached on its own key; sdkmanager skips an
+      # installed package, so a hit goes straight to AVD creation or snapshot load.
+      - name: System image cache
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/system-images/android-36/google_apis/x86_64
+          key: sysimg-36-google_apis-x86_64-v1
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-36-google_apis-x86_64-v1
+      - name: Create AVD and snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "AVD snapshot created for caching."
       # The full lifecycle test needs `run-as` (debuggable packages only); the dogfood build is
       # release, so it gets the launch smoke plus a logcat-only replay check.
       - name: Boot, install, launch, replay smoke
@@ -530,7 +617,7 @@ jobs:
           arch: x86_64
           target: google_apis
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
             tools/emulator_smoke.sh apk/app-x86_64-dogfood-release.apk app.runsolo.dogfood
