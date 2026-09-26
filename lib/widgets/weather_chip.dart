@@ -51,8 +51,12 @@ class WeatherChipView {
 
   /// Every user-facing string, for the copy lints.
   List<String> get strings => [
-    for (final s in [conditions, rawLabel, raw, adjustedLabel, adjusted, note])
-      if (s != null) s,
+    ?conditions,
+    ?rawLabel,
+    ?raw,
+    ?adjustedLabel,
+    ?adjusted,
+    ?note,
     ...sheet,
   ];
 }
