@@ -43,10 +43,10 @@ void main() {
     expect(text(tester, 'cooper-distance'), '2 880 m');
     expect(find.text('VO2 MAX ESTIMATE'), findsOneWidget);
     expect(text(tester, 'cooper-vo2'), '53');
-    expect(find.text('(48 to 58)'), findsOneWidget);
+    expect(find.text('(47 to 59)'), findsOneWidget);
     expect(find.text('ml/kg/min'), findsOneWidget);
     // The big number reads as the labelled estimate (WARN-4).
-    expect(find.bySemanticsLabel('VO2 estimate 53 (48 to 58)'), findsOneWidget);
+    expect(find.bySemanticsLabel('VO2 estimate 53 (47 to 59)'), findsOneWidget);
     expect(find.text('First test on your board'), findsOneWidget);
     expect(find.byKey(const ValueKey('pb-chip')), findsNothing);
     expect(find.byKey(const ValueKey('cooper-change')), findsNothing);

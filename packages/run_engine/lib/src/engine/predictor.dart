@@ -261,21 +261,23 @@ class Prediction {
 }
 
 /// Riegel predictions from the runner's recent efforts (Phase 4 plan §3.4,
-/// PD1): `T2 = T1 × (D2/D1)^1.06`.
+/// PD1): `T2 = T1 × (D2/D1)^1.07`.
 ///
 /// Sources (plan §4 R6): Riegel 1981 via secondary sources (NV); Vickers &
 /// Vertosick 2016 (n = 2303 recreational runners, full text) used 1.07 as
 /// the average and found Riegel well calibrated up to the half marathon.
 /// Riegel cited 1.08 for elite runners and 1.05–1.06 for recreational men
-/// aged 40–70, hence the headline 1.06 and the 1.05–1.08 band. Only up to
-/// 10K (Riegel is weaker at the marathon).
+/// aged 40–70 (via V&V; Riegel 1981 not read). The headline is 1.07, the
+/// only value validated in recreational runners (RV4 C10, main's decision),
+/// with the 1.05–1.08 band. Only up to 10K (Riegel is weaker at the
+/// marathon).
 class Predictor {
   const Predictor({required this.names});
 
   /// Flavour-dependent event names for the copy.
   final EventNames names;
 
-  static const double exponent = 1.06;
+  static const double exponent = 1.07;
   static const double exponentLow = 1.05;
   static const double exponentHigh = 1.08;
 
@@ -427,7 +429,7 @@ class GoalTarget {
 
   /// "Target about 1:52:10 (1:50:40 to 1:55:30), estimate",
   /// "Target about 13.1 km (13.1 to 13.2 km), estimate",
-  /// "Target 49:30 (predicted)", "Target 5.94 km (predicted)".
+  /// "Target 49:30 (predicted)", "Target 5.93 km (predicted)".
   String get line => long
       ? 'Target about ${_num(value)}$_unit (${_num(low)} to ${_num(high)}$_unit), estimate'
       : 'Target ${_num(value)}$_unit (predicted)';
@@ -441,15 +443,21 @@ class GoalTarget {
   /// Exponents beyond 10 km. Vickers & Vertosick 2016 (full text, §4 R6)
   /// report no per-runner exponent spread, so the band is set from what it
   /// does report (needs verification):
-  /// - to 30 km (half, 1 hour): Riegel was well calibrated to the half
-  ///   marathon, so the ≤ 10K headline 1.06 and band 1.05–1.08 stand;
-  /// - beyond 30 km (marathon): Riegel ran ≥ 10 min too fast for half of
-  ///   runners (about +5% at 3:30, i.e. exponent ≈ 1.09–1.10 from a 10K
-  ///   input), so the headline is Vickers' average 1.07 and the band
-  ///   1.05–1.12 covers that slow side.
-  static (double, double, double) exponentsFor(double metres) => metres > 30000
-      ? (1.07, 1.05, 1.12)
+  /// - up to the half marathon (21.1 km): V&V found Riegel well calibrated
+  ///   only this far, so the ≤ 10K headline 1.07 and band 1.05–1.08 stand;
+  /// - beyond the half marathon (the marathon, and 1 hour goals that land
+  ///   past 21.1 km): with 1.07 Riegel ran ≥ 10 min too fast for half of
+  ///   runners and 1.08 still too fast for about 3 in 4 (RV4 C8, C9), so
+  ///   the headline is 1.10 and the band 1.07–1.13.
+  static (double, double, double) exponentsFor(double metres) =>
+      metres > halfMarathonM
+      ? (1.10, 1.07, 1.13)
       : (Predictor.exponent, Predictor.exponentLow, Predictor.exponentHigh);
+
+  /// Where Riegel's calibration stops (V&V 2016, §4 R6): the half
+  /// marathon as the goal catalogue spells it, so the Half itself stays on
+  /// the calibrated band.
+  static const double halfMarathonM = 21098;
 }
 
 extension GoalTargets on Predictor {

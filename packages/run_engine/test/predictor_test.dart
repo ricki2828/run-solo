@@ -67,24 +67,27 @@ void main() {
   }
 
   group('Riegel', () {
-    test('5K 25:00 → 10K with the 1.06 exponent and the 1.05–1.08 band', () {
-      final p = predictor.predict(PredictionTarget.k10, [
-        input(5000, 1500),
-      ], now: now)!;
-      expect(p.seconds, closeTo(3127.40, 0.01));
-      expect(p.lowSeconds, closeTo(3105.79, 0.01));
-      expect(p.highSeconds, closeTo(3171.05, 0.01));
-      expect(
-        p.cardLine,
-        'Estimated 10K 52:07 (51:46 to 52:51) · from your 5K on 12 Sep',
-      );
-    });
+    test(
+      '5K 25:00 → 10K with the 1.07 exponent and the 1.05–1.08 band (RV4 C10)',
+      () {
+        final p = predictor.predict(PredictionTarget.k10, [
+          input(5000, 1500),
+        ], now: now)!;
+        expect(p.seconds, closeTo(3149.15, 0.01));
+        expect(p.lowSeconds, closeTo(3105.79, 0.01));
+        expect(p.highSeconds, closeTo(3171.05, 0.01));
+        expect(
+          p.cardLine,
+          'Estimated 10K 52:29 (51:46 to 52:51) · from your 5K on 12 Sep',
+        );
+      },
+    );
 
     test('predicting down reverses the band order', () {
       final p = predictor.predict(PredictionTarget.k5, [
         input(10000, 3127, kind: PredictionSourceKind.bestEffort10k),
       ], now: now)!;
-      expect(p.seconds, closeTo(1499.8, 0.1));
+      expect(p.seconds, closeTo(1489.4, 0.1));
       expect(p.lowSeconds, lessThan(p.seconds));
       expect(p.highSeconds, greaterThan(p.seconds));
       expect(p.sourceLine, 'from your 10K on 12 Sep');
@@ -103,7 +106,7 @@ void main() {
       final p = predictor.predict(PredictionTarget.k5, [
         input(3000, 720, kind: PredictionSourceKind.wholeRun),
       ], now: now)!;
-      expect(p.seconds, closeTo(1237.35, 0.01));
+      expect(p.seconds, closeTo(1243.69, 0.01));
       expect(p.sourceLine, 'from your 3.0 km run on 12 Sep');
     });
 
