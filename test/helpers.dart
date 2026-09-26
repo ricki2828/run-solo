@@ -43,6 +43,7 @@ AppServices fakeServices({
   FakeTransferGateway? transfer,
   FakeStorageGateway? storage,
   List<CustomSession> customSessions = const [],
+  Map<String, String> courseNames = const {},
 }) => AppServices.fake(
   recorder: recorder ?? FakeRecorderGateway(now: now),
   ble: ble,
@@ -65,6 +66,7 @@ AppServices fakeServices({
   storage: storage,
   now: now,
   customSessions: customSessions,
+  courseNames: courseNames,
 );
 
 /// A catalogue preset expanded as the recorder receives it.

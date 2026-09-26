@@ -10,7 +10,9 @@ import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_engine/run_engine.dart' as engine;
+import 'package:run_solo/screens/course_board_screen.dart';
 import 'package:run_solo/screens/custom_builder_screen.dart';
+import 'package:run_solo/screens/verdict_screen.dart';
 import 'package:run_solo/screens/home_screen.dart';
 import 'package:run_solo/screens/permissions_screen.dart';
 import 'package:run_solo/screens/run_detail_screen.dart';
@@ -804,6 +806,76 @@ void main() {
       await stepSeconds(tester, fake, 15);
       await settleAnimations(tester);
       await golden(tester, 'record_short_rep_360x$h');
+    });
+  }
+
+  // K1 app half (design brief A10.2 board detail, A10.3 slot): the event
+  // panel on the verdict, the official-time refusal and the course board.
+  for (final h in [800, 640]) {
+    testWidgets('event: verdict panel, official time refused, board at '
+        '360 x $h', (tester) async {
+      final day0 = DateTime.utc(2026, 8, 1, 22);
+      final files = [
+        for (var i = 1; i <= 5; i++)
+          eventRunFile(
+            n: i,
+            start: day0.add(Duration(days: 7 * i)),
+            eventName: kEventNames.parkrun,
+            mps: 3.3 + 0.05 * i,
+          ),
+      ];
+      final course = engine.ParkrunCourses.newCourseId(files.first);
+      final services = fakeServices(
+        files: files,
+        courseNames: {course: 'Albert Park'},
+      );
+      await pumpApp(
+        tester,
+        services,
+        pushRoute: Routes.verdict,
+        pushArguments: files[4].id, // the course best: NEW BEST and #1 of 5
+      );
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 6);
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.pump(const Duration(milliseconds: 1800));
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('event-rank')),
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byType(VerdictScreen),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      await golden(tester, 'event_verdict_360x$h');
+      await tester.tap(find.byKey(const ValueKey('event-official')));
+      await pumpTimes(tester, 2);
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.enterText(
+        find.byKey(const ValueKey('official-time')),
+        '40:00',
+      );
+      await tester.tap(find.byKey(const ValueKey('official-save')));
+      await pumpTimes(tester, 4);
+      expect(
+        find.textContaining('long way from your GPS time'),
+        findsOneWidget,
+      );
+      await tester.pump(const Duration(milliseconds: 300)); // error fades in
+      await golden(tester, 'event_official_refused_360x$h');
+      await pumpApp(
+        tester,
+        services,
+        home: CourseBoardScreen(courseId: course),
+      );
+      // pumpApp resets the surface (review P2): size it again.
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 6);
+      await golden(tester, 'course_board_360x$h');
     });
   }
 
