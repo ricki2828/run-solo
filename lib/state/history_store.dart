@@ -631,6 +631,27 @@ class FileRunStore implements RunStore {
   Future<RunDetail> setOverride(String id, RecordMode? mode) =>
       _mutate(id, (s) => s.withOverride(mode == null ? null : runModeOf(mode)));
 
+  /// Every readable run with its sidecar, for the weather queue (W1).
+  Future<List<(engine.RunFile, engine.RunSidecar?)>> weatherCandidates() async {
+    final scanned = await _scan();
+    return [for (final v in scanned.values) (v.$1, v.$2)];
+  }
+
+  /// Store a run's weather in its sidecar (through the writer; nothing is
+  /// written once the run is deleted). Weather never touches the verdict:
+  /// the frozen one stays as it is (plan §18.5).
+  Future<void> setWeather(String id, engine.WeatherRecord weather) async {
+    final scanned = await _scan();
+    final v = scanned[id];
+    if (v == null) return;
+    await sidecars.update(
+      id,
+      _sidecarFor(v.$3),
+      (current) => current.copyWith(weather: weather.toJson()),
+      runFile: v.$3,
+    );
+  }
+
   @override
   Future<List<engine.RunBundle>> exportBundles() async {
     final scanned = await _scan();

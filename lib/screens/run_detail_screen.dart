@@ -466,6 +466,15 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
               ),
             ),
           ),
+        if (a.heatLine != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: Space.x16),
+            child: Text(
+              a.heatLine!,
+              key: const ValueKey('heat-line'),
+              style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+            ),
+          ),
         _TableHeader(cells: const ['Rep', 'Pace', 'Avg HR', 'In band']),
         for (final r in m.reps)
           _TableRow(

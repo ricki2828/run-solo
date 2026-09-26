@@ -71,6 +71,7 @@ class AppSettings {
     this.haptics = true,
     this.volumeKeyLap,
     this.keepScreenOn = true,
+    this.weatherPerRun = true,
     this.reducedMotion = false,
     this.typedMaxHr,
     this.birthYear,
@@ -93,6 +94,11 @@ class AppSettings {
   /// never for Free). See [volumeKeyLapFor].
   final bool? volumeKeyLap;
   final bool keepScreenOn;
+
+  /// "Weather for each run" (v1 plan §18.6, default on): fetch the
+  /// temperature and dew point for each finished run from Open-Meteo with
+  /// the location rounded to about 10 km. Off = nothing is sent.
+  final bool weatherPerRun;
   final bool reducedMotion;
 
   /// Max HR typed in Settings; null = not entered (plan D3, N1: the old
@@ -140,6 +146,7 @@ class AppSettings {
     bool? haptics,
     bool? volumeKeyLap,
     bool? keepScreenOn,
+    bool? weatherPerRun,
     bool? reducedMotion,
     int? typedMaxHr,
     bool clearTypedMaxHr = false,
@@ -163,6 +170,7 @@ class AppSettings {
     haptics: haptics ?? this.haptics,
     volumeKeyLap: volumeKeyLap ?? this.volumeKeyLap,
     keepScreenOn: keepScreenOn ?? this.keepScreenOn,
+    weatherPerRun: weatherPerRun ?? this.weatherPerRun,
     reducedMotion: reducedMotion ?? this.reducedMotion,
     typedMaxHr: clearTypedMaxHr ? null : (typedMaxHr ?? this.typedMaxHr),
     birthYear: clearBirthYear ? null : (birthYear ?? this.birthYear),
@@ -189,6 +197,7 @@ class AppSettings {
     'haptics': haptics,
     'volumeKeyLap': volumeKeyLap,
     'keepScreenOn': keepScreenOn,
+    'weatherPerRun': weatherPerRun,
     'reducedMotion': reducedMotion,
     'typedMaxHr': typedMaxHr,
     'birthYear': birthYear,
@@ -240,6 +249,7 @@ class AppSettings {
           ? j['volumeKeyLap'] as bool
           : null,
       keepScreenOn: pick('keepScreenOn', d.keepScreenOn),
+      weatherPerRun: pick('weatherPerRun', d.weatherPerRun),
       reducedMotion: pick('reducedMotion', d.reducedMotion),
       typedMaxHr: typed,
       birthYear: optInt('birthYear'),

@@ -3,6 +3,7 @@
 /// `--dart-define=RUN_SOLO_FAKE=true` before the Kotlin service lands.
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
@@ -19,6 +20,7 @@ import '../state/history_store.dart';
 import '../state/max_hr.dart';
 import '../state/recording_controller.dart';
 import '../state/settings.dart';
+import '../state/weather.dart';
 import '../state/zone_memento.dart';
 
 const bool kFakePlatform = bool.fromEnvironment('RUN_SOLO_FAKE');
@@ -36,6 +38,7 @@ class AppServices {
     RecordingController? recording,
     DateTime Function()? now,
     ZoneMementoStore? zoneMemento,
+    this.weather,
   }) : now = now ?? DateTime.now,
        recording =
            recording ??
@@ -59,6 +62,40 @@ class AppServices {
   final StorageGateway storage;
   final RecordingController recording;
   final DateTime Function() now;
+
+  /// Weather per finished run (W1); null in tests and the fake APK.
+  final WeatherQueue? weather;
+  String? _lastFinishedRunId;
+
+  /// Queues and drains weather: once on open (runs finished or imported
+  /// while the app was closed) and whenever a recording finishes. Never
+  /// during a run; failures only log.
+  void startWeather() {
+    final w = weather;
+    if (w == null) return;
+    unawaited(_weatherPass(w.reconcile));
+    recording.addListener(() {
+      final s = recording.snapshot;
+      if (s.state != RecorderState.idle || s.runId == null) return;
+      if (s.runId == _lastFinishedRunId) return;
+      _lastFinishedRunId = s.runId;
+      final id = s.runId!;
+      unawaited(_weatherPass(() => w.enqueue(id)));
+    });
+  }
+
+  Future<void> _weatherPass(Future<void> Function() before) async {
+    final w = weather!;
+    try {
+      await before();
+      final r = await w.drain();
+      // "Retried ... after any successful fetch" (§18.5): a success means
+      // the network is back, so give the runs left behind one more go.
+      if (r.ok.isNotEmpty && !r.stoppedEarly) await w.drain();
+    } catch (e) {
+      debugPrint('weather: pass failed ($e)');
+    }
+  }
 
   /// The engine profile from settings (plan D3 `maxHrFor` inputs).
   engine.UserProfile get profile => MaxHr.profileFor(settings.settings, now());
@@ -111,20 +148,29 @@ class AppServices {
       FileSettingsStore(Directory('${support.path}/state')),
     );
     await settings.load();
-    return AppServices(
+    final history = FileRunStore(
+      Directory('${support.path}/runs'),
+      profile: () => MaxHr.profileFor(settings.settings, DateTime.now()),
+    );
+    final services = AppServices(
       recorder: PigeonRecorderGateway(),
       ble: PigeonBleGateway(),
       permissions: PigeonPermissionsGateway(),
       settings: settings,
-      history: FileRunStore(
-        Directory('${support.path}/runs'),
-        profile: () => MaxHr.profileFor(settings.settings, DateTime.now()),
-      ),
+      history: history,
       maps: const GoogleMapSurfaceFactory(),
       transfer: const ShareSheetTransferGateway(),
       storage: PigeonStorageGateway(),
       zoneMemento: FileZoneMementoStore(Directory('${support.path}/state')),
+      weather: WeatherQueue(
+        file: File('${support.path}/state/weather-queue.json'),
+        store: history,
+        provider: const OpenMeteoProvider(),
+        enabled: () => settings.settings.weatherPerRun,
+      ),
     );
+    services.startWeather();
+    return services;
   }
 
   static AppServices of(BuildContext context) {
