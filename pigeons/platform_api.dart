@@ -413,6 +413,7 @@ class RecorderStatus {
     required this.journalOk,
     this.pausedAtElapsedMs,
     this.finishRequests,
+    this.tipsMuted,
   });
   RecorderState state;
   String? runId;
@@ -446,6 +447,11 @@ class RecorderStatus {
   /// this run (null = none). The app opens its finish screen when this goes up;
   /// it also works on a cold start, where an event would be missed.
   int? finishRequests;
+
+  /// Live coaching this run (LV2): null when there is none (no LiveContext,
+  /// nothing to compare, or Coaching tips off in Settings), false while tips
+  /// are on, true once "Mute tips" was tapped (app or notification).
+  bool? tipsMuted;
 }
 
 /// An in-progress journal found on app open without a finalised run file.
@@ -655,6 +661,12 @@ abstract class RecorderApi {
   /// ("3 k, 15 minutes 20, pace 5:07."). Persisted natively; applies to a run
   /// in progress too.
   void setKmSplits(bool enabled);
+
+  /// "Mute tips" in the app (LV2, A10.1): coaching off for this run only (no
+  /// compare speech, no nudges; the app hides the card), the same as the
+  /// notification action. A no-op when idle or already muted. Emits a
+  /// [StateEvent] so the app re-reads `RecorderStatus.tipsMuted`.
+  void muteTips();
 
   /// The user's volume-key LAP setting for Laps runs, persisted natively (the
   /// recorder reads it at start). Takes effect from the next run or resume,

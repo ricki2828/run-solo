@@ -27,10 +27,18 @@ const String kOpenMeteoAttribution = 'Weather data by Open-Meteo.com';
 const String kOnboardingInternetLine =
     'Maps and weather use the internet. Your recorded run stays on the phone.';
 
+/// Settings → Voice sublines (A10.7).
+const String kCoachingTipsLine =
+    'Where you stand and short tips, spoken at your splits.';
+const String kShowWhileRunningLine =
+    'A 2 s card on the run screen when a rank is spoken.';
+
 /// Settings (design brief §4.11, plan D3 / §18): units, heart rate (strap,
 /// max HR + source, reset observed max, pending-max sheet, birth year),
-/// recording (screen on, volume-key lap, cues, haptics, battery shortcut),
+/// voice (cues, km splits, coaching tips, show while running; A10.7),
+/// recording (screen on, volume-key lap, haptics, battery shortcut),
 /// motion, about with the §18.6 privacy paragraph.
+
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, this.now});
   final DateTime Function()? now;
@@ -262,6 +270,35 @@ class _SettingsScreenState extends State<SettingsScreen>
                   style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
               ),
+              // A10.7: Voice sits above Recording; voice cues moved here.
+              const _Section('Voice'),
+              _Toggle(
+                label: 'Voice cues',
+                value: s.cues,
+                onChanged: (v) => set((x) => x.copyWith(cues: v)),
+              ),
+              _Toggle(
+                label: 'Km splits (Free run)',
+                value: s.cues && s.kmSplits,
+                onChanged: s.cues
+                    ? (v) => set((x) => x.copyWith(kmSplits: v))
+                    : null,
+                reason: s.cues ? null : 'Turn on voice cues first',
+              ),
+              _Toggle(
+                label: 'Coaching tips',
+                value: s.tipsSpoken,
+                onChanged: s.cues
+                    ? (v) => set((x) => x.copyWith(coachingTips: v))
+                    : null,
+                reason: s.cues ? kCoachingTipsLine : 'Needs voice cues',
+              ),
+              _Toggle(
+                label: 'Show while running',
+                value: s.showWhileRunning,
+                onChanged: (v) => set((x) => x.copyWith(showWhileRunning: v)),
+                reason: kShowWhileRunningLine,
+              ),
               const _Section('Recording'),
               _Toggle(
                 label: 'Keep screen on',
@@ -275,19 +312,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ? (v) => set((x) => x.copyWith(volumeKeyLap: v))
                     : null,
                 reason: _volumeKeyLaps ? null : kVolumeKeyToggleReason,
-              ),
-              _Toggle(
-                label: 'Voice cues',
-                value: s.cues,
-                onChanged: (v) => set((x) => x.copyWith(cues: v)),
-              ),
-              _Toggle(
-                label: 'Km splits (Free run)',
-                value: s.cues && s.kmSplits,
-                onChanged: s.cues
-                    ? (v) => set((x) => x.copyWith(kmSplits: v))
-                    : null,
-                reason: s.cues ? null : 'Turn on voice cues first',
               ),
               _Toggle(
                 label: 'Haptics',

@@ -767,7 +767,10 @@ class RecordingSession(
         Log.i(TAG, "goal reached: ${g.text} interrupted=${g.interrupted}")
     }
 
-    /** "Mute tips" for this run (notification action): compares keep firing for the overlay, not the voice. */
+    /**
+     * "Mute tips" for this run (notification action or the app's button): compares keep firing
+     * (journal, `CompareEvent`) but are not spoken; the app hides the card once `tipsMuted` is true.
+     */
     @Synchronized
     fun muteTips() {
         if (finished || coach.muted) return
@@ -775,6 +778,8 @@ class RecordingSession(
         cues.dropNudge()
         Log.i(TAG, "tips muted for $runId")
         onNotificationChanged?.invoke()
+        // The app re-reads status() on a state event: its Mute tips button and the card go.
+        emitState()
     }
 
     /** Replay only (T4): what was said, at trace ms, for the emulator's transcript check. */
@@ -846,8 +851,12 @@ class RecordingSession(
             journalOk = writer.ok,
             pausedAtElapsedMs = core.pausedAtElapsedMs,
             finishRequests = finishRequests.takeIf { it > 0 }?.toLong(),
+            tipsMuted = tipsMuted(),
         )
     }
+
+    /** null: no live coaching this run (nothing to compare, or Coaching tips off in Settings). */
+    private fun tipsMuted(): Boolean? = if (!coach.active || liveContext?.coachingMuted == true) null else coach.muted
 
     @Synchronized
     fun notificationContent(): RecorderNotification.Content {

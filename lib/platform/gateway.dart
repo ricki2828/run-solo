@@ -125,6 +125,10 @@ abstract class RecorderGateway {
   /// Voice → "Km splits": a Free run says each km. Persisted natively.
   Future<void> setKmSplits(bool enabled);
 
+  /// "Mute tips" for this run (LV2): no compare speech, no nudges, no card.
+  /// Native answers with a state event; `status().tipsMuted` turns true.
+  Future<void> muteTips();
+
   /// Saved volume-key lap choice for Laps runs (4x4 and Free never hook the
   /// volume keys). Native applies it from the next start or resume, never
   /// mid-run; Start sends it before every Laps start.

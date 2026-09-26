@@ -1223,7 +1223,13 @@ data class RecorderStatus (
    * this run (null = none). The app opens its finish screen when this goes up;
    * it also works on a cold start, where an event would be missed.
    */
-  val finishRequests: Long? = null
+  val finishRequests: Long? = null,
+  /**
+   * Live coaching this run (LV2): null when there is none (no LiveContext,
+   * nothing to compare, or Coaching tips off in Settings), false while tips
+   * are on, true once "Mute tips" was tapped (app or notification).
+   */
+  val tipsMuted: Boolean? = null
 )
  {
   companion object {
@@ -1246,7 +1252,8 @@ data class RecorderStatus (
       val journalOk = pigeonVar_list[15] as Boolean
       val pausedAtElapsedMs = pigeonVar_list[16] as Long?
       val finishRequests = pigeonVar_list[17] as Long?
-      return RecorderStatus(state, runId, mode, laps, elapsedMs, lapIndex, gpsFix, hrConnected, phase, repIndex, phaseRemainingMs, spec, stepIndex, stepRemainingMs, stepRemainingM, journalOk, pausedAtElapsedMs, finishRequests)
+      val tipsMuted = pigeonVar_list[18] as Boolean?
+      return RecorderStatus(state, runId, mode, laps, elapsedMs, lapIndex, gpsFix, hrConnected, phase, repIndex, phaseRemainingMs, spec, stepIndex, stepRemainingMs, stepRemainingM, journalOk, pausedAtElapsedMs, finishRequests, tipsMuted)
     }
   }
   fun toList(): List<Any?> {
@@ -1269,6 +1276,7 @@ data class RecorderStatus (
       journalOk,
       pausedAtElapsedMs,
       finishRequests,
+      tipsMuted,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -1279,7 +1287,7 @@ data class RecorderStatus (
       return true
     }
     val other = other as RecorderStatus
-    return PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.laps, other.laps) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapIndex, other.lapIndex) && PlatformApiPigeonUtils.deepEquals(this.gpsFix, other.gpsFix) && PlatformApiPigeonUtils.deepEquals(this.hrConnected, other.hrConnected) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.spec, other.spec) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.journalOk, other.journalOk) && PlatformApiPigeonUtils.deepEquals(this.pausedAtElapsedMs, other.pausedAtElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.finishRequests, other.finishRequests)
+    return PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.laps, other.laps) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapIndex, other.lapIndex) && PlatformApiPigeonUtils.deepEquals(this.gpsFix, other.gpsFix) && PlatformApiPigeonUtils.deepEquals(this.hrConnected, other.hrConnected) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.spec, other.spec) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.journalOk, other.journalOk) && PlatformApiPigeonUtils.deepEquals(this.pausedAtElapsedMs, other.pausedAtElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.finishRequests, other.finishRequests) && PlatformApiPigeonUtils.deepEquals(this.tipsMuted, other.tipsMuted)
   }
 
   override fun hashCode(): Int {
@@ -1302,6 +1310,7 @@ data class RecorderStatus (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.journalOk)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.pausedAtElapsedMs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.finishRequests)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.tipsMuted)
     return result
   }
 }
@@ -2810,6 +2819,13 @@ interface RecorderApi {
    */
   fun setKmSplits(enabled: Boolean)
   /**
+   * "Mute tips" in the app (LV2, A10.1): coaching off for this run only (no
+   * compare speech, no nudges; the app hides the card), the same as the
+   * notification action. A no-op when idle or already muted. Emits a
+   * [StateEvent] so the app re-reads `RecorderStatus.tipsMuted`.
+   */
+  fun muteTips()
+  /**
    * The user's volume-key LAP setting for Laps runs, persisted natively (the
    * recorder reads it at start). Takes effect from the next run or resume,
    * not the live one. Unset means on. Intervals, Free and Cooper never use
@@ -3110,6 +3126,22 @@ interface RecorderApi {
             val enabledArg = args[0] as Boolean
             val wrapped: List<Any?> = try {
               api.setKmSplits(enabledArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.muteTips$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.muteTips()
               listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)
