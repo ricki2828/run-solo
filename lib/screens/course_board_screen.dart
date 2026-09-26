@@ -74,7 +74,12 @@ class EventPanel extends StatelessWidget {
           _Row(
             key: const ValueKey('event-rank'),
             label: 'ON THIS COURSE',
-            value: '#$rank of ${board.ranked.length} · See the board',
+            // Rank on the board as it is now; a later run can have moved
+            // it, so the verdict's NEW BEST and "#2" never read as a clash.
+            value:
+                board.ranked.any((e) => e.run.start.isAfter(detail.run.start))
+                ? '#$rank of ${board.ranked.length} today · See the board'
+                : '#$rank of ${board.ranked.length} · See the board',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => CourseBoardScreen(courseId: courseId!),
