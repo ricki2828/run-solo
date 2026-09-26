@@ -688,7 +688,7 @@ data class LiveEntry (
  * Generated class from Pigeon that represents data sent in messages.
  */
 data class LiveBoard (
-  /** The comparison key (`be:5k`, an intervals key, `cooper`, a course). */
+  /** The comparison key (`be:5000`, an intervals key, `cooper`, a course). */
   val key: String,
   /**
    * Spoken and shown name ("5K", "8 × 400 m"); the app injects any event

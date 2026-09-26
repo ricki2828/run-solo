@@ -6,6 +6,7 @@ import app.runsolo.core.json.list
 import app.runsolo.core.json.long
 import app.runsolo.core.json.obj
 import app.runsolo.core.json.string
+import kotlin.math.abs
 
 /**
  * The live "you vs you" context (Phase 4 plan §3.2, LC1 contract): built by the app at Start
@@ -29,7 +30,13 @@ data class LiveContext(
 ) {
     init {
         require(boards.size <= MAX_BOARDS) { "at most $MAX_BOARDS live boards, got ${boards.size}" }
-        require(cooperCurve == null || cooperCurve.size == COOPER_MINUTES) { "cooperCurve needs $COOPER_MINUTES points" }
+        cooperCurve?.let { f ->
+            require(f.size == COOPER_MINUTES) { "cooperCurve needs $COOPER_MINUTES points" }
+            require(f.all { it.isFinite() } && f.first() > 0) { "cooperCurve must be finite and start above 0" }
+            require(f.zipWithNext().all { (a, b) -> b > a }) { "cooperCurve must increase" }
+            require(abs(f.last() - 1.0) < 1e-9) { "cooperCurve must end at F(12) = 1" }
+        }
+        require(cooperHistory == null || cooperHistory.all { it.isFinite() }) { "cooperHistory must be finite" }
     }
 
     /** The previous Cooper test's VO2, for "up 2 on last time". */
@@ -122,6 +129,14 @@ data class LiveEntry(
     /** Finish ms, mean rep pace s/km, or raw Cooper VO2. */
     val finalMetric: Double,
 ) {
+    init {
+        require(finalMetric.isFinite()) { "finalMetric must be finite ($runId)" }
+        require(liveRepPacesSecPerKm == null || liveRepPacesSecPerKm.all { it == null || it.isFinite() }) {
+            "liveRepPacesSecPerKm must be finite ($runId)"
+        }
+        require(cooperMinuteM == null || cooperMinuteM.all { it.isFinite() }) { "cooperMinuteM must be finite ($runId)" }
+    }
+
     fun toJson(): Map<String, Any?> = linkedMapOf(
         "runId" to runId,
         "dateMs" to dateMs,

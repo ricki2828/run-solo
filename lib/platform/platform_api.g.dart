@@ -507,7 +507,7 @@ class LiveBoard {
     required this.entries,
   });
 
-  /// The comparison key (`be:5k`, an intervals key, `cooper`, a course).
+  /// The comparison key (`be:5000`, an intervals key, `cooper`, a course).
   String key;
 
   /// Spoken and shown name ("5K", "8 × 400 m"); the app injects any event
