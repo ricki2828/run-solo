@@ -123,9 +123,10 @@ class RecordingSession(
     /**
      * Manual laps (button, notification, volume key, START REPS) wait for the next tick so their
      * distance is interpolated at the press time from the two ticks around it, as the run file
-     * and engine see it (PR #26 review P3). Auto laps land on a tick boundary and go out at once.
+     * and engine see it (PR #26 review P3). The phase change the lap caused waits with it, so
+     * the app always sees a lap before its phase change. Auto laps land on a tick and go out at once.
      */
-    private val pendingLaps = ArrayList<RecorderCore.Output.Lap>()
+    private val pendingOut = ArrayList<RecorderCore.Output>()
     private var prevTickT = 0L
     private var prevTickD = 0.0
 
@@ -568,18 +569,14 @@ class RecordingSession(
                 is RecorderCore.Output.Lap -> {
                     writer.append(JournalLine.Lap(o.t, System.currentTimeMillis(), o.source))
                     lapCount = o.index + 1
-                    if (o.source == LapSource.auto) publishLap(o, ticker.distanceM) else pendingLaps.add(o)
+                    if (o.source == LapSource.auto) publishLap(o, ticker.distanceM) else pendingOut.add(o)
                 }
                 is RecorderCore.Output.Cue -> {
                     writer.append(JournalLine.Cue(o.t, System.currentTimeMillis(), o.kind))
                     cues.play(o.kind, cueText(o))
                     RecorderEventBus.emit(CueEvent(kind = o.kind.toPigeon(), value = o.value))
                 }
-                is RecorderCore.Output.PhaseChanged -> {
-                    refreshSnapshot()
-                    RecorderEventBus.emit(PhaseEvent(phase = o.phase.toPigeon(), repIndex = o.repIndex.toLong(), phaseDurationMs = o.phaseDurationMs ?: 0L))
-                    onNotificationChanged?.invoke()
-                }
+                is RecorderCore.Output.PhaseChanged -> if (pendingOut.isEmpty()) publishPhase(o) else pendingOut.add(o)
                 is RecorderCore.Output.AutoStop -> {
                     Log.i(TAG, "auto-stop at ${core.status(o.t).elapsedMs} ms")
                     onAutoStop?.invoke()
@@ -588,11 +585,21 @@ class RecordingSession(
         }
     }
 
-    /** Sends the manual laps pressed since the last tick, each at its interpolated distance. */
+    /** Sends the manual laps pressed since the last tick, each at its interpolated distance, then their phase changes. */
     private fun flushLaps(t: Long) {
-        if (pendingLaps.isEmpty()) return
-        for (o in pendingLaps) publishLap(o, core.distanceAtTime(o.t, prevTickT, prevTickD, t, ticker.distanceM))
-        pendingLaps.clear()
+        if (pendingOut.isEmpty()) return
+        for (o in pendingOut) when (o) {
+            is RecorderCore.Output.Lap -> publishLap(o, core.distanceAtTime(o.t, prevTickT, prevTickD, t, ticker.distanceM))
+            is RecorderCore.Output.PhaseChanged -> publishPhase(o)
+            else -> Unit
+        }
+        pendingOut.clear()
+    }
+
+    private fun publishPhase(o: RecorderCore.Output.PhaseChanged) {
+        refreshSnapshot()
+        RecorderEventBus.emit(PhaseEvent(phase = o.phase.toPigeon(), repIndex = o.repIndex.toLong(), phaseDurationMs = o.phaseDurationMs ?: 0L))
+        onNotificationChanged?.invoke()
     }
 
     private fun publishLap(o: RecorderCore.Output.Lap, distanceM: Double) {

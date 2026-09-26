@@ -105,7 +105,7 @@ object EventTraceFixture {
             emit("status", core.status(t).elapsedMs, status(t))
         }
 
-        val pendingLaps = ArrayList<RecorderCore.Output.Lap>()
+        val pendingOut = ArrayList<RecorderCore.Output>()
         var prevTickT = 0L
         var prevTickD = 0.0
 
@@ -120,9 +120,18 @@ object EventTraceFixture {
             emit("lap", el, lap)
         }
 
+        fun publishPhase(o: RecorderCore.Output.PhaseChanged) {
+            emit("phase", core.status(o.t).elapsedMs, mapOf("phase" to o.phase.name, "repIndex" to o.repIndex, "phaseDurationMs" to (o.phaseDurationMs ?: 0L)))
+            emit("status", core.status(o.t).elapsedMs, status(o.t))
+        }
+
         fun flushLaps(t: Long) {
-            for (o in pendingLaps) publishLap(o, core.distanceAtTime(o.t, prevTickT, prevTickD, t, ticker.distanceM))
-            pendingLaps.clear()
+            for (o in pendingOut) when (o) {
+                is RecorderCore.Output.Lap -> publishLap(o, core.distanceAtTime(o.t, prevTickT, prevTickD, t, ticker.distanceM))
+                is RecorderCore.Output.PhaseChanged -> publishPhase(o)
+                else -> Unit
+            }
+            pendingOut.clear()
         }
 
         fun handle(out: List<RecorderCore.Output>, t: Long) {
@@ -130,17 +139,15 @@ object EventTraceFixture {
                 when (o) {
                     is RecorderCore.Output.Lap -> {
                         writer.append(JournalLine.Lap(o.t, W0 + o.t, o.source))
-                        // As RecordingSession: a manual lap goes out at the next tick, at its interpolated distance.
-                        if (o.source == LapSource.auto) publishLap(o, ticker.distanceM) else pendingLaps.add(o)
+                        // As RecordingSession: a manual lap goes out at the next tick, at its interpolated
+                        // distance, and the phase change it caused waits with it (lap first).
+                        if (o.source == LapSource.auto) publishLap(o, ticker.distanceM) else pendingOut.add(o)
                     }
                     is RecorderCore.Output.Cue -> {
                         writer.append(JournalLine.Cue(o.t, W0 + o.t, o.kind))
                         emit("cue", core.status(o.t).elapsedMs, linkedMapOf("cue" to o.kind.name, "value" to o.value))
                     }
-                    is RecorderCore.Output.PhaseChanged -> {
-                        emit("phase", core.status(o.t).elapsedMs, mapOf("phase" to o.phase.name, "repIndex" to o.repIndex, "phaseDurationMs" to (o.phaseDurationMs ?: 0L)))
-                        emit("status", core.status(o.t).elapsedMs, status(o.t))
-                    }
+                    is RecorderCore.Output.PhaseChanged -> if (pendingOut.isEmpty()) publishPhase(o) else pendingOut.add(o)
                     is RecorderCore.Output.AutoStop -> Unit // no auto-stop in this 4x4
                 }
             }

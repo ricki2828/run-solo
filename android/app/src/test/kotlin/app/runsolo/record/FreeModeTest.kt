@@ -65,10 +65,11 @@ class FreeModeTest {
         s.lap(LapSource.button)
         org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(450)) // core debounce is 400 ms of device time
         s.lap(LapSource.volumeKey)
-        assertEquals(2, s.status().laps.size)
         val replay = JournalReplay.read(fs.readBytes(RunPaths.journal("laps-1")))
         assertEquals(RunMode.laps, replay.header.mode)
         assertEquals(listOf(LapSource.button, LapSource.volumeKey), replay.events.filterIsInstance<RunEvent.Lap>().map { it.source })
-        s.abortStart() // a new run: discard, do not leave a file behind
+        // Manual laps reach the status at the next tick (distance interpolated at the press); stop flushes them.
+        assertTrue(s.stop() != null)
+        assertEquals(2, s.status().laps.size)
     }
 }
