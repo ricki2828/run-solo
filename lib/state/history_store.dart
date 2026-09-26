@@ -22,6 +22,7 @@ import '../app/event_names.dart';
 import '../platform/fake_gateway.dart';
 import '../platform/gateway.dart';
 import '../platform/session_codec.dart';
+import 'boards.dart';
 import 'run_index.dart';
 import 'sidecar_writer.dart';
 
@@ -251,6 +252,9 @@ class RunDetail {
 abstract class HistoryStore {
   /// Newest first.
   Future<List<RunSummary>> list();
+
+  /// Personal leaderboards over every run (LB3): the LB2 fold of the index.
+  Future<Boards> boards();
 }
 
 /// Outcome of [RunStore.importBundles]: uuid dedupe never overwrites.
@@ -548,6 +552,24 @@ class MemoryRunStore implements RunStore {
       written.add(next);
     }
     return r.analyses;
+  }
+
+  /// The same index entries the file store keeps, built in memory (derived
+  /// data included), so the boards match a phone's.
+  @override
+  Future<Boards> boards() async {
+    final analyses = _analyse();
+    return Boards.fold([
+      for (final f in files.where((f) => !_deleted.contains(f.id)))
+        if (analyses[f.id] case final a?)
+          RunIndexEntry.of(
+            run: f,
+            sidecar: sidecars[f.id],
+            a: a,
+            shownVerdict: a.verdict,
+            stamp: const FileStamp(runMtimeMs: 0, runBytes: 0),
+          ).withDerived(RunIndexEntry.deriveOrNull(f, a)),
+    ]);
   }
 
   @override
@@ -1063,6 +1085,10 @@ class FileRunStore implements RunStore {
   /// W6: a sidecar from a newer app rethrows (kept read-only, never
   /// rewritten); a damaged one reads as null.
   Future<engine.RunSidecar?> _readSidecar(File f) => SidecarWriter.read(f);
+
+  @override
+  Future<Boards> boards() async =>
+      Boards.fold((await _refresh()).entries.values);
 
   @override
   Future<List<RunSummary>> list() async {

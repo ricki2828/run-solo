@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/screens/cooper_result_screen.dart';
+import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/state/boards.dart';
 import 'package:run_solo/state/history_store.dart';
 
 import '../run_fixtures.dart';
@@ -65,9 +67,13 @@ void main() {
     final s = await store();
     final tests = cooperTests(await s.list());
     expect([for (final t in tests) t.id], [a.id, b.id, c.id]);
-    expect(cooperChip(c.id, tests)!.pb, isTrue);
-    expect(cooperChip(a.id, tests)!.label, 'First test on your board');
-    expect(cooperChip(b.id, tests)!.pb, isTrue, reason: 'faster than a');
+    final boards = await s.boards();
+    List<BoardChip> chips(String id) =>
+        boards.chipsFor(id, units: Units.km, names: engine.EventNames.generic);
+    expect(chips(a.id).single.label, 'First test on your board');
+    expect(chips(b.id).single.pb, isTrue, reason: 'faster than a, that day');
+    expect(chips(c.id).single.label, startsWith('New best test · VO2 est. '));
+    expect(chips(paused.id), isEmpty, reason: 'no estimate, no board');
     final prior = tests.sublist(0, 2);
     expect(
       engine.CooperResult.changeLine(tests[2].vo2, c.start, [
