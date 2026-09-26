@@ -8,8 +8,9 @@ import 'package:run_solo/state/live_context.dart';
 
 import '../run_fixtures.dart';
 
-/// Phase 4 LC1 builder, app side: the Start's live context from index.json
-/// and its derived data, 150 ms or none.
+/// Phase 4 LC1 builder, app side: candidates prepared off the UI isolate
+/// (when Start opens), the Start's live context planned over them inside
+/// 150 ms, or none.
 void main() {
   final d1 = DateTime.utc(2026, 9, 1, 6);
   late Directory dir;
@@ -22,12 +23,12 @@ void main() {
   tearDown(() => dir.delete(recursive: true));
 
   /// Free runs long enough for the 5K board (40 min at 6:00/km).
-  Future<FileRunStore> storeWithFreeRuns(int n) async {
+  Future<FileRunStore> storeWithFreeRuns(int n, {int from = 1}) async {
     final store = FileRunStore(runsDir);
     // The live context reads derived data: build it (tests default to none).
     store.deriveBatch = FileRunStore.deriveInIsolate;
     await store.importBundles([
-      for (var i = 1; i <= n; i++)
+      for (var i = from; i < from + n; i++)
         engine.RunBundle(
           run: freeRunFile(
             n: i,
@@ -46,11 +47,12 @@ void main() {
   });
 
   test(
-    'two earlier Free runs: a 5K board with both, splits from Start',
+    'prepared: a 5K board with both earlier runs, splits from Start',
     () async {
       final store = await storeWithFreeRuns(2);
-      final ctx = await LiveContextSource(indexFile: store.indexFile)
-          .build(mode: RecordMode.free);
+      final src = LiveContextSource(indexFile: store.indexFile);
+      await src.prepare();
+      final ctx = await src.build(mode: RecordMode.free);
       expect(ctx, isNotNull);
       final board = ctx!.boards.single;
       expect(board.key, 'be:5000');
@@ -64,23 +66,37 @@ void main() {
     },
   );
 
+  test(
+    'not prepared for this index: none at Start, ready right after',
+    () async {
+      final store = await storeWithFreeRuns(2);
+      final src = LiveContextSource(indexFile: store.indexFile);
+      expect(
+        await src.build(mode: RecordMode.free),
+        isNull,
+        reason: 'Start never decodes the index itself',
+      );
+      await src.prepare(); // the one build() kicked off, or a fresh one
+      expect(await src.build(mode: RecordMode.free), isNotNull);
+    },
+  );
+
   test('one earlier run: no board, no context (nothing said)', () async {
     final store = await storeWithFreeRuns(1);
-    expect(
-      await LiveContextSource(indexFile: store.indexFile)
-          .build(mode: RecordMode.free),
-      isNull,
-    );
+    final src = LiveContextSource(indexFile: store.indexFile);
+    await src.prepare();
+    expect(await src.build(mode: RecordMode.free), isNull);
   });
 
-  test('no index yet, or a damaged one: none', () async {
-    final src = LiveContextSource(
-      indexFile: File('${dir.path}/state/index.json'),
-    );
+  test('no index yet, or a damaged one: none, prepare never throws', () async {
+    final f = File('${dir.path}/state/index.json');
+    final src = LiveContextSource(indexFile: f);
+    await src.prepare();
     expect(await src.build(mode: RecordMode.free), isNull);
-    File('${dir.path}/state/index.json')
+    f
       ..createSync(recursive: true)
       ..writeAsStringSync('{not json');
+    await src.prepare();
     expect(await src.build(mode: RecordMode.free), isNull);
   });
 
@@ -88,6 +104,7 @@ void main() {
     final store = await storeWithFreeRuns(2);
     final src = LiveContextSource(indexFile: store.indexFile)
       ..beforeFold = () => Future<void>.delayed(const Duration(seconds: 2));
+    await src.prepare();
     final sw = Stopwatch()..start();
     final ctx = await src.build(mode: RecordMode.free);
     sw.stop();
@@ -95,27 +112,43 @@ void main() {
     expect(sw.elapsedMilliseconds, lessThan(1000));
   });
 
-  test('cached per index version; a new index is read again', () async {
+  test('a changed index is prepared again; the old one is not used', () async {
     final store = await storeWithFreeRuns(2);
     final src = LiveContextSource(indexFile: store.indexFile);
+    await src.prepare();
     expect(
       (await src.build(mode: RecordMode.free))!.boards.single.entries,
       hasLength(2),
     );
-    await store.importBundles([
-      engine.RunBundle(
-        run: freeRunFile(
-          n: 9,
-          start: d1.add(const Duration(days: 30)),
-          seconds: 2400,
-        ),
-      ),
-    ]);
-    await store.list();
-    await store.derivedIdle;
+    await storeWithFreeRuns(1, from: 9);
+    expect(await src.build(mode: RecordMode.free), isNull);
+    await src.prepare();
     expect(
       (await src.build(mode: RecordMode.free))!.boards.single.entries,
       hasLength(3),
     );
   });
+
+  test(
+    '200 runs: prepare off the UI isolate, Start plans fast (host)',
+    () async {
+      // Measures this host, not the A-series phone the plan budgets for.
+      final store = await storeWithFreeRuns(200);
+      final src = LiveContextSource(indexFile: store.indexFile);
+      final prep = Stopwatch()..start();
+      await src.prepare();
+      prep.stop();
+      final start = Stopwatch()..start();
+      final ctx = await src.build(mode: RecordMode.free);
+      start.stop();
+      expect(ctx!.boards.first.entries.length, lessThanOrEqualTo(20));
+      // ignore: avoid_print
+      print(
+        'live context, 200 runs: prepare ${prep.elapsedMilliseconds} ms '
+        '(background isolate), Start ${start.elapsedMilliseconds} ms',
+      );
+      expect(start.elapsedMilliseconds, lessThan(150));
+    },
+    timeout: const Timeout(Duration(minutes: 5)),
+  );
 }

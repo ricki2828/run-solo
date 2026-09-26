@@ -1,11 +1,13 @@
 /// The live "you vs you" context for a Start (Phase 4 plan §3.2, LC1).
 ///
 /// Built from `index.json` (W5b) and each entry's derived data (LB2), never
-/// from run files, inside a hard 150 ms budget (WARN-3). On timeout, a
-/// missing index, an empty plan or any error the answer is null: Start goes
-/// ahead with no compare, no overlay and nothing said. The fold is cached
-/// per index version (file size + mtime), so the Start after a History open
-/// costs a lookup.
+/// from run files. The expensive part (reading and decoding the index into
+/// candidates) is [LiveContextSource.prepare]d ahead, off the UI isolate:
+/// when the Start screen opens and whenever the index has changed. Start
+/// itself only plans over the ready candidates, inside a 150 ms budget
+/// (WARN-3); with nothing ready for the current index, a timeout, an empty
+/// plan or any error the answer is null: Start goes ahead with no compare,
+/// no overlay and nothing said (#59 review P2).
 ///
 /// Off by default ([kLiveCompare]): comparisons fire only once the in-app
 /// mute (LV2) ships in the same build, because Laps and Intervals runs have
@@ -14,6 +16,7 @@ library;
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:run_engine/run_engine.dart' as engine;
@@ -43,6 +46,39 @@ class LiveContextSource {
 
   String? _cachedVersion;
   List<engine.LiveCandidate> _cached = const [];
+  Future<void>? _preparing;
+
+  /// Reads the index into candidates in a background isolate when it has
+  /// changed since the last prepare. Call when Start opens; cheap when
+  /// nothing changed (one stat). Never throws.
+  Future<void> prepare() =>
+      _preparing ??= _prepare().whenComplete(() => _preparing = null);
+
+  Future<void> _prepare() async {
+    try {
+      final version = await _versionOf(indexFile);
+      if (version == null || version == _cachedVersion) return;
+      final path = indexFile.path;
+      final candidates = await Isolate.run(() => _candidatesAt(path));
+      _cached = candidates;
+      _cachedVersion = version;
+    } catch (e) {
+      debugPrint('live: prepare failed ($e)');
+    }
+  }
+
+  static Future<String?> _versionOf(File f) async {
+    final stat = await f.stat();
+    if (stat.type == FileSystemEntityType.notFound) return null;
+    return '${stat.size}:${stat.modified.microsecondsSinceEpoch}';
+  }
+
+  /// Runs in the background isolate.
+  static List<engine.LiveCandidate> _candidatesAt(String path) {
+    final f = File(path);
+    final index = RunIndex.decode(f.existsSync() ? f.readAsStringSync() : null);
+    return [for (final e in index.entries.values) ?e.liveCandidate()];
+  }
 
   /// Test seam: runs inside the budget before the fold (a slow index).
   @visibleForTesting
@@ -72,13 +108,12 @@ class LiveContextSource {
     SessionSpec? spec,
     String? courseKey,
   ) async {
-    final stat = await indexFile.stat();
-    if (stat.type == FileSystemEntityType.notFound) return null;
-    final version = '${stat.size}:${stat.modified.microsecondsSinceEpoch}';
+    final version = await _versionOf(indexFile);
+    if (version == null) return null;
     if (version != _cachedVersion) {
-      final index = await RunIndex.read(indexFile);
-      _cached = [for (final e in index.entries.values) ?e.liveCandidate()];
-      _cachedVersion = version;
+      // Not ready for this index: never decode on the UI isolate at Start.
+      unawaited(prepare());
+      return null;
     }
     await beforeFold?.call();
     final plan = engine.LivePlanner.plan(
