@@ -31,9 +31,14 @@ class PriorRun {
     this.comparisonKey = ComparisonKey.norwegian4x4,
     this.repCount,
     this.recoveryLabel,
+    this.officialTime = false,
   });
 
   final String id;
+
+  /// K1: [avgWorkPaceSecPerKm] comes from the runner's official time, not
+  /// GPS; the tighter floor needs both sides official.
+  final bool officialTime;
 
   /// Only priors of the same key are compared (plan §3.7, D4).
   final String comparisonKey;
@@ -72,6 +77,7 @@ class PriorRun {
     'comparison_key': comparisonKey,
     'rep_count': repCount,
     'recovery_label': recoveryLabel,
+    if (officialTime) 'official': true,
   };
 
   factory PriorRun.fromJson(Map<String, Object?> j) {
@@ -94,6 +100,7 @@ class PriorRun {
           (j['comparison_key'] as String?) ?? ComparisonKey.norwegian4x4,
       repCount: j['rep_count'] as int?,
       recoveryLabel: j['recovery_label'] as String?,
+      officialTime: j['official'] == true,
     );
   }
 
@@ -105,6 +112,7 @@ class PriorRun {
     String comparisonKey = ComparisonKey.norwegian4x4,
     int? repCount,
     String? recoveryLabel,
+    bool officialTime = false,
   }) {
     if (!eligible || m.avgWorkPaceSecPerKm == null) return null;
     return PriorRun(
@@ -123,6 +131,7 @@ class PriorRun {
       comparisonKey: comparisonKey,
       repCount: repCount,
       recoveryLabel: recoveryLabel,
+      officialTime: officialTime,
     );
   }
 }
@@ -257,11 +266,27 @@ class VerdictBuilder {
     int minCleanReps = EngineConstants.minReps,
     bool officialTime = false,
   }) {
+    final same = [
+      for (final p in priors)
+        if (p.comparisonKey == comparisonKey) p,
+    ];
+    final eligible = same.where((p) => p.start.isBefore(run.start)).toList()
+      ..sort((a, b) => a.start.compareTo(b.start));
+    // K1: the comparison is only as precise as its least precise side, so
+    // the official-time floor needs this run and every prior it is judged
+    // against (the last one, or the median set) to be official.
+    final compared = eligible.length > constants.medianSetSize
+        ? eligible.sublist(eligible.length - constants.medianSetSize)
+        : eligible;
+    final officialFloor =
+        officialTime &&
+        compared.isNotEmpty &&
+        compared.every((p) => p.officialTime);
     final c = _Ctx(
       floor: constants.floorSecPerKmForKey(
         comparisonKey,
         templateDefault: templateDefault,
-        officialTime: officialTime,
+        officialTime: officialFloor,
       ),
       band: constants.repBandSecPerKm,
       inputsKey: inputsKey,
@@ -276,10 +301,6 @@ class VerdictBuilder {
       names: names,
       singleRep: (session?.repCount ?? metrics.reps.length) == 1,
     );
-    final same = [
-      for (final p in priors)
-        if (p.comparisonKey == comparisonKey) p,
-    ];
 
     Verdict none(VerdictHeadline headline, String subline, {String? hrLine}) =>
         Verdict(
@@ -345,9 +366,6 @@ class VerdictBuilder {
         '$repsWord not enough to compare.',
       );
     }
-
-    final eligible = same.where((p) => p.start.isBefore(run.start)).toList()
-      ..sort((a, b) => a.start.compareTo(b.start));
 
     if (eligible.isEmpty) return _baseline(c, metrics, now);
     final note = _comparisonNote(eligible.last, session, metrics);

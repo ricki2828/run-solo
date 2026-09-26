@@ -92,6 +92,49 @@ void main() {
       expect(a.detection!.cooldown, hasLength(1));
     });
 
+    test('any one-step session with a single lap is detected (pinned)', () {
+      const oneK = SessionSpec(
+        templateId: 'custom:1k',
+        templateVersion: 1,
+        name: '1 × 1 km',
+        steps: [SessionStep.workDistance(1000, rep: 1)],
+      );
+      final run = generator
+          .generate(
+            SyntheticSpec(
+              name: 'k1_one_k',
+              id: '00000000-0000-4000-8000-000000007999',
+              session: oneK,
+              lapStyle: LapStyle.auto,
+              segments: [Segment.work(250, 4.0)],
+              hr: true,
+              start: day0,
+            ),
+          )
+          .run;
+      final one = run.copyWith(
+        laps: [
+          Lap(
+            index: 0,
+            t0Ms: 0,
+            t1Ms: run.elapsedMs,
+            d0M: 0,
+            d1M: run.distanceM,
+            kind: LapKind.auto,
+          ),
+        ],
+      );
+      final a = analyze(one);
+      expect(a.detection!.consistent, isTrue);
+      expect(a.detection!.reps, hasLength(1));
+      expect(a.verdict!.headline, VerdictHeadline.baselineSet);
+      // A multi-step session still needs its laps.
+      final eight = analyze(
+        one.copyWith(session: SessionCatalogue.fourHundreds.defaults),
+      );
+      expect(eight.detection!.consistent, isFalse);
+    });
+
     test('stopped short of 5 km: no verdict, as before', () {
       final a = analyze(parkrun(distanceM: 4000, laps: LapStyle.none));
       expect(a.verdict!.headline, VerdictHeadline.noVerdict);
@@ -188,7 +231,7 @@ void main() {
   });
 
   group('official time (sidecar)', () {
-    test('replaces the GPS finish, says so, floor 1 s/km', () {
+    test('replaces the GPS finish and says so', () {
       final r = parkrun(mps: 3.6); // GPS 23:09
       final gps = analyze(r);
       expect(gps.verdict!.floorSecPerKm, 3);
@@ -198,7 +241,8 @@ void main() {
             .withParkrun(const ParkrunInfo(officialTimeSeconds: 23 * 60 + 20)),
       );
       expect(off.verdict!.subline, startsWith('Finish 23:20 (official).'));
-      expect(off.verdict!.floorSecPerKm, 1);
+      expect(off.officialTime, isTrue);
+      expect(off.asPrior(r.start)!.officialTime, isTrue);
       expect(off.intervals!.avgRepSeconds, closeTo(1400, 1e-9));
       // The rep keeps its measured GPS numbers.
       expect(
@@ -207,6 +251,57 @@ void main() {
       );
       // It is what the next run is compared with.
       expect(off.asPrior(r.start)!.avgWorkPaceSecPerKm, closeTo(280, 1e-9));
+    });
+
+    RunSidecar official(RunFile r, int seconds) =>
+        RunSidecar(runId: r.id)
+            .withParkrun(ParkrunInfo(officialTimeSeconds: seconds));
+
+    test('1 s/km floor only when both sides are official', () {
+      final r1 = parkrun(n: 1, mps: 3.6); // GPS ~23:09
+      final r2 = parkrun(n: 2, mps: 3.6);
+      final p1gps = analyze(r1).asPrior(r1.start)!;
+      final p1off = analyze(r1, sidecar: official(r1, 1390)).asPrior(r1.start)!;
+      expect(p1gps.officialTime, isFalse);
+      // Official now vs GPS last week: the GPS floor (3 s/km).
+      final mixed = analyze(r2, sidecar: official(r2, 1385), priors: [p1gps]);
+      expect(mixed.verdict!.stage, VerdictStage.vsLast);
+      expect(mixed.verdict!.floorSecPerKm, closeTo(3 * 1.41421356, 1e-6));
+      // GPS now vs official last week: GPS floor too.
+      final gpsNow = analyze(r2, priors: [p1off]);
+      expect(gpsNow.verdict!.floorSecPerKm, closeTo(3 * 1.41421356, 1e-6));
+      // Both official: 1 s/km.
+      final both = analyze(r2, sidecar: official(r2, 1385), priors: [p1off]);
+      expect(both.verdict!.floorSecPerKm, closeTo(1 * 1.41421356, 1e-6));
+      // Round trip through the index keeps the flag.
+      expect(PriorRun.fromJson(p1off.toJson()).officialTime, isTrue);
+      expect(p1gps.toJson().containsKey('official'), isFalse);
+    });
+
+    test('an implausible official time (±20% of GPS) is ignored', () {
+      final r = parkrun(mps: 3.6); // GPS ~1389 s
+      final typo = analyze(r, sidecar: official(r, 2 * 60 + 43));
+      expect(typo.officialTime, isFalse);
+      expect(typo.verdict!.subline, isNot(contains('(official)')));
+      expect(typo.intervals!.avgRepSeconds, closeTo(1389, 3));
+      expect(ParkrunInfo.plausibleOfficial(1389 * 12 ~/ 10, 1389), isTrue);
+      expect(ParkrunInfo.plausibleOfficial(1389 * 13 ~/ 10, 1389), isFalse);
+      expect(ParkrunInfo.plausibleOfficial(1389 * 8 ~/ 10 + 1, 1389), isTrue);
+      expect(ParkrunInfo.plausibleOfficial(1389 * 7 ~/ 10, 1389), isFalse);
+      // Absolute bounds for a 5 km, with the entry screen's message.
+      expect(ParkrunInfo.officialTimeProblem(12 * 60), isNull);
+      expect(ParkrunInfo.officialTimeProblem(90 * 60), isNull);
+      expect(
+        ParkrunInfo.officialTimeProblem(11 * 60 + 59),
+        'That time looks off. Enter it as mm:ss, between 12:00 and 1:30:00.',
+      );
+      expect(ParkrunInfo.officialTimeProblem(90 * 60 + 1), isNotNull);
+      expect(
+        ParkrunInfo.officialTimeProblem(1700, gpsSeconds: 1389),
+        "That's a long way from your GPS time. Check it and try again.",
+      );
+      // A slow walker's GPS 1:20:00 with an official 1:31:00: out of range.
+      expect(ParkrunInfo.plausibleOfficial(91 * 60, 80 * 60), isFalse);
     });
 
     test('entering it unfreezes the verdict; history keeps the old one', () {

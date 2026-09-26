@@ -2,7 +2,7 @@
 /// name is a registered trademark: debug and dogfood builds may say it (the
 /// founder's choice); the `play` flavour must not without written
 /// permission, so it uses a neutral name until L5 decides the store name.
-/// `tool/check_event_names.sh` fails CI if the word appears anywhere else in
+/// `tools/check_event_names.py` fails CI if the word appears anywhere else in
 /// app, engine or native copy.
 library;
 

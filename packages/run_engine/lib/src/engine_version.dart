@@ -14,4 +14,8 @@
 ///    for distance reps, D4 note). Every Norwegian 4x4 verdict keeps its
 ///    exact words (migration golden); the bump re-freezes them once without
 ///    a history line (same text).
-const int engineVersion = 3;
+/// 4: Phase 3 K1: a parkrun with no lap boundary gets a verdict (it had
+///    none), parkrun copy takes the flavour's event name, courses key the
+///    comparison, and a plausible official time replaces the GPS finish.
+///    Every other verdict keeps its words (re-frozen without history).
+const int engineVersion = 4;
