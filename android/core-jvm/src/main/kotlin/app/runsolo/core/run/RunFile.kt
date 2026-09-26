@@ -40,6 +40,12 @@ data class RunFile(
     val pauses: List<LongArray>,
     val gaps: List<LongArray>,
     val samples: List<Sample>,
+    /**
+     * The nudges spoken this run (`cue_fired` nudge lines, rule to km or rep), in journal order.
+     * The engine blocks them on the next run of the board (CR1). Written as `nudges_fired` only
+     * when there are some, so a run without nudges is byte-for-byte the schema 3 it always was.
+     */
+    val nudgesFired: List<Pair<String, Int>> = emptyList(),
 ) {
     data class Lap(val i: Int, val t0: Long, val t1: Long, val d0: Double, val d1: Double, val kind: LapKind)
 
@@ -79,7 +85,9 @@ data class RunFile(
         "pauses" to pauses.map { it.asList() },
         "gaps" to gaps.map { it.asList() },
         "samples" to samples.map { listOf(it.t, it.lat, it.lon, it.altM, it.accuracyM, it.speedMps, it.distM, it.hr) },
-    )
+    ).apply {
+        if (nudgesFired.isNotEmpty()) put("nudges_fired", nudgesFired.map { listOf(it.first, it.second) })
+    }
 
     fun toGzipBytes(): ByteArray {
         val out = ByteArrayOutputStream()
@@ -148,6 +156,10 @@ data class RunFile(
                 startEpochMs = h.w, endEpochMs = endEpochMs - (r.endT - endT), tz = h.tz,
                 mode = h.mode, session = h.session, units = h.units,
                 laps = laps, pauses = pauses, gaps = gaps, samples = samples,
+                nudgesFired = r.cuesFired
+                    .filter { it.kind == JournalLine.FiredKind.nudge }
+                    .map { it.key to it.index }
+                    .distinct(),
             )
         }
 
