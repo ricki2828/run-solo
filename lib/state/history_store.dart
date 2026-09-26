@@ -533,12 +533,14 @@ class FileRunStore implements RunStore {
     SidecarWriter? sidecarWriter,
     engine.UserProfile Function()? profile,
     DateTime Function()? now,
+    engine.RunEngine? runEngine,
   }) : archiveDir =
            archiveDir ?? Directory('${runsDir.parent.path}/runs-archive'),
        sidecars = sidecarWriter ?? SidecarWriter(),
        _analyser = _Analyser(
          profile: profile ?? (() => engine.UserProfile.none),
          now: now ?? DateTime.now,
+         runEngine: runEngine,
        );
 
   final Directory runsDir;
@@ -632,8 +634,9 @@ class FileRunStore implements RunStore {
   /// stale entries are decoded and analysed:
   /// - no entry, or the run file, sidecar, engine or row version changed;
   /// - every entry when the inputs fingerprint changed ([_inputs]);
-  /// - every later run of a key whose earlier run was rebuilt or deleted
-  ///   (its priors changed; old and new key both count).
+  /// - every later run of a key whose earlier run was deleted, or rebuilt
+  ///   with a different prior or key (old and new key both count); a rebuild
+  ///   that leaves both alone (weather, notes) cascades nowhere.
   /// Earlier runs that stay fresh feed their index priors. Computed
   /// verdicts are frozen, then stamped. An entry rebuilt only for inputs or
   /// priors keeps its derived data. Written only when something changed; a
@@ -694,8 +697,19 @@ class FileRunStore implements RunStore {
       for (final id in affected) {
         final start = decoded[id]?.$1.start ?? old.entries[id]?.start;
         if (start == null) continue;
-        mark(old.entries[id]?.comparisonKey, start);
-        mark(analyses[id]?.comparisonKey, start);
+        // Later runs only see this run through its prior and its key: a
+        // rebuild that changed neither (a weather write, a note) cascades
+        // nowhere.
+        final was = old.entries[id];
+        final nowKey = analyses[id]?.comparisonKey;
+        final nowPrior = analyses[id]?.asPrior(start);
+        if (was != null &&
+            was.comparisonKey == nowKey &&
+            jsonEncode(was.prior?.toJson()) == jsonEncode(nowPrior?.toJson())) {
+          continue;
+        }
+        mark(was?.comparisonKey, start);
+        mark(nowKey, start);
       }
       final more = [
         for (final e in old.entries.values)
