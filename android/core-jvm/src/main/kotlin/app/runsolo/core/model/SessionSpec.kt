@@ -65,9 +65,9 @@ data class SessionSpec(
         if (templateId.isEmpty()) out.add("templateId is empty")
         if (templateVersion < 1) out.add("templateVersion must be >= 1")
         hrBand?.let { (lo, hi) -> if (!(lo > 0 && lo < hi && hi <= 1.2)) out.add("hrBand must be 0 < low < high <= 1.2") }
-        for ((label, v) in listOf("warmup" to warmupSeconds, "cooldown" to cooldownSeconds)) {
-            if (v != null && v !in 300..1200) out.add("$label must be open or 300..1200 s")
-        }
+        // warmupSeconds 0 = no warm-up: step 1 begins at start() (parkrun, founder 26-Sep).
+        if (warmupSeconds != null && warmupSeconds != 0 && warmupSeconds !in 300..1200) out.add("warmup must be open, 0 (none) or 300..1200 s")
+        if (cooldownSeconds != null && cooldownSeconds !in 300..1200) out.add("cooldown must be open or 300..1200 s")
         if (steps.isEmpty()) {
             if (!isFartlek) out.add("only fartlek may have no steps")
             return out

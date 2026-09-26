@@ -175,7 +175,11 @@ class RecorderCore(
         lastDT = t
         state = RecorderState.recording
         val out = ArrayList<Output>()
-        if (structured) {
+        if (structured && spec!!.warmupSeconds == 0) {
+            // No warm-up (parkrun): step 1 begins now, from 0 m; there is no warm-up lap and
+            // startReps() is a no-op (not in a warm-up).
+            out.addAll(enterFirstStep(t, 0.0))
+        } else if (structured) {
             phase = Phase.warmup
             phaseStartActive = 0
             val fixed = spec!!.warmupSeconds?.let { it * 1000L }

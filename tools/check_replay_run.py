@@ -40,7 +40,8 @@ def main() -> int:
     check(len(laps) == len(flaps), f"{len(laps)} laps, fixture has {len(flaps)}")
     check([l["kind"] for l in laps] == [l["kind"] for l in flaps],
           f"lap kinds {[l['kind'] for l in laps]} != {[l['kind'] for l in flaps]}")
-    offset = laps[0]["t1"] - flaps[0]["t1"] if laps and flaps else 0
+    # The first sample is the trace's first fix on both sides (a lap end can be an auto-stop tail).
+    offset = run["samples"][0][0] - fx["samples"][0][0] if run["samples"] and fx["samples"] else 0
     check(0 <= offset < MAX_OFFSET_MS, f"clock offset {offset} ms outside [0, {MAX_OFFSET_MS})")
     for i, (a, b) in enumerate(zip(laps, flaps)):
         last = i == len(flaps) - 1

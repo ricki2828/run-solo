@@ -363,4 +363,19 @@ class RecorderCoreI2Test {
         core.tick(t0 + 61_000, 9.0) // not interpolated across the pause: the step began at 6 m
         assertEquals(400.0 - 3.0, core.status(t0 + 61_000).stepRemainingM!!, 1e-9)
     }
+
+    @Test
+    fun `no warm-up (warmupSeconds 0) - the 5 km step begins at start, START REPS is a no-op, auto-stop at 5 00 km`() {
+        val parkrun = spec(workM(5_000, 1)).copy(warmupSeconds = 0, autoStop = true)
+        val core = RecorderCore(RunMode.intervals, parkrun)
+        val started = core.start(t0)
+        assertEquals(Phase.work, core.phase)
+        assertEquals(0, core.stepIndex)
+        assertTrue(started.none { it is Output.Lap }, "no warm-up lap")
+        assertEquals(listOf(Phase.work), started.filterIsInstance<Output.PhaseChanged>().map { it.phase })
+        assertEquals(LapDecision.ignoredNotWarmup, core.startReps(t0 + 1_000).first)
+        val (out, _) = drive(core, t0, 1_300, 4.0, 0.0)
+        assertTrue(out.any { it is Output.AutoStop }, "stops at 5.00 km")
+        assertTrue(laps(out).isEmpty(), "no lap on the finish line either: the stop ends the only lap")
+    }
 }
