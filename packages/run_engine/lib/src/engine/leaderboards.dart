@@ -13,6 +13,7 @@ class BoardInput {
     required this.mode,
     this.comparisonKey,
     this.efforts = const {},
+    this.distances = const {},
     this.headlineSecPerKm,
     this.verdictGrade = false,
     this.officialTimeMs,
@@ -26,6 +27,9 @@ class BoardInput {
   final RunMode mode;
   final String? comparisonKey;
   final Map<BestEffortDistance, BestEffort> efforts;
+
+  /// Most distance per time window (§G time boards).
+  final Map<BestTimeWindow, BestDistance> distances;
 
   /// I3's headline metric (avg work pace, s/km) for a structured session.
   final double? headlineSecPerKm;
@@ -77,6 +81,10 @@ enum BoardKind {
 
   /// Cooper VO2 estimate; higher is better.
   cooper,
+
+  /// Most distance in 30 / 60 min (GOAL time boards, §G), metres; higher is
+  /// better. Trend in metres per month.
+  distanceInTime,
 }
 
 /// A trend over a board's recent entries.
@@ -100,7 +108,7 @@ class Leaderboard {
     List<BoardRun> runs, {
     double? metres,
   }) {
-    final higher = kind == BoardKind.cooper;
+    final higher = kind == BoardKind.cooper || kind == BoardKind.distanceInTime;
     final ranked = [...runs]
       ..sort((a, b) {
         final c = higher
@@ -207,8 +215,19 @@ abstract final class Leaderboards {
           metric: e.elapsedMs / 1000,
           adjMetric: adj(e.elapsedMs / 1000),
         ),
+      // Distance in time: heat makes it shorter, so the cool twin is longer.
+      for (final d in r.distances.values)
+        d.window.key: BoardRun(
+          runId: r.runId,
+          date: r.date,
+          metric: d.metres,
+          adjMetric: r.heatFraction == null
+              ? null
+              : d.metres / (1 - r.heatFraction!),
+        ),
     };
-    if (key == null) return out;
+    // A GOAL run (§G) rides the be:* boards only; its own key is no board.
+    if (key == null || ComparisonKey.isGoal(key)) return out;
     if (ComparisonKey.isParkrun(key)) {
       if (key == ComparisonKey.parkrun) return out;
       final gps = r.efforts[BestEffortDistance.k5];
@@ -251,6 +270,7 @@ abstract final class Leaderboards {
   }
 
   static BoardKind kindOf(String key) {
+    if (BestTimeWindow.ofKey(key) != null) return BoardKind.distanceInTime;
     if (key.startsWith(reservedPrefix)) return BoardKind.bestEffort;
     if (ComparisonKey.isParkrun(key)) return BoardKind.course;
     if (key == ComparisonKey.cooper) return BoardKind.cooper;

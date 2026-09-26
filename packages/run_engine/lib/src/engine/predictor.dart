@@ -77,7 +77,13 @@ class PredictionInput {
         ComparisonKey.isParkrun(analysis.comparisonKey!);
     final freeOrLaps =
         analysis.mode == RunMode.free || analysis.mode == RunMode.laps;
-    if (!parkrun && !freeOrLaps) return const [];
+    // A GOAL run (§G) offers its 5K and 10K windows like a Free run; never
+    // the whole run (it carries an open cool-down after the goal).
+    final goal =
+        analysis.mode == RunMode.intervals &&
+        analysis.comparisonKey != null &&
+        ComparisonKey.isGoal(analysis.comparisonKey!);
+    if (!parkrun && !freeOrLaps && !goal) return const [];
     int? adj(int ms) =>
         heatFraction == null ? null : (ms * (1 - heatFraction)).round();
     PredictionInput of(double metres, int ms, PredictionSourceKind kind) =>
@@ -100,7 +106,7 @@ class PredictionInput {
               ? PredictionSourceKind.parkrun
               : PredictionSourceKind.bestEffort5k,
         ),
-      if (k10 != null && freeOrLaps)
+      if (k10 != null && (freeOrLaps || goal))
         of(
           k10.distance.metres,
           k10.elapsedMs,

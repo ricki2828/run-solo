@@ -130,6 +130,7 @@ class SessionSpec {
   static const String cooperId = 'cooper';
   static const String fartlekId = 'fartlek';
   static const String parkrunId = 'parkrun'; // event-name-ok: data key
+  static const String goalId = 'goal';
   static const String customPrefix = 'custom:';
 
   /// Most steps a session may expand to (40 reps + 39 recoveries).
@@ -215,6 +216,28 @@ class SessionSpec {
     autoStop: true,
     steps: const [SessionStep.workDistance(5000, rep: 1)],
   );
+
+  /// A GOAL run (Phase 4 plan §G): one distance step from the Start press,
+  /// then an open cool-down until Stop (never auto-stops). [name] is the
+  /// shown name ("10K", "Half"); the app owns it.
+  static SessionSpec goalDistance(int metres, String name) => SessionSpec(
+    templateId: goalId,
+    templateVersion: 1,
+    name: name,
+    warmupSeconds: 0,
+    steps: [SessionStep.workDistance(metres, rep: 1)],
+  );
+
+  /// A GOAL run by time: one time step from Start, then an open cool-down.
+  static SessionSpec goalTime(int seconds, String name) => SessionSpec(
+    templateId: goalId,
+    templateVersion: 1,
+    name: name,
+    warmupSeconds: 0,
+    steps: [SessionStep.work(seconds, rep: 1)],
+  );
+
+  bool get isGoal => templateId == goalId;
 
   /// By-feel speed play, recorded as a Laps run: no steps, no timing.
   static const SessionSpec fartlek = SessionSpec(
@@ -476,6 +499,11 @@ abstract final class ComparisonKey {
   static String parkrunOf({String? courseId}) =>
       courseId == null || courseId.isEmpty ? parkrun : '$parkrun:$courseId';
 
+  /// Goal runs (§G) group as `goal:d<metres>` / `goal:t<seconds>`, never
+  /// with the interval `d…x*` / `t…x*` keys.
+  static const String goalPrefix = 'goal:';
+  static bool isGoal(String key) => key.startsWith(goalPrefix);
+
   static bool isParkrun(String key) =>
       key == parkrun || key.startsWith('$parkrun:');
 
@@ -497,6 +525,10 @@ abstract final class ComparisonKey {
     if (spec.templateId == SessionSpec.fartlekId) return fartlek;
     if (spec.templateId == SessionSpec.cooperId) return cooper;
     if (spec.templateId == SessionSpec.parkrunId) return parkrunOf();
+    if (spec.isGoal && spec.workSteps.length == 1) {
+      final w = spec.workSteps.single;
+      return '$goalPrefix${w.target == TargetKind.time ? 't' : 'd'}${w.value}';
+    }
     final work = spec.workSteps.toList();
     if (work.isEmpty) return fartlek;
     final kinds = work.map((s) => s.target).toSet();
@@ -512,9 +544,13 @@ abstract final class ComparisonKey {
   }
 
   static bool isTime(String key) =>
-      key.startsWith('t') || key.startsWith('pyr:');
+      key.startsWith('t') ||
+      key.startsWith('pyr:') ||
+      key.startsWith('${goalPrefix}t');
   static bool isDistance(String key) =>
-      key.startsWith('d') || key.startsWith('dpyr:');
+      key.startsWith('d') ||
+      key.startsWith('dpyr:') ||
+      key.startsWith('${goalPrefix}d');
 }
 
 T _enum<T extends Enum>(List<T> values, Object? name, String field) {

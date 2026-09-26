@@ -104,7 +104,7 @@ void main() {
     expect(k5.startMs, 0, reason: 'ties keep the earliest window');
     expect(k5.startOffsetM, 0);
     expect(effort(r, BestEffortDistance.k10).elapsedMs, 2500000);
-    expect(r.fromStartSplitsMs, [for (var k = 1; k <= 10; k++) k * 250000]);
+    expect(r.fromStartSplitsMs, [for (var k = 1; k <= 12; k++) k * 250000]);
   });
 
   test('window edges between samples are interpolated', () {
