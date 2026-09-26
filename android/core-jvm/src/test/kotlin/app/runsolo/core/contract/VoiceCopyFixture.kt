@@ -68,6 +68,8 @@ object VoiceCopyFixture {
         add("cue.phase-end.cooldown-over", cue(CueKind.phaseEnd, fourByFour, Phase.cooldown, null, value = CueWords.COOLDOWN_OVER))
         add("cue.stop", cue(CueKind.stop, fourByFour, Phase.none, null))
         add("cue.distance-to-go", cue(CueKind.distanceToGo, distance, Phase.work, 0))
+        // A goal's to-go line carries the pace (§G goal compares): the longest clock, over an hour.
+        add("cue.distance-to-go.goal", cue(CueKind.distanceToGo, SessionSpec.goalDistance(42_195, "Marathon"), Phase.work, 0, value = 17_999_000.0))
         add("cue.last-rep", cue(CueKind.lastRep, fourByFour, Phase.work, 0))
         add("cue.minute-mark.1", cue(CueKind.minuteMark, SessionSpec.COOPER, Phase.work, 0, value = 1.0))
         add("cue.minute-mark.11", cue(CueKind.minuteMark, SessionSpec.COOPER, Phase.work, 0, value = 11.0))
@@ -76,6 +78,8 @@ object VoiceCopyFixture {
 
         // Free run km splits (LiveWords.kmSplit).
         add("km.split", LiveWords.kmSplit(3, 920_000, 307_000))
+        // A goal km with its compare (§G): the km replaces "On pace for", the longest two-digit case.
+        add("km.goal", CueComposer.compose(LiveWords.goalKm(41), "Number 12 of 21, 125 seconds off your best.").text!!)
         add("km.split.whole-minutes", LiveWords.kmSplit(2, 600_000, 300_000))
         add("km.split.over-an-hour", LiveWords.kmSplit(12, 3_845_000, 320_000))
         add("km.split.longest", LiveWords.kmSplit(10, 7_199_000, 599_000))

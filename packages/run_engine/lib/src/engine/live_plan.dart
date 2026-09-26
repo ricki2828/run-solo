@@ -109,10 +109,11 @@ class LivePlan {
 /// - Cooper: the Cooper board, plus the fade curve and past VO2s;
 /// - a GOAL (§G): only its own board, [GoalCatalogue.boardKeyOf] (a
 ///   standard distance its best-effort board, a standard time its
-///   distance-in-time board, a custom goal its `goal:` board). Native
-///   races nothing during a goal; the board is for "new best" at the goal
-///   (`GoalCoach`, matched by key), so every entry counts, series or not,
-///   and one earlier run is enough.
+///   distance-in-time board, a custom goal its `goal:` board). A distance
+///   goal races it at each km (native `LiveCoach`: the entries' from-start
+///   splits, an entry short of that km sits it out) and it decides "new
+///   best" at the goal (`GoalCoach`, matched by key), so every entry
+///   counts, series or not, and one earlier run is enough.
 /// A board needs [minEntries] (a goal board 1); it carries at most [maxEntries] (the top 10
 /// and the newest 10, deduped), and only entries that have the series the
 /// live compare reads (a 5K entry needs 5 from-start splits). Pure.
