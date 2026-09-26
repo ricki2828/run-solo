@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -14,6 +15,7 @@ import android.util.Log
 import android.view.WindowManager
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import app.runsolo.platform.BleApi
 import app.runsolo.platform.BleApiImpl
 import app.runsolo.platform.PermissionKind
@@ -44,6 +46,13 @@ import io.flutter.embedding.engine.FlutterEngine
 class MainActivity : FlutterActivity() {
     private lateinit var recorder: RecorderApiImpl
     private val permissionCallbacks = HashMap<Int, (Result<Boolean>) -> Unit>()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // Before super.onCreate (plan §4): shows the Lap Line splash on API 29+ and swaps
+        // LaunchTheme for NormalTheme; Flutter's first frame dismisses it.
+        installSplashScreen()
+        super.onCreate(savedInstanceState)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

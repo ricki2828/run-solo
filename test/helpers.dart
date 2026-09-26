@@ -11,6 +11,7 @@ import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_solo/platform/transfer_gateway.dart';
+import 'package:run_solo/splash/intro_gate.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/settings.dart';
 
@@ -101,6 +102,7 @@ Future<void> pumpApp(
   String? pushRoute,
   Object? pushArguments,
   bool checkRecoveryOnOpen = false,
+  IntroKind intro = IntroKind.none,
 }) async {
   await loadRunSoloFonts();
   phoneViewport(tester);
@@ -113,6 +115,7 @@ Future<void> pumpApp(
       services: services,
       now: now,
       checkRecoveryOnOpen: checkRecoveryOnOpen,
+      intro: intro,
       home: pushRoute != null
           ? _Launcher(route: pushRoute, arguments: pushArguments)
           : home,

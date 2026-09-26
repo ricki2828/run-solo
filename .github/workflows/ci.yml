@@ -111,7 +111,7 @@ jobs:
           python assets/brand/build_brand.py
           # status, not diff: a new file the generator writes is untracked and
           # git diff would miss it.
-          drift=$(git status --porcelain -- assets/brand/svg android/app/src/main/res/drawable android/app/src/main/res/mipmap-anydpi-v26)
+          drift=$(git status --porcelain -- assets/brand/svg android/app/src/main/res/drawable android/app/src/main/res/mipmap-anydpi-v26 lib/brand)
           if [ -n "$drift" ]; then echo "Brand vectors drifted; run build_brand.py and commit:"; echo "$drift"; git diff --stat; exit 1; fi
 
   core-jvm:
@@ -388,6 +388,15 @@ jobs:
             tools/emulator_lifecycle.sh apk/app-debug.apk app.runsolo.debug intervals
             tools/emulator_lifecycle.sh apk/app-debug.apk app.runsolo.debug laps
             tools/emulator_lifecycle.sh apk/app-debug.apk app.runsolo.debug free
+            tools/emulator_splash_shots.sh app.runsolo.debug
+      - name: Upload splash hand-off shots (B3 evidence)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: splash-shots-api${{ matrix.api-level }}
+          path: splash-shots
+          if-no-files-found: ignore
+          retention-days: 7
 
   emulator-dogfood:
     name: emulator smoke, dogfood R8 build (API 36)
