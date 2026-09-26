@@ -18,6 +18,8 @@ from collections import defaultdict
 ENUMS = {
     "state": {"idle", "recording", "paused", "finalising"},
     "phase": {"none", "warmup", "work", "recovery", "cooldown"},
+    "endedPhase": {"none", "warmup", "work", "recovery", "cooldown"},
+    "nextPhase": {"none", "warmup", "work", "recovery", "cooldown"},
     "source": {"button", "notification", "volumeKey", "auto"},
     "cue": {"halfway", "thirtySeconds", "phaseEnd", "start", "stop", "distanceToGo", "lastRep", "minuteMark", "countdown", "projection"},
     "mode": {"intervals", "laps", "free", "cooper"},
@@ -35,6 +37,14 @@ REQUIRED_KINDS = {"tick", "lap", "phase", "state", "status", "cue"}
 # no GPS, so `gpsLost` fires). Their shape is pinned here instead: field -> JSON types.
 KNOWN_SHAPES = {
     "fault": {"t": {"int"}, "kind": {"str"}, "fault": {"str"}, "message": {"str"}},
+    # The press of a manual lap, before its deferred `lap` (app-only; the JVM generator has no
+    # press/tick split). nextPhase / nextRepIndex / nextPhaseDurationMs are null unless the lap
+    # re-aligns a structured session.
+    "lapPending": {
+        "t": {"int"}, "kind": {"str"}, "index": {"int"}, "tMs": {"int"}, "activeMs": {"int"},
+        "source": {"str"}, "endedPhase": {"str"}, "endedRepIndex": {"int"},
+        "nextPhase": {"str"}, "nextRepIndex": {"int"}, "nextPhaseDurationMs": {"int"},
+    },
 }
 
 

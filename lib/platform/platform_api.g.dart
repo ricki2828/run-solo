@@ -1583,6 +1583,95 @@ class LapEvent extends RecorderEvent {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// A manual lap (button, notification, volume key, "Start reps") the core
+/// accepted, sent at the press. The [LapEvent] with the same [index] follows
+/// on the next tick (up to 1 s later, so its distance is interpolated at the
+/// press); until then the UI shows the new lap from this. [endedPhase] and
+/// [endedRepIndex] are the phase the lap closes, so the lap's pace is
+/// attributed by the lap itself, never by arrival order. [nextPhase] is set
+/// when the lap re-aligns a structured session (its [PhaseEvent] also
+/// follows the [LapEvent]).
+class LapPendingEvent extends RecorderEvent {
+  LapPendingEvent({
+    required this.index,
+    required this.tMs,
+    required this.activeMs,
+    required this.source,
+    required this.endedPhase,
+    required this.endedRepIndex,
+    this.nextPhase,
+    this.nextRepIndex,
+    this.nextPhaseDurationMs,
+  });
+
+  int index;
+
+  int tMs;
+
+  int activeMs;
+
+  LapSource source;
+
+  Phase endedPhase;
+
+  int endedRepIndex;
+
+  Phase? nextPhase;
+
+  int? nextRepIndex;
+
+  /// 0 for untimed phases, like [PhaseEvent.phaseDurationMs].
+  int? nextPhaseDurationMs;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      index,
+      tMs,
+      activeMs,
+      source,
+      endedPhase,
+      endedRepIndex,
+      nextPhase,
+      nextRepIndex,
+      nextPhaseDurationMs,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static LapPendingEvent decode(Object result) {
+    result as List<Object?>;
+    return LapPendingEvent(
+      index: result[0]! as int,
+      tMs: result[1]! as int,
+      activeMs: result[2]! as int,
+      source: result[3]! as LapSource,
+      endedPhase: result[4]! as Phase,
+      endedRepIndex: result[5]! as int,
+      nextPhase: result[6] as Phase?,
+      nextRepIndex: result[7] as int?,
+      nextPhaseDurationMs: result[8] as int?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! LapPendingEvent || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(index, other.index) && _deepEquals(tMs, other.tMs) && _deepEquals(activeMs, other.activeMs) && _deepEquals(source, other.source) && _deepEquals(endedPhase, other.endedPhase) && _deepEquals(endedRepIndex, other.endedRepIndex) && _deepEquals(nextPhase, other.nextPhase) && _deepEquals(nextRepIndex, other.nextRepIndex) && _deepEquals(nextPhaseDurationMs, other.nextPhaseDurationMs);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 class CueEvent extends RecorderEvent {
   CueEvent({
     required this.kind,
@@ -1889,17 +1978,20 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is LapEvent) {
       buffer.putUint8(162);
       writeValue(buffer, value.encode());
-    }    else if (value is CueEvent) {
+    }    else if (value is LapPendingEvent) {
       buffer.putUint8(163);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is CueEvent) {
       buffer.putUint8(164);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is FaultEvent) {
       buffer.putUint8(165);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is StateEvent) {
       buffer.putUint8(166);
+      writeValue(buffer, value.encode());
+    }    else if (value is PhaseEvent) {
+      buffer.putUint8(167);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -1993,12 +2085,14 @@ class _PigeonCodec extends StandardMessageCodec {
       case 162:
         return LapEvent.decode(readValue(buffer)!);
       case 163:
-        return CueEvent.decode(readValue(buffer)!);
+        return LapPendingEvent.decode(readValue(buffer)!);
       case 164:
-        return FaultEvent.decode(readValue(buffer)!);
+        return CueEvent.decode(readValue(buffer)!);
       case 165:
-        return StateEvent.decode(readValue(buffer)!);
+        return FaultEvent.decode(readValue(buffer)!);
       case 166:
+        return StateEvent.decode(readValue(buffer)!);
+      case 167:
         return PhaseEvent.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);

@@ -1645,6 +1645,84 @@ data class LapEvent (
   }
 }
 
+/**
+ * A manual lap (button, notification, volume key, "Start reps") the core
+ * accepted, sent at the press. The [LapEvent] with the same [index] follows
+ * on the next tick (up to 1 s later, so its distance is interpolated at the
+ * press); until then the UI shows the new lap from this. [endedPhase] and
+ * [endedRepIndex] are the phase the lap closes, so the lap's pace is
+ * attributed by the lap itself, never by arrival order. [nextPhase] is set
+ * when the lap re-aligns a structured session (its [PhaseEvent] also
+ * follows the [LapEvent]).
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class LapPendingEvent (
+  val index: Long,
+  val tMs: Long,
+  val activeMs: Long,
+  val source: LapSource,
+  val endedPhase: Phase,
+  val endedRepIndex: Long,
+  val nextPhase: Phase? = null,
+  val nextRepIndex: Long? = null,
+  /** 0 for untimed phases, like [PhaseEvent.phaseDurationMs]. */
+  val nextPhaseDurationMs: Long? = null
+) : RecorderEvent()
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): LapPendingEvent {
+      val index = pigeonVar_list[0] as Long
+      val tMs = pigeonVar_list[1] as Long
+      val activeMs = pigeonVar_list[2] as Long
+      val source = pigeonVar_list[3] as LapSource
+      val endedPhase = pigeonVar_list[4] as Phase
+      val endedRepIndex = pigeonVar_list[5] as Long
+      val nextPhase = pigeonVar_list[6] as Phase?
+      val nextRepIndex = pigeonVar_list[7] as Long?
+      val nextPhaseDurationMs = pigeonVar_list[8] as Long?
+      return LapPendingEvent(index, tMs, activeMs, source, endedPhase, endedRepIndex, nextPhase, nextRepIndex, nextPhaseDurationMs)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      index,
+      tMs,
+      activeMs,
+      source,
+      endedPhase,
+      endedRepIndex,
+      nextPhase,
+      nextRepIndex,
+      nextPhaseDurationMs,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as LapPendingEvent
+    return PlatformApiPigeonUtils.deepEquals(this.index, other.index) && PlatformApiPigeonUtils.deepEquals(this.tMs, other.tMs) && PlatformApiPigeonUtils.deepEquals(this.activeMs, other.activeMs) && PlatformApiPigeonUtils.deepEquals(this.source, other.source) && PlatformApiPigeonUtils.deepEquals(this.endedPhase, other.endedPhase) && PlatformApiPigeonUtils.deepEquals(this.endedRepIndex, other.endedRepIndex) && PlatformApiPigeonUtils.deepEquals(this.nextPhase, other.nextPhase) && PlatformApiPigeonUtils.deepEquals(this.nextRepIndex, other.nextRepIndex) && PlatformApiPigeonUtils.deepEquals(this.nextPhaseDurationMs, other.nextPhaseDurationMs)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.index)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.tMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.activeMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.source)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.endedPhase)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.endedRepIndex)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.nextPhase)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.nextRepIndex)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.nextPhaseDurationMs)
+    return result
+  }
+}
+
 /** Generated class from Pigeon that represents data sent in messages. */
 data class CueEvent (
   val kind: CueKind,
@@ -1993,20 +2071,25 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
       }
       163.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CueEvent.fromList(it)
+          LapPendingEvent.fromList(it)
         }
       }
       164.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FaultEvent.fromList(it)
+          CueEvent.fromList(it)
         }
       }
       165.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StateEvent.fromList(it)
+          FaultEvent.fromList(it)
         }
       }
       166.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          StateEvent.fromList(it)
+        }
+      }
+      167.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           PhaseEvent.fromList(it)
         }
@@ -2152,20 +2235,24 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(162)
         writeValue(stream, value.toList())
       }
-      is CueEvent -> {
+      is LapPendingEvent -> {
         stream.write(163)
         writeValue(stream, value.toList())
       }
-      is FaultEvent -> {
+      is CueEvent -> {
         stream.write(164)
         writeValue(stream, value.toList())
       }
-      is StateEvent -> {
+      is FaultEvent -> {
         stream.write(165)
         writeValue(stream, value.toList())
       }
-      is PhaseEvent -> {
+      is StateEvent -> {
         stream.write(166)
+        writeValue(stream, value.toList())
+      }
+      is PhaseEvent -> {
+        stream.write(167)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)

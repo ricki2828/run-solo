@@ -67,6 +67,19 @@ class FakeRecorderGateway implements RecorderGateway {
   /// Lap presses swallowed because the run is a Free run.
   int lapsIgnored = 0;
 
+  /// RecordingSession since I2: a manual lap's [LapEvent] (and the
+  /// [PhaseEvent] it causes) waits for the next tick, and a [LapPendingEvent]
+  /// goes out at the press. Off by default: older tests expect the instant
+  /// lap.
+  bool deferManualLaps = false;
+
+  /// The next deferred [LapEvent] is never sent (the lap is still in
+  /// `status().laps`), for the controller's reconcile path.
+  bool dropNextDeferredLap = false;
+
+  bool _holding = false;
+  final List<RecorderEvent> _deferred = [];
+
   /// Scripted fault of any kind (tests for the one-time notices).
   void emitFault(FaultKind kind, String message) =>
       _emit(FaultEvent(kind: kind, message: message));
@@ -246,8 +259,50 @@ class FakeRecorderGateway implements RecorderGateway {
   Future<void> startReps() async {
     if (_state != RecorderState.recording || _phase != Phase.warmup) return;
     startRepsCalls += 1;
-    _emitLap(LapSource.button);
-    _enter(Phase.work, 1);
+    _manualLap(LapSource.button, () => _enter(Phase.work, 1));
+  }
+
+  /// One accepted manual lap: instant, or held for the next tick with a
+  /// [LapPendingEvent] now ([deferManualLaps]).
+  void _manualLap(LapSource source, void Function() realign) {
+    if (!deferManualLaps) {
+      _emitLap(source);
+      realign();
+      return;
+    }
+    final endedPhase = _phase;
+    final endedRep = _repIndex;
+    final index = _lapIndex;
+    final tMs = _elapsedMs;
+    final activeMs = _activeMs - _lapStartActiveMs;
+    _holding = true;
+    _emitLap(source);
+    realign();
+    _holding = false;
+    final next = _deferred.whereType<PhaseEvent>().firstOrNull;
+    _emit(
+      LapPendingEvent(
+        index: index,
+        tMs: tMs,
+        activeMs: activeMs,
+        source: source,
+        endedPhase: endedPhase,
+        endedRepIndex: endedRep,
+        nextPhase: next?.phase,
+        nextRepIndex: next?.repIndex,
+        nextPhaseDurationMs: next?.phaseDurationMs,
+      ),
+    );
+    if (dropNextDeferredLap) {
+      dropNextDeferredLap = false;
+      _deferred.removeWhere((e) => e is LapEvent);
+    }
+  }
+
+  void _flushDeferred() {
+    final out = List.of(_deferred);
+    _deferred.clear();
+    out.forEach(_emit);
   }
 
   int startRepsCalls = 0;
@@ -269,19 +324,20 @@ class FakeRecorderGateway implements RecorderGateway {
     // RecorderCore default config: volume-key laps only in Laps mode (W8);
     // in a preset they are ignored outright, never recorded or re-aligned.
     if (_timed != null && source == LapSource.volumeKey) return;
-    _emitLap(source);
-    if (_timed == null) return;
-    switch (_phase) {
-      case Phase.warmup:
-        _enter(Phase.work, 1);
-      case Phase.work:
-      case Phase.recovery:
-        // Ends the step early, a distance step included (END REP, W3).
-        _advancePhase();
-      case Phase.cooldown:
-      case Phase.none:
-        break;
-    }
+    _manualLap(source, () {
+      if (_timed == null) return;
+      switch (_phase) {
+        case Phase.warmup:
+          _enter(Phase.work, 1);
+        case Phase.work:
+        case Phase.recovery:
+          // Ends the step early, a distance step included (END REP, W3).
+          _advancePhase();
+        case Phase.cooldown:
+        case Phase.none:
+          break;
+      }
+    });
   }
 
   @override
@@ -289,6 +345,7 @@ class FakeRecorderGateway implements RecorderGateway {
     if (_state == RecorderState.idle) return null;
     _timer?.cancel();
     _timer = null;
+    _flushDeferred(); // RecordingSession.stop flushes held laps too
     _state = RecorderState.finalising;
     _phase = Phase.none;
     _emitState();
@@ -415,6 +472,8 @@ class FakeRecorderGateway implements RecorderGateway {
     if (_state == RecorderState.idle || _state == RecorderState.finalising) {
       return;
     }
+    // RecordingSession.flushLaps: held laps go out before this tick.
+    _flushDeferred();
     var remaining = dt.inMilliseconds;
     if (_state == RecorderState.paused) {
       _elapsedMs += remaining;
@@ -607,6 +666,10 @@ class FakeRecorderGateway implements RecorderGateway {
   };
 
   void _emit(RecorderEvent e) {
+    if (_holding) {
+      _deferred.add(e);
+      return;
+    }
     if (!_controller.isClosed) _controller.add(e);
   }
 

@@ -48,7 +48,9 @@ import app.runsolo.core.model.TargetKind
  *  - Volume-key laps: only when [Config.volumeKeyLaps] (default: Laps mode only). In
  *    a structured session they are recorded but never re-align the phase (pocket-bump guard, W8).
  *  - Double-lap guard: a manual press within [Config.doubleLapGuardMs] of an auto-lap is
- *    ignored; any manual press within [Config.debounceMs] of the previous manual lap is ignored.
+ *    ignored; any manual press within [Config.debounceMs] of the previous manual lap is ignored,
+ *    [Config.unstructuredDebounceMs] in a run without steps (Laps, by-feel): there LAP is the
+ *    main control and a second press after a missed-looking first one would be a real extra lap.
  *  - Laps while paused are ignored.
  */
 class RecorderCore(
@@ -60,6 +62,7 @@ class RecorderCore(
         val volumeKeyLaps: Boolean,
         val doubleLapGuardMs: Long = 5_000,
         val debounceMs: Long = 400,
+        val unstructuredDebounceMs: Long = 1_500,
     )
 
     sealed class Output {
@@ -230,7 +233,8 @@ class RecorderCore(
         if (source == LapSource.volumeKey && !config.volumeKeyLaps) return LapDecision.ignoredVolumeKeyDisabled to emptyList()
         if (spec?.lapLockout == true && phase == Phase.work) return LapDecision.ignoredLockout to emptyList()
         lastAutoLapT?.let { if (t - it < config.doubleLapGuardMs) return LapDecision.ignoredDoubleLap to emptyList() }
-        lastManualLapT?.let { if (t - it < config.debounceMs) return LapDecision.ignoredDebounce to emptyList() }
+        val debounceMs = if (structured) config.debounceMs else config.unstructuredDebounceMs
+        lastManualLapT?.let { if (t - it < debounceMs) return LapDecision.ignoredDebounce to emptyList() }
         return LapDecision.accepted to applyManualLap(source, t)
     }
 

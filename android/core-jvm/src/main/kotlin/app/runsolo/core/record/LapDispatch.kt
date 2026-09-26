@@ -44,6 +44,26 @@ class LapDispatch(
         }
     }
 
+    /**
+     * The manual lap in [out] (a press just handed to [lap]), for the app to show at once while its
+     * lap waits for the next tick (`LapPendingEvent`); null for an auto lap or no lap.
+     * [lastLapActiveMs] is the active time at the last lap sent; [activeAt] the core's active time at
+     * a time. The lap's active time starts at the previous lap, which may itself still wait here.
+     */
+    fun pressed(out: List<RecorderCore.Output>, lastLapActiveMs: Long, activeAt: (Long) -> Long): Pressed? {
+        val lap = out.filterIsInstance<RecorderCore.Output.Lap>().firstOrNull() ?: return null
+        if (lap.source == LapSource.auto) return null
+        val prev = pending.filterIsInstance<RecorderCore.Output.Lap>().lastOrNull { it.index < lap.index }
+        return Pressed(
+            lap = lap,
+            activeMs = activeAt(lap.t) - (prev?.let { activeAt(it.t) } ?: lastLapActiveMs),
+            next = out.filterIsInstance<RecorderCore.Output.PhaseChanged>().firstOrNull(),
+        )
+    }
+
+    /** A press as the app sees it: the lap, its active time, the phase it starts (structured only). */
+    data class Pressed(val lap: RecorderCore.Output.Lap, val activeMs: Long, val next: RecorderCore.Output.PhaseChanged?)
+
     /** The tick (or start / resume) at [t] is done, at [distanceM]: the next press interpolates from here. */
     fun ticked(t: Long, distanceM: Double) {
         prevTickT = t

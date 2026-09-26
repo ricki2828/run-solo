@@ -39,6 +39,7 @@ object EventTrace {
         m["t"] = when (e) {
             is TickEvent -> e.elapsedMs
             is LapEvent -> e.tMs
+            is LapPendingEvent -> e.tMs
             else -> elapsedMs
         }
         when (e) {
@@ -66,6 +67,18 @@ object EventTrace {
                 m["activeMs"] = e.activeMs
                 m["distanceM"] = e.distanceM
                 m["source"] = dartName(e.source)
+            }
+            is LapPendingEvent -> {
+                m["kind"] = "lapPending"
+                m["index"] = e.index
+                m["tMs"] = e.tMs
+                m["activeMs"] = e.activeMs
+                m["source"] = dartName(e.source)
+                m["endedPhase"] = dartName(e.endedPhase)
+                m["endedRepIndex"] = e.endedRepIndex
+                m["nextPhase"] = e.nextPhase?.let { dartName(it) }
+                m["nextRepIndex"] = e.nextRepIndex
+                m["nextPhaseDurationMs"] = e.nextPhaseDurationMs
             }
             is PhaseEvent -> {
                 m["kind"] = "phase"
