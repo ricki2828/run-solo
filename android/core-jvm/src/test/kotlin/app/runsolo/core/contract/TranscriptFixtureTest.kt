@@ -61,7 +61,9 @@ class TranscriptFixtureTest {
                 // Intervals are exempt: the rep the kill cut is unclean, and an unclean live rep ends the
                 // rep compare for the rest of the session (BLOCK-2), by design.
                 if (kind == "t4-400s-fade") continue
-                val laterInFull = full.spokenExtras.any { it.key.startsWith("compare:") && it.t > resumed + 120_000 }
+                // The dark span's metres are never counted (reanchored), so every later point comes
+                // about [Kill.gapMs] later: only a compare with that much trace left after it counts.
+                val laterInFull = full.spokenExtras.any { it.key.startsWith("compare:") && it.t > resumed + 120_000 && it.t + kill.gapMs + 10_000 < endT }
                 if (laterInFull) {
                     assertTrue(s.spokenExtras.any { it.key.startsWith("compare:") && it.t > resumed }, "$kind killed at ${kill.atMs}: no compare after the restore")
                 }
