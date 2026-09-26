@@ -13,6 +13,7 @@ import 'event_names.dart';
 const List<String> estimateMarkers = [
   'estimate',
   'estimated',
+  'estimates',
   'est.',
   'about',
   'research-based',
@@ -21,7 +22,7 @@ const List<String> estimateMarkers = [
 
 /// Whole words only: "est." inside "best." or "fastest." is no marker.
 final RegExp _estimateMarker = RegExp(
-  r'(?<![a-z])(estimated?|est\.|about|research-based|predicted)(?![a-z])',
+  r'(?<![a-z])(estimate[sd]?|est\.|about|research-based|predicted)(?![a-z])',
   caseSensitive: false,
 );
 
@@ -238,7 +239,7 @@ class Predictor {
   static const double minInputM = 3000;
 
   /// Inputs older than this are ignored.
-  static const Duration window = Duration(days: 42);
+  static const int windowDays = 42;
 
   /// Home card copy with no qualifying run.
   static const String emptyLine = 'Run 3 km or more to see your predictions';
@@ -259,7 +260,8 @@ class Predictor {
     double? bestT;
     // Whole days: a run on day 42 counts all day.
     final today = DateTime(now.year, now.month, now.day);
-    final since = today.subtract(window);
+    // Calendar days, not 42 × 24 h, so a DST change cannot move the edge.
+    final since = DateTime(today.year, today.month, today.day - windowDays);
     for (final i in inputs) {
       final day = DateTime(i.date.year, i.date.month, i.date.day);
       if (i.distanceM < minInputM || day.isBefore(since)) continue;
@@ -316,7 +318,7 @@ class ParkrunTarget {
   /// "Target 24:30 (predicted)" or "Target 24:12 (your PB)".
   final String line;
 
-  static const Duration pbFreshFor = Duration(days: 42);
+  static const int pbFreshDays = 42;
 
   static ParkrunTarget? choose({
     Prediction? prediction,
@@ -327,7 +329,11 @@ class ParkrunTarget {
     final pbFresh =
         coursePbMs != null &&
         coursePbDate != null &&
-        !coursePbDate.isBefore(now.subtract(pbFreshFor));
+        !DateTime(
+          coursePbDate.year,
+          coursePbDate.month,
+          coursePbDate.day,
+        ).isBefore(DateTime(now.year, now.month, now.day - pbFreshDays));
     if (pbFresh &&
         (prediction == null || coursePbMs / 1000 < prediction.seconds)) {
       final s = coursePbMs / 1000;

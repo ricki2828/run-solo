@@ -299,6 +299,7 @@ void main() {
       'Research-based norms',
       'Target 24:30 (predicted)',
       'Heat-adjusted estimate 52.8',
+      'Estimates assume a cool day',
     ]) {
       expect(carriesEstimateMarker(ok), isTrue, reason: ok);
     }
