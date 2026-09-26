@@ -333,7 +333,7 @@ class LiveCoachLifecycleTest {
     }
 
     @Test
-    fun `a 30-minute goal - the distance at 30:00, said once`() {
+    fun `a 30-minute goal - the distance at 30 minutes, said once`() {
         val sh = goalRun(SessionSpec.goalTime(1_800, "30 min"), 1_800 + 120)
         val g = sh.goals.single()
         assertTrue(!g.distanceGoal)
