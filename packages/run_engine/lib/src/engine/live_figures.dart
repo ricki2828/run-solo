@@ -154,7 +154,24 @@ class RunDerived {
     required this.bestEfforts,
     this.live = LiveFigures.none,
     this.nudgesFired = const [],
+    this.version = currentVersion,
   });
+
+  /// Bumped whenever the derived data gains something history needs (the
+  /// index keeps derived data across rebuilds, W5b, so without a bump no
+  /// past run would ever reach a new board). Stores refill any entry built
+  /// at an older version, in the background, once.
+  /// - 1: anything written without a version (LB1/LB2, and CR1's per-km
+  ///   HR from #56, which merged before versioning existed).
+  /// - 2: reserved (never written; G1 took 3 after #56 merged first).
+  /// - 3: GOAL boards (§G): half, marathon, 30/60 min distance, from-Start
+  ///   to 42 km; with CR1's `kmHr`.
+  static const int currentVersion = 3;
+
+  /// The version this data was built at; JSON without one is 1.
+  final int version;
+
+  bool get isCurrent => version >= currentVersion;
 
   final RunBestEfforts bestEfforts;
   final LiveFigures live;
@@ -179,12 +196,14 @@ class RunDerived {
   }
 
   Map<String, Object?> toJson() => {
+    'v': version,
     'best_efforts': bestEfforts.toJson(),
     'live': live.toJson(),
     'nudges_fired': [for (final n in nudgesFired) n.toJson()],
   };
 
   factory RunDerived.fromJson(Map<String, Object?> j) => RunDerived(
+    version: (j['v'] as int?) ?? 1,
     bestEfforts: RunBestEfforts.fromJson(
       j['best_efforts']! as Map<String, Object?>,
     ),

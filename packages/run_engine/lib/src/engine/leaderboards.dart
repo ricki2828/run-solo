@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../model/session_spec.dart';
 import '../run_mode.dart';
 import 'best_efforts.dart';
+import 'goal.dart';
 
 /// What a board fold needs to know about one run (Phase 4 plan §3.1, LB2).
 /// Built by the app from its index entry; the engine never reads files.
@@ -13,6 +14,9 @@ class BoardInput {
     required this.mode,
     this.comparisonKey,
     this.efforts = const {},
+    this.distances = const {},
+    this.goal,
+    this.goalBoardKey,
     this.headlineSecPerKm,
     this.verdictGrade = false,
     this.officialTimeMs,
@@ -26,6 +30,15 @@ class BoardInput {
   final RunMode mode;
   final String? comparisonKey;
   final Map<BestEffortDistance, BestEffort> efforts;
+
+  /// Most distance per time window (§G time boards).
+  final Map<BestTimeWindow, BestDistance> distances;
+
+  /// A GOAL run's result and the board it ranks on
+  /// ([GoalCatalogue.boardKeyOf]); only a custom goal's own board is fed
+  /// from here, standard goals ride their `be:*` windows.
+  final GoalResult? goal;
+  final String? goalBoardKey;
 
   /// I3's headline metric (avg work pace, s/km) for a structured session.
   final double? headlineSecPerKm;
@@ -77,6 +90,14 @@ enum BoardKind {
 
   /// Cooper VO2 estimate; higher is better.
   cooper,
+
+  /// Most distance in 30 / 60 min (GOAL time boards, §G), metres; higher is
+  /// better. Trend in metres per month. Custom time goals (`goal:t<s>`) too.
+  distanceInTime,
+
+  /// A custom distance goal (`goal:d<m>`, §G): goal time in seconds, lower
+  /// is better.
+  goalDistance,
 }
 
 /// A trend over a board's recent entries.
@@ -100,7 +121,7 @@ class Leaderboard {
     List<BoardRun> runs, {
     double? metres,
   }) {
-    final higher = kind == BoardKind.cooper;
+    final higher = kind == BoardKind.cooper || kind == BoardKind.distanceInTime;
     final ranked = [...runs]
       ..sort((a, b) {
         final c = higher
@@ -151,7 +172,10 @@ class Leaderboard {
     if (recent < trendMinEntries) return null;
     final byDate = [...ranked]..sort((a, b) => a.date.compareTo(b.date));
     final pts = byDate.skip(math.max(0, byDate.length - trendSpan)).toList();
-    final timeBoard = kind == BoardKind.bestEffort || kind == BoardKind.course;
+    final timeBoard =
+        kind == BoardKind.bestEffort ||
+        kind == BoardKind.course ||
+        kind == BoardKind.goalDistance;
     if (timeBoard && metres == null) {
       throw StateError('time board $key has no distance for its pace trend');
     }
@@ -207,7 +231,30 @@ abstract final class Leaderboards {
           metric: e.elapsedMs / 1000,
           adjMetric: adj(e.elapsedMs / 1000),
         ),
+      // Distance in time: heat makes it shorter, so the cool twin is longer.
+      for (final d in r.distances.values)
+        d.window.key: BoardRun(
+          runId: r.runId,
+          date: r.date,
+          metric: d.metres,
+          adjMetric: r.heatFraction == null
+              ? null
+              : d.metres / (1 - r.heatFraction!),
+        ),
     };
+    // A GOAL run (§G) rides the be:* boards; a custom goal also ranks its
+    // result on its own goal-key board.
+    if (key != null && ComparisonKey.isGoal(key)) {
+      final g = r.goal;
+      final bk = r.goalBoardKey;
+      if (g != null && g.reached && bk != null && ComparisonKey.isGoal(bk)) {
+        final metric = g.kind == GoalKind.distance
+            ? g.goalMs! / 1000
+            : g.goalDistanceM!;
+        out[bk] = BoardRun(runId: r.runId, date: r.date, metric: metric);
+      }
+      return out;
+    }
     if (key == null) return out;
     if (ComparisonKey.isParkrun(key)) {
       if (key == ComparisonKey.parkrun) return out;
@@ -251,6 +298,13 @@ abstract final class Leaderboards {
   }
 
   static BoardKind kindOf(String key) {
+    if (BestTimeWindow.ofKey(key) != null) return BoardKind.distanceInTime;
+    if (key.startsWith('${ComparisonKey.goalPrefix}t')) {
+      return BoardKind.distanceInTime;
+    }
+    if (key.startsWith('${ComparisonKey.goalPrefix}d')) {
+      return BoardKind.goalDistance;
+    }
     if (key.startsWith(reservedPrefix)) return BoardKind.bestEffort;
     if (ComparisonKey.isParkrun(key)) return BoardKind.course;
     if (key == ComparisonKey.cooper) return BoardKind.cooper;
@@ -261,6 +315,11 @@ abstract final class Leaderboards {
     final be = BestEffortDistance.ofKey(key);
     if (be != null) return be.metres;
     if (ComparisonKey.isParkrun(key)) return 5000;
+    if (key.startsWith('${ComparisonKey.goalPrefix}d')) {
+      return double.tryParse(
+        key.substring(ComparisonKey.goalPrefix.length + 1),
+      );
+    }
     return null;
   }
 

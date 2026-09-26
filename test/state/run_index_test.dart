@@ -111,6 +111,56 @@ void main() {
     },
   );
 
+  test('derived data from an older version refills once in the background '
+      '(§G WARN-G1)', () async {
+    final r1 = fourByFourFile(n: 1, start: d1);
+    final store = await storeWith([r1]);
+    await store.list();
+    await store.derivedIdle;
+    // Rewrite the entry as built by version 1 (before the GOAL boards).
+    final raw = jsonDecode(store.indexFile.readAsStringSync()) as Map;
+    for (final e in (raw['runs'] as List).cast<Map<String, Object?>>()) {
+      (e['derived']! as Map<String, Object?>).remove('v');
+    }
+    store.indexFile.writeAsStringSync(jsonEncode(raw));
+    expect(
+      (await store.readIndex()).entries[r1.id]!.derived!.isCurrent,
+      isFalse,
+    );
+    var calls = 0;
+    store.deriveBatch = (jobs) {
+      calls++;
+      return FileRunStore.deriveInIsolate(jobs);
+    };
+    await store.list();
+    await store.derivedIdle;
+    expect(calls, 1);
+    final e = (await store.readIndex()).entries[r1.id]!;
+    expect(e.derived!.version, engine.RunDerived.currentVersion);
+    // Current now: the next list starts no batch.
+    await store.list();
+    await store.derivedIdle;
+    expect(calls, 1);
+  });
+
+  test('a failed refill keeps the older derived data', () async {
+    final r1 = fourByFourFile(n: 1, start: d1);
+    final store = await storeWith([r1]);
+    await store.list();
+    await store.derivedIdle;
+    final raw = jsonDecode(store.indexFile.readAsStringSync()) as Map;
+    for (final e in (raw['runs'] as List).cast<Map<String, Object?>>()) {
+      (e['derived']! as Map<String, Object?>).remove('v');
+    }
+    store.indexFile.writeAsStringSync(jsonEncode(raw));
+    store.deriveBatch = (jobs) async => {for (final j in jobs) j.id: null};
+    await store.list();
+    await store.derivedIdle;
+    final e = (await store.readIndex()).entries[r1.id]!;
+    expect(e.derived, isNotNull);
+    expect(e.derived!.version, 1);
+  });
+
   test('list() never waits for a slow derived builder', () async {
     final r1 = fourByFourFile(n: 1, start: d1);
     final store = await storeWith([r1]);

@@ -10,6 +10,7 @@ import 'format.dart';
 import 'constants.dart';
 import 'event_names.dart';
 import 'fix_laps.dart';
+import 'goal.dart';
 import 'metrics.dart';
 import 'rep_detector.dart';
 import 'session_detector.dart';
@@ -180,7 +181,12 @@ class RunAnalysis {
     this.officialTime = false,
     this.weather,
     this.heatLine,
+    this.goal,
   });
+
+  /// A GOAL run's locked-in result (Phase 4 plan §G); null otherwise. Goal
+  /// runs carry no verdict word.
+  final GoalResult? goal;
 
   /// The sidecar's weather (W1): pending, ok, failed or skipped; null
   /// before the first fetch. Never an input to the verdict (plan §18.5:
@@ -376,6 +382,26 @@ class RunEngine {
     // session goes through the step detector (Phase 3 §3.7).
     final isFourByFour = key == ComparisonKey.norwegian4x4;
     final spec = session!;
+    // A GOAL run (§G): the goal result, no detector, no verdict word.
+    if (spec.isGoal) {
+      return RunAnalysis(
+        runId: run.id,
+        mode: mode,
+        detection: null,
+        intervals: null,
+        freeRun: freeRun,
+        verdict: null,
+        verdictSource: null,
+        indoor: indoor,
+        noisy: noisy,
+        gpsQuality: quality,
+        engineVersion: engineVersion,
+        weather: weather,
+        session: session,
+        comparisonKey: key,
+        goal: GoalResult.of(run, spec),
+      );
+    }
     final planned = run.mode == RunMode.intervals ? run.session : null;
 
     // Edit base: recorded laps (pause laps dropped, renumbered), or laps
