@@ -20,13 +20,23 @@ void main() {
     dir = await Directory.systemTemp.createTemp('runsolo-live-');
     runsDir = Directory('${dir.path}/runs');
   });
-  tearDown(() => dir.delete(recursive: true));
+  // Stores that build derived data: their background writes land before
+  // the directory goes (#60 review P3).
+  final stores = <FileRunStore>[];
+  tearDown(() async {
+    for (final s in stores) {
+      await s.derivedIdle;
+    }
+    stores.clear();
+    await dir.delete(recursive: true);
+  });
 
   /// Free runs long enough for the 5K board (40 min at 6:00/km).
   Future<FileRunStore> storeWithFreeRuns(int n, {int from = 1}) async {
     final store = FileRunStore(runsDir);
     // The live context reads derived data: build it (tests default to none).
     store.deriveBatch = FileRunStore.deriveInIsolate;
+    stores.add(store);
     await store.importBundles([
       for (var i = from; i < from + n; i++)
         engine.RunBundle(
