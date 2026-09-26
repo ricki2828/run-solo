@@ -14,6 +14,7 @@ import '../state/sessions.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
+import '../widgets/goal_picker.dart';
 import '../widgets/mode_chip.dart';
 import '../widgets/structure_glyph.dart';
 import '../widgets/value_stepper.dart';
@@ -76,7 +77,9 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
 
   void _syncProbe() {
     if (!mounted) return;
-    final want = AppServices.of(context).settings.settings.eventRun;
+    // The probe runs for every goal: each starts at the Start press and
+    // counts distance from the first fix (plan §G, Q1).
+    final want = AppServices.of(context).settings.settings.goalRun;
     if (want && !_probing) {
       final rec = AppServices.of(context).recorder;
       _probing = true;
@@ -142,7 +145,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         // K1: the event records as Intervals with its one 5 km step; its
         // name comes only from the flavour config. The LC1 builder sees
         // `templateId == parkrun` in this same spec (#59).
-        _ when s.eventRun => engine.SessionSpec.parkrun(
+        _ when s.goalRun => engine.SessionSpec.parkrun(
           kEventNames.parkrun,
         ).toPigeon(),
         RecordMode.intervals => services.pickedSession.toPigeon(),
@@ -226,7 +229,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
           (x) => x.copyWith(
             lastMode: RecordMode.intervals,
             sessionId: id,
-            eventRun: false,
+            goalRun: false,
           ),
         );
       case BuildCustom():
@@ -260,7 +263,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       (x) => x.copyWith(
         lastMode: RecordMode.intervals,
         sessionId: stored.templateId,
-        eventRun: false,
+        goalRun: false,
       ),
     );
     if (r.start && mounted) await _start();
@@ -276,8 +279,8 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       builder: (context, _) {
         final s = services.settings.settings;
         final mode = s.lastMode;
-        final event = s.eventRun;
-        final preset = !event && mode == RecordMode.intervals;
+        final goal = s.goalRun;
+        final preset = !goal && mode == RecordMode.intervals;
         Future<void> set(AppSettings Function(AppSettings) f) =>
             services.settings.update(f);
         return Scaffold(
@@ -292,20 +295,29 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                 ModeChipRow(
                   selected: mode,
                   session: services.pickedSession,
-                  event: event,
-                  onEvent: () =>
-                      set((x) => x.copyWith(eventRun: true))
+                  goal: goal,
+                  goalLabel: goalLabel(s.goalId),
+                  onGoal: () =>
+                      set((x) => x.copyWith(goalRun: true))
                           .then((_) => _syncProbe()),
                   onSelect: (m) => m == RecordMode.intervals
                       ? _openSheet()
-                      : set((x) => x.copyWith(lastMode: m, eventRun: false))
+                      : set((x) => x.copyWith(lastMode: m, goalRun: false))
                             .then((_) => _syncProbe()),
                 ),
                 const SizedBox(height: Space.x24),
-                if (event) ...[
+                if (goal) ...[
+                  GoalPicker(
+                    goalId: s.goalId,
+                    onPick: (id) => set((x) => x.copyWith(goalId: id)),
+                  ),
+                  const SizedBox(height: Space.x16),
                   Text(
-                    '${kEventNames.parkrun} · 5 km, timed from START. Stand '
-                    'on the start line, then tap START.',
+                    s.eventRun
+                        ? '${kEventNames.parkrun} · 5 km, timed from START. '
+                              'Stand on the start line, then tap START.'
+                        : 'Distance and time goals come with the next build. '
+                              'The ${kEventNames.parkrun} works now.',
                     key: const ValueKey('event-card'),
                     style: text.bodyMedium?.copyWith(color: t.inkSecondary),
                   ),
@@ -430,11 +442,17 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                       ),
                     ),
                   FilledButton(
-                    onPressed: _starting || (event && !_gpsReady)
+                    onPressed:
+                        _starting ||
+                            (goal &&
+                                (!_gpsReady ||
+                                    !(GoalChoice.byId(s.goalId)?.available ??
+                                        false)))
                         ? null
                         : _start,
                     child: Text(switch (mode) {
-                      _ when event => 'START 5 KM',
+                      _ when s.eventRun => 'START 5 KM',
+                      _ when goal => 'START GOAL',
                       RecordMode.intervals
                           when SessionChoice.isFartlek(s.sessionId) =>
                         'START FARTLEK',

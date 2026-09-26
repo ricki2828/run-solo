@@ -9,6 +9,7 @@ import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/screens/verdict_screen.dart';
 import 'package:run_solo/state/recording_controller.dart';
+import 'package:run_solo/widgets/mode_chip.dart';
 
 import '../helpers.dart';
 
@@ -27,12 +28,18 @@ void main() {
     final services = fakeServices(recorder: fake);
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
-    final chip = find.byKey(const ValueKey('event-chip'));
+    final chip = find.byKey(const ValueKey('goal-chip'));
     expect(chip, findsOneWidget);
-    expect(find.text(name.toUpperCase()), findsOneWidget);
     await tester.tap(chip);
     await pumpTimes(tester, 4);
-    expect(services.settings.settings.eventRun, isTrue);
+    expect(services.settings.settings.goalRun, isTrue);
+    expect(services.settings.settings.eventRun, isTrue, reason: 'default goal');
+    expect(find.byKey(const ValueKey('goal-picker')), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('event-gps')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.byKey(const ValueKey('event-card')), findsOneWidget);
     expect(find.text('START 5 KM'), findsOneWidget);
 
@@ -74,13 +81,13 @@ void main() {
     final services = fakeServices();
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
-    await tester.tap(find.byKey(const ValueKey('event-chip')));
+    await tester.tap(find.byKey(const ValueKey('goal-chip')));
     await pumpTimes(tester, 4);
     final fake = services.recorder as FakeRecorderGateway;
     expect(fake.gpsProbeRunning, isTrue);
     await tester.tap(find.text('LAPS'));
     await pumpTimes(tester, 4);
-    expect(services.settings.settings.eventRun, isFalse);
+    expect(services.settings.settings.goalRun, isFalse);
     expect(fake.gpsProbeRunning, isFalse, reason: 'probe only for the event');
     expect(services.settings.settings.recordMode, RecordMode.laps);
   });
@@ -162,5 +169,55 @@ void main() {
     expect(eventProjectedSeconds(snap(lap: 150), 36000), isNull);
     expect(eventProjectedSeconds(snap(lap: 250), 60000), closeTo(1200, 0.01));
     expect(eventProjectedSeconds(snap(lap: 250, lost: true), 60000), isNull);
+  });
+
+  testWidgets('GOAL: the event and 10K under Distance, 30 min under Time; '
+      'goals waiting for G1 cannot start', (tester) async {
+    final fake = FakeRecorderGateway(now: now);
+    final services = fakeServices(recorder: fake);
+    await pumpApp(tester, services, pushRoute: Routes.start);
+    await pumpTimes(tester, 4);
+    await tester.tap(find.byKey(const ValueKey('goal-chip')));
+    await pumpTimes(tester, 4);
+    expect(find.text(name), findsWidgets);
+    expect(find.text('10K'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('goal-d10000')));
+    await pumpTimes(tester, 4);
+    expect(services.settings.settings.goalId, 'd10000');
+    expect(find.text('Coming with the next build.'), findsOneWidget);
+    fake.emitGpsProbe(GpsProbeEvent(fix: true, accuracyM: 5));
+    await pumpTimes(tester, 2);
+    final start = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'START GOAL'),
+    );
+    expect(start.onPressed, isNull, reason: '10K waits for G1 (#63)');
+    await tester.tap(find.byKey(const ValueKey('goal-time')));
+    await pumpTimes(tester, 4);
+    expect(find.byKey(const ValueKey('goal-t1800')), findsOneWidget);
+    expect(find.byKey(const ValueKey('goal-t3600')), findsOneWidget);
+    expect(services.settings.settings.goalId, 't1800');
+  });
+
+  testWidgets('chips: FREE · LAPS · GOAL · INTERVALS as 2 × 2 at 360 dp; no '
+      'chip text under 13 sp', (tester) async {
+    await pumpApp(tester, fakeServices(), pushRoute: Routes.start);
+    await pumpTimes(tester, 4);
+    Offset chip(String title) => tester.getTopLeft(
+      find.ancestor(of: find.text(title), matching: find.byType(ModeChip)),
+    );
+    final free = chip('FREE');
+    final laps = chip('LAPS');
+    final goal = chip('GOAL');
+    final intervals = chip('INTERVALS');
+    expect(laps.dy, closeTo(free.dy, 1));
+    expect(laps.dx, greaterThan(free.dx));
+    expect(goal.dy, greaterThan(free.dy + 40), reason: 'second row');
+    expect(intervals.dy, closeTo(goal.dy, 1));
+    for (final text in tester.widgetList<Text>(
+      find.descendant(of: find.byType(ModeChip), matching: find.byType(Text)),
+    )) {
+      final size = text.style?.fontSize ?? 14;
+      expect(size, greaterThanOrEqualTo(13), reason: text.data);
+    }
   });
 }

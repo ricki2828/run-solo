@@ -807,12 +807,12 @@ void main() {
     });
   }
 
-  // K1 / A10.10: the event as a run type on Start, and its record screen
+  // GOAL (plan §G) with the event picked, and its record screen
   // (distance to go primary; the last 400 m swap).
   for (final h in [800, 640]) {
     testWidgets('event: Start and the timed 5 km at 360 x $h', (tester) async {
       final services = fakeServices(
-        settings: const AppSettings(onboardingDone: true, eventRun: true),
+        settings: const AppSettings(onboardingDone: true, goalRun: true),
       );
       await pumpApp(tester, services, pushRoute: Routes.start);
       tester.view.physicalSize = Size(1080, h * 3.0);
@@ -840,6 +840,9 @@ void main() {
         fake.advance(const Duration(seconds: 1));
       }
       await pumpApp(tester, run, pushRoute: Routes.recording);
+      // pumpApp resets the surface (#51/#53 review P2): size it again so
+      // the 640 golden really is the short phone.
+      tester.view.physicalSize = Size(1080, h * 3.0);
       await pumpTimes(tester, 6);
       await golden(tester, 'record_event_360x$h');
       for (var i = 0; i < 660; i++) {

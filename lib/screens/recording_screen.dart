@@ -68,6 +68,10 @@ class _RecordingScreenState extends State<RecordingScreen>
   /// The run this screen watched while it was live (auto-stop hand-off).
   String? _liveRunId;
 
+  /// Auto-stop (#53 review P3): only the recorder's own finalising → idle
+  /// hands off, never another route to idle.
+  bool _sawFinalising = false;
+
   bool get _haptics => AppServices.of(context).settings.settings.haptics;
 
   bool get _reduced =>
@@ -103,10 +107,12 @@ class _RecordingScreenState extends State<RecordingScreen>
     final s = _ctl!.snapshot;
     _applyKeepScreenOn();
     if (s.active && s.runId != null) _liveRunId = s.runId;
+    if (s.state == RecorderState.finalising) _sawFinalising = true;
     // Auto-stop (K1 event at 5.00 km, plan §3.6): native ends the run on
     // its own; straight to the result, as after Hold to stop.
     final auto = _liveRunId;
     if (auto != null &&
+        _sawFinalising &&
         s.state == RecorderState.idle &&
         !s.discarded &&
         !_stopping &&
@@ -1398,7 +1404,7 @@ class EventBlock extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final muted = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
     final togo = s.metresToGo;
-    final projected = eventProjectedSeconds(s, ctl.displayLapElapsedMs);
+    final projected = eventProjectedSeconds(s, ctl.displayLapActiveMs);
     final last = eventLastStretch(s);
     final toGoText = togo == null || s.gpsLost
         ? '--'

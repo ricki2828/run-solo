@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 
 import 'package:run_engine/run_engine.dart' as engine;
 
-import '../app/event_names.dart';
 import '../platform/gateway.dart';
 import '../theme/theme.dart';
 import 'structure_glyph.dart';
 
-/// The run types at Start and Home (plan §3.2, design brief A8, A10.10):
-/// INTERVALS (the old 4x4 slot, showing the last-used session and its
-/// glyph), LAPS, FREE and the timed 5 km event, named from `kEventNames`
-/// (founder 26-Sep: a run type of its own). Cooper (12-minute test) sits
+/// The run types at Start and Home, in the founder's order (26-Sep, plan
+/// §G): FREE · LAPS · GOAL · INTERVALS. INTERVALS shows the last-used
+/// session and its glyph (A8); GOAL shows the picked goal. Four across only
+/// from [rowMinWidth]; narrower it is a 2 × 2 grid, so no chip text drops
+/// below 13 sp (founder readability rule). Cooper (12-minute test) sits
 /// under the "Tests" eyebrow (A5).
 class ModeChipRow extends StatelessWidget {
   const ModeChipRow({
@@ -18,8 +18,9 @@ class ModeChipRow extends StatelessWidget {
     required this.selected,
     required this.onSelect,
     required this.session,
-    this.event = false,
-    this.onEvent,
+    this.goal = false,
+    this.goalLabel = 'Distance or time',
+    this.onGoal,
   });
   final RecordMode selected;
   final ValueChanged<RecordMode> onSelect;
@@ -27,59 +28,78 @@ class ModeChipRow extends StatelessWidget {
   /// The last-used Intervals session (name + glyph on the chip).
   final engine.SessionSpec session;
 
-  /// The event chip is the picked one (then no mode chip is).
-  final bool event;
+  /// GOAL is the picked chip (then no mode chip is).
+  final bool goal;
 
-  /// Picks the event; null hides its chip.
-  final VoidCallback? onEvent;
+  /// The picked goal, under the GOAL title.
+  final String goalLabel;
+
+  /// Picks GOAL; null hides its chip.
+  final VoidCallback? onGoal;
+
+  /// Below this width the four chips wrap into two rows.
+  static const double rowMinWidth = 480;
 
   static const List<RecordMode> offered = [
-    RecordMode.intervals,
-    RecordMode.laps,
     RecordMode.free,
+    RecordMode.laps,
+    RecordMode.intervals,
   ];
+
+  Widget _mode(RecordMode m) => ModeChip(
+    title: switch (m) {
+      RecordMode.intervals => 'INTERVALS',
+      RecordMode.laps => 'LAPS',
+      RecordMode.free => 'FREE',
+      RecordMode.cooper => 'TEST',
+    },
+    subtitle: switch (m) {
+      RecordMode.intervals => session.name,
+      RecordMode.laps => 'LAP by hand',
+      RecordMode.free => 'Just run',
+      RecordMode.cooper => '12 minutes',
+    },
+    selected: !goal && selected == m,
+    glyph: m == RecordMode.intervals && session.steps.isNotEmpty
+        ? session
+        : null,
+    onTap: () => onSelect(m),
+  );
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        for (final m in offered) ...[
-          if (m != offered.first) const SizedBox(width: Space.x8),
-          Expanded(
-            child: ModeChip(
-              title: switch (m) {
-                RecordMode.intervals => 'INTERVALS',
-                RecordMode.laps => 'LAPS',
-                RecordMode.free => 'FREE',
-                RecordMode.cooper => 'TEST',
-              },
-              subtitle: switch (m) {
-                RecordMode.intervals => session.name,
-                RecordMode.laps => 'LAP by hand',
-                RecordMode.free => 'Just run',
-                RecordMode.cooper => '12 minutes',
-              },
-              selected: !event && selected == m,
-              glyph: m == RecordMode.intervals && session.steps.isNotEmpty
-                  ? session
-                  : null,
-              onTap: () => onSelect(m),
-            ),
-          ),
-        ],
-        if (onEvent != null) ...[
-          const SizedBox(width: Space.x8),
-          Expanded(
-            child: ModeChip(
-              key: const ValueKey('event-chip'),
-              title: kEventNames.parkrun.toUpperCase(),
-              subtitle: '5 km timed',
-              selected: event,
-              onTap: onEvent!,
-            ),
-          ),
-        ],
-      ],
+    final chips = <Widget>[
+      _mode(RecordMode.free),
+      _mode(RecordMode.laps),
+      if (onGoal != null)
+        ModeChip(
+          key: const ValueKey('goal-chip'),
+          title: 'GOAL',
+          subtitle: goalLabel,
+          selected: goal,
+          onTap: onGoal!,
+        ),
+      _mode(RecordMode.intervals),
+    ];
+    return LayoutBuilder(
+      builder: (context, c) {
+        Widget row(List<Widget> items) => Row(
+          children: [
+            for (final (i, w) in items.indexed) ...[
+              if (i > 0) const SizedBox(width: Space.x8),
+              Expanded(child: w),
+            ],
+          ],
+        );
+        if (c.maxWidth >= rowMinWidth || chips.length < 4) return row(chips);
+        return Column(
+          children: [
+            row(chips.sublist(0, 2)),
+            const SizedBox(height: Space.x8),
+            row(chips.sublist(2)),
+          ],
+        );
+      },
     );
   }
 }
@@ -141,31 +161,17 @@ class ModeChip extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: Space.x4),
-              if (glyph == null)
-                Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: RunSoloType.label13.copyWith(
-                    color: t.inkSecondary,
-                    height: 1.2,
-                  ),
-                )
-              else
-                // One line above the glyph: shrink rather than cut the
-                // session name ("Norwegian 4x4" at 360 dp, A8).
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    subtitle,
-                    softWrap: false,
-                    style: RunSoloType.label13.copyWith(
-                      color: t.inkSecondary,
-                      height: 1.2,
-                    ),
-                  ),
+              // 13 sp at any width (founder rule): a long session name
+              // ellipsises, it never shrinks.
+              Text(
+                subtitle,
+                maxLines: glyph == null ? 2 : 1,
+                overflow: TextOverflow.ellipsis,
+                style: RunSoloType.label13.copyWith(
+                  color: t.inkSecondary,
+                  height: 1.2,
                 ),
+              ),
               if (glyph != null) ...[
                 const SizedBox(height: Space.x4),
                 StructureGlyph(spec: glyph!, height: 12),

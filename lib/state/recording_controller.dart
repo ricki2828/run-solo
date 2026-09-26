@@ -482,6 +482,14 @@ class RecordingController extends ChangeNotifier {
 
   int get displayLapElapsedMs => _snap.lapElapsedMs + _sinceTickMs();
 
+  /// This lap's active time: its wall time minus the pauses inside it (the
+  /// K1 projection must not count a paused minute as running). Counted
+  /// from the ticks while paused; resets at each lap.
+  int get displayLapActiveMs =>
+      (displayLapElapsedMs - _lapPausedMs).clamp(0, 1 << 31);
+  int _lapPausedMs = 0;
+  int? _lastTickElapsedMs;
+
   int _sinceTickMs() {
     final at = _lastTickAt;
     if (at == null || !_snap.recording) return 0;
@@ -514,6 +522,11 @@ class RecordingController extends ChangeNotifier {
 
   void _onTick(TickEvent t) {
     _lastTickAt = _now();
+    final last = _lastTickElapsedMs;
+    if (last != null && t.state == RecorderState.paused && _snap.paused) {
+      _lapPausedMs += (t.elapsedMs - last).clamp(0, 1 << 31);
+    }
+    _lastTickElapsedMs = t.elapsedMs;
     final fix = t.gpsAccuracyM != null;
     final update = (_tracker ??= engine.HrZoneTracker(
       maxHr: _maxHr().toDouble(),
@@ -599,6 +612,7 @@ class RecordingController extends ChangeNotifier {
   }
 
   void _onLap(LapEvent l) {
+    _lapPausedMs = 0;
     // distanceM is cumulative run distance (RecordingSession.kt), so the
     // lap's own distance is a delta; activeMs is the lap's duration without
     // pauses and kill gaps (tMs stays wall time).

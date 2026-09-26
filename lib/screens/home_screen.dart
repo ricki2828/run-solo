@@ -8,6 +8,7 @@ import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
+import '../widgets/goal_picker.dart';
 import '../widgets/mode_chip.dart';
 import 'settings_screen.dart';
 
@@ -110,12 +111,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 ModeChipRow(
                   selected: settings.lastMode,
                   session: services.pickedSession,
-                  event: settings.eventRun,
-                  onEvent: () => services.settings.update(
-                    (s) => s.copyWith(eventRun: true),
+                  goal: settings.goalRun,
+                  goalLabel: goalLabel(settings.goalId),
+                  onGoal: () => services.settings.update(
+                    (s) => s.copyWith(goalRun: true),
                   ),
                   onSelect: (m) => services.settings.update(
-                    (s) => s.copyWith(lastMode: m, eventRun: false),
+                    (s) => s.copyWith(lastMode: m, goalRun: false),
                   ),
                 ),
                 const SizedBox(height: Space.x16),
