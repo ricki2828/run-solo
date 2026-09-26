@@ -182,10 +182,13 @@ class RecordingSnapshot {
       spec?.steps.any((s) => s.target == TargetKind.distance) ?? false;
 
   /// END REP (A8, plan §3.6 W3): a distance step with GPS weak or lost for
-  /// more than 10 s.
+  /// more than 10 s. Never on a goal or the event (#75 review P2): one tap
+  /// would close a Half or Marathon lap early; its distance waits for GPS.
   bool get showEndRep =>
       recording &&
       distanceStep &&
+      !isGoal &&
+      spec?.templateId != engine.SessionSpec.parkrunId &&
       gpsBadSinceMs != null &&
       elapsedMs - gpsBadSinceMs! > 10000;
 

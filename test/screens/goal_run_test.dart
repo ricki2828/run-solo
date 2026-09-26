@@ -5,6 +5,7 @@ import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/platform/session_codec.dart';
+import 'package:run_solo/state/recording_controller.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/widgets/goal_picker.dart';
 
@@ -215,6 +216,29 @@ void main() {
       const AppSettings(goalRun: true, goalId: 'dcustom').goalSpec('x')!.name,
       '12.0 km',
     );
+  });
+
+  test('no END REP on a goal or the event, however long GPS is gone '
+      '(#75 P2)', () {
+    RecordingSnapshot lost(engine.SessionSpec spec) => RecordingSnapshot(
+      state: RecorderState.recording,
+      mode: RecordMode.intervals,
+      spec: spec.toPigeon(),
+      phase: Phase.work,
+      repIndex: 1,
+      stepIndex: 0,
+      elapsedMs: 120000,
+      gpsLost: true,
+      gpsBadSinceMs: 60000,
+    );
+    expect(
+      lost(engine.SessionSpec.goalDistance(21098, 'Half')).showEndRep,
+      isFalse,
+    );
+    expect(lost(engine.SessionSpec.parkrun('x')).showEndRep, isFalse);
+    // A distance-rep session still gets it.
+    final reps = engine.SessionCatalogue.expand('400s');
+    expect(lost(reps).showEndRep, isTrue);
   });
 
   group('record', () {

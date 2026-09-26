@@ -212,7 +212,10 @@ Future<int?> showCustomGoalSheet(
                     : TextInputType.datetime,
                 style: RunSoloType.display44,
                 decoration: InputDecoration(
-                  suffixText: distance ? unit : 'min',
+                  // "1:15 min" would read as 1 min 15 s: the time field
+                  // gets a hint, not a unit.
+                  suffixText: distance ? unit : null,
+                  hintText: distance ? null : '45 or 1:15',
                   errorText: error,
                   errorMaxLines: 3,
                 ),
