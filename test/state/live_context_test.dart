@@ -19,11 +19,22 @@ void main() {
     dir = await Directory.systemTemp.createTemp('runsolo-live-');
     runsDir = Directory('${dir.path}/runs');
   });
-  tearDown(() => dir.delete(recursive: true));
+  // The builder reads derived data, which tests only build when a store opts
+  // in (test/flutter_test_config.dart); wait for it before the dir goes.
+  final stores = <FileRunStore>[];
+  tearDown(() async {
+    for (final s in stores) {
+      await s.derivedIdle;
+    }
+    stores.clear();
+    await dir.delete(recursive: true);
+  });
 
   /// Free runs long enough for the 5K board (40 min at 6:00/km).
   Future<FileRunStore> storeWithFreeRuns(int n) async {
     final store = FileRunStore(runsDir);
+    store.deriveBatch = FileRunStore.deriveInIsolate;
+    stores.add(store);
     await store.importBundles([
       for (var i = 1; i <= n; i++)
         engine.RunBundle(
