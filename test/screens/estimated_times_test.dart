@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/screens/home_screen.dart';
 import 'package:run_solo/state/live_context.dart';
-import 'package:run_solo/platform/gateway.dart' show RecordMode;
+import 'package:run_solo/platform/gateway.dart' show LiveTarget, RecordMode;
 import 'package:run_solo/platform/session_codec.dart';
 
 import '../helpers.dart';
@@ -93,5 +93,43 @@ void main() {
       source.targetFor(engine.SessionSpec.parkrun('parkrun').toPigeon())!.line,
       'Target 24:30 (predicted)',
     );
+  });
+  test('the Start target tapped to its other choice is the one raced '
+      '(A10.10)', () async {
+    // A fresh course PB (official 24:12) leads; the prediction from the
+    // GPS 5K (25:00) is the other choice.
+    final pb = engine.LiveCandidate(
+      engine.BoardInput(
+        runId: 'pb',
+        date: DateTime(2026, 9, 19, 8).toUtc(),
+        mode: engine.RunMode.intervals,
+        comparisonKey: 'parkrun:albert',
+        efforts: fiveK('x', 1500).input.efforts,
+        officialTimeMs: 1452000,
+      ),
+      fiveK('x', 1500).derived,
+    );
+    final source = LiveContextSource.prepared([pb], now: now);
+    final spec = engine.SessionSpec.parkrun('parkrun').toPigeon();
+    Future<LiveTarget?> raced({bool alt = false}) async => (await source.build(
+      mode: RecordMode.intervals,
+      spec: spec,
+      courseKey: 'parkrun:albert',
+      preferAlternative: alt,
+    ))!.target;
+    final shown = await raced();
+    expect(shown!.targetMs, 1452000);
+    expect(shown.predicted, isFalse);
+    final other = await raced(alt: true);
+    expect(other!.targetMs, 1500000);
+    expect(other.predicted, isTrue);
+    // No other choice (no course PB): the flag changes nothing.
+    final alone = LiveContextSource.prepared([fiveK('a', 1470)], now: now);
+    final ctx = await alone.build(
+      mode: RecordMode.intervals,
+      spec: spec,
+      preferAlternative: true,
+    );
+    expect(ctx!.target!.targetMs, 1470000);
   });
 }
