@@ -266,6 +266,7 @@ void main() {
     await scrollTo(tester, find.byKey(const ValueKey('perf-diagnostics')));
     expect(find.text('Live compare prepare: 38 ms (212 runs)'), findsOneWidget);
     expect(find.text('Live compare at Start: not yet'), findsOneWidget);
+    expect(find.text('Slowest Start this session: not yet'), findsOneWidget);
     expect(
       find.text('History first open: 640 ms'),
       findsOneWidget,
@@ -274,6 +275,19 @@ void main() {
     PerfDiagnostics.instance.recordBuild(const Duration(milliseconds: 3));
     await pumpTimes(tester, 2);
     expect(find.text('Live compare at Start: 3 ms'), findsOneWidget);
+    PerfDiagnostics.instance.recordBuild(
+      const Duration(milliseconds: 212),
+      outcome: BuildOutcome.timedOut,
+    );
+    await pumpTimes(tester, 2);
+    expect(
+      find.text('Live compare at Start: 212 ms (timed out)'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Slowest Start this session: 212 ms (timed out)'),
+      findsOneWidget,
+    );
     PerfDiagnostics.instance.reset();
   });
 

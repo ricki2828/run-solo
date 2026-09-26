@@ -167,6 +167,48 @@ void main() {
     expect(sw.elapsedMilliseconds, lessThan(1000));
   });
 
+  test('a slow or failed Start still reaches Diagnostics; the slowest '
+      'stays (#69 review P2)', () async {
+    PerfDiagnostics.instance.reset();
+    final store = await storeWithFreeRuns(2);
+    var slow = true;
+    var fail = false;
+    final src = LiveContextSource(indexFile: store.indexFile)
+      ..beforeFold = () async {
+        if (fail) throw StateError('boom');
+        if (slow) await Future<void>.delayed(const Duration(seconds: 2));
+      };
+    await src.prepare();
+    expect(await src.build(mode: RecordMode.free), isNull);
+    final d = PerfDiagnostics.instance;
+    expect(d.buildOutcome, BuildOutcome.timedOut);
+    expect(d.buildMs, greaterThanOrEqualTo(src.budget.inMilliseconds));
+    expect(
+      d.lines,
+      contains('Live compare at Start: ${d.buildMs} ms (timed out)'),
+    );
+    final worst = d.buildMs;
+
+    slow = false;
+    expect(await src.build(mode: RecordMode.free), isNotNull);
+    expect(d.buildOutcome, BuildOutcome.ok);
+    expect(d.lines, contains('Live compare at Start: ${d.buildMs} ms'));
+    expect(
+      d.lines,
+      contains('Slowest Start this session: $worst ms (timed out)'),
+    );
+
+    fail = true;
+    expect(await src.build(mode: RecordMode.free), isNull);
+    expect(d.buildOutcome, BuildOutcome.failed);
+    expect(
+      d.lines,
+      contains('Live compare at Start: ${d.buildMs} ms (failed)'),
+    );
+    expect(d.worstBuildMs, worst);
+    PerfDiagnostics.instance.reset();
+  });
+
   test(
     'a changed index: the last candidates race, then the new ones',
     () async {

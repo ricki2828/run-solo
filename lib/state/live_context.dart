@@ -132,9 +132,21 @@ class LiveContextSource {
       return ctx;
     } on TimeoutException {
       debugPrint('live: context over ${budget.inMilliseconds} ms, none');
+      if (kPerfDiagnostics) {
+        PerfDiagnostics.instance.recordBuild(
+          sw.elapsed,
+          outcome: BuildOutcome.timedOut,
+        );
+      }
       return null;
     } catch (e) {
       debugPrint('live: no context ($e)');
+      if (kPerfDiagnostics) {
+        PerfDiagnostics.instance.recordBuild(
+          sw.elapsed,
+          outcome: BuildOutcome.failed,
+        );
+      }
       return null;
     }
   }
