@@ -214,6 +214,24 @@ void main() {
     });
   });
 
+  group('course at Start', () {
+    test('nearest known start within 150 m; none beyond', () async {
+      final a = event(1);
+      final b = event(2, shift: 0.0005); // ~55 m north, same course
+      final c = event(3, shift: 0.01); // ~1.1 km: its own course
+      final runs = await MemoryRunStore(files: [a, b, c]).list();
+      final s = engine.ParkrunCourses.startOf(a)!;
+      final first = engine.ParkrunCourses.newCourseId(a);
+      expect(courseAt(runs, s.lat, s.lon), first);
+      expect(courseAt(runs, s.lat + 0.0012, s.lon), first, reason: '~78 m');
+      expect(courseAt(runs, s.lat + 0.004, s.lon), isNull, reason: '~390 m');
+      expect(
+        courseAt(runs, s.lat + 0.01, s.lon),
+        engine.ParkrunCourses.newCourseId(c),
+      );
+    });
+  });
+
   group('names', () {
     test('default labels follow each course\'s first run; names win', () async {
       final store = MemoryRunStore(
@@ -284,6 +302,12 @@ void main() {
       store.decoded.clear();
       final again = await store.list();
       expect(store.decoded, isEmpty, reason: 'tagged: nothing to decode');
+      // The index row carries each event run's start (Start's course pick).
+      for (final r in again) {
+        expect(r.eventStart, isNotNull);
+      }
+      final s0 = engine.ParkrunCourses.startOf(files.first)!;
+      expect(courseAt(again, s0.lat, s0.lon), course);
       final board = CourseBoard.fold(again, course, now: week(4));
       expect(board.ranked, hasLength(3));
       expect(board.best!.run.id, files[1].id);
