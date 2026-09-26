@@ -213,6 +213,8 @@ class LiveContextSource {
             engine.LiveBoardPlanKind.distance => LiveBoardKind.distance,
             engine.LiveBoardPlanKind.intervals => LiveBoardKind.intervals,
             engine.LiveBoardPlanKind.cooper => LiveBoardKind.cooper,
+            engine.LiveBoardPlanKind.distanceInTime =>
+              LiveBoardKind.distanceInTime,
           },
           targetM: b.targetM,
           entries: [

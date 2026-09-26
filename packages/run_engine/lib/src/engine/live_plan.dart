@@ -1,9 +1,12 @@
+import 'dart:math' as math;
+
 import '../model/session_spec.dart';
 import '../run_mode.dart';
 import 'best_efforts.dart';
 import 'coaching_rules.dart';
 import 'cooper_projection.dart';
 import 'event_names.dart';
+import 'goal.dart';
 import 'leaderboards.dart';
 import 'live_figures.dart';
 
@@ -30,7 +33,9 @@ class LiveCandidate {
   );
 }
 
-enum LiveBoardPlanKind { distance, intervals, cooper }
+/// [distanceInTime] (§G): most distance in a fixed time (`be:t1800`, a
+/// custom time goal's `goal:t2700`); metres, higher is better.
+enum LiveBoardPlanKind { distance, intervals, cooper, distanceInTime }
 
 /// One board the recorder ranks against, as the engine picked it.
 class LiveBoardPlan {
@@ -50,6 +55,9 @@ class LiveBoardPlan {
 }
 
 /// One prior run on a live board: the series matching the board's kind.
+/// [finalMetric] is in the Pigeon `LiveEntry` units: finish ms (distance),
+/// mean rep pace s/km (intervals), raw VO2 (Cooper), metres (distance in
+/// time).
 class LiveEntryPlan {
   const LiveEntryPlan({
     required this.runId,
@@ -98,7 +106,12 @@ class LivePlan {
 ///   the 5K board;
 /// - Free / Laps: the 5K board (km 1 to 5), then the 10K board (km 6 to 10);
 /// - Intervals: the session's comparison-key board;
-/// - Cooper: the Cooper board, plus the fade curve and past VO2s.
+/// - Cooper: the Cooper board, plus the fade curve and past VO2s;
+/// - a GOAL (§G): only its own board, [GoalCatalogue.boardKeyOf] (a
+///   standard distance its best-effort board, a standard time its
+///   distance-in-time board, a custom goal its `goal:` board). Native
+///   races nothing during a goal; the board is for "new best" at the goal
+///   (`GoalCoach`, matched by key), so every entry counts, series or not.
 /// A board needs [minEntries]; it carries at most [maxEntries] (the top 10
 /// and the newest 10, deduped), and only entries that have the series the
 /// live compare reads (a 5K entry needs 5 from-start splits). Pure.
@@ -120,10 +133,16 @@ abstract final class LivePlanner {
     final boards = Leaderboards.fold(byId.values.map((r) => r.input));
     final out = <LiveBoardPlan>[];
 
-    void add(String key, String label, LiveBoardPlanKind kind, double? m) {
+    void add(
+      String key,
+      String label,
+      LiveBoardPlanKind kind,
+      double? m, {
+      bool goal = false,
+    }) {
       final board = boards[key];
       if (board == null || out.length >= maxBoards) return;
-      final entries = _entries(board, byId, kind, m);
+      final entries = _entries(board, byId, kind, m, goal: goal);
       if (entries.length < minEntries) return;
       out.add(
         LiveBoardPlan(
@@ -145,6 +164,16 @@ abstract final class LivePlanner {
       case RunMode.laps:
         add(k5.key, '5K', LiveBoardPlanKind.distance, k5.metres);
         add(k10.key, '10K', LiveBoardPlanKind.distance, k10.metres);
+      case RunMode.intervals when session != null && session.isGoal:
+        final key = GoalCatalogue.boardKeyOf(session);
+        final time = Leaderboards.kindOf(key) == BoardKind.distanceInTime;
+        add(
+          key,
+          session.name,
+          time ? LiveBoardPlanKind.distanceInTime : LiveBoardPlanKind.distance,
+          time ? null : Leaderboards.metresOf(key),
+          goal: true,
+        );
       case RunMode.intervals:
         if (session?.templateId == SessionSpec.parkrunId) {
           final course = courseKey;
@@ -185,7 +214,7 @@ abstract final class LivePlanner {
         _nudges(b, boards[b.key]!, byId, session);
     return LivePlan(
       boards: out,
-      nudges: mode == RunMode.cooper || out.isEmpty
+      nudges: mode == RunMode.cooper || out.isEmpty || session?.isGoal == true
           ? null
           : _handOver(nudgesOf(out.first), switch (out) {
               [LiveBoardPlan(key: final a), final b, ...]
@@ -260,7 +289,7 @@ abstract final class LivePlanner {
         history: history,
         templateDefault: session,
       ),
-      LiveBoardPlanKind.cooper => null,
+      LiveBoardPlanKind.cooper || LiveBoardPlanKind.distanceInTime => null,
     };
   }
 
@@ -268,8 +297,9 @@ abstract final class LivePlanner {
     Leaderboard board,
     Map<String, LiveCandidate> byId,
     LiveBoardPlanKind kind,
-    double? metres,
-  ) {
+    double? metres, {
+    bool goal = false,
+  }) {
     LiveEntryPlan? entry(BoardRun r) {
       final c = byId[r.runId];
       if (c == null) return null;
@@ -278,11 +308,25 @@ abstract final class LivePlanner {
         case LiveBoardPlanKind.distance:
           final km = (metres! / 1000).round();
           final splits = c.derived.bestEfforts.fromStartSplitsMs;
-          if (splits.length < km) return null;
+          // A goal board keeps every entry (a short ghost is fine, nothing
+          // races it): dropping the PB would let "new best" lie.
+          if (splits.length < km && !goal) return null;
           return LiveEntryPlan(
             runId: r.runId,
             date: r.date,
-            fromStartSplitsMs: splits.sublist(0, km),
+            fromStartSplitsMs: splits.sublist(0, math.min(km, splits.length)),
+            // Board seconds to finish ms. For a goal this is the windowed
+            // best effort while the goal time runs from Start, so "new
+            // best" is conservative (harder to beat), never a false claim.
+            finalMetric: r.metric * 1000,
+          );
+        case LiveBoardPlanKind.distanceInTime:
+          // No per-minute ghost for time goals yet (nothing races it); the
+          // contract only needs the series present.
+          return LiveEntryPlan(
+            runId: r.runId,
+            date: r.date,
+            cooperMinuteM: const [],
             finalMetric: r.metric,
           );
         case LiveBoardPlanKind.intervals:
