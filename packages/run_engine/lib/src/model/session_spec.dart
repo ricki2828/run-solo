@@ -473,7 +473,21 @@ abstract final class ComparisonKey {
   static bool isParkrun(String key) =>
       key == parkrun || key.startsWith('$parkrun:');
 
+  /// Phase 4 best-effort boards own this prefix (WARN-8); no comparison key
+  /// may start with it.
+  static const String reservedBoardPrefix = 'be:';
+
+  /// [spec]'s key. Throws [StateError] if it would take the reserved
+  /// board prefix (it cannot today; this keeps it so).
   static String of(SessionSpec spec) {
+    final key = _of(spec);
+    if (key.startsWith(reservedBoardPrefix)) {
+      throw StateError('comparison key "$key" uses "$reservedBoardPrefix"');
+    }
+    return key;
+  }
+
+  static String _of(SessionSpec spec) {
     if (spec.templateId == SessionSpec.fartlekId) return fartlek;
     if (spec.templateId == SessionSpec.cooperId) return cooper;
     if (spec.templateId == SessionSpec.parkrunId) return parkrunOf();
