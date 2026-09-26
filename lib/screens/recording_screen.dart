@@ -379,13 +379,20 @@ class _RecordingScreenState extends State<RecordingScreen>
                                   ),
                           ),
                         ] else if (s.isCooper) ...[
-                          _PausedHidden(
-                            paused: s.paused,
-                            child: _CooperBlock(
-                              s: s,
-                              ctl: ctl,
-                              units: settings.units,
-                              compact: compact,
+                          // Scales down rather than overflow when a banner
+                          // and the GPS wait share a short screen with it.
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: _PausedHidden(
+                                paused: s.paused,
+                                child: _CooperBlock(
+                                  s: s,
+                                  ctl: ctl,
+                                  units: settings.units,
+                                  compact: compact,
+                                ),
+                              ),
                             ),
                           ),
                         ] else if (s.lapsEnabled) ...[
@@ -944,8 +951,13 @@ class _CooperBlock extends StatelessWidget {
             testing ? '${metres.round()} m' : Fmt.distance(metres, units),
             key: const ValueKey('cooper-distance-live'),
             softWrap: false,
-            style: (compact ? RunSoloType.display64 : RunSoloType.display96)
-                .copyWith(color: testing ? t.inkPrimary : secondary),
+            // The test's metres are the figure that matters; around it the
+            // distance steps down a size.
+            style: switch ((testing, compact)) {
+              (true, false) => RunSoloType.display96,
+              (true, true) || (false, false) => RunSoloType.display64,
+              (false, true) => RunSoloType.display44,
+            }.copyWith(color: testing ? t.inkPrimary : secondary),
           ),
         ),
         const SizedBox(height: Space.x8),
