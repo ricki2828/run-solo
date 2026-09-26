@@ -127,6 +127,12 @@ class RunIndexEntry {
       officialTimeMs: official && headlineSecPerKm != null
           ? (headlineSecPerKm! * 5000).round()
           : null,
+      // C1: a valid test's raw VO2 estimate and its HV1 twin (the Cooper
+      // board, LC1's cooperHistory).
+      cooperVo2: row?.cooper?.valid == true ? row!.cooper!.vo2 : null,
+      cooperVo2Adj: row?.cooper?.valid == true
+          ? row!.cooper!.vo2Adjusted
+          : null,
       heatFraction: heatAdj,
     );
   }
@@ -324,11 +330,13 @@ class IndexRow {
     this.eligibleAsPrior = false,
     this.eventStartLat,
     this.eventStartLon,
+    this.cooper,
   });
 
   /// Bump when a field is added, so old rows are rebuilt once.
   /// 2: the event run's start point (K1 course pick at Start).
-  static const int currentVersion = 2;
+  /// 3: [cooper] (C1).
+  static const int currentVersion = 3;
 
   final int version;
   final int lapCount;
@@ -358,6 +366,9 @@ class IndexRow {
   final double? eventStartLat;
   final double? eventStartLon;
 
+  /// A 12-minute test's result (C1); null for every other run.
+  final CooperFigures? cooper;
+
   factory IndexRow.of(
     engine.RunFile run,
     engine.RunAnalysis? a,
@@ -385,6 +396,7 @@ class IndexRow {
       eligibleAsPrior: a?.eligibleAsPrior ?? false,
       eventStartLat: start == null ? null : dp5(start.lat),
       eventStartLon: start == null ? null : dp5(start.lon),
+      cooper: CooperFigures.of(a?.cooper),
     );
   }
 
@@ -402,6 +414,7 @@ class IndexRow {
     'eligible': eligibleAsPrior,
     'start_lat': ?eventStartLat,
     'start_lon': ?eventStartLon,
+    'cooper': cooper?.toJson(),
   };
 
   /// null for a missing or unreadable row (the entry is then stale).
@@ -434,11 +447,71 @@ class IndexRow {
         eligibleAsPrior: j['eligible'] == true,
         eventStartLat: d('start_lat'),
         eventStartLon: d('start_lon'),
+        cooper: CooperFigures.fromJson(j['cooper'] as Map<String, Object?>?),
       );
     } catch (e) {
       debugPrint('index: unreadable row ($e)');
       return null;
     }
+  }
+}
+
+/// A 12-minute test's figures as History, Trend, the boards and LC1 read
+/// them (C1): the analysis's own `CooperResult`, not recomputed.
+@immutable
+class CooperFigures {
+  const CooperFigures({
+    required this.valid,
+    required this.testDistanceM,
+    this.vo2,
+    this.vo2Adjusted,
+    this.minuteM = const [],
+  });
+
+  static CooperFigures? of(engine.CooperResult? c) => c == null
+      ? null
+      : CooperFigures(
+          valid: c.valid,
+          testDistanceM: c.testDistanceM,
+          vo2: c.estimate?.vo2,
+          vo2Adjusted: c.vo2Adjusted,
+          minuteM: c.minuteM ?? const [],
+        );
+
+  /// Gives a VO2 estimate (not paused, short, indoor or noisy).
+  final bool valid;
+  final double testDistanceM;
+
+  /// Raw estimate; null when invalid.
+  final double? vo2;
+
+  /// HV1 twin; null without weather or when the heat changed nothing.
+  final double? vo2Adjusted;
+
+  /// Cumulative metres at minutes 1..12; empty when invalid.
+  final List<double> minuteM;
+
+  Map<String, Object?> toJson() => {
+    'valid': valid,
+    'd': testDistanceM,
+    'vo2': vo2,
+    'vo2_adj': vo2Adjusted,
+    'minute_m': minuteM,
+  };
+
+  static CooperFigures? fromJson(Map<String, Object?>? j) {
+    if (j == null) return null;
+    double? d(String k) => (j[k] as num?)?.toDouble();
+    return CooperFigures(
+      valid: j['valid'] == true,
+      testDistanceM: d('d') ?? 0,
+      vo2: d('vo2'),
+      vo2Adjusted: d('vo2_adj'),
+      minuteM: [
+        for (final v in (j['minute_m'] as List?) ?? const [])
+          (v as num).toDouble(),
+      ],
+    );
   }
 }
 
