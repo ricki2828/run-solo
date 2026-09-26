@@ -211,6 +211,17 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         return path?.let { RunPaths.runIdFromFileName(it.substringAfterLast('/')) }
     }
 
+    /** DISCARD on the finish screen: the live run goes, journal and all; no run file. */
+    override fun discardRun(): Boolean {
+        val svc = RecorderService.instance
+        if (svc != null && RecorderService.session != null) return svc.discardRun()
+        val s = active() ?: return false
+        RecorderService.pending = null
+        RecorderService.session = null
+        s.discardRun()
+        return true
+    }
+
     override fun status(): RecorderStatus = active()?.status() ?: RecorderStatus(
         state = RecorderState.IDLE,
         runId = null,

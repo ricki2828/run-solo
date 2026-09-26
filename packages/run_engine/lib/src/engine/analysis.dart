@@ -8,6 +8,7 @@ import '../weather/heat_model.dart';
 import '../weather/weather.dart';
 import 'format.dart';
 import 'constants.dart';
+import 'cooper_result.dart';
 import 'event_names.dart';
 import 'fix_laps.dart';
 import 'goal.dart';
@@ -204,11 +205,16 @@ class RunAnalysis {
     this.weather,
     this.heatLine,
     this.goal,
+    this.cooper,
   });
 
   /// A GOAL run's locked-in result (Phase 4 plan §G); null otherwise. Goal
   /// runs carry no verdict word.
   final GoalResult? goal;
+
+  /// A 12-minute test's result (C1): distance, VO2 estimate and range, heat
+  /// twin; null for every other mode.
+  final CooperResult? cooper;
 
   /// The sidecar's weather (W1): pending, ok, failed or skipped; null
   /// before the first fetch. Never an input to the verdict (plan §18.5:
@@ -358,9 +364,17 @@ class RunEngine {
     switch (mode) {
       case RunMode.free:
       case RunMode.cooper:
-        // Cooper (Phase 3) gets its own result block later; until then a
-        // cooper file reads as a summary-only run, never a 4x4.
+        // A Cooper file reads as a summary plus its own result block (C1),
+        // never a 4x4.
         return RunAnalysis(
+          cooper: mode == RunMode.cooper
+              ? CooperResult.of(
+                  run,
+                  indoor: indoor,
+                  noisy: noisy,
+                  weather: weather,
+                )
+              : null,
           runId: run.id,
           mode: mode,
           detection: null,

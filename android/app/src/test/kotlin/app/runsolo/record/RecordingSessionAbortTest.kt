@@ -101,4 +101,24 @@ class RecordingSessionAbortTest {
         assertFalse(fs.exists(RunPaths.runFile("new-1")))
         assertTrue(Reconciler(fs).orphans(w0, activeRunId = null).isEmpty())
     }
+
+    @Test
+    fun `discardRun on a live run - journal gone, no run file, nothing to recover, resumed or new`() {
+        fs.mkdirs(RunPaths.RUNS_DIR)
+        val fresh = RecordingSession(context, "live-1", RunMode.free, null, Units.km, null, volumeKeyLaps = true)
+        fresh.startNew(device = "test", app = "test", tz = "UTC")
+        fresh.pause() // the finish screen's tap
+        fresh.discardRun() // DISCARD
+        assertFalse(fs.exists(RunPaths.journalDir("live-1")))
+        assertFalse(fs.exists(RunPaths.runFile("live-1")))
+
+        writeOrphan("live-2")
+        val orphan = JournalReplay.read(fs.readBytes(RunPaths.journal("live-2")))
+        val resumed = RecordingSession(context, "live-2", RunMode.intervals, SessionSpec.norwegian4x4(), Units.km, null, volumeKeyLaps = false)
+        resumed.startResumed(orphan)
+        resumed.discardRun()
+        assertFalse("a resumed run is thrown away too, unlike abortStart", fs.exists(RunPaths.journalDir("live-2")))
+        assertFalse(fs.exists(RunPaths.runFile("live-2")))
+        assertTrue(Reconciler(fs).orphans(w0 + 120_000, activeRunId = null).isEmpty())
+    }
 }

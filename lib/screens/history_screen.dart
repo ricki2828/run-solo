@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
+import '../app/perf_diagnostics.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
@@ -11,6 +12,17 @@ import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
 
 enum HistoryFilter { all, intervals, laps, free, tests }
+
+/// The first History list of the session, timed for Settings → Diagnostics
+/// (dogfood only).
+Future<List<RunSummary>> _timedFirstList(Future<List<RunSummary>> list) {
+  if (!kPerfDiagnostics) return list;
+  final sw = Stopwatch()..start();
+  return list.then((runs) {
+    PerfDiagnostics.instance.recordHistoryOpen(sw.elapsed);
+    return runs;
+  });
+}
 
 /// History list (design brief §4.8, plan §3.8): newest first, grouped by
 /// month, filter chips All / Intervals / Laps / Free / Tests, each row
@@ -33,7 +45,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _runs ??= AppServices.of(context).history.list();
+    _runs ??= _timedFirstList(AppServices.of(context).history.list());
   }
 
   @override

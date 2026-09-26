@@ -151,3 +151,74 @@ engine.RunFile eventRunFile({
     ],
   );
 }
+
+/// A 12-minute test (C1): a warm-up ended by "Start reps", the recorder's
+/// own 12:00 lap at [mps], then a cool-down. [pausedAtS] pauses 20 s inside
+/// the test (no estimate). Hand-built so the minute marks are exact.
+engine.RunFile cooperTestFile({
+  required int n,
+  required DateTime start,
+  double mps = 4,
+  int warmupS = 300,
+  int cooldownS = 120,
+  int? pausedAtS,
+  bool hr = true,
+}) {
+  const testS = 720;
+  final total = warmupS + testS + cooldownS;
+  double dAt(int s) => s <= warmupS
+      ? 2.5 * s
+      : s <= warmupS + testS
+      ? 2.5 * warmupS + mps * (s - warmupS)
+      : 2.5 * warmupS + mps * testS + 2.2 * (s - warmupS - testS);
+  // Due north: 1 m is about 8.99e-6 degrees of latitude.
+  final samples = [
+    for (var s = 0; s <= total; s++)
+      engine.Sample(
+        tMs: s * 1000,
+        lat: -33.9 + dAt(s) * 8.99e-6,
+        lon: 151.2,
+        accM: 5,
+        distM: dAt(s),
+        hr: hr ? (s <= warmupS ? 135 : 172) : null,
+      ),
+  ];
+  final testEnd = (warmupS + testS) * 1000;
+  return engine.RunFile(
+    id: runId(n),
+    device: 'test',
+    app: 'test',
+    start: start,
+    end: start.add(Duration(seconds: total)),
+    tz: 'UTC',
+    mode: engine.RunMode.cooper,
+    session: engine.SessionSpec.cooper,
+    units: engine.Units.km,
+    laps: [
+      engine.Lap(
+        index: 0,
+        t0Ms: 0,
+        t1Ms: warmupS * 1000,
+        d0M: 0,
+        d1M: dAt(warmupS),
+        kind: engine.LapKind.manual,
+      ),
+      engine.Lap(
+        index: 1,
+        t0Ms: warmupS * 1000,
+        t1Ms: testEnd,
+        d0M: dAt(warmupS),
+        d1M: dAt(warmupS + testS),
+        kind: engine.LapKind.auto,
+      ),
+    ],
+    pauses: [
+      if (pausedAtS != null)
+        engine.Span(
+          (warmupS + pausedAtS) * 1000,
+          (warmupS + pausedAtS + 20) * 1000,
+        ),
+    ],
+    samples: samples,
+  );
+}

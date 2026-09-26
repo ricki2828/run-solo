@@ -64,6 +64,9 @@ class FakeRecorderGateway implements RecorderGateway {
   /// Journals removed by [discardJournal].
   final List<String> discarded = [];
 
+  /// Live runs thrown away by [discard] (never in [finalised]).
+  final List<String> liveDiscarded = [];
+
   /// Lap presses swallowed because the run is a Free run.
   int lapsIgnored = 0;
 
@@ -139,6 +142,9 @@ class FakeRecorderGateway implements RecorderGateway {
   SessionSpec? get _timed => _mode == RecordMode.intervals ? _spec : null;
   DateTime? _startedAt;
   int _elapsedMs = 0; // wall time incl. pauses
+
+  /// Elapsed at the open pause, if any: a stop while paused ends the run there (as native).
+  int? _pausedAtMs;
   int _activeMs = 0; // recording time only
   int _lapStartElapsedMs = 0;
   int _lapStartActiveMs = 0;
@@ -211,6 +217,7 @@ class FakeRecorderGateway implements RecorderGateway {
     _spec = spec;
     _startedAt = _now();
     _elapsedMs = 0;
+    _pausedAtMs = null;
     _activeMs = 0;
     _lapStartElapsedMs = 0;
     _lapStartActiveMs = 0;
@@ -252,6 +259,7 @@ class FakeRecorderGateway implements RecorderGateway {
   Future<void> pause() async {
     if (_state != RecorderState.recording) return;
     _state = RecorderState.paused;
+    _pausedAtMs = _elapsedMs;
     _emitState();
     _emitTick();
   }
@@ -260,6 +268,7 @@ class FakeRecorderGateway implements RecorderGateway {
   Future<void> resume() async {
     if (_state != RecorderState.paused) return;
     _state = RecorderState.recording;
+    _pausedAtMs = null;
     _emitState();
     _emitTick();
   }
@@ -365,7 +374,7 @@ class FakeRecorderGateway implements RecorderGateway {
         runId: id,
         mode: _mode,
         start: _startedAt!,
-        durationMs: _elapsedMs,
+        durationMs: _pausedAtMs ?? _elapsedMs,
         distanceM: _totalDistanceM,
         laps: _lapIndex,
         spec: _spec,
@@ -423,6 +432,19 @@ class FakeRecorderGateway implements RecorderGateway {
       ),
     );
     return 'runs/run-$runId.json.gz';
+  }
+
+  @override
+  Future<bool> discard() async {
+    if (_state == RecorderState.idle) return false;
+    _timer?.cancel();
+    _timer = null;
+    liveDiscarded.add(_runId!);
+    _state = RecorderState.idle;
+    _phase = Phase.none;
+    _emitState();
+    _runId = null;
+    return true;
   }
 
   @override
