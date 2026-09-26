@@ -33,3 +33,12 @@ tasks.test {
         events("passed", "failed", "skipped")
     }
 }
+
+// Writes every generated fixture (contract run files, event trace) into core-jvm and the
+// run_engine copy; see RegenerateFixtures.kt.
+tasks.register<JavaExec>("regenerateFixtures") {
+    group = "verification"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("app.runsolo.core.contract.RegenerateFixturesKt")
+    workingDir = projectDir
+}

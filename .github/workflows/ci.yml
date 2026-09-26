@@ -128,6 +128,28 @@ jobs:
       - name: Test
         working-directory: android/core-jvm
         run: ./gradlew test --no-daemon
+      - name: Regenerate fixtures; any drift is uploaded (fixtures are never hand-edited)
+        if: ${{ !cancelled() }}
+        working-directory: android/core-jvm
+        run: |
+          ./gradlew regenerateFixtures --no-daemon
+          cd ../..
+          drift=$(git status --porcelain --untracked-files=all -- android/core-jvm/src/test/fixtures packages/run_engine/test/fixtures)
+          if [ -n "$drift" ]; then
+            echo "::error::generated fixtures differ from the checked-in files; download the regenerated-fixtures artifact and commit it:"
+            echo "$drift"
+            mkdir -p /tmp/regen
+            git status --porcelain -z --untracked-files=all -- android/core-jvm/src/test/fixtures packages/run_engine/test/fixtures | tr '\0' '\n' | cut -c4- | xargs -r -I{} cp --parents {} /tmp/regen/
+            echo "drift=1" >> "$GITHUB_ENV"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && env.drift == '1' }}
+        with:
+          name: regenerated-fixtures
+          path: /tmp/regen
+      - name: Fail on fixture drift
+        if: ${{ !cancelled() && env.drift == '1' }}
+        run: exit 1
 
   build-apk:
     name: build debug APK + 16 KB check
@@ -397,6 +419,43 @@ jobs:
           path: splash-shots
           if-no-files-found: ignore
           retention-days: 7
+
+  emulator-replay:
+    # I5: one replay per session kind through the real service; the run file must match the
+    # core-jvm fixture recorded from the same trace (tools/check_replay_run.py).
+    name: emulator replay ${{ matrix.kind }} (API 34)
+    needs: build-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [4x4, 400s, 30-30s, yasso-800s, 1km-repeats, fartlek, cooper, parkrun]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: run-solo-debug-apk
+          path: apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Boot, replay ${{ matrix.kind }}, compare with the fixture
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: tools/emulator_replay_kind.sh apk/app-debug.apk app.runsolo.debug ${{ matrix.kind }}
 
   emulator-dogfood:
     name: emulator smoke, dogfood R8 build (API 36)

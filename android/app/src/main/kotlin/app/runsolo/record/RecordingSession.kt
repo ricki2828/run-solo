@@ -29,6 +29,7 @@ import app.runsolo.core.model.Units
 import app.runsolo.core.record.CueWords
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
+import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.core.run.Finaliser
 import app.runsolo.platform.CueEvent
 import app.runsolo.platform.FaultEvent
@@ -363,9 +364,12 @@ class RecordingSession(
     private fun tick(t: Long) {
         if (finished) return
         val r = replay
-        if (r != null && replayLapsPressed < r.autoLapAtMs.size && core.status(t).elapsedMs >= r.autoLapAtMs[replayLapsPressed]) {
-            replayLapsPressed++
-            lap(LapSource.notification)
+        // As ReplayScenarios.Driver (the core-jvm fixture path): at most one due press per tick.
+        if (r != null && replayLapsPressed < r.presses.size && r.traceMs(t) >= r.presses[replayLapsPressed].atMs) {
+            when (r.presses[replayLapsPressed++].press) {
+                ReplayScenarios.Press.lap -> lap(LapSource.notification)
+                ReplayScenarios.Press.startReps -> startReps()
+            }
         }
         // Sample first: the core's distance steps need this second's distance (Phase 3 §3.6).
         val samples = ticker.tick(t)
