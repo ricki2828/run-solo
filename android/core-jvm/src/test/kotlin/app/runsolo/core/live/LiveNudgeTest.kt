@@ -190,6 +190,34 @@ class LiveNudgeTest {
         assertNull(cooper.nudgeAtCue(CueKind.projection, Phase.work), "never in a Cooper")
     }
 
+    /** Founder 26-Sep: each rule speaks at most once per run, whichever km or rep it fires at. */
+    @Test
+    fun `once per run - a rule said once is never offered again, at any km or rep, restore included`() {
+        val coach = LiveCoach(ctx(NudgePlan(version = 1, hrDrift = drift)), RunMode.free, null)
+        val first = free(coach, 4, { 300 }) { km, _ -> if (km >= 3) 161 else 150 }.mapNotNull { it.nudge }.single()
+        assertEquals(NudgePlan.HR_DRIFT to 4, first.rule to first.index)
+        coach.nudgeSaid(first)
+        var t = 1_200_000L
+        var d = 4_000.0
+        var km5: LiveCoach.KmCue? = null
+        for (i in 1..300) {
+            val prevT = t
+            val prevD = d
+            t += 1_000
+            d += 1_000.0 / 300 + if (i == 300) 0.001 else 0.0
+            coach.onTick(prevT, prevD, t, d, 170) { it }?.let { km5 = it }
+        }
+        assertEquals(5, km5!!.km)
+        assertNull(km5!!.nudge, "HR drift already spoke at km 4")
+        // A dropped (unsaid) nudge does not count: the rule can still speak later.
+        val dropped = LiveCoach(ctx(NudgePlan(version = 1, hrDrift = drift)), RunMode.free, null)
+        assertEquals(listOf(4, 5), free(dropped, 5, { 300 }) { km, _ -> if (km >= 3) 161 else 150 }.mapNotNull { it.nudge?.index })
+        // After a restore, a journaled rep fade at rep 3 silences rep fade at every later rep.
+        val fired = listOf(JournalLine.CueFired(0, 0, JournalLine.FiredKind.nudge, NudgePlan.REP_FADE, 3, 900_000))
+        val restored = LiveCoach(ctx(NudgePlan(version = 1, repFade = fade)), RunMode.intervals, fiveReps, fired).also { reps(it, 240.0, 241.0, 245.0, 250.0) }
+        assertNull(restored.nudgeAtCue(CueKind.start, Phase.recovery), "rep 4 would fire (10 over), but rep fade already spoke")
+    }
+
     @Test
     fun `restore - a nudge said before the kill is not said again`() {
         val plan = NudgePlan(version = 1, fastStart = fast)

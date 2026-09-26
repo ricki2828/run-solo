@@ -156,11 +156,12 @@ class HrDriftRule {
 
 /// The in-run nudge plan (plan §3.5, fills LC1's `NudgePlan` stub). Built by
 /// the engine from the runner's own history; native only evaluates it at an
-/// existing cue. Limits native enforces: one nudge per km or rep, never in a
-/// countdown (last 10 s of a recovery, 3-2-1, Cooper final 30 s), never in
-/// the first km of a Cooper (Cooper gets no nudges at all, §3.2), never
-/// when muted, and never at a `blocked` "rule:index" (the same nudge at the
-/// same km or rep as last run, WARN-5).
+/// existing cue. Limits native enforces: each rule speaks at most once per
+/// run (founder 26-Sep), as its own line after the cue (#80), one nudge per
+/// km or rep, never in a countdown (last 10 s of a recovery, 3-2-1, Cooper
+/// final 30 s), never in the first km of a Cooper (Cooper gets no nudges at
+/// all, §3.2), never when muted, and never at a `blocked` "rule:index" (the
+/// same nudge at the same km or rep as last run, WARN-5).
 class NudgePlanSpec {
   const NudgePlanSpec({
     this.fastStart,

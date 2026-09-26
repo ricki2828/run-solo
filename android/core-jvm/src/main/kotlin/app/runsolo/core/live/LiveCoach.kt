@@ -186,15 +186,20 @@ class LiveCoach(
      */
     data class Nudge(val rule: String, val index: Int, val text: String)
 
-    /** [n] was actually spoken (and journaled): never offered again this run, restore included. */
+    /**
+     * [n] was actually spoken (and journaled): its rule is done for this run, restore included.
+     * Each rule speaks at most once per run (founder 26-Sep: HR drift at every km, rep fade after
+     * every rep, was nagging).
+     */
     fun nudgeSaid(n: Nudge) {
-        nudged.add(nudgeKey(n.rule, n.index))
+        saidRules.add(n.rule)
     }
 
     private fun nudgeKey(rule: String, index: Int) = "$rule:$index"
 
-    private val nudged = HashSet<String>().apply {
-        for (f in fired) if (f.kind == JournalLine.FiredKind.nudge) add(nudgeKey(f.key, f.index))
+    /** Rules already spoken this run (the journal's `cf` nudge lines after a restore). */
+    private val saidRules = HashSet<String>().apply {
+        for (f in fired) if (f.kind == JournalLine.FiredKind.nudge) add(f.key)
     }
 
     /**
@@ -260,10 +265,9 @@ class LiveCoach(
     private fun isRepEnd(kind: CueKind, phase: Phase, s: SessionSpec) =
         (kind == CueKind.start && phase == Phase.recovery) || (kind == CueKind.phaseEnd && phase == Phase.cooldown && s.steps.isNotEmpty())
 
-    /** A nudge not blocked by the last run and not yet said this run (a dropped one stays unsaid). */
+    /** A nudge whose rule has not spoken this run, not blocked by the last run (a dropped one stays unsaid). */
     private fun claimNudge(rule: String, index: Int, text: String): Nudge? {
-        val key = nudgeKey(rule, index)
-        if (context?.nudges?.blocked?.contains(key) == true || key in nudged) return null
+        if (rule in saidRules || context?.nudges?.blocked?.contains(nudgeKey(rule, index)) == true) return null
         return Nudge(rule, index, text)
     }
 
