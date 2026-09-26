@@ -53,6 +53,43 @@ void main() {
     return store;
   }
 
+  test('a nudge spoken on the last run is blocked in the next Start\'s plan '
+      '(run file -> derived -> index -> plan)', () async {
+    Future<List<String?>?> blockedWith(
+      List<engine.FiredNudge> fired, {
+      required String sub,
+    }) async {
+      final runs = Directory('${dir.path}/$sub/runs');
+      final store = FileRunStore(runs);
+      store.deriveBatch = FileRunStore.deriveInIsolate;
+      stores.add(store);
+      await store.importBundles([
+        for (var i = 1; i <= 3; i++)
+          engine.RunBundle(
+            run: freeRunFile(
+              n: i,
+              start: d1.add(Duration(days: 2 * i)),
+              seconds: 2400,
+            ).copyWith(nudgesFired: i == 3 ? fired : const []),
+          ),
+      ]);
+      await store.list();
+      await store.derivedIdle;
+      final src = LiveContextSource(indexFile: store.indexFile);
+      await src.prepare();
+      final ctx = await src.build(mode: RecordMode.free);
+      return ctx?.nudges?.blocked;
+    }
+
+    expect(
+      await blockedWith(const [
+        engine.FiredNudge(engine.NudgeRule.fastStart, 1),
+      ], sub: 'said'),
+      ['fast_start:1'],
+    );
+    expect(await blockedWith(const [], sub: 'quiet'), isEmpty);
+  });
+
   test('CR1 nudge plan converts to the Pigeon NudgePlan', () {
     expect(LiveContextSource.nudgesToPigeon(null).version, 0);
     final p = LiveContextSource.nudgesToPigeon(

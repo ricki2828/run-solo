@@ -46,6 +46,7 @@ AppServices fakeServices({
   List<CustomSession> customSessions = const [],
   Map<String, String> courseNames = const {},
   LiveContextSource? live,
+  RunStore? history,
 }) => AppServices.fake(
   live: live,
   recorder: recorder ?? FakeRecorderGateway(now: now),
@@ -70,6 +71,7 @@ AppServices fakeServices({
   now: now,
   customSessions: customSessions,
   courseNames: courseNames,
+  history: history,
 );
 
 /// A catalogue preset expanded as the recorder receives it.

@@ -14,6 +14,7 @@ import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/rep_bars.dart';
+import '../widgets/board_chips.dart';
 import 'cooper_result_screen.dart';
 import 'course_board_screen.dart';
 import 'run_detail_screen.dart';
@@ -400,11 +401,9 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                   child: _Lines(detail: d, units: units, flagged: flagged),
                 ),
                 const SizedBox(height: Space.x24),
-                if (v != null && v.bestIn365Days)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: _ArcChip(label: 'New best'),
-                  ),
+                // A10.3: the rank on this session's board (or its PB), in
+                // the old "New best" chip's slot; the verdict is unchanged.
+                BoardChips(runId: d.run.id, justFinished: widget.justFinished),
                 const SizedBox(height: Space.x24),
                 if (d.summary.isParkrun) ...[
                   EventPanel(
@@ -563,31 +562,6 @@ class _Lines extends StatelessWidget {
   }
 }
 
-class _ArcChip extends StatelessWidget {
-  const _ArcChip({required this.label});
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return Container(
-      key: const ValueKey('pb-chip'),
-      padding: const EdgeInsets.symmetric(
-        horizontal: Space.x16,
-        vertical: Space.x8,
-      ),
-      decoration: BoxDecoration(
-        color: t.accentArc,
-        borderRadius: BorderRadius.circular(Radii.pill),
-      ),
-      child: Text(
-        label.toUpperCase(),
-        style: RunSoloType.label13.copyWith(color: t.accentArcInk),
-      ),
-    );
-  }
-}
-
 class _SecondaryButton extends StatelessWidget {
   const _SecondaryButton({required this.label, required this.onTap});
   final String label;
@@ -676,6 +650,22 @@ class _SummaryScreen extends StatelessWidget {
         child: Column(
           children: [
             Expanded(child: RunDetailBody(detail: detail, showHeader: true)),
+            // A10.3: the run's board chips above Done.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Space.screenGutter,
+                Space.x8,
+                Space.screenGutter,
+                0,
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: BoardChips(
+                  runId: detail.run.id,
+                  justFinished: justFinished,
+                ),
+              ),
+            ),
             if (justFinished)
               Padding(
                 padding: const EdgeInsets.fromLTRB(

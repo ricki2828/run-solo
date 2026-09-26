@@ -411,6 +411,7 @@ class RecorderStatus {
     this.stepRemainingMs,
     this.stepRemainingM,
     required this.journalOk,
+    this.pausedAtElapsedMs,
   });
   RecorderState state;
   String? runId;
@@ -435,6 +436,10 @@ class RecorderStatus {
   /// Metres left in a distance step (I2; null until then).
   double? stepRemainingM;
   bool journalOk;
+
+  /// Paused: the elapsed time the pause began at (the finish screen's end
+  /// time), also after a kill and restore. Null when not paused.
+  int? pausedAtElapsedMs;
 }
 
 /// An in-progress journal found on app open without a finalised run file.
