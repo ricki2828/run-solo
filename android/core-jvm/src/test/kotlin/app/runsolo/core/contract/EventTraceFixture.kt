@@ -126,18 +126,20 @@ object EventTraceFixture {
         val dispatch = LapDispatch(onLap = { o, d -> publishLap(o, d) }, onPhase = { publishPhase(it) })
 
         fun handle(out: List<RecorderCore.Output>, t: Long) {
+            // As RecordingSession: journaled in the core's order, sent with a step's end cue after its lap.
             for (o in out) {
                 when (o) {
-                    is RecorderCore.Output.Lap -> {
-                        writer.append(JournalLine.Lap(o.t, W0 + o.t, o.source))
-                        // As RecordingSession: a manual lap goes out at the next tick, at its interpolated
-                        // distance, and the phase change it caused waits with it (lap first).
-                        dispatch.lap(o, t, ticker.distanceM)
-                    }
-                    is RecorderCore.Output.Cue -> {
-                        writer.append(JournalLine.Cue(o.t, W0 + o.t, o.kind))
-                        emit("cue", core.status(o.t).elapsedMs, linkedMapOf("cue" to o.kind.name, "value" to o.value))
-                    }
+                    is RecorderCore.Output.Lap -> writer.append(JournalLine.Lap(o.t, W0 + o.t, o.source))
+                    is RecorderCore.Output.Cue -> writer.append(JournalLine.Cue(o.t, W0 + o.t, o.kind))
+                    else -> Unit
+                }
+            }
+            for (o in LapDispatch.ordered(out)) {
+                when (o) {
+                    // A manual lap goes out at the next tick, at its interpolated distance, and the
+                    // phase change it caused waits with it (lap first).
+                    is RecorderCore.Output.Lap -> dispatch.lap(o, t, ticker.distanceM)
+                    is RecorderCore.Output.Cue -> emit("cue", core.status(o.t).elapsedMs, linkedMapOf("cue" to o.kind.name, "value" to o.value))
                     is RecorderCore.Output.PhaseChanged -> dispatch.phase(o)
                     is RecorderCore.Output.AutoStop -> Unit // no auto-stop in this 4x4
                 }

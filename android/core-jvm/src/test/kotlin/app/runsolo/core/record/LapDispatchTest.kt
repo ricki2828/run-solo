@@ -71,4 +71,17 @@ class LapDispatchTest {
         dispatch.cue(RecorderCore.Output.Cue(2_000, CueKind.halfway), hold = true)
         assertEquals("cue halfway", events.last(), "nothing pending: a held cue goes at once")
     }
+
+    @Test
+    fun `ordered - a step's end cue goes out after the auto lap at its time, nothing else moves`() {
+        val end = RecorderCore.Output.Cue(5_000, CueKind.phaseEnd)
+        val auto = lap(2, 5_000, LapSource.auto)
+        val next = phase(5_000, Phase.cooldown)
+        assertEquals(listOf(auto, end, next), LapDispatch.ordered(listOf(end, auto, next)))
+        val start = RecorderCore.Output.Cue(5_000, CueKind.start)
+        assertEquals(listOf(end, next, start), LapDispatch.ordered(listOf(end, next, start)), "no lap (an auto-stopped last step): as emitted")
+        val manual = lap(2, 5_000, LapSource.button)
+        assertEquals(listOf(end, manual), LapDispatch.ordered(listOf(end, manual)), "only an auto lap")
+        assertEquals(listOf(end, lap(2, 5_100, LapSource.auto)), LapDispatch.ordered(listOf(end, lap(2, 5_100, LapSource.auto))), "only at the cue's time")
+    }
 }

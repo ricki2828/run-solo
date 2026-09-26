@@ -45,20 +45,20 @@ object LiveCompare {
     }
 
     /**
-     * After rep [rep]: the mean of the live untrimmed rep paces 1..rep vs each entry's mean of its
-     * `liveRepPacesSecPerKm` 1..rep; an entry with a null (unclean rep) among them, or fewer reps,
-     * is dropped for this rep, and so is the whole compare when a live rep is unclean (BLOCK-2).
+     * After rep [rep]: the mean of the live untrimmed rep paces over the clean reps 1..rep vs each
+     * entry's mean over the same reps (`liveRepPacesSecPerKm`). A live rep with a kill gap in it
+     * is null (unclean, review P2): it gets no compare of its own and is left out of every later
+     * mean on both sides, so the reps after a restore still compare (BLOCK-2 keeps the rule that
+     * unclean paces never count). An entry with fewer reps, or a null at any rep used, is dropped
+     * for this rep.
      */
     fun intervals(board: LiveBoard, livePaces: List<Double?>, rep: Int): CompareResult? {
-        if (rep < 1 || livePaces.size < rep) return null
-        val live = livePaces.subList(0, rep)
-        if (live.any { it == null }) return null
-        val liveMean = live.sumOf { it!! } / rep
+        if (rep < 1 || livePaces.size < rep || livePaces[rep - 1] == null) return null
+        val used = (0 until rep).filter { livePaces[it] != null }
+        val liveMean = used.sumOf { livePaces[it]!! } / used.size
         val priors = board.entries.mapNotNull { e ->
             val p = e.liveRepPacesSecPerKm ?: return@mapNotNull null
-            if (p.size < rep) return@mapNotNull null
-            val first = p.subList(0, rep)
-            if (first.any { it == null }) null else first.sumOf { it!! } / rep
+            if (p.size < rep || used.any { p[it] == null }) null else used.sumOf { p[it]!! } / used.size
         }
         if (priors.isEmpty()) return null
         return CompareResult(

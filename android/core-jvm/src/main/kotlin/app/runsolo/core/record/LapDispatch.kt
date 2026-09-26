@@ -1,5 +1,6 @@
 package app.runsolo.core.record
 
+import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.LapSource
 
 /**
@@ -16,7 +17,11 @@ import app.runsolo.core.model.LapSource
  * A cue can be held with them too (LV1): a rep ended by a manual lap speaks its compare with the
  * cue that follows it, and that compare needs the rep's pace at the interpolated distance.
  *
- * The caller journals and speaks; this only decides the order and the lap's distance.
+ * A step's end cue goes out after the auto lap that ends the step ([ordered]): the core emits the
+ * cue first, but the cue that closes the last rep ("Done. Cool down") carries that rep's compare,
+ * which needs the rep's lap (T4: the last rep of an interval session had no compare).
+ *
+ * The caller journals (in the core's order) and speaks; this only decides the order and the lap's distance.
  */
 class LapDispatch(
     private val onLap: (RecorderCore.Output.Lap, distanceM: Double) -> Unit,
@@ -78,6 +83,27 @@ class LapDispatch(
     fun ticked(t: Long, distanceM: Double) {
         prevTickT = t
         prevTickD = distanceM
+    }
+
+    companion object {
+        /** A tick's (or press's) outputs in the order they go out: a `phaseEnd` cue after the auto lap at its time. */
+        fun ordered(out: List<RecorderCore.Output>): List<RecorderCore.Output> {
+            if (out.none { it is RecorderCore.Output.Cue && it.kind == CueKind.phaseEnd }) return out
+            val r = ArrayList(out)
+            var i = 0
+            while (i < r.size - 1) {
+                val c = r[i]
+                val n = r[i + 1]
+                if (c is RecorderCore.Output.Cue && c.kind == CueKind.phaseEnd && n is RecorderCore.Output.Lap && n.source == LapSource.auto && n.t == c.t) {
+                    r[i] = n
+                    r[i + 1] = c
+                    i += 2
+                } else {
+                    i++
+                }
+            }
+            return r
+        }
     }
 
     private fun interpolate(pressT: Long, t: Long, d: Double): Double =
