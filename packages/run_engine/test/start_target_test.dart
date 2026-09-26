@@ -192,6 +192,24 @@ void main() {
       expect(t.liveTargetMs, closeTo(5957000, 1000));
     });
 
+    test('beyond 10K with no 10 km run in 6 weeks: no target', () {
+      final fiveK = [
+        run(
+          'a',
+          efforts: {BestEffortDistance.k5: be(BestEffortDistance.k5, 1470)},
+        ),
+      ];
+      for (final spec in [
+        SessionSpec.goalDistance(21098, 'Half'),
+        SessionSpec.goalTime(3600, '1 hour'),
+      ]) {
+        expect(
+          StartTarget.forSession(spec, runs: fiveK, now: now, names: names),
+          isNull,
+        );
+      }
+    });
+
     test('a time goal: a line, no live target', () {
       final t = StartTarget.forSession(
         SessionSpec.goalTime(1800, '30 min'),
