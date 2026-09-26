@@ -95,4 +95,11 @@ sealed class JournalLine {
     ) : JournalLine()
 
     enum class FiredKind { compare, nudge }
+
+    /**
+     * `tm`: "Mute tips" was tapped (notification or app, LV2). Restore keeps the run muted, so a
+     * kill never brings the compare speech and nudges back. An older build reads it as a bad line
+     * and skips it. Not a run event.
+     */
+    data class TipsMuted(override val t: Long, override val w: Long) : JournalLine()
 }
