@@ -128,7 +128,7 @@ object ReplayScenarios {
      * CR1 nudge rules with the engine's own lines (`CoachingRules` in `coaching_rules.dart`).
      */
     object T4 {
-        const val FAST_START_5K = "Easy start. Your best 5K went out slower than this."
+        const val FAST_START_5K = "Fast start. Ease off a little. Your best 5K started slower."
         const val REP_FADE = "That one dropped off a bit. Hold your form on the next."
         const val HR_DRIFT = "Heart rate's up for this pace today. Fine to ease a touch."
         private const val DAY = 86_400_000L

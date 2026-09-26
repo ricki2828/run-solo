@@ -30,4 +30,11 @@ class SpokenCopyFixtureTest {
             assertFalse(l.contains('—'), l)
         }
     }
+
+    @Test
+    fun `the T4 replays race the engine's current fast-start line`() {
+        @Suppress("UNCHECKED_CAST")
+        val lines = fx["fastStart"] as Map<String, Any?>
+        assertEquals(lines["5K"], app.runsolo.core.replay.ReplayScenarios.T4.FAST_START_5K)
+    }
 }
