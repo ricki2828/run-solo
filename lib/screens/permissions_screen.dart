@@ -95,6 +95,83 @@ class _PermissionsScreenState extends State<PermissionsScreen>
         ? 'Approximate only. Choose Precise when asked, or GPS pace is off.'
         : _deniedHint(PermissionKind.location, 'Denied. Allow it under');
 
+    // Set-up (onboarding) lists the rows first: on a short phone the
+    // privacy text pushed "Battery optimisation off" under the fold, just
+    // above CONTINUE (#30 review P2). The checklist keeps the text on top.
+    final privacy = <Widget>[
+      Text(
+        kPrivacyParagraph,
+        style: text.bodyMedium?.copyWith(color: t.inkSecondary),
+      ),
+      if (widget.onboarding)
+        Padding(
+          padding: const EdgeInsets.only(top: Space.x8),
+          child: Text(
+            kOnboardingInternetLine,
+            style: text.bodyMedium?.copyWith(color: t.inkMuted),
+          ),
+        ),
+    ];
+    final rows = <Widget>[
+      SetupRow(
+        icon: Icons.location_on_outlined,
+        title: 'Location while using',
+        why: 'GPS is the pace. Precise, only while you record.',
+        state: locationState,
+        detail: locationDetail,
+        onTap: () => _request(PermissionKind.location),
+      ),
+      SetupRow(
+        icon: Icons.notifications_none,
+        title: 'Notifications',
+        why:
+            'The run lives in a notification: LAP and Pause from the '
+            'lock screen, phase countdown in your pocket.',
+        state: s.notifications ? SetupState.ok : SetupState.blocked,
+        detail: s.notifications
+            ? null
+            : _deniedHint(
+                    PermissionKind.notifications,
+                    'Denied: no lock-screen LAP. Allow it under',
+                  ) ??
+                  'Denied: no lock-screen LAP and Android may stop the run.',
+        onTap: () => _request(PermissionKind.notifications),
+      ),
+      SetupRow(
+        icon: Icons.battery_saver_outlined,
+        title: 'Battery optimisation off',
+        why:
+            'Some phones kill a recording after a few minutes. '
+            'Tap to let Run Supreme keep recording with the screen off.',
+        state: s.batteryUnrestricted ? SetupState.ok : SetupState.needed,
+        onTap: () async {
+          // Phase 2 backlog: in-app exemption prompt (system dialog),
+          // the settings page is the gateway's own fallback.
+          await perms.requestBatteryExemption();
+          await _refresh();
+        },
+      ),
+      SetupRow(
+        icon: Icons.bluetooth,
+        title: 'Nearby devices',
+        why: 'Only for a heart-rate strap. Skip it if you run without one.',
+        detail: _deniedHint(PermissionKind.bluetooth, 'Denied. Allow it under'),
+        state: s.bluetooth ? SetupState.ok : SetupState.optional,
+        onTap: () => _request(PermissionKind.bluetooth),
+      ),
+      if (_denied.contains(PermissionKind.notifications) ||
+          _denied.contains(PermissionKind.bluetooth)) ...[
+        const SizedBox(height: Space.x12),
+        TextButton(
+          onPressed: perms.openAppSettings,
+          child: Text(
+            'Open app settings',
+            style: text.labelLarge?.copyWith(color: t.inkPrimary),
+          ),
+        ),
+      ],
+    ];
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.onboarding ? 'SET UP' : 'CHECKLIST'),
@@ -103,78 +180,14 @@ class _PermissionsScreenState extends State<PermissionsScreen>
       body: PinnedFooterLayout(
         content: [
           const SizedBox(height: Space.x8),
-          Text(
-            kPrivacyParagraph,
-            style: text.bodyMedium?.copyWith(color: t.inkSecondary),
-          ),
-          if (widget.onboarding)
-            Padding(
-              padding: const EdgeInsets.only(top: Space.x8),
-              child: Text(
-                kOnboardingInternetLine,
-                style: text.bodyMedium?.copyWith(color: t.inkMuted),
-              ),
-            ),
-          const SizedBox(height: Space.x24),
-          SetupRow(
-            icon: Icons.location_on_outlined,
-            title: 'Location while using',
-            why: 'GPS is the pace. Precise, only while you record.',
-            state: locationState,
-            detail: locationDetail,
-            onTap: () => _request(PermissionKind.location),
-          ),
-          SetupRow(
-            icon: Icons.notifications_none,
-            title: 'Notifications',
-            why:
-                'The run lives in a notification: LAP and Pause from the '
-                'lock screen, phase countdown in your pocket.',
-            state: s.notifications ? SetupState.ok : SetupState.blocked,
-            detail: s.notifications
-                ? null
-                : _deniedHint(
-                        PermissionKind.notifications,
-                        'Denied: no lock-screen LAP. Allow it under',
-                      ) ??
-                      'Denied: no lock-screen LAP and Android may stop the run.',
-            onTap: () => _request(PermissionKind.notifications),
-          ),
-          SetupRow(
-            icon: Icons.battery_saver_outlined,
-            title: 'Battery optimisation off',
-            why:
-                'Some phones kill a recording after a few minutes. '
-                'Tap to let Run Supreme keep recording with the screen off.',
-            state: s.batteryUnrestricted ? SetupState.ok : SetupState.needed,
-            onTap: () async {
-              // Phase 2 backlog: in-app exemption prompt (system dialog),
-              // the settings page is the gateway's own fallback.
-              await perms.requestBatteryExemption();
-              await _refresh();
-            },
-          ),
-          SetupRow(
-            icon: Icons.bluetooth,
-            title: 'Nearby devices',
-            why: 'Only for a heart-rate strap. Skip it if you run without one.',
-            detail: _deniedHint(
-              PermissionKind.bluetooth,
-              'Denied. Allow it under',
-            ),
-            state: s.bluetooth ? SetupState.ok : SetupState.optional,
-            onTap: () => _request(PermissionKind.bluetooth),
-          ),
-          if (_denied.contains(PermissionKind.notifications) ||
-              _denied.contains(PermissionKind.bluetooth)) ...[
-            const SizedBox(height: Space.x12),
-            TextButton(
-              onPressed: perms.openAppSettings,
-              child: Text(
-                'Open app settings',
-                style: text.labelLarge?.copyWith(color: t.inkPrimary),
-              ),
-            ),
+          if (widget.onboarding) ...[
+            ...rows,
+            const SizedBox(height: Space.x24),
+            ...privacy,
+          ] else ...[
+            ...privacy,
+            const SizedBox(height: Space.x24),
+            ...rows,
           ],
           const SizedBox(height: Space.x24),
         ],

@@ -7,6 +7,7 @@ import 'package:run_solo/screens/home_screen.dart';
 import 'package:run_solo/screens/permissions_screen.dart';
 import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/state/settings.dart';
+import 'package:run_solo/widgets/setup_row.dart';
 
 import '../helpers.dart';
 
@@ -117,4 +118,60 @@ void main() {
       });
     }
   }
+
+  // #30 review P2: on a short phone the set-up rows come before the privacy
+  // text, so every row that can block a run is on screen above CONTINUE.
+  testWidgets('set up at 360 x 640: every NEEDED row sits above CONTINUE', (
+    tester,
+  ) async {
+    await pumpApp(tester, fakeServices(settings: _fresh), onboarding: true);
+    tester.view.physicalSize = const Size(1080, 640 * 3.0);
+    await settleAnimations(tester);
+    await tester.tap(find.text('CONTINUE'));
+    await settleAnimations(tester);
+    await tester.tap(find.text('Skip'));
+    await settleAnimations(tester);
+    final top = tester
+        .getRect(find.widgetWithText(FilledButton, 'CONTINUE'))
+        .top;
+    for (final title in [
+      'Location while using',
+      'Notifications',
+      'Battery optimisation off',
+    ]) {
+      final row = find.ancestor(
+        of: find.text(title),
+        matching: find.byType(SetupRow),
+      );
+      expect(row, findsOneWidget, reason: title);
+      // Clear of the 32 px fade too.
+      expect(
+        tester.getRect(row).bottom,
+        lessThanOrEqualTo(top - 32),
+        reason: title,
+      );
+    }
+  });
+
+  // #30 review P3: the fade means "more below" and nothing else.
+  testWidgets('the fade shows only while there is more below', (tester) async {
+    final fade = find.byKey(const ValueKey('more-below-fade'));
+    await pumpApp(tester, fakeServices(settings: _fresh), onboarding: true);
+    await settleAnimations(tester);
+    expect(find.text('YOU AGAINST\nYOUR LAST RUN'), findsOneWidget);
+    expect(fade, findsNothing, reason: 'the intro fits at 360 x 780');
+
+    tester.view.physicalSize = const Size(1080, 640 * 3.0);
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.tap(find.text('CONTINUE'));
+    await settleAnimations(tester);
+    await tester.tap(find.text('Skip'));
+    await settleAnimations(tester);
+    expect(fade, findsOneWidget, reason: 'set up overflows at 640 x1.3');
+
+    await tester.drag(find.byType(ListView).last, const Offset(0, -3000));
+    await settleAnimations(tester);
+    expect(fade, findsNothing, reason: 'scrolled to the end');
+  });
 }
