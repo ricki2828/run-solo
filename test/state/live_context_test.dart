@@ -94,7 +94,10 @@ void main() {
     expect(LiveContextSource.nudgesToPigeon(null).version, 0);
     final p = LiveContextSource.nudgesToPigeon(
       const engine.NudgePlanSpec(
-        fastStart: engine.FastStartRule(km1MaxMs: 282000, text: 'Easy start.'),
+        fastStart: engine.FastStartRule(
+          km1MaxMs: 282000,
+          text: 'Fast start. Ease off a little.',
+        ),
         repFade: engine.RepFadeRule(
           maxDropSecPerKm: [null, null, 6.5],
           text: 'Hold your form.',

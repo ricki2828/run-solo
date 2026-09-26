@@ -121,7 +121,7 @@ void main() {
       expect(plan.fastStart!.km1MaxMs, 288000);
       expect(
         plan.fastStart!.text,
-        'Easy start. Your best 5K time trial went out slower than this.',
+        'Fast start. Ease off a little. Your best 5K time trial started slower.',
       );
       expect(plan.repFade, isNull);
     });
@@ -549,13 +549,14 @@ void main() {
       ]) {
         expect(s.contains('\u2014'), isFalse, reason: s);
       }
-      // Spoken nudges fit the per-cue budget on their own (WARN-2).
+      // Spoken nudges are their own line since #80, so the per-line budget
+      // (WARN-2, 16 words) applies; keep them short.
       for (final s in [
         CoachingRules.fastStartText('5K time trial'),
         CoachingRules.repFadeText,
         CoachingRules.hrDriftText,
       ]) {
-        expect(s.split(' ').length, lessThanOrEqualTo(12), reason: s);
+        expect(s.split(' ').length, lessThanOrEqualTo(16), reason: s);
       }
     });
   });
@@ -601,4 +602,22 @@ void main() {
     expect(d.live.kmHr, hasLength(splits.length));
     expect(d.live.kmHr.whereType<double>(), isNotEmpty);
   });
+
+  // Shared with core-jvm SpokenCopyFixtureTest (#79 review).
+  test(
+    'fixtures/phase4/spoken_copy.json: the fast start is an instruction',
+    () {
+      final fx = jsonDecode(
+        File('test/fixtures/phase4/spoken_copy.json').readAsStringSync(),
+      ) as Map<String, Object?>;
+      final lines = (fx['fastStart']! as Map).cast<String, String>();
+      expect(lines, isNotEmpty);
+      for (final MapEntry(key: label, value: line) in lines.entries) {
+        expect(CoachingRules.fastStartText(label), line);
+        expect(line, startsWith('Fast start. Ease off'));
+        expect(line.split(RegExp(r'\s+')).length, lessThanOrEqualTo(16));
+        expect(line, isNot(contains('\u2014')));
+      }
+    },
+  );
 }
