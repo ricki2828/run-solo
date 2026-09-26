@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
+import 'package:run_solo/app/perf_diagnostics.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/live_context.dart';
@@ -82,6 +83,18 @@ void main() {
     expect(p.hrDrift!.firstKm, engine.HrDriftRule.firstKm);
     expect(p.hrDrift!.bpmOver, engine.HrDriftRule.bpmOver);
     expect(p.blocked, ['fast_start:1']);
+  });
+
+  test('prepare and Start timings reach Settings → Diagnostics', () async {
+    PerfDiagnostics.instance.reset();
+    final store = await storeWithFreeRuns(2);
+    final src = LiveContextSource(indexFile: store.indexFile);
+    await src.prepare();
+    expect(PerfDiagnostics.instance.prepareMs, isNotNull);
+    expect(PerfDiagnostics.instance.runCount, 2);
+    await src.build(mode: RecordMode.free);
+    expect(PerfDiagnostics.instance.buildMs, isNotNull);
+    expect(kPerfDiagnostics, isTrue, reason: 'every build but play');
   });
 
   test('off by default until LV2 (in-app mute) ships', () {

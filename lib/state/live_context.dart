@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/event_names.dart';
+import '../app/perf_diagnostics.dart';
 import '../platform/gateway.dart';
 import '../platform/session_codec.dart';
 import 'history_store.dart' show runModeOf;
@@ -75,7 +76,11 @@ class LiveContextSource {
       final version = await _versionOf(indexFile);
       if (version == null || version == _cachedVersion) return;
       final path = indexFile.path;
-      final candidates = await Isolate.run(() => _candidatesAt(path));
+      final sw = Stopwatch()..start();
+      final (candidates, runs) = await Isolate.run(() => _candidatesAt(path));
+      if (kPerfDiagnostics) {
+        PerfDiagnostics.instance.recordPrepare(sw.elapsed, runs);
+      }
       _cached = candidates;
       _cachedVersion = version;
     } catch (e) {
@@ -89,11 +94,15 @@ class LiveContextSource {
     return '${stat.size}:${stat.modified.microsecondsSinceEpoch}';
   }
 
-  /// Runs in the background isolate.
-  static List<engine.LiveCandidate> _candidatesAt(String path) {
+  /// Runs in the background isolate: the candidates and how many runs the
+  /// index holds.
+  static (List<engine.LiveCandidate>, int) _candidatesAt(String path) {
     final f = File(path);
     final index = RunIndex.decode(f.existsSync() ? f.readAsStringSync() : null);
-    return [for (final e in index.entries.values) ?e.liveCandidate()];
+    return (
+      [for (final e in index.entries.values) ?e.liveCandidate()],
+      index.entries.length,
+    );
   }
 
   /// Test seam: runs inside the budget before the fold (a slow index).
@@ -111,13 +120,16 @@ class LiveContextSource {
     String? courseKey,
     bool preferAlternative = false,
   }) async {
+    final sw = Stopwatch()..start();
     try {
-      return await _build(
+      final ctx = await _build(
         mode,
         spec,
         courseKey,
         preferAlternative,
       ).timeout(budget);
+      if (kPerfDiagnostics) PerfDiagnostics.instance.recordBuild(sw.elapsed);
+      return ctx;
     } on TimeoutException {
       debugPrint('live: context over ${budget.inMilliseconds} ms, none');
       return null;

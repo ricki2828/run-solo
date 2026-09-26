@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_solo/app/perf_diagnostics.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/platform/transfer_gateway.dart';
@@ -250,6 +251,30 @@ void main() {
           .compareHeatAdjusted,
       isTrue,
     );
+  });
+
+  testWidgets('Diagnostics shows the phone timings (not in play)', (
+    tester,
+  ) async {
+    PerfDiagnostics.instance
+      ..reset()
+      ..recordPrepare(const Duration(milliseconds: 38), 212)
+      ..recordHistoryOpen(const Duration(milliseconds: 640))
+      ..recordHistoryOpen(const Duration(milliseconds: 90));
+    await pumpApp(tester, fakeServices(), home: SettingsScreen(now: now));
+    await pumpTimes(tester, 3);
+    await scrollTo(tester, find.byKey(const ValueKey('perf-diagnostics')));
+    expect(find.text('Live compare prepare: 38 ms (212 runs)'), findsOneWidget);
+    expect(find.text('Live compare at Start: not yet'), findsOneWidget);
+    expect(
+      find.text('History first open: 640 ms'),
+      findsOneWidget,
+      reason: 'the first open of the session, not a later one',
+    );
+    PerfDiagnostics.instance.recordBuild(const Duration(milliseconds: 3));
+    await pumpTimes(tester, 2);
+    expect(find.text('Live compare at Start: 3 ms'), findsOneWidget);
+    PerfDiagnostics.instance.reset();
   });
 
   testWidgets('About carries the §18.6 paragraph and attribution', (

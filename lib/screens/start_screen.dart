@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/event_names.dart';
+import '../app/perf_diagnostics.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
@@ -274,6 +275,12 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                   _targetSwapped,
             )
           : null;
+      if (!debugLiveCompareAtStart && kPerfDiagnostics) {
+        // Timed for Settings → Diagnostics, result unused, Start not held.
+        unawaited(
+          services.live?.build(mode: mode, spec: spec, courseKey: courseKey),
+        );
+      }
       result = await services.recording.start(
         mode,
         spec,
