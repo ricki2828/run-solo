@@ -281,9 +281,11 @@ class _Marked extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
+    // Foreground: the outline never moves the row (an unmarked border would
+    // shift every row below it by 2 dp).
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
-      decoration: BoxDecoration(
+      foregroundDecoration: BoxDecoration(
         borderRadius: BorderRadius.circular(Radii.button),
         border: Border.all(
           color: marked ? t.semWarn : Colors.transparent,
