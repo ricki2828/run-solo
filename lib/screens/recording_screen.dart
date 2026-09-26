@@ -380,8 +380,11 @@ class _RecordingScreenState extends State<RecordingScreen>
                           ),
                         ] else if (s.isCooper) ...[
                           // Scales down rather than overflow when a banner
-                          // and the GPS wait share a short screen with it.
+                          // and the GPS wait share a short screen with it;
+                          // the high flex keeps it at full size otherwise
+                          // (the spacers around it share what is left).
                           Flexible(
+                            flex: 20,
                             child: FittedBox(
                               fit: BoxFit.scaleDown,
                               child: _PausedHidden(
