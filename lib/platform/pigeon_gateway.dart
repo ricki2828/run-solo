@@ -53,7 +53,7 @@ class PigeonRecorderGateway implements RecorderGateway {
   Future<void> discardJournal(String runId) => _api.discardJournal(runId);
 
   @override
-  Future<bool> discardRun() => _api.discardRun();
+  Future<bool> discard() => _api.discardRun();
 
   @override
   Future<void> setCues(bool enabled) => _api.setCues(enabled);
