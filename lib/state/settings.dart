@@ -124,6 +124,7 @@ class AppSettings {
   /// App version that last played the full Lap Draw intro (plan §4, D8):
   /// null or older than the running version = full intro, else 0.6 s.
   final String? introSeenVersion;
+
   /// The Intervals session picked in the sheet (A8): a catalogue id,
   /// `custom:<id>` or `fartlek`. The Norwegian 4x4's edits stay in [reps] /
   /// [recoverySeconds] (the Phase 2 fields, already on phones).
