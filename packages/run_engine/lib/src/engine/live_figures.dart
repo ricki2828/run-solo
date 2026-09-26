@@ -161,10 +161,12 @@ class RunDerived {
   /// index keeps derived data across rebuilds, W5b, so without a bump no
   /// past run would ever reach a new board). Stores refill any entry built
   /// at an older version, in the background, once.
-  /// - 1: LB1/LB2 (1 km, mile, 5K, 10K, from-Start to 10 km, live figures).
-  /// - 2: GOAL boards (§G): half, marathon, 30/60 min distance, from-Start
-  ///   to 42 km.
-  static const int currentVersion = 2;
+  /// - 1: anything written without a version (LB1/LB2, and CR1's per-km
+  ///   HR from #56, which merged before versioning existed).
+  /// - 2: reserved (never written; G1 took 3 after #56 merged first).
+  /// - 3: GOAL boards (§G): half, marathon, 30/60 min distance, from-Start
+  ///   to 42 km; with CR1's `kmHr`.
+  static const int currentVersion = 3;
 
   /// The version this data was built at; JSON without one is 1.
   final int version;
