@@ -322,10 +322,13 @@ class IndexRow {
     this.repPacesSecPerKm = const [],
     this.repClean = const [],
     this.eligibleAsPrior = false,
+    this.eventStartLat,
+    this.eventStartLon,
   });
 
   /// Bump when a field is added, so old rows are rebuilt once.
-  static const int currentVersion = 1;
+  /// 2: the event run's start point (K1 course pick at Start).
+  static const int currentVersion = 2;
 
   final int version;
   final int lapCount;
@@ -349,12 +352,22 @@ class IndexRow {
   /// Counts towards later verdicts and the trend's rolling median.
   final bool eligibleAsPrior;
 
+  /// K1: an event run's first fix (5 dp, about 1 m), so Start can pick the
+  /// course the runner is standing at without decoding a run file. Null
+  /// for other runs and without a fix. Stays on the phone like the file.
+  final double? eventStartLat;
+  final double? eventStartLon;
+
   factory IndexRow.of(
     engine.RunFile run,
     engine.RunAnalysis? a,
     engine.Verdict? shownVerdict,
   ) {
     final m = a?.intervals;
+    final start = run.session?.templateId == engine.SessionSpec.parkrunId
+        ? engine.ParkrunCourses.startOf(run)
+        : null;
+    double dp5(double v) => (v * 1e5).round() / 1e5;
     return IndexRow(
       lapCount: run.laps.length,
       session: run.session,
@@ -370,6 +383,8 @@ class IndexRow {
         for (final r in m?.reps ?? const <engine.RepMetrics>[]) r.clean,
       ],
       eligibleAsPrior: a?.eligibleAsPrior ?? false,
+      eventStartLat: start == null ? null : dp5(start.lat),
+      eventStartLon: start == null ? null : dp5(start.lon),
     );
   }
 
@@ -385,6 +400,8 @@ class IndexRow {
     'rep_paces_s_per_km': repPacesSecPerKm,
     'rep_clean': repClean,
     'eligible': eligibleAsPrior,
+    'start_lat': ?eventStartLat,
+    'start_lon': ?eventStartLon,
   };
 
   /// null for a missing or unreadable row (the entry is then stale).
@@ -415,6 +432,8 @@ class IndexRow {
           for (final v in (j['rep_clean'] as List?) ?? const []) v == true,
         ],
         eligibleAsPrior: j['eligible'] == true,
+        eventStartLat: d('start_lat'),
+        eventStartLon: d('start_lon'),
       );
     } catch (e) {
       debugPrint('index: unreadable row ($e)');

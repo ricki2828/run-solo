@@ -178,10 +178,19 @@ class LiveCoachTest {
     }
 
     @Test
-    fun `an unclean live rep stops the compare`() {
-        val coach = LiveCoach(ctx(reps(listOf(240.0, 240.0), listOf(250.0, 250.0))), RunMode.intervals, fourHundreds)
-        Laps(coach).apply { warmUp(); lap(RecorderCore.LapStep(0, true), 0.0, 90_000) }
+    fun `an unclean live rep has no compare, and the clean reps after it compare without it`() {
+        val board = reps(listOf(240.0, 200.0, 240.0, 240.0), listOf(250.0, 250.0, 250.0, 250.0), listOf(230.0, null, 230.0, 230.0))
+        val coach = LiveCoach(ctx(board), RunMode.intervals, fourHundreds)
+        val l = Laps(coach)
+        l.warmUp()
+        l.lap(RecorderCore.LapStep(0, true), 0.0, 90_000) // rep 1: no distance, unclean
         assertNull(repEnd(coach, 1))
+        l.recovery(1)
+        l.rep(2, 245.0)
+        // Rep 1 is left out on both sides: rep 2 alone, 245 vs 200, 250 and (null there) the third dropped.
+        val r2 = assertNotNull(repEnd(coach, 3)).result
+        assertEquals(listOf(2, 3), listOf(r2.rank, r2.of))
+        assertEquals(45.0, r2.deltaSecPerKm!!, 1e-9)
     }
 
     @Test

@@ -4,16 +4,20 @@ import app.runsolo.core.journal.JournalCodec
 import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.journal.JournalReplay
 import app.runsolo.core.journal.RunEvent
+import app.runsolo.core.model.FastStartRule
+import app.runsolo.core.model.HrDriftRule
 import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.LiveBoard
 import app.runsolo.core.model.LiveBoardKind
 import app.runsolo.core.model.LiveContext
 import app.runsolo.core.model.LiveEntry
 import app.runsolo.core.model.LocationFix
+import app.runsolo.core.model.NudgePlan
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
 import app.runsolo.core.record.CueWords
+import app.runsolo.core.record.LapDispatch
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
 import kotlin.math.cos
@@ -49,6 +53,10 @@ class LiveCoachLifecycleTest {
         var ticker = SampleTicker(wall = { 0L })
         var coach = LiveCoach(ctx, mode, spec)
         var goal = GoalCoach(spec, ctx)
+
+        /** CuePlayer's speech estimate and its follow-up nudge (a new process after a kill: both fresh). */
+        var speech = SpeechClock()
+        var followUp = NudgeFollowUp()
         val goals = ArrayList<GoalCoach.Reached>()
         var prevT = 0L
         var prevD = 0.0
@@ -64,17 +72,24 @@ class LiveCoachLifecycleTest {
             prevT = t
         }
 
-        /** One second of running at [mps] (the fix delivered, then the tick, as the service). */
-        fun second(t: Long, mps: Double) {
+        /** One second of running at [mps] (the fix delivered, then the tick, as the service); [hr] on this sample. */
+        fun second(t: Long, mps: Double, hr: Int? = null) {
             eastM += mps
             ticker.onFix(LocationFix(t, lat0, lon0 + eastM / mPerDegLon, 10.0, 5.0, mps))
             for (s in ticker.tick(t)) lines.add(s)
             val d = ticker.distanceM
             val out = core.tick(t, d)
             handle(out, t)
-            coach.onTick(prevT, prevD, t, d) { core.status(it).activeMs }?.let { k -> speak(t, k.base, k.fire) }
+            coach.onTick(prevT, prevD, t, d, hr) { core.status(it).activeMs }?.let { k -> speak(t, k.base, k.fire, k.nudge) }
             prevT = t
             prevD = d
+            // As RecordingSession.tick: a due follow-up nudge is said, then journaled and done.
+            followUp.due(t, speech.busyUntil)?.let { n ->
+                speech.queued(t, CueComposer.words(n.text))
+                said.add(Said(t, n.text, null, ticker.distanceM))
+                coach.nudgeSaid(n)
+                lines.add(JournalLine.CueFired(t, t, JournalLine.FiredKind.nudge, n.rule, n.index, core.status(t).elapsedMs))
+            }
         }
 
         /** A LAP press between ticks, as the service's lap(): journaled with the core's outputs. */
@@ -83,9 +98,14 @@ class LiveCoachLifecycleTest {
         fun startReps(t: Long) = handle(core.startReps(t).second, t)
 
         private fun handle(out: List<RecorderCore.Output>, t: Long) {
+            // As RecordingSession: journaled in the core's order, sent with a step's end cue after its lap.
             for (o in out) when (o) {
+                is RecorderCore.Output.Lap -> lines.add(JournalLine.Lap(o.t, o.t, o.source))
+                is RecorderCore.Output.Cue -> lines.add(JournalLine.Cue(o.t, o.t, o.kind))
+                else -> Unit
+            }
+            for (o in LapDispatch.ordered(out)) when (o) {
                 is RecorderCore.Output.Lap -> {
-                    lines.add(JournalLine.Lap(o.t, o.t, o.source))
                     // As LapDispatch: the distance interpolated at the lap's (back-dated) time.
                     val d = if (t <= prevT) ticker.distanceM else prevD + (ticker.distanceM - prevD) * (o.t - prevT).toDouble() / (t - prevT)
                     val a = core.status(o.t).activeMs
@@ -93,24 +113,31 @@ class LiveCoachLifecycleTest {
                     coach.lapEnded(core.lapStep(o.index), d, a)
                 }
                 is RecorderCore.Output.Cue -> {
-                    lines.add(JournalLine.Cue(o.t, o.t, o.kind))
                     goal.atCue(o.kind, core.phase, core.finalStepEnd)?.let {
                         goals.add(it)
+                        followUp.cancel()
+                        speech.queued(t, CueComposer.words(it.text))
                         said.add(Said(t, it.text, null, ticker.distanceM))
                         coach.goalReachedAt(it.distanceM, if (it.distanceGoal && it.goalValue % 1_000 == 0) it.timeMs else null)
                     }
                     val base = CueWords.text(o.kind, o.value, spec, core.phase, core.repIndex, core.stepIndex, o.index)
                     val fire = coach.atCue(o.kind, o.index, o.value, core.phase, core.stepIndex, 0L, null)
-                    if (base != null || fire != null) speak(t, base, fire)
+                    if (base != null || fire != null) speak(t, base, fire, coach.nudgeAtCue(o.kind, core.phase))
                 }
                 else -> Unit
             }
         }
 
-        private fun speak(t: Long, base: String?, fire: LiveCoach.Fire?) {
+        /** As CuePlayer.play: any cue drops a follow-up still waiting; a [nudge] waits to follow this one. */
+        private fun speak(t: Long, base: String?, fire: LiveCoach.Fire?, nudge: LiveCoach.Nudge? = null) {
+            followUp.cancel()
             val composed = CueComposer.compose(base, fire?.takeIf { it.speak }?.text)
             fire?.let { lines.add(JournalLine.CueFired(t, t, JournalLine.FiredKind.compare, it.key, it.index, core.status(t).elapsedMs)) }
-            composed.text?.let { said.add(Said(t, it, fire, ticker.distanceM)) }
+            composed.text?.let {
+                said.add(Said(t, it, fire, ticker.distanceM))
+                speech.queued(t, CueComposer.words(it))
+                nudge?.let { n -> followUp.offer(n, speech.busyUntil) }
+            }
         }
 
         /** kill -9 at [t], dark for [gapMs], then resumeRecovered: everything rebuilt from the journal. */
@@ -130,6 +157,8 @@ class LiveCoachLifecycleTest {
                 it.resumeAt(core.distanceM)
             }
             goal = GoalCoach(spec, replay.liveContext).also { it.restored(reachedBeforeKill = core.finalStepEnd != null) }
+            speech = SpeechClock()
+            followUp = NudgeFollowUp()
             if (core.finalStepEnd != null) coach.goalReachedAt(core.distanceM, null)
             prevT = now
             prevD = ticker.distanceM
@@ -146,12 +175,12 @@ class LiveCoachLifecycleTest {
 
     private val ctx5k = LiveContext(boards = listOf(board(800_000, 900_000, 1_000_000)), builtAtMs = 0, engineVersion = 1)
 
-    private fun freeRun(ctx: LiveContext?, killAtS: Int?, seconds: Int = 1_300): Shell {
+    private fun freeRun(ctx: LiveContext?, killAtS: Int?, seconds: Int = 1_300, hr: Int? = null): Shell {
         val sh = Shell(RunMode.free, null, ctx)
         sh.start(0)
         var s = 1
         while (s <= seconds) {
-            sh.second(s * 1_000L, 3.5)
+            sh.second(s * 1_000L, 3.5, hr)
             if (s == killAtS) {
                 sh.killAndResume(s * 1_000L, 20_000)
                 s += 20
@@ -181,6 +210,52 @@ class LiveCoachLifecycleTest {
         val sh = freeRun(ctx5k, killAtS = (at / 1_000 + 1).toInt())
         assertEquals(1, sh.compares().count { it.index == 3 }, sh.said.toString())
         assertEquals(1, sh.compares().count { it.index == 4 })
+    }
+
+    // ---- nudges as their own line after the cue (founder 26-Sep, plan §3.2) ----
+
+    private val fastStart = FastStartRule(km1MaxMs = 300_000, text = "Easy start. Your best 5K went out slower than this.")
+
+    /** km 4 at 3.5 m/s (286 s/km): three earlier runs at that pace with HR 150, so HR 160 fires. */
+    private val hrDrift = HrDriftRule(kmSamples = List(5) { listOf(283.0 to 150.0, 286.0 to 150.0, 289.0 to 150.0) }, text = "Heart rate's up for this pace today. Fine to ease a touch.")
+
+    private fun nudgesJournaled(sh: Shell) = sh.lines.filterIsInstance<JournalLine.CueFired>().filter { it.kind == JournalLine.FiredKind.nudge }.map { it.key to it.index }
+
+    @Test
+    fun `compare and nudge together - the split and rank as one cue, the nudge its own line after it`() {
+        val sh = freeRun(ctx5k.copy(nudges = NudgePlan(version = 1, fastStart = fastStart)), killAtS = null, seconds = 400)
+        val cue = sh.said.first { it.text.startsWith("1 k,") }
+        assertTrue(cue.fire != null && cue.text.contains(cue.fire!!.text), "the rank rides the split: ${cue.text}")
+        assertTrue(!cue.text.contains(fastStart.text))
+        val nudge = sh.said.single { it.text == fastStart.text }
+        // Said once the cue is done (its words at the TTS rate) plus the 2 s pause, at the next tick.
+        val cueDone = cue.t + CueComposer.words(cue.text) * SpeechClock.MS_PER_WORD
+        assertTrue(nudge.t in cueDone + NudgeFollowUp.PAUSE_MS..cueDone + NudgeFollowUp.PAUSE_MS + 1_000, "cue at ${cue.t}, nudge at ${nudge.t}")
+        assertEquals(sh.said.indexOf(cue) + 1, sh.said.indexOf(nudge), "nothing in between")
+        assertEquals(listOf(NudgePlan.FAST_START to 1), nudgesJournaled(sh))
+    }
+
+    @Test
+    fun `restore - a nudge said before the kill is never said again, and nudges go on after it`() {
+        val ctx = ctx5k.copy(nudges = NudgePlan(version = 1, fastStart = fastStart, hrDrift = hrDrift))
+        val sh = freeRun(ctx, killAtS = 714, hr = 160) // killed at about 2.5 km, after the km 1 nudge
+        assertEquals(1, sh.said.count { it.text == fastStart.text }, sh.said.toString())
+        // km 3 was cut by the kill (its HR not seen whole); km 4 is whole: its split and rank, then the HR line.
+        val km4 = sh.said.first { it.text.startsWith("4 k,") }
+        assertTrue(km4.fire != null, "km 4 still compares after the restore: ${km4.text}")
+        assertEquals(hrDrift.text, sh.said[sh.said.indexOf(km4) + 1].text)
+        assertEquals(listOf(NudgePlan.FAST_START to 1, NudgePlan.HR_DRIFT to 4), nudgesJournaled(sh))
+    }
+
+    @Test
+    fun `a kill between the cue and its nudge - the nudge is never said or journaled, and its km has passed`() {
+        val ctx = ctx5k.copy(nudges = NudgePlan(version = 1, fastStart = fastStart))
+        val probe = freeRun(ctx, killAtS = null, seconds = 400)
+        val cueT = probe.said.first { it.text.startsWith("1 k,") }.t
+        val sh = freeRun(ctx, killAtS = (cueT / 1_000 + 1).toInt(), seconds = 400)
+        assertEquals(1, sh.said.count { it.text.startsWith("1 k,") }, sh.said.toString())
+        assertTrue(sh.said.none { it.text == fastStart.text }, sh.said.toString())
+        assertEquals(emptyList(), nudgesJournaled(sh))
     }
 
     @Test
@@ -225,20 +300,20 @@ class LiveCoachLifecycleTest {
 
     // ---- live rep paces by step (#48 review P1, P2), through the real core and a restore ----
 
-    private fun intervals(recoveryS: Int) = SessionSpec(
-        templateId = "custom:t", templateVersion = 1, name = "3 × 400 m", warmupSeconds = null, cooldownSeconds = null,
+    private fun intervals(recoveryS: Int, reps: Int = 3) = SessionSpec(
+        templateId = "custom:t", templateVersion = 1, name = "$reps × 400 m", warmupSeconds = null, cooldownSeconds = null,
         lapLockout = false, cueProfile = app.runsolo.core.model.CueProfile.standard, hrBand = null,
-        steps = (1..3).flatMap { r ->
+        steps = (1..reps).flatMap { r ->
             listOfNotNull(
                 app.runsolo.core.model.Step(app.runsolo.core.model.StepKind.work, app.runsolo.core.model.TargetKind.distance, 400, app.runsolo.core.model.RecoveryStyle.run, r),
-                if (r < 3) app.runsolo.core.model.Step(app.runsolo.core.model.StepKind.recovery, app.runsolo.core.model.TargetKind.time, recoveryS, app.runsolo.core.model.RecoveryStyle.jog, r) else null,
+                if (r < reps) app.runsolo.core.model.Step(app.runsolo.core.model.StepKind.recovery, app.runsolo.core.model.TargetKind.time, recoveryS, app.runsolo.core.model.RecoveryStyle.jog, r) else null,
             )
         },
     )
 
     /** 60 s warm-up, LAP, then 4 m/s in work and 2 m/s otherwise until [seconds]; hooks per second. */
-    private fun intervalRun(spec: SessionSpec, seconds: Int, each: (Shell, Int) -> Unit = { _, _ -> }): Shell {
-        val sh = Shell(RunMode.intervals, spec, null)
+    private fun intervalRun(spec: SessionSpec, seconds: Int, ctx: LiveContext? = null, each: (Shell, Int) -> Unit = { _, _ -> }): Shell {
+        val sh = Shell(RunMode.intervals, spec, ctx)
         sh.start(0)
         var s = 1
         while (s <= seconds) {
@@ -281,6 +356,45 @@ class LiveCoachLifecycleTest {
         assertTrue(paces[0] != null && paces[0]!! in 245.0..256.0, "rep 1 rebuilt from the journal: $paces")
         assertEquals(null, paces[1], "rep 2 spanned the kill")
         assertTrue(paces[2] != null && paces[2]!! in 245.0..256.0, "rep 3 is clean: $paces")
+    }
+
+    @Test
+    fun `the last rep's compare rides the cool-down cue and counts every rep`() {
+        val board = LiveBoard(
+            key = "d400x3", label = "3 × 400 m", kind = LiveBoardKind.intervals,
+            entries = listOf(240.0, 260.0).mapIndexed { i, p -> LiveEntry("r$i", 0, liveRepPacesSecPerKm = List(3) { p }, finalMetric = p) },
+        )
+        val ctx = LiveContext(boards = listOf(board), builtAtMs = 0, engineVersion = 1)
+        val sh = intervalRun(intervals(60), 60 + 3 * 105 + 2 * 60 + 30, ctx)
+        assertEquals(listOf(1, 2, 3), sh.compares().map { it.index }, sh.said.toString())
+        val last = sh.said.single { it.fire?.index == 3 }
+        assertTrue(last.text.startsWith("Done. Cool down."), last.text)
+        assertEquals(2, last.fire!!.result.rank, "250 s/km over all 3 reps: behind 240, ahead of 260")
+    }
+
+    @Test
+    fun `a kill during rep 3 of 8 x 400 - rep 3 has no compare, reps 4 to 8 compare on the clean reps, the last included`() {
+        val board = LiveBoard(
+            key = "d400x8", label = "8 × 400 m", kind = LiveBoardKind.intervals,
+            entries = listOf(240.0, 260.0).mapIndexed { i, p -> LiveEntry("r$i", 0, liveRepPacesSecPerKm = List(8) { p }, finalMetric = p) },
+        )
+        val ctx = LiveContext(boards = listOf(board), builtAtMs = 0, engineVersion = 1)
+        // 60 s warm-up, then 100 s reps at 4 m/s and 60 s recoveries: rep 3 runs from about 380 s to 480 s.
+        var killed = false
+        val sh = intervalRun(intervals(60, reps = 8), 60 + 8 * 100 + 7 * 60 + 60, ctx) { shell, s ->
+            if (!killed && s == 420) {
+                killed = true
+                shell.killAndResume(s * 1_000L + shell.offsetMs, 10_000)
+            }
+        }
+        assertEquals(listOf(1, 2, 4, 5, 6, 7, 8), sh.compares().map { it.index }, sh.said.toString())
+        val paces = sh.coach.repPaces
+        assertEquals(null, paces[2], "rep 3 spanned the kill: $paces")
+        assertTrue(paces.filterIndexed { i, _ -> i != 2 }.all { it != null }, "$paces")
+        val last = sh.said.single { it.fire?.index == 8 }
+        assertTrue(last.text.startsWith("Done. Cool down."), last.text)
+        assertEquals(2, last.fire!!.result.rank, "250 s/km over the 7 clean reps: behind 240, ahead of 260")
+        assertEquals(2, sh.compares().single { it.index == 4 }.result.rank)
     }
 
     // ---- GOAL runs (§G, G2) ----

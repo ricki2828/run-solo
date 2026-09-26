@@ -8,6 +8,8 @@ import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../platform/session_codec.dart';
+import '../state/courses.dart';
+import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../state/recording_controller.dart';
 import '../state/sessions.dart';
@@ -20,6 +22,11 @@ import '../widgets/structure_glyph.dart';
 import '../widgets/value_stepper.dart';
 import 'custom_builder_screen.dart';
 import 'intervals_sheet.dart';
+
+/// The live compare at Start ([kLiveCompare]); tests turn it on to check
+/// what `start()` is handed.
+@visibleForTesting
+bool debugLiveCompareAtStart = kLiveCompare;
 
 /// Start (plan §3.2, design brief A8): INTERVALS / LAPS / FREE. Tapping
 /// INTERVALS opens the sheet; the picked session shows as the session card
@@ -106,6 +113,90 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
 
   AppServices? _services;
 
+  /// PD2 / A10.10: the runner swapped the event's target to its other
+  /// choice (prediction vs PB), for [_targetGoal] (goal and course) only.
+  bool _targetSwapped = false;
+  String? _targetGoal;
+
+  /// The event's course board key for the LiveContext and the target line;
+  /// null for other goals or an unknown course.
+  String? _courseKeyFor(AppSettings s) {
+    final course = s.eventRun ? _course : null;
+    return course == null
+        ? null
+        : engine.ComparisonKey.parkrunOf(courseId: course);
+  }
+
+  /// A new goal or course resets the swap: its choices are different.
+  static String _targetKeyOf(AppSettings s, String? courseKey) =>
+      '${s.goalId}|${courseKey ?? ''}';
+
+  /// K1 course at Start (A10.10): History's runs (index rows, no decode),
+  /// loaded once; the course follows the probe's position until the runner
+  /// picks one ([_coursePicked], where a null pick means "somewhere else").
+  List<RunSummary>? _runs;
+  bool _coursePicked = false;
+  String? _pickedCourse;
+
+  /// The event's course: the runner's pick, else the nearest known start
+  /// within 150 m of a ready fix; null = unknown (races the 5K board and is
+  /// tagged after the run).
+  String? get _course {
+    if (_coursePicked) return _pickedCourse;
+    final p = _probe;
+    final runs = _runs;
+    if (!_gpsReady || p!.lat == null || p.lon == null || runs == null) {
+      return null;
+    }
+    return courseAt(runs, p.lat!, p.lon!);
+  }
+
+  Future<void> _pickCourse(CourseLabels labels) async {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final picked = await showModalBottomSheet<(String?,)>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(Space.screenGutter),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('WHICH COURSE?', style: RunSoloType.title28),
+              const SizedBox(height: Space.x8),
+              for (final c in labels.courseIds)
+                ListTile(
+                  key: ValueKey('start-course-$c'),
+                  minTileHeight: 56,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(labels.labelOf(c)),
+                  selected: c == _course,
+                  onTap: () => Navigator.of(context).pop((c,)),
+                ),
+              ListTile(
+                key: const ValueKey('start-course-none'),
+                minTileHeight: 56,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Somewhere new'),
+                subtitle: Text(
+                  'Races your 5K best. The course is worked out after the '
+                  'run.',
+                  style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                ),
+                onTap: () => Navigator.of(context).pop((null,)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _coursePicked = true;
+      _pickedCourse = picked.$1;
+    });
+  }
+
   /// False on Android 14: the toggle is disabled with a reason.
   bool _volumeKeyLaps = true;
   bool _volumeKeyChecked = false;
@@ -115,11 +206,23 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     super.didChangeDependencies();
     _services = AppServices.of(context);
     _syncProbe();
+    if (_runs == null) {
+      AppServices.of(context).history.list().then((r) {
+        if (mounted) setState(() => _runs = r);
+      }, onError: (_) {});
+    }
     if (_volumeKeyChecked) return;
     _volumeKeyChecked = true;
     // LC1: get the live compare's candidates ready off the UI isolate, so
-    // the Start press only plans over them (#59 review P2).
-    if (kLiveCompare) unawaited(AppServices.of(context).live?.prepare());
+    // the Start press only plans over them (#59 review P2). PD2's target
+    // line reads the same candidates, so it prepares with or without the
+    // live compare, and redraws once they land.
+    final live = AppServices.of(context).live;
+    if (live != null) {
+      live.prepare().then((_) {
+        if (mounted) setState(() {});
+      }, onError: (_) {});
+    }
     AppServices.of(context).permissions.volumeKeyLapsSupported().then((ok) {
       if (mounted && ok != _volumeKeyLaps) setState(() => _volumeKeyLaps = ok);
     });
@@ -156,8 +259,20 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         RecordMode.laps || RecordMode.free => null,
       };
       // LC1: the live compare's history, 150 ms or none; off until LV2.
-      final live = kLiveCompare
-          ? await services.live?.build(mode: mode, spec: spec)
+      // PD2 (#84 review P1): the target raced is the one shown, so a tap
+      // over to the other choice goes in too. K1: the event races its
+      // course's board and PB when Start knows the course (#76).
+      final courseKey = _courseKeyFor(s);
+      final live = debugLiveCompareAtStart
+          ? await services.live?.build(
+              mode: mode,
+              spec: spec,
+              courseKey: courseKey,
+              preferAlternative:
+                  s.goalRun &&
+                  _targetGoal == _targetKeyOf(s, courseKey) &&
+                  _targetSwapped,
+            )
           : null;
       result = await services.recording.start(
         mode,
@@ -272,6 +387,93 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     if (r.start && mounted) await _start();
   }
 
+  /// PD2: "Target 24:30 (predicted)" under the goal card (A10.10), from
+  /// the last prepare (pure, no I/O); nothing without a target. When the
+  /// event has a prediction and a fresh PB, tapping swaps between them.
+  Widget _targetLine(AppSettings s, RunSoloTokens t) {
+    final spec = s.goalSpec(kEventNames.parkrun);
+    final live = AppServices.of(context).live;
+    if (spec == null || live == null) return const SizedBox.shrink();
+    final courseKey = _courseKeyFor(s);
+    final key = _targetKeyOf(s, courseKey);
+    if (_targetGoal != key) {
+      _targetGoal = key;
+      _targetSwapped = false;
+    }
+    final first = live.targetFor(spec.toPigeon(), courseKey: courseKey);
+    if (first == null) return const SizedBox.shrink();
+    final alt = first.alternative;
+    final shown = _targetSwapped && alt != null ? alt : first;
+    final other = identical(shown, first) ? alt : first;
+    return Padding(
+      padding: const EdgeInsets.only(top: Space.x8),
+      child: Semantics(
+        button: other != null,
+        hint: other == null ? null : 'Switches to ${other.line}',
+        child: InkWell(
+          key: const ValueKey('start-target'),
+          onTap: other == null
+              ? null
+              : () => setState(() => _targetSwapped = !_targetSwapped),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: other == null ? 0 : 48),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    shown.line,
+                    style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+                  ),
+                ),
+                if (other != null)
+                  Text(
+                    other.predicted ? 'Use predicted ›' : 'Use your PB ›',
+                    style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// "Course: Albert Park · Change ›" (A10.10), once History knows a
+  /// course; "Course: somewhere new" when none is within 150 m.
+  Widget _courseRow(RunSoloTokens t) {
+    final runs = _runs;
+    final services = AppServices.of(context);
+    if (runs == null) return const SizedBox.shrink();
+    final labels = CourseLabels(runs, services.courseNames);
+    if (labels.courseIds.isEmpty) return const SizedBox.shrink();
+    final course = _course;
+    return InkWell(
+      key: const ValueKey('start-course'),
+      onTap: () => _pickCourse(labels),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                course == null
+                    ? (_gpsReady || _coursePicked
+                          ? 'Course: somewhere new'
+                          : 'Course: found once GPS is ready')
+                    : 'Course: ${labels.labelOf(course)}',
+                style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+              ),
+            ),
+            Text(
+              'Change ›',
+              style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
@@ -330,6 +532,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                     key: const ValueKey('event-card'),
                     style: text.bodyMedium?.copyWith(color: t.inkSecondary),
                   ),
+                  _targetLine(s, t),
                   const SizedBox(height: Space.x16),
                   _Toggle(
                     label: 'Voice cues',
@@ -429,6 +632,10 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // A10.10 / #76 review: the course sits with the GPS line
+                  // it comes from, pinned above START, so a short phone
+                  // sees what the run will race.
+                  if (s.eventRun) _courseRow(t),
                   // A10.10, #53 review P2: the GPS gate's reason sits right
                   // above START, so a greyed START on a short phone always
                   // says why (distance counts from the first fix, so an

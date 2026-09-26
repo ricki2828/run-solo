@@ -1,4 +1,5 @@
 import 'run_file.dart';
+import '../engine/goal.dart' show GoalCatalogue;
 
 /// A structured session (Phase 3 plan §3.3): a flat, already-expanded list of
 /// steps plus an open or fixed warm-up and cool-down. Presets and custom
@@ -116,6 +117,7 @@ class SessionSpec {
     required this.templateId,
     required this.templateVersion,
     required this.name,
+    this.spokenName,
     this.warmupSeconds,
     this.cooldownSeconds,
     this.lapLockout = false,
@@ -142,6 +144,12 @@ class SessionSpec {
   /// Custom edits bump it; presets bump only on a catalogue change.
   final int templateVersion;
   final String name;
+
+  /// What the voice says instead of [name] (§G): "Half marathon", "10 K",
+  /// "30 minutes", "7.5 miles", so speech never rests on how TTS reads
+  /// "Half" or "10K". Null = say [name]. Written only when set, so older
+  /// specs stay byte-identical.
+  final String? spokenName;
 
   /// null = open ("tap START REPS when ready" / "stop when done"); for the
   /// warm-up, 0 = none (step 1 starts at Start, parkrun).
@@ -219,11 +227,18 @@ class SessionSpec {
 
   /// A GOAL run (Phase 4 plan §G): one distance step from the Start press,
   /// then an open cool-down until Stop (never auto-stops). [name] is the
-  /// shown name ("10K", "Half"); the app owns it.
-  static SessionSpec goalDistance(int metres, String name) => SessionSpec(
+  /// shown name ("10K", "Half"); the app owns it. [spokenName] defaults to
+  /// `GoalCatalogue.spokenNameFor` in km; the app passes the miles one.
+  static SessionSpec goalDistance(
+    int metres,
+    String name, {
+    String? spokenName,
+  }) => SessionSpec(
     templateId: goalId,
     templateVersion: 1,
     name: name,
+    spokenName:
+        spokenName ?? GoalCatalogue.spokenNameFor(TargetKind.distance, metres),
     warmupSeconds: 0,
     steps: [SessionStep.workDistance(metres, rep: 1)],
   );
@@ -233,6 +248,7 @@ class SessionSpec {
     templateId: goalId,
     templateVersion: 1,
     name: name,
+    spokenName: GoalCatalogue.spokenNameFor(TargetKind.time, seconds),
     warmupSeconds: 0,
     steps: [SessionStep.work(seconds, rep: 1)],
   );
@@ -392,6 +408,7 @@ class SessionSpec {
     'templateId': templateId,
     'templateVersion': templateVersion,
     'name': name,
+    'spokenName': ?spokenName,
     'warmupSeconds': warmupSeconds,
     'cooldownSeconds': cooldownSeconds,
     'lapLockout': lapLockout,
@@ -405,6 +422,7 @@ class SessionSpec {
     'templateId',
     'templateVersion',
     'name',
+    'spokenName',
     'warmupSeconds',
     'cooldownSeconds',
     'lapLockout',
@@ -437,6 +455,10 @@ class SessionSpec {
     if (autoStop is! bool) {
       throw RunFileFormatException('session.autoStop must be bool');
     }
+    final spoken = json['spokenName'];
+    if (spoken != null && spoken is! String) {
+      throw RunFileFormatException('session.spokenName must be a string');
+    }
     final band = json['hrBand'];
     double? low;
     double? high;
@@ -451,6 +473,7 @@ class SessionSpec {
       templateId: readStringField(json, 'templateId'),
       templateVersion: readIntField(json, 'templateVersion'),
       name: readStringField(json, 'name'),
+      spokenName: spoken as String?,
       warmupSeconds: optInt('warmupSeconds'),
       cooldownSeconds: optInt('cooldownSeconds'),
       lapLockout: lockout,
@@ -480,6 +503,7 @@ class SessionSpec {
       other.templateId == templateId &&
       other.templateVersion == templateVersion &&
       other.name == name &&
+      other.spokenName == spokenName &&
       other.warmupSeconds == warmupSeconds &&
       other.cooldownSeconds == cooldownSeconds &&
       other.lapLockout == lapLockout &&
@@ -494,6 +518,7 @@ class SessionSpec {
     templateId,
     templateVersion,
     name,
+    spokenName,
     warmupSeconds,
     cooldownSeconds,
     lapLockout,
