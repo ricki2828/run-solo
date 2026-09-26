@@ -61,7 +61,7 @@ void main() {
     expect(find.textContaining('average'), findsOneWidget);
     // Pause and hold-to-stop remain.
     expect(find.text('PAUSE'), findsOneWidget);
-    expect(find.text('HOLD TO STOP'), findsOneWidget);
+    expect(find.text('STOP'), findsOneWidget);
     await services.recording.lap();
     await fake.lap(LapSource.volumeKey);
     await pumpTimes(tester, 3);
