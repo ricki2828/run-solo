@@ -130,6 +130,7 @@ class SessionSpec {
   static const String cooperId = 'cooper';
   static const String fartlekId = 'fartlek';
   static const String parkrunId = 'parkrun'; // event-name-ok: data key
+  static const String goalId = 'goal';
   static const String customPrefix = 'custom:';
 
   /// Most steps a session may expand to (40 reps + 39 recoveries).
@@ -216,6 +217,34 @@ class SessionSpec {
     steps: const [SessionStep.workDistance(5000, rep: 1)],
   );
 
+  /// A GOAL run (Phase 4 plan §G): one distance step from the Start press,
+  /// then an open cool-down until Stop (never auto-stops). [name] is the
+  /// shown name ("10K", "Half"); the app owns it.
+  static SessionSpec goalDistance(int metres, String name) => SessionSpec(
+    templateId: goalId,
+    templateVersion: 1,
+    name: name,
+    warmupSeconds: 0,
+    steps: [SessionStep.workDistance(metres, rep: 1)],
+  );
+
+  /// A GOAL run by time: one time step from Start, then an open cool-down.
+  static SessionSpec goalTime(int seconds, String name) => SessionSpec(
+    templateId: goalId,
+    templateVersion: 1,
+    name: name,
+    warmupSeconds: 0,
+    steps: [SessionStep.work(seconds, rep: 1)],
+  );
+
+  bool get isGoal => templateId == goalId;
+
+  /// GOAL step limits (§G; Kotlin mirrors them).
+  static const int goalMinMetres = 100;
+  static const int goalMaxMetres = 100000;
+  static const int goalMinSeconds = 60;
+  static const int goalMaxSeconds = 86400;
+
   /// By-feel speed play, recorded as a Laps run: no steps, no timing.
   static const SessionSpec fartlek = SessionSpec(
     templateId: fartlekId,
@@ -281,6 +310,31 @@ class SessionSpec {
     }
     if (steps.isEmpty) {
       if (templateId != fartlekId) out.add('only fartlek may have no steps');
+      return out;
+    }
+    // A GOAL (§G): exactly one work step, the goal's own limits (a half,
+    // a marathon or an hour are far past the interval limits below).
+    // Kotlin `SessionSpec.validate` mirrors this.
+    if (templateId == goalId) {
+      if (steps.length != 1 || !steps.single.isWork || steps.single.rep != 1) {
+        out.add('a goal is exactly one work step, rep 1');
+        return out;
+      }
+      final w = steps.single;
+      switch (w.target) {
+        case TargetKind.distance:
+          if (w.value < goalMinMetres || w.value > goalMaxMetres) {
+            out.add('goal distance must be $goalMinMetres..$goalMaxMetres m');
+          }
+        case TargetKind.time:
+          if (w.value < goalMinSeconds || w.value > goalMaxSeconds) {
+            out.add('goal time must be $goalMinSeconds..$goalMaxSeconds s');
+          }
+        case TargetKind.equalToPreviousWork:
+          out.add('a goal is a distance or a time');
+      }
+      if (w.style != RecoveryStyle.run) out.add('goal step style is run');
+      if (autoStop) out.add('a goal never auto-stops');
       return out;
     }
     if (steps.length > maxSteps) out.add('more than $maxSteps steps');
@@ -476,6 +530,11 @@ abstract final class ComparisonKey {
   static String parkrunOf({String? courseId}) =>
       courseId == null || courseId.isEmpty ? parkrun : '$parkrun:$courseId';
 
+  /// Goal runs (§G) group as `goal:d<metres>` / `goal:t<seconds>`, never
+  /// with the interval `d…x*` / `t…x*` keys.
+  static const String goalPrefix = 'goal:';
+  static bool isGoal(String key) => key.startsWith(goalPrefix);
+
   static bool isParkrun(String key) =>
       key == parkrun || key.startsWith('$parkrun:');
 
@@ -497,6 +556,14 @@ abstract final class ComparisonKey {
     if (spec.templateId == SessionSpec.fartlekId) return fartlek;
     if (spec.templateId == SessionSpec.cooperId) return cooper;
     if (spec.templateId == SessionSpec.parkrunId) return parkrunOf();
+    if (spec.isGoal && spec.workSteps.length == 1) {
+      final w = spec.workSteps.single;
+      // Custom distances key to the nearest 0.1 km (founder, 26-Sep), so a
+      // 12.34 km and a 12.3 km goal share a board.
+      return w.target == TargetKind.time
+          ? '${goalPrefix}t${w.value}'
+          : '${goalPrefix}d${(w.value / 100).round() * 100}';
+    }
     final work = spec.workSteps.toList();
     if (work.isEmpty) return fartlek;
     final kinds = work.map((s) => s.target).toSet();
@@ -512,9 +579,13 @@ abstract final class ComparisonKey {
   }
 
   static bool isTime(String key) =>
-      key.startsWith('t') || key.startsWith('pyr:');
+      key.startsWith('t') ||
+      key.startsWith('pyr:') ||
+      key.startsWith('${goalPrefix}t');
   static bool isDistance(String key) =>
-      key.startsWith('d') || key.startsWith('dpyr:');
+      key.startsWith('d') ||
+      key.startsWith('dpyr:') ||
+      key.startsWith('${goalPrefix}d');
 }
 
 T _enum<T extends Enum>(List<T> values, Object? name, String field) {

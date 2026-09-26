@@ -133,8 +133,9 @@ class RunIndexEntry {
 
   /// The live compare's view of this run (LC1); null until the background
   /// batch has built its derived data.
-  engine.LiveCandidate? liveCandidate() =>
-      derived == null ? null : engine.LiveCandidate(boardInput(), derived!);
+  engine.LiveCandidate? liveCandidate() => derived == null
+      ? null
+      : engine.LiveCandidate(boardInput(), derived!, durationMs: durationMs);
 
   /// Marked stale without touching its files' stamps: rebuilt on the next
   /// `list()`, derived data kept (W5b).

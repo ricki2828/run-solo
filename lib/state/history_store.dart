@@ -933,7 +933,11 @@ class FileRunStore implements RunStore {
       // The worker re-reads and re-analyses from the paths; a run it cannot
       // analyse comes back as failed and is not retried until it changes.
       final file = files[e.key];
-      if (e.value.derived != null || e.value.derivedFailed || file == null) {
+      // Built at an older derived version (a new board, §G): refill once.
+      final have = e.value.derived;
+      if ((have != null && have.isCurrent) ||
+          e.value.derivedFailed ||
+          file == null) {
         continue;
       }
       jobs.add(
@@ -968,7 +972,9 @@ class FileRunStore implements RunStore {
           // Only onto the same version of the entry it was built from; a
           // run edited meanwhile is rebuilt and queued again.
           if (now == null || then == null || !now.sameStampAs(then)) continue;
-          if (now.derived != null) continue;
+          if (now.derived?.isCurrent ?? false) continue;
+          // A failed refill keeps the older data rather than losing it.
+          if (r.value == null && now.derived != null) continue;
           next[r.key] = now.withDerived(r.value);
           changed = true;
         }

@@ -68,6 +68,8 @@ class AppSettings {
     this.reps = 4,
     this.recoverySeconds = 180,
     this.lastMode = RecordMode.intervals,
+    this.goalRun = false,
+    this.goalId = GoalChoice.eventId,
     this.cues = true,
     this.kmSplits = true,
     this.haptics = true,
@@ -91,6 +93,18 @@ class AppSettings {
   final int reps;
   final int recoverySeconds;
   final RecordMode lastMode;
+
+  /// GOAL is the picked run type (founder 26-Sep, plan §G): a goal run
+  /// records as Intervals carrying one work step; [lastMode] keeps the other
+  /// chips' choice.
+  final bool goalRun;
+
+  /// The picked goal ([GoalChoice] id): the Saturday 5 km event, `d<m>` or
+  /// `t<s>`.
+  final String goalId;
+
+  /// The event (K1) is the picked goal.
+  bool get eventRun => goalRun && goalId == GoalChoice.eventId;
   final bool cues;
 
   /// Voice → "Km splits": a Free run says each km (Phase 4 LV1). Default on.
@@ -160,8 +174,9 @@ class AppSettings {
       )!;
 
   /// Fartlek records as a Laps run with the fartlek session (plan §3.5).
-  RecordMode get recordMode =>
-      lastMode == RecordMode.intervals && SessionChoice.isFartlek(sessionId)
+  RecordMode get recordMode => goalRun
+      ? RecordMode.intervals
+      : lastMode == RecordMode.intervals && SessionChoice.isFartlek(sessionId)
       ? RecordMode.laps
       : lastMode;
 
@@ -185,6 +200,8 @@ class AppSettings {
     int? reps,
     int? recoverySeconds,
     RecordMode? lastMode,
+    bool? goalRun,
+    String? goalId,
     bool? cues,
     bool? kmSplits,
     bool? haptics,
@@ -212,6 +229,8 @@ class AppSettings {
     reps: reps ?? this.reps,
     recoverySeconds: recoverySeconds ?? this.recoverySeconds,
     lastMode: lastMode ?? this.lastMode,
+    goalRun: goalRun ?? this.goalRun,
+    goalId: goalId ?? this.goalId,
     cues: cues ?? this.cues,
     kmSplits: kmSplits ?? this.kmSplits,
     haptics: haptics ?? this.haptics,
@@ -242,6 +261,8 @@ class AppSettings {
     'reps': reps,
     'recoverySeconds': recoverySeconds,
     'lastMode': lastMode.name,
+    'goalRun': goalRun,
+    'goalId': goalId,
     'cues': cues,
     'kmSplits': kmSplits,
     'haptics': haptics,
@@ -297,6 +318,10 @@ class AppSettings {
         'fourByFour' => RecordMode.intervals,
         final String name => RecordMode.values.asNameMap()[name] ?? d.lastMode,
       },
+      goalRun: pick('goalRun', d.goalRun),
+      goalId: GoalChoice.byId(pick('goalId', d.goalId)) == null
+          ? d.goalId
+          : pick('goalId', d.goalId),
       cues: pick('cues', d.cues),
       kmSplits: pick('kmSplits', d.kmSplits),
       haptics: pick('haptics', d.haptics),
@@ -408,4 +433,39 @@ class SettingsController extends ChangeNotifier {
     notifyListeners();
     await _store.save(_settings);
   }
+}
+
+/// The GOAL picker's choices (plan §G): Distance or Time. The engine's
+/// goal specs (G1, #63) run everything but the event; until they land only
+/// the event can be picked.
+class GoalChoice {
+  const GoalChoice(this.id, this.label, {required this.distance});
+  final String id;
+  final String label;
+  final bool distance;
+
+  /// The Saturday 5 km event (K1), labelled from `kEventNames` by the UI.
+  static const String eventId = 'parkrun'; // event-name-ok: data key
+
+  static const List<GoalChoice> distances = [
+    GoalChoice('d5000', '5K', distance: true),
+    GoalChoice(eventId, '', distance: true),
+    GoalChoice('d10000', '10K', distance: true),
+    GoalChoice('d21098', 'Half', distance: true),
+    GoalChoice('d42195', 'Marathon', distance: true),
+  ];
+  static const List<GoalChoice> times = [
+    GoalChoice('t1800', '30 min', distance: false),
+    GoalChoice('t3600', '1 hour', distance: false),
+  ];
+
+  static GoalChoice? byId(String id) {
+    for (final g in [...distances, ...times]) {
+      if (g.id == id) return g;
+    }
+    return null;
+  }
+
+  /// Runnable in this build: the event now; the rest with G1 (#63).
+  bool get available => id == eventId;
 }

@@ -8,6 +8,9 @@ import app.runsolo.core.model.LiveContext as CoreLiveContext
 import app.runsolo.core.model.LiveEntry as CoreLiveEntry
 import app.runsolo.core.model.LiveTarget as CoreLiveTarget
 import app.runsolo.core.model.NudgePlan as CoreNudgePlan
+import app.runsolo.core.model.FastStartRule as CoreFastStart
+import app.runsolo.core.model.HrDriftRule as CoreHrDrift
+import app.runsolo.core.model.RepFadeRule as CoreRepFade
 import app.runsolo.core.model.Phase as CorePhase
 import app.runsolo.core.model.CueProfile as CoreCueProfile
 import app.runsolo.core.model.RecoveryStyle as CoreRecoveryStyle
@@ -122,7 +125,20 @@ fun LiveContext.toCore(): CoreLiveContext = CoreLiveContext(
         )
     },
     target = target?.let { CoreLiveTarget(it.distanceM, it.targetMs, it.predicted) },
-    nudges = nudges?.let { CoreNudgePlan(it.version.toInt()) },
+    nudges = nudges?.let { n ->
+        CoreNudgePlan(
+            version = n.version.toInt(),
+            fastStart = n.fastStart?.let { CoreFastStart(it.km1MaxMs, it.text) },
+            repFade = n.repFade?.let { CoreRepFade(it.maxDropSecPerKm, it.text) },
+            hrDrift = n.hrDrift?.let { h ->
+                CoreHrDrift(
+                    kmSamples = h.kmSamples.map { km -> km.map { require(it.size == 2) { "kmSamples pairs are [pace, hr]" }; it[0] to it[1] } },
+                    bpmOver = h.bpmOver, paceBand = h.paceBand, firstKm = h.firstKm.toInt(), minSimilar = h.minSimilar.toInt(), text = h.text,
+                )
+            },
+            blocked = n.blocked.orEmpty(),
+        )
+    },
     cooperCurve = cooperCurve,
     cooperHistory = cooperHistory,
     coachingMuted = coachingMuted,

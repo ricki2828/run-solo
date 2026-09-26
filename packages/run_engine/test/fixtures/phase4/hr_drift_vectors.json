@@ -1,0 +1,225 @@
+{
+ "_note": "Phase 4 CR1 hrDrift vectors: HrDriftRule.firesAt (Dart coaching_rules.dart, Kotlin LiveContext.kt) must agree on every case. bpmOver 5, paceBand 0.05, firstKm 4, minSimilar 3. Values computed independently (Python).",
+ "plans": {
+  "mixed_easy_hard": {
+   "kmSamples": [
+    [],
+    [],
+    [],
+    [
+     [
+      270.0,
+      170.0
+     ],
+     [
+      270.0,
+      170.0
+     ],
+     [
+      270.0,
+      170.0
+     ],
+     [
+      360.0,
+      140.0
+     ],
+     [
+      360.0,
+      140.0
+     ],
+     [
+      360.0,
+      140.0
+     ]
+    ],
+    [
+     [
+      270.0,
+      170.0
+     ],
+     [
+      270.0,
+      170.0
+     ],
+     [
+      270.0,
+      170.0
+     ],
+     [
+      360.0,
+      140.0
+     ],
+     [
+      360.0,
+      140.0
+     ],
+     [
+      360.0,
+      140.0
+     ]
+    ]
+   ],
+   "bpmOver": 5,
+   "paceBand": 0.05,
+   "firstKm": 4,
+   "minSimilar": 3,
+   "text": "t"
+  },
+  "median_154": {
+   "kmSamples": [
+    [],
+    [],
+    [],
+    [
+     [
+      300.0,
+      152.0
+     ],
+     [
+      305.0,
+      154.0
+     ],
+     [
+      310.0,
+      156.0
+     ]
+    ]
+   ],
+   "bpmOver": 5,
+   "paceBand": 0.05,
+   "firstKm": 4,
+   "minSimilar": 3,
+   "text": "t"
+  },
+  "four_similar_even_median": {
+   "kmSamples": [
+    [],
+    [],
+    [],
+    [
+     [
+      300.0,
+      150.0
+     ],
+     [
+      301.0,
+      152.0
+     ],
+     [
+      302.0,
+      156.0
+     ],
+     [
+      303.0,
+      160.0
+     ]
+    ]
+   ],
+   "bpmOver": 5,
+   "paceBand": 0.05,
+   "firstKm": 4,
+   "minSimilar": 3,
+   "text": "t"
+  }
+ },
+ "cases": [
+  {
+   "plan": "mixed_easy_hard",
+   "km": 4,
+   "pace": 360.0,
+   "hr": 150.0,
+   "fires": true
+  },
+  {
+   "plan": "mixed_easy_hard",
+   "km": 4,
+   "pace": 270.0,
+   "hr": 172.0,
+   "fires": false
+  },
+  {
+   "plan": "mixed_easy_hard",
+   "km": 4,
+   "pace": 315.0,
+   "hr": 200.0,
+   "fires": false
+  },
+  {
+   "plan": "mixed_easy_hard",
+   "km": 5,
+   "pace": 360.0,
+   "hr": 144.9,
+   "fires": false
+  },
+  {
+   "plan": "mixed_easy_hard",
+   "km": 5,
+   "pace": 360.0,
+   "hr": 145.0,
+   "fires": true
+  },
+  {
+   "plan": "mixed_easy_hard",
+   "km": 3,
+   "pace": 360.0,
+   "hr": 190.0,
+   "fires": false
+  },
+  {
+   "plan": "mixed_easy_hard",
+   "km": 6,
+   "pace": 360.0,
+   "hr": 190.0,
+   "fires": false
+  },
+  {
+   "plan": "median_154",
+   "km": 4,
+   "pace": 305.0,
+   "hr": 159.0,
+   "fires": true
+  },
+  {
+   "plan": "median_154",
+   "km": 4,
+   "pace": 305.0,
+   "hr": 158.0,
+   "fires": false
+  },
+  {
+   "plan": "median_154",
+   "km": 3,
+   "pace": 305.0,
+   "hr": 190.0,
+   "fires": false
+  },
+  {
+   "plan": "median_154",
+   "km": 4,
+   "pace": 289.0,
+   "hr": 170.0,
+   "fires": false
+  },
+  {
+   "plan": "median_154",
+   "km": 4,
+   "pace": 320.0,
+   "hr": 170.0,
+   "fires": false
+  },
+  {
+   "plan": "four_similar_even_median",
+   "km": 4,
+   "pace": 301.0,
+   "hr": 159.0,
+   "fires": true
+  },
+  {
+   "plan": "four_similar_even_median",
+   "km": 4,
+   "pace": 301.0,
+   "hr": 158.9,
+   "fires": false
+  }
+ ]
+}

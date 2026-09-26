@@ -7,24 +7,29 @@ import 'package:run_solo/widgets/rep_bars.dart';
 
 // Reviewer P3 on #27: the rep bars follow the record screen's rule. Flat
 // only when the delta AS SHOWN (whole seconds, display unit) is 0.
-Future<void> _pump(WidgetTester tester, double delta, Units units) =>
-    tester.pumpWidget(
-      MaterialApp(
-        theme: runSoloTheme(),
-        home: Scaffold(
-          body: RepBars(
-            units: units,
-            reps: [
-              RepBarDatum(
-                label: 'R1',
-                paceSecPerKm: 285 + delta,
-                ghostSecPerKm: 285,
-              ),
-            ],
+Future<void> _pump(
+  WidgetTester tester,
+  double delta,
+  Units units, {
+  int? repMetres,
+}) => tester.pumpWidget(
+  MaterialApp(
+    theme: runSoloTheme(),
+    home: Scaffold(
+      body: RepBars(
+        units: units,
+        reps: [
+          RepBarDatum(
+            label: 'R1',
+            paceSecPerKm: 285 + delta,
+            ghostSecPerKm: 285,
+            repMetres: repMetres,
           ),
-        ),
+        ],
       ),
-    );
+    ),
+  ),
+);
 
 DeltaDirection? _glyph(WidgetTester tester) {
   final g = find.byType(DeltaGlyph);
@@ -56,6 +61,32 @@ void main() {
     expect(_glyph(tester), isNull);
     await _pump(tester, 0.4, Units.mi);
     expect(find.text('1'), findsOneWidget);
+    expect(_glyph(tester), DeltaDirection.down);
+  });
+
+  // #28 review P1: rep-time sessions (8 × 400 m) show whole seconds per rep
+  // under the same rule: flat only when that is 0, arrow from the sign.
+  testWidgets('400 m reps: 2.5 s/km faster is "1" with the faster arrow', (
+    tester,
+  ) async {
+    await _pump(tester, -2.5, Units.km, repMetres: 400);
+    expect(find.text('1'), findsOneWidget);
+    expect(_glyph(tester), DeltaDirection.up);
+  });
+
+  testWidgets('400 m reps: 0.9 s/km slower rounds to ±0 per rep, no glyph', (
+    tester,
+  ) async {
+    await _pump(tester, 0.9, Units.km, repMetres: 400);
+    expect(find.text('±0'), findsOneWidget);
+    expect(_glyph(tester), isNull);
+  });
+
+  testWidgets('400 m reps: 3.75 s/km slower is "2" slower in mi too', (
+    tester,
+  ) async {
+    await _pump(tester, 3.75, Units.mi, repMetres: 400);
+    expect(find.text('2'), findsOneWidget);
     expect(_glyph(tester), DeltaDirection.down);
   });
 }

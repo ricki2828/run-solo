@@ -11,7 +11,11 @@ enum BestEffortDistance {
   km1('be:1000', 1000, 400),
   mile('be:1609', 1609.344, 400),
   k5('be:5000', 5000, 1000),
-  k10('be:10000', 10000, 1000);
+  k10('be:10000', 10000, 1000),
+
+  /// Half and marathon (GOAL runs, plan §G).
+  half('be:21097', 21097.5, 1000),
+  marathon('be:42195', 42195, 1000);
 
   const BestEffortDistance(this.key, this.metres, this.splitEveryM);
 
@@ -81,12 +85,63 @@ class BestEffort {
   );
 }
 
+/// The most distance inside [seconds] of clean running (GOAL time boards,
+/// plan §G): `be:t1800` (30 min), `be:t3600` (60 min). Higher is better.
+enum BestTimeWindow {
+  min30('be:t1800', 1800),
+  min60('be:t3600', 3600);
+
+  const BestTimeWindow(this.key, this.seconds);
+
+  final String key;
+  final int seconds;
+
+  static BestTimeWindow? ofKey(String key) {
+    for (final w in values) {
+      if (w.key == key) return w;
+    }
+    return null;
+  }
+}
+
+/// The most distance one run covered in a [window].
+class BestDistance {
+  const BestDistance({
+    required this.window,
+    required this.metres,
+    required this.startMs,
+    required this.startOffsetM,
+  });
+
+  final BestTimeWindow window;
+  final double metres;
+  final int startMs;
+  final double startOffsetM;
+
+  Map<String, Object?> toJson() => {
+    'metres': double.parse(metres.toStringAsFixed(1)),
+    'start_ms': startMs,
+    'start_offset_m': double.parse(startOffsetM.toStringAsFixed(1)),
+  };
+
+  factory BestDistance.fromJson(
+    BestTimeWindow window,
+    Map<String, Object?> json,
+  ) => BestDistance(
+    window: window,
+    metres: (json['metres'] as num).toDouble(),
+    startMs: json['start_ms'] as int,
+    startOffsetM: (json['start_offset_m'] as num).toDouble(),
+  );
+}
+
 /// Everything LB1 derives from one run: the board windows and the
 /// from-start splits live compare races against (plan §3.1, WARN-1).
 class RunBestEfforts {
   const RunBestEfforts({
     required this.efforts,
     required this.fromStartSplitsMs,
+    this.distances = const {},
   });
 
   static const RunBestEfforts none = RunBestEfforts(
@@ -94,20 +149,27 @@ class RunBestEfforts {
     fromStartSplitsMs: [],
   );
 
+  /// Most distance per time window (§G time boards); absent when the run
+  /// had no clean stretch that long.
+  final Map<BestTimeWindow, BestDistance> distances;
+
   /// Best window per distance; a distance the run never covered cleanly is
   /// absent.
   final Map<BestEffortDistance, BestEffort> efforts;
 
   /// Cumulative time from the Start press (run time 0) at each whole km, up
-  /// to 10, cut at the first pause, recording gap, sample gap or GPS jump.
-  /// Live compare uses the first 5 for the 5K board and all 10 for the 10K
-  /// board, and only when the list is that long. Empty for sessions that
-  /// race no distance board (intervals other than parkrun, Cooper).
+  /// to [maxFromStartKm], cut at the first pause, recording gap, sample gap
+  /// or GPS jump. Live compare uses the first 5 for the 5K board, 10 for the
+  /// 10K, 21/42 for half/marathon goals (§G), and only when the list is that
+  /// long. Empty for sessions that race no distance board (intervals other
+  /// than the event and goals, Cooper).
   final List<int> fromStartSplitsMs;
 
   Map<String, Object?> toJson() => {
     'efforts': {for (final e in efforts.values) e.distance.key: e.toJson()},
     'from_start_splits_ms': fromStartSplitsMs,
+    if (distances.isNotEmpty)
+      'distances': {for (final d in distances.values) d.window.key: d.toJson()},
   };
 
   factory RunBestEfforts.fromJson(Map<String, Object?> json) {
@@ -117,12 +179,19 @@ class RunBestEfforts {
       if (d == null) continue; // a newer engine's distance: ignore
       efforts[d] = BestEffort.fromJson(d, e.value as Map<String, Object?>);
     }
+    final distances = <BestTimeWindow, BestDistance>{};
+    for (final e in ((json['distances'] as Map?) ?? const {}).entries) {
+      final w = BestTimeWindow.ofKey(e.key as String);
+      if (w == null) continue;
+      distances[w] = BestDistance.fromJson(w, e.value as Map<String, Object?>);
+    }
     return RunBestEfforts(
       efforts: efforts,
       fromStartSplitsMs: [
         for (final s in (json['from_start_splits_ms'] as List? ?? const []))
           s as int,
       ],
+      distances: distances,
     );
   }
 }
@@ -175,7 +244,7 @@ class BestEffortFinder {
     // A parkrun is one continuous 5 km step from the Start press, so the
     // whole run is its work; it does not wait on rep detection (a
     // single-lap session has none).
-    final pool = analysis.mode == RunMode.intervals && !_isParkrun(analysis)
+    final pool = analysis.mode == RunMode.intervals && !_searchWhole(analysis)
         ? _clipToWorkReps(stretches, analysis)
         : stretches;
 
@@ -196,22 +265,88 @@ class BestEffortFinder {
         avgHr: run.hasHr ? Trace(run.samples).meanHr(startMs, endMs) : null,
       );
     }
+    final distances = <BestTimeWindow, BestDistance>{};
+    for (final w in BestTimeWindow.values) {
+      final best = _mostDistance(pool, w.seconds * 1000.0);
+      if (best == null) continue;
+      distances[w] = BestDistance(
+        window: w,
+        metres: best.$2,
+        startMs: best.$1.round(),
+        startOffsetM: best.$3 - pts.first.d,
+      );
+    }
     return RunBestEfforts(
       efforts: efforts,
       fromStartSplitsMs: _racesDistanceBoards(analysis)
           ? _fromStartSplits(run, stretches)
           : const [],
+      distances: distances,
     );
   }
 
-  static bool _isParkrun(RunAnalysis a) =>
-      a.comparisonKey != null && ComparisonKey.isParkrun(a.comparisonKey!);
+  /// The event and GOAL runs (§G) are one continuous step from the Start
+  /// press: the whole run is searched, not clipped to detected reps.
+  static bool _searchWhole(RunAnalysis a) {
+    final k = a.comparisonKey;
+    return k != null && (ComparisonKey.isParkrun(k) || ComparisonKey.isGoal(k));
+  }
 
   static bool _racesDistanceBoards(RunAnalysis a) => switch (a.mode) {
     RunMode.free || RunMode.laps => true,
     RunMode.cooper => false,
-    RunMode.intervals => _isParkrun(a),
+    RunMode.intervals => _searchWhole(a),
   };
+
+  /// Longest from-Start ghost (a marathon goal, §G).
+  static const int maxFromStartKm = 42;
+
+  /// The most distance inside any [ms] window of a clean stretch, as
+  /// (start time, metres, start distance); null when no stretch is that
+  /// long. Distance over a fixed-length window is piecewise linear in its
+  /// start, so starts and ends on samples are the candidates.
+  static (double, double, double)? _mostDistance(
+    List<List<_Pt>> pool,
+    double ms,
+  ) {
+    (double, double, double)? best;
+    void consider(double start, double metres, double startD) {
+      if (best == null || metres > best!.$2 + 1e-6) {
+        best = (start, metres, startD);
+      }
+    }
+
+    // Distance at [t] with a forward-only cursor (both passes move
+    // monotonically), so a pass is O(n).
+    double at(List<_Pt> p, double t, List<int> cur) {
+      var i = cur[0];
+      while (i + 1 < p.length && p[i + 1].t < t) {
+        i++;
+      }
+      cur[0] = i;
+      if (t <= p.first.t) return p.first.d;
+      if (t >= p.last.t) return p.last.d;
+      final a = p[i];
+      final b = p[i + 1];
+      return a.d + (t - a.t) / (b.t - a.t) * (b.d - a.d);
+    }
+
+    for (final p in pool) {
+      if (p.last.t - p.first.t < ms) continue;
+      final fwd = [0];
+      final back = [0];
+      for (final q in p) {
+        if (q.t + ms <= p.last.t) {
+          consider(q.t, at(p, q.t + ms, fwd) - q.d, q.d);
+        }
+        if (q.t - ms >= p.first.t) {
+          final d0 = at(p, q.t - ms, back);
+          consider(q.t - ms, q.d - d0, d0);
+        }
+      }
+    }
+    return best;
+  }
 
   /// Runs of consecutive samples with no pause, gap span, long sample gap
   /// or single-sample spike between them. Samples written inside a pause
@@ -383,7 +518,7 @@ class BestEffortFinder {
     }
     final out = <int>[];
     var k = 0;
-    for (var km = 1; km <= 10; km++) {
+    for (var km = 1; km <= maxFromStartKm; km++) {
       final mark = first.distM + km * 1000.0;
       if (p.last.d < mark) break;
       while (p[k].d < mark) {

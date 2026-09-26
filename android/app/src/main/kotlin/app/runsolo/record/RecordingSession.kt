@@ -402,7 +402,7 @@ class RecordingSession(
         handle(core.tick(t, ticker.distanceM, gpsOk = !lost), t)
         dispatch.ticked(t, ticker.distanceM)
         // Free / Laps: a whole km crossed in this tick says its compare, if there is one.
-        coach.onTick(coachPrevT, coachPrevD, t, ticker.distanceM) { core.status(it).activeMs }?.let { speakFire(null, it.base, it.fire, t) }
+        coach.onTick(coachPrevT, coachPrevD, t, ticker.distanceM, samples.last().hr) { core.status(it).activeMs }?.let { speakFire(null, it.base, it.fire, t, it.nudge) }
         coachPrevT = t
         coachPrevD = ticker.distanceM
         val last = samples.last()
@@ -665,7 +665,7 @@ class RecordingSession(
         val st = core.status(o.t)
         val next = if (st.stepRemainingM != null) null else st.phaseRemainingMs
         val fire = coach.atCue(o.kind, o.index, o.value, core.phase, core.stepIndex, st.phaseActiveMs, next)
-        speakFire(o.kind, cueText(o), fire, o.t)
+        speakFire(o.kind, cueText(o), fire, o.t, coach.nudgeAtCue(o.kind, core.phase))
         RecorderEventBus.emit(CueEvent(kind = o.kind.toPigeon(), value = o.value))
     }
 
@@ -674,9 +674,15 @@ class RecordingSession(
      * extra); a compare also goes to the journal (`cf`, so a restore never repeats it) and to the
      * app as a [CompareEvent] for the overlay, muted or not. [kind] null = a Free run's km split.
      */
-    private fun speakFire(kind: CueKind?, base: String?, fire: LiveCoach.Fire?, t: Long) {
+    private fun speakFire(kind: CueKind?, base: String?, fire: LiveCoach.Fire?, t: Long, nudge: LiveCoach.Nudge? = null) {
         val extra = fire?.takeIf { it.speak }?.text
-        if (kind != null || base != null || extra != null) cues.play(kind, base, extra)
+        val said = if (kind != null || base != null || extra != null || nudge != null) cues.play(kind, base, extra, nudge?.text) else null
+        // A nudge is journaled only when it was said (the budget or the 3 s rule can drop it): the
+        // next run's `blocked` list comes from these lines.
+        if (nudge != null && said?.nudgeSpoken == true) {
+            writer.append(JournalLine.CueFired(t, System.currentTimeMillis(), JournalLine.FiredKind.nudge, nudge.rule, nudge.index, core.status(t).elapsedMs))
+            Log.i(TAG, "nudge ${nudge.rule}#${nudge.index}")
+        }
         fire ?: return
         val st = core.status(t)
         writer.append(JournalLine.CueFired(t, System.currentTimeMillis(), JournalLine.FiredKind.compare, fire.key, fire.index, st.elapsedMs))
