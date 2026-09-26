@@ -61,7 +61,7 @@ void main() {
     expect(c.boardKey, engine.BestEffortDistance.k5.key);
     expect(
       c.label,
-      matches(RegExp(r'^#2 of 2 5Ks · (\d+ s|\d+:\d\d) off your best$')),
+      matches(RegExp(r'^#2 of 2 5Ks · (\d+\u00A0s|\d+:\d\d) off your best$')),
     );
   });
 
@@ -96,7 +96,9 @@ void main() {
       expect(
         chips(boards, c).single.label,
         matches(
-          RegExp(r'^#3 of 3 Norwegian 4x4 sessions · \d+ s/km off your best$'),
+          RegExp(
+            r'^#3 of 3 Norwegian 4x4s · \d+\u00A0s/\u2060km off your best$',
+          ),
         ),
       );
     },

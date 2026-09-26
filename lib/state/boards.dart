@@ -99,7 +99,7 @@ class Boards {
         label: board.length == 1
             ? 'First ${_one(k, names)} on your board'
             : '#${board.rankOf(runId)} of ${board.length} '
-                  '${_many(k, names)} · ${_gap(k, board, runId, units)}',
+                  '${_many(k, names)} · ${_keep(_gap(k, board, runId, units))}',
         pb: false,
       ),
     ];
@@ -132,9 +132,25 @@ class Boards {
       engine.BestEffortDistance.mile => 'miles',
       engine.BestEffortDistance.k5 => '5Ks',
       engine.BestEffortDistance.k10 => '10Ks',
-      null => '${_names[key] ?? 'session'} sessions',
+      null => _sessionPlural(_names[key]),
     },
   };
+
+  /// A10.3's "Norwegian 4x4s": a name ending in a digit takes an s, one
+  /// ending in s stands as it is ("Yasso 800s"), anything else is "…
+  /// sessions" ("8 × 400 m sessions").
+  static String _sessionPlural(String? name) {
+    if (name == null) return 'sessions';
+    final last = name.codeUnitAt(name.length - 1);
+    if (last >= 0x30 && last <= 0x39) return '${name}s';
+    if (name.endsWith('s')) return name;
+    return '$name sessions';
+  }
+
+  /// Keeps "21 s/km off your best" on one line: a no-break space before
+  /// the unit and a word joiner after the slash.
+  static String _keep(String s) =>
+      s.replaceAll(' s/', '\u00A0s/\u2060').replaceAll(' s off', '\u00A0s off');
 
   /// The board's value as a runner reads it: a time, a pace, or the VO2
   /// estimate (which says so).

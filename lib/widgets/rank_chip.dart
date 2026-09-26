@@ -68,7 +68,6 @@ class _RankChipState extends State<RankChip>
         horizontal: Space.x16,
         vertical: Space.x4,
       ),
-      alignment: Alignment.center,
       decoration: BoxDecoration(
         color: widget.pb ? t.accentArc : Colors.transparent,
         borderRadius: BorderRadius.circular(Radii.pill),
