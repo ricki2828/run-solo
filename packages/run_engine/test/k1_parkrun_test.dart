@@ -436,4 +436,48 @@ void main() {
       expect(s.steps.single.value, 5000);
     });
   });
+
+  group('no warm-up (founder 26-Sep)', () {
+    test('parkrun: warm-up 0 = none, valid, round trips', () {
+      final s = SessionSpec.parkrun('x');
+      expect(s.warmupSeconds, 0);
+      expect(s.validate(), isEmpty);
+      expect(SessionSpec.fromJson(s.toJson()), s);
+    });
+
+    test('0 is only "none" for the warm-up', () {
+      SessionSpec with_({int? warmup, int? cooldown}) => SessionSpec(
+        templateId: 'custom:x',
+        templateVersion: 1,
+        name: 'x',
+        warmupSeconds: warmup,
+        cooldownSeconds: cooldown,
+        steps: const [SessionStep.workDistance(1000, rep: 1)],
+      );
+      expect(with_(warmup: 0).validate(), isEmpty);
+      expect(with_(warmup: 300).validate(), isEmpty);
+      expect(with_(warmup: 100).validate(), isNotEmpty);
+      expect(with_(cooldown: 0).validate(), isNotEmpty);
+    });
+
+    test('recorded from Start: one lap from 0 is the 5 km', () {
+      final run = parkrun(laps: LapStyle.none);
+      final one = run.copyWith(
+        laps: [
+          Lap(
+            index: 0,
+            t0Ms: 0,
+            t1Ms: run.elapsedMs,
+            d0M: 0,
+            d1M: run.distanceM,
+            kind: LapKind.auto,
+          ),
+        ],
+      );
+      final a = analyze(one);
+      expect(a.detection!.warmup, isEmpty);
+      expect(a.detection!.reps.single.work.t0Ms, 0);
+      expect(a.verdict!.headline, VerdictHeadline.baselineSet);
+    });
+  });
 }

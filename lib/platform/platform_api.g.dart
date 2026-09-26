@@ -349,7 +349,8 @@ class SessionSpec {
 
   String name;
 
-  /// null = open (ends on the first LAP / `startReps`); int = fixed seconds.
+  /// null = open (ends on the first LAP / `startReps`); 0 = none, step 1
+  /// starts at `start()` (parkrun); otherwise fixed seconds (300..1200).
   int? warmupSeconds;
 
   /// null = open (runs until Stop); int = fixed seconds.

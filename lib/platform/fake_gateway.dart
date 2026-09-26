@@ -218,7 +218,10 @@ class FakeRecorderGateway implements RecorderGateway {
     _phase = Phase.none;
     _state = RecorderState.recording;
     _emitState();
-    if (_timed != null) {
+    if (_timed != null && _timed!.warmupSeconds == 0) {
+      // No warm-up (parkrun): step 1 starts at Start, no warm-up lap.
+      _enter(Phase.work, 1);
+    } else if (_timed != null) {
       _phase = Phase.warmup;
       // A fixed warm-up counts down and starts rep 1 on its own.
       final w = _timed!.warmupSeconds;

@@ -142,7 +142,8 @@ class SessionSpec {
   final int templateVersion;
   final String name;
 
-  /// null = open ("tap START REPS when ready" / "stop when done").
+  /// null = open ("tap START REPS when ready" / "stop when done"); for the
+  /// warm-up, 0 = none (step 1 starts at Start, parkrun).
   final int? warmupSeconds;
   final int? cooldownSeconds;
 
@@ -204,10 +205,13 @@ class SessionSpec {
   /// The Saturday 5 km time trial (K1): one 5000 m step from the Start
   /// press, auto-stop at 5.00 km. [name] is the flavour's event name
   /// (`EventNames.parkrun`), never a literal here.
+  /// No warm-up (founder, 26-Sep): Start at the line begins the timed
+  /// 5 km, the recording stops itself at 5.00 km.
   static SessionSpec parkrun(String name) => SessionSpec(
     templateId: parkrunId,
     templateVersion: 1,
     name: name,
+    warmupSeconds: 0,
     autoStop: true,
     steps: const [SessionStep.workDistance(5000, rep: 1)],
   );
@@ -269,8 +273,10 @@ class SessionSpec {
       ('warmup', warmupSeconds),
       ('cooldown', cooldownSeconds),
     ]) {
+      // A warm-up of 0 is "none": step 1 starts at Start (parkrun).
+      if (label == 'warmup' && v == 0) continue;
       if (v != null && (v < 300 || v > 1200)) {
-        out.add('$label must be open or 300..1200 s');
+        out.add('$label must be open, 0 or 300..1200 s');
       }
     }
     if (steps.isEmpty) {

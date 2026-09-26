@@ -327,7 +327,9 @@ abstract final class Glyph {
   /// (kind, seconds) per bar, warm-up and cool-down included.
   static List<(GlyphBar, double)> durations(engine.SessionSpec spec) {
     final out = <(GlyphBar, double)>[
-      (GlyphBar.open, (spec.warmupSeconds ?? openMinutes * 60).toDouble()),
+      // No bar for "no warm-up" (0, parkrun).
+      if (spec.warmupSeconds != 0)
+        (GlyphBar.open, (spec.warmupSeconds ?? openMinutes * 60).toDouble()),
     ];
     double? prevWork;
     for (final s in spec.steps) {
