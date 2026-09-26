@@ -823,6 +823,7 @@ void main() {
         GpsProbeEvent(fix: true, accuracyM: 6),
       );
       await pumpTimes(tester, 4);
+      await tester.pump(const Duration(milliseconds: 400)); // button enables
       await golden(tester, 'start_event_360x$h');
 
       final fake = FakeRecorderGateway(now: now)
