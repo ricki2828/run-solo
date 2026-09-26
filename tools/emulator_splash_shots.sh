@@ -26,11 +26,14 @@ shoot() { # <name> <record seconds>
     sleep 0.3
   done
   wait "$rec" || true
+  # The settled first route (onboarding on a first launch): cold debug starts
+  # on CI take 3-5 s, so the stills above can all still be the system splash.
+  adb exec-out screencap -p > "$OUT/$name-settled.png" 2> /dev/null || true
   adb pull "/sdcard/$name.mp4" "$OUT/$name.mp4" > /dev/null 2>&1 || true
 }
 
 adb shell pm clear "$PKG" > /dev/null || true
-shoot first-launch-full 5
-shoot second-launch-short 4
+shoot first-launch-full 10
+shoot second-launch-short 8
 ls -la "$OUT" || true
 exit 0
