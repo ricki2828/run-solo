@@ -17,6 +17,39 @@ env:
   JAVA_VERSION: '17'
 
 jobs:
+  changes:
+    # CI diet: the emulator jobs (8 replays + 3 smokes + dogfood smoke) saturate the runners.
+    # They run in full on main, tags and manual runs, and on PRs that touch the native side;
+    # other PRs get the API 34 smoke only. Skipped jobs report "skipped", which GitHub counts
+    # as passing for required checks, and cost no runner.
+    name: which paths changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      native: ${{ steps.diff.outputs.native }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "native=true" >> "$GITHUB_OUTPUT"; echo "not a PR: full emulator set"; exit 0
+          fi
+          changed=$(git diff --name-only "$BASE...$HEAD")
+          echo "$changed"
+          # android/ includes android/core-jvm. The workflow itself and pubspec (plugins ship
+          # native code) count too, so a CI or plugin change is always tested in full.
+          if echo "$changed" | grep -qE '^(android/|pigeons/|packages/run_engine/test/fixtures/contract|tools/emulator_|tools/check_replay_run\.py|\.github/workflows/|pubspec\.(yaml|lock)$)'; then
+            echo "native=true" >> "$GITHUB_OUTPUT"; echo "native paths changed: full emulator set"
+          else
+            echo "native=false" >> "$GITHUB_OUTPUT"; echo "no native paths: API 34 smoke only"
+          fi
+
   flutter:
     name: analyze + test (app, run_engine)
     runs-on: ubuntu-latest
@@ -376,13 +409,14 @@ jobs:
 
   emulator:
     name: emulator smoke (API ${{ matrix.api-level }})
-    needs: build-apk
+    needs: [build-apk, changes]
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        api-level: [29, 34, 36]
+        # API 34 on every PR; 29 and 36 on main and when native paths change (changes job).
+        api-level: ${{ fromJSON(needs.changes.outputs.native == 'true' && '[29, 34, 36]' || '[34]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -426,7 +460,8 @@ jobs:
     # I5: one replay per session kind through the real service; the run file must match the
     # core-jvm fixture recorded from the same trace (tools/check_replay_run.py).
     name: emulator replay ${{ matrix.kind }} (API 34)
-    needs: build-apk
+    needs: [build-apk, changes]
+    if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -461,7 +496,8 @@ jobs:
 
   emulator-dogfood:
     name: emulator smoke, dogfood R8 build (API 36)
-    needs: build-dogfood
+    needs: [build-dogfood, changes]
+    if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
