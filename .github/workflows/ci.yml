@@ -21,7 +21,8 @@ jobs:
     # CI diet: the emulator jobs (8 replays + 3 smokes + dogfood smoke) saturate the runners.
     # They run in full on main, tags and manual runs, and on PRs that touch the native side;
     # other PRs get the API 34 smoke only. Skipped jobs report "skipped", which GitHub counts
-    # as passing for required checks, and cost no runner.
+    # as passing for required checks, and cost no runner. If this job fails, the gated jobs run
+    # the full set instead of skipping (their `if` checks needs.changes.result).
     name: which paths changed
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -410,13 +411,16 @@ jobs:
   emulator:
     name: emulator smoke (API ${{ matrix.api-level }})
     needs: [build-apk, changes]
+    # Fail-safe: if `changes` itself failed, run the full set instead of skipping (a skipped job
+    # reads as passing). always() so a failed `changes` does not skip this job by default.
+    if: ${{ !cancelled() && needs.build-apk.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         # API 34 on every PR; 29 and 36 on main and when native paths change (changes job).
-        api-level: ${{ fromJSON(needs.changes.outputs.native == 'true' && '[29, 34, 36]' || '[34]') }}
+        api-level: ${{ fromJSON((needs.changes.result != 'success' || needs.changes.outputs.native == 'true') && '[29, 34, 36]' || '[34]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -461,7 +465,8 @@ jobs:
     # core-jvm fixture recorded from the same trace (tools/check_replay_run.py).
     name: emulator replay ${{ matrix.kind }} (API 34)
     needs: [build-apk, changes]
-    if: needs.changes.outputs.native == 'true'
+    # Runs on native changes, and fail-safe when `changes` failed (never skip-as-green).
+    if: ${{ !cancelled() && needs.build-apk.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.native == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -497,7 +502,8 @@ jobs:
   emulator-dogfood:
     name: emulator smoke, dogfood R8 build (API 36)
     needs: [build-dogfood, changes]
-    if: needs.changes.outputs.native == 'true'
+    # Runs on native changes, and fail-safe when `changes` failed (never skip-as-green).
+    if: ${{ !cancelled() && needs.build-dogfood.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.native == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
