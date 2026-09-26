@@ -315,7 +315,7 @@ void main() {
       // Notification LAP at 60 s starts rep 1. The press (lapPending) shows
       // it at once, before the deferred lap line; the ring fires once.
       await trace.playThroughFirst('lapPending');
-      expect(phaseTitle(ctl.snapshot), 'REP 1 OF 4');
+      expect(phaseTitle(ctl.snapshot), 'REP 1 OF 4 · 4:00');
       expect(ctl.lapPulse.value, 1);
       expect(ctl.snapshot.lapIndex, 1);
       expect(ctl.snapshot.phaseRemainingMs, 240000);

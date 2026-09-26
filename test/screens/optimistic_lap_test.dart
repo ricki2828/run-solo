@@ -64,18 +64,18 @@ void main() {
 
     await ctl.startReps();
     await pumpTimes(tester, 3);
-    expect(find.text('REP 1 OF 4'), findsOneWidget);
+    expect(find.textContaining('REP 1 OF 4'), findsOneWidget);
     expect(ctl.displayRemainingMs, greaterThan(239 * 1000));
     fake.advance(const Duration(seconds: 1));
     await pumpTimes(tester, 3);
-    expect(find.text('REP 1 OF 4'), findsOneWidget);
+    expect(find.textContaining('REP 1 OF 4'), findsOneWidget);
 
     fake.advance(const Duration(seconds: 60));
     await pumpTimes(tester, 3);
     final completes = ctl.repCompletePulse.value;
     await ctl.lap();
     await pumpTimes(tester, 3);
-    expect(find.text('RECOVERY 1 OF 3'), findsOneWidget);
+    expect(find.textContaining('RECOVERY 1 OF 3'), findsOneWidget);
     expect(ctl.repCompletePulse.value, completes + 1);
     expect(ctl.snapshot.repPaces, isEmpty);
 
@@ -85,7 +85,7 @@ void main() {
     await pumpTimes(tester, 3);
     expect(ctl.snapshot.repPaces, hasLength(1));
     expect(ctl.repCompletePulse.value, completes + 1);
-    expect(find.text('RECOVERY 1 OF 3'), findsOneWidget);
+    expect(find.textContaining('RECOVERY 1 OF 3'), findsOneWidget);
   });
 
   testWidgets('a LapEvent that never lands is reconciled from status()', (
@@ -154,5 +154,9 @@ void main() {
     expect(s.currentStep!.kind, StepKind.recovery);
     expect(s.currentStep!.repIndex, 1);
     expect(s.metresToGo, 200, reason: 'the 200 m recovery, from its start');
+    // The held LapEvent lands on the next tick (no reconcile timer left).
+    fake.advance(const Duration(seconds: 1));
+    await pumpTimes(tester, 3);
+    expect(ctl.snapshot.repPaces, hasLength(1));
   });
 }

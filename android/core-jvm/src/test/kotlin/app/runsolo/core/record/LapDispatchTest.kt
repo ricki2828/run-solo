@@ -36,7 +36,7 @@ class LapDispatchTest {
     }
 
     @Test
-    fun `pressed - a manual lap with the phase it starts; active time from the previous, still waiting lap`() {
+    fun `pressed - a manual lap with the phase it starts, active time from the previous lap still waiting`() {
         val active = { t: Long -> t - 100 } // 100 ms paused before anything here
         dispatch.ticked(1_000, 10.0)
         val a = lap(0, 1_250, LapSource.button)
