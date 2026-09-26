@@ -50,7 +50,7 @@ class LiveWordsTest {
         )
         assertEquals("Best of 7 so far, 9 seconds up.", LiveWords.compare(r(CompareKind.distance, 1, 7, label = "5K", deltaMs = -9_000)))
         assertEquals("12 seconds behind last time.", LiveWords.compare(r(CompareKind.distance, 2, 2, label = "5K", deltaMs = 12_000)))
-        assertEquals("6 minutes. Heading for about 2,780. VO2 about 51. Second best so far.", CueComposer.compose(CooperProjection.cue(6, 2_780.0), LiveWords.compare(r(CompareKind.cooper, 2, 4, deltaVo2 = -1.0))).text)
+        assertEquals("6 minutes. Heading for about 2,780. VO2 about 51. 2nd of 4 so far.", CueComposer.compose(CooperProjection.cue(6, 2_780.0), LiveWords.compare(r(CompareKind.cooper, 2, 4, deltaVo2 = -1.0))).text)
         assertEquals("On pace for 24:12. 8 seconds up on your predicted 24:30.", CueComposer.compose("On pace for 24:12", LiveWords.compare(r(CompareKind.target, 1, 1, label = "predicted", deltaMs = -8_000, value = 1_470_000.0))).text)
         assertEquals("Recover. Best start to this session you've had.", CueComposer.compose("Recover", LiveWords.compare(r(CompareKind.intervals, 1, 5, index = 3, deltaSec = -2.0))).text)
         assertEquals("3rd of 7, 1 second off your best.", LiveWords.compare(r(CompareKind.distance, 3, 7, deltaMs = 1_000)))

@@ -41,10 +41,13 @@ object CueWords {
                 step.kind == StepKind.work && cooper -> "Twelve minutes. Go"
                 // A goal or the timed 5 km is one step, not reps: say what it is ("10 K. Go", "30 minutes. Go").
                 step.kind == StepKind.work && (spec!!.isGoal || spec.isEvent) -> "${spec.spoken}. Go"
-                step.kind == StepKind.work && short -> "Go"
+                // The last rep says so in its own start line (#79 review: "Rep 8 of 8" + "Last rep"
+                // were two lines at once); the `lastRep` cue itself is silent.
+                step.kind == StepKind.work && short -> if (lastRep(spec!!, repIndex)) "Last rep. Go" else "Go"
                 step.kind == StepKind.work && step.target == TargetKind.distance ->
-                    "Rep $repIndex of ${spec!!.reps}, ${metres(step.value.toDouble())}"
-                step.kind == StepKind.work -> "Go. Rep $repIndex"
+                    (if (lastRep(spec!!, repIndex)) "Last rep, $repIndex of ${spec.reps}, " else "Rep $repIndex of ${spec.reps}, ") +
+                        metres(step.value.toDouble())
+                step.kind == StepKind.work -> if (lastRep(spec!!, repIndex)) "Go. Last rep, $repIndex of ${spec.reps}" else "Go. Rep $repIndex"
                 short -> "Easy"
                 else -> when (step.style) {
                     RecoveryStyle.walk -> "Walk"
@@ -64,7 +67,7 @@ object CueWords {
             }
             CueKind.stop -> "Run saved"
             CueKind.distanceToGo -> "100 metres to go"
-            CueKind.lastRep -> "Last rep"
+            CueKind.lastRep -> null
             CueKind.minuteMark -> value?.let { m -> val n = m.roundToInt(); if (n == 1) "1 minute" else "$n minutes" }
             CueKind.countdown -> null // three tones, no words
             // Cooper: "5 minutes. Heading for about 2,740. VO2 about 50." (index = the minute); the
@@ -92,6 +95,9 @@ object CueWords {
         val mins = if (m == 1L) "1 minute" else "$m minutes"
         return if (rest == 0L) mins else "$mins $rest"
     }
+
+    /** The recorder's `lastRep` rule: the last work step of a session with more than one rep. */
+    private fun lastRep(spec: SessionSpec, repIndex: Int): Boolean = spec.reps > 1 && repIndex == spec.reps
 
     /** mm:ss (h:mm:ss past an hour) of a duration in ms. */
     fun clock(ms: Double): String {

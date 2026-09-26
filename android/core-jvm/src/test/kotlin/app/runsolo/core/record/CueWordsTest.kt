@@ -46,7 +46,11 @@ class CueWordsTest {
         assertEquals("Cool-down done", say(CueKind.phaseEnd, eight400, Phase.cooldown, 8, null, CueWords.COOLDOWN_OVER))
         assertEquals("Time. Cool down", say(CueKind.phaseEnd, SessionSpec.COOPER, Phase.cooldown, 1, null))
         assertEquals("100 metres to go", say(CueKind.distanceToGo, eight400, Phase.work, 1, 0))
-        assertEquals("Last rep", say(CueKind.lastRep, eight400, Phase.work, 8, 14))
+        // The last rep says so in its start line; the lastRep cue is silent (#79 review).
+        assertNull(say(CueKind.lastRep, eight400, Phase.work, 8, 14))
+        assertEquals("Last rep, 8 of 8, 400 metres", say(CueKind.start, eight400, Phase.work, 8, 14))
+        assertEquals("Go. Last rep, 4 of 4", say(CueKind.start, SessionSpec.norwegian4x4(), Phase.work, 4, 6))
+        assertEquals("Last rep. Go", say(CueKind.start, SessionSpec.norwegian4x4(4, 30, 30).copy(cueProfile = CueProfile.short), Phase.work, 4, 6))
         assertEquals("1 minute", say(CueKind.minuteMark, SessionSpec.COOPER, Phase.work, 1, 0, 1.0))
         assertEquals("7 minutes", say(CueKind.minuteMark, SessionSpec.COOPER, Phase.work, 1, 0, 7.0))
         assertNull(say(CueKind.countdown, SessionSpec.COOPER, Phase.work, 1, 0))

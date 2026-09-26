@@ -70,7 +70,7 @@ object LiveWords {
         return if (r.of > 2) {
             when (r.rank) {
                 1 -> "Best start to this session you've had."
-                else -> "Number ${r.rank} of ${r.of} after ${r.index} ${if (r.index == 1) "rep" else "reps"}."
+                else -> "${ordinal(r.rank)} of ${r.of} after ${r.index} ${if (r.index == 1) "rep" else "reps"}."
             }
         } else {
             when {
@@ -81,13 +81,9 @@ object LiveWords {
         }
     }
 
+    // One rank pattern with the distance compare (#79 review): "Best of 5 so far.", "2nd of 5 so far."
     private fun cooper(r: CompareResult): String = if (r.of > 2) {
-        when (r.rank) {
-            1 -> "Best so far."
-            2 -> "Second best so far."
-            3 -> "Third best so far."
-            else -> "Number ${r.rank} of ${r.of} so far."
-        }
+        if (r.rank == 1) "Best of ${r.of} so far." else "${ordinal(r.rank)} of ${r.of} so far."
     } else {
         val gap = r.deltaVo2!!.roundToInt()
         when {
