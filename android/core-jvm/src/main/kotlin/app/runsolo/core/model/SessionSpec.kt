@@ -64,6 +64,9 @@ data class SessionSpec(
     /** A GOAL run (§G): one distance or time step from Start, then an open cool-down. */
     val isGoal: Boolean get() = templateId == GOAL_ID
 
+    /** The timed 5 km event (K1): its [name] is the flavour's event name, injected by the app. */
+    val isEvent: Boolean get() = templateId == EVENT_ID
+
     /**
      * The contract's validation rules, a line-for-line mirror of the Dart `SessionSpec.validate()`
      * (same order, same messages); a list of problems, empty when valid.
@@ -152,6 +155,7 @@ data class SessionSpec(
         const val COOPER_ID = "cooper"
         const val FARTLEK_ID = "fartlek"
         const val GOAL_ID = "goal"
+        const val EVENT_ID = "parkrun" // event-name-ok: data key (the Dart `SessionSpec.parkrunId`)
 
         /** Goal step limits (§G, custom goals included). */
         val GOAL_METRES = 100..100_000

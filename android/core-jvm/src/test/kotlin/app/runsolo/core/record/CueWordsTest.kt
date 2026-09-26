@@ -62,4 +62,14 @@ class CueWordsTest {
         assertEquals("5 minutes. Heading for about 2,800. VO2 about 51.", say(CueKind.projection, SessionSpec.COOPER, Phase.work, 1, 0, 2_801.0, 5))
         assertEquals("2 minutes. Heading for about 3,690. VO2 about 71.", say(CueKind.projection, SessionSpec.COOPER, Phase.work, 1, 0, 3_690.9, 2))
     }
+
+    @Test
+    fun `a goal or the timed 5 km starts with its name, never Rep 1 of 1`() {
+        fun start(spec: SessionSpec) = CueWords.text(CueKind.start, null, spec, Phase.work, 1, 0)
+        assertEquals("10K. Go", start(SessionSpec.goalDistance(10_000, "10K")))
+        assertEquals("Half marathon. Go", start(SessionSpec.goalDistance(21_097, "Half marathon")))
+        assertEquals("30 min. Go", start(SessionSpec.goalTime(1_800, "30 min")))
+        assertEquals("5K time trial. Go", start(app.runsolo.core.replay.ReplayScenarios.PARKRUN))
+        assertEquals("Rep 1 of 8, 400 metres", start(eight400), "a one-of-many distance rep is unchanged")
+    }
 }
