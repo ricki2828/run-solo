@@ -776,9 +776,17 @@ class FileRunStore implements RunStore {
   /// isolate never copies a sample array. Test seam.
   @visibleForTesting
   Future<Map<String, engine.RunDerived?>> Function(List<DeriveJob> jobs)
-  deriveBatch = _deriveInIsolate;
+  deriveBatch = defaultDeriveBatch;
 
-  static Future<Map<String, engine.RunDerived?>> _deriveInIsolate(
+  /// What new stores use for [deriveBatch]. Tests set a no-op in
+  /// `test/flutter_test_config.dart` so no background write outlives a test
+  /// (a batch still writing index.json broke tearDown's directory delete);
+  /// the tests that exercise it opt back in with [deriveInIsolate].
+  @visibleForTesting
+  static Future<Map<String, engine.RunDerived?>> Function(List<DeriveJob> jobs)
+  defaultDeriveBatch = deriveInIsolate;
+
+  static Future<Map<String, engine.RunDerived?>> deriveInIsolate(
     List<DeriveJob> jobs,
   ) => Isolate.run(() => {for (final j in jobs) j.id: j.run()});
 
