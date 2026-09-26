@@ -1079,6 +1079,25 @@ void main() {
     await golden(tester, 'start_goal_target_360x640');
   });
 
+  // Single-tap STOP (Ricki 26-Sep): the finish screen at both sizes.
+  for (final h in [800, 640]) {
+    testWidgets('finish screen after STOP at 360 x $h', (tester) async {
+      final fake = FakeRecorderGateway(now: now)
+        ..liveSecPerKm = 285
+        ..scriptedHr = 165;
+      final run = fakeServices(recorder: fake);
+      await run.recording.start(RecordMode.free, null, Units.km);
+      for (var i = 0; i < 1500; i++) {
+        fake.advance(const Duration(seconds: 1));
+      }
+      await pumpApp(tester, run, pushRoute: Routes.recording);
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 6);
+      await tester.tap(find.byKey(const ValueKey('stop')));
+      await pumpTimes(tester, 6);
+      await golden(tester, 'record_finish_360x$h');
+    });
+  }
   // K1 course at Start (A10.10, #76 review): the known course from the
   // probe's position, pinned above START with the GPS line.
   testWidgets('event: Start with a known course at 360 x 640', (tester) async {

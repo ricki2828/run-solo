@@ -14,7 +14,6 @@ import '../theme/theme.dart';
 import '../theme/zones.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/gps_bar.dart';
-import '../widgets/hold_button.dart';
 import '../widgets/lap_button.dart';
 import '../widgets/pace_dial.dart';
 import '../widgets/zone_gauge.dart';
@@ -109,7 +108,7 @@ class _RecordingScreenState extends State<RecordingScreen>
     if (s.active && s.runId != null) _liveRunId = s.runId;
     if (s.state == RecorderState.finalising) _sawFinalising = true;
     // Auto-stop (K1 event at 5.00 km, plan §3.6): native ends the run on
-    // its own; straight to the result, as after Hold to stop.
+    // its own; straight to the result, as after SAVE.
     final auto = _liveRunId;
     if (auto != null &&
         _sawFinalising &&
@@ -131,6 +130,79 @@ class _RecordingScreenState extends State<RecordingScreen>
         SnackBar(content: Text(s.fault ?? 'Recording could not start.')),
       );
       Navigator.of(context).pop();
+    }
+  }
+
+  /// Ricki 26-Sep: one tap on STOP ends the clock there (the recorder
+  /// pauses, so the time and distance stop at the tap), then the finish
+  /// screen asks SAVE, RESUME or DISCARD.
+  bool _finishing = false;
+
+  /// TOTAL where the run will end: the start of the pause STOP made, or of
+  /// the pause it was tapped in (#88 ends a run stopped while paused there;
+  /// #89 review P1). Null when the recorder did not pause: the finish
+  /// screen then shows the live clock, since SAVE ends the run at SAVE.
+  int? _stoppedAtMs;
+
+  Future<void> _tapStop() async {
+    if (_finishing || _stopping) return;
+    final ctl = _ctl!;
+    setState(() {
+      _finishing = true;
+      _stoppedAtMs = ctl.pausedAtElapsedMs;
+    });
+    if (ctl.snapshot.recording) {
+      try {
+        await ctl.pause();
+        if (mounted) setState(() => _stoppedAtMs = ctl.pausedAtElapsedMs);
+      } catch (_) {
+        // Still recording: SAVE ends it all the same, at SAVE.
+        if (mounted) setState(() => _stoppedAtMs = null);
+      }
+    } else {
+      _stoppedAtMs ??= ctl.displayElapsedMs;
+    }
+  }
+
+  Future<void> _resumeFromFinish() async {
+    setState(() => _finishing = false);
+    await _ctl!.resume();
+  }
+
+  /// DISCARD after its confirm: the recorder drops the live run (no run
+  /// file, journal deleted); back to where the run was started from.
+  Future<void> _discard() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Discard this run?'),
+        content: const Text("It won't be saved. This can't be undone."),
+        actions: [
+          TextButton(
+            key: const ValueKey('discard-keep'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('KEEP'),
+          ),
+          TextButton(
+            key: const ValueKey('discard-confirm'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('DISCARD'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _stopping = true);
+    try {
+      await _ctl!.discard();
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _stopping = false;
+          _stopError = 'Could not discard right now. Try again.';
+        });
+      }
     }
   }
 
@@ -163,11 +235,9 @@ class _RecordingScreenState extends State<RecordingScreen>
       if (mounted) {
         setState(() {
           _stopping = false;
-          // The service is still recording (the journal is intact), so a
-          // second hold retries; recovery only lists runs that are not live.
-          _stopError =
-              'Could not save right now. Still recording. '
-              'Hold Stop again.';
+          // The service still holds the run (the journal is intact), so
+          // SAVE again retries; recovery only lists runs that are not live.
+          _stopError = 'Could not save right now. Tap SAVE again.';
         });
       }
     }
@@ -395,14 +465,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                               ),
                             ),
                             const SizedBox(width: Space.x12),
-                            Expanded(
-                              child: HoldButton(
-                                label: 'HOLD TO STOP',
-                                icon: Icons.stop,
-                                onHeld: _stop,
-                                haptics: settings.haptics,
-                              ),
-                            ),
+                            Expanded(child: _StopButton(onTap: _tapStop)),
                           ],
                         ),
                         const SizedBox(height: Space.x16),
@@ -410,7 +473,18 @@ class _RecordingScreenState extends State<RecordingScreen>
                     ),
                   ),
                 ),
-                if (s.paused) _PausedOverlay(onResume: ctl.resume),
+                if (s.paused && !_finishing)
+                  _PausedOverlay(onResume: ctl.resume, onStop: _tapStop),
+                if (_finishing)
+                  _FinishScreen(
+                    ctl: ctl,
+                    elapsedMs: _stoppedAtMs,
+                    units: settings.units,
+                    error: _stopError,
+                    onSave: _stop,
+                    onResume: _resumeFromFinish,
+                    onDiscard: _discard,
+                  ),
                 IgnorePointer(
                   child: FadeTransition(
                     opacity: _invert,
@@ -551,7 +625,7 @@ String timerCaption(RecordingSnapshot s) {
     Phase.work when s.distanceStep => 'to go',
     Phase.work => 'left in rep',
     Phase.recovery => 'to rep ${s.repIndex + 1}',
-    Phase.cooldown => 'hold Stop when done',
+    Phase.cooldown => 'tap Stop when done',
     Phase.none => '',
   };
 }
@@ -1259,9 +1333,166 @@ class _PausedHidden extends StatelessWidget {
   );
 }
 
-class _PausedOverlay extends StatelessWidget {
-  const _PausedOverlay({required this.onResume});
+/// STOP (Ricki 26-Sep): a single tap; the finish screen after it catches a
+/// pocket or accidental tap (RESUME).
+class _StopButton extends StatelessWidget {
+  const _StopButton({required this.onTap});
+  final Future<void> Function() onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Semantics(
+      button: true,
+      label: 'Stop',
+      excludeSemantics: true,
+      child: InkWell(
+        key: const ValueKey('stop'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Radii.button),
+        child: Container(
+          height: 56,
+          decoration: BoxDecoration(
+            color: t.bgRaised,
+            borderRadius: BorderRadius.circular(Radii.button),
+            border: Border.all(color: t.lineHair),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.stop, size: 20, color: t.inkPrimary),
+              const SizedBox(width: Space.x8),
+              Text(
+                'STOP',
+                style: RunSoloType.label13.copyWith(
+                  color: t.inkPrimary,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// After STOP (Ricki 26-Sep): the clock stopped at the tap. SAVE is the
+/// primary and biggest; RESUME carries on (the gap is a pause, excluded);
+/// DISCARD asks again. The time is A8-size (≥ 36 sp).
+class _FinishScreen extends StatelessWidget {
+  const _FinishScreen({
+    required this.ctl,
+    required this.elapsedMs,
+    required this.units,
+    required this.error,
+    required this.onSave,
+    required this.onResume,
+    required this.onDiscard,
+  });
+  final RecordingController ctl;
+
+  /// null: the recorder is still running (pause failed), show the live
+  /// clock.
+  final int? elapsedMs;
+  final Units units;
+  final String? error;
+  final Future<void> Function() onSave;
   final Future<void> Function() onResume;
+  final Future<void> Function() onDiscard;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final s = ctl.snapshot;
+    return ColoredBox(
+      key: const ValueKey('finish-screen'),
+      color: t.bgBase,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(Space.screenGutter),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Spacer(),
+              Text(
+                'FINISHED?',
+                textAlign: TextAlign.center,
+                style: RunSoloType.title28.copyWith(color: t.inkSecondary),
+              ),
+              const SizedBox(height: Space.x16),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  Fmt.clock(elapsedMs ?? ctl.displayElapsedMs),
+                  key: const ValueKey('finish-time'),
+                  style: RunSoloType.display96.copyWith(color: t.inkPrimary),
+                ),
+              ),
+              Text(
+                goalDistanceText(s.totalDistanceM, units),
+                key: const ValueKey('finish-distance'),
+                textAlign: TextAlign.center,
+                style: RunSoloType.display44.copyWith(color: t.inkSecondary),
+              ),
+              const Spacer(),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: Space.x12),
+                  child: Text(
+                    error!,
+                    style: RunSoloType.body15.copyWith(color: t.semDanger),
+                  ),
+                ),
+              FilledButton(
+                key: const ValueKey('finish-save'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(96),
+                  textStyle: RunSoloType.display44,
+                ),
+                onPressed: onSave,
+                child: const Text('SAVE'),
+              ),
+              const SizedBox(height: Space.x12),
+              OutlinedButton(
+                key: const ValueKey('finish-resume'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(64),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(Radii.button),
+                  ),
+                  textStyle: RunSoloType.title28,
+                ),
+                onPressed: onResume,
+                child: const Text('RESUME'),
+              ),
+              const SizedBox(height: Space.x8),
+              TextButton(
+                key: const ValueKey('finish-discard'),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size.fromHeight(56),
+                ),
+                onPressed: onDiscard,
+                child: Text(
+                  'Discard run',
+                  style: RunSoloType.body15.copyWith(color: t.semDanger),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PausedOverlay extends StatelessWidget {
+  const _PausedOverlay({required this.onResume, required this.onStop});
+  final Future<void> Function() onResume;
+
+  /// STOP from a pause (a paused run, e.g. from the notification): the
+  /// finish screen, with the time the pause began.
+  final Future<void> Function() onStop;
 
   @override
   Widget build(BuildContext context) {
@@ -1286,6 +1517,19 @@ class _PausedOverlay extends StatelessWidget {
                 ),
                 onPressed: onResume,
                 child: const Text('RESUME'),
+              ),
+              const SizedBox(height: Space.x12),
+              OutlinedButton(
+                key: const ValueKey('paused-stop'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(64),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(Radii.button),
+                  ),
+                  textStyle: RunSoloType.title28,
+                ),
+                onPressed: onStop,
+                child: const Text('STOP'),
               ),
             ],
           ),
