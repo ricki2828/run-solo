@@ -249,10 +249,13 @@ void main() {
     );
     await pumpTimes(tester, 3);
     await scrollTo(tester, find.text('Move runs to another Run Supreme'));
-    // Real file I/O (temp dir) needs real async time.
+    // Real file I/O (temp dir) needs real async time. Wait for the share
+    // itself, not a fixed delay: 300 ms flaked once on CI (#30, 2ca64d0:
+    // "Expected: an object with length of <1>, Actual: []").
     await tester.runAsync(() async {
+      final shared = transfer.nextShare();
       await tester.tap(find.text('Move runs to another Run Supreme'));
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await shared.timeout(const Duration(seconds: 20));
     });
     await pumpTimes(tester, 3);
     expect(transfer.shared, hasLength(1));

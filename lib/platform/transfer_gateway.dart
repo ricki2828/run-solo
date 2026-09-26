@@ -4,6 +4,7 @@
 /// the share sheet or a document picker.
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart' as fs;
@@ -64,6 +65,17 @@ class FakeTransferGateway implements TransferGateway {
   /// What the next [pickFiles] returns.
   final List<PickedFile> toPick;
 
+  final List<Completer<List<String>>> _waiting = [];
+
+  /// Completes with the paths of the next [shareFiles] call, once its files
+  /// were checked. Tests doing real file I/O await this instead of guessing
+  /// a delay.
+  Future<List<String>> nextShare() {
+    final c = Completer<List<String>>();
+    _waiting.add(c);
+    return c.future;
+  }
+
   @override
   Future<void> shareFiles(List<String> paths, {String? subject}) async {
     // Read now: callers may delete the temp files after sharing.
@@ -71,6 +83,10 @@ class FakeTransferGateway implements TransferGateway {
       if (!await File(p).exists()) throw StateError('shared file missing: $p');
     }
     shared.add(List.of(paths));
+    for (final c in _waiting) {
+      c.complete(List.of(paths));
+    }
+    _waiting.clear();
   }
 
   @override

@@ -25,6 +25,13 @@ class _PermissionsScreenState extends State<PermissionsScreen>
     with WidgetsBindingObserver {
   PermissionSnapshot? _snap;
 
+  /// The battery row: the one NEEDED step CONTINUE can pass (location
+  /// disables it). On a short phone it can sit below the fold, so the first
+  /// CONTINUE with it undone scrolls to it and marks it instead of leaving
+  /// (lead P2 on #30); the next CONTINUE goes on.
+  final _batteryKey = GlobalKey();
+  bool _neededShown = false;
+
   @override
   void initState() {
     super.initState();
@@ -137,19 +144,23 @@ class _PermissionsScreenState extends State<PermissionsScreen>
                   'Denied: no lock-screen LAP and Android may stop the run.',
         onTap: () => _request(PermissionKind.notifications),
       ),
-      SetupRow(
-        icon: Icons.battery_saver_outlined,
-        title: 'Battery optimisation off',
-        why:
-            'Some phones kill a recording after a few minutes. '
-            'Tap to let Run Supreme keep recording with the screen off.',
-        state: s.batteryUnrestricted ? SetupState.ok : SetupState.needed,
-        onTap: () async {
-          // Phase 2 backlog: in-app exemption prompt (system dialog),
-          // the settings page is the gateway's own fallback.
-          await perms.requestBatteryExemption();
-          await _refresh();
-        },
+      _Marked(
+        key: _batteryKey,
+        marked: _neededShown && !s.batteryUnrestricted,
+        child: SetupRow(
+          icon: Icons.battery_saver_outlined,
+          title: 'Battery optimisation off',
+          why:
+              'Some phones kill a recording after a few minutes. '
+              'Tap to let Run Supreme keep recording with the screen off.',
+          state: s.batteryUnrestricted ? SetupState.ok : SetupState.needed,
+          onTap: () async {
+            // Phase 2 backlog: in-app exemption prompt (system dialog),
+            // the settings page is the gateway's own fallback.
+            await perms.requestBatteryExemption();
+            await _refresh();
+          },
+        ),
       ),
       SetupRow(
         icon: Icons.bluetooth,
@@ -172,6 +183,9 @@ class _PermissionsScreenState extends State<PermissionsScreen>
       ],
     ];
 
+    // Onboarding only: the checklist in Settings is a status page.
+    final neededLeft = widget.onboarding && !s.batteryUnrestricted ? 1 : 0;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.onboarding ? 'SET UP' : 'CHECKLIST'),
@@ -192,6 +206,17 @@ class _PermissionsScreenState extends State<PermissionsScreen>
           const SizedBox(height: Space.x24),
         ],
         footer: [
+          if (neededLeft > 0 && s.canRecord)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Space.x12),
+              child: Text(
+                neededLeft == 1
+                    ? '1 needed step left'
+                    : '$neededLeft needed steps left',
+                key: const ValueKey('needed-left'),
+                style: text.labelLarge?.copyWith(color: t.semWarn),
+              ),
+            ),
           if (!s.canRecord)
             Padding(
               padding: const EdgeInsets.only(bottom: Space.x12),
@@ -203,6 +228,18 @@ class _PermissionsScreenState extends State<PermissionsScreen>
           FilledButton(
             onPressed: s.canRecord
                 ? () async {
+                    if (neededLeft > 0 && !_neededShown) {
+                      setState(() => _neededShown = true);
+                      final row = _batteryKey.currentContext;
+                      if (row != null) {
+                        await Scrollable.ensureVisible(
+                          row,
+                          duration: const Duration(milliseconds: 300),
+                          alignment: 0.5,
+                        );
+                      }
+                      return;
+                    }
                     if (widget.onboarding) {
                       await AppServices.of(context).settings
                           .update((x) => x.copyWith(onboardingDone: true));
@@ -231,6 +268,29 @@ class _PermissionsScreenState extends State<PermissionsScreen>
           const SizedBox(height: Space.x24),
         ],
       ),
+    );
+  }
+}
+
+/// A 2 dp warn outline around a row CONTINUE pointed at.
+class _Marked extends StatelessWidget {
+  const _Marked({super.key, required this.marked, required this.child});
+  final bool marked;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(Radii.button),
+        border: Border.all(
+          color: marked ? t.semWarn : Colors.transparent,
+          width: 2,
+        ),
+      ),
+      child: child,
     );
   }
 }

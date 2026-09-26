@@ -117,4 +117,81 @@ void main() {
     await pumpTimes(tester);
     expect(services.settings.settings.onboardingDone, isTrue);
   });
+
+  // Lead P2 on #30: on a short phone the battery row can sit below the fold;
+  // CONTINUE must not pass an undone NEEDED step without showing it.
+  testWidgets('onboarding: CONTINUE first shows the undone battery step', (
+    tester,
+  ) async {
+    final services = fakeServices(
+      permissions: FakePermissionsGateway(
+        snapshot: const PermissionSnapshot(
+          fineLocation: true,
+          notifications: true,
+          bluetooth: true,
+        ),
+      ),
+      settings: const AppSettings(),
+    );
+    await pumpApp(
+      tester,
+      services,
+      pushRoute: Routes.permissions,
+      pushArguments: true,
+    );
+    tester.view.physicalSize = const Size(1080, 640 * 3.0);
+    await pumpTimes(tester, 4);
+    expect(find.text('1 needed step left'), findsOneWidget);
+
+    await tester.tap(find.text('CONTINUE'));
+    await tester.pumpAndSettle();
+    expect(services.settings.settings.onboardingDone, isFalse);
+    expect(find.byType(PermissionsScreen), findsOneWidget, reason: 'stayed');
+    final row = tester.getRect(
+      find
+          .ancestor(
+            of: find.text('Battery optimisation off'),
+            matching: find.byType(InkWell),
+          )
+          .first,
+    );
+    final button = tester.getRect(
+      find.widgetWithText(FilledButton, 'CONTINUE'),
+    );
+    expect(row.bottom, lessThanOrEqualTo(button.top), reason: 'on screen');
+
+    // Seen: the next CONTINUE goes on.
+    await tester.tap(find.text('CONTINUE'));
+    await pumpTimes(tester);
+    expect(services.settings.settings.onboardingDone, isTrue);
+  });
+
+  testWidgets('onboarding with battery done: no step left, CONTINUE goes on', (
+    tester,
+  ) async {
+    final services = fakeServices(settings: const AppSettings());
+    await pumpApp(
+      tester,
+      services,
+      pushRoute: Routes.permissions,
+      pushArguments: true,
+    );
+    await pumpTimes(tester, 4);
+    expect(find.byKey(const ValueKey('needed-left')), findsNothing);
+    await tester.tap(find.text('CONTINUE'));
+    await pumpTimes(tester);
+    expect(services.settings.settings.onboardingDone, isTrue);
+  });
+
+  testWidgets('the Settings checklist never says a step is left', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      fakeServices(permissions: FakePermissionsGateway()),
+      home: const PermissionsScreen(),
+    );
+    await pumpTimes(tester, 4);
+    expect(find.byKey(const ValueKey('needed-left')), findsNothing);
+  });
 }
