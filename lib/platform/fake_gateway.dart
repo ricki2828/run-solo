@@ -137,14 +137,32 @@ class FakeRecorderGateway implements RecorderGateway {
   RecordMode _mode = RecordMode.free;
   SessionSpec? _spec;
 
-  /// Interval phases run only for an intervals spec (Cooper is one timed
-  /// work step with no phases in I1; fartlek is Laps).
-  SessionSpec? get _timed => _mode == RecordMode.intervals ? _spec : null;
+  /// Phases run for an intervals spec and, since I2, for the Cooper test
+  /// (warm-up, START TEST, one 12:00 work step, cool-down); fartlek is Laps.
+  SessionSpec? get _timed =>
+      _mode == RecordMode.intervals || _mode == RecordMode.cooper
+      ? _spec
+      : null;
   DateTime? _startedAt;
   int _elapsedMs = 0; // wall time incl. pauses
 
   /// Elapsed at the open pause, if any: a stop while paused ends the run there (as native).
   int? _pausedAtMs;
+
+  /// As native's "tap to finish" count; see [emitFinishRequested].
+  int _finishRequests = 0;
+
+  /// The paused notification was tapped: pause if recording, count it in
+  /// `status().finishRequests` and send a state event (as native).
+  Future<void> emitFinishRequested() async {
+    if (_state == RecorderState.idle) return;
+    _finishRequests += 1;
+    if (_state == RecorderState.recording) {
+      await pause();
+    } else {
+      _emitState();
+    }
+  }
   int _activeMs = 0; // recording time only
   int _lapStartElapsedMs = 0;
   int _lapStartActiveMs = 0;
@@ -218,6 +236,7 @@ class FakeRecorderGateway implements RecorderGateway {
     _startedAt = _now();
     _elapsedMs = 0;
     _pausedAtMs = null;
+    _finishRequests = 0;
     _activeMs = 0;
     _lapStartElapsedMs = 0;
     _lapStartActiveMs = 0;
@@ -332,12 +351,14 @@ class FakeRecorderGateway implements RecorderGateway {
     // Plan §18.2: Free run has no lap input at all; the service ignores any
     // press (debug builds log `lapIgnored`), nothing is recorded.
     switch (_mode) {
+      // Plan §18.2 / A5: no lap input in a Free run or a 12-minute test
+      // (RunMode.lapInput); START TEST is startReps, never a lap.
       case RecordMode.free:
+      case RecordMode.cooper:
         lapsIgnored += 1;
         return;
       case RecordMode.intervals:
       case RecordMode.laps:
-      case RecordMode.cooper:
         break;
     }
     // RecorderCore default config: volume-key laps only in Laps mode (W8);
@@ -408,6 +429,7 @@ class FakeRecorderGateway implements RecorderGateway {
         : math.max(0, _phaseTargetM! - _stepDistanceM),
     journalOk: true,
     pausedAtElapsedMs: _state == RecorderState.paused ? _pausedAtMs : null,
+    finishRequests: _finishRequests == 0 ? null : _finishRequests,
     mode: _state == RecorderState.idle ? RecordMode.free : _mode,
     laps: List.of(_laps),
   );

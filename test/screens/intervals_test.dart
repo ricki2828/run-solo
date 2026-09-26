@@ -77,9 +77,14 @@ void main() {
       expect(find.text('8 × 400 m · 200 m jog'), findsOneWidget);
       expect(find.byKey(const ValueKey('session-gps-note')), findsOneWidget);
 
+      // C1b's TESTS chip makes Start taller: bring the steppers on stage.
+      await tester.ensureVisible(stepperButton('Reps', Icons.add));
+      await tester.pump();
       await tester.tap(stepperButton('Reps', Icons.add));
       await pumpTimes(tester);
       expect(find.text('9 × 400 M'), findsOneWidget);
+      await tester.ensureVisible(stepperButton('Recovery', Icons.add));
+      await tester.pump();
       await tester.tap(stepperButton('Recovery', Icons.add));
       await pumpTimes(tester);
       expect(find.text('250 m'), findsOneWidget);
@@ -140,6 +145,7 @@ void main() {
     await tester.ensureVisible(
       find.byKey(const ValueKey('session-save-custom')),
     );
+    await tester.pump(); // lay out the scroll before hit-testing the tap
     await tester.tap(find.byKey(const ValueKey('session-save-custom')));
     await pumpTimes(tester, 6);
     await tester.pump(const Duration(milliseconds: 400));
