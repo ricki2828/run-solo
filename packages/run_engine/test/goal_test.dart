@@ -82,6 +82,39 @@ void main() {
       expect(ComparisonKey.of(tenK), isNot(ComparisonKey.of(interval)));
     });
 
+    test('goal limits: a half, a marathon and an hour are valid; two '
+        'steps or auto-stop are not', () {
+      for (final spec in [
+        SessionSpec.goalDistance(21098, 'Half'),
+        SessionSpec.goalDistance(42195, 'Marathon'),
+        SessionSpec.goalTime(3600, '1 hour'),
+        SessionSpec.goalDistance(100000, '100.0 km'),
+      ]) {
+        expect(spec.validate(), isEmpty, reason: spec.name);
+        expect(
+          SessionSpec.fromJson(
+            jsonDecode(jsonEncode(spec.toJson())) as Map<String, Object?>,
+          ),
+          spec,
+        );
+      }
+      expect(SessionSpec.goalDistance(100001, 'x').validate(), isNotEmpty);
+      expect(SessionSpec.goalTime(59, 'x').validate(), isNotEmpty);
+    });
+
+    test('goal names', () {
+      String n(TargetKind k, int v) => GoalCatalogue.nameFor(k, v);
+      expect(n(TargetKind.distance, 5000), '5K');
+      expect(n(TargetKind.distance, 21098), 'Half');
+      expect(n(TargetKind.distance, 42195), 'Marathon');
+      expect(n(TargetKind.distance, 12345), '12.3 km');
+      expect(n(TargetKind.time, 1800), '30 min');
+      expect(n(TargetKind.time, 3600), '1 hour');
+      expect(n(TargetKind.time, 2700), '45 min');
+      expect(n(TargetKind.time, 4500), '1 h 15 min');
+      expect(n(TargetKind.time, 7200), '2 h');
+    });
+
     test('spec JSON round trip', () {
       final back = SessionSpec.fromJson(
         jsonDecode(jsonEncode(tenK.toJson())) as Map<String, Object?>,

@@ -239,6 +239,12 @@ class SessionSpec {
 
   bool get isGoal => templateId == goalId;
 
+  /// GOAL step limits (§G; Kotlin mirrors them).
+  static const int goalMinMetres = 100;
+  static const int goalMaxMetres = 100000;
+  static const int goalMinSeconds = 60;
+  static const int goalMaxSeconds = 86400;
+
   /// By-feel speed play, recorded as a Laps run: no steps, no timing.
   static const SessionSpec fartlek = SessionSpec(
     templateId: fartlekId,
@@ -304,6 +310,31 @@ class SessionSpec {
     }
     if (steps.isEmpty) {
       if (templateId != fartlekId) out.add('only fartlek may have no steps');
+      return out;
+    }
+    // A GOAL (§G): exactly one work step, the goal's own limits (a half,
+    // a marathon or an hour are far past the interval limits below).
+    // Kotlin `SessionSpec.validate` mirrors this.
+    if (templateId == goalId) {
+      if (steps.length != 1 || !steps.single.isWork || steps.single.rep != 1) {
+        out.add('a goal is exactly one work step, rep 1');
+        return out;
+      }
+      final w = steps.single;
+      switch (w.target) {
+        case TargetKind.distance:
+          if (w.value < goalMinMetres || w.value > goalMaxMetres) {
+            out.add('goal distance must be $goalMinMetres..$goalMaxMetres m');
+          }
+        case TargetKind.time:
+          if (w.value < goalMinSeconds || w.value > goalMaxSeconds) {
+            out.add('goal time must be $goalMinSeconds..$goalMaxSeconds s');
+          }
+        case TargetKind.equalToPreviousWork:
+          out.add('a goal is a distance or a time');
+      }
+      if (w.style != RecoveryStyle.run) out.add('goal step style is run');
+      if (autoStop) out.add('a goal never auto-stops');
       return out;
     }
     if (steps.length > maxSteps) out.add('more than $maxSteps steps');

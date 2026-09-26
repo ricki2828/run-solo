@@ -188,6 +188,27 @@ abstract final class GoalCatalogue {
     return std ?? ComparisonKey.of(spec);
   }
 
+  /// The shown and spoken goal name ("10K done, 49:12"): the standard
+  /// names, else "12.3 km" (nearest 0.1 km, as the board key) or "45 min" /
+  /// "1 h 15 min".
+  static String nameFor(TargetKind kind, int value) {
+    if (kind == TargetKind.distance) {
+      return switch (value) {
+        5000 => '5K',
+        10000 => '10K',
+        21098 => 'Half',
+        42195 => 'Marathon',
+        _ => '${((value / 100).round() / 10).toStringAsFixed(1)} km',
+      };
+    }
+    if (value == 1800) return '30 min';
+    if (value == 3600) return '1 hour';
+    final m = (value / 60).round();
+    return m < 60
+        ? '$m min'
+        : '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${m % 60} min'}';
+  }
+
   static bool isStandard(SessionSpec spec) =>
       boardKeyOf(spec) != ComparisonKey.of(spec);
 }
