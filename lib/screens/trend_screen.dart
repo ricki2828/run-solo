@@ -118,15 +118,15 @@ class _TrendScreenState extends State<TrendScreen> {
                 ),
                 const SizedBox(height: Space.x24),
                 switch (_type) {
-                  RecordMode.intervals
-                      when key == null ||
-                          key == engine.ComparisonKey.norwegian4x4 =>
-                    _FourByFourTrend(runs: runs, units: units),
-                  // Other session shapes: distance and pace until the
-                  // generalised rep metrics land (I3).
-                  RecordMode.intervals => _DistanceTrend(
+                  // Every session shape: I3 gives each key its work pace,
+                  // floor and bests; runs of one key only.
+                  RecordMode.intervals => _FourByFourTrend(
                     runs: runs,
                     units: units,
+                    emptyText:
+                        key == null || key == engine.ComparisonKey.norwegian4x4
+                        ? 'Two 4x4s draw the first line.'
+                        : 'Two sessions draw the first line.',
                   ),
                   RecordMode.laps ||
                   RecordMode.free ||
@@ -198,7 +198,12 @@ double median(List<double> v) {
 }
 
 class _FourByFourTrend extends StatelessWidget {
-  const _FourByFourTrend({required this.runs, required this.units});
+  const _FourByFourTrend({
+    required this.runs,
+    required this.units,
+    this.emptyText = 'Two 4x4s draw the first line.',
+  });
+  final String emptyText;
   final List<RunSummary> runs;
   final Units units;
 
@@ -208,7 +213,7 @@ class _FourByFourTrend extends StatelessWidget {
     final points = trendPoints(runs);
     if (points.length < 2) {
       return Text(
-        'Two 4x4s draw the first line.',
+        emptyText,
         key: const ValueKey('trend-empty'),
         style: RunSoloType.body17.copyWith(color: t.inkSecondary),
       );

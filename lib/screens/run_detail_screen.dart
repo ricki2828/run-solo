@@ -7,7 +7,6 @@ import '../app/services.dart';
 import '../map/map_surface.dart';
 import '../map/route_builder.dart';
 import '../platform/gateway.dart';
-import '../state/fartlek_summary.dart';
 import '../state/history_store.dart';
 import '../state/zone_histogram.dart';
 import '../theme/theme.dart';
@@ -151,7 +150,13 @@ class RunDetailBody extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                FartlekBlock(summary: FartlekSummary.of(a.laps), units: units),
+                FartlekBlock(
+                  summary: a.fartlek,
+                  timeInBandSeconds: a.laps?.hrPresent == true
+                      ? a.laps?.timeInBandSeconds
+                      : null,
+                  units: units,
+                ),
                 const SizedBox(height: Space.x24),
                 _LapsTable(view: a.laps, units: units),
               ],
@@ -440,6 +445,10 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
         style: RunSoloType.body17.copyWith(color: t.inkSecondary),
       );
     }
+    final repTime =
+        m.kind == engine.IntervalMetricKind.repTime &&
+        m.nominalRepMetres != null;
+    final short = m.kind == engine.IntervalMetricKind.untrimmedPace;
     final prevReps = <int, double?>{};
     // vs last: the verdict's comparison is run-level; per-rep ghosts come
     // from the previous 4x4 when the caller has it (verdict screen). Here we
@@ -486,15 +495,31 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
               style: RunSoloType.body15.copyWith(color: t.inkSecondary),
             ),
           ),
-        _TableHeader(cells: const ['Rep', 'Pace', 'Avg HR', 'In band']),
+        // I3: rep-time sessions list the time for the rep distance; short
+        // reps (untrimmed) show peak HR, since HR lags a 30 s effort and
+        // there is no time in zone.
+        _TableHeader(
+          cells: [
+            'Rep',
+            repTime ? 'Time' : 'Pace',
+            short ? 'Peak HR' : 'Avg HR',
+            short ? '' : 'In band',
+          ],
+        ),
         for (final r in m.reps)
           _TableRow(
             muted: !r.clean,
             cells: [
               'Rep ${r.number}',
-              Fmt.pace(r.paceSecPerKm, units),
-              r.meanHr == null ? '--' : '${r.meanHr!.round()}',
-              r.zoneSeconds == null
+              repTime && r.paceSecPerKm != null
+                  ? Fmt.clock((r.paceSecPerKm! * m.nominalRepMetres!).round())
+                  : Fmt.pace(r.paceSecPerKm, units),
+              short
+                  ? (r.peakHr == null ? '--' : '${r.peakHr}')
+                  : (r.meanHr == null ? '--' : '${r.meanHr!.round()}'),
+              short
+                  ? ''
+                  : r.zoneSeconds == null
                   ? '--'
                   : '${(r.zoneSeconds! / (r.trimmedSeconds == 0 ? 1 : r.trimmedSeconds) * 100).clamp(0, 100).round()}%',
             ],
@@ -515,11 +540,20 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
           spacing: Space.x24,
           runSpacing: Space.x12,
           children: [
-            StatTile(
-              label: 'work pace',
-              value: Fmt.pace(m.avgWorkPaceSecPerKm, units),
-              size: 28,
-            ),
+            if (repTime)
+              StatTile(
+                label: '${m.nominalRepMetres} m average',
+                value: m.avgRepSeconds == null
+                    ? '--'
+                    : Fmt.clock((m.avgRepSeconds! * 1000).round()),
+                size: 28,
+              )
+            else
+              StatTile(
+                label: 'work pace',
+                value: Fmt.pace(m.avgWorkPaceSecPerKm, units),
+                size: 28,
+              ),
             StatTile(
               label: 'fade',
               value: m.fadeSecPerKm == null
@@ -534,7 +568,9 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
             ),
             if (m.timeInZoneSeconds != null)
               StatTile(
-                label: 'in 4x4 band',
+                label: runHeaderTitle(d.summary) == '4x4'
+                    ? 'in 4x4 band'
+                    : 'in band',
                 value:
                     '${(m.timeInZoneSeconds! / (m.workSeconds == 0 ? 1 : m.workSeconds) * 100).clamp(0, 100).round()}%',
                 size: 28,
@@ -904,15 +940,25 @@ class _Row extends StatelessWidget {
 /// Fartlek summary (plan §3.5): surge count, surge time, surge pace against
 /// easy pace, HR time in band. Informational only; no verdict word.
 class FartlekBlock extends StatelessWidget {
-  const FartlekBlock({super.key, required this.summary, required this.units});
-  final FartlekSummary? summary;
+  const FartlekBlock({
+    super.key,
+    required this.summary,
+    required this.units,
+    this.timeInBandSeconds,
+  });
+
+  /// The engine's summary (I3 `RunAnalysis.fartlek`); null = no surges.
+  final engine.FartlekSummary? summary;
   final Units units;
+
+  /// HR time in the Laps band (85–95 % of max), when a strap was on.
+  final double? timeInBandSeconds;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final s = summary;
-    if (s == null) {
+    if (s == null || s.surgeCount == 0) {
       return Text(
         'No surges marked. Press LAP at the start and end of each surge.',
         key: const ValueKey('fartlek-empty'),
@@ -932,7 +978,7 @@ class FartlekBlock extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: StatTile(label: 'SURGES', value: '${s.surges}'),
+              child: StatTile(label: 'SURGES', value: '${s.surgeCount}'),
             ),
             Expanded(
               child: StatTile(
@@ -948,22 +994,22 @@ class FartlekBlock extends StatelessWidget {
             Expanded(
               child: StatTile(
                 label: 'SURGE PACE $unit',
-                value: Fmt.pace(s.surgePaceSecPerKm, units),
+                value: Fmt.pace(s.avgSurgePaceSecPerKm, units),
               ),
             ),
             Expanded(
               child: StatTile(
                 label: 'EASY PACE $unit',
-                value: Fmt.pace(s.easyPaceSecPerKm, units),
+                value: Fmt.pace(s.avgEasyPaceSecPerKm, units),
               ),
             ),
           ],
         ),
-        if (s.timeInBandSeconds != null) ...[
+        if (timeInBandSeconds != null) ...[
           const SizedBox(height: Space.x16),
           StatTile(
             label: 'HR 85-95%',
-            value: Fmt.clock((s.timeInBandSeconds! * 1000).round()),
+            value: Fmt.clock((timeInBandSeconds! * 1000).round()),
           ),
         ],
       ],

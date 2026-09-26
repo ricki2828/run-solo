@@ -105,12 +105,16 @@ class _VerdictScreenState extends State<VerdictScreen> {
   }
 }
 
-/// The nearest earlier 4x4 with metrics, for the ghost bars.
+/// The nearest earlier Intervals run of the same comparison key (plan
+/// §3.7: like with like) with metrics, for the ghost bars.
 RunSummary? previousFourByFour(List<RunSummary> all, RunSummary current) {
+  final key = current.analysis?.comparisonKey ?? current.spec?.comparisonKey;
   for (final r in all) {
     if (r.id == current.id) continue;
     if (!r.start.isBefore(current.start)) continue;
-    if (r.isFourByFour && r.analysis?.intervals != null) return r;
+    if (!r.isFourByFour || r.analysis?.intervals == null) continue;
+    final k = r.analysis?.comparisonKey ?? r.spec?.comparisonKey;
+    if (key == null || k == null || k == key) return r;
   }
   return null;
 }
@@ -141,6 +145,9 @@ List<RepBarDatum> repBarData(RunDetail detail, RunSummary? previous) {
       RepBarDatum(
         label: 'Rep ${r.number}',
         paceSecPerKm: r.paceSecPerKm,
+        repMetres: m.kind == engine.IntervalMetricKind.repTime
+            ? m.nominalRepMetres
+            : null,
         ghostSecPerKm: ghost != null && r.number - 1 < ghost.length
             ? ghost[r.number - 1].paceSecPerKm
             : null,
@@ -307,7 +314,7 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                   children: [
                     Expanded(
                       child: Text(
-                        '4x4 · ${Fmt.dayDate(d.run.start)} · ${Fmt.clock(durationMs)}',
+                        '${runHeaderTitle(d.summary)} · ${Fmt.dayDate(d.run.start)} · ${Fmt.clock(durationMs)}',
                         style: RunSoloType.label13.copyWith(
                           color: t.inkSecondary,
                         ),
@@ -494,6 +501,8 @@ class _Lines extends StatelessWidget {
     final lines = <String>[];
     if (v != null) {
       lines.add(v.subline);
+      // I3: "Last time: 4 reps, 3:00 recovery." on its own line (D4).
+      if (v.comparisonNote != null) lines.add(v.comparisonNote!);
       if (v.hrLine != null) lines.add(v.hrLine!);
     }
     if (flagged) {

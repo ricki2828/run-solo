@@ -72,11 +72,14 @@ String runTitle(RunSummary r) => switch (r.mode) {
   _ => modeTitle(r.mode),
 };
 
+/// Header title: a 4x4 keeps its Phase 1 name "4x4" (existing screens
+/// word for word); every other session uses [runTitle].
+String runHeaderTitle(RunSummary r) =>
+    runLabel(r) == '4x4' ? '4x4' : runTitle(r);
+
+/// A spec-less Intervals run predates I4, when the 4x4 was the only session.
 bool _isFourByFour(RunSummary r) =>
-    r.spec?.templateId == engine.SessionSpec.norwegian4x4Id ||
-    (r.spec == null &&
-        (r.analysis?.comparisonKey == engine.ComparisonKey.norwegian4x4 ||
-            r.analysis?.intervals != null));
+    r.spec == null || r.spec!.templateId == engine.SessionSpec.norwegian4x4Id;
 
 @immutable
 class RunSummary {
