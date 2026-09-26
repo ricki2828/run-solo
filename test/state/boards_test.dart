@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_engine/testing.dart' as synth;
@@ -127,5 +130,126 @@ void main() {
       final l = chips(boards, r).first.label;
       expect(engine.carriesEstimateMarker(l), isTrue, reason: l);
     }
+  });
+
+  test('a tie reads level with your best, never 0 s off', () async {
+    final a = steady(1, day(0), 300, 2400);
+    final b = steady(2, day(2), 300, 2400);
+    final c = chips(await fold([a, b]), b).single;
+    expect(c.pb, isFalse, reason: 'a tie: the earlier run ranks higher');
+    expect(c.label, '#2 of 2 5Ks · level with your best');
+  });
+
+  test('the 4x4 New best stays best in 365 days (the verdict rule)', () async {
+    final old = fourByFourFile(n: 1, start: day(-400), workSecPerKm: 265);
+    final a = fourByFourFile(n: 2, start: day(-20), workSecPerKm: 300);
+    final b = fourByFourFile(n: 3, start: day(0), workSecPerKm: 285);
+    final boards = await fold([old, a, b]);
+    final key = engine.ComparisonKey.norwegian4x4;
+    final bChip = chips(boards, b).firstWhere((c) => c.boardKey == key);
+    expect(bChip.pb, isTrue, reason: 'best in the last 365 days');
+    expect(bChip.label, startsWith('New best Norwegian 4x4 · '));
+  });
+
+  group('file store: the new run waits for its best efforts (#71 P1)', () {
+    late Directory dir;
+    final stores = <FileRunStore>[];
+    setUp(() async {
+      dir = await Directory.systemTemp.createTemp('runsolo-boards-');
+    });
+    tearDown(() async {
+      for (final s in stores) {
+        await s.derivedIdle;
+      }
+      stores.clear();
+      await dir.delete(recursive: true);
+    });
+
+    final prior = steady(1, day(0), 330, 2400);
+    final fresh = steady(2, day(2), 300, 2400); // faster: 5K and mile PBs
+
+    /// A store holding [prior] with its best efforts built, then [fresh]
+    /// saved, as a phone has it when the result screen opens.
+    Future<FileRunStore> store(
+      Future<Map<String, engine.RunDerived?>> Function(List<DeriveJob>) batch,
+    ) async {
+      final s = FileRunStore(Directory('${dir.path}/runs'))
+        ..deriveBatch = FileRunStore.deriveInIsolate;
+      stores.add(s);
+      await s.importBundles([engine.RunBundle(run: prior)]);
+      await s.list();
+      await s.derivedIdle;
+      s.deriveBatch = batch;
+      await s.importBundles([engine.RunBundle(run: fresh)]);
+      return s;
+    }
+
+    test('first fold: "Checking your boards", no PB', () async {
+      final gate = Completer<void>();
+      final s = await store((jobs) async {
+        await gate.future;
+        return FileRunStore.deriveInIsolate(jobs);
+      });
+      final quick = await s.boards();
+      expect(quick.pendingFor(fresh.id), isTrue);
+      final c = chips(quick, fresh).single;
+      expect(c.pending, isTrue);
+      expect(c.pb, isFalse);
+      expect(c.label, BoardChip.pendingLabel);
+      gate.complete();
+    });
+
+    test(
+      'late landing: derivedChanged fires, the re-fold has the PB',
+      () async {
+        final gate = Completer<void>();
+        final s = await store((jobs) async {
+          await gate.future; // a slow phone: lands long after the screen opened
+          return FileRunStore.deriveInIsolate(jobs);
+        });
+        final first = await s.boards();
+        expect(chips(first, fresh).single.pending, isTrue);
+        var fired = 0;
+        s.derivedChanged.addListener(() => fired++);
+        gate.complete();
+        await s.derivedIdle;
+        expect(fired, 1);
+        final again = await s.boards();
+        expect(again.updating, isFalse);
+        final pbs = chips(again, fresh);
+        expect(pbs.first.pb, isTrue);
+        expect(pbs.first.label, startsWith('New best 5K · '));
+      },
+    );
+
+    test('a batch that changes nothing does not fire', () async {
+      final s = await store((jobs) async => const {});
+      var fired = 0;
+      s.derivedChanged.addListener(() => fired++);
+      await s.boards();
+      await s.derivedIdle;
+      expect(fired, 0, reason: 'no re-fold loop on a batch that built nothing');
+    });
+
+    test('other runs still rebuilding: no best-effort PB (P1-2)', () async {
+      // The new run is built, the older one is not (after an engine bump):
+      // the 5K board is missing a run, so nothing claims to beat it.
+      final s = FileRunStore(Directory('${dir.path}/runs'))
+        ..deriveBatch = (jobs) => FileRunStore.deriveInIsolate([
+          for (final j in jobs)
+            if (j.id == fresh.id) j,
+        ]);
+      stores.add(s);
+      await s.importBundles([
+        engine.RunBundle(run: steady(3, day(-5), 280, 2400)),
+        engine.RunBundle(run: fresh),
+      ]);
+      await s.list();
+      await s.derivedIdle;
+      final boards = await s.boards();
+      expect(boards.pendingFor(fresh.id), isFalse);
+      expect(boards.updating, isTrue);
+      expect(chips(boards, fresh).any((c) => c.pb), isFalse);
+    });
   });
 }

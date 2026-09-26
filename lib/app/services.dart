@@ -141,6 +141,7 @@ class AppServices {
     List<CustomSession> customSessions = const [],
     Map<String, String> courseNames = const {},
     LiveContextSource? live,
+    RunStore? history,
   }) {
     final rec = recorder ?? FakeRecorderGateway(autoTick: true, now: now);
     final settingsCtl = SettingsController(
@@ -153,15 +154,17 @@ class AppServices {
       ble: ble ?? FakeBleGateway(),
       permissions: permissions ?? FakePermissionsGateway(),
       settings: settingsCtl,
-      history: MemoryRunStore(
-        runs: List.of(runs),
-        files: List.of(files),
-        sidecars: Map.of(sidecars),
-        fake: rec,
-        profile: () => MaxHr.profileFor(settingsCtl.settings, clock()),
-        now: clock,
-        heatCompare: () => settingsCtl.settings.compareHeatAdjusted,
-      ),
+      history:
+          history ??
+          MemoryRunStore(
+            runs: List.of(runs),
+            files: List.of(files),
+            sidecars: Map.of(sidecars),
+            fake: rec,
+            profile: () => MaxHr.profileFor(settingsCtl.settings, clock()),
+            now: clock,
+            heatCompare: () => settingsCtl.settings.compareHeatAdjusted,
+          ),
       maps: maps ?? const FakeMapSurfaceFactory(),
       transfer: transfer ?? FakeTransferGateway(),
       storage: storage ?? FakeStorageGateway(),

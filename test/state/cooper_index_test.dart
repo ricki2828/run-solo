@@ -38,7 +38,10 @@ void main() {
   );
 
   Future<FileRunStore> store() async {
-    final s = FileRunStore(Directory('${dir.path}/runs'));
+    // Best efforts built, as on a phone once the batch lands (#71: chips
+    // say "Checking your boards" until then).
+    final s = FileRunStore(Directory('${dir.path}/runs'))
+      ..deriveBatch = FileRunStore.deriveInIsolate;
     stores.add(s);
     await s.importBundles([
       for (final r in [a, b, c, paused]) engine.RunBundle(run: r),
@@ -71,9 +74,14 @@ void main() {
     List<BoardChip> chips(String id) =>
         boards.chipsFor(id, units: Units.km, names: engine.EventNames.generic);
     expect(chips(a.id).single.label, 'First test on your board');
-    expect(chips(b.id).single.pb, isTrue, reason: 'faster than a, that day');
-    expect(chips(c.id).single.label, startsWith('New best test · VO2 est. '));
-    expect(chips(paused.id), isEmpty, reason: 'no estimate, no board');
+    expect(chips(b.id).first.pb, isTrue, reason: 'faster than a, that day');
+    expect(chips(b.id).first.boardKey, engine.ComparisonKey.cooper);
+    expect(chips(c.id).first.label, startsWith('New best test · VO2 est. '));
+    expect(
+      chips(paused.id).where((c) => c.boardKey == engine.ComparisonKey.cooper),
+      isEmpty,
+      reason: 'no estimate, no test board',
+    );
     final prior = tests.sublist(0, 2);
     expect(
       engine.CooperResult.changeLine(tests[2].vo2, c.start, [

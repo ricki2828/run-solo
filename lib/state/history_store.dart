@@ -11,6 +11,7 @@
 /// sidecar with the current engine version is restored, never recomputed.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -254,7 +255,14 @@ abstract class HistoryStore {
   Future<List<RunSummary>> list();
 
   /// Personal leaderboards over every run (LB3): the LB2 fold of the index.
+  /// A fold made before the background batch has built some run's best
+  /// efforts says so ([Boards.updating]); fold again on [derivedChanged].
   Future<Boards> boards();
+
+  /// Fires each time a background batch writes derived data (best efforts)
+  /// into the index, however long after the run it lands (#71 review P1):
+  /// a result screen re-folds its chips then.
+  Listenable get derivedChanged;
 }
 
 /// Outcome of [RunStore.importBundles]: uuid dedupe never overwrites.
@@ -556,19 +564,41 @@ class MemoryRunStore implements RunStore {
 
   /// The same index entries the file store keeps, built in memory (derived
   /// data included), so the boards match a phone's.
+  /// Derived data is built in line here, except for runs a test holds back
+  /// in [underived] (a slow phone's batch); [landDerived] releases them.
+  @override
+  Listenable get derivedChanged => _derivedChanged;
+  final ValueNotifier<int> _derivedChanged = ValueNotifier(0);
+
+  /// Test seam: runs whose best efforts have "not been built yet".
+  @visibleForTesting
+  final Set<String> underived = {};
+
+  /// Test seam: the held-back batch lands (fires [derivedChanged]).
+  @visibleForTesting
+  void landDerived() {
+    underived.clear();
+    _derivedChanged.value++;
+  }
+
   @override
   Future<Boards> boards() async {
     final analyses = _analyse();
     return Boards.fold([
       for (final f in files.where((f) => !_deleted.contains(f.id)))
         if (analyses[f.id] case final a?)
-          RunIndexEntry.of(
-            run: f,
-            sidecar: sidecars[f.id],
-            a: a,
-            shownVerdict: a.verdict,
-            stamp: const FileStamp(runMtimeMs: 0, runBytes: 0),
-          ).withDerived(RunIndexEntry.deriveOrNull(f, a)),
+          if (RunIndexEntry.of(
+                run: f,
+                sidecar: sidecars[f.id],
+                a: a,
+                shownVerdict: a.verdict,
+                stamp: const FileStamp(runMtimeMs: 0, runBytes: 0),
+              )
+              case final e)
+            // Held back: no derived data and not failed (pending).
+            underived.contains(f.id)
+                ? e
+                : e.withDerived(RunIndexEntry.deriveOrNull(f, a)),
     ]);
   }
 
@@ -1018,20 +1048,27 @@ class FileRunStore implements RunStore {
       at[e.key] = e.value;
     }
     if (jobs.isEmpty) return;
-    _deriving = _fillDerived(jobs, at).whenComplete(() => _deriving = null);
+    _deriving = _fillDerived(jobs, at).then((changed) {
+      _deriving = null;
+      // After _deriving is cleared: a listener's re-fold (boards() →
+      // _refresh) can then queue the next batch if a run still lacks data.
+      if (changed) _derivedChanged.value++;
+    });
   }
 
-  Future<void> _fillDerived(
+  /// True when the index gained derived data.
+  Future<bool> _fillDerived(
     List<DeriveJob> jobs,
     Map<String, RunIndexEntry> at,
   ) async {
+    var changed = false;
     try {
       final built = await deriveBatch(jobs);
       // The store's directory can be gone by now (a test tore it down).
-      if (!await indexFile.parent.exists()) return;
+      if (!await indexFile.parent.exists()) return false;
       await sidecars.replaceText('index.json', indexFile, (current) {
         final index = RunIndex.decode(current);
-        var changed = false;
+        changed = false;
         final next = {...index.entries};
         for (final r in built.entries) {
           final now = next[r.key];
@@ -1049,7 +1086,9 @@ class FileRunStore implements RunStore {
       });
     } catch (e) {
       debugPrint('index: derived data not built ($e)');
+      return false;
     }
+    return changed;
   }
 
   /// Decoded files by id → (file, sidecar, path); rebuilt on every list so
@@ -1089,6 +1128,12 @@ class FileRunStore implements RunStore {
   @override
   Future<Boards> boards() async =>
       Boards.fold((await _refresh()).entries.values);
+
+  /// Bumps once per batch written.
+  final ValueNotifier<int> _derivedChanged = ValueNotifier(0);
+
+  @override
+  Listenable get derivedChanged => _derivedChanged;
 
   @override
   Future<List<RunSummary>> list() async {

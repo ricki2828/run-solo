@@ -19,17 +19,25 @@ class BoardChip {
     required this.boardKey,
     required this.label,
     required this.pb,
+    this.pending = false,
   });
   final String boardKey;
   final String label;
   final bool pb;
 
+  /// The best-effort boards are still being built (this run's, or others'
+  /// after an engine bump): a hairline "Checking your boards" that never
+  /// claims a PB until they are complete (#71 review P1).
+  final bool pending;
+
+  static const String pendingLabel = 'Checking your boards';
+
   @override
-  String toString() => '${pb ? 'PB ' : ''}$label';
+  String toString() => '${pb ? 'PB ' : ''}${pending ? '… ' : ''}$label';
 }
 
 class Boards {
-  Boards._(this._inputs, this._names, {required this.updating})
+  Boards._(this._inputs, this._names, {required this.pendingIds})
     : byKey = engine.Leaderboards.fold(_inputs.values);
 
   /// The boards over [entries] (the index, or the memory store's
@@ -48,17 +56,29 @@ class Boards {
     return Boards._(
       {for (final e in list) e.id: e.boardInput()},
       names,
-      updating: list.any((e) => e.derived == null && !e.derivedFailed),
+      pendingIds: {
+        for (final e in list)
+          if (!(e.derived?.isCurrent ?? false) && !e.derivedFailed) e.id,
+      },
     );
   }
 
-  static final Boards empty = Boards._(const {}, const {}, updating: false);
+  static final Boards empty = Boards._(const {}, const {}, pendingIds: {});
 
   final Map<String, engine.BoardInput> _inputs;
 
   /// Interval comparison key → the session's name, for labels.
   final Map<String, String> _names;
-  final bool updating;
+
+  /// Runs whose derived data (best efforts) is not built yet.
+  final Set<String> pendingIds;
+
+  /// Some run has no derived data yet, so the best-effort boards may be
+  /// missing runs ("Updating your boards").
+  bool get updating => pendingIds.isNotEmpty;
+
+  /// [runId]'s own best efforts are not built yet.
+  bool pendingFor(String runId) => pendingIds.contains(runId);
   final Map<String, engine.Leaderboard> byKey;
 
   bool get isEmpty => byKey.isEmpty;
@@ -78,11 +98,38 @@ class Boards {
     final then = engine.Leaderboards.fold(
       _inputs.values.where((i) => !i.date.isAfter(run.date)),
     );
-    final mine = engine.Leaderboards.membership(run).keys.toList()
-      ..sort((a, b) => _order(run, a).compareTo(_order(run, b)));
+    // While any best efforts are missing, the be:* boards are incomplete:
+    // a new run could outrank runs that are not on them yet (#71 P1-2), and
+    // this run may not be on them at all (P1-1). No be:* chip until then.
+    final waiting = updating;
+    final mine =
+        engine.Leaderboards.membership(run).keys
+            .where(
+              (k) =>
+                  !waiting ||
+                  !k.startsWith(engine.ComparisonKey.reservedBoardPrefix),
+            )
+            .toList()
+          ..sort((a, b) => _order(run, a).compareTo(_order(run, b)));
+    bool isPb(String k) {
+      final b = then[k]!;
+      if (b.length < 2) return false;
+      if (b.rankOf(runId) == 1) return true;
+      // The 4x4's New best keeps its old meaning (#71 P3): the best of the
+      // 365 days up to the run, as the verdict's bestIn365Days has it.
+      if (k != engine.ComparisonKey.norwegian4x4) return false;
+      final from = run.date.subtract(const Duration(days: 365));
+      final year = engine.Leaderboards.fold(
+        _inputs.values.where(
+          (i) => !i.date.isAfter(run.date) && !i.date.isBefore(from),
+        ),
+      )[k];
+      return year != null && year.length >= 2 && year.rankOf(runId) == 1;
+    }
+
     final pbs = [
       for (final k in mine)
-        if (then[k]!.length >= 2 && then[k]!.rankOf(runId) == 1)
+        if (isPb(k))
           BoardChip(
             boardKey: k,
             label: _pbLabel(k, then[k]!, units, names),
@@ -90,7 +137,18 @@ class Boards {
           ),
     ];
     if (pbs.isNotEmpty) return pbs.take(2).toList();
-    if (mine.isEmpty) return const [];
+    if (mine.isEmpty) {
+      return waiting
+          ? const [
+              BoardChip(
+                boardKey: '',
+                label: BoardChip.pendingLabel,
+                pb: false,
+                pending: true,
+              ),
+            ]
+          : const [];
+    }
     final k = mine.first;
     final board = then[k]!;
     return [
@@ -114,24 +172,34 @@ class Boards {
 
   String _one(String key, engine.EventNames names) => switch (key) {
     _ when key == engine.ComparisonKey.cooper => 'test',
+    _ when engine.BestTimeWindow.ofKey(key) != null =>
+      '${engine.BestTimeWindow.ofKey(key)!.seconds ~/ 60} min',
+    _ when engine.ComparisonKey.isGoal(key) => 'goal',
     _ when engine.ComparisonKey.isParkrun(key) => names.parkrun,
     _ => switch (engine.BestEffortDistance.ofKey(key)) {
       engine.BestEffortDistance.km1 => '1 km',
       engine.BestEffortDistance.mile => 'mile',
       engine.BestEffortDistance.k5 => '5K',
       engine.BestEffortDistance.k10 => '10K',
+      engine.BestEffortDistance.half => 'half marathon',
+      engine.BestEffortDistance.marathon => 'marathon',
       null => _names[key] ?? 'session',
     },
   };
 
   String _many(String key, engine.EventNames names) => switch (key) {
     _ when key == engine.ComparisonKey.cooper => 'tests',
+    _ when engine.BestTimeWindow.ofKey(key) != null =>
+      '${engine.BestTimeWindow.ofKey(key)!.seconds ~/ 60} min runs',
+    _ when engine.ComparisonKey.isGoal(key) => 'goals',
     _ when engine.ComparisonKey.isParkrun(key) => names.parkrunPlural,
     _ => switch (engine.BestEffortDistance.ofKey(key)) {
       engine.BestEffortDistance.km1 => '1 km runs',
       engine.BestEffortDistance.mile => 'miles',
       engine.BestEffortDistance.k5 => '5Ks',
       engine.BestEffortDistance.k10 => '10Ks',
+      engine.BestEffortDistance.half => 'half marathons',
+      engine.BestEffortDistance.marathon => 'marathons',
       null => _sessionPlural(_names[key]),
     },
   };
@@ -157,7 +225,9 @@ class Boards {
   static String value(engine.Leaderboard b, double metric, Units units) =>
       switch (b.kind) {
         engine.BoardKind.bestEffort ||
-        engine.BoardKind.course => Fmt.clock((metric * 1000).round()),
+        engine.BoardKind.course ||
+        engine.BoardKind.goalDistance => Fmt.clock((metric * 1000).round()),
+        engine.BoardKind.distanceInTime => Fmt.distance(metric, units),
         engine.BoardKind.interval => Fmt.paceUnit(metric, units),
         engine.BoardKind.cooper => 'VO2 est. ${metric.round()}',
       };
@@ -180,17 +250,33 @@ class Boards {
     final mine = b.ranked.firstWhere((r) => r.runId == runId).metric;
     final best = b.pb!.metric;
     return switch (b.kind) {
-      engine.BoardKind.bestEffort || engine.BoardKind.course => () {
+      engine.BoardKind.distanceInTime => () {
+        final m = best - mine;
+        return m < 10
+            ? 'level with your best'
+            : '${Fmt.distance(m, units)} short of your best';
+      }(),
+      engine.BoardKind.bestEffort ||
+      engine.BoardKind.course ||
+      engine.BoardKind.goalDistance => () {
         final s = (mine - best).round();
+        if (s <= 0) return 'level with your best';
         return s < 60
             ? '$s s off your best'
             : '${Fmt.clock(s * 1000)} off your best';
       }(),
-      engine.BoardKind.interval =>
-        '${Fmt.deltaSecondsVsLast(mine, best, units).abs()} '
-            's/${units == Units.mi ? 'mi' : 'km'} off your best',
-      engine.BoardKind.cooper =>
-        'VO2 est. ${(best - mine).toStringAsFixed(1)} below your best',
+      engine.BoardKind.interval => () {
+        final n = Fmt.deltaSecondsVsLast(mine, best, units).abs();
+        return n == 0
+            ? 'level with your best'
+            : '$n s/${units == Units.mi ? 'mi' : 'km'} off your best';
+      }(),
+      engine.BoardKind.cooper => () {
+        final d = ((best - mine) * 10).round() / 10;
+        return d <= 0
+            ? 'level with your best'
+            : 'VO2 est. ${d.toStringAsFixed(1)} below your best';
+      }(),
     };
   }
 }
