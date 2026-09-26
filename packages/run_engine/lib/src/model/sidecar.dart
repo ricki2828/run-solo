@@ -316,6 +316,17 @@ class ParkrunInfo {
 
   bool get isEmpty => courseId == null && officialTimeSeconds == null;
 
+  /// An official time more than this far from the GPS finish is taken as a
+  /// typo (2:43 for 24:03): the entry UI refuses it and the engine ignores
+  /// it, so it can never become a PB.
+  static const double maxOfficialDeviation = 0.20;
+
+  /// True when [officialSeconds] is within ±[maxOfficialDeviation] of the
+  /// GPS finish ([gpsSeconds]).
+  static bool plausibleOfficial(int officialSeconds, double gpsSeconds) =>
+      gpsSeconds > 0 &&
+      (officialSeconds - gpsSeconds).abs() <= maxOfficialDeviation * gpsSeconds;
+
   ParkrunInfo copyWith({
     Object? courseId = _unset,
     Object? officialTimeSeconds = _unset,

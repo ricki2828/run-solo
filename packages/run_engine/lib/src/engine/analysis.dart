@@ -177,6 +177,7 @@ class RunAnalysis {
     this.fartlek,
     this.plannedRepCount,
     this.plannedRecoveryLabel,
+    this.officialTime = false,
     this.weather,
     this.heatLine,
   });
@@ -210,6 +211,10 @@ class RunAnalysis {
   /// prior carries them for the D4 "Last time: …" note.
   final int? plannedRepCount;
   final String? plannedRecoveryLabel;
+
+  /// K1: the headline is the runner's official time (plausible and set in
+  /// the sidecar), not the GPS finish.
+  final bool officialTime;
 
   /// The session this run is judged as ([effectiveSession]); null for laps,
   /// free and summary-only runs.
@@ -273,6 +278,7 @@ class RunAnalysis {
           comparisonKey: comparisonKey ?? ComparisonKey.norwegian4x4,
           repCount: plannedRepCount ?? intervals!.reps.length,
           recoveryLabel: plannedRecoveryLabel,
+          officialTime: officialTime,
         );
 
   /// The sidecar with this verdict frozen (plan §4, §17 R3).
@@ -438,13 +444,17 @@ class RunEngine {
 
     // K1: the runner's official time replaces the GPS finish as the headline
     // (the rep's own GPS numbers stay for the detail table).
+    // Ignored when implausible against the GPS finish (a typo must never
+    // become a PB), whoever wrote the sidecar.
     final official = isParkrun ? parkrunInfo?.officialTimeSeconds : null;
+    final gpsFinish = metrics.avgRepSeconds;
     final headline =
         official != null &&
-            metrics.nominalRepMetres != null &&
-            metrics.avgWorkPaceSecPerKm != null
+            gpsFinish != null &&
+            ParkrunInfo.plausibleOfficial(official, gpsFinish)
         ? metrics.withHeadlinePace(official * 1000 / metrics.nominalRepMetres!)
         : metrics;
+    final officialTime = !identical(headline, metrics);
 
     final frozen = sidecar?.frozenVerdict;
     final inputsKey =
@@ -469,7 +479,7 @@ class RunEngine {
         templateDefault: spec,
         session: planned,
         minCleanReps: minCleanRepsFor(key, spec),
-        officialTime: !identical(headline, metrics),
+        officialTime: officialTime,
       );
       source = VerdictSource.computed;
     }
@@ -495,6 +505,7 @@ class RunEngine {
       plannedRecoveryLabel: planned == null
           ? null
           : VerdictBuilder.recoveryLabelOf(planned),
+      officialTime: officialTime,
     );
   }
 }

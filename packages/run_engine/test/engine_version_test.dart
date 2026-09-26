@@ -3,7 +3,7 @@ import 'package:test/test.dart';
 
 void main() {
   test('engine version is pinned', () {
-    expect(engineVersion, 3);
+    expect(engineVersion, 4);
   });
 
   test('run modes are pinned in Pigeon/core-jvm order (§18.2, §18.4)', () {
