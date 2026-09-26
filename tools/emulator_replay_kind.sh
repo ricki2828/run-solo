@@ -9,8 +9,16 @@ APK="${1:?apk}"
 PKG="${2:?package}"
 KIND="${3:?kind}"
 SPEED="${4:-30}"
+# `t4`: every Phase 4 T4 kind in turn (one per transcript fixture), each checked as below.
+if [ "$KIND" = "t4" ]; then
+  for f in android/core-jvm/src/test/fixtures/transcripts/*.json; do
+    "$0" "$APK" "$PKG" "$(basename "$f" .json)" "$SPEED" || exit 1
+  done
+  exit 0
+fi
 ACTIVITY="$PKG/app.runsolo.MainActivity"
 FIXTURE="packages/run_engine/test/fixtures/contract/replay_${KIND//-/_}.json"
+TRANSCRIPT="android/core-jvm/src/test/fixtures/transcripts/$KIND.json"
 
 log() { echo "[replay:$KIND] $*"; }
 dump() { adb logcat -d -s RunSolo/debug RunSolo/session RunSolo/service RunSolo/api AndroidRuntime | tail -n 150 >&2; }
@@ -65,4 +73,9 @@ shell "run-as $PKG ls files/journals" | grep -qx "$run_id" && fail "journal dire
 
 adb exec-out "run-as $PKG cat files/runs/run-$run_id.json.gz" > /tmp/run.json.gz
 python3 tools/check_replay_run.py /tmp/run.json.gz "$FIXTURE" || fail "run file differs from $FIXTURE"
+# T4: what was said, and when, against the JVM transcript.
+if [ -f "$TRANSCRIPT" ]; then
+  adb logcat -d -s RunSolo/session > /tmp/said.log
+  python3 tools/check_replay_transcript.py /tmp/said.log "$TRANSCRIPT" || fail "transcript differs from $TRANSCRIPT"
+fi
 log "ok on API $sdk (run $run_id)"

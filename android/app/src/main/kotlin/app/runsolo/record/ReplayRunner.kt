@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.SystemClock
 import app.runsolo.core.model.HrReading
+import app.runsolo.core.model.LiveContext
 import app.runsolo.core.model.LocationFix
 import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.StepKind
@@ -32,6 +33,8 @@ class ReplayRunner private constructor(
     private val speed: Double,
     /** Presses at trace times: a notification LAP or START REPS. */
     val presses: List<ReplayScenarios.ScriptedPress>,
+    /** T4: a kind's own live compare context, used when the Start brings none. */
+    val context: LiveContext? = null,
 ) {
     private var source: ReplaySource? = null
 
@@ -89,7 +92,7 @@ class ReplayRunner private constructor(
             if (fixture == SYNTHETIC_4X4) return synthetic4x4(spec?.takeIf { it.steps.isNotEmpty() } ?: SessionSpec.norwegian4x4(), speed)
             if (fixture.startsWith(KIND_PREFIX)) {
                 val sc = ReplayScenarios.create(fixture.removePrefix(KIND_PREFIX)) ?: return null
-                return ReplayRunner(sc.fixes, sc.hr, speed, sc.presses)
+                return ReplayRunner(sc.fixes, sc.hr, speed, sc.presses, sc.context)
             }
             if (!fixture.all { it.isLetterOrDigit() || it == '-' || it == '_' }) return null
             val text = try {

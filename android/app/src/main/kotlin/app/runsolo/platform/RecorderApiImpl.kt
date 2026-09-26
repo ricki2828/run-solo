@@ -145,7 +145,8 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
                 null
             }
         }
-        val session = newSession(coreMode, coreSpec, units, runner, coreContext)
+        // A T4 replay kind brings its own context (the debug intent has no app to build one).
+        val session = newSession(coreMode, coreSpec, units, runner, coreContext ?: runner?.context)
         return begin(session) {
             it.startNew(device = "${Build.MANUFACTURER} ${Build.MODEL}", app = BuildConfig.VERSION_NAME, tz = TimeZone.getDefault().id)
         }
