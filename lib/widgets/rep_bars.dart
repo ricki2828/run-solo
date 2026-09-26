@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
 import '../platform/gateway.dart';
@@ -92,9 +91,16 @@ class RepBars extends StatelessWidget {
             final eased = MotionCurves.emphasized.transform(stagger);
             final w = trackW * frac(r.paceSecPerKm) * eased;
             ends.add(Offset(w, i * (barHeight + rowGap) + barHeight / 2));
+            // As shown: whole seconds in the display unit, "▲16" / "▼12".
+            // Flat only when that is 0 ("±0", no glyph), the record screen's
+            // rule, so a dash never sits beside "1".
             final delta = r.ghostSecPerKm == null || r.paceSecPerKm == null
                 ? null
-                : r.paceSecPerKm! - r.ghostSecPerKm!;
+                : Fmt.deltaSecondsVsLast(
+                    r.paceSecPerKm!,
+                    r.ghostSecPerKm!,
+                    units,
+                  );
             // Cyan is earned by the verdict, not by a rep: deltas take the
             // verdict's tone. NO REAL CHANGE / HOLDING / BASELINE stay in ink
             // even when single reps came in a few seconds faster.
@@ -157,14 +163,18 @@ class RepBars extends StatelessWidget {
                             ),
                             if (showDelta && delta != null) ...[
                               const SizedBox(width: Space.x8),
-                              DeltaGlyph(
-                                direction: DeltaGlyph.forDelta(delta),
-                                color: deltaColor,
-                                size: 10,
-                              ),
-                              const SizedBox(width: 2),
+                              if (delta != 0) ...[
+                                DeltaGlyph(
+                                  direction: delta < 0
+                                      ? DeltaDirection.up
+                                      : DeltaDirection.down,
+                                  color: deltaColor,
+                                  size: 10,
+                                ),
+                                const SizedBox(width: 2),
+                              ],
                               Text(
-                                _delta(delta, units),
+                                delta == 0 ? '±0' : '${delta.abs()}',
                                 style: RunSoloType.label13.copyWith(
                                   color: deltaColor,
                                 ),
@@ -205,15 +215,6 @@ class RepBars extends StatelessWidget {
         },
       ),
     );
-  }
-
-  /// "▲16" faster / "▼12" slower / "▬0".
-  static String _delta(double deltaSecPerKm, Units units) {
-    final d = engine.PaceFormat.toUnit(
-      deltaSecPerKm,
-      units == Units.mi ? engine.Units.mi : engine.Units.km,
-    ).round();
-    return '${d.abs()}';
   }
 }
 
