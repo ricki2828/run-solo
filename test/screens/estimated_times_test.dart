@@ -50,7 +50,9 @@ void main() {
     expect(find.textContaining(RegExp(r'\d:\d\d to \d')), findsNothing);
     await tester.tap(find.text('ESTIMATED TIMES'));
     await pumpTimes(tester, 4);
-    expect(find.textContaining(RegExp(r'\d:\d\d to \d')), findsNWidgets(2));
+    // The 5K from a 5K has no band (it would read "24:30 to 24:30").
+    expect(find.textContaining(RegExp(r'\d:\d\d to \d')), findsOneWidget);
+    expect(find.text('24:30 to 24:30'), findsNothing);
     await tester.tap(find.text('ESTIMATED TIMES'));
     await pumpTimes(tester, 4);
     expect(find.textContaining(RegExp(r'\d:\d\d to \d')), findsNothing);

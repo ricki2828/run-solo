@@ -221,7 +221,7 @@ class HomeEstimateRow {
     required this.label,
     required this.time,
     required this.semantics,
-    required this.band,
+    this.band,
   });
 
   factory HomeEstimateRow.of(Prediction p, EventNames names) => HomeEstimateRow(
@@ -230,7 +230,10 @@ class HomeEstimateRow {
         : p.target.labelFor(names),
     time: Prediction.clock(p.seconds),
     semantics: p.headline,
-    band: p.band,
+    // Same distance as the source: the band is one time, so none.
+    band: Prediction.clock(p.lowSeconds) == Prediction.clock(p.highSeconds)
+        ? null
+        : p.band,
   );
 
   final String label;
@@ -239,6 +242,7 @@ class HomeEstimateRow {
   /// "Estimated 5K 24:30".
   final String semantics;
 
-  /// "24:10 to 24:55".
-  final String band;
+  /// "24:10 to 24:55", or null when it rounds to one time (a 5K from a
+  /// 5K).
+  final String? band;
 }

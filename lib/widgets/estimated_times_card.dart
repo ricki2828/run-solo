@@ -81,11 +81,11 @@ class _EstimatedTimesCardState extends State<EstimatedTimesCard> {
                     ? Duration.zero
                     : const Duration(milliseconds: 240),
                 alignment: Alignment.topLeft,
-                child: _open
+                child: _open && r.band != null
                     ? Padding(
                         padding: const EdgeInsets.only(bottom: Space.x8),
                         child: Text(
-                          r.band,
+                          r.band!,
                           style: RunSoloType.body15.copyWith(
                             color: t.inkSecondary,
                           ),

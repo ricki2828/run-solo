@@ -92,7 +92,9 @@ void main() {
       expect(h.rows.map((r) => r.label), ['5K', '10K']);
       expect(h.rows.first.time, '24:30');
       expect(h.rows.first.semantics, 'Estimated 5K 24:30');
-      expect(h.rows.first.band, isNotEmpty);
+      // A 5K from a 5K: no band; the 10K from it has one.
+      expect(h.rows.first.band, isNull);
+      expect(h.rows.last.band, matches(RegExp(r'^\d+:\d\d to \d+:\d\d$')));
       expect(h.sourceLines, [
         'From your 5K on Sat 12 Sep · in cool conditions',
       ]);
