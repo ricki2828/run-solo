@@ -94,7 +94,7 @@ void main() {
       await open(tester, [a, b, c], c.id);
       await tester.scrollUntilVisible(trend, 200);
       expect(trend, findsOneWidget);
-      expect(find.text('VO2 BY TEST'), findsOneWidget);
+      expect(find.text('VO2 EST. BY TEST'), findsOneWidget);
       final chart = tester.widget<Vo2Bars>(trend);
       expect(chart.values.length, 3);
       // Taller is better: this test is the best, so its bar is the Arc one.

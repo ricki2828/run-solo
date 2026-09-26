@@ -218,7 +218,7 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                   if (upTo.length >= 2) ...[
                     const SizedBox(height: Space.x16),
                     Text(
-                      'VO2 BY TEST',
+                      'VO2 EST. BY TEST',
                       style: RunSoloType.micro11.copyWith(
                         color: t.inkSecondary,
                       ),
