@@ -194,6 +194,116 @@ class SessionSpec {
   List<SessionStep> steps;
 }
 
+/// Which kind of board a run races live (Phase 4 §3.2).
+enum LiveBoardKind { distance, intervals, cooper }
+
+/// One prior run on a live board. Exactly one of the three series is set,
+/// by the board's kind: `fromStartSplitsMs` (distance: cumulative ms from
+/// the Start press at each whole km, WARN-1), `liveRepPacesSecPerKm`
+/// (intervals: untrimmed lap distance / lap time per work rep, null for an
+/// unclean rep, BLOCK-2), `cooperMinuteM` (Cooper: cumulative metres at each
+/// whole minute of the test).
+class LiveEntry {
+  LiveEntry({
+    required this.runId,
+    required this.dateMs,
+    this.fromStartSplitsMs,
+    this.liveRepPacesSecPerKm,
+    this.cooperMinuteM,
+    required this.finalMetric,
+  });
+  String runId;
+
+  /// Run start, epoch millis.
+  int dateMs;
+  List<int>? fromStartSplitsMs;
+  List<double?>? liveRepPacesSecPerKm;
+  List<double>? cooperMinuteM;
+
+  /// The board's metric for the whole run (finish ms, mean rep pace s/km,
+  /// or raw Cooper VO2), for "your #k of n" at the end.
+  double finalMetric;
+}
+
+/// A board the live compare ranks against: at most 20 entries (top 10 +
+/// last 10, deduped). The app only sends a board with 2 or more entries.
+class LiveBoard {
+  LiveBoard({
+    required this.key,
+    required this.label,
+    required this.kind,
+    this.targetM,
+    required this.entries,
+  });
+
+  /// The comparison key (`be:5k`, an intervals key, `cooper`, a course).
+  String key;
+
+  /// Spoken and shown name ("5K", "8 × 400 m"); the app injects any event
+  /// name, the engine never writes it.
+  String label;
+  LiveBoardKind kind;
+
+  /// Distance boards: the board's distance (5000 for a 5K board).
+  double? targetM;
+  List<LiveEntry> entries;
+}
+
+/// Phase 4 §3.4: a target to race (a predicted time or a recent PB). PD2
+/// fills it; even splits over [distanceM].
+class LiveTarget {
+  LiveTarget({
+    required this.distanceM,
+    required this.targetMs,
+    required this.predicted,
+  });
+  double distanceM;
+  int targetMs;
+
+  /// True = "predicted" (an estimate), false = "your PB".
+  bool predicted;
+}
+
+/// In-run coaching nudges (Phase 4 §3.5). LC1 ships this stub with no rules
+/// (WARN-6); CR1 fills it. `version` 0 = no rules.
+class NudgePlan {
+  NudgePlan({required this.version});
+  int version;
+}
+
+/// Everything the live "you vs you" needs, built by the app at Start within
+/// 150 ms or not at all (WARN-3), journaled as the `live_context` line and
+/// rebuilt from it on restore (BLOCK-1). Kotlin never reads history.
+class LiveContext {
+  LiveContext({
+    required this.boards,
+    this.target,
+    this.nudges,
+    this.cooperCurve,
+    this.cooperHistory,
+    required this.coachingMuted,
+    required this.builtAtMs,
+    required this.engineVersion,
+  });
+
+  /// At most 3.
+  List<LiveBoard> boards;
+  LiveTarget? target;
+  NudgePlan? nudges;
+
+  /// Cooper: cumulative fade fractions F(1)..F(12), F(12) = 1 (§3.3).
+  List<double>? cooperCurve;
+
+  /// Cooper: past raw VO2 estimates, oldest first (the last is the previous
+  /// test, for "up 2 on last time").
+  List<double>? cooperHistory;
+  bool coachingMuted;
+
+  /// Epoch millis when the app built it.
+  int builtAtMs;
+  int engineVersion;
+}
+
 class StartResult {
   StartResult({this.runId, this.error});
   String? runId;
@@ -409,13 +519,16 @@ abstract class RecorderApi {
   ///
   /// `spec`: required for `intervals` and `cooper`, the fartlek spec or null
   /// for `laps`, null for `free`; anything else is `unsupportedSession`.
-  /// `lastCooperVo2`: the previous Cooper result for the projection cue's gap
-  /// to last time (Kotlin does not read history).
+  /// `liveContext`: the history the live compare needs (Phase 4 §3.2; Kotlin
+  /// does not read history), journaled as the `live_context` line after the
+  /// header; null = no compare, no overlay, no nudges, nothing said. The
+  /// previous Cooper VO2 for "up 2 on last time" is the last
+  /// `cooperHistory` entry.
   StartResult start(
     RecordMode mode,
     SessionSpec? spec,
     Units units,
-    double? lastCooperVo2,
+    LiveContext? liveContext,
   );
 
   /// Debug builds only: like `start`, fed from a fixture instead of GPS/BLE.

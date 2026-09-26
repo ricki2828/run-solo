@@ -1,5 +1,6 @@
 package app.runsolo.platform
 
+import app.runsolo.core.model.LiveContext as CoreLiveContext
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -97,8 +98,8 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         return Result.success(core)
     }
 
-    private fun newSession(mode: app.runsolo.core.model.RunMode, spec: CoreSpec?, units: Units, replay: ReplayRunner?, lastCooperVo2: Double?): RecordingSession =
-        RecordingSession(context, UUID.randomUUID().toString(), mode, spec, units.toCore(), replay, volumeKeyLaps(mode), lastCooperVo2)
+    private fun newSession(mode: app.runsolo.core.model.RunMode, spec: CoreSpec?, units: Units, replay: ReplayRunner?, liveContext: CoreLiveContext?): RecordingSession =
+        RecordingSession(context, UUID.randomUUID().toString(), mode, spec, units.toCore(), replay, volumeKeyLaps(mode), liveContext)
 
     /**
      * Volume-key laps are a Laps-run feature only (W8): the user's setting, default on, applies
@@ -108,7 +109,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     internal fun volumeKeyLaps(mode: app.runsolo.core.model.RunMode): Boolean =
         mode == app.runsolo.core.model.RunMode.laps && prefs.getBoolean(RecorderService.PREF_VOLUME_KEY_LAPS, mode.volumeKeyLapsDefault)
 
-    private fun startWith(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ((CoreSpec?) -> ReplayRunner?)?, lastCooperVo2: Double? = null): StartResult {
+    private fun startWith(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ((CoreSpec?) -> ReplayRunner?)?, liveContext: LiveContext? = null): StartResult {
         active()?.let { return StartResult(runId = it.runId, error = null) }
         val coreMode = mode.toCore()
         val coreSpec = coreSpec(coreMode, spec).getOrElse {
@@ -117,15 +118,24 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         }
         precondition()?.let { return StartResult(runId = null, error = it) }
         val runner = replay?.let { make -> make(coreSpec) ?: return StartResult(runId = null, error = StartError.REPLAY_UNAVAILABLE) }
-        val session = newSession(coreMode, coreSpec, units, runner, lastCooperVo2)
+        // A context that breaks the contract never blocks Start: the run is just silent (WARN-3).
+        val coreContext = liveContext?.let { ctx ->
+            try {
+                ctx.toCore()
+            } catch (e: IllegalArgumentException) {
+                Log.w(TAG, "start: live context dropped: $e")
+                null
+            }
+        }
+        val session = newSession(coreMode, coreSpec, units, runner, coreContext)
         return begin(session) {
             it.startNew(device = "${Build.MANUFACTURER} ${Build.MODEL}", app = BuildConfig.VERSION_NAME, tz = TimeZone.getDefault().id)
         }
     }
 
-    /** [lastCooperVo2] feeds the Cooper projection cue's gap to the last test. */
-    override fun start(mode: RecordMode, spec: SessionSpec?, units: Units, lastCooperVo2: Double?): StartResult =
-        startWith(mode, spec, units, null, lastCooperVo2)
+    /** [liveContext]: the live compare's history (Phase 4 §3.2), journaled after the header. */
+    override fun start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?): StartResult =
+        startWith(mode, spec, units, null, liveContext)
 
     override fun startReplay(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ReplayConfig): StartResult {
         if (!BuildConfig.REPLAY_ENABLED) return StartResult(runId = null, error = StartError.REPLAY_UNAVAILABLE)
@@ -144,7 +154,8 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         }
         precondition()?.let { return StartResult(runId = null, error = it) }
         val h = replayed.header
-        val session = RecordingSession(context, runId, h.mode, h.session, h.units, null, volumeKeyLaps(h.mode))
+        // The journaled live context comes back with the run (BLOCK-1): a resumed session keeps comparing.
+        val session = RecordingSession(context, runId, h.mode, h.session, h.units, null, volumeKeyLaps(h.mode), replayed.liveContext)
         return begin(session) { it.startResumed(replayed) }
     }
 

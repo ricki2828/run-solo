@@ -2,6 +2,12 @@ package app.runsolo.platform
 
 import app.runsolo.core.model.CueKind as CoreCue
 import app.runsolo.core.model.LapSource as CoreLapSource
+import app.runsolo.core.model.LiveBoard as CoreLiveBoard
+import app.runsolo.core.model.LiveBoardKind as CoreLiveBoardKind
+import app.runsolo.core.model.LiveContext as CoreLiveContext
+import app.runsolo.core.model.LiveEntry as CoreLiveEntry
+import app.runsolo.core.model.LiveTarget as CoreLiveTarget
+import app.runsolo.core.model.NudgePlan as CoreNudgePlan
 import app.runsolo.core.model.Phase as CorePhase
 import app.runsolo.core.model.CueProfile as CoreCueProfile
 import app.runsolo.core.model.RecoveryStyle as CoreRecoveryStyle
@@ -91,3 +97,35 @@ fun SessionSpec.toCore(): CoreSpec {
         steps = steps.map { it.toCore() },
     )
 }
+
+/**
+ * Throws [IllegalArgumentException] when the context breaks the contract (too many boards or
+ * entries, an entry without its board's series); the caller then starts with no context.
+ */
+fun LiveContext.toCore(): CoreLiveContext = CoreLiveContext(
+    boards = boards.map { b ->
+        CoreLiveBoard(
+            key = b.key,
+            label = b.label,
+            kind = CoreLiveBoardKind.valueOf(b.kind.name.toCamel()),
+            targetM = b.targetM,
+            entries = b.entries.map { e ->
+                CoreLiveEntry(
+                    runId = e.runId,
+                    dateMs = e.dateMs,
+                    fromStartSplitsMs = e.fromStartSplitsMs,
+                    liveRepPacesSecPerKm = e.liveRepPacesSecPerKm,
+                    cooperMinuteM = e.cooperMinuteM,
+                    finalMetric = e.finalMetric,
+                )
+            },
+        )
+    },
+    target = target?.let { CoreLiveTarget(it.distanceM, it.targetMs, it.predicted) },
+    nudges = nudges?.let { CoreNudgePlan(it.version.toInt()) },
+    cooperCurve = cooperCurve,
+    cooperHistory = cooperHistory,
+    coachingMuted = coachingMuted,
+    builtAtMs = builtAtMs,
+    engineVersion = engineVersion.toInt(),
+)

@@ -18,8 +18,8 @@ class PigeonRecorderGateway implements RecorderGateway {
     RecordMode mode,
     SessionSpec? spec,
     Units units, {
-    double? lastCooperVo2,
-  }) => _api.start(mode, spec, units, lastCooperVo2);
+    LiveContext? liveContext,
+  }) => _api.start(mode, spec, units, liveContext);
 
   @override
   Future<void> pause() => _api.pause();

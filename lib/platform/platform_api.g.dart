@@ -255,6 +255,13 @@ enum ExitReason {
   other,
 }
 
+/// Which kind of board a run races live (Phase 4 §3.2).
+enum LiveBoardKind {
+  distance,
+  intervals,
+  cooper,
+}
+
 /// One expanded step (named `SessionStep`: a generated `Step` would clash
 /// with Flutter material's `Step`). `repIndex` is 1-based; a recovery carries
 /// the rep number of the work step before it (run-file JSON key `rep`).
@@ -408,6 +415,324 @@ class SessionSpec {
       return true;
     }
     return _deepEquals(templateId, other.templateId) && _deepEquals(templateVersion, other.templateVersion) && _deepEquals(name, other.name) && _deepEquals(warmupSeconds, other.warmupSeconds) && _deepEquals(cooldownSeconds, other.cooldownSeconds) && _deepEquals(lapLockout, other.lapLockout) && _deepEquals(autoStop, other.autoStop) && _deepEquals(cueProfile, other.cueProfile) && _deepEquals(hrBandLow, other.hrBandLow) && _deepEquals(hrBandHigh, other.hrBandHigh) && _deepEquals(steps, other.steps);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// One prior run on a live board. Exactly one of the three series is set,
+/// by the board's kind: `fromStartSplitsMs` (distance: cumulative ms from
+/// the Start press at each whole km, WARN-1), `liveRepPacesSecPerKm`
+/// (intervals: untrimmed lap distance / lap time per work rep, null for an
+/// unclean rep, BLOCK-2), `cooperMinuteM` (Cooper: cumulative metres at each
+/// whole minute of the test).
+class LiveEntry {
+  LiveEntry({
+    required this.runId,
+    required this.dateMs,
+    this.fromStartSplitsMs,
+    this.liveRepPacesSecPerKm,
+    this.cooperMinuteM,
+    required this.finalMetric,
+  });
+
+  String runId;
+
+  /// Run start, epoch millis.
+  int dateMs;
+
+  List<int>? fromStartSplitsMs;
+
+  List<double?>? liveRepPacesSecPerKm;
+
+  List<double>? cooperMinuteM;
+
+  /// The board's metric for the whole run (finish ms, mean rep pace s/km,
+  /// or raw Cooper VO2), for "your #k of n" at the end.
+  double finalMetric;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      runId,
+      dateMs,
+      fromStartSplitsMs,
+      liveRepPacesSecPerKm,
+      cooperMinuteM,
+      finalMetric,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static LiveEntry decode(Object result) {
+    result as List<Object?>;
+    return LiveEntry(
+      runId: result[0]! as String,
+      dateMs: result[1]! as int,
+      fromStartSplitsMs: (result[2] as List<Object?>?)?.cast<int>(),
+      liveRepPacesSecPerKm: (result[3] as List<Object?>?)?.cast<double?>(),
+      cooperMinuteM: (result[4] as List<Object?>?)?.cast<double>(),
+      finalMetric: result[5]! as double,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! LiveEntry || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(runId, other.runId) && _deepEquals(dateMs, other.dateMs) && _deepEquals(fromStartSplitsMs, other.fromStartSplitsMs) && _deepEquals(liveRepPacesSecPerKm, other.liveRepPacesSecPerKm) && _deepEquals(cooperMinuteM, other.cooperMinuteM) && _deepEquals(finalMetric, other.finalMetric);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// A board the live compare ranks against: at most 20 entries (top 10 +
+/// last 10, deduped). The app only sends a board with 2 or more entries.
+class LiveBoard {
+  LiveBoard({
+    required this.key,
+    required this.label,
+    required this.kind,
+    this.targetM,
+    required this.entries,
+  });
+
+  /// The comparison key (`be:5k`, an intervals key, `cooper`, a course).
+  String key;
+
+  /// Spoken and shown name ("5K", "8 × 400 m"); the app injects any event
+  /// name, the engine never writes it.
+  String label;
+
+  LiveBoardKind kind;
+
+  /// Distance boards: the board's distance (5000 for a 5K board).
+  double? targetM;
+
+  List<LiveEntry> entries;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      key,
+      label,
+      kind,
+      targetM,
+      entries,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static LiveBoard decode(Object result) {
+    result as List<Object?>;
+    return LiveBoard(
+      key: result[0]! as String,
+      label: result[1]! as String,
+      kind: result[2]! as LiveBoardKind,
+      targetM: result[3] as double?,
+      entries: (result[4]! as List<Object?>).cast<LiveEntry>(),
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! LiveBoard || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(key, other.key) && _deepEquals(label, other.label) && _deepEquals(kind, other.kind) && _deepEquals(targetM, other.targetM) && _deepEquals(entries, other.entries);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// Phase 4 §3.4: a target to race (a predicted time or a recent PB). PD2
+/// fills it; even splits over [distanceM].
+class LiveTarget {
+  LiveTarget({
+    required this.distanceM,
+    required this.targetMs,
+    required this.predicted,
+  });
+
+  double distanceM;
+
+  int targetMs;
+
+  /// True = "predicted" (an estimate), false = "your PB".
+  bool predicted;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      distanceM,
+      targetMs,
+      predicted,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static LiveTarget decode(Object result) {
+    result as List<Object?>;
+    return LiveTarget(
+      distanceM: result[0]! as double,
+      targetMs: result[1]! as int,
+      predicted: result[2]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! LiveTarget || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(distanceM, other.distanceM) && _deepEquals(targetMs, other.targetMs) && _deepEquals(predicted, other.predicted);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// In-run coaching nudges (Phase 4 §3.5). LC1 ships this stub with no rules
+/// (WARN-6); CR1 fills it. `version` 0 = no rules.
+class NudgePlan {
+  NudgePlan({
+    required this.version,
+  });
+
+  int version;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      version,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static NudgePlan decode(Object result) {
+    result as List<Object?>;
+    return NudgePlan(
+      version: result[0]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! NudgePlan || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(version, other.version);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// Everything the live "you vs you" needs, built by the app at Start within
+/// 150 ms or not at all (WARN-3), journaled as the `live_context` line and
+/// rebuilt from it on restore (BLOCK-1). Kotlin never reads history.
+class LiveContext {
+  LiveContext({
+    required this.boards,
+    this.target,
+    this.nudges,
+    this.cooperCurve,
+    this.cooperHistory,
+    required this.coachingMuted,
+    required this.builtAtMs,
+    required this.engineVersion,
+  });
+
+  /// At most 3.
+  List<LiveBoard> boards;
+
+  LiveTarget? target;
+
+  NudgePlan? nudges;
+
+  /// Cooper: cumulative fade fractions F(1)..F(12), F(12) = 1 (§3.3).
+  List<double>? cooperCurve;
+
+  /// Cooper: past raw VO2 estimates, oldest first (the last is the previous
+  /// test, for "up 2 on last time").
+  List<double>? cooperHistory;
+
+  bool coachingMuted;
+
+  /// Epoch millis when the app built it.
+  int builtAtMs;
+
+  int engineVersion;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      boards,
+      target,
+      nudges,
+      cooperCurve,
+      cooperHistory,
+      coachingMuted,
+      builtAtMs,
+      engineVersion,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static LiveContext decode(Object result) {
+    result as List<Object?>;
+    return LiveContext(
+      boards: (result[0]! as List<Object?>).cast<LiveBoard>(),
+      target: result[1] as LiveTarget?,
+      nudges: result[2] as NudgePlan?,
+      cooperCurve: (result[3] as List<Object?>?)?.cast<double>(),
+      cooperHistory: (result[4] as List<Object?>?)?.cast<double>(),
+      coachingMuted: result[5]! as bool,
+      builtAtMs: result[6]! as int,
+      engineVersion: result[7]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! LiveContext || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(boards, other.boards) && _deepEquals(target, other.target) && _deepEquals(nudges, other.nudges) && _deepEquals(cooperCurve, other.cooperCurve) && _deepEquals(cooperHistory, other.cooperHistory) && _deepEquals(coachingMuted, other.coachingMuted) && _deepEquals(builtAtMs, other.builtAtMs) && _deepEquals(engineVersion, other.engineVersion);
   }
 
   @override
@@ -1504,59 +1829,77 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is ExitReason) {
       buffer.putUint8(142);
       writeValue(buffer, value.index);
-    }    else if (value is SessionStep) {
+    }    else if (value is LiveBoardKind) {
       buffer.putUint8(143);
-      writeValue(buffer, value.encode());
-    }    else if (value is SessionSpec) {
+      writeValue(buffer, value.index);
+    }    else if (value is SessionStep) {
       buffer.putUint8(144);
       writeValue(buffer, value.encode());
-    }    else if (value is StartResult) {
+    }    else if (value is SessionSpec) {
       buffer.putUint8(145);
       writeValue(buffer, value.encode());
-    }    else if (value is LapSummary) {
+    }    else if (value is LiveEntry) {
       buffer.putUint8(146);
       writeValue(buffer, value.encode());
-    }    else if (value is RecorderStatus) {
+    }    else if (value is LiveBoard) {
       buffer.putUint8(147);
       writeValue(buffer, value.encode());
-    }    else if (value is OrphanJournal) {
+    }    else if (value is LiveTarget) {
       buffer.putUint8(148);
       writeValue(buffer, value.encode());
-    }    else if (value is ReplayConfig) {
+    }    else if (value is NudgePlan) {
       buffer.putUint8(149);
       writeValue(buffer, value.encode());
-    }    else if (value is PermissionStatus) {
+    }    else if (value is LiveContext) {
       buffer.putUint8(150);
       writeValue(buffer, value.encode());
-    }    else if (value is BleStatus) {
+    }    else if (value is StartResult) {
       buffer.putUint8(151);
       writeValue(buffer, value.encode());
-    }    else if (value is ExitDiagnosis) {
+    }    else if (value is LapSummary) {
       buffer.putUint8(152);
       writeValue(buffer, value.encode());
-    }    else if (value is BleDevice) {
+    }    else if (value is RecorderStatus) {
       buffer.putUint8(153);
       writeValue(buffer, value.encode());
-    }    else if (value is BackupStatus) {
+    }    else if (value is OrphanJournal) {
       buffer.putUint8(154);
       writeValue(buffer, value.encode());
-    }    else if (value is TickEvent) {
+    }    else if (value is ReplayConfig) {
       buffer.putUint8(155);
       writeValue(buffer, value.encode());
-    }    else if (value is LapEvent) {
+    }    else if (value is PermissionStatus) {
       buffer.putUint8(156);
       writeValue(buffer, value.encode());
-    }    else if (value is CueEvent) {
+    }    else if (value is BleStatus) {
       buffer.putUint8(157);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is ExitDiagnosis) {
       buffer.putUint8(158);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is BleDevice) {
       buffer.putUint8(159);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is BackupStatus) {
       buffer.putUint8(160);
+      writeValue(buffer, value.encode());
+    }    else if (value is TickEvent) {
+      buffer.putUint8(161);
+      writeValue(buffer, value.encode());
+    }    else if (value is LapEvent) {
+      buffer.putUint8(162);
+      writeValue(buffer, value.encode());
+    }    else if (value is CueEvent) {
+      buffer.putUint8(163);
+      writeValue(buffer, value.encode());
+    }    else if (value is FaultEvent) {
+      buffer.putUint8(164);
+      writeValue(buffer, value.encode());
+    }    else if (value is StateEvent) {
+      buffer.putUint8(165);
+      writeValue(buffer, value.encode());
+    }    else if (value is PhaseEvent) {
+      buffer.putUint8(166);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -1609,40 +1952,53 @@ class _PigeonCodec extends StandardMessageCodec {
         final value = readValue(buffer) as int?;
         return value == null ? null : ExitReason.values[value];
       case 143:
-        return SessionStep.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : LiveBoardKind.values[value];
       case 144:
-        return SessionSpec.decode(readValue(buffer)!);
+        return SessionStep.decode(readValue(buffer)!);
       case 145:
-        return StartResult.decode(readValue(buffer)!);
+        return SessionSpec.decode(readValue(buffer)!);
       case 146:
-        return LapSummary.decode(readValue(buffer)!);
+        return LiveEntry.decode(readValue(buffer)!);
       case 147:
-        return RecorderStatus.decode(readValue(buffer)!);
+        return LiveBoard.decode(readValue(buffer)!);
       case 148:
-        return OrphanJournal.decode(readValue(buffer)!);
+        return LiveTarget.decode(readValue(buffer)!);
       case 149:
-        return ReplayConfig.decode(readValue(buffer)!);
+        return NudgePlan.decode(readValue(buffer)!);
       case 150:
-        return PermissionStatus.decode(readValue(buffer)!);
+        return LiveContext.decode(readValue(buffer)!);
       case 151:
-        return BleStatus.decode(readValue(buffer)!);
+        return StartResult.decode(readValue(buffer)!);
       case 152:
-        return ExitDiagnosis.decode(readValue(buffer)!);
+        return LapSummary.decode(readValue(buffer)!);
       case 153:
-        return BleDevice.decode(readValue(buffer)!);
+        return RecorderStatus.decode(readValue(buffer)!);
       case 154:
-        return BackupStatus.decode(readValue(buffer)!);
+        return OrphanJournal.decode(readValue(buffer)!);
       case 155:
-        return TickEvent.decode(readValue(buffer)!);
+        return ReplayConfig.decode(readValue(buffer)!);
       case 156:
-        return LapEvent.decode(readValue(buffer)!);
+        return PermissionStatus.decode(readValue(buffer)!);
       case 157:
-        return CueEvent.decode(readValue(buffer)!);
+        return BleStatus.decode(readValue(buffer)!);
       case 158:
-        return FaultEvent.decode(readValue(buffer)!);
+        return ExitDiagnosis.decode(readValue(buffer)!);
       case 159:
-        return StateEvent.decode(readValue(buffer)!);
+        return BleDevice.decode(readValue(buffer)!);
       case 160:
+        return BackupStatus.decode(readValue(buffer)!);
+      case 161:
+        return TickEvent.decode(readValue(buffer)!);
+      case 162:
+        return LapEvent.decode(readValue(buffer)!);
+      case 163:
+        return CueEvent.decode(readValue(buffer)!);
+      case 164:
+        return FaultEvent.decode(readValue(buffer)!);
+      case 165:
+        return StateEvent.decode(readValue(buffer)!);
+      case 166:
         return PhaseEvent.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -1670,16 +2026,19 @@ class RecorderApi {
   ///
   /// `spec`: required for `intervals` and `cooper`, the fartlek spec or null
   /// for `laps`, null for `free`; anything else is `unsupportedSession`.
-  /// `lastCooperVo2`: the previous Cooper result for the projection cue's gap
-  /// to last time (Kotlin does not read history).
-  Future<StartResult> start(RecordMode mode, SessionSpec? spec, Units units, double? lastCooperVo2) async {
+  /// `liveContext`: the history the live compare needs (Phase 4 §3.2; Kotlin
+  /// does not read history), journaled as the `live_context` line after the
+  /// header; null = no compare, no overlay, no nudges, nothing said. The
+  /// previous Cooper VO2 for "up 2 on last time" is the last
+  /// `cooperHistory` entry.
+  Future<StartResult> start(RecordMode mode, SessionSpec? spec, Units units, LiveContext? liveContext) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.start$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[mode, spec, units, lastCooperVo2]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[mode, spec, units, liveContext]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(

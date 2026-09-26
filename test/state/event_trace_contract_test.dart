@@ -201,7 +201,7 @@ class TraceGateway implements RecorderGateway {
     RecordMode m,
     SessionSpec? s,
     Units u, {
-    double? lastCooperVo2,
+    LiveContext? liveContext,
   }) => throw UnimplementedError();
   @override
   Future<void> pause() => throw UnimplementedError();

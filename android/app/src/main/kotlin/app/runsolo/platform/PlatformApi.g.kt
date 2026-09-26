@@ -458,6 +458,19 @@ enum class ExitReason(val raw: Int) {
   }
 }
 
+/** Which kind of board a run races live (Phase 4 §3.2). */
+enum class LiveBoardKind(val raw: Int) {
+  DISTANCE(0),
+  INTERVALS(1),
+  COOPER(2);
+
+  companion object {
+    fun ofRaw(raw: Int): LiveBoardKind? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
 /**
  * One expanded step (named `SessionStep`: a generated `Step` would clash
  * with Flutter material's `Step`). `repIndex` is 1-based; a recovery carries
@@ -596,6 +609,297 @@ data class SessionSpec (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.hrBandLow)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.hrBandHigh)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.steps)
+    return result
+  }
+}
+
+/**
+ * One prior run on a live board. Exactly one of the three series is set,
+ * by the board's kind: `fromStartSplitsMs` (distance: cumulative ms from
+ * the Start press at each whole km, WARN-1), `liveRepPacesSecPerKm`
+ * (intervals: untrimmed lap distance / lap time per work rep, null for an
+ * unclean rep, BLOCK-2), `cooperMinuteM` (Cooper: cumulative metres at each
+ * whole minute of the test).
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class LiveEntry (
+  val runId: String,
+  /** Run start, epoch millis. */
+  val dateMs: Long,
+  val fromStartSplitsMs: List<Long>? = null,
+  val liveRepPacesSecPerKm: List<Double?>? = null,
+  val cooperMinuteM: List<Double>? = null,
+  /**
+   * The board's metric for the whole run (finish ms, mean rep pace s/km,
+   * or raw Cooper VO2), for "your #k of n" at the end.
+   */
+  val finalMetric: Double
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): LiveEntry {
+      val runId = pigeonVar_list[0] as String
+      val dateMs = pigeonVar_list[1] as Long
+      val fromStartSplitsMs = pigeonVar_list[2] as List<Long>?
+      val liveRepPacesSecPerKm = pigeonVar_list[3] as List<Double?>?
+      val cooperMinuteM = pigeonVar_list[4] as List<Double>?
+      val finalMetric = pigeonVar_list[5] as Double
+      return LiveEntry(runId, dateMs, fromStartSplitsMs, liveRepPacesSecPerKm, cooperMinuteM, finalMetric)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      runId,
+      dateMs,
+      fromStartSplitsMs,
+      liveRepPacesSecPerKm,
+      cooperMinuteM,
+      finalMetric,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as LiveEntry
+    return PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.dateMs, other.dateMs) && PlatformApiPigeonUtils.deepEquals(this.fromStartSplitsMs, other.fromStartSplitsMs) && PlatformApiPigeonUtils.deepEquals(this.liveRepPacesSecPerKm, other.liveRepPacesSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.cooperMinuteM, other.cooperMinuteM) && PlatformApiPigeonUtils.deepEquals(this.finalMetric, other.finalMetric)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.runId)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.dateMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.fromStartSplitsMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.liveRepPacesSecPerKm)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.cooperMinuteM)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.finalMetric)
+    return result
+  }
+}
+
+/**
+ * A board the live compare ranks against: at most 20 entries (top 10 +
+ * last 10, deduped). The app only sends a board with 2 or more entries.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class LiveBoard (
+  /** The comparison key (`be:5k`, an intervals key, `cooper`, a course). */
+  val key: String,
+  /**
+   * Spoken and shown name ("5K", "8 × 400 m"); the app injects any event
+   * name, the engine never writes it.
+   */
+  val label: String,
+  val kind: LiveBoardKind,
+  /** Distance boards: the board's distance (5000 for a 5K board). */
+  val targetM: Double? = null,
+  val entries: List<LiveEntry>
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): LiveBoard {
+      val key = pigeonVar_list[0] as String
+      val label = pigeonVar_list[1] as String
+      val kind = pigeonVar_list[2] as LiveBoardKind
+      val targetM = pigeonVar_list[3] as Double?
+      val entries = pigeonVar_list[4] as List<LiveEntry>
+      return LiveBoard(key, label, kind, targetM, entries)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      key,
+      label,
+      kind,
+      targetM,
+      entries,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as LiveBoard
+    return PlatformApiPigeonUtils.deepEquals(this.key, other.key) && PlatformApiPigeonUtils.deepEquals(this.label, other.label) && PlatformApiPigeonUtils.deepEquals(this.kind, other.kind) && PlatformApiPigeonUtils.deepEquals(this.targetM, other.targetM) && PlatformApiPigeonUtils.deepEquals(this.entries, other.entries)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.key)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.label)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.kind)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.targetM)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.entries)
+    return result
+  }
+}
+
+/**
+ * Phase 4 §3.4: a target to race (a predicted time or a recent PB). PD2
+ * fills it; even splits over [distanceM].
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class LiveTarget (
+  val distanceM: Double,
+  val targetMs: Long,
+  /** True = "predicted" (an estimate), false = "your PB". */
+  val predicted: Boolean
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): LiveTarget {
+      val distanceM = pigeonVar_list[0] as Double
+      val targetMs = pigeonVar_list[1] as Long
+      val predicted = pigeonVar_list[2] as Boolean
+      return LiveTarget(distanceM, targetMs, predicted)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      distanceM,
+      targetMs,
+      predicted,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as LiveTarget
+    return PlatformApiPigeonUtils.deepEquals(this.distanceM, other.distanceM) && PlatformApiPigeonUtils.deepEquals(this.targetMs, other.targetMs) && PlatformApiPigeonUtils.deepEquals(this.predicted, other.predicted)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.distanceM)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.targetMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.predicted)
+    return result
+  }
+}
+
+/**
+ * In-run coaching nudges (Phase 4 §3.5). LC1 ships this stub with no rules
+ * (WARN-6); CR1 fills it. `version` 0 = no rules.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class NudgePlan (
+  val version: Long
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): NudgePlan {
+      val version = pigeonVar_list[0] as Long
+      return NudgePlan(version)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      version,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as NudgePlan
+    return PlatformApiPigeonUtils.deepEquals(this.version, other.version)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.version)
+    return result
+  }
+}
+
+/**
+ * Everything the live "you vs you" needs, built by the app at Start within
+ * 150 ms or not at all (WARN-3), journaled as the `live_context` line and
+ * rebuilt from it on restore (BLOCK-1). Kotlin never reads history.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class LiveContext (
+  /** At most 3. */
+  val boards: List<LiveBoard>,
+  val target: LiveTarget? = null,
+  val nudges: NudgePlan? = null,
+  /** Cooper: cumulative fade fractions F(1)..F(12), F(12) = 1 (§3.3). */
+  val cooperCurve: List<Double>? = null,
+  /**
+   * Cooper: past raw VO2 estimates, oldest first (the last is the previous
+   * test, for "up 2 on last time").
+   */
+  val cooperHistory: List<Double>? = null,
+  val coachingMuted: Boolean,
+  /** Epoch millis when the app built it. */
+  val builtAtMs: Long,
+  val engineVersion: Long
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): LiveContext {
+      val boards = pigeonVar_list[0] as List<LiveBoard>
+      val target = pigeonVar_list[1] as LiveTarget?
+      val nudges = pigeonVar_list[2] as NudgePlan?
+      val cooperCurve = pigeonVar_list[3] as List<Double>?
+      val cooperHistory = pigeonVar_list[4] as List<Double>?
+      val coachingMuted = pigeonVar_list[5] as Boolean
+      val builtAtMs = pigeonVar_list[6] as Long
+      val engineVersion = pigeonVar_list[7] as Long
+      return LiveContext(boards, target, nudges, cooperCurve, cooperHistory, coachingMuted, builtAtMs, engineVersion)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      boards,
+      target,
+      nudges,
+      cooperCurve,
+      cooperHistory,
+      coachingMuted,
+      builtAtMs,
+      engineVersion,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as LiveContext
+    return PlatformApiPigeonUtils.deepEquals(this.boards, other.boards) && PlatformApiPigeonUtils.deepEquals(this.target, other.target) && PlatformApiPigeonUtils.deepEquals(this.nudges, other.nudges) && PlatformApiPigeonUtils.deepEquals(this.cooperCurve, other.cooperCurve) && PlatformApiPigeonUtils.deepEquals(this.cooperHistory, other.cooperHistory) && PlatformApiPigeonUtils.deepEquals(this.coachingMuted, other.coachingMuted) && PlatformApiPigeonUtils.deepEquals(this.builtAtMs, other.builtAtMs) && PlatformApiPigeonUtils.deepEquals(this.engineVersion, other.engineVersion)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.boards)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.target)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.nudges)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.cooperCurve)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.cooperHistory)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.coachingMuted)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.builtAtMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.engineVersion)
     return result
   }
 }
@@ -1588,91 +1892,121 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         }
       }
       143.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          SessionStep.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          LiveBoardKind.ofRaw(it.toInt())
         }
       }
       144.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          SessionSpec.fromList(it)
+          SessionStep.fromList(it)
         }
       }
       145.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StartResult.fromList(it)
+          SessionSpec.fromList(it)
         }
       }
       146.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapSummary.fromList(it)
+          LiveEntry.fromList(it)
         }
       }
       147.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          RecorderStatus.fromList(it)
+          LiveBoard.fromList(it)
         }
       }
       148.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          OrphanJournal.fromList(it)
+          LiveTarget.fromList(it)
         }
       }
       149.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ReplayConfig.fromList(it)
+          NudgePlan.fromList(it)
         }
       }
       150.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          PermissionStatus.fromList(it)
+          LiveContext.fromList(it)
         }
       }
       151.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BleStatus.fromList(it)
+          StartResult.fromList(it)
         }
       }
       152.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ExitDiagnosis.fromList(it)
+          LapSummary.fromList(it)
         }
       }
       153.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BleDevice.fromList(it)
+          RecorderStatus.fromList(it)
         }
       }
       154.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BackupStatus.fromList(it)
+          OrphanJournal.fromList(it)
         }
       }
       155.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TickEvent.fromList(it)
+          ReplayConfig.fromList(it)
         }
       }
       156.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapEvent.fromList(it)
+          PermissionStatus.fromList(it)
         }
       }
       157.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CueEvent.fromList(it)
+          BleStatus.fromList(it)
         }
       }
       158.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FaultEvent.fromList(it)
+          ExitDiagnosis.fromList(it)
         }
       }
       159.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StateEvent.fromList(it)
+          BleDevice.fromList(it)
         }
       }
       160.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          BackupStatus.fromList(it)
+        }
+      }
+      161.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          TickEvent.fromList(it)
+        }
+      }
+      162.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          LapEvent.fromList(it)
+        }
+      }
+      163.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          CueEvent.fromList(it)
+        }
+      }
+      164.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          FaultEvent.fromList(it)
+        }
+      }
+      165.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          StateEvent.fromList(it)
+        }
+      }
+      166.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           PhaseEvent.fromList(it)
         }
@@ -1738,76 +2072,100 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(142)
         writeValue(stream, value.raw.toLong())
       }
-      is SessionStep -> {
+      is LiveBoardKind -> {
         stream.write(143)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is SessionSpec -> {
+      is SessionStep -> {
         stream.write(144)
         writeValue(stream, value.toList())
       }
-      is StartResult -> {
+      is SessionSpec -> {
         stream.write(145)
         writeValue(stream, value.toList())
       }
-      is LapSummary -> {
+      is LiveEntry -> {
         stream.write(146)
         writeValue(stream, value.toList())
       }
-      is RecorderStatus -> {
+      is LiveBoard -> {
         stream.write(147)
         writeValue(stream, value.toList())
       }
-      is OrphanJournal -> {
+      is LiveTarget -> {
         stream.write(148)
         writeValue(stream, value.toList())
       }
-      is ReplayConfig -> {
+      is NudgePlan -> {
         stream.write(149)
         writeValue(stream, value.toList())
       }
-      is PermissionStatus -> {
+      is LiveContext -> {
         stream.write(150)
         writeValue(stream, value.toList())
       }
-      is BleStatus -> {
+      is StartResult -> {
         stream.write(151)
         writeValue(stream, value.toList())
       }
-      is ExitDiagnosis -> {
+      is LapSummary -> {
         stream.write(152)
         writeValue(stream, value.toList())
       }
-      is BleDevice -> {
+      is RecorderStatus -> {
         stream.write(153)
         writeValue(stream, value.toList())
       }
-      is BackupStatus -> {
+      is OrphanJournal -> {
         stream.write(154)
         writeValue(stream, value.toList())
       }
-      is TickEvent -> {
+      is ReplayConfig -> {
         stream.write(155)
         writeValue(stream, value.toList())
       }
-      is LapEvent -> {
+      is PermissionStatus -> {
         stream.write(156)
         writeValue(stream, value.toList())
       }
-      is CueEvent -> {
+      is BleStatus -> {
         stream.write(157)
         writeValue(stream, value.toList())
       }
-      is FaultEvent -> {
+      is ExitDiagnosis -> {
         stream.write(158)
         writeValue(stream, value.toList())
       }
-      is StateEvent -> {
+      is BleDevice -> {
         stream.write(159)
         writeValue(stream, value.toList())
       }
-      is PhaseEvent -> {
+      is BackupStatus -> {
         stream.write(160)
+        writeValue(stream, value.toList())
+      }
+      is TickEvent -> {
+        stream.write(161)
+        writeValue(stream, value.toList())
+      }
+      is LapEvent -> {
+        stream.write(162)
+        writeValue(stream, value.toList())
+      }
+      is CueEvent -> {
+        stream.write(163)
+        writeValue(stream, value.toList())
+      }
+      is FaultEvent -> {
+        stream.write(164)
+        writeValue(stream, value.toList())
+      }
+      is StateEvent -> {
+        stream.write(165)
+        writeValue(stream, value.toList())
+      }
+      is PhaseEvent -> {
+        stream.write(166)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -1826,10 +2184,13 @@ interface RecorderApi {
    *
    * `spec`: required for `intervals` and `cooper`, the fartlek spec or null
    * for `laps`, null for `free`; anything else is `unsupportedSession`.
-   * `lastCooperVo2`: the previous Cooper result for the projection cue's gap
-   * to last time (Kotlin does not read history).
+   * `liveContext`: the history the live compare needs (Phase 4 §3.2; Kotlin
+   * does not read history), journaled as the `live_context` line after the
+   * header; null = no compare, no overlay, no nudges, nothing said. The
+   * previous Cooper VO2 for "up 2 on last time" is the last
+   * `cooperHistory` entry.
    */
-  fun start(mode: RecordMode, spec: SessionSpec?, units: Units, lastCooperVo2: Double?): StartResult
+  fun start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?): StartResult
   /** Debug builds only: like `start`, fed from a fixture instead of GPS/BLE. */
   fun startReplay(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ReplayConfig): StartResult
   /**
@@ -1896,9 +2257,9 @@ interface RecorderApi {
             val modeArg = args[0] as RecordMode
             val specArg = args[1] as SessionSpec?
             val unitsArg = args[2] as Units
-            val lastCooperVo2Arg = args[3] as Double?
+            val liveContextArg = args[3] as LiveContext?
             val wrapped: List<Any?> = try {
-              listOf(api.start(modeArg, specArg, unitsArg, lastCooperVo2Arg))
+              listOf(api.start(modeArg, specArg, unitsArg, liveContextArg))
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)
             }

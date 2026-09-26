@@ -2,6 +2,7 @@ package app.runsolo.core.journal
 
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.LapSource
+import app.runsolo.core.model.LiveContext
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
@@ -70,4 +71,28 @@ sealed class JournalLine {
 
     /** HR link state; lets the recovery UI know whether a strap was paired. */
     data class HrLink(override val t: Long, override val w: Long, val connected: Boolean) : JournalLine()
+
+    /**
+     * `live_context` (Phase 4 §3.2, BLOCK-1): the [LiveContext] passed to `start()`, written
+     * straight after the header when there is one, so `restore()` keeps comparing after a kill.
+     * No line (older build, or a null context) = a silent run. Not a run event.
+     */
+    data class LiveContextLine(override val t: Long, override val w: Long, val context: LiveContext) : JournalLine()
+
+    /**
+     * `cue_fired`: one live compare or nudge that was spoken ([key] = board key or nudge rule,
+     * [index] = km, rep or minute, [atMs] = run time of its trigger). Restore marks these done, so
+     * none repeats; a point that passed while the process was dead is dropped, never spoken
+     * late. Not a run event.
+     */
+    data class CueFired(
+        override val t: Long,
+        override val w: Long,
+        val kind: FiredKind,
+        val key: String,
+        val index: Int,
+        val atMs: Long,
+    ) : JournalLine()
+
+    enum class FiredKind { compare, nudge }
 }

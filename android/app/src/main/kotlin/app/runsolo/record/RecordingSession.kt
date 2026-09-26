@@ -1,5 +1,6 @@
 package app.runsolo.record
 
+import app.runsolo.core.model.LiveContext
 import android.content.Context
 import android.os.Handler
 import android.os.HandlerThread
@@ -58,8 +59,12 @@ class RecordingSession(
     val units: Units,
     private val replay: ReplayRunner?,
     volumeKeyLaps: Boolean,
-    /** The last Cooper result's VO2, for the projection cue's "up 2 on last time"; not journaled (a recovered test omits the gap). */
-    private val lastCooperVo2: Double? = null,
+    /**
+     * The live compare's history (Phase 4 §3.2): journaled as the `lctx` line right after the
+     * header, handed back from the journal on resume. Its last Cooper VO2 feeds the projection
+     * cue's "up 2 on last time". LV1 adds the compare itself.
+     */
+    private val liveContext: LiveContext? = null,
 ) : app.runsolo.platform.StartGuard.Session {
     // Application context: the session outlives the Activity (swipe from Recents keeps the
     // service alive; an Activity context would unbind TTS and leak the Activity).
@@ -160,6 +165,7 @@ class RecordingSession(
         startWallMs = System.currentTimeMillis()
         writer.open()
         writer.append(JournalLine.Header(t, startWallMs, runId, device, app, tz, mode, spec, units))
+        liveContext?.let { writer.append(JournalLine.LiveContextLine(t, startWallMs, it)) }
         core = RecorderCore(mode, spec, RecorderCore.Config(volumeKeyLaps = volumeKeyLapsEnabled))
         handle(core.start(t), t)
         prevTickT = t
@@ -615,7 +621,7 @@ class RecordingSession(
     }
 
     private fun cueText(o: RecorderCore.Output.Cue): String? =
-        CueWords.text(o.kind, o.value, spec, core.phase, core.repIndex, core.stepIndex, lastCooperVo2)
+        CueWords.text(o.kind, o.value, spec, core.phase, core.repIndex, core.stepIndex, liveContext?.lastCooperVo2)
 
     private fun emitState() {
         refreshSnapshot()
