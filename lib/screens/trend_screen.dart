@@ -10,6 +10,7 @@ import '../state/history_store.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
+import 'cooper_result_screen.dart' show cooperTests;
 
 /// Trend per run type (design brief §4.9); Intervals group by comparison
 /// key (plan §3.8), one chip per session shape, titled with the session
@@ -78,20 +79,25 @@ class _TrendScreenState extends State<TrendScreen> {
               ),
               children: [
                 const SizedBox(height: Space.x8),
-                Row(
+                // A wrap, not a row: four chips must never overflow a
+                // narrow phone at a large text size.
+                Wrap(
+                  spacing: Space.x8,
+                  runSpacing: Space.x8,
                   children: [
                     for (final m in [
                       RecordMode.intervals,
                       RecordMode.laps,
                       RecordMode.free,
-                    ]) ...[
+                      RecordMode.cooper,
+                    ])
                       _TypeChip(
-                        label: modeTitle(m).split(' ').first,
+                        label: m == RecordMode.cooper
+                            ? 'Test'
+                            : modeTitle(m).split(' ').first,
                         selected: _type == m,
                         onTap: () => setState(() => _type = m),
                       ),
-                      const SizedBox(width: Space.x8),
-                    ],
                   ],
                 ),
                 if (keys.length > 1) ...[
@@ -131,9 +137,9 @@ class _TrendScreenState extends State<TrendScreen> {
                         ? 'Two 4x4s draw the first line.'
                         : 'Two sessions draw the first line.',
                   ),
+                  RecordMode.cooper => _CooperTrend(runs: runs),
                   RecordMode.laps ||
-                  RecordMode.free ||
-                  RecordMode.cooper => _DistanceTrend(runs: runs, units: units),
+                  RecordMode.free => _DistanceTrend(runs: runs, units: units),
                 },
                 const SizedBox(height: Space.x24),
                 if (runs.isEmpty)
@@ -475,6 +481,117 @@ class _DistanceTrend extends StatelessWidget {
       ],
     );
   }
+}
+
+/// C1: past 12-minute test scores, oldest to newest. Every number is an
+/// estimate and says so; Bone, never Arc (A5).
+class _CooperTrend extends StatelessWidget {
+  const _CooperTrend({required this.runs});
+  final List<RunSummary> runs;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final tests = cooperTests(runs);
+    if (tests.isEmpty) {
+      return Text(
+        'Take the 12-minute test to see your estimate.',
+        key: const ValueKey('cooper-trend-empty'),
+        style: RunSoloType.body17.copyWith(color: t.inkSecondary),
+      );
+    }
+    final best = tests.map((x) => x.vo2).reduce(math.max);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: Space.x24,
+          runSpacing: Space.x12,
+          children: [
+            StatTile(label: 'latest est.', value: '${tests.last.vo2.round()}'),
+            StatTile(label: 'best est.', value: '${best.round()}', size: 28),
+            StatTile(label: 'tests', value: '${tests.length}', size: 28),
+          ],
+        ),
+        if (tests.length >= 2) ...[
+          const SizedBox(height: Space.x24),
+          SizedBox(
+            key: const ValueKey('cooper-trend-chart'),
+            height: 120,
+            width: double.infinity,
+            child: CustomPaint(
+              painter: _Vo2Painter(
+                [for (final x in tests) x.vo2],
+                line: t.inkPrimary,
+                grid: t.lineHair,
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: Space.x16),
+        for (final x in tests.reversed)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: Space.x8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    Fmt.dayDate(x.date),
+                    style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                  ),
+                ),
+                Text(
+                  engine.CooperEstimate(x.minuteM.last).rangeLine,
+                  style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: Space.x8),
+        Text(
+          engine.CooperResult.disclaimer,
+          style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+        ),
+      ],
+    );
+  }
+}
+
+/// Raw VO2 estimates as dots joined by a 1 px line, on a padded scale.
+class _Vo2Painter extends CustomPainter {
+  _Vo2Painter(this.values, {required this.line, required this.grid});
+  final List<double> values;
+  final Color line;
+  final Color grid;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final lo = values.reduce(math.min) - 3;
+    final hi = values.reduce(math.max) + 3;
+    Offset at(int i) => Offset(
+      values.length == 1
+          ? size.width / 2
+          : size.width * i / (values.length - 1),
+      size.height * (1 - (values[i] - lo) / (hi - lo)),
+    );
+    canvas.drawLine(
+      Offset(0, size.height),
+      Offset(size.width, size.height),
+      Paint()..color = grid,
+    );
+    final p = Paint()
+      ..color = line
+      ..strokeWidth = 1;
+    for (var i = 1; i < values.length; i++) {
+      canvas.drawLine(at(i - 1), at(i), p);
+    }
+    for (var i = 0; i < values.length; i++) {
+      canvas.drawCircle(at(i), 4, Paint()..color = line);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_Vo2Painter old) => old.values != values;
 }
 
 /// Lane lines header ground (design brief §2.2: 1 px hairlines at 8 px, 6 %).

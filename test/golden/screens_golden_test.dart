@@ -488,6 +488,67 @@ void main() {
     await golden(tester, 'detail_weather');
   });
 
+  // C1 (A10.5): the 12-minute test result, a new best on a warm hour
+  // after two tests; a paused test; the Test trend.
+  testWidgets('cooper result: new best with heat, paused, trend', (
+    tester,
+  ) async {
+    final a = cooperTestFile(
+      n: 11,
+      start: DateTime.utc(2026, 6, 10, 6),
+      mps: 3.8,
+    );
+    final b = cooperTestFile(
+      n: 12,
+      start: DateTime.utc(2026, 7, 15, 6),
+      mps: 3.9,
+    );
+    final c = cooperTestFile(n: 13, start: d1, mps: 4.1);
+    await pumpApp(
+      tester,
+      fakeServices(
+        files: [a, b, c],
+        sidecars: {
+          c.id: engine.RunSidecar(
+            runId: c.id,
+            weather: const engine.WeatherRecord(
+              status: engine.WeatherStatus.ok,
+              tempC: 24,
+              rh: 60,
+              dewPointC: 16,
+            ).toJson(),
+          ),
+        },
+      ),
+      pushRoute: Routes.verdict,
+      pushArguments: c.id,
+    );
+    await pumpTimes(tester, 6);
+    await tester.pump(const Duration(seconds: 1));
+    await golden(tester, 'cooper_result_best_heat');
+
+    final p = cooperTestFile(n: 14, start: d1, pausedAtS: 400);
+    await pumpApp(
+      tester,
+      fakeServices(files: [p]),
+      pushRoute: Routes.verdict,
+      pushArguments: p.id,
+    );
+    await pumpTimes(tester, 6);
+    await tester.pump(const Duration(seconds: 1));
+    await golden(tester, 'cooper_result_paused');
+
+    await pumpApp(
+      tester,
+      fakeServices(files: [a, b, c]),
+      home: const TrendScreen(),
+    );
+    await pumpTimes(tester, 6);
+    await tester.tap(find.text('Test'));
+    await pumpTimes(tester, 4);
+    await golden(tester, 'trend_cooper');
+  });
+
   testWidgets('run detail: map failed to load, no Play services', (
     tester,
   ) async {
