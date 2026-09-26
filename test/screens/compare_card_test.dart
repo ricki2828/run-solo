@@ -205,6 +205,43 @@ void main() {
     }
   });
 
+  for (final h in [800, 640]) {
+    testWidgets('GOAL runs (G3): the card over the projected finish at $h', (
+      tester,
+    ) async {
+      for (final spec in [
+        engine.SessionSpec.goalDistance(21098, 'Half'),
+        engine.SessionSpec.goalTime(1800, '30 min'),
+      ]) {
+        final (fake, _) = await openRun(
+          tester,
+          mode: RecordMode.intervals,
+          spec: spec.toPigeon(),
+          seconds: 600,
+        );
+        tester.view.physicalSize = Size(1080, h * 3.0);
+        await pumpTimes(tester, 3);
+        await show(
+          tester,
+          fake,
+          CompareEvent(
+            boardKey: 'goal',
+            boardLabel: spec.name,
+            kind: 'distanceInTime',
+            index: 10,
+            rank: 1,
+            of: 3,
+            value: 6412,
+            text: 'Best of 3 so far.',
+            overlay: true,
+          ),
+        );
+        expectClear(tester, find.byKey(const ValueKey('event-to-go')));
+        await tester.pump(const Duration(seconds: 2));
+      }
+    });
+  }
+
   test('card ink is dimmer than the primary and 7:1 on every zone', () {
     for (var z = 0; z <= HrZones.count; z++) {
       final ground = Color.alphaBlend(

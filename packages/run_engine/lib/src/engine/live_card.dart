@@ -107,6 +107,19 @@ class LiveCard {
           detail: 'VO2 est. $vo2',
           direction: many ? LiveCardDirection.level : dir,
         );
+      case 'distanceInTime':
+        // A time goal (§G) races its time board by distance: [value] is the
+        // projected distance at the goal time (m), [index] the minute.
+        if (value == null) return null;
+        final dist = units == Units.mi
+            ? '${(value / PaceFormat.metresPerMile).toStringAsFixed(1)} mi'
+            : '${(value / 1000).toStringAsFixed(1)} km';
+        return LiveCard(
+          rank: '#$rank OF $of',
+          eyebrow: 'ON PACE FOR · $label',
+          detail: 'About $dist at the finish',
+          direction: LiveCardDirection.level,
+        );
       case 'target':
         if (deltaMs == null || value == null) return null;
         final s = _seconds(deltaMs);
@@ -143,8 +156,11 @@ class LiveCard {
       : LiveCardDirection.behind;
 
   /// "5Ks" (the design's spelling) but "HILL PARKRUNS".
-  static String _plural(String label) =>
-      RegExp(r'\dK$').hasMatch(label) ? '${label}s' : '${label}S';
+  static String _plural(String label) => label == 'HALF'
+      ? 'HALF MARATHONS'
+      : RegExp(r'\dK$').hasMatch(label)
+      ? '${label}s'
+      : '${label}S';
 
   static String _gap(int s, LiveCardDirection dir) => switch (dir) {
     LiveCardDirection.level => 'LEVEL',

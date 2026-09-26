@@ -645,7 +645,11 @@ String metresText(double metres) {
 /// timed 5 km's last 400 m, and not once tips are muted for this run.
 bool compareCardAllowed(RecordingSnapshot s, int remainingMs) {
   if (s.tipsMuted == true || !s.recording || s.showEndRep) return false;
-  if (isEventRun(s)) return s.phase == Phase.work && !eventLastStretch(s);
+  // The timed 5 km and a GOAL (G3) share the event layout: the card covers
+  // the projected finish, never in the last 400 m / last minute.
+  if (isEventRun(s) || (s.isGoal && s.phase == Phase.work)) {
+    return s.phase == Phase.work && !eventLastStretch(s);
+  }
   if (s.isPreset) {
     return switch (s.phase) {
       Phase.recovery => s.distanceStep || remainingMs > 10000,
