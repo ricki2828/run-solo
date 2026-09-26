@@ -59,7 +59,10 @@ void main() {
     final c = chips(await fold([a, b]), b).single;
     expect(c.pb, isFalse);
     expect(c.boardKey, engine.BestEffortDistance.k5.key);
-    expect(c.label, matches(RegExp(r'^#2 of 2 5Ks · \d+ s off your best$')));
+    expect(
+      c.label,
+      matches(RegExp(r'^#2 of 2 5Ks · (\d+ s|\d+:\d\d) off your best$')),
+    );
   });
 
   test(

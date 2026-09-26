@@ -66,7 +66,8 @@ void main() {
     final b = cooperTestFile(n: 2, start: d2, mps: 3.9);
     final c = cooperTestFile(n: 3, start: d3, mps: 4.1);
     await openResult(tester, [a, b, c], c.id, justFinished: true);
-    final chip = tester.widget<RankChip>(find.byType(RankChip));
+    // The test board's chip first (A10.3: its own board leads).
+    final chip = tester.widgetList<RankChip>(find.byType(RankChip)).first;
     expect(chip.pb, isTrue);
     expect(chip.label, startsWith('New best test · VO2 est. '));
     expect(

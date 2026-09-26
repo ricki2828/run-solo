@@ -37,13 +37,17 @@ class Boards {
   /// best-effort boards may be missing runs ("Updating your boards").
   factory Boards.fold(Iterable<RunIndexEntry> entries) {
     final list = entries.toList();
+    final names = <String, String>{};
+    for (final e in list) {
+      final k = e.comparisonKey;
+      if (k == null) continue;
+      final name =
+          e.row?.session?.name ?? engine.SessionCatalogue.ownerOfKey(k)?.name;
+      if (name != null) names[k] = name;
+    }
     return Boards._(
       {for (final e in list) e.id: e.boardInput()},
-      {
-        for (final e in list)
-          if (e.comparisonKey != null && e.row?.session != null)
-            e.comparisonKey!: e.row!.session!.name,
-      },
+      names,
       updating: list.any((e) => e.derived == null && !e.derivedFailed),
     );
   }
@@ -104,7 +108,7 @@ class Boards {
   /// A run's main board first: its own session or test board, the event
   /// course, then best efforts, longest first.
   static int _order(engine.BoardInput run, String key) {
-    if (key == run.comparisonKey) return -1;
+    if (key == run.comparisonKey) return -1 << 40; // before any distance
     return -(engine.Leaderboards.metresOf(key) ?? 0).round();
   }
 
