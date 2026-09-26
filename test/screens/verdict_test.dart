@@ -284,6 +284,6 @@ void main() {
     );
     await pumpTimes(tester, 6);
     await reveal(tester);
-    expect(find.text(engine.heatComparedNote), findsOneWidget);
+    expect(find.text(engine.heatComparedNote(0, 0)), findsOneWidget);
   });
 }

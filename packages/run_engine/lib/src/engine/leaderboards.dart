@@ -73,7 +73,8 @@ class BoardRun {
   /// Seconds (time boards), s/km (interval boards) or VO2 (Cooper).
   final double metric;
 
-  /// The heat-adjusted twin for the heat column; never used for rank.
+  /// The heat-adjusted twin: the heat column, and the rank on a
+  /// heat-adjusted board ([Leaderboard.heatAdjusted]).
   final double? adjMetric;
 }
 
@@ -112,25 +113,55 @@ class BoardTrend {
 
 /// One personal leaderboard: a fold over the index (plan §3.1).
 class Leaderboard {
-  Leaderboard._(this.key, this.kind, this.metres, this.ranked);
+  Leaderboard._(
+    this.key,
+    this.kind,
+    this.metres,
+    this.ranked, {
+    this.heatAdjusted = false,
+  });
 
   /// Rank [runs] on [key]. Ties: the earlier date ranks higher.
+  ///
+  /// [heatAdjusted] ("Compare heat-adjusted paces", W2): a board with a
+  /// heat twin ranks by [BoardRun.adjMetric]. A run without one (no usable
+  /// weather, too hot) stays ranked on its raw value ([onRawValue], shown
+  /// with a "no weather" tag), so a PB never drops off a board because of
+  /// a setting. Goal boards have no twin and stay raw.
   factory Leaderboard.of(
     String key,
     BoardKind kind,
     List<BoardRun> runs, {
     double? metres,
+    bool heatAdjusted = false,
   }) {
+    final adjusted = heatAdjusted && Leaderboards.hasHeatTwin(key);
     final higher = kind == BoardKind.cooper || kind == BoardKind.distanceInTime;
+    double v(BoardRun r) => adjusted ? (r.adjMetric ?? r.metric) : r.metric;
     final ranked = [...runs]
       ..sort((a, b) {
-        final c = higher
-            ? b.metric.compareTo(a.metric)
-            : a.metric.compareTo(b.metric);
+        final c = higher ? v(b).compareTo(v(a)) : v(a).compareTo(v(b));
         return c != 0 ? c : a.date.compareTo(b.date);
       });
-    return Leaderboard._(key, kind, metres, List.unmodifiable(ranked));
+    return Leaderboard._(
+      key,
+      kind,
+      metres,
+      List.unmodifiable(ranked),
+      heatAdjusted: adjusted,
+    );
   }
+
+  /// Ranked by the heat-adjusted twin (W2 setting on, and the board has
+  /// one). [BoardRun.metric] stays raw, to show alongside.
+  final bool heatAdjusted;
+
+  /// On a heat-adjusted board, [r] has no twin and ranks on its raw value.
+  bool onRawValue(BoardRun r) => heatAdjusted && r.adjMetric == null;
+
+  /// The value this board ranks [r] by.
+  double rankValue(BoardRun r) =>
+      heatAdjusted ? (r.adjMetric ?? r.metric) : r.metric;
 
   final String key;
   final BoardKind kind;
@@ -179,7 +210,8 @@ class Leaderboard {
     if (timeBoard && metres == null) {
       throw StateError('time board $key has no distance for its pace trend');
     }
-    double y(BoardRun r) => timeBoard ? r.metric / (metres! / 1000) : r.metric;
+    double y(BoardRun r) =>
+        timeBoard ? rankValue(r) / (metres! / 1000) : rankValue(r);
     final slopes = <double>[];
     for (var i = 0; i < pts.length; i++) {
       for (var j = i + 1; j < pts.length; j++) {
@@ -297,6 +329,10 @@ abstract final class Leaderboards {
     return out;
   }
 
+  /// Whether a board's runs carry a heat twin: every board but a custom
+  /// goal's own (`goal:*`).
+  static bool hasHeatTwin(String key) => !ComparisonKey.isGoal(key);
+
   static BoardKind kindOf(String key) {
     if (BestTimeWindow.ofKey(key) != null) return BoardKind.distanceInTime;
     if (key.startsWith('${ComparisonKey.goalPrefix}t')) {
@@ -323,8 +359,12 @@ abstract final class Leaderboards {
     return null;
   }
 
-  /// Every board across [runs], keyed by board key.
-  static Map<String, Leaderboard> fold(Iterable<BoardInput> runs) {
+  /// Every board across [runs], keyed by board key; [heatAdjusted] ranks
+  /// by the heat twin (see [Leaderboard.of]).
+  static Map<String, Leaderboard> fold(
+    Iterable<BoardInput> runs, {
+    bool heatAdjusted = false,
+  }) {
     final byKey = <String, List<BoardRun>>{};
     for (final r in runs) {
       for (final e in membership(r).entries) {
@@ -338,6 +378,7 @@ abstract final class Leaderboards {
           kindOf(e.key),
           e.value,
           metres: metresOf(e.key),
+          heatAdjusted: heatAdjusted,
         ),
     };
   }

@@ -149,7 +149,7 @@ void main() {
       expect(Leaderboards.membership(s(grade: false)), isEmpty);
     });
 
-    test('the heat column is t × (1 − adj) and never ranks', () {
+    test('the heat column is t × (1 − adj) and never ranks (setting off)', () {
       final boards = Leaderboards.fold([
         free('hot', 0, 1500, heat: 0.05),
         free('cool', 1, 1490),
@@ -180,6 +180,103 @@ void main() {
       ]) {
         expect(ComparisonKey.of(spec).startsWith('be:'), isFalse);
       }
+    });
+  });
+
+  group('heat-adjusted boards (W2 setting on)', () {
+    test('rank by the twin; the raw time stays alongside; a run without '
+        'weather stays ranked on its raw time', () {
+      final runs = [
+        free('hot', 0, 1500, heat: 0.05), // 1425 adjusted
+        free('cool', 1, 1490, heat: 0), // 1490
+        free('none', 2, 1450), // no weather: ranks on raw 1450
+      ];
+      final off = Leaderboards.fold(runs)['be:5000']!;
+      expect(off.heatAdjusted, isFalse);
+      expect(off.ranked.map((r) => r.runId), ['none', 'cool', 'hot']);
+      expect(off.ranked.any(off.onRawValue), isFalse);
+
+      final on = Leaderboards.fold(runs, heatAdjusted: true)['be:5000']!;
+      expect(on.heatAdjusted, isTrue);
+      expect(on.ranked.map((r) => r.runId), ['hot', 'none', 'cool']);
+      expect(on.pb!.metric, 1500);
+      expect(on.rankValue(on.pb!), closeTo(1425, 1e-9));
+      final none = on.ranked[1];
+      expect(on.onRawValue(none), isTrue);
+      expect(on.rankValue(none), 1450);
+      expect(on.onRawValue(on.pb!), isFalse);
+    });
+
+    test('a no-weather PB never drops off because of the setting', () {
+      final on = Leaderboards.fold([
+        free('pb', 0, 1400), // no weather, the raw PB
+        free('hot', 1, 1500, heat: 0.05),
+      ], heatAdjusted: true)['be:5000']!;
+      expect(on.length, 2);
+      expect(on.pb!.runId, 'pb');
+      expect(on.onRawValue(on.pb!), isTrue);
+    });
+
+    test('course boards rank the adjusted official time', () {
+      BoardInput course(String id, int n, int ms, double? heat) => BoardInput(
+        runId: id,
+        date: day(n),
+        mode: RunMode.intervals,
+        comparisonKey: ComparisonKey.parkrunOf(courseId: 'c1'),
+        officialTimeMs: ms,
+        heatFraction: heat,
+      );
+      final key = ComparisonKey.parkrunOf(courseId: 'c1');
+      final b = Leaderboards.fold([
+        course('a', 0, 1500000, 0.06), // 1410
+        course('b', 1, 1440000, 0),
+      ], heatAdjusted: true)[key]!;
+      expect(b.pb!.runId, 'a');
+    });
+
+    test('Cooper ranks the adjusted VO2, higher is better', () {
+      BoardInput test(String id, int n, double vo2, double? adj) => BoardInput(
+        runId: id,
+        date: day(n),
+        mode: RunMode.cooper,
+        comparisonKey: ComparisonKey.cooper,
+        cooperVo2: vo2,
+        cooperVo2Adj: adj,
+      );
+      final b = Leaderboards.fold([
+        test('hot', 0, 47, 50),
+        test('cool', 1, 48, 48),
+      ], heatAdjusted: true)['cooper']!;
+      expect(b.pb!.runId, 'hot');
+    });
+
+    test('the trend reads the twin', () {
+      // Raw 5K flat at 1500; heat falls away, so adjusted gets slower.
+      final runs = [
+        for (var i = 0; i < 5; i++)
+          free('r$i', i * 15, 1500, heat: 0.04 - i * 0.01),
+      ];
+      final raw = Leaderboards.fold(runs)['be:5000']!.trend(day(60))!;
+      final adj = Leaderboards.fold(
+        runs,
+        heatAdjusted: true,
+      )['be:5000']!.trend(day(60))!;
+      expect(raw.perMonth, closeTo(0, 1e-9));
+      expect(adj.perMonth, greaterThan(0));
+    });
+
+    test('a custom goal board has no twin and stays raw', () {
+      expect(Leaderboards.hasHeatTwin('goal:d3000'), isFalse);
+      expect(Leaderboards.hasHeatTwin('be:5000'), isTrue);
+      final b = Leaderboard.of(
+        'goal:d3000',
+        BoardKind.goalDistance,
+        [BoardRun(runId: 'g', date: day(0), metric: 900)],
+        metres: 3000,
+        heatAdjusted: true,
+      );
+      expect(b.heatAdjusted, isFalse);
+      expect(b.ranked, hasLength(1));
     });
   });
 
