@@ -126,7 +126,9 @@ class _TrendScreenState extends State<TrendScreen> {
                 const SizedBox(height: Space.x24),
                 _LaneHeader(
                   title:
-                      '$title · ${runs.length} SESSION${runs.length == 1 ? '' : 'S'}',
+                      '$title · ${runs.length} '
+                      '${_type == RecordMode.cooper ? 'TEST' : 'SESSION'}'
+                      '${runs.length == 1 ? '' : 'S'}',
                 ),
                 const SizedBox(height: Space.x24),
                 switch (_type) {
