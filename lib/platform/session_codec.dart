@@ -30,6 +30,7 @@ extension EngineSessionToPigeon on engine.SessionSpec {
           repIndex: s.rep,
         ),
     ],
+    spokenName: spokenName,
   );
 }
 
@@ -56,6 +57,7 @@ extension PigeonSessionToEngine on p.SessionSpec {
           rep: s.repIndex,
         ),
     ],
+    spokenName: spokenName,
   );
 
   /// Work steps (reps); N reps carry N − 1 recoveries.

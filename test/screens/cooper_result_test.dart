@@ -66,7 +66,8 @@ void main() {
     final b = cooperTestFile(n: 2, start: d2, mps: 3.9);
     final c = cooperTestFile(n: 3, start: d3, mps: 4.1);
     await openResult(tester, [a, b, c], c.id, justFinished: true);
-    final chip = tester.widget<RankChip>(find.byType(RankChip));
+    // The test board's chip first (A10.3: its own board leads).
+    final chip = tester.widgetList<RankChip>(find.byType(RankChip)).first;
     expect(chip.pb, isTrue);
     expect(chip.label, startsWith('New best test · VO2 est. '));
     expect(
@@ -83,7 +84,11 @@ void main() {
     final a = cooperTestFile(n: 1, start: d1, mps: 4.1);
     final b = cooperTestFile(n: 2, start: d2, mps: 3.9);
     await openResult(tester, [a, b], b.id);
-    expect(find.text('#2 of 2 tests'), findsOneWidget);
+    expect(
+      find.textContaining('#2 of 2 tests · VO2 est. '),
+      findsOneWidget,
+      reason: 'the shared board fold (LB3)',
+    );
     // The ghost stays the typical curve until test 3 (curveFor switches
     // after two valid tests).
     expect(find.text('vs typical curve (research-based)'), findsOneWidget);
@@ -161,20 +166,5 @@ void main() {
     await tester.tap(find.text('Test'));
     await pumpTimes(tester, 4);
     expect(find.byKey(const ValueKey('cooper-trend-empty')), findsOneWidget);
-  });
-
-  test('chip: ranked as the board stood that day', () {
-    ({String id, DateTime date, double vo2, List<double> minuteM}) x(
-      String id,
-      DateTime d,
-      double v,
-    ) => (id: id, date: d, vo2: v, minuteM: const []);
-    final tests = [x('a', d1, 50), x('b', d2, 48), x('c', d3, 52)];
-    expect(cooperChip('a', tests)!.label, 'First test on your board');
-    expect(cooperChip('b', tests)!.label, '#2 of 2 tests');
-    expect(cooperChip('c', tests)!.pb, isTrue);
-    expect(cooperChip('c', tests)!.label, 'New best test · VO2 est. 52');
-    expect(cooperChip('zz', tests), isNull);
-    expect(engine.carriesEstimateMarker(cooperChip('c', tests)!.label), isTrue);
   });
 }

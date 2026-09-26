@@ -62,9 +62,12 @@ class _RankChipState extends State<RankChip>
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final chip = Container(
       key: ValueKey(widget.pb ? 'pb-chip' : 'rank-chip'),
-      height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: Space.x16),
-      alignment: Alignment.center,
+      // 36 dp for one line; a long label wraps rather than overflow.
+      constraints: const BoxConstraints(minHeight: 36),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.x16,
+        vertical: Space.x4,
+      ),
       decoration: BoxDecoration(
         color: widget.pb ? t.accentArc : Colors.transparent,
         borderRadius: BorderRadius.circular(Radii.pill),
@@ -81,11 +84,13 @@ class _RankChipState extends State<RankChip>
             ),
             const SizedBox(width: Space.x8),
           ],
-          Text(
-            widget.label,
-            style: RunSoloType.body15.copyWith(
-              color: widget.pb ? t.accentArcInk : t.inkPrimary,
-              fontWeight: FontWeight.w500,
+          Flexible(
+            child: Text(
+              widget.label,
+              style: RunSoloType.body15.copyWith(
+                color: widget.pb ? t.accentArcInk : t.inkPrimary,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],

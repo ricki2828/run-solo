@@ -7,7 +7,7 @@ import 'trace.dart';
 
 /// A nudge the recorder spoke, from the journal's `cue_fired` lines (plan
 /// §3.5, WARN-5): the engine blocks the same rule at the same km or rep on
-/// the next run. Empty until LV1 journals them.
+/// the next run. Finalise copies them into the run file (`nudges_fired`).
 class FiredNudge {
   const FiredNudge(this.rule, this.index);
 
@@ -181,7 +181,7 @@ class RunDerived {
   static RunDerived of(
     RunFile run,
     RunAnalysis a, {
-    List<FiredNudge> nudgesFired = const [],
+    List<FiredNudge>? nudgesFired,
     BestEffortFinder finder = const BestEffortFinder(),
   }) {
     final efforts = finder.find(run, a);
@@ -192,7 +192,8 @@ class RunDerived {
         a,
         fromStartSplitsMs: efforts.fromStartSplitsMs,
       ),
-      nudgesFired: nudgesFired,
+      // The run file's spoken nudges (finalise copies them from the journal).
+      nudgesFired: nudgesFired ?? run.nudgesFired,
     );
   }
 
