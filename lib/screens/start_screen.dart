@@ -451,7 +451,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       key: const ValueKey('start-course'),
       onTap: () => _pickCourse(labels),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 56),
+        constraints: const BoxConstraints(minHeight: 48),
         child: Row(
           children: [
             Expanded(
@@ -533,8 +533,6 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                     style: text.bodyMedium?.copyWith(color: t.inkSecondary),
                   ),
                   _targetLine(s, t),
-
-                  if (s.eventRun) _courseRow(t),
                   const SizedBox(height: Space.x16),
                   _Toggle(
                     label: 'Voice cues',
@@ -634,6 +632,10 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // A10.10 / #76 review: the course sits with the GPS line
+                  // it comes from, pinned above START, so a short phone
+                  // sees what the run will race.
+                  if (s.eventRun) _courseRow(t),
                   // A10.10, #53 review P2: the GPS gate's reason sits right
                   // above START, so a greyed START on a short phone always
                   // says why (distance counts from the first fix, so an

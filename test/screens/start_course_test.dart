@@ -51,6 +51,14 @@ void main() {
     );
     await pumpTimes(tester, 2);
     expect(find.text('Course: Albert Park'), findsOneWidget);
+    // Pinned with the GPS line, right above START (#76 review).
+    expect(row.hitTestable(), findsOneWidget);
+    expect(
+      tester.getRect(row).bottom,
+      lessThanOrEqualTo(
+        tester.getRect(find.byKey(const ValueKey('event-gps'))).top,
+      ),
+    );
 
     // ~220 m away: no course that close.
     fake.emitGpsProbe(
