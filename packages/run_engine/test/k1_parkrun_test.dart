@@ -288,6 +288,20 @@ void main() {
       expect(ParkrunInfo.plausibleOfficial(1389 * 13 ~/ 10, 1389), isFalse);
       expect(ParkrunInfo.plausibleOfficial(1389 * 8 ~/ 10 + 1, 1389), isTrue);
       expect(ParkrunInfo.plausibleOfficial(1389 * 7 ~/ 10, 1389), isFalse);
+      // Absolute bounds for a 5 km, with the entry screen's message.
+      expect(ParkrunInfo.officialTimeProblem(12 * 60), isNull);
+      expect(ParkrunInfo.officialTimeProblem(90 * 60), isNull);
+      expect(
+        ParkrunInfo.officialTimeProblem(11 * 60 + 59),
+        'That time looks off. Enter it as mm:ss, between 12:00 and 1:30:00.',
+      );
+      expect(ParkrunInfo.officialTimeProblem(90 * 60 + 1), isNotNull);
+      expect(
+        ParkrunInfo.officialTimeProblem(1700, gpsSeconds: 1389),
+        'That is a long way from your watch time. Check it and try again.',
+      );
+      // A slow walker's GPS 1:20:00 with an official 1:31:00: out of range.
+      expect(ParkrunInfo.plausibleOfficial(91 * 60, 80 * 60), isFalse);
     });
 
     test('entering it unfreezes the verdict; history keeps the old one', () {

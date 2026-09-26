@@ -321,11 +321,36 @@ class ParkrunInfo {
   /// it, so it can never become a PB.
   static const double maxOfficialDeviation = 0.20;
 
-  /// True when [officialSeconds] is within ±[maxOfficialDeviation] of the
-  /// GPS finish ([gpsSeconds]).
+  /// A 5 km finish outside 12:00 to 1:30:00 is not a real time.
+  static const int minOfficialSeconds = 12 * 60;
+  static const int maxOfficialSeconds = 90 * 60;
+
+  /// True when [officialSeconds] is a real 5 km time (12:00 to 1:30:00)
+  /// and within ±[maxOfficialDeviation] of the GPS finish ([gpsSeconds]).
   static bool plausibleOfficial(int officialSeconds, double gpsSeconds) =>
-      gpsSeconds > 0 &&
-      (officialSeconds - gpsSeconds).abs() <= maxOfficialDeviation * gpsSeconds;
+      officialTimeProblem(officialSeconds, gpsSeconds: gpsSeconds) == null;
+
+  /// Why the entry screen refuses [officialSeconds], or null when it is
+  /// fine. Same rule the engine applies, so the UI and a written sidecar
+  /// never disagree.
+  static String? officialTimeProblem(
+    int officialSeconds, {
+    double? gpsSeconds,
+  }) {
+    if (officialSeconds < minOfficialSeconds ||
+        officialSeconds > maxOfficialSeconds) {
+      return 'That time looks off. Enter it as mm:ss, between 12:00 and '
+          '1:30:00.';
+    }
+    if (gpsSeconds != null &&
+        gpsSeconds > 0 &&
+        (officialSeconds - gpsSeconds).abs() >
+            maxOfficialDeviation * gpsSeconds) {
+      return 'That is a long way from your watch time. Check it and try '
+          'again.';
+    }
+    return null;
+  }
 
   ParkrunInfo copyWith({
     Object? courseId = _unset,
