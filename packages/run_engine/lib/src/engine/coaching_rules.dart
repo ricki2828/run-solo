@@ -111,6 +111,31 @@ class HrDriftRule {
     'text': text,
   };
 
+  /// Decodes [toJson] (the journal / shared-fixture shape). The tuning
+  /// constants are the engine's own; a plan that disagrees is refused.
+  factory HrDriftRule.fromJson(Map<String, Object?> j) {
+    for (final (k, v) in [
+      ('bpmOver', bpmOver),
+      ('paceBand', paceBand),
+      ('firstKm', firstKm),
+      ('minSimilar', minSimilar),
+    ]) {
+      if ((j[k] as num?)?.toDouble() != v.toDouble()) {
+        throw FormatException('hrDrift.$k ${j[k]} != $v');
+      }
+    }
+    return HrDriftRule(
+      kmSamples: [
+        for (final km in j['kmSamples']! as List)
+          [
+            for (final p in km as List)
+              (((p as List)[0] as num).toDouble(), (p[1] as num).toDouble()),
+          ],
+      ],
+      text: j['text']! as String,
+    );
+  }
+
   /// What native computes live, for the shared fixture: whether the rule
   /// fires at [km] (1-based) for a live pace and HR.
   bool firesAt(int km, {required double paceSecPerKm, required double hr}) {

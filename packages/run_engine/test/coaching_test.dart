@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:run_engine/run_engine.dart';
 import 'package:test/test.dart';
 
@@ -236,6 +239,34 @@ void main() {
       ]);
       expect(json['version'], 1);
     });
+  });
+
+  test('shared Dart/Kotlin hrDrift vectors (fixtures/phase4/'
+      'hr_drift_vectors.json, from native #62)', () {
+    final fx = jsonDecode(
+      File('test/fixtures/phase4/hr_drift_vectors.json').readAsStringSync(),
+    ) as Map<String, Object?>;
+    final plans = {
+      for (final e in (fx['plans']! as Map<String, Object?>).entries)
+        e.key: HrDriftRule.fromJson(e.value! as Map<String, Object?>),
+    };
+    final cases = (fx['cases']! as List).cast<Map<String, Object?>>();
+    expect(cases, hasLength(14));
+    for (final c in cases) {
+      final rule = plans[c['plan']]!;
+      expect(
+        rule.firesAt(
+          c['km']! as int,
+          paceSecPerKm: (c['pace']! as num).toDouble(),
+          hr: (c['hr']! as num).toDouble(),
+        ),
+        c['fires'],
+        reason: jsonEncode(c),
+      );
+    }
+    // Round trip: the engine's JSON is the fixture's shape.
+    final again = HrDriftRule.fromJson(plans['median_154']!.toJson());
+    expect(again.kmSamples, plans['median_154']!.kmSamples);
   });
 
   group('NudgePlan: interval board', () {
