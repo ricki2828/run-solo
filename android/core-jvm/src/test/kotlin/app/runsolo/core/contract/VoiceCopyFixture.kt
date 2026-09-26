@@ -54,6 +54,9 @@ object VoiceCopyFixture {
         add("cue.start.distance-rep", cue(CueKind.start, distance.copy(steps = List(20) { distance.steps[0].copy(rep = it + 1) }), Phase.work, 0, rep = 20))
         add("cue.start.short-rep", cue(CueKind.start, short, Phase.work, 0))
         add("cue.start.cooper", cue(CueKind.start, SessionSpec.COOPER, Phase.work, 0))
+        add("cue.start.goal-distance", cue(CueKind.start, SessionSpec.goalDistance(21_098, "Half").copy(spokenName = "Half marathon"), Phase.work, 0))
+        add("cue.start.goal-time", cue(CueKind.start, SessionSpec.goalTime(4_500, "1 h 15").copy(spokenName = "1 hour 15 minutes"), Phase.work, 0))
+        add("cue.start.event", cue(CueKind.start, ReplayScenarios.PARKRUN, Phase.work, 0))
         add("cue.start.recover", cue(CueKind.start, fourByFour, Phase.recovery, 1))
         add("cue.start.short-recover", cue(CueKind.start, short, Phase.recovery, 1))
         add("cue.start.walk", cue(CueKind.start, fourByFour.copy(steps = listOf(fourByFour.steps[0], jog.copy(style = RecoveryStyle.walk))), Phase.recovery, 1))
@@ -117,7 +120,25 @@ object VoiceCopyFixture {
         add("goal.distance", goal(tenK, RecorderCore.StepEnd(0, 2_952_000, 10_000.0), null))
         add("goal.distance.new-best", goal(tenK, RecorderCore.StepEnd(0, 2_952_000, 10_000.0), LiveContext(listOf(board), builtAtMs = 0, engineVersion = 3)))
         add("goal.distance.marathon", goal(SessionSpec.goalDistance(42_195, "Marathon"), RecorderCore.StepEnd(0, 17_999_000, 42_195.0), null))
-        add("goal.time", goal(SessionSpec.goalTime(1_800, "30 min"), RecorderCore.StepEnd(0, 1_800_000, 7_210.0), null))
+        add("goal.time", goal(SessionSpec.goalTime(1_800, "30 min").copy(spokenName = "30 minutes"), RecorderCore.StepEnd(0, 1_800_000, 7_210.0), null))
+        add("goal.distance.miles", goal(SessionSpec.goalDistance(12_070, "7.5 mi").copy(spokenName = "7.5 miles"), RecorderCore.StepEnd(0, 3_599_000, 12_070.0), null))
+
+        // The timed 5 km's end line (#83): against its course board, no cool-down.
+        val course = LiveContext(
+            listOf(
+                LiveBoard(
+                    "${SessionSpec.EVENT_ID}:c", "5K time trial", LiveBoardKind.distance, 5_000.0,
+                    listOf(LiveEntry("a", 0, fromStartSplitsMs = List(5) { (it + 1) * 288_000L }, finalMetric = 1_440_000.0)),
+                ),
+            ),
+            builtAtMs = 0, engineVersion = 3,
+        )
+        val event = ReplayScenarios.PARKRUN
+        add("event.end.new-best", goal(event, RecorderCore.StepEnd(0, 1_420_000, 5_000.0), course))
+        add("event.end.seconds-off", goal(event, RecorderCore.StepEnd(0, 1_499_000, 5_000.0), course))
+        add("event.end.one-second-off", goal(event, RecorderCore.StepEnd(0, 1_441_000, 5_000.0), course))
+        add("event.end.level", goal(event, RecorderCore.StepEnd(0, 1_440_000, 5_000.0), course))
+        add("event.end.no-board", goal(event, RecorderCore.StepEnd(0, 1_440_000, 5_000.0), null))
 
         // Nudges (engine-owned lines, as packed into the LiveContext).
         add("nudge.fast-start", ReplayScenarios.T4.FAST_START_5K)

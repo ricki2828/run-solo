@@ -66,7 +66,7 @@ object ReplayScenarios {
     )
 
     /** Phase 4 T4: replays with a LiveContext, each with a transcript fixture (declared first: [KINDS] reads it). */
-    val T4_KINDS = listOf("t4-free-5k-fast", "t4-free-10k-fade", "t4-400s-fade", "t4-cooper-fast", "t4-5k-target")
+    val T4_KINDS = listOf("t4-free-5k-fast", "t4-free-10k-fade", "t4-400s-fade", "t4-cooper-fast", "t4-5k-target", "t4-goal-half-best", "t4-goal-30min-best")
 
     val KINDS = listOf("4x4", "400s", "30-30s", "yasso-800s", "1km-repeats", "fartlek", "cooper", "parkrun", "goal-10k", "goal-30min", "pause-end") + T4_KINDS // event-name-ok: debug replay ids, never in a store build
 
@@ -113,6 +113,13 @@ object ReplayScenarios {
         )
         // T4: the timed 5 km against a predicted 23:00 (4:36/km even), km 1 fast, then a touch slow.
         "t4-5k-target" -> structured(kind, PARKRUN, workMps = 0.0, start = null, context = T4.target5k, work = { _, s -> if (s < 220) 4.5 else 3.55 })
+        // T4 (#78, lead): goals that beat their board, so the goal line says "new best" end to end.
+        "t4-goal-half-best" -> structured(
+            kind, SessionSpec.goalDistance(21_098, "Half").copy(spokenName = "Half marathon"), workMps = 4.0, start = null, context = T4.halfBoard,
+        )
+        "t4-goal-30min-best" -> structured(
+            kind, SessionSpec.goalTime(1_800, "30 min").copy(spokenName = "30 minutes"), workMps = 3.6, start = null, context = T4.thirtyMinBoard,
+        )
         else -> null
     }
 
@@ -175,7 +182,38 @@ object ReplayScenarios {
 
         val cooper = LiveContext(boards = emptyList(), cooperHistory = listOf(44.0, 46.5, 47.2), builtAtMs = 0, engineVersion = 3)
 
-        val target5k = LiveContext(boards = emptyList(), target = LiveTarget(distanceM = 5_000.0, targetMs = 1_380_000, predicted = true), builtAtMs = 0, engineVersion = 3)
+        /** Two earlier Halves, 1:30:00 and 1:33:20 (the runner's 4 m/s is 1:27:55): a new best. */
+        val halfBoard = LiveContext(
+            boards = listOf(
+                LiveBoard(
+                    key = "be:21097", label = "Half", kind = LiveBoardKind.distance, targetM = 21_097.5,
+                    entries = listOf(5_400L, 5_600L).mapIndexed { i, s ->
+                        LiveEntry("t4-half-$i", (i + 1) * DAY, fromStartSplitsMs = (1..21).map { k -> k * s * 1_000 * 1_000 / 21_098 }, finalMetric = s * 1_000.0)
+                    },
+                ),
+            ),
+            builtAtMs = 0, engineVersion = 3,
+        )
+
+        /** Two earlier best 30 minutes, 6.30 and 6.10 km (the runner's 3.6 m/s is 6.48 km): a new best. */
+        val thirtyMinBoard = LiveContext(
+            boards = listOf(
+                LiveBoard(
+                    key = "be:t1800", label = "30 min", kind = LiveBoardKind.distanceInTime,
+                    entries = listOf(6_300.0, 6_100.0).mapIndexed { i, m ->
+                        LiveEntry("t4-t30-$i", (i + 1) * DAY, cooperMinuteM = (1..30).map { k -> m * k / 30 }, finalMetric = m)
+                    },
+                ),
+            ),
+            builtAtMs = 0, engineVersion = 3,
+        )
+
+        /** The predicted 23:00 to race, and the course's board (best 24:00) the end line ranks on (#83). */
+        val target5k = LiveContext(
+            boards = listOf(distanceBoard("${SessionSpec.EVENT_ID}:c-1", "5K time trial", 5, listOf(288, 300))),
+            target = LiveTarget(distanceM = 5_000.0, targetMs = 1_380_000, predicted = true),
+            builtAtMs = 0, engineVersion = 3,
+        )
     }
 
     /**

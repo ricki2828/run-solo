@@ -27,11 +27,12 @@ class TranscriptFixtureTest {
     }
 
     @Test
-    fun `every T4 kind speaks compares, every line fits 16 words, no em dashes, in time order`() {
+    fun `every T4 kind speaks, compares unless a goal, every line fits 16 words, no em dashes, in time order`() {
         for (kind in ReplayScenarios.T4_KINDS) {
             val s = run(kind)
             assertTrue(s.said.isNotEmpty(), kind)
-            assertTrue(s.spokenExtras.any { it.key.startsWith("compare:") }, "$kind: no compare spoken")
+            // Goals have no live compare yet (the goal-compare PR adds it); every other T4 kind does.
+            if (!kind.startsWith("t4-goal-")) assertTrue(s.spokenExtras.any { it.key.startsWith("compare:") }, "$kind: no compare spoken")
             for (l in s.said) {
                 assertTrue(CueComposer.words(l.text) <= CueComposer.MAX_WORDS, "$kind: ${l.text}")
                 assertFalse(l.text.contains('—'), "$kind: ${l.text}")
@@ -68,6 +69,64 @@ class TranscriptFixtureTest {
                     assertTrue(s.spokenExtras.any { it.key.startsWith("compare:") && it.t > resumed }, "$kind killed at ${kill.atMs}: no compare after the restore")
                 }
             }
+        }
+    }
+
+    private fun texts(kind: String) = run(kind).said.map { it.text }
+
+    /** Founder 26-Sep: each nudge follows its split + rank as its own line, right after it. */
+    @Test
+    fun `nudges follow their cue as their own line - fast start, HR drift, rep fade`() {
+        for ((kind, line) in listOf(
+            "t4-free-5k-fast" to ReplayScenarios.T4.FAST_START_5K,
+            "t4-free-10k-fade" to ReplayScenarios.T4.HR_DRIFT,
+            "t4-400s-fade" to ReplayScenarios.T4.REP_FADE,
+        )) {
+            val said = texts(kind)
+            val i = said.indexOf(line)
+            assertTrue(i > 0, "$kind: no \"$line\" in $said")
+            assertFalse(said[i - 1].contains(line), "$kind: the nudge is its own line")
+        }
+        assertTrue(texts("t4-free-5k-fast")[texts("t4-free-5k-fast").indexOf(ReplayScenarios.T4.FAST_START_5K) - 1].startsWith("1 k,"), "after the km 1 split and rank")
+    }
+
+    /** #82: the last rep's compare rides the cool-down cue. */
+    @Test
+    fun `the last of 8 x 400 is compared on Done Cool down`() {
+        val s = run("t4-400s-fade")
+        assertTrue(s.spokenExtras.any { it.key == "compare:d400x8#8" }, s.said.toString())
+        assertTrue(s.said.any { it.text.startsWith("Done. Cool down.") && it.text.length > "Done. Cool down.".length }, s.said.toString())
+    }
+
+    /** Lead (#78): "new best" end to end, goals and the timed 5 km; the start says the name (#83). */
+    @Test
+    fun `goals and the timed 5 km start with their name and end with new best`() {
+        val half = texts("t4-goal-half-best")
+        assertEquals("Half marathon. Go", half.first())
+        assertTrue(half.any { it.matches(Regex("Half marathon done, 1:2\\d:\\d\\d, new best\\.")) }, "$half")
+        val t30 = texts("t4-goal-30min-best")
+        assertEquals("30 minutes. Go", t30.first())
+        assertTrue(t30.any { it.matches(Regex("30 minutes done, 6\\.\\d\\d km, new best\\.")) }, "$t30")
+        val event = texts("t4-5k-target")
+        assertEquals("5K time trial. Go", event.first())
+        assertTrue(event.last().matches(Regex("5K time trial done, \\d\\d:\\d\\d, new best\\.")), "$event")
+        assertFalse(event.any { it.contains("Cool down") }, "the event stops at 5 km")
+    }
+
+    /** The replays' goal times against the engine-built goal contexts (#78's shared fixture): new best there too. */
+    @Test
+    fun `the replayed goal results are new bests on the engine's own goal boards too`() {
+        @Suppress("UNCHECKED_CAST")
+        val fx = app.runsolo.core.json.Json.parseObject(File("../../packages/run_engine/test/fixtures/phase4/goal_live_context.json").readText())
+        @Suppress("UNCHECKED_CAST")
+        fun ctx(name: String) = app.runsolo.core.model.LiveContext.fromJson(fx[name] as Map<String, Any?>)
+        for ((kind, name) in listOf("t4-goal-half-best" to "half", "t4-goal-30min-best" to "thirtyMin")) {
+            val sc = ReplayScenarios.create(kind)!!
+            val g = run(kind).said.first { it.text.contains(" done, ") }
+            // The reached point the replay's core recorded, asked of the engine's context.
+            val end = TranscriptFixture.Shell(sc).also { it.run() }.goalEnd!!
+            val reached = app.runsolo.core.live.GoalCoach(sc.spec, ctx(name)).atCue(app.runsolo.core.model.CueKind.phaseEnd, app.runsolo.core.model.Phase.cooldown, end)!!
+            assertTrue(reached.newBest, "$kind on the engine's $name context: ${reached.text} (replay said ${g.text})")
         }
     }
 }

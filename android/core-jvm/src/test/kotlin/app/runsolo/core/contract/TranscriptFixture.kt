@@ -9,6 +9,7 @@ import app.runsolo.core.live.CooperCurve
 import app.runsolo.core.live.CueComposer
 import app.runsolo.core.live.GoalCoach
 import app.runsolo.core.live.LiveCoach
+import app.runsolo.core.live.NudgeFollowUp
 import app.runsolo.core.live.SpeechClock
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.LapSource
@@ -62,6 +63,10 @@ object TranscriptFixture {
 
         val spokenExtras = ArrayList<Extra>()
 
+        /** Where the goal (or the timed 5 km) was reached, as GoalCoach saw it. */
+        var goalEnd: RecorderCore.StepEnd? = null
+            private set
+
         /** Trace ms of the resume, when [run] had a kill. */
         var resumedAt: Long? = null
             private set
@@ -74,6 +79,7 @@ object TranscriptFixture {
         private var coach = LiveCoach(sc.context, mode, spec)
         private var goal = GoalCoach(spec, sc.context)
         private var speech = SpeechClock()
+        private var followUp = NudgeFollowUp()
         private var dispatch = LapDispatch(onLap = ::publishLap, onPhase = {}, onCue = ::publishCue)
         private var now = 0L
         private var coachPrevT = 0L
@@ -125,18 +131,26 @@ object TranscriptFixture {
                 ?.let { speakFire(null, it.base, it.fire, t, it.nudge) }
             coachPrevT = t
             coachPrevD = ticker.distanceM
+            // A nudge follows its cue as its own line (`CuePlayer.dueNudge`): done only once said.
+            followUp.due(now, speech.busyUntil)?.let { n ->
+                speech.queued(now, CueComposer.words(n.text))
+                said.add(Said(now, n.text))
+                coach.nudgeSaid(n)
+                lines.add(JournalLine.CueFired(t, t, JournalLine.FiredKind.nudge, n.rule, n.index, core.status(t).elapsedMs))
+                spokenExtras.add(Extra(now, "nudge:${n.rule}#${n.index}"))
+            }
         }
 
+        /** Journaled in the core's order, sent with a step's end cue after its lap ([LapDispatch.ordered]). */
         private fun handle(out: List<RecorderCore.Output>, t: Long) {
             for (o in out) when (o) {
-                is RecorderCore.Output.Lap -> {
-                    lines.add(JournalLine.Lap(o.t, o.t, o.source))
-                    dispatch.lap(o, t, ticker.distanceM)
-                }
-                is RecorderCore.Output.Cue -> {
-                    lines.add(JournalLine.Cue(o.t, o.t, o.kind))
-                    dispatch.cue(o, hold = coach.holdsRepEndCues)
-                }
+                is RecorderCore.Output.Lap -> lines.add(JournalLine.Lap(o.t, o.t, o.source))
+                is RecorderCore.Output.Cue -> lines.add(JournalLine.Cue(o.t, o.t, o.kind))
+                else -> Unit
+            }
+            for (o in LapDispatch.ordered(out)) when (o) {
+                is RecorderCore.Output.Lap -> dispatch.lap(o, t, ticker.distanceM)
+                is RecorderCore.Output.Cue -> dispatch.cue(o, hold = coach.holdsRepEndCues)
                 is RecorderCore.Output.PhaseChanged -> dispatch.phase(o)
                 is RecorderCore.Output.AutoStop -> autoStopped = true
             }
@@ -148,9 +162,11 @@ object TranscriptFixture {
 
         private fun publishCue(o: RecorderCore.Output.Cue) {
             goal.atCue(o.kind, core.phase, core.finalStepEnd)?.let { g ->
+                goalEnd = core.finalStepEnd
+                followUp.cancel()
                 speech.queued(now, CueComposer.words(g.text))
                 said.add(Said(now, g.text))
-                coach.goalReachedAt(g.distanceM, if (g.distanceGoal && g.goalValue % 1_000 == 0) g.timeMs else null)
+                if (spec?.isEvent != true) coach.goalReachedAt(g.distanceM, if (g.distanceGoal && g.goalValue % 1_000 == 0) g.timeMs else null)
             }
             val st = core.status(o.t)
             val next = if (st.stepRemainingM != null) null else st.phaseRemainingMs
@@ -159,26 +175,24 @@ object TranscriptFixture {
             speakFire(o.kind, base, fire, o.t, coach.nudgeAtCue(o.kind, core.phase))
         }
 
-        /** `RecordingSession.speakFire` + `CuePlayer.play`. */
+        /** `RecordingSession.speakFire` + `CuePlayer.play`: a [nudge] waits to follow the cue. */
         private fun speakFire(kind: CueKind?, base: String?, fire: LiveCoach.Fire?, t: Long, nudge: LiveCoach.Nudge?) {
             val extra = fire?.takeIf { it.speak }?.text
-            val composed = if (kind != null || base != null || extra != null || nudge != null) play(kind, base, extra, nudge?.text) else null
-            if (nudge != null && composed?.nudgeSpoken == true) {
-                lines.add(JournalLine.CueFired(t, t, JournalLine.FiredKind.nudge, nudge.rule, nudge.index, core.status(t).elapsedMs))
-                spokenExtras.add(Extra(now, "nudge:${nudge.rule}#${nudge.index}"))
-            }
+            val composed = if (kind != null || base != null || extra != null) play(kind, base, extra, nudge) else null
             fire ?: return
             lines.add(JournalLine.CueFired(t, t, JournalLine.FiredKind.compare, fire.key, fire.index, core.status(t).elapsedMs))
             if (composed?.compareSpoken == true && extra != null) spokenExtras.add(Extra(now, "compare:${fire.key}#${fire.index}"))
         }
 
-        private fun play(kind: CueKind?, text: String?, extra: String?, nudge: String?): CueComposer.Composed? {
+        private fun play(kind: CueKind?, text: String?, extra: String?, nudge: LiveCoach.Nudge?): CueComposer.Composed? {
+            followUp.cancel()
             if (kind == CueKind.countdown) return null
             val fresh = speech.freshAt(now)
-            val composed = CueComposer.compose(text, extra?.takeIf { fresh }, nudge?.takeIf { fresh })
+            val composed = CueComposer.compose(text, extra?.takeIf { fresh })
             val words = composed.text ?: return null
             speech.queued(now, CueComposer.words(words))
             said.add(Said(now, words))
+            nudge?.let { followUp.offer(it, speech.busyUntil) }
             return composed
         }
 
@@ -210,6 +224,7 @@ object TranscriptFixture {
             coachPrevT = t
             coachPrevD = ticker.distanceM
             speech = SpeechClock()
+            followUp = NudgeFollowUp()
         }
     }
 }
