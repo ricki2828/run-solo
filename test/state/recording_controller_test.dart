@@ -187,7 +187,7 @@ void main() {
     final ctx = LiveContext(
       boards: [
         LiveBoard(
-          key: 'be:5k',
+          key: 'be:5000',
           label: '5K',
           kind: LiveBoardKind.distance,
           targetM: 5000,
