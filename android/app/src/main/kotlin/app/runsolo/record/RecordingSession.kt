@@ -254,7 +254,11 @@ class RecordingSession(
         // reps run so far give the live rep paces back, each by the step its lap ended; a rep
         // with a kill gap inside it (this one included: the gap line is already journaled) is
         // unclean.
-        coach = LiveCoach(liveContext, mode, spec, replayed.cuesFired).also { it.kmSplits = kmSplits }
+        coach = LiveCoach(liveContext, mode, spec, replayed.cuesFired).also {
+            it.kmSplits = kmSplits
+            // A journaled "Mute tips" survives the kill: nothing is spoken again after a restore.
+            if (replayed.tipsMuted) it.muted = true
+        }
         var cumActive = 0L
         coach.restoreReps(replayed.events, core, laps.map { l -> cumActive += l.activeMs; l.distanceM to cumActive })
         coach.resumeAt(ticker.distanceM)
@@ -767,14 +771,22 @@ class RecordingSession(
         Log.i(TAG, "goal reached: ${g.text} interrupted=${g.interrupted}")
     }
 
-    /** "Mute tips" for this run (notification action): compares keep firing for the overlay, not the voice. */
+    /**
+     * "Mute tips" for this run (notification action or the app's button): compares keep firing
+     * (journal, `CompareEvent`) but are not spoken; the app hides the card once `tipsMuted` is true.
+     */
     @Synchronized
     fun muteTips() {
-        if (finished || coach.muted) return
+        // Not started yet (a pending session): no core, no journal header, so nothing to mute and
+        // no `tm` line ahead of the header. No coaching this run: nothing to journal (#77 review).
+        if (finished || !::core.isInitialized || !coach.active || coach.muted) return
         coach.muted = true
         cues.dropNudge()
+        writer.append(JournalLine.TipsMuted(clock(), System.currentTimeMillis()))
         Log.i(TAG, "tips muted for $runId")
         onNotificationChanged?.invoke()
+        // The app re-reads status() on a state event: its Mute tips button and the card go.
+        emitState()
     }
 
     /** Replay only (T4): what was said, at trace ms, for the emulator's transcript check. */
@@ -846,8 +858,12 @@ class RecordingSession(
             journalOk = writer.ok,
             pausedAtElapsedMs = core.pausedAtElapsedMs,
             finishRequests = finishRequests.takeIf { it > 0 }?.toLong(),
+            tipsMuted = tipsMuted(),
         )
     }
+
+    /** null: no live coaching this run (nothing to compare, or Coaching tips off in Settings). */
+    private fun tipsMuted(): Boolean? = if (!coach.active || liveContext?.coachingMuted == true) null else coach.muted
 
     @Synchronized
     fun notificationContent(): RecorderNotification.Content {

@@ -114,11 +114,14 @@ class LiveContextSource {
   /// waits longer than [budget]. [preferAlternative]: the runner tapped
   /// the Start target over to its other choice (A10.10, "your PB" vs
   /// predicted), so that one is raced; ignored when there is none.
+  /// [coachingMuted]: Settings has Coaching tips (or voice cues) off, so
+  /// compares only feed the card.
   Future<LiveContext?> build({
     required RecordMode mode,
     SessionSpec? spec,
     String? courseKey,
     bool preferAlternative = false,
+    bool coachingMuted = false,
   }) async {
     final sw = Stopwatch()..start();
     try {
@@ -127,6 +130,7 @@ class LiveContextSource {
         spec,
         courseKey,
         preferAlternative,
+        coachingMuted,
       ).timeout(budget);
       if (kPerfDiagnostics) PerfDiagnostics.instance.recordBuild(sw.elapsed);
       return ctx;
@@ -156,6 +160,7 @@ class LiveContextSource {
     SessionSpec? spec,
     String? courseKey,
     bool preferAlternative,
+    bool coachingMuted,
   ) async {
     final version = _cachedVersion == _preparedForTest
         ? _preparedForTest
@@ -188,7 +193,12 @@ class LiveContextSource {
     );
     final target = preferAlternative ? shown?.alternative ?? shown : shown;
     if (plan.isEmpty && target?.liveTargetMs == null) return null;
-    return toPigeon(plan, builtAt: now(), target: target);
+    return toPigeon(
+      plan,
+      builtAt: now(),
+      target: target,
+      coachingMuted: coachingMuted,
+    );
   }
 
   /// Whether any run in the last prepare has an event course (K1): the
@@ -230,6 +240,7 @@ class LiveContextSource {
     engine.LivePlan plan, {
     required DateTime builtAt,
     engine.StartTarget? target,
+    bool coachingMuted = false,
   }) => LiveContext(
     target: target?.liveTargetMs == null
         ? null
@@ -267,7 +278,7 @@ class LiveContextSource {
     nudges: nudgesToPigeon(plan.nudges),
     cooperCurve: plan.cooperCurve,
     cooperHistory: plan.cooperHistory,
-    coachingMuted: false,
+    coachingMuted: coachingMuted,
     builtAtMs: builtAt.millisecondsSinceEpoch,
     engineVersion: engine.engineVersion,
   );

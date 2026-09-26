@@ -320,6 +320,10 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         active()?.kmSplits = enabled
     }
 
+    override fun muteTips() {
+        active()?.muteTips()
+    }
+
     override fun setVolumeKeyLaps(enabled: Boolean) {
         // commit(), not apply(): the next start() may come from a new process.
         prefs.edit().putBoolean(RecorderService.PREF_VOLUME_KEY_LAPS, enabled).commit()

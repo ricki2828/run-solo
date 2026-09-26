@@ -18,6 +18,7 @@ export 'src/engine/format.dart';
 export 'src/engine/goal.dart';
 export 'src/engine/hr_zone.dart';
 export 'src/engine/leaderboards.dart';
+export 'src/engine/live_card.dart';
 export 'src/engine/live_plan.dart';
 export 'src/engine/live_figures.dart';
 export 'src/engine/max_hr.dart';

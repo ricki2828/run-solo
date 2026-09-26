@@ -1236,4 +1236,197 @@ void main() {
     expect(find.text('Course: Albert Park'), findsOneWidget);
     await golden(tester, 'start_event_course_360x640');
   });
+
+  // LV2 (A10.1 / A10.8): the live compare card in each layout's secondary
+  // slot, in zone 4 (plus one in zone 0), at 360 x 800 and 360 x 640.
+  for (final h in [800, 640]) {
+    CompareEvent distance(String label, {int rank = 2, int deltaMs = 6000}) =>
+        CompareEvent(
+          boardKey: 'be:5k',
+          boardLabel: label,
+          kind: 'distance',
+          index: 3,
+          rank: rank,
+          of: 7,
+          deltaMs: deltaMs,
+          text: 'Number 2 of 7, 6 seconds off your best.',
+          overlay: true,
+        );
+
+    Future<FakeRecorderGateway> run(
+      WidgetTester tester,
+      RecordMode mode,
+      SessionSpec? spec, {
+      int? hr = 162,
+      LiveContext? context,
+      int seconds = 0,
+      Future<void> Function(FakeRecorderGateway fake)? then,
+    }) async {
+      final fake = FakeRecorderGateway(now: now)..scriptedHr = hr;
+      if (hr == null) fake.hrPaired = false;
+      final services = fakeServices(recorder: fake);
+      await services.recording.start(
+        mode,
+        spec,
+        Units.km,
+        liveContext: context,
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 4);
+      for (var i = 0; i < seconds; i++) {
+        fake.advance(const Duration(seconds: 1));
+        await tester.pump();
+      }
+      await then?.call(fake);
+      await settleAnimations(tester);
+      return fake;
+    }
+
+    Future<void> card(
+      WidgetTester tester,
+      FakeRecorderGateway fake,
+      CompareEvent e,
+      String name,
+    ) async {
+      fake.emitCompare(e);
+      await tester.pump();
+      // The fade's ticker starts on the next frame, then runs 150 ms.
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(find.byKey(const ValueKey('compare-card')), findsOneWidget);
+      await golden(tester, '${name}_360x$h');
+      await tester.pump(const Duration(seconds: 2));
+    }
+
+    testWidgets('live card: Free, Laps, zone 0, longest eyebrow at $h', (
+      tester,
+    ) async {
+      var fake = await run(tester, RecordMode.free, null, seconds: 900);
+      await card(tester, fake, distance('5K'), 'card_free');
+      await card(
+        tester,
+        fake,
+        distance('Albert Park parkrun'),
+        'card_long_eyebrow',
+      );
+      fake = await run(
+        tester,
+        RecordMode.laps,
+        null,
+        seconds: 300,
+        then: (f) async {
+          await f.lap(LapSource.button);
+          for (var i = 0; i < 60; i++) {
+            f.advance(const Duration(seconds: 1));
+            await tester.pump();
+          }
+        },
+      );
+      await card(
+        tester,
+        fake,
+        distance('5K', rank: 1, deltaMs: -9000),
+        'card_laps',
+      );
+      fake = await run(tester, RecordMode.free, null, hr: null, seconds: 900);
+      await card(tester, fake, distance('5K'), 'card_free_zone0');
+    });
+
+    testWidgets('live card: rep to recovery, distance recovery at $h', (
+      tester,
+    ) async {
+      final intervals = CompareEvent(
+        boardKey: 't240x*',
+        boardLabel: 'Norwegian 4x4',
+        kind: 'intervals',
+        index: 1,
+        rank: 1,
+        of: 5,
+        deltaSecPerKm: -4,
+        text: 'Best start to this session you have had.',
+        overlay: true,
+      );
+      var fake = await run(
+        tester,
+        RecordMode.intervals,
+        standardPreset(),
+        seconds: 10,
+        context: LiveContext(
+          boards: [],
+          cooperHistory: [48],
+          coachingMuted: false,
+          builtAtMs: 0,
+          engineVersion: 1,
+        ),
+        then: (f) async {
+          await f.startReps();
+          for (var i = 0; i < 242; i++) {
+            f.advance(const Duration(seconds: 1));
+            await tester.pump();
+          }
+        },
+      );
+      // With a LiveContext the header carries the Mute tips button.
+      expect(find.byKey(const ValueKey('mute-tips')), findsOneWidget);
+      await card(tester, fake, intervals, 'card_recovery');
+      fake = await run(
+        tester,
+        RecordMode.intervals,
+        presetSpec('400s'),
+        seconds: 10,
+        then: (f) async {
+          await f.startReps();
+          for (var i = 0; i < 130; i++) {
+            f.advance(const Duration(seconds: 1));
+            await tester.pump();
+          }
+        },
+      );
+      await card(
+        tester,
+        fake,
+        intervals
+          ..boardLabel = '8 × 400 m'
+          ..index = 1
+          ..rank = 2
+          ..deltaSecPerKm = 3,
+        'card_distance_recovery',
+      );
+    });
+
+    testWidgets('live card: 12-minute test minute 6 at $h', (tester) async {
+      final fake = await run(
+        tester,
+        RecordMode.cooper,
+        engine.SessionSpec.cooper.toPigeon(),
+        seconds: 300,
+        then: (f) async {
+          // C1b: START TEST after the warm-up, then minute 6.
+          await f.startReps();
+          for (var i = 0; i < 360; i++) {
+            f.advance(const Duration(seconds: 1));
+            await tester.pump();
+          }
+        },
+      );
+      await card(
+        tester,
+        fake,
+        CompareEvent(
+          boardKey: 'cooper',
+          boardLabel: 'Cooper',
+          kind: 'cooper',
+          index: 6,
+          rank: 2,
+          of: 4,
+          deltaVo2: -1.2,
+          value: 50.3,
+          text: 'Second best so far.',
+          overlay: true,
+        ),
+        'card_cooper',
+      );
+    });
+  }
 }
