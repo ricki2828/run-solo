@@ -52,6 +52,38 @@ void main() {
     return store;
   }
 
+  test('CR1 nudge plan converts to the Pigeon NudgePlan', () {
+    expect(LiveContextSource.nudgesToPigeon(null).version, 0);
+    final p = LiveContextSource.nudgesToPigeon(
+      const engine.NudgePlanSpec(
+        fastStart: engine.FastStartRule(km1MaxMs: 282000, text: 'Easy start.'),
+        repFade: engine.RepFadeRule(
+          maxDropSecPerKm: [null, null, 6.5],
+          text: 'Hold your form.',
+        ),
+        hrDrift: engine.HrDriftRule(
+          kmSamples: [
+            [(300.0, 150.0), (305.0, 152.0)],
+          ],
+          text: 'Ease a touch.',
+        ),
+        blocked: ['fast_start:1'],
+      ),
+    );
+    expect(p.version, engine.NudgePlanSpec.version);
+    expect(p.fastStart!.km1MaxMs, 282000);
+    expect(p.repFade!.maxDropSecPerKm, [null, null, 6.5]);
+    expect(p.hrDrift!.kmSamples, [
+      [
+        [300.0, 150.0],
+        [305.0, 152.0],
+      ],
+    ]);
+    expect(p.hrDrift!.firstKm, engine.HrDriftRule.firstKm);
+    expect(p.hrDrift!.bpmOver, engine.HrDriftRule.bpmOver);
+    expect(p.blocked, ['fast_start:1']);
+  });
+
   test('off by default until LV2 (in-app mute) ships', () {
     expect(kLiveCompare, isFalse);
   });

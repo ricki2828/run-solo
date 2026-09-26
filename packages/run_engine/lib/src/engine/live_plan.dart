@@ -1,6 +1,7 @@
 import '../model/session_spec.dart';
 import '../run_mode.dart';
 import 'best_efforts.dart';
+import 'coaching_rules.dart';
 import 'cooper_projection.dart';
 import 'event_names.dart';
 import 'leaderboards.dart';
@@ -10,10 +11,23 @@ import 'live_figures.dart';
 /// board input and its derived data (from-start splits, live rep paces,
 /// Cooper minutes). Built by the app from its index entry.
 class LiveCandidate {
-  const LiveCandidate(this.input, this.derived);
+  const LiveCandidate(this.input, this.derived, {this.durationMs = 0});
 
   final BoardInput input;
   final RunDerived derived;
+
+  /// Whole-run duration (the coaching rules' history input).
+  final int durationMs;
+
+  CoachRun get coachRun => CoachRun(
+    runId: input.runId,
+    date: input.date,
+    mode: input.mode,
+    derived: derived,
+    durationMs: durationMs,
+    comparisonKey: input.comparisonKey,
+    cooperVo2: input.cooperVo2,
+  );
 }
 
 enum LiveBoardPlanKind { distance, intervals, cooper }
@@ -56,9 +70,18 @@ class LiveEntryPlan {
 
 /// Everything the recorder needs for the live compare of one Start.
 class LivePlan {
-  const LivePlan({required this.boards, this.cooperCurve, this.cooperHistory});
+  const LivePlan({
+    required this.boards,
+    this.nudges,
+    this.cooperCurve,
+    this.cooperHistory,
+  });
 
   final List<LiveBoardPlan> boards;
+
+  /// CR1's nudge plan for the first board (never for a Cooper); null when
+  /// no rule has enough history.
+  final NudgePlanSpec? nudges;
 
   /// Cooper: the fade curve for this test (default, or personal from test 3).
   final List<double>? cooperCurve;
@@ -159,9 +182,37 @@ abstract final class LivePlanner {
     }
     return LivePlan(
       boards: out,
+      nudges: mode == RunMode.cooper || out.isEmpty
+          ? null
+          : _nudges(out.first, boards[out.first.key]!, byId, session),
       cooperCurve: curve,
       cooperHistory: history == null || history.isEmpty ? null : history,
     );
+  }
+
+  /// CR1 (plan §3.5) over every earlier run on [plan]'s board, not just the
+  /// 20 raced: a distance board by its km, an interval board by its key.
+  static NudgePlanSpec? _nudges(
+    LiveBoardPlan plan,
+    Leaderboard board,
+    Map<String, LiveCandidate> byId,
+    SessionSpec? session,
+  ) {
+    final history = [for (final r in board.ranked) ?byId[r.runId]?.coachRun];
+    const rules = CoachingRules();
+    return switch (plan.kind) {
+      LiveBoardPlanKind.distance => rules.forDistanceBoard(
+        boardKm: (plan.targetM! / 1000).round(),
+        boardLabel: plan.label,
+        history: history,
+      ),
+      LiveBoardPlanKind.intervals => rules.forIntervalBoard(
+        key: plan.key,
+        history: history,
+        templateDefault: session,
+      ),
+      LiveBoardPlanKind.cooper => null,
+    };
   }
 
   static List<LiveEntryPlan> _entries(

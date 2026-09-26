@@ -158,12 +158,45 @@ class LiveContextSource {
           ],
         ),
     ],
-    // LC1 ships the stub; CR1 fills the rules.
-    nudges: NudgePlan(version: 0),
+    nudges: nudgesToPigeon(plan.nudges),
     cooperCurve: plan.cooperCurve,
     cooperHistory: plan.cooperHistory,
     coachingMuted: false,
     builtAtMs: builtAt.millisecondsSinceEpoch,
     engineVersion: engine.engineVersion,
   );
+
+  /// CR1's plan as the Pigeon struct; the LC1 stub (version 0, no rules)
+  /// when no rule has enough history.
+  static NudgePlan nudgesToPigeon(engine.NudgePlanSpec? n) {
+    if (n == null) return NudgePlan(version: 0);
+    final fast = n.fastStart;
+    final fade = n.repFade;
+    final hr = n.hrDrift;
+    return NudgePlan(
+      version: engine.NudgePlanSpec.version,
+      fastStart: fast == null
+          ? null
+          : FastStartRule(km1MaxMs: fast.km1MaxMs, text: fast.text),
+      repFade: fade == null
+          ? null
+          : RepFadeRule(maxDropSecPerKm: fade.maxDropSecPerKm, text: fade.text),
+      hrDrift: hr == null
+          ? null
+          : HrDriftRule(
+              kmSamples: [
+                for (final km in hr.kmSamples)
+                  [
+                    for (final (pace, bpm) in km) [pace, bpm],
+                  ],
+              ],
+              bpmOver: engine.HrDriftRule.bpmOver,
+              paceBand: engine.HrDriftRule.paceBand,
+              firstKm: engine.HrDriftRule.firstKm,
+              minSimilar: engine.HrDriftRule.minSimilar,
+              text: hr.text,
+            ),
+      blocked: n.blocked,
+    );
+  }
 }
