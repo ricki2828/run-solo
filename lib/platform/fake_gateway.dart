@@ -64,6 +64,9 @@ class FakeRecorderGateway implements RecorderGateway {
   /// Journals removed by [discardJournal].
   final List<String> discarded = [];
 
+  /// Live runs thrown away by [discardRun] (never in [finalised]).
+  final List<String> discardedRuns = [];
+
   /// Lap presses swallowed because the run is a Free run.
   int lapsIgnored = 0;
 
@@ -423,6 +426,19 @@ class FakeRecorderGateway implements RecorderGateway {
       ),
     );
     return 'runs/run-$runId.json.gz';
+  }
+
+  @override
+  Future<bool> discardRun() async {
+    if (_state == RecorderState.idle) return false;
+    _timer?.cancel();
+    _timer = null;
+    discardedRuns.add(_runId!);
+    _state = RecorderState.idle;
+    _phase = Phase.none;
+    _emitState();
+    _runId = null;
+    return true;
   }
 
   @override

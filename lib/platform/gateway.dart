@@ -111,6 +111,10 @@ abstract class RecorderGateway {
 
   /// Delete an unreadable orphan (`readable == false`).
   Future<void> discardJournal(String runId);
+
+  /// Throw the live run away (DISCARD on the finish screen): no run file, the
+  /// journal deleted, state back to idle. False when no run is on.
+  Future<bool> discardRun();
   Future<void> setCues(bool enabled);
 
   /// Pre-start GPS readiness: [GpsProbeEvent]s on [events] about 1 Hz until
