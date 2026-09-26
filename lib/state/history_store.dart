@@ -754,6 +754,14 @@ class FileRunStore implements RunStore {
     final affected = <String>{
       for (final id in stamps.keys)
         if (allStale || !(old.entries[id]?.isFresh(stamps[id]!) ?? false)) id,
+      // An entry from before K1's no-fix mark: rebuilt once to carry it.
+      for (final MapEntry(key: id, value: (run, sidecar)) in tagDecoded.entries)
+        if (stamps.containsKey(id) &&
+            old.entries[id]?.courseNoFix == false &&
+            run.session?.templateId == engine.SessionSpec.parkrunId &&
+            sidecar?.parkrun?.courseId == null &&
+            engine.ParkrunCourses.startOf(run) == null)
+          id,
     };
     final gone = [
       for (final e in old.entries.values)
@@ -1094,8 +1102,8 @@ class FileRunStore implements RunStore {
   /// the writer (plan: the app assigns after finalise, imports included).
   /// Only decodes when there is something to tag: a file the index does
   /// not know yet, or an event entry still keyed without a course. A run
-  /// without a fix stays untagged and is looked at again next time; a
-  /// failed write only logs.
+  /// without a fix is marked in its entry (courseNoFix) and skipped from
+  /// then on; a failed write only logs and is retried next time.
   Future<Map<String, (engine.RunFile, engine.RunSidecar?)>> _tagCourses(
     Map<String, File> files,
     RunIndex old,
@@ -1106,17 +1114,21 @@ class FileRunStore implements RunStore {
       for (final id in files.keys)
         if (!old.entries.containsKey(id)) id,
     ];
+    // An event run with no GPS fix can never get a course: its entry
+    // records that (courseNoFix) and it is not decoded again until its run
+    // file or sidecar changes and the entry is rebuilt.
     final untagged = old.entries.values.any(
       (e) =>
           isEvent(e) &&
           files.containsKey(e.id) &&
-          e.comparisonKey == engine.ComparisonKey.parkrun,
+          e.comparisonKey == engine.ComparisonKey.parkrun &&
+          !e.courseNoFix,
     );
     if (unknown.isEmpty && !untagged) return {};
     final ids = {
       ...unknown,
       for (final e in old.entries.values)
-        if (isEvent(e) && files.containsKey(e.id)) e.id,
+        if (isEvent(e) && files.containsKey(e.id) && !e.courseNoFix) e.id,
     };
     final decoded = <String, (engine.RunFile, engine.RunSidecar?)>{};
     for (final id in ids) {

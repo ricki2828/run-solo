@@ -295,6 +295,68 @@ void main() {
       expect(e.official, isTrue);
       expect(e.finishSeconds, closeTo(1400, 0.5));
     });
+
+    test('an event run with no fix is marked "no course (no fix)" and not '
+        're-read on every list, until its sidecar changes', () async {
+      final runsDir = Directory('${dir.path}/runs');
+      final store = FileRunStore(runsDir);
+      final indoor = event(1, indoor: true);
+      await store.importBundles([engine.RunBundle(run: indoor)]);
+      final first = await store.list();
+      expect(courseIdOf(first.single), isNull);
+      expect((await store.readIndex()).entries[indoor.id]!.courseNoFix, isTrue);
+      await store.derivedIdle;
+      store.decoded.clear();
+      await store.list();
+      await store.list();
+      expect(store.decoded, isEmpty, reason: 'no fix: never decoded again');
+
+      // A sidecar change rebuilds the entry once, still with no course.
+      await store.setOfficialTime(indoor.id, 1400);
+      await store.list();
+      await store.derivedIdle;
+      store.decoded.clear();
+      await store.list();
+      expect(store.decoded, isEmpty);
+      expect((await store.readIndex()).entries[indoor.id]!.courseNoFix, isTrue);
+
+      // A second event run with a fix still tags; the indoor one stays out.
+      await store.importBundles([engine.RunBundle(run: event(2))]);
+      final runs = await store.list();
+      expect(
+        courseIdOf(runs.firstWhere((r) => r.id == eventRunId(2))),
+        isNotNull,
+      );
+      expect(courseIdOf(runs.firstWhere((r) => r.id == indoor.id)), isNull);
+      final index = await store.readIndex();
+      expect(index.entries[eventRunId(2)]!.courseNoFix, isFalse);
+    });
+
+    test('an index entry from before the no-fix mark is rebuilt once to '
+        'carry it', () async {
+      final runsDir = Directory('${dir.path}/runs');
+      final store = FileRunStore(runsDir);
+      final indoor = event(1, indoor: true);
+      await store.importBundles([engine.RunBundle(run: indoor)]);
+      await store.list();
+      await store.derivedIdle;
+      final f = store.indexFile;
+      f.writeAsStringSync(
+        f.readAsStringSync().replaceAll('"course_no_fix":true,', ''),
+      );
+      expect(
+        (await store.readIndex()).entries[indoor.id]!.courseNoFix,
+        isFalse,
+      );
+      store.decoded.clear();
+      await store.list();
+      expect(store.decoded, hasLength(1), reason: 'one decode to mark it');
+      expect((await store.readIndex()).entries[indoor.id]!.courseNoFix, isTrue);
+      await store.derivedIdle;
+      store.decoded.clear();
+      await store.list();
+      expect(store.decoded, isEmpty);
+    });
   });
 }
 

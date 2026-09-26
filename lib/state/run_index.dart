@@ -46,6 +46,7 @@ class RunIndexEntry {
     this.heatAdj,
     this.derived,
     this.derivedFailed = false,
+    this.courseNoFix = false,
     this.row,
   });
 
@@ -99,6 +100,12 @@ class RunIndexEntry {
   /// is not retried until the entry is rebuilt. Kept in the file so a
   /// systematic bug shows up as a count, not silently as "no boards".
   final bool derivedFailed;
+
+  /// K1: an event run with no course and no GPS fix, so no course can ever
+  /// be tagged ("no course, no fix"). Course tagging skips it; the entry is
+  /// rebuilt, and this worked out again, when its run file or sidecar
+  /// changes.
+  final bool courseNoFix;
 
   RunIndexEntry withDerived(engine.RunDerived? d) => RunIndexEntry.fromJson({
     ...toJson(),
@@ -187,6 +194,7 @@ class RunIndexEntry {
     'adj': heatAdj,
     'derived': derived?.toJson(),
     if (derivedFailed) 'derived_failed': true,
+    if (courseNoFix) 'course_no_fix': true,
     'row': row?.toJson(),
   };
 
@@ -222,6 +230,7 @@ class RunIndexEntry {
         ? null
         : engine.RunDerived.fromJson(j['derived']! as Map<String, Object?>),
     derivedFailed: j['derived_failed'] == true,
+    courseNoFix: j['course_no_fix'] == true,
     row: IndexRow.fromJson(j['row'] as Map<String, Object?>?),
   );
 
@@ -265,6 +274,10 @@ class RunIndexEntry {
       tempC: weather?.tempC,
       dewPointC: weather?.dewPointC,
       heatAdj: weather?.adj,
+      courseNoFix:
+          a?.session?.templateId == engine.SessionSpec.parkrunId &&
+          sidecar?.parkrun?.courseId == null &&
+          engine.ParkrunCourses.startOf(run) == null,
       row: IndexRow.of(run, a, shownVerdict),
     );
   }

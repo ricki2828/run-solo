@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/event_names.dart';
 import '../app/format.dart';
@@ -47,9 +48,11 @@ class EventPanel extends StatelessWidget {
         _Row(
           key: const ValueKey('event-course'),
           label: 'COURSE',
-          value: courseId == null
-              ? 'Tagged once GPS has a fix'
-              : labels.labelOf(courseId),
+          value: courseId != null
+              ? labels.labelOf(courseId)
+              : engine.ParkrunCourses.startOf(detail.run) == null
+              ? 'No course (no GPS fix)'
+              : 'Finding the course…',
           onTap: courseId == null
               ? null
               : () => showCourseSheet(
