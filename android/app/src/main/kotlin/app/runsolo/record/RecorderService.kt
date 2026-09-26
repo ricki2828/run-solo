@@ -123,6 +123,18 @@ class RecorderService : Service() {
         return path
     }
 
+    /** DISCARD: as [stopRun], but the run is thrown away (no run file, journal deleted). */
+    fun discardRun(): Boolean {
+        val s = session ?: return false
+        session = null
+        s.discardRun()
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf()
+        return true
+    }
+
     override fun onDestroy() {
         // Normally after stopRun. If the system tears the service down while a run is on, the
         // journal is fsynced and closed and the session dropped, so status() says idle and the

@@ -83,7 +83,7 @@ class RunFileTest {
     }
 
     @Test
-    fun `an auto lap marker gives an auto lap and an open pause closes at the end`() {
+    fun `an auto lap marker gives an auto lap, and a run stopped while paused ends at the pause`() {
         val text = listOf(
             header,
             JournalLine.Sample(t0 + 1000, w0 + 1000, 0.0, 0.0, null, 5.0, null, null),
@@ -94,8 +94,32 @@ class RunFileTest {
         val f = RunFile.fromReplay(JournalReplay.read(text.toByteArray()), w0 + 4000)
         assertEquals(LapKind.auto, f.laps[0].kind)
         assertEquals(LapKind.manual, f.laps[1].kind)
-        assertEquals(listOf(3000L, 4000L), f.pauses.single().asList())
+        // The finish screen's tap paused at 3 s, SAVE came at 4 s: the run ends at 3 s.
+        assertEquals(3000L, f.laps.last().t1)
+        assertEquals(emptyList(), f.pauses.map { it.asList() })
+        assertEquals(listOf(1000L), f.samples.map { it.t }, "nothing after the pause")
+        assertEquals(3000L, f.elapsedMs)
         assertTrue(f.distanceM == 0.0)
+    }
+
+    @Test
+    fun `stopped while paused - end, elapsed, distance and the last lap are the pause moment's`() {
+        val fixes = TraceFixture.straightLine(listOf(60 to 3.0), startT = t0)
+        val lines = ArrayList<JournalLine>()
+        lines.add(header)
+        for (f in fixes) {
+            val runT = f.t - t0
+            if (runT == 40_000L) lines.add(JournalLine.Pause(f.t, w0 + runT))
+            lines.add(JournalLine.Sample(f.t, w0 + runT, f.lat, f.lon, f.altM, f.accuracyM, f.speedMps, 150))
+        }
+        lines.add(JournalLine.Cue(t0 + 60_000, w0 + 60_000, app.runsolo.core.model.CueKind.stop))
+        val f = RunFile.fromReplay(JournalReplay.read(lines.joinToString("") { JournalCodec.encode(it) + "\n" }.toByteArray()), w0 + 60_000)
+        val open = RunFile.fromReplay(JournalReplay.read(lines.takeWhile { it !is JournalLine.Pause }.joinToString("") { JournalCodec.encode(it) + "\n" }.toByteArray()), w0 + 39_000)
+        assertEquals(40_000L, f.elapsedMs, "20 s on the finish screen are not in the run")
+        assertEquals(40_000L, f.laps.single().t1)
+        assertTrue(f.pauses.isEmpty())
+        assertEquals(40_000L, f.samples.last().t)
+        assertEquals(open.distanceM, f.distanceM, 3.1, "the distance at the pause (one more sample than a stop just before it)")
     }
 
     @Test

@@ -587,7 +587,11 @@ class RecordingSession(
         if (resumed) suspend() else discard()
     }
 
-    /** A brand-new run that never recorded: deletes its header-only journal. Only [abortStart] may call this. */
+    /** DISCARD on the finish screen: the live run (new or resumed) goes, journal and all; no run file is written. */
+    @Synchronized
+    fun discardRun() = discard()
+
+    /** Deletes the journal and never writes a run file: a start that never recorded ([abortStart]) or [discardRun]. */
     @Synchronized
     private fun discard() {
         if (finished) return

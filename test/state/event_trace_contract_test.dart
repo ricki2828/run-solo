@@ -253,6 +253,8 @@ class TraceGateway implements RecorderGateway {
   @override
   Future<String?> stop() => throw UnimplementedError();
   @override
+  Future<bool> discard() => throw UnimplementedError();
+  @override
   Future<List<OrphanJournal>> recover() => throw UnimplementedError();
   @override
   Future<StartResult> resumeRecovered(String r) => throw UnimplementedError();
