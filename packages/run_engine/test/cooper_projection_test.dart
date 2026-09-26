@@ -131,14 +131,14 @@ void main() {
   });
 
   group('VO2 and range', () {
-    test('2800 m → 51.3; ± 5 range text', () {
+    test('2800 m → 51.3; ± 6 range text (RV4 C1)', () {
       const e = CooperEstimate(2800);
       expect(e.vo2, closeTo((fx['vo2']! as Map)['2800'] as num, 1e-12));
       expect(e.vo2, closeTo(51.3, 0.05));
       expect(fx['range_half_width'], CooperProjection.rangeHalfWidth);
-      expect(e.vo2High - e.vo2Low, 10);
-      expect(e.rangeText, '51 (46 to 56)');
-      expect(e.rangeLine, 'VO2 estimate 51 (46 to 56)');
+      expect(e.vo2High - e.vo2Low, 12);
+      expect(e.rangeText, '51 (45 to 57)');
+      expect(e.rangeLine, 'VO2 estimate 51 (45 to 57)');
     });
   });
 

@@ -189,9 +189,9 @@ void main() {
         now: now,
         names: names,
       )!;
-      expect(t.line, 'Target about 1:39:17 (1:38:33 to 1:40:47), estimate');
+      expect(t.line, 'Target about 1:40:02 (1:38:33 to 1:40:47), estimate');
       expect(t.liveDistanceM, 21098);
-      expect(t.liveTargetMs, closeTo(5957000, 1000));
+      expect(t.liveTargetMs, closeTo(6002082, 1000));
     });
 
     test('beyond 10K with no 10 km run in 6 weeks: no target', () {
@@ -224,7 +224,7 @@ void main() {
         now: now,
         names: names,
       )!;
-      expect(t.line, 'Target 5.94 km (predicted)');
+      expect(t.line, 'Target 5.93 km (predicted)');
       expect(t.liveDistanceM, isNull);
       expect(t.liveTargetMs, isNull);
     });

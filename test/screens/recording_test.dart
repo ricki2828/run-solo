@@ -406,6 +406,51 @@ void main() {
     );
   });
 
+  testWidgets('the paused notification\'s "tap to finish" opens the '
+      'finish screen at the pause start (#90)', (tester) async {
+    final (fake, _) = await openRecording(tester, mode: RecordMode.laps);
+    fake.advance(const Duration(seconds: 60));
+    await settle(tester);
+    await tester.tap(find.text('PAUSE'));
+    await pumpTimes(tester, 4);
+    fake.advance(const Duration(seconds: 30));
+    await settle(tester);
+    expect(find.byKey(const ValueKey('finish-screen')), findsNothing);
+    await fake.emitFinishRequested();
+    await pumpTimes(tester, 6);
+    expect(find.byKey(const ValueKey('finish-screen')), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('finish-time'))).data,
+      '1:00',
+    );
+    // RESUME, then a later status read of the same count opens nothing.
+    await tester.tap(find.byKey(const ValueKey('finish-resume')));
+    await pumpTimes(tester, 4);
+    fake.advance(const Duration(seconds: 5));
+    await settle(tester);
+    expect(find.byKey(const ValueKey('finish-screen')), findsNothing);
+  });
+
+  testWidgets('cold start from "tap to finish": the record screen opens on '
+      'the finish screen (#90)', (tester) async {
+    final fake = FakeRecorderGateway(now: now);
+    final first = fakeServices(recorder: fake);
+    await first.recording.start(RecordMode.free, null, Units.km);
+    fake.advance(const Duration(seconds: 40));
+    await fake.emitFinishRequested(); // pauses, as the notification's tap
+    fake.advance(const Duration(seconds: 25)); // unlocking, opening the app
+    // A new isolate: fresh services on the same recorder.
+    final again = fakeServices(recorder: fake);
+    await pumpApp(tester, again, pushRoute: Routes.recording);
+    await pumpTimes(tester, 8);
+    expect(find.byKey(const ValueKey('finish-screen')), findsOneWidget);
+    // The pause start from native (#91), not the time since.
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('finish-time'))).data,
+      '0:40',
+    );
+  });
+
   testWidgets('DISCARD, confirmed, drops the live run: no run file', (
     tester,
   ) async {
