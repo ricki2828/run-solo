@@ -517,7 +517,7 @@ void main() {
       );
     });
 
-    /** A timed 5 km on course c-1 in [secs]. */
+    /// A timed 5 km on course c-1 in [secs].
     LiveCandidate eventRun(int n, int secs) {
       final f = freeRun(n, secs, km: 5);
       return LiveCandidate(
