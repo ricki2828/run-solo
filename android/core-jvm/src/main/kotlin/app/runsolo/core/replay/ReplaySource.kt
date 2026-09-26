@@ -79,11 +79,12 @@ class ReplaySource(
     /** The stamp of the trace's first item (trace time 0); valid after [start]. */
     val startT: Long get() = tStart
 
-    fun start() {
+    /** [anchorT]: the stamp trace time 0 maps to (the recorder's Start); the clock now by default. */
+    fun start(anchorT: Long = clock()) {
         check(!running)
         running = true
         index = 0
-        tStart = clock()
+        tStart = anchorT
         lastStamp = tStart
         scheduleNext()
     }

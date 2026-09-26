@@ -175,6 +175,7 @@ class RecordingSession(
     @Synchronized
     fun startNew(device: String, app: String, tz: String) {
         val t = clock()
+        replay?.anchorAt(t)
         startWallMs = System.currentTimeMillis()
         writer.open()
         writer.append(JournalLine.Header(t, startWallMs, runId, device, app, tz, mode, spec, units))

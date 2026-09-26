@@ -35,8 +35,20 @@ class ReplayRunner private constructor(
 ) {
     private var source: ReplaySource? = null
 
-    /** Trace time; valid after [start]. */
-    fun now(): Long = source?.now() ?: SystemClock.elapsedRealtime()
+    /**
+     * The session's Start stamp: trace time 0 maps here, so a step timed from Start (a time
+     * goal, §G) ends at the same trace point as in the core-jvm fixture, however long the
+     * service took to come up before [start].
+     */
+    private var anchorT: Long? = null
+
+    /** Trace time; the anchor before [start]. */
+    fun now(): Long = source?.now() ?: anchorT ?: SystemClock.elapsedRealtime()
+
+    /** Called once at the session's Start with its first stamp. */
+    fun anchorAt(t: Long) {
+        anchorT = t
+    }
 
     val endT: Long get() = source?.endT ?: 0
 
@@ -59,7 +71,7 @@ class ReplayRunner private constructor(
             clock = { SystemClock.elapsedRealtime() },
             locationSink = { onFix(it) },
             hrSink = { onHr(it) },
-        ).also { it.start() }
+        ).also { src -> anchorT?.let { src.start(it) } ?: src.start() }
     }
 
     fun stop() {
