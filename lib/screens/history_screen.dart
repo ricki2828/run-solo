@@ -324,8 +324,16 @@ class HistoryRow extends StatelessWidget {
                                 'Fartlek · ${Fmt.distance(run.distanceM, units)}',
                               RecordMode.laps =>
                                 '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',
-                              RecordMode.free || RecordMode.cooper =>
-                                Fmt.distance(run.distanceM, units),
+                              RecordMode.free => Fmt.distance(
+                                run.distanceM,
+                                units,
+                              ),
+                              // The test's own window (27-Sep field test:
+                              // total distance counted the cool-down).
+                              RecordMode.cooper => Fmt.distance(
+                                run.cooper?.testDistanceM ?? run.distanceM,
+                                units,
+                              ),
                             },
                       style: RunSoloType.label13.copyWith(
                         color: run.missing ? t.semWarn : t.inkSecondary,
@@ -363,7 +371,10 @@ class HistoryRow extends StatelessWidget {
                           ),
                         ),
                       Text(
-                        Fmt.paceUnit(run.headlineSecPerKm, units),
+                        run.mode == RecordMode.cooper &&
+                                run.cooper?.primeVo2 != null
+                            ? '${run.cooper!.primeVo2!.round()}'
+                            : Fmt.paceUnit(run.headlineSecPerKm, units),
                         style: RunSoloType.title28.copyWith(
                           fontSize: 22,
                           color: muted,
@@ -372,7 +383,18 @@ class HistoryRow extends StatelessWidget {
                     ],
                   ),
                   Text(
-                    Fmt.clock(run.durationMs),
+                    run.mode == RecordMode.cooper
+                        ? (run.cooper?.valid == true
+                              ? '12:00'
+                              : Fmt.clock(
+                                  run.durationMs <
+                                          engine.CooperProjection.testSeconds *
+                                              1000
+                                      ? run.durationMs
+                                      : engine.CooperProjection.testSeconds *
+                                            1000,
+                                ))
+                        : Fmt.clock(run.durationMs),
                     style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                   ),
                 ],
