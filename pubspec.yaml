@@ -34,6 +34,7 @@ flutter:
 
   assets:
     - assets/maps/night_session.json
+    - assets/plans/
 
   # Fonts are bundled (OFL, see assets/fonts/OFL-*.txt). Nothing is fetched at runtime:
   # the app has no network code (plan §2 rule 4).

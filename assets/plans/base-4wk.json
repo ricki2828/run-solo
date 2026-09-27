@@ -1,0 +1,64 @@
+{
+  "id": "base-4wk",
+  "version": 1,
+  "name": "4-week base",
+  "oneLiner": "Three easy runs a week to build the habit.",
+  "weeks": [
+    [
+      {
+        "kind": "easy",
+        "minutes": 20
+      },
+      {
+        "kind": "easy",
+        "minutes": 25
+      },
+      {
+        "kind": "easy",
+        "minutes": 20
+      }
+    ],
+    [
+      {
+        "kind": "easy",
+        "minutes": 25
+      },
+      {
+        "kind": "easy",
+        "minutes": 30
+      },
+      {
+        "kind": "easy",
+        "minutes": 25
+      }
+    ],
+    [
+      {
+        "kind": "easy",
+        "minutes": 30
+      },
+      {
+        "kind": "easy",
+        "minutes": 30
+      },
+      {
+        "kind": "easy",
+        "minutes": 35
+      }
+    ],
+    [
+      {
+        "kind": "easy",
+        "minutes": 30
+      },
+      {
+        "kind": "easy",
+        "minutes": 35
+      },
+      {
+        "kind": "easy",
+        "minutes": 40
+      }
+    ]
+  ]
+}

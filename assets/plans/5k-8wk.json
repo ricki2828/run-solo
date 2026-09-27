@@ -1,0 +1,128 @@
+{
+  "id": "5k-8wk",
+  "version": 1,
+  "name": "5k in 8 weeks",
+  "oneLiner": "One interval session, one easy run and one longer run a week.",
+  "weeks": [
+    [
+      {
+        "kind": "fourByFour",
+        "reps": 3,
+        "recoverySeconds": 210
+      },
+      {
+        "kind": "easy",
+        "minutes": 30
+      },
+      {
+        "kind": "easy",
+        "minutes": 40
+      }
+    ],
+    [
+      {
+        "kind": "fourByFour",
+        "reps": 3,
+        "recoverySeconds": 210
+      },
+      {
+        "kind": "easy",
+        "minutes": 30
+      },
+      {
+        "kind": "easy",
+        "minutes": 40
+      }
+    ],
+    [
+      {
+        "kind": "fourByFour",
+        "reps": 3,
+        "recoverySeconds": 210
+      },
+      {
+        "kind": "easy",
+        "minutes": 30
+      },
+      {
+        "kind": "easy",
+        "minutes": 45
+      }
+    ],
+    [
+      {
+        "kind": "fourByFour",
+        "reps": 4,
+        "recoverySeconds": 195
+      },
+      {
+        "kind": "easy",
+        "minutes": 35
+      },
+      {
+        "kind": "easy",
+        "minutes": 45
+      }
+    ],
+    [
+      {
+        "kind": "fourByFour",
+        "reps": 4,
+        "recoverySeconds": 195
+      },
+      {
+        "kind": "easy",
+        "minutes": 35
+      },
+      {
+        "kind": "easy",
+        "minutes": 50
+      }
+    ],
+    [
+      {
+        "kind": "fourByFour",
+        "reps": 4,
+        "recoverySeconds": 195
+      },
+      {
+        "kind": "easy",
+        "minutes": 35
+      },
+      {
+        "kind": "easy",
+        "minutes": 50
+      }
+    ],
+    [
+      {
+        "kind": "fourByFour",
+        "reps": 4,
+        "recoverySeconds": 180
+      },
+      {
+        "kind": "easy",
+        "minutes": 35
+      },
+      {
+        "kind": "easy",
+        "minutes": 55
+      }
+    ],
+    [
+      {
+        "kind": "fourByFour",
+        "reps": 4,
+        "recoverySeconds": 180
+      },
+      {
+        "kind": "easy",
+        "minutes": 35
+      },
+      {
+        "kind": "easy",
+        "minutes": 60
+      }
+    ]
+  ]
+}
