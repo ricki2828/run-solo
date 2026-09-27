@@ -343,6 +343,25 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
+      - name: Verify release tag and pubspec version
+        # Manual dispatch is allowed from any ref; only version-shaped tags are release refs.
+        # A tag must match the versionName in pubspec before a signed bundle is made.
+        run: |
+          python3 - <<'PYCODE'
+          import os, re
+          from pathlib import Path
+          match = re.search(r'^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([1-9][0-9]*)\s*$',
+                            Path('pubspec.yaml').read_text(), re.MULTILINE)
+          if not match:
+              raise SystemExit('pubspec.yaml needs version: MAJOR.MINOR.PATCH+positiveBuildNumber')
+          version, build = match.groups()
+          ref = os.environ['GITHUB_REF']
+          if ref.startswith('refs/tags/') and ref != f'refs/tags/v{version}':
+              raise SystemExit(f'{ref} does not match pubspec version v{version}')
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write(f'RELEASE_VERSION={version}\nRELEASE_BUILD={build}\n')
+          print(f'Release version {version}+{build}; ref {ref}')
+          PYCODE
       - name: Decode upload keystore (repo secrets RUN_SOLO_UPLOAD_*)
         env:
           KS_B64: ${{ secrets.RUN_SOLO_UPLOAD_KEYSTORE_BASE64 }}
@@ -393,10 +412,41 @@ jobs:
           cp build/app/outputs/mapping/playRelease/mapping.txt build/dist-play/mapping.txt
           unzip -l build/dist-play/app-play-release.aab | grep -q "BUNDLE-METADATA/com.android.tools.build.debugsymbols" || { echo "native debug symbols missing from the AAB" >&2; exit 1; }
           ls -la build/dist-play
+      - name: Release manifest and checksums
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib, json, os
+          from pathlib import Path
+
+          dist = Path('build/dist-play')
+          files = (dist / 'app-play-release.aab', dist / 'mapping.txt')
+          checksums = []
+          for path in files:
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              checksums.append(f'{digest}  {path.name}')
+          manifest = {
+              'app': 'Run Supreme',
+              'package': 'app.runsolo',
+              'version_name': os.environ['RELEASE_VERSION'],
+              'version_code': int(os.environ['RELEASE_BUILD']),
+              'git_ref': os.environ['GITHUB_REF'],
+              'git_sha': os.environ['GITHUB_SHA'],
+              'workflow_run': os.environ['GITHUB_RUN_ID'],
+              'files': {path.name: {'sha256': line.split()[0], 'bytes': path.stat().st_size}
+                        for path, line in zip(files, checksums)},
+          }
+          (dist / 'release-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          (dist / 'SHA256SUMS').write_text('\n'.join(checksums) + '\n')
+          print(f"Release: {manifest['version_name']}+{manifest['version_code']} ({manifest['git_sha'][:12]})")
+          PYCODE
+          echo "Release manifest and SHA256SUMS are packaged alongside the AAB." >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: run-solo-play-aab-${{ env.REF }}
-          path: build/dist-play/app-play-release.aab
+          path: |
+            build/dist-play/app-play-release.aab
+            build/dist-play/release-manifest.json
+            build/dist-play/SHA256SUMS
           if-no-files-found: error
           retention-days: 90
       - uses: actions/upload-artifact@v4
