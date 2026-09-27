@@ -12,6 +12,7 @@ import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_engine/testing.dart' as synth;
+import 'package:run_solo/screens/board_detail_screen.dart';
 import 'package:run_solo/screens/course_board_screen.dart';
 import 'package:run_solo/screens/custom_builder_screen.dart';
 import 'package:run_solo/screens/verdict_screen.dart';
@@ -1541,4 +1542,124 @@ void main() {
       );
     });
   }
+
+  // LB3d (A11.7): the board detail - 5K top (podium), the scrolled chart
+  // and table with the heat layer on and a bar selected, and a course
+  // board with an official time.
+  testWidgets('board detail: 5K top, podium and trend', (tester) async {
+    final files = [
+      for (var i = 0; i < 5; i++)
+        eventRunFile(
+          n: 31 + i,
+          start: DateTime.utc(2026, 7, 15, 6).add(Duration(days: 14 * i)),
+          eventName: 'parkrun',
+          mps: 3.0 + 0.1 * i,
+        ),
+    ];
+    tester.view.physicalSize = const Size(1080, 800 * 3.0);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await pumpApp(
+      tester,
+      fakeServices(
+        files: files,
+        settings: AppSettings(
+          onboardingDone: true,
+          pbSeen: {'be:5000': files.last.id},
+        ),
+      ),
+      home: const BoardDetailScreen(boardKey: 'be:5000'),
+    );
+    await pumpTimes(tester, 6);
+    await settleAnimations(tester);
+    await golden(tester, 'board_detail_5k');
+  });
+
+  testWidgets('board detail: scrolled, heat layer on, a bar selected', (
+    tester,
+  ) async {
+    final files = [
+      for (var i = 0; i < 5; i++)
+        eventRunFile(
+          n: 41 + i,
+          start: DateTime.utc(2026, 7, 15, 6).add(Duration(days: 14 * i)),
+          eventName: 'parkrun',
+          mps: 3.0 + 0.1 * i,
+        ),
+    ];
+    tester.view.physicalSize = const Size(1080, 800 * 3.0);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await pumpApp(
+      tester,
+      fakeServices(
+        files: files,
+        settings: AppSettings(
+          onboardingDone: true,
+          compareHeatAdjusted: true,
+          pbSeen: {'be:5000': files.last.id},
+        ),
+        // Three runs with weather (heat ticks), two without (rings).
+        sidecars: {
+          for (final f in files.take(3))
+            f.id: engine.RunSidecar(
+              runId: f.id,
+              weather: weatherOk(28, 21).toJson(),
+            ),
+        },
+      ),
+      home: const BoardDetailScreen(boardKey: 'be:5000'),
+    );
+    await pumpTimes(tester, 6);
+    await settleAnimations(tester);
+    await tester.drag(
+      find.byKey(const ValueKey('board-detail')),
+      const Offset(0, -560),
+    );
+    await tester.pump();
+    final topLeft = tester.getTopLeft(
+      find.byKey(const ValueKey('board-chart')),
+    );
+    await tester.tapAt(topLeft + const Offset(256, 100));
+    await tester.pump();
+    await golden(tester, 'board_detail_5k_scrolled_heat');
+  });
+
+  testWidgets('board detail: course board with an official time', (
+    tester,
+  ) async {
+    final files = [
+      for (var i = 0; i < 5; i++)
+        eventRunFile(
+          n: 51 + i,
+          start: DateTime.utc(2026, 7, 15, 6).add(Duration(days: 14 * i)),
+          eventName: 'parkrun',
+          mps: 3.0 + 0.1 * i,
+        ),
+    ];
+    final best = files.last;
+    final services = fakeServices(
+      files: files,
+      sidecars: {
+        best.id: engine.RunSidecar(runId: best.id)
+            .withParkrun(const engine.ParkrunInfo(officialTimeSeconds: 1465)),
+      },
+    );
+    final boards = await services.history.boards();
+    final courseKey = boards.byKey.keys.firstWhere(
+      (k) => k.startsWith('parkrun:'),
+    );
+    tester.view.physicalSize = const Size(1080, 800 * 3.0);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await pumpApp(
+      tester,
+      services,
+      home: BoardDetailScreen(boardKey: courseKey),
+    );
+    await pumpTimes(tester, 6);
+    await tester.pump(const Duration(milliseconds: 700));
+    await settleAnimations(tester);
+    await golden(tester, 'board_detail_course_official');
+  });
 }
