@@ -292,6 +292,11 @@ class WeatherChip extends StatelessWidget {
   }
 }
 
+/// The heat-adjustment (i) sheet (A6), shared by the run's weather chip
+/// and the board detail's HEAT-ADJ header (LB3d).
+Future<void> showHeatInfoSheet(BuildContext context, {required bool cooper}) =>
+    _showSheet(context, cooper ? kCooperHeatSheet : kSteadyHeatSheet);
+
 Future<void> _showSheet(BuildContext context, List<String> paragraphs) {
   final t = Theme.of(context).extension<RunSoloTokens>()!;
   return showModalBottomSheet<void>(
