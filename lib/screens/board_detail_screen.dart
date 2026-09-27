@@ -280,7 +280,7 @@ class _BoardView {
 
   /// "+17 s", "+1:18", "+3 s/km", "+110 m", "+0.8" - the gap to the best.
   String gap(double metric, Units units) {
-    final best = board.pb!.metric;
+    final best = board.rankValue(board.pb!);
     final g = switch (board.kind) {
       engine.BoardKind.cooper => best - metric,
       engine.BoardKind.distanceInTime => best - metric,
@@ -400,7 +400,8 @@ class _DetailBody extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
           child: _Legend(
             heatOn: heatOn,
-            hasHeatTwin: view.hasHeatTwin,
+            hasHeatTwin:
+                view.hasHeatTwin && view.board.kind != engine.BoardKind.cooper,
             onToggleHeat: onToggleHeat,
           ),
         ),
@@ -564,9 +565,9 @@ class _Hero extends StatelessWidget {
             animation: animation,
             builder: (context, _) {
               final shown = oldBest == null
-                  ? pbRun.metric
-                  : oldBest!.metric +
-                        (pbRun.metric - oldBest!.metric) *
+                  ? board.rankValue(pbRun)
+                  : board.rankValue(oldBest!) +
+                        (board.rankValue(pbRun) - board.rankValue(oldBest!)) *
                             const Interval(
                               0.625,
                               1,
@@ -634,7 +635,9 @@ class _GainLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final gap = (view.board.pb!.metric - old.metric).abs();
+    final gap =
+        (view.board.rankValue(view.board.pb!) - view.board.rankValue(old))
+            .abs();
     final how = switch (view.board.kind) {
       engine.BoardKind.cooper =>
         'up ${gap.toStringAsFixed(1)} from your old best',
@@ -1096,14 +1099,17 @@ class _ChartPainter extends CustomPainter {
     // The scale includes the heat ticks and the PB, so nothing clips.
     final vals = <double>[
       for (final e in shown) ...[
-        e.metric,
-        if (heatOn && e.adjMetric != null) e.adjMetric!,
+        view.board.rankValue(e),
+        if (heatOn &&
+            view.board.kind != engine.BoardKind.cooper &&
+            e.adjMetric != null)
+          e.adjMetric!,
       ],
-      pbRun.metric,
+      view.board.rankValue(pbRun),
     ];
     final sc = one ? null : _scale(vals, plotBottom);
     double yOf(double v) => one ? _top + (plotBottom - _top) * 0.3 : sc!.y(v);
-    final bestY = yOf(pbRun.metric);
+    final bestY = yOf(view.board.rankValue(pbRun));
 
     // Gridlines and right-hand labels on round steps; the crop note.
     if (!one && sc != null) {
@@ -1168,7 +1174,7 @@ class _ChartPainter extends CustomPainter {
         ),
         Paint()..color = fill,
       );
-      if (heatOn && !one) {
+      if (heatOn && !one && view.board.kind != engine.BoardKind.cooper) {
         final adj = e.adjMetric;
         if (adj != null) {
           final ty = sc!.y(adj);
@@ -1567,7 +1573,7 @@ class _AllTable extends StatelessWidget {
             SizedBox(
               width: 58,
               child: Text(
-                view.fmt(r.metric, units),
+                view.fmt(view.board.rankValue(r), units),
                 style: RunSoloType.label13.copyWith(
                   fontSize: 14,
                   color: t.inkPrimary,
@@ -1577,7 +1583,7 @@ class _AllTable extends StatelessWidget {
             SizedBox(
               width: 50,
               child: Text(
-                view.gap(r.metric, units),
+                view.gap(view.board.rankValue(r), units),
                 style: RunSoloType.label13.copyWith(
                   fontSize: 13,
                   color: t.inkSecondary,
@@ -1621,7 +1627,7 @@ class _AllTable extends StatelessWidget {
                       child: _Tag(text: 'no weather', color: t.inkSecondary),
                     )
                   : Text(
-                      '${view.fmt(r.adjMetric!, units)}${i == 0 ? ' est.' : ''}',
+                      '${view.fmt(view.board.kind == engine.BoardKind.cooper ? r.metric : r.adjMetric!, units)}${i == 0 ? ' est.' : ''}',
                       style: RunSoloType.label13.copyWith(
                         fontSize: 14,
                         color: t.inkSecondary,

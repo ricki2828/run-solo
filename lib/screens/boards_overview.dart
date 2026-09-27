@@ -291,7 +291,7 @@ class _LatestBestStrip extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final board = spot.card.board;
     final pb = board.pb!;
-    final gap = (pb.metric - spot.previous.metric).abs();
+    final gap = (board.rankValue(pb) - board.rankValue(spot.previous)).abs();
     final how = switch (board.kind) {
       engine.BoardKind.cooper => 'up ${_gapText(board.kind, gap, units)}',
       engine.BoardKind.distanceInTime =>
@@ -310,7 +310,7 @@ class _LatestBestStrip extends StatelessWidget {
           ),
           const SizedBox(height: Space.x4),
           Text(
-            _value(board, pb.metric, units),
+            _value(board, board.rankValue(pb), units),
             style: RunSoloType.display44.copyWith(color: t.inkPrimary),
           ),
           Text(
@@ -364,7 +364,7 @@ class _BoardCard extends StatelessWidget {
     final higher =
         board.kind == engine.BoardKind.cooper ||
         board.kind == engine.BoardKind.distanceInTime;
-    final gap = (last.metric - pb.metric).abs();
+    final gap = (board.rankValue(last) - board.rankValue(pb)).abs();
     final sub = n == 1
         ? '1 run · the next one races it'
         : rank == 1
@@ -404,7 +404,7 @@ class _BoardCard extends StatelessWidget {
               ),
               const SizedBox(height: Space.x4),
               Text(
-                _value(board, pb.metric, units),
+                _value(board, board.rankValue(pb), units),
                 style: RunSoloType.display44.copyWith(color: t.inkPrimary),
               ),
               if (board.kind == engine.BoardKind.cooper)
@@ -419,9 +419,9 @@ class _BoardCard extends StatelessWidget {
               ),
               const SizedBox(height: Space.x12),
               BoardSpark(
-                values: [for (final r in spark) r.metric],
+                values: [for (final r in spark) board.rankValue(r)],
                 lowerBetter: !higher,
-                best: pb.metric,
+                best: board.rankValue(pb),
                 bestColor: t.accentArc,
                 newestColor: t.inkPrimary,
                 barColor: t.inkMuted,
