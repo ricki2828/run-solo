@@ -1,6 +1,5 @@
 package app.runsolo.core.live
 
-import java.util.Locale
 import kotlin.math.floor
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -28,12 +27,16 @@ object CooperProjection {
         return distanceM / curve.fractionAt(elapsedSeconds / 60)
     }
 
-    /** "5 minutes. Heading for about 2,740. VO2 about 50." Rounded to 10 m and a whole VO2 here only. */
+    /** "5 minutes. Heading for about 2.74km. VO2 about 50." Km to 10 m (field test 27-Sep: "1,750" read as raw metres) and a whole VO2 here only. */
     fun cue(minute: Int, projectedM: Double): String {
         val m = if (minute == 1) "1 minute" else "$minute minutes"
         val rounded = (projectedM / 10).roundToLong() * 10
-        return "$m. Heading for about ${String.format(Locale.US, "%,d", rounded)}. VO2 about ${vo2(projectedM).roundToInt()}."
+        return "$m. Heading for about ${km(rounded)}. VO2 about ${vo2(projectedM).roundToInt()}."
     }
+
+    /** "1.75km" for 1,750 m: integer-only formatting so the app and native agree. */
+    private fun km(roundedM: Long): String =
+        "${roundedM / 1_000}.${((roundedM % 1_000) / 10).toString().padStart(2, '0')}km"
 }
 
 /** Cumulative fraction of the 12-minute distance at minutes 1..12 (`F(12) = 1`, strictly increasing). */

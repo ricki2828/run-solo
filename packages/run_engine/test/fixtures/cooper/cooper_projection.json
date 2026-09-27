@@ -45,14 +45,14 @@
    "distance_m": 480.808081,
    "projected_m": 2800.0,
    "vo2": 51.31008271853342,
-   "cue": "2 minutes. Heading for about 2,800. VO2 about 51."
+   "cue": "2 minutes. Heading for about 2.80km. VO2 about 51."
   },
   {
    "elapsed_s": 300,
    "distance_m": 1177.665544,
    "projected_m": 2800.0,
    "vo2": 51.31008271853342,
-   "cue": "5 minutes. Heading for about 2,800. VO2 about 51."
+   "cue": "5 minutes. Heading for about 2.80km. VO2 about 51."
   },
   {
    "elapsed_s": 330,
@@ -65,14 +65,14 @@
    "distance_m": 2100.0,
    "projected_m": 2800.698515654235,
    "vo2": 51.32569898623374,
-   "cue": "9 minutes. Heading for about 2,800. VO2 about 51."
+   "cue": "9 minutes. Heading for about 2.80km. VO2 about 51."
   },
   {
    "elapsed_s": 660,
    "distance_m": 2557.239057,
    "projected_m": 2800.0,
    "vo2": 51.31008271853342,
-   "cue": "11 minutes. Heading for about 2,800. VO2 about 51."
+   "cue": "11 minutes. Heading for about 2.80km. VO2 about 51."
   },
   {
    "elapsed_s": 90,

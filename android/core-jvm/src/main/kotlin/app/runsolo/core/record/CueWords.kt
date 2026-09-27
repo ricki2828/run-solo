@@ -71,7 +71,7 @@ object CueWords {
             CueKind.lastRep -> null
             CueKind.minuteMark -> value?.let { m -> val n = m.roundToInt(); if (n == 1) "1 minute" else "$n minutes" }
             CueKind.countdown -> null // three tones, no words
-            // Cooper: "5 minutes. Heading for about 2,740. VO2 about 50." (index = the minute); the
+            // Cooper: "5 minutes. Heading for about 2.74km. VO2 about 50." (index = the minute); the
             // rank against past tests is LiveCoach's, at 3, 6 and 9 minutes.
             CueKind.projection -> value?.let { v -> if (cooper && index != null) CooperProjection.cue(index, v) else if (cooper) null else "On pace for ${clock(v)}" }
         }

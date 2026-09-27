@@ -117,10 +117,11 @@ class CooperEstimate {
   double get vo2High => vo2 + CooperProjection.rangeHalfWidth;
 
   /// Spoken each minute from 2:00 to 11:00: "5 minutes. Heading for about
-  /// 2,740. VO2 about 50." Rounded to 10 m and a whole VO2 here only.
+  /// 2.74km. VO2 about 50." Km to 10 m (field test 27-Sep: "1,750" read as
+  /// raw metres) and a whole VO2 here only.
   String cue(int minute) {
     final m = minute == 1 ? '1 minute' : '$minute minutes';
-    return '$m. Heading for about ${_thousands(_round10(distanceM))}. '
+    return '$m. Heading for about ${_km(_round10(distanceM))}. '
         'VO2 about ${vo2.round()}.';
   }
 
@@ -138,15 +139,10 @@ class CooperEstimate {
 
   static int _round10(double m) => (m / 10).round() * 10;
 
-  static String _thousands(int n) {
-    final s = n.abs().toString();
-    final b = StringBuffer(n < 0 ? '-' : '');
-    for (var i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) b.write(',');
-      b.write(s[i]);
-    }
-    return b.toString();
-  }
+  /// "1.75km" for 1,750 m: integer-only formatting so the app and native
+  /// agree.
+  static String _km(int roundedM) =>
+      '${roundedM ~/ 1000}.${((roundedM % 1000) ~/ 10).toString().padLeft(2, '0')}km';
 }
 
 /// Cumulative fraction of the 12-minute distance at minutes 1..12.

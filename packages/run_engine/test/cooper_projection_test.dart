@@ -113,7 +113,7 @@ void main() {
         elapsedSeconds: 300,
         distanceM: 2741 * f5,
       )!;
-      expect(p.cue(5), '5 minutes. Heading for about 2,740. VO2 about 50.');
+      expect(p.cue(5), '5 minutes. Heading for about 2.74km. VO2 about 50.');
       expect(p.cue(5), contains('about'), reason: 'estimate marker');
     });
 
