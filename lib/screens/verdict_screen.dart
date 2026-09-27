@@ -18,6 +18,7 @@ import '../widgets/delta_glyph.dart';
 import '../widgets/rep_bars.dart';
 import 'cooper_result_screen.dart';
 import 'course_board_screen.dart';
+import 'board_detail_screen.dart';
 import 'run_detail_screen.dart';
 
 /// Post-run screen (design brief §4.6). A 4x4 gets the verdict with the M4
@@ -404,7 +405,11 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                 const SizedBox(height: Space.x24),
                 // A10.3: the rank on this session's board (or its PB), in
                 // the old "New best" chip's slot; the verdict is unchanged.
-                BoardChips(runId: d.run.id, justFinished: widget.justFinished),
+                BoardChips(
+                  runId: d.run.id,
+                  justFinished: widget.justFinished,
+                  onTapBoard: (k) => openBoardDetail(context, k),
+                ),
                 const SizedBox(height: Space.x24),
                 if (d.summary.isParkrun) ...[
                   EventPanel(
@@ -667,6 +672,7 @@ class _SummaryScreen extends StatelessWidget {
                 child: BoardChips(
                   runId: detail.run.id,
                   justFinished: justFinished,
+                  onTapBoard: (k) => openBoardDetail(context, k),
                 ),
               ),
             ),
