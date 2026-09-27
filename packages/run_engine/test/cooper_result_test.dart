@@ -165,6 +165,54 @@ void main() {
     expect(paused.heatLine, isNull);
   });
 
+  test('prime figure: heat twin when it adjusts, raw otherwise (27-Sep)', () {
+    WeatherRecord w(double t, double dew) => WeatherRecord(
+      status: WeatherStatus.ok,
+      tempC: t,
+      rh: 60,
+      dewPointC: dew,
+      shortwaveWm2: 400,
+      windMs: 1,
+    );
+    final run = cooperRun();
+
+    final warm = CooperResult.of(
+      run,
+      indoor: false,
+      noisy: false,
+      weather: w(28, 21),
+    );
+    expect(warm.primeVo2, warm.vo2Adjusted);
+    expect(warm.primeVo2! > warm.estimate!.vo2, isTrue);
+    expect(
+      warm.primeRangeLine,
+      'VO2 estimate ${warm.primeVo2!.round()} '
+      '(${warm.primeVo2!.round() - 6} to ${warm.primeVo2!.round() + 6})',
+    );
+    expect(warm.rawSecondaryLine, 'Raw estimate ${warm.estimate!.rangeText}');
+
+    // Cool or missing weather, or a too-hot day: the raw is the prime.
+    for (final c in [
+      CooperResult.of(run, indoor: false, noisy: false, weather: w(10, 2)),
+      CooperResult.of(run, indoor: false, noisy: false),
+      CooperResult.of(run, indoor: false, noisy: false, weather: w(38, 28)),
+    ]) {
+      expect(c.primeVo2, c.estimate!.vo2);
+      expect(c.primeRangeLine, c.estimate!.rangeLine);
+      expect(c.rawSecondaryLine, isNull);
+    }
+
+    final paused = CooperResult.of(
+      cooperRun(pauses: [const Span(400000, 420000)]),
+      indoor: false,
+      noisy: false,
+      weather: w(28, 21),
+    );
+    expect(paused.primeVo2, isNull);
+    expect(paused.primeRangeLine, isNull);
+    expect(paused.rawSecondaryLine, isNull);
+  });
+
   test('change line only with two prior tests; month or day', () {
     final d = DateTime.utc(2026, 9, 24);
     expect(

@@ -114,7 +114,7 @@ void main() {
     expect(find.byKey(const ValueKey('pace-strip')), findsNothing);
   });
 
-  testWidgets('warm hour: the heat line under the raw estimate, ⓘ caveat', (
+  testWidgets('warm hour: heat twin headlines, raw secondary, ⓘ caveat', (
     tester,
   ) async {
     final r = cooperTestFile(n: 1, start: d3);
@@ -134,7 +134,22 @@ void main() {
         ),
       },
     );
-    expect(text(tester, 'cooper-vo2'), '53', reason: 'raw stays the headline');
+    // 27-Sep product call: the heat twin is the headline; raw secondary.
+    final adj = engine.CooperHeat.of(
+      const engine.WeatherRecord(
+        status: engine.WeatherStatus.ok,
+        tempC: 28,
+        rh: 60,
+        dewPointC: 21,
+      ),
+    )!;
+    final prime = engine.CooperProjection.vo2(adj.distance(2880)!);
+    expect(text(tester, 'cooper-vo2'), '${prime.round()}');
+    expect(prime, greaterThan(53));
+    expect(
+      text(tester, 'cooper-raw-secondary'),
+      startsWith('Raw estimate 53 ('),
+    );
     final heat = text(tester, 'cooper-heat');
     expect(heat, startsWith('Heat-adjusted estimate '));
     expect(engine.carriesEstimateMarker(heat), isTrue);
@@ -166,5 +181,40 @@ void main() {
     await tester.tap(find.text('Test'));
     await pumpTimes(tester, 4);
     expect(find.byKey(const ValueKey('cooper-trend-empty')), findsOneWidget);
+  });
+
+  testWidgets('trend: the prime figure when weather adjusted (27-Sep call)', (
+    tester,
+  ) async {
+    final a = cooperTestFile(n: 1, start: d1, mps: 3.8);
+    final b = cooperTestFile(n: 2, start: d2);
+    const weather = engine.WeatherRecord(
+      status: engine.WeatherStatus.ok,
+      tempC: 28,
+      rh: 60,
+      dewPointC: 21,
+    );
+    await pumpApp(
+      tester,
+      fakeServices(
+        files: [a, b],
+        sidecars: {
+          b.id: engine.RunSidecar(runId: b.id, weather: weather.toJson()),
+        },
+      ),
+      home: const TrendScreen(),
+    );
+    await pumpTimes(tester, 6);
+    await tester.tap(find.text('Test'));
+    await pumpTimes(tester, 4);
+    final adj = engine.CooperHeat.of(weather)!;
+    final prime = engine.CooperProjection.vo2(adj.distance(2880)!);
+    expect(prime, greaterThan(53));
+    expect(
+      find.text(primeRangeLineOf(prime)),
+      findsOneWidget,
+      reason: 'the row reads the prime figure with its range',
+    );
+    expect(find.text('${prime.round()}'), findsWidgets);
   });
 }

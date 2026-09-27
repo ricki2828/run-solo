@@ -219,6 +219,8 @@ class _Header extends StatelessWidget {
     final d = detail;
     final free = d.analysis.freeRun;
     final avgHr = free.avgHr;
+    // The test's figures, when this is one (C1 via the index row).
+    final cooper = d.summary.cooper;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -234,7 +236,18 @@ class _Header extends StatelessWidget {
             Expanded(
               child: StatTile(
                 label: 'time',
-                value: Fmt.clock(d.summary.durationMs),
+                // A test's own window (27-Sep field test: total time
+                // counted the cool-down).
+                value: cooper == null
+                    ? Fmt.clock(d.summary.durationMs)
+                    : cooper.valid
+                    ? '12:00'
+                    : Fmt.clock(
+                        d.summary.durationMs <
+                                engine.CooperProjection.testSeconds * 1000
+                            ? d.summary.durationMs
+                            : engine.CooperProjection.testSeconds * 1000,
+                      ),
                 size: 36,
               ),
             ),
@@ -242,15 +255,24 @@ class _Header extends StatelessWidget {
             Expanded(
               child: StatTile(
                 label: 'distance',
-                value: Fmt.distance(free.distanceM, units),
+                value: Fmt.distance(
+                  cooper?.testDistanceM ?? free.distanceM,
+                  units,
+                ),
                 size: 36,
               ),
             ),
             const SizedBox(width: Space.x16),
             Expanded(
               child: StatTile(
-                label: avgHr == null ? 'pace' : 'avg hr',
-                value: avgHr == null
+                label: cooper?.primeVo2 != null
+                    ? 'VO2 est.'
+                    : avgHr == null
+                    ? 'pace'
+                    : 'avg hr',
+                value: cooper?.primeVo2 != null
+                    ? '${cooper!.primeVo2!.round()}'
+                    : avgHr == null
                     ? Fmt.pace(free.avgPaceSecPerKm, units)
                     : '${avgHr.round()}',
                 size: 36,

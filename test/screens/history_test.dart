@@ -5,6 +5,7 @@ import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/platform/gateway.dart';
 
 import '../helpers.dart';
+import '../run_fixtures.dart';
 
 void main() {
   testWidgets('empty: Tally, baseline line, START', (tester) async {
@@ -20,6 +21,27 @@ void main() {
     await tester.tap(find.text('START'));
     expect(started, isTrue);
   });
+
+  testWidgets(
+    'a test row: 12:00, the test distance, the prime score (27-Sep)',
+    (tester) async {
+      // Warm-up 5:00 + 12:00 test + 2:00 cool-down = a 19:00, 3.89 km file;
+      // the row shows the test's own window (his 12:31 / 2.78 km report).
+      final r = cooperTestFile(n: 1, start: DateTime(2026, 9, 22, 7));
+      await pumpApp(
+        tester,
+        fakeServices(files: [r]),
+        home: const HistoryScreen(),
+      );
+      await pumpTimes(tester);
+      expect(find.text('12:00'), findsOneWidget);
+      expect(find.text('19:00'), findsNothing);
+      expect(find.textContaining('2.88'), findsOneWidget);
+      expect(find.textContaining('3.89'), findsNothing);
+      // The score replaces the '--' pace (raw here: no weather on the run).
+      expect(find.text('53'), findsOneWidget);
+    },
+  );
 
   testWidgets('newest first, grouped by month, filter chips', (tester) async {
     final services = fakeServices(

@@ -10,7 +10,7 @@ import '../state/history_store.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
-import 'cooper_result_screen.dart' show cooperTests;
+import 'cooper_result_screen.dart' show cooperTests, primeOf, primeRangeLineOf;
 
 /// Trend per run type (design brief §4.9); Intervals group by comparison
 /// key (plan §3.8), one chip per session shape, titled with the session
@@ -500,7 +500,7 @@ class _CooperTrend extends StatelessWidget {
         style: RunSoloType.body17.copyWith(color: t.inkSecondary),
       );
     }
-    final best = tests.map((x) => x.vo2).reduce(math.max);
+    final best = tests.map(primeOf).reduce(math.max);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -508,7 +508,10 @@ class _CooperTrend extends StatelessWidget {
           spacing: Space.x24,
           runSpacing: Space.x12,
           children: [
-            StatTile(label: 'latest est.', value: '${tests.last.vo2.round()}'),
+            StatTile(
+              label: 'latest est.',
+              value: '${primeOf(tests.last).round()}',
+            ),
             StatTile(label: 'best est.', value: '${best.round()}', size: 28),
             StatTile(label: 'tests', value: '${tests.length}', size: 28),
           ],
@@ -521,7 +524,7 @@ class _CooperTrend extends StatelessWidget {
             width: double.infinity,
             child: CustomPaint(
               painter: _Vo2Painter(
-                [for (final x in tests) x.vo2],
+                [for (final x in tests) primeOf(x)],
                 line: t.inkPrimary,
                 grid: t.lineHair,
               ),
@@ -541,7 +544,7 @@ class _CooperTrend extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  engine.CooperEstimate(x.minuteM.last).rangeLine,
+                  primeRangeLineOf(primeOf(x)),
                   style: RunSoloType.body15.copyWith(color: t.inkPrimary),
                 ),
               ],
@@ -557,7 +560,7 @@ class _CooperTrend extends StatelessWidget {
   }
 }
 
-/// Raw VO2 estimates as dots joined by a 1 px line, on a padded scale.
+/// Prime VO2 figures (heat twin when it exists) as dots, on a padded scale.
 class _Vo2Painter extends CustomPainter {
   _Vo2Painter(this.values, {required this.line, required this.grid});
   final List<double> values;

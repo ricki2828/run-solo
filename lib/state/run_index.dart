@@ -506,6 +506,11 @@ class CooperFigures {
   /// HV1 twin; null without weather or when the heat changed nothing.
   final double? vo2Adjusted;
 
+  /// The prime figure (product call 27-Sep): the HV1 twin when the heat
+  /// adjusted anything, the raw estimate otherwise. Computed, never
+  /// stored, so old index rows need no migration.
+  double? get primeVo2 => vo2Adjusted ?? vo2;
+
   /// Cumulative metres at minutes 1..12; empty when invalid.
   final List<double> minuteM;
 

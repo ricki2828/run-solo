@@ -46,8 +46,19 @@ typedef CooperTest = ({
   String id,
   DateTime date,
   double vo2,
+  double? vo2Adj,
   List<double> minuteM,
 });
+
+/// The prime figure (product call 27-Sep): heat twin when it exists.
+double primeOf(CooperTest t) => t.vo2Adj ?? t.vo2;
+
+/// "VO2 estimate 52 (46 to 58)" for a prime figure, label included.
+String primeRangeLineOf(double prime) {
+  const h = engine.CooperProjection.rangeHalfWidth;
+  return '${engine.CooperEstimate.rangeLabel} ${prime.round()} '
+      '(${(prime - h).round()} to ${(prime + h).round()})';
+}
 
 /// Every valid test in [runs], oldest first. Reads the index row (W5b: a
 /// History summary carries no analysis on the file store).
@@ -62,7 +73,13 @@ List<CooperTest> cooperTests(List<RunSummary> runs) {
         c.minuteM.length != engine.CooperProjection.minutes) {
       continue;
     }
-    out.add((id: r.id, date: r.start, vo2: c.vo2!, minuteM: c.minuteM));
+    out.add((
+      id: r.id,
+      date: r.start,
+      vo2: c.vo2!,
+      vo2Adj: c.vo2Adjusted,
+      minuteM: c.minuteM,
+    ));
   }
   out.sort((a, b) => a.date.compareTo(b.date));
   return out;
@@ -115,7 +132,10 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                 : tests.sublist(0, i);
             // Every valid test up to and including this one: the bars show
             // the last 10, the best counts over all of them (A11).
-            final upTo = [for (final p in prior) p.vo2, if (e != null) e.vo2];
+            final upTo = [
+              for (final p in prior) primeOf(p),
+              if (e != null) c!.primeVo2!,
+            ];
             final birthYear = AppServices.of(context)
                 .settings
                 .settings
@@ -129,8 +149,8 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                   );
             final change = e == null
                 ? null
-                : engine.CooperResult.changeLine(e.vo2, d.run.start, [
-                    for (final p in prior) (p.date, p.vo2),
+                : engine.CooperResult.changeLine(c!.primeVo2!, d.run.start, [
+                    for (final p in prior) (p.date, primeOf(p)),
                   ]);
             return ListView(
               padding: const EdgeInsets.symmetric(
@@ -175,14 +195,14 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                     style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
                   ),
                   Semantics(
-                    label: e.rangeLine,
+                    label: c!.primeRangeLine!,
                     excludeSemantics: true,
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.baseline,
                       textBaseline: TextBaseline.alphabetic,
                       children: [
                         Text(
-                          '${e.vo2.round()}',
+                          '${c.primeVo2!.round()}',
                           key: const ValueKey('cooper-vo2'),
                           style: RunSoloType.display96.copyWith(
                             color: t.inkPrimary,
@@ -190,7 +210,7 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                         ),
                         const SizedBox(width: Space.x12),
                         Text(
-                          '(${e.vo2Low.round()} to ${e.vo2High.round()})',
+                          '(${(c.primeVo2! - engine.CooperProjection.rangeHalfWidth).round()} to ${(c.primeVo2! + engine.CooperProjection.rangeHalfWidth).round()})',
                           style: RunSoloType.body17.copyWith(
                             color: t.inkPrimary,
                           ),
@@ -202,6 +222,15 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                     'ml/kg/min',
                     style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                   ),
+                  // The raw figure stays visible, secondary (27-Sep call).
+                  if (c.rawSecondaryLine != null)
+                    Text(
+                      c.rawSecondaryLine!,
+                      key: const ValueKey('cooper-raw-secondary'),
+                      style: RunSoloType.label13.copyWith(
+                        color: t.inkSecondary,
+                      ),
+                    ),
                   const SizedBox(height: Space.x8),
                   // A10.3 via the shared board fold (LB3).
                   BoardChips(
