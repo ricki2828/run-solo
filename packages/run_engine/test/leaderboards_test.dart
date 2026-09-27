@@ -253,6 +253,35 @@ void main() {
       expect(b.pb!.runId, 'hot');
     });
 
+    test('Cooper ranks the adjusted VO2 with the W2 toggle off (27-Sep '
+        'call: the adjusted number is the number for tests)', () {
+      BoardInput test(String id, int n, double vo2, double? adj) => BoardInput(
+        runId: id,
+        date: day(n),
+        mode: RunMode.cooper,
+        comparisonKey: ComparisonKey.cooper,
+        cooperVo2: vo2,
+        cooperVo2Adj: adj,
+      );
+      final b = Leaderboards.fold([
+        test('hot', 0, 47, 50),
+        test('cool', 1, 48, 48),
+      ])['cooper']!;
+      expect(b.pb!.runId, 'hot');
+      expect(b.heatAdjusted, isTrue);
+      // A run with no usable weather keeps its raw value and its tag.
+      final c = Leaderboards.fold([
+        test('dry', 2, 49, null),
+        test('hot2', 3, 47, 50),
+      ])['cooper']!;
+      expect(c.pb!.runId, 'hot2');
+      expect(
+        c.onRawValue(c.ranked.firstWhere((r) => r.runId == 'dry')),
+        isTrue,
+      );
+      expect(c.rankValue(c.ranked.firstWhere((r) => r.runId == 'dry')), 49);
+    });
+
     test('the trend reads the twin', () {
       // Raw 5K flat at 1500; heat falls away, so adjusted gets slower.
       final runs = [
