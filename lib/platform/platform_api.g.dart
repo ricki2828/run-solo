@@ -1069,6 +1069,7 @@ class RecorderStatus {
     required this.journalOk,
     this.pausedAtElapsedMs,
     this.finishRequests,
+    this.tipsMuted,
   });
 
   RecorderState state;
@@ -1116,6 +1117,11 @@ class RecorderStatus {
   /// it also works on a cold start, where an event would be missed.
   int? finishRequests;
 
+  /// Live coaching this run (LV2): null when there is none (no LiveContext,
+  /// nothing to compare, or Coaching tips off in Settings), false while tips
+  /// are on, true once "Mute tips" was tapped (app or notification).
+  bool? tipsMuted;
+
   List<Object?> _toList() {
     return <Object?>[
       state,
@@ -1136,6 +1142,7 @@ class RecorderStatus {
       journalOk,
       pausedAtElapsedMs,
       finishRequests,
+      tipsMuted,
     ];
   }
 
@@ -1163,6 +1170,7 @@ class RecorderStatus {
       journalOk: result[15]! as bool,
       pausedAtElapsedMs: result[16] as int?,
       finishRequests: result[17] as int?,
+      tipsMuted: result[18] as bool?,
     );
   }
 
@@ -1175,7 +1183,7 @@ class RecorderStatus {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests);
+    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted);
   }
 
   @override
@@ -2947,6 +2955,28 @@ class RecorderApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[enabled]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// "Mute tips" in the app (LV2, A10.1): coaching off for this run only (no
+  /// compare speech, no nudges; the app hides the card), the same as the
+  /// notification action. A no-op when idle or already muted. Emits a
+  /// [StateEvent] so the app re-reads `RecorderStatus.tipsMuted`.
+  Future<void> muteTips() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.muteTips$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(

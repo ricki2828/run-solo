@@ -76,6 +76,8 @@ class AppSettings {
     this.tryNextDismissed,
     this.cues = true,
     this.kmSplits = true,
+    this.coachingTips = true,
+    this.showWhileRunning = true,
     this.haptics = true,
     this.volumeKeyLap,
     this.keepScreenOn = true,
@@ -182,6 +184,18 @@ class AppSettings {
 
   /// Voice → "Km splits": a Free run says each km (Phase 4 LV1). Default on.
   final bool kmSplits;
+
+  /// Voice → "Coaching tips" (LV2, A10.7): where you stand and short tips,
+  /// spoken at your splits. Off = no compare speech and no nudges. Needs
+  /// [cues]. Default on.
+  final bool coachingTips;
+
+  /// Voice → "Show while running" (LV2, A10.7): the 2 s card on the record
+  /// screen when a rank is spoken. Independent of [coachingTips].
+  final bool showWhileRunning;
+
+  /// Tips are spoken this run: voice cues and coaching tips both on.
+  bool get tipsSpoken => cues && coachingTips;
   final bool haptics;
 
   /// Null = the run type's default (plan §18.2: on for Laps, off for 4x4,
@@ -287,6 +301,8 @@ class AppSettings {
     String? tryNextDismissed,
     bool? cues,
     bool? kmSplits,
+    bool? coachingTips,
+    bool? showWhileRunning,
     bool? haptics,
     bool? volumeKeyLap,
     bool? keepScreenOn,
@@ -321,6 +337,8 @@ class AppSettings {
     tryNextDismissed: tryNextDismissed ?? this.tryNextDismissed,
     cues: cues ?? this.cues,
     kmSplits: kmSplits ?? this.kmSplits,
+    coachingTips: coachingTips ?? this.coachingTips,
+    showWhileRunning: showWhileRunning ?? this.showWhileRunning,
     haptics: haptics ?? this.haptics,
     volumeKeyLap: volumeKeyLap ?? this.volumeKeyLap,
     keepScreenOn: keepScreenOn ?? this.keepScreenOn,
@@ -358,6 +376,8 @@ class AppSettings {
     'tryNextDismissed': tryNextDismissed,
     'cues': cues,
     'kmSplits': kmSplits,
+    'coachingTips': coachingTips,
+    'showWhileRunning': showWhileRunning,
     'haptics': haptics,
     'volumeKeyLap': volumeKeyLap,
     'keepScreenOn': keepScreenOn,
@@ -429,6 +449,8 @@ class AppSettings {
           : null,
       cues: pick('cues', d.cues),
       kmSplits: pick('kmSplits', d.kmSplits),
+      coachingTips: pick('coachingTips', d.coachingTips),
+      showWhileRunning: pick('showWhileRunning', d.showWhileRunning),
       haptics: pick('haptics', d.haptics),
       volumeKeyLap: j['volumeKeyLap'] is bool
           ? j['volumeKeyLap'] as bool

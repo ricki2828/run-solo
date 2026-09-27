@@ -293,6 +293,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                   s.goalRun &&
                   _targetGoal == _targetKeyOf(s, courseKey) &&
                   _targetSwapped,
+              coachingMuted: !s.tipsSpoken,
             )
           : null;
       if (!debugLiveCompareAtStart && kPerfDiagnostics) {

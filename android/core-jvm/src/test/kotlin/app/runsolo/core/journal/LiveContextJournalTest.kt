@@ -195,4 +195,19 @@ class LiveContextJournalTest {
         assertEquals(SessionSpec.COOPER, r.header.session)
         assertEquals(context, r.liveContext)
     }
+
+    @Test
+    fun `a tips muted line is pinned, round trips and survives replay`() {
+        val tm = JournalLine.TipsMuted(5, 6)
+        assertEquals("""{"k":"tm","t":5,"w":6}""", JournalCodec.encode(tm))
+        assertEquals(tm, JournalCodec.decode(JournalCodec.encode(tm)))
+        val plain = JournalReplay.read(enc(header, sample(t0 + 1000), sample(t0 + 2000)).toByteArray())
+        val muted = JournalReplay.read(
+            enc(header, sample(t0 + 1000), JournalLine.TipsMuted(t0 + 1500, w0 + 1500), sample(t0 + 2000)).toByteArray(),
+        )
+        assertEquals(plain.events, muted.events)
+        assertEquals(0, muted.badLines)
+        assertTrue(muted.tipsMuted)
+        assertTrue(!plain.tipsMuted)
+    }
 }
