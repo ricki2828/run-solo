@@ -140,7 +140,12 @@ class Leaderboard {
     double? metres,
     bool heatAdjusted = false,
   }) {
-    final adjusted = heatAdjusted && Leaderboards.hasHeatTwin(key);
+    // The Cooper board always ranks by the prime figure (27-Sep call: the
+    // heat-adjusted number is the number for tests); other boards rank raw
+    // unless the W2 toggle is on.
+    final adjusted =
+        (heatAdjusted || kind == BoardKind.cooper) &&
+        Leaderboards.hasHeatTwin(key);
     final higher = kind == BoardKind.cooper || kind == BoardKind.distanceInTime;
     double v(BoardRun r) => adjusted ? (r.adjMetric ?? r.metric) : r.metric;
     final ranked = [...runs]
