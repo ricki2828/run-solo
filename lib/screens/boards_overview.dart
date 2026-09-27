@@ -8,8 +8,10 @@ import '../platform/gateway.dart';
 import '../state/boards.dart';
 import '../state/courses.dart';
 import '../state/history_store.dart';
+import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/board_spark.dart';
+import 'board_detail_screen.dart';
 
 /// The boards overview (LB3c, mockup frames 1-9): every board the runs
 /// have earned, grouped Distance, parkrun, Goals, Intervals, Tests. Each
@@ -25,16 +27,35 @@ class BoardsOverview extends StatefulWidget {
 
 class _BoardsOverviewState extends State<BoardsOverview> {
   Future<({Boards boards, List<RunSummary> runs})>? _load;
+  SettingsController? _settings;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final history = AppServices.of(context).history;
+    final services = AppServices.of(context);
+    // A board detail marks its PB seen (A11.6): the NEW tags refresh.
+    _settings ??= services.settings..addListener(_settingsChanged);
     _load ??= () async {
-      final boards = await history.boards();
-      final runs = await history.list();
+      final boards = await services.history.boards();
+      final runs = await services.history.list();
       return (boards: boards, runs: runs);
     }();
+  }
+
+  void _settingsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _settings?.removeListener(_settingsChanged);
+    super.dispose();
+  }
+
+  void _openBoard(String key) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => BoardDetailScreen(boardKey: key)));
   }
 
   @override
@@ -58,6 +79,9 @@ class _BoardsOverviewState extends State<BoardsOverview> {
           return _Empty(parkrun: kEventNames.parkrun);
         }
         final units = services.settings.settings.units;
+        // A11.2 + A11.4: NEW marks a fresh best the runner has not opened.
+        final seen = services.settings.settings.pbSeen;
+        bool unseen(_CardData c) => seen[c.key] != c.board.pb?.runId;
         final now = services.now();
         final labels = CourseLabels(data.runs, services.courseNames);
         String titleOf(String key) => _titleOf(boards, labels, key);
@@ -81,13 +105,22 @@ class _BoardsOverviewState extends State<BoardsOverview> {
                 ),
               ),
             if (strip != null) ...[
-              _LatestBestStrip(spot: strip, units: units),
+              _LatestBestStrip(
+                spot: strip,
+                units: units,
+                onTap: () => _openBoard(strip.card.key),
+              ),
               const SizedBox(height: Space.x24),
             ],
             for (final section in sections) ...[
               _SectionHeader(section.title),
               for (final card in section.cards) ...[
-                _BoardCard(card: card, units: units, fresh: card.isFresh(now)),
+                _BoardCard(
+                  card: card,
+                  units: units,
+                  fresh: card.isFresh(now) && unseen(card),
+                  onTap: () => _openBoard(card.key),
+                ),
                 const SizedBox(height: Space.x12),
               ],
               const SizedBox(height: Space.x16),
@@ -244,9 +277,14 @@ String _value(engine.Leaderboard board, double metric, Units units) =>
     };
 
 class _LatestBestStrip extends StatelessWidget {
-  const _LatestBestStrip({required this.spot, required this.units});
+  const _LatestBestStrip({
+    required this.spot,
+    required this.units,
+    required this.onTap,
+  });
   final _SpotData spot;
   final Units units;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -260,24 +298,27 @@ class _LatestBestStrip extends StatelessWidget {
         '${_gapText(board.kind, gap, units)} further',
       _ => '${_gapText(board.kind, gap, units)} quicker',
     };
-    return Column(
+    return InkWell(
       key: const ValueKey('boards-latest-best'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'NEW BEST · ${spot.card.title.toUpperCase()}',
-          style: RunSoloType.micro11.copyWith(color: t.accentArc),
-        ),
-        const SizedBox(height: Space.x4),
-        Text(
-          _value(board, pb.metric, units),
-          style: RunSoloType.display44.copyWith(color: t.inkPrimary),
-        ),
-        Text(
-          '${Fmt.dayDate(pb.date)} · $how than ${Fmt.dayDate(spot.previous.date)}',
-          style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-        ),
-      ],
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'NEW BEST · ${spot.card.title.toUpperCase()}',
+            style: RunSoloType.micro11.copyWith(color: t.accentArc),
+          ),
+          const SizedBox(height: Space.x4),
+          Text(
+            _value(board, pb.metric, units),
+            style: RunSoloType.display44.copyWith(color: t.inkPrimary),
+          ),
+          Text(
+            '${Fmt.dayDate(pb.date)} · $how than ${Fmt.dayDate(spot.previous.date)}',
+            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -304,10 +345,12 @@ class _BoardCard extends StatelessWidget {
     required this.card,
     required this.units,
     required this.fresh,
+    required this.onTap,
   });
   final _CardData card;
   final Units units;
   final bool fresh;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -330,53 +373,62 @@ class _BoardCard extends StatelessWidget {
     final spark = byDate.length > 8
         ? byDate.sublist(byDate.length - 8)
         : byDate;
-    return Container(
+    return Material(
       key: ValueKey('board-card-${card.key}'),
-      padding: const EdgeInsets.all(Space.x16),
-      decoration: BoxDecoration(
-        color: t.bgRaised,
+      color: t.bgRaised,
+      borderRadius: BorderRadius.circular(Radii.card),
+      child: InkWell(
         borderRadius: BorderRadius.circular(Radii.card),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(Space.x16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  card.title,
-                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      card.title,
+                      style: RunSoloType.label13.copyWith(
+                        color: t.inkSecondary,
+                      ),
+                    ),
+                  ),
+                  if (fresh) _Tag(text: 'NEW', color: t.accentArc),
+                  if (pb.official) ...[
+                    const SizedBox(width: Space.x8),
+                    _Tag(text: 'official', color: t.inkSecondary),
+                  ],
+                ],
               ),
-              if (fresh) _Tag(text: 'NEW', color: t.accentArc),
-              if (pb.official) ...[
-                const SizedBox(width: Space.x8),
-                _Tag(text: 'official', color: t.inkSecondary),
-              ],
+              const SizedBox(height: Space.x4),
+              Text(
+                _value(board, pb.metric, units),
+                style: RunSoloType.display44.copyWith(color: t.inkPrimary),
+              ),
+              if (board.kind == engine.BoardKind.cooper)
+                Text(
+                  'VO2 estimate',
+                  style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+                ),
+              const SizedBox(height: Space.x4),
+              Text(
+                sub,
+                style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+              ),
+              const SizedBox(height: Space.x12),
+              BoardSpark(
+                values: [for (final r in spark) r.metric],
+                lowerBetter: !higher,
+                best: pb.metric,
+                bestColor: t.accentArc,
+                newestColor: t.inkPrimary,
+                barColor: t.inkMuted,
+              ),
             ],
           ),
-          const SizedBox(height: Space.x4),
-          Text(
-            _value(board, pb.metric, units),
-            style: RunSoloType.display44.copyWith(color: t.inkPrimary),
-          ),
-          if (board.kind == engine.BoardKind.cooper)
-            Text(
-              'VO2 estimate',
-              style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-            ),
-          const SizedBox(height: Space.x4),
-          Text(sub, style: RunSoloType.body15.copyWith(color: t.inkSecondary)),
-          const SizedBox(height: Space.x12),
-          BoardSpark(
-            values: [for (final r in spark) r.metric],
-            lowerBetter: !higher,
-            best: pb.metric,
-            bestColor: t.accentArc,
-            newestColor: t.inkPrimary,
-            barColor: t.inkMuted,
-          ),
-        ],
+        ),
       ),
     );
   }
