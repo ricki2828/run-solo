@@ -63,8 +63,8 @@ class CueWordsTest {
         assertEquals("On pace for 24:10", say(CueKind.projection, parkrun, Phase.work, 1, 0, 1_450_000.0))
         assertEquals("On pace for 1:02:05", say(CueKind.projection, parkrun, Phase.work, 1, 0, 3_725_000.0))
         // 2,800 m → VO2 (2800 − 504.9) / 44.73 = 51.3 (the CO1 table's cue).
-        assertEquals("5 minutes. Heading for about 2,800. VO2 about 51.", say(CueKind.projection, SessionSpec.COOPER, Phase.work, 1, 0, 2_801.0, 5))
-        assertEquals("2 minutes. Heading for about 3,690. VO2 about 71.", say(CueKind.projection, SessionSpec.COOPER, Phase.work, 1, 0, 3_690.9, 2))
+        assertEquals("5 minutes. Heading for about 2.80km. VO2 about 51.", say(CueKind.projection, SessionSpec.COOPER, Phase.work, 1, 0, 2_801.0, 5))
+        assertEquals("2 minutes. Heading for about 3.69km. VO2 about 71.", say(CueKind.projection, SessionSpec.COOPER, Phase.work, 1, 0, 3_690.9, 2))
     }
 
     @Test
