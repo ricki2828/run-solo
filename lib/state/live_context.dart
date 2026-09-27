@@ -216,7 +216,7 @@ class LiveContextSource {
   /// or null when never prepared. Cheap (no I/O): call [prepare] first.
   engine.FitnessHero? fitnessHero() => _cachedVersion == null
       ? null
-      : engine.FitnessHero.of(_cached, now: now());
+      : engine.FitnessHero.of(_cached, now: now(), names: names);
 
   engine.HomeEstimates? homeEstimates({bool includeEvent = false}) =>
       _cachedVersion == null
