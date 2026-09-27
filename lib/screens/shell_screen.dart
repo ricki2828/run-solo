@@ -12,7 +12,7 @@ import 'home_screen.dart';
 import 'permissions_screen.dart';
 import 'recovery_dialog.dart';
 import 'settings_screen.dart';
-import 'trend_screen.dart';
+import 'progress_screen.dart';
 
 /// Bottom-nav shell. On first frame it runs the recovery check (plan §3:
 /// orphaned journals are offered on app open only) and, if the run is still
@@ -83,7 +83,7 @@ class _ShellScreenState extends State<ShellScreen> {
         children: [
           HomeScreen(now: widget.now),
           HistoryScreen(onStart: () => setState(() => _tab = AppTab.home)),
-          const TrendScreen(),
+          const ProgressScreen(),
           SettingsScreen(now: widget.now),
         ],
       ),
