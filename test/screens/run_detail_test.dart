@@ -4,6 +4,7 @@ import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/run_detail_screen.dart';
+import 'package:run_solo/widgets/chrome.dart';
 import 'package:run_solo/widgets/hold_button.dart';
 
 import '../helpers.dart';
@@ -41,6 +42,36 @@ void main() {
     // Phase 3: no weather chip anywhere.
     expect(find.textContaining('°'), findsNothing);
   });
+
+  testWidgets(
+    'test: tiles show the 12:00 window and the prime score (27-Sep)',
+    (tester) async {
+      final r = cooperTestFile(n: 3, start: d1);
+      await pumpApp(
+        tester,
+        fakeServices(files: [r]),
+        home: RunDetailScreen(runId: r.id),
+      );
+      await pumpTimes(tester, 6);
+      // The header tiles show the test's own window, not the 19:00, 3.89 km
+      // session (his 12:31 / 2.78 km report); the splits below still
+      // describe the full recording, which is true session data.
+      expect(
+        find.widgetWithText(StatTile, '12:00'),
+        findsOneWidget,
+        reason: 'time tile is the window',
+      );
+      expect(
+        find.widgetWithText(StatTile, '2.88 km'),
+        findsOneWidget,
+        reason: 'distance tile is the test distance',
+      );
+      final score = tester.widget<StatTile>(
+        find.widgetWithText(StatTile, '53'),
+      );
+      expect(score.value, '53');
+    },
+  );
 
   testWidgets('indoor: "Indoor run, no route", no map', (tester) async {
     final r = fourByFourFile(n: 2, start: d1, indoor: true);
