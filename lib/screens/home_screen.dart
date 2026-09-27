@@ -130,107 +130,110 @@ class _HomeScreenState extends State<HomeScreen> {
         final perms = _perms;
         return Scaffold(
           body: SafeArea(
-            child: ListView(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(
                 horizontal: Space.screenGutter,
               ),
-              children: [
-                const SizedBox(height: Space.x24),
-                Row(
-                  children: [
-                    const TallyMark(height: 20),
-                    const Spacer(),
-                    Text(
-                      Fmt.dayDate(_now),
-                      style: RunSoloType.label13.copyWith(
-                        color: t.inkSecondary,
+              child: Column(
+                children: [
+                  const SizedBox(height: Space.x24),
+                  Row(
+                    children: [
+                      const TallyMark(height: 20),
+                      const Spacer(),
+                      Text(
+                        Fmt.dayDate(_now),
+                        style: RunSoloType.label13.copyWith(
+                          color: t.inkSecondary,
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: Space.x32),
+                  FutureBuilder<engine.FitnessHero?>(
+                    future: _hero,
+                    builder: (context, snap) =>
+                        FitnessHeroBlock(hero: snap.data),
+                  ),
+                  const SizedBox(height: Space.x24),
+                  FutureBuilder<List<RunSummary>>(
+                    future: _runs,
+                    builder: (context, snap) => RecentActivity(
+                      runs: snap.data ?? const [],
+                      units: settings.units,
+                      now: _now,
+                      onOpen: _openRun,
+                      onShowAll: widget.onShowHistory,
                     ),
-                  ],
-                ),
-                const SizedBox(height: Space.x32),
-                FutureBuilder<engine.FitnessHero?>(
-                  future: _hero,
-                  builder: (context, snap) => FitnessHeroBlock(hero: snap.data),
-                ),
-                const SizedBox(height: Space.x24),
-                FutureBuilder<List<RunSummary>>(
-                  future: _runs,
-                  builder: (context, snap) => RecentActivity(
-                    runs: snap.data ?? const [],
-                    units: settings.units,
-                    now: _now,
-                    onOpen: _openRun,
-                    onShowAll: widget.onShowHistory,
                   ),
-                ),
-                FutureBuilder<engine.HomeEstimates?>(
-                  future: _estimates,
-                  builder: (context, snap) {
-                    final e = snap.data;
-                    if (e == null) return const SizedBox.shrink();
-                    return Padding(
-                      padding: const EdgeInsets.only(top: Space.x24),
-                      child: EstimatedTimesCard(estimates: e),
-                    );
-                  },
-                ),
-                // A10.4: TRY NEXT under ESTIMATED TIMES (variant A, 27-Sep).
-                const SizedBox(height: Space.x24),
-                TryNextCard(
-                  onSetUp: (change) async {
-                    await services.settings.update(change);
-                    if (context.mounted) await _start();
-                  },
-                ),
-                const SizedBox(height: Space.x24),
-                ModeChipRow(
-                  selected: settings.lastMode,
-                  session: services.pickedSession,
-                  goal: settings.goalRun,
-                  goalLabel: goalLabel(settings),
-                  onGoal: () => services.settings.update(
-                    (s) => s.copyWith(goalRun: true),
+                  FutureBuilder<engine.HomeEstimates?>(
+                    future: _estimates,
+                    builder: (context, snap) {
+                      final e = snap.data;
+                      if (e == null) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(top: Space.x24),
+                        child: EstimatedTimesCard(estimates: e),
+                      );
+                    },
                   ),
-                  onSelect: (m) => services.settings.update(
-                    (s) => s.copyWith(lastMode: m, goalRun: false),
+                  // A10.4: TRY NEXT under ESTIMATED TIMES (variant A, 27-Sep).
+                  const SizedBox(height: Space.x24),
+                  TryNextCard(
+                    onSetUp: (change) async {
+                      await services.settings.update(change);
+                      if (context.mounted) await _start();
+                    },
                   ),
-                ),
-                const SizedBox(height: Space.x16),
-                if (settings.pendingObservedMaxHr != null)
+                  const SizedBox(height: Space.x24),
+                  ModeChipRow(
+                    selected: settings.lastMode,
+                    session: services.pickedSession,
+                    goal: settings.goalRun,
+                    goalLabel: goalLabel(settings),
+                    onGoal: () => services.settings.update(
+                      (s) => s.copyWith(goalRun: true),
+                    ),
+                    onSelect: (m) => services.settings.update(
+                      (s) => s.copyWith(lastMode: m, goalRun: false),
+                    ),
+                  ),
+                  const SizedBox(height: Space.x16),
+                  if (settings.pendingObservedMaxHr != null)
+                    _StrapRow(
+                      label:
+                          'Strap saw ${settings.pendingObservedMaxHr} bpm, tap to review',
+                      muted: false,
+                      warn: true,
+                      onTap: () => showPendingMaxSheet(context),
+                    ),
                   _StrapRow(
-                    label:
-                        'Strap saw ${settings.pendingObservedMaxHr} bpm, tap to review',
-                    muted: false,
-                    warn: true,
-                    onTap: () => showPendingMaxSheet(context),
+                    label: settings.strap == null
+                        ? 'No strap, tap to pair'
+                        : 'Strap: ${settings.strap!.label}',
+                    muted: settings.strap == null,
+                    onTap: () async {
+                      await Navigator.of(context).pushNamed(Routes.pairing);
+                    },
                   ),
-                _StrapRow(
-                  label: settings.strap == null
-                      ? 'No strap, tap to pair'
-                      : 'Strap: ${settings.strap!.label}',
-                  muted: settings.strap == null,
-                  onTap: () async {
-                    await Navigator.of(context).pushNamed(Routes.pairing);
-                  },
-                ),
-                const SizedBox(height: Space.x24),
-                if (perms != null && !perms.canRecord)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: Space.x12),
-                    child: InkWell(
-                      onTap: _start,
-                      child: Text(
-                        perms.coarseOnly
-                            ? 'Location is approximate. Precise is needed for pace.'
-                            : 'Location permission needed before you can record.',
-                        style: text.labelLarge?.copyWith(color: t.semDanger),
+                  const SizedBox(height: Space.x24),
+                  if (perms != null && !perms.canRecord)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: Space.x12),
+                      child: InkWell(
+                        onTap: _start,
+                        child: Text(
+                          perms.coarseOnly
+                              ? 'Location is approximate. Precise is needed for pace.'
+                              : 'Location permission needed before you can record.',
+                          style: text.labelLarge?.copyWith(color: t.semDanger),
+                        ),
                       ),
                     ),
-                  ),
-                FilledButton(onPressed: _start, child: const Text('START')),
-                const SizedBox(height: Space.x24),
-              ],
+                  FilledButton(onPressed: _start, child: const Text('START')),
+                  const SizedBox(height: Space.x24),
+                ],
+              ),
             ),
           ),
         );
