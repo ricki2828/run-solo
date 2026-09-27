@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
+import 'package:run_solo/app/event_names.dart';
 import 'package:run_solo/screens/home_screen.dart';
+import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/live_context.dart';
 import 'package:run_solo/platform/gateway.dart' show LiveTarget, RecordMode;
 import 'package:run_solo/platform/session_codec.dart';
@@ -9,6 +11,31 @@ import '../helpers.dart';
 
 /// PD2: the Home ESTIMATED TIMES card (design A10.4) from the index's
 /// derived data, and the Start target built into the live context.
+
+/// A source whose "re-prepare" picks up the candidates a just-landed
+/// background batch adds (the phone reads them out of the index; the test
+/// swaps the list by hand).
+class _SwapSource extends LiveContextSource {
+  _SwapSource(this.candidates) : super.prepared(candidates, now: now);
+
+  List<engine.LiveCandidate> candidates;
+  int prepares = 0;
+
+  @override
+  Future<void> prepare() async {
+    prepares++;
+  }
+
+  @override
+  engine.HomeEstimates? homeEstimates({bool includeEvent = false}) =>
+      engine.HomeEstimates.of(
+        candidates,
+        now: now(),
+        names: kEventNames,
+        includeEvent: includeEvent,
+      );
+}
+
 void main() {
   engine.LiveCandidate fiveK(String id, int seconds, {DateTime? date}) {
     final e = engine.RunBestEfforts(
@@ -69,6 +96,33 @@ void main() {
       find.text('Run 3 km or more to see your estimated times.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('a landed derive batch re-runs the estimates chain (#72 P3)',
+      (tester) async {
+    final store = MemoryRunStore();
+    final source = _SwapSource([fiveK('a', 1470)]);
+    await pumpApp(
+      tester,
+      fakeServices(history: store, live: source),
+      home: HomeScreen(now: now),
+    );
+    await pumpTimes(tester, 4);
+    expect(find.text('24:30'), findsOneWidget);
+    expect(find.text('23:00'), findsNothing);
+    final before = source.prepares;
+    expect(before, greaterThan(0));
+    // The new run's derived data lands a moment after the first prepare:
+    // the card re-runs the chain instead of lagging one batch.
+    source.candidates = [
+      fiveK('a', 1470),
+      fiveK('b', 1380, date: DateTime(2026, 9, 22, 7)),
+    ];
+    store.landDerived();
+    await pumpTimes(tester, 4);
+    expect(source.prepares, greaterThan(before));
+    expect(find.text('23:00'), findsOneWidget);
+    expect(find.text('From your 5K on Tue 22 Sep'), findsOneWidget);
   });
 
   testWidgets('no source (tests, before any prepare): no card', (tester) async {
