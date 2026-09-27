@@ -488,8 +488,13 @@ class _RecordingScreenState extends State<RecordingScreen>
                             (s.needsGps || s.isCooper) &&
                             s.gpsLost)
                           // W3: distance reps cannot end without GPS, so
-                          // START REPS waits for a fix.
-                          _WaitingForGps(height: lapHeight)
+                          // the start waits for a fix. The wait keeps the
+                          // session's own label (field test 27-Sep): the
+                          // test's said START REPS.
+                          _WaitingForGps(
+                            height: lapHeight,
+                            label: s.isCooper ? 'START TEST' : 'START REPS',
+                          )
                         else if (s.isCooper && s.phase == Phase.warmup)
                           // A5: the LAP button's slot; its own action,
                           // not a lap.
@@ -1860,8 +1865,12 @@ class _RecoveryRingPainter extends CustomPainter {
 /// Warm-up of a distance session without a fix (W3): START REPS stays off
 /// until GPS is back, and says why.
 class _WaitingForGps extends StatelessWidget {
-  const _WaitingForGps({required this.height});
+  const _WaitingForGps({required this.height, required this.label});
   final double height;
+
+  /// The session's own start label: START REPS for a preset, START TEST
+  /// for the 12-minute test (field test 27-Sep).
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -1869,7 +1878,7 @@ class _WaitingForGps extends StatelessWidget {
     return Semantics(
       button: true,
       enabled: false,
-      label: 'Start reps. Waiting for GPS',
+      label: '${label[0]}${label.substring(1).toLowerCase()}. Waiting for GPS',
       child: Container(
         key: const ValueKey('start-reps-waiting'),
         height: height,
@@ -1883,7 +1892,7 @@ class _WaitingForGps extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'START REPS',
+              label,
               style: RunSoloType.display44.copyWith(color: t.inkSecondary),
             ),
             Text(

@@ -115,6 +115,11 @@ void main() {
       find.text('The test needs GPS. Wait for a fix to start it.'),
       findsOneWidget,
     );
+    // Field test 27-Sep: the wait keeps the test's own label, not the
+    // distance-reps one.
+    expect(find.byKey(const ValueKey('start-reps-waiting')), findsOneWidget);
+    expect(find.text('START TEST'), findsOneWidget);
+    expect(find.text('START REPS'), findsNothing);
     await services.recording.startReps();
     expect(services.recording.snapshot.phase, Phase.warmup);
   });
