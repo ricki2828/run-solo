@@ -36,9 +36,28 @@ class BoardChip {
   String toString() => '${pb ? 'PB ' : ''}${pending ? '… ' : ''}$label';
 }
 
+/// Where one run's board value came from (LB3d): the detail's "From km
+/// 2.1 to 7.1 of a 7.4 km Free run" line under the hero, and the test
+/// board's "2.80 km in 12 minutes".
+@immutable
+class BoardSource {
+  const BoardSource({required this.totalM, this.sessionName, this.cooperM});
+
+  /// The whole run's distance.
+  final double totalM;
+  final String? sessionName;
+
+  /// A valid test's distance (C1), for the Cooper board's provenance.
+  final double? cooperM;
+}
+
 class Boards {
-  Boards._(this._inputs, this._names, {required this.pendingIds})
-    : byKey = engine.Leaderboards.fold(_inputs.values);
+  Boards._(
+    this._inputs,
+    this._names, {
+    required this.pendingIds,
+    required this.sources,
+  }) : byKey = engine.Leaderboards.fold(_inputs.values);
 
   /// The boards over [entries] (the index, or the memory store's
   /// equivalent). [updating]: some entry has no derived data yet, so the
@@ -60,10 +79,25 @@ class Boards {
         for (final e in list)
           if (!(e.derived?.isCurrent ?? false) && !e.derivedFailed) e.id,
       },
+      sources: {
+        for (final e in list)
+          e.id: BoardSource(
+            totalM: e.distanceM,
+            sessionName: e.row?.session?.name,
+            cooperM: e.row?.cooper?.valid == true
+                ? e.row!.cooper!.testDistanceM
+                : null,
+          ),
+      },
     );
   }
 
-  static final Boards empty = Boards._(const {}, const {}, pendingIds: {});
+  static final Boards empty = Boards._(
+    const {},
+    const {},
+    pendingIds: {},
+    sources: const {},
+  );
 
   final Map<String, engine.BoardInput> _inputs;
 
@@ -72,6 +106,16 @@ class Boards {
 
   /// Runs whose derived data (best efforts) is not built yet.
   final Set<String> pendingIds;
+
+  /// Provenance per run id, for the board detail's hero line.
+  final Map<String, BoardSource> sources;
+
+  /// The input one run folded in with: the detail reads its best-effort
+  /// window offsets for the "From km …" line.
+  engine.BoardInput? inputOf(String runId) => _inputs[runId];
+
+  /// Where [runId]'s value came from.
+  BoardSource? sourceOf(String runId) => sources[runId];
 
   /// Some run has no derived data yet, so the best-effort boards may be
   /// missing runs ("Updating your boards").
