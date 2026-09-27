@@ -193,6 +193,12 @@ class Leaderboard {
     return byDate.take(5).toList();
   }
 
+  /// The ten newest entries, oldest first (LB3d's recent-runs chart).
+  List<BoardRun> get last10 {
+    final byDate = [...ranked]..sort((a, b) => a.date.compareTo(b.date));
+    return byDate.length > 10 ? byDate.sublist(byDate.length - 10) : byDate;
+  }
+
   /// Minimum entries in the last [trendWindow] for a trend line.
   static const int trendMinEntries = 4;
   static const Duration trendWindow = Duration(days: 90);

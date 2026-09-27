@@ -94,6 +94,7 @@ class AppSettings {
     this.introSeenVersion,
     this.sessionId = engine.SessionSpec.norwegian4x4Id,
     this.presetEdits = const {},
+    this.pbSeen = const {},
   });
 
   final Units units;
@@ -244,6 +245,12 @@ class AppSettings {
   /// Edits to the other presets (D2: reps and recovery only), by preset id.
   final Map<String, PresetEdit> presetEdits;
 
+  /// LB3d "PB seen" (A11.6): board key to the run id of the best the
+  /// runner last opened on that board. Drives the overview's NEW tag and
+  /// the board detail's one quiet PB replay (A11.4). App state, not an
+  /// index field.
+  final Map<String, String> pbSeen;
+
   /// Every preset's edits, the 4x4 included.
   Map<String, PresetEdit> get allPresetEdits => {
     ...presetEdits,
@@ -324,6 +331,7 @@ class AppSettings {
     String? introSeenVersion,
     String? sessionId,
     Map<String, PresetEdit>? presetEdits,
+    Map<String, String>? pbSeen,
   }) => AppSettings(
     units: units ?? this.units,
     reps: reps ?? this.reps,
@@ -361,6 +369,7 @@ class AppSettings {
     introSeenVersion: introSeenVersion ?? this.introSeenVersion,
     sessionId: sessionId ?? this.sessionId,
     presetEdits: presetEdits ?? this.presetEdits,
+    pbSeen: pbSeen ?? this.pbSeen,
   );
 
   Map<String, Object?> toJson() => {
@@ -396,6 +405,7 @@ class AppSettings {
     'presetEdits': {
       for (final e in presetEdits.entries) e.key: e.value.toJson(),
     },
+    'pbSeen': pbSeen,
   };
 
   /// Lenient: unknown or malformed keys fall back to defaults, never throw.
@@ -475,6 +485,7 @@ class AppSettings {
           : null,
       sessionId: pick('sessionId', d.sessionId),
       presetEdits: _edits(j['presetEdits']),
+      pbSeen: _seen(j['pbSeen']),
     );
   }
 }
@@ -492,6 +503,15 @@ Map<String, PresetEdit> _edits(Object? raw) {
     }
   }
   return out;
+}
+
+Map<String, String> _seen(Object? raw) {
+  if (raw is! Map) return const {};
+  return {
+    for (final e in raw.entries)
+      if (e.key is String && e.value is String)
+        e.key as String: e.value as String,
+  };
 }
 
 abstract class SettingsStore {

@@ -17,6 +17,7 @@ import '../state/history_store.dart';
 import '../state/max_hr.dart';
 import '../theme/theme.dart';
 import '../widgets/board_chips.dart';
+import 'board_detail_screen.dart';
 import '../widgets/chrome.dart';
 import '../widgets/coaching.dart';
 import '../widgets/vo2_trend.dart';
@@ -206,6 +207,7 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                   BoardChips(
                     runId: d.run.id,
                     justFinished: widget.justFinished,
+                    onTapBoard: (k) => openBoardDetail(context, k),
                   ),
                   if (change != null)
                     Text(
