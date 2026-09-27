@@ -1296,9 +1296,14 @@ void main() {
       await pumpApp(tester, services, home: HomeScreen(now: now));
       tester.view.physicalSize = const Size(1080, 1920);
       await pumpTimes(tester, 8);
-      // Both cards on screen: TRY NEXT at the top, ESTIMATED TIMES under.
+      // Both cards on screen: ESTIMATED TIMES, then TRY NEXT under it
+      // (variant A home, 27-Sep). Scroll each into view in turn.
       await Scrollable.ensureVisible(
         tester.element(find.byKey(const ValueKey('try-next'))),
+      );
+      await pumpTimes(tester, 2);
+      await Scrollable.ensureVisible(
+        tester.element(find.text('ESTIMATED TIMES')),
       );
       await pumpTimes(tester, 2);
       expect(find.text('ESTIMATED TIMES').hitTestable(), findsOneWidget);
