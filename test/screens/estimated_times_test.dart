@@ -98,8 +98,9 @@ void main() {
     );
   });
 
-  testWidgets('a landed derive batch re-runs the estimates chain (#72 P3)',
-      (tester) async {
+  testWidgets('a landed derive batch re-runs the estimates chain (#72 P3)', (
+    tester,
+  ) async {
     final store = MemoryRunStore();
     final source = _SwapSource([fiveK('a', 1470)]);
     await pumpApp(
