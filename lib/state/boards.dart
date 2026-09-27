@@ -232,6 +232,11 @@ class Boards {
         engine.BoardKind.cooper => 'VO2 est. ${metric.round()}',
       };
 
+  /// A board's short title for the Boards overview (LB3c): "5K", "40 min",
+  /// the session's name. A course board reads as the event name here; the
+  /// overview substitutes the course's own label (CourseLabels).
+  String titleOf(String key, engine.EventNames names) => _one(key, names);
+
   String _pbLabel(
     String key,
     engine.Leaderboard b,
