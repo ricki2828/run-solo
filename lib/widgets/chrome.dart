@@ -212,9 +212,9 @@ class BottomNav extends StatelessWidget {
             ),
             tab(
               AppTab.trend,
-              'TREND',
-              Icons.show_chart_outlined,
-              Icons.show_chart,
+              'PROGRESS',
+              Icons.emoji_events_outlined,
+              Icons.emoji_events,
             ),
             tab(
               AppTab.settings,
