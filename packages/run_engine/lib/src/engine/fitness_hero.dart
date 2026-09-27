@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../model/session_spec.dart';
+import 'event_names.dart';
 import 'live_plan.dart';
 import 'predictor.dart';
 import 'start_target.dart';
@@ -57,8 +58,9 @@ class FitnessHero {
   static FitnessHero? of(
     Iterable<LiveCandidate> runs, {
     required DateTime now,
+    EventNames names = EventNames.generic,
   }) {
-    final obs = _observations(runs);
+    final obs = _observations(runs, names);
     if (obs.isEmpty) return null;
     final hero = _best(
       obs,
@@ -95,7 +97,10 @@ class FitnessHero {
     return best;
   }
 
-  static List<_Obs> _observations(Iterable<LiveCandidate> runs) {
+  static List<_Obs> _observations(
+    Iterable<LiveCandidate> runs,
+    EventNames names,
+  ) {
     final out = <_Obs>[];
     for (final c in runs) {
       final raw = c.input.cooperVo2;
@@ -110,20 +115,23 @@ class FitnessHero {
       }
     }
     for (final i in predictionInputsOf(runs)) {
-      out.add(_Obs(i.date, vdot(i.distanceM, i.effectiveMs), _label(i.kind)));
+      out.add(
+        _Obs(i.date, vdot(i.distanceM, i.effectiveMs), _label(i.kind, names)),
+      );
     }
     out.sort((a, b) => a.date.compareTo(b.date));
     return out;
   }
 
-  static String _label(PredictionSourceKind kind) => switch (kind) {
-    PredictionSourceKind.bestEffort5k => '5K',
-    PredictionSourceKind.bestEffort10k => '10K',
-    PredictionSourceKind.parkrun => 'parkrun',
-    PredictionSourceKind.wholeRun => 'run',
-    PredictionSourceKind.bestEffortHalf => '21K',
-    PredictionSourceKind.bestEffortMarathon => 'marathon',
-  };
+  static String _label(PredictionSourceKind kind, EventNames names) =>
+      switch (kind) {
+        PredictionSourceKind.bestEffort5k => '5K',
+        PredictionSourceKind.bestEffort10k => '10K',
+        PredictionSourceKind.parkrun => names.parkrun,
+        PredictionSourceKind.wholeRun => 'run',
+        PredictionSourceKind.bestEffortHalf => '21K',
+        PredictionSourceKind.bestEffortMarathon => 'marathon',
+      };
 
   /// Daniels-Gilbert VDOT for an even effort: the velocity in m/min and
   /// duration in minutes give the oxygen cost over the fraction of VO2max
