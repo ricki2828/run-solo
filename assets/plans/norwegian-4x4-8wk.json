@@ -1,0 +1,136 @@
+{
+  "id": "norwegian-4x4-8wk",
+  "version": 1,
+  "name": "8 weeks of 4x4",
+  "oneLiner": "Two interval sessions and one easy run a week, building from 3 to 4 reps.",
+  "weeks": [
+    [
+      {
+        "kind": "fourByFour",
+        "reps": 3,
+        "recoverySeconds": 210
+      },
+      {
+        "kind": "easy",
+        "minutes": 30
+      },
+      {
+        "kind": "fourByFour",
+        "reps": 3,
+        "recoverySeconds": 210
+      }
+    ],
+    [
+      {
+        "kind": "fourByFour",
+        "reps": 3,
+        "recoverySeconds": 210
+      },
+      {
+        "kind": "easy",
+        "minutes": 30
+      },
+      {
+        "kind": "fourByFour",
+        "reps": 3,
+        "recoverySeconds": 210
+      }
+    ],
+    [
+      {
+        "kind": "fourByFour",
+        "reps": 3,
+        "recoverySeconds": 210
+      },
+      {
+        "kind": "easy",
+        "minutes": 30
+      },
+      {
+        "kind": "fourByFour",
+        "reps": 3,
+        "recoverySeconds": 210
+      }
+    ],
+    [
+      {
+        "kind": "fourByFour",
+        "reps": 4,
+        "recoverySeconds": 195
+      },
+      {
+        "kind": "easy",
+        "minutes": 35
+      },
+      {
+        "kind": "fourByFour",
+        "reps": 4,
+        "recoverySeconds": 195
+      }
+    ],
+    [
+      {
+        "kind": "fourByFour",
+        "reps": 4,
+        "recoverySeconds": 195
+      },
+      {
+        "kind": "easy",
+        "minutes": 35
+      },
+      {
+        "kind": "fourByFour",
+        "reps": 4,
+        "recoverySeconds": 195
+      }
+    ],
+    [
+      {
+        "kind": "fourByFour",
+        "reps": 4,
+        "recoverySeconds": 195
+      },
+      {
+        "kind": "easy",
+        "minutes": 35
+      },
+      {
+        "kind": "fourByFour",
+        "reps": 4,
+        "recoverySeconds": 195
+      }
+    ],
+    [
+      {
+        "kind": "fourByFour",
+        "reps": 4,
+        "recoverySeconds": 180
+      },
+      {
+        "kind": "easy",
+        "minutes": 40
+      },
+      {
+        "kind": "fourByFour",
+        "reps": 4,
+        "recoverySeconds": 180
+      }
+    ],
+    [
+      {
+        "kind": "fourByFour",
+        "reps": 4,
+        "recoverySeconds": 180
+      },
+      {
+        "kind": "easy",
+        "minutes": 40
+      },
+      {
+        "kind": "fourByFour",
+        "reps": 4,
+        "recoverySeconds": 180
+      }
+    ]
+  ]
+}
