@@ -287,8 +287,8 @@ class Boards {
     Units units,
     engine.EventNames names,
   ) => key == engine.ComparisonKey.cooper
-      ? 'New best test · ${value(b, b.pb!.metric, units)}'
-      : 'New best ${_one(key, names)} · ${value(b, b.pb!.metric, units)}';
+      ? 'New best test · ${value(b, b.rankValue(b.pb!), units)}'
+      : 'New best ${_one(key, names)} · ${value(b, b.rankValue(b.pb!), units)}';
 
   static String _gap(
     String key,
@@ -296,8 +296,8 @@ class Boards {
     String runId,
     Units units,
   ) {
-    final mine = b.ranked.firstWhere((r) => r.runId == runId).metric;
-    final best = b.pb!.metric;
+    final mine = b.rankValue(b.ranked.firstWhere((r) => r.runId == runId));
+    final best = b.rankValue(b.pb!);
     return switch (b.kind) {
       engine.BoardKind.distanceInTime => () {
         final m = best - mine;
