@@ -65,6 +65,7 @@ class BoardRun {
     required this.date,
     required this.metric,
     this.adjMetric,
+    this.official = false,
   });
 
   final String runId;
@@ -76,6 +77,10 @@ class BoardRun {
   /// The heat-adjusted twin: the heat column, and the rank on a
   /// heat-adjusted board ([Leaderboard.heatAdjusted]).
   final double? adjMetric;
+
+  /// The time came from the event's results page, not the GPS (K1). The
+  /// boards overview tags the card, the board detail tags the row.
+  final bool official;
 }
 
 /// How a board's metric reads.
@@ -298,6 +303,7 @@ abstract final class Leaderboards {
           date: r.date,
           metric: ms / 1000,
           adjMetric: adj(ms / 1000),
+          official: r.officialTimeMs != null,
         );
       }
       return out;

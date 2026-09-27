@@ -45,118 +45,112 @@ class _TrendScreenState extends State<TrendScreen> {
     final settings = AppServices.of(context).settings.settings;
     final units = settings.units;
     final heatAdjusted = settings.compareHeatAdjusted;
-    return Scaffold(
-      appBar: AppBar(title: const Text('TREND')),
-      body: SafeArea(
-        child: FutureBuilder<List<RunSummary>>(
-          future: _runs,
-          builder: (context, snap) {
-            final all = snap.data ?? const <RunSummary>[];
-            final typed =
-                all.where((r) => r.mode == _type && !r.missing).toList()
-                  ..sort((a, b) => a.start.compareTo(b.start));
-            // Intervals: one trend per comparison key, newest key first,
-            // titled by the latest run's session name.
-            final keys = <String, String>{};
-            for (final r in typed.reversed) {
-              final k = trendKey(r);
-              if (k != null) keys.putIfAbsent(k, () => runTitle(r));
-            }
-            final key = _type != RecordMode.intervals
-                ? null
-                : keys.containsKey(_key)
-                ? _key
-                : keys.keys.firstOrNull;
-            final runs = key == null
-                ? typed
-                : typed.where((r) => trendKey(r) == key).toList();
-            final title = key == null
-                ? modeTitle(_type).toUpperCase()
-                : keys[key]!.toUpperCase();
-            return ListView(
-              padding: const EdgeInsets.symmetric(
-                horizontal: Space.screenGutter,
+    return SafeArea(
+      child: FutureBuilder<List<RunSummary>>(
+        future: _runs,
+        builder: (context, snap) {
+          final all = snap.data ?? const <RunSummary>[];
+          final typed = all.where((r) => r.mode == _type && !r.missing).toList()
+            ..sort((a, b) => a.start.compareTo(b.start));
+          // Intervals: one trend per comparison key, newest key first,
+          // titled by the latest run's session name.
+          final keys = <String, String>{};
+          for (final r in typed.reversed) {
+            final k = trendKey(r);
+            if (k != null) keys.putIfAbsent(k, () => runTitle(r));
+          }
+          final key = _type != RecordMode.intervals
+              ? null
+              : keys.containsKey(_key)
+              ? _key
+              : keys.keys.firstOrNull;
+          final runs = key == null
+              ? typed
+              : typed.where((r) => trendKey(r) == key).toList();
+          final title = key == null
+              ? modeTitle(_type).toUpperCase()
+              : keys[key]!.toUpperCase();
+          return ListView(
+            padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
+            children: [
+              const SizedBox(height: Space.x8),
+              // Scrolls sideways rather than overflow: four chips on a
+              // narrow phone at a large text size.
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final m in [
+                      RecordMode.intervals,
+                      RecordMode.laps,
+                      RecordMode.free,
+                      RecordMode.cooper,
+                    ]) ...[
+                      if (m != RecordMode.intervals)
+                        const SizedBox(width: Space.x8),
+                      _TypeChip(
+                        label: m == RecordMode.cooper
+                            ? 'Test'
+                            : modeTitle(m).split(' ').first,
+                        selected: _type == m,
+                        onTap: () => setState(() => _type = m),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-              children: [
-                const SizedBox(height: Space.x8),
-                // Scrolls sideways rather than overflow: four chips on a
-                // narrow phone at a large text size.
+              if (keys.length > 1) ...[
+                const SizedBox(height: Space.x12),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      for (final m in [
-                        RecordMode.intervals,
-                        RecordMode.laps,
-                        RecordMode.free,
-                        RecordMode.cooper,
-                      ]) ...[
-                        if (m != RecordMode.intervals)
-                          const SizedBox(width: Space.x8),
+                      for (final e in keys.entries) ...[
                         _TypeChip(
-                          label: m == RecordMode.cooper
-                              ? 'Test'
-                              : modeTitle(m).split(' ').first,
-                          selected: _type == m,
-                          onTap: () => setState(() => _type = m),
+                          key: ValueKey('trend-key-${e.key}'),
+                          label: e.value,
+                          selected: e.key == key,
+                          onTap: () => setState(() => _key = e.key),
                         ),
+                        const SizedBox(width: Space.x8),
                       ],
                     ],
                   ),
                 ),
-                if (keys.length > 1) ...[
-                  const SizedBox(height: Space.x12),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        for (final e in keys.entries) ...[
-                          _TypeChip(
-                            key: ValueKey('trend-key-${e.key}'),
-                            label: e.value,
-                            selected: e.key == key,
-                            onTap: () => setState(() => _key = e.key),
-                          ),
-                          const SizedBox(width: Space.x8),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-                const SizedBox(height: Space.x24),
-                _LaneHeader(
-                  title:
-                      '$title · ${runs.length} '
-                      '${_type == RecordMode.cooper ? 'TEST' : 'SESSION'}'
-                      '${runs.length == 1 ? '' : 'S'}',
-                ),
-                const SizedBox(height: Space.x24),
-                switch (_type) {
-                  // Every session shape: I3 gives each key its work pace,
-                  // floor and bests; runs of one key only.
-                  RecordMode.intervals => _FourByFourTrend(
-                    runs: runs,
-                    units: units,
-                    heatAdjusted: heatAdjusted,
-                    emptyText:
-                        key == null || key == engine.ComparisonKey.norwegian4x4
-                        ? 'Two 4x4s draw the first line.'
-                        : 'Two sessions draw the first line.',
-                  ),
-                  RecordMode.cooper => _CooperTrend(runs: runs),
-                  RecordMode.laps ||
-                  RecordMode.free => _DistanceTrend(runs: runs, units: units),
-                },
-                const SizedBox(height: Space.x24),
-                if (runs.isEmpty)
-                  Text(
-                    'Nothing here yet.',
-                    style: RunSoloType.body17.copyWith(color: t.inkSecondary),
-                  ),
               ],
-            );
-          },
-        ),
+              const SizedBox(height: Space.x24),
+              _LaneHeader(
+                title:
+                    '$title · ${runs.length} '
+                    '${_type == RecordMode.cooper ? 'TEST' : 'SESSION'}'
+                    '${runs.length == 1 ? '' : 'S'}',
+              ),
+              const SizedBox(height: Space.x24),
+              switch (_type) {
+                // Every session shape: I3 gives each key its work pace,
+                // floor and bests; runs of one key only.
+                RecordMode.intervals => _FourByFourTrend(
+                  runs: runs,
+                  units: units,
+                  heatAdjusted: heatAdjusted,
+                  emptyText:
+                      key == null || key == engine.ComparisonKey.norwegian4x4
+                      ? 'Two 4x4s draw the first line.'
+                      : 'Two sessions draw the first line.',
+                ),
+                RecordMode.cooper => _CooperTrend(runs: runs),
+                RecordMode.laps ||
+                RecordMode.free => _DistanceTrend(runs: runs, units: units),
+              },
+              const SizedBox(height: Space.x24),
+              if (runs.isEmpty)
+                Text(
+                  'Nothing here yet.',
+                  style: RunSoloType.body17.copyWith(color: t.inkSecondary),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
