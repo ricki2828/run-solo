@@ -41,7 +41,11 @@ class Coaching {
             derived: d,
             durationMs: e.durationMs,
             comparisonKey: e.comparisonKey,
-            cooperVo2: e.row?.cooper?.valid == true ? e.row!.cooper!.vo2 : null,
+            // Prime (heat twin when it exists): coaching reasons over the
+            // figure he sees (product call 27-Sep).
+            cooperVo2: e.row?.cooper?.valid == true
+                ? e.row!.cooper!.primeVo2
+                : null,
           ),
     ]..sort((a, b) => a.date.compareTo(b.date)),
   );
