@@ -32,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<List<RunSummary>>? _runs;
   Future<engine.HomeEstimates?>? _estimates;
   PermissionSnapshot? _perms;
+  HistoryStore? _history;
 
   /// The event row shows only once a course exists (A10.4, K1).
   static bool _hasEventCourse(LiveContextSource live) => live.hasEventCourse;
@@ -41,23 +42,47 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final history = AppServices.of(context).history;
+    if (_history != history) {
+      _history?.derivedChanged.removeListener(_onDerivedChanged);
+      _history = history..derivedChanged.addListener(_onDerivedChanged);
+    }
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    _history?.derivedChanged.removeListener(_onDerivedChanged);
+    super.dispose();
   }
 
   void _refresh() {
     final services = AppServices.of(context);
     _runs = services.history.list();
+    _loadEstimates();
+    services.permissions.status().then((p) {
+      if (mounted) setState(() => _perms = p);
+    });
+  }
+
+  void _loadEstimates() {
     // PD2: ESTIMATED TIMES read the index's derived data, prepared off the
     // UI isolate; the card shows once the first prepare lands.
-    final live = services.live;
+    final live = AppServices.of(context).live;
     if (live != null) {
       _estimates = live.prepare().then(
         (_) => live.homeEstimates(includeEvent: _hasEventCourse(live)),
       );
     }
-    services.permissions.status().then((p) {
-      if (mounted) setState(() => _perms = p);
-    });
+  }
+
+  /// #72 review P3: a just-finished run's derived data lands a moment after
+  /// the first prepare, so the card lagged one background batch. Re-run the
+  /// estimates chain when the batch lands; prepare() re-reads the index only
+  /// when it changed, so a no-op batch costs one stat.
+  void _onDerivedChanged() {
+    if (!mounted) return;
+    setState(_loadEstimates);
   }
 
   Future<void> _start() async {
