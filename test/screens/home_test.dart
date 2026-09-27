@@ -17,12 +17,14 @@ void main() {
     final services = fakeServices();
     await pumpApp(tester, services, home: HomeScreen(now: now));
 
-    expect(find.text('NO 4x4 YET'), findsOneWidget);
-    expect(find.text('BASELINE'), findsOneWidget);
+    expect(find.text('NO BASELINE YET'), findsOneWidget);
+    expect(find.text('Your first session sets it.'), findsOneWidget);
+    expect(find.text('RECENT ACTIVITY'), findsOneWidget);
+    expect(find.textContaining('Sessions of any kind'), findsOneWidget);
     expect(find.text('No strap, tap to pair'), findsOneWidget);
     expect(find.text('Thu 24 Sep'), findsOneWidget);
 
-    final ctx = tester.element(find.text('BASELINE'));
+    final ctx = tester.element(find.text('NO BASELINE YET'));
     expect(
       Theme.of(ctx).extension<RunSoloTokens>()!.bgBase,
       NightSession.bgBase,
@@ -33,7 +35,9 @@ void main() {
     expect(find.byType(StartScreen), findsOneWidget);
   });
 
-  testWidgets('last 4x4 card shows pace, laps and days ago', (tester) async {
+  testWidgets('recent activity lists the last sessions of any kind', (
+    tester,
+  ) async {
     final services = fakeServices(
       runs: [
         summary(
@@ -49,11 +53,17 @@ void main() {
         ),
       ],
     );
-    await pumpApp(tester, services, home: HomeScreen(now: now));
+    await pumpApp(
+      tester,
+      services,
+      home: HomeScreen(now: now, onShowHistory: () {}),
+    );
 
-    expect(find.text('LAST 4x4 · 3 DAYS AGO'), findsOneWidget);
-    expect(find.text('5:00/km'), findsOneWidget);
+    expect(find.text('RECENT ACTIVITY'), findsOneWidget);
+    expect(find.text('4X4  ·  3 days ago', findRichText: true), findsOneWidget);
+    expect(find.text('5:00/km', findRichText: true), findsOneWidget);
     expect(find.textContaining('8 laps · 32:00'), findsOneWidget);
+    expect(find.text('All activity ›'), findsOneWidget);
   });
 
   testWidgets('saved strap and chosen mode reflect settings', (tester) async {

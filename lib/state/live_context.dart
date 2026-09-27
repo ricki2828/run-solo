@@ -212,6 +212,12 @@ class LiveContextSource {
 
   /// The Home ESTIMATED TIMES card (A10.4) from the last prepare, or null
   /// when never prepared. Cheap (no I/O): call [prepare] first.
+  /// The Home fitness hero (product call 27-Sep), from the last prepare,
+  /// or null when never prepared. Cheap (no I/O): call [prepare] first.
+  engine.FitnessHero? fitnessHero() => _cachedVersion == null
+      ? null
+      : engine.FitnessHero.of(_cached, now: now(), names: names);
+
   engine.HomeEstimates? homeEstimates({bool includeEvent = false}) =>
       _cachedVersion == null
       ? null

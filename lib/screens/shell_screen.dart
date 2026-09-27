@@ -81,7 +81,10 @@ class _ShellScreenState extends State<ShellScreen> {
       body: IndexedStack(
         index: _tab.index,
         children: [
-          HomeScreen(now: widget.now),
+          HomeScreen(
+            now: widget.now,
+            onShowHistory: () => setState(() => _tab = AppTab.history),
+          ),
           HistoryScreen(onStart: () => setState(() => _tab = AppTab.home)),
           const ProgressScreen(),
           SettingsScreen(now: widget.now),

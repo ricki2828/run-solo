@@ -14,6 +14,7 @@ export 'src/engine/cooper_result.dart';
 export 'src/engine/event_names.dart';
 export 'src/engine/parkrun_courses.dart';
 export 'src/engine/plans.dart';
+export 'src/engine/fitness_hero.dart';
 export 'src/engine/fix_laps.dart';
 export 'src/engine/format.dart';
 export 'src/engine/goal.dart';

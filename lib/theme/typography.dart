@@ -29,6 +29,8 @@ abstract final class RunSoloType {
   static final TextStyle display64 = _display(64, FontWeight.w700);
   static final TextStyle display44 = _display(44, FontWeight.w600);
   static final TextStyle title28 = _display(28, FontWeight.w600);
+  static final TextStyle heading26 = _display(26, FontWeight.w600);
+  static final TextStyle heading19 = _display(19, FontWeight.w700);
   static final TextStyle timer120 = _display(120, FontWeight.w600);
   static final TextStyle body17 = _ui(17, FontWeight.w400);
   static final TextStyle body15 = _ui(15, FontWeight.w400);
