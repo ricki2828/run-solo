@@ -22,8 +22,11 @@ enum CooperInvalid {
 
 /// The 12-minute test's result (Phase 3 C1, v1 plan §18.4, Phase 4 CO2):
 /// the distance in the 12:00, and when the test is valid its VO2 estimate
-/// with the likely range ([CooperEstimate]) and the HV1 heat twin. The raw
-/// estimate is always the headline; the heat figure is its own line.
+/// with the likely range ([CooperEstimate]) and the HV1 heat twin. The
+/// heat-adjusted figure is the headline when it exists (product call
+/// 27-Sep, field test: "the adjusted number should be the prime number
+/// for tests"); the raw estimate is the fallback and stays visible as the
+/// secondary line.
 class CooperResult {
   const CooperResult._({
     required this.testDistanceM,
@@ -88,6 +91,33 @@ class CooperResult {
     final h = heat;
     if (h == null || !h.adjusts || !valid) return null;
     return CooperProjection.vo2(h.distance(testDistanceM)!);
+  }
+
+  /// The prime figure (product call 27-Sep): the HV1 heat twin when the
+  /// heat adjusted anything, the raw estimate otherwise - the no-weather
+  /// case falls back to raw without any UI branch.
+  double? get primeVo2 => vo2Adjusted ?? estimate?.vo2;
+
+  /// "52 (46 to 58)": the prime figure with its likely range.
+  String? get primeRangeText {
+    final p = primeVo2;
+    if (p == null) return null;
+    const h = CooperProjection.rangeHalfWidth;
+    return '${p.round()} (${(p - h).round()} to ${(p + h).round()})';
+  }
+
+  /// The prime figure under the WARN-4 label, like [CooperEstimate.rangeLine].
+  String? get primeRangeLine {
+    final t = primeRangeText;
+    return t == null ? null : '${CooperEstimate.rangeLabel} $t';
+  }
+
+  /// The raw figure as the secondary line when the prime is the heat twin
+  /// ("Raw estimate 50 (44 to 56)"); null when the prime is the raw.
+  String? get rawSecondaryLine {
+    final e = estimate;
+    if (e == null || vo2Adjusted == null) return null;
+    return 'Raw estimate ${e.rangeText}';
   }
 
   /// "Heat-adjusted estimate 52.8 · 22 °C, dew point 14", or the too-hot
