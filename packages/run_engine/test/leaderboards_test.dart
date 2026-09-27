@@ -121,6 +121,9 @@ void main() {
       expect(m.keys.toSet(), {'be:5000', 'be:1000', 'parkrun:albert'});
       expect(m['parkrun:albert']!.metric, 1466);
       expect(m['be:5000']!.metric, 1470);
+      // The 'official' tag on the board card and table (LB3c/d).
+      expect(m['parkrun:albert']!.official, isTrue);
+      expect(m['be:5000']!.official, isFalse);
     });
 
     test('a parkrun with no course (before K1) is on be:* only', () {
