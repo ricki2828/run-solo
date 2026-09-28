@@ -38,8 +38,8 @@ enum Phase { none, warmup, work, recovery, cooldown }
 
 enum LapSource { button, notification, volumeKey, auto }
 
-/// `distanceToGo`, `lastRep`, `minuteMark`, `countdown`, `projection` and
-/// `tenSeconds` are Phase 3 cues (I2); I1 never emits them.
+/// `distanceToGo`, `lastRep`, `minuteMark`, `countdown` and `projection` are
+/// Phase 3 cues (I2); I1 never emits them.
 enum CueKind {
   halfway,
   thirtySeconds,
