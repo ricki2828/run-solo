@@ -521,7 +521,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                 const SizedBox(height: Space.x8),
                 Text(
                   'Pick a format. Your run type stays named and easy to '
-                      'recognise.',
+                  'recognise.',
                   style: RunSoloType.body15.copyWith(color: t.inkSecondary),
                 ),
                 const SizedBox(height: Space.x24),
