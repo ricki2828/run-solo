@@ -184,7 +184,7 @@ void main() {
     await pumpTimes(tester, 4);
     expect(find.text(name), findsWidgets);
     expect(find.text('10K'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('goal-d10000')));
+    await tapVisible(tester, find.byKey(const ValueKey('goal-d10000')));
     await pumpTimes(tester, 4);
     expect(services.settings.settings.goalId, 'd10000');
     FilledButton start() => tester.widget<FilledButton>(
@@ -194,7 +194,7 @@ void main() {
     fake.emitGpsProbe(GpsProbeEvent(fix: true, accuracyM: 5));
     await pumpTimes(tester, 2);
     expect(start().onPressed, isNotNull, reason: 'G1 specs are in (#63)');
-    await tester.tap(find.byKey(const ValueKey('goal-time')));
+    await tapVisible(tester, find.byKey(const ValueKey('goal-time')));
     await pumpTimes(tester, 4);
     expect(find.byKey(const ValueKey('goal-t1800')), findsOneWidget);
     expect(find.byKey(const ValueKey('goal-t3600')), findsOneWidget);

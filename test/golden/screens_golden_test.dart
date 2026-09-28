@@ -593,7 +593,7 @@ void main() {
     await pumpTimes(tester, 4);
     await tester.tap(find.byKey(const ValueKey('tests-chip')));
     await settleAnimations(tester);
-    await tester.tap(find.byKey(const ValueKey('pick-bronco')));
+    await tapVisible(tester, find.byKey(const ValueKey('pick-bronco')));
     await settleAnimations(tester);
     await golden(tester, 'start_tests_mode');
   });

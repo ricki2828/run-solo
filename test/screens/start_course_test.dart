@@ -161,7 +161,7 @@ void main() {
     );
     await pumpTimes(tester, 2);
     expect(line('Target 24:12 (your PB)'), findsOneWidget);
-    await tester.tap(find.text('Use predicted ›'));
+    await tapVisible(tester, find.text('Use predicted ›'));
     await pumpTimes(tester, 2);
     expect(line('Target 25:00 (predicted)'), findsOneWidget);
 

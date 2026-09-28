@@ -32,7 +32,7 @@ void main() {
     expect(find.textContaining('check with a doctor'), findsOneWidget);
     expect(fake.startCalls, isEmpty, reason: 'the chip alone never starts');
     // His one ask: clear instructions for how to run the test.
-    await tester.tap(find.byKey(const ValueKey('pick-bronco')));
+    await tapVisible(tester, find.byKey(const ValueKey('pick-bronco')));
     await tester.pumpAndSettle();
     expect(find.textContaining('5 sets of 240 m shuttles'), findsOneWidget);
     expect(

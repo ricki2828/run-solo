@@ -76,7 +76,7 @@ void main() {
   testWidgets('Custom distance: the sheet takes km to 0.1; the chip, the card '
       'and the spec follow', (tester) async {
     final fake = await openGoal(tester);
-    await tester.tap(find.byKey(const ValueKey('goal-dcustom')));
+    await tapVisible(tester, find.byKey(const ValueKey('goal-dcustom')));
     await pumpTimes(tester, 4);
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byKey(const ValueKey('goal-custom-field')), findsOneWidget);
@@ -114,7 +114,7 @@ void main() {
         units: Units.mi,
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('goal-dcustom')));
+    await tapVisible(tester, find.byKey(const ValueKey('goal-dcustom')));
     await pumpTimes(tester, 4);
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('mi'), findsOneWidget, reason: 'field suffix');
@@ -150,7 +150,7 @@ void main() {
         goalId: 't1800',
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('goal-tcustom')));
+    await tapVisible(tester, find.byKey(const ValueKey('goal-tcustom')));
     await pumpTimes(tester, 4);
     await tester.pump(const Duration(milliseconds: 400));
     await tester.enterText(

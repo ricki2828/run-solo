@@ -104,7 +104,7 @@ void main() {
     expect(find.text(engine.CoachSuggestion.zone2Text), findsOneWidget);
     expect(find.textContaining('no run of an hour or more'), findsOneWidget);
     expect(find.byKey(const ValueKey('try-next-set-up')), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('try-next-dismiss')));
+    await tapVisible(tester, find.byKey(const ValueKey('try-next-dismiss')));
     await pumpTimes(tester, 4);
     expect(find.byKey(const ValueKey('try-next')), findsNothing);
     expect(services.settings.settings.tryNextDismissed, runId(3));

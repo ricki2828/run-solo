@@ -31,21 +31,21 @@ void main() {
     expect(find.widgetWithText(ValueStepper, 'REP'), findsNothing);
     expect(find.text('4'), findsOneWidget);
 
-    await tester.tap(stepperButton('Reps', Icons.add));
+    await tapVisible(tester, stepperButton('Reps', Icons.add));
     await pumpTimes(tester);
-    await tester.tap(stepperButton('Reps', Icons.add));
+    await tapVisible(tester, stepperButton('Reps', Icons.add));
     await pumpTimes(tester);
     expect(find.text('6'), findsOneWidget);
-    await tester.tap(stepperButton('Reps', Icons.add));
+    await tapVisible(tester, stepperButton('Reps', Icons.add));
     await pumpTimes(tester);
     expect(find.text('6'), findsOneWidget, reason: 'clamped at 6');
     expect(services.settings.settings.reps, PresetRules.maxReps);
 
-    await tester.tap(stepperButton('Recovery', Icons.remove));
+    await tapVisible(tester, stepperButton('Recovery', Icons.remove));
     await pumpTimes(tester);
     expect(find.text('2:45'), findsOneWidget);
     for (var i = 0; i < 6; i++) {
-      await tester.tap(stepperButton('Recovery', Icons.remove));
+      await tapVisible(tester, stepperButton('Recovery', Icons.remove));
       await pumpTimes(tester);
     }
     expect(find.text('2:00'), findsOneWidget, reason: 'floor 2:00');

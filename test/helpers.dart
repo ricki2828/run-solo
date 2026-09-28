@@ -217,6 +217,15 @@ Future<void> scrollTo(
   expect(finder, findsWidgets, reason: 'not found after scrolling');
 }
 
+/// Tap a mounted control after scrolling it into the visible viewport.
+/// Aurora Start keeps the long form mounted for accessibility, but a runner
+/// must scroll to its lower choices before tapping them on a phone.
+Future<void> tapVisible(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder.first);
+  await tester.pump();
+  await tester.tap(finder);
+}
+
 /// Settle without `pumpAndSettle` (the record screen keeps a periodic timer).
 Future<void> pumpTimes(WidgetTester tester, [int n = 3]) async {
   for (var i = 0; i < n; i++) {
