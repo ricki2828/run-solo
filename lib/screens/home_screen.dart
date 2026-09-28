@@ -159,7 +159,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       'GO AGAIN.',
-                      style: RunSoloType.display64.copyWith(color: t.inkPrimary),
+                      style: RunSoloType.display64.copyWith(
+                        color: t.inkPrimary,
+                      ),
                     ),
                   ),
                   const SizedBox(height: Space.x8),
@@ -167,7 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       'Your next run starts here. Your last run sets the line '
-                          'to beat.',
+                      'to beat.',
                       style: RunSoloType.body15.copyWith(color: t.inkSecondary),
                     ),
                   ),
@@ -180,9 +182,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: Text(
                           perms.coarseOnly
                               ? 'Location is approximate. Precise is needed '
-                                  'for pace.'
+                                    'for pace.'
                               : 'Location permission needed before you can '
-                                  'record.',
+                                    'record.',
                           style: text.labelLarge?.copyWith(color: t.semDanger),
                         ),
                       ),
