@@ -513,8 +513,20 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                 horizontal: Space.screenGutter,
               ),
               children: [
+                const SizedBox(height: Space.x16),
+                Text(
+                  'WHAT ARE YOU RUNNING?',
+                  style: RunSoloType.display44.copyWith(color: t.inkPrimary),
+                ),
                 const SizedBox(height: Space.x8),
+                Text(
+                  'Pick a format. Your run type stays named and easy to '
+                      'recognise.',
+                  style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                ),
+                const SizedBox(height: Space.x24),
                 ModeChipRow(
+                  auroraList: true,
                   selected: mode,
                   session: services.pickedSession,
                   goal: goal,
