@@ -275,6 +275,19 @@ jobs:
           if [ -z "$KS_B64" ]; then echo "RUN_SOLO_DOGFOOD_KEYSTORE_BASE64 secret missing" >&2; exit 1; fi
           echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/dogfood.jks"
           echo "RUN_SOLO_DOGFOOD_KEYSTORE=$RUNNER_TEMP/dogfood.jks" >> "$GITHUB_ENV"
+      # Dogfood only: stamp a per-build version so every drop is a "new version"
+      # and the full lap-draw intro (with the runner photo) replays once per
+      # install - the intro gate keys on kAppVersion (founder 28-Sep). Prod
+      # gating is unchanged; run_number keeps versionCode monotonic for
+      # upgrade installs. pubspec and version.dart are stamped together so
+      # app_version_test would still pass.
+      - name: Stamp dogfood version (0.1.0+<run number>)
+        run: |
+          V="0.1.0+${{ github.run_number }}"
+          sed -i "s/^version: .*/version: $V/" pubspec.yaml
+          sed -i "s/const String kAppVersion = '[^']*';/const String kAppVersion = '$V';/" lib/app/version.dart
+          grep -n '^version:' pubspec.yaml
+          grep -n 'kAppVersion' lib/app/version.dart
       - name: Build dogfood APKs (arm64 for the phone, x86_64 for the emulator smoke)
         env:
           RUN_SOLO_DOGFOOD_STORE_PASSWORD: ${{ secrets.RUN_SOLO_DOGFOOD_STORE_PASSWORD }}
