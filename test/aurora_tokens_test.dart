@@ -15,23 +15,28 @@ void main() {
   testWidgets('selected type has a neutral border and visible check', (
     tester,
   ) async {
-    await tester.pumpWidget(MaterialApp(
-      theme: runSoloTheme(),
-      home: Scaffold(
-        body: ModeChip(
-          title: 'INTERVALS',
-          subtitle: 'Structured reps',
-          selected: true,
-          typeColor: AuroraRunType.intervals,
-          onTap: () {},
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: runSoloTheme(),
+        home: Scaffold(
+          body: ModeChip(
+            title: 'INTERVALS',
+            subtitle: 'Structured reps',
+            selected: true,
+            typeColor: AuroraRunType.intervals,
+            onTap: () {},
+          ),
         ),
       ),
-    ));
+    );
     final title = tester.widget<Text>(find.text('INTERVALS'));
     expect(title.style!.color, AuroraRunType.intervals);
     expect(find.byIcon(Icons.check), findsOneWidget);
     final box = tester.widget<AnimatedContainer>(
-      find.descendant(of: find.byType(ModeChip), matching: find.byType(AnimatedContainer)),
+      find.descendant(
+        of: find.byType(ModeChip),
+        matching: find.byType(AnimatedContainer),
+      ),
     );
     final decoration = box.decoration! as BoxDecoration;
     expect((decoration.border! as Border).top.color, NightSession.inkPrimary);
