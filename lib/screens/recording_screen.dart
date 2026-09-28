@@ -935,29 +935,48 @@ class _Vitals extends StatelessWidget {
                 : 'Heart rate $hr',
             child: cell(
               repMax ? 'REP MAX HR' : 'HEART RATE',
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
+              // Founder field test 28-Sep: the zone label where the eyes
+              // already are (the header's label sits far from the bpm).
+              // Small, secondary-on-zone, announced once by the header.
+              // Short screens keep the header's label only: the column is
+              // already at its 360 x 640 budget (compare-card bounds tests).
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    hr == null ? '--' : '$hr',
-                    key: const ValueKey('vitals-hr'),
-                    style: hr == null
-                        ? number.copyWith(color: secondary)
-                        : number,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        hr == null ? '--' : '$hr',
+                        key: const ValueKey('vitals-hr'),
+                        style: hr == null
+                            ? number.copyWith(color: secondary)
+                            : number,
+                      ),
+                      const SizedBox(width: Space.x8),
+                      Flexible(
+                        child: Text(
+                          hr == null ? 'reconnecting' : '$pct%',
+                          key: const ValueKey('vitals-hr-pct'),
+                          softWrap: false,
+                          overflow: TextOverflow.fade,
+                          style: hr == null
+                              ? RunSoloType.body15.copyWith(color: t.semWarn)
+                              : AuxFigure.style.copyWith(color: secondary),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: Space.x8),
-                  Flexible(
-                    child: Text(
-                      hr == null ? 'reconnecting' : '$pct%',
-                      key: const ValueKey('vitals-hr-pct'),
-                      softWrap: false,
-                      overflow: TextOverflow.fade,
-                      style: hr == null
-                          ? RunSoloType.body15.copyWith(color: t.semWarn)
-                          : AuxFigure.style.copyWith(color: secondary),
+                  if (!compact && s.zone > 0 && s.hr != null)
+                    ExcludeSemantics(
+                      child: Text(
+                        HrZones.label(s.zone, paired: true),
+                        key: const ValueKey('vitals-zone'),
+                        style: label,
+                      ),
                     ),
-                  ),
                 ],
               ),
               icon: Icons.favorite,
