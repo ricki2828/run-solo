@@ -117,7 +117,8 @@ void main() {
       await pumpTimes(tester, 3);
       await tester.pump(const Duration(milliseconds: 700));
       expect(background(tester), HrZones.background(3));
-      expect(find.text('ZONE 3 · TEMPO'), findsOneWidget);
+      // Header + the vitals copy (founder field test 28-Sep).
+      expect(find.text('ZONE 3 · TEMPO'), findsNWidgets(2));
       // Jump to Z5: needs 2 bpm past 171 and a 5 s dwell.
       fake.scriptedHr = 178;
       for (var i = 0; i < 12; i++) {
@@ -126,7 +127,7 @@ void main() {
       }
       await tester.pump(const Duration(milliseconds: 700));
       expect(background(tester), HrZones.background(5));
-      expect(find.text('ZONE 5 · MAX'), findsOneWidget);
+      expect(find.text('ZONE 5 · MAX'), findsNWidgets(2));
     },
   );
 
@@ -177,6 +178,6 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(background(tester), HrZones.background(4));
-    expect(find.text('ZONE 4 · HARD'), findsOneWidget);
+    expect(find.text('ZONE 4 · HARD'), findsNWidgets(2));
   });
 }
