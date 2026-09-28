@@ -2,14 +2,19 @@
 /// across the screen and cuts the Lap Line R, the R settles, RUN SUPREME
 /// fades up, then everything exits over Home. The 0.6 s version draws only
 /// the mark's own line. Vector only: the outlines are the production paths
-/// in `lib/brand/lap_line_paths.dart`.
+/// in `lib/brand/lap_line_paths.dart`. Since 28-Sep the ground carries the
+/// bundled runner photograph (assets/brand/splash_runner.jpg, Unsplash
+/// license - see the .LICENSE.txt beside it) under a dark scrim, fading in
+/// with the draw and out with the exit.
 library;
 
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import '../brand/lap_line_paths.dart';
 import '../theme/theme.dart';
@@ -361,6 +366,21 @@ class _LapDrawIntroState extends State<LapDrawIntro>
   AnimationController? _skip;
   double? _skippedAt;
   bool _done = false;
+  ui.Image? _photo;
+  double _photoAtSkip = 0;
+
+  static const String _photoAsset = 'assets/brand/splash_runner.jpg';
+
+  Future<void> _loadPhoto() async {
+    try {
+      final data = await rootBundle.load(_photoAsset);
+      final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+      final frame = await codec.getNextFrame();
+      if (mounted) setState(() => _photo = frame.image);
+    } catch (_) {
+      // Missing or undecodable asset: the vector intro stands alone.
+    }
+  }
 
   @override
   void initState() {
@@ -378,6 +398,7 @@ class _LapDrawIntroState extends State<LapDrawIntro>
             if (s == AnimationStatus.completed) _finish();
           })
           ..forward();
+    _loadPhoto();
   }
 
   void _finish() {
@@ -390,6 +411,7 @@ class _LapDrawIntroState extends State<LapDrawIntro>
     if (_skip != null || _done) return;
     _play.stop();
     _skippedAt = LapDrawBeats.finalFrame(widget.kind).toDouble();
+    _photoAtSkip = _photoRamp(_skippedAt!, widget.kind);
     _skip =
         AnimationController(
             vsync: this,
@@ -453,6 +475,16 @@ class _LapDrawIntroState extends State<LapDrawIntro>
         final ground = widget.reducedMotion || _skip != null
             ? f.opacity
             : _groundOpacity();
+        final photo = _photo;
+        final skip = _skip;
+        final photoA = widget.reducedMotion
+            ? f.opacity
+            : skip != null
+            ? _photoAtSkip * (1 - MotionCurves.exit.transform(skip.value))
+            : _photoRamp(
+                _play.value * LapDrawBeats.total(widget.kind),
+                widget.kind,
+              );
         return GestureDetector(
           key: const ValueKey('lap-draw-intro'),
           behavior: HitTestBehavior.opaque,
@@ -461,20 +493,55 @@ class _LapDrawIntroState extends State<LapDrawIntro>
             label: 'Run Supreme',
             child: ColoredBox(
               color: t.bgBase.withValues(alpha: ground.clamp(0.0, 1.0)),
-              child: CustomPaint(
-                size: box.biggest,
-                painter: LapDrawPainter(
-                  frame: f,
-                  layout: l,
-                  bone: t.inkPrimary,
-                  arc: t.accentArc,
-                ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (photo != null && photoA > 0) ...[
+                    Opacity(
+                      opacity: photoA.clamp(0.0, 1.0),
+                      child: RawImage(image: photo, fit: BoxFit.cover),
+                    ),
+                    // The scrim keeps the bone line and the R first (A1).
+                    Opacity(
+                      opacity: photoA.clamp(0.0, 1.0),
+                      child: ColoredBox(
+                        color: t.bgBase.withValues(alpha: 0.55),
+                      ),
+                    ),
+                  ],
+                  CustomPaint(
+                    size: box.biggest,
+                    painter: LapDrawPainter(
+                      frame: f,
+                      layout: l,
+                      bone: t.inkPrimary,
+                      arc: t.accentArc,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         );
       },
     );
+  }
+
+  /// The photo beat: fades in over the draw, holds, and goes out with the
+  /// exit - the ground's own timing, so the mark always leaves with it.
+  double _photoRamp(double ms, IntroKind kind) {
+    final total = LapDrawBeats.total(kind);
+    final drawEnd = kind == IntroKind.full
+        ? LapDrawBeats.drawEnd
+        : LapDrawBeats.shortDrawEnd;
+    final inP = MotionCurves.standard.transform(
+      _seg(ms, LapDrawBeats.fadeInEnd, drawEnd),
+    );
+    final exitStart = kind == IntroKind.full
+        ? LapDrawBeats.fullExitStart
+        : LapDrawBeats.shortDrawEnd;
+    final outP = MotionCurves.exit.transform(_seg(ms, exitStart, total));
+    return inP * (1 - outP);
   }
 
   /// The ground stays solid until the exit beat, then fades with it (the
