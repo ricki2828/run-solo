@@ -174,7 +174,9 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 400));
       expect(background(tester), HrZones.background(3));
-      fake.scriptedHr = null;
+      // Null scriptedHr resumes generated HR; the dropout switch sends
+      // null readings while the strap remains paired.
+      fake.strapDropped = true;
       fake.advance(const Duration(milliseconds: 500));
       await pumpTimes(tester, 3);
       expect(services.recording.snapshot.zone, 3);
