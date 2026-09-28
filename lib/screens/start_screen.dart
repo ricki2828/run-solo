@@ -42,6 +42,10 @@ class StartScreen extends StatefulWidget {
 }
 
 class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
+  /// Which test the TESTS run type starts (founder 28-Sep: tests are a run
+  /// type alongside the others). Cooper stays the default.
+  String _pickedTest = 'cooper';
+
   bool _starting = false;
   String? _error;
 
@@ -227,35 +231,6 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     AppServices.of(context).permissions.volumeKeyLapsSupported().then((ok) {
       if (mounted && ok != _volumeKeyLaps) setState(() => _volumeKeyLaps = ok);
     });
-  }
-
-  /// A5 pre-test sheet: what the test is, the health note, and the only
-  /// way to start one.
-  Future<void> _openTestSheet() async {
-    final services = AppServices.of(context);
-    final pick = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).extension<RunSoloTokens>()!.bgRaised,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(Radii.sheet)),
-      ),
-      builder: (ctx) => const _TestSheet(),
-    );
-    if (pick == 'cooper') {
-      if (!mounted) return;
-      await services.settings.update(
-        (x) => x.copyWith(lastMode: RecordMode.cooper),
-      );
-      if (mounted) await _start();
-    } else if (pick == 'bronco' && mounted) {
-      // Bronco (manual sets, founder 28-Sep): a Laps run carrying the
-      // bronco spec, like the fartlek (plan §3.5); lastMode untouched.
-      await _start(
-        testSpec: engine.SessionSpec.bronco,
-        testMode: RecordMode.laps,
-      );
-    }
   }
 
   Future<void> _start({
@@ -551,6 +526,11 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                       ? _openSheet()
                       : set((x) => x.copyWith(lastMode: m, goalRun: false))
                             .then((_) => _syncProbe()),
+                  testsSelected: mode == RecordMode.cooper,
+                  testsLabel: _pickedTest == 'bronco' ? 'Bronco' : 'Cooper',
+                  onTests: () =>
+                      set((x) => x.copyWith(lastMode: RecordMode.cooper))
+                          .then((_) => _syncProbe()),
                 ),
                 const SizedBox(height: Space.x24),
                 if (goal) ...[
@@ -632,12 +612,43 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                       ),
                     ),
                 ] else if (mode == RecordMode.cooper) ...[
-                  Text(
-                    'Warm up, then tap START TEST. Run as far as you can for '
-                    '12 minutes; no LAP while the test runs. You get a VO2 '
-                    'max estimate.',
-                    style: text.bodyMedium?.copyWith(color: t.inkSecondary),
+                  // Tests are a run type alongside the others (founder
+                  // 28-Sep): pick the test, read how it runs, START it.
+                  // The health note stays on screen before every start,
+                  // which is what the old pre-test sheet enforced.
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _TestChoiceCard(
+                          key: const ValueKey('pick-cooper'),
+                          title: '12-MINUTE',
+                          subtitle: 'VO2 max estimate',
+                          selected: _pickedTest == 'cooper',
+                          onTap: () => setState(() => _pickedTest = 'cooper'),
+                        ),
+                      ),
+                      const SizedBox(width: Space.x8),
+                      Expanded(
+                        child: _TestChoiceCard(
+                          key: const ValueKey('pick-bronco'),
+                          title: 'BRONCO',
+                          subtitle: '5 sets of 240 m',
+                          selected: _pickedTest == 'bronco',
+                          onTap: () => setState(() => _pickedTest = 'bronco'),
+                        ),
+                      ),
+                    ],
                   ),
+                  for (final l
+                      in _pickedTest == 'bronco'
+                          ? _broncoTestLines
+                          : _cooperTestLines) ...[
+                    const SizedBox(height: Space.x12),
+                    Text(
+                      l,
+                      style: text.bodyMedium?.copyWith(color: t.inkSecondary),
+                    ),
+                  ],
                 ] else ...[
                   Text(
                     'Free run: time, distance, pace and heart rate. No laps. '
@@ -662,20 +673,6 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                       tone: PillTone.ok,
                     ),
                   ],
-                ),
-                const SizedBox(height: Space.x16),
-                // A5: the test sits apart, under its own eyebrow, at the end
-                // of the options (lead 26-Sep): the occasional test never
-                // pushes a mode's details off the screen.
-                const SizedBox(height: Space.x8),
-                Text(
-                  'TESTS',
-                  style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-                ),
-                const SizedBox(height: Space.x8),
-                _TestChip(
-                  selected: mode == RecordMode.cooper,
-                  onTap: _openTestSheet,
                 ),
                 const SizedBox(height: Space.x16),
               ],
@@ -732,8 +729,11 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                     // The test always goes through its health note first.
                     onPressed: _starting || (goal && !_gpsReady)
                         ? null
-                        : mode == RecordMode.cooper
-                        ? _openTestSheet
+                        : mode == RecordMode.cooper && _pickedTest == 'bronco'
+                        ? () => _start(
+                            testSpec: engine.SessionSpec.bronco,
+                            testMode: RecordMode.laps,
+                          )
                         : _start,
                     child: Text(switch (mode) {
                       _ when s.eventRun => 'START 5 KM',
@@ -744,7 +744,8 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                       RecordMode.intervals => 'START WARM-UP',
                       RecordMode.laps => 'START LAPS RUN',
                       RecordMode.free => 'START FREE RUN',
-                      RecordMode.cooper => 'START TEST',
+                      RecordMode.cooper =>
+                        _pickedTest == 'bronco' ? 'START BRONCO' : 'START TEST',
                     }),
                   ),
                 ],
@@ -1064,10 +1065,41 @@ class _Choice extends StatelessWidget {
   }
 }
 
-/// A5 "12-MIN TEST" chip: 96 dp, an ink.secondary border, not a mode
-/// chip colour.
-class _TestChip extends StatelessWidget {
-  const _TestChip({required this.selected, required this.onTap});
+/// Cooper instructions + health note, inline since tests became a run type
+/// (founder 28-Sep); previously the A5 pre-test sheet.
+const List<String> _cooperTestLines = [
+  'Run as far as you can in 12 minutes on flat ground.',
+  'Warm up first. A voice update each minute from 2:00.',
+  'No LAP while the test runs. You get a VO2 max estimate.',
+  'Healthy and used to hard running? If unsure, check with a doctor.',
+  'Estimate. Not a medical measurement.',
+];
+
+/// Bronco (manual sets, founder 28-Sep): his one ask was clear
+/// instructions, so they sit inline before the start.
+const List<String> _broncoTestLines = [
+  '5 sets of 240 m shuttles. One set: 20 m out and back, 40 m out and '
+      'back, 60 m out and back.',
+  'Mark out 20 m on a pitch or field first. Warm up before you start.',
+  'The clock runs the whole test. Tap LAP at the end of each set - 5 '
+      'taps, all out.',
+  'After set 5 the test pauses itself. SAVE keeps your total time and a '
+      'split per set.',
+  'Time only. The 12-minute test stays the fitness measure.',
+];
+
+/// One test pick in the TESTS run type: 96 dp card, ink.secondary border,
+/// 2 px ink.primary when picked (same language as the mode chips).
+class _TestChoiceCard extends StatelessWidget {
+  const _TestChoiceCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
+  final String title;
+  final String subtitle;
   final bool selected;
   final VoidCallback onTap;
 
@@ -1077,10 +1109,9 @@ class _TestChip extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: '12-minute test',
+      label: '$title test',
       excludeSemantics: true,
       child: InkWell(
-        key: const ValueKey('test-chip'),
         onTap: onTap,
         borderRadius: BorderRadius.circular(Radii.button),
         child: Container(
@@ -1094,114 +1125,20 @@ class _TestChip extends StatelessWidget {
               width: selected ? 2 : 1,
             ),
           ),
-          child: Row(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '12-MIN TEST',
-                      style: RunSoloType.title28.copyWith(color: t.inkPrimary),
-                    ),
-                    Text(
-                      'VO2 max estimate',
-                      style: RunSoloType.label13.copyWith(
-                        color: t.inkSecondary,
-                      ),
-                    ),
-                  ],
-                ),
+              Text(
+                title,
+                style: RunSoloType.title28.copyWith(color: t.inkPrimary),
               ),
-              Icon(Icons.chevron_right, color: t.inkSecondary),
+              Text(
+                subtitle,
+                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+              ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The pre-test sheet (A5). Cues each minute from 2:00 (Phase 4 §3.3
-/// supersedes the 3/6/9/11 list).
-class _TestSheet extends StatelessWidget {
-  const _TestSheet();
-
-  static const List<String> lines = [
-    'Run as far as you can in 12 minutes on flat ground.',
-    'Warm up first. A voice update each minute from 2:00.',
-    'Healthy and used to hard running? If unsure, check with a doctor.',
-    'Estimate. Not a medical measurement.',
-  ];
-
-  /// How to run the Bronco (manual sets, founder 28-Sep): his one ask was
-  /// clear instructions, so they live here, before the start.
-  static const List<String> broncoLines = [
-    '5 sets of 240 m shuttles. One set: 20 m out and back, 40 m out and '
-        'back, 60 m out and back.',
-    'Mark out 20 m on a pitch or field first. Warm up before you start.',
-    'The clock runs the whole test. Tap LAP at the end of each set - 5 '
-        'taps, all out.',
-    'After set 5 the test pauses itself. SAVE keeps your total time and a '
-        'split per set.',
-    'Time only. The 12-minute test stays the fitness measure.',
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(Space.screenGutter),
-        child: Column(
-          key: const ValueKey('test-sheet'),
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '12-MINUTE TEST',
-              style: RunSoloType.title28.copyWith(color: t.inkPrimary),
-            ),
-            for (final l in lines) ...[
-              const SizedBox(height: Space.x12),
-              Text(
-                l,
-                style: RunSoloType.body17.copyWith(
-                  color: l == lines.last ? t.inkSecondary : t.inkPrimary,
-                ),
-              ),
-            ],
-            const SizedBox(height: Space.x24),
-            FilledButton(
-              key: const ValueKey('test-go'),
-              onPressed: () => Navigator.of(context).pop('cooper'),
-              child: const Text('WARM UP, THEN START'),
-            ),
-            const SizedBox(height: Space.x24),
-            Divider(color: t.inkSecondary.withValues(alpha: 0.3)),
-            const SizedBox(height: Space.x16),
-            Text(
-              'BRONCO TEST',
-              key: const ValueKey('bronco-title'),
-              style: RunSoloType.title28.copyWith(color: t.inkPrimary),
-            ),
-            for (final l in broncoLines) ...[
-              const SizedBox(height: Space.x12),
-              Text(
-                l,
-                style: RunSoloType.body17.copyWith(
-                  color: l == broncoLines.last ? t.inkSecondary : t.inkPrimary,
-                ),
-              ),
-            ],
-            const SizedBox(height: Space.x24),
-            FilledButton(
-              key: const ValueKey('bronco-go'),
-              onPressed: () => Navigator.of(context).pop('bronco'),
-              child: const Text('START BRONCO'),
-            ),
-          ],
         ),
       ),
     );
