@@ -22,10 +22,12 @@ import '../widgets/zone_gauge.dart';
 /// Record screen (design brief §4.4, addendum A1/A2): three layouts on one
 /// screen. 4x4 = countdown + LAP; Laps run = count-up + LAP; Free run = no
 /// LAP, the 200 dp go to time / distance / pace / HR. The background follows
-/// the HR zone from the engine tracker (600 ms crossfade, 160 ms reduced;
+/// the HR zone from the engine tracker (400 ms crossfade, instant reduced;
 /// never a black frame after a wake because the controller seeds the last
 /// zone). Timer counts down in a timed phase, up otherwise. No animation
 /// runs except M2 (LAP ring), M3 (rep-complete invert) and the zone fade.
+/// HR loss keeps its last zone for the tracker's five-second dwell while the
+/// header says RECONNECTING, then returns to the neutral background.
 /// Buttons only, no gestures.
 class RecordingScreen extends StatefulWidget {
   const RecordingScreen({super.key});
@@ -325,13 +327,14 @@ class _RecordingScreenState extends State<RecordingScreen>
             body: Stack(
               fit: StackFit.expand,
               children: [
-                // A1: zone background, 600 ms `e.standard` crossfade (160 ms
-                // reduced). Zone changes are already dwell-gated upstream.
+                // Aurora: 400 ms zone crossfade, final state directly when
+                // motion is reduced. HR loss stays in its zone for five seconds with
+                // RECONNECTING, then the engine sends zone 0 (neutral).
                 AnimatedContainer(
                   key: const ValueKey('zone-background'),
                   duration: reduced
-                      ? MotionDurations.quick
-                      : const Duration(milliseconds: 600),
+                      ? Duration.zero
+                      : MotionDurations.zoneCrossfade,
                   curve: MotionCurves.standard,
                   color: zoneBg,
                 ),
