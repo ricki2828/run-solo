@@ -11,6 +11,7 @@ cue.start.walk	1	Walk
 cue.start.stand	1	Stand
 cue.halfway	1	Halfway
 cue.thirty-seconds	2	Thirty seconds
+cue.ten-seconds	2	Ten seconds
 cue.phase-end.cooldown	3	Done. Cool down
 cue.phase-end.cooper	3	Time. Cool down
 cue.phase-end.cooldown-over	2	Cool-down done
