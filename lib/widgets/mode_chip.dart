@@ -215,7 +215,11 @@ class ModeChip extends StatelessWidget {
                   ),
                   if (selected) ...[
                     const SizedBox(width: Space.x4),
-                    Icon(Icons.check, size: 18, color: typeColor ?? t.inkPrimary),
+                    Icon(
+                      Icons.check,
+                      size: 18,
+                      color: typeColor ?? t.inkPrimary,
+                    ),
                   ],
                 ],
               ),
