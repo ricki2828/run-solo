@@ -19,6 +19,7 @@ import '../widgets/rep_bars.dart';
 import 'cooper_result_screen.dart';
 import 'course_board_screen.dart';
 import 'board_detail_screen.dart';
+import 'bronco_result_screen.dart';
 import 'run_detail_screen.dart';
 
 /// Post-run screen (design brief §4.6). A 4x4 gets the verdict with the M4
@@ -112,6 +113,14 @@ class _VerdictScreenState extends State<VerdictScreen> {
             detail: detail,
             justFinished: widget.justFinished,
           ),
+          // Bronco (manual sets, founder 28-Sep): its result, like C1.
+          RecordMode.laps
+              when detail.summary.spec?.templateId ==
+                  engine.SessionSpec.broncoId =>
+            BroncoResultScreen(
+              detail: detail,
+              justFinished: widget.justFinished,
+            ),
           RecordMode.laps || RecordMode.free => _SummaryScreen(
             detail: detail,
             justFinished: widget.justFinished,
