@@ -21,8 +21,8 @@ import 'settings_screen.dart';
 /// new activity all at same time"; variant A signed off the same day):
 /// Tally + date, the fitness hero (VO2 estimate, trend, source), RECENT
 /// ACTIVITY (last three sessions of any kind), ESTIMATED TIMES, TRY NEXT,
-/// the mode chips, strap row, START. Checklist incomplete = red row above
-/// START.
+/// and strap status. Five run-type choices lead directly to their Start setup.
+/// Checklist incomplete = red row above the run-type choices.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.now, this.onShowHistory});
 
@@ -110,6 +110,18 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(_refresh);
   }
 
+  /// The Home choice is the entry to Start setup, not a saved preference
+  /// followed by another selector. Start's pinned button begins recording.
+  Future<void> _chooseType({RecordMode? mode, bool goal = false}) async {
+    final services = AppServices.of(context);
+    await services.settings.update(
+      (s) => goal
+          ? s.copyWith(goalRun: true)
+          : s.copyWith(lastMode: mode!, goalRun: false),
+    );
+    if (mounted) await _start();
+  }
+
   void _openRun(RunSummary r) {
     Navigator.of(context).pushNamed(
       r.isFourByFour ? Routes.verdict : Routes.runDetail,
@@ -188,7 +200,17 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
-                  FilledButton(onPressed: _start, child: const Text('START')),
+                  ModeChipRow(
+                    selected: settings.lastMode,
+                    session: services.pickedSession,
+                    goal: settings.goalRun,
+                    goalLabel: goalLabel(settings),
+                    testsSelected: !settings.goalRun &&
+                        settings.lastMode == RecordMode.cooper,
+                    onGoal: () => _chooseType(goal: true),
+                    onSelect: (m) => _chooseType(mode: m),
+                    onTests: () => _chooseType(mode: RecordMode.cooper),
+                  ),
                   const SizedBox(height: Space.x32),
                   FutureBuilder<engine.FitnessHero?>(
                     future: _hero,
@@ -224,19 +246,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       await services.settings.update(change);
                       if (context.mounted) await _start();
                     },
-                  ),
-                  const SizedBox(height: Space.x24),
-                  ModeChipRow(
-                    selected: settings.lastMode,
-                    session: services.pickedSession,
-                    goal: settings.goalRun,
-                    goalLabel: goalLabel(settings),
-                    onGoal: () => services.settings.update(
-                      (s) => s.copyWith(goalRun: true),
-                    ),
-                    onSelect: (m) => services.settings.update(
-                      (s) => s.copyWith(lastMode: m, goalRun: false),
-                    ),
                   ),
                   const SizedBox(height: Space.x16),
                   if (settings.pendingObservedMaxHr != null)
