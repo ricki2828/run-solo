@@ -233,7 +233,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   /// way to start one.
   Future<void> _openTestSheet() async {
     final services = AppServices.of(context);
-    final go = await showModalBottomSheet<bool>(
+    final pick = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Theme.of(context).extension<RunSoloTokens>()!.bgRaised,
@@ -242,14 +242,26 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       ),
       builder: (ctx) => const _TestSheet(),
     );
-    if (go != true || !mounted) return;
-    await services.settings.update(
-      (x) => x.copyWith(lastMode: RecordMode.cooper),
-    );
-    if (mounted) await _start();
+    if (pick == 'cooper') {
+      if (!mounted) return;
+      await services.settings.update(
+        (x) => x.copyWith(lastMode: RecordMode.cooper),
+      );
+      if (mounted) await _start();
+    } else if (pick == 'bronco' && mounted) {
+      // Bronco (manual sets, founder 28-Sep): a Laps run carrying the
+      // bronco spec, like the fartlek (plan §3.5); lastMode untouched.
+      await _start(
+        testSpec: engine.SessionSpec.bronco,
+        testMode: RecordMode.laps,
+      );
+    }
   }
 
-  Future<void> _start() async {
+  Future<void> _start({
+    engine.SessionSpec? testSpec,
+    RecordMode? testMode,
+  }) async {
     final services = AppServices.of(context);
     final s = services.settings.settings;
     setState(() {
@@ -260,25 +272,27 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     try {
       await services.recorder.setCues(s.cues);
       await services.recorder.setKmSplits(s.kmSplits);
-      if (s.recordMode == RecordMode.laps) {
+      if ((testMode ?? s.recordMode) == RecordMode.laps) {
         await services.recorder.setVolumeKeyLaps(
           s.volumeKeyLapFor(RecordMode.laps),
         );
       }
       // CONTRACT.md I1: the app expands the session; Kotlin runs it.
       // Fartlek is a Laps run carrying the fartlek session (plan §3.5).
-      final mode = s.recordMode;
-      final spec = switch (s.lastMode) {
-        // K1: the event records as Intervals with its one 5 km step; its
-        // name comes only from the flavour config. The LC1 builder sees
-        // `templateId == parkrun` in this same spec (#59).
-        // G3: every other goal is G1's one-step spec (goalDistance /
-        // goalTime with the catalogue's name).
-        _ when s.goalRun => s.goalSpec(kEventNames.parkrun)!.toPigeon(),
-        RecordMode.intervals => services.pickedSession.toPigeon(),
-        RecordMode.cooper => engine.SessionSpec.cooper.toPigeon(),
-        RecordMode.laps || RecordMode.free => null,
-      };
+      final mode = testMode ?? s.recordMode;
+      final spec =
+          testSpec?.toPigeon() ??
+          switch (s.lastMode) {
+            // K1: the event records as Intervals with its one 5 km step; its
+            // name comes only from the flavour config. The LC1 builder sees
+            // `templateId == parkrun` in this same spec (#59).
+            // G3: every other goal is G1's one-step spec (goalDistance /
+            // goalTime with the catalogue's name).
+            _ when s.goalRun => s.goalSpec(kEventNames.parkrun)!.toPigeon(),
+            RecordMode.intervals => services.pickedSession.toPigeon(),
+            RecordMode.cooper => engine.SessionSpec.cooper.toPigeon(),
+            RecordMode.laps || RecordMode.free => null,
+          };
       // LC1: the live compare's history, 150 ms or none; off until LV2.
       // PD2 (#84 review P1): the target raced is the one shown, so a tap
       // over to the other choice goes in too. K1: the event races its
@@ -1121,11 +1135,24 @@ class _TestSheet extends StatelessWidget {
     'Estimate. Not a medical measurement.',
   ];
 
+  /// How to run the Bronco (manual sets, founder 28-Sep): his one ask was
+  /// clear instructions, so they live here, before the start.
+  static const List<String> broncoLines = [
+    '5 sets of 240 m shuttles. One set: 20 m out and back, 40 m out and '
+        'back, 60 m out and back.',
+    'Mark out 20 m on a pitch or field first. Warm up before you start.',
+    'The clock runs the whole test. Tap LAP at the end of each set - 5 '
+        'taps, all out.',
+    'After set 5 the test pauses itself. SAVE keeps your total time and a '
+        'split per set.',
+    'Time only. The 12-minute test stays the fitness measure.',
+  ];
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(Space.screenGutter),
         child: Column(
           key: const ValueKey('test-sheet'),
@@ -1148,8 +1175,31 @@ class _TestSheet extends StatelessWidget {
             const SizedBox(height: Space.x24),
             FilledButton(
               key: const ValueKey('test-go'),
-              onPressed: () => Navigator.of(context).pop(true),
+              onPressed: () => Navigator.of(context).pop('cooper'),
               child: const Text('WARM UP, THEN START'),
+            ),
+            const SizedBox(height: Space.x24),
+            Divider(color: t.inkSecondary.withValues(alpha: 0.3)),
+            const SizedBox(height: Space.x16),
+            Text(
+              'BRONCO TEST',
+              key: const ValueKey('bronco-title'),
+              style: RunSoloType.title28.copyWith(color: t.inkPrimary),
+            ),
+            for (final l in broncoLines) ...[
+              const SizedBox(height: Space.x12),
+              Text(
+                l,
+                style: RunSoloType.body17.copyWith(
+                  color: l == broncoLines.last ? t.inkSecondary : t.inkPrimary,
+                ),
+              ),
+            ],
+            const SizedBox(height: Space.x24),
+            FilledButton(
+              key: const ValueKey('bronco-go'),
+              onPressed: () => Navigator.of(context).pop('bronco'),
+              child: const Text('START BRONCO'),
             ),
           ],
         ),
