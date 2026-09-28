@@ -8,7 +8,6 @@ import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../theme/theme.dart';
-import '../widgets/chrome.dart';
 import '../widgets/coaching.dart';
 import '../widgets/estimated_times_card.dart';
 import '../widgets/fitness_hero.dart';
