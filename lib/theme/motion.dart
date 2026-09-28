@@ -7,6 +7,9 @@ abstract final class MotionDurations {
   static const Duration quick = Duration(milliseconds: 160);
   static const Duration base = Duration(milliseconds: 240);
   static const Duration slow = Duration(milliseconds: 400);
+  static const Duration reveal = Duration(milliseconds: 520);
+  static const Duration zoneCrossfade = Duration(milliseconds: 400);
+  static const Duration stagger = Duration(milliseconds: 50);
   static const Duration hero = Duration(milliseconds: 1400);
 }
 
