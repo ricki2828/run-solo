@@ -26,6 +26,7 @@ abstract final class NightSession {
   static const Color semWarn = Color(0xFFFFB020);
   static const Color semDanger = Color(0xFFFF3B3B);
   static const Color hrZone = Color(0xFFB48CFF);
+  static const Color pulseRose = Color(0xFFFF5C8A); // labelled strap state
 }
 
 /// Aurora run-type identities. These colours identify *which* run the runner

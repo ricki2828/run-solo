@@ -8,7 +8,6 @@ import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../theme/theme.dart';
-import '../widgets/chrome.dart';
 import '../widgets/coaching.dart';
 import '../widgets/estimated_times_card.dart';
 import '../widgets/fitness_hero.dart';
@@ -139,7 +138,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: Space.x24),
                   Row(
                     children: [
-                      const TallyMark(height: 20),
+                      Text(
+                        'RUN SUPREME',
+                        style: RunSoloType.heading19.copyWith(
+                          color: t.inkPrimary,
+                        ),
+                      ),
                       const Spacer(),
                       Text(
                         Fmt.dayDate(_now),
@@ -149,6 +153,42 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: Space.x32),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'GO AGAIN.',
+                      style: RunSoloType.display64.copyWith(
+                        color: t.inkPrimary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: Space.x8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Your next run starts here. Your last run sets the line '
+                      'to beat.',
+                      style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                    ),
+                  ),
+                  const SizedBox(height: Space.x16),
+                  if (perms != null && !perms.canRecord)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: Space.x12),
+                      child: InkWell(
+                        onTap: _start,
+                        child: Text(
+                          perms.coarseOnly
+                              ? 'Location is approximate. Precise is needed '
+                                    'for pace.'
+                              : 'Location permission needed before you can '
+                                    'record.',
+                          style: text.labelLarge?.copyWith(color: t.semDanger),
+                        ),
+                      ),
+                    ),
+                  FilledButton(onPressed: _start, child: const Text('START')),
                   const SizedBox(height: Space.x32),
                   FutureBuilder<engine.FitnessHero?>(
                     future: _hero,
@@ -217,20 +257,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                   const SizedBox(height: Space.x24),
-                  if (perms != null && !perms.canRecord)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: Space.x12),
-                      child: InkWell(
-                        onTap: _start,
-                        child: Text(
-                          perms.coarseOnly
-                              ? 'Location is approximate. Precise is needed for pace.'
-                              : 'Location permission needed before you can record.',
-                          style: text.labelLarge?.copyWith(color: t.semDanger),
-                        ),
-                      ),
-                    ),
-                  FilledButton(onPressed: _start, child: const Text('START')),
                   const SizedBox(height: Space.x24),
                 ],
               ),

@@ -80,7 +80,7 @@ void main() {
   testWidgets('switching goals re-reads the target', (tester) async {
     await open(tester, 'd21098');
     expect(find.byKey(const ValueKey('start-target')), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('goal-d5000')));
+    await tapVisible(tester, find.byKey(const ValueKey('goal-d5000')));
     await pumpTimes(tester, 4);
     expect(find.byKey(const ValueKey('start-target')), findsOneWidget);
   });
