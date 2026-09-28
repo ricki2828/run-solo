@@ -14,34 +14,32 @@ import 'package:run_solo/widgets/lap_button.dart';
 import '../helpers.dart';
 import '../run_fixtures.dart';
 
-/// Bronco (manual sets, founder 28-Sep): the sheet's instructions, the
+/// Bronco (manual sets, founder 28-Sep): the inline instructions, the
 /// laps run carrying the bronco spec, SET n OF 5, the self-ending 5th
 /// set, and its result screen. Time only - Cooper stays the measure.
 void main() {
-  testWidgets('TESTS sheet: bronco instructions, START BRONCO starts a '
+  testWidgets('TESTS run type: bronco instructions, START BRONCO starts a '
       'Laps run carrying the bronco session', (tester) async {
     final fake = FakeRecorderGateway(now: now);
     final services = fakeServices(recorder: fake);
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
-    await scrollTo(tester, find.byKey(const ValueKey('test-chip')));
-    await tester.ensureVisible(find.byKey(const ValueKey('test-chip')));
-    await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('test-chip')));
+    // TESTS is a run type in the mode row (founder 28-Sep).
+    await tester.tap(find.byKey(const ValueKey('tests-chip')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('test-sheet')), findsOneWidget);
-    // Cooper stays as it was.
-    expect(find.byKey(const ValueKey('test-go')), findsOneWidget);
+    // Cooper stays the default pick, health note on screen before any start.
+    expect(find.byKey(const ValueKey('pick-cooper')), findsOneWidget);
+    expect(find.textContaining('check with a doctor'), findsOneWidget);
+    expect(fake.startCalls, isEmpty, reason: 'the chip alone never starts');
     // His one ask: clear instructions for how to run the test.
-    await scrollTo(tester, find.byKey(const ValueKey('bronco-go')));
-    await tester.ensureVisible(find.byKey(const ValueKey('bronco-go')));
-    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('pick-bronco')));
+    await tester.pumpAndSettle();
     expect(find.textContaining('5 sets of 240 m shuttles'), findsOneWidget);
     expect(
       find.textContaining('Tap LAP at the end of each set'),
       findsOneWidget,
     );
-    await tester.tap(find.byKey(const ValueKey('bronco-go')));
+    await tester.tap(find.text('START BRONCO'));
     await pumpTimes(tester, 6);
     final sent = fake.startCalls.single;
     expect(sent.mode, RecordMode.laps);
