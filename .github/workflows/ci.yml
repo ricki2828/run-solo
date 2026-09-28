@@ -214,7 +214,10 @@ jobs:
       - run: flutter pub get
       - name: Build debug APK (play flavour, app.runsolo.debug)
         run: |
-          flutter build apk --debug --flavor play $MAPS_DEFINE
+          # Live compare ON (founder 28-Sep): LV2's in-app "Mute tips" shipped in #77,
+          # the gate live_context.dart waits for. Emulator runs have no history, so
+          # compare plans stay empty there.
+          flutter build apk --debug --flavor play $MAPS_DEFINE --dart-define=LIVE_COMPARE=true
           mkdir -p build/dist && cp build/app/outputs/flutter-apk/app-play-debug.apk build/dist/app-debug.apk
       - name: Android lint NewApi (minSdk 29 API guard)
         working-directory: android
@@ -288,6 +291,8 @@ jobs:
           sed -i "s/const String kAppVersion = '[^']*';/const String kAppVersion = '$V';/" lib/app/version.dart
           grep -n '^version:' pubspec.yaml
           grep -n 'kAppVersion' lib/app/version.dart
+      # Live compare ON in the dogfood (founder 28-Sep): same LV2 gate as the
+      # debug build; prod stays dark until the same call is made for it.
       - name: Build dogfood APKs (arm64 for the phone, x86_64 for the emulator smoke)
         env:
           RUN_SOLO_DOGFOOD_STORE_PASSWORD: ${{ secrets.RUN_SOLO_DOGFOOD_STORE_PASSWORD }}
@@ -296,7 +301,8 @@ jobs:
         run: |
           flutter build apk --release --flavor dogfood --split-per-abi \
             --target-platform android-arm64,android-x64 \
-            --obfuscate --split-debug-info=build/symbols-dogfood $MAPS_DEFINE
+            --obfuscate --split-debug-info=build/symbols-dogfood $MAPS_DEFINE \
+            --dart-define=LIVE_COMPARE=true
           ls -la build/app/outputs/flutter-apk/
       - name: Verify signer, size (< 30 MiB) and 16 KB alignment
         run: |
