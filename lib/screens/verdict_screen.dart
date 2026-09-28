@@ -82,6 +82,23 @@ class _VerdictScreenState extends State<VerdictScreen> {
       future: _load,
       builder: (context, snap) {
         if (!snap.hasData) {
+          final history = AppServices.of(context).history;
+          if (widget.justFinished &&
+              history is FileRunStore &&
+              history.isWaitingForWeather(widget.runId)) {
+            return const Scaffold(
+              body: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: Space.x16),
+                    Text('Checking weather'),
+                  ],
+                ),
+              ),
+            );
+          }
           return const Scaffold(body: SizedBox.shrink());
         }
         final (detail, previous, all) = snap.data!;
