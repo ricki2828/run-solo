@@ -267,10 +267,7 @@ class WeatherQueue {
   Future<WeatherDrainResult> _drain() async {
     final queuedIds = await queued();
     final priority = _priorityRunId;
-    final ids = <String>[
-      if (priority != null) priority,
-      ...queuedIds.where((id) => id != priority),
-    ];
+    final ids = <String>[?priority, ...queuedIds.where((id) => id != priority)];
     if (ids.isEmpty) return const WeatherDrainResult();
     final wait = _notBefore;
     if (wait != null && now().isBefore(wait)) {
