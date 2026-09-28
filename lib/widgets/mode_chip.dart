@@ -25,6 +25,7 @@ class ModeChipRow extends StatelessWidget {
     this.onTests,
     this.testsSelected = false,
     this.testsLabel = 'Cooper · Bronco',
+    this.auroraList = false,
   });
   final RecordMode selected;
   final ValueChanged<RecordMode> onSelect;
@@ -49,6 +50,7 @@ class ModeChipRow extends StatelessWidget {
 
   /// The picked test, under the TESTS title.
   final String testsLabel;
+  final bool auroraList;
 
   /// Below this width the four chips wrap into two rows.
   static const double rowMinWidth = 480;
@@ -73,6 +75,7 @@ class ModeChipRow extends StatelessWidget {
       RecordMode.cooper => '12 minutes',
     },
     selected: !goal && selected == m,
+    compact: auroraList,
     typeColor: switch (m) {
       RecordMode.free => AuroraRunType.free,
       RecordMode.laps => AuroraRunType.laps,
@@ -94,6 +97,7 @@ class ModeChipRow extends StatelessWidget {
         ModeChip(
           key: const ValueKey('goal-chip'),
           title: 'GOAL',
+          compact: auroraList,
           typeColor: AuroraRunType.goal,
           subtitle: goalLabel,
           selected: goal,
@@ -104,12 +108,23 @@ class ModeChipRow extends StatelessWidget {
         ModeChip(
           key: const ValueKey('tests-chip'),
           title: 'TESTS',
+          compact: auroraList,
           typeColor: AuroraRunType.tests,
           subtitle: testsLabel,
           selected: testsSelected,
           onTap: onTests!,
         ),
     ];
+    if (auroraList) {
+      return Column(
+        children: [
+          for (final (i, chip) in chips.indexed) ...[
+            if (i > 0) const SizedBox(height: Space.x8),
+            SizedBox(width: double.infinity, child: chip),
+          ],
+        ],
+      );
+    }
     return LayoutBuilder(
       builder: (context, c) {
         Widget row(List<Widget> items) => Row(
@@ -143,6 +158,7 @@ class ModeChip extends StatelessWidget {
     required this.onTap,
     this.glyph,
     this.typeColor,
+    this.compact = false,
   });
 
   /// Structure glyph under the subtitle (the INTERVALS chip, A8).
@@ -150,6 +166,7 @@ class ModeChip extends StatelessWidget {
   final String title;
   final String subtitle;
   final Color? typeColor;
+  final bool compact;
   final bool selected;
   final VoidCallback onTap;
 
@@ -166,7 +183,7 @@ class ModeChip extends StatelessWidget {
         child: AnimatedContainer(
           duration: MotionDurations.quick,
           curve: MotionCurves.standard,
-          height: 96,
+          height: compact ? 76 : 96,
           padding: const EdgeInsets.all(Space.x12),
           decoration: BoxDecoration(
             color: t.bgRaised,
@@ -190,6 +207,7 @@ class ModeChip extends StatelessWidget {
                         title,
                         softWrap: false,
                         style: RunSoloType.title28.copyWith(
+                          fontSize: compact ? 23 : 28,
                           color: typeColor ?? t.inkPrimary,
                         ),
                       ),
@@ -206,14 +224,14 @@ class ModeChip extends StatelessWidget {
               // ellipsises, it never shrinks.
               Text(
                 subtitle,
-                maxLines: glyph == null ? 2 : 1,
+                maxLines: compact || glyph != null ? 1 : 2,
                 overflow: TextOverflow.ellipsis,
                 style: RunSoloType.label13.copyWith(
                   color: t.inkSecondary,
                   height: 1.2,
                 ),
               ),
-              if (glyph != null) ...[
+              if (glyph != null && !compact) ...[
                 const SizedBox(height: Space.x4),
                 StructureGlyph(spec: glyph!, height: 12),
               ],
