@@ -16,7 +16,8 @@ abstract final class HrZones {
     NightSession.bgBase, // 0: today's base
     Color(0xFF0E2140), // 1: deep navy
     Color(0xFF0C3322), // 2: deep green
-    Color(0xFF3A3410), // 3: olive
+    Color(0xFF403208), // 3: amber (founder field test 28-Sep: olive -> amber,
+    // same 3.39 % luminance, 10.4:1 Bone, ramp and deuteranopia story intact)
     Color(0xFF4A2208), // 4: burnt orange
     Color(0xFF4E0E18), // 5: deep red
   ];
