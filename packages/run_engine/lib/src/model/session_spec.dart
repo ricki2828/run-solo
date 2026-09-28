@@ -131,6 +131,7 @@ class SessionSpec {
   static const String norwegian4x4Id = 'norwegian-4x4';
   static const String cooperId = 'cooper';
   static const String fartlekId = 'fartlek';
+  static const String broncoId = 'bronco';
   static const String parkrunId = 'parkrun'; // event-name-ok: data key
   static const String goalId = 'goal';
   static const String customPrefix = 'custom:';
@@ -269,6 +270,22 @@ class SessionSpec {
     steps: [],
   );
 
+  /// The Bronco test (manual sets, founder 28-Sep): 5 continuous 240 m
+  /// shuttle sets, the runner taps LAP at each set's end; the app runs
+  /// the clock and counts sets. Recorded as a Laps run carrying this
+  /// spec, like the fartlek. No steps: set ends are the runner's taps,
+  /// never GPS (20 m legs sit inside GPS error). Time only - Cooper
+  /// stays the fitness measure.
+  static const SessionSpec bronco = SessionSpec(
+    templateId: broncoId,
+    templateVersion: 1,
+    name: 'Bronco test',
+    steps: [],
+  );
+
+  /// Sets in a Bronco test (5 x 240 m = 1,200 m).
+  static const int broncoSets = 5;
+
   /// `reps` work steps with `reps − 1` recoveries between them.
   static List<SessionStep> uniform({
     required int reps,
@@ -325,7 +342,9 @@ class SessionSpec {
       }
     }
     if (steps.isEmpty) {
-      if (templateId != fartlekId) out.add('only fartlek may have no steps');
+      if (templateId != fartlekId && templateId != broncoId) {
+        out.add('only fartlek and the bronco test may have no steps');
+      }
       return out;
     }
     // A GOAL (§G): exactly one work step, the goal's own limits (a half,
@@ -548,6 +567,7 @@ class SessionSpec {
 abstract final class ComparisonKey {
   static const String fartlek = 'fartlek';
   static const String cooper = 'cooper';
+  static const String bronco = 'bronco';
   static const String parkrun = 'parkrun'; // event-name-ok: data key
   static const String norwegian4x4 = 't240x*';
 
@@ -580,6 +600,7 @@ abstract final class ComparisonKey {
   static String _of(SessionSpec spec) {
     if (spec.templateId == SessionSpec.fartlekId) return fartlek;
     if (spec.templateId == SessionSpec.cooperId) return cooper;
+    if (spec.templateId == SessionSpec.broncoId) return bronco;
     if (spec.templateId == SessionSpec.parkrunId) return parkrunOf();
     if (spec.isGoal && spec.workSteps.length == 1) {
       final w = spec.workSteps.single;
