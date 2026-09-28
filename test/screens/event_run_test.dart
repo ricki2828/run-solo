@@ -184,7 +184,7 @@ void main() {
     await pumpTimes(tester, 4);
     expect(find.text(name), findsWidgets);
     expect(find.text('10K'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('goal-d10000')));
+    await tapVisible(tester, find.byKey(const ValueKey('goal-d10000')));
     await pumpTimes(tester, 4);
     expect(services.settings.settings.goalId, 'd10000');
     FilledButton start() => tester.widget<FilledButton>(
@@ -194,7 +194,7 @@ void main() {
     fake.emitGpsProbe(GpsProbeEvent(fix: true, accuracyM: 5));
     await pumpTimes(tester, 2);
     expect(start().onPressed, isNotNull, reason: 'G1 specs are in (#63)');
-    await tester.tap(find.byKey(const ValueKey('goal-time')));
+    await tapVisible(tester, find.byKey(const ValueKey('goal-time')));
     await pumpTimes(tester, 4);
     expect(find.byKey(const ValueKey('goal-t1800')), findsOneWidget);
     expect(find.byKey(const ValueKey('goal-t3600')), findsOneWidget);
@@ -202,26 +202,37 @@ void main() {
     expect(services.settings.settings.goalId, 't1800');
   });
 
-  testWidgets('chips: FREE · LAPS · GOAL · INTERVALS as 2 × 2 at 360 dp; no '
-      'chip text under 13 sp', (tester) async {
-    await pumpApp(tester, fakeServices(), pushRoute: Routes.start);
-    await pumpTimes(tester, 4);
-    Offset chip(String title) => tester.getTopLeft(
-      find.ancestor(of: find.text(title), matching: find.byType(ModeChip)),
-    );
-    final free = chip('FREE');
-    final laps = chip('LAPS');
-    final goal = chip('GOAL');
-    final intervals = chip('INTERVALS');
-    expect(laps.dy, closeTo(free.dy, 1));
-    expect(laps.dx, greaterThan(free.dx));
-    expect(goal.dy, greaterThan(free.dy + 40), reason: 'second row');
-    expect(intervals.dy, closeTo(goal.dy, 1));
-    for (final text in tester.widgetList<Text>(
-      find.descendant(of: find.byType(ModeChip), matching: find.byType(Text)),
-    )) {
-      final size = text.style?.fontSize ?? 14;
-      expect(size, greaterThanOrEqualTo(13), reason: text.data);
-    }
-  });
+  testWidgets(
+    'Aurora Start choices are full-width in run-type order at 360 dp; '
+    'no choice text under 13 sp',
+    (tester) async {
+      await pumpApp(tester, fakeServices(), pushRoute: Routes.start);
+      await pumpTimes(tester, 4);
+      Rect chip(String title) => tester.getRect(
+        find.ancestor(of: find.text(title), matching: find.byType(ModeChip)),
+      );
+      final choices = [
+        chip('FREE'),
+        chip('LAPS'),
+        chip('GOAL'),
+        chip('INTERVALS'),
+        chip('TESTS'),
+      ];
+      for (var i = 1; i < choices.length; i++) {
+        expect(
+          choices[i].top,
+          greaterThan(choices[i - 1].bottom),
+          reason: 'each run type is its own row',
+        );
+        expect(choices[i].left, closeTo(choices[0].left, 1));
+        expect(choices[i].width, closeTo(choices[0].width, 1));
+      }
+      for (final text in tester.widgetList<Text>(
+        find.descendant(of: find.byType(ModeChip), matching: find.byType(Text)),
+      )) {
+        final size = text.style?.fontSize ?? 14;
+        expect(size, greaterThanOrEqualTo(13), reason: text.data);
+      }
+    },
+  );
 }
