@@ -136,10 +136,10 @@ void main() {
       'LAPS RUN': AuroraRunType.laps,
     };
     for (final entry in expected.entries) {
-      final rich = tester.widget<Text>(
+      final rich = tester.widget<RichText>(
         find.textContaining(entry.key, findRichText: true).first,
       );
-      final span = rich.textSpan! as TextSpan;
+      final span = rich.text as TextSpan;
       final title = span.children!.first as TextSpan;
       expect(title.style!.color, entry.value);
     }
