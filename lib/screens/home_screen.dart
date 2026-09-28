@@ -205,7 +205,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     session: services.pickedSession,
                     goal: settings.goalRun,
                     goalLabel: goalLabel(settings),
-                    testsSelected: !settings.goalRun &&
+                    testsSelected:
+                        !settings.goalRun &&
                         settings.lastMode == RecordMode.cooper,
                     onGoal: () => _chooseType(goal: true),
                     onSelect: (m) => _chooseType(mode: m),
