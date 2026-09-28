@@ -51,6 +51,7 @@ enum CueKind {
   minuteMark,
   countdown,
   projection,
+  tenSeconds,
 }
 
 enum StepKind { work, recovery }

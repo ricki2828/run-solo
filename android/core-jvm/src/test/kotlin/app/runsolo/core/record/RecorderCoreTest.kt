@@ -44,16 +44,16 @@ class RecorderCoreTest {
     @Test
     fun `cue scheduler - 4 00 and 3 00 phases`() {
         assertEquals(
-            listOf(CueKind.start to 0L, CueKind.halfway to 120_000L, CueKind.thirtySeconds to 210_000L, CueKind.phaseEnd to 240_000L),
+            listOf(CueKind.start to 0L, CueKind.halfway to 120_000L, CueKind.thirtySeconds to 210_000L, CueKind.tenSeconds to 230_000L, CueKind.countdown to 237_000L, CueKind.phaseEnd to 240_000L),
             CueScheduler.forPhase(240_000).map { it.kind to it.at },
         )
         assertEquals(
-            listOf(0L, 90_000L, 150_000L, 180_000L),
+            listOf(0L, 90_000L, 150_000L, 170_000L, 177_000L, 180_000L),
             CueScheduler.forPhase(180_000).map { it.at },
         )
-        // A 60 s phase has no −30 s cue (it would coincide with halfway).
-        assertEquals(listOf(CueKind.start, CueKind.halfway, CueKind.phaseEnd), CueScheduler.forPhase(60_000).map { it.kind })
-        assertEquals(4, CueScheduler.forPhase(120_000).size) // 2:00 recovery boundary: 0, 60, 90, 120
+        // A 60 s phase has no −30 s cue (it would coincide with halfway); −10 s and the 3-2-1 stay.
+        assertEquals(listOf(CueKind.start, CueKind.halfway, CueKind.tenSeconds, CueKind.countdown, CueKind.phaseEnd), CueScheduler.forPhase(60_000).map { it.kind })
+        assertEquals(6, CueScheduler.forPhase(120_000).size) // 2:00 recovery boundary: 0, 60, 90, 110, 117, 120
     }
 
     @Test
@@ -83,12 +83,12 @@ class RecorderCoreTest {
         assertEquals(4, core.repIndex)
         assertEquals(8, core.lapCount)
         val c = cues(out)
-        // Rep 1 work: halfway 2:00, -30 3:30, end 4:00, then recovery start.
+        // Rep 1 work: halfway 2:00, -30 3:30, -10 3:50, 3-2-1 3:57, end 4:00, then recovery start.
         assertEquals(
-            listOf(CueKind.halfway to 180_000L, CueKind.thirtySeconds to 270_000L, CueKind.phaseEnd to 300_000L, CueKind.start to 300_000L),
+            listOf(CueKind.halfway to 180_000L, CueKind.thirtySeconds to 270_000L, CueKind.tenSeconds to 290_000L, CueKind.countdown to 297_000L),
             c.take(4),
         )
-        assertEquals(4 * 4 + 3 * 4 - 1 + 1, c.size) // 4 cues per timed phase, 7 phases; rep 1's start cue came with the LAP; + lastRep at rep 4
+        assertEquals(4 * 6 + 3 * 6 - 1 + 1, c.size) // 6 cues per timed phase, 7 phases; rep 1's start cue came with the LAP; + lastRep at rep 4
         assertEquals(CueKind.phaseEnd, c.last().first) // the last cue is the end of rep 4, straight into cool-down
         assertTrue(run(core, t0 + 60_000 + total + 6_000, t0 + 60_000 + total + 120_000).isEmpty(), "cooldown is untimed")
         assertEquals(listOf(Output.Cue(t0 + 2_000_000, CueKind.stop)), core.stop(t0 + 2_000_000))
@@ -264,7 +264,7 @@ class RecorderCoreTest {
         assertEquals(100_000, core.status(t0 + 400_000).activeMs)
         core.resume(t0 + 400_000)
         val out = run(core, t0 + 400_000, t0 + 540_000)
-        assertEquals(listOf(CueKind.halfway to 420_000L, CueKind.thirtySeconds to 510_000L, CueKind.phaseEnd to 540_000L, CueKind.start to 540_000L), cues(out))
+        assertEquals(listOf(CueKind.halfway to 420_000L, CueKind.thirtySeconds to 510_000L, CueKind.tenSeconds to 530_000L, CueKind.countdown to 537_000L, CueKind.phaseEnd to 540_000L, CueKind.start to 540_000L), cues(out))
     }
 
     @Test
@@ -320,7 +320,7 @@ class RecorderCoreTest {
         assertEquals(130_000, s.phaseRemainingMs) // 50 s into the 3:00 recovery
         // Halfway (1:30) is still ahead; start was already spoken and is not repeated.
         val out = run(core, 7_000, 7_000 + 130_000)
-        assertEquals(listOf(CueKind.halfway to 40_000L, CueKind.thirtySeconds to 100_000L, CueKind.phaseEnd to 130_000L, CueKind.start to 130_000L), out.filterIsInstance<Output.Cue>().map { it.kind to it.t - 7_000 })
+        assertEquals(listOf(CueKind.halfway to 40_000L, CueKind.thirtySeconds to 100_000L, CueKind.tenSeconds to 120_000L, CueKind.countdown to 127_000L, CueKind.phaseEnd to 130_000L, CueKind.start to 130_000L), out.filterIsInstance<Output.Cue>().map { it.kind to it.t - 7_000 })
         assertEquals(Phase.work, core.phase)
         assertEquals(2, core.repIndex)
     }

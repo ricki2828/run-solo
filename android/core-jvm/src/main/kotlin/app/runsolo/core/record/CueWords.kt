@@ -57,6 +57,7 @@ object CueWords {
             }
             CueKind.halfway -> "Halfway"
             CueKind.thirtySeconds -> "Thirty seconds"
+            CueKind.tenSeconds -> "Ten seconds"
             // The next `start` cue says what comes; only the end of the last part is spoken.
             CueKind.phaseEnd -> when {
                 value == COOLDOWN_OVER -> "Cool-down done"

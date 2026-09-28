@@ -17,7 +17,7 @@ object CueScheduler {
     /** Minutes of a 12-minute Cooper test that speak the projected score instead of the minute (Phase 4 §3.3: every minute 2–11). */
     val COOPER_PROJECTION_MINUTES = (2..11).toList()
 
-    /** Standard profile, time step: `start` at 0, `halfway`, `thirtySeconds` at duration − 30 s, `phaseEnd`. For 4:00 that is 0:00, 2:00, 3:30, 4:00; the −30 s cue is dropped when it would not come after halfway (steps ≤ 60 s). */
+    /** Standard profile, time step: `start` at 0, `halfway`, `thirtySeconds` at duration − 30 s, `tenSeconds` at − 10 s, a 3-2-1 `countdown` at − 3 s, `phaseEnd`. For 4:00 that is 0:00, 2:00, 3:30, 3:50, 3:57, 4:00; the −30 s and −10 s cues are dropped when they would not come after halfway (steps ≤ 60 s drop −30 s, ≤ 20 s drop −10 s). */
     fun forPhase(durationMs: Long): List<CuePoint> {
         require(durationMs > 0)
         val points = ArrayList<CuePoint>()
@@ -26,6 +26,9 @@ object CueScheduler {
         points.add(CuePoint(CueKind.halfway, half))
         val thirty = durationMs - 30_000
         if (thirty > half) points.add(CuePoint(CueKind.thirtySeconds, thirty))
+        val ten = durationMs - 10_000
+        if (ten > half) points.add(CuePoint(CueKind.tenSeconds, ten))
+        if (durationMs > 3_000) points.add(CuePoint(CueKind.countdown, durationMs - 3_000))
         points.add(CuePoint(CueKind.phaseEnd, durationMs))
         return points
     }

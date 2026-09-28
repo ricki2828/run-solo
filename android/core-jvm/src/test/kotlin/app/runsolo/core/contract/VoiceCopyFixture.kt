@@ -63,6 +63,7 @@ object VoiceCopyFixture {
         add("cue.start.stand", cue(CueKind.start, fourByFour.copy(steps = listOf(fourByFour.steps[0], jog.copy(style = RecoveryStyle.stand))), Phase.recovery, 1))
         add("cue.halfway", cue(CueKind.halfway, fourByFour, Phase.work, 0))
         add("cue.thirty-seconds", cue(CueKind.thirtySeconds, fourByFour, Phase.work, 0))
+        add("cue.ten-seconds", cue(CueKind.tenSeconds, fourByFour, Phase.work, 0))
         add("cue.phase-end.cooldown", cue(CueKind.phaseEnd, fourByFour, Phase.cooldown, null))
         add("cue.phase-end.cooper", cue(CueKind.phaseEnd, SessionSpec.COOPER, Phase.cooldown, null))
         add("cue.phase-end.cooldown-over", cue(CueKind.phaseEnd, fourByFour, Phase.cooldown, null, value = CueWords.COOLDOWN_OVER))
