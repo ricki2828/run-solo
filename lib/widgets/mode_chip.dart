@@ -42,7 +42,7 @@ class ModeChipRow extends StatelessWidget {
   /// Picks GOAL; null hides its chip.
   final VoidCallback? onGoal;
 
-  /// Picks TESTS; null hides its chip (Home keeps the four run types).
+  /// Picks TESTS; null hides its chip.
   final VoidCallback? onTests;
 
   /// TESTS is the picked chip (Start, when a test mode is showing).
