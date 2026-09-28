@@ -152,6 +152,17 @@ class _RecordingScreenState extends State<RecordingScreen>
   /// screen then shows the live clock, since SAVE ends the run at SAVE.
   int? _stoppedAtMs;
 
+  /// Bronco (manual sets, founder 28-Sep): every tap is one 240 m set;
+  /// the [engine.SessionSpec.broncoSets]-th tap also pauses into the
+  /// finish flow, so the test ends itself exactly on the last set.
+  Future<void> _broncoLap(RecordingController ctl) async {
+    await ctl.lap();
+    if (!mounted) return;
+    if (ctl.snapshot.lapIndex >= engine.SessionSpec.broncoSets) {
+      await _tapStop();
+    }
+  }
+
   Future<void> _tapStop() async {
     if (_finishing || _stopping) return;
     final ctl = _ctl!;
@@ -534,7 +545,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                           const Spacer()
                         else if (s.lapsEnabled)
                           LapButton(
-                            onLap: ctl.lap,
+                            onLap: s.bronco ? () => _broncoLap(ctl) : ctl.lap,
                             pulse: ctl.lapPulse,
                             haptics: settings.haptics,
                             height: lapHeight,
@@ -679,6 +690,13 @@ TextStyle primaryStyle(bool compact, {bool secondary = false}) => secondary
 String phaseTitle(RecordingSnapshot s) {
   switch (s.mode) {
     case RecordMode.laps:
+      // Bronco (manual sets, founder 28-Sep): 5 taps, one per 240 m set.
+      if (s.bronco) {
+        final n = s.lapIndex + 1;
+        return n >= engine.SessionSpec.broncoSets
+            ? 'SET ${engine.SessionSpec.broncoSets} OF ${engine.SessionSpec.broncoSets}'
+            : 'SET $n OF ${engine.SessionSpec.broncoSets}';
+      }
       // Fartlek (plan §3.5): the first LAP starts surge 1; odd laps are
       // surges, even laps easy.
       if (s.fartlek) {
