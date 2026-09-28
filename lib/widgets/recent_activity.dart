@@ -95,7 +95,8 @@ class _ActivityRow extends StatelessWidget {
     final title = runHeaderTitle(run);
     final typeColor = switch (run.mode) {
       RecordMode.free => AuroraRunType.free,
-      RecordMode.laps when run.spec?.templateId == engine.SessionSpec.broncoId =>
+      RecordMode.laps
+          when run.spec?.templateId == engine.SessionSpec.broncoId =>
         AuroraRunType.tests,
       RecordMode.laps => AuroraRunType.laps,
       RecordMode.cooper => AuroraRunType.tests,
