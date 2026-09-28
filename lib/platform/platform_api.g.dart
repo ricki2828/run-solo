@@ -157,6 +157,7 @@ enum CueKind {
   minuteMark,
   countdown,
   projection,
+tenSeconds,
 }
 
 enum StepKind {
