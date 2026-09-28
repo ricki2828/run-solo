@@ -8,6 +8,7 @@ import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/screens/start_screen.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/theme/theme.dart';
+import 'package:run_solo/widgets/recent_activity.dart';
 
 import '../helpers.dart';
 
@@ -137,7 +138,10 @@ void main() {
     };
     for (final entry in expected.entries) {
       final rich = tester.widget<RichText>(
-        find.textContaining(entry.key, findRichText: true).first,
+        find.descendant(
+          of: find.byType(RecentActivity),
+          matching: find.textContaining(entry.key, findRichText: true),
+        ).first,
       );
       final span = rich.text as TextSpan;
       final title = span.children!.first as TextSpan;
