@@ -73,6 +73,12 @@ class ModeChipRow extends StatelessWidget {
       RecordMode.cooper => '12 minutes',
     },
     selected: !goal && selected == m,
+    typeColor: switch (m) {
+      RecordMode.free => AuroraRunType.free,
+      RecordMode.laps => AuroraRunType.laps,
+      RecordMode.intervals => AuroraRunType.intervals,
+      RecordMode.cooper => AuroraRunType.tests,
+    },
     glyph: m == RecordMode.intervals && session.steps.isNotEmpty
         ? session
         : null,
@@ -88,6 +94,7 @@ class ModeChipRow extends StatelessWidget {
         ModeChip(
           key: const ValueKey('goal-chip'),
           title: 'GOAL',
+          typeColor: AuroraRunType.goal,
           subtitle: goalLabel,
           selected: goal,
           onTap: onGoal!,
@@ -97,6 +104,7 @@ class ModeChipRow extends StatelessWidget {
         ModeChip(
           key: const ValueKey('tests-chip'),
           title: 'TESTS',
+          typeColor: AuroraRunType.tests,
           subtitle: testsLabel,
           selected: testsSelected,
           onTap: onTests!,
@@ -125,7 +133,7 @@ class ModeChipRow extends StatelessWidget {
   }
 }
 
-/// 96 dp mode chip; selected = 2 px Bone border (design brief §5).
+/// 96 dp mode chip; neutral selected border, labelled colour and check.
 class ModeChip extends StatelessWidget {
   const ModeChip({
     super.key,
@@ -134,12 +142,14 @@ class ModeChip extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.glyph,
+    this.typeColor,
   });
 
   /// Structure glyph under the subtitle (the INTERVALS chip, A8).
   final engine.SessionSpec? glyph;
   final String title;
   final String subtitle;
+  final Color? typeColor;
   final bool selected;
   final VoidCallback onTap;
 
@@ -170,16 +180,26 @@ class ModeChip extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  title,
-                  softWrap: false,
-                  style: RunSoloType.title28.copyWith(
-                    color: selected ? t.inkPrimary : t.inkSecondary,
+              Row(
+                children: [
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        title,
+                        softWrap: false,
+                        style: RunSoloType.title28.copyWith(
+                          color: typeColor ?? t.inkPrimary,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  if (selected) ...[
+                    const SizedBox(width: Space.x4),
+                    Icon(Icons.check, size: 18, color: typeColor ?? t.inkPrimary),
+                  ],
+                ],
               ),
               const SizedBox(height: Space.x4),
               // 13 sp at any width (founder rule): a long session name
