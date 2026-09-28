@@ -286,9 +286,7 @@ enum class CueKind(val raw: Int) {
   MINUTE_MARK(7),
   COUNTDOWN(8),
   PROJECTION(9),
-  
-TEN_SECONDS(10);
-
+  TEN_SECONDS(10);
 
   companion object {
     fun ofRaw(raw: Int): CueKind? {
