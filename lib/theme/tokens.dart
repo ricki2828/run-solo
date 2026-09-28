@@ -28,6 +28,17 @@ abstract final class NightSession {
   static const Color hrZone = Color(0xFFB48CFF);
 }
 
+/// Aurora run-type identities. These colours identify *which* run the runner
+/// picked, never whether a result was good or an HR zone was desirable.
+/// Keep selected text and its check together so colour is not the only cue.
+abstract final class AuroraRunType {
+  static const Color free = Color(0xFF7CDBFF); // ice
+  static const Color laps = Color(0xFF19E6FF); // Lap Line cyan
+  static const Color goal = Color(0xFFB48CFF); // violet
+  static const Color intervals = Color(0xFFFF6EC7); // magenta
+  static const Color tests = Color(0xFF8CFF5C); // lime
+}
+
 /// Light variant (design brief §2.2). Not the default; kept so the tokens stay paired.
 abstract final class NightSessionLight {
   static const Color bgBase = Color(0xFFF4F2EE);
