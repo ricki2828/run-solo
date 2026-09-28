@@ -229,6 +229,20 @@ void main() {
       expect(intro(), findsNothing);
     });
 
+    testWidgets('the bundled runner photo loads and paints (28-Sep)', (
+      tester,
+    ) async {
+      await pumpApp(tester, fakeServices(), intro: IntroKind.full);
+      // The photo decode is real async: let it land, then the next frame
+      // shows the RawImage layer under the scrim and the mark.
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(RawImage), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+    });
+
     testWidgets('0.6 s intro leaves at 600 ms', (tester) async {
       await pumpApp(tester, fakeServices(), intro: IntroKind.short);
       await tester.pump(const Duration(milliseconds: 500));
