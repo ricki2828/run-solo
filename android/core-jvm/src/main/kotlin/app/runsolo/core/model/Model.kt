@@ -49,7 +49,7 @@ enum class LapKind { manual, auto, pause }
 
 enum class Phase { none, warmup, work, recovery, cooldown }
 
-enum class CueKind { halfway, thirtySeconds, phaseEnd, start, stop, distanceToGo, lastRep, minuteMark, countdown, projection }
+enum class CueKind { halfway, thirtySeconds, phaseEnd, start, stop, distanceToGo, lastRep, minuteMark, countdown, projection, tenSeconds }
 
 enum class RecorderState { idle, recording, paused, finalising }
 
