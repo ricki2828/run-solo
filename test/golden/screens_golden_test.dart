@@ -586,16 +586,16 @@ void main() {
     });
   }
 
-  testWidgets('start: the test chip and its pre-test sheet', (tester) async {
+  testWidgets('start: TESTS run type picked, bronco instructions inline', (
+    tester,
+  ) async {
     await pumpApp(tester, fakeServices(), pushRoute: Routes.start);
     await pumpTimes(tester, 4);
-    // TESTS sits at the end of the Start scroll (lead 26-Sep).
-    await scrollTo(tester, find.byKey(const ValueKey('test-chip')));
-    await tester.ensureVisible(find.byKey(const ValueKey('test-chip')));
-    await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('test-chip')));
+    await tester.tap(find.byKey(const ValueKey('tests-chip')));
     await settleAnimations(tester);
-    await golden(tester, 'start_test_sheet');
+    await tester.tap(find.byKey(const ValueKey('pick-bronco')));
+    await settleAnimations(tester);
+    await golden(tester, 'start_tests_mode');
   });
 
   testWidgets('run detail: map failed to load, no Play services', (
