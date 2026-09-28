@@ -10,6 +10,7 @@ import 'package:run_solo/theme/zones.dart';
 import 'package:run_solo/widgets/delta_glyph.dart';
 import 'package:run_solo/widgets/lap_button.dart';
 import 'package:run_solo/widgets/pace_dial.dart';
+import 'package:run_solo/widgets/zone_gauge.dart';
 
 import '../helpers.dart';
 
@@ -142,7 +143,7 @@ void main() {
     expect(find.byKey(const ValueKey('zone-label')), findsNothing);
   });
 
-  testWidgets('(d) reduced motion: zone crossfade is 160 ms', (tester) async {
+  testWidgets('(d) reduced motion: zone changes are immediate', (tester) async {
     await open(
       tester,
       mode: RecordMode.free,
@@ -152,16 +153,49 @@ void main() {
     final c = tester.widget<AnimatedContainer>(
       find.byKey(const ValueKey('zone-background')),
     );
-    expect(c.duration, const Duration(milliseconds: 160));
+    expect(c.duration, Duration.zero);
   });
 
-  testWidgets('default zone crossfade is 600 ms', (tester) async {
+  testWidgets('default zone crossfade is 400 ms', (tester) async {
     await open(tester, mode: RecordMode.free, hr: 140);
     final c = tester.widget<AnimatedContainer>(
       find.byKey(const ValueKey('zone-background')),
     );
-    expect(c.duration, const Duration(milliseconds: 600));
+    expect(c.duration, const Duration(milliseconds: 400));
   });
+
+  testWidgets(
+    'HR loss shows reconnecting during five-second dwell, then neutral',
+    (tester) async {
+      final (fake, services) = await open(
+        tester,
+        mode: RecordMode.free,
+        hr: 140,
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(background(tester), HrZones.background(3));
+      // Null scriptedHr resumes generated HR; the dropout switch sends
+      // null readings while the strap remains paired.
+      fake.strapDropped = true;
+      fake.advance(const Duration(milliseconds: 500));
+      await pumpTimes(tester, 3);
+      expect(services.recording.snapshot.zone, 3);
+      expect(find.text('RECONNECTING'), findsOneWidget);
+      expect(find.text('reconnecting'), findsOneWidget);
+      expect(find.text('--'), findsOneWidget);
+      expect(tester.widget<ZoneGauge>(find.byType(ZoneGauge)).zone, 3);
+      expect(background(tester), HrZones.background(3));
+      for (var i = 0; i < 12; i++) {
+        fake.advance(const Duration(milliseconds: 500));
+        await tester.pump();
+      }
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(services.recording.snapshot.zone, 0);
+      expect(tester.widget<ZoneGauge>(find.byType(ZoneGauge)).zone, 0);
+      expect(background(tester), HrZones.background(0));
+      expect(find.text('RECONNECTING'), findsOneWidget);
+    },
+  );
 
   testWidgets('(f) recreated screen paints the last zone on its first frame', (
     tester,
