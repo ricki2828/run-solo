@@ -111,6 +111,29 @@ engine.RunFile lapsRunFile({
     )
     .run;
 
+/// Bronco (manual sets, founder 28-Sep): a Laps run carrying the bronco
+/// session, 5 manual taps - one per 240 m set, each a touch quicker.
+engine.RunFile broncoRunFile({required int n, required DateTime start}) =>
+    generator
+        .generate(
+          synth.SyntheticSpec(
+            name: 'fixture_bronco_$n',
+            id: runId(n),
+            mode: engine.RunMode.laps,
+            session: engine.SessionSpec.bronco,
+            lapStyle: synth.LapStyle.manual,
+            start: start,
+            segments: [
+              synth.Segment.free(295, speedFor(295)),
+              synth.Segment.free(290, speedFor(290)),
+              synth.Segment.free(288, speedFor(288)),
+              synth.Segment.free(285, speedFor(285)),
+              synth.Segment.free(282, speedFor(282)),
+            ],
+          ),
+        )
+        .run;
+
 /// Event run ids differ in their first 8 hex digits, as real uuids do: a
 /// new course takes its id from them (`ParkrunCourses.newCourseId`).
 String eventRunId(int n) =>

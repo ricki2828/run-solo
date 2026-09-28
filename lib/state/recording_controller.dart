@@ -200,6 +200,10 @@ class RecordingSnapshot {
   /// Fartlek is a Laps run carrying the fartlek session (plan §3.5).
   bool get fartlek => spec?.templateId == 'fartlek';
 
+  /// The Bronco test (manual sets, founder 28-Sep): a Laps run carrying
+  /// the bronco session; the runner's LAP taps end its 5 sets.
+  bool get bronco => spec?.templateId == 'bronco';
+
   /// Timed interval phases (warm-up, reps, recoveries, cool-down).
   bool get isPreset => mode == RecordMode.intervals && spec != null;
 

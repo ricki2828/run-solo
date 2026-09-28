@@ -65,6 +65,8 @@ String runLabel(RunSummary r) => switch (r.mode) {
   RecordMode.intervals when _isFourByFour(r) => '4x4',
   RecordMode.laps when r.spec?.templateId == engine.SessionSpec.fartlekId =>
     'FRT',
+  RecordMode.laps when r.spec?.templateId == engine.SessionSpec.broncoId =>
+    'BRN',
   _ => modeLabel(r.mode),
 };
 

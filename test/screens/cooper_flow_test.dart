@@ -36,14 +36,9 @@ void main() {
     final services = fakeServices(recorder: fake);
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
-    // TESTS sits at the end of the Start scroll (lead 26-Sep).
-    await scrollTo(tester, find.byKey(const ValueKey('test-chip')));
-    await tester.ensureVisible(find.byKey(const ValueKey('test-chip')));
-    await tester.pump();
-    expect(find.text('TESTS'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('test-chip')));
+    // TESTS is a run type in the mode row (founder 28-Sep).
+    await tester.tap(find.byKey(const ValueKey('tests-chip')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('test-sheet')), findsOneWidget);
     expect(
       find.text(
         'Healthy and used to hard running? If unsure, check with a doctor.',
@@ -53,7 +48,7 @@ void main() {
     expect(find.text('Estimate. Not a medical measurement.'), findsOneWidget);
     expect(fake.startCalls, isEmpty, reason: 'the chip alone never starts');
 
-    await tester.tap(find.byKey(const ValueKey('test-go')));
+    await tester.tap(find.text('START TEST'));
     await pumpTimes(tester, 6);
     await tester.pump(const Duration(milliseconds: 400));
     expect(fake.startCalls.single.mode, RecordMode.cooper);

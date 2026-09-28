@@ -7,11 +7,12 @@ import '../theme/theme.dart';
 import 'structure_glyph.dart';
 
 /// The run types at Start and Home, in the founder's order (26-Sep, plan
-/// §G): FREE · LAPS · GOAL · INTERVALS. INTERVALS shows the last-used
-/// session and its glyph (A8); GOAL shows the picked goal. Four across only
-/// from [rowMinWidth]; narrower it is a 2 × 2 grid, so no chip text drops
-/// below 13 sp (founder readability rule). Cooper (12-minute test) sits
-/// under the "Tests" eyebrow (A5).
+/// §G): FREE · LAPS · GOAL · INTERVALS, then TESTS as a run type alongside
+/// them (founder 28-Sep: tests are their own run type, not an eyebrow at
+/// the bottom). INTERVALS shows the last-used session and its glyph (A8);
+/// GOAL shows the picked goal. Four across only from [rowMinWidth];
+/// narrower it wraps into rows of two, so no chip text drops below 13 sp
+/// (founder readability rule).
 class ModeChipRow extends StatelessWidget {
   const ModeChipRow({
     super.key,
@@ -21,6 +22,9 @@ class ModeChipRow extends StatelessWidget {
     this.goal = false,
     this.goalLabel = 'Distance or time',
     this.onGoal,
+    this.onTests,
+    this.testsSelected = false,
+    this.testsLabel = 'Cooper · Bronco',
   });
   final RecordMode selected;
   final ValueChanged<RecordMode> onSelect;
@@ -36,6 +40,15 @@ class ModeChipRow extends StatelessWidget {
 
   /// Picks GOAL; null hides its chip.
   final VoidCallback? onGoal;
+
+  /// Picks TESTS; null hides its chip (Home keeps the four run types).
+  final VoidCallback? onTests;
+
+  /// TESTS is the picked chip (Start, when a test mode is showing).
+  final bool testsSelected;
+
+  /// The picked test, under the TESTS title.
+  final String testsLabel;
 
   /// Below this width the four chips wrap into two rows.
   static const double rowMinWidth = 480;
@@ -80,6 +93,14 @@ class ModeChipRow extends StatelessWidget {
           onTap: onGoal!,
         ),
       _mode(RecordMode.intervals),
+      if (onTests != null)
+        ModeChip(
+          key: const ValueKey('tests-chip'),
+          title: 'TESTS',
+          subtitle: testsLabel,
+          selected: testsSelected,
+          onTap: onTests!,
+        ),
     ];
     return LayoutBuilder(
       builder: (context, c) {
