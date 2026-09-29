@@ -164,7 +164,9 @@ void main() {
     }
   });
 
-  testWidgets('saved strap stays off Home; Intervals opens selected setup', (tester) async {
+  testWidgets('saved strap stays off Home; Intervals opens selected setup', (
+    tester,
+  ) async {
     final services = fakeServices(
       settings: const AppSettings(
         onboardingDone: true,
