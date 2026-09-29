@@ -120,34 +120,38 @@ abstract final class IdentityScores {
           if (input.mode == RunMode.cooper ||
               input.mode == RunMode.intervals &&
                   !ComparisonKey.isParkrun(input.comparisonKey ?? '') &&
-                  !ComparisonKey.isGoal(input.comparisonKey ?? ''))
+                  !ComparisonKey.isGoal(input.comparisonKey ?? '')) {
             continue;
+          }
           for (final d in [BestEffortDistance.k5, BestEffortDistance.k10]) {
-            if (efforts.efforts[d] case final e?)
+            if (efforts.efforts[d] case final e?) {
               add(
                 d.metres,
                 e.elapsedMs,
                 d == BestEffortDistance.k5 ? '5K' : '10K',
                 d.key,
               );
+            }
           }
         } else {
           if (input.mode != RunMode.free &&
               input.mode != RunMode.laps &&
               !(input.mode == RunMode.intervals &&
-                  ComparisonKey.isGoal(input.comparisonKey ?? '')))
+                  ComparisonKey.isGoal(input.comparisonKey ?? ''))) {
             continue;
+          }
           for (final d in [
             BestEffortDistance.half,
             BestEffortDistance.marathon,
           ]) {
-            if (efforts.efforts[d] case final e?)
+            if (efforts.efforts[d] case final e?) {
               add(
                 d.metres,
                 e.elapsedMs,
                 d == BestEffortDistance.half ? 'Half marathon' : 'Marathon',
                 d.key,
               );
+            }
           }
           if ((input.mode == RunMode.free || input.mode == RunMode.laps) &&
               (efforts.wholeRunM ?? 0) >= 15000 &&
