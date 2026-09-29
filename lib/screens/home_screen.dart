@@ -39,7 +39,13 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   Future<List<RunSummary>>? _runs;
   Future<engine.HomeEstimates?>? _estimates;
-  Future<({engine.FitnessHero? hero, Map<engine.IdentityLane, engine.IdentityScore> scores})>? _scores;
+  Future<
+    ({
+      engine.FitnessHero? hero,
+      Map<engine.IdentityLane, engine.IdentityScore> scores,
+    })
+  >?
+  _scores;
   PermissionSnapshot? _perms;
   HistoryStore? _history;
 
@@ -83,10 +89,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _estimates = live.prepare().then(
         (_) => live.homeEstimates(includeEvent: _hasEventCourse(live)),
       );
-      _scores = live.prepare().then((_) => (
-        hero: live.fitnessHero(),
-        scores: live.identityScores(),
-      ));
+      _scores = live.prepare().then(
+        (_) => (hero: live.fitnessHero(), scores: live.identityScores()),
+      );
     }
   }
 
@@ -207,15 +212,18 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
-                  FutureBuilder<({engine.FitnessHero? hero, Map<engine.IdentityLane, engine.IdentityScore> scores})>(
+                  FutureBuilder<
+                    ({
+                      engine.FitnessHero? hero,
+                      Map<engine.IdentityLane, engine.IdentityScore> scores,
+                    })
+                  >(
                     future: _scores,
                     builder: (context, snap) => IdentityScoreCards(
                       scores: snap.data?.scores ?? const {},
                       hero: snap.data?.hero,
-                      onOpen: (score) => Navigator.of(context).pushNamed(
-                        Routes.runDetail,
-                        arguments: score.runId,
-                      ),
+                      onOpen: (score) => Navigator.of(context)
+                          .pushNamed(Routes.runDetail, arguments: score.runId),
                     ),
                   ),
                   const SizedBox(height: Space.x24),
