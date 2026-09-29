@@ -113,6 +113,7 @@ class _LaneAnalysis extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final s = score;
+    final age = this.age;
     final String contextLine;
     if (s == null) {
       contextLine = switch (lane) {

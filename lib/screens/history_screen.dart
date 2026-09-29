@@ -44,11 +44,28 @@ class _HistoryScreenState extends State<HistoryScreen> {
   HistoryFilter _filter = HistoryFilter.all;
   int _view = 0;
   Future<List<RunSummary>>? _runs;
+  RunStore? _history;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _runs ??= _timedFirstList(AppServices.of(context).history.list());
+    final history = AppServices.of(context).history;
+    if (_history != history) {
+      _history?.derivedChanged.removeListener(_refresh);
+      _history = history..derivedChanged.addListener(_refresh);
+      _runs = _timedFirstList(history.list());
+    }
+  }
+
+  void _refresh() {
+    if (!mounted) return;
+    setState(() => _runs = AppServices.of(context).history.list());
+  }
+
+  @override
+  void dispose() {
+    _history?.derivedChanged.removeListener(_refresh);
+    super.dispose();
   }
 
   @override
