@@ -218,6 +218,16 @@ class LiveContextSource {
       ? null
       : engine.FitnessHero.of(_cached, now: now(), names: names);
 
+  /// Four identity lanes from the same prepared index as the VO2 hero.
+  Map<engine.IdentityLane, engine.IdentityScore> identityScores() =>
+      _cachedVersion == null
+      ? const {}
+      : engine.IdentityScores.of(
+          _cached,
+          now: now(),
+          hero: fitnessHero(),
+        );
+
   engine.HomeEstimates? homeEstimates({bool includeEvent = false}) =>
       _cachedVersion == null
       ? null
