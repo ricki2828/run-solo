@@ -21,6 +21,11 @@ void main() {
 
     expect(find.text('NO BASELINE YET'), findsOneWidget);
     expect(find.text('Your first session sets it.'), findsOneWidget);
+    expect(find.text('YOUR SCORES'), findsOneWidget);
+    for (final card in ['AEROBIC', 'SPEED', 'MID', 'LONG']) {
+      expect(find.text(card), findsOneWidget);
+    }
+    expect(find.text('Log a 15K+ run to unlock LONG'), findsOneWidget);
     expect(find.text('RECENT ACTIVITY'), findsOneWidget);
     expect(find.textContaining('Sessions of any kind'), findsOneWidget);
     expect(find.text('No strap, tap to pair'), findsOneWidget);
