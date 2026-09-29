@@ -521,8 +521,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
           final bronco = _pickedTest == 'bronco';
           final has = bronco
               ? runs.any(
-                  (r) =>
-                      r.spec?.templateId == engine.SessionSpec.broncoId,
+                  (r) => r.spec?.templateId == engine.SessionSpec.broncoId,
                 )
               : runs.any((r) => r.mode == RecordMode.cooper);
           spec = has
