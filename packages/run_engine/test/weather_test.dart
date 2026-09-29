@@ -60,6 +60,39 @@ void main() {
       expect(hot.distance(2800), isNull);
     });
 
+    test('distance ramp is bounded, monotone and flat at 3/9 km', () {
+      expect(HeatModel.distanceRamp(0), 0);
+      expect(HeatModel.distanceRamp(3000), 0);
+      expect(HeatModel.distanceRamp(6000), closeTo(0.5, 1e-12));
+      expect(HeatModel.distanceRamp(9000), 1);
+      expect(HeatModel.distanceRamp(21000), 1);
+      var previous = 0.0;
+      for (var d = 0.0; d <= 21000; d += 50) {
+        final r = HeatModel.distanceRamp(d);
+        expect(r, inInclusiveRange(0, 1));
+        expect(r, greaterThanOrEqualTo(previous));
+        previous = r;
+      }
+    });
+
+    test('local twin changes by distance; whole-run anchor is unchanged', () {
+      final h = HeatModel.of(tempC: 28, dewPointC: 21);
+      final f = h.fraction!;
+      expect(h.paceAtDistance(300, 1500), 300);
+      expect(h.paceAtDistance(300, 6000), closeTo(300 * (1 - f / 2), 1e-9));
+      expect(h.paceAtDistance(300, 10000), closeTo(300 * (1 - f), 1e-9));
+      expect(h.pace(300), closeTo(300 * (1 - f), 1e-9));
+      expect(h.duration(3000), closeTo(3000 * (1 - f), 1e-9));
+      expect(
+        HeatModel.of(tempC: 38, dewPointC: 28).paceAtDistance(300, 10000),
+        isNull,
+      );
+      expect(
+        HeatModel.of(tempC: -5, dewPointC: -10).paceAtDistance(300, 10000),
+        300,
+      );
+    });
+
     test('dew point from relative humidity (Magnus)', () {
       expect(HeatModel.dewPointFromRh(28, 65), closeTo(20.9, 0.3));
       expect(HeatModel.dewPointFromRh(20, 100), closeTo(20, 0.05));

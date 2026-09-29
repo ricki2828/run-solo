@@ -176,8 +176,11 @@ class RunDetailBody extends StatelessWidget {
               ],
             ),
           RecordMode.laps => _LapsTable(view: a.laps, units: units),
-          RecordMode.free ||
-          RecordMode.cooper => _Splits(free: free, units: units),
+          RecordMode.free || RecordMode.cooper => _Splits(
+            free: free,
+            units: units,
+            heat: d.summary.mode == RecordMode.cooper ? null : a.heat,
+          ),
         },
         if (d.run.hasHr) ...[
           const SizedBox(height: Space.x24),
@@ -550,7 +553,18 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
                   ? '--'
                   : '${(r.zoneSeconds! / (r.trimmedSeconds == 0 ? 1 : r.trimmedSeconds) * 100).clamp(0, 100).round()}%',
             ],
-            note: !r.clean
+            note: r.clean && a.heat?.adjusts == true
+                ? () {
+                    final twin = a.heat!.paceAtDistance(
+                      r.paceSecPerKm!,
+                      (r.lap.d0M + r.lap.d1M) / 2,
+                    );
+                    return twin == null
+                        ? null
+                        : 'Cool-day estimate: '
+                              '${repTime ? Fmt.clock((twin * m.nominalRepMetres!).round()) : Fmt.pace(twin, units)}';
+                  }()
+                : !r.clean
                 ? (r.dropped
                       ? 'dropped'
                       : switch (r.interruptReason) {
@@ -730,9 +744,10 @@ class _LapsTable extends StatelessWidget {
 }
 
 class _Splits extends StatelessWidget {
-  const _Splits({required this.free, required this.units});
+  const _Splits({required this.free, required this.units, this.heat});
   final engine.FreeRunSummary free;
   final Units units;
+  final engine.HeatAdjustment? heat;
 
   @override
   Widget build(BuildContext context) {
@@ -764,13 +779,30 @@ class _Splits extends StatelessWidget {
             style: RunSoloType.body15.copyWith(color: t.inkSecondary),
           )
         else ...[
-          _TableHeader(cells: [unit.toUpperCase(), 'Pace', '', '']),
+          _TableHeader(
+            cells: [
+              unit.toUpperCase(),
+              'Pace',
+              heat?.adjusts == true ? 'Cool-day est.' : '',
+              '',
+            ],
+          ),
           for (var i = 0; i < free.splitsSecPerUnit.length; i++)
             _TableRow(
               cells: [
                 '${i + 1}',
                 Fmt.pace(free.splitsSecPerUnit[i], units),
-                '',
+                heat?.adjusts == true
+                    ? Fmt.pace(
+                        heat!.paceAtDistance(
+                          free.splitsSecPerUnit[i] *
+                              1000 /
+                              (units == Units.mi ? 1609.344 : 1000),
+                          (i + 0.5) * (units == Units.mi ? 1609.344 : 1000),
+                        ),
+                        units,
+                      )
+                    : '',
                 '',
               ],
             ),

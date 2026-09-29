@@ -58,6 +58,16 @@ abstract final class HeatModel {
     (180, 0.10),
   ];
 
+  /// The *display-only* heat share at a distance within a run. The Hadley
+  /// fraction remains the whole-run anchor for stored times, boards and
+  /// predictions. Early distance has little heat accumulation; the full
+  /// fraction applies from 9 km. Smoothstep avoids a corner at either end.
+  /// This is not the fixed-time Cooper adjustment (which uses Mantzios).
+  static double distanceRamp(double metres) {
+    final t = ((metres - 3000) / 6000).clamp(0.0, 1.0);
+    return t * t * (3 - 2 * t);
+  }
+
   static double cToF(double c) => c * 9 / 5 + 32;
 
   /// Slowdown fraction for a temperature + dew point sum in °F; null above
@@ -122,6 +132,14 @@ class HeatAdjustment {
       fraction == null ? null : secPerKm * (1 - fraction!);
   double? duration(double seconds) =>
       fraction == null ? null : seconds * (1 - fraction!);
+
+  /// A local split/rep pace at its distance midpoint. Only use for
+  /// per-segment display: averaging these values does NOT replace [pace],
+  /// which keeps historic whole-run comparisons exactly as stored.
+  double? paceAtDistance(double secPerKm, double midpointMetres) =>
+      fraction == null
+      ? null
+      : secPerKm * (1 - fraction! * HeatModel.distanceRamp(midpointMetres));
 
   /// A fixed-time score (Cooper 12 minutes): the distance cool conditions
   /// would have given, `distance / (1 − adj)`, which then feeds the score's
