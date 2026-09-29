@@ -97,7 +97,7 @@ class _ScoreCard extends StatelessWidget {
           lane == engine.IdentityLane.speed) {
         estimate = engine.FriendFitnessNorms.comparison(
           s.vdot,
-          age,
+          age!,
           female: female,
         );
       } else {
