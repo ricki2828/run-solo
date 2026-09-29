@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
+import '../app/identity_display.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
 
@@ -94,13 +95,11 @@ class _ScoreCard extends StatelessWidget {
       final female = profileSex == ProfileSex.female;
       if (lane == engine.IdentityLane.aerobic ||
           lane == engine.IdentityLane.speed) {
-        if (age != null) {
-          estimate = engine.FriendFitnessNorms.comparison(
-            s.vdot,
-            age!,
-            female: female,
-          );
-        }
+        estimate = engine.FriendFitnessNorms.comparison(
+          s.vdot,
+          age,
+          female: female,
+        );
       } else {
         estimate = engine.RacePercentileNorms.comparison(
           s.vdot,
@@ -111,6 +110,9 @@ class _ScoreCard extends StatelessWidget {
       }
     }
 
+    final number = IdentityDisplay.percentileNumber(estimate);
+    final time = s == null ? null : IdentityDisplay.equivalentTime(s);
+    final timeLabel = IdentityDisplay.equivalentLabel(lane);
     final color = !active
         ? t.inkMuted
         : switch (lane) {
@@ -127,13 +129,13 @@ class _ScoreCard extends StatelessWidget {
       engine.IdentityLane.aerobic => 'Your first session sets it.',
       engine.IdentityLane.speed =>
         'Log a clean interval session to unlock SPEED',
-      engine.IdentityLane.mid => 'Log a 5K+ effort to unlock MID',
+      engine.IdentityLane.mid => 'Log a clean continuous 5K to unlock MID',
       engine.IdentityLane.long => 'Log a 15K+ run to unlock LONG',
     };
     return Semantics(
       button: active && onTap != null,
       label: active
-          ? '$label estimated ${estimate ?? 'unavailable'} percentile, ${score!.source}'
+          ? '$label percentile ${number ?? 'unavailable'}, ${score!.source}'
           : '$label locked. $unlock',
       child: InkWell(
         onTap: onTap,
@@ -172,24 +174,35 @@ class _ScoreCard extends StatelessWidget {
                   ),
               ] else ...[
                 Text(
-                  estimate ?? '—',
+                  number ?? '—',
                   maxLines: 1,
                   style: RunSoloType.display64.copyWith(
-                    fontSize: estimate != null && estimate.length > 8 ? 24 : 32,
+                    fontSize: 40,
                     color: color,
                   ),
                 ),
                 Text(
-                  estimate == null
-                      ? 'SET PROFILE FOR ESTIMATE'
-                      : 'ESTIMATED PERCENTILE',
+                  number == null ? 'SET PROFILE FOR PERCENTILE' : 'PERCENTILE',
                   style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
-                if (hero != null)
+                if (hero != null) ...[
+                  const SizedBox(height: Space.x8),
                   Text(
-                    'VO2 max ${hero!.vo2.toStringAsFixed(1)} ml/kg',
+                    'VO2 MAX ${hero!.vo2.toStringAsFixed(1)}',
+                    style: RunSoloType.heading19.copyWith(color: color),
+                  ),
+                  Text(
+                    'ml/kg/min',
                     style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                   ),
+                ],
+                if (time != null && timeLabel != null) ...[
+                  const SizedBox(height: Space.x8),
+                  Text(
+                    '$timeLabel $time',
+                    style: RunSoloType.label13.copyWith(color: t.inkPrimary),
+                  ),
+                ],
                 Text(
                   '${score!.source} · ${Fmt.dayDate(score!.date)} ›',
                   maxLines: 1,

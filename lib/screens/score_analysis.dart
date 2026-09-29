@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
+import '../app/identity_display.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../state/settings.dart';
@@ -59,7 +60,7 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
             ),
             children: [
               Text(
-                'ESTIMATED PERCENTILES',
+                'PERCENTILES',
                 style: RunSoloType.heading19.copyWith(color: t.inkPrimary),
               ),
               const SizedBox(height: Space.x8),
@@ -126,14 +127,15 @@ class _LaneAnalysis extends StatelessWidget {
       contextLine = switch (lane) {
         engine.IdentityLane.aerobic => 'Your first eligible session sets it.',
         engine.IdentityLane.speed => 'Log a clean interval session to unlock.',
-        engine.IdentityLane.mid => 'Log a 5K or 10K effort to unlock.',
+        engine.IdentityLane.mid =>
+          'Log a clean continuous 5K or 10K effort to unlock.',
         engine.IdentityLane.long => 'Log a 15K+ run to unlock.',
       };
     } else if (profileSex != ProfileSex.male &&
         profileSex != ProfileSex.female) {
       contextLine = 'Set male or female in Settings to use these published reference tables.';
     } else if (age == null) {
-      contextLine = 'Add your birth year in Settings to show an estimate.';
+      contextLine = 'Add your birth year in Settings to show a percentile.';
     } else if ((lane == engine.IdentityLane.aerobic ||
             lane == engine.IdentityLane.speed) &&
         (age < 20 || age > 89)) {
@@ -148,7 +150,7 @@ class _LaneAnalysis extends StatelessWidget {
           female: female,
         );
         contextLine =
-            'Estimated vs ${female ? 'women' : 'men'} '
+            'Compared with ${female ? 'women' : 'men'} '
             '${age ~/ 10 * 10}-${age ~/ 10 * 10 + 9} (FRIEND lab VO2peak).';
       } else {
         estimate = engine.RacePercentileNorms.comparison(
@@ -162,10 +164,16 @@ class _LaneAnalysis extends StatelessWidget {
           s.source,
         );
         contextLine =
-            'Estimated $distance equivalent vs ${female ? 'women' : 'men'} '
-            'race finishers (RunRepeat, all ages). Not an age percentile or race result.';
+            'Percentile: $distance equivalent vs ${female ? 'women' : 'men'} '
+            'race finishers (RunRepeat, all ages). The estimated time shown '
+            'here is ${lane == engine.IdentityLane.mid ? '5K' : 'half marathon'}; '
+            'it can differ from the $distance used for the comparison. '
+            'Not an age percentile or race result.';
       }
     }
+    final number = IdentityDisplay.percentileNumber(estimate);
+    final time = s == null ? null : IdentityDisplay.equivalentTime(s);
+    final timeLabel = IdentityDisplay.equivalentLabel(lane);
     return Container(
       key: ValueKey('analysis-${lane.name}'),
       padding: const EdgeInsets.all(Space.x16),
@@ -186,8 +194,8 @@ class _LaneAnalysis extends StatelessWidget {
             s == null
                 ? 'LOCKED'
                 : estimate == null
-                ? 'NO ESTIMATE'
-                : '$estimate percentile',
+                ? 'NO PERCENTILE'
+                : '$number percentile',
             style: RunSoloType.heading19.copyWith(color: t.inkPrimary),
           ),
           const SizedBox(height: Space.x8),
@@ -197,6 +205,21 @@ class _LaneAnalysis extends StatelessWidget {
               style: RunSoloType.body15.copyWith(color: t.inkPrimary),
             ),
           ],
+          if (time != null && timeLabel != null)
+            Text(
+              '$timeLabel $time',
+              style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+            ),
+          if (estimate?.startsWith('above') ?? false)
+            Text(
+              '90 is the published upper bound; the comparison may be higher.',
+              style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+            ),
+          if (estimate?.startsWith('below') ?? false)
+            Text(
+              '10 is the published lower bound; the comparison may be lower.',
+              style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+            ),
           Text(
             contextLine,
             style: RunSoloType.body15.copyWith(color: t.inkSecondary),
