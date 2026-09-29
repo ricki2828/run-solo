@@ -222,11 +222,7 @@ class LiveContextSource {
   Map<engine.IdentityLane, engine.IdentityScore> identityScores() =>
       _cachedVersion == null
       ? const {}
-      : engine.IdentityScores.of(
-          _cached,
-          now: now(),
-          hero: fitnessHero(),
-        );
+      : engine.IdentityScores.of(_cached, now: now(), hero: fitnessHero());
 
   engine.HomeEstimates? homeEstimates({bool includeEvent = false}) =>
       _cachedVersion == null
