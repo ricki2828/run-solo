@@ -136,7 +136,7 @@ class _LaneAnalysis extends StatelessWidget {
       contextLine = 'Add your birth year in Settings to show an estimate.';
     } else if ((lane == engine.IdentityLane.aerobic ||
             lane == engine.IdentityLane.speed) &&
-        (age! < 20 || age > 89)) {
+        (age < 20 || age > 89)) {
       contextLine = 'FRIEND age-group comparison covers ages 20-89.';
     } else {
       final female = profileSex == ProfileSex.female;
@@ -144,7 +144,7 @@ class _LaneAnalysis extends StatelessWidget {
           lane == engine.IdentityLane.speed) {
         estimate = engine.FriendFitnessNorms.comparison(
           s.vdot,
-          age!,
+          age,
           female: female,
         );
         contextLine =

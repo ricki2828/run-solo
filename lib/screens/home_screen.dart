@@ -224,7 +224,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       profileSex: settings.profileSex,
                       age: settings.birthYear == null
                           ? null
-                          : _now().year - settings.birthYear!,
+                          : _now.year - settings.birthYear!,
                       onOpen: (score) => Navigator.of(context)
                           .pushNamed(Routes.runDetail, arguments: score.runId),
                     ),
