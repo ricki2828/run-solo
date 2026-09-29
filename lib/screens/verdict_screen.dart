@@ -115,6 +115,14 @@ class _VerdictScreenState extends State<VerdictScreen> {
           );
         }
         return switch (detail.summary.mode) {
+          // A GOAL run has its own result, no verdict (29-Sep field test:
+          // the first 8K landed here and showed a giant NO VERDICT).
+          RecordMode.intervals when detail.summary.spec?.isGoal == true =>
+            _GoalResultScreen(
+              detail: detail,
+              all: all,
+              justFinished: widget.justFinished,
+            ),
           RecordMode.intervals => _FourByFourVerdict(
             detail: detail,
             previous: previous,
@@ -489,6 +497,184 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
           // 2 % static grain, verdict screen only.
           const IgnorePointer(child: _Grain()),
         ],
+      ),
+    );
+  }
+}
+
+/// A GOAL run's post-run screen (founder 8K field test 29-Sep): the goal's
+/// own result leads - finish time for a distance goal, distance covered
+/// for a time goal - then what the run gathered (pace, total, distance,
+/// heat) and, on the first run of a goal, the path to the board: the
+/// second run of the same goal starts the ranking. No verdict word.
+class _GoalResultScreen extends StatelessWidget {
+  const _GoalResultScreen({
+    required this.detail,
+    required this.all,
+    required this.justFinished,
+  });
+  final RunDetail detail;
+  final List<RunSummary> all;
+  final bool justFinished;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final services = AppServices.of(context);
+    final units = services.settings.settings.units;
+    final d = detail;
+    final g = d.analysis.goal;
+    final name = g?.name ?? d.summary.spec?.name ?? 'Goal';
+
+    // The big figure: the goal's own result.
+    final String figure;
+    final String figureLabel;
+    if (g == null) {
+      figure = Fmt.clock(d.summary.durationMs);
+      figureLabel = 'TIME';
+    } else if (!g.reached) {
+      figure = Fmt.distance(g.stoppedAtM, units);
+      figureLabel = 'COVERED OF ${name.toUpperCase()}';
+    } else if (g.kind == engine.GoalKind.distance) {
+      figure = Fmt.clock(g.goalMs!);
+      figureLabel = name.toUpperCase();
+    } else {
+      figure = Fmt.distance(g.goalDistanceM!, units);
+      figureLabel = name.toUpperCase();
+    }
+
+    // What the run gathered.
+    final lines = <String>[];
+    if (g != null) {
+      lines.add(g.resultLine);
+      if (g.interrupted) lines.add(engine.GoalResult.interruptedNote);
+      double? paceSecPerKm;
+      if (g.reached &&
+          g.kind == engine.GoalKind.distance &&
+          g.goalMs != null &&
+          g.target > 0) {
+        paceSecPerKm = g.goalMs! / 1000 / (g.target / 1000);
+      } else if (g.reached &&
+          g.kind == engine.GoalKind.time &&
+          (g.goalDistanceM ?? 0) > 0) {
+        paceSecPerKm = g.target / (g.goalDistanceM! / 1000);
+      }
+      if (paceSecPerKm != null) {
+        lines.add('Average pace ${Fmt.paceUnit(paceSecPerKm, units)}.');
+      }
+    }
+    lines.add(
+      'Total ${Fmt.clock(d.summary.durationMs)} · '
+      '${Fmt.distance(d.summary.distanceM, units)}.',
+    );
+    if (d.analysis.heatLine != null) lines.add(d.analysis.heatLine!);
+
+    // The unlock path: the second run of the same goal opens the board.
+    final key = d.summary.comparisonKey ?? d.summary.spec?.comparisonKey;
+    final sameGoal = all
+        .where(
+          (r) =>
+              key != null && (r.comparisonKey ?? r.spec?.comparisonKey) == key,
+        )
+        .length;
+    final firstOfGoal = sameGoal <= 1;
+
+    return Scaffold(
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
+          children: [
+            const SizedBox(height: Space.x16),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'GOAL · ${name.toUpperCase()} · ${Fmt.dayDate(d.run.start)} · ${Fmt.clock(d.summary.durationMs)}',
+                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                  ),
+                ),
+                if (!justFinished)
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Close',
+                    iconSize: 24,
+                    constraints: const BoxConstraints(
+                      minWidth: 56,
+                      minHeight: 56,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: Space.x32),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                figure,
+                key: const ValueKey('goal-result-figure'),
+                softWrap: false,
+                style: RunSoloType.display96.copyWith(color: t.inkPrimary),
+              ),
+            ),
+            Text(
+              g != null && !g.reached
+                  ? '$figureLabel - NOT REACHED'
+                  : figureLabel,
+              style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+            ),
+            const SizedBox(height: Space.x24),
+            for (final l in lines)
+              Padding(
+                padding: const EdgeInsets.only(bottom: Space.x4),
+                child: Text(
+                  l,
+                  style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+                ),
+              ),
+            if (firstOfGoal) ...[
+              const SizedBox(height: Space.x8),
+              Text(
+                'First $name on the books. Run it again and your $name '
+                'board opens - every run from there gets ranked against '
+                'your best.',
+                style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+              ),
+            ],
+            const SizedBox(height: Space.x24),
+            BoardChips(
+              runId: d.run.id,
+              justFinished: justFinished,
+              onTapBoard: (k) => openBoardDetail(context, k),
+            ),
+            const SizedBox(height: Space.x24),
+            Row(
+              children: [
+                Expanded(
+                  child: _SecondaryButton(
+                    label: 'DETAILS',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => RunDetailScreen(runId: d.run.id),
+                      ),
+                    ),
+                  ),
+                ),
+                if (justFinished) ...[
+                  const SizedBox(width: Space.x12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('DONE'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: Space.x24),
+            CoachingSection(runId: d.run.id),
+          ],
+        ),
       ),
     );
   }
