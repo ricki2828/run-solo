@@ -755,6 +755,57 @@ class FileRunStore implements RunStore {
   final SidecarWriter sidecars;
   final _Analyser _analyser;
 
+  // A newly saved run must not be frozen by Home or History while its
+  // post-run weather has a chance to arrive. The owner releases this gate
+  // on weather completion or after the bounded timeout.
+  final Map<String, Completer<void>> _weatherGates = {};
+  final Map<String, Completer<void>> _lateWeatherWrites = {};
+  int _weatherGateRevision = 0;
+
+  void holdFirstVerdictForWeather(String id) {
+    _weatherGates.putIfAbsent(id, () {
+      _weatherGateRevision++;
+      return Completer<void>();
+    });
+  }
+
+  bool isWaitingForWeather(String id) => _weatherGates.containsKey(id);
+
+  void releaseFirstVerdictForWeather(String id) {
+    final gate = _weatherGates.remove(id);
+    if (gate != null) {
+      _weatherGateRevision++;
+      gate.complete();
+    }
+  }
+
+  /// On timeout, freeze raw before an in-flight provider reply may write
+  /// weather. The provider can still save weather afterward for display.
+  Future<void> freezeWithoutWeather(String id) async {
+    final late = Completer<void>();
+    _lateWeatherWrites[id] = late;
+    releaseFirstVerdictForWeather(id);
+    try {
+      await load(id);
+    } finally {
+      _lateWeatherWrites.remove(id);
+      late.complete();
+    }
+  }
+
+  Future<bool> hasFrozenVerdict(String id) async {
+    final file = await _fileFor(id);
+    if (file == null) return false;
+    return (await _readSidecar(_sidecarFor(file)))?.frozenVerdict != null;
+  }
+
+  Future<engine.WeatherRecord?> weatherForVerdict(String id) async {
+    final file = await _fileFor(id);
+    if (file == null) return null;
+    final sidecar = await _readSidecar(_sidecarFor(file));
+    return engine.WeatherRecord.fromJson(sidecar?.weather);
+  }
+
   /// Test seam: runs after `list()`/`load()` analysed its scan and before it
   /// freezes verdicts (where a concurrent edit used to be overwritten).
   @visibleForTesting
@@ -848,6 +899,12 @@ class FileRunStore implements RunStore {
   /// priors keeps its derived data. Written only when something changed; a
   /// cache failure falls back to what was read.
   Future<RunIndex> _refresh() async {
+    // A different screen may refresh at the same instant as SAVE. Waiting
+    // here, before the scan and analysis, prevents it freezing raw first.
+    if (_weatherGates.isNotEmpty) {
+      await Future.wait([for (final gate in _weatherGates.values) gate.future]);
+    }
+    final gateRevision = _weatherGateRevision;
     await _sweepTmp();
     final files = await _files();
     final old = await readIndex();
@@ -943,6 +1000,16 @@ class FileRunStore implements RunStore {
     }
 
     await afterAnalyse?.call();
+    if (gateRevision != _weatherGateRevision || _weatherGates.isNotEmpty) {
+      // A SAVE crossed this analysis pass; rescan the sidecar after its
+      // weather window, rather than freezing a snapshot taken before SAVE.
+      if (_weatherGates.isNotEmpty) {
+        await Future.wait([
+          for (final gate in _weatherGates.values) gate.future,
+        ]);
+      }
+      return _refresh();
+    }
     for (final e in frozen.entries) {
       final file = files[e.key]!;
       try {
@@ -1308,6 +1375,7 @@ class FileRunStore implements RunStore {
   /// written once the run is deleted). Weather never touches the verdict:
   /// the frozen one stays as it is (plan §18.5).
   Future<void> setWeather(String id, engine.WeatherRecord weather) async {
+    await _lateWeatherWrites[id]?.future;
     final file = await _fileFor(id);
     if (file == null) return;
     await sidecars.update(

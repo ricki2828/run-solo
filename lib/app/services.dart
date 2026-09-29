@@ -93,8 +93,34 @@ class AppServices {
       if (s.runId == _lastFinishedRunId) return;
       _lastFinishedRunId = s.runId;
       final id = s.runId!;
-      unawaited(_weatherPass(() => w.enqueue(id)));
+      // Hold first scoring before any asynchronous work can let Home or the
+      // result screen freeze a raw verdict. Non-intervals and an off setting
+      // have no weather-adjusted verdict to await.
+      if (s.mode == RecordMode.intervals &&
+          settings.settings.compareHeatAdjusted &&
+          settings.settings.weatherPerRun &&
+          history is FileRunStore) {
+        (history as FileRunStore).holdFirstVerdictForWeather(id);
+        unawaited(_weatherForNewVerdict(w, id));
+      } else {
+        unawaited(_weatherPass(() => w.enqueue(id)));
+      }
     });
+  }
+
+  Future<void> _weatherForNewVerdict(WeatherQueue w, String id) async {
+    final store = history as FileRunStore;
+    try {
+      if (await store.hasFrozenVerdict(id)) return;
+      await w.fetchForVerdict(id).timeout(const Duration(seconds: 60));
+    } on TimeoutException {
+      await store.freezeWithoutWeather(id);
+      return;
+    } catch (e) {
+      debugPrint('weather: fetch failed for $id ($e)');
+    } finally {
+      store.releaseFirstVerdictForWeather(id);
+    }
   }
 
   Future<void> _weatherPass(Future<void> Function() before) async {

@@ -166,7 +166,33 @@ class WeatherQueue {
   /// old run, spread over opens instead of one burst.
   static const int maxRequestsPerPass = 30;
 
-  bool _draining = false;
+  Future<WeatherDrainResult>? _draining;
+  String? _priorityRunId;
+  bool _priorityReady = false;
+  Set<String> _lastAttempted = const {};
+
+  /// Give the fresh result priority over old backfill, without starting a
+  /// second provider request while a pass is already in flight.
+  Future<void> fetchForVerdict(String id) async {
+    if (!enabled()) return;
+    _priorityRunId = id;
+    _priorityReady = false;
+    await enqueue(id);
+    _priorityReady = true;
+    final first = await drain();
+    if (_finished(id, first)) return;
+    // An old backfill pass may have been in flight before the enqueue.
+    // Its result is shared; make one more pass with this run first if needed.
+    final have = await store.weatherForVerdict(id);
+    if (have != null && have.status != engine.WeatherStatus.pending) return;
+    // Only a pass that began before enqueue needs a second scan. If this
+    // pass attempted the run but got offline/pending, wait for a later open.
+    if (_lastAttempted.contains(id)) return;
+    await drain();
+  }
+
+  bool _finished(String id, WeatherDrainResult r) =>
+      r.ok.contains(id) || r.failed.contains(id) || r.skipped.contains(id);
 
   /// Nothing is sent before this (the provider's Retry-After).
   DateTime? _notBefore;
@@ -218,18 +244,30 @@ class WeatherQueue {
   }
 
   /// One attempt per queued run (app open, and after a successful fetch).
-  Future<WeatherDrainResult> drain() async {
-    if (!enabled() || _draining) return const WeatherDrainResult();
-    _draining = true;
+  Future<WeatherDrainResult> drain() {
+    if (!enabled()) return Future.value(const WeatherDrainResult());
+    final active = _draining;
+    if (active != null) return active;
+    final done = Completer<WeatherDrainResult>();
+    _draining = done.future;
+    unawaited(_completeDrain(done));
+    return done.future;
+  }
+
+  Future<void> _completeDrain(Completer<WeatherDrainResult> done) async {
     try {
-      return await _drain();
+      done.complete(await _drain());
+    } catch (error, stack) {
+      done.completeError(error, stack);
     } finally {
-      _draining = false;
+      _draining = null;
     }
   }
 
   Future<WeatherDrainResult> _drain() async {
-    final ids = await queued();
+    final queuedIds = await queued();
+    final priority = _priorityRunId;
+    final ids = <String>[?priority, ...queuedIds.where((id) => id != priority)];
     if (ids.isEmpty) return const WeatherDrainResult();
     final wait = _notBefore;
     if (wait != null && now().isBefore(wait)) {
@@ -243,8 +281,28 @@ class WeatherQueue {
     final ok = <String>[], pending = <String>[];
     final failed = <String>[], skipped = <String>[];
     final done = <String>{};
+    final attempted = <String>{};
+    final fetchedIds = <String>{};
     var stopped = false;
-    for (final id in ids) {
+    for (var i = 0; i < ids.length; i++) {
+      // A fresh run may arrive while a backfill request is in flight. Move
+      // it immediately behind that request, not behind thirty old runs.
+      final urgent = _priorityRunId;
+      if (_priorityReady &&
+          urgent != null &&
+          !attempted.contains(urgent) &&
+          ids[i] != urgent &&
+          ids.contains(urgent)) {
+        ids.remove(urgent);
+        ids.insert(i, urgent);
+      } else if (_priorityReady &&
+          urgent != null &&
+          !attempted.contains(urgent) &&
+          !ids.contains(urgent)) {
+        ids.insert(i, urgent);
+      }
+      final id = ids[i];
+      attempted.add(id);
       final entry = runs[id];
       if (entry == null) {
         done.add(id); // deleted since it was queued
@@ -272,11 +330,12 @@ class WeatherQueue {
         done.add(id);
         continue;
       }
-      if (requests == maxRequestsPerPass) {
+      if (requests == maxRequestsPerPass && id != _priorityRunId) {
         stopped = true;
         break;
       }
       requests++;
+      fetchedIds.add(id);
       final result = await provider.fetch(request.uri);
       switch (result) {
         case WeatherRetryLater(:final reason, :final retryAfter):
@@ -315,6 +374,13 @@ class WeatherQueue {
             if (!done.contains(i)) i,
         ],
       );
+    }
+    _lastAttempted = attempted;
+    if (priority != null &&
+        fetchedIds.contains(priority) &&
+        _priorityRunId == priority) {
+      _priorityRunId = null;
+      _priorityReady = false;
     }
     return WeatherDrainResult(
       ok: ok,

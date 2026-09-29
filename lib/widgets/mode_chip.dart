@@ -42,7 +42,7 @@ class ModeChipRow extends StatelessWidget {
   /// Picks GOAL; null hides its chip.
   final VoidCallback? onGoal;
 
-  /// Picks TESTS; null hides its chip (Home keeps the four run types).
+  /// Picks TESTS; null hides its chip.
   final VoidCallback? onTests;
 
   /// TESTS is the picked chip (Start, when a test mode is showing).
@@ -52,7 +52,7 @@ class ModeChipRow extends StatelessWidget {
   final String testsLabel;
   final bool auroraList;
 
-  /// Below this width the four chips wrap into two rows.
+  /// Below this width choices wrap two per row, including TESTS on its own.
   static const double rowMinWidth = 480;
 
   static const List<RecordMode> offered = [
@@ -138,9 +138,10 @@ class ModeChipRow extends StatelessWidget {
         if (c.maxWidth >= rowMinWidth || chips.length < 4) return row(chips);
         return Column(
           children: [
-            row(chips.sublist(0, 2)),
-            const SizedBox(height: Space.x8),
-            row(chips.sublist(2)),
+            for (var start = 0; start < chips.length; start += 2) ...[
+              if (start > 0) const SizedBox(height: Space.x8),
+              row(chips.sublist(start, (start + 2).clamp(0, chips.length))),
+            ],
           ],
         );
       },

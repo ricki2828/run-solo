@@ -93,6 +93,17 @@ class _ActivityRow extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final text = Theme.of(context).textTheme;
     final title = runHeaderTitle(run);
+    final typeColor = switch (run.mode) {
+      RecordMode.free => AuroraRunType.free,
+      RecordMode.laps
+          when run.spec?.templateId == engine.SessionSpec.broncoId =>
+        AuroraRunType.tests,
+      RecordMode.laps => AuroraRunType.laps,
+      RecordMode.cooper => AuroraRunType.tests,
+      RecordMode.intervals when run.spec?.isGoal == true || run.isParkrun =>
+        AuroraRunType.goal,
+      RecordMode.intervals => AuroraRunType.intervals,
+    };
     final (stat, statSmall) = _stat(run, units);
     final verdict = run.isFourByFour ? run.verdict : null;
     final word = verdict?.headline.text;
@@ -127,7 +138,9 @@ class _ActivityRow extends StatelessWidget {
                         children: [
                           TextSpan(
                             text: title.toUpperCase(),
-                            style: RunSoloType.heading19,
+                            style: RunSoloType.heading19.copyWith(
+                              color: typeColor,
+                            ),
                           ),
                           TextSpan(
                             text:

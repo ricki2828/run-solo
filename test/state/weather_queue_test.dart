@@ -40,6 +40,26 @@ WeatherFetch hourAt(engine.RunFile run, {num? temp = 28, num? dew = 21}) {
   });
 }
 
+class HeldWeatherProvider implements WeatherProvider {
+  final seen = Completer<Uri>();
+  final reply = Completer<WeatherFetch>();
+  var calls = 0;
+
+  @override
+  Future<WeatherFetch> fetch(Uri uri) {
+    calls++;
+    if (!seen.isCompleted) seen.complete(uri);
+    return reply.future;
+  }
+}
+
+class _SequenceProvider implements WeatherProvider {
+  _SequenceProvider(this.respond);
+  final Future<WeatherFetch> Function(Uri) respond;
+  @override
+  Future<WeatherFetch> fetch(Uri uri) => respond(uri);
+}
+
 void main() {
   final d1 = DateTime.utc(2026, 9, 10, 6);
   late Directory dir;
@@ -171,6 +191,122 @@ void main() {
     expect(after.frozenVerdict!.toJson(), before.toJson());
     expect(after.verdictHistory, isEmpty);
     expect(engine.WeatherRecord.fromJson(after.weather)!.isOk, isTrue);
+  });
+
+  test('timely weather is used before the first verdict freeze', () async {
+    final r = fourByFourFile(n: 1, start: d1);
+    final store = FileRunStore(runsDir, heatCompare: () => true);
+    await store.importBundles([engine.RunBundle(run: r)]);
+    final provider = HeldWeatherProvider();
+    final q = WeatherQueue(
+      file: File('${dir.path}/state/weather-queue.json'),
+      store: store,
+      provider: provider,
+      now: () => d1.add(const Duration(days: 1)),
+    );
+    store.holdFirstVerdictForWeather(r.id);
+    final fetch = q.fetchForVerdict(r.id);
+    await provider.seen.future;
+    var scored = false;
+    final first = store.load(r.id).then((value) {
+      scored = true;
+      return value;
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(scored, isFalse, reason: 'even an unrelated load must wait');
+    provider.reply.complete(hourAt(r));
+    await fetch;
+    store.releaseFirstVerdictForWeather(r.id);
+    final detail = (await first)!;
+    expect(detail.sidecar.frozenVerdict?.heatCompare, isTrue);
+    expect(
+      detail.sidecar.frozenVerdict?.heatNote,
+      isNot(engine.heatMissingNote),
+    );
+    expect((await weatherOf(r.id))!.isOk, isTrue);
+    expect(provider.calls, 1);
+  });
+
+  test('timeout freezes raw once; later weather cannot rewrite it', () async {
+    final r = fourByFourFile(n: 1, start: d1);
+    final store = FileRunStore(runsDir, heatCompare: () => true);
+    await store.importBundles([engine.RunBundle(run: r)]);
+    final provider = HeldWeatherProvider();
+    final q = WeatherQueue(
+      file: File('${dir.path}/state/weather-queue.json'),
+      store: store,
+      provider: provider,
+      now: () => d1.add(const Duration(days: 1)),
+    );
+    store.holdFirstVerdictForWeather(r.id);
+    final fetch = q.fetchForVerdict(r.id);
+    await provider.seen.future;
+    await store.freezeWithoutWeather(r.id);
+    final frozen = (await SidecarWriter.read(
+      File('${runsDir.path}/run-${r.id}.edits.json'),
+    ))!.frozenVerdict!;
+    expect(frozen.heatCompare, isTrue);
+    expect(frozen.heatNote, engine.heatMissingNote);
+    provider.reply.complete(hourAt(r));
+    await fetch;
+    final after = (await SidecarWriter.read(
+      File('${runsDir.path}/run-${r.id}.edits.json'),
+    ))!;
+    expect(after.frozenVerdict!.toJson(), frozen.toJson());
+    expect(engine.WeatherRecord.fromJson(after.weather)!.isOk, isTrue);
+    expect(provider.calls, 1);
+  });
+
+  test('an existing frozen verdict has no weather wait or rewrite', () async {
+    final r = fourByFourFile(n: 1, start: d1);
+    final (store, q, provider) = await setup([r], [(_) => hourAt(r)]);
+    await store.load(r.id);
+    final before = (await SidecarWriter.read(
+      File('${runsDir.path}/run-${r.id}.edits.json'),
+    ))!.frozenVerdict!.toJson();
+    expect(await store.hasFrozenVerdict(r.id), isTrue);
+    await q.fetchForVerdict(r.id);
+    expect((await store.load(r.id))!.sidecar.frozenVerdict!.toJson(), before);
+    expect(provider.requests, hasLength(1));
+  });
+
+  test('a new run jumps behind the in-flight backfill request', () async {
+    final old = fourByFourFile(n: 1, start: d1);
+    final next = fourByFourFile(n: 2, start: d1.add(const Duration(hours: 1)));
+    final fresh = fourByFourFile(n: 3, start: d1.add(const Duration(hours: 2)));
+    final store = FileRunStore(runsDir);
+    await store.importBundles([
+      for (final r in [old, next, fresh]) engine.RunBundle(run: r),
+    ]);
+    final first = HeldWeatherProvider();
+    final requests = <Uri>[];
+    final provider = _SequenceProvider((uri) {
+      requests.add(uri);
+      if (requests.length == 1) return first.fetch(uri);
+      return Future.value(const WeatherRejected(404));
+    });
+    final q = WeatherQueue(
+      file: File('${dir.path}/state/weather-queue.json'),
+      store: store,
+      provider: provider,
+      now: () => d1.add(const Duration(days: 1)),
+    );
+    await q.enqueue(old.id);
+    await q.enqueue(next.id);
+    final written = <String>[];
+    store.sidecars.afterRead = (id) async {
+      if (id != 'weather-queue.json' && id != 'index.json') written.add(id);
+    };
+    final backfill = q.drain();
+    await first.seen.future;
+    final urgent = q.fetchForVerdict(fresh.id);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    first.reply.complete(const WeatherRejected(404));
+    await Future.wait([backfill, urgent]);
+    expect(requests, hasLength(3));
+    expect(written, [old.id, fresh.id, next.id]);
+    expect((await weatherOf(fresh.id))!.status, engine.WeatherStatus.failed);
+    expect((await weatherOf(next.id))!.status, engine.WeatherStatus.failed);
   });
 
   test('a weather write interleaved with a fix-laps edit: both survive '
