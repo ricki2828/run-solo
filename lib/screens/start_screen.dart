@@ -455,6 +455,120 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// The first-run card for the picked type, or null once History holds a
+  /// run of it (29-Sep field test: "as you do a run type for the first
+  /// time there should be a quick splash that says how you do that run").
+  Widget? _firstRunIntro({required bool goal, required RecordMode mode}) {
+    final runs = _runs;
+    if (runs == null) return null;
+    final isGoalRun = runs.any(
+      (r) =>
+          r.spec?.isGoal == true ||
+          r.spec?.templateId == engine.SessionSpec.parkrunId,
+    );
+    final (String, Color, List<String>)? spec;
+    if (goal) {
+      spec = isGoalRun
+          ? null
+          : (
+              'FIRST GOAL RUN',
+              AuroraRunType.goal,
+              const [
+                'Pick a distance or time goal below.',
+                'Tap START. The screen counts down what is left and calls '
+                    'out your estimated finish.',
+                'The recording keeps going after the goal - cool down, '
+                    'then hold STOP.',
+              ],
+            );
+    } else {
+      switch (mode) {
+        case RecordMode.intervals:
+          final has = runs.any(
+            (r) => r.mode == RecordMode.intervals && r.spec?.isGoal != true,
+          );
+          spec = has
+              ? null
+              : (
+                  'FIRST INTERVALS RUN',
+                  AuroraRunType.intervals,
+                  const [
+                    'Warm up, then tap START REPS.',
+                    'Run each work rep hard; jog or walk each recovery. '
+                        'The screen and voice count you through.',
+                    'After the last rep, cool down and hold STOP.',
+                  ],
+                );
+        case RecordMode.laps:
+          final has = runs.any(
+            (r) =>
+                r.mode == RecordMode.laps &&
+                r.spec?.templateId != engine.SessionSpec.broncoId,
+          );
+          spec = has
+              ? null
+              : (
+                  'FIRST LAPS RUN',
+                  AuroraRunType.laps,
+                  const [
+                    'Tap START and run.',
+                    'Tap LAP each time you finish a lap or interval.',
+                    'Hold STOP when done - you get a lap table, not a '
+                        'verdict.',
+                  ],
+                );
+        case RecordMode.cooper:
+          final bronco = _pickedTest == 'bronco';
+          final has = bronco
+              ? runs.any(
+                  (r) =>
+                      r.spec?.templateId == engine.SessionSpec.broncoId,
+                )
+              : runs.any((r) => r.mode == RecordMode.cooper);
+          spec = has
+              ? null
+              : bronco
+              ? (
+                  'FIRST BRONCO',
+                  AuroraRunType.tests,
+                  const [
+                    'Five sets of 240 m, as fast as you can hold.',
+                    'Tap LAP at the end of every set; the fifth tap ends '
+                        'the test.',
+                    'Your total time is the result.',
+                  ],
+                )
+              : (
+                  'FIRST 12-MINUTE TEST',
+                  AuroraRunType.tests,
+                  const [
+                    'Warm up first.',
+                    'Tap START TEST and run as far as you can in '
+                        '12 minutes.',
+                    'Walk to cool down - your VO2 estimate comes from the '
+                        '12-minute distance.',
+                  ],
+                );
+        case RecordMode.free:
+          final has = runs.any((r) => r.mode == RecordMode.free);
+          spec = has
+              ? null
+              : (
+                  'FIRST FREE RUN',
+                  AuroraRunType.free,
+                  const [
+                    'Tap START and run.',
+                    'Time, distance, pace and heart rate stay on screen.',
+                    'Hold STOP when you are done.',
+                  ],
+                );
+      }
+    }
+    if (spec == null) return null;
+    final (title, color, steps) = spec;
+    return _FirstRunCard(title: title, color: color, steps: steps);
+  }
+
   /// "Course: Albert Park · Change ›" (A10.10), once History knows a
   /// course; "Course: somewhere new" when none is within 150 m.
   Widget _courseRow(RunSoloTokens t) {
@@ -559,6 +673,14 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                                 .then((_) => _syncProbe()),
                       ),
                       const SizedBox(height: Space.x24),
+                      // 29-Sep field test: the first time a run type is
+                      // picked, say exactly how it runs. Gone once History
+                      // has a run of the type.
+                      if (_firstRunIntro(goal: goal, mode: mode)
+                          case final intro?) ...[
+                        intro,
+                        const SizedBox(height: Space.x24),
+                      ],
                       if (goal) ...[
                         GoalPicker(
                           settings: s,
@@ -1186,6 +1308,61 @@ class _TestChoiceCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The first-run instructions card (29-Sep): the type's colour, its name,
+/// and numbered how-it-runs steps. Shows only until History holds a run of
+/// the type.
+class _FirstRunCard extends StatelessWidget {
+  const _FirstRunCard({
+    required this.title,
+    required this.color,
+    required this.steps,
+  });
+  final String title;
+  final Color color;
+  final List<String> steps;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Container(
+      decoration: BoxDecoration(
+        color: t.bgRaised,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      padding: const EdgeInsets.all(Space.x16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            key: const ValueKey('first-run-intro'),
+            style: RunSoloType.heading19.copyWith(color: color),
+          ),
+          const SizedBox(height: Space.x8),
+          for (var i = 0; i < steps.length; i++) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${i + 1}. ',
+                  style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                ),
+                Expanded(
+                  child: Text(
+                    steps[i],
+                    style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+                  ),
+                ),
+              ],
+            ),
+            if (i < steps.length - 1) const SizedBox(height: Space.x4),
+          ],
+        ],
       ),
     );
   }
