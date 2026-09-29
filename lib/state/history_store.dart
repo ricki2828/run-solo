@@ -224,7 +224,12 @@ class RunSummary {
   /// K1: course and official time from the sidecar; null when neither.
   final engine.ParkrunInfo? parkrun;
 
-  bool get isFourByFour => mode == RecordMode.intervals;
+  /// Intervals sessions (4x4, presets, customs) get the verdict treatment.
+  /// A GOAL run records in Intervals mode but has its own result, no
+  /// verdict (founder 8K field test 29-Sep: Home showed "8 laps" and
+  /// routed to a big NO VERDICT for an 8K goal run).
+  bool get isFourByFour =>
+      mode == RecordMode.intervals && spec?.isGoal != true;
 
   /// The Saturday 5 km event (K1), by its session template.
   bool get isParkrun => spec?.templateId == engine.SessionSpec.parkrunId;
