@@ -91,9 +91,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// the first prepare, so the card lagged one background batch. Re-run the
   /// estimates chain when the batch lands; prepare() re-reads the index only
   /// when it changed, so a no-op batch costs one stat.
+  ///
+  /// 29-Sep field test: reload EVERYTHING, RECENT ACTIVITY included - the
+  /// finish flow pops back here without re-running [_refresh], so the new
+  /// run only showed after an app restart.
   void _onDerivedChanged() {
     if (!mounted) return;
-    setState(_loadEstimates);
+    setState(_refresh);
   }
 
   Future<void> _start() async {
