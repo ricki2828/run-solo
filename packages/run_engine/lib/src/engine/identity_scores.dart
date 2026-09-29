@@ -54,31 +54,43 @@ abstract final class IdentityScores {
         changeVs6Weeks: aerobic.deltaVs6wks == null
             ? null
             : displayScore(aerobic.vo2) -
-                displayScore(aerobic.vo2 - aerobic.deltaVs6wks!),
+                  displayScore(aerobic.vo2 - aerobic.deltaVs6wks!),
         runId: aerobic.runId,
         date: aerobic.asOf,
         source: aerobic.sourceLabel,
         boardKey: aerobic.sourceLabel == 'Cooper test' ? 'cooper' : null,
       );
     }
-    for (final lane in [IdentityLane.speed, IdentityLane.mid, IdentityLane.long]) {
+    for (final lane in [
+      IdentityLane.speed,
+      IdentityLane.mid,
+      IdentityLane.long,
+    ]) {
       final obs = <_Evidence>[];
       for (final c in all) {
         final input = c.input;
         if (input.date.isAfter(now)) continue;
-        void add(double metres, int milliseconds, String source, String? board) {
+        void add(
+          double metres,
+          int milliseconds,
+          String source,
+          String? board,
+        ) {
           if (milliseconds <= 0) return;
           final adjusted = input.heatFraction == null
               ? milliseconds
               : (milliseconds * (1 - input.heatFraction!)).round();
-          obs.add(_Evidence(
-            input.runId,
-            input.date.toLocal(),
-            FitnessHero.vdot(metres, adjusted),
-            source,
-            board,
-          ));
+          obs.add(
+            _Evidence(
+              input.runId,
+              input.date.toLocal(),
+              FitnessHero.vdot(metres, adjusted),
+              source,
+              board,
+            ),
+          );
         }
+
         final efforts = c.derived.bestEfforts;
         if (lane == IdentityLane.speed) {
           // SPEED unlocks only on a clean, verdict-grade interval session;
@@ -86,29 +98,60 @@ abstract final class IdentityScores {
           if (input.mode != RunMode.intervals || !input.verdictGrade) continue;
           for (final d in [BestEffortDistance.km1, BestEffortDistance.mile]) {
             if (efforts.efforts[d] case final e?) {
-              add(d.metres, e.elapsedMs, d == BestEffortDistance.km1 ? '1K' : 'mile', d.key);
+              add(
+                d.metres,
+                e.elapsedMs,
+                d == BestEffortDistance.km1 ? '1K' : 'mile',
+                d.key,
+              );
             }
           }
           if (input.headlineSecPerKm case final pace?) {
             if (pace > 0 && input.comparisonKey == ComparisonKey.norwegian4x4) {
-              add(1000, (pace * 1000).round(), '4x4 work pace', input.comparisonKey);
+              add(
+                1000,
+                (pace * 1000).round(),
+                '4x4 work pace',
+                input.comparisonKey,
+              );
             }
           }
         } else if (lane == IdentityLane.mid) {
-          if (input.mode == RunMode.cooper || input.mode == RunMode.intervals &&
-              !ComparisonKey.isParkrun(input.comparisonKey ?? '') &&
-              !ComparisonKey.isGoal(input.comparisonKey ?? '')) continue;
+          if (input.mode == RunMode.cooper ||
+              input.mode == RunMode.intervals &&
+                  !ComparisonKey.isParkrun(input.comparisonKey ?? '') &&
+                  !ComparisonKey.isGoal(input.comparisonKey ?? ''))
+            continue;
           for (final d in [BestEffortDistance.k5, BestEffortDistance.k10]) {
-            if (efforts.efforts[d] case final e?) add(d.metres, e.elapsedMs, d == BestEffortDistance.k5 ? '5K' : '10K', d.key);
+            if (efforts.efforts[d] case final e?)
+              add(
+                d.metres,
+                e.elapsedMs,
+                d == BestEffortDistance.k5 ? '5K' : '10K',
+                d.key,
+              );
           }
         } else {
-          if (input.mode != RunMode.free && input.mode != RunMode.laps &&
-              !(input.mode == RunMode.intervals && ComparisonKey.isGoal(input.comparisonKey ?? ''))) continue;
-          for (final d in [BestEffortDistance.half, BestEffortDistance.marathon]) {
-            if (efforts.efforts[d] case final e?) add(d.metres, e.elapsedMs, d == BestEffortDistance.half ? 'Half marathon' : 'Marathon', d.key);
+          if (input.mode != RunMode.free &&
+              input.mode != RunMode.laps &&
+              !(input.mode == RunMode.intervals &&
+                  ComparisonKey.isGoal(input.comparisonKey ?? '')))
+            continue;
+          for (final d in [
+            BestEffortDistance.half,
+            BestEffortDistance.marathon,
+          ]) {
+            if (efforts.efforts[d] case final e?)
+              add(
+                d.metres,
+                e.elapsedMs,
+                d == BestEffortDistance.half ? 'Half marathon' : 'Marathon',
+                d.key,
+              );
           }
           if ((input.mode == RunMode.free || input.mode == RunMode.laps) &&
-              (efforts.wholeRunM ?? 0) >= 15000 && efforts.wholeRunMs != null) {
+              (efforts.wholeRunM ?? 0) >= 15000 &&
+              efforts.wholeRunMs != null) {
             add(efforts.wholeRunM!, efforts.wholeRunMs!, '15K+ run', null);
           }
         }
@@ -121,6 +164,7 @@ abstract final class IdentityScores {
         }
         return winner;
       }
+
       final current = best(now.subtract(window), now);
       if (current == null) continue;
       final prior = best(now.subtract(window * 2), now.subtract(window));
