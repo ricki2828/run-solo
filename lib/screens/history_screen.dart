@@ -109,7 +109,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             child: Text(
                               label,
                               maxLines: 1,
+                              textAlign: TextAlign.center,
                               style: RunSoloType.micro11.copyWith(
+                                fontSize: 10,
                                 color: _view == i
                                     ? t.inkPrimary
                                     : t.inkSecondary,
