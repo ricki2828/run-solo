@@ -176,8 +176,7 @@ class RunDetailBody extends StatelessWidget {
               ],
             ),
           RecordMode.laps => _LapsTable(view: a.laps, units: units),
-          RecordMode.free ||
-          RecordMode.cooper => _Splits(
+          RecordMode.free || RecordMode.cooper => _Splits(
             free: free,
             units: units,
             heat: d.summary.mode == RecordMode.cooper ? null : a.heat,
@@ -780,8 +779,14 @@ class _Splits extends StatelessWidget {
             style: RunSoloType.body15.copyWith(color: t.inkSecondary),
           )
         else ...[
-          _TableHeader(cells: [unit.toUpperCase(), 'Pace',
-            heat?.adjusts == true ? 'Cool-day est.' : '', '']),
+          _TableHeader(
+            cells: [
+              unit.toUpperCase(),
+              'Pace',
+              heat?.adjusts == true ? 'Cool-day est.' : '',
+              '',
+            ],
+          ),
           for (var i = 0; i < free.splitsSecPerUnit.length; i++)
             _TableRow(
               cells: [
@@ -790,10 +795,10 @@ class _Splits extends StatelessWidget {
                 heat?.adjusts == true
                     ? Fmt.pace(
                         heat!.paceAtDistance(
-                          free.splitsSecPerUnit[i] * 1000 /
+                          free.splitsSecPerUnit[i] *
+                              1000 /
                               (units == Units.mi ? 1609.344 : 1000),
-                          (i + 0.5) *
-                              (units == Units.mi ? 1609.344 : 1000),
+                          (i + 0.5) * (units == Units.mi ? 1609.344 : 1000),
                         ),
                         units,
                       )
