@@ -790,7 +790,8 @@ class _Splits extends StatelessWidget {
                 heat?.adjusts == true
                     ? Fmt.pace(
                         heat!.paceAtDistance(
-                          free.splitsSecPerUnit[i],
+                          free.splitsSecPerUnit[i] * 1000 /
+                              (units == Units.mi ? 1609.344 : 1000),
                           (i + 0.5) *
                               (units == Units.mi ? 1609.344 : 1000),
                         ),
