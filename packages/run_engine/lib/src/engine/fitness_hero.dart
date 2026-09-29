@@ -122,7 +122,12 @@ class FitnessHero {
     }
     for (final i in predictionInputsOf(runs)) {
       out.add(
-        _Obs(i.date, vdot(i.distanceM, i.effectiveMs), _label(i.kind, names), i.runId),
+        _Obs(
+          i.date,
+          vdot(i.distanceM, i.effectiveMs),
+          _label(i.kind, names),
+          i.runId,
+        ),
       );
     }
     out.sort((a, b) => a.date.compareTo(b.date));
