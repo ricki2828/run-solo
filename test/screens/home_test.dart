@@ -137,16 +137,17 @@ void main() {
       'LAPS RUN': AuroraRunType.laps,
     };
     for (final entry in expected.entries) {
-      final rich = tester.widget<RichText>(
-        find
-            .descendant(
-              of: find.byType(RecentActivity),
-              matching: find.textContaining(entry.key, findRichText: true),
-            )
-            .first,
+      final titleText = tester.widget<Text>(
+        find.descendant(
+          of: find.byType(RecentActivity),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Text &&
+                widget.textSpan?.children?.first.toPlainText() == entry.key,
+          ),
+        ),
       );
-      final span = rich.text as TextSpan;
-      final title = span.children!.first as TextSpan;
+      final title = titleText.textSpan!.children!.first as TextSpan;
       expect(title.style!.color, entry.value);
     }
   });
