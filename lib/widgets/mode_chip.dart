@@ -26,6 +26,7 @@ class ModeChipRow extends StatelessWidget {
     this.testsSelected = false,
     this.testsLabel = 'Cooper · Bronco',
     this.auroraList = false,
+    this.compactTiles = false,
   });
   final RecordMode selected;
   final ValueChanged<RecordMode> onSelect;
@@ -51,6 +52,8 @@ class ModeChipRow extends StatelessWidget {
   /// The picked test, under the TESTS title.
   final String testsLabel;
   final bool auroraList;
+  /// Smaller Home grid tiles; Start keeps its regular size.
+  final bool compactTiles;
 
   /// Below this width choices wrap two per row, including TESTS on its own.
   static const double rowMinWidth = 480;
@@ -75,7 +78,7 @@ class ModeChipRow extends StatelessWidget {
       RecordMode.cooper => '12 minutes',
     },
     selected: !goal && selected == m,
-    compact: auroraList,
+    compact: auroraList || compactTiles,
     typeColor: switch (m) {
       RecordMode.free => AuroraRunType.free,
       RecordMode.laps => AuroraRunType.laps,
@@ -97,7 +100,7 @@ class ModeChipRow extends StatelessWidget {
         ModeChip(
           key: const ValueKey('goal-chip'),
           title: 'GOAL',
-          compact: auroraList,
+          compact: auroraList || compactTiles,
           typeColor: AuroraRunType.goal,
           subtitle: goalLabel,
           selected: goal,
@@ -108,7 +111,7 @@ class ModeChipRow extends StatelessWidget {
         ModeChip(
           key: const ValueKey('tests-chip'),
           title: 'TESTS',
-          compact: auroraList,
+          compact: auroraList || compactTiles,
           typeColor: AuroraRunType.tests,
           subtitle: testsLabel,
           selected: testsSelected,

@@ -14,14 +14,13 @@ import '../widgets/identity_score_cards.dart';
 import '../widgets/goal_picker.dart';
 import '../widgets/mode_chip.dart';
 import '../widgets/recent_activity.dart';
-import 'settings_screen.dart';
 
 /// Home as the dashboard (product call 27-Sep: "a summary of recent
 /// activity, overall performance/trend/fitness level and able to kick off
 /// new activity all at same time"; variant A signed off the same day):
 /// Tally + date, the fitness hero (VO2 estimate, trend, source), RECENT
 /// ACTIVITY (last three sessions of any kind), ESTIMATED TIMES, TRY NEXT,
-/// and strap status. Five run-type choices lead directly to their Start setup.
+/// Five run-type choices sit at the bottom and lead directly to Start setup.
 /// Checklist incomplete = red row above the run-type choices.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.now, this.onShowHistory});
@@ -227,19 +226,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: Space.x24),
-                  ModeChipRow(
-                    selected: settings.lastMode,
-                    session: services.pickedSession,
-                    goal: settings.goalRun,
-                    goalLabel: goalLabel(settings),
-                    testsSelected:
-                        !settings.goalRun &&
-                        settings.lastMode == RecordMode.cooper,
-                    onGoal: () => _chooseType(goal: true),
-                    onSelect: (m) => _chooseType(mode: m),
-                    onTests: () => _chooseType(mode: RecordMode.cooper),
-                  ),
-                  const SizedBox(height: Space.x32),
                   FutureBuilder<List<RunSummary>>(
                     future: _runs,
                     builder: (context, snap) => RecentActivity(
@@ -269,23 +255,29 @@ class _HomeScreenState extends State<HomeScreen> {
                       if (context.mounted) await _start();
                     },
                   ),
-                  const SizedBox(height: Space.x16),
-                  if (settings.pendingObservedMaxHr != null)
-                    _StrapRow(
-                      label:
-                          'Strap saw ${settings.pendingObservedMaxHr} bpm, tap to review',
-                      muted: false,
-                      warn: true,
-                      onTap: () => showPendingMaxSheet(context),
+                  const SizedBox(height: Space.x32),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'NEW RUN',
+                      style: RunSoloType.heading19.copyWith(
+                        color: t.inkPrimary,
+                      ),
                     ),
-                  _StrapRow(
-                    label: settings.strap == null
-                        ? 'No strap, tap to pair'
-                        : 'Strap: ${settings.strap!.label}',
-                    muted: settings.strap == null,
-                    onTap: () async {
-                      await Navigator.of(context).pushNamed(Routes.pairing);
-                    },
+                  ),
+                  const SizedBox(height: Space.x12),
+                  ModeChipRow(
+                    compactTiles: true,
+                    selected: settings.lastMode,
+                    session: services.pickedSession,
+                    goal: settings.goalRun,
+                    goalLabel: goalLabel(settings),
+                    testsSelected:
+                        !settings.goalRun &&
+                        settings.lastMode == RecordMode.cooper,
+                    onGoal: () => _chooseType(goal: true),
+                    onSelect: (m) => _chooseType(mode: m),
+                    onTests: () => _chooseType(mode: RecordMode.cooper),
                   ),
                   const SizedBox(height: Space.x24),
                   const SizedBox(height: Space.x24),
@@ -295,56 +287,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
-    );
-  }
-}
-
-class _StrapRow extends StatelessWidget {
-  const _StrapRow({
-    required this.label,
-    required this.muted,
-    required this.onTap,
-    this.warn = false,
-  });
-  final String label;
-  final bool muted;
-  final VoidCallback onTap;
-  final bool warn;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return Semantics(
-      button: true,
-      label: label,
-      child: InkWell(
-        onTap: onTap,
-        child: SizedBox(
-          height: 56,
-          child: Row(
-            children: [
-              Icon(
-                Icons.favorite,
-                size: 16,
-                color: warn ? t.semWarn : t.hrZone,
-              ),
-              const SizedBox(width: Space.x8),
-              Expanded(
-                child: Text(
-                  label,
-                  style: RunSoloType.body15.copyWith(
-                    color: warn
-                        ? t.semWarn
-                        : muted
-                        ? t.inkSecondary
-                        : t.inkPrimary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

@@ -28,7 +28,8 @@ void main() {
     expect(find.text('Log a 15K+ run to unlock LONG'), findsOneWidget);
     expect(find.text('RECENT ACTIVITY'), findsOneWidget);
     expect(find.textContaining('Sessions of any kind'), findsOneWidget);
-    expect(find.text('No strap, tap to pair'), findsOneWidget);
+    expect(find.text('No strap, tap to pair'), findsNothing);
+    expect(find.text('NEW RUN'), findsOneWidget);
     expect(find.text('Thu 24 Sep'), findsOneWidget);
     for (final choice in ['FREE', 'LAPS', 'GOAL', 'INTERVALS', 'TESTS']) {
       expect(find.text(choice), findsOneWidget);
@@ -48,6 +49,7 @@ void main() {
     final fake = FakeRecorderGateway(now: now);
     final services = fakeServices(recorder: fake);
     await pumpApp(tester, services, home: HomeScreen(now: now));
+    await tester.ensureVisible(find.text('FREE'));
     await tester.tap(find.text('FREE'));
     await pumpTimes(tester, 4);
     expect(find.byType(StartScreen), findsOneWidget);
@@ -80,6 +82,7 @@ void main() {
   ) async {
     final services = fakeServices();
     await pumpApp(tester, services, home: HomeScreen(now: now));
+    await tester.ensureVisible(find.text('GOAL'));
     await tester.tap(find.text('GOAL'));
     await pumpTimes(tester, 4);
     expect(find.byType(StartScreen), findsOneWidget);
@@ -161,7 +164,9 @@ void main() {
     }
   });
 
-  testWidgets('saved strap and Intervals opens selected setup', (tester) async {
+  testWidgets('saved strap stays off Home; Intervals opens selected setup', (
+    tester,
+  ) async {
     final services = fakeServices(
       settings: const AppSettings(
         onboardingDone: true,
@@ -172,9 +177,10 @@ void main() {
       ),
     );
     await pumpApp(tester, services, home: HomeScreen(now: now));
-    expect(find.text('Strap: Whoop'), findsOneWidget);
+    expect(find.text('Strap: Whoop'), findsNothing);
     expect(find.text('Norwegian 4x4'), findsOneWidget);
 
+    await tester.ensureVisible(find.text('INTERVALS'));
     await tester.tap(find.text('INTERVALS'));
     await pumpTimes(tester, 4);
     expect(services.settings.settings.lastMode, RecordMode.intervals);
@@ -195,6 +201,7 @@ void main() {
       find.text('Location permission needed before you can record.'),
       findsOneWidget,
     );
+    await tester.ensureVisible(find.text('FREE'));
     await tester.tap(find.text('FREE'));
     await pumpTimes(tester, 4);
     expect(find.byType(PermissionsScreen), findsOneWidget);

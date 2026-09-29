@@ -98,7 +98,7 @@ class _ScoreCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(Radii.card),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 156),
+          constraints: const BoxConstraints(minHeight: 140),
           padding: const EdgeInsets.all(Space.x12),
           decoration: BoxDecoration(
             color: t.bgRaised,
@@ -111,7 +111,7 @@ class _ScoreCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(label, style: RunSoloType.micro11.copyWith(color: color)),
-              const SizedBox(height: Space.x8),
+              const SizedBox(height: Space.x4),
               if (!active) ...[
                 Text(
                   'LOCKED',
@@ -132,7 +132,10 @@ class _ScoreCard extends StatelessWidget {
               ] else ...[
                 Text(
                   '${score!.score}',
-                  style: RunSoloType.display64.copyWith(color: color),
+                  style: RunSoloType.display64.copyWith(
+                    fontSize: 48,
+                    color: color,
+                  ),
                 ),
                 Text(
                   score!.changeVs6Weeks == null
@@ -149,7 +152,7 @@ class _ScoreCard extends StatelessWidget {
                   ),
                 Text(
                   '${score!.source} · ${Fmt.dayDate(score!.date)} ›',
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
