@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/screens/board_detail_screen.dart';
-import 'package:run_solo/screens/progress_screen.dart';
+import 'package:run_solo/screens/history_screen.dart';
 import 'package:run_solo/screens/run_detail_screen.dart';
 
 import '../helpers.dart';
@@ -75,7 +75,7 @@ void main() {
     tester,
   ) async {
     final services = fakeServices(files: fiveParkruns());
-    await pumpApp(tester, services, home: const ProgressScreen());
+    await pumpApp(tester, services, home: const HistoryScreen());
     await pumpTimes(tester, 6);
     tester.view.physicalSize = const Size(1080, 3600);
     tester.view.devicePixelRatio = 1.0;

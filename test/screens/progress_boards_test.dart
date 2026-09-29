@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:run_solo/screens/progress_screen.dart';
+import 'package:run_solo/screens/history_screen.dart';
 
 import '../helpers.dart';
 import '../run_fixtures.dart';
 
-/// The PROGRESS tab's boards overview (LB3c, mockup frames 1-9).
+/// The HISTORY tab's default leaderboard (LB3c, mockup frames 1-9).
 void main() {
   final base = DateTime.utc(2026, 9, 5, 6);
 
   testWidgets('empty: the boards explain themselves', (tester) async {
-    await pumpApp(tester, fakeServices(), home: const ProgressScreen());
+    await pumpApp(tester, fakeServices(), home: const HistoryScreen());
     await pumpTimes(tester, 6);
-    expect(find.text('PROGRESS'), findsOneWidget);
+    expect(find.text('HISTORY'), findsOneWidget);
     expect(find.text('Nothing to rank yet'), findsOneWidget);
-    expect(find.text('BOARDS'), findsOneWidget);
+    expect(find.text('LEADERBOARD'), findsOneWidget);
     expect(find.text('TRENDS'), findsOneWidget);
   });
 
@@ -33,7 +33,7 @@ void main() {
       await pumpApp(
         tester,
         fakeServices(files: files),
-        home: const ProgressScreen(),
+        home: const HistoryScreen(),
       );
       await pumpTimes(tester, 6);
       // The phone viewport cuts the later sections off; grow it to see all.
@@ -55,7 +55,7 @@ void main() {
     await pumpApp(
       tester,
       fakeServices(files: [cooperTestFile(n: 1, start: base)]),
-      home: const ProgressScreen(),
+      home: const HistoryScreen(),
     );
     await pumpTimes(tester, 6);
     tester.view.physicalSize = const Size(1080, 3200);
@@ -80,13 +80,13 @@ void main() {
     await pumpApp(
       tester,
       fakeServices(files: files),
-      home: const ProgressScreen(),
+      home: const HistoryScreen(),
     );
     await pumpTimes(tester, 6);
     expect(find.text('INTERVALS'), findsOneWidget);
   });
 
-  testWidgets('the TRENDS segment keeps the trends', (tester) async {
+  testWidgets('History TRENDS view keeps the trends', (tester) async {
     final files = [
       for (var i = 0; i < 3; i++)
         fourByFourFile(
@@ -98,13 +98,13 @@ void main() {
     await pumpApp(
       tester,
       fakeServices(files: files),
-      home: const ProgressScreen(),
+      home: const HistoryScreen(),
     );
     await pumpTimes(tester, 6);
-    await tester.tap(find.byKey(const ValueKey('progress-seg-trends')));
+    await tester.tap(find.byKey(const ValueKey('history-view-2')));
     await pumpTimes(tester, 6);
     expect(find.textContaining('NORWEGIAN 4X4'), findsWidgets);
-    await tester.tap(find.byKey(const ValueKey('progress-seg-boards')));
+    await tester.tap(find.byKey(const ValueKey('history-view-0')));
     await pumpTimes(tester, 6);
     expect(find.text('INTERVALS'), findsOneWidget);
   });

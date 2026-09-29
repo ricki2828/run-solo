@@ -20,6 +20,7 @@ export 'src/engine/format.dart';
 export 'src/engine/goal.dart';
 export 'src/engine/hr_zone.dart';
 export 'src/engine/identity_scores.dart';
+export 'src/engine/friend_fitness_norms.dart';
 export 'src/engine/leaderboards.dart';
 export 'src/engine/live_card.dart';
 export 'src/engine/live_plan.dart';

@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/screens/history_screen.dart';
 import 'package:run_solo/state/history_store.dart';
@@ -17,6 +18,8 @@ void main() {
       home: HistoryScreen(onStart: () => started = true),
     );
     await pumpTimes(tester);
+    await tester.tap(find.byKey(const ValueKey('history-view-1')));
+    await pumpTimes(tester);
     expect(find.text('Your first 4x4 sets the baseline.'), findsOneWidget);
     await tester.tap(find.text('START'));
     expect(started, isTrue);
@@ -33,6 +36,8 @@ void main() {
         fakeServices(files: [r]),
         home: const HistoryScreen(),
       );
+      await pumpTimes(tester);
+      await tester.tap(find.byKey(const ValueKey('history-view-1')));
       await pumpTimes(tester);
       expect(find.text('12:00'), findsOneWidget);
       expect(find.text('19:00'), findsNothing);
@@ -69,6 +74,8 @@ void main() {
       ],
     );
     await pumpApp(tester, services, home: const HistoryScreen());
+    await pumpTimes(tester);
+    await tester.tap(find.byKey(const ValueKey('history-view-1')));
     await pumpTimes(tester);
 
     expect(find.text('SEPTEMBER 2026'), findsOneWidget);
@@ -112,6 +119,8 @@ void main() {
       ],
     );
     await pumpApp(tester, services, home: const HistoryScreen());
+    await pumpTimes(tester);
+    await tester.tap(find.byKey(const ValueKey('history-view-1')));
     await pumpTimes(tester);
     expect(find.text('File missing'), findsOneWidget);
     expect(find.text('8:03/mi'), findsOneWidget);
