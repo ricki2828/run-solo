@@ -14,6 +14,7 @@ class IdentityScore {
   const IdentityScore({
     required this.lane,
     required this.score,
+    required this.vdot,
     required this.runId,
     required this.date,
     required this.source,
@@ -23,6 +24,9 @@ class IdentityScore {
 
   final IdentityLane lane;
   final int score;
+
+  /// Run-derived VDOT estimate underlying the app-specific 0-99 display.
+  final double vdot;
   final int? changeVs6Weeks;
   final String runId;
   final DateTime date;
@@ -51,6 +55,7 @@ abstract final class IdentityScores {
       out[IdentityLane.aerobic] = IdentityScore(
         lane: IdentityLane.aerobic,
         score: displayScore(aerobic.vo2),
+        vdot: aerobic.vo2,
         changeVs6Weeks: aerobic.deltaVs6wks == null
             ? null
             : displayScore(aerobic.vo2) -
@@ -175,6 +180,7 @@ abstract final class IdentityScores {
       out[lane] = IdentityScore(
         lane: lane,
         score: displayScore(current.vdot),
+        vdot: current.vdot,
         changeVs6Weeks: prior == null
             ? null
             : displayScore(current.vdot) - displayScore(prior.vdot),
