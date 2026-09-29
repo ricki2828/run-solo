@@ -23,6 +23,8 @@ void main() {
   Future<void> openHistory(WidgetTester tester, services) async {
     await pumpApp(tester, services, home: const HistoryScreen());
     await pumpTimes(tester, 6);
+    await tester.tap(find.byKey(const ValueKey('history-view-1')));
+    await pumpTimes(tester, 2);
   }
 
   testWidgets(

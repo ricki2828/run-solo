@@ -99,6 +99,8 @@ void main() {
       home: const HistoryScreen(),
     );
     await pumpTimes(tester, 6);
+    await tester.tap(find.byKey(const ValueKey('history-view-1')));
+    await pumpTimes(tester, 2);
     expect(find.text('BRN'), findsOneWidget);
   });
 

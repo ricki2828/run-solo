@@ -676,6 +676,8 @@ void main() {
     await pumpTimes(tester, 6);
     await tester.tap(find.text('HISTORY'));
     await pumpTimes(tester, 6);
+    await tester.tap(find.byKey(const ValueKey('history-view-1')));
+    await pumpTimes(tester, 2);
     await golden(tester, 'history_verdicts');
   });
 

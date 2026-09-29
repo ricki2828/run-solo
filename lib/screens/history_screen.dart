@@ -10,6 +10,8 @@ import '../state/history_store.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
+import 'boards_overview.dart';
+import 'trend_screen.dart';
 
 enum HistoryFilter { all, intervals, laps, free, tests }
 
@@ -40,6 +42,7 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   HistoryFilter _filter = HistoryFilter.all;
+  int _view = 0;
   Future<List<RunSummary>>? _runs;
 
   @override
@@ -56,62 +59,122 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('HISTORY')),
       body: SafeArea(
-        child: FutureBuilder<List<RunSummary>>(
-          future: _runs,
-          builder: (context, snap) {
-            final all = snap.data;
-            if (all == null) return const SizedBox.shrink();
-            final runs = all.where((r) {
-              return switch (_filter) {
-                HistoryFilter.all => true,
-                HistoryFilter.intervals => r.mode == RecordMode.intervals,
-                HistoryFilter.laps => r.mode == RecordMode.laps,
-                HistoryFilter.free => r.mode == RecordMode.free,
-                HistoryFilter.tests => r.mode == RecordMode.cooper,
-              };
-            }).toList();
-            if (all.isEmpty) return _Empty(onStart: widget.onStart);
-            return ListView(
-              padding: const EdgeInsets.symmetric(
-                horizontal: Space.screenGutter,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Space.screenGutter,
+                Space.x8,
+                Space.screenGutter,
+                Space.x8,
               ),
-              children: [
-                const SizedBox(height: Space.x8),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      for (final f in HistoryFilter.values) ...[
-                        _FilterChip(
-                          label: switch (f) {
-                            HistoryFilter.all => 'All',
-                            HistoryFilter.intervals => 'Intervals',
-                            HistoryFilter.laps => 'Laps',
-                            HistoryFilter.free => 'Free',
-                            HistoryFilter.tests => 'Tests',
-                          },
-                          selected: _filter == f,
-                          onTap: () => setState(() => _filter = f),
+              child: Row(
+                children: [
+                  for (final (i, label) in const [
+                    (0, 'LEADERBOARD'),
+                    (1, 'CHRONOLOGICAL'),
+                    (2, 'TRENDS'),
+                  ])
+                    Expanded(
+                      child: Semantics(
+                        button: true,
+                        selected: _view == i,
+                        child: InkWell(
+                          key: ValueKey('history-view-$i'),
+                          onTap: () => setState(() => _view = i),
+                          child: Container(
+                            alignment: Alignment.center,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: _view == i ? t.bgRaised : null,
+                              borderRadius: BorderRadius.circular(Radii.button),
+                            ),
+                            child: Text(
+                              label,
+                              maxLines: 1,
+                              style: RunSoloType.micro11.copyWith(
+                                color: _view == i
+                                    ? t.inkPrimary
+                                    : t.inkSecondary,
+                              ),
+                            ),
+                          ),
                         ),
-                        const SizedBox(width: Space.x8),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: Space.x16),
-                if (runs.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: Space.x32),
-                    child: Text(
-                      'Nothing here yet.',
-                      style: text.bodyLarge?.copyWith(color: t.inkSecondary),
+                      ),
                     ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: IndexedStack(
+                index: _view,
+                children: [
+                  const BoardsOverview(),
+                  FutureBuilder<List<RunSummary>>(
+                    future: _runs,
+                    builder: (context, snap) {
+                      final all = snap.data;
+                      if (all == null) return const SizedBox.shrink();
+                      final runs = all.where((r) {
+                        return switch (_filter) {
+                          HistoryFilter.all => true,
+                          HistoryFilter.intervals =>
+                            r.mode == RecordMode.intervals,
+                          HistoryFilter.laps => r.mode == RecordMode.laps,
+                          HistoryFilter.free => r.mode == RecordMode.free,
+                          HistoryFilter.tests => r.mode == RecordMode.cooper,
+                        };
+                      }).toList();
+                      if (all.isEmpty) return _Empty(onStart: widget.onStart);
+                      return ListView(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: Space.screenGutter,
+                        ),
+                        children: [
+                          const SizedBox(height: Space.x8),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                for (final f in HistoryFilter.values) ...[
+                                  _FilterChip(
+                                    label: switch (f) {
+                                      HistoryFilter.all => 'All',
+                                      HistoryFilter.intervals => 'Intervals',
+                                      HistoryFilter.laps => 'Laps',
+                                      HistoryFilter.free => 'Free',
+                                      HistoryFilter.tests => 'Tests',
+                                    },
+                                    selected: _filter == f,
+                                    onTap: () => setState(() => _filter = f),
+                                  ),
+                                  const SizedBox(width: Space.x8),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: Space.x16),
+                          if (runs.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: Space.x32),
+                              child: Text(
+                                'Nothing here yet.',
+                                style: text.bodyLarge?.copyWith(
+                                  color: t.inkSecondary,
+                                ),
+                              ),
+                            ),
+                          ..._grouped(runs, units, t),
+                          const SizedBox(height: Space.x24),
+                        ],
+                      );
+                    },
                   ),
-                ..._grouped(runs, units, t),
-                const SizedBox(height: Space.x24),
-              ],
-            );
-          },
+                  const TrendScreen(),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

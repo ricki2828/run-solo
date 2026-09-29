@@ -18,11 +18,17 @@ class ScoreAnalysis extends StatefulWidget {
 
 class _ScoreAnalysisState extends State<ScoreAnalysis> {
   Future<Map<engine.IdentityLane, engine.IdentityScore>>? _scores;
+  AppServices? _services;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final live = AppServices.of(context).live;
+    final services = AppServices.of(context);
+    if (_services != services) {
+      _services = services;
+      _scores = null;
+    }
+    final live = services.live;
     _scores ??= live == null
         ? Future.value(<engine.IdentityLane, engine.IdentityScore>{})
         : live.prepare().then((_) => live.identityScores());
@@ -80,7 +86,7 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
               const SizedBox(height: Space.x8),
               Text(
                 '${engine.FriendFitnessNorms.source}. '
-                'Kaminsky et al., Mayo Clinic Proceedings 2022;97:285-293, Table 3.',
+                'Kaminsky et al., Mayo Clinic Proceedings 2022;97:285-293, Table 3. doi.org/10.1016/j.mayocp.2021.08.020',
                 style: RunSoloType.label13.copyWith(color: t.inkSecondary),
               ),
             ],
