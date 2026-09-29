@@ -138,8 +138,8 @@ class HeatAdjustment {
   /// which keeps historic whole-run comparisons exactly as stored.
   double? paceAtDistance(double secPerKm, double midpointMetres) =>
       fraction == null
-          ? null
-          : secPerKm * (1 - fraction! * HeatModel.distanceRamp(midpointMetres));
+      ? null
+      : secPerKm * (1 - fraction! * HeatModel.distanceRamp(midpointMetres));
 
   /// A fixed-time score (Cooper 12 minutes): the distance cool conditions
   /// would have given, `distance / (1 − adj)`, which then feeds the score's
