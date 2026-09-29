@@ -373,6 +373,20 @@ class _RecordingScreenState extends State<RecordingScreen>
                               card: _cardLink,
                             ),
                           ),
+                          // 29-Sep field test: the run's own numbers under
+                          // the countdown (big screens only; compact keeps
+                          // the two-number budget).
+                          if (!compact) ...[
+                            const SizedBox(height: Space.x16),
+                            _PausedHidden(
+                              paused: s.paused,
+                              child: _EventStats(
+                                s: s,
+                                ctl: ctl,
+                                units: settings.units,
+                              ),
+                            ),
+                          ],
                           const Spacer(),
                         ] else if (s.isGoal && s.phase == Phase.cooldown) ...[
                           // G3: after the goal, the cool-down's time is
@@ -2000,6 +2014,60 @@ double? eventProjectedSeconds(RecordingSnapshot s, int stepElapsedMs) {
   final run = st.value - togo;
   if (run < 200 || stepElapsedMs <= 0) return null;
   return stepElapsedMs / 1000 / run * st.value;
+}
+
+/// The goal / event screen's supporting figures (founder 8K field test
+/// 29-Sep): distance covered, live pace and the run average - the Free run
+/// screen's set - under the countdown and its projection. AuxFigure size
+/// keeps the A8 floor ("no number smaller than 36 sp").
+class _EventStats extends StatelessWidget {
+  const _EventStats({
+    required this.s,
+    required this.ctl,
+    required this.units,
+  });
+  final RecordingSnapshot s;
+  final RecordingController ctl;
+  final Units units;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
+    final activeMs = ctl.displayElapsedMs;
+    final avg = s.totalDistanceM > 20 && activeMs > 0
+        ? activeMs / 1000 / (s.totalDistanceM / 1000)
+        : null;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: AuxFigure(
+            label: 'COVERED',
+            value: Fmt.distance(s.totalDistanceM, units),
+            labelColor: secondary,
+            valueColor: t.inkPrimary,
+          ),
+        ),
+        Expanded(
+          child: AuxFigure(
+            label: 'PACE',
+            value: Fmt.paceUnit(s.livePaceSecPerKm, units),
+            labelColor: secondary,
+            valueColor: t.inkPrimary,
+          ),
+        ),
+        Expanded(
+          child: AuxFigure(
+            label: 'AVERAGE',
+            value: avg == null ? '--' : Fmt.paceUnit(avg, units),
+            labelColor: secondary,
+            valueColor: t.inkPrimary,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class EventBlock extends StatelessWidget {
