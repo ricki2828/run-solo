@@ -10,7 +10,7 @@ import '../state/live_context.dart';
 import '../theme/theme.dart';
 import '../widgets/coaching.dart';
 import '../widgets/estimated_times_card.dart';
-import '../widgets/fitness_hero.dart';
+import '../widgets/identity_score_cards.dart';
 import '../widgets/goal_picker.dart';
 import '../widgets/mode_chip.dart';
 import '../widgets/recent_activity.dart';
@@ -39,7 +39,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   Future<List<RunSummary>>? _runs;
   Future<engine.HomeEstimates?>? _estimates;
-  Future<engine.FitnessHero?>? _hero;
+  Future<({engine.FitnessHero? hero, Map<engine.IdentityLane, engine.IdentityScore> scores})>? _scores;
   PermissionSnapshot? _perms;
   HistoryStore? _history;
 
@@ -83,7 +83,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _estimates = live.prepare().then(
         (_) => live.homeEstimates(includeEvent: _hasEventCourse(live)),
       );
-      _hero = live.prepare().then((_) => live.fitnessHero());
+      _scores = live.prepare().then((_) => (
+        hero: live.fitnessHero(),
+        scores: live.identityScores(),
+      ));
     }
   }
 
@@ -204,6 +207,18 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
+                  FutureBuilder<({engine.FitnessHero? hero, Map<engine.IdentityLane, engine.IdentityScore> scores})>(
+                    future: _scores,
+                    builder: (context, snap) => IdentityScoreCards(
+                      scores: snap.data?.scores ?? const {},
+                      hero: snap.data?.hero,
+                      onOpen: (score) => Navigator.of(context).pushNamed(
+                        Routes.runDetail,
+                        arguments: score.runId,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: Space.x24),
                   ModeChipRow(
                     selected: settings.lastMode,
                     session: services.pickedSession,
@@ -217,12 +232,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     onTests: () => _chooseType(mode: RecordMode.cooper),
                   ),
                   const SizedBox(height: Space.x32),
-                  FutureBuilder<engine.FitnessHero?>(
-                    future: _hero,
-                    builder: (context, snap) =>
-                        FitnessHeroBlock(hero: snap.data),
-                  ),
-                  const SizedBox(height: Space.x24),
                   FutureBuilder<List<RunSummary>>(
                     future: _runs,
                     builder: (context, snap) => RecentActivity(
