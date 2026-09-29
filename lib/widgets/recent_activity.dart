@@ -203,6 +203,18 @@ class _ActivityRow extends StatelessWidget {
     if (r.isFourByFour) {
       return (Fmt.paceUnit(r.headlineSecPerKm, units), null);
     }
+    // A goal run's figure is its result: the finish time for a distance
+    // goal, the distance covered for a time goal (29-Sep field test).
+    final g = r.analysis?.goal;
+    if (g != null && g.reached) {
+      if (g.kind == engine.GoalKind.distance && g.goalMs != null) {
+        return (Fmt.clock(g.goalMs!), null);
+      }
+      if (g.kind == engine.GoalKind.time && g.goalDistanceM != null) {
+        final d = Fmt.distanceBare(g.goalDistanceM!, units);
+        return (d, units == Units.km ? ' km' : ' mi');
+      }
+    }
     final d = Fmt.distanceBare(r.distanceM, units);
     return (d, units == Units.km ? ' km' : ' mi');
   }
