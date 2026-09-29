@@ -132,11 +132,8 @@ class _LaneAnalysis extends StatelessWidget {
     } else if (profileSex != ProfileSex.male &&
         profileSex != ProfileSex.female) {
       contextLine = 'Set male or female in Settings to use these published reference tables.';
-    } else if ((lane == engine.IdentityLane.aerobic ||
-            lane == engine.IdentityLane.speed) &&
-        age == null) {
-      contextLine =
-          'Add your birth year in Settings for a FRIEND age-group estimate.';
+    } else if (age == null) {
+      contextLine = 'Add your birth year in Settings to show an estimate.';
     } else if ((lane == engine.IdentityLane.aerobic ||
             lane == engine.IdentityLane.speed) &&
         (age! < 20 || age > 89)) {

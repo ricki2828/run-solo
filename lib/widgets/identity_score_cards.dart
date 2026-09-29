@@ -89,6 +89,7 @@ class _ScoreCard extends StatelessWidget {
     final s = score;
     String? estimate;
     if (s != null &&
+        age != null &&
         (profileSex == ProfileSex.male || profileSex == ProfileSex.female)) {
       final female = profileSex == ProfileSex.female;
       if (lane == engine.IdentityLane.aerobic ||
