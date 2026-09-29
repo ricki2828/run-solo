@@ -27,6 +27,7 @@ class FitnessHero {
     required this.vo2,
     required this.asOf,
     required this.sourceLabel,
+    required this.runId,
     this.deltaVs6wks,
     this.spark = const [],
   });
@@ -40,6 +41,9 @@ class FitnessHero {
   /// What set it: "Cooper test", "5K", "10K", "parkrun", "run", "21K" or
   /// "marathon".
   final String sourceLabel;
+
+  /// The run behind this reading; the Home score opens that run.
+  final String runId;
 
   /// Headline minus the same reading six weeks ago; null when either side
   /// has no observation.
@@ -77,6 +81,7 @@ class FitnessHero {
       vo2: hero.vo2,
       asOf: hero.date,
       sourceLabel: hero.label,
+      runId: hero.runId,
       deltaVs6wks: prior == null ? null : hero.vo2 - prior.vo2,
       spark: [
         for (final o in obs)
@@ -110,13 +115,19 @@ class FitnessHero {
             c.input.date.toLocal(),
             c.input.cooperVo2Adj ?? raw,
             'Cooper test',
+            c.input.runId,
           ),
         );
       }
     }
     for (final i in predictionInputsOf(runs)) {
       out.add(
-        _Obs(i.date, vdot(i.distanceM, i.effectiveMs), _label(i.kind, names)),
+        _Obs(
+          i.date,
+          vdot(i.distanceM, i.effectiveMs),
+          _label(i.kind, names),
+          i.runId,
+        ),
       );
     }
     out.sort((a, b) => a.date.compareTo(b.date));
@@ -149,8 +160,9 @@ class FitnessHero {
 }
 
 class _Obs {
-  const _Obs(this.date, this.vo2, this.label);
+  const _Obs(this.date, this.vo2, this.label, this.runId);
   final DateTime date;
   final double vo2;
   final String label;
+  final String runId;
 }
