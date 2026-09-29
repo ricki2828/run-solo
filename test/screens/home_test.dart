@@ -143,11 +143,14 @@ void main() {
           matching: find.byWidgetPredicate(
             (widget) =>
                 widget is Text &&
-                widget.textSpan?.children?.first.toPlainText() == entry.key,
+                widget.textSpan is TextSpan &&
+                (widget.textSpan as TextSpan).children?.first.toPlainText() ==
+                    entry.key,
           ),
         ),
       );
-      final title = titleText.textSpan!.children!.first as TextSpan;
+      final title =
+          (titleText.textSpan as TextSpan).children!.first as TextSpan;
       expect(title.style!.color, entry.value);
     }
   });
