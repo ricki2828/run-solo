@@ -75,11 +75,13 @@ void main() {
     expect(find.text('From your 5K on Sat 12 Sep'), findsOneWidget);
     expect(find.bySemanticsLabel('Estimated 5K 24:30'), findsOneWidget);
     expect(find.textContaining(RegExp(r'\d:\d\d to \d')), findsNothing);
+    await tester.ensureVisible(find.text('ESTIMATED TIMES'));
     await tester.tap(find.text('ESTIMATED TIMES'));
     await pumpTimes(tester, 4);
     // The 5K from a 5K has no band (it would read "24:30 to 24:30").
     expect(find.textContaining(RegExp(r'\d:\d\d to \d')), findsOneWidget);
     expect(find.text('24:30 to 24:30'), findsNothing);
+    await tester.ensureVisible(find.text('ESTIMATED TIMES'));
     await tester.tap(find.text('ESTIMATED TIMES'));
     await pumpTimes(tester, 4);
     expect(find.textContaining(RegExp(r'\d:\d\d to \d')), findsNothing);

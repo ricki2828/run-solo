@@ -65,6 +65,7 @@ void main() {
   ) async {
     final services = fakeServices();
     await pumpApp(tester, services, home: HomeScreen(now: now));
+    await tester.ensureVisible(find.text('TESTS'));
     await tester.tap(find.text('TESTS'));
     await pumpTimes(tester, 4);
     expect(find.byType(StartScreen), findsOneWidget);

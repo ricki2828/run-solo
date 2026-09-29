@@ -219,6 +219,7 @@ void main() {
     await pumpApp(tester, services, home: HomeScreen(now: now));
     await pumpTimes(tester, 4);
     await golden(tester, 'home_estimates');
+    await tester.ensureVisible(find.text('ESTIMATED TIMES'));
     await tester.tap(find.text('ESTIMATED TIMES'));
     await pumpTimes(tester, 4);
     await settleAnimations(tester);
