@@ -2021,11 +2021,7 @@ double? eventProjectedSeconds(RecordingSnapshot s, int stepElapsedMs) {
 /// screen's set - under the countdown and its projection. AuxFigure size
 /// keeps the A8 floor ("no number smaller than 36 sp").
 class _EventStats extends StatelessWidget {
-  const _EventStats({
-    required this.s,
-    required this.ctl,
-    required this.units,
-  });
+  const _EventStats({required this.s, required this.ctl, required this.units});
   final RecordingSnapshot s;
   final RecordingController ctl;
   final Units units;
