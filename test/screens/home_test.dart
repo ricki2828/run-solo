@@ -138,10 +138,12 @@ void main() {
     };
     for (final entry in expected.entries) {
       final rich = tester.widget<RichText>(
-        find.descendant(
-          of: find.byType(RecentActivity),
-          matching: find.textContaining(entry.key, findRichText: true),
-        ).first,
+        find
+            .descendant(
+              of: find.byType(RecentActivity),
+              matching: find.textContaining(entry.key, findRichText: true),
+            )
+            .first,
       );
       final span = rich.text as TextSpan;
       final title = span.children!.first as TextSpan;
