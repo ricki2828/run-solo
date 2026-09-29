@@ -574,8 +574,7 @@ class _GoalResultScreen extends StatelessWidget {
     final sameGoal = all
         .where(
           (r) =>
-              key != null &&
-              (r.comparisonKey ?? r.spec?.comparisonKey) == key,
+              key != null && (r.comparisonKey ?? r.spec?.comparisonKey) == key,
         )
         .length;
     final firstOfGoal = sameGoal <= 1;
@@ -591,9 +590,7 @@ class _GoalResultScreen extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'GOAL · ${name.toUpperCase()} · ${Fmt.dayDate(d.run.start)} · ${Fmt.clock(d.summary.durationMs)}',
-                    style: RunSoloType.label13.copyWith(
-                      color: t.inkSecondary,
-                    ),
+                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                   ),
                 ),
                 if (!justFinished)
@@ -621,7 +618,9 @@ class _GoalResultScreen extends StatelessWidget {
               ),
             ),
             Text(
-              g != null && !g.reached ? '$figureLabel - NOT REACHED' : figureLabel,
+              g != null && !g.reached
+                  ? '$figureLabel - NOT REACHED'
+                  : figureLabel,
               style: RunSoloType.label13.copyWith(color: t.inkSecondary),
             ),
             const SizedBox(height: Space.x24),
