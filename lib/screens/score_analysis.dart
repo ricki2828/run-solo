@@ -128,15 +128,15 @@ class _LaneAnalysis extends StatelessWidget {
       contextLine = 'FRIEND age-group comparison covers ages 20-89.';
     } else {
       String? mark(bool female) =>
-          engine.FriendFitnessNorms.comparison(s.vdot, age!, female: female);
+          engine.FriendFitnessNorms.comparison(s.vdot, age, female: female);
       contextLine = switch (profileSex) {
         ProfileSex.male =>
-          'Estimated ${mark(false)} vs men ${age! ~/ 10 * 10}-${age! ~/ 10 * 10 + 9}',
+          'Estimated ${mark(false)} vs men ${age ~/ 10 * 10}-${age ~/ 10 * 10 + 9}',
         ProfileSex.female =>
-          'Estimated ${mark(true)} vs women ${age! ~/ 10 * 10}-${age! ~/ 10 * 10 + 9}',
+          'Estimated ${mark(true)} vs women ${age ~/ 10 * 10}-${age ~/ 10 * 10 + 9}',
         ProfileSex.notSet || ProfileSex.preferNot =>
           'Estimated ${mark(false)} vs men, ${mark(true)} vs women '
-              '(${age! ~/ 10 * 10}-${age! ~/ 10 * 10 + 9})',
+              '(${age ~/ 10 * 10}-${age ~/ 10 * 10 + 9})',
       };
     }
     return Container(
