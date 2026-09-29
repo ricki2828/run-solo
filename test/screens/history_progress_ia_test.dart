@@ -38,7 +38,7 @@ void main() {
     for (final lane in ['aerobic', 'speed', 'mid', 'long']) {
       expect(find.byKey(ValueKey('analysis-$lane')), findsOneWidget);
     }
-    expect(find.textContaining('not an age percentile'), findsOneWidget);
+    expect(find.text('ESTIMATED PERCENTILES'), findsOneWidget);
     expect(find.textContaining('different measures'), findsOneWidget);
   });
 }

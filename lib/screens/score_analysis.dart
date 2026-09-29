@@ -59,13 +59,13 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
             ),
             children: [
               Text(
-                'YOUR FOUR SCORES',
+                'ESTIMATED PERCENTILES',
                 style: RunSoloType.heading19.copyWith(color: t.inkPrimary),
               ),
               const SizedBox(height: Space.x8),
               Text(
                 'Best eligible effort in the past 42 days for each lane. '
-                'The 0-99 score is an app-specific scale, not an age percentile.',
+                'Estimates use different reference groups; see each lane.',
                 style: RunSoloType.body15.copyWith(color: t.inkSecondary),
               ),
               const SizedBox(height: Space.x24),
@@ -82,6 +82,12 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
               Text(
                 engine.FriendFitnessNorms.caveat,
                 style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+              ),
+              const SizedBox(height: Space.x8),
+              Text(
+                'MID/LONG: ${engine.RacePercentileNorms.source}. '
+                'runrepeat.com/how-do-you-masure-up-the-runners-percentile-calculator',
+                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
               ),
               const SizedBox(height: Space.x8),
               Text(
@@ -115,6 +121,7 @@ class _LaneAnalysis extends StatelessWidget {
     final s = score;
     final age = this.age;
     final String contextLine;
+    String? estimate;
     if (s == null) {
       contextLine = switch (lane) {
         engine.IdentityLane.aerobic => 'Your first eligible session sets it.',
@@ -122,22 +129,45 @@ class _LaneAnalysis extends StatelessWidget {
         engine.IdentityLane.mid => 'Log a 5K or 10K effort to unlock.',
         engine.IdentityLane.long => 'Log a 15K+ run to unlock.',
       };
-    } else if (age == null) {
-      contextLine = 'Add your birth year in Settings for age-group context.';
-    } else if (age < 20 || age > 89) {
+    } else if (profileSex != ProfileSex.male &&
+        profileSex != ProfileSex.female) {
+      contextLine = 'Set male or female in Settings to use these published reference tables.';
+    } else if ((lane == engine.IdentityLane.aerobic ||
+            lane == engine.IdentityLane.speed) &&
+        age == null) {
+      contextLine =
+          'Add your birth year in Settings for a FRIEND age-group estimate.';
+    } else if ((lane == engine.IdentityLane.aerobic ||
+            lane == engine.IdentityLane.speed) &&
+        (age! < 20 || age > 89)) {
       contextLine = 'FRIEND age-group comparison covers ages 20-89.';
     } else {
-      String? mark(bool female) =>
-          engine.FriendFitnessNorms.comparison(s.vdot, age, female: female);
-      contextLine = switch (profileSex) {
-        ProfileSex.male =>
-          'Estimated ${mark(false)} vs men ${age ~/ 10 * 10}-${age ~/ 10 * 10 + 9}',
-        ProfileSex.female =>
-          'Estimated ${mark(true)} vs women ${age ~/ 10 * 10}-${age ~/ 10 * 10 + 9}',
-        ProfileSex.notSet || ProfileSex.preferNot =>
-          'Estimated ${mark(false)} vs men, ${mark(true)} vs women '
-              '(${age ~/ 10 * 10}-${age ~/ 10 * 10 + 9})',
-      };
+      final female = profileSex == ProfileSex.female;
+      if (lane == engine.IdentityLane.aerobic ||
+          lane == engine.IdentityLane.speed) {
+        estimate = engine.FriendFitnessNorms.comparison(
+          s.vdot,
+          age!,
+          female: female,
+        );
+        contextLine =
+            'Estimated vs ${female ? 'women' : 'men'} '
+            '${age ~/ 10 * 10}-${age ~/ 10 * 10 + 9} (FRIEND lab VO2peak).';
+      } else {
+        estimate = engine.RacePercentileNorms.comparison(
+          s.vdot,
+          lane,
+          s.source,
+          female: female,
+        );
+        final distance = engine.RacePercentileNorms.referenceDistance(
+          lane,
+          s.source,
+        );
+        contextLine =
+            'Estimated $distance equivalent vs ${female ? 'women' : 'men'} '
+            'race finishers (RunRepeat, all ages). Not an age percentile or race result.';
+      }
     }
     return Container(
       key: ValueKey('analysis-${lane.name}'),
@@ -156,7 +186,11 @@ class _LaneAnalysis extends StatelessWidget {
           ),
           const SizedBox(height: Space.x8),
           Text(
-            s == null ? 'LOCKED' : '${s.score} / 99',
+            s == null
+                ? 'LOCKED'
+                : estimate == null
+                ? 'NO ESTIMATE'
+                : '$estimate percentile',
             style: RunSoloType.heading19.copyWith(color: t.inkPrimary),
           ),
           const SizedBox(height: Space.x8),
@@ -165,11 +199,6 @@ class _LaneAnalysis extends StatelessWidget {
               '${s.source} · ${Fmt.dayDate(s.date)} · VDOT ${s.vdot.toStringAsFixed(1)}',
               style: RunSoloType.body15.copyWith(color: t.inkPrimary),
             ),
-            if (s.changeVs6Weeks case final delta?)
-              Text(
-                '${delta >= 0 ? '+' : ''}$delta vs previous 6 weeks',
-                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-              ),
           ],
           Text(
             contextLine,
