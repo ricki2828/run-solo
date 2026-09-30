@@ -180,7 +180,7 @@ void main() {
       fake.advance(const Duration(milliseconds: 500));
       await pumpTimes(tester, 3);
       expect(services.recording.snapshot.zone, 3);
-      expect(find.text('RECONNECTING'), findsOneWidget);
+      expect(find.text('RECONNECTING'), findsNothing);
       expect(find.text('reconnecting'), findsOneWidget);
       expect(find.text('--'), findsOneWidget);
       expect(tester.widget<ZoneGauge>(find.byType(ZoneGauge)).zone, 3);
@@ -193,7 +193,7 @@ void main() {
       expect(services.recording.snapshot.zone, 0);
       expect(tester.widget<ZoneGauge>(find.byType(ZoneGauge)).zone, 0);
       expect(background(tester), HrZones.background(0));
-      expect(find.text('RECONNECTING'), findsOneWidget);
+      expect(find.text('reconnecting'), findsOneWidget);
     },
   );
 

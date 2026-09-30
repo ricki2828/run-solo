@@ -840,22 +840,34 @@ class _Header extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (s.hrPaired) ...[
-          ZoneHeader(
-            zone: s.zone,
-            paired: s.hrPaired,
-            // A1: the label reads the strap state as soon as the reading
-            // drops; the background keeps the last zone until the tracker's
-            // 5 s loss rule.
-            dropped: s.hr == null,
-            onZoneBackground: onZone,
-            showLabel: false,
-          ),
-          const SizedBox(height: Space.x4),
-        ],
-        Text(
-          phaseTitle(s),
-          style: RunSoloType.title28.copyWith(color: t.inkPrimary),
+        // Top line: the phase title and the 5-bar zone gauge. The zone label
+        // itself lives under the heart-rate number (founder 30-Sep).
+        Row(
+          children: [
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  phaseTitle(s),
+                  softWrap: false,
+                  style: RunSoloType.title28.copyWith(color: t.inkPrimary),
+                ),
+              ),
+            ),
+            if (s.hrPaired) ...[
+              const SizedBox(width: Space.x8),
+              ZoneHeader(
+                zone: s.zone,
+                paired: s.hrPaired,
+                // A1: the gauge keeps the last zone until the tracker's 5 s
+                // loss rule; the dropped state reads under the bpm.
+                dropped: s.hr == null,
+                onZoneBackground: onZone,
+                showLabel: false,
+              ),
+            ],
+          ],
         ),
         const SizedBox(height: Space.x8),
         // Founder (tester 0.2): heart rate and total time readable at arm's
