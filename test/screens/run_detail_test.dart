@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
@@ -72,6 +73,23 @@ void main() {
       expect(score.value, '53');
     },
   );
+
+  testWidgets('INT run with no reps still shows eight KM splits', (
+    tester,
+  ) async {
+    final free = freeRunFile(n: 29, start: d1, seconds: 2884);
+    final r = free.copyWith(mode: engine.RunMode.intervals);
+    await pumpApp(
+      tester,
+      fakeServices(files: [r]),
+      home: RunDetailScreen(runId: r.id),
+    );
+    await pumpTimes(tester, 6);
+    await scrollTo(tester, find.text('KM SPLITS'));
+    expect(find.byKey(const ValueKey('run-distance-splits')), findsOneWidget);
+    expect(find.text('KM SPLITS'), findsOneWidget);
+    expect(find.text('8'), findsOneWidget);
+  });
 
   testWidgets('indoor: "Indoor run, no route", no map', (tester) async {
     final r = fourByFourFile(n: 2, start: d1, indoor: true);
