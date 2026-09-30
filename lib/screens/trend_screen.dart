@@ -15,11 +15,13 @@ import 'cooper_result_screen.dart' show cooperTests, primeOf, primeRangeLineOf;
 
 /// Trend per run type (design brief §4.9); Intervals group by comparison
 /// key (plan §3.8), one chip per session shape, titled with the session
-/// name. The 4x4 key (t240x*): hero 6-run median, delta vs
-/// the previous median, dot-and-line chart (Y inverted, median band, noise
-/// floor band, PB dots in Arc), bests row. Laps and Free show distance and
-/// pace only, no verdict language. Under two sessions: "Two 4x4s draw the
-/// first line". Charts are `CustomPainter`, no package.
+/// name. The 4x4 key (t240x*): hero 6-run median, delta vs the previous
+/// median (dead zone = the noise floor), the shared recent-bars chart (last
+/// 8, PB in Arc, dashed Best line, faint GPS-noise band of +/- floor around
+/// it), a list of values, bests row. Test shows the same bars. Laps and Free
+/// show distance and pace only, no verdict language. Under two sessions:
+/// "Two 4x4s draw the first line" as an empty state. Charts are
+/// `CustomPainter`, no package.
 class TrendScreen extends StatefulWidget {
   const TrendScreen({super.key});
 
@@ -344,16 +346,13 @@ class _FourByFourTrend extends StatelessWidget {
           format: (v) => Fmt.pace(v, units),
           direction: 'Faster is taller',
           emptyTitle: emptyText,
-          // The app's honesty cue: pace differences inside the GPS noise
-          // floor are not real change.
+          // The app's honesty cue: the same +/- floor the hero delta's dead
+          // zone uses, so a bar inside the band and a "level" delta agree.
           noise: NoiseBand(
-            center: current,
             half: floor,
             label: 'Noise',
             detail: '±${_deltaText(floor, units)}',
-            caption:
-                'Shaded band is GPS noise around your median. Bars inside '
-                'it are level.',
+            caption: 'Shaded = GPS noise',
           ),
         ),
         if (ghost) ...[
