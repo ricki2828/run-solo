@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../brand/lap_line_paths.dart';
 import '../theme/theme.dart';
 
 enum PillTone { ok, warn, danger, muted }
@@ -77,41 +78,41 @@ class StatTile extends StatelessWidget {
   }
 }
 
-/// The Tally: four bars, the fourth Arc and taller (design brief §2.2).
-class TallyMark extends StatelessWidget {
-  const TallyMark({super.key, this.height = 32, this.earned = true});
+/// The Lap Line R (brand mark, `lib/brand/lap_line_paths.dart`) in Bone.
+class LapLineMark extends StatelessWidget {
+  const LapLineMark({super.key, this.height = 48});
   final double height;
-
-  /// Cyan is earned; the empty state draws all four in Bone.
-  final bool earned;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final barW = height * 12 / 54;
-    final gap = height * 8 / 54;
-    return SizedBox(
-      height: height * 1.08,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (var i = 0; i < 4; i++) ...[
-            if (i > 0) SizedBox(width: gap),
-            Container(
-              width: barW,
-              height: i == 3 ? height * 1.08 : height,
-              margin: EdgeInsets.only(top: i == 3 ? 0 : height * 0.08),
-              decoration: BoxDecoration(
-                color: i == 3 && earned ? t.accentArc : t.inkPrimary,
-                borderRadius: BorderRadius.circular(barW * 0.12),
-              ),
-            ),
-          ],
-        ],
+    final s = height / LapLineGeometry.cap;
+    return ExcludeSemantics(
+      child: CustomPaint(
+        size: Size(
+          (LapLineGeometry.rRight - LapLineGeometry.rLeft) * s,
+          height,
+        ),
+        painter: _LapLineMarkPainter(t.inkPrimary),
       ),
     );
   }
+}
+
+class _LapLineMarkPainter extends CustomPainter {
+  _LapLineMarkPainter(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.height / LapLineGeometry.cap;
+    canvas.translate(-LapLineGeometry.rLeft * s, 0);
+    canvas.scale(s);
+    canvas.drawPath(lapLineR(), Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_LapLineMarkPainter old) => old.color != color;
 }
 
 /// Full-bleed 2 px Bone rule with a 24 px gap (design brief §2.2).
@@ -284,9 +285,11 @@ class _PinnedFooterLayoutState extends State<PinnedFooterLayout> {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.white,
-                        Colors.white,
-                        _moreBelow ? Colors.transparent : Colors.white,
+                        NightSession.inkPrimary,
+                        NightSession.inkPrimary,
+                        _moreBelow
+                            ? Colors.transparent
+                            : NightSession.inkPrimary,
                       ],
                       stops: [0, 1 - (32 / rect.height).clamp(0.0, 1.0), 1],
                     ).createShader(rect),

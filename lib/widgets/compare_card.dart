@@ -32,9 +32,9 @@ class CompareCard extends StatelessWidget {
   /// never ghosts through the text (A10.1: hidden for the 2 s).
   final Color? backdrop;
 
-  static const Color ink = Color(0xB3EDEAE3); // Bone 70 %
-  static const Color ground = Color(0xD9000000); // black 85 %
-  static const Color border = Color(0x33EDEAE3); // Bone 20 %
+  static const Color ink = NightSession.overlayInk;
+  static const Color ground = NightSession.overlayGround;
+  static const Color border = NightSession.overlayBorder;
 
   static double heightFor({required bool compact}) => compact ? 92 : 104;
 

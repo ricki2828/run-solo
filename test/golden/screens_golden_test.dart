@@ -682,6 +682,28 @@ void main() {
     await golden(tester, 'trend_4x4');
   });
 
+  // Eight sessions, two-digit day and month: the dates must not overlap.
+  testWidgets('trend: 4x4 with eight two-digit dates at 360 x 640', (
+    tester,
+  ) async {
+    final files = [
+      for (var i = 0; i < 8; i++)
+        fourByFourFile(
+          n: i + 1,
+          start: DateTime.utc(2026, 10, 10, 6).add(Duration(days: 9 * i)),
+          workSecPerKm: 300 - 4 * i + (i.isOdd ? 3 : 0),
+        ),
+    ];
+    await pumpApp(
+      tester,
+      fakeServices(files: files),
+      home: const TrendScreen(),
+    );
+    tester.view.physicalSize = const Size(1080, 1920);
+    await pumpTimes(tester, 6);
+    await golden(tester, 'trend_8_dates_360x640');
+  });
+
   testWidgets('history: verdict arrows and three types', (tester) async {
     final files = [
       fourByFourFile(n: 1, start: d1, workSecPerKm: 284),
@@ -1649,7 +1671,8 @@ void main() {
     final topLeft = tester.getTopLeft(
       find.byKey(const ValueKey('board-chart')),
     );
-    await tester.tapAt(topLeft + const Offset(256, 100));
+    // Bars start at the left edge (33 dp slots): the fourth is the 26 Aug run.
+    await tester.tapAt(topLeft + const Offset(115, 100));
     await tester.pump();
     await golden(tester, 'board_detail_5k_scrolled_heat');
   });

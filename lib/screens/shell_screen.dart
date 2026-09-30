@@ -145,7 +145,7 @@ class _OnboardingIntro extends StatelessWidget {
           body: PinnedFooterLayout(
             content: [
               const SizedBox(height: Space.x48),
-              const TallyMark(height: 48),
+              const LapLineMark(height: 48),
               const SizedBox(height: Space.x32),
               Text('YOU AGAINST\nYOUR LAST RUN', style: text.displayMedium),
               const SizedBox(height: Space.x16),

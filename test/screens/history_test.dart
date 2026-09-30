@@ -9,7 +9,7 @@ import '../helpers.dart';
 import '../run_fixtures.dart';
 
 void main() {
-  testWidgets('empty: Tally, baseline line, START', (tester) async {
+  testWidgets('empty: Lap Line R, baseline line, START', (tester) async {
     final services = fakeServices();
     var started = false;
     await pumpApp(

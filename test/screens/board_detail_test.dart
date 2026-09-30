@@ -60,7 +60,7 @@ void main() {
     expect(find.textContaining('of a'), findsOneWidget);
     // Improving times: the trend reads quicker, in words.
     expect(find.textContaining('quicker a month'), findsOneWidget);
-    // The podium shows the top 3 with gaps under #2 and #3.
+    // The ALL table carries the gaps.
     expect(find.textContaining('+'), findsWidgets);
     // The table: header, rank, gap, date and the no-weather tag (the
     // fixtures carry no weather, so nothing is estimated).
@@ -121,7 +121,9 @@ void main() {
     ]);
     expect(find.textContaining('Your first 5K on the board'), findsOneWidget);
     expect(find.text('The next 5K races this one'), findsOneWidget);
-    expect(find.text('EVERY RUN · FASTER IS TALLER'), findsOneWidget);
+    // One run is not a chart: a designed empty state instead.
+    expect(find.byKey(const ValueKey('board-chart-empty')), findsOneWidget);
+    expect(find.byKey(const ValueKey('board-chart')), findsNothing);
   });
 
   testWidgets('the 12-minute test board reads in VO2', (tester) async {

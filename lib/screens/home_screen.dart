@@ -17,7 +17,7 @@ import '../widgets/recent_activity.dart';
 /// Home as the dashboard (product call 27-Sep: "a summary of recent
 /// activity, overall performance/trend/fitness level and able to kick off
 /// new activity all at same time"; variant A signed off the same day):
-/// Tally + date, the fitness hero (VO2 estimate, trend, source), RECENT
+/// Lap Line R + date, the fitness hero (VO2 estimate, trend, source), RECENT
 /// ACTIVITY (last three sessions of any kind, with map thumbnails),
 /// ESTIMATED TIMES between the first two activities, TRY NEXT,
 /// Five run-type choices sit at the bottom and lead directly to Start setup.
