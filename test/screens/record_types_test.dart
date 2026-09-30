@@ -59,7 +59,7 @@ void main() {
     expect(find.textContaining('LAP '), findsNothing);
     // Founder 25-Sep: current-pace dial against the run's average so far.
     expect(find.byType(PaceDial), findsOneWidget);
-    expect(find.textContaining('average'), findsOneWidget);
+    expect(find.textContaining('RUN AVERAGE PACE'), findsOneWidget);
     // Pause and hold-to-stop remain.
     expect(find.text('PAUSE'), findsOneWidget);
     expect(find.text('STOP'), findsOneWidget);
@@ -119,7 +119,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 700));
       expect(background(tester), HrZones.background(3));
       // Header + the vitals copy (founder field test 28-Sep).
-      expect(find.text('ZONE 3 · TEMPO'), findsNWidgets(2));
+      expect(find.text('ZONE 3 · TEMPO'), findsOneWidget);
       // Jump to Z5: needs 2 bpm past 171 and a 5 s dwell.
       fake.scriptedHr = 178;
       for (var i = 0; i < 12; i++) {
@@ -128,7 +128,7 @@ void main() {
       }
       await tester.pump(const Duration(milliseconds: 700));
       expect(background(tester), HrZones.background(5));
-      expect(find.text('ZONE 5 · MAX'), findsNWidgets(2));
+      expect(find.text('ZONE 5 · MAX'), findsOneWidget);
     },
   );
 
@@ -212,6 +212,6 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(background(tester), HrZones.background(4));
-    expect(find.text('ZONE 4 · HARD'), findsNWidgets(2));
+    expect(find.text('ZONE 4 · HARD'), findsOneWidget);
   });
 }

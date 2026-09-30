@@ -849,6 +849,7 @@ class _Header extends StatelessWidget {
             // 5 s loss rule.
             dropped: s.hr == null,
             onZoneBackground: onZone,
+            showLabel: false,
           ),
           const SizedBox(height: Space.x4),
         ],
@@ -882,11 +883,13 @@ class AuxFigure extends StatelessWidget {
     required this.value,
     required this.labelColor,
     required this.valueColor,
+    this.valueKey,
   });
   final String label;
   final String value;
   final Color labelColor;
   final Color valueColor;
+  final Key? valueKey;
 
   static final TextStyle style = RunSoloType.display44.copyWith(fontSize: 36);
 
@@ -901,6 +904,7 @@ class AuxFigure extends StatelessWidget {
         alignment: Alignment.centerLeft,
         child: Text(
           value,
+          key: valueKey,
           softWrap: false,
           style: style.copyWith(color: valueColor),
         ),
@@ -970,11 +974,8 @@ class _Vitals extends StatelessWidget {
                 : 'Heart rate $hr',
             child: cell(
               repMax ? 'REP MAX HR' : 'HEART RATE',
-              // Founder field test 28-Sep: the zone label where the eyes
-              // already are (the header's label sits far from the bpm).
-              // Small, secondary-on-zone, announced once by the header.
-              // Short screens keep the header's label only: the column is
-              // already at its 360 x 640 budget (compare-card bounds tests).
+              // Founder 30-Sep: the only zone label on the screen, under the
+              // bpm; the header keeps just the gauge.
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
@@ -1004,7 +1005,7 @@ class _Vitals extends StatelessWidget {
                       ),
                     ],
                   ),
-                  if (!compact && s.zone > 0 && s.hr != null)
+                  if (s.zone > 0 && s.hr != null)
                     ExcludeSemantics(
                       child: Text(
                         HrZones.label(s.zone, paired: true),
@@ -1148,8 +1149,7 @@ class _FreeRunBlock extends StatelessWidget {
   final Units units;
   final int maxHr;
 
-  /// The live compare card's slot link, over the distance (A10.1: elapsed
-  /// is primary).
+  /// The live compare card's slot link, over the distance.
   final LayerLink? card;
 
   /// Short screen (< 720 dp): each number one step down.
@@ -1163,35 +1163,55 @@ class _FreeRunBlock extends StatelessWidget {
     final runAverage = s.totalDistanceM > 20 && activeMs > 0
         ? activeMs / 1000 / (s.totalDistanceM / 1000)
         : null;
+    final unit = units == Units.mi ? 'mi' : 'km';
     return Column(
       key: const ValueKey('free-run-block'),
       children: [
+        // Founder 30-Sep: the run's average pace is the single biggest,
+        // brightest number; time and distance step down to the secondary size.
         FittedBox(
           fit: BoxFit.scaleDown,
           child: Text(
-            Fmt.clock(ctl.displayElapsedMs),
-            key: const ValueKey('timer'),
+            Fmt.pace(runAverage, units),
+            key: const ValueKey('run-average'),
             softWrap: false,
             style: (compact ? RunSoloType.display96 : RunSoloType.timer120)
                 .copyWith(color: t.inkPrimary),
           ),
         ),
-        SizedBox(height: compact ? Space.x8 : Space.x24),
-        CompareSlot(
-          link: card,
-          child: SizedBox(
-            width: double.infinity,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                Fmt.distance(s.totalDistanceM, units),
-                key: const ValueKey('free-distance'),
-                softWrap: false,
-                style: (compact ? RunSoloType.display64 : RunSoloType.display96)
-                    .copyWith(color: t.inkPrimary),
+        Text(
+          runAverage == null
+              ? 'RUN AVERAGE PACE · from 20 m'
+              : 'RUN AVERAGE PACE /$unit',
+          style: RunSoloType.label13.copyWith(color: secondary),
+        ),
+        SizedBox(height: compact ? Space.x8 : Space.x16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: AuxFigure(
+                label: 'TIME',
+                value: Fmt.clock(ctl.displayElapsedMs),
+                labelColor: secondary,
+                valueColor: t.inkPrimary,
+                valueKey: const ValueKey('timer'),
               ),
             ),
-          ),
+            const SizedBox(width: Space.x16),
+            Expanded(
+              child: CompareSlot(
+                link: card,
+                child: AuxFigure(
+                  label: 'DISTANCE',
+                  value: Fmt.distance(s.totalDistanceM, units),
+                  labelColor: secondary,
+                  valueColor: t.inkPrimary,
+                  valueKey: const ValueKey('free-distance'),
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: Space.x8),
         // Founder 25-Sep: the current-pace dial here too, needle against the
@@ -1205,32 +1225,6 @@ class _FreeRunBlock extends StatelessWidget {
             onZone: s.zone > 0,
           ),
         ),
-        if (runAverage == null)
-          Text(
-            'average from 20 m',
-            style: RunSoloType.body15.copyWith(color: secondary),
-          )
-        else
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                'run average ',
-                style: RunSoloType.body15.copyWith(color: secondary),
-              ),
-              Text(
-                Fmt.pace(runAverage, units),
-                key: const ValueKey('run-average'),
-                style: AuxFigure.style.copyWith(color: t.inkPrimary),
-              ),
-              Text(
-                ' /${units == Units.mi ? 'mi' : 'km'}',
-                style: RunSoloType.body15.copyWith(color: secondary),
-              ),
-            ],
-          ),
       ],
     );
   }
@@ -1256,11 +1250,13 @@ class _TimerBlock extends StatelessWidget {
         : ctl.displayLapElapsedMs;
     final toGo = s.metresToGo;
     final target = s.currentStep?.value ?? 0;
-    final total = !recovery
+    final total = !recovery && s.phase != Phase.work
         ? 0
         : s.phaseDurationMs > 0
         ? s.phaseDurationMs
-        : s.recoveryMs;
+        : recovery
+        ? s.recoveryMs
+        : 0;
     // A distance step counts metres down (A8); the ring fills by distance.
     final progress = toGo != null
         ? (target == 0 ? 0.0 : 1 - toGo / target)
@@ -1293,7 +1289,8 @@ class _TimerBlock extends StatelessWidget {
     );
     return Column(
       children: [
-        if (recovery)
+        // Founder 30-Sep: rep and recovery share one outlined countdown.
+        if (recovery || s.phase == Phase.work)
           CustomPaint(
             painter: _RecoveryRingPainter(
               progress: progress,
