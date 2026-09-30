@@ -162,8 +162,8 @@ class _ScoreCard extends StatelessWidget {
                     ),
                   ),
                   SizedBox(
-                    width: 32,
-                    height: 32,
+                    width: 48,
+                    height: 48,
                     child: IconButton(
                       padding: EdgeInsets.zero,
                       tooltip: '$label info',
