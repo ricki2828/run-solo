@@ -110,7 +110,7 @@ void main() {
         tester.view.physicalSize = Size(1080, h * 3.0);
         await pumpTimes(tester, 3);
         await show(tester, fake, km3());
-        expectClear(tester, timer());
+        expectClear(tester, find.byKey(const ValueKey('run-average')));
         expect(tester.getSize(card).height, h < 720 ? 92 : 104);
       });
 

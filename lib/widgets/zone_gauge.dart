@@ -13,6 +13,7 @@ class ZoneHeader extends StatelessWidget {
     required this.paired,
     this.dropped = false,
     this.onZoneBackground = true,
+    this.showLabel = true,
   });
   final int zone;
   final bool paired;
@@ -22,6 +23,9 @@ class ZoneHeader extends StatelessWidget {
 
   /// Bone labels when a zone background is active (A1), else secondary ink.
   final bool onZoneBackground;
+
+  /// False when the label is shown elsewhere (under the heart rate).
+  final bool showLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -34,15 +38,17 @@ class ZoneHeader extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            label,
-            key: const ValueKey('zone-label'),
-            style: RunSoloType.label13.copyWith(
-              color: onZoneBackground ? t.inkPrimary : t.inkSecondary,
-              letterSpacing: 13 * 0.04,
+          if (showLabel) ...[
+            Text(
+              label,
+              key: const ValueKey('zone-label'),
+              style: RunSoloType.label13.copyWith(
+                color: onZoneBackground ? t.inkPrimary : t.inkSecondary,
+                letterSpacing: 13 * 0.04,
+              ),
             ),
-          ),
-          const SizedBox(width: Space.x8),
+            const SizedBox(width: Space.x8),
+          ],
           ZoneGauge(zone: zone),
         ],
       ),
