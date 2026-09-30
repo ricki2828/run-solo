@@ -344,6 +344,17 @@ class _FourByFourTrend extends StatelessWidget {
           format: (v) => Fmt.pace(v, units),
           direction: 'Faster is taller',
           emptyTitle: emptyText,
+          // The app's honesty cue: pace differences inside the GPS noise
+          // floor are not real change.
+          noise: NoiseBand(
+            center: current,
+            half: floor,
+            label: 'Noise',
+            detail: '±${_deltaText(floor, units)}',
+            caption:
+                'Shaded band is GPS noise around your median. Bars inside '
+                'it are level.',
+          ),
         ),
         if (ghost) ...[
           const SizedBox(height: Space.x8),

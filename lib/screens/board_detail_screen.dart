@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
@@ -376,21 +374,6 @@ class _DetailBody extends StatelessWidget {
             ),
           )
         else ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
-            child: Text(
-              '${n > 10 ? 'LAST 10' : 'EVERY ${view.noun == 'tests'
-                        ? 'TEST'
-                        : view.noun == 'sessions'
-                        ? 'SESSION'
-                        : 'RUN'}'} · ${switch (view.board.kind) {
-                engine.BoardKind.cooper => 'HIGHER',
-                engine.BoardKind.distanceInTime => 'FURTHER',
-                _ => 'FASTER',
-              }} IS TALLER',
-              style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-            ),
-          ),
           const SizedBox(height: Space.x8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
@@ -431,7 +414,7 @@ class _DetailBody extends StatelessWidget {
           heatOn: heatOn,
           selectedRunId: selected == null
               ? null
-              : view.board.last10[selected!].runId,
+              : _BoardChart.shownRuns(view.board)[selected!].runId,
           shortDate: _shortDate,
         ),
       ],
@@ -787,10 +770,10 @@ class _TrendLine extends StatelessWidget {
   }
 }
 
-/// The recent-runs chart (A11.3.5): the last 10, oldest left. Taller is
-/// always better; the axis is cropped past the worst and says where it
-/// starts; the Best line sits at the PB's height even when the PB is
-/// older than the shown runs.
+/// The recent-runs chart (A11.3.5) on the shared bar style: the last 8,
+/// oldest left. Taller is always better; the axis is cropped past the
+/// worst and says where it starts; the Best line sits at the PB's height
+/// even when the PB is older than the shown runs.
 class _BoardChart extends StatelessWidget {
   const _BoardChart({
     required this.view,
@@ -810,422 +793,67 @@ class _BoardChart extends StatelessWidget {
   final int? selected;
   final ValueChanged<int?> onSelect;
 
+  /// The runs the chart draws, oldest first; the table's selection maps
+  /// through the same list.
+  static List<engine.BoardRun> shownRuns(engine.Leaderboard board) {
+    final last = board.last10;
+    return last.length > _maxBars ? last.sublist(last.length - _maxBars) : last;
+  }
+
+  static const _maxBars = 8;
+
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final shown = view.board.last10;
-    final one = shown.length == 1;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: one
-          ? null
-          : (d) {
-              final hit = _ChartPainter.slotAt(
-                d.localPosition.dx,
-                size: _ChartPainter.plotSize(context),
-                count: shown.length,
-              );
-              onSelect(hit == selected ? null : hit);
-            },
-      child: SizedBox(
-        key: const ValueKey('board-chart'),
-        height: _ChartPainter.kHeight,
-        width: double.infinity,
-        child: AnimatedBuilder(
-          animation: animation,
-          builder: (context, _) => CustomPaint(
-            painter: _ChartPainter(
-              view: view,
-              units: units,
-              tokens: t,
-              heatOn: heatOn,
-              growT: pbMoment
-                  ? const Interval(
-                      0,
-                      0.625,
-                      curve: MotionCurves.emphasized,
-                    ).transform(animation.value)
-                  : 1,
-              moveT: pbMoment
-                  ? const Interval(
-                      0.625,
-                      1,
-                      curve: MotionCurves.standard,
-                    ).transform(animation.value)
-                  : 1,
-              pbMoment: pbMoment,
-              selected: selected,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ChartPainter extends CustomPainter {
-  _ChartPainter({
-    required this.view,
-    required this.units,
-    required this.tokens,
-    required this.heatOn,
-    required this.growT,
-    required this.moveT,
-    required this.pbMoment,
-    required this.selected,
-  });
-
-  final _BoardView view;
-  final Units units;
-  final RunSoloTokens tokens;
-  final bool heatOn;
-
-  /// The new PB bar's grow progress (A11.4), 1 outside the moment.
-  final double growT;
-
-  /// The Best line's move progress from the old best to the new.
-  final double moveT;
-  final bool pbMoment;
-  final int? selected;
-
-  static const double kHeight = 222;
-  static const double _gutter = 60;
-  static const double _top = 32;
-  static const double _bottom = 54;
-  static const _months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-
-  /// The mockup's chart is 320 dp wide (a 360 screen less the gutters).
-  static Size plotSize(BuildContext context) {
-    final w = MediaQuery.of(context).size.width - Space.screenGutter * 2;
-    return Size(w, kHeight);
-  }
-
-  static int? slotAt(double dx, {required Size size, required int count}) {
-    final plotW = size.width - _gutter;
-    final slot = plotW / math.max(count, 10);
-    final x0 = plotW - count * slot;
-    if (dx < x0 || dx > plotW) return null;
-    final i = ((dx - x0) / slot).floor();
-    return i >= 0 && i < count ? i : null;
-  }
-
-  /// Goodness scale (mockup `scale`): faster/further is up. The baseline
-  /// crops 10% of the shown range past the worst, rounded outward, so
-  /// seconds show; the best stops 6% short of the top.
-  _Scale _scale(List<double> vals, double plotBottom) {
-    final lower = view.lower;
-    final best = lower ? vals.reduce(math.min) : vals.reduce(math.max);
-    final worst = lower ? vals.reduce(math.max) : vals.reduce(math.min);
-    var span = (worst - best).abs();
-    if (span == 0) span = (best * 0.02).abs();
-    if (span == 0) span = 1;
-    var base = lower ? worst + span * 0.1 : worst - span * 0.1;
-    final r = view.roundTo;
-    base = lower ? (base / r).ceil() * r : (base / r).floor() * r;
-    final top = lower ? best - span * 0.06 : best + span * 0.06;
-    double y(double v) =>
-        plotBottom -
-        (plotBottom - _top) *
-            ((lower ? base - v : v - base) / (lower ? base - top : top - base));
-    return _Scale(y: y, base: base, top: top);
-  }
-
-  void _text(
-    Canvas canvas,
-    String s,
-    Offset at, {
-    required Color color,
-    double size = 11,
-    bool alignEnd = false,
-    bool alignCenter = false,
-    FontWeight weight = FontWeight.w500,
-    double letterSpacing = 0,
-  }) {
-    final tp = TextPainter(
-      text: TextSpan(
-        text: s,
-        style: TextStyle(
-          fontFamily: RunSoloType.ui,
-          fontSize: size,
-          fontWeight: weight,
-          color: color,
-          letterSpacing: letterSpacing,
-          fontFeatures: RunSoloType.tabular,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    final dx = alignEnd
-        ? at.dx - tp.width
-        : alignCenter
-        ? at.dx - tp.width / 2
-        : at.dx;
-    tp.paint(canvas, Offset(dx, at.dy - tp.height / 2));
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
     final board = view.board;
-    final shown = board.last10;
-    if (shown.isEmpty) return;
+    final shown = shownRuns(board);
     final pbRun = board.pb!;
-    final plotW = size.width - _gutter;
-    final plotBottom = kHeight - _bottom;
-    final one = shown.length == 1;
-    final slot = plotW / math.max(shown.length, 10);
-    final bw = math.min(20.0, slot * 0.62);
-    final x0 = plotW - shown.length * slot;
-
-    // The scale includes the heat ticks and the PB, so nothing clips.
-    final vals = <double>[
-      for (final e in shown) ...[
-        view.board.rankValue(e),
-        if (heatOn &&
-            view.board.kind != engine.BoardKind.cooper &&
-            e.adjMetric != null)
-          e.adjMetric!,
-      ],
-      view.board.rankValue(pbRun),
-    ];
-    final sc = one ? null : _scale(vals, plotBottom);
-    double yOf(double v) => one ? _top + (plotBottom - _top) * 0.3 : sc!.y(v);
-    final bestY = yOf(view.board.rankValue(pbRun));
-
-    // Gridlines and right-hand labels on round steps; the crop note.
-    if (!one && sc != null) {
-      final lo = math.min(sc.base, sc.top);
-      final hi = math.max(sc.base, sc.top);
-      final step = view.steps.firstWhere(
-        (st) => (hi - lo) / st <= 3.2,
-        orElse: () => view.steps.last,
-      );
-      final grid = Paint()
-        ..color = tokens.lineHair
-        ..strokeWidth = 1;
-      var v = (lo / step).ceil() * step;
-      for (; v <= hi; v += step) {
-        final yy = sc.y(v);
-        if ((yy - bestY).abs() < 12 || yy > plotBottom - 4) continue;
-        canvas.drawLine(Offset(0, yy), Offset(plotW, yy), grid);
-        _text(
-          canvas,
-          view.tick(v, units),
-          Offset(plotW + 6, yy),
-          color: tokens.inkMuted,
-        );
-      }
-      _text(
-        canvas,
-        'Axis starts at ${view.tick(sc.base, units)}${view.axisUnit(units)}',
-        Offset(plotW, kHeight - 8),
-        color: tokens.inkSecondary,
-        alignEnd: true,
-      );
-    }
-    canvas.drawLine(
-      Offset(0, plotBottom),
-      Offset(plotW, plotBottom),
-      Paint()
-        ..color = tokens.inkMuted
-        ..strokeWidth = 1,
-    );
-
-    // Bars: the PB is Arc, the newest Bone, the rest muted. In the PB
-    // moment the new bar grows up from the baseline.
-    var prevMonth = -1;
-    var lastMonthX = -99.0;
-    for (var i = 0; i < shown.length; i++) {
-      final e = shown[i];
-      final x = x0 + i * slot + (slot - bw) / 2;
-      final isPb = e.runId == pbRun.runId && e.metric == pbRun.metric;
-      final newest = i == shown.length - 1;
-      final y = yOf(e.metric);
-      final top = isPb ? plotBottom - (plotBottom - y) * growT : y;
-      final fill = isPb
-          ? tokens.accentArc
-          : newest
-          ? tokens.inkPrimary
-          : tokens.inkMuted;
-      canvas.drawRRect(
-        RRect.fromRectAndCorners(
-          Rect.fromLTRB(x, top, x + bw, plotBottom),
-          topLeft: const Radius.circular(3),
-          topRight: const Radius.circular(3),
-        ),
-        Paint()..color = fill,
-      );
-      if (heatOn && !one && view.board.kind != engine.BoardKind.cooper) {
-        final adj = e.adjMetric;
-        if (adj != null) {
-          final ty = sc!.y(adj);
-          canvas.drawLine(
-            Offset(x - 3, ty),
-            Offset(x + bw + 3, ty),
-            Paint()
-              ..color = tokens.inkSecondary
-              ..strokeWidth = 2,
-          );
-        } else {
-          canvas.drawCircle(
-            Offset(x + bw / 2, y - 9),
-            2.5,
-            Paint()
-              ..color = tokens.inkMuted
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 1.2,
-          );
-        }
-      }
-      if (selected == i) {
-        canvas.drawRRect(
-          RRect.fromRectAndCorners(
-            Rect.fromLTRB(x - 2, y - 2, x + bw + 2, plotBottom),
-            topLeft: const Radius.circular(3),
-            topRight: const Radius.circular(3),
+    final twins = board.kind != engine.BoardKind.cooper;
+    final direction = switch (board.kind) {
+      engine.BoardKind.cooper => 'Higher is taller',
+      engine.BoardKind.distanceInTime => 'Further is taller',
+      _ => 'Faster is taller',
+    };
+    return RecentBarsChart(
+      chartKey: const ValueKey('board-chart'),
+      points: [
+        for (final e in shown)
+          BarPoint(
+            date: e.date,
+            value: e.metric,
+            twin: twins ? e.adjMetric : null,
+            noWeather: twins && e.adjMetric == null,
           ),
-          Paint()
-            ..color = tokens.inkPrimary
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.5,
-        );
-      }
-      _text(
-        canvas,
-        '${e.date.day}',
-        Offset(x + bw / 2, plotBottom + 14),
-        color: tokens.inkSecondary,
-        alignCenter: true,
-      );
-      if (e.date.month != prevMonth && x - lastMonthX >= 30) {
-        lastMonthX = x;
-        _text(
-          canvas,
-          _months[e.date.month - 1].toUpperCase(),
-          Offset(x + bw / 2, plotBottom + 27),
-          color: tokens.inkMuted,
-          size: 10,
-          alignCenter: true,
-          letterSpacing: 0.8,
-        );
-      }
-      prevMonth = e.date.month;
-    }
-
-    // The Best line. In the PB moment it moves up from the old best,
-    // which stays behind as a ghost ("was 51:10").
-    double lineY = bestY;
-    if (pbMoment && board.length >= 2) {
-      final oldY = yOf(board.ranked[1].metric);
-      lineY = oldY + (bestY - oldY) * moveT;
-      if (moveT < 1) {
-        final ghost = Paint()
-          ..color = tokens.inkMuted.withValues(alpha: 0.45)
-          ..strokeWidth = 1;
-        _dashed(canvas, Offset(0, oldY), Offset(plotW, oldY), ghost);
-        _text(
-          canvas,
-          'was ${view.tick(board.ranked[1].metric, units)}',
-          Offset(plotW + 6, oldY),
-          color: tokens.inkMuted,
-        );
-      }
-    }
-    final bestPaint = Paint()
-      ..color = tokens.inkSecondary
-      ..strokeWidth = 1;
-    _dashed(canvas, Offset(0, lineY), Offset(plotW, lineY), bestPaint);
-    _text(
-      canvas,
-      'Best',
-      Offset(plotW + 6, lineY - 6),
-      color: tokens.inkPrimary,
+      ],
+      lowerIsBetter: view.lower,
+      format: (v) => view.fmt(v, units),
+      tick: (v) => view.tick(v, units),
+      axisSuffix: view.axisUnit(units),
+      roundTo: view.roundTo,
+      steps: view.steps,
+      direction: direction,
+      emptyTitle: 'Two ${view.noun} draw the first chart.',
+      best: view.board.rankValue(pbRun),
+      bestIndex: shown.indexWhere(
+        (e) => e.runId == pbRun.runId && e.metric == pbRun.metric,
+      ),
+      maxBars: _maxBars,
+      showValues: false,
+      showTwins: heatOn && twins,
+      selected: selected,
+      onSelect: onSelect,
+      selectedLabel: (i) {
+        final e = shown[i];
+        final gap = e.runId == pbRun.runId && e.metric == pbRun.metric
+            ? 'your best'
+            : '${view.gap(e.metric, units).replaceFirst('+', '')} off your best';
+        return '${Fmt.dayDate(e.date)} · ${view.fmt(e.metric, units)} · $gap';
+      },
+      moment: pbMoment && board.length >= 2 ? animation : null,
+      previousBest: pbMoment && board.length >= 2
+          ? board.rankValue(board.ranked[1])
+          : null,
     );
-    _text(
-      canvas,
-      view.tick(pbRun.metric, units),
-      Offset(plotW + 6, lineY + 7),
-      color: tokens.inkSecondary,
-    );
-
-    // The tap callout: "Sat 20 Sep · 24:05 · 17 s off your best".
-    final sel = selected;
-    if (sel != null && sel < shown.length) {
-      final e = shown[sel];
-      final gapText = e.runId == pbRun.runId && e.metric == pbRun.metric
-          ? 'your best'
-          : '${view.gap(e.metric, units).replaceFirst('+', '')} off your best';
-      final label =
-          '${Fmt.dayDate(e.date)} · ${view.fmt(e.metric, units)} · $gapText';
-      const bw2 = 250.0;
-      final cx = x0 + sel * slot + slot / 2;
-      final bx = (cx - bw2 / 2).clamp(0.0, size.width - bw2);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(bx, 0, bw2, 24),
-          const Radius.circular(8),
-        ),
-        Paint()..color = tokens.bgRaised,
-      );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(bx, 0, bw2, 24),
-          const Radius.circular(8),
-        ),
-        Paint()
-          ..color = tokens.lineHair
-          ..style = PaintingStyle.stroke,
-      );
-      _text(
-        canvas,
-        label,
-        Offset(bx + bw2 / 2, 12),
-        color: tokens.inkPrimary,
-        size: 12,
-        alignCenter: true,
-      );
-    }
   }
-
-  void _dashed(Canvas canvas, Offset a, Offset b, Paint paint) {
-    const dash = 3.0, gap = 4.0;
-    var x = a.dx;
-    while (x < b.dx) {
-      canvas.drawLine(
-        Offset(x, a.dy),
-        Offset(math.min(x + dash, b.dx), b.dy),
-        paint,
-      );
-      x += dash + gap;
-    }
-  }
-
-  @override
-  bool shouldRepaint(_ChartPainter old) =>
-      old.growT != growT ||
-      old.moveT != moveT ||
-      old.selected != selected ||
-      old.heatOn != heatOn ||
-      old.pbMoment != pbMoment;
-}
-
-class _Scale {
-  const _Scale({required this.y, required this.base, required this.top});
-  final double Function(double) y;
-  final double base;
-  final double top;
 }
 
 /// The chart legend: your best / newest / best, plus the heat-adjusted
@@ -1254,7 +882,6 @@ class _Legend extends StatelessWidget {
           runSpacing: Space.x4,
           children: [
             _item(_Swatch(fill: t.accentArc), 'your best', t),
-            _item(_Swatch(fill: t.inkPrimary), 'newest', t),
             _item(_Swatch(dashed: t.inkSecondary), 'best', t),
             if (heatOn && hasHeatTwin) ...[
               _item(_Swatch(tick: t.inkSecondary), 'heat-adjusted estimate', t),
@@ -1440,7 +1067,7 @@ class _AllTable extends StatelessWidget {
         MaterialPageRoute(builder: (_) => RunDetailScreen(runId: r.runId)),
       ),
       child: Container(
-        color: selected ? const Color(0x0AFFFFFF) : null,
+        color: selected ? t.bgRaised : null,
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(
           children: [

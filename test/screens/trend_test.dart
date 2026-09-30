@@ -45,6 +45,8 @@ void main() {
     expect(find.byKey(const ValueKey('trend-chart')), findsOneWidget);
     expect(find.text('FASTER IS TALLER · LAST 8'), findsOneWidget);
     expect(find.text('PB'), findsOneWidget);
+    // The noise floor stays on the chart, with its plain-words caption.
+    expect(find.textContaining('Shaded band is GPS noise'), findsOneWidget);
   });
 
   testWidgets('three 4x4s: hero median, delta, chart, bests', (tester) async {
