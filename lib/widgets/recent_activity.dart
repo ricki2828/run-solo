@@ -89,7 +89,7 @@ class _RecentActivityState extends State<RecentActivity> {
                   : () => widget.onOpen!(shown[i]),
             ),
             const SizedBox(height: Space.x12),
-            if (i == 0 && widget.estimates case final e?) ...[
+            if (widget.estimates case final e? when i == 0) ...[
               _EstimatesTable(estimates: e),
               const SizedBox(height: Space.x12),
             ],
