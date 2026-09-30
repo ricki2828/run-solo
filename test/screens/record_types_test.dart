@@ -59,7 +59,7 @@ void main() {
     expect(find.textContaining('LAP '), findsNothing);
     // Founder 25-Sep: current-pace dial against the run's average so far.
     expect(find.byType(PaceDial), findsOneWidget);
-    expect(find.textContaining('average'), findsOneWidget);
+    expect(find.textContaining('RUN AVERAGE PACE'), findsOneWidget);
     // Pause and hold-to-stop remain.
     expect(find.text('PAUSE'), findsOneWidget);
     expect(find.text('STOP'), findsOneWidget);
@@ -119,7 +119,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 700));
       expect(background(tester), HrZones.background(3));
       // Header + the vitals copy (founder field test 28-Sep).
-      expect(find.text('ZONE 3 · TEMPO'), findsNWidgets(2));
+      expect(find.text('ZONE 3 · TEMPO'), findsOneWidget);
       // Jump to Z5: needs 2 bpm past 171 and a 5 s dwell.
       fake.scriptedHr = 178;
       for (var i = 0; i < 12; i++) {
@@ -128,7 +128,7 @@ void main() {
       }
       await tester.pump(const Duration(milliseconds: 700));
       expect(background(tester), HrZones.background(5));
-      expect(find.text('ZONE 5 · MAX'), findsNWidgets(2));
+      expect(find.text('ZONE 5 · MAX'), findsOneWidget);
     },
   );
 
@@ -180,9 +180,12 @@ void main() {
       fake.advance(const Duration(milliseconds: 500));
       await pumpTimes(tester, 3);
       expect(services.recording.snapshot.zone, 3);
-      expect(find.text('RECONNECTING'), findsOneWidget);
+      expect(find.text('RECONNECTING'), findsNothing);
       expect(find.text('reconnecting'), findsOneWidget);
-      expect(find.text('--'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('vitals-hr'))).data,
+        '--',
+      );
       expect(tester.widget<ZoneGauge>(find.byType(ZoneGauge)).zone, 3);
       expect(background(tester), HrZones.background(3));
       for (var i = 0; i < 12; i++) {
@@ -193,7 +196,7 @@ void main() {
       expect(services.recording.snapshot.zone, 0);
       expect(tester.widget<ZoneGauge>(find.byType(ZoneGauge)).zone, 0);
       expect(background(tester), HrZones.background(0));
-      expect(find.text('RECONNECTING'), findsOneWidget);
+      expect(find.text('reconnecting'), findsOneWidget);
     },
   );
 
@@ -212,6 +215,6 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(background(tester), HrZones.background(4));
-    expect(find.text('ZONE 4 · HARD'), findsNWidgets(2));
+    expect(find.text('ZONE 4 · HARD'), findsOneWidget);
   });
 }
