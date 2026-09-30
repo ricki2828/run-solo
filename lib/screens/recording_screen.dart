@@ -1161,7 +1161,7 @@ class _FreeRunBlock extends StatelessWidget {
   final Units units;
   final int maxHr;
 
-  /// The live compare card's slot link, over the distance.
+  /// The live compare card's slot link, over the time / distance row.
   final LayerLink? card;
 
   /// Short screen (< 720 dp): each number one step down.
@@ -1198,22 +1198,23 @@ class _FreeRunBlock extends StatelessWidget {
           style: RunSoloType.label13.copyWith(color: secondary),
         ),
         SizedBox(height: compact ? Space.x8 : Space.x16),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              child: AuxFigure(
-                label: 'TIME',
-                value: Fmt.clock(ctl.displayElapsedMs),
-                labelColor: secondary,
-                valueColor: t.inkPrimary,
-                valueKey: const ValueKey('timer'),
+        // The compare card sits over this secondary row, never the average.
+        CompareSlot(
+          link: card,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: AuxFigure(
+                  label: 'TIME',
+                  value: Fmt.clock(ctl.displayElapsedMs),
+                  labelColor: secondary,
+                  valueColor: t.inkPrimary,
+                  valueKey: const ValueKey('timer'),
+                ),
               ),
-            ),
-            const SizedBox(width: Space.x16),
-            Expanded(
-              child: CompareSlot(
-                link: card,
+              const SizedBox(width: Space.x16),
+              Expanded(
                 child: AuxFigure(
                   label: 'DISTANCE',
                   value: Fmt.distance(s.totalDistanceM, units),
@@ -1222,8 +1223,8 @@ class _FreeRunBlock extends StatelessWidget {
                   valueKey: const ValueKey('free-distance'),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         const SizedBox(height: Space.x8),
         // Founder 25-Sep: the current-pace dial here too, needle against the

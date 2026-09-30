@@ -182,7 +182,10 @@ void main() {
       expect(services.recording.snapshot.zone, 3);
       expect(find.text('RECONNECTING'), findsNothing);
       expect(find.text('reconnecting'), findsOneWidget);
-      expect(find.text('--'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('vitals-hr'))).data,
+        '--',
+      );
       expect(tester.widget<ZoneGauge>(find.byType(ZoneGauge)).zone, 3);
       expect(background(tester), HrZones.background(3));
       for (var i = 0; i < 12; i++) {
