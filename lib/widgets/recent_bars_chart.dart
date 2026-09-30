@@ -496,6 +496,22 @@ class _BarsPainter extends CustomPainter {
         ..strokeWidth = 1,
     );
 
+    // The noise band, faint, behind the bars, labelled in the gutter.
+    final nb = noise;
+    if (nb != null) {
+      final y0 = y(nb.center - nb.half), y1 = y(nb.center + nb.half);
+      canvas.drawRect(
+        Rect.fromLTRB(0, math.min(y0, y1), plotW, math.max(y0, y1)),
+        Paint()..color = tokens.inkPrimary.withValues(alpha: 0.08),
+      );
+      var ly = (y0 + y1) / 2;
+      if ((ly - by).abs() < 30) ly = by + 30;
+      final l1 = _tp(nb.label, tokens.inkSecondary);
+      final l2 = _tp(nb.detail, tokens.inkSecondary);
+      l1.paint(canvas, Offset(plotW + 6, ly - l1.height));
+      l2.paint(canvas, Offset(plotW + 6, ly));
+    }
+
     // Bars.
     for (var i = 0; i < n; i++) {
       final x = i * slot + (slot - barW) / 2;
@@ -551,22 +567,6 @@ class _BarsPainter extends CustomPainter {
           Offset(x + barW / 2 - pl.width / 2, vy - pl.height - 3),
         );
       }
-    }
-
-    // The noise band, faint, across the bars, labelled in the gutter.
-    final nb = noise;
-    if (nb != null) {
-      final y0 = y(nb.center - nb.half), y1 = y(nb.center + nb.half);
-      canvas.drawRect(
-        Rect.fromLTRB(0, math.min(y0, y1), plotW, math.max(y0, y1)),
-        Paint()..color = tokens.inkPrimary.withValues(alpha: 0.12),
-      );
-      var ly = (y0 + y1) / 2;
-      if ((ly - by).abs() < 30) ly = by + 30;
-      final l1 = _tp(nb.label, tokens.inkSecondary);
-      final l2 = _tp(nb.detail, tokens.inkSecondary);
-      l1.paint(canvas, Offset(plotW + 6, ly - l1.height));
-      l2.paint(canvas, Offset(plotW + 6, ly));
     }
 
     // Single-line dates, thinned so none overlap: PB, newest and oldest
