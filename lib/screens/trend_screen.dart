@@ -46,10 +46,10 @@ class _TrendScreenState extends State<TrendScreen> {
     final settings = AppServices.of(context).settings.settings;
     final units = settings.units;
     final heatAdjusted = settings.compareHeatAdjusted;
-    // Own Material ancestor: bare Text under a route without a Scaffold
-    // falls back to the debug yellow underline.
+    // Own Material ancestor on the base colour: bare Text under a route
+    // without a Scaffold falls back to the debug yellow underline.
     return Material(
-      type: MaterialType.transparency,
+      color: t.bgBase,
       child: SafeArea(
         child: FutureBuilder<List<RunSummary>>(
           future: _runs,
