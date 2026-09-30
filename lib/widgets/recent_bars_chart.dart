@@ -21,16 +21,17 @@ class BarPoint {
   final bool noWeather;
 }
 
-/// The GPS noise band drawn faintly behind the bars: the Best line
-/// +/- [half], in the chart's own units. A bar inside it is level with the
-/// best.
+/// The GPS noise band drawn faintly behind the bars: [center] +/- [half],
+/// in the chart's own units. A bar inside it is level with the centre.
 class NoiseBand {
   const NoiseBand({
+    required this.center,
     required this.half,
     required this.label,
     required this.detail,
     required this.caption,
   });
+  final double center;
   final double half;
 
   /// Gutter label ("Noise") and its second line ("+/- 8 s").
@@ -498,7 +499,7 @@ class _BarsPainter extends CustomPainter {
     // The noise band, faint, behind the bars, labelled in the gutter.
     final nb = noise;
     if (nb != null) {
-      final y0 = y(bestValue - nb.half), y1 = y(bestValue + nb.half);
+      final y0 = y(nb.center - nb.half), y1 = y(nb.center + nb.half);
       canvas.drawRect(
         Rect.fromLTRB(0, math.min(y0, y1), plotW, math.max(y0, y1)),
         Paint()..color = tokens.inkPrimary.withValues(alpha: 0.08),

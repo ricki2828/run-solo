@@ -46,7 +46,7 @@ void main() {
     expect(find.text('FASTER IS TALLER · LAST 8'), findsOneWidget);
     expect(find.text('PB'), findsOneWidget);
     // The noise floor stays on the chart, with its plain-words caption.
-    expect(find.text('Shaded = GPS noise'), findsOneWidget);
+    expect(find.text('Shaded = GPS noise around your median'), findsOneWidget);
   });
 
   testWidgets('three 4x4s: hero median, delta, chart, bests', (tester) async {
