@@ -16,7 +16,35 @@ void main() {
     await pumpApp(tester, fakeServices(files: [r1]), home: const TrendScreen());
     await pumpTimes(tester, 6);
     expect(find.byKey(const ValueKey('trend-empty')), findsOneWidget);
+    expect(find.byKey(const ValueKey('trend-chart')), findsNothing);
     expect(find.text('NORWEGIAN 4X4 · 1 SESSION'), findsOneWidget);
+  });
+
+  testWidgets('no runs: designed empty state, no chart', (tester) async {
+    await pumpApp(tester, fakeServices(), home: const TrendScreen());
+    await pumpTimes(tester, 6);
+    expect(find.byKey(const ValueKey('trend-empty')), findsOneWidget);
+    expect(find.byKey(const ValueKey('trend-chart')), findsNothing);
+  });
+
+  testWidgets('many 4x4s: bars capped at 8, direction stated', (tester) async {
+    final files = [
+      for (var i = 0; i < 10; i++)
+        fourByFourFile(
+          n: i + 1,
+          start: base.add(Duration(days: 3 * i)),
+          workSecPerKm: 300 - 2 * i,
+        ),
+    ];
+    await pumpApp(
+      tester,
+      fakeServices(files: files),
+      home: const TrendScreen(),
+    );
+    await pumpTimes(tester, 6);
+    expect(find.byKey(const ValueKey('trend-chart')), findsOneWidget);
+    expect(find.text('FASTER IS TALLER · LAST 8'), findsOneWidget);
+    expect(find.text('PB'), findsOneWidget);
   });
 
   testWidgets('three 4x4s: hero median, delta, chart, bests', (tester) async {

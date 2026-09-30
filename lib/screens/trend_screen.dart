@@ -10,6 +10,7 @@ import '../state/history_store.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
+import '../widgets/recent_bars_chart.dart';
 import 'cooper_result_screen.dart' show cooperTests, primeOf, primeRangeLineOf;
 
 /// Trend per run type (design brief §4.9); Intervals group by comparison
@@ -45,112 +46,103 @@ class _TrendScreenState extends State<TrendScreen> {
     final settings = AppServices.of(context).settings.settings;
     final units = settings.units;
     final heatAdjusted = settings.compareHeatAdjusted;
-    return SafeArea(
-      child: FutureBuilder<List<RunSummary>>(
-        future: _runs,
-        builder: (context, snap) {
-          final all = snap.data ?? const <RunSummary>[];
-          final typed = all.where((r) => r.mode == _type && !r.missing).toList()
-            ..sort((a, b) => a.start.compareTo(b.start));
-          // Intervals: one trend per comparison key, newest key first,
-          // titled by the latest run's session name.
-          final keys = <String, String>{};
-          for (final r in typed.reversed) {
-            final k = trendKey(r);
-            if (k != null) keys.putIfAbsent(k, () => runTitle(r));
-          }
-          final key = _type != RecordMode.intervals
-              ? null
-              : keys.containsKey(_key)
-              ? _key
-              : keys.keys.firstOrNull;
-          final runs = key == null
-              ? typed
-              : typed.where((r) => trendKey(r) == key).toList();
-          final title = key == null
-              ? modeTitle(_type).toUpperCase()
-              : keys[key]!.toUpperCase();
-          return ListView(
-            padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
-            children: [
-              const SizedBox(height: Space.x8),
-              // Scrolls sideways rather than overflow: four chips on a
-              // narrow phone at a large text size.
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (final m in [
+    // Own Material ancestor: bare Text under a route without a Scaffold
+    // falls back to the debug yellow underline.
+    return Material(
+      type: MaterialType.transparency,
+      child: SafeArea(
+        child: FutureBuilder<List<RunSummary>>(
+          future: _runs,
+          builder: (context, snap) {
+            final all = snap.data ?? const <RunSummary>[];
+            final typed =
+                all.where((r) => r.mode == _type && !r.missing).toList()
+                  ..sort((a, b) => a.start.compareTo(b.start));
+            // Intervals: one trend per comparison key, newest key first,
+            // titled by the latest run's session name.
+            final keys = <String, String>{};
+            for (final r in typed.reversed) {
+              final k = trendKey(r);
+              if (k != null) keys.putIfAbsent(k, () => runTitle(r));
+            }
+            final key = _type != RecordMode.intervals
+                ? null
+                : keys.containsKey(_key)
+                ? _key
+                : keys.keys.firstOrNull;
+            final runs = key == null
+                ? typed
+                : typed.where((r) => trendKey(r) == key).toList();
+            final title = key == null
+                ? modeTitle(_type).toUpperCase()
+                : keys[key]!.toUpperCase();
+            return ListView(
+              padding: const EdgeInsets.symmetric(
+                horizontal: Space.screenGutter,
+              ),
+              children: [
+                const SizedBox(height: Space.x8),
+                _Segmented(
+                  labels: const ['Intervals', 'Laps', 'Free', 'Test'],
+                  selected: const [
+                    RecordMode.intervals,
+                    RecordMode.laps,
+                    RecordMode.free,
+                    RecordMode.cooper,
+                  ].indexOf(_type),
+                  onSelect: (i) => setState(
+                    () => _type = const [
                       RecordMode.intervals,
                       RecordMode.laps,
                       RecordMode.free,
                       RecordMode.cooper,
-                    ]) ...[
-                      if (m != RecordMode.intervals)
-                        const SizedBox(width: Space.x8),
-                      _TypeChip(
-                        label: m == RecordMode.cooper
-                            ? 'Test'
-                            : modeTitle(m).split(' ').first,
-                        selected: _type == m,
-                        onTap: () => setState(() => _type = m),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (keys.length > 1) ...[
-                const SizedBox(height: Space.x12),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      for (final e in keys.entries) ...[
-                        _TypeChip(
-                          key: ValueKey('trend-key-${e.key}'),
-                          label: e.value,
-                          selected: e.key == key,
-                          onTap: () => setState(() => _key = e.key),
-                        ),
-                        const SizedBox(width: Space.x8),
-                      ],
-                    ],
+                    ][i],
                   ),
                 ),
+                if (keys.length > 1) ...[
+                  const SizedBox(height: Space.x12),
+                  _Segmented(
+                    labels: keys.values.toList(),
+                    keys: [for (final k in keys.keys) ValueKey('trend-key-$k')],
+                    selected: keys.keys.toList().indexOf(key!),
+                    onSelect: (i) =>
+                        setState(() => _key = keys.keys.elementAt(i)),
+                  ),
+                ],
+                const SizedBox(height: Space.x24),
+                _LaneHeader(
+                  title:
+                      '$title · ${runs.length} '
+                      '${_type == RecordMode.cooper ? 'TEST' : 'SESSION'}'
+                      '${runs.length == 1 ? '' : 'S'}',
+                ),
+                const SizedBox(height: Space.x24),
+                switch (_type) {
+                  // Every session shape: I3 gives each key its work pace,
+                  // floor and bests; runs of one key only.
+                  RecordMode.intervals => _FourByFourTrend(
+                    runs: runs,
+                    units: units,
+                    heatAdjusted: heatAdjusted,
+                    emptyText:
+                        key == null || key == engine.ComparisonKey.norwegian4x4
+                        ? 'Two 4x4s draw the first line.'
+                        : 'Two sessions draw the first line.',
+                  ),
+                  RecordMode.cooper => _CooperTrend(runs: runs),
+                  RecordMode.laps ||
+                  RecordMode.free => _DistanceTrend(runs: runs, units: units),
+                },
+                const SizedBox(height: Space.x24),
+                if (runs.isEmpty)
+                  Text(
+                    'Nothing here yet.',
+                    style: RunSoloType.body17.copyWith(color: t.inkSecondary),
+                  ),
               ],
-              const SizedBox(height: Space.x24),
-              _LaneHeader(
-                title:
-                    '$title · ${runs.length} '
-                    '${_type == RecordMode.cooper ? 'TEST' : 'SESSION'}'
-                    '${runs.length == 1 ? '' : 'S'}',
-              ),
-              const SizedBox(height: Space.x24),
-              switch (_type) {
-                // Every session shape: I3 gives each key its work pace,
-                // floor and bests; runs of one key only.
-                RecordMode.intervals => _FourByFourTrend(
-                  runs: runs,
-                  units: units,
-                  heatAdjusted: heatAdjusted,
-                  emptyText:
-                      key == null || key == engine.ComparisonKey.norwegian4x4
-                      ? 'Two 4x4s draw the first line.'
-                      : 'Two sessions draw the first line.',
-                ),
-                RecordMode.cooper => _CooperTrend(runs: runs),
-                RecordMode.laps ||
-                RecordMode.free => _DistanceTrend(runs: runs, units: units),
-              },
-              const SizedBox(height: Space.x24),
-              if (runs.isEmpty)
-                Text(
-                  'Nothing here yet.',
-                  style: RunSoloType.body17.copyWith(color: t.inkSecondary),
-                ),
-            ],
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -246,10 +238,12 @@ class _FourByFourTrend extends StatelessWidget {
     final points = trendPoints(runs, heatAdjusted: heatAdjusted);
     final ghost = points.any((p) => p.ghostSecPerKm != null);
     if (points.length < 2) {
-      return Text(
-        emptyText,
+      return ChartEmptyState(
         key: const ValueKey('trend-empty'),
-        style: RunSoloType.body17.copyWith(color: t.inkSecondary),
+        title: emptyText,
+        body: points.length == 1
+            ? 'One so far: ${Fmt.paceUnit(points.first.paceSecPerKm, units)}.'
+            : null,
       );
     }
     final recent = points.length > 6
@@ -336,21 +330,20 @@ class _FourByFourTrend extends StatelessWidget {
           ],
         ),
         const SizedBox(height: Space.x24),
-        SizedBox(
-          height: 220,
-          child: CustomPaint(
-            painter: _TrendPainter(
-              points: points,
-              floor: floor,
-              ink: t.inkPrimary,
-              muted: t.inkMuted,
-              hair: t.lineHair,
-              arc: t.accentArc,
-              secondary: t.inkSecondary,
-              units: units,
-            ),
-            child: const SizedBox.expand(),
-          ),
+        RecentBarsChart(
+          key: const ValueKey('trend-chart'),
+          points: [
+            for (final p in points)
+              BarPoint(
+                date: p.start,
+                value: p.paceSecPerKm,
+                twin: p.ghostSecPerKm,
+              ),
+          ],
+          lowerIsBetter: true,
+          format: (v) => Fmt.pace(v, units),
+          direction: 'Faster is taller',
+          emptyTitle: emptyText,
         ),
         if (ghost) ...[
           const SizedBox(height: Space.x8),
@@ -516,21 +509,24 @@ class _CooperTrend extends StatelessWidget {
             StatTile(label: 'tests', value: '${tests.length}', size: 28),
           ],
         ),
-        if (tests.length >= 2) ...[
-          const SizedBox(height: Space.x24),
-          SizedBox(
-            key: const ValueKey('cooper-trend-chart'),
-            height: 120,
-            width: double.infinity,
-            child: CustomPaint(
-              painter: _Vo2Painter(
-                [for (final x in tests) primeOf(x)],
-                line: t.inkPrimary,
-                grid: t.lineHair,
+        const SizedBox(height: Space.x24),
+        tests.length >= 2
+            ? RecentBarsChart(
+                key: const ValueKey('cooper-trend-chart'),
+                points: [
+                  for (final x in tests)
+                    BarPoint(date: x.date, value: primeOf(x)),
+                ],
+                lowerIsBetter: false,
+                format: (v) => '${v.round()}',
+                direction: 'Higher is taller',
+                emptyTitle: 'Two tests draw the first chart.',
+                showValues: false,
+              )
+            : const ChartEmptyState(
+                title: 'Two tests draw the first chart.',
+                body: 'One so far. Your next 12-minute test lands beside it.',
               ),
-            ),
-          ),
-        ],
         const SizedBox(height: Space.x16),
         for (final x in tests.reversed)
           Padding(
@@ -558,43 +554,6 @@ class _CooperTrend extends StatelessWidget {
       ],
     );
   }
-}
-
-/// Prime VO2 figures (heat twin when it exists) as dots, on a padded scale.
-class _Vo2Painter extends CustomPainter {
-  _Vo2Painter(this.values, {required this.line, required this.grid});
-  final List<double> values;
-  final Color line;
-  final Color grid;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final lo = values.reduce(math.min) - 3;
-    final hi = values.reduce(math.max) + 3;
-    Offset at(int i) => Offset(
-      values.length == 1
-          ? size.width / 2
-          : size.width * i / (values.length - 1),
-      size.height * (1 - (values[i] - lo) / (hi - lo)),
-    );
-    canvas.drawLine(
-      Offset(0, size.height),
-      Offset(size.width, size.height),
-      Paint()..color = grid,
-    );
-    final p = Paint()
-      ..color = line
-      ..strokeWidth = 1;
-    for (var i = 1; i < values.length; i++) {
-      canvas.drawLine(at(i - 1), at(i), p);
-    }
-    for (var i = 0; i < values.length; i++) {
-      canvas.drawCircle(at(i), 4, Paint()..color = line);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_Vo2Painter old) => old.values != values;
 }
 
 /// Lane lines header ground (design brief §2.2: 1 px hairlines at 8 px, 6 %).
@@ -644,204 +603,58 @@ class _LanePainter extends CustomPainter {
   bool shouldRepaint(_LanePainter old) => old.color != color;
 }
 
-class _TrendPainter extends CustomPainter {
-  _TrendPainter({
-    required this.points,
-    required this.floor,
-    required this.ink,
-    required this.muted,
-    required this.hair,
-    required this.arc,
-    required this.secondary,
-    required this.units,
-  });
-  final List<TrendPoint> points;
-  final double floor;
-  final Color ink;
-  final Color muted;
-  final Color hair;
-  final Color arc;
-  final Color secondary;
-  final Units units;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const left = 44.0, bottom = 24.0, top = 8.0;
-    final w = size.width - left;
-    final h = size.height - bottom - top;
-    final paces = [
-      for (final p in points) ...[p.paceSecPerKm, ?p.ghostSecPerKm],
-    ];
-    var lo = paces.reduce(math.min) - floor;
-    var hi = paces.reduce(math.max) + floor;
-    if (hi - lo < 30) {
-      final c = (hi + lo) / 2;
-      lo = c - 15;
-      hi = c + 15;
-    }
-    // Y inverted: faster (smaller s/km) is up.
-    double y(double pace) => top + (pace - lo) / (hi - lo) * h;
-    double x(int i) =>
-        points.length == 1 ? left + w / 2 : left + i / (points.length - 1) * w;
-    // Three horizontal hairlines with pace labels.
-    final hairPaint = Paint()
-      ..color = hair
-      ..strokeWidth = 1;
-    for (var k = 0; k < 3; k++) {
-      final pace = lo + (hi - lo) * (k + 0.5) / 3;
-      final yy = y(pace);
-      canvas.drawLine(Offset(left, yy), Offset(size.width, yy), hairPaint);
-      final tp = TextPainter(
-        text: TextSpan(
-          text: Fmt.pace(pace, units),
-          style: RunSoloType.micro11.copyWith(color: secondary),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, Offset(0, yy - tp.height / 2));
-    }
-    // 6-session median ribbon (band) and the noise floor as a dashed band.
-    final ribbon = Path();
-    var started = false;
-    for (var i = 0; i < points.length; i++) {
-      final m = points[i].medianSecPerKm;
-      if (m == null) continue;
-      if (!started) {
-        ribbon.moveTo(x(i), y(m - floor));
-        started = true;
-      } else {
-        ribbon.lineTo(x(i), y(m - floor));
-      }
-    }
-    for (var i = points.length - 1; i >= 0; i--) {
-      final m = points[i].medianSecPerKm;
-      if (m == null) continue;
-      ribbon.lineTo(x(i), y(m + floor));
-    }
-    if (started) {
-      ribbon.close();
-      canvas.drawPath(ribbon, Paint()..color = const Color(0x0AFFFFFF));
-      final dash = Paint()
-        ..color = muted
-        ..strokeWidth = 1;
-      for (var i = 0; i < points.length; i++) {
-        final m = points[i].medianSecPerKm;
-        if (m == null) continue;
-        for (final off in [-floor, floor]) {
-          final yy = y(m + off);
-          final x0 = x(i) - 6, x1 = x(i) + 6;
-          canvas.drawLine(Offset(x0, yy), Offset(x1, yy), dash);
-        }
-      }
-    }
-    // The ghost twin behind (W2): thin line and small dots, broken where a
-    // run has none.
-    final ghostPaint = Paint()
-      ..color = secondary
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-    Offset? last;
-    for (var i = 0; i < points.length; i++) {
-      final g = points[i].ghostSecPerKm;
-      if (g == null) {
-        last = null;
-        continue;
-      }
-      final o = Offset(x(i), y(g));
-      if (last != null) canvas.drawLine(last, o, ghostPaint);
-      canvas.drawCircle(o, 3, Paint()..color = secondary);
-      last = o;
-    }
-    // Line + dots.
-    final line = Path();
-    for (var i = 0; i < points.length; i++) {
-      final o = Offset(x(i), y(points[i].paceSecPerKm));
-      if (i == 0) {
-        line.moveTo(o.dx, o.dy);
-      } else {
-        line.lineTo(o.dx, o.dy);
-      }
-    }
-    canvas.drawPath(
-      line,
-      Paint()
-        ..color = ink
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
-    );
-    for (var i = 0; i < points.length; i++) {
-      final o = Offset(x(i), y(points[i].paceSecPerKm));
-      if (points[i].best) {
-        canvas.drawCircle(o, 5, Paint()..color = arc);
-        canvas.drawCircle(
-          o,
-          9,
-          Paint()
-            ..color = arc
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.5,
-        );
-      } else {
-        canvas.drawCircle(o, 4, Paint()..color = ink);
-      }
-      // Date micro labels on the X axis (first, last, and every 3rd).
-      if (i == 0 || i == points.length - 1 || i % 3 == 0) {
-        final tp = TextPainter(
-          text: TextSpan(
-            text: '${points[i].start.day}/${points[i].start.month}',
-            style: RunSoloType.micro11.copyWith(color: secondary),
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        tp.paint(canvas, Offset(o.dx - tp.width / 2, size.height - tp.height));
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_TrendPainter old) => old.points != points;
-}
-
-class _TypeChip extends StatelessWidget {
-  const _TypeChip({
-    super.key,
-    required this.label,
+/// Normal segmented control: one neutral outline, the selected segment
+/// filled Bone. Scrolls sideways at large text sizes rather than overflow.
+class _Segmented extends StatelessWidget {
+  const _Segmented({
+    required this.labels,
     required this.selected,
-    required this.onTap,
+    required this.onSelect,
+    this.keys,
   });
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+  final List<String> labels;
+  final List<Key>? keys;
+  final int selected;
+  final ValueChanged<int> onSelect;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: MotionDurations.quick,
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: Space.x16),
-          alignment: Alignment.center,
-          // Selected = 2 px Bone border, like the mode chips (brief §5).
-          decoration: BoxDecoration(
-            color: t.bgRaised,
-            borderRadius: BorderRadius.circular(Radii.chip),
-            border: Border.all(
-              color: selected ? t.inkPrimary : t.lineHair,
-              width: 2,
-            ),
-          ),
-          child: Text(
-            label,
-            style: RunSoloType.label13.copyWith(
-              color: selected ? t.inkPrimary : t.inkSecondary,
-            ),
-          ),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(Radii.chip),
+          border: Border.all(color: t.inkMuted),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < labels.length; i++)
+              Semantics(
+                button: true,
+                selected: i == selected,
+                child: GestureDetector(
+                  key: keys?[i],
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => onSelect(i),
+                  child: AnimatedContainer(
+                    duration: MotionDurations.quick,
+                    height: 48,
+                    padding: const EdgeInsets.symmetric(horizontal: Space.x16),
+                    alignment: Alignment.center,
+                    color: i == selected ? t.inkPrimary : null,
+                    child: Text(
+                      labels[i],
+                      style: RunSoloType.label13.copyWith(
+                        color: i == selected ? t.bgBase : t.inkSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

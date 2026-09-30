@@ -12,11 +12,12 @@ import '../state/courses.dart';
 import '../state/history_store.dart';
 import '../theme/theme.dart';
 import '../widgets/delta_glyph.dart';
+import '../widgets/recent_bars_chart.dart';
 import '../widgets/weather_chip.dart';
 import 'run_detail_screen.dart';
 
 /// The board detail (LB3d, mockup frames 2-8, design addendum A11.3-5):
-/// one board's hero best, trend in words, podium, the recent-runs bar
+/// one board's hero best, trend in words, the recent-runs bar
 /// chart (taller is always better, cropped axis) and the full table. The
 /// first visit after a best replays the PB quietly (A11.4), then clears
 /// the board's NEW tag.
@@ -364,47 +365,57 @@ class _DetailBody extends StatelessWidget {
         ),
         if (oldBest != null) _GainLine(view: view, old: oldBest, units: units),
         _TrendLine(view: view, units: units, now: now),
-        const SizedBox(height: Space.x16),
-        _Podium(view: view, units: units),
         const SizedBox(height: Space.x24),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
-          child: Text(
-            '${n > 10 ? 'LAST 10' : 'EVERY ${view.noun == 'tests'
-                      ? 'TEST'
-                      : view.noun == 'sessions'
-                      ? 'SESSION'
-                      : 'RUN'}'} · ${switch (view.board.kind) {
-              engine.BoardKind.cooper => 'HIGHER',
-              engine.BoardKind.distanceInTime => 'FURTHER',
-              _ => 'FASTER',
-            }} IS TALLER',
-            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+        if (n < 2)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
+            child: ChartEmptyState(
+              key: const ValueKey('board-chart-empty'),
+              title: 'Two ${view.noun} draw the first chart.',
+              body: n == 1 ? 'One so far. The next one lands beside it.' : null,
+            ),
+          )
+        else ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
+            child: Text(
+              '${n > 10 ? 'LAST 10' : 'EVERY ${view.noun == 'tests'
+                        ? 'TEST'
+                        : view.noun == 'sessions'
+                        ? 'SESSION'
+                        : 'RUN'}'} · ${switch (view.board.kind) {
+                engine.BoardKind.cooper => 'HIGHER',
+                engine.BoardKind.distanceInTime => 'FURTHER',
+                _ => 'FASTER',
+              }} IS TALLER',
+              style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+            ),
           ),
-        ),
-        const SizedBox(height: Space.x8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
-          child: _BoardChart(
-            view: view,
-            units: units,
-            heatOn: heatOn,
-            animation: pb,
-            pbMoment: pbMoment,
-            selected: selected,
-            onSelect: onSelect,
+          const SizedBox(height: Space.x8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
+            child: _BoardChart(
+              view: view,
+              units: units,
+              heatOn: heatOn,
+              animation: pb,
+              pbMoment: pbMoment,
+              selected: selected,
+              onSelect: onSelect,
+            ),
           ),
-        ),
-        const SizedBox(height: Space.x8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
-          child: _Legend(
-            heatOn: heatOn,
-            hasHeatTwin:
-                view.hasHeatTwin && view.board.kind != engine.BoardKind.cooper,
-            onToggleHeat: onToggleHeat,
+          const SizedBox(height: Space.x8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
+            child: _Legend(
+              heatOn: heatOn,
+              hasHeatTwin:
+                  view.hasHeatTwin &&
+                  view.board.kind != engine.BoardKind.cooper,
+              onToggleHeat: onToggleHeat,
+            ),
           ),
-        ),
+        ],
         const SizedBox(height: Space.x24),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
@@ -772,124 +783,6 @@ class _TrendLine extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// Three columns, #2 · #1 · #3, fixed heights 64 / 88 / 48: rank, not the
-/// gap. #1 takes the 3 dp Arc cap and the 6 dp Arc dot; missing places
-/// stay hairline outlines.
-class _Podium extends StatelessWidget {
-  const _Podium({required this.view, required this.units});
-  final _BoardView view;
-  final Units units;
-
-  @override
-  Widget build(BuildContext context) {
-    final ranked = view.board.ranked;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(child: _column(ranked.length > 1 ? ranked[1] : null, 64)),
-          const SizedBox(width: Space.x8),
-          Expanded(
-            flex: 115,
-            child: _column(ranked.isNotEmpty ? ranked[0] : null, 88),
-          ),
-          const SizedBox(width: Space.x8),
-          Expanded(child: _column(ranked.length > 2 ? ranked[2] : null, 48)),
-        ],
-      ),
-    );
-  }
-
-  Widget _column(engine.BoardRun? run, double height) {
-    return Builder(
-      builder: (context) {
-        final t = Theme.of(context).extension<RunSoloTokens>()!;
-        final first = run != null && view.board.rankOf(run.runId) == 1;
-        return Column(
-          children: [
-            if (first)
-              Container(
-                width: 6,
-                height: 6,
-                margin: const EdgeInsets.only(bottom: Space.x4),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: t.accentArc,
-                ),
-              ),
-            Text(
-              run == null ? '–' : view.fmt(run.metric, units),
-              style:
-                  (first
-                          ? RunSoloType.title28.copyWith(fontSize: 34)
-                          : RunSoloType.title28)
-                      .copyWith(color: run == null ? t.inkMuted : t.inkPrimary),
-            ),
-            SizedBox(
-              height: 16,
-              child: run != null && !first
-                  ? Text(
-                      view.gap(run.metric, units),
-                      style: RunSoloType.label13.copyWith(
-                        color: t.inkSecondary,
-                      ),
-                    )
-                  : null,
-            ),
-            Container(
-              height: height,
-              decoration: BoxDecoration(
-                color: run == null ? null : t.bgRaised,
-                border: Border.all(color: t.lineHair),
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(8),
-                ),
-              ),
-              child: Stack(
-                children: [
-                  if (first)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      child: Container(
-                        height: 3,
-                        decoration: BoxDecoration(
-                          color: t.accentArc,
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(8),
-                          ),
-                        ),
-                      ),
-                    ),
-                  Center(
-                    child: run == null
-                        ? null
-                        : Text(
-                            '${view.board.rankOf(run.runId)}',
-                            style: RunSoloType.title28.copyWith(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w700,
-                              color: first ? t.inkPrimary : t.inkSecondary,
-                            ),
-                          ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: Space.x4),
-            Text(
-              run == null ? '' : _DetailBody._shortDate(run.date).toUpperCase(),
-              style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-            ),
-          ],
-        );
-      },
     );
   }
 }
