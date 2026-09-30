@@ -48,3 +48,4 @@ export 'src/run_mode.dart';
 export 'src/weather/cooper_heat.dart';
 export 'src/weather/heat_model.dart';
 export 'src/weather/weather.dart';
+export 'src/engine/race_percentile_norms.dart';

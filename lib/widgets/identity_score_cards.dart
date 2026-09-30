@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
+import '../app/identity_display.dart';
+import '../state/settings.dart';
 import '../theme/theme.dart';
 
 /// Identity is earned by a run, never by a per-session verdict. The Aerobic
@@ -12,10 +14,14 @@ class IdentityScoreCards extends StatelessWidget {
     required this.scores,
     required this.hero,
     this.onOpen,
+    required this.profileSex,
+    required this.age,
   });
 
   final Map<engine.IdentityLane, engine.IdentityScore> scores;
   final engine.FitnessHero? hero;
+  final ProfileSex profileSex;
+  final int? age;
   final ValueChanged<engine.IdentityScore>? onOpen;
 
   @override
@@ -42,6 +48,8 @@ class IdentityScoreCards extends StatelessWidget {
                     lane: lane,
                     score: scores[lane],
                     hero: lane == engine.IdentityLane.aerobic ? hero : null,
+                    profileSex: profileSex,
+                    age: age,
                     onTap: scores[lane] == null || onOpen == null
                         ? null
                         : () => onOpen!(scores[lane]!),
@@ -60,16 +68,51 @@ class IdentityScoreCards extends StatelessWidget {
 }
 
 class _ScoreCard extends StatelessWidget {
-  const _ScoreCard({required this.lane, this.score, this.hero, this.onTap});
+  const _ScoreCard({
+    required this.lane,
+    this.score,
+    this.hero,
+    this.onTap,
+    required this.profileSex,
+    required this.age,
+  });
   final engine.IdentityLane lane;
   final engine.IdentityScore? score;
   final engine.FitnessHero? hero;
+  final ProfileSex profileSex;
+  final int? age;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final active = score != null;
+    final s = score;
+    String? estimate;
+    if (s != null &&
+        age != null &&
+        (profileSex == ProfileSex.male || profileSex == ProfileSex.female)) {
+      final female = profileSex == ProfileSex.female;
+      if (lane == engine.IdentityLane.aerobic ||
+          lane == engine.IdentityLane.speed) {
+        estimate = engine.FriendFitnessNorms.comparison(
+          s.vdot,
+          age!,
+          female: female,
+        );
+      } else {
+        estimate = engine.RacePercentileNorms.comparison(
+          s.vdot,
+          lane,
+          s.source,
+          female: female,
+        );
+      }
+    }
+
+    final number = IdentityDisplay.percentileNumber(estimate);
+    final time = s == null ? null : IdentityDisplay.equivalentTime(s);
+    final timeLabel = IdentityDisplay.equivalentLabel(lane);
     final color = !active
         ? t.inkMuted
         : switch (lane) {
@@ -86,13 +129,13 @@ class _ScoreCard extends StatelessWidget {
       engine.IdentityLane.aerobic => 'Your first session sets it.',
       engine.IdentityLane.speed =>
         'Log a clean interval session to unlock SPEED',
-      engine.IdentityLane.mid => 'Log a 5K+ effort to unlock MID',
+      engine.IdentityLane.mid => 'Log a clean continuous 5K to unlock MID',
       engine.IdentityLane.long => 'Log a 15K+ run to unlock LONG',
     };
     return Semantics(
       button: active && onTap != null,
       label: active
-          ? '$label ${score!.score} out of 99, ${score!.source}'
+          ? '$label percentile ${number ?? 'unavailable'}, ${score!.source}'
           : '$label locked. $unlock',
       child: InkWell(
         onTap: onTap,
@@ -131,25 +174,35 @@ class _ScoreCard extends StatelessWidget {
                   ),
               ] else ...[
                 Text(
-                  '${score!.score}',
+                  number ?? '—',
+                  maxLines: 1,
                   style: RunSoloType.display64.copyWith(
-                    fontSize: 48,
+                    fontSize: 40,
                     color: color,
                   ),
                 ),
                 Text(
-                  score!.changeVs6Weeks == null
-                      ? 'First score'
-                      : score!.changeVs6Weeks! > 0
-                      ? '+${score!.changeVs6Weeks} vs 6 wks'
-                      : '${score!.changeVs6Weeks} vs 6 wks',
+                  number == null ? 'SET PROFILE FOR PERCENTILE' : 'PERCENTILE',
                   style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
-                if (hero != null)
+                if (hero != null) ...[
+                  const SizedBox(height: Space.x8),
                   Text(
-                    'VO2 max ${hero!.vo2.toStringAsFixed(1)} ml/kg',
+                    'VO2 MAX ${hero!.vo2.toStringAsFixed(1)}',
+                    style: RunSoloType.heading19.copyWith(color: color),
+                  ),
+                  Text(
+                    'ml/kg/min',
                     style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                   ),
+                ],
+                if (time != null && timeLabel != null) ...[
+                  const SizedBox(height: Space.x8),
+                  Text(
+                    '$timeLabel $time',
+                    style: RunSoloType.label13.copyWith(color: t.inkPrimary),
+                  ),
+                ],
                 Text(
                   '${score!.source} · ${Fmt.dayDate(score!.date)} ›',
                   maxLines: 1,

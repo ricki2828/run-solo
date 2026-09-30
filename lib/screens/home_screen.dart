@@ -221,6 +221,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     builder: (context, snap) => IdentityScoreCards(
                       scores: snap.data?.scores ?? const {},
                       hero: snap.data?.hero,
+                      profileSex: settings.profileSex,
+                      age: settings.birthYear == null
+                          ? null
+                          : _now.year - settings.birthYear!,
                       onOpen: (score) => Navigator.of(context)
                           .pushNamed(Routes.runDetail, arguments: score.runId),
                     ),
