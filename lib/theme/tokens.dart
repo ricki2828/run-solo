@@ -25,8 +25,15 @@ abstract final class NightSession {
   static const Color semNoise = Color(0xFF8A8F98);
   static const Color semWarn = Color(0xFFFFB020);
   static const Color semDanger = Color(0xFFFF3B3B);
-  static const Color hrZone = Color(0xFFB48CFF);
+  static const Color hrZone = pulseRose; // heart icons: strap rose, not lilac
   static const Color pulseRose = Color(0xFFFF5C8A); // labelled strap state
+
+  // Fixed overlays and textures (no Aurora role; named so lib/ has no literals)
+  static const Color structureOpen = Color(0xFF2E3238); // open interval glyph
+  static const Color overlayInk = Color(0xB3EDEAE3); // Bone 70 %
+  static const Color overlayGround = Color(0xD9000000); // black 85 %
+  static const Color overlayBorder = Color(0x33EDEAE3); // Bone 20 %
+  static const Color grain = Color(0x05FFFFFF); // verdict background grain
 }
 
 /// Aurora run-type identities. These colours identify *which* run the runner
@@ -57,7 +64,9 @@ abstract final class NightSessionLight {
   static const Color semNoise = Color(0xFF6B7079);
   static const Color semWarn = Color(0xFF8A5A00);
   static const Color semDanger = Color(0xFFB00020);
-  static const Color hrZone = Color(0xFF6B3FD6);
+  static const Color hrZone = Color(
+    0xFFC2255A,
+  ); // rose, darkened for light ground
 }
 
 /// Spacing scale in dp (design brief §5).

@@ -827,7 +827,7 @@ class _Grain extends StatelessWidget {
 class _GrainPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = const Color(0x05FFFFFF);
+    final p = Paint()..color = NightSession.grain;
     var seed = 12345;
     for (var i = 0; i < 1200; i++) {
       seed = (seed * 1103515245 + 12345) & 0x7fffffff;

@@ -8,7 +8,7 @@ void main() {
   test('Aurora identities retain a label and never replace the HR zones', () {
     expect(AuroraRunType.laps, NightSession.accentArc);
     expect(AuroraRunType.intervals, isNot(HrZones.background(3)));
-    expect(HrZones.background(3), const Color(0xFF403208));
+    expect(HrZones.background(3), const Color(0xFF3F2A05));
     expect(HrZones.label(3, paired: true), contains('TEMPO'));
   });
 
