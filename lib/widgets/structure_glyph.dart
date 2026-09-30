@@ -14,7 +14,7 @@ class StructureGlyph extends StatelessWidget {
   final engine.SessionSpec spec;
   final double height;
 
-  static const Color openColour = Color(0xFF2E3238);
+  static const Color openColour = NightSession.structureOpen;
 
   @override
   Widget build(BuildContext context) {

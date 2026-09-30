@@ -547,7 +547,7 @@ class _Empty extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const TallyMark(height: 40, earned: false),
+          const LapLineMark(height: 40),
           const SizedBox(height: Space.x24),
           Text(
             'Your first 4x4 sets the baseline.',

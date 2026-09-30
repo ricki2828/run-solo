@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../app/format.dart';
 import '../platform/gateway.dart';
 import '../theme/theme.dart';
+import '../theme/zones.dart';
 
 /// Half-dial for the current (rolling 15 s) pace against a reference pace
 /// (last rep, else the segment's own average): the founder asked for the
@@ -47,7 +48,7 @@ class PaceDial extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final secondary = onZone ? const Color(0xCCEDEAE3) : t.inkSecondary;
+    final secondary = onZone ? HrZones.secondaryOnZone : t.inkSecondary;
     final p = position;
     return Semantics(
       label:
@@ -68,7 +69,7 @@ class PaceDial extends StatelessWidget {
               painter: _DialPainter(
                 position: p,
                 ink: t.inkPrimary,
-                track: onZone ? const Color(0x33FFFFFF) : t.lineHair,
+                track: onZone ? HrZones.gaugeEmpty : t.lineHair,
                 secondary: secondary,
               ),
             ),
