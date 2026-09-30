@@ -141,7 +141,7 @@ class _ScoreCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(Radii.card),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 140),
+          constraints: const BoxConstraints(minHeight: 112),
           padding: const EdgeInsets.all(Space.x12),
           decoration: BoxDecoration(
             color: t.bgRaised,
@@ -153,25 +153,64 @@ class _ScoreCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: RunSoloType.micro11.copyWith(color: color)),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: RunSoloType.micro11.copyWith(color: color),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      tooltip: '$label info',
+                      icon: Icon(
+                        Icons.info_outline,
+                        size: 18,
+                        color: t.inkSecondary,
+                      ),
+                      onPressed: () => showDialog<void>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: Text('$label score'),
+                          scrollable: true,
+                          content: Text(
+                            !active
+                                ? unlock
+                                : [
+                                    if (number == null) 'Set birth year and sex in your profile to show a percentile.',
+                                    'Running-derived estimates, not measured lab results.',
+                                    if (lane == engine.IdentityLane.aerobic ||
+                                        lane == engine.IdentityLane.speed)
+                                      'Compared with age- and sex-specific treadmill VO2peak norms.'
+                                    else
+                                      'Compared with sex-specific race finishers of all ages, not an age percentile.',
+                                    'Values beyond the published range show its nearest boundary.',
+                                    if (time != null) 'Equivalent times are estimates, not guaranteed results.',
+                                    'Source: ${score!.source} on ${Fmt.dayDate(score!.date)}.',
+                                  ].join('\n\n'),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Close'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: Space.x4),
               if (!active) ...[
                 Text(
                   'LOCKED',
                   style: RunSoloType.heading19.copyWith(color: t.inkMuted),
                 ),
-                const SizedBox(height: Space.x8),
-                Text(
-                  lane == engine.IdentityLane.aerobic
-                      ? 'NO BASELINE YET'
-                      : unlock,
-                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                ),
-                if (lane == engine.IdentityLane.aerobic)
-                  Text(
-                    'Your first session sets it.',
-                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                  ),
               ] else ...[
                 Text(
                   number ?? '—',
@@ -182,7 +221,7 @@ class _ScoreCard extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  number == null ? 'SET PROFILE FOR PERCENTILE' : 'PERCENTILE',
+                  'PERCENTILE',
                   style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
                 if (hero != null) ...[
@@ -203,12 +242,6 @@ class _ScoreCard extends StatelessWidget {
                     style: RunSoloType.label13.copyWith(color: t.inkPrimary),
                   ),
                 ],
-                Text(
-                  '${score!.source} · ${Fmt.dayDate(score!.date)} ›',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                ),
               ],
             ],
           ),

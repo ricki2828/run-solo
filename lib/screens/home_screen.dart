@@ -9,7 +9,6 @@ import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../theme/theme.dart';
 import '../widgets/coaching.dart';
-import '../widgets/estimated_times_card.dart';
 import '../widgets/identity_score_cards.dart';
 import '../widgets/goal_picker.dart';
 import '../widgets/mode_chip.dart';
@@ -19,7 +18,8 @@ import '../widgets/recent_activity.dart';
 /// activity, overall performance/trend/fitness level and able to kick off
 /// new activity all at same time"; variant A signed off the same day):
 /// Tally + date, the fitness hero (VO2 estimate, trend, source), RECENT
-/// ACTIVITY (last three sessions of any kind), ESTIMATED TIMES, TRY NEXT,
+/// ACTIVITY (last three sessions of any kind, with map thumbnails),
+/// ESTIMATED TIMES between the first two activities, TRY NEXT,
 /// Five run-type choices sit at the bottom and lead directly to Start setup.
 /// Checklist incomplete = red row above the run-type choices.
 class HomeScreen extends StatefulWidget {
@@ -232,24 +232,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: Space.x24),
                   FutureBuilder<List<RunSummary>>(
                     future: _runs,
-                    builder: (context, snap) => RecentActivity(
-                      runs: snap.data ?? const [],
-                      units: settings.units,
-                      now: _now,
-                      onOpen: _openRun,
-                      onShowAll: widget.onShowHistory,
-                    ),
-                  ),
-                  FutureBuilder<engine.HomeEstimates?>(
-                    future: _estimates,
-                    builder: (context, snap) {
-                      final e = snap.data;
-                      if (e == null) return const SizedBox.shrink();
-                      return Padding(
-                        padding: const EdgeInsets.only(top: Space.x24),
-                        child: EstimatedTimesCard(estimates: e),
-                      );
-                    },
+                    builder: (context, snap) =>
+                        FutureBuilder<engine.HomeEstimates?>(
+                          future: _estimates,
+                          builder: (context, estimateSnap) => RecentActivity(
+                            runs: snap.data ?? const [],
+                            units: settings.units,
+                            now: _now,
+                            onOpen: _openRun,
+                            onShowAll: widget.onShowHistory,
+                            estimates: estimateSnap.data,
+                          ),
+                        ),
                   ),
                   // A10.4: TRY NEXT under ESTIMATED TIMES (variant A, 27-Sep).
                   const SizedBox(height: Space.x24),
@@ -276,6 +270,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     session: services.pickedSession,
                     goal: settings.goalRun,
                     goalLabel: goalLabel(settings),
+                    testsLabel: 'VO2 max test · Bronco',
                     testsSelected:
                         !settings.goalRun &&
                         settings.lastMode == RecordMode.cooper,
