@@ -122,12 +122,10 @@ abstract final class IdentityScores {
             }
           }
         } else if (lane == IdentityLane.mid) {
-          if (input.mode == RunMode.cooper ||
-              input.mode == RunMode.intervals &&
-                  !ComparisonKey.isParkrun(input.comparisonKey ?? '') &&
-                  !ComparisonKey.isGoal(input.comparisonKey ?? '')) {
-            continue;
-          }
+          // A real clean 5K/10K GPS window counts despite an INT mode pick.
+          // The finder still rejects indoor/noisy tracks and cuts pauses,
+          // recording gaps and GPS jumps. Cooper is a 12-minute test.
+          if (input.mode == RunMode.cooper) continue;
           for (final d in [BestEffortDistance.k5, BestEffortDistance.k10]) {
             if (efforts.efforts[d] case final e?) {
               add(

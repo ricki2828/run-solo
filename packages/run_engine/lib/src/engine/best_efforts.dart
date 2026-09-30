@@ -224,10 +224,10 @@ class RunBestEfforts {
 /// kill→resume gap, no sample gap > [EngineConstants.sampleGapInterruptMs],
 /// and no GPS jump (one sample step faster than [maxStepMps], or a break
 /// of any [speedCaps]). In an
-/// intervals session the window must also lie inside one clean work rep, so
-/// a 1 km repeat can set a 1 km best and a 4x4 never a 5K; a parkrun (one
-/// continuous 5 km step from Start) is searched whole. Indoor and noisy
-/// runs get nothing (the verdict gates).
+/// intervals session short 1K/mile windows must also lie inside one clean
+/// work rep; a 5K/10K window can span reps only within a continuous clean
+/// GPS stretch. A parkrun (one continuous 5 km step) is searched whole.
+/// Indoor and noisy runs get nothing (the verdict gates).
 ///
 /// The GPS guard is physical plausibility only (lead 26-Sep, review #31):
 /// speed caps cut the stream, never a pace change against the rest of the
@@ -265,7 +265,16 @@ class BestEffortFinder {
 
     final efforts = <BestEffortDistance, BestEffort>{};
     for (final d in BestEffortDistance.values) {
-      final found = _fastest(pool, d);
+      // A continuous 5K/10K can count toward MID even when the runner
+      // selected INT and no work reps were detected. Short SPEED efforts
+      // still stay inside a clean rep; all quality/GPS cuts remain.
+      final search =
+          analysis.mode == RunMode.intervals &&
+              !_searchWhole(analysis) &&
+              (d == BestEffortDistance.k5 || d == BestEffortDistance.k10)
+          ? stretches
+          : pool;
+      final found = _fastest(search, d);
       if (found == null) continue;
       final (home, best) = found;
       final splits = _splits(home, best, d);
