@@ -142,14 +142,19 @@ void main() {
     final r1 = fourByFourFile(n: 1, start: d1, workSecPerKm: 284);
     final r2 = fourByFourFile(n: 2, start: d2, workSecPerKm: 260);
     await openVerdict(tester, [r1, r2], r2.id);
-    await tester.pump(const Duration(milliseconds: 16));
-    // Mid count-up: bars are in, the delta is between 0 and its value.
-    await tester.pump(const Duration(milliseconds: 400));
-    var bars = tester.widget<RepBars>(find.byType(RepBars));
-    expect(bars.progress, 1);
-    expect(bars.deltaProgress, inExclusiveRange(0, 1));
-    await tester.pump(const Duration(milliseconds: 500));
-    bars = tester.widget<RepBars>(find.byType(RepBars));
+    // Sample every frame: the delta passes through a mid value on its way
+    // from 0 to its final number, with the bars already in.
+    var sawMid = false;
+    late RepBars bars;
+    for (var i = 0; i < 70; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      bars = tester.widget<RepBars>(find.byType(RepBars));
+      if (bars.deltaProgress > 0 && bars.deltaProgress < 1) {
+        sawMid = true;
+        expect(bars.progress, 1);
+      }
+    }
+    expect(sawMid, isTrue);
     expect(bars.deltaProgress, 1);
     expect(bars.tone, RepTone.faster);
     expect(word(tester), 'FASTER');

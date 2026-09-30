@@ -16,6 +16,7 @@ import 'package:run_solo/screens/board_detail_screen.dart';
 import 'package:run_solo/screens/course_board_screen.dart';
 import 'package:run_solo/screens/custom_builder_screen.dart';
 import 'package:run_solo/screens/verdict_screen.dart';
+import 'package:run_solo/widgets/rep_bars.dart';
 import 'package:run_solo/screens/home_screen.dart';
 import 'package:run_solo/screens/permissions_screen.dart';
 import 'package:run_solo/screens/run_detail_screen.dart';
@@ -381,8 +382,13 @@ void main() {
       pushArguments: faster.id,
     );
     await pumpTimes(tester, 6);
-    await tester.pump(const Duration(milliseconds: 16));
-    await tester.pump(const Duration(milliseconds: 420));
+    // Halfway through the delta count-up, wherever the clock is.
+    for (var i = 0; i < 70; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      if (tester.widget<RepBars>(find.byType(RepBars)).deltaProgress >= 0.5) {
+        break;
+      }
+    }
     await golden(tester, 'verdict_reveal_mid');
   });
 
