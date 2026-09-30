@@ -32,13 +32,14 @@ class RepBarDatum {
   final String? reason;
 }
 
-enum RepTone { neutral, faster, slower, arc }
+enum RepTone { neutral, faster, slower }
 
 /// Horizontal rep bars, 28 px, Bone; bar length = pace on a shared scale
 /// (faster = longer), ghost bar behind, delta label right-aligned in the
 /// semantic colour, excluded reps hatched. `progress` 0–1 slides the bars in
-/// for M4 (stagger 50 ms per bar over the first 300 ms); `fadeProgress`
-/// draws the slope line across the bar ends (300–700 ms).
+/// for M4 (stagger 50 ms per bar over the first 250 ms); `deltaProgress`
+/// counts the delta labels up from 0; `fadeProgress` draws the slope line
+/// across the bar ends. Faster is mint, slower vermillion (cyan is for a PB).
 class RepBars extends StatelessWidget {
   const RepBars({
     super.key,
@@ -46,6 +47,7 @@ class RepBars extends StatelessWidget {
     required this.units,
     this.progress = 1,
     this.fadeProgress = 1,
+    this.deltaProgress = 1,
     this.tone = RepTone.neutral,
     this.showDelta = true,
   });
@@ -54,6 +56,7 @@ class RepBars extends StatelessWidget {
   final Units units;
   final double progress;
   final double fadeProgress;
+  final double deltaProgress;
   final RepTone tone;
   final bool showDelta;
 
@@ -79,8 +82,9 @@ class RepBars extends StatelessWidget {
     }
 
     final barColor = switch (tone) {
-      RepTone.arc => t.accentArc,
-      _ => t.inkPrimary,
+      RepTone.faster => NightSession.semImproving,
+      RepTone.slower => t.semSlower,
+      RepTone.neutral => t.inkPrimary,
     };
     return Semantics(
       label:
@@ -116,8 +120,7 @@ class RepBars extends StatelessWidget {
             // verdict's tone. NO REAL CHANGE / HOLDING / BASELINE stay in ink
             // even when single reps came in a few seconds faster.
             final deltaColor = switch (tone) {
-              RepTone.arc => t.accentArc,
-              RepTone.faster => t.semFaster,
+              RepTone.faster => NightSession.semImproving,
               RepTone.slower => t.semSlower,
               RepTone.neutral => t.inkSecondary,
             };
@@ -189,7 +192,9 @@ class RepBars extends StatelessWidget {
                                 const SizedBox(width: 2),
                               ],
                               Text(
-                                delta == 0 ? '±0' : '${delta.abs()}',
+                                delta == 0
+                                    ? '±0'
+                                    : '${(delta.abs() * deltaProgress.clamp(0.0, 1.0)).round()}',
                                 style: RunSoloType.label13.copyWith(
                                   color: deltaColor,
                                 ),
@@ -206,7 +211,7 @@ class RepBars extends StatelessWidget {
             if (i < reps.length - 1) rows.add(const SizedBox(height: rowGap));
           }
           final slopeColor = switch (tone) {
-            RepTone.faster || RepTone.arc => t.semFaster,
+            RepTone.faster => NightSession.semImproving,
             RepTone.slower => t.semSlower,
             RepTone.neutral => t.inkSecondary,
           };

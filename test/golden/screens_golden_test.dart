@@ -16,6 +16,7 @@ import 'package:run_solo/screens/board_detail_screen.dart';
 import 'package:run_solo/screens/course_board_screen.dart';
 import 'package:run_solo/screens/custom_builder_screen.dart';
 import 'package:run_solo/screens/verdict_screen.dart';
+import 'package:run_solo/widgets/rep_bars.dart';
 import 'package:run_solo/screens/home_screen.dart';
 import 'package:run_solo/screens/permissions_screen.dart';
 import 'package:run_solo/screens/run_detail_screen.dart';
@@ -371,7 +372,7 @@ void main() {
     await verdictGolden(tester, [flagged], flagged.id, 'verdict_flagged');
   });
 
-  testWidgets('verdict: mid-reveal frame (M4 word wipe)', (tester) async {
+  testWidgets('verdict: mid-reveal frame (delta counting up)', (tester) async {
     final r1 = fourByFourFile(n: 1, start: d1, workSecPerKm: 284);
     final faster = fourByFourFile(n: 2, start: d2, workSecPerKm: 262);
     await pumpApp(
@@ -381,8 +382,13 @@ void main() {
       pushArguments: faster.id,
     );
     await pumpTimes(tester, 6);
-    await tester.pump(const Duration(milliseconds: 16));
-    await tester.pump(const Duration(milliseconds: 820));
+    // Halfway through the delta count-up, wherever the clock is.
+    for (var i = 0; i < 70; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      if (tester.widget<RepBars>(find.byType(RepBars)).deltaProgress >= 0.5) {
+        break;
+      }
+    }
     await golden(tester, 'verdict_reveal_mid');
   });
 
