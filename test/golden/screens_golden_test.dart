@@ -371,7 +371,7 @@ void main() {
     await verdictGolden(tester, [flagged], flagged.id, 'verdict_flagged');
   });
 
-  testWidgets('verdict: mid-reveal frame (M4 word wipe)', (tester) async {
+  testWidgets('verdict: mid-reveal frame (delta counting up)', (tester) async {
     final r1 = fourByFourFile(n: 1, start: d1, workSecPerKm: 284);
     final faster = fourByFourFile(n: 2, start: d2, workSecPerKm: 262);
     await pumpApp(
@@ -382,7 +382,7 @@ void main() {
     );
     await pumpTimes(tester, 6);
     await tester.pump(const Duration(milliseconds: 16));
-    await tester.pump(const Duration(milliseconds: 820));
+    await tester.pump(const Duration(milliseconds: 420));
     await golden(tester, 'verdict_reveal_mid');
   });
 

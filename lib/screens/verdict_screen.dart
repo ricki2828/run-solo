@@ -237,17 +237,18 @@ class _FourByFourVerdict extends StatefulWidget {
 
 class _FourByFourVerdictState extends State<_FourByFourVerdict>
     with SingleTickerProviderStateMixin {
-  // M4 beats on a 1640 ms timeline (1400 reveal + 240 subline fade).
-  static const int _totalMs = 1640;
+  // M4 beats on a 900 ms timeline: bars 0-250, delta count-up 250-600,
+  // verdict word (and a PB flash) 600-900.
+  static const int _totalMs = 900;
   late final AnimationController _reveal = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: _totalMs),
   );
-  late final Animation<double> _bars = _beat(0, 300);
-  late final Animation<double> _slope = _beat(300, 700);
-  late final Animation<double> _word = _beat(700, 960, MotionCurves.emphasized);
-  late final Animation<double> _bloom = _beat(960, 1360);
-  late final Animation<double> _lines = _beat(1400, 1640);
+  late final Animation<double> _bars = _beat(0, 250);
+  late final Animation<double> _delta = _beat(250, 600, MotionCurves.standard);
+  late final Animation<double> _word = _beat(600, 900, MotionCurves.emphasized);
+  late final Animation<double> _bloom = _beat(600, 900);
+  late final Animation<double> _lines = _beat(600, 900);
   bool _hapticsFired = false;
 
   Animation<double> _beat(int from, int to, [Curve curve = Curves.linear]) =>
@@ -265,9 +266,8 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
     super.didChangeDependencies();
     if (_reveal.isAnimating || _reveal.isCompleted) return;
     if (_reduced) {
-      // Static branch: end state, 160 ms fade (design brief §3).
-      _reveal.duration = MotionDurations.quick;
-      _reveal.forward();
+      // Static branch: the final state straight away (design brief §3).
+      _reveal.value = 1;
       _fireHaptics();
     } else {
       _reveal.addListener(_onTick);
@@ -279,10 +279,10 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
 
   void _onTick() {
     final ms = _reveal.value * _totalMs;
-    if (!_hapticsFired && ms >= 960) _fireHaptics();
+    if (!_hapticsFired && ms >= 600) _fireHaptics();
     // FASTER: heavyImpact ×2, the second one 120 ms later (no Timer, so the
     // widget tree never leaves a pending timer behind).
-    if (_hapticsFired && !_secondPulseFired && ms >= 1080) {
+    if (_hapticsFired && !_secondPulseFired && ms >= 720) {
       _secondPulseFired = true;
       if (revealStateOf(widget.detail.summary.verdict) == RevealState.faster &&
           AppServices.of(context).settings.settings.haptics) {
@@ -324,7 +324,7 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
     final state = revealStateOf(v);
     final reps = repBarData(d, widget.previous);
     final tone = switch (state) {
-      RevealState.faster => RepTone.arc,
+      RevealState.faster => RepTone.faster,
       RevealState.slower => RepTone.slower,
       _ => RepTone.neutral,
     };
@@ -350,8 +350,8 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                           center: const Alignment(0, 0.15),
                           radius: 0.2 + 1.2 * p,
                           colors: [
-                            t.accentArc,
-                            t.accentArc.withValues(alpha: 0),
+                            NightSession.semImproving,
+                            NightSession.semImproving.withValues(alpha: 0),
                           ],
                         ),
                       ),
@@ -398,8 +398,9 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                       reps: reps,
                       units: units,
                       progress: _bars.value,
-                      fadeProgress: flagged ? 0 : _slope.value,
-                      tone: _bloom.value > 0 || _reduced
+                      deltaProgress: _delta.value,
+                      fadeProgress: flagged ? 0 : _delta.value,
+                      tone: _delta.value > 0 || _reduced
                           ? tone
                           : RepTone.neutral,
                     ),
@@ -689,7 +690,8 @@ class _VerdictWord extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final color = switch (state) {
-      RevealState.faster => t.accentArc,
+      RevealState.faster => NightSession.semImproving,
+      RevealState.slower => t.semSlower,
       RevealState.none => t.inkSecondary,
       _ => t.inkPrimary,
     };

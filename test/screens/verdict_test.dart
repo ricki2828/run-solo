@@ -5,6 +5,7 @@ import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/screens/run_detail_screen.dart';
 import 'package:run_solo/screens/verdict_screen.dart';
 import 'package:run_solo/state/settings.dart';
+import 'package:run_solo/widgets/rep_bars.dart';
 import 'package:run_solo/theme/theme.dart';
 
 import '../helpers.dart';
@@ -54,7 +55,7 @@ void main() {
   });
 
   testWidgets(
-    'run 2 faster: FASTER in Arc with the arrow, haptics beat fires',
+    'run 2 faster: FASTER in mint with the arrow, haptics beat fires',
     (tester) async {
       final r1 = fourByFourFile(n: 1, start: d1, workSecPerKm: 284);
       final r2 = fourByFourFile(n: 2, start: d2, workSecPerKm: 260);
@@ -66,12 +67,12 @@ void main() {
       expect(word(tester), 'FASTER');
       expect(find.byKey(const ValueKey('verdict-arrow-up')), findsOneWidget);
       final t = tester.widget<Text>(find.byKey(const ValueKey('verdict-word')));
-      expect(t.style?.color, RunSoloTokens.dark.accentArc);
+      expect(t.style?.color, NightSession.semImproving);
       expect(find.textContaining('faster than your first 4x4'), findsOneWidget);
     },
   );
 
-  testWidgets('run 2 slower: SLOWER, no Arc', (tester) async {
+  testWidgets('run 2 slower: SLOWER in vermillion, no cyan', (tester) async {
     final r1 = fourByFourFile(n: 1, start: d1, workSecPerKm: 260);
     final r2 = fourByFourFile(n: 2, start: d2, workSecPerKm: 290);
     await openVerdict(tester, [r1, r2], r2.id);
@@ -79,7 +80,8 @@ void main() {
     expect(word(tester), 'SLOWER');
     expect(find.byKey(const ValueKey('verdict-arrow-down')), findsOneWidget);
     final t = tester.widget<Text>(find.byKey(const ValueKey('verdict-word')));
-    expect(t.style?.color, RunSoloTokens.dark.inkPrimary);
+    expect(t.style?.color, RunSoloTokens.dark.semSlower);
+    expect(tester.widget<RepBars>(find.byType(RepBars)).tone, RepTone.slower);
   });
 
   testWidgets('run 2 within the floor: NO REAL CHANGE', (tester) async {
@@ -88,6 +90,13 @@ void main() {
     await openVerdict(tester, [r1, r2], r2.id);
     await reveal(tester);
     expect(word(tester), 'NO REAL CHANGE');
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('verdict-word')))
+          .style
+          ?.color,
+      RunSoloTokens.dark.inkPrimary,
+    );
     expect(find.byKey(const ValueKey('verdict-arrow-flat')), findsOneWidget);
     expect(
       find.textContaining('Inside what phone GPS can tell'),
@@ -125,6 +134,51 @@ void main() {
     await openVerdict(tester, [r1], r1.id);
     await reveal(tester);
     expect(word(tester), 'INDOOR RUN');
+  });
+
+  testWidgets('reveal settles at 900 ms with every number final', (
+    tester,
+  ) async {
+    final r1 = fourByFourFile(n: 1, start: d1, workSecPerKm: 284);
+    final r2 = fourByFourFile(n: 2, start: d2, workSecPerKm: 260);
+    await openVerdict(tester, [r1, r2], r2.id);
+    await tester.pump(const Duration(milliseconds: 16));
+    // Mid count-up: bars are in, the delta is between 0 and its value.
+    await tester.pump(const Duration(milliseconds: 400));
+    var bars = tester.widget<RepBars>(find.byType(RepBars));
+    expect(bars.progress, 1);
+    expect(bars.deltaProgress, inExclusiveRange(0, 1));
+    await tester.pump(const Duration(milliseconds: 500));
+    bars = tester.widget<RepBars>(find.byType(RepBars));
+    expect(bars.deltaProgress, 1);
+    expect(bars.tone, RepTone.faster);
+    expect(word(tester), 'FASTER');
+  });
+
+  testWidgets('reduced motion (system): final state on the first frame', (
+    tester,
+  ) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    final r1 = fourByFourFile(n: 1, start: d1, workSecPerKm: 284);
+    final r2 = fourByFourFile(n: 2, start: d2, workSecPerKm: 260);
+    await openVerdict(tester, [r1, r2], r2.id);
+    final bars = tester.widget<RepBars>(find.byType(RepBars));
+    expect(bars.progress, 1);
+    expect(bars.deltaProgress, 1);
+    expect(bars.fadeProgress, 1);
+    expect(bars.tone, RepTone.faster);
+    expect(word(tester), 'FASTER');
+    final opacity = tester
+        .widgetList<Opacity>(
+          find.ancestor(
+            of: find.byKey(const ValueKey('verdict-word')),
+            matching: find.byType(Opacity),
+          ),
+        )
+        .first;
+    expect(opacity.opacity, 1);
   });
 
   testWidgets('reduced motion: end state within 160 ms', (tester) async {

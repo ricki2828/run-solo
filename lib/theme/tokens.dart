@@ -21,6 +21,7 @@ abstract final class NightSession {
   // Semantic
   static const Color semFaster = accentArc;
   static const Color semSlower = Color(0xFFFF5C3A); // Vermillion
+  static const Color semImproving = Color(0xFF2EE6A8); // mint
   static const Color semHolding = inkPrimary;
   static const Color semNoise = Color(0xFF8A8F98);
   static const Color semWarn = Color(0xFFFFB020);
