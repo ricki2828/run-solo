@@ -182,8 +182,8 @@ class _ActivityRow extends StatelessWidget {
                   ),
                   if (run.mode == RecordMode.cooper)
                     SizedBox(
-                      width: 32,
-                      height: 32,
+                      width: 48,
+                      height: 48,
                       child: IconButton(
                         padding: EdgeInsets.zero,
                         tooltip: 'VO2 max test info',
@@ -371,94 +371,140 @@ class _MapPlaceholder extends StatelessWidget {
 }
 
 /// Distinct non-run insert in the normal vertical stream, after activity 1.
-class _EstimatesTable extends StatelessWidget {
+class _EstimatesTable extends StatefulWidget {
   const _EstimatesTable({required this.estimates});
   final engine.HomeEstimates estimates;
 
   @override
+  State<_EstimatesTable> createState() => _EstimatesTableState();
+}
+
+class _EstimatesTableState extends State<_EstimatesTable> {
+  bool _open = false;
+
+  @override
   Widget build(BuildContext context) {
+    final estimates = widget.estimates;
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return Container(
-      key: const ValueKey('recent-estimates-table'),
-      width: double.infinity,
-      padding: const EdgeInsets.all(Space.x16),
-      decoration: BoxDecoration(
-        color: t.bgBase,
-        border: Border.all(color: t.lineHair),
+    return Semantics(
+      button: estimates.message == null,
+      toggled: estimates.message == null ? _open : null,
+      child: InkWell(
+        onTap: estimates.message == null
+            ? () => setState(() => _open = !_open)
+            : null,
         borderRadius: BorderRadius.circular(Radii.card),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            engine.HomeEstimates.title,
-            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+        child: Container(
+          key: const ValueKey('recent-estimates-table'),
+          width: double.infinity,
+          padding: const EdgeInsets.all(Space.x16),
+          decoration: BoxDecoration(
+            color: t.bgBase,
+            border: Border.all(color: t.lineHair),
+            borderRadius: BorderRadius.circular(Radii.card),
           ),
-          const SizedBox(height: Space.x12),
-          if (estimates.message case final message?)
-            Text(
-              message,
-              style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-            )
-          else ...[
-            Table(
-              columnWidths: const {
-                0: FlexColumnWidth(),
-                1: IntrinsicColumnWidth(),
-              },
-              children: [
-                TableRow(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                engine.HomeEstimates.title,
+                style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+              ),
+              const SizedBox(height: Space.x12),
+              if (estimates.message case final message?)
+                Text(
+                  message,
+                  style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                )
+              else ...[
+                Table(
+                  columnWidths: const {
+                    0: FlexColumnWidth(),
+                    1: IntrinsicColumnWidth(),
+                  },
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: Space.x8),
-                      child: Text(
-                        'DISTANCE',
-                        style: RunSoloType.micro11.copyWith(color: t.inkMuted),
-                      ),
+                    TableRow(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: Space.x8),
+                          child: Text(
+                            'DISTANCE',
+                            style: RunSoloType.micro11.copyWith(
+                              color: t.inkMuted,
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: Space.x8),
+                          child: Text(
+                            'EST. TIME',
+                            style: RunSoloType.micro11.copyWith(
+                              color: t.inkMuted,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: Space.x8),
-                      child: Text(
-                        'EST. TIME',
-                        style: RunSoloType.micro11.copyWith(color: t.inkMuted),
+                    for (final row in estimates.rows)
+                      TableRow(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: Space.x8,
+                            ),
+                            child: ExcludeSemantics(
+                              child: Text(
+                                row.label,
+                                style: RunSoloType.body17.copyWith(
+                                  color: t.inkPrimary,
+                                ),
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: Space.x8,
+                            ),
+                            child: Semantics(
+                              container: true,
+                              label: row.semantics,
+                              excludeSemantics: true,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    row.time,
+                                    textAlign: TextAlign.right,
+                                    style: RunSoloType.heading19.copyWith(
+                                      color: t.inkPrimary,
+                                      fontFeatures: RunSoloType.tabular,
+                                    ),
+                                  ),
+                                  if (_open && row.band != null)
+                                    Text(
+                                      row.band!,
+                                      textAlign: TextAlign.right,
+                                      style: RunSoloType.label13.copyWith(
+                                        color: t.inkSecondary,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
                   ],
                 ),
-                for (final row in estimates.rows)
-                  TableRow(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: Space.x8),
-                        child: Text(
-                          row.label,
-                          style: RunSoloType.body17.copyWith(
-                            color: t.inkPrimary,
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: Space.x8),
-                        child: Text(
-                          row.time,
-                          textAlign: TextAlign.right,
-                          style: RunSoloType.heading19.copyWith(
-                            color: t.inkPrimary,
-                            fontFeatures: RunSoloType.tabular,
-                          ),
-                        ),
-                      ),
-                    ],
+                for (final source in estimates.sourceLines)
+                  Text(
+                    source,
+                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                   ),
               ],
-            ),
-            for (final source in estimates.sourceLines)
-              Text(
-                source,
-                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-              ),
-          ],
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }

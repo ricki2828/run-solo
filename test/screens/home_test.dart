@@ -126,7 +126,7 @@ void main() {
     expect(find.text('RECENT ACTIVITY'), findsOneWidget);
     expect(find.text('4X4'), findsOneWidget);
     expect(find.text('5:00/km', findRichText: true), findsOneWidget);
-    expect(find.text('32:00'), findsOneWidget);
+    expect(find.text('32:00'), findsNWidgets(2));
     expect(find.text('6.40'), findsOneWidget);
     expect(find.text('AVG PACE'), findsNWidgets(2));
     expect(find.text('All activity ›'), findsOneWidget);
