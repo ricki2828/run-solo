@@ -10,18 +10,25 @@ void main() {
     'lib/screens/trend_screen.dart',
     'lib/screens/board_detail_screen.dart',
   };
-  final literal = RegExp(r'Color\(\s*0x|Colors\.(?!transparent\b)[a-zA-Z]');
+  final literal = RegExp(
+    r'Color\(\s*0x|Color\.from(ARGB|RGBO)\s*\(|CupertinoColors\.|'
+    r'Colors\.(?!transparent\b)[a-zA-Z]',
+  );
 
-  test('no Color(0x...) or Colors.<name> outside lib/theme', () {
+  test('no colour literals outside lib/theme', () {
     final offenders = <String>[];
     for (final f in Directory('lib').listSync(recursive: true)) {
       if (f is! File || !f.path.endsWith('.dart')) continue;
       final path = f.path.replaceAll('\\', '/');
       if (path.startsWith('lib/theme/') || allowlist.contains(path)) continue;
-      final lines = f.readAsLinesSync();
-      for (var i = 0; i < lines.length; i++) {
-        if (lines[i].trimLeft().startsWith('//')) continue;
-        if (literal.hasMatch(lines[i])) offenders.add('$path:${i + 1}');
+      // Whole-file scan: dart format can split `Color(` and `0x...` across lines.
+      final text = f.readAsStringSync().replaceAll(
+        RegExp(r'//.*$', multiLine: true),
+        '',
+      );
+      for (final m in literal.allMatches(text)) {
+        final line = '\n'.allMatches(text.substring(0, m.start)).length + 1;
+        offenders.add('$path:$line');
       }
     }
     expect(
