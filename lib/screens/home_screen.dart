@@ -7,9 +7,9 @@ import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
+import '../state/next_session.dart';
 import '../theme/theme.dart';
 import '../widgets/home_scores.dart';
-import '../widgets/goal_picker.dart';
 import '../widgets/recent_activity.dart';
 import 'progress_screen.dart';
 
@@ -34,7 +34,7 @@ class HomeScreen extends StatefulWidget {
   final VoidCallback? onShowProgress;
 
   /// Supplied only by a future persisted plan integration, never inferred.
-  final ({String title, String subtitle})? planHeadline;
+  final ({String name, String subtitle})? planHeadline;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -153,6 +153,10 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, _) {
         final settings = services.settings.settings;
         final perms = _perms;
+        final plan = widget.planHeadline;
+        final next = plan != null
+            ? NextSession.plan(plan.name)
+            : NextSession.lastUsed(settings, services.pickedSession);
         return Scaffold(
           body: SafeArea(
             child: SingleChildScrollView(
@@ -183,9 +187,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   FutureBuilder<List<RunSummary>>(
                     future: _runs,
                     builder: (context, snap) => HomeHeadline(
+                      next: next,
                       runs: snap.data ?? const [],
                       units: settings.units,
-                      plan: widget.planHeadline,
+                      planSubtitle: widget.planHeadline?.subtitle,
                     ),
                   ),
                   const SizedBox(height: Space.x16),
@@ -206,27 +211,25 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: Space.x16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: _start,
-                      child: Text(
-                        'Start ${settings.goalRun ? goalLabel(settings) : switch (settings.lastMode) {
-                                RecordMode.free => 'free run',
-                                RecordMode.laps => services.pickedSession.templateId == engine.SessionSpec.broncoId ? 'Bronco test' : 'laps run',
-                                RecordMode.cooper => 'VO2 max test',
-                                RecordMode.intervals => services.pickedSession.name,
-                              }}',
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: _start,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(next.startLabel, maxLines: 1),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: Space.x8),
+                      OutlinedButton(
+                        onPressed: _start,
+                        child: const Text('Change'),
+                      ),
+                    ],
                   ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: _start,
-                      child: const Text('Change'),
-                    ),
-                  ),
+                  const SizedBox(height: Space.x12),
                   if (perms != null && !perms.canRecord)
                     Padding(
                       padding: const EdgeInsets.only(bottom: Space.x12),
@@ -251,55 +254,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (runs.isNotEmpty) ...[
-                            Text(
-                              'LAST RESULT',
-                              style: RunSoloType.micro11.copyWith(
-                                color: t.inkSecondary,
-                              ),
-                            ),
-                            const SizedBox(height: Space.x8),
-                            InkWell(
-                              onTap: () => _openRun(runs.first),
-                              child: Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(Space.x16),
-                                decoration: BoxDecoration(
-                                  color: t.bgRaised,
-                                  borderRadius: BorderRadius.circular(
-                                    Radii.card,
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      runHeaderTitle(runs.first),
-                                      style: RunSoloType.body15.copyWith(
-                                        color: t.inkPrimary,
-                                      ),
-                                    ),
-                                    Text(
-                                      homeLastResult(
-                                        runs.first,
-                                        settings.units,
-                                      ),
-                                      style: RunSoloType.heading19.copyWith(
-                                        color: t.inkPrimary,
-                                      ),
-                                    ),
-                                    Text(
-                                      Fmt.dayDate(runs.first.start),
-                                      style: RunSoloType.label13.copyWith(
-                                        color: t.inkSecondary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: Space.x24),
-                          ],
                           FutureBuilder<engine.HomeEstimates?>(
                             future: _estimates,
                             builder: (context, estimateSnap) => RecentActivity(
@@ -327,43 +281,39 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// Headline uses an eligible comparable work pace, not whole-run pace as a
-/// substitute. Free/test-only history gets a true, non-comparable state.
+/// Headline, line and Start all come from [next]. The number is the one that
+/// session is judged on, from its last comparable run; none yet means "set
+/// your line" for that session.
 class HomeHeadline extends StatelessWidget {
   const HomeHeadline({
     super.key,
+    required this.next,
     required this.runs,
     required this.units,
-    this.plan,
+    this.planSubtitle,
   });
+  final NextSession next;
   final List<RunSummary> runs;
   final Units units;
-  final ({String title, String subtitle})? plan;
+  final String? planSubtitle;
 
   @override
   Widget build(BuildContext context) {
-    final valid = runs.where((r) => !r.missing).toList()
-      ..sort((a, b) => b.start.compareTo(a.start));
-    final comparable = valid
-        .where(
-          (r) =>
-              r.isFourByFour && r.eligibleAsPrior && r.workPaceSecPerKm != null,
-        )
-        .firstOrNull;
-    final title =
-        plan?.title ??
-        (valid.isEmpty
-            ? 'SET YOUR LINE'
-            : comparable == null
-            ? 'GO AGAIN.'
-            : 'BEAT ${Fmt.pace(comparable.workPaceSecPerKm, units)}');
-    final subtitle =
-        plan?.subtitle ??
-        (valid.isEmpty
-            ? 'Your first run is the one to beat.'
-            : comparable == null
-            ? 'Your next run starts here.'
-            : 'Your last ${comparable.spec?.name ?? '4x4'} work pace, ${Fmt.dayDate(comparable.start)}.');
+    final String title, subtitle;
+    if (next.kind == NextKind.plan) {
+      title = '${next.name.toUpperCase()} TODAY';
+      subtitle = planSubtitle ?? 'Next up in your plan.';
+    } else if (nextBeat(next, runs, units) case final beat?) {
+      title = 'BEAT ${beat.value}';
+      subtitle = beat.line;
+    } else {
+      title = 'SET YOUR LINE';
+      subtitle = hasUnusableRun(next, runs)
+          ? next.kind == NextKind.interval
+                ? 'Your last ${next.name} had no clean reps to beat. Your next one sets the line.'
+                : 'Your last ${next.name} had nothing to compare. Your next one sets the line.'
+          : 'Your first ${next.name} is the one to beat.';
+    }
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -376,23 +326,4 @@ class HomeHeadline extends StatelessWidget {
       ],
     );
   }
-}
-
-/// Read cached index figures on-device, with analysis only as a test fallback.
-String homeLastResult(RunSummary run, Units units) {
-  final goal = run.row?.goal ?? run.analysis?.goal;
-  if (goal != null && goal.reached) {
-    if (goal.kind == engine.GoalKind.distance && goal.goalMs != null) {
-      return Fmt.clock(goal.goalMs!);
-    }
-    if (goal.kind == engine.GoalKind.time && goal.goalDistanceM != null) {
-      return Fmt.distance(goal.goalDistanceM!, units);
-    }
-  }
-  if (run.mode == RecordMode.cooper && run.cooper != null) {
-    return Fmt.distance(run.distanceM, units);
-  }
-  return run.isFourByFour
-      ? run.verdict?.headline.text ?? Fmt.paceUnit(run.workPaceSecPerKm, units)
-      : Fmt.paceUnit(run.avgSecPerKm, units);
 }

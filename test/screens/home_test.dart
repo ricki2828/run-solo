@@ -80,14 +80,12 @@ void main() {
       fakeServices(),
       home: HomeScreen(
         now: now,
-        planHeadline: (
-          title: 'TEMPO TODAY',
-          subtitle: 'Week 3, session 2 of 3.',
-        ),
+        planHeadline: (name: 'Tempo', subtitle: 'Week 3, session 2 of 3.'),
       ),
     );
     expect(find.text('TEMPO TODAY'), findsOneWidget);
     expect(find.text('Week 3, session 2 of 3.'), findsOneWidget);
+    expect(find.text('Start Tempo'), findsOneWidget);
   });
 
   testWidgets('recent activity lists the last sessions of any kind', (
@@ -116,7 +114,7 @@ void main() {
 
     expect(find.text('RECENT ACTIVITY'), findsOneWidget);
     expect(cardTitle('Norwegian 4x4'), findsOneWidget);
-    expect(find.text('LAST RESULT'), findsOneWidget);
+    expect(find.text('LAST RESULT'), findsNothing);
     expect(find.text('5:00/km', findRichText: true), findsOneWidget);
     expect(find.text('32:00'), findsNWidgets(2));
     expect(find.text('6.40'), findsOneWidget);
@@ -187,7 +185,7 @@ void main() {
     expect(table, findsOneWidget);
     final row = find.descendant(of: recent, matching: find.byType(InkWell));
     expect(row, findsWidgets);
-    expect(find.byType(SingleChildScrollView), findsNWidgets(2));
+    expect(find.byType(SingleChildScrollView), findsOneWidget);
   });
 
   testWidgets('recent activity titles carry the run-type colours', (
