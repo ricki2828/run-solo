@@ -98,6 +98,7 @@ class RunSidecar {
     this.title,
     this.utcOffsetMin,
     this.placeTries = 0,
+    this.sends = const {},
     this.readSchema = schema,
   });
 
@@ -155,6 +156,41 @@ class RunSidecar {
   /// The app stops asking after three.
   final int placeTries;
 
+  /// Send runs: what happened the last time this run went to each target
+  /// ([SendRecord], by target id). Never an input to a verdict; it only
+  /// decides whether an automatic send is still due.
+  final Map<String, SendRecord> sends;
+
+  /// True while an AUTOMATIC send to [targetId] is still due: never tried,
+  /// or failed fewer than [SendRecord.maxAutoTries] times. A run that went
+  /// through once is never sent again automatically.
+  bool autoSendDue(String targetId) {
+    final r = sends[targetId];
+    return r == null || (!r.ok && r.tries < SendRecord.maxAutoTries);
+  }
+
+  /// Record one attempt to [targetId] at [at]. A success clears the failure
+  /// count; a failure adds one and keeps [error] (short, user-readable).
+  RunSidecar withSend(
+    String targetId, {
+    required bool ok,
+    required DateTime at,
+    String? error,
+  }) {
+    final prev = sends[targetId];
+    return copyWith(
+      sends: {
+        ...sends,
+        targetId: SendRecord(
+          ok: ok,
+          at: at.toUtc(),
+          tries: ok ? 0 : (prev == null || prev.ok ? 1 : prev.tries + 1),
+          error: ok ? null : error,
+        ),
+      },
+    );
+  }
+
   /// Earlier verdicts, oldest first: every verdict that was unfrozen by a
   /// fix-laps edit or override, or replaced by an engine bump (plan §5
   /// "previous text kept in verdict history"), so a rebuild from sidecars
@@ -176,6 +212,7 @@ class RunSidecar {
       title == null &&
       utcOffsetMin == null &&
       placeTries == 0 &&
+      sends.isEmpty &&
       parkrun == null;
 
   RunSidecar copyWith({
@@ -194,8 +231,10 @@ class RunSidecar {
     Object? title = _unset,
     Object? utcOffsetMin = _unset,
     int? placeTries,
+    Map<String, SendRecord>? sends,
   }) => RunSidecar(
     runId: runId,
+    sends: sends ?? this.sends,
     place: identical(place, _unset) ? this.place : place as String?,
     street: identical(street, _unset) ? this.street : street as String?,
     streetTried: streetTried ?? this.streetTried,
@@ -291,6 +330,8 @@ class RunSidecar {
     'title': ?title,
     'utc_offset_min': ?utcOffsetMin,
     if (placeTries > 0) 'place_tries': placeTries,
+    if (sends.isNotEmpty)
+      'sends': {for (final e in sends.entries) e.key: e.value.toJson()},
   };
 
   /// Newer than this build (W6): the app must treat the run as read-only and
@@ -371,9 +412,75 @@ class RunSidecar {
           ? json['utc_offset_min'] as int
           : null,
       placeTries: json['place_tries'] is int ? json['place_tries'] as int : 0,
+      sends: _readSends(json['sends']),
       readSchema: schemaValue,
     );
   }
+}
+
+/// One run's last send to one target (Send runs). Lenient on read: a
+/// malformed entry is dropped, never a reason to call the sidecar damaged.
+class SendRecord {
+  const SendRecord({
+    required this.ok,
+    required this.at,
+    this.tries = 0,
+    this.error,
+  });
+
+  /// Automatic attempts stop after this many failures in a row.
+  static const int maxAutoTries = 3;
+
+  final bool ok;
+  final DateTime at;
+
+  /// Failed attempts since the last success.
+  final int tries;
+  final String? error;
+
+  Map<String, Object?> toJson() => {
+    'ok': ok,
+    'at': at.toUtc().toIso8601String(),
+    if (tries > 0) 'tries': tries,
+    'error': ?error,
+  };
+
+  static SendRecord? fromJson(Object? j) {
+    if (j is! Map<String, Object?>) return null;
+    final ok = j['ok'];
+    final at = j['at'];
+    final when = at is String ? DateTime.tryParse(at) : null;
+    if (ok is! bool || when == null) return null;
+    final tries = j['tries'];
+    final error = j['error'];
+    return SendRecord(
+      ok: ok,
+      at: when.toUtc(),
+      tries: tries is int && tries > 0 ? tries : 0,
+      error: error is String && error.isNotEmpty ? error : null,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is SendRecord &&
+      other.ok == ok &&
+      other.at == at &&
+      other.tries == tries &&
+      other.error == error;
+
+  @override
+  int get hashCode => Object.hash(ok, at, tries, error);
+}
+
+Map<String, SendRecord> _readSends(Object? raw) {
+  if (raw is! Map) return const {};
+  final out = <String, SendRecord>{};
+  for (final e in raw.entries) {
+    final r = SendRecord.fromJson(e.value);
+    if (e.key is String && r != null) out[e.key as String] = r;
+  }
+  return out;
 }
 
 /// A parkrun's course and official time (K1), both optional.

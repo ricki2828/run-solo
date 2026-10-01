@@ -35,6 +35,7 @@ export 'src/engine/rep_detector.dart';
 export 'src/engine/trace.dart';
 export 'src/engine/verdict_builder.dart';
 export 'src/engine_version.dart';
+export 'src/import/gpx_exporter.dart';
 export 'src/import/gpx_importer.dart';
 export 'src/import/import_dedupe.dart';
 export 'src/import/import_util.dart';
