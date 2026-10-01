@@ -306,4 +306,51 @@ void main() {
       jsonEncode(p.toJson()),
     );
   });
+
+  group('moving time and median lap (v6)', () {
+    test(
+      'every run carries movingMs; only a Laps run has a median lap',
+      () async {
+        final free = freeRunFile(n: 1, start: d1);
+        final laps = lapsRunFile(n: 2, start: d1.add(const Duration(days: 1)));
+        final four = fourByFourFile(
+          n: 3,
+          start: d1.add(const Duration(days: 2)),
+        );
+        final store = await storeWith([free, laps, four]);
+        await store.list();
+        final index = await store.readIndex();
+        for (final r in [free, laps, four]) {
+          final row = index.entries[r.id]!.row!;
+          expect(row.version, IndexRow.currentVersion);
+          expect(row.movingMs, r.end.difference(r.start).inMilliseconds);
+        }
+        expect(index.entries[free.id]!.row!.medianLapSec, isNull);
+        expect(index.entries[four.id]!.row!.medianLapSec, isNull);
+        expect(index.entries[laps.id]!.row!.medianLapSec, isNotNull);
+        expect(
+          index.entries[laps.id]!.row!.medianLapSec,
+          engine.RunTimes.medianLapSec(laps),
+        );
+      },
+    );
+
+    test('a row from before v6 is rebuilt once and gains the fields', () async {
+      final laps = lapsRunFile(n: 2, start: d1);
+      final store = await storeWith([laps]);
+      await store.list();
+      final j = jsonDecode(store.indexFile.readAsStringSync()) as Map;
+      final row = ((j['runs'] as List).single as Map)['row'] as Map;
+      row['v'] = 5;
+      row.remove('moving_ms');
+      row.remove('median_lap_s');
+      store.indexFile.writeAsStringSync(jsonEncode(j));
+      expect((await store.readIndex()).entries[laps.id]!.row!.movingMs, isNull);
+      await store.list();
+      final back = (await store.readIndex()).entries[laps.id]!.row!;
+      expect(back.version, IndexRow.currentVersion);
+      expect(back.movingMs, isNotNull);
+      expect(back.medianLapSec, isNotNull);
+    });
+  });
 }
