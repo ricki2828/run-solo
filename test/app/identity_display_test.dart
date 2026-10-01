@@ -12,8 +12,20 @@ void main() {
 
   test('each unlocked performance lane has a distance-labelled time', () {
     for (final (lane, metres, ms, time, label) in [
-      (engine.IdentityLane.speed, 1000.0, 240000, '4:00', 'Race-pace guess, 1K'),
-      (engine.IdentityLane.mid, 5000.0, 1500000, '25:00', 'Race-pace guess, 5K'),
+      (
+        engine.IdentityLane.speed,
+        1000.0,
+        240000,
+        '4:00',
+        'Race-pace guess, 1K',
+      ),
+      (
+        engine.IdentityLane.mid,
+        5000.0,
+        1500000,
+        '25:00',
+        'Race-pace guess, 5K',
+      ),
       (
         engine.IdentityLane.long,
         21097.5,

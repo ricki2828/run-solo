@@ -144,7 +144,10 @@ void main() {
 
     test('no qualifying run → no prediction, empty-card copy', () {
       expect(predictor.predictAll(const [], now: now), isEmpty);
-      expect(Predictor.emptyLine, 'Run 3 km or more to see your estimated times');
+      expect(
+        Predictor.emptyLine,
+        'Run 3 km or more to see your estimated times',
+      );
     });
 
     test('heat-adjusted input is used and says so', () {
