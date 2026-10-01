@@ -106,7 +106,8 @@ class _DeltaLine extends StatelessWidget {
               style: text.bodyMedium?.copyWith(color: deltaColor),
             ),
           TextSpan(
-            text: '${hero.sourceLabel} · ${Fmt.dayDate(hero.asOf)}',
+            text:
+                '${hero.sourceLabel == 'Cooper test' ? '12-minute test' : hero.sourceLabel} · ${Fmt.dayDate(hero.asOf)}',
             style: text.bodyMedium?.copyWith(color: t.inkSecondary),
           ),
         ],

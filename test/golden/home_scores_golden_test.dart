@@ -35,7 +35,7 @@ void main() {
           home: HomeScreen(
             now: now,
             planHeadline: state == 'plan_input'
-                ? (title: 'TEMPO TODAY', subtitle: 'Week 3, session 2 of 3.')
+                ? (name: 'Tempo', subtitle: 'Week 3, session 2 of 3.')
                 : null,
           ),
         );

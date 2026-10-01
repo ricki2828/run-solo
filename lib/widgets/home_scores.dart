@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
+import '../app/routes.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
 
@@ -22,31 +23,55 @@ class HomeScores extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    if (scores.isEmpty) {
+    final earned = [
+      for (final lane in engine.IdentityLane.values)
+        if (scores[lane] != null) lane,
+    ];
+    final dots = Wrap(
+      spacing: Space.x12,
+      runSpacing: Space.x4,
+      children: [
+        for (final lane in engine.IdentityLane.values)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                scores[lane] != null
+                    ? Icons.check_circle
+                    : Icons.circle_outlined,
+                size: 12,
+                color: scores[lane] != null ? t.inkPrimary : t.inkMuted,
+              ),
+              const SizedBox(width: Space.x4),
+              Text(
+                lane.name.toUpperCase(),
+                style: RunSoloType.micro11.copyWith(
+                  color: scores[lane] != null ? t.inkPrimary : t.inkSecondary,
+                ),
+              ),
+            ],
+          ),
+      ],
+    );
+    if (earned.isEmpty) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              for (var i = 0; i < 4; i++)
-                Padding(
-                  padding: const EdgeInsets.only(right: Space.x8),
-                  child: Icon(
-                    Icons.circle_outlined,
-                    size: 12,
-                    color: t.inkMuted,
-                  ),
-                ),
-            ],
-          ),
+          dots,
           const SizedBox(height: Space.x8),
           Text(
-            'Scores grow from clean intervals, a 5K and a 15K+ run.',
+            'Builds up from clean intervals, a 5K and a 15K+ run.',
             style: RunSoloType.label13.copyWith(color: t.inkSecondary),
           ),
         ],
       );
     }
+    Widget card(engine.IdentityLane lane) => _EarnedScore(
+      score: scores[lane]!,
+      profileSex: profileSex,
+      age: age,
+      onOpen: onOpen,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -55,25 +80,27 @@ class HomeScores extends StatelessWidget {
           style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
         ),
         const SizedBox(height: Space.x8),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final lane in engine.IdentityLane.values)
-                if (scores[lane] case final score?)
-                  Padding(
-                    padding: const EdgeInsets.only(right: Space.x8),
-                    child: _EarnedScore(
-                      score: score,
-                      profileSex: profileSex,
-                      age: age,
-                      onOpen: onOpen,
-                    ),
-                  ),
-            ],
+        for (var i = 0; i < earned.length; i += 2) ...[
+          if (i > 0) const SizedBox(height: Space.x8),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: card(earned[i])),
+                const SizedBox(width: Space.x8),
+                Expanded(
+                  child: i + 1 < earned.length
+                      ? card(earned[i + 1])
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
+        if (earned.length < engine.IdentityLane.values.length) ...[
+          const SizedBox(height: Space.x12),
+          dots,
+        ],
       ],
     );
   }
@@ -119,25 +146,28 @@ class _EarnedScore extends StatelessWidget {
     final label = comparison == null
         ? '--'
         : RegExp(r'\d+').firstMatch(comparison)!.group(0)!;
+    // A card that names what to add opens Settings, not Progress.
+    final needsProfile = !sexKnown || (lab && age == null);
     final cohort = !sexKnown
-        ? 'Set profile for comparison'
+        ? 'Add your sex to compare'
         : lab
         ? age == null
-              ? 'Add birth year'
+              ? 'Add your birth year to compare'
               : age! < 20 || age! > 89
               ? 'Ages 20-89 only'
-              : '${female ? 'women' : 'men'} ${age! ~/ 10 * 10} to ${age! ~/ 10 * 10 + 9}'
-        : '${female ? 'women' : 'men'} race finishers · all ages';
+              : '${female ? 'Women' : 'Men'} ${age! ~/ 10 * 10} to ${age! ~/ 10 * 10 + 9}, lab norms'
+        : '${female ? 'Women' : 'Men'}, recreational race finishers, all ages';
     return Semantics(
       button: true,
       label:
-          '${score.lane.name}, ${comparison ?? 'percentile unavailable'}, $cohort, estimate. Open Progress.',
+          '${score.lane.name}, ${comparison ?? 'percentile unavailable'}, $cohort, estimate. ${needsProfile ? 'Open settings.' : 'Open Progress.'}',
       child: InkWell(
         key: ValueKey('home-score-${score.lane.name}'),
-        onTap: onOpen,
+        onTap: needsProfile
+            ? () => Navigator.of(context).pushNamed(Routes.settings)
+            : onOpen,
         borderRadius: BorderRadius.circular(Radii.card),
         child: Container(
-          width: 136,
           padding: const EdgeInsets.all(Space.x12),
           decoration: BoxDecoration(
             color: t.bgRaised,
@@ -152,20 +182,29 @@ class _EarnedScore extends StatelessWidget {
                 style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
               ),
               const SizedBox(height: Space.x4),
-              Text(
-                label,
-                style: RunSoloType.heading19.copyWith(
-                  fontSize: 30,
-                  color: t.inkPrimary,
-                ),
-              ),
-              Text(
-                'percentile',
-                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    label,
+                    style: RunSoloType.heading19.copyWith(
+                      fontSize: 30,
+                      color: t.inkPrimary,
+                    ),
+                  ),
+                  const SizedBox(width: Space.x4),
+                  Text(
+                    'percentile',
+                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                  ),
+                ],
               ),
               const SizedBox(height: Space.x4),
               Text(
                 cohort,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: RunSoloType.label13.copyWith(color: t.inkSecondary),
               ),
             ],
