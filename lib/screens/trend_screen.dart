@@ -441,34 +441,16 @@ class _TrendLegend extends StatelessWidget {
   }
 }
 
-/// The runs a Laps / Free chart compares with the latest one, plus the plain
-/// words naming what they share. Laps: runs of 3 or more laps whose average
-/// lap distance is within 10% of the latest's (the index has no per-lap
-/// data, so a partial last lap is included). Free: runs within 1 unit (km or
-/// mi, the user's) of the latest's distance rounded to the half unit.
+/// The runs the Free chart compares with the latest one, plus the plain
+/// words naming what they share: runs within 1 unit (km or mi, the user's)
+/// of the latest's distance rounded to the half unit. Laps has no chart yet
+/// (a fair lap figure needs per-lap data the index lacks).
 ({List<RunSummary> runs, String caption})? comparableRuns(
   List<RunSummary> chronological,
-  RecordMode mode,
   Units units,
 ) {
   if (chronological.isEmpty) return null;
   final latest = chronological.last;
-  if (mode == RecordMode.laps) {
-    double? lapM(RunSummary r) => r.laps >= 3 ? r.distanceM / r.laps : null;
-    final ref = lapM(latest);
-    if (ref == null || ref <= 0) return null;
-    final runs = [
-      for (final r in chronological)
-        if (lapM(r) case final m? when (m - ref).abs() <= ref * 0.1) r,
-    ];
-    final label = Fmt.distance((ref / 10).round() * 10.0, units);
-    return (
-      runs: runs,
-      caption:
-          'Average lap pace, laps of about $label only. '
-          'Includes any partial last lap.',
-    );
-  }
   final unitM = units == Units.mi ? 1609.344 : 1000.0;
   final centre = (latest.distanceM / unitM * 2).round() / 2;
   final lo = math.max(0.0, centre - 1), hi = centre + 1;
@@ -498,7 +480,7 @@ class _DistanceTrend extends StatelessWidget {
   final RecordMode mode;
 
   Widget _comparableChart(RunSoloTokens t) {
-    final c = comparableRuns(runs, mode, units);
+    final c = comparableRuns(runs, units);
     final shown = c?.runs ?? const <RunSummary>[];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -557,8 +539,10 @@ class _DistanceTrend extends StatelessWidget {
           ],
         ),
         const SizedBox(height: Space.x24),
-        _comparableChart(t),
-        const SizedBox(height: Space.x24),
+        if (mode == RecordMode.free) ...[
+          _comparableChart(t),
+          const SizedBox(height: Space.x24),
+        ],
         Text(
           'Distance and pace only. No verdict for this run type.',
           style: RunSoloType.body15.copyWith(color: t.inkSecondary),

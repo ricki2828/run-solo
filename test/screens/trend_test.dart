@@ -151,16 +151,7 @@ void main() {
       );
     });
 
-    testWidgets('Laps 0 and 1 run: no chart', (tester) async {
-      await open(tester, [lapsRunFile(n: 1, start: base)], 'Laps');
-      expect(find.textContaining('FASTER IS TALLER'), findsNothing);
-      expect(
-        find.text('Two comparable runs draw the first chart.'),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('Laps many: chart names the lap distance', (tester) async {
+    testWidgets('Laps: stat tiles only, no chart', (tester) async {
       await open(tester, [
         for (var i = 0; i < 3; i++)
           lapsRunFile(
@@ -168,73 +159,29 @@ void main() {
             start: base.add(Duration(days: 2 * i)),
           ),
       ], 'Laps');
-      expect(chart, findsOneWidget);
-      expect(
-        find.textContaining('Average lap pace, laps of about'),
-        findsOneWidget,
-      );
+      expect(chart, findsNothing);
+      expect(find.textContaining('FASTER IS TALLER'), findsNothing);
+      expect(find.text('TOTAL'), findsOneWidget);
     });
 
-    test('comparableRuns: fewer than 3 laps excluded, mi bands in miles', () {
-      RunSummary run(RecordMode m, int laps, double distM) => RunSummary(
-        id: 'r$laps$distM',
-        mode: m,
+    test('comparableRuns: Free band in the user unit, other bands dropped', () {
+      RunSummary run(double distM) => RunSummary(
+        id: 'r$distM',
+        mode: RecordMode.free,
         start: base,
         durationMs: (distM * 0.35).round() * 1000,
         distanceM: distM,
-        laps: laps,
+        laps: 0,
       );
-      expect(
-        comparableRuns(
-          [run(RecordMode.laps, 2, 800)],
-          RecordMode.laps,
-          Units.km,
-        ),
-        isNull,
-      );
-      final mixed = [
-        run(RecordMode.laps, 2, 800),
-        run(RecordMode.laps, 4, 1600),
-      ];
-      expect(comparableRuns(mixed, RecordMode.laps, Units.km)!.runs.length, 1);
-      final mi = comparableRuns(
-        [run(RecordMode.free, 0, 5800)],
-        RecordMode.free,
-        Units.mi,
-      )!;
+      final all = [run(2000), run(4200), run(5800)];
+      final km = comparableRuns(all, Units.km)!;
+      // 5.8 km rounds to 6: 5 to 7 km, so only the latest.
+      expect(km.runs.length, 1);
+      expect(km.caption, 'Average pace, runs of 5 to 7 km only');
+      final mi = comparableRuns([run(5800)], Units.mi)!;
       // 5.8 km = 3.6 mi, rounds to 3.5: 2.5 to 4.5 mi.
       expect(mi.caption, 'Average pace, runs of 2.5 to 4.5 mi only');
     });
-
-    test(
-      'comparableRuns drops runs with another lap distance / band',
-      () async {
-        final all = await fakeServices(
-          files: [
-            lapsRunFile(n: 1, start: base),
-            freeRunFile(n: 2, start: base.add(const Duration(days: 1))),
-            lapsRunFile(n: 3, start: base.add(const Duration(days: 2))),
-          ],
-        ).history.list();
-        final chrono = all.reversed.toList();
-        final laps = [
-          for (final r in chrono)
-            if (r.mode == RecordMode.laps) r,
-        ];
-        expect(comparableRuns(laps, RecordMode.laps, Units.km)!.runs.length, 2);
-        // A run with twice the lap distance is not comparable.
-        final odd = RunSummary(
-          id: 'x',
-          mode: RecordMode.laps,
-          start: base.add(const Duration(days: 9)),
-          durationMs: laps.last.durationMs,
-          distanceM: laps.last.distanceM * 2,
-          laps: laps.last.laps,
-        );
-        final c = comparableRuns([...laps, odd], RecordMode.laps, Units.km)!;
-        expect(c.runs, [odd]);
-      },
-    );
   });
 
   testWidgets('noise band is centred on the previous median', (tester) async {
