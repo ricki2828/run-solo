@@ -710,6 +710,32 @@ void main() {
     await golden(tester, 'trend_8_dates_360x640');
   });
 
+  // Free chart: same-band runs only, dates spaced, caption shown.
+  for (final h in [640, 800]) {
+    testWidgets('trend: Free chart at 360 x $h', (tester) async {
+      const paces = [372, 355, 366, 350, 362, 358, 346, 352];
+      final files = [
+        for (var i = 0; i < 8; i++)
+          freeRunFile(
+            n: i + 1,
+            start: DateTime.utc(2026, 10, 10, 6).add(Duration(days: 9 * i)),
+            secPerKm: paces[i],
+            seconds: 5 * paces[i],
+          ),
+      ];
+      await pumpApp(
+        tester,
+        fakeServices(files: files),
+        home: const TrendScreen(),
+      );
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 6);
+      await tester.tap(find.text('Free'));
+      await pumpTimes(tester, 4);
+      await golden(tester, 'trend_free_360x$h');
+    });
+  }
+
   testWidgets('history: verdict arrows and three types', (tester) async {
     final files = [
       fourByFourFile(n: 1, start: d1, workSecPerKm: 284),
