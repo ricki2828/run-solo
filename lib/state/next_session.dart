@@ -126,7 +126,8 @@ NextBeat? nextBeat(NextSession next, List<RunSummary> runs, Units units) {
   // metric: lower is better, in seconds (pace in s/km); null = not usable.
   double? metric(RunSummary r) => switch (next.kind) {
     NextKind.interval => r.eligibleAsPrior ? r.workPaceSecPerKm : null,
-    NextKind.free => r.distanceM >= 1000 ? r.avgSecPerKm : null,
+    NextKind.free => r.distanceM >= 1000 ? _movingPace(r) : null,
+    NextKind.laps => r.row?.medianLapSec,
     NextKind.bronco => r.durationMs > 0 ? r.durationMs / 1000 : null,
     NextKind.goal => _goalSeconds(r, next),
     _ => null,
@@ -148,14 +149,17 @@ NextBeat? nextBeat(NextSession next, List<RunSummary> runs, Units units) {
       'Your last ${next.name} work pace, $date.',
     ),
     NextKind.free => (
-      Fmt.pace(last.avgSecPerKm, units),
+      Fmt.pace(_movingPace(last), units),
       'Your last free run, ${Fmt.distance(last.distanceM, units)}, $date.',
     ),
-    // A fair average lap needs per-lap data the index lacks, so Laps and
-    // Fartlek show the last run's distance until lap times land.
+    NextKind.laps when metric(last) != null => (
+      Fmt.clock((metric(last)! * 1000).round()),
+      'Median lap from your last ${next.name}, $date.',
+    ),
+    // No lap time (fartlek, variable laps, no GPS): the last distance.
     NextKind.laps || NextKind.fartlek => (
       Fmt.distance(last.distanceM, units),
-      'Your last ${next.name}, $date. Lap times come in a later update.',
+      'Your last ${next.name}, $date.',
     ),
     NextKind.bronco => (
       Fmt.clock(last.durationMs),
@@ -171,15 +175,14 @@ NextBeat? nextBeat(NextSession next, List<RunSummary> runs, Units units) {
     ),
   };
   var line = what;
-  // Free pace only compares runs of a similar length (within 15%).
-  final prev = usable
-      .skip(1)
-      .where(
-        (r) =>
-            next.kind != NextKind.free ||
-            (r.distanceM - last.distanceM).abs() <= last.distanceM * 0.15,
-      )
-      .firstOrNull;
+  // Free pace compares runs of a similar length (within 15%); laps compare
+  // runs with a similar lap distance (within 10%).
+  bool similar(RunSummary r) => switch (next.kind) {
+    NextKind.free => _within(r.distanceM, last.distanceM, 0.15),
+    NextKind.laps => _within(_lapDistance(r), _lapDistance(last), 0.10),
+    _ => true,
+  };
+  final prev = usable.skip(1).where(similar).firstOrNull;
   final a = metric(last), b = prev == null ? null : metric(prev);
   if (a != null && b != null) {
     final isPace = next.kind == NextKind.interval || next.kind == NextKind.free;
@@ -190,6 +193,19 @@ NextBeat? nextBeat(NextSession next, List<RunSummary> runs, Units units) {
   }
   return NextBeat(value: value, line: line);
 }
+
+/// Pace over the time spent moving; the whole-run average only where the
+/// index has no moving time (memory store, tests).
+double? _movingPace(RunSummary r) {
+  final ms = r.row?.movingMs;
+  if (ms == null || ms <= 0 || r.distanceM <= 0) return r.avgSecPerKm;
+  return ms / 1000 / (r.distanceM / 1000);
+}
+
+double _lapDistance(RunSummary r) => r.laps > 0 ? r.distanceM / r.laps : 0;
+
+bool _within(double a, double b, double fraction) =>
+    (a - b).abs() <= b * fraction;
 
 /// True when a run of this session exists but cannot set a line.
 bool hasUnusableRun(NextSession next, List<RunSummary> runs) =>

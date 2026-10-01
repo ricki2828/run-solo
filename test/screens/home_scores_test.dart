@@ -253,7 +253,7 @@ void homeCoherenceTests() {
     expect(find.text('Start free run'), findsOneWidget);
   });
 
-  testWidgets('last laps: no wall-clock lap BEAT, shows last distance', (
+  testWidgets('last laps without a median lap: shows last distance', (
     tester,
   ) async {
     await pump(
@@ -265,11 +265,96 @@ void homeCoherenceTests() {
       runs: [_run('laps', RecordMode.laps, 2, durationMs: 1500000, laps: 5)],
     );
     expect(find.text('BEAT 5.00 km'), findsOneWidget);
+    expect(find.textContaining('Lap times come'), findsNothing);
+    expect(find.textContaining('Your last laps run'), findsOneWidget);
+    expect(find.text('Start laps run'), findsOneWidget);
+  });
+
+  testWidgets('paused free run: BEAT uses moving pace', (tester) async {
+    await pump(
+      tester,
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.free,
+      ),
+      runs: [
+        _run(
+          'free',
+          RecordMode.free,
+          1,
+          distanceM: 5000,
+          durationMs: 1800000,
+          row: const IndexRow(lapCount: 1, movingMs: 1500000),
+        ),
+      ],
+    );
+    expect(find.text('BEAT 5:00'), findsOneWidget);
+    expect(find.text('BEAT 6:00'), findsNothing);
+  });
+
+  testWidgets('laps with a median lap: BEAT is that lap time', (tester) async {
+    await pump(
+      tester,
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.laps,
+      ),
+      runs: [
+        _run(
+          'laps',
+          RecordMode.laps,
+          1,
+          distanceM: 5000,
+          laps: 10,
+          row: const IndexRow(lapCount: 10, medianLapSec: 92),
+        ),
+        _run(
+          'older',
+          RecordMode.laps,
+          8,
+          distanceM: 5000,
+          laps: 10,
+          row: const IndexRow(lapCount: 10, medianLapSec: 95),
+        ),
+      ],
+    );
+    expect(find.text('BEAT 1:32'), findsOneWidget);
     expect(
-      find.textContaining('Lap times come in a later update'),
+      find.textContaining('3 s faster than the run before'),
       findsOneWidget,
     );
-    expect(find.text('Start laps run'), findsOneWidget);
+  });
+
+  testWidgets('laps delta skips runs with a different lap distance', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.laps,
+      ),
+      runs: [
+        _run(
+          'laps',
+          RecordMode.laps,
+          1,
+          distanceM: 5000,
+          laps: 10,
+          row: const IndexRow(lapCount: 10, medianLapSec: 92),
+        ),
+        _run(
+          'long',
+          RecordMode.laps,
+          8,
+          distanceM: 8000,
+          laps: 10,
+          row: const IndexRow(lapCount: 10, medianLapSec: 140),
+        ),
+      ],
+    );
+    expect(find.text('BEAT 1:32'), findsOneWidget);
+    expect(find.textContaining('than the run before'), findsNothing);
   });
 
   testWidgets('fartlek gets a BEAT from fartlek runs only', (tester) async {
