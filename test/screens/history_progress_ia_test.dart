@@ -39,6 +39,6 @@ void main() {
       expect(find.byKey(ValueKey('analysis-$lane')), findsOneWidget);
     }
     expect(find.text('HOW YOU COMPARE'), findsOneWidget);
-    expect(find.textContaining('different measures'), findsOneWidget);
+    expect(find.textContaining('rough comparison'), findsOneWidget);
   });
 }
