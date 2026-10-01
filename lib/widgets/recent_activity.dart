@@ -171,7 +171,6 @@ class _ActivityRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _ActivityMap(detail: detail),
-              const SizedBox(height: Space.x12),
               Row(
                 children: [
                   Expanded(
@@ -268,7 +267,7 @@ class _ActivityRow extends StatelessWidget {
     }
     // A goal run's figure is its result: the finish time for a distance
     // goal, the distance covered for a time goal (29-Sep field test).
-    final g = r.analysis?.goal;
+    final g = r.row?.goal ?? r.analysis?.goal;
     if (g != null && g.reached) {
       if (g.kind == engine.GoalKind.distance && g.goalMs != null) {
         return (Fmt.clock(g.goalMs!), null);
@@ -319,58 +318,28 @@ class _ActivityMap extends StatelessWidget {
   final Future<RunDetail?> detail;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 148,
-    width: double.infinity,
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(Radii.card),
-      child: FutureBuilder<RunDetail?>(
-        future: detail,
-        builder: (context, snap) {
-          if (!snap.hasData) {
-            return _MapPlaceholder(
-              text: snap.connectionState == ConnectionState.done
-                  ? 'Route unavailable'
-                  : 'Loading route',
-            );
-          }
-          final d = snap.data!;
-          if (d.analysis.indoor) {
-            return const _MapPlaceholder(text: 'Indoor run, no route');
-          }
-          final route = RouteBuilder.build(d.run);
-          if (route.isEmpty) {
-            return const _MapPlaceholder(text: 'No route recorded');
-          }
-          // Static route thumbnail. The whole card opens run detail;
-          // embedding a Google platform view would steal its gestures and
-          // force several live map instances into Home's scrolling viewport.
-          return RouteShape(route: route);
-        },
-      ),
-    ),
+  Widget build(BuildContext context) => FutureBuilder<RunDetail?>(
+    future: detail,
+    builder: (context, snap) {
+      final d = snap.data;
+      if (d == null || d.analysis.indoor) return const SizedBox.shrink();
+      final route = RouteBuilder.build(d.run);
+      if (route.isEmpty) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: Space.x12),
+        child: SizedBox(
+          height: 148,
+          width: double.infinity,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(Radii.card),
+            child: RouteShape(route: route),
+          ),
+        ),
+      );
+    },
   );
 }
 
-class _MapPlaceholder extends StatelessWidget {
-  const _MapPlaceholder({required this.text});
-  final String text;
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return ColoredBox(
-      color: t.bgBase,
-      child: Center(
-        child: Text(
-          text,
-          style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-        ),
-      ),
-    );
-  }
-}
-
-/// Distinct non-run insert in the normal vertical stream, after activity 1.
 class _EstimatesTable extends StatefulWidget {
   const _EstimatesTable({required this.estimates});
   final engine.HomeEstimates estimates;

@@ -1316,7 +1316,7 @@ void main() {
       tenK(3, 300, 332),
     ];
 
-    testWidgets('Home with try next + estimated times at 360 x 640', (
+    testWidgets('Scores-first Home estimated times at 360 x 640', (
       tester,
     ) async {
       final efforts = engine.RunBestEfforts(
@@ -1348,12 +1348,6 @@ void main() {
       await pumpApp(tester, services, home: HomeScreen(now: now));
       tester.view.physicalSize = const Size(1080, 1920);
       await pumpTimes(tester, 8);
-      // Both cards on screen: ESTIMATED TIMES, then TRY NEXT under it
-      // (variant A home, 27-Sep). Scroll each into view in turn.
-      await Scrollable.ensureVisible(
-        tester.element(find.byKey(const ValueKey('try-next'))),
-      );
-      await pumpTimes(tester, 2);
       await Scrollable.ensureVisible(
         tester.element(find.text('ESTIMATED TIMES')),
       );
