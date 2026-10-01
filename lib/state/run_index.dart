@@ -344,6 +344,8 @@ class IndexRow {
     this.place,
     this.title,
     this.utcOffsetMin,
+    this.movingMs,
+    this.medianLapSec,
   });
 
   /// Bump when a field is added, so old rows are rebuilt once.
@@ -351,7 +353,8 @@ class IndexRow {
   /// 3: [cooper] (C1).
   /// 4: [goal] (LB3b).
   /// 5: [startLat], [startLon], [place], [title], [utcOffsetMin] (run identity).
-  static const int currentVersion = 5;
+  /// 6: [movingMs], [medianLapSec].
+  static const int currentVersion = 6;
 
   final int version;
   final int lapCount;
@@ -405,6 +408,15 @@ class IndexRow {
   /// runs, which fall back to the phone's current zone.
   final int? utcOffsetMin;
 
+  /// The run's duration without paused time, ms (warm-up stays in). Null
+  /// only in a row built by a test; every rebuilt row has it.
+  final int? movingMs;
+
+  /// Laps run: the median moving time of its complete laps, seconds, a
+  /// partial final lap left out. Null for every other run type and for a
+  /// Laps run with no measurable lap.
+  final double? medianLapSec;
+
   factory IndexRow.of(
     engine.RunFile run,
     engine.RunAnalysis? a,
@@ -442,6 +454,12 @@ class IndexRow {
       place: sidecar?.place,
       title: sidecar?.title,
       utcOffsetMin: sidecar?.utcOffsetMin,
+      movingMs: engine.RunTimes.movingMs(run),
+      medianLapSec:
+          (sidecar?.runTypeOverride ?? a?.mode ?? run.mode) ==
+              engine.RunMode.laps
+          ? engine.RunTimes.medianLapSec(run)
+          : null,
     );
   }
 
@@ -466,6 +484,8 @@ class IndexRow {
     'place': ?place,
     'title': ?title,
     'utc_offset_min': ?utcOffsetMin,
+    'moving_ms': ?movingMs,
+    'median_lap_s': ?medianLapSec,
   };
 
   /// null for a missing or unreadable row (the entry is then stale).
@@ -507,6 +527,8 @@ class IndexRow {
         place: j['place'] as String?,
         title: j['title'] as String?,
         utcOffsetMin: j['utc_offset_min'] as int?,
+        movingMs: j['moving_ms'] as int?,
+        medianLapSec: d('median_lap_s'),
       );
     } catch (e) {
       debugPrint('index: unreadable row ($e)');
