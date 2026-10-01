@@ -122,7 +122,7 @@ void main() {
     expect(find.text('All activity ›'), findsOneWidget);
   });
 
-  testWidgets('VO2 max test name keeps Cooper behind info', (tester) async {
+  testWidgets('12-minute test name keeps Cooper behind info', (tester) async {
     await pumpApp(
       tester,
       fakeServices(
@@ -130,12 +130,15 @@ void main() {
       ),
       home: HomeScreen(now: now),
     );
-    expect(cardTitle('VO2 max test'), findsOneWidget);
+    expect(cardTitle('12-minute test'), findsOneWidget);
     expect(find.textContaining('Cooper'), findsNothing);
-    await tester.ensureVisible(find.byTooltip('VO2 max test info'));
-    await tester.tap(find.byTooltip('VO2 max test info'));
+    await tester.ensureVisible(find.byTooltip('12-minute test info'));
+    await tester.tap(find.byTooltip('12-minute test info'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Cooper test: a 12-minute run'), findsOneWidget);
+    expect(
+      find.textContaining('12-minute test: a 12-minute run'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('map cards and estimated times stay in vertical order', (

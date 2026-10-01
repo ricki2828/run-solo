@@ -101,6 +101,26 @@ void main() {
     expect(find.textContaining('Norwegian'), findsNothing);
   });
 
+  testWidgets('card: a 12-minute test says VO2 est. and 12-minute test', (
+    tester,
+  ) async {
+    final r = RunSummary(
+      id: 'c',
+      mode: RecordMode.cooper,
+      start: start,
+      durationMs: 19 * 60 * 1000,
+      distanceM: 3000,
+      laps: 0,
+      row: const IndexRow(
+        lapCount: 0,
+        cooper: CooperFigures(valid: true, testDistanceM: 2800, vo2: 48.2),
+      ),
+    );
+    await pumpCards(tester, [r]);
+    expect(find.text('48.2 VO2 est.'), findsOneWidget);
+    expect(find.byTooltip('12-minute test info'), findsOneWidget);
+  });
+
   group('History from a FileRunStore', () {
     late Directory dir;
     setUp(() => dir = Directory.systemTemp.createTempSync('runsolo-hid-'));
