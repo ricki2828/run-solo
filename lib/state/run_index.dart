@@ -292,7 +292,7 @@ class RunIndexEntry {
           a?.session?.templateId == engine.SessionSpec.parkrunId &&
           sidecar?.parkrun?.courseId == null &&
           engine.ParkrunCourses.startOf(run) == null,
-      row: IndexRow.of(run, a, shownVerdict),
+      row: IndexRow.of(run, a, shownVerdict, sidecar: sidecar),
     );
   }
 
@@ -339,13 +339,18 @@ class IndexRow {
     this.eventStartLon,
     this.cooper,
     this.goal,
+    this.startLat,
+    this.startLon,
+    this.place,
+    this.title,
   });
 
   /// Bump when a field is added, so old rows are rebuilt once.
   /// 2: the event run's start point (K1 course pick at Start).
   /// 3: [cooper] (C1).
   /// 4: [goal] (LB3b).
-  static const int currentVersion = 4;
+  /// 5: [startLat], [startLon], [place], [title] (run identity).
+  static const int currentVersion = 5;
 
   final int version;
   final int lapCount;
@@ -382,11 +387,27 @@ class IndexRow {
   /// goal boards rank it.
   final engine.GoalResult? goal;
 
+  /// Where any run started (first fix, 4 dp, about 11 m): lets a new run
+  /// reuse a nearby earlier run's [place] and lets History show a place
+  /// without decoding a file. Null without a fix. Stays on the phone.
+  final double? startLat;
+  final double? startLon;
+
+  /// The place name the phone's geocoder gave the start point (sidecar
+  /// `place`); null until resolved, and without a fix or geocoder.
+  final String? place;
+
+  /// The runner's own name for the run (sidecar `title`); null = automatic.
+  final String? title;
+
   factory IndexRow.of(
     engine.RunFile run,
     engine.RunAnalysis? a,
-    engine.Verdict? shownVerdict,
-  ) {
+    engine.Verdict? shownVerdict, {
+    engine.RunSidecar? sidecar,
+  }) {
+    final first = engine.RunIdentity.startOf(run);
+    double dp4(double v) => (v * 1e4).round() / 1e4;
     final m = a?.intervals;
     final start = run.session?.templateId == engine.SessionSpec.parkrunId
         ? engine.ParkrunCourses.startOf(run)
@@ -411,6 +432,10 @@ class IndexRow {
       eventStartLon: start == null ? null : dp5(start.lon),
       cooper: CooperFigures.of(a?.cooper),
       goal: a?.goal,
+      startLat: first == null ? null : dp4(first.lat),
+      startLon: first == null ? null : dp4(first.lon),
+      place: sidecar?.place,
+      title: sidecar?.title,
     );
   }
 
@@ -430,6 +455,10 @@ class IndexRow {
     'start_lon': ?eventStartLon,
     'cooper': cooper?.toJson(),
     'goal': goal?.toJson(),
+    'lat': ?startLat,
+    'lon': ?startLon,
+    'place': ?place,
+    'title': ?title,
   };
 
   /// null for a missing or unreadable row (the entry is then stale).
@@ -466,6 +495,10 @@ class IndexRow {
         goal: j['goal'] == null
             ? null
             : engine.GoalResult.fromJson(j['goal']! as Map<String, Object?>),
+        startLat: d('lat'),
+        startLon: d('lon'),
+        place: j['place'] as String?,
+        title: j['title'] as String?,
       );
     } catch (e) {
       debugPrint('index: unreadable row ($e)');

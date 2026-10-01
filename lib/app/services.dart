@@ -20,6 +20,7 @@ import '../state/courses.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../state/max_hr.dart';
+import '../state/places.dart';
 import '../state/recording_controller.dart';
 import '../state/sessions.dart';
 import '../state/settings.dart';
@@ -45,7 +46,12 @@ class AppServices {
     ZoneMementoStore? zoneMemento,
     this.weather,
     this.live,
-  }) : now = now ?? DateTime.now,
+    PlaceGateway? placeGateway,
+  }) : places = PlaceResolver(
+         store: history,
+         gateway: placeGateway ?? FakePlaceGateway(),
+       ),
+       now = now ?? DateTime.now,
        sessions = sessions ?? SessionsController(MemorySessionsStore()),
        courseNames =
            courseNames ?? CourseNamesController(MemoryCourseNamesStore()),
@@ -71,6 +77,10 @@ class AppServices {
   final StorageGateway storage;
   final RecordingController recording;
   final DateTime Function() now;
+
+  /// Names a run's start point once it is finished (and lazily for old runs
+  /// when their detail opens).
+  final PlaceResolver places;
 
   /// Weather per finished run (W1); null in tests and the fake APK.
   final WeatherQueue? weather;
@@ -105,6 +115,21 @@ class AppServices {
       } else {
         unawaited(_weatherPass(() => w.enqueue(id)));
       }
+    });
+  }
+
+  String? _lastPlacedRunId;
+
+  /// Names each finished run's start point once, off the run's critical
+  /// path (never during a run). A failure only logs; the run's detail
+  /// retries when it opens.
+  void startPlaces() {
+    recording.addListener(() {
+      final s = recording.snapshot;
+      if (s.state != RecorderState.idle || s.runId == null) return;
+      if (s.runId == _lastPlacedRunId) return;
+      _lastPlacedRunId = s.runId;
+      unawaited(places.ensure(s.runId!));
     });
   }
 
@@ -168,6 +193,7 @@ class AppServices {
     Map<String, String> courseNames = const {},
     LiveContextSource? live,
     RunStore? history,
+    PlaceGateway? places,
   }) {
     final rec = recorder ?? FakeRecorderGateway(autoTick: true, now: now);
     final settingsCtl = SettingsController(
@@ -202,6 +228,7 @@ class AppServices {
       courseNames: CourseNamesController(MemoryCourseNamesStore(courseNames))
         ..preload(courseNames),
       live: live,
+      placeGateway: places,
     );
   }
 
@@ -233,6 +260,7 @@ class AppServices {
       maps: const GoogleMapSurfaceFactory(),
       transfer: const ShareSheetTransferGateway(),
       storage: PigeonStorageGateway(),
+      placeGateway: PigeonPlaceGateway(),
       zoneMemento: FileZoneMementoStore(Directory('${support.path}/state')),
       live: LiveContextSource(indexFile: history.indexFile),
       weather: WeatherQueue(
@@ -245,6 +273,7 @@ class AppServices {
       courseNames: courseNames,
     );
     services.startWeather();
+    services.startPlaces();
     return services;
   }
 

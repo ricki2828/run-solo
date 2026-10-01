@@ -47,7 +47,9 @@ AppServices fakeServices({
   Map<String, String> courseNames = const {},
   LiveContextSource? live,
   RunStore? history,
+  FakePlaceGateway? places,
 }) => AppServices.fake(
+  places: places,
   live: live,
   recorder: recorder ?? FakeRecorderGateway(now: now),
   ble: ble,

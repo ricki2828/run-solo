@@ -3407,6 +3407,55 @@ interface PermissionsApi {
     }
   }
 }
+/**
+ * A place name for a run's start point, from the phone's own geocoder
+ * (`android.location.Geocoder`). Run Solo sends nothing itself; the system
+ * geocoder may ask Google Play services, which is said in the privacy
+ * policy.
+ *
+ * Generated interface from Pigeon that represents a handler of messages from Flutter.
+ */
+interface PlaceApi {
+  /**
+   * A short name for the area around the point (sub-locality, else
+   * locality), e.g. "Albert Park". Null when there is no geocoder on the
+   * phone, it is offline, or it has no answer: never a coordinate.
+   */
+  fun placeName(lat: Double, lon: Double, callback: (Result<String?>) -> Unit)
+
+  companion object {
+    /** The codec used by PlaceApi. */
+    val codec: MessageCodec<Any?> by lazy {
+      PlatformApiPigeonCodec()
+    }
+    /** Sets up an instance of `PlaceApi` to handle messages through the `binaryMessenger`. */
+    @JvmOverloads
+    fun setUp(binaryMessenger: BinaryMessenger, api: PlaceApi?, messageChannelSuffix: String = "") {
+      val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.PlaceApi.placeName$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val latArg = args[0] as Double
+            val lonArg = args[1] as Double
+            api.placeName(latArg, lonArg) { result: Result<String?> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+    }
+  }
+}
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface BleApi {
   /** Scan once for Heart Rate Profile (0x180D) devices to pair (≤ 10 s). */

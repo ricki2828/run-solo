@@ -33,7 +33,7 @@ Founder approves the wording (plan §18.9 item 8) before anything is typed into 
 >
 > Free runs get a clean summary. Every 4x4 goes on a trend line with your bests. Follow a fixed 8-week 4x4 plan or a 5k plan: pick your days, tick sessions off, start the right session from the plan.
 >
-> No account. No feed. No ads. No analytics of our own. Your recorded route, times and heart rate stay on your phone. Map tiles come from Google, which sees the map area you view and your IP address, like any maps app. Weather comes from Open-Meteo using your location rounded to about 10 km. Export JSON or TCX any time.
+> No account. No feed. No ads. No analytics of our own. Your recorded route, times and heart rate stay on your phone. Map tiles come from Google, which sees the map area you view and your IP address, like any maps app. Weather comes from Open-Meteo using your location rounded to about 10 km. Your phone turns a run's start point into a place name with its own geocoder, which may use Google Play services. Export JSON or TCX any time.
 >
 > Coming in the paid version: tempo and easy-run verdicts, adaptive plans, iOS. Join the waitlist inside the app.
 
@@ -88,6 +88,7 @@ Data types. "Collected" in Play's sense includes what the Maps SDK sends to Goog
 |---|---|---|---|---|---|---|---|
 | Location | **Precise location** | Yes | No | No (Google retains map camera/interaction events "to improve Google services") | Required (the post-run map has no toggle) | App functionality, **Analytics** | Post-run map fits the camera to the route at zoom 15/16 and the full-screen map is panned/zoomed; the camera events Google receives describe an area smaller than Play's ~3 km² "approximate" threshold (R1) |
 | Location | **Approximate location** | Yes | No | No | Required for the map's IP-derived part; the Open-Meteo part is optional (weather toggle) | App functionality, **Analytics** | Maps SDK derives it from the IP and Google says IP + request metadata are used "to understand SDK usage"; Open-Meteo gets the run location rounded to ~10 km |
+| Location | **Precise location** (place name lookup) | Covered by the Precise location row above | No | Yes (nothing is retained by us) | Required for the place name; failure just leaves no name | App functionality | A run's start point is turned into a place name by Android's on-device `Geocoder` (`getFromLocation`). Run Supreme sends nothing itself; the system geocoder may use Google Play services, a service provider acting for the app's own function, so it is declared as collected, not shared. No new Data safety category beyond Precise location is added. |
 | Device or other IDs | **Device or other IDs** | Yes | No | No | Required (part of the Maps SDK whenever a map loads) | App functionality, **Analytics** | Maps SDK identifier used by Google to measure daily active SDK users |
 | App activity | **App interactions** | Yes | No | No | Required | App functionality, **Analytics** | Google lists "map interaction events (panning, zooming)" as its own collected item; Play's matching type is App interactions. Plan §18.6 did not cover this category; declared to over- rather than under-declare |
 | App info and performance | **Crash logs** | Yes | No | No | Required | App functionality | Maps SDK crash reporting (Google's disclosure) |

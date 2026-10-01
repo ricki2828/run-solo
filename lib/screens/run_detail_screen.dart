@@ -15,6 +15,7 @@ import '../widgets/chrome.dart';
 import '../widgets/coaching.dart';
 import '../widgets/hold_button.dart';
 import '../widgets/rep_bars.dart';
+import '../widgets/recent_activity.dart' show runTypeColor;
 import '../widgets/weather_chip.dart';
 import 'verdict_screen.dart';
 
@@ -128,11 +129,16 @@ class RunDetailBody extends StatelessWidget {
       d.run,
       detection: d.summary.isFourByFour ? a.detection : null,
     );
-    final weather = weatherChipView(
-      analysis: a,
-      units: units,
-      fetchEnabled: services.settings.settings.weatherPerRun,
+    final weather = detailWeatherChip(
+      weatherChipView(
+        analysis: a,
+        units: units,
+        fetchEnabled: services.settings.settings.weatherPerRun,
+      ),
+      runEnd: d.run.end,
+      now: services.now(),
     );
+    final hasRoute = !a.indoor && !route.isEmpty;
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
       children: [
@@ -148,11 +154,14 @@ class RunDetailBody extends StatelessWidget {
           WeatherChip(view: weather),
           const SizedBox(height: Space.x16),
         ],
-        AspectRatio(
-          aspectRatio: 4 / 3,
-          child: _MapCard(route: route, indoor: a.indoor),
-        ),
-        const SizedBox(height: Space.x24),
+        // No route (indoor, or no GPS): no empty box, the figures speak.
+        if (hasRoute) ...[
+          AspectRatio(
+            aspectRatio: 4 / 3,
+            child: _MapCard(route: route, indoor: a.indoor),
+          ),
+          const SizedBox(height: Space.x24),
+        ],
         switch (d.summary.mode) {
           RecordMode.intervals => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -220,15 +229,115 @@ class RunDetailBody extends StatelessWidget {
   }
 }
 
-class _Header extends StatelessWidget {
+/// How long after a run's end "Weather: fetching when online" can still be
+/// true: the queue tries on the run finishing and on each app open, and
+/// nothing is fetching for a run from last week.
+const Duration kWeatherFetchWindow = Duration(hours: 2);
+
+/// The weather chip as run detail shows it: a pending chip only while the
+/// fetch can still be in flight, never as a permanent placeholder.
+WeatherChipView? detailWeatherChip(
+  WeatherChipView? view, {
+  required DateTime runEnd,
+  required DateTime now,
+}) {
+  if (view == null) return null;
+  if (view.state == WeatherChipState.pending &&
+      now.difference(runEnd) > kWeatherFetchWindow) {
+    return null;
+  }
+  return view;
+}
+
+class _Header extends StatefulWidget {
   const _Header({required this.detail, required this.units});
   final RunDetail detail;
   final Units units;
 
   @override
+  State<_Header> createState() => _HeaderState();
+}
+
+class _HeaderState extends State<_Header> {
+  String? _place;
+  String? _custom;
+  bool _renamed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _place = widget.detail.summary.place;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // An older run, or one the geocoder could not name when it finished:
+    // try again now (null when offline or indoors, which stays blank).
+    if (_place == null && widget.detail.summary.startPoint != null) {
+      final id = widget.detail.run.id;
+      AppServices.of(context).places.ensure(id).then((p) {
+        if (mounted && p != null) setState(() => _place = p);
+      });
+    }
+  }
+
+  Future<void> _rename() async {
+    final services = AppServices.of(context);
+    final current = _renamed ? _custom : widget.detail.summary.customTitle;
+    final controller = TextEditingController(
+      text: current ?? runIdentityTitle(widget.detail.summary),
+    );
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Name this run'),
+        content: TextField(
+          key: const ValueKey('rename-field'),
+          controller: controller,
+          autofocus: true,
+          maxLength: 40,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(hintText: 'Hill repeats'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          if (current != null)
+            TextButton(
+              onPressed: () => Navigator.pop(context, ''),
+              child: const Text('Use automatic name'),
+            ),
+          TextButton(
+            key: const ValueKey('rename-save'),
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (result == null) return;
+    final title = engine.RunIdentity.cleanTitle(result);
+    await services.history.setTitle(widget.detail.run.id, title);
+    if (mounted) {
+      setState(() {
+        _custom = title;
+        _renamed = true;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final d = detail;
+    final d = widget.detail;
+    final units = widget.units;
+    final summary = d.summary;
+    final custom = _renamed ? _custom : summary.customTitle;
+    final timeWord = engine.RunIdentity.timeOfDay(summary.start.toLocal());
     final free = d.analysis.freeRun;
     final avgHr = free.avgHr;
     // The test's figures, when this is one (C1 via the index row).
@@ -236,9 +345,50 @@ class _Header extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    if (custom == null)
+                      TextSpan(
+                        text: '$timeWord ',
+                        style: TextStyle(color: t.inkPrimary),
+                      ),
+                    TextSpan(
+                      text: custom ?? runSessionName(summary),
+                      style: TextStyle(color: runTypeColor(summary)),
+                    ),
+                  ],
+                ),
+                key: const ValueKey('detail-title'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: RunSoloType.heading19,
+              ),
+            ),
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: IconButton(
+                key: const ValueKey('rename-run'),
+                padding: EdgeInsets.zero,
+                tooltip: 'Rename run',
+                icon: Icon(
+                  Icons.edit_outlined,
+                  size: 20,
+                  color: t.inkSecondary,
+                ),
+                onPressed: _rename,
+              ),
+            ),
+          ],
+        ),
         Text(
-          '${runLabel(d.summary)} · ${Fmt.dayDate(d.run.start)} · ${Fmt.hhmm(d.run.start)}',
-          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+          whereWhen(_place, summary.start),
+          key: const ValueKey('detail-where-when'),
+          style: RunSoloType.label13.copyWith(color: t.inkSecondary),
         ),
         const SizedBox(height: Space.x12),
         // Labels share one bottom edge; the numbers scale down to fit.

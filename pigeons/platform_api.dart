@@ -726,6 +726,19 @@ abstract class PermissionsApi {
   bool volumeKeyLapsSupported();
 }
 
+/// A place name for a run's start point, from the phone's own geocoder
+/// (`android.location.Geocoder`). Run Solo sends nothing itself; the system
+/// geocoder may ask Google Play services, which is said in the privacy
+/// policy.
+@HostApi()
+abstract class PlaceApi {
+  /// A short name for the area around the point (sub-locality, else
+  /// locality), e.g. "Albert Park". Null when there is no geocoder on the
+  /// phone, it is offline, or it has no answer: never a coordinate.
+  @async
+  String? placeName(double lat, double lon);
+}
+
 @HostApi()
 abstract class BleApi {
   /// Scan once for Heart Rate Profile (0x180D) devices to pair (≤ 10 s).

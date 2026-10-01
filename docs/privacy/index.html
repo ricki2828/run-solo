@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Run Supreme privacy policy</title>
-<meta name="description" content="What Run Supreme stores on your phone, what Google Maps and Open-Meteo receive, and the controls you have.">
+<meta name="description" content="What Run Supreme stores on your phone, what Google Maps, Open-Meteo and your phone's geocoder receive, and the controls you have.">
 <style>
   :root { --bg:#0b0b0c; --ink:#ece7dc; --mute:#9c978d; --line:#26262a; --accent:#2fd7e6; }
   @media (prefers-color-scheme: light) { :root { --bg:#f6f3ec; --ink:#141414; --mute:#5c5a55; --line:#dcd7cc; --accent:#0a8f9c; } }
@@ -70,13 +70,24 @@
   <p>You can turn this off in Settings, under Recording, with the "Weather for each run"
   switch. With it off, nothing is sent to Open-Meteo.</p>
 
+  <h3>Place names</h3>
+  <p>Each run shows where it started, for example "Albert Park". Run Supreme asks Android's
+  built-in geocoder (<code>android.location.Geocoder</code>) to turn the start point of the run into a
+  short area name. Run Supreme makes no network request for this itself. The Android geocoder is part
+  of your phone's system and may use Google Play services, which can send the coordinate to Google to
+  get the name back, under the <a href="https://policies.google.com/privacy" rel="noopener">Google Privacy Policy</a>.
+  Only the start point is looked up, never the route, your pace or your heart rate. The name is stored
+  on your phone with the run; if the lookup fails, the run simply has no place name. A run that starts
+  within about 300 m of an earlier run reuses that run's name without a new lookup.</p>
+  <p>You can rename a run yourself from its detail screen; the title is stored only on your phone.</p>
+
   <h2>4. Permissions the app asks for</h2>
   <table>
     <tr><th>Permission</th><th>Why</th></tr>
     <tr><td>Precise location</td><td>To record your pace and route with GPS during a run you started. Recording runs as a visible notification while the run is in progress and stops when you press Stop. Run Supreme never records location in the background on its own.</td></tr>
     <tr><td>Nearby devices (Bluetooth)</td><td>To pair a heart-rate strap. Bluetooth is not used to work out where you are.</td></tr>
     <tr><td>Notifications</td><td>The recording notification with its LAP and Stop buttons, and cues while your screen is off.</td></tr>
-    <tr><td>Internet</td><td>Map tiles from Google and weather from Open-Meteo, as described above. Nothing else.</td></tr>
+    <tr><td>Internet</td><td>Map tiles from Google and weather from Open-Meteo, as described above. Place names come from your phone's own geocoder, as described above. Nothing else.</td></tr>
   </table>
 
   <h2>5. What we do not do</h2>

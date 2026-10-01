@@ -15,6 +15,18 @@ import 'package:run_solo/widgets/recent_activity.dart';
 import '../helpers.dart';
 import '../run_fixtures.dart';
 
+/// A card title is a rich text: the time-of-day word in ink, the session
+/// name in its run-type colour.
+Finder cardTitle(String sessionName) => find.descendant(
+  of: find.byType(RecentActivity),
+  matching: find.byWidgetPredicate(
+    (w) =>
+        w is RichText &&
+        w.text.toPlainText().endsWith(sessionName) &&
+        w.text.toPlainText().length > sessionName.length,
+  ),
+);
+
 void main() {
   testWidgets('new install has one remembered Start and no locked tiles', (
     tester,
@@ -103,7 +115,7 @@ void main() {
     );
 
     expect(find.text('RECENT ACTIVITY'), findsOneWidget);
-    expect(find.text('4X4'), findsOneWidget);
+    expect(cardTitle('Norwegian 4x4'), findsOneWidget);
     expect(find.text('LAST RESULT'), findsOneWidget);
     expect(find.text('5:00/km', findRichText: true), findsOneWidget);
     expect(find.text('32:00'), findsNWidgets(2));
@@ -120,7 +132,7 @@ void main() {
       ),
       home: HomeScreen(now: now),
     );
-    expect(find.text('VO2 MAX TEST'), findsOneWidget);
+    expect(cardTitle('VO2 max test'), findsOneWidget);
     expect(find.textContaining('Cooper'), findsNothing);
     await tester.ensureVisible(find.byTooltip('VO2 max test info'));
     await tester.tap(find.byTooltip('VO2 max test info'));
@@ -198,13 +210,22 @@ void main() {
     );
     await pumpApp(tester, services, home: HomeScreen(now: now));
     final expected = {
-      '4X4': AuroraRunType.intervals,
-      'FREE RUN': AuroraRunType.free,
-      'LAPS RUN': AuroraRunType.laps,
+      'Norwegian 4x4': AuroraRunType.intervals,
+      'Free run': AuroraRunType.free,
+      'Laps run': AuroraRunType.laps,
     };
     for (final entry in expected.entries) {
-      final titleText = tester.widget<Text>(find.text(entry.key));
-      expect(titleText.style!.color, entry.value);
+      final rich = tester.widget<RichText>(cardTitle(entry.key));
+      final colours = <String, Color?>{};
+      rich.text.visitChildren((span) {
+        if (span is TextSpan && span.text != null) {
+          colours[span.text!.trim()] = span.style?.color;
+        }
+        return true;
+      });
+      // The colour is on the session name only, never the time-of-day word.
+      expect(colours[entry.key], entry.value);
+      expect(colours.length, 2);
     }
   });
 

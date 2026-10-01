@@ -163,6 +163,7 @@ class FakeRecorderGateway implements RecorderGateway {
       _emitState();
     }
   }
+
   int _activeMs = 0; // recording time only
   int _lapStartElapsedMs = 0;
   int _lapStartActiveMs = 0;
@@ -841,6 +842,24 @@ class FakeStorageGateway implements StorageGateway {
     final out = List.of(archiveNext);
     archiveNext = const [];
     return out;
+  }
+}
+
+class FakePlaceGateway implements PlaceGateway {
+  FakePlaceGateway({this.name, this.fails = false});
+
+  /// What every lookup answers; null = the geocoder has nothing.
+  String? name;
+
+  /// The geocoder throws (no Play services, offline).
+  bool fails;
+  final calls = <({double lat, double lon})>[];
+
+  @override
+  Future<String?> placeName(double lat, double lon) async {
+    calls.add((lat: lat, lon: lon));
+    if (fails) return null;
+    return name;
   }
 }
 

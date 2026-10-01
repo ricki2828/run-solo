@@ -91,7 +91,7 @@ void main() {
     expect(find.text('8'), findsOneWidget);
   });
 
-  testWidgets('indoor: "Indoor run, no route", no map', (tester) async {
+  testWidgets('indoor: no route box at all, no map', (tester) async {
     final r = fourByFourFile(n: 2, start: d1, indoor: true);
     await pumpApp(
       tester,
@@ -99,7 +99,7 @@ void main() {
       home: RunDetailScreen(runId: r.id),
     );
     await pumpTimes(tester, 6);
-    expect(find.text('Indoor run, no route'), findsOneWidget);
+    expect(find.text('Indoor run, no route'), findsNothing);
     expect(find.byKey(const ValueKey('fake-map')), findsNothing);
   });
 

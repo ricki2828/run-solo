@@ -21,6 +21,8 @@ import app.runsolo.platform.BleApiImpl
 import app.runsolo.platform.PermissionKind
 import app.runsolo.platform.PermissionStatus
 import app.runsolo.platform.PermissionsApi
+import app.runsolo.platform.PlaceApi
+import app.runsolo.platform.PlaceApiImpl
 import app.runsolo.platform.RecordMode
 import app.runsolo.platform.RecorderApi
 import app.runsolo.platform.RecorderApiImpl
@@ -69,6 +71,7 @@ class MainActivity : FlutterActivity() {
         recorder = RecorderApiImpl(applicationContext)
         RecorderApi.setUp(flutterEngine.dartExecutor.binaryMessenger, recorder)
         BleApi.setUp(flutterEngine.dartExecutor.binaryMessenger, BleApiImpl(applicationContext))
+        PlaceApi.setUp(flutterEngine.dartExecutor.binaryMessenger, PlaceApiImpl(applicationContext))
         PermissionsApi.setUp(flutterEngine.dartExecutor.binaryMessenger, Permissions())
         StorageApi.setUp(flutterEngine.dartExecutor.binaryMessenger, StorageApiImpl(applicationContext))
         RecorderEventsStreamHandler.register(flutterEngine.dartExecutor.binaryMessenger, RecorderEventBus)

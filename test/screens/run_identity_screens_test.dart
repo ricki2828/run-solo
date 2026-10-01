@@ -1,0 +1,224 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:run_engine/run_engine.dart' as engine;
+import 'package:run_solo/platform/fake_gateway.dart';
+import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/screens/history_screen.dart';
+import 'package:run_solo/screens/run_detail_screen.dart';
+import 'package:run_solo/state/history_store.dart';
+import 'package:run_solo/state/run_index.dart';
+import 'package:run_solo/widgets/recent_activity.dart';
+import 'package:run_solo/widgets/weather_chip.dart';
+
+import '../helpers.dart';
+import '../run_fixtures.dart';
+
+/// Run identity on screen: title + place + date on Home's cards, History
+/// rows and run detail; work pace on interval cards; no empty route box and
+/// no stale "fetching" weather line.
+void main() {
+  final start = DateTime(2026, 9, 24, 6).toUtc();
+
+  RunSummary row({
+    String id = 'a',
+    RecordMode mode = RecordMode.intervals,
+    String? place = 'Albert Park',
+    String? title,
+    double? work = 262,
+  }) => RunSummary(
+    id: id,
+    mode: mode,
+    start: start,
+    durationMs: 40 * 60 * 1000,
+    distanceM: 6000,
+    laps: 8,
+    place: place,
+    customTitle: title,
+    row: IndexRow(
+      lapCount: 8,
+      workPaceSecPerKm: work,
+      place: place,
+      title: title,
+    ),
+  );
+
+  Future<void> pumpCards(WidgetTester tester, List<RunSummary> runs) => pumpApp(
+    tester,
+    fakeServices(runs: runs),
+    home: Scaffold(
+      body: SingleChildScrollView(
+        child: RecentActivity(runs: runs, units: Units.km, now: now()),
+      ),
+    ),
+  );
+
+  testWidgets('card: title, then place · day · time, then the stats', (
+    tester,
+  ) async {
+    await pumpCards(tester, [row()]);
+    expect(find.text('Albert Park · Thu 24 Sep · 6:00'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is RichText && w.text.toPlainText() == 'Early Norwegian 4x4',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('4X4'), findsNothing);
+  });
+
+  testWidgets('card: no place known, no placeholder and no coordinate', (
+    tester,
+  ) async {
+    await pumpCards(tester, [row(place: null)]);
+    expect(find.text('Thu 24 Sep · 6:00'), findsOneWidget);
+    expect(find.textContaining('Albert'), findsNothing);
+  });
+
+  testWidgets('card: an interval run shows work pace, a free run avg pace', (
+    tester,
+  ) async {
+    await pumpCards(tester, [row()]);
+    expect(find.text('WORK PACE'), findsOneWidget);
+    expect(find.text('AVG PACE'), findsNothing);
+    expect(find.text('4:22/km', findRichText: true), findsOneWidget);
+    await pumpCards(tester, [row(id: 'f', mode: RecordMode.free)]);
+    expect(find.text('AVG PACE'), findsOneWidget);
+    expect(find.text('WORK PACE'), findsNothing);
+  });
+
+  testWidgets('card: the runner\'s own title replaces the automatic one', (
+    tester,
+  ) async {
+    await pumpCards(tester, [row(title: 'Hill day')]);
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is RichText && w.text.toPlainText() == 'Hill day',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Norwegian'), findsNothing);
+  });
+
+  group('History from a FileRunStore', () {
+    late Directory dir;
+    setUp(() => dir = Directory.systemTemp.createTempSync('runsolo-hid-'));
+    tearDown(() => dir.deleteSync(recursive: true));
+
+    testWidgets('rows show the title, place and date from the index', (
+      tester,
+    ) async {
+      final r = freeRunFile(n: 1, start: start);
+      final store = FileRunStore(Directory('${dir.path}/runs'));
+      await tester.runAsync(() async {
+        await store.importBundles([engine.RunBundle(run: r)]);
+        await store.setPlace(r.id, 'Albert Park');
+        await store.setTitle(r.id, 'Sunday easy');
+        await store.list();
+        await store.derivedIdle;
+      });
+      await pumpApp(
+        tester,
+        fakeServices(history: store),
+        home: const HistoryScreen(),
+      );
+      for (var i = 0; i < 40; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump();
+      }
+      await tester.tap(find.byKey(const ValueKey('history-view-1')));
+      await pumpTimes(tester);
+      expect(find.byType(HistoryRow), findsOneWidget);
+      expect(find.text('Sunday easy'), findsOneWidget);
+      expect(find.text(whereWhen('Albert Park', start)), findsOneWidget);
+      await tester.runAsync(() => store.derivedIdle);
+    });
+  });
+
+  group('run detail', () {
+    testWidgets('indoor: no empty route box and no placeholder', (
+      tester,
+    ) async {
+      final r = fourByFourFile(
+        n: 2,
+        start: DateTime.utc(2026, 9, 10, 6),
+        indoor: true,
+      );
+      await pumpApp(
+        tester,
+        fakeServices(files: [r]),
+        home: RunDetailScreen(runId: r.id),
+      );
+      await pumpTimes(tester, 6);
+      expect(find.text('Indoor run, no route'), findsNothing);
+      expect(find.byKey(const ValueKey('fake-map')), findsNothing);
+      expect(find.textContaining('fetching'), findsNothing);
+      expect(find.byKey(const ValueKey('detail-title')), findsOneWidget);
+    });
+
+    testWidgets('header: title, place and date; rename keeps it', (
+      tester,
+    ) async {
+      final r = freeRunFile(n: 3, start: start);
+      final places = FakePlaceGateway(name: 'Albert Park');
+      final services = fakeServices(files: [r], places: places);
+      await pumpApp(tester, services, home: RunDetailScreen(runId: r.id));
+      await pumpTimes(tester, 6);
+      // An old run with no place: named lazily when the detail opens.
+      expect(find.text(whereWhen('Albert Park', start)), findsOneWidget);
+      expect(places.calls, hasLength(1));
+      await tester.tap(find.byKey(const ValueKey('rename-run')));
+      await pumpTimes(tester, 4);
+      await tester.enterText(
+        find.byKey(const ValueKey('rename-field')),
+        'Sunday easy',
+      );
+      await tester.tap(find.byKey(const ValueKey('rename-save')));
+      await pumpTimes(tester, 6);
+      final title = tester.widget<Text>(
+        find.byKey(const ValueKey('detail-title')),
+      );
+      expect(title.textSpan!.toPlainText(), 'Sunday easy');
+      expect((await services.history.load(r.id))!.sidecar.title, 'Sunday easy');
+    });
+
+    test('weather: "fetching" only while a fetch can still be in flight', () {
+      const pending = WeatherChipView(
+        state: WeatherChipState.pending,
+        note: kWeatherPending,
+      );
+      final end = DateTime.utc(2026, 9, 24, 7);
+      expect(
+        detailWeatherChip(
+          pending,
+          runEnd: end,
+          now: end.add(const Duration(minutes: 5)),
+        ),
+        isNotNull,
+      );
+      expect(
+        detailWeatherChip(
+          pending,
+          runEnd: end,
+          now: end.add(const Duration(days: 8)),
+        ),
+        isNull,
+      );
+      const failed = WeatherChipView(
+        state: WeatherChipState.unavailable,
+        note: kWeatherUnavailable,
+      );
+      expect(
+        detailWeatherChip(
+          failed,
+          runEnd: end,
+          now: end.add(const Duration(days: 8)),
+        ),
+        isNotNull,
+      );
+    });
+  });
+}

@@ -92,6 +92,8 @@ class RunSidecar {
     this.cooper,
     this.comparisonKey,
     this.parkrun,
+    this.place,
+    this.title,
     this.readSchema = schema,
   });
 
@@ -123,6 +125,15 @@ class RunSidecar {
   /// the verdict (key and headline), so changing either unfreezes it.
   final ParkrunInfo? parkrun;
 
+  /// Where the run started, as the phone's geocoder named it ("Albert
+  /// Park"). Display only, never an input. Absent until resolved, and when
+  /// there is no fix or no geocoder.
+  final String? place;
+
+  /// The runner's own name for the run; replaces the automatic title.
+  /// Display only, so it survives every recalculation.
+  final String? title;
+
   /// Earlier verdicts, oldest first: every verdict that was unfrozen by a
   /// fix-laps edit or override, or replaced by an engine bump (plan §5
   /// "previous text kept in verdict history"), so a rebuild from sidecars
@@ -138,6 +149,8 @@ class RunSidecar {
       weather == null &&
       cooper == null &&
       comparisonKey == null &&
+      place == null &&
+      title == null &&
       parkrun == null;
 
   RunSidecar copyWith({
@@ -150,8 +163,12 @@ class RunSidecar {
     Object? cooper = _unset,
     Object? comparisonKey = _unset,
     Object? parkrun = _unset,
+    Object? place = _unset,
+    Object? title = _unset,
   }) => RunSidecar(
     runId: runId,
+    place: identical(place, _unset) ? this.place : place as String?,
+    title: identical(title, _unset) ? this.title : title as String?,
     parkrun: identical(parkrun, _unset)
         ? this.parkrun
         : parkrun as ParkrunInfo?,
@@ -233,6 +250,8 @@ class RunSidecar {
     'cooper': cooper,
     'comparison_key': comparisonKey,
     _parkrunKey: ?parkrun?.toJson(),
+    'place': ?place,
+    'title': ?title,
   };
 
   /// Newer than this build (W6): the app must treat the run as read-only and
@@ -277,6 +296,11 @@ class RunSidecar {
     if (key != null && key is! String) {
       throw RunFileFormatException('comparison_key must be a string or null');
     }
+    String? optString(String key) {
+      final v = json[key];
+      return v is String && v.isNotEmpty ? v : null;
+    }
+
     final frozen = json['frozen_verdict'];
     final history = json['verdict_history'] ?? const [];
     if (history is! List) {
@@ -300,6 +324,8 @@ class RunSidecar {
       cooper: optObject('cooper'),
       comparisonKey: key as String?,
       parkrun: ParkrunInfo.fromJson(optObject(_parkrunKey)),
+      place: optString('place'),
+      title: optString('title'),
       readSchema: schemaValue,
     );
   }
