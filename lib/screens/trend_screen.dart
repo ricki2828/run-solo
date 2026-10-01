@@ -441,30 +441,60 @@ class _TrendLegend extends StatelessWidget {
   }
 }
 
-/// The runs the Free chart compares with the latest one, plus the plain
-/// words naming what they share: runs within 1 unit (km or mi, the user's)
-/// of the latest's distance rounded to the half unit. Laps has no chart yet
-/// (a fair lap figure needs per-lap data the index lacks).
-({List<RunSummary> runs, String caption})? comparableRuns(
+/// Free pace over the time spent moving; the whole-run average only where
+/// the index has no moving time (memory store, tests).
+double? movingPaceOf(RunSummary r) {
+  final ms = r.row?.movingMs;
+  if (ms == null || ms <= 0 || r.distanceM <= 0) return r.avgSecPerKm;
+  return ms / 1000 / (r.distanceM / 1000);
+}
+
+/// What a Laps / Free chart draws: the comparable runs with their value
+/// (seconds per km for Free, median lap seconds for Laps), and the plain
+/// words naming what they share.
+typedef ComparableRuns = ({List<(RunSummary, double)> points, String caption});
+
+/// Free: runs within 1 unit (km or mi, the user's) of the latest's distance
+/// rounded to the half unit, drawn as moving pace. Laps: runs whose average
+/// lap distance is within 10% of the latest's, drawn as the median of their
+/// complete laps; a run with no median is left out.
+ComparableRuns? comparableRuns(
   List<RunSummary> chronological,
+  RecordMode mode,
   Units units,
 ) {
   if (chronological.isEmpty) return null;
+  if (mode == RecordMode.laps) {
+    double lapM(RunSummary r) => r.laps > 0 ? r.distanceM / r.laps : 0;
+    final measured = [
+      for (final r in chronological)
+        if ((r.row?.medianLapSec ?? 0) > 0 && r.laps > 0) r,
+    ];
+    if (measured.isEmpty) return null;
+    final ref = lapM(measured.last);
+    final points = [
+      for (final r in measured)
+        if ((lapM(r) - ref).abs() <= ref * 0.1) (r, r.row!.medianLapSec!),
+    ];
+    final m = (ref / 10).round() * 10.0;
+    final label = units == Units.mi ? Fmt.distance(m, units) : '${m.round()} m';
+    return (points: points, caption: 'Median lap, laps of about $label');
+  }
   final latest = chronological.last;
   final unitM = units == Units.mi ? 1609.344 : 1000.0;
   final centre = (latest.distanceM / unitM * 2).round() / 2;
   final lo = math.max(0.0, centre - 1), hi = centre + 1;
-  final runs = [
+  final points = [
     for (final r in chronological)
       if (r.distanceM / unitM >= lo &&
           r.distanceM / unitM <= hi &&
-          r.avgSecPerKm != null)
-        r,
+          movingPaceOf(r) != null)
+        (r, movingPaceOf(r)!),
   ];
   String n(double v) => v == v.roundToDouble() ? '${v.round()}' : '$v';
   final unit = units == Units.mi ? 'mi' : 'km';
   return (
-    runs: runs,
+    points: points,
     caption: 'Average pace, runs of ${n(lo)} to ${n(hi)} $unit only',
   );
 }
@@ -480,19 +510,21 @@ class _DistanceTrend extends StatelessWidget {
   final RecordMode mode;
 
   Widget _comparableChart(RunSoloTokens t) {
-    final c = comparableRuns(runs, units);
-    final shown = c?.runs ?? const <RunSummary>[];
+    final c = comparableRuns(runs, mode, units);
+    final shown = c?.points ?? const <(RunSummary, double)>[];
+    final laps = mode == RecordMode.laps;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         RecentBarsChart(
           key: const ValueKey('distance-trend-chart'),
           points: [
-            for (final r in shown)
-              BarPoint(date: r.start, value: r.avgSecPerKm!),
+            for (final (r, v) in shown) BarPoint(date: r.start, value: v),
           ],
           lowerIsBetter: true,
-          format: (v) => Fmt.pace(v, units),
+          format: laps
+              ? (v) => Fmt.clock((v * 1000).round())
+              : (v) => Fmt.pace(v, units),
           direction: 'Faster is taller',
           emptyTitle: 'Two comparable runs draw the first chart.',
           emptyBody: shown.length == 1 ? c!.caption : null,
@@ -539,10 +571,8 @@ class _DistanceTrend extends StatelessWidget {
           ],
         ),
         const SizedBox(height: Space.x24),
-        if (mode == RecordMode.free) ...[
-          _comparableChart(t),
-          const SizedBox(height: Space.x24),
-        ],
+        _comparableChart(t),
+        const SizedBox(height: Space.x24),
         Text(
           'Distance and pace only. No verdict for this run type.',
           style: RunSoloType.body15.copyWith(color: t.inkSecondary),

@@ -23,6 +23,8 @@ import 'package:run_solo/screens/run_detail_screen.dart';
 import 'package:run_solo/screens/settings_screen.dart';
 import 'package:run_solo/screens/shell_screen.dart';
 import 'package:run_solo/screens/trend_screen.dart';
+import 'package:run_solo/state/history_store.dart';
+import 'package:run_solo/state/run_index.dart';
 import 'package:run_solo/splash/intro_gate.dart';
 import 'package:run_solo/state/live_context.dart';
 import 'package:run_solo/state/sessions.dart';
@@ -733,6 +735,35 @@ void main() {
       await tester.tap(find.text('Free'));
       await pumpTimes(tester, 4);
       await golden(tester, 'trend_free_360x$h');
+    });
+  }
+
+  // Laps chart: median lap of comparable runs, caption shown.
+  for (final h in [640, 800]) {
+    testWidgets('trend: Laps chart at 360 x $h', (tester) async {
+      const laps = [92.0, 88.0, 95.0, 85.0, 90.0, 87.0, 83.0, 86.0];
+      final runs = [
+        for (var i = 0; i < 8; i++)
+          RunSummary(
+            id: 'lap$i',
+            mode: RecordMode.laps,
+            start: DateTime.utc(2026, 10, 10, 6).add(Duration(days: 9 * i)),
+            durationMs: 900000,
+            distanceM: 1600,
+            laps: 4,
+            row: IndexRow(lapCount: 4, movingMs: 700000, medianLapSec: laps[i]),
+          ),
+      ];
+      await pumpApp(
+        tester,
+        fakeServices(runs: runs),
+        home: const TrendScreen(),
+      );
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 6);
+      await tester.tap(find.text('Laps'));
+      await pumpTimes(tester, 4);
+      await golden(tester, 'trend_laps_360x$h');
     });
   }
 
