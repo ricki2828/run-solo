@@ -4,6 +4,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/screens/trend_screen.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/state/history_store.dart';
+import 'package:run_solo/state/run_index.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/widgets/recent_bars_chart.dart';
 
@@ -151,17 +152,123 @@ void main() {
       );
     });
 
-    testWidgets('Laps: stat tiles only, no chart', (tester) async {
-      await open(tester, [
+    // Index-row summaries (History reads rows, not analysis).
+    RunSummary row(
+      int i,
+      RecordMode m, {
+      required double distM,
+      required int durationMs,
+      int? movingMs,
+      int laps = 0,
+      double? medianLap,
+    }) => RunSummary(
+      id: 'r$i',
+      mode: m,
+      start: base.add(Duration(days: 2 * i)),
+      durationMs: durationMs,
+      distanceM: distM,
+      laps: laps,
+      row: IndexRow(
+        lapCount: laps,
+        movingMs: movingMs,
+        medianLapSec: medianLap,
+      ),
+    );
+
+    Future<void> openRuns(
+      WidgetTester tester,
+      List<RunSummary> runs,
+      String tab,
+    ) async {
+      await pumpApp(
+        tester,
+        fakeServices(runs: runs),
+        home: const TrendScreen(),
+      );
+      await pumpTimes(tester, 6);
+      await tester.tap(find.text(tab));
+      await pumpTimes(tester, 4);
+    }
+
+    testWidgets('Free draws moving pace, not wall-clock pace', (tester) async {
+      // 5 km, 40 min on the clock but 25 min moving: 5:00/km, not 8:00.
+      await openRuns(tester, [
         for (var i = 0; i < 3; i++)
-          lapsRunFile(
-            n: i + 1,
-            start: base.add(Duration(days: 2 * i)),
+          row(
+            i,
+            RecordMode.free,
+            distM: 5000,
+            durationMs: 2400000,
+            movingMs: 1500000 - i * 30000,
+          ),
+      ], 'Free');
+      expect(chart, findsOneWidget);
+      expect(find.text('5:00'), findsOneWidget);
+      expect(find.textContaining('pause'), findsNothing);
+      // The tiles agree with the chart: nothing reads 8:00 anywhere.
+      expect(find.text('8:00'), findsNothing);
+    });
+
+    testWidgets('Laps 0 and 1 comparable: no chart', (tester) async {
+      await openRuns(tester, [
+        row(
+          0,
+          RecordMode.laps,
+          distM: 1600,
+          durationMs: 600000,
+          laps: 4,
+          medianLap: 90,
+        ),
+        // No median: left out.
+        row(1, RecordMode.laps, distM: 1600, durationMs: 600000, laps: 4),
+      ], 'Laps');
+      expect(find.textContaining('FASTER IS TALLER'), findsNothing);
+      expect(
+        find.text('Two comparable runs draw the first chart.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Laps many: median lap chart, caption names lap distance', (
+      tester,
+    ) async {
+      await openRuns(tester, [
+        for (var i = 0; i < 4; i++)
+          row(
+            i,
+            RecordMode.laps,
+            distM: 1600,
+            durationMs: 700000,
+            laps: 4,
+            medianLap: 95.0 - 3 * i,
           ),
       ], 'Laps');
-      expect(chart, findsNothing);
-      expect(find.textContaining('FASTER IS TALLER'), findsNothing);
-      expect(find.text('TOTAL'), findsOneWidget);
+      expect(chart, findsOneWidget);
+      expect(find.text('FASTER IS TALLER · LAST 4'), findsOneWidget);
+      expect(find.text('Median lap, laps of about 400 m'), findsOneWidget);
+      expect(find.text('1:26'), findsWidgets);
+    });
+
+    test('comparableRuns: Laps keeps ±10% lap distance, drops null median', () {
+      RunSummary lap(double distM, int laps, double? med) => RunSummary(
+        id: 'l$distM$laps',
+        mode: RecordMode.laps,
+        start: base,
+        durationMs: 600000,
+        distanceM: distM,
+        laps: laps,
+        row: IndexRow(lapCount: laps, medianLapSec: med),
+      );
+      final all = [
+        lap(1600, 4, 90), // 400 m laps
+        lap(3200, 4, 160), // 800 m laps: not comparable
+        lap(1680, 4, 92), // 420 m: within 10%
+        lap(1600, 4, null), // no median: out
+        lap(1600, 4, 88),
+      ];
+      final c = comparableRuns(all, RecordMode.laps, Units.km)!;
+      expect([for (final (_, v) in c.points) v], [90, 92, 88]);
+      expect(c.caption, 'Median lap, laps of about 400 m');
     });
 
     test('comparableRuns: Free band in the user unit, other bands dropped', () {
@@ -174,11 +281,11 @@ void main() {
         laps: 0,
       );
       final all = [run(2000), run(4200), run(5800)];
-      final km = comparableRuns(all, Units.km)!;
+      final km = comparableRuns(all, RecordMode.free, Units.km)!;
       // 5.8 km rounds to 6: 5 to 7 km, so only the latest.
-      expect(km.runs.length, 1);
+      expect(km.points.length, 1);
       expect(km.caption, 'Average pace, runs of 5 to 7 km only');
-      final mi = comparableRuns([run(5800)], Units.mi)!;
+      final mi = comparableRuns([run(5800)], RecordMode.free, Units.mi)!;
       // 5.8 km = 3.6 mi, rounds to 3.5: 2.5 to 4.5 mi.
       expect(mi.caption, 'Average pace, runs of 2.5 to 4.5 mi only');
     });
