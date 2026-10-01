@@ -8,9 +8,9 @@
 abstract final class FriendFitnessNorms {
   static const source = 'FRIEND 2022, US treadmill lab VO2peak (Table 3)';
   static const caveat =
-      'Estimated comparison only: your score comes from a '
-      'run-derived VDOT, while FRIEND measured treadmill VO2peak in US adults. '
-      'These are different measures, not race placement or a clinical test.';
+      'This is a rough comparison. Your number comes from your running; '
+      'the research measured US adults on a lab treadmill. '
+      'Not a race result or a medical test.';
 
   // Rows correspond to percentiles 10,20,...90; columns to age decades.
   static const men = <List<double>>[

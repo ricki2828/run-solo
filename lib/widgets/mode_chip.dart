@@ -24,7 +24,7 @@ class ModeChipRow extends StatelessWidget {
     this.onGoal,
     this.onTests,
     this.testsSelected = false,
-    this.testsLabel = 'Cooper · Bronco',
+    this.testsLabel = '12-minute test · Bronco',
     this.auroraList = false,
     this.compactTiles = false,
   });

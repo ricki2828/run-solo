@@ -1010,7 +1010,7 @@ class _AllTable extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final board = view.board;
     final valueHeader = switch (board.kind) {
-      engine.BoardKind.cooper => 'VO2',
+      engine.BoardKind.cooper => 'VO2 est.',
       engine.BoardKind.distanceInTime => units == Units.mi ? 'MI' : 'KM',
       engine.BoardKind.interval => 'PACE',
       _ => 'TIME',

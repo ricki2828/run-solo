@@ -262,7 +262,8 @@ class _BirthYearStepState extends State<_BirthYearStep> {
           Text(
             'Sets a starting max heart rate (220 minus age) for the '
             'zones. A strap reading or a typed value in Settings '
-            'overrides it. Optional.',
+            'overrides it. Also used to compare your fitness with '
+            'people your age. Optional.',
             style: text.bodyLarge?.copyWith(color: t.inkSecondary),
           ),
           const SizedBox(height: Space.x24),

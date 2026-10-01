@@ -141,8 +141,8 @@ class CooperResult {
   static const List<String> method = [
     'The estimate comes from how far you ran in 12 minutes, using '
         "Cooper's 1968 formula: (metres minus 504.9) divided by 44.73.",
-    'In studies the 12-minute run tracks lab VO2 max fairly well. Most '
-        'people land within about 6 of their lab value, but some are 10 or '
+    'In studies the 12-minute run is a decent guide but not a lab test. '
+        'Most people land within about 6 of their lab value, but some are 10 or '
         'more off (research-based).',
     'GPS distance can be about 2% out, which is part of that range.',
     'A pause, or stopping before 12:00, gives no estimate.',

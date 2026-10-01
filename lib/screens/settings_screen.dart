@@ -225,7 +225,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 onTap: () => _editNumber(
                   context,
                   title: 'BIRTH YEAR',
-                  hint: 'Used for 220 minus age when no max HR is entered',
+                  hint: 'Used for max heart rate (220 minus age) and age comparisons',
                   initial: s.birthYear,
                   validate: (v) => MaxHrRules.validBirthYear(v, now.year),
                   onSave: (v) => set(
@@ -274,7 +274,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               const _Section('Profile'),
               SettingsRow(
                 key: const ValueKey('profile-sex'),
-                label: 'Sex (for fitness norms)',
+                label: 'Sex (for comparisons)',
                 value: s.profileSex.label,
                 onTap: () => _pickSex(context, s.profileSex, set),
               ),
@@ -457,11 +457,11 @@ class _SettingsScreenState extends State<SettingsScreen>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('SEX (FOR FITNESS NORMS)', style: RunSoloType.title28),
+                Text('SEX (FOR COMPARISONS)', style: RunSoloType.title28),
                 const SizedBox(height: Space.x8),
                 Text(
-                  'Only used to compare your VO2 estimate with research '
-                  'norms. It stays on this phone.',
+                  'Only used to compare your estimates with research '
+                  'tables. It stays on this phone.',
                   style: RunSoloType.body15.copyWith(color: t.inkSecondary),
                 ),
                 const SizedBox(height: Space.x8),

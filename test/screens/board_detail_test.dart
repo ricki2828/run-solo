@@ -151,7 +151,7 @@ void main() {
     expect(find.text('VO2 est.'), findsWidgets);
     expect(find.textContaining('Your best estimate · '), findsOneWidget);
     expect(find.textContaining('in 12 minutes'), findsOneWidget);
-    expect(find.text('VO2'), findsOneWidget);
+    expect(find.text('VO2 est.'), findsWidgets);
     expect(find.textContaining('HEAT-ADJ EST.'), findsOneWidget);
   });
 
