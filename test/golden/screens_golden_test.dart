@@ -710,6 +710,45 @@ void main() {
     await golden(tester, 'trend_8_dates_360x640');
   });
 
+  // Laps and Free charts at 360 x 640: comparable runs only, dates spaced.
+  for (final (tab, name) in [('Laps', 'laps'), ('Free', 'free')]) {
+    testWidgets('trend: $tab chart at 360 x 640', (tester) async {
+      final files = [
+        for (var i = 0; i < 8; i++)
+          name == 'laps'
+              ? lapsRunFile(
+                  n: i + 1,
+                  start: DateTime.utc(
+                    2026,
+                    10,
+                    10,
+                    6,
+                  ).add(Duration(days: 9 * i)),
+                )
+              : freeRunFile(
+                  n: i + 1,
+                  start: DateTime.utc(
+                    2026,
+                    10,
+                    10,
+                    6,
+                  ).add(Duration(days: 9 * i)),
+                  seconds: 1800 - 40 * (i.isOdd ? i : -i),
+                ),
+      ];
+      await pumpApp(
+        tester,
+        fakeServices(files: files),
+        home: const TrendScreen(),
+      );
+      tester.view.physicalSize = const Size(1080, 1920);
+      await pumpTimes(tester, 6);
+      await tester.tap(find.text(tab));
+      await pumpTimes(tester, 4);
+      await golden(tester, 'trend_${name}_360x640');
+    });
+  }
+
   testWidgets('history: verdict arrows and three types', (tester) async {
     final files = [
       fourByFourFile(n: 1, start: d1, workSecPerKm: 284),

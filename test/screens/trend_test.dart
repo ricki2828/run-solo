@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/screens/trend_screen.dart';
+import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/settings.dart';
+import 'package:run_solo/widgets/recent_bars_chart.dart';
 
 import '../helpers.dart';
 import '../run_fixtures.dart';
@@ -46,7 +49,10 @@ void main() {
     expect(find.text('FASTER IS TALLER · LAST 8'), findsOneWidget);
     expect(find.text('PB'), findsOneWidget);
     // The noise floor stays on the chart, with its plain-words caption.
-    expect(find.text('Shaded = GPS noise around your median'), findsOneWidget);
+    expect(
+      find.text('Shaded = GPS noise around your previous median'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('three 4x4s: hero median, delta, chart, bests', (tester) async {
@@ -88,8 +94,142 @@ void main() {
     await pumpTimes(tester, 4);
     expect(find.text('FREE RUN · 2 SESSIONS'), findsOneWidget);
     expect(find.text('TOTAL'), findsOneWidget);
-    expect(find.textContaining('FASTER'), findsNothing);
+    // The chart says which way is better; there is still no verdict.
+    expect(find.textContaining('FASTER IS TALLER'), findsOneWidget);
     expect(find.textContaining('verdict', findRichText: true), findsOneWidget);
+  });
+
+  group('Laps and Free charts', () {
+    Future<void> open(
+      WidgetTester tester,
+      List<engine.RunFile> files,
+      String tab,
+    ) async {
+      await pumpApp(
+        tester,
+        fakeServices(files: files),
+        home: const TrendScreen(),
+      );
+      await pumpTimes(tester, 6);
+      await tester.tap(find.text(tab));
+      await pumpTimes(tester, 4);
+    }
+
+    final chart = find.byKey(const ValueKey('distance-trend-chart'));
+
+    testWidgets('Free 0 runs: no chart', (tester) async {
+      await open(tester, [], 'Free');
+      expect(find.byType(ChartEmptyState), findsNothing);
+      expect(find.textContaining('FASTER IS TALLER'), findsNothing);
+    });
+
+    testWidgets('Free 1 run: empty state, names the band', (tester) async {
+      await open(tester, [freeRunFile(n: 1, start: base)], 'Free');
+      expect(
+        find.text('Two comparable runs draw the first chart.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('runs of 4 to 6 km only'), findsOneWidget);
+      expect(find.textContaining('FASTER IS TALLER'), findsNothing);
+    });
+
+    testWidgets('Free many: chart, band caption, PB', (tester) async {
+      await open(tester, [
+        for (var i = 0; i < 4; i++)
+          freeRunFile(
+            n: i + 1,
+            start: base.add(Duration(days: 2 * i)),
+            seconds: 1800 - 60 * i,
+          ),
+      ], 'Free');
+      expect(chart, findsOneWidget);
+      expect(find.text('FASTER IS TALLER · LAST 4'), findsOneWidget);
+      expect(find.text('PB'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('distance-trend-caption')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Laps 0 and 1 run: no chart', (tester) async {
+      await open(tester, [lapsRunFile(n: 1, start: base)], 'Laps');
+      expect(find.textContaining('FASTER IS TALLER'), findsNothing);
+      expect(
+        find.text('Two comparable runs draw the first chart.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Laps many: chart names the lap distance', (tester) async {
+      await open(tester, [
+        for (var i = 0; i < 3; i++)
+          lapsRunFile(
+            n: i + 1,
+            start: base.add(Duration(days: 2 * i)),
+          ),
+      ], 'Laps');
+      expect(chart, findsOneWidget);
+      expect(
+        find.textContaining('Average lap time, laps of about'),
+        findsOneWidget,
+      );
+    });
+
+    test(
+      'comparableRuns drops runs with another lap distance / band',
+      () async {
+        final all = await fakeServices(
+          files: [
+            lapsRunFile(n: 1, start: base),
+            freeRunFile(n: 2, start: base.add(const Duration(days: 1))),
+            lapsRunFile(n: 3, start: base.add(const Duration(days: 2))),
+          ],
+        ).history.list();
+        final chrono = all.reversed.toList();
+        final laps = [
+          for (final r in chrono)
+            if (r.mode == RecordMode.laps) r,
+        ];
+        expect(comparableRuns(laps, RecordMode.laps, Units.km)!.runs.length, 2);
+        // A run with twice the lap distance is not comparable.
+        final odd = RunSummary(
+          id: 'x',
+          mode: RecordMode.laps,
+          start: base.add(const Duration(days: 9)),
+          durationMs: laps.last.durationMs,
+          distanceM: laps.last.distanceM * 2,
+          laps: laps.last.laps,
+        );
+        final c = comparableRuns([...laps, odd], RecordMode.laps, Units.km)!;
+        expect(c.runs, [odd]);
+      },
+    );
+  });
+
+  testWidgets('noise band is centred on the previous median', (tester) async {
+    final files = [
+      for (var i = 0; i < 4; i++)
+        fourByFourFile(
+          n: i + 1,
+          start: base.add(Duration(days: 3 * i)),
+          workSecPerKm: 300 - 10 * i,
+        ),
+    ];
+    await pumpApp(
+      tester,
+      fakeServices(files: files),
+      home: const TrendScreen(),
+    );
+    await pumpTimes(tester, 6);
+    final chart = tester.widget<RecentBarsChart>(
+      find.byKey(const ValueKey('trend-chart')),
+    );
+    final all = await fakeServices(files: files).history.list();
+    final pts = trendPoints(all.reversed.toList());
+    final previous = median([
+      for (final p in pts.sublist(0, 3)) p.paceSecPerKm,
+    ]);
+    expect(chart.noise!.center, closeTo(previous, 1e-9));
   });
 
   test('trendPoints: rolling median of the previous 6 eligible runs', () {

@@ -18,8 +18,9 @@ import 'cooper_result_screen.dart' show cooperTests, primeOf, primeRangeLineOf;
 /// name. The 4x4 key (t240x*): hero 6-run median, delta vs the previous
 /// median (dead zone = the noise floor), the shared recent-bars chart (last
 /// 8, PB in Arc, dashed Best line, faint GPS-noise band of +/- floor around
-/// the median), a list of values, bests row. Test shows the same bars. Laps
-/// and Free show distance and pace only, no verdict language. Under two
+/// the previous median), a list of values, bests row. Test shows the same bars. Laps
+/// and Free show stat tiles and a bars chart (lap time / pace, comparable
+/// runs only), no verdict language. Under two
 /// sessions: "Two 4x4s draw the first line" as an empty state. Charts are
 /// `CustomPainter`, no package.
 class TrendScreen extends StatefulWidget {
@@ -132,8 +133,11 @@ class _TrendScreenState extends State<TrendScreen> {
                         : 'Two sessions draw the first line.',
                   ),
                   RecordMode.cooper => _CooperTrend(runs: runs),
-                  RecordMode.laps ||
-                  RecordMode.free => _DistanceTrend(runs: runs, units: units),
+                  RecordMode.laps || RecordMode.free => _DistanceTrend(
+                    runs: runs,
+                    units: units,
+                    mode: _type,
+                  ),
                 },
                 const SizedBox(height: Space.x24),
                 if (runs.isEmpty)
@@ -346,15 +350,15 @@ class _FourByFourTrend extends StatelessWidget {
           format: (v) => Fmt.pace(v, units),
           direction: 'Faster is taller',
           emptyTitle: emptyText,
-          // The app's honesty cue: the hero delta (median vs previous median)
-          // is graded against this same +/- floor, so the band sits on the
-          // median.
+          // The hero delta is the current median against the PREVIOUS median,
+          // graded against this +/- floor, so the band sits on the previous
+          // median: a bar outside it moved more than GPS noise.
           noise: NoiseBand(
-            center: current,
+            center: previous ?? current,
             half: floor,
             label: 'Noise',
             detail: '±${_deltaText(floor, units)}',
-            caption: 'Shaded = GPS noise around your median',
+            caption: 'Shaded = GPS noise around your previous median',
           ),
         ),
         if (ghost) ...[
@@ -437,10 +441,84 @@ class _TrendLegend extends StatelessWidget {
   }
 }
 
+/// The runs a Laps / Free chart compares with the latest one, plus the plain
+/// words naming what they share. Laps: runs whose average lap distance is
+/// within 10% of the latest's. Free: runs within 1 km of the latest's
+/// distance rounded to the km (a 5.2 km run draws 4 to 6 km runs).
+({List<RunSummary> runs, String caption})? comparableRuns(
+  List<RunSummary> chronological,
+  RecordMode mode,
+  Units units,
+) {
+  if (chronological.isEmpty) return null;
+  final latest = chronological.last;
+  if (mode == RecordMode.laps) {
+    double? lapM(RunSummary r) => r.laps > 0 ? r.distanceM / r.laps : null;
+    final ref = lapM(latest);
+    if (ref == null || ref <= 0) return null;
+    final runs = [
+      for (final r in chronological)
+        if (lapM(r) case final m? when (m - ref).abs() <= ref * 0.1) r,
+    ];
+    final label = Fmt.distance((ref / 10).round() * 10.0, units);
+    return (runs: runs, caption: 'Average lap time, laps of about $label only');
+  }
+  final centreKm = (latest.distanceM / 1000).round();
+  final lo = math.max(0, centreKm - 1) * 1000.0, hi = (centreKm + 1) * 1000.0;
+  final runs = [
+    for (final r in chronological)
+      if (r.distanceM >= lo && r.distanceM <= hi && r.avgSecPerKm != null) r,
+  ];
+  final band = units == Units.mi
+      ? '${(lo / 1609.344).toStringAsFixed(1)} to ${(hi / 1609.344).toStringAsFixed(1)} mi'
+      : '${(lo / 1000).round()} to ${(hi / 1000).round()} km';
+  return (runs: runs, caption: 'Average pace, runs of $band only');
+}
+
 class _DistanceTrend extends StatelessWidget {
-  const _DistanceTrend({required this.runs, required this.units});
+  const _DistanceTrend({
+    required this.runs,
+    required this.units,
+    required this.mode,
+  });
   final List<RunSummary> runs;
   final Units units;
+  final RecordMode mode;
+
+  Widget _comparableChart(RunSoloTokens t) {
+    final c = comparableRuns(runs, mode, units);
+    final laps = mode == RecordMode.laps;
+    final shown = c?.runs ?? const <RunSummary>[];
+    String lapClock(double s) => Fmt.clock((s * 1000).round());
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        RecentBarsChart(
+          key: const ValueKey('distance-trend-chart'),
+          points: [
+            for (final r in shown)
+              BarPoint(
+                date: r.start,
+                value: laps ? r.durationMs / 1000 / r.laps : r.avgSecPerKm!,
+              ),
+          ],
+          lowerIsBetter: true,
+          format: laps ? lapClock : (v) => Fmt.pace(v, units),
+          direction: 'Faster is taller',
+          emptyTitle: 'Two comparable runs draw the first chart.',
+          emptyBody: shown.length == 1 ? c!.caption : null,
+        ),
+        if (shown.length >= 2) ...[
+          const SizedBox(height: Space.x4),
+          Text(
+            c!.caption,
+            key: const ValueKey('distance-trend-caption'),
+            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+          ),
+        ],
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -478,6 +556,8 @@ class _DistanceTrend extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: Space.x24),
+        _comparableChart(t),
         const SizedBox(height: Space.x24),
         Text(
           'Distance and pace only. No verdict for this run type.',

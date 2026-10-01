@@ -387,6 +387,42 @@ class _BarScale {
           .clamp(0.0, 1.0);
 }
 
+/// Minimum clear space between two date labels, dp.
+const double kLabelGap = 8;
+
+/// Which date labels to draw: the indices kept, never closer than
+/// [kLabelGap] to each other and never off the left edge. The PB, newest and
+/// oldest go first, then the rest left to right; a label that would break
+/// the gap is dropped.
+@visibleForTesting
+List<int> dateLabelSlots({
+  required List<double> widths,
+  required double slot,
+  required int pb,
+}) {
+  final n = widths.length;
+  final order = <int>[
+    if (pb >= 0 && pb < n) pb,
+    if (n - 1 != pb) n - 1,
+    if (0 != pb && 0 != n - 1) 0,
+    for (var i = 1; i < n - 1; i++)
+      if (i != pb) i,
+  ];
+  final taken = <(double, double)>[];
+  final kept = <int>[];
+  for (final i in order) {
+    final left = i * slot + slot / 2 - widths[i] / 2;
+    final right = left + widths[i];
+    if (left < 0) continue;
+    if (taken.any((o) => left < o.$2 + kLabelGap && right > o.$1 - kLabelGap)) {
+      continue;
+    }
+    taken.add((left, right));
+    kept.add(i);
+  }
+  return kept..sort();
+}
+
 class _BarsPainter extends CustomPainter {
   _BarsPainter({
     required this.points,
@@ -569,29 +605,19 @@ class _BarsPainter extends CustomPainter {
       }
     }
 
-    // Single-line dates, thinned so none overlap: PB, newest and oldest
-    // first, then the rest left to right.
-    final order = <int>[
-      if (pb >= 0 && pb < n) pb,
-      if (n - 1 != pb) n - 1,
-      if (0 != pb && 0 != n - 1) 0,
-      for (var i = 1; i < n - 1; i++)
-        if (i != pb) i,
+    // Single-line dates, thinned so none sit closer than [kLabelGap].
+    final labels = [
+      for (final p in points)
+        _tp('${p.date.day}/${p.date.month}', tokens.inkSecondary),
     ];
-    final taken = <Rect>[];
-    for (final i in order) {
-      final d = points[i].date;
-      final tp = _tp('${d.day}/${d.month}', tokens.inkSecondary);
-      final cx = i * slot + slot / 2;
-      final r = Rect.fromLTWH(
-        cx - tp.width / 2,
-        bottom + 6,
-        tp.width,
-        tp.height,
-      );
-      if (r.left < 0 || taken.any((o) => o.inflate(3).overlaps(r))) continue;
-      taken.add(r);
-      tp.paint(canvas, r.topLeft);
+    final keep = dateLabelSlots(
+      widths: [for (final l in labels) l.width],
+      slot: slot,
+      pb: pb,
+    );
+    for (final i in keep) {
+      final tp = labels[i];
+      tp.paint(canvas, Offset(i * slot + slot / 2 - tp.width / 2, bottom + 6));
     }
 
     // The Best line; in the PB moment it moves up from the old best,
