@@ -145,7 +145,7 @@ class _ActivityRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final sessionName = run.mode == RecordMode.cooper
-        ? 'VO2 max test'
+        ? '12-minute test'
         : runSessionName(run);
     final custom = run.customTitle;
     final timeWord = engine.RunIdentity.timeOfDay(run.localStart);
@@ -213,7 +213,7 @@ class _ActivityRow extends StatelessWidget {
                       height: 48,
                       child: IconButton(
                         padding: EdgeInsets.zero,
-                        tooltip: 'VO2 max test info',
+                        tooltip: '12-minute test info',
                         icon: Icon(
                           Icons.info_outline,
                           size: 18,
@@ -222,9 +222,9 @@ class _ActivityRow extends StatelessWidget {
                         onPressed: () => showDialog<void>(
                           context: context,
                           builder: (context) => AlertDialog(
-                            title: const Text('VO2 max test'),
+                            title: const Text('12-minute test'),
                             content: const Text(
-                              'Cooper test: a 12-minute run used to estimate VO2 max from the distance covered. This is a running estimate, not a lab measurement.',
+                              '12-minute test: a 12-minute run used to estimate VO2 max from the distance covered. This is a running estimate, not a lab measurement.',
                             ),
                             actions: [
                               TextButton(
@@ -293,7 +293,7 @@ class _ActivityRow extends StatelessWidget {
     if (r.mode == RecordMode.cooper) {
       final c = r.cooper;
       final prime = c == null ? null : (c.vo2Adjusted ?? c.vo2);
-      if (prime != null) return (prime.toStringAsFixed(1), ' VO2');
+      if (prime != null) return (prime.toStringAsFixed(1), ' VO2 est.');
     }
     if (r.isFourByFour) {
       return (Fmt.paceUnit(r.headlineSecPerKm, units), null);
