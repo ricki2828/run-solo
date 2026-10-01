@@ -337,7 +337,7 @@ class _HeaderState extends State<_Header> {
     final units = widget.units;
     final summary = d.summary;
     final custom = _renamed ? _custom : summary.customTitle;
-    final timeWord = engine.RunIdentity.timeOfDay(summary.start.toLocal());
+    final timeWord = engine.RunIdentity.timeOfDay(summary.localStart);
     final free = d.analysis.freeRun;
     final avgHr = free.avgHr;
     // The test's figures, when this is one (C1 via the index row).
@@ -358,7 +358,11 @@ class _HeaderState extends State<_Header> {
                       ),
                     TextSpan(
                       text: custom ?? runSessionName(summary),
-                      style: TextStyle(color: runTypeColor(summary)),
+                      style: TextStyle(
+                        color: custom == null
+                            ? runTypeColor(summary)
+                            : t.inkPrimary,
+                      ),
                     ),
                   ],
                 ),
@@ -386,7 +390,7 @@ class _HeaderState extends State<_Header> {
           ],
         ),
         Text(
-          whereWhen(_place, summary.start),
+          whereWhen(_place, summary.start, utcOffsetMin: summary.utcOffsetMin),
           key: const ValueKey('detail-where-when'),
           style: RunSoloType.label13.copyWith(color: t.inkSecondary),
         ),

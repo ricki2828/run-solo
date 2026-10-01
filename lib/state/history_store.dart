@@ -90,15 +90,16 @@ String runHeaderTitle(RunSummary r) =>
 /// when set, else the time of day and the session's name ("Morning Norwegian
 /// 4x4", "Evening Free run"). Never a bare "4X4".
 String runIdentityTitle(RunSummary r) =>
-    r.customTitle ?? engine.RunIdentity.title(r.start.toLocal(), runTitle(r));
+    r.customTitle ?? engine.RunIdentity.title(r.localStart, runTitle(r));
 
 /// "Albert Park · Thu 24 Sep · 6:00": where, which day and when the run
 /// started. The place is left out (never a coordinate) when it is not known.
-String runWhereWhen(RunSummary r) => whereWhen(r.place, r.start);
+String runWhereWhen(RunSummary r) =>
+    whereWhen(r.place, r.start, utcOffsetMin: r.utcOffsetMin);
 
 /// [runWhereWhen] from its parts.
-String whereWhen(String? place, DateTime start) {
-  final local = start.toLocal();
+String whereWhen(String? place, DateTime start, {int? utcOffsetMin}) {
+  final local = engine.RunIdentity.localStart(start, utcOffsetMin);
   return [?place, Fmt.dayDate(local), Fmt.hhmm(local)].join(' · ');
 }
 
@@ -131,6 +132,7 @@ class RunSummary {
     this.startPoint,
     this.place,
     this.customTitle,
+    this.utcOffsetMin,
   });
 
   /// From the index (W5b): no file decoded, no analysis.
@@ -155,6 +157,7 @@ class RunSummary {
         : (lat: e.row!.startLat!, lon: e.row!.startLon!),
     place: e.row!.place,
     customTitle: e.row!.title,
+    utcOffsetMin: e.row!.utcOffsetMin,
   );
 
   final String id;
@@ -199,6 +202,13 @@ class RunSummary {
 
   /// The runner's own name for the run; null = the automatic title.
   final String? customTitle;
+
+  /// The phone's UTC offset (minutes) when the run finished; null on older
+  /// runs.
+  final int? utcOffsetMin;
+
+  /// The start as the runner lived it (see [engine.RunIdentity.localStart]).
+  DateTime get localStart => engine.RunIdentity.localStart(start, utcOffsetMin);
 
   String? get comparisonKey => indexedComparisonKey ?? analysis?.comparisonKey;
 
@@ -382,6 +392,13 @@ abstract class RunStore implements HistoryStore {
 
   /// The runner's own title for the run (null clears it). Display only.
   Future<void> setTitle(String id, String? title);
+
+  /// Record the phone's UTC offset (minutes) for the run, once, at finish.
+  /// Keeps an offset already recorded.
+  Future<void> setUtcOffset(String id, int minutes);
+
+  /// Count a place lookup that found no name (the app stops after three).
+  Future<void> addPlaceTry(String id);
 }
 
 /// K1: [info] with one field changed, keeping the other.
@@ -562,6 +579,7 @@ RunSummary _summaryOf(
   startPoint: engine.RunIdentity.startOf(run),
   place: sidecar?.place,
   customTitle: sidecar?.title,
+  utcOffsetMin: sidecar?.utcOffsetMin,
   // Only a 4x4 carries a verdict word (plan §18.2); guard by the effective
   // mode so nothing else ever shows one.
   verdict:
@@ -761,6 +779,18 @@ class MemoryRunStore implements RunStore {
   Future<void> setTitle(String id, String? title) async {
     final s = sidecars[id] ?? engine.RunSidecar(runId: id);
     sidecars[id] = s.copyWith(title: title);
+  }
+
+  @override
+  Future<void> setUtcOffset(String id, int minutes) async {
+    final s = sidecars[id] ?? engine.RunSidecar(runId: id);
+    sidecars[id] = s.copyWith(utcOffsetMin: s.utcOffsetMin ?? minutes);
+  }
+
+  @override
+  Future<void> addPlaceTry(String id) async {
+    final s = sidecars[id] ?? engine.RunSidecar(runId: id);
+    sidecars[id] = s.copyWith(placeTries: s.placeTries + 1);
   }
 
   @override
@@ -1459,6 +1489,19 @@ class FileRunStore implements RunStore {
   @override
   Future<void> setTitle(String id, String? title) =>
       _writeIdentity(id, (current) => current.copyWith(title: title));
+
+  @override
+  Future<void> setUtcOffset(String id, int minutes) => _writeIdentity(
+    id,
+    (current) =>
+        current.copyWith(utcOffsetMin: current.utcOffsetMin ?? minutes),
+  );
+
+  @override
+  Future<void> addPlaceTry(String id) => _writeIdentity(
+    id,
+    (current) => current.copyWith(placeTries: current.placeTries + 1),
+  );
 
   /// A display-only sidecar change: through the writer, never recreating a
   /// deleted run's sidecar, and no re-analysis (it feeds no verdict).

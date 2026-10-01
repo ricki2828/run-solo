@@ -148,7 +148,7 @@ class _ActivityRow extends StatelessWidget {
         ? 'VO2 max test'
         : runSessionName(run);
     final custom = run.customTitle;
-    final timeWord = engine.RunIdentity.timeOfDay(run.start.toLocal());
+    final timeWord = engine.RunIdentity.timeOfDay(run.localStart);
     final title = custom ?? '$timeWord $sessionName';
     final typeColor = runTypeColor(run);
     final (stat, statSmall) = _stat(run, units);
@@ -194,7 +194,11 @@ class _ActivityRow extends StatelessWidget {
                             ),
                           TextSpan(
                             text: custom ?? sessionName,
-                            style: TextStyle(color: typeColor),
+                            // The run-type colour is the session name's
+                            // alone; a runner's own title is Bone.
+                            style: TextStyle(
+                              color: custom == null ? typeColor : t.inkPrimary,
+                            ),
                           ),
                         ],
                       ),

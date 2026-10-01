@@ -24,6 +24,16 @@ abstract final class RunIdentity {
     return 'Night';
   }
 
+  /// The wall-clock start as the runner lived it: [startUtc] shifted by the
+  /// UTC offset recorded when the run finished, so a run in another time
+  /// zone (or before a clock change) keeps its own morning. Without one
+  /// (a run from before the offset was recorded) the phone's current zone.
+  /// Read the hour and minute off the result; its zone flag is not meaningful.
+  static DateTime localStart(DateTime startUtc, int? utcOffsetMin) =>
+      utcOffsetMin == null
+      ? startUtc.toLocal()
+      : startUtc.toUtc().add(Duration(minutes: utcOffsetMin));
+
   /// "Morning Norwegian 4x4": the time-of-day word and the session's name.
   static String title(DateTime local, String sessionName) =>
       '${timeOfDay(local)} $sessionName';

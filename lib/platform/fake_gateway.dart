@@ -846,18 +846,22 @@ class FakeStorageGateway implements StorageGateway {
 }
 
 class FakePlaceGateway implements PlaceGateway {
-  FakePlaceGateway({this.name, this.fails = false});
+  FakePlaceGateway({this.name, this.fails = false, this.hangs = false});
 
   /// What every lookup answers; null = the geocoder has nothing.
   String? name;
 
   /// The geocoder throws (no Play services, offline).
   bool fails;
+
+  /// The geocoder never answers.
+  bool hangs;
   final calls = <({double lat, double lon})>[];
 
   @override
   Future<String?> placeName(double lat, double lon) async {
     calls.add((lat: lat, lon: lon));
+    if (hangs) return Completer<String?>().future;
     if (fails) return null;
     return name;
   }

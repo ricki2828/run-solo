@@ -7,8 +7,8 @@ rebrand PR moves it to `app.runsupreme` (before the first Play upload).
 
 **Run Supreme: 4x4 Interval Run.** Free Android app: record a run, get a staged 4x4 verdict. No
 accounts, no ads, no analytics of our own; runs stay on the phone, the post-run map comes from
-Google Maps, weather from Open-Meteo and place names from the phone's own geocoder (privacy: `docs/privacy/`). Plan:
-`~/ai/plans/run-solo-v1-plan.md`; visuals: `~/ai/plans/run-solo-design-brief.md`.
+Google Maps, weather from Open-Meteo and place names from the phone's own geocoder (privacy:
+`docs/privacy/`). Plan: `~/ai/plans/run-solo-v1-plan.md`; visuals: `~/ai/plans/run-solo-design-brief.md`.
 
 ## Repo layout
 

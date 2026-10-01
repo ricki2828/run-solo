@@ -30,6 +30,29 @@ void main() {
     });
   });
 
+  group('recorded offset', () {
+    test('local start shifts by the offset; null falls back to the phone', () {
+      final start = DateTime.utc(2026, 9, 23, 20);
+      final l = RunIdentity.localStart(start, 600);
+      expect((l.day, l.hour), (24, 6));
+      expect(RunIdentity.timeOfDay(l), 'Early');
+      expect(RunIdentity.localStart(start, null), start.toLocal());
+    });
+
+    test('offset and place tries round-trip in the sidecar', () {
+      const id = '11111111-2222-4333-8444-555555555555';
+      final s = RunSidecar(runId: id)
+          .copyWith(utcOffsetMin: -300, placeTries: 2);
+      final back = RunSidecarCodec.decode(RunSidecarCodec.encode(s));
+      expect(back.utcOffsetMin, -300);
+      expect(back.placeTries, 2);
+      expect(
+        RunSidecar(runId: id).toJson().containsKey('place_tries'),
+        isFalse,
+      );
+    });
+  });
+
   group('place reuse', () {
     const albert = (lat: -37.8431, lon: 144.9660, place: 'Albert Park');
     const fitzroy = (lat: -37.7980, lon: 144.9780, place: 'Fitzroy');

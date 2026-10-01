@@ -343,13 +343,14 @@ class IndexRow {
     this.startLon,
     this.place,
     this.title,
+    this.utcOffsetMin,
   });
 
   /// Bump when a field is added, so old rows are rebuilt once.
   /// 2: the event run's start point (K1 course pick at Start).
   /// 3: [cooper] (C1).
   /// 4: [goal] (LB3b).
-  /// 5: [startLat], [startLon], [place], [title] (run identity).
+  /// 5: [startLat], [startLon], [place], [title], [utcOffsetMin] (run identity).
   static const int currentVersion = 5;
 
   final int version;
@@ -400,6 +401,10 @@ class IndexRow {
   /// The runner's own name for the run (sidecar `title`); null = automatic.
   final String? title;
 
+  /// UTC offset in minutes when the run finished (sidecar); null on older
+  /// runs, which fall back to the phone's current zone.
+  final int? utcOffsetMin;
+
   factory IndexRow.of(
     engine.RunFile run,
     engine.RunAnalysis? a,
@@ -436,6 +441,7 @@ class IndexRow {
       startLon: first == null ? null : dp4(first.lon),
       place: sidecar?.place,
       title: sidecar?.title,
+      utcOffsetMin: sidecar?.utcOffsetMin,
     );
   }
 
@@ -459,6 +465,7 @@ class IndexRow {
     'lon': ?startLon,
     'place': ?place,
     'title': ?title,
+    'utc_offset_min': ?utcOffsetMin,
   };
 
   /// null for a missing or unreadable row (the entry is then stale).
@@ -499,6 +506,7 @@ class IndexRow {
         startLon: d('lon'),
         place: j['place'] as String?,
         title: j['title'] as String?,
+        utcOffsetMin: j['utc_offset_min'] as int?,
       );
     } catch (e) {
       debugPrint('index: unreadable row ($e)');

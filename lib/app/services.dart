@@ -129,7 +129,7 @@ class AppServices {
       if (s.state != RecorderState.idle || s.runId == null) return;
       if (s.runId == _lastPlacedRunId) return;
       _lastPlacedRunId = s.runId;
-      unawaited(places.ensure(s.runId!));
+      unawaited(places.onFinished(s.runId!, now: now()));
     });
   }
 

@@ -52,6 +52,23 @@ void main() {
     });
   });
 
+  test('time of day uses the recorded offset, else the phone zone', () {
+    // 06:00 in +10:00 is 20:00 UTC the day before.
+    final start = DateTime.utc(2026, 9, 23, 20);
+    RunSummary run({int? offset}) => RunSummary(
+      id: 'x',
+      mode: RecordMode.free,
+      start: start,
+      durationMs: 1,
+      distanceM: 1,
+      laps: 0,
+      utcOffsetMin: offset,
+    );
+    expect(runIdentityTitle(run(offset: 600)), 'Early Free run');
+    expect(runWhereWhen(run(offset: 600)), 'Thu 24 Sep · 6:00');
+    expect(run().localStart, start.toLocal());
+  });
+
   test('where and when: place first, then day and time; no place no gap', () {
     final start = DateTime(2026, 9, 24, 6).toUtc();
     expect(whereWhen('Albert Park', start), 'Albert Park · Thu 24 Sep · 6:00');
@@ -134,7 +151,7 @@ void main() {
     });
 
     test(
-      'geocoder failure: no place, nothing written, retried later',
+      'geocoder failure: no place, nothing written, retried next session',
       () async {
         final r = freeRunFile(n: 1, start: d1);
         await store.importBundles([engine.RunBundle(run: r)]);
@@ -143,11 +160,65 @@ void main() {
         expect(await places.ensure(r.id), isNull);
         expect((await store.load(r.id))!.sidecar.place, isNull);
         expect((await store.list()).single.place, isNull);
-        // The next open (old run, lazy backfill) tries again and succeeds.
+        // Same session: no second attempt for the same run.
         gw.fails = false;
-        expect(await places.ensure(r.id), 'Albert Park');
+        expect(await places.ensure(r.id), isNull);
+        expect(gw.calls, hasLength(1));
+        // Next session (old run, lazy backfill) tries again and succeeds.
+        expect(
+          await PlaceResolver(store: store, gateway: gw).ensure(r.id),
+          'Albert Park',
+        );
       },
     );
+
+    test('stops asking after three failed sessions', () async {
+      final r = freeRunFile(n: 1, start: d1);
+      await store.importBundles([engine.RunBundle(run: r)]);
+      final gw = FakePlaceGateway(fails: true);
+      for (var i = 0; i < 5; i++) {
+        await PlaceResolver(store: store, gateway: gw).ensure(r.id);
+      }
+      expect(gw.calls, hasLength(3));
+      expect((await store.load(r.id))!.sidecar.placeTries, 3);
+    });
+
+    test(
+      'a geocoder that never answers times out and frees the slot',
+      () async {
+        final r = freeRunFile(n: 1, start: d1);
+        await store.importBundles([engine.RunBundle(run: r)]);
+        final gw = FakePlaceGateway(name: 'Albert Park', hangs: true);
+        final places = PlaceResolver(
+          store: store,
+          gateway: gw,
+          timeout: const Duration(milliseconds: 50),
+        );
+        expect(await places.ensure(r.id), isNull);
+        expect((await store.load(r.id))!.sidecar.placeTries, 1);
+        // Another run is not stalled behind it.
+        final b = freeRunFile(n: 2, start: d1.add(const Duration(days: 1)));
+        await store.importBundles([engine.RunBundle(run: b)]);
+        gw.hangs = false;
+        expect(await places.ensure(b.id), 'Albert Park');
+      },
+    );
+
+    test('finish records the UTC offset once; old runs have none', () async {
+      final r = freeRunFile(n: 1, start: d1);
+      await store.importBundles([engine.RunBundle(run: r)]);
+      expect((await store.list()).single.utcOffsetMin, isNull);
+      final places = PlaceResolver(
+        store: store,
+        gateway: FakePlaceGateway(name: 'Albert Park'),
+      );
+      final at = DateTime.parse('2026-09-10T08:00:00+10:00');
+      await places.onFinished(r.id, now: at);
+      await store.setUtcOffset(r.id, 0);
+      final s = (await store.list()).single;
+      expect(s.utcOffsetMin, at.timeZoneOffset.inMinutes);
+      expect(s.place, 'Albert Park');
+    });
 
     test('a coordinate-looking answer is never stored', () async {
       final r = freeRunFile(n: 1, start: d1);

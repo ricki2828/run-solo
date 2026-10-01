@@ -8,23 +8,31 @@ import android.os.Handler
 import android.os.Looper
 import java.util.Locale
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * A short place name for a run's start point from the phone's own
  * [Geocoder]. The app makes no request itself; the system geocoder may ask
  * Google Play services (said in the privacy policy). Any failure, an absent
- * geocoder, or an answer with no usable name resolves null, never a
- * coordinate.
+ * geocoder, a timeout, or an answer with no usable name resolves null, never
+ * a coordinate. Each lookup completes exactly once and never waits longer
+ * than [TIMEOUT_MS], whatever the geocoder does.
  */
 class PlaceApiImpl(private val context: Context) : PlaceApi {
     private val main = Handler(Looper.getMainLooper())
-    private val worker = Executors.newSingleThreadExecutor()
+
+    // One thread per lookup: a hung blocking call (API 32 and below) must not stall the next one.
+    private val workers = Executors.newCachedThreadPool { r -> Thread(r, "place-lookup").apply { isDaemon = true } }
 
     override fun placeName(lat: Double, lon: Double, callback: (Result<String?>) -> Unit) {
-        // The Result must come back on the platform thread, whatever the geocoder does.
+        val done = AtomicBoolean(false)
+        // The Result must come back once, on the platform thread.
         fun reply(name: String?) {
-            main.post { callback(Result.success(name)) }
+            if (done.compareAndSet(false, true)) {
+                main.post { callback(Result.success(name)) }
+            }
         }
+        main.postDelayed({ reply(null) }, TIMEOUT_MS)
         if (!Geocoder.isPresent()) {
             reply(null)
             return
@@ -36,12 +44,13 @@ class PlaceApiImpl(private val context: Context) : PlaceApi {
                     override fun onGeocode(addresses: MutableList<Address>) {
                         reply(nameOf(addresses.firstOrNull()))
                     }
+
                     override fun onError(errorMessage: String?) {
                         reply(null)
                     }
                 })
             } else {
-                worker.execute {
+                workers.execute {
                     val name = try {
                         @Suppress("DEPRECATION")
                         nameOf(geocoder.getFromLocation(lat, lon, 1)?.firstOrNull())
@@ -57,6 +66,8 @@ class PlaceApiImpl(private val context: Context) : PlaceApi {
     }
 
     companion object {
+        const val TIMEOUT_MS = 10_000L
+
         /** Sub-locality (a suburb) first, then locality (a town); blank and numeric answers are no name. */
         fun nameOf(address: Address?): String? {
             if (address == null) return null
