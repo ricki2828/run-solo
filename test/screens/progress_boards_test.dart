@@ -63,7 +63,7 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pump();
     expect(find.text('TESTS'), findsOneWidget);
-    expect(find.text('Cooper 12-min test'), findsOneWidget);
+    expect(find.text('12-minute test'), findsOneWidget);
     expect(find.text('VO2 estimate'), findsOneWidget);
     expect(find.text('1 run · the next one races it'), findsWidgets);
   });

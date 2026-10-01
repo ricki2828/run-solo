@@ -135,7 +135,7 @@ class _BoardsOverviewState extends State<BoardsOverview> {
 /// A board's display name: the course's own label for a course board, the
 /// test's name, otherwise the engine's distance / window / session title.
 String _titleOf(Boards boards, CourseLabels labels, String key) {
-  if (key == engine.ComparisonKey.cooper) return 'Cooper 12-min test';
+  if (key == engine.ComparisonKey.cooper) return '12-minute test';
   if (engine.ComparisonKey.isParkrun(key) &&
       key != engine.ComparisonKey.parkrun) {
     return labels.labelOf(

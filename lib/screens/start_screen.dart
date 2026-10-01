@@ -666,7 +666,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                         testsSelected: mode == RecordMode.cooper,
                         testsLabel: _pickedTest == 'bronco'
                             ? 'Bronco'
-                            : 'Cooper',
+                            : '12-minute test',
                         onTests: () =>
                             set((x) => x.copyWith(lastMode: RecordMode.cooper))
                                 .then((_) => _syncProbe()),

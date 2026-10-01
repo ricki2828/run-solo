@@ -288,7 +288,8 @@ class Predictor {
   static const int windowDays = 42;
 
   /// Home card copy with no qualifying run.
-  static const String emptyLine = 'Run 3 km or more to see your predictions';
+  static const String emptyLine =
+      'Run 3 km or more to see your estimated times';
 
   static double riegel(double t1, double d1, double d2, double e) =>
       t1 * math.pow(d2 / d1, e);

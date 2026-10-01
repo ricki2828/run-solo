@@ -28,9 +28,9 @@ abstract final class IdentityDisplay {
   }
 
   static String? equivalentLabel(engine.IdentityLane lane) => switch (lane) {
-    engine.IdentityLane.speed => 'EST. 1K',
-    engine.IdentityLane.mid => 'EST. 5K',
-    engine.IdentityLane.long => 'EST. HALF MARATHON',
+    engine.IdentityLane.speed => 'Race-pace guess, 1K',
+    engine.IdentityLane.mid => 'Race-pace guess, 5K',
+    engine.IdentityLane.long => 'Race-pace guess, half marathon',
     engine.IdentityLane.aerobic => null,
   };
 }

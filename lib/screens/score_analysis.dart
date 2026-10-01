@@ -78,13 +78,13 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
             ),
             children: [
               Text(
-                'PERCENTILES',
+                'HOW YOU COMPARE',
                 style: RunSoloType.heading19.copyWith(color: t.inkPrimary),
               ),
               const SizedBox(height: Space.x8),
               Text(
-                'Best eligible effort in the past 42 days for each lane. '
-                'Estimates use different reference groups; see each lane.',
+                'Based on your best qualifying run in the last 42 days. '
+                'Each one compares with a different group.',
                 style: RunSoloType.body15.copyWith(color: t.inkSecondary),
               ),
               const SizedBox(height: Space.x24),
@@ -140,10 +140,11 @@ class _LaneAnalysis extends StatelessWidget {
     final s = score;
     final age = this.age;
     final String contextLine;
+    var needsProfile = false;
     String? estimate;
     if (s == null) {
       contextLine = switch (lane) {
-        engine.IdentityLane.aerobic => 'Your first eligible session sets it.',
+        engine.IdentityLane.aerobic => 'Your first qualifying session sets it.',
         engine.IdentityLane.speed => 'Log a clean interval session to unlock.',
         engine.IdentityLane.mid =>
           'Log a clean continuous 5K or 10K effort to unlock.',
@@ -151,13 +152,15 @@ class _LaneAnalysis extends StatelessWidget {
       };
     } else if (profileSex != ProfileSex.male &&
         profileSex != ProfileSex.female) {
-      contextLine = 'Set male or female in Settings to use these published reference tables.';
+      needsProfile = true;
+      contextLine = 'Add your sex in Settings to see how you compare.';
     } else if (age == null) {
-      contextLine = 'Add your birth year in Settings to show a percentile.';
+      needsProfile = true;
+      contextLine = 'Add your birth year in Settings to see how you compare.';
     } else if ((lane == engine.IdentityLane.aerobic ||
             lane == engine.IdentityLane.speed) &&
         (age < 20 || age > 89)) {
-      contextLine = 'FRIEND age-group comparison covers ages 20-89.';
+      contextLine = 'Age comparison only covers 20 to 89.';
     } else {
       final female = profileSex == ProfileSex.female;
       if (lane == engine.IdentityLane.aerobic ||
@@ -168,8 +171,8 @@ class _LaneAnalysis extends StatelessWidget {
           female: female,
         );
         contextLine =
-            'Compared with ${female ? 'women' : 'men'} '
-            '${age ~/ 10 * 10}-${age ~/ 10 * 10 + 9} (FRIEND lab VO2peak).';
+            'Estimate, compared with US ${female ? 'women' : 'men'} '
+            '${age ~/ 10 * 10} to ${age ~/ 10 * 10 + 9} tested on a lab treadmill.';
       } else {
         estimate = engine.RacePercentileNorms.comparison(
           s.vdot,
@@ -182,11 +185,9 @@ class _LaneAnalysis extends StatelessWidget {
           s.source,
         );
         contextLine =
-            'Percentile: $distance equivalent vs ${female ? 'women' : 'men'} '
-            'race finishers (RunRepeat, all ages). The estimated time shown '
-            'here is ${lane == engine.IdentityLane.mid ? '5K' : 'half marathon'}; '
-            'it can differ from the $distance used for the comparison. '
-            'Not an age percentile or race result.';
+            'Estimate. Based on your run, we guessed your $distance time and '
+            'compared it with ${female ? 'women' : 'men'} recreational '
+            'finishers, all ages. Not a race result.';
       }
     }
     final number = IdentityDisplay.percentileNumber(estimate);
@@ -212,14 +213,14 @@ class _LaneAnalysis extends StatelessWidget {
             s == null
                 ? 'LOCKED'
                 : estimate == null
-                ? 'NO PERCENTILE'
+                ? 'CAN\'T COMPARE YET'
                 : '$number percentile',
             style: RunSoloType.heading19.copyWith(color: t.inkPrimary),
           ),
           const SizedBox(height: Space.x8),
           if (s != null) ...[
             Text(
-              '${s.source} · ${Fmt.dayDate(s.date)} · VDOT ${s.vdot.toStringAsFixed(1)}',
+              '${s.source == 'Cooper test' ? '12-minute test' : s.source} · ${Fmt.dayDate(s.date)} · fitness index ${s.vdot.toStringAsFixed(1)}',
               style: RunSoloType.body15.copyWith(color: t.inkPrimary),
             ),
           ],
@@ -230,18 +231,34 @@ class _LaneAnalysis extends StatelessWidget {
             ),
           if (estimate?.startsWith('above') ?? false)
             Text(
-              '90 is the published upper bound; the comparison may be higher.',
+              'The table stops at 90, so you could be higher.',
               style: RunSoloType.label13.copyWith(color: t.inkSecondary),
             ),
           if (estimate?.startsWith('below') ?? false)
             Text(
-              '10 is the published lower bound; the comparison may be lower.',
+              'The table stops at 10, so you could be lower.',
               style: RunSoloType.label13.copyWith(color: t.inkSecondary),
             ),
-          Text(
-            contextLine,
-            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-          ),
+          if (needsProfile)
+            InkWell(
+              key: ValueKey('analysis-${lane.name}-profile'),
+              onTap: () => Navigator.of(context).pushNamed(Routes.settings),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: Space.x8),
+                child: Text(
+                  contextLine,
+                  style: RunSoloType.body15.copyWith(
+                    color: t.inkPrimary,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+            )
+          else
+            Text(
+              contextLine,
+              style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+            ),
           if (s != null)
             TextButton(
               onPressed: () =>
