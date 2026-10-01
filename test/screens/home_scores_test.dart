@@ -181,7 +181,7 @@ void homeCoherenceTests() {
     );
     expect(find.text('TEMPO TODAY'), findsOneWidget);
     expect(find.text('Start Tempo'), findsOneWidget);
-    expect(find.textContaining('4:22'), findsNothing);
+    expect(find.textContaining('BEAT'), findsNothing);
   });
 
   testWidgets('last 4x4: BEAT work pace, line and Start share the name', (
