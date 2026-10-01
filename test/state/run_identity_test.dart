@@ -73,6 +73,14 @@ void main() {
     final start = DateTime(2026, 9, 24, 6).toUtc();
     expect(whereWhen('Albert Park', start), 'Albert Park · Thu 24 Sep · 6:00');
     expect(whereWhen(null, start), 'Thu 24 Sep · 6:00');
+    expect(
+      whereWhen('Albert Park', start, street: 'Lakeside Dr'),
+      'Lakeside Dr, Albert Park · Thu 24 Sep · 6:00',
+    );
+    expect(
+      whereWhen(null, start, street: 'Lakeside Dr'),
+      'Lakeside Dr · Thu 24 Sep · 6:00',
+    );
   });
 
   group('PlaceResolver on a FileRunStore', () {
@@ -101,7 +109,7 @@ void main() {
       await store.importBundles([engine.RunBundle(run: r)]);
       final gw = FakePlaceGateway(name: 'Albert Park');
       final places = PlaceResolver(store: store, gateway: gw);
-      expect(await places.ensure(r.id), 'Albert Park');
+      expect((await places.ensure(r.id))?.area, 'Albert Park');
       expect((await store.load(r.id))!.sidecar.place, 'Albert Park');
       final listed = (await store.list()).single;
       expect(listed.place, 'Albert Park');
@@ -110,6 +118,101 @@ void main() {
       // Already named: the geocoder is not asked again.
       await places.ensure(r.id);
       expect(gw.calls, hasLength(1));
+    });
+
+    test('names the street with the area and the row carries both', () async {
+      final r = freeRunFile(n: 1, start: d1);
+      await store.importBundles([engine.RunBundle(run: r)]);
+      final gw = FakePlaceGateway(name: 'Albert Park', street: 'Lakeside Dr');
+      final places = PlaceResolver(store: store, gateway: gw);
+      final got = await places.ensure(r.id);
+      expect((got?.street, got?.area), ('Lakeside Dr', 'Albert Park'));
+      final listed = (await store.list()).single;
+      expect(listed.street, 'Lakeside Dr');
+      expect(runWhereWhen(listed), startsWith('Lakeside Dr, Albert Park · '));
+      await places.ensure(r.id);
+      expect(gw.calls, hasLength(1));
+    });
+
+    test('street reuse is 60 m; the area is still reused at 300 m', () async {
+      final a = freeRunFile(n: 1, start: d1);
+      // About 33 m north: street and area both reused.
+      final near = shifted(
+        freeRunFile(n: 2, start: d1.add(const Duration(days: 1))),
+        0.0003,
+      );
+      // About 220 m north: area reused, the street needs its own lookup.
+      final mid = shifted(
+        freeRunFile(n: 3, start: d1.add(const Duration(days: 2))),
+        0.002,
+      );
+      await store.importBundles([
+        engine.RunBundle(run: a),
+        engine.RunBundle(run: near),
+        engine.RunBundle(run: mid),
+      ]);
+      final gw = FakePlaceGateway(name: 'Albert Park', street: 'Lakeside Dr');
+      final places = PlaceResolver(store: store, gateway: gw);
+      await places.ensure(a.id);
+      gw.street = 'Aughtie Dr';
+      gw.name = 'Elsewhere';
+      final n = await places.ensure(near.id);
+      expect((n?.street, n?.area), ('Lakeside Dr', 'Albert Park'));
+      expect(gw.calls, hasLength(1), reason: 'reused, not geocoded');
+      final m = await places.ensure(mid.id);
+      expect(m?.area, 'Albert Park', reason: 'area reused within 300 m');
+      expect(m?.street, 'Aughtie Dr', reason: 'street looked up itself');
+      expect(gw.calls, hasLength(2));
+    });
+
+    test('no street: blank, numeric and unnamed roads are not shown', () async {
+      for (final raw in ['', '  ', '12', '12-14', 'Unnamed Road', null]) {
+        expect(engine.RunIdentity.cleanStreet(raw), isNull, reason: '$raw');
+      }
+      expect(engine.RunIdentity.cleanStreet('12 Lakeside Dr'), 'Lakeside Dr');
+      expect(engine.RunIdentity.cleanStreet('12A Lakeside Dr'), 'Lakeside Dr');
+      expect(engine.RunIdentity.cleanStreet('5th Avenue'), '5th Avenue');
+      expect(engine.RunIdentity.cleanStreet(' Lakeside Dr '), 'Lakeside Dr');
+      final r = freeRunFile(n: 1, start: d1);
+      await store.importBundles([engine.RunBundle(run: r)]);
+      final places = PlaceResolver(
+        store: store,
+        gateway: FakePlaceGateway(name: 'Albert Park', street: 'Unnamed Road'),
+      );
+      final got = await places.ensure(r.id);
+      expect(got?.street, isNull);
+      expect(got?.area, 'Albert Park');
+      expect((await store.list()).single.street, isNull);
+    });
+
+    test('an old run with an area gets one street lookup, once', () async {
+      final r = freeRunFile(n: 1, start: d1);
+      await store.importBundles([engine.RunBundle(run: r)]);
+      await store.setPlace(r.id, 'Albert Park');
+      // The geocoder has an area but no street here.
+      final gw = FakePlaceGateway(name: 'Albert Park');
+      final first = PlaceResolver(store: store, gateway: gw);
+      expect((await first.ensure(r.id))?.street, isNull);
+      expect(gw.calls, hasLength(1));
+      expect((await store.load(r.id))!.sidecar.streetTried, isTrue);
+      expect((await store.load(r.id))!.sidecar.place, 'Albert Park');
+      // A later session does not ask again.
+      gw.street = 'Lakeside Dr';
+      await PlaceResolver(store: store, gateway: gw).ensure(r.id);
+      expect(gw.calls, hasLength(1));
+    });
+
+    test('a failed street backfill is capped by the place tries', () async {
+      final r = freeRunFile(n: 1, start: d1);
+      await store.importBundles([engine.RunBundle(run: r)]);
+      await store.setPlace(r.id, 'Albert Park');
+      final gw = FakePlaceGateway(fails: true);
+      for (var i = 0; i < 5; i++) {
+        await PlaceResolver(store: store, gateway: gw).ensure(r.id);
+      }
+      expect(gw.calls, hasLength(3));
+      expect((await store.load(r.id))!.sidecar.placeTries, 3);
+      expect((await store.load(r.id))!.sidecar.place, 'Albert Park');
     });
 
     test('a run starting within 300 m reuses the earlier name', () async {
@@ -127,8 +230,11 @@ void main() {
       final places = PlaceResolver(store: store, gateway: gw);
       await places.ensure(a.id);
       gw.name = 'St Kilda Road';
-      expect(await places.ensure(b.id), 'Albert Park');
-      expect(gw.calls, hasLength(1), reason: 'reused, not geocoded');
+      expect((await places.ensure(b.id))?.area, 'Albert Park');
+      // The area is reused (not the geocoder's 'St Kilda Road'); the street,
+      // not known within 60 m, is asked for.
+      expect(gw.calls, hasLength(2));
+      expect((await store.load(b.id))!.sidecar.place, 'Albert Park');
     });
 
     test('beyond 300 m asks the geocoder again', () async {
@@ -146,7 +252,7 @@ void main() {
       final places = PlaceResolver(store: store, gateway: gw);
       await places.ensure(a.id);
       gw.name = 'Fitzroy';
-      expect(await places.ensure(b.id), 'Fitzroy');
+      expect((await places.ensure(b.id))?.area, 'Fitzroy');
       expect(gw.calls, hasLength(2));
     });
 
@@ -166,7 +272,7 @@ void main() {
         expect(gw.calls, hasLength(1));
         // Next session (old run, lazy backfill) tries again and succeeds.
         expect(
-          await PlaceResolver(store: store, gateway: gw).ensure(r.id),
+          (await PlaceResolver(store: store, gateway: gw).ensure(r.id))?.area,
           'Albert Park',
         );
       },
@@ -200,7 +306,7 @@ void main() {
         final b = freeRunFile(n: 2, start: d1.add(const Duration(days: 1)));
         await store.importBundles([engine.RunBundle(run: b)]);
         gw.hangs = false;
-        expect(await places.ensure(b.id), 'Albert Park');
+        expect((await places.ensure(b.id))?.area, 'Albert Park');
       },
     );
 
@@ -287,15 +393,20 @@ void main() {
       final r = freeRunFile(n: 1, start: DateTime.utc(2026, 9, 10, 6));
       await store.importBundles([engine.RunBundle(run: r)]);
       await store.setPlace(r.id, 'Albert Park');
+      await store.setStreet(r.id, 'Lakeside Dr');
       await store.list();
       await store.derivedIdle;
       final text = store.indexFile.readAsStringSync();
-      // Rewrite the row as an older build left it.
+      // Rewrite the row as an older build left it (no street, version 6).
       store.indexFile.writeAsStringSync(
-        text.replaceAll('"v":${IndexRow.currentVersion}', '"v":4'),
+        text
+            .replaceAll('"v":${IndexRow.currentVersion}', '"v":6')
+            .replaceAll(RegExp(r',?"street":"Lakeside Dr"'), ''),
       );
+      expect(store.indexFile.readAsStringSync(), isNot(contains('Lakeside')));
       final listed = (await store.list()).single;
       expect(listed.place, 'Albert Park');
+      expect(listed.street, 'Lakeside Dr', reason: 'rebuilt from the sidecar');
       final e = (await store.readIndex()).entries[r.id]!;
       expect(e.row!.version, IndexRow.currentVersion);
       expect(e.row!.place, 'Albert Park');

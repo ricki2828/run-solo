@@ -158,12 +158,20 @@ abstract class StorageGateway {
   Future<List<String>> enforceBackupBudget();
 }
 
-/// A place name for a run's start point from the phone's own geocoder. The
-/// app sends nothing itself.
+/// What the geocoder said about a start point: the street (no house number)
+/// and the area ("Albert Park"). Either may be null.
+class PlaceLookup {
+  const PlaceLookup({this.street, this.area});
+  final String? street;
+  final String? area;
+}
+
+/// A street and area name for a run's start point from the phone's own
+/// geocoder. The app sends nothing itself.
 abstract class PlaceGateway {
-  /// A short area name ("Albert Park"), or null: no geocoder, offline, or no
-  /// answer. Never throws and never returns a coordinate.
-  Future<String?> placeName(double lat, double lon);
+  /// The street and area, or null: no geocoder, offline, or no answer. Never
+  /// throws and never returns a coordinate.
+  Future<PlaceLookup?> placeName(double lat, double lon);
 }
 
 abstract class PermissionsGateway {

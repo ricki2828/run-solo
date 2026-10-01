@@ -71,14 +71,15 @@
   switch. With it off, nothing is sent to Open-Meteo.</p>
 
   <h3>Place names</h3>
-  <p>Each run shows where it started, for example "Albert Park". Run Supreme asks Android's
+  <p>Each run shows where it started, for example "Lakeside Dr, Albert Park". Run Supreme asks Android's
   built-in geocoder (<code>android.location.Geocoder</code>) to turn the start point of the run into a
-  short area name. Run Supreme makes no network request for this itself. The Android geocoder is part
+  street name (never a house number) and a short area name. Run Supreme makes no network request for this itself. The Android geocoder is part
   of your phone's system and may use Google Play services, which can send the coordinate to Google to
   get the name back, under the <a href="https://policies.google.com/privacy" rel="noopener">Google Privacy Policy</a>.
-  Only the start point is looked up, never the route, your pace or your heart rate. The name is stored
+  Only the start point is looked up, never the route, your pace or your heart rate. The names are stored
   on your phone with the run; if the lookup fails, the run simply has no place name. A run that starts
-  within about 300 m of an earlier run reuses that run's name without a new lookup.</p>
+  within about 300 m of an earlier run reuses that run's area name, and within about 60 m its street
+  name, without a new lookup. A run saved before street names existed is looked up once, when you open it.</p>
   <p>You can rename a run yourself from its detail screen; the title is stored only on your phone.</p>
 
   <h2>4. Permissions the app asks for</h2>

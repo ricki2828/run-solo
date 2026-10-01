@@ -95,6 +95,27 @@ void main() {
     });
   });
 
+  group('street', () {
+    const near = (lat: -37.8431, lon: 144.9660, street: 'Lakeside Dr');
+
+    test('reused within 60 m, not at 100 m', () {
+      // About 33 m and about 110 m north.
+      expect(
+        RunIdentity.reuseStreet(-37.8428, 144.9660, [near]),
+        'Lakeside Dr',
+      );
+      expect(RunIdentity.reuseStreet(-37.8421, 144.9660, [near]), isNull);
+    });
+
+    test('the nearest known street wins', () {
+      const other = (lat: -37.8430, lon: 144.9660, street: 'Albert Rd');
+      expect(
+        RunIdentity.reuseStreet(-37.84297, 144.9660, [near, other]),
+        'Albert Rd',
+      );
+    });
+  });
+
   group('sidecar', () {
     const id = '11111111-2222-4333-8444-555555555555';
 
@@ -106,6 +127,20 @@ void main() {
       expect(back.title, 'Hills');
       expect(back.withOverride(RunMode.free).title, 'Hills');
       expect(back.isEmpty, isFalse);
+    });
+
+    test('street and streetTried round-trip; absent when unset', () {
+      final s = RunSidecar(runId: id)
+          .copyWith(street: 'Lakeside Dr', streetTried: true);
+      final back = RunSidecarCodec.decode(RunSidecarCodec.encode(s));
+      expect(back.street, 'Lakeside Dr');
+      expect(back.streetTried, isTrue);
+      expect(back.isEmpty, isFalse);
+      final tried = RunSidecar(runId: id).copyWith(streetTried: true);
+      expect(tried.isEmpty, isFalse);
+      final plain = RunSidecar(runId: id).toJson();
+      expect(plain.containsKey('street'), isFalse);
+      expect(plain.containsKey('street_tried'), isFalse);
     });
 
     test('absent keys are not written and an old sidecar still reads', () {

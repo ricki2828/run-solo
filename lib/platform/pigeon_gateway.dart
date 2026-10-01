@@ -109,11 +109,12 @@ class PigeonPlaceGateway implements PlaceGateway {
   final PlaceApi _api;
 
   @override
-  Future<String?> placeName(double lat, double lon) async {
+  Future<PlaceLookup?> placeName(double lat, double lon) async {
     try {
-      return await _api
+      final r = await _api
           .placeName(lat, lon)
           .timeout(const Duration(seconds: 10), onTimeout: () => null);
+      return r == null ? null : PlaceLookup(street: r.street, area: r.area);
     } catch (e) {
       debugPrint('place: geocoder failed ($e)');
       return null;

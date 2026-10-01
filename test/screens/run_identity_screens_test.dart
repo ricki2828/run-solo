@@ -11,6 +11,7 @@ import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/run_index.dart';
 import 'package:run_solo/widgets/recent_activity.dart';
 import 'package:run_solo/widgets/weather_chip.dart';
+import 'package:run_solo/widgets/where_when_line.dart';
 
 import '../helpers.dart';
 import '../run_fixtures.dart';
@@ -21,10 +22,24 @@ import '../run_fixtures.dart';
 void main() {
   final start = DateTime(2026, 9, 24, 6).toUtc();
 
+  /// The where/when line showing exactly [text].
+  Finder whereWhenLine(String text) => find.byWidgetPredicate(
+    (w) =>
+        w is WhereWhenLine &&
+        whereWhen(
+              w.place,
+              w.start,
+              utcOffsetMin: w.utcOffsetMin,
+              street: w.street,
+            ) ==
+            text,
+  );
+
   RunSummary row({
     String id = 'a',
     RecordMode mode = RecordMode.intervals,
     String? place = 'Albert Park',
+    String? street,
     String? title,
     double? work = 262,
   }) => RunSummary(
@@ -35,11 +50,13 @@ void main() {
     distanceM: 6000,
     laps: 8,
     place: place,
+    street: street,
     customTitle: title,
     row: IndexRow(
       lapCount: 8,
       workPaceSecPerKm: work,
       place: place,
+      street: street,
       title: title,
     ),
   );
@@ -58,7 +75,7 @@ void main() {
     tester,
   ) async {
     await pumpCards(tester, [row()]);
-    expect(find.text('Albert Park · Thu 24 Sep · 6:00'), findsOneWidget);
+    expect(whereWhenLine('Albert Park · Thu 24 Sep · 6:00'), findsOneWidget);
     expect(
       find.byWidgetPredicate(
         (w) => w is RichText && w.text.toPlainText() == 'Early Norwegian 4x4',
@@ -68,10 +85,41 @@ void main() {
     expect(find.text('4X4'), findsNothing);
   });
 
+  testWidgets('card: street and area, and a long street keeps the date', (
+    tester,
+  ) async {
+    await pumpCards(tester, [
+      row(street: 'Lakeside Dr'),
+      row(
+        id: 'b',
+        street: 'Avenida Presidente Juscelino Kubitschek de Oliveira Longname',
+      ),
+    ]);
+    expect(
+      whereWhenLine('Lakeside Dr, Albert Park · Thu 24 Sep · 6:00'),
+      findsOneWidget,
+    );
+    // The long street ellipsizes; the day and time are still all there.
+    expect(find.text(' · Thu 24 Sep · 6:00'), findsNWidgets(2));
+    final lines = find.byKey(const ValueKey('activity-where-when'));
+    for (final e in lines.evaluate()) {
+      final box = tester.getRect(find.byWidget(e.widget));
+      final when = tester.getRect(
+        find.descendant(
+          of: find.byWidget(e.widget),
+          matching: find.text(' · Thu 24 Sep · 6:00'),
+        ),
+      );
+      expect(when.right, lessThanOrEqualTo(box.right));
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('card: no place known, no placeholder and no coordinate', (
     tester,
   ) async {
     await pumpCards(tester, [row(place: null)]);
+    expect(whereWhenLine('Thu 24 Sep · 6:00'), findsOneWidget);
     expect(find.text('Thu 24 Sep · 6:00'), findsOneWidget);
     expect(find.textContaining('Albert'), findsNothing);
   });
@@ -153,7 +201,7 @@ void main() {
       await pumpTimes(tester);
       expect(find.byType(HistoryRow), findsOneWidget);
       expect(find.text('Sunday easy'), findsOneWidget);
-      expect(find.text(whereWhen('Albert Park', start)), findsOneWidget);
+      expect(whereWhenLine(whereWhen('Albert Park', start)), findsOneWidget);
       await tester.runAsync(() => store.derivedIdle);
     });
   });
@@ -188,7 +236,7 @@ void main() {
       await pumpApp(tester, services, home: RunDetailScreen(runId: r.id));
       await pumpTimes(tester, 6);
       // An old run with no place: named lazily when the detail opens.
-      expect(find.text(whereWhen('Albert Park', start)), findsOneWidget);
+      expect(whereWhenLine(whereWhen('Albert Park', start)), findsOneWidget);
       expect(places.calls, hasLength(1));
       await tester.tap(find.byKey(const ValueKey('rename-run')));
       await pumpTimes(tester, 4);

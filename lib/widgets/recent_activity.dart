@@ -8,6 +8,7 @@ import '../map/route_builder.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../theme/theme.dart';
+import 'where_when_line.dart';
 
 /// Home's recent activities in the page's normal vertical scroll: the last
 /// three sessions, each with a static route thumbnail when one exists. An
@@ -239,9 +240,12 @@ class _ActivityRow extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: Space.x4),
-              Text(
-                runWhereWhen(run),
+              WhereWhenLine(
                 key: const ValueKey('activity-where-when'),
+                place: run.place,
+                street: run.street,
+                start: run.start,
+                utcOffsetMin: run.utcOffsetMin,
                 style: RunSoloType.label13.copyWith(color: t.inkSecondary),
               ),
               const SizedBox(height: Space.x12),

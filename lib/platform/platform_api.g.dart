@@ -1629,6 +1629,52 @@ class BackupStatus {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// What the geocoder said about one point. Both fields are display text only.
+class PlaceName {
+  PlaceName({
+    this.street,
+    this.area,
+  });
+
+  String? street;
+
+  String? area;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      street,
+      area,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static PlaceName decode(Object result) {
+    result as List<Object?>;
+    return PlaceName(
+      street: result[0] as String?,
+      area: result[1] as String?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PlaceName || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(street, other.street) && _deepEquals(area, other.area);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 sealed class RecorderEvent {
 }
 
@@ -2455,35 +2501,38 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is BackupStatus) {
       buffer.putUint8(163);
       writeValue(buffer, value.encode());
-    }    else if (value is TickEvent) {
+    }    else if (value is PlaceName) {
       buffer.putUint8(164);
       writeValue(buffer, value.encode());
-    }    else if (value is LapEvent) {
+    }    else if (value is TickEvent) {
       buffer.putUint8(165);
       writeValue(buffer, value.encode());
-    }    else if (value is LapPendingEvent) {
+    }    else if (value is LapEvent) {
       buffer.putUint8(166);
       writeValue(buffer, value.encode());
-    }    else if (value is CueEvent) {
+    }    else if (value is LapPendingEvent) {
       buffer.putUint8(167);
       writeValue(buffer, value.encode());
-    }    else if (value is GpsProbeEvent) {
+    }    else if (value is CueEvent) {
       buffer.putUint8(168);
       writeValue(buffer, value.encode());
-    }    else if (value is CompareEvent) {
+    }    else if (value is GpsProbeEvent) {
       buffer.putUint8(169);
       writeValue(buffer, value.encode());
-    }    else if (value is GoalEvent) {
+    }    else if (value is CompareEvent) {
       buffer.putUint8(170);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is GoalEvent) {
       buffer.putUint8(171);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is FaultEvent) {
       buffer.putUint8(172);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is StateEvent) {
       buffer.putUint8(173);
+      writeValue(buffer, value.encode());
+    }    else if (value is PhaseEvent) {
+      buffer.putUint8(174);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -2579,24 +2628,26 @@ class _PigeonCodec extends StandardMessageCodec {
       case 163:
         return BackupStatus.decode(readValue(buffer)!);
       case 164:
-        return TickEvent.decode(readValue(buffer)!);
+        return PlaceName.decode(readValue(buffer)!);
       case 165:
-        return LapEvent.decode(readValue(buffer)!);
+        return TickEvent.decode(readValue(buffer)!);
       case 166:
-        return LapPendingEvent.decode(readValue(buffer)!);
+        return LapEvent.decode(readValue(buffer)!);
       case 167:
-        return CueEvent.decode(readValue(buffer)!);
+        return LapPendingEvent.decode(readValue(buffer)!);
       case 168:
-        return GpsProbeEvent.decode(readValue(buffer)!);
+        return CueEvent.decode(readValue(buffer)!);
       case 169:
-        return CompareEvent.decode(readValue(buffer)!);
+        return GpsProbeEvent.decode(readValue(buffer)!);
       case 170:
-        return GoalEvent.decode(readValue(buffer)!);
+        return CompareEvent.decode(readValue(buffer)!);
       case 171:
-        return FaultEvent.decode(readValue(buffer)!);
+        return GoalEvent.decode(readValue(buffer)!);
       case 172:
-        return StateEvent.decode(readValue(buffer)!);
+        return FaultEvent.decode(readValue(buffer)!);
       case 173:
+        return StateEvent.decode(readValue(buffer)!);
+      case 174:
         return PhaseEvent.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -3267,10 +3318,12 @@ class PlaceApi {
 
   final String pigeonVar_messageChannelSuffix;
 
-  /// A short name for the area around the point (sub-locality, else
-  /// locality), e.g. "Albert Park". Null when there is no geocoder on the
-  /// phone, it is offline, or it has no answer: never a coordinate.
-  Future<String?> placeName(double lat, double lon) async {
+  /// Where the point is: the street (the geocoder's thoroughfare, never a
+  /// house number) and the area (sub-locality, else locality), e.g. "Lakeside
+  /// Dr" and "Albert Park". Null when there is no geocoder on the phone, it
+  /// is offline, or it has no answer: never a coordinate. Either field is
+  /// null when the geocoder has no usable value for it.
+  Future<PlaceName?> placeName(double lat, double lon) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.PlaceApi.placeName$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
@@ -3286,7 +3339,7 @@ class PlaceApi {
         isNullValid: true,
     )
     ;
-    return pigeonVar_replyValue as String?;
+    return pigeonVar_replyValue as PlaceName?;
   }
 }
 

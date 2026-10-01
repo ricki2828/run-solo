@@ -10,6 +10,7 @@ import '../state/history_store.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
+import '../widgets/where_when_line.dart';
 import 'boards_overview.dart';
 import 'trend_screen.dart';
 
@@ -392,8 +393,11 @@ class HistoryRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: RunSoloType.body17.copyWith(color: muted),
                     ),
-                    Text(
-                      runWhereWhen(run),
+                    WhereWhenLine(
+                      place: run.place,
+                      street: run.street,
+                      start: run.start,
+                      utcOffsetMin: run.utcOffsetMin,
                       style: RunSoloType.label13.copyWith(
                         color: t.inkSecondary,
                       ),

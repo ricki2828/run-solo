@@ -11,6 +11,10 @@ abstract final class RunIdentity {
   /// Kilda Rd" the next.
   static const double placeReuseRadiusM = 300;
 
+  /// A street is only reused this close: a street name is not true across a
+  /// neighbourhood the way an area name is.
+  static const double streetReuseRadiusM = 60;
+
   /// "Early" before 7, "Morning" before 11, "Lunch" before 14, "Afternoon"
   /// before 17, "Evening" before 21, "Night" after. [local] is the run's
   /// start in the phone's own time zone.
@@ -60,6 +64,39 @@ abstract final class RunIdentity {
       }
     }
     return best;
+  }
+
+  /// The street of the nearest [known] start within [streetReuseRadiusM] of
+  /// ([lat], [lon]) that has one. Null when none is close enough.
+  static String? reuseStreet(
+    double lat,
+    double lon,
+    Iterable<({double lat, double lon, String street})> known,
+  ) {
+    String? best;
+    var bestM = double.infinity;
+    for (final k in known) {
+      final d = haversineM(lat, lon, k.lat, k.lon);
+      if (d <= streetReuseRadiusM && d < bestM) {
+        bestM = d;
+        best = k.street;
+      }
+    }
+    return best;
+  }
+
+  /// A geocoder's street cleaned up for display: a street name, never a
+  /// house number (a leading "12 " is cut), and null for blank, numeric or
+  /// unnamed roads. Abbreviations are the geocoder's own; none are added.
+  static String? cleanStreet(String? raw) {
+    var s = raw?.trim();
+    if (s == null) return null;
+    s = s
+        .replaceFirst(RegExp(r'^\d+[a-zA-Z]?([/-]\d+[a-zA-Z]?)?\s+'), '')
+        .trim();
+    if (!RegExp(r'\p{L}', unicode: true).hasMatch(s)) return null;
+    if (RegExp(r'^unnamed', caseSensitive: false).hasMatch(s)) return null;
+    return cleanPlace(s);
   }
 
   /// A geocoder's answer cleaned up for display: trimmed, empty is null.

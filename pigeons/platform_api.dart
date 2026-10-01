@@ -732,11 +732,20 @@ abstract class PermissionsApi {
 /// policy.
 @HostApi()
 abstract class PlaceApi {
-  /// A short name for the area around the point (sub-locality, else
-  /// locality), e.g. "Albert Park". Null when there is no geocoder on the
-  /// phone, it is offline, or it has no answer: never a coordinate.
+  /// Where the point is: the street (the geocoder's thoroughfare, never a
+  /// house number) and the area (sub-locality, else locality), e.g. "Lakeside
+  /// Dr" and "Albert Park". Null when there is no geocoder on the phone, it
+  /// is offline, or it has no answer: never a coordinate. Either field is
+  /// null when the geocoder has no usable value for it.
   @async
-  String? placeName(double lat, double lon);
+  PlaceName? placeName(double lat, double lon);
+}
+
+/// What the geocoder said about one point. Both fields are display text only.
+class PlaceName {
+  PlaceName({this.street, this.area});
+  String? street;
+  String? area;
 }
 
 @HostApi()
