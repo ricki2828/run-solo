@@ -167,7 +167,9 @@ class RunDerived {
   /// - 3: GOAL boards (§G): half, marathon, 30/60 min distance, from-Start
   ///   to 42 km; with CR1's `kmHr`.
   /// - 4: PD2, the whole-run prediction input (`RunBestEfforts.wholeRun*`).
-  static const int currentVersion = 4;
+  /// - 5: continuous 5K/10K windows from INT runs without detected reps;
+  ///   rebuild old runs so MID can see valid evidence from those traces.
+  static const int currentVersion = 5;
 
   /// The version this data was built at; JSON without one is 1.
   final int version;

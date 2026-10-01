@@ -109,6 +109,17 @@ void main() {
     expect(score.boardKey, BestEffortDistance.k5.key);
   });
 
+  test('a clean 5K inside an INT run without eligible reps unlocks MID', () {
+    final candidate = run(
+      'int-8k',
+      mode: RunMode.intervals,
+      bests: {BestEffortDistance.k5: best(BestEffortDistance.k5, 1720)},
+    );
+    final score = IdentityScores.of([candidate], now: now);
+    expect(score[IdentityLane.mid]?.runId, 'int-8k');
+    expect(score[IdentityLane.speed], isNull);
+  });
+
   test('long stays locked until a continuous 15K+ free run', () {
     final short = run('short', wholeM: 14999, wholeMs: 70 * 60000);
     expect(IdentityScores.of([short], now: now)[IdentityLane.long], isNull);

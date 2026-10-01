@@ -419,6 +419,27 @@ void main() {
     await golden(tester, 'detail_free');
   });
 
+  testWidgets('run detail: INT distance splits at 360x640', (tester) async {
+    tester.view.physicalSize = const Size(360 * 3, 640 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final run = freeRunFile(
+      n: 39,
+      start: d1,
+      seconds: 2884,
+    ).copyWith(mode: engine.RunMode.intervals);
+    await pumpApp(
+      tester,
+      fakeServices(files: [run]),
+      home: RunDetailScreen(runId: run.id),
+    );
+    await pumpTimes(tester, 6);
+    await scrollTo(tester, find.text('KM SPLITS'));
+    await settleAnimations(tester);
+    await golden(tester, 'detail_int_splits_360x640');
+  });
+
   testWidgets('verdict: indoor run', (tester) async {
     final indoor = fourByFourFile(n: 6, start: d1, indoor: true);
     await verdictGolden(tester, [indoor], indoor.id, 'verdict_indoor');

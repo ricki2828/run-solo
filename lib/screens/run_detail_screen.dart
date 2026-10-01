@@ -154,10 +154,19 @@ class RunDetailBody extends StatelessWidget {
         ),
         const SizedBox(height: Space.x24),
         switch (d.summary.mode) {
-          RecordMode.intervals => _FourByFourTables(
-            detail: d,
-            units: units,
-            onVerdict: onVerdict,
+          RecordMode.intervals => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _FourByFourTables(detail: d, units: units, onVerdict: onVerdict),
+              const SizedBox(height: Space.x24),
+              _DistanceSplits(
+                free: free,
+                units: units,
+                color: d.summary.spec?.isGoal == true || d.summary.isParkrun
+                    ? AuroraRunType.goal
+                    : AuroraRunType.intervals,
+              ),
+            ],
           ),
           RecordMode.laps
               when d.summary.spec?.templateId == engine.SessionSpec.fartlekId =>
@@ -808,6 +817,99 @@ class _Splits extends StatelessWidget {
             ),
         ],
       ],
+    );
+  }
+}
+
+/// Distance splits describe the recorded run even when INT finds no reps.
+/// The engine's FreeRunSummary uses sample-crossing times, not inferred reps;
+/// this card does not claim a clean 5K for a broken GPS stretch.
+class _DistanceSplits extends StatelessWidget {
+  const _DistanceSplits({
+    required this.free,
+    required this.units,
+    required this.color,
+  });
+  final engine.FreeRunSummary free;
+  final Units units;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final unit = units == Units.mi ? 'MI' : 'KM';
+    final splits = free.splitsSecPerUnit;
+    final quickest = splits.isEmpty
+        ? -1
+        : splits.indexOf(splits.reduce((a, b) => a < b ? a : b));
+    return Container(
+      key: const ValueKey('run-distance-splits'),
+      decoration: BoxDecoration(
+        color: t.bgRaised,
+        border: Border.all(color: t.lineHair),
+        borderRadius: BorderRadius.circular(Radii.card),
+      ),
+      padding: const EdgeInsets.all(Space.x16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$unit SPLITS',
+            style: RunSoloType.heading19.copyWith(color: color),
+          ),
+          const SizedBox(height: Space.x4),
+          Text(
+            'Recorded time for each full $unit, including any pauses.',
+            style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+          ),
+          const SizedBox(height: Space.x16),
+          if (splits.isEmpty)
+            Text(
+              'No full $unit recorded.',
+              style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+            )
+          else
+            for (var i = 0; i < splits.length; i++) ...[
+              Row(
+                children: [
+                  SizedBox(
+                    width: 40,
+                    child: Text(
+                      '${i + 1}',
+                      style: RunSoloType.heading26.copyWith(
+                        color: i == quickest ? t.semFaster : t.inkPrimary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: Space.x8),
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(Radii.pill),
+                      child: LinearProgressIndicator(
+                        minHeight: 8,
+                        value: splits[i] <= 0
+                            ? 1.0
+                            : (splits[quickest] / splits[i]).clamp(0.1, 1.0),
+                        backgroundColor: t.bgBase,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          i == quickest ? t.semFaster : color,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: Space.x12),
+                  Text(
+                    Fmt.clock((splits[i] * 1000).round()),
+                    style: RunSoloType.heading19.copyWith(
+                      color: i == quickest ? t.semFaster : t.inkPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              if (i + 1 < splits.length) const SizedBox(height: Space.x12),
+            ],
+        ],
+      ),
     );
   }
 }

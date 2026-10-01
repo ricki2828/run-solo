@@ -330,20 +330,42 @@ void main() {
     expect(r.fromStartSplitsMs, [255000, 505000, 755000, 1005000, 1255000]);
   });
 
-  test('intervals: a window must sit inside one clean work rep', () {
+  test('intervals: short windows stay inside one clean work rep', () {
     final f = fixture('four_by_four_manual_clean');
     final a = engine.analyze(f.run, now: fixedNow);
     final r = finder.find(f.run, a);
-    expect(r.efforts.containsKey(BestEffortDistance.k5), isFalse);
+    expect(r.efforts.containsKey(BestEffortDistance.k5), isTrue);
     expect(r.fromStartSplitsMs, isEmpty);
     final reps = a.intervals!.reps.where((x) => x.clean).toList();
-    for (final e in r.efforts.values) {
+    for (final e in r.efforts.values.where(
+      (e) =>
+          e.distance == BestEffortDistance.km1 ||
+          e.distance == BestEffortDistance.mile,
+    )) {
       expect(
         reps.any((x) => e.startMs >= x.lap.t0Ms && e.endMs <= x.lap.t1Ms),
         isTrue,
         reason: '${e.distance.key} window must be inside a rep',
       );
     }
+  });
+
+  test('INT without reps still earns a clean continuous 5K, not SPEED', () {
+    final run = build([(2760, 8.01 * 1000 / 2760)], mode: RunMode.intervals);
+    final a = engine.analyze(run, now: fixedNow);
+    final r = finder.find(run, a);
+    expect(r.efforts[BestEffortDistance.k5], isNotNull);
+    expect(r.efforts[BestEffortDistance.km1], isNull);
+  });
+
+  test('INT with a pause before 5K cannot stitch two stretches into MID', () {
+    final run = build(
+      [(720, 4.0), (720, 4.0)],
+      mode: RunMode.intervals,
+      pauseAfterPiece: {0: 60},
+    );
+    final r = find(run);
+    expect(r.efforts[BestEffortDistance.k5], isNull);
   });
 
   test('indoor and noisy runs have no best efforts', () {

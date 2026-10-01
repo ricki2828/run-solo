@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_engine/run_engine.dart' as engine;
+import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/home_screen.dart';
 import 'package:run_solo/screens/permissions_screen.dart';
 import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/screens/start_screen.dart';
+import 'package:run_solo/state/live_context.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/theme/theme.dart';
 import 'package:run_solo/widgets/recent_activity.dart';
 
 import '../helpers.dart';
+import '../run_fixtures.dart';
 
 void main() {
   testWidgets('Home shows five choices, not a second START launcher', (
@@ -19,13 +23,18 @@ void main() {
     final services = fakeServices();
     await pumpApp(tester, services, home: HomeScreen(now: now));
 
-    expect(find.text('NO BASELINE YET'), findsOneWidget);
-    expect(find.text('Your first session sets it.'), findsOneWidget);
+    expect(find.text('LOCKED'), findsNWidgets(4));
+    expect(find.text('Your first session sets it.'), findsNothing);
     expect(find.text('YOUR SCORES'), findsOneWidget);
     for (final card in ['AEROBIC', 'SPEED', 'MID', 'LONG']) {
       expect(find.text(card), findsOneWidget);
     }
+    expect(find.text('Log a 15K+ run to unlock LONG'), findsNothing);
+    await tester.tap(find.byTooltip('LONG info'));
+    await tester.pumpAndSettle();
     expect(find.text('Log a 15K+ run to unlock LONG'), findsOneWidget);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
     expect(find.text('RECENT ACTIVITY'), findsOneWidget);
     expect(find.textContaining('Sessions of any kind'), findsOneWidget);
     expect(find.text('No strap, tap to pair'), findsNothing);
@@ -36,7 +45,7 @@ void main() {
     }
     expect(find.widgetWithText(FilledButton, 'START'), findsNothing);
 
-    final ctx = tester.element(find.text('NO BASELINE YET'));
+    final ctx = tester.element(find.text('YOUR SCORES'));
     expect(
       Theme.of(ctx).extension<RunSoloTokens>()!.bgBase,
       NightSession.bgBase,
@@ -115,10 +124,78 @@ void main() {
     );
 
     expect(find.text('RECENT ACTIVITY'), findsOneWidget);
-    expect(find.text('4X4  ·  3 days ago', findRichText: true), findsOneWidget);
+    expect(find.text('4X4'), findsOneWidget);
     expect(find.text('5:00/km', findRichText: true), findsOneWidget);
-    expect(find.textContaining('8 laps · 32:00'), findsOneWidget);
+    expect(find.text('32:00'), findsNWidgets(2));
+    expect(find.text('6.40'), findsOneWidget);
+    expect(find.text('AVG PACE'), findsNWidgets(2));
     expect(find.text('All activity ›'), findsOneWidget);
+  });
+
+  testWidgets('VO2 max test name keeps Cooper behind info', (tester) async {
+    await pumpApp(
+      tester,
+      fakeServices(
+        runs: [summary(id: 'cooper', start: testNow, mode: RecordMode.cooper)],
+      ),
+      home: HomeScreen(now: now),
+    );
+    expect(find.text('VO2 MAX TEST'), findsOneWidget);
+    expect(find.textContaining('Cooper'), findsNothing);
+    await tester.ensureVisible(find.byTooltip('VO2 max test info'));
+    await tester.tap(find.byTooltip('VO2 max test info'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Cooper test: a 12-minute run'), findsOneWidget);
+  });
+
+  testWidgets('map cards and estimated times stay in vertical order', (
+    tester,
+  ) async {
+    final first = freeRunFile(
+      n: 31,
+      start: testNow.subtract(const Duration(days: 1)),
+    );
+    final second = fourByFourFile(
+      n: 32,
+      start: testNow.subtract(const Duration(days: 2)),
+    );
+    final effort = engine.BestEffort(
+      distance: engine.BestEffortDistance.k5,
+      elapsedMs: 1470000,
+      startMs: 0,
+      startOffsetM: 0,
+      splitsMs: const [],
+    );
+    final candidates = [
+      engine.LiveCandidate(
+        engine.BoardInput(
+          runId: first.id,
+          date: first.start,
+          mode: engine.RunMode.free,
+          efforts: {engine.BestEffortDistance.k5: effort},
+        ),
+        engine.RunDerived(
+          bestEfforts: engine.RunBestEfforts(
+            efforts: {engine.BestEffortDistance.k5: effort},
+            fromStartSplitsMs: const [],
+          ),
+        ),
+      ),
+    ];
+    final services = fakeServices(
+      files: [first, second],
+      live: LiveContextSource.prepared(candidates, now: now),
+    );
+    await pumpApp(tester, services, home: HomeScreen(now: now));
+    await pumpTimes(tester, 8);
+    final recent = find.byType(RecentActivity);
+    final maps = find.descendant(of: recent, matching: find.byType(RouteShape));
+    expect(maps, findsNWidgets(2));
+    final table = find.byKey(const ValueKey('recent-estimates-table'));
+    expect(table, findsOneWidget);
+    final row = find.descendant(of: recent, matching: find.byType(InkWell));
+    expect(row, findsWidgets);
+    expect(find.byType(SingleChildScrollView), findsOneWidget);
   });
 
   testWidgets('recent activity titles carry the run-type colours', (
@@ -146,21 +223,8 @@ void main() {
       'LAPS RUN': AuroraRunType.laps,
     };
     for (final entry in expected.entries) {
-      final titleText = tester.widget<Text>(
-        find.descendant(
-          of: find.byType(RecentActivity),
-          matching: find.byWidgetPredicate(
-            (widget) =>
-                widget is Text &&
-                widget.textSpan is TextSpan &&
-                (widget.textSpan as TextSpan).children?.first.toPlainText() ==
-                    entry.key,
-          ),
-        ),
-      );
-      final title =
-          (titleText.textSpan as TextSpan).children!.first as TextSpan;
-      expect(title.style!.color, entry.value);
+      final titleText = tester.widget<Text>(find.text(entry.key));
+      expect(titleText.style!.color, entry.value);
     }
   });
 
