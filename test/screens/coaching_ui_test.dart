@@ -95,19 +95,17 @@ void main() {
     expect(find.text('FROM THIS RUN'), findsNothing);
   });
 
-  testWidgets('Home: TRY NEXT with its reason, no "Set it up" for a Zone 2 '
-      'run; dismissed, it stays gone', (tester) async {
-    final services = fakeServices(files: fading());
-    await pumpApp(tester, services, home: HomeScreen(now: now));
+  testWidgets('scores-first Home does not add a second coaching launcher', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      fakeServices(files: fading()),
+      home: HomeScreen(now: now),
+    );
     await pumpTimes(tester, 8);
-    expect(find.byKey(const ValueKey('try-next')), findsOneWidget);
-    expect(find.text(engine.CoachSuggestion.zone2Text), findsOneWidget);
-    expect(find.textContaining('no run of an hour or more'), findsOneWidget);
-    expect(find.byKey(const ValueKey('try-next-set-up')), findsNothing);
-    await tapVisible(tester, find.byKey(const ValueKey('try-next-dismiss')));
-    await pumpTimes(tester, 4);
     expect(find.byKey(const ValueKey('try-next')), findsNothing);
-    expect(services.settings.settings.tryNextDismissed, runId(3));
+    expect(find.byType(FilledButton), findsOneWidget);
   });
 
   test('"Set it up": a 4x4 with one fewer rep, a 400s preset with one '

@@ -26,13 +26,31 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
     super.didChangeDependencies();
     final services = AppServices.of(context);
     if (_services != services) {
+      _services?.history.derivedChanged.removeListener(_reloadScores);
       _services = services;
+      services.history.derivedChanged.addListener(_reloadScores);
       _scores = null;
     }
     final live = services.live;
     _scores ??= live == null
         ? Future.value(<engine.IdentityLane, engine.IdentityScore>{})
         : live.prepare().then((_) => live.identityScores());
+  }
+
+  void _reloadScores() {
+    if (!mounted) return;
+    final live = _services?.live;
+    setState(
+      () => _scores = live == null
+          ? Future.value(<engine.IdentityLane, engine.IdentityScore>{})
+          : live.prepare().then((_) => live.identityScores()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _services?.history.derivedChanged.removeListener(_reloadScores);
+    super.dispose();
   }
 
   @override

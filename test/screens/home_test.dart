@@ -6,7 +6,6 @@ import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/home_screen.dart';
 import 'package:run_solo/screens/permissions_screen.dart';
-import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/screens/start_screen.dart';
 import 'package:run_solo/state/live_context.dart';
 import 'package:run_solo/state/settings.dart';
@@ -17,86 +16,66 @@ import '../helpers.dart';
 import '../run_fixtures.dart';
 
 void main() {
-  testWidgets('Home shows five choices, not a second START launcher', (
+  testWidgets('new install has one remembered Start and no locked tiles', (
     tester,
   ) async {
-    final services = fakeServices();
-    await pumpApp(tester, services, home: HomeScreen(now: now));
+    await pumpApp(tester, fakeServices(), home: HomeScreen(now: now));
+    expect(find.text('SET YOUR LINE'), findsOneWidget);
+    expect(find.text('LOCKED'), findsNothing);
+    expect(find.text('NEW RUN'), findsNothing);
+    expect(find.text('Start Norwegian 4x4'), findsOneWidget);
+    expect(find.byType(FilledButton), findsOneWidget);
+  });
 
-    expect(find.text('LOCKED'), findsNWidgets(4));
-    expect(find.text('Your first session sets it.'), findsNothing);
-    expect(find.text('YOUR SCORES'), findsOneWidget);
-    for (final card in ['AEROBIC', 'SPEED', 'MID', 'LONG']) {
-      expect(find.text(card), findsOneWidget);
-    }
-    expect(find.text('Log a 15K+ run to unlock LONG'), findsNothing);
-    await tester.tap(find.byTooltip('LONG info'));
-    await tester.pumpAndSettle();
-    expect(find.text('Log a 15K+ run to unlock LONG'), findsOneWidget);
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
-    expect(find.text('RECENT ACTIVITY'), findsOneWidget);
-    expect(find.textContaining('Sessions of any kind'), findsOneWidget);
-    expect(find.text('No strap, tap to pair'), findsNothing);
-    expect(find.text('NEW RUN'), findsOneWidget);
-    expect(find.text('Thu 24 Sep'), findsOneWidget);
-    for (final choice in ['FREE', 'LAPS', 'GOAL', 'INTERVALS', 'TESTS']) {
-      expect(find.text(choice), findsOneWidget);
-    }
-    expect(find.widgetWithText(FilledButton, 'START'), findsNothing);
+  for (final mode in [
+    RecordMode.free,
+    RecordMode.cooper,
+    RecordMode.intervals,
+  ]) {
+    testWidgets('Start remembers $mode and opens setup before recording', (
+      tester,
+    ) async {
+      final fake = FakeRecorderGateway(now: now);
+      final services = fakeServices(
+        recorder: fake,
+        settings: AppSettings(onboardingDone: true, lastMode: mode),
+      );
+      await pumpApp(tester, services, home: HomeScreen(now: now));
+      await tester.tap(find.byType(FilledButton));
+      await pumpTimes(tester, 4);
+      expect(find.byType(StartScreen), findsOneWidget);
+      expect(services.settings.settings.lastMode, mode);
+      expect(fake.startCalls, isEmpty);
+    });
+  }
 
-    final ctx = tester.element(find.text('YOUR SCORES'));
-    expect(
-      Theme.of(ctx).extension<RunSoloTokens>()!.bgBase,
-      NightSession.bgBase,
+  testWidgets('goal selection survives Home Start', (tester) async {
+    final services = fakeServices(
+      settings: const AppSettings(onboardingDone: true, goalRun: true),
     );
-  });
-
-  testWidgets('Home FREE choice starts recording with one pinned START', (
-    tester,
-  ) async {
-    final fake = FakeRecorderGateway(now: now);
-    final services = fakeServices(recorder: fake);
     await pumpApp(tester, services, home: HomeScreen(now: now));
-    await tester.ensureVisible(find.text('FREE'));
-    await tester.tap(find.text('FREE'));
+    await tester.tap(find.byType(FilledButton));
     await pumpTimes(tester, 4);
-    expect(find.byType(StartScreen), findsOneWidget);
-    expect(services.settings.settings.lastMode, RecordMode.free);
-    expect(find.text('START FREE RUN'), findsOneWidget);
-    expect(fake.startCalls, isEmpty);
-    await tester.tap(find.text('START FREE RUN'));
-    await pumpTimes(tester, 6);
-    expect(fake.startCalls.single.mode, RecordMode.free);
-    expect(find.byType(RecordingScreen), findsOneWidget);
-  });
-
-  testWidgets('Home TESTS choice opens the test setup selected', (
-    tester,
-  ) async {
-    final services = fakeServices();
-    await pumpApp(tester, services, home: HomeScreen(now: now));
-    await tester.ensureVisible(find.text('TESTS'));
-    await tester.tap(find.text('TESTS'));
-    await pumpTimes(tester, 4);
-    expect(find.byType(StartScreen), findsOneWidget);
-    expect(services.settings.settings.lastMode, RecordMode.cooper);
-    expect(find.text('START TEST'), findsOneWidget);
-    expect(find.text('12-MINUTE'), findsOneWidget);
-    expect(find.text('BRONCO'), findsOneWidget);
-  });
-
-  testWidgets('Home GOAL choice opens goal setup, not an interval loop', (
-    tester,
-  ) async {
-    final services = fakeServices();
-    await pumpApp(tester, services, home: HomeScreen(now: now));
-    await tester.ensureVisible(find.text('GOAL'));
-    await tester.tap(find.text('GOAL'));
-    await pumpTimes(tester, 4);
-    expect(find.byType(StartScreen), findsOneWidget);
     expect(services.settings.settings.goalRun, isTrue);
-    expect(find.text('START 5 KM'), findsOneWidget);
+    expect(find.byType(StartScreen), findsOneWidget);
+  });
+
+  testWidgets('plan input has priority without inventing enrolment', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      fakeServices(),
+      home: HomeScreen(
+        now: now,
+        planHeadline: (
+          title: 'TEMPO TODAY',
+          subtitle: 'Week 3, session 2 of 3.',
+        ),
+      ),
+    );
+    expect(find.text('TEMPO TODAY'), findsOneWidget);
+    expect(find.text('Week 3, session 2 of 3.'), findsOneWidget);
   });
 
   testWidgets('recent activity lists the last sessions of any kind', (
@@ -125,6 +104,7 @@ void main() {
 
     expect(find.text('RECENT ACTIVITY'), findsOneWidget);
     expect(find.text('4X4'), findsOneWidget);
+    expect(find.text('LAST RESULT'), findsOneWidget);
     expect(find.text('5:00/km', findRichText: true), findsOneWidget);
     expect(find.text('32:00'), findsNWidgets(2));
     expect(find.text('6.40'), findsOneWidget);
@@ -195,7 +175,7 @@ void main() {
     expect(table, findsOneWidget);
     final row = find.descendant(of: recent, matching: find.byType(InkWell));
     expect(row, findsWidgets);
-    expect(find.byType(SingleChildScrollView), findsOneWidget);
+    expect(find.byType(SingleChildScrollView), findsNWidgets(2));
   });
 
   testWidgets('recent activity titles carry the run-type colours', (
@@ -228,28 +208,22 @@ void main() {
     }
   });
 
-  testWidgets('saved strap stays off Home; Intervals opens selected setup', (
+  testWidgets('saved strap stays off Home and Change retains last type', (
     tester,
   ) async {
     final services = fakeServices(
       settings: const AppSettings(
         onboardingDone: true,
         lastMode: RecordMode.free,
-        reps: 5,
-        recoverySeconds: 150,
         strap: SavedStrap(address: 'X', name: 'WHOOP 12'),
       ),
     );
     await pumpApp(tester, services, home: HomeScreen(now: now));
     expect(find.text('Strap: Whoop'), findsNothing);
-    expect(find.text('Norwegian 4x4'), findsOneWidget);
-
-    await tester.ensureVisible(find.text('INTERVALS'));
-    await tester.tap(find.text('INTERVALS'));
+    await tester.tap(find.text('Change'));
     await pumpTimes(tester, 4);
-    expect(services.settings.settings.lastMode, RecordMode.intervals);
+    expect(services.settings.settings.lastMode, RecordMode.free);
     expect(find.byType(StartScreen), findsOneWidget);
-    expect(find.text('START WARM-UP'), findsOneWidget);
   });
 
   testWidgets('location not granted: choice opens the checklist first', (
@@ -265,8 +239,7 @@ void main() {
       find.text('Location permission needed before you can record.'),
       findsOneWidget,
     );
-    await tester.ensureVisible(find.text('FREE'));
-    await tester.tap(find.text('FREE'));
+    await tester.tap(find.byType(FilledButton));
     await pumpTimes(tester, 4);
     expect(find.byType(PermissionsScreen), findsOneWidget);
     expect(find.byType(StartScreen), findsNothing);

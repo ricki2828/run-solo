@@ -84,6 +84,7 @@ class _ShellScreenState extends State<ShellScreen> {
           HomeScreen(
             now: widget.now,
             onShowHistory: () => setState(() => _tab = AppTab.history),
+            onShowProgress: () => setState(() => _tab = AppTab.trend),
           ),
           HistoryScreen(onStart: () => setState(() => _tab = AppTab.home)),
           const ProgressScreen(),

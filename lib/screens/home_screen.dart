@@ -8,28 +8,33 @@ import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../theme/theme.dart';
-import '../widgets/coaching.dart';
-import '../widgets/identity_score_cards.dart';
+import '../widgets/home_scores.dart';
 import '../widgets/goal_picker.dart';
-import '../widgets/mode_chip.dart';
 import '../widgets/recent_activity.dart';
+import 'progress_screen.dart';
 
-/// Home as the dashboard (product call 27-Sep: "a summary of recent
-/// activity, overall performance/trend/fitness level and able to kick off
-/// new activity all at same time"; variant A signed off the same day):
-/// Lap Line R + date, the fitness hero (VO2 estimate, trend, source), RECENT
-/// ACTIVITY (last three sessions of any kind, with map thumbnails),
-/// ESTIMATED TIMES between the first two activities, TRY NEXT,
-/// Five run-type choices sit at the bottom and lead directly to Start setup.
-/// Checklist incomplete = red row above the run-type choices.
+/// Scores-first Home. Start opens setup with the saved session unchanged;
+/// results and recent activity remain history-backed, never synthetic.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.now, this.onShowHistory});
+  const HomeScreen({
+    super.key,
+    this.now,
+    this.onShowHistory,
+    this.onShowProgress,
+    this.planHeadline,
+  });
 
   /// Injected for tests; defaults to the wall clock.
   final DateTime Function()? now;
 
   /// "All activity" switches the shell to the History tab.
   final VoidCallback? onShowHistory;
+
+  /// Switches the shell to Progress. Standalone Home pushes Progress.
+  final VoidCallback? onShowProgress;
+
+  /// Supplied only by a future persisted plan integration, never inferred.
+  final ({String title, String subtitle})? planHeadline;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -121,16 +126,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(_refresh);
   }
 
-  /// The Home choice is the entry to Start setup, not a saved preference
-  /// followed by another selector. Start's pinned button begins recording.
-  Future<void> _chooseType({RecordMode? mode, bool goal = false}) async {
-    final services = AppServices.of(context);
-    await services.settings.update(
-      (s) => goal
-          ? s.copyWith(goalRun: true)
-          : s.copyWith(lastMode: mode!, goalRun: false),
-    );
-    if (mounted) await _start();
+  void _openProgress() {
+    if (widget.onShowProgress != null) {
+      widget.onShowProgress!();
+    } else {
+      Navigator.of(
+        context,
+      ).push<void>(MaterialPageRoute(builder: (_) => const ProgressScreen()));
+    }
   }
 
   void _openRun(RunSummary r) {
@@ -177,40 +180,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                   const SizedBox(height: Space.x32),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'GO AGAIN.',
-                      style: RunSoloType.display64.copyWith(
-                        color: t.inkPrimary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: Space.x8),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Your next run starts here. Your last run sets the line '
-                      'to beat.',
-                      style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                  FutureBuilder<List<RunSummary>>(
+                    future: _runs,
+                    builder: (context, snap) => HomeHeadline(
+                      runs: snap.data ?? const [],
+                      units: settings.units,
+                      plan: widget.planHeadline,
                     ),
                   ),
                   const SizedBox(height: Space.x16),
-                  if (perms != null && !perms.canRecord)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: Space.x12),
-                      child: InkWell(
-                        onTap: _start,
-                        child: Text(
-                          perms.coarseOnly
-                              ? 'Location is approximate. Precise is needed '
-                                    'for pace.'
-                              : 'Location permission needed before you can '
-                                    'record.',
-                          style: text.labelLarge?.copyWith(color: t.semDanger),
-                        ),
-                      ),
-                    ),
                   FutureBuilder<
                     ({
                       engine.FitnessHero? hero,
@@ -218,65 +196,124 @@ class _HomeScreenState extends State<HomeScreen> {
                     })
                   >(
                     future: _scores,
-                    builder: (context, snap) => IdentityScoreCards(
+                    builder: (context, snap) => HomeScores(
                       scores: snap.data?.scores ?? const {},
-                      hero: snap.data?.hero,
                       profileSex: settings.profileSex,
                       age: settings.birthYear == null
                           ? null
                           : _now.year - settings.birthYear!,
-                      onOpen: (score) => Navigator.of(context)
-                          .pushNamed(Routes.runDetail, arguments: score.runId),
+                      onOpen: _openProgress,
                     ),
                   ),
-                  const SizedBox(height: Space.x24),
-                  FutureBuilder<List<RunSummary>>(
-                    future: _runs,
-                    builder: (context, snap) =>
-                        FutureBuilder<engine.HomeEstimates?>(
-                          future: _estimates,
-                          builder: (context, estimateSnap) => RecentActivity(
-                            runs: snap.data ?? const [],
-                            units: settings.units,
-                            now: _now,
-                            onOpen: _openRun,
-                            onShowAll: widget.onShowHistory,
-                            estimates: estimateSnap.data,
-                          ),
-                        ),
-                  ),
-                  // A10.4: TRY NEXT under ESTIMATED TIMES (variant A, 27-Sep).
-                  const SizedBox(height: Space.x24),
-                  TryNextCard(
-                    onSetUp: (change) async {
-                      await services.settings.update(change);
-                      if (context.mounted) await _start();
-                    },
-                  ),
-                  const SizedBox(height: Space.x32),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'NEW RUN',
-                      style: RunSoloType.heading19.copyWith(
-                        color: t.inkPrimary,
+                  const SizedBox(height: Space.x16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: _start,
+                      child: Text(
+                        'Start ${settings.goalRun ? goalLabel(settings) : switch (settings.lastMode) {
+                                RecordMode.free => 'free run',
+                                RecordMode.laps => services.pickedSession.templateId == engine.SessionSpec.broncoId ? 'Bronco test' : 'laps run',
+                                RecordMode.cooper => 'VO2 max test',
+                                RecordMode.intervals => services.pickedSession.name,
+                              }}',
                       ),
                     ),
                   ),
-                  const SizedBox(height: Space.x12),
-                  ModeChipRow(
-                    compactTiles: true,
-                    selected: settings.lastMode,
-                    session: services.pickedSession,
-                    goal: settings.goalRun,
-                    goalLabel: goalLabel(settings),
-                    testsLabel: 'VO2 max test · Bronco',
-                    testsSelected:
-                        !settings.goalRun &&
-                        settings.lastMode == RecordMode.cooper,
-                    onGoal: () => _chooseType(goal: true),
-                    onSelect: (m) => _chooseType(mode: m),
-                    onTests: () => _chooseType(mode: RecordMode.cooper),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: _start,
+                      child: const Text('Change'),
+                    ),
+                  ),
+                  if (perms != null && !perms.canRecord)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: Space.x12),
+                      child: InkWell(
+                        onTap: _start,
+                        child: Text(
+                          perms.coarseOnly
+                              ? 'Location is approximate. Precise is needed for pace.'
+                              : 'Location permission needed before you can record.',
+                          style: text.labelLarge?.copyWith(color: t.semDanger),
+                        ),
+                      ),
+                    ),
+                  FutureBuilder<List<RunSummary>>(
+                    future: _runs,
+                    builder: (context, snap) {
+                      final runs =
+                          (snap.data ?? const <RunSummary>[])
+                              .where((r) => !r.missing)
+                              .toList()
+                            ..sort((a, b) => b.start.compareTo(a.start));
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (runs.isNotEmpty) ...[
+                            Text(
+                              'LAST RESULT',
+                              style: RunSoloType.micro11.copyWith(
+                                color: t.inkSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: Space.x8),
+                            InkWell(
+                              onTap: () => _openRun(runs.first),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(Space.x16),
+                                decoration: BoxDecoration(
+                                  color: t.bgRaised,
+                                  borderRadius: BorderRadius.circular(
+                                    Radii.card,
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      runHeaderTitle(runs.first),
+                                      style: RunSoloType.body15.copyWith(
+                                        color: t.inkPrimary,
+                                      ),
+                                    ),
+                                    Text(
+                                      homeLastResult(
+                                        runs.first,
+                                        settings.units,
+                                      ),
+                                      style: RunSoloType.heading19.copyWith(
+                                        color: t.inkPrimary,
+                                      ),
+                                    ),
+                                    Text(
+                                      Fmt.dayDate(runs.first.start),
+                                      style: RunSoloType.label13.copyWith(
+                                        color: t.inkSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: Space.x24),
+                          ],
+                          FutureBuilder<engine.HomeEstimates?>(
+                            future: _estimates,
+                            builder: (context, estimateSnap) => RecentActivity(
+                              runs: runs,
+                              units: settings.units,
+                              now: _now,
+                              onOpen: _openRun,
+                              onShowAll: widget.onShowHistory,
+                              estimates: estimateSnap.data,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: Space.x24),
                   const SizedBox(height: Space.x24),
@@ -288,4 +325,74 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
   }
+}
+
+/// Headline uses an eligible comparable work pace, not whole-run pace as a
+/// substitute. Free/test-only history gets a true, non-comparable state.
+class HomeHeadline extends StatelessWidget {
+  const HomeHeadline({
+    super.key,
+    required this.runs,
+    required this.units,
+    this.plan,
+  });
+  final List<RunSummary> runs;
+  final Units units;
+  final ({String title, String subtitle})? plan;
+
+  @override
+  Widget build(BuildContext context) {
+    final valid = runs.where((r) => !r.missing).toList()
+      ..sort((a, b) => b.start.compareTo(a.start));
+    final comparable = valid
+        .where(
+          (r) =>
+              r.isFourByFour && r.eligibleAsPrior && r.workPaceSecPerKm != null,
+        )
+        .firstOrNull;
+    final title =
+        plan?.title ??
+        (valid.isEmpty
+            ? 'SET YOUR LINE'
+            : comparable == null
+            ? 'GO AGAIN.'
+            : 'BEAT ${Fmt.pace(comparable.workPaceSecPerKm, units)}');
+    final subtitle =
+        plan?.subtitle ??
+        (valid.isEmpty
+            ? 'Your first run is the one to beat.'
+            : comparable == null
+            ? 'Your next run starts here.'
+            : 'Your last ${comparable.spec?.name ?? '4x4'} work pace, ${Fmt.dayDate(comparable.start)}.');
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(title, style: RunSoloType.display64.copyWith(color: t.inkPrimary)),
+        Text(
+          subtitle,
+          style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+        ),
+      ],
+    );
+  }
+}
+
+/// Read cached index figures on-device, with analysis only as a test fallback.
+String homeLastResult(RunSummary run, Units units) {
+  final goal = run.row?.goal ?? run.analysis?.goal;
+  if (goal != null && goal.reached) {
+    if (goal.kind == engine.GoalKind.distance && goal.goalMs != null) {
+      return Fmt.clock(goal.goalMs!);
+    }
+    if (goal.kind == engine.GoalKind.time && goal.goalDistanceM != null) {
+      return Fmt.distance(goal.goalDistanceM!, units);
+    }
+  }
+  if (run.mode == RecordMode.cooper && run.cooper != null) {
+    return Fmt.distance(run.distanceM, units);
+  }
+  return run.isFourByFour
+      ? run.verdict?.headline.text ?? Fmt.paceUnit(run.workPaceSecPerKm, units)
+      : Fmt.paceUnit(run.avgSecPerKm, units);
 }
