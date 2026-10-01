@@ -22,14 +22,13 @@ const String kPrivacyParagraph =
     'Your recorded route, times and heart rate stay on your phone unless you '
     'choose to send them. '
     'Map tiles come from Google, which sees the map area you view and your '
-    'IP address, like any maps app. Weather comes from Open-Meteo using '
-    'your location rounded to about 10 km. Your phone turns a run\'s start '
-    'point into a place name with its own geocoder, which may use Google '
-    'Play services.';
+    'IP address. Weather comes from Open-Meteo using '
+    'your location rounded to about 10 km. Your phone\'s own geocoder names '
+    'a run\'s start point and may use Google Play services.';
 const String kNoAnalyticsLine = 'No analytics of our own. No account. No ads.';
 const String kOpenMeteoAttribution = 'Weather data by Open-Meteo.com';
 const String kOnboardingInternetLine =
-    'Maps and weather use the internet. Your recorded run stays on the phone unless you choose to send it.';
+    'Maps and weather use the internet. Runs stay on your phone unless you send them.';
 
 /// Settings → Voice sublines (A10.7).
 const String kCoachingTipsLine =

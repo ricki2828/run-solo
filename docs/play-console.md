@@ -33,7 +33,7 @@ Founder approves the wording (plan §18.9 item 8) before anything is typed into 
 >
 > Free runs get a clean summary. Every 4x4 goes on a trend line with your bests. Follow a fixed 8-week 4x4 plan or a 5k plan: pick your days, tick sessions off, start the right session from the plan.
 >
-> No account. No feed. No ads. No analytics of our own. Your recorded route, times and heart rate stay on your phone unless you choose to send them. Map tiles come from Google, which sees the map area you view and your IP address, like any maps app. Weather comes from Open-Meteo using your location rounded to about 10 km. Your phone turns a run's start point into a place name with its own geocoder, which may use Google Play services. Send a run as a TCX or GPX file any time.
+> No account. No feed. No ads. No analytics of our own. Your recorded route, times and heart rate stay on your phone unless you choose to send them. Map tiles come from Google, which sees the map area you view and your IP address. Weather comes from Open-Meteo using your location rounded to about 10 km. Your phone's own geocoder names a run's start point and may use Google Play services. Send a run as a TCX or GPX file any time.
 >
 > Coming in the paid version: tempo and easy-run verdicts, adaptive plans, iOS. Join the waitlist inside the app.
 

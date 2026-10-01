@@ -850,7 +850,10 @@ void main() {
     );
     await pumpTimes(tester, 4);
     await scrollTo(tester, find.text('SEND RUNS TO'));
-    await tester.drag(find.byType(ListView).first, const Offset(0, -200));
+    await Scrollable.ensureVisible(
+      tester.element(find.text('SEND RUNS TO')),
+      alignment: 0.05,
+    );
     await pumpTimes(tester, 2);
     await golden(tester, 'settings_send_runs');
   });
