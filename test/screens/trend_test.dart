@@ -204,11 +204,9 @@ void main() {
       ], 'Free');
       expect(chart, findsOneWidget);
       expect(find.text('5:00'), findsOneWidget);
-      expect(
-        find.descendant(of: chart, matching: find.text('8:00')),
-        findsNothing,
-      );
       expect(find.textContaining('pause'), findsNothing);
+      // The tiles agree with the chart: nothing reads 8:00 anywhere.
+      expect(find.text('8:00'), findsNothing);
     });
 
     testWidgets('Laps 0 and 1 comparable: no chart', (tester) async {

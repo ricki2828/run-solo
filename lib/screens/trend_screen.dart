@@ -539,16 +539,18 @@ class _DistanceTrend extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     if (runs.isEmpty) return const SizedBox.shrink();
     final totalM = runs.fold(0.0, (a, r) => a + r.distanceM);
-    final paced = runs.where((r) => r.avgSecPerKm != null).toList();
+    // Free: the tiles use the same moving pace as the chart.
+    double? paceOf(RunSummary r) =>
+        mode == RecordMode.free ? movingPaceOf(r) : r.avgSecPerKm;
+    final paced = [
+      for (final r in runs)
+        if (paceOf(r) != null) paceOf(r)!,
+    ];
     final avgPace = paced.isEmpty
         ? null
-        : paced.map((r) => r.avgSecPerKm!).reduce((a, b) => a + b) /
-              paced.length;
+        : paced.reduce((a, b) => a + b) / paced.length;
     final longest = runs.map((r) => r.distanceM).reduce(math.max);
-    double? fastest;
-    for (final r in paced) {
-      if (fastest == null || r.avgSecPerKm! < fastest) fastest = r.avgSecPerKm;
-    }
+    final fastest = paced.isEmpty ? null : paced.reduce(math.min);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
