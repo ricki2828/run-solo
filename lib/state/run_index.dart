@@ -342,6 +342,7 @@ class IndexRow {
     this.startLat,
     this.startLon,
     this.place,
+    this.street,
     this.title,
     this.utcOffsetMin,
     this.movingMs,
@@ -354,7 +355,8 @@ class IndexRow {
   /// 4: [goal] (LB3b).
   /// 5: [startLat], [startLon], [place], [title], [utcOffsetMin] (run identity).
   /// 6: [movingMs], [medianLapSec].
-  static const int currentVersion = 6;
+  /// 7: [street].
+  static const int currentVersion = 7;
 
   final int version;
   final int lapCount;
@@ -400,6 +402,9 @@ class IndexRow {
   /// The place name the phone's geocoder gave the start point (sidecar
   /// `place`); null until resolved, and without a fix or geocoder.
   final String? place;
+
+  /// The start's street name (no house number); null until looked up.
+  final String? street;
 
   /// The runner's own name for the run (sidecar `title`); null = automatic.
   final String? title;
@@ -452,6 +457,7 @@ class IndexRow {
       startLat: first == null ? null : dp4(first.lat),
       startLon: first == null ? null : dp4(first.lon),
       place: sidecar?.place,
+      street: sidecar?.street,
       title: sidecar?.title,
       utcOffsetMin: sidecar?.utcOffsetMin,
       movingMs: engine.RunTimes.movingMs(run),
@@ -482,6 +488,7 @@ class IndexRow {
     'lat': ?startLat,
     'lon': ?startLon,
     'place': ?place,
+    'street': ?street,
     'title': ?title,
     'utc_offset_min': ?utcOffsetMin,
     'moving_ms': ?movingMs,
@@ -525,6 +532,7 @@ class IndexRow {
         startLat: d('lat'),
         startLon: d('lon'),
         place: j['place'] as String?,
+        street: j['street'] as String?,
         title: j['title'] as String?,
         utcOffsetMin: j['utc_offset_min'] as int?,
         movingMs: j['moving_ms'] as int?,

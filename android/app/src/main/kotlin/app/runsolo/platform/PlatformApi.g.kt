@@ -1705,6 +1705,48 @@ data class BackupStatus (
 }
 
 /**
+ * What the geocoder said about one point. Both fields are display text only.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class PlaceName (
+  val street: String? = null,
+  val area: String? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): PlaceName {
+      val street = pigeonVar_list[0] as String?
+      val area = pigeonVar_list[1] as String?
+      return PlaceName(street, area)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      street,
+      area,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as PlaceName
+    return PlatformApiPigeonUtils.deepEquals(this.street, other.street) && PlatformApiPigeonUtils.deepEquals(this.area, other.area)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.street)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.area)
+    return result
+  }
+}
+
+/**
  * Generated class from Pigeon that represents data sent in messages.
  * This class should not be extended by any user class outside of the generated file.
  */
@@ -2510,50 +2552,55 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
       }
       164.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TickEvent.fromList(it)
+          PlaceName.fromList(it)
         }
       }
       165.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapEvent.fromList(it)
+          TickEvent.fromList(it)
         }
       }
       166.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapPendingEvent.fromList(it)
+          LapEvent.fromList(it)
         }
       }
       167.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CueEvent.fromList(it)
+          LapPendingEvent.fromList(it)
         }
       }
       168.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          GpsProbeEvent.fromList(it)
+          CueEvent.fromList(it)
         }
       }
       169.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CompareEvent.fromList(it)
+          GpsProbeEvent.fromList(it)
         }
       }
       170.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          GoalEvent.fromList(it)
+          CompareEvent.fromList(it)
         }
       }
       171.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FaultEvent.fromList(it)
+          GoalEvent.fromList(it)
         }
       }
       172.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StateEvent.fromList(it)
+          FaultEvent.fromList(it)
         }
       }
       173.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          StateEvent.fromList(it)
+        }
+      }
+      174.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           PhaseEvent.fromList(it)
         }
@@ -2703,44 +2750,48 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(163)
         writeValue(stream, value.toList())
       }
-      is TickEvent -> {
+      is PlaceName -> {
         stream.write(164)
         writeValue(stream, value.toList())
       }
-      is LapEvent -> {
+      is TickEvent -> {
         stream.write(165)
         writeValue(stream, value.toList())
       }
-      is LapPendingEvent -> {
+      is LapEvent -> {
         stream.write(166)
         writeValue(stream, value.toList())
       }
-      is CueEvent -> {
+      is LapPendingEvent -> {
         stream.write(167)
         writeValue(stream, value.toList())
       }
-      is GpsProbeEvent -> {
+      is CueEvent -> {
         stream.write(168)
         writeValue(stream, value.toList())
       }
-      is CompareEvent -> {
+      is GpsProbeEvent -> {
         stream.write(169)
         writeValue(stream, value.toList())
       }
-      is GoalEvent -> {
+      is CompareEvent -> {
         stream.write(170)
         writeValue(stream, value.toList())
       }
-      is FaultEvent -> {
+      is GoalEvent -> {
         stream.write(171)
         writeValue(stream, value.toList())
       }
-      is StateEvent -> {
+      is FaultEvent -> {
         stream.write(172)
         writeValue(stream, value.toList())
       }
-      is PhaseEvent -> {
+      is StateEvent -> {
         stream.write(173)
+        writeValue(stream, value.toList())
+      }
+      is PhaseEvent -> {
+        stream.write(174)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -3417,11 +3468,13 @@ interface PermissionsApi {
  */
 interface PlaceApi {
   /**
-   * A short name for the area around the point (sub-locality, else
-   * locality), e.g. "Albert Park". Null when there is no geocoder on the
-   * phone, it is offline, or it has no answer: never a coordinate.
+   * Where the point is: the street (the geocoder's thoroughfare, never a
+   * house number) and the area (sub-locality, else locality), e.g. "Lakeside
+   * Dr" and "Albert Park". Null when there is no geocoder on the phone, it
+   * is offline, or it has no answer: never a coordinate. Either field is
+   * null when the geocoder has no usable value for it.
    */
-  fun placeName(lat: Double, lon: Double, callback: (Result<String?>) -> Unit)
+  fun placeName(lat: Double, lon: Double, callback: (Result<PlaceName?>) -> Unit)
 
   companion object {
     /** The codec used by PlaceApi. */
@@ -3439,7 +3492,7 @@ interface PlaceApi {
             val args = message as List<Any?>
             val latArg = args[0] as Double
             val lonArg = args[1] as Double
-            api.placeName(latArg, lonArg) { result: Result<String?> ->
+            api.placeName(latArg, lonArg) { result: Result<PlaceName?> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(PlatformApiPigeonUtils.wrapError(error))

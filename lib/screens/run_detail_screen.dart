@@ -17,6 +17,7 @@ import '../widgets/hold_button.dart';
 import '../widgets/rep_bars.dart';
 import '../widgets/recent_activity.dart' show runTypeColor;
 import '../widgets/weather_chip.dart';
+import '../widgets/where_when_line.dart';
 import 'verdict_screen.dart';
 
 /// Run detail (design brief §4.7, addendum A4): header, post-run map, rep /
@@ -260,6 +261,7 @@ class _Header extends StatefulWidget {
 
 class _HeaderState extends State<_Header> {
   String? _place;
+  String? _street;
   String? _custom;
   bool _renamed = false;
 
@@ -267,17 +269,25 @@ class _HeaderState extends State<_Header> {
   void initState() {
     super.initState();
     _place = widget.detail.summary.place;
+    _street = widget.detail.summary.street;
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     // An older run, or one the geocoder could not name when it finished:
-    // try again now (null when offline or indoors, which stays blank).
-    if (_place == null && widget.detail.summary.startPoint != null) {
+    // try again now (null when offline or indoors, which stays blank). A run
+    // with an area but no street is asked once for the street.
+    if ((_place == null || _street == null) &&
+        widget.detail.summary.startPoint != null) {
       final id = widget.detail.run.id;
       AppServices.of(context).places.ensure(id).then((p) {
-        if (mounted && p != null) setState(() => _place = p);
+        if (mounted && p != null) {
+          setState(() {
+            _place = p.area ?? _place;
+            _street = p.street ?? _street;
+          });
+        }
       });
     }
   }
@@ -389,9 +399,12 @@ class _HeaderState extends State<_Header> {
             ),
           ],
         ),
-        Text(
-          whereWhen(_place, summary.start, utcOffsetMin: summary.utcOffsetMin),
+        WhereWhenLine(
           key: const ValueKey('detail-where-when'),
+          place: _place,
+          street: _street,
+          start: summary.start,
+          utcOffsetMin: summary.utcOffsetMin,
           style: RunSoloType.label13.copyWith(color: t.inkSecondary),
         ),
         const SizedBox(height: Space.x12),

@@ -95,12 +95,27 @@ String runIdentityTitle(RunSummary r) =>
 /// "Albert Park · Thu 24 Sep · 6:00": where, which day and when the run
 /// started. The place is left out (never a coordinate) when it is not known.
 String runWhereWhen(RunSummary r) =>
-    whereWhen(r.place, r.start, utcOffsetMin: r.utcOffsetMin);
+    whereWhen(r.place, r.start, utcOffsetMin: r.utcOffsetMin, street: r.street);
 
 /// [runWhereWhen] from its parts.
-String whereWhen(String? place, DateTime start, {int? utcOffsetMin}) {
+String whereWhen(
+  String? place,
+  DateTime start, {
+  int? utcOffsetMin,
+  String? street,
+}) => [?whereOf(place, street), whenOf(start, utcOffsetMin)].join(' · ');
+
+/// "Lakeside Dr, Albert Park": the street and the area, or whichever of the
+/// two is known; null when neither is.
+String? whereOf(String? place, String? street) {
+  final parts = [?street, ?place];
+  return parts.isEmpty ? null : parts.join(', ');
+}
+
+/// "Thu 24 Sep · 6:00": the run's own day and time of day.
+String whenOf(DateTime start, int? utcOffsetMin) {
   final local = engine.RunIdentity.localStart(start, utcOffsetMin);
-  return [?place, Fmt.dayDate(local), Fmt.hhmm(local)].join(' · ');
+  return '${Fmt.dayDate(local)} · ${Fmt.hhmm(local)}';
 }
 
 /// The session name alone, for the one place the run-type colour goes
@@ -131,6 +146,7 @@ class RunSummary {
     this.eventStart,
     this.startPoint,
     this.place,
+    this.street,
     this.customTitle,
     this.utcOffsetMin,
   });
@@ -156,6 +172,7 @@ class RunSummary {
         ? null
         : (lat: e.row!.startLat!, lon: e.row!.startLon!),
     place: e.row!.place,
+    street: e.row!.street,
     customTitle: e.row!.title,
     utcOffsetMin: e.row!.utcOffsetMin,
   );
@@ -199,6 +216,9 @@ class RunSummary {
   /// The start point's place name ("Albert Park"); null until the phone's
   /// geocoder has answered, and for a run without a fix.
   final String? place;
+
+  /// The start's street name (no house number); null until looked up.
+  final String? street;
 
   /// The runner's own name for the run; null = the automatic title.
   final String? customTitle;
@@ -390,6 +410,10 @@ abstract class RunStore implements HistoryStore {
   /// verdict is touched.
   Future<void> setPlace(String id, String? place);
 
+  /// Save the start's street (null when the geocoder had none) and note that
+  /// the street has been asked for, so it is not asked again.
+  Future<void> setStreet(String id, String? street);
+
   /// The runner's own title for the run (null clears it). Display only.
   Future<void> setTitle(String id, String? title);
 
@@ -578,6 +602,7 @@ RunSummary _summaryOf(
       : null,
   startPoint: engine.RunIdentity.startOf(run),
   place: sidecar?.place,
+  street: sidecar?.street,
   customTitle: sidecar?.title,
   utcOffsetMin: sidecar?.utcOffsetMin,
   // Only a 4x4 carries a verdict word (plan §18.2); guard by the effective
@@ -773,6 +798,12 @@ class MemoryRunStore implements RunStore {
   Future<void> setPlace(String id, String? place) async {
     final s = sidecars[id] ?? engine.RunSidecar(runId: id);
     sidecars[id] = s.copyWith(place: place);
+  }
+
+  @override
+  Future<void> setStreet(String id, String? street) async {
+    final s = sidecars[id] ?? engine.RunSidecar(runId: id);
+    sidecars[id] = s.copyWith(street: street, streetTried: true);
   }
 
   @override
@@ -1485,6 +1516,12 @@ class FileRunStore implements RunStore {
   @override
   Future<void> setPlace(String id, String? place) =>
       _writeIdentity(id, (current) => current.copyWith(place: place));
+
+  @override
+  Future<void> setStreet(String id, String? street) => _writeIdentity(
+    id,
+    (current) => current.copyWith(street: street, streetTried: true),
+  );
 
   @override
   Future<void> setTitle(String id, String? title) =>

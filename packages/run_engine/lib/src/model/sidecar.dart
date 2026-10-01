@@ -93,6 +93,8 @@ class RunSidecar {
     this.comparisonKey,
     this.parkrun,
     this.place,
+    this.street,
+    this.streetTried = false,
     this.title,
     this.utcOffsetMin,
     this.placeTries = 0,
@@ -132,6 +134,15 @@ class RunSidecar {
   /// there is no fix or no geocoder.
   final String? place;
 
+  /// The start's street name (no house number); null until looked up, or
+  /// when the geocoder has none.
+  final String? street;
+
+  /// A street lookup has been answered for this run (with or without a
+  /// street), so an older run with an area but no street is asked once, not
+  /// every time its detail opens.
+  final bool streetTried;
+
   /// The runner's own name for the run; replaces the automatic title.
   /// Display only, so it survives every recalculation.
   final String? title;
@@ -160,6 +171,8 @@ class RunSidecar {
       cooper == null &&
       comparisonKey == null &&
       place == null &&
+      street == null &&
+      !streetTried &&
       title == null &&
       utcOffsetMin == null &&
       placeTries == 0 &&
@@ -176,12 +189,16 @@ class RunSidecar {
     Object? comparisonKey = _unset,
     Object? parkrun = _unset,
     Object? place = _unset,
+    Object? street = _unset,
+    bool? streetTried,
     Object? title = _unset,
     Object? utcOffsetMin = _unset,
     int? placeTries,
   }) => RunSidecar(
     runId: runId,
     place: identical(place, _unset) ? this.place : place as String?,
+    street: identical(street, _unset) ? this.street : street as String?,
+    streetTried: streetTried ?? this.streetTried,
     title: identical(title, _unset) ? this.title : title as String?,
     utcOffsetMin: identical(utcOffsetMin, _unset)
         ? this.utcOffsetMin
@@ -269,6 +286,8 @@ class RunSidecar {
     'comparison_key': comparisonKey,
     _parkrunKey: ?parkrun?.toJson(),
     'place': ?place,
+    'street': ?street,
+    if (streetTried) 'street_tried': true,
     'title': ?title,
     'utc_offset_min': ?utcOffsetMin,
     if (placeTries > 0) 'place_tries': placeTries,
@@ -345,6 +364,8 @@ class RunSidecar {
       comparisonKey: key as String?,
       parkrun: ParkrunInfo.fromJson(optObject(_parkrunKey)),
       place: optString('place'),
+      street: optString('street'),
+      streetTried: json['street_tried'] == true,
       title: optString('title'),
       utcOffsetMin: json['utc_offset_min'] is int
           ? json['utc_offset_min'] as int

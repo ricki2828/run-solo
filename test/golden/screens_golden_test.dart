@@ -16,6 +16,7 @@ import 'package:run_solo/screens/board_detail_screen.dart';
 import 'package:run_solo/screens/course_board_screen.dart';
 import 'package:run_solo/screens/custom_builder_screen.dart';
 import 'package:run_solo/screens/verdict_screen.dart';
+import 'package:run_solo/widgets/recent_activity.dart';
 import 'package:run_solo/widgets/rep_bars.dart';
 import 'package:run_solo/screens/home_screen.dart';
 import 'package:run_solo/screens/permissions_screen.dart';
@@ -440,6 +441,41 @@ void main() {
     await scrollTo(tester, find.text('KM SPLITS'));
     await settleAnimations(tester);
     await golden(tester, 'detail_int_splits_360x640');
+  });
+
+  testWidgets('recent activity: long street ellipsizes at 360 wide', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360 * 3, 560 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    RunSummary run(String id, String street) => RunSummary(
+      id: id,
+      mode: RecordMode.free,
+      start: DateTime(2026, 9, 24, 6).toUtc(),
+      durationMs: 40 * 60 * 1000,
+      distanceM: 6000,
+      laps: 0,
+      place: 'Albert Park',
+      street: street,
+      row: IndexRow(lapCount: 0, place: 'Albert Park', street: street),
+    );
+    final runs = [
+      run('a', 'Lakeside Dr'),
+      run('b', 'Avenida Presidente Juscelino Kubitschek de Oliveira'),
+    ];
+    await pumpApp(
+      tester,
+      fakeServices(runs: runs),
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: RecentActivity(runs: runs, units: Units.km, now: now()),
+        ),
+      ),
+    );
+    await pumpTimes(tester, 6);
+    await golden(tester, 'recent_activity_long_street_360');
   });
 
   testWidgets('verdict: indoor run', (tester) async {
