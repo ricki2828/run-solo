@@ -75,6 +75,7 @@ class RecentBarsChart extends StatelessWidget {
     this.moment,
     this.previousBest,
     this.noise,
+    this.caption,
     this.chartKey,
   });
 
@@ -124,6 +125,9 @@ class RecentBarsChart extends StatelessWidget {
   final Animation<double>? moment;
   final double? previousBest;
   final NoiseBand? noise;
+
+  /// A plain-words line under the axis note (what the bars compare).
+  final String? caption;
 
   /// Key of the chart's tap area.
   final Key? chartKey;
@@ -236,6 +240,14 @@ class RecentBarsChart extends StatelessWidget {
           'Axis starts at ${tickFmt(scale.base)}$axisSuffix',
           style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
         ),
+        if (caption != null) ...[
+          const SizedBox(height: Space.x4),
+          Text(
+            caption!,
+            key: const ValueKey('distance-trend-caption'),
+            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+          ),
+        ],
         if (noise != null) ...[
           const SizedBox(height: Space.x4),
           Text(

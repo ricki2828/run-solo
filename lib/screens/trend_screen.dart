@@ -514,15 +514,8 @@ class _DistanceTrend extends StatelessWidget {
           direction: 'Faster is taller',
           emptyTitle: 'Two comparable runs draw the first chart.',
           emptyBody: shown.length == 1 ? c!.caption : null,
+          caption: c?.caption,
         ),
-        if (shown.length >= 2) ...[
-          const SizedBox(height: Space.x4),
-          Text(
-            c!.caption,
-            key: const ValueKey('distance-trend-caption'),
-            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-          ),
-        ],
       ],
     );
   }

@@ -735,7 +735,9 @@ void main() {
                       10,
                       6,
                     ).add(Duration(days: 9 * i)),
-                    seconds: 1800 - 40 * (i.isOdd ? i : -i),
+                    secPerKm: const [372, 355, 366, 350, 362, 358, 346, 352][i],
+                    seconds:
+                        5 * const [372, 355, 366, 350, 362, 358, 346, 352][i],
                   ),
         ];
         await pumpApp(

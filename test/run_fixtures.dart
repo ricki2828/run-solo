@@ -73,6 +73,7 @@ engine.RunFile freeRunFile({
   required DateTime start,
   bool hr = true,
   int seconds = 1800,
+  int secPerKm = 360,
 }) => generator
     .generate(
       synth.SyntheticSpec(
@@ -82,7 +83,7 @@ engine.RunFile freeRunFile({
         lapStyle: synth.LapStyle.none,
         hr: hr,
         start: start,
-        segments: [synth.Segment.free(seconds, speedFor(360))],
+        segments: [synth.Segment.free(seconds, speedFor(secPerKm))],
       ),
     )
     .run;
