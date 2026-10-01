@@ -22,7 +22,9 @@ class PlaceApiImpl(private val context: Context) : PlaceApi {
 
     override fun placeName(lat: Double, lon: Double, callback: (Result<String?>) -> Unit) {
         // The Result must come back on the platform thread, whatever the geocoder does.
-        fun reply(name: String?) = main.post { callback(Result.success(name)) }
+        fun reply(name: String?) {
+            main.post { callback(Result.success(name)) }
+        }
         if (!Geocoder.isPresent()) {
             reply(null)
             return
@@ -31,8 +33,12 @@ class PlaceApiImpl(private val context: Context) : PlaceApi {
             val geocoder = Geocoder(context, Locale.getDefault())
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 geocoder.getFromLocation(lat, lon, 1, object : Geocoder.GeocodeListener {
-                    override fun onGeocode(addresses: MutableList<Address>) = reply(nameOf(addresses.firstOrNull()))
-                    override fun onError(errorMessage: String?) = reply(null)
+                    override fun onGeocode(addresses: MutableList<Address>) {
+                        reply(nameOf(addresses.firstOrNull()))
+                    }
+                    override fun onError(errorMessage: String?) {
+                        reply(null)
+                    }
                 })
             } else {
                 worker.execute {
