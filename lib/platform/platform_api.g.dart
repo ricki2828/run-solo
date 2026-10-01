@@ -3250,6 +3250,46 @@ class PermissionsApi {
   }
 }
 
+/// A place name for a run's start point, from the phone's own geocoder
+/// (`android.location.Geocoder`). Run Solo sends nothing itself; the system
+/// geocoder may ask Google Play services, which is said in the privacy
+/// policy.
+class PlaceApi {
+  /// Constructor for [PlaceApi].  The [binaryMessenger] named argument is
+  /// available for dependency injection.  If it is left null, the default
+  /// BinaryMessenger will be used which routes to the host platform.
+  PlaceApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+      : pigeonVar_binaryMessenger = binaryMessenger,
+        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  final BinaryMessenger? pigeonVar_binaryMessenger;
+
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  final String pigeonVar_messageChannelSuffix;
+
+  /// A short name for the area around the point (sub-locality, else
+  /// locality), e.g. "Albert Park". Null when there is no geocoder on the
+  /// phone, it is offline, or it has no answer: never a coordinate.
+  Future<String?> placeName(double lat, double lon) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.PlaceApi.placeName$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[lat, lon]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+    return pigeonVar_replyValue as String?;
+  }
+}
+
 class BleApi {
   /// Constructor for [BleApi].  The [binaryMessenger] named argument is
   /// available for dependency injection.  If it is left null, the default

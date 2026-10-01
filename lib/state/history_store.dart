@@ -20,6 +20,7 @@ import 'package:flutter/foundation.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/event_names.dart';
+import '../app/format.dart';
 import '../platform/fake_gateway.dart';
 import '../platform/gateway.dart';
 import '../platform/session_codec.dart';
@@ -85,6 +86,27 @@ String runHeaderTitle(RunSummary r) =>
     runLabel(r) == '4x4' ? '4x4' : runTitle(r);
 
 /// A spec-less Intervals run predates I4, when the 4x4 was the only session.
+/// The title a run shows in lists and on its detail: the runner's own name
+/// when set, else the time of day and the session's name ("Morning Norwegian
+/// 4x4", "Evening Free run"). Never a bare "4X4".
+String runIdentityTitle(RunSummary r) =>
+    r.customTitle ?? engine.RunIdentity.title(r.localStart, runTitle(r));
+
+/// "Albert Park · Thu 24 Sep · 6:00": where, which day and when the run
+/// started. The place is left out (never a coordinate) when it is not known.
+String runWhereWhen(RunSummary r) =>
+    whereWhen(r.place, r.start, utcOffsetMin: r.utcOffsetMin);
+
+/// [runWhereWhen] from its parts.
+String whereWhen(String? place, DateTime start, {int? utcOffsetMin}) {
+  final local = engine.RunIdentity.localStart(start, utcOffsetMin);
+  return [?place, Fmt.dayDate(local), Fmt.hhmm(local)].join(' · ');
+}
+
+/// The session name alone, for the one place the run-type colour goes
+/// (Aurora rule): the title minus its time-of-day word.
+String runSessionName(RunSummary r) => runTitle(r);
+
 bool _isFourByFour(RunSummary r) =>
     r.spec == null || r.spec!.templateId == engine.SessionSpec.norwegian4x4Id;
 
@@ -107,6 +129,10 @@ class RunSummary {
     this.parkrun,
     this.indexedHeatFraction,
     this.eventStart,
+    this.startPoint,
+    this.place,
+    this.customTitle,
+    this.utcOffsetMin,
   });
 
   /// From the index (W5b): no file decoded, no analysis.
@@ -126,6 +152,12 @@ class RunSummary {
     eventStart: e.row!.eventStartLat == null || e.row!.eventStartLon == null
         ? null
         : (lat: e.row!.eventStartLat!, lon: e.row!.eventStartLon!),
+    startPoint: e.row!.startLat == null || e.row!.startLon == null
+        ? null
+        : (lat: e.row!.startLat!, lon: e.row!.startLon!),
+    place: e.row!.place,
+    customTitle: e.row!.title,
+    utcOffsetMin: e.row!.utcOffsetMin,
   );
 
   final String id;
@@ -159,6 +191,24 @@ class RunSummary {
 
   /// K1: an event run's first fix; null otherwise or without a fix.
   final ({double lat, double lon})? eventStart;
+
+  /// Where the run started (first fix, any run type); null indoors. Used to
+  /// name the place and to reuse a nearby run's name.
+  final ({double lat, double lon})? startPoint;
+
+  /// The start point's place name ("Albert Park"); null until the phone's
+  /// geocoder has answered, and for a run without a fix.
+  final String? place;
+
+  /// The runner's own name for the run; null = the automatic title.
+  final String? customTitle;
+
+  /// The phone's UTC offset (minutes) when the run finished; null on older
+  /// runs.
+  final int? utcOffsetMin;
+
+  /// The start as the runner lived it (see [engine.RunIdentity.localStart]).
+  DateTime get localStart => engine.RunIdentity.localStart(start, utcOffsetMin);
 
   String? get comparisonKey => indexedComparisonKey ?? analysis?.comparisonKey;
 
@@ -228,8 +278,7 @@ class RunSummary {
   /// A GOAL run records in Intervals mode but has its own result, no
   /// verdict (founder 8K field test 29-Sep: Home showed "8 laps" and
   /// routed to a big NO VERDICT for an 8K goal run).
-  bool get isFourByFour =>
-      mode == RecordMode.intervals && spec?.isGoal != true;
+  bool get isFourByFour => mode == RecordMode.intervals && spec?.isGoal != true;
 
   /// The Saturday 5 km event (K1), by its session template.
   bool get isParkrun => spec?.templateId == engine.SessionSpec.parkrunId;
@@ -336,6 +385,20 @@ abstract class RunStore implements HistoryStore {
   /// K1: move an event run to another course (the runner's pick).
   Future<RunDetail> setCourse(String id, String courseId);
   Future<void> delete(String id);
+
+  /// Name (or clear, with null) the place the run started. Display only: no
+  /// verdict is touched.
+  Future<void> setPlace(String id, String? place);
+
+  /// The runner's own title for the run (null clears it). Display only.
+  Future<void> setTitle(String id, String? title);
+
+  /// Record the phone's UTC offset (minutes) for the run, once, at finish.
+  /// Keeps an offset already recorded.
+  Future<void> setUtcOffset(String id, int minutes);
+
+  /// Count a place lookup that found no name (the app stops after three).
+  Future<void> addPlaceTry(String id);
 }
 
 /// K1: [info] with one field changed, keeping the other.
@@ -513,6 +576,10 @@ RunSummary _summaryOf(
   eventStart: run.session?.templateId == engine.SessionSpec.parkrunId
       ? engine.ParkrunCourses.startOf(run)
       : null,
+  startPoint: engine.RunIdentity.startOf(run),
+  place: sidecar?.place,
+  customTitle: sidecar?.title,
+  utcOffsetMin: sidecar?.utcOffsetMin,
   // Only a 4x4 carries a verdict word (plan §18.2); guard by the effective
   // mode so nothing else ever shows one.
   verdict:
@@ -701,6 +768,30 @@ class MemoryRunStore implements RunStore {
     id,
     (s) => s.withParkrun(_parkrunWith(s.parkrun, courseId: courseId)),
   );
+
+  @override
+  Future<void> setPlace(String id, String? place) async {
+    final s = sidecars[id] ?? engine.RunSidecar(runId: id);
+    sidecars[id] = s.copyWith(place: place);
+  }
+
+  @override
+  Future<void> setTitle(String id, String? title) async {
+    final s = sidecars[id] ?? engine.RunSidecar(runId: id);
+    sidecars[id] = s.copyWith(title: title);
+  }
+
+  @override
+  Future<void> setUtcOffset(String id, int minutes) async {
+    final s = sidecars[id] ?? engine.RunSidecar(runId: id);
+    sidecars[id] = s.copyWith(utcOffsetMin: s.utcOffsetMin ?? minutes);
+  }
+
+  @override
+  Future<void> addPlaceTry(String id) async {
+    final s = sidecars[id] ?? engine.RunSidecar(runId: id);
+    sidecars[id] = s.copyWith(placeTries: s.placeTries + 1);
+  }
 
   @override
   Future<void> delete(String id) async => _deleted.add(id);
@@ -1389,6 +1480,38 @@ class FileRunStore implements RunStore {
       (current) => current.copyWith(weather: weather.toJson()),
       runFile: file,
     );
+  }
+
+  @override
+  Future<void> setPlace(String id, String? place) =>
+      _writeIdentity(id, (current) => current.copyWith(place: place));
+
+  @override
+  Future<void> setTitle(String id, String? title) =>
+      _writeIdentity(id, (current) => current.copyWith(title: title));
+
+  @override
+  Future<void> setUtcOffset(String id, int minutes) => _writeIdentity(
+    id,
+    (current) =>
+        current.copyWith(utcOffsetMin: current.utcOffsetMin ?? minutes),
+  );
+
+  @override
+  Future<void> addPlaceTry(String id) => _writeIdentity(
+    id,
+    (current) => current.copyWith(placeTries: current.placeTries + 1),
+  );
+
+  /// A display-only sidecar change: through the writer, never recreating a
+  /// deleted run's sidecar, and no re-analysis (it feeds no verdict).
+  Future<void> _writeIdentity(
+    String id,
+    engine.RunSidecar Function(engine.RunSidecar) change,
+  ) async {
+    final file = await _fileFor(id);
+    if (file == null) return;
+    await sidecars.update(id, _sidecarFor(file), change, runFile: file);
   }
 
   @override

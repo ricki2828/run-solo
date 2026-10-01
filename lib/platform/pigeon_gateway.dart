@@ -3,6 +3,8 @@
 /// recording state (plan §2 rule 2).
 library;
 
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import 'gateway.dart';
 import 'platform.dart';
 
@@ -100,6 +102,23 @@ class PigeonStorageGateway implements StorageGateway {
 
   @override
   Future<List<String>> enforceBackupBudget() => _api.enforceBackupBudget();
+}
+
+class PigeonPlaceGateway implements PlaceGateway {
+  PigeonPlaceGateway({PlaceApi? api}) : _api = api ?? PlaceApi();
+  final PlaceApi _api;
+
+  @override
+  Future<String?> placeName(double lat, double lon) async {
+    try {
+      return await _api
+          .placeName(lat, lon)
+          .timeout(const Duration(seconds: 10), onTimeout: () => null);
+    } catch (e) {
+      debugPrint('place: geocoder failed ($e)');
+      return null;
+    }
+  }
 }
 
 class PigeonPermissionsGateway implements PermissionsGateway {

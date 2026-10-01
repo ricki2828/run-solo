@@ -113,6 +113,19 @@ class _RecentActivityState extends State<RecentActivity> {
   }
 }
 
+/// The Aurora run-type colour: only ever on the session name and the
+/// figures, never on the title's time-of-day word.
+Color runTypeColor(RunSummary run) => switch (run.mode) {
+  RecordMode.free => AuroraRunType.free,
+  RecordMode.laps when run.spec?.templateId == engine.SessionSpec.broncoId =>
+    AuroraRunType.tests,
+  RecordMode.laps => AuroraRunType.laps,
+  RecordMode.cooper => AuroraRunType.tests,
+  RecordMode.intervals when run.spec?.isGoal == true || run.isParkrun =>
+    AuroraRunType.goal,
+  RecordMode.intervals => AuroraRunType.intervals,
+};
+
 class _ActivityRow extends StatelessWidget {
   const _ActivityRow({
     required this.run,
@@ -131,21 +144,18 @@ class _ActivityRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final title = run.mode == RecordMode.cooper
+    final sessionName = run.mode == RecordMode.cooper
         ? 'VO2 max test'
-        : runHeaderTitle(run);
-    final typeColor = switch (run.mode) {
-      RecordMode.free => AuroraRunType.free,
-      RecordMode.laps
-          when run.spec?.templateId == engine.SessionSpec.broncoId =>
-        AuroraRunType.tests,
-      RecordMode.laps => AuroraRunType.laps,
-      RecordMode.cooper => AuroraRunType.tests,
-      RecordMode.intervals when run.spec?.isGoal == true || run.isParkrun =>
-        AuroraRunType.goal,
-      RecordMode.intervals => AuroraRunType.intervals,
-    };
+        : runSessionName(run);
+    final custom = run.customTitle;
+    final timeWord = engine.RunIdentity.timeOfDay(run.localStart);
+    final title = custom ?? '$timeWord $sessionName';
+    final typeColor = runTypeColor(run);
     final (stat, statSmall) = _stat(run, units);
+    // An interval run's card shows the pace of the work reps, the figure
+    // Home and the verdict use, not the whole-run average (which includes
+    // the jogs and reads far slower).
+    final workPace = run.isFourByFour && run.workPaceSecPerKm != null;
     final verdict = run.isFourByFour ? run.verdict : null;
     final word = verdict?.headline.text;
     final wordColor = switch (verdict?.headline) {
@@ -154,8 +164,7 @@ class _ActivityRow extends StatelessWidget {
     };
     return Semantics(
       button: onTap != null,
-      label:
-          '$title, ${Fmt.ago(run.start, now)}${word == null ? '' : ', $word'}',
+      label: '$title, ${runWhereWhen(run)}${word == null ? '' : ', $word'}',
       child: InkWell(
         onTap: onTap,
         child: Container(
@@ -174,9 +183,28 @@ class _ActivityRow extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      title.toUpperCase(),
-                      style: RunSoloType.heading19.copyWith(color: typeColor),
+                    // The run-type colour stays on the session name only.
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          if (custom == null)
+                            TextSpan(
+                              text: '$timeWord ',
+                              style: TextStyle(color: t.inkPrimary),
+                            ),
+                          TextSpan(
+                            text: custom ?? sessionName,
+                            // The run-type colour is the session name's
+                            // alone; a runner's own title is Bone.
+                            style: TextStyle(
+                              color: custom == null ? typeColor : t.inkPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: RunSoloType.heading19,
                     ),
                   ),
                   if (run.mode == RecordMode.cooper)
@@ -208,11 +236,13 @@ class _ActivityRow extends StatelessWidget {
                         ),
                       ),
                     ),
-                  Text(
-                    Fmt.ago(run.start, now),
-                    style: RunSoloType.label13.copyWith(color: t.inkMuted),
-                  ),
                 ],
+              ),
+              const SizedBox(height: Space.x4),
+              Text(
+                runWhereWhen(run),
+                key: const ValueKey('activity-where-when'),
+                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
               ),
               const SizedBox(height: Space.x12),
               Row(
@@ -233,8 +263,11 @@ class _ActivityRow extends StatelessWidget {
                   ),
                   Expanded(
                     child: _ActivityStat(
-                      label: 'AVG PACE',
-                      value: Fmt.paceUnit(run.avgSecPerKm, units),
+                      label: workPace ? 'WORK PACE' : 'AVG PACE',
+                      value: Fmt.paceUnit(
+                        workPace ? run.workPaceSecPerKm : run.avgSecPerKm,
+                        units,
+                      ),
                       color: typeColor,
                     ),
                   ),

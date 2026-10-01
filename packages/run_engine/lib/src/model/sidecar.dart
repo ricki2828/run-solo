@@ -92,6 +92,10 @@ class RunSidecar {
     this.cooper,
     this.comparisonKey,
     this.parkrun,
+    this.place,
+    this.title,
+    this.utcOffsetMin,
+    this.placeTries = 0,
     this.readSchema = schema,
   });
 
@@ -123,6 +127,23 @@ class RunSidecar {
   /// the verdict (key and headline), so changing either unfreezes it.
   final ParkrunInfo? parkrun;
 
+  /// Where the run started, as the phone's geocoder named it ("Albert
+  /// Park"). Display only, never an input. Absent until resolved, and when
+  /// there is no fix or no geocoder.
+  final String? place;
+
+  /// The runner's own name for the run; replaces the automatic title.
+  /// Display only, so it survives every recalculation.
+  final String? title;
+
+  /// The phone's UTC offset in minutes when the run finished: buckets the
+  /// time of day in the zone the runner was in. Absent on older runs.
+  final int? utcOffsetMin;
+
+  /// Place lookups that found no name (geocoder absent, offline, failed).
+  /// The app stops asking after three.
+  final int placeTries;
+
   /// Earlier verdicts, oldest first: every verdict that was unfrozen by a
   /// fix-laps edit or override, or replaced by an engine bump (plan §5
   /// "previous text kept in verdict history"), so a rebuild from sidecars
@@ -138,6 +159,10 @@ class RunSidecar {
       weather == null &&
       cooper == null &&
       comparisonKey == null &&
+      place == null &&
+      title == null &&
+      utcOffsetMin == null &&
+      placeTries == 0 &&
       parkrun == null;
 
   RunSidecar copyWith({
@@ -150,8 +175,18 @@ class RunSidecar {
     Object? cooper = _unset,
     Object? comparisonKey = _unset,
     Object? parkrun = _unset,
+    Object? place = _unset,
+    Object? title = _unset,
+    Object? utcOffsetMin = _unset,
+    int? placeTries,
   }) => RunSidecar(
     runId: runId,
+    place: identical(place, _unset) ? this.place : place as String?,
+    title: identical(title, _unset) ? this.title : title as String?,
+    utcOffsetMin: identical(utcOffsetMin, _unset)
+        ? this.utcOffsetMin
+        : utcOffsetMin as int?,
+    placeTries: placeTries ?? this.placeTries,
     parkrun: identical(parkrun, _unset)
         ? this.parkrun
         : parkrun as ParkrunInfo?,
@@ -233,6 +268,10 @@ class RunSidecar {
     'cooper': cooper,
     'comparison_key': comparisonKey,
     _parkrunKey: ?parkrun?.toJson(),
+    'place': ?place,
+    'title': ?title,
+    'utc_offset_min': ?utcOffsetMin,
+    if (placeTries > 0) 'place_tries': placeTries,
   };
 
   /// Newer than this build (W6): the app must treat the run as read-only and
@@ -277,6 +316,11 @@ class RunSidecar {
     if (key != null && key is! String) {
       throw RunFileFormatException('comparison_key must be a string or null');
     }
+    String? optString(String key) {
+      final v = json[key];
+      return v is String && v.isNotEmpty ? v : null;
+    }
+
     final frozen = json['frozen_verdict'];
     final history = json['verdict_history'] ?? const [];
     if (history is! List) {
@@ -300,6 +344,12 @@ class RunSidecar {
       cooper: optObject('cooper'),
       comparisonKey: key as String?,
       parkrun: ParkrunInfo.fromJson(optObject(_parkrunKey)),
+      place: optString('place'),
+      title: optString('title'),
+      utcOffsetMin: json['utc_offset_min'] is int
+          ? json['utc_offset_min'] as int
+          : null,
+      placeTries: json['place_tries'] is int ? json['place_tries'] as int : 0,
       readSchema: schemaValue,
     );
   }

@@ -355,11 +355,11 @@ class HistoryRow extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final muted = run.missing ? t.inkMuted : t.inkPrimary;
     final (direction, glyph, glyphColor) = verdictGlyph(run.verdict, t);
-    final label = runTitle(run);
+    final label = runIdentityTitle(run);
     return Semantics(
       button: onTap != null,
       label:
-          '$label, ${Fmt.dayDate(run.start)}${run.verdict == null ? '' : ', ${run.verdict!.headline.text}'}',
+          '$label, ${runWhereWhen(run)}${run.verdict == null ? '' : ', ${run.verdict!.headline.text}'}',
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
@@ -387,8 +387,16 @@ class HistoryRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      Fmt.dayDate(run.start),
+                      label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: RunSoloType.body17.copyWith(color: muted),
+                    ),
+                    Text(
+                      runWhereWhen(run),
+                      style: RunSoloType.label13.copyWith(
+                        color: t.inkSecondary,
+                      ),
                     ),
                     Text(
                       run.missing
