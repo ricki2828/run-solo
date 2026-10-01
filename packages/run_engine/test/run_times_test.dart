@@ -8,11 +8,28 @@ void main() {
   final base = fixture('easy_free_run').run;
   final totalMs = base.end.difference(base.start).inMilliseconds;
 
-  Lap lap(int i, int t0, int t1, [LapKind kind = LapKind.manual]) =>
-      Lap(index: i, t0Ms: t0, t1Ms: t1, d0M: 0, d1M: 0, kind: kind);
+  /// A lap from [t0] to [t1] ms covering [m] metres.
+  Lap lap(int i, int t0, int t1, double m, [LapKind kind = LapKind.manual]) =>
+      Lap(
+        index: i,
+        t0Ms: t0,
+        t1Ms: t1,
+        d0M: i * 1000.0,
+        d1M: i * 1000.0 + m,
+        kind: kind,
+      );
 
-  RunFile with_({List<Lap>? laps, List<Span>? pauses}) =>
-      base.copyWith(laps: laps ?? base.laps, pauses: pauses ?? const []);
+  RunFile with_({
+    List<Lap>? laps,
+    List<Span> pauses = const [],
+    List<Span> gaps = const [],
+    Object? session = 'keep',
+  }) => base.copyWith(
+    laps: laps ?? base.laps,
+    pauses: pauses,
+    gaps: gaps,
+    session: session == 'keep' ? base.session : session as SessionSpec?,
+  );
 
   group('movingMs', () {
     test('no pauses: the whole duration, warm-up included', () {
@@ -40,81 +57,135 @@ void main() {
     });
   });
 
+  group('movingMs (more)', () {
+    test('a run from before pause events existed is its elapsed time', () {
+      expect(RunTimes.movingMs(with_()), totalMs);
+    });
+
+    test('a crash gap comes out too, and a gap inside a pause once', () {
+      final r = with_(
+        pauses: [Span(100000, 200000)],
+        gaps: [Span(300000, 330000), Span(150000, 180000)],
+      );
+      expect(RunTimes.movingMs(r), totalMs - 100000 - 30000);
+    });
+  });
+
   group('medianLapSec', () {
     test('no laps: null', () {
       expect(RunTimes.medianLapSec(with_(laps: const [])), isNull);
     });
 
-    test('median of complete laps', () {
+    test('median of complete 1 km laps', () {
       final r = with_(
         laps: [
-          lap(0, 0, 300000),
-          lap(1, 300000, 620000),
-          lap(2, 620000, 900000),
-          lap(3, 900000, 1200000),
+          lap(0, 0, 300000, 1000),
+          lap(1, 300000, 620000, 1000),
+          lap(2, 620000, 900000, 1000),
+          lap(3, 900000, 1200000, 1000),
         ],
       );
-      // 300, 320, 280, 300 -> sorted 280 300 300 320 -> 300
+      expect(RunTimes.medianLapSec(r), 300); // 280 300 300 320
+    });
+
+    test('a manual-LAP run with pressed-by-feel laps (within 25%)', () {
+      final r = with_(
+        laps: [
+          lap(0, 0, 300000, 980),
+          lap(1, 300000, 610000, 1130),
+          lap(2, 610000, 900000, 940),
+          lap(3, 900000, 1210000, 1010),
+        ],
+      );
+      expect(RunTimes.medianLapSec(r), 305); // 300 310 290 310
+    });
+
+    test('a slow partial final lap is dropped (by distance, not time)', () {
+      final r = with_(
+        laps: [
+          lap(0, 0, 300000, 1000),
+          lap(1, 300000, 600000, 1000),
+          lap(2, 600000, 900000, 1000),
+          lap(3, 900000, 1500000, 300), // 10 min, only 300 m
+        ],
+      );
       expect(RunTimes.medianLapSec(r), 300);
     });
 
-    test('a partial final lap is left out', () {
+    test('a fast complete final lap is kept', () {
       final r = with_(
         laps: [
-          lap(0, 0, 300000),
-          lap(1, 300000, 600000),
-          lap(2, 600000, 900000),
-          lap(3, 900000, 960000), // stopped 60 s into the next lap
+          lap(0, 0, 300000, 1000),
+          lap(1, 300000, 640000, 1000),
+          lap(2, 640000, 900000, 1000),
+          lap(3, 900000, 1150000, 1000), // 250 s, a full km
         ],
       );
-      expect(RunTimes.medianLapSec(r), 300);
+      // 300 340 260 250 -> 280 (dropping the last would give 300)
+      expect(RunTimes.medianLapSec(r), 280);
     });
 
     test('a 4 s tail after the last press is left out', () {
       final r = with_(
         laps: [
-          lap(0, 0, 400000),
-          lap(1, 400000, 790000),
-          lap(2, 790000, 794000),
+          lap(0, 0, 400000, 1000),
+          lap(1, 400000, 790000, 1000),
+          lap(2, 790000, 794000, 12),
         ],
       );
       expect(RunTimes.medianLapSec(r), 395);
     });
 
-    test('a full-length final lap stays in', () {
+    test('variable-length laps: null', () {
       final r = with_(
         laps: [
-          lap(0, 0, 300000),
-          lap(1, 300000, 600000),
-          lap(2, 600000, 880000), // 280 s, over 90% of 300
+          lap(0, 0, 100000, 400),
+          lap(1, 100000, 400000, 1000),
+          lap(2, 400000, 600000, 600),
         ],
       );
-      expect(RunTimes.medianLapSec(r), 300);
-      expect(RunTimes.medianLapSec(with_(laps: [lap(0, 0, 100000)])), 100);
+      expect(RunTimes.medianLapSec(r), isNull);
     });
 
-    test('paused time inside a lap is taken out of it', () {
+    test('a fartlek: null', () {
+      final r = with_(
+        laps: [lap(0, 0, 300000, 1000), lap(1, 300000, 600000, 1000)],
+        session: SessionSpec.fartlek,
+      );
+      expect(RunTimes.medianLapSec(r), isNull);
+    });
+
+    test('no GPS distance (indoor): null', () {
+      final r = with_(laps: [lap(0, 0, 300000, 0), lap(1, 300000, 600000, 0)]);
+      expect(RunTimes.medianLapSec(r), isNull);
+    });
+
+    test('paused or gap time inside a lap is taken out of it', () {
       final r = with_(
         laps: [
-          lap(0, 0, 300000),
-          lap(1, 300000, 700000),
-          lap(2, 700000, 1000000),
+          lap(0, 0, 300000, 1000),
+          lap(1, 300000, 700000, 1000),
+          lap(2, 700000, 1030000, 1000),
         ],
         pauses: [Span(400000, 500000)],
+        gaps: [Span(900000, 930000)],
       );
-      // 300, 400 - 100 paused = 300, 300
-      expect(RunTimes.medianLapSec(r), 300);
+      expect(RunTimes.medianLapSec(r), 300); // 300, 300, 300
     });
 
     test('pause laps are not laps', () {
       final r = with_(
         laps: [
-          lap(0, 0, 300000),
-          lap(1, 300000, 360000, LapKind.pause),
-          lap(2, 360000, 660000),
+          lap(0, 0, 300000, 1000),
+          lap(1, 300000, 360000, 0, LapKind.pause),
+          lap(2, 360000, 660000, 1000),
         ],
       );
       expect(RunTimes.medianLapSec(r), 300);
+    });
+
+    test('a single lap is kept', () {
+      expect(RunTimes.medianLapSec(with_(laps: [lap(0, 0, 100000, 400)])), 100);
     });
   });
 }
