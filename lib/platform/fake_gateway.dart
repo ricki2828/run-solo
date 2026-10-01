@@ -163,7 +163,6 @@ class FakeRecorderGateway implements RecorderGateway {
       _emitState();
     }
   }
-
   int _activeMs = 0; // recording time only
   int _lapStartElapsedMs = 0;
   int _lapStartActiveMs = 0;
