@@ -22,6 +22,7 @@ import '../state/live_context.dart';
 import '../state/max_hr.dart';
 import '../state/places.dart';
 import '../state/recording_controller.dart';
+import '../state/send_runs.dart';
 import '../state/sessions.dart';
 import '../state/settings.dart';
 import '../state/weather.dart';
@@ -47,9 +48,16 @@ class AppServices {
     this.weather,
     this.live,
     PlaceGateway? placeGateway,
+    List<ExportTarget>? exportTargets,
   }) : places = PlaceResolver(
          store: history,
          gateway: placeGateway ?? FakePlaceGateway(),
+       ),
+       sender = SendCoordinator(
+         history: history,
+         settings: settings,
+         targets: exportTargets ?? defaultExportTargets(transfer),
+         now: now,
        ),
        now = now ?? DateTime.now,
        sessions = sessions ?? SessionsController(MemorySessionsStore()),
@@ -81,6 +89,9 @@ class AppServices {
   /// Names a run's start point once it is finished (and lazily for old runs
   /// when their detail opens).
   final PlaceResolver places;
+
+  /// Send runs: the Send button and the automatic after-run sends.
+  final SendCoordinator sender;
 
   /// Weather per finished run (W1); null in tests and the fake APK.
   final WeatherQueue? weather;
@@ -131,6 +142,31 @@ class AppServices {
       _lastPlacedRunId = s.runId;
       unawaited(places.onFinished(s.runId!, now: now()));
     });
+  }
+
+  String? _lastSentRunId;
+
+  /// Sends each finished run to the automatic targets the runner switched on
+  /// (none by default), and retries what an offline run left behind once on
+  /// open. Off the run's critical path; a failure only logs.
+  void startSends() {
+    unawaited(_sendPass(sender.reconcile));
+    recording.addListener(() {
+      final s = recording.snapshot;
+      if (s.state != RecorderState.idle || s.runId == null) return;
+      if (s.runId == _lastSentRunId) return;
+      _lastSentRunId = s.runId;
+      final id = s.runId!;
+      unawaited(_sendPass(() => sender.sendAuto(id)));
+    });
+  }
+
+  Future<void> _sendPass(Future<void> Function() pass) async {
+    try {
+      await pass();
+    } catch (e) {
+      debugPrint('send: pass failed ($e)');
+    }
   }
 
   Future<void> _weatherForNewVerdict(WeatherQueue w, String id) async {
@@ -194,6 +230,7 @@ class AppServices {
     LiveContextSource? live,
     RunStore? history,
     PlaceGateway? places,
+    List<ExportTarget>? exportTargets,
   }) {
     final rec = recorder ?? FakeRecorderGateway(autoTick: true, now: now);
     final settingsCtl = SettingsController(
@@ -201,6 +238,7 @@ class AppServices {
       settings,
     );
     final clock = now ?? DateTime.now;
+    final xfer = transfer ?? FakeTransferGateway();
     return AppServices(
       recorder: rec,
       ble: ble ?? FakeBleGateway(),
@@ -218,7 +256,7 @@ class AppServices {
             heatCompare: () => settingsCtl.settings.compareHeatAdjusted,
           ),
       maps: maps ?? const FakeMapSurfaceFactory(),
-      transfer: transfer ?? FakeTransferGateway(),
+      transfer: xfer,
       storage: storage ?? FakeStorageGateway(),
       now: now,
       sessions: SessionsController(
@@ -229,6 +267,9 @@ class AppServices {
         ..preload(courseNames),
       live: live,
       placeGateway: places,
+      exportTargets:
+          exportTargets ??
+          defaultExportTargets(xfer, tempDir: () async => Directory.systemTemp),
     );
   }
 
@@ -274,6 +315,7 @@ class AppServices {
     );
     services.startWeather();
     services.startPlaces();
+    services.startSends();
     return services;
   }
 

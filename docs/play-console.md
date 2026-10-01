@@ -33,7 +33,7 @@ Founder approves the wording (plan §18.9 item 8) before anything is typed into 
 >
 > Free runs get a clean summary. Every 4x4 goes on a trend line with your bests. Follow a fixed 8-week 4x4 plan or a 5k plan: pick your days, tick sessions off, start the right session from the plan.
 >
-> No account. No feed. No ads. No analytics of our own. Your recorded route, times and heart rate stay on your phone. Map tiles come from Google, which sees the map area you view and your IP address, like any maps app. Weather comes from Open-Meteo using your location rounded to about 10 km. Your phone turns a run's start point into a place name with its own geocoder, which may use Google Play services. Export JSON or TCX any time.
+> No account. No feed. No ads. No analytics of our own. Your recorded route, times and heart rate stay on your phone unless you choose to send them. Map tiles come from Google, which sees the map area you view and your IP address, like any maps app. Weather comes from Open-Meteo using your location rounded to about 10 km. Your phone turns a run's start point into a place name with its own geocoder, which may use Google Play services. Send a run as a TCX or GPX file any time.
 >
 > Coming in the paid version: tempo and easy-run verdicts, adaptive plans, iOS. Join the waitlist inside the app.
 
@@ -93,7 +93,7 @@ Data types. "Collected" in Play's sense includes what the Maps SDK sends to Goog
 | App activity | **App interactions** | Yes | No | No | Required | App functionality, **Analytics** | Google lists "map interaction events (panning, zooming)" as its own collected item; Play's matching type is App interactions. Plan §18.6 did not cover this category; declared to over- rather than under-declare |
 | App info and performance | **Crash logs** | Yes | No | No | Required | App functionality | Maps SDK crash reporting (Google's disclosure) |
 | App info and performance | **Diagnostics** | Yes | No | No | Required | App functionality, **Analytics** | Maps SDK request metadata / performance data, used by Google "to understand SDK usage" |
-| Health and fitness | Health info / Fitness info | **No** | No | | | | Heart rate, pace, route files stay on the device; never transmitted by us. Auto Backup is a system feature under the user's Google account and Play's guidance excludes it. |
+| Health and fitness | Health info / Fitness info | **No** | No | | | | Heart rate, pace, route files stay on the device; we never transmit them. **User-initiated sharing:** the runner can tap Send on a run to hand a TCX or GPX file to an app they pick in the Android share sheet (or to Strava's website by hand). Nothing leaves the phone unless they do that, so this is not declared as data we collect or share (check the wording against Play's Data safety guidance on user-initiated transfers before each submit). **Re-open this row** when Health Connect or Intervals.icu automatic sending ships: those are runner-enabled transfers to a service and need their own review. Auto Backup is a system feature under the user's Google account and Play's guidance excludes it. |
 | Personal info | any | No | | | | | No account, no name, no email |
 | Financial info | any | No | | | | | |
 | Messages / Photos / Audio / Files / Calendar / Contacts / Web browsing / Search history | any | No | | | | | TTS cues are generated on-device; nothing recorded |

@@ -96,6 +96,11 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Send runs: "Open Strava upload page" opens the browser. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
         <!-- Text-to-speech engines are hidden from apps on API 30+ without this. -->
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE"/>

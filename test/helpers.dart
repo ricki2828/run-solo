@@ -14,6 +14,7 @@ import 'package:run_solo/platform/transfer_gateway.dart';
 import 'package:run_solo/splash/intro_gate.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/live_context.dart';
+import 'package:run_solo/state/send_runs.dart';
 import 'package:run_solo/state/sessions.dart';
 import 'package:run_solo/state/settings.dart';
 
@@ -48,8 +49,10 @@ AppServices fakeServices({
   LiveContextSource? live,
   RunStore? history,
   FakePlaceGateway? places,
+  List<ExportTarget>? exportTargets,
 }) => AppServices.fake(
   places: places,
+  exportTargets: exportTargets,
   live: live,
   recorder: recorder ?? FakeRecorderGateway(now: now),
   ble: ble,

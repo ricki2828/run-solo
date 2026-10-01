@@ -95,6 +95,7 @@ class AppSettings {
     this.sessionId = engine.SessionSpec.norwegian4x4Id,
     this.presetEdits = const {},
     this.pbSeen = const {},
+    this.autoSend = const {},
   });
 
   final Units units;
@@ -251,6 +252,11 @@ class AppSettings {
   /// index field.
   final Map<String, String> pbSeen;
 
+  /// Settings → Send runs to: ids of the export targets switched on for
+  /// automatic sending after each run. All off by default; a run is sent
+  /// only to services the runner switched on (or by the Send button).
+  final Set<String> autoSend;
+
   /// Every preset's edits, the 4x4 included.
   Map<String, PresetEdit> get allPresetEdits => {
     ...presetEdits,
@@ -332,6 +338,7 @@ class AppSettings {
     String? sessionId,
     Map<String, PresetEdit>? presetEdits,
     Map<String, String>? pbSeen,
+    Set<String>? autoSend,
   }) => AppSettings(
     units: units ?? this.units,
     reps: reps ?? this.reps,
@@ -370,6 +377,7 @@ class AppSettings {
     sessionId: sessionId ?? this.sessionId,
     presetEdits: presetEdits ?? this.presetEdits,
     pbSeen: pbSeen ?? this.pbSeen,
+    autoSend: autoSend ?? this.autoSend,
   );
 
   Map<String, Object?> toJson() => {
@@ -406,6 +414,7 @@ class AppSettings {
       for (final e in presetEdits.entries) e.key: e.value.toJson(),
     },
     'pbSeen': pbSeen,
+    if (autoSend.isNotEmpty) 'autoSend': autoSend.toList()..sort(),
   };
 
   /// Lenient: unknown or malformed keys fall back to defaults, never throw.
@@ -486,6 +495,12 @@ class AppSettings {
       sessionId: pick('sessionId', d.sessionId),
       presetEdits: _edits(j['presetEdits']),
       pbSeen: _seen(j['pbSeen']),
+      autoSend: j['autoSend'] is List
+          ? {
+              for (final v in j['autoSend'] as List)
+                if (v is String) v,
+            }
+          : const {},
     );
   }
 }

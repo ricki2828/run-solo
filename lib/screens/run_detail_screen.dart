@@ -8,6 +8,7 @@ import '../map/map_surface.dart';
 import '../map/route_builder.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
+import '../state/send_runs.dart';
 import '../state/zone_histogram.dart';
 import '../theme/theme.dart';
 import '../theme/zones.dart';
@@ -18,6 +19,7 @@ import '../widgets/rep_bars.dart';
 import '../widgets/recent_activity.dart' show runTypeColor;
 import '../widgets/weather_chip.dart';
 import '../widgets/where_when_line.dart';
+import 'send_sheet.dart';
 import 'verdict_screen.dart';
 
 /// Run detail (design brief §4.7, addendum A4): header, post-run map, rep /
@@ -206,6 +208,7 @@ class RunDetailBody extends StatelessWidget {
           _ZoneStrip(seconds: zoneSecondsOf(d.run, maxHr), maxHr: maxHr),
         ],
         const SizedBox(height: Space.x32),
+        _SendRow(detail: d),
         if (onFixLaps != null)
           _Row(
             label: 'Fix laps',
@@ -1218,6 +1221,51 @@ class _TableRow extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// "Send": opens the Send sheet; the value says where the run already went
+/// (and, for an automatic target, whether a retry is waiting).
+class _SendRow extends StatefulWidget {
+  const _SendRow({required this.detail});
+  final RunDetail detail;
+
+  @override
+  State<_SendRow> createState() => _SendRowState();
+}
+
+class _SendRowState extends State<_SendRow> {
+  late engine.RunSidecar _sidecar = widget.detail.sidecar;
+
+  Future<void> _open() async {
+    final services = AppServices.of(context);
+    final sent = await showSendSheet(
+      context,
+      runId: widget.detail.run.id,
+      sidecar: _sidecar,
+    );
+    if (sent != true || !mounted) return;
+    final fresh = await services.history.load(widget.detail.run.id);
+    if (fresh != null && mounted) setState(() => _sidecar = fresh.sidecar);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final services = AppServices.of(context);
+    final s = services.settings.settings;
+    String value = '';
+    for (final t in services.sender.targets) {
+      final line = sendStateLine(
+        t,
+        _sidecar.sends[t.id],
+        autoOn: t.isEnabled(s),
+      );
+      if (line != null) {
+        value = line;
+        break;
+      }
+    }
+    return _Row(label: 'Send', value: value, onTap: _open);
   }
 }
 

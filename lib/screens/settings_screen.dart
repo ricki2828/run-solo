@@ -14,11 +14,13 @@ import '../state/recording_controller.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
+import 'send_sheet.dart' show kSendPrivacyLine;
 
 /// Privacy copy (plan §18.6, addendum A7): one paragraph on every surface.
 /// Store listing, About, privacy page and onboarding change together.
 const String kPrivacyParagraph =
-    'Your recorded route, times and heart rate stay on your phone. '
+    'Your recorded route, times and heart rate stay on your phone unless you '
+    'choose to send them. '
     'Map tiles come from Google, which sees the map area you view and your '
     'IP address, like any maps app. Weather comes from Open-Meteo using '
     'your location rounded to about 10 km. Your phone turns a run\'s start '
@@ -27,7 +29,7 @@ const String kPrivacyParagraph =
 const String kNoAnalyticsLine = 'No analytics of our own. No account. No ads.';
 const String kOpenMeteoAttribution = 'Weather data by Open-Meteo.com';
 const String kOnboardingInternetLine =
-    'Maps and weather use the internet. Your recorded run stays on the phone.';
+    'Maps and weather use the internet. Your recorded run stays on the phone unless you choose to send it.';
 
 /// Settings → Voice sublines (A10.7).
 const String kCoachingTipsLine =
@@ -380,6 +382,40 @@ class _SettingsScreenState extends State<SettingsScreen>
                   style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
               ),
+              const _Section('Send runs to'),
+              Padding(
+                padding: const EdgeInsets.only(bottom: Space.x8),
+                child: Text(
+                  kSendPrivacyLine,
+                  key: const ValueKey('send-settings-line'),
+                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                ),
+              ),
+              for (final target in services.sender.targets)
+                if (target.supportsAutomatic)
+                  _Toggle(
+                    label: target.label,
+                    value: target.isEnabled(s),
+                    onChanged: target.comingSoon
+                        ? null
+                        : (v) => set(
+                            (x) => x.copyWith(
+                              autoSend: {
+                                for (final id in x.autoSend)
+                                  if (id != target.id) id,
+                                if (v) target.id,
+                              },
+                            ),
+                          ),
+                    reason: target.comingSoon
+                        ? 'Coming soon'
+                        : 'Sends each run when it finishes.',
+                  )
+                else
+                  _StaticRow(
+                    label: target.label,
+                    reason: 'Only when you tap Send on a run.',
+                  ),
               const _Section('Motion'),
               _Toggle(
                 label: 'Reduced motion',
@@ -742,6 +778,36 @@ class SettingsRow extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A settings line with no switch: the target has no automatic mode.
+class _StaticRow extends StatelessWidget {
+  const _StaticRow({required this.label, required this.reason});
+  final String label;
+  final String reason;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Container(
+      constraints: const BoxConstraints(minHeight: 64),
+      alignment: Alignment.centerLeft,
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: t.lineHair)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: RunSoloType.body17.copyWith(color: t.inkPrimary)),
+          Text(
+            reason,
+            style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+          ),
+        ],
       ),
     );
   }
