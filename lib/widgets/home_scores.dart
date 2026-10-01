@@ -203,8 +203,6 @@ class _EarnedScore extends StatelessWidget {
               const SizedBox(height: Space.x4),
               Text(
                 cohort,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
                 style: RunSoloType.label13.copyWith(color: t.inkSecondary),
               ),
             ],
