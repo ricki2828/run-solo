@@ -442,9 +442,10 @@ class _TrendLegend extends StatelessWidget {
 }
 
 /// The runs a Laps / Free chart compares with the latest one, plus the plain
-/// words naming what they share. Laps: runs whose average lap distance is
-/// within 10% of the latest's. Free: runs within 1 km of the latest's
-/// distance rounded to the km (a 5.2 km run draws 4 to 6 km runs).
+/// words naming what they share. Laps: runs of 3 or more laps whose average
+/// lap distance is within 10% of the latest's (the index has no per-lap
+/// data, so a partial last lap is included). Free: runs within 1 unit (km or
+/// mi, the user's) of the latest's distance rounded to the half unit.
 ({List<RunSummary> runs, String caption})? comparableRuns(
   List<RunSummary> chronological,
   RecordMode mode,
@@ -453,7 +454,7 @@ class _TrendLegend extends StatelessWidget {
   if (chronological.isEmpty) return null;
   final latest = chronological.last;
   if (mode == RecordMode.laps) {
-    double? lapM(RunSummary r) => r.laps > 0 ? r.distanceM / r.laps : null;
+    double? lapM(RunSummary r) => r.laps >= 3 ? r.distanceM / r.laps : null;
     final ref = lapM(latest);
     if (ref == null || ref <= 0) return null;
     final runs = [
@@ -461,18 +462,29 @@ class _TrendLegend extends StatelessWidget {
         if (lapM(r) case final m? when (m - ref).abs() <= ref * 0.1) r,
     ];
     final label = Fmt.distance((ref / 10).round() * 10.0, units);
-    return (runs: runs, caption: 'Average lap time, laps of about $label only');
+    return (
+      runs: runs,
+      caption:
+          'Average lap pace, laps of about $label only. '
+          'Includes any partial last lap.',
+    );
   }
-  final centreKm = (latest.distanceM / 1000).round();
-  final lo = math.max(0, centreKm - 1) * 1000.0, hi = (centreKm + 1) * 1000.0;
+  final unitM = units == Units.mi ? 1609.344 : 1000.0;
+  final centre = (latest.distanceM / unitM * 2).round() / 2;
+  final lo = math.max(0.0, centre - 1), hi = centre + 1;
   final runs = [
     for (final r in chronological)
-      if (r.distanceM >= lo && r.distanceM <= hi && r.avgSecPerKm != null) r,
+      if (r.distanceM / unitM >= lo &&
+          r.distanceM / unitM <= hi &&
+          r.avgSecPerKm != null)
+        r,
   ];
-  final band = units == Units.mi
-      ? '${(lo / 1609.344).toStringAsFixed(1)} to ${(hi / 1609.344).toStringAsFixed(1)} mi'
-      : '${(lo / 1000).round()} to ${(hi / 1000).round()} km';
-  return (runs: runs, caption: 'Average pace, runs of $band only');
+  String n(double v) => v == v.roundToDouble() ? '${v.round()}' : '$v';
+  final unit = units == Units.mi ? 'mi' : 'km';
+  return (
+    runs: runs,
+    caption: 'Average pace, runs of ${n(lo)} to ${n(hi)} $unit only',
+  );
 }
 
 class _DistanceTrend extends StatelessWidget {
@@ -487,9 +499,7 @@ class _DistanceTrend extends StatelessWidget {
 
   Widget _comparableChart(RunSoloTokens t) {
     final c = comparableRuns(runs, mode, units);
-    final laps = mode == RecordMode.laps;
     final shown = c?.runs ?? const <RunSummary>[];
-    String lapClock(double s) => Fmt.clock((s * 1000).round());
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -497,13 +507,10 @@ class _DistanceTrend extends StatelessWidget {
           key: const ValueKey('distance-trend-chart'),
           points: [
             for (final r in shown)
-              BarPoint(
-                date: r.start,
-                value: laps ? r.durationMs / 1000 / r.laps : r.avgSecPerKm!,
-              ),
+              BarPoint(date: r.start, value: r.avgSecPerKm!),
           ],
           lowerIsBetter: true,
-          format: laps ? lapClock : (v) => Fmt.pace(v, units),
+          format: (v) => Fmt.pace(v, units),
           direction: 'Faster is taller',
           emptyTitle: 'Two comparable runs draw the first chart.',
           emptyBody: shown.length == 1 ? c!.caption : null,

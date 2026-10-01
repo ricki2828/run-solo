@@ -92,6 +92,7 @@ engine.RunFile lapsRunFile({
   required int n,
   required DateTime start,
   bool hr = true,
+  int paceOffset = 0,
 }) => generator
     .generate(
       synth.SyntheticSpec(
@@ -102,10 +103,10 @@ engine.RunFile lapsRunFile({
         hr: hr,
         start: start,
         segments: [
-          synth.Segment.free(300, speedFor(330)),
-          synth.Segment.free(300, speedFor(300)),
-          synth.Segment.free(300, speedFor(310)),
-          synth.Segment.free(300, speedFor(340)),
+          synth.Segment.free(300, speedFor(330 + paceOffset)),
+          synth.Segment.free(300, speedFor(300 + paceOffset)),
+          synth.Segment.free(300, speedFor(310 + paceOffset)),
+          synth.Segment.free(300, speedFor(340 + paceOffset)),
         ],
       ),
     )

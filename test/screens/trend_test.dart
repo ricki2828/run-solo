@@ -170,9 +170,40 @@ void main() {
       ], 'Laps');
       expect(chart, findsOneWidget);
       expect(
-        find.textContaining('Average lap time, laps of about'),
+        find.textContaining('Average lap pace, laps of about'),
         findsOneWidget,
       );
+    });
+
+    test('comparableRuns: fewer than 3 laps excluded, mi bands in miles', () {
+      RunSummary run(RecordMode m, int laps, double distM) => RunSummary(
+        id: 'r$laps$distM',
+        mode: m,
+        start: base,
+        durationMs: (distM * 0.35).round() * 1000,
+        distanceM: distM,
+        laps: laps,
+      );
+      expect(
+        comparableRuns(
+          [run(RecordMode.laps, 2, 800)],
+          RecordMode.laps,
+          Units.km,
+        ),
+        isNull,
+      );
+      final mixed = [
+        run(RecordMode.laps, 2, 800),
+        run(RecordMode.laps, 4, 1600),
+      ];
+      expect(comparableRuns(mixed, RecordMode.laps, Units.km)!.runs.length, 1);
+      final mi = comparableRuns(
+        [run(RecordMode.free, 0, 5800)],
+        RecordMode.free,
+        Units.mi,
+      )!;
+      // 5.8 km = 3.6 mi, rounds to 3.5: 2.5 to 4.5 mi.
+      expect(mi.caption, 'Average pace, runs of 2.5 to 4.5 mi only');
     });
 
     test(
