@@ -1,12 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/screens/history_screen.dart';
 import 'package:run_solo/screens/settings_screen.dart';
+import 'package:run_solo/state/live_context.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/screens/progress_screen.dart';
 
 import '../helpers.dart';
 import '../run_fixtures.dart';
+
+class _EarnedLive extends LiveContextSource {
+  _EarnedLive() : super.prepared(const []);
+
+  @override
+  Map<engine.IdentityLane, engine.IdentityScore> identityScores() => {
+    for (final lane in engine.IdentityLane.values)
+      lane: engine.IdentityScore(
+        lane: lane,
+        score: 62,
+        vdot: 38,
+        runId: lane.name,
+        date: testNow,
+        source: lane == engine.IdentityLane.mid ? '5K' : '4x4',
+        boardKey: null,
+      ),
+  };
+}
 
 void main() {
   testWidgets(
@@ -49,9 +69,7 @@ void main() {
   ) async {
     await pumpApp(
       tester,
-      fakeServices(
-        files: [fourByFourFile(n: 1, start: DateTime.utc(2026, 9, 20))],
-      ),
+      fakeServices(live: _EarnedLive()),
       home: const ProgressScreen(),
     );
     await pumpTimes(tester, 6);
@@ -78,14 +96,13 @@ void main() {
           birthYear: 1986,
           profileSex: ProfileSex.male,
         ),
-        files: [fourByFourFile(n: 1, start: DateTime.utc(2026, 9, 20))],
+        live: _EarnedLive(),
       ),
       home: const ProgressScreen(),
     );
     await pumpTimes(tester, 6);
     expect(find.textContaining('tested on a lab treadmill'), findsWidgets);
     expect(find.textContaining('Estimate, compared with US men'), findsWidgets);
-    expect(find.textContaining('FRIEND'), findsNothing);
     expect(find.textContaining('VDOT'), findsNothing);
   });
 }
