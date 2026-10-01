@@ -231,7 +231,10 @@ void main() {
       await places.ensure(a.id);
       gw.name = 'St Kilda Road';
       expect((await places.ensure(b.id))?.area, 'Albert Park');
-      expect(gw.calls, hasLength(1), reason: 'reused, not geocoded');
+      // The area is reused (not the geocoder's 'St Kilda Road'); the street,
+      // not known within 60 m, is asked for.
+      expect(gw.calls, hasLength(2));
+      expect((await store.load(b.id))!.sidecar.place, 'Albert Park');
     });
 
     test('beyond 300 m asks the geocoder again', () async {
