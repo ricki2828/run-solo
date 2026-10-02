@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/routes.dart';
+import '../state/home_progress.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
 
@@ -57,12 +58,32 @@ class HomeScores extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          dots,
-          const SizedBox(height: Space.x8),
-          Text(
-            'Builds up from clean intervals, a 5K and a 15K+ run.',
-            style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-          ),
+          for (final lane in engine.IdentityLane.values)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Space.x8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Icon(
+                      Icons.circle_outlined,
+                      size: 12,
+                      color: t.inkMuted,
+                    ),
+                  ),
+                  const SizedBox(width: Space.x8),
+                  Expanded(
+                    child: Text(
+                      '${lane.name.toUpperCase()}: ${_unlock(lane)}',
+                      style: RunSoloType.label13.copyWith(
+                        color: t.inkSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       );
     }
@@ -106,6 +127,13 @@ class HomeScores extends StatelessWidget {
   }
 }
 
+String _unlock(engine.IdentityLane lane) => switch (lane) {
+  engine.IdentityLane.aerobic => 'a hard 5K or 10K, or a 12-minute test',
+  engine.IdentityLane.speed => 'clean reps in an intervals session',
+  engine.IdentityLane.mid => 'a 5K or 10K run',
+  engine.IdentityLane.long => 'a 15K+ run',
+};
+
 class _EarnedScore extends StatelessWidget {
   const _EarnedScore({
     required this.score,
@@ -121,31 +149,18 @@ class _EarnedScore extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final lab =
-        score.lane == engine.IdentityLane.aerobic ||
-        score.lane == engine.IdentityLane.speed;
+    final lab = ScoreNorms.isLab(score.lane);
     final sexKnown =
         profileSex == ProfileSex.male || profileSex == ProfileSex.female;
     final female = profileSex == ProfileSex.female;
-    final comparison = !sexKnown
-        ? null
-        : lab
-        ? age == null
-              ? null
-              : engine.FriendFitnessNorms.comparison(
-                  score.vdot,
-                  age!,
-                  female: female,
-                )
-        : engine.RacePercentileNorms.comparison(
-            score.vdot,
-            score.lane,
-            score.source,
-            female: female,
-          );
-    final label = comparison == null
-        ? '--'
-        : RegExp(r'\d+').firstMatch(comparison)!.group(0)!;
+    final percentile = ScoreNorms.percentile(
+      score.lane,
+      score.vdot,
+      score.source,
+      sex: profileSex,
+      age: age,
+    );
+    final label = percentile?.toString() ?? '--';
     // A card that names what to add opens Settings, not Progress.
     final needsProfile = !sexKnown || (lab && age == null);
     final cohort = !sexKnown
@@ -157,10 +172,17 @@ class _EarnedScore extends StatelessWidget {
               ? 'Ages 20-89 only'
               : '${female ? 'Women' : 'Men'} ${age! ~/ 10 * 10} to ${age! ~/ 10 * 10 + 9}, lab norms'
         : '${female ? 'Women' : 'Men'}, recreational race finishers, all ages';
+    final change = ScoreNorms.change(score, sex: profileSex, age: age);
+    final (changeText, changeColour) = switch (change) {
+      null => (null, t.inkSecondary),
+      > 0 => ('Up $change in 6 weeks', t.semImproving),
+      < 0 => ('Down ${-change} in 6 weeks', t.semSlower),
+      _ => ('No change in 6 weeks', t.semNoise),
+    };
     return Semantics(
       button: true,
       label:
-          '${score.lane.name}, ${comparison ?? 'percentile unavailable'}, $cohort, estimate. ${needsProfile ? 'Open settings.' : 'Open Progress.'}',
+          '${score.lane.name}, ${percentile == null ? 'percentile unavailable' : '$percentile${ScoreNorms.ordinalSuffix(percentile)} percentile'}, ${changeText == null ? '' : '$changeText, '}$cohort. ${needsProfile ? 'Open settings.' : 'Open Progress.'}',
       child: InkWell(
         key: ValueKey('home-score-${score.lane.name}'),
         onTap: needsProfile
@@ -182,24 +204,35 @@ class _EarnedScore extends StatelessWidget {
                 style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
               ),
               const SizedBox(height: Space.x4),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Text(
-                    label,
-                    style: RunSoloType.heading19.copyWith(
-                      fontSize: 30,
-                      color: t.inkPrimary,
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: label,
+                      style: RunSoloType.heading19.copyWith(
+                        fontSize: 30,
+                        color: t.inkPrimary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: Space.x4),
-                  Text(
-                    'percentile',
-                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                  ),
-                ],
+                    // "60th percentile": the ordinal sits tight on the number.
+                    TextSpan(
+                      text: percentile == null
+                          ? ' percentile'
+                          : '${ScoreNorms.ordinalSuffix(percentile)} percentile',
+                      style: RunSoloType.label13.copyWith(
+                        color: t.inkSecondary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              if (changeText != null) ...[
+                const SizedBox(height: Space.x4),
+                Text(
+                  changeText,
+                  style: RunSoloType.label13.copyWith(color: changeColour),
+                ),
+              ],
               const SizedBox(height: Space.x4),
               Text(
                 cohort,

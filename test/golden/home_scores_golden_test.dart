@@ -54,6 +54,87 @@ void main() {
         );
       });
     }
+    // Progress hero states: a 5K in the last window against one from the
+    // window before sets MID and AEROBIC; faster is up, slower is down.
+    for (final (state, thenMs, nowMs) in [
+      ('steady', 1500000, 1500000),
+      ('up', 1700000, 1500000),
+      ('down', 1500000, 1700000),
+    ]) {
+      testWidgets('progress hero $state 360x$height', (tester) async {
+        engine.LiveCandidate fiveK(String id, int daysAgo, int ms) =>
+            engine.LiveCandidate(
+              engine.BoardInput(
+                runId: id,
+                date: testNow.subtract(Duration(days: daysAgo)),
+                mode: engine.RunMode.free,
+              ),
+              engine.RunDerived(
+                bestEfforts: engine.RunBestEfforts(
+                  efforts: {
+                    engine.BestEffortDistance.k5: engine.BestEffort(
+                      distance: engine.BestEffortDistance.k5,
+                      elapsedMs: ms,
+                      startMs: 0,
+                      startOffsetM: 0,
+                      splitsMs: const [],
+                    ),
+                  },
+                  fromStartSplitsMs: const [],
+                ),
+              ),
+            );
+        final live = LiveContextSource.prepared([
+          fiveK('then', 50, thenMs),
+          fiveK('now', 3, nowMs),
+        ], now: now);
+        // Real runs behind the scores, so Recent activity is realistic.
+        final runs = [
+          RunSummary(
+            id: 'now',
+            mode: RecordMode.free,
+            start: testNow.subtract(const Duration(days: 3)),
+            durationMs: 1500000,
+            distanceM: 5000,
+            laps: 0,
+          ),
+          RunSummary(
+            id: 'then',
+            mode: RecordMode.free,
+            start: testNow.subtract(const Duration(days: 50)),
+            durationMs: 1700000,
+            distanceM: 5000,
+            laps: 0,
+          ),
+        ];
+        await pumpApp(
+          tester,
+          fakeServices(
+            runs: runs,
+            live: live,
+            settings: const AppSettings(
+              onboardingDone: true,
+              profileSex: ProfileSex.male,
+              birthYear: 1982,
+            ),
+          ),
+          home: HomeScreen(now: now),
+        );
+        tester.view.physicalSize = Size(1080, height * 3);
+        await pumpTimes(tester, 8);
+        expect(tester.takeException(), isNull);
+        final name = 'home_progress_${state}_360x$height';
+        expect(
+          File('test/golden/goldens/$name.png').existsSync() ||
+              autoUpdateGoldenFiles,
+          isTrue,
+        );
+        await expectLater(
+          find.byType(MaterialApp),
+          matchesGoldenFile('goldens/$name.png'),
+        );
+      });
+    }
     testWidgets('four earned scores 360x$height', (tester) async {
       final effort = engine.BestEffort(
         distance: engine.BestEffortDistance.k5,

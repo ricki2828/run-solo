@@ -7,7 +7,9 @@ import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
-import '../state/next_session.dart';
+import '../state/settings.dart';
+import '../widgets/goal_picker.dart';
+import '../state/home_progress.dart';
 import '../theme/theme.dart';
 import '../widgets/home_scores.dart';
 import '../widgets/recent_activity.dart';
@@ -43,13 +45,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   Future<List<RunSummary>>? _runs;
   Future<engine.HomeEstimates?>? _estimates;
-  Future<
-    ({
-      engine.FitnessHero? hero,
-      Map<engine.IdentityLane, engine.IdentityScore> scores,
-    })
-  >?
-  _scores;
+  Future<Map<engine.IdentityLane, engine.IdentityScore>?>? _scores;
+  Future<_HomeData>? _data;
   PermissionSnapshot? _perms;
   HistoryStore? _history;
 
@@ -79,9 +76,24 @@ class _HomeScreenState extends State<HomeScreen> {
     final services = AppServices.of(context);
     _runs = services.history.list();
     _loadEstimates();
+    final runs = _runs!, scores = _scores;
+    _data = _load(runs, scores);
     services.permissions.status().then((p) {
       if (mounted) setState(() => _perms = p);
     });
+  }
+
+  /// Never throws: a failed scores read comes back as [_HomeData.failed],
+  /// so Home still shows Start and the run list.
+  static Future<_HomeData> _load(
+    Future<List<RunSummary>> runs,
+    Future<Map<engine.IdentityLane, engine.IdentityScore>?>? scores,
+  ) async {
+    final r = await runs;
+    final sc = scores == null
+        ? const <engine.IdentityLane, engine.IdentityScore>{}
+        : await scores;
+    return sc == null ? _HomeData(r, const {}, failed: true) : _HomeData(r, sc);
   }
 
   void _loadEstimates() {
@@ -93,9 +105,15 @@ class _HomeScreenState extends State<HomeScreen> {
       _estimates = live.prepare().then(
         (_) => live.homeEstimates(includeEvent: _hasEventCourse(live)),
       );
-      _scores = live.prepare().then(
-        (_) => (hero: live.fitnessHero(), scores: live.identityScores()),
-      );
+      // A failed read becomes null here, so no error is left unhandled.
+      _scores = live
+          .prepare()
+          .then<Map<engine.IdentityLane, engine.IdentityScore>?>(
+            (_) => live.identityScores(),
+          )
+          .catchError((_) => null);
+    } else {
+      _scores = null;
     }
   }
 
@@ -112,7 +130,12 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(_refresh);
   }
 
-  Future<void> _start() async {
+  /// Start and Change both open setup; with a recommendation, setup opens
+  /// preset to it. The preset stays only if a run was started or the runner
+  /// picked something else in setup: backing out puts the saved run type
+  /// back.
+  Future<void> _start(Recommendation? rec) async {
+    final services = AppServices.of(context);
     final perms = _perms;
     if (perms != null && !perms.canRecord) {
       final ok = await Navigator.of(context).pushNamed(Routes.permissions);
@@ -122,8 +145,46 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
     if (!mounted) return;
+    final before = services.settings.settings;
+    final runsBefore = (await services.history.list()).length;
+    if (rec != null) await services.settings.update(rec.apply);
+    final applied = services.settings.settings;
+    if (!mounted) return;
     await Navigator.of(context).pushNamed(Routes.start);
+    if (rec != null) {
+      final now = services.settings.settings;
+      bool same(AppSettings a, AppSettings b) =>
+          a.lastMode == b.lastMode &&
+          a.goalRun == b.goalRun &&
+          a.goalId == b.goalId &&
+          a.sessionId == b.sessionId;
+      final started = (await services.history.list()).length != runsBefore;
+      if (!started && same(now, applied)) {
+        await services.settings.update(
+          (s) => s.copyWith(
+            lastMode: before.lastMode,
+            goalRun: before.goalRun,
+            goalId: before.goalId,
+            sessionId: before.sessionId,
+          ),
+        );
+      }
+    }
     if (mounted) setState(_refresh);
+  }
+
+  /// What Start would run from the saved choice, before any recommendation.
+  static String _lastUsedName(AppSettings s, engine.SessionSpec picked) {
+    if (s.goalRun) {
+      final label = goalLabel(s);
+      return label == 'Distance or time' ? 'goal run' : label;
+    }
+    return switch (s.lastMode) {
+      RecordMode.free => 'free run',
+      RecordMode.laps => 'laps run',
+      RecordMode.cooper => '12-minute test',
+      RecordMode.intervals => picked.name,
+    };
   }
 
   void _openProgress() {
@@ -154,9 +215,6 @@ class _HomeScreenState extends State<HomeScreen> {
         final settings = services.settings.settings;
         final perms = _perms;
         final plan = widget.planHeadline;
-        final next = plan != null
-            ? NextSession.plan(plan.name)
-            : NextSession.lastUsed(settings, services.pickedSession);
         return Scaffold(
           body: SafeArea(
             child: SingleChildScrollView(
@@ -184,57 +242,75 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                   const SizedBox(height: Space.x32),
-                  FutureBuilder<List<RunSummary>>(
-                    future: _runs,
-                    builder: (context, snap) => HomeHeadline(
-                      next: next,
-                      runs: snap.data ?? const [],
-                      units: settings.units,
-                      planSubtitle: widget.planHeadline?.subtitle,
-                    ),
-                  ),
-                  const SizedBox(height: Space.x16),
-                  FutureBuilder<
-                    ({
-                      engine.FitnessHero? hero,
-                      Map<engine.IdentityLane, engine.IdentityScore> scores,
-                    })
-                  >(
-                    future: _scores,
-                    builder: (context, snap) => HomeScores(
-                      scores: snap.data?.scores ?? const {},
-                      profileSex: settings.profileSex,
-                      age: settings.birthYear == null
+                  FutureBuilder<_HomeData>(
+                    future: _data,
+                    builder: (context, snap) {
+                      final data = snap.data;
+                      final age = settings.birthYear == null
                           ? null
-                          : _now.year - settings.birthYear!,
-                      onOpen: _openProgress,
-                    ),
-                  ),
-                  const SizedBox(height: Space.x16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: _start,
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(next.startLabel, maxLines: 1),
+                          : _now.year - settings.birthYear!;
+                      final rec = data == null || data.failed
+                          ? null
+                          : Recommendation.of(
+                              data.scores,
+                              data.runs,
+                              now: _now,
+                              sex: settings.profileSex,
+                              age: age,
+                              presetEdits: settings.allPresetEdits,
+                            );
+                      // Start and Change never wait on the scores: until
+                      // they load (or if they fail) Start keeps the last
+                      // run type.
+                      final String startLabel;
+                      if (plan != null) {
+                        startLabel = 'Start ${plan.name}';
+                      } else if (rec != null) {
+                        startLabel = rec.startLabel;
+                      } else {
+                        startLabel =
+                            'Start ${_lastUsedName(settings, services.pickedSession)}';
+                      }
+                      return Column(
+                        children: [
+                          _ProgressHero(
+                            headline: data != null && !data.failed
+                                ? ProgressHeadline.of(
+                                    data.scores,
+                                    now: _now,
+                                    sex: settings.profileSex,
+                                    age: age,
+                                  )
+                                : data != null || snap.hasError
+                                ? ProgressHeadline.failed
+                                : ProgressHeadline.loading,
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: Space.x8),
-                      OutlinedButton(
-                        onPressed: _start,
-                        child: const Text('Change'),
-                      ),
-                    ],
+                          const SizedBox(height: Space.x16),
+                          if (data != null && !data.failed) ...[
+                            HomeScores(
+                              scores: data.scores,
+                              profileSex: settings.profileSex,
+                              age: age,
+                              onOpen: _openProgress,
+                            ),
+                            const SizedBox(height: Space.x16),
+                          ],
+                          _GetBetter(
+                            reason: plan?.subtitle ?? rec?.reason,
+                            startLabel: startLabel,
+                            onStart: () => _start(plan == null ? rec : null),
+                            onChange: () => _start(null),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: Space.x12),
                   if (perms != null && !perms.canRecord)
                     Padding(
                       padding: const EdgeInsets.only(bottom: Space.x12),
                       child: InkWell(
-                        onTap: _start,
+                        onTap: () => _start(null),
                         child: Text(
                           perms.coarseOnly
                               ? 'Location is approximate. Precise is needed for pace.'
@@ -281,47 +357,84 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// Headline, line and Start all come from [next]. The number is the one that
-/// session is judged on, from its last comparable run; none yet means "set
-/// your line" for that session.
-class HomeHeadline extends StatelessWidget {
-  const HomeHeadline({
-    super.key,
-    required this.next,
-    required this.runs,
-    required this.units,
-    this.planSubtitle,
-  });
-  final NextSession next;
+class _HomeData {
+  const _HomeData(this.runs, this.scores, {this.failed = false});
+  final bool failed;
   final List<RunSummary> runs;
-  final Units units;
-  final String? planSubtitle;
+  final Map<engine.IdentityLane, engine.IdentityScore> scores;
+}
+
+class _ProgressHero extends StatelessWidget {
+  const _ProgressHero({required this.headline});
+  final ProgressHeadline headline;
 
   @override
   Widget build(BuildContext context) {
-    final String title, subtitle;
-    if (next.kind == NextKind.plan) {
-      title = '${next.name.toUpperCase()} TODAY';
-      subtitle = planSubtitle ?? 'Next up in your plan.';
-    } else if (nextBeat(next, runs, units) case final beat?) {
-      title = 'BEAT ${beat.value}';
-      subtitle = beat.line;
-    } else {
-      title = 'SET YOUR LINE';
-      subtitle = hasUnusableRun(next, runs)
-          ? next.kind == NextKind.interval
-                ? 'Your last ${next.name} had no clean reps to beat. Your next one sets the line.'
-                : 'Your last ${next.name} had nothing to compare. Your next one sets the line.'
-          : 'Your first ${next.name} is the one to beat.';
-    }
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(title, style: RunSoloType.display64.copyWith(color: t.inkPrimary)),
         Text(
-          subtitle,
+          headline.title,
+          style: RunSoloType.display44.copyWith(color: t.inkPrimary),
+        ),
+        Text(
+          headline.line,
           style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+        ),
+      ],
+    );
+  }
+}
+
+/// One recommended session with its reason. Start opens setup preset to it;
+/// Change opens the same screen to pick something else.
+class _GetBetter extends StatelessWidget {
+  const _GetBetter({
+    required this.reason,
+    required this.startLabel,
+    required this.onStart,
+    required this.onChange,
+  });
+  final String? reason;
+  final String startLabel;
+  final VoidCallback onStart;
+  final VoidCallback onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (reason != null)
+          Text(
+            'HOW TO GET BETTER',
+            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+          ),
+        if (reason != null) ...[
+          const SizedBox(height: Space.x4),
+          Text(
+            reason!,
+            key: const ValueKey('home-recommendation'),
+            style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+          ),
+        ],
+        const SizedBox(height: Space.x12),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton(
+                onPressed: onStart,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(startLabel, maxLines: 1),
+                ),
+              ),
+            ),
+            const SizedBox(width: Space.x8),
+            OutlinedButton(onPressed: onChange, child: const Text('Change')),
+          ],
         ),
       ],
     );

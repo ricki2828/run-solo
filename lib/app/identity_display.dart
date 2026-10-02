@@ -2,8 +2,9 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import 'format.dart';
 
-/// Compact display only. The source comparison retains its qualified bound
-/// when a value lies outside the measured 10th-90th reference table.
+/// Compact display only. The comparison text is the engine's percentile
+/// (1 to 99); values past the published 10th-90th table are estimates the
+/// engine flags as extrapolated.
 abstract final class IdentityDisplay {
   static String? percentileNumber(String? comparison) {
     if (comparison == null) return null;

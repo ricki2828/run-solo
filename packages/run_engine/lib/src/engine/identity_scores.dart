@@ -21,6 +21,8 @@ class IdentityScore {
     required this.source,
     required this.boardKey,
     this.changeVs6Weeks,
+    this.priorVdot,
+    this.priorSource,
   });
 
   final IdentityLane lane;
@@ -29,6 +31,11 @@ class IdentityScore {
   /// Run-derived VDOT estimate underlying the app-specific 0-99 display.
   final double vdot;
   final int? changeVs6Weeks;
+
+  /// The same lane's reading six weeks ago (VDOT and what set it), so a
+  /// screen can compare in its own units; null when that window was empty.
+  final double? priorVdot;
+  final String? priorSource;
   final String runId;
   final DateTime date;
   final String source;
@@ -61,6 +68,10 @@ abstract final class IdentityScores {
             ? null
             : displayScore(aerobic.vo2) -
                   displayScore(aerobic.vo2 - aerobic.deltaVs6wks!),
+        priorVdot: aerobic.deltaVs6wks == null
+            ? null
+            : aerobic.vo2 - aerobic.deltaVs6wks!,
+        priorSource: aerobic.deltaVs6wks == null ? null : aerobic.sourceLabel,
         runId: aerobic.runId,
         date: aerobic.asOf,
         source: aerobic.sourceLabel,
@@ -183,6 +194,8 @@ abstract final class IdentityScores {
         changeVs6Weeks: prior == null
             ? null
             : displayScore(current.vdot) - displayScore(prior.vdot),
+        priorVdot: prior?.vdot,
+        priorSource: prior?.source,
         runId: current.runId,
         date: current.date,
         source: current.source,

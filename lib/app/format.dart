@@ -81,6 +81,9 @@ abstract final class Fmt {
   static String dayDate(DateTime d) =>
       '${_days[d.weekday - 1]} ${d.day} ${_months[d.month - 1]}';
 
+  /// "4 Sep".
+  static String dayMonth(DateTime d) => '${d.day} ${_months[d.month - 1]}';
+
   /// "September 2026".
   static String monthYear(DateTime d) {
     const full = [

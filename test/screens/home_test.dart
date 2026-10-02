@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
@@ -32,7 +34,9 @@ void main() {
     tester,
   ) async {
     await pumpApp(tester, fakeServices(), home: HomeScreen(now: now));
-    expect(find.text('SET YOUR LINE'), findsOneWidget);
+    expect(find.text('SET YOUR SCORES'), findsOneWidget);
+    expect(find.text('HOW TO GET BETTER'), findsOneWidget);
+    expect(find.text('BEAT 4:22'), findsNothing);
     expect(find.text('LOCKED'), findsNothing);
     expect(find.text('NEW RUN'), findsNothing);
     expect(find.text('Start Norwegian 4x4'), findsOneWidget);
@@ -44,7 +48,7 @@ void main() {
     RecordMode.cooper,
     RecordMode.intervals,
   ]) {
-    testWidgets('Start remembers $mode and opens setup before recording', (
+    testWidgets('Start presets the recommendation from $mode, no recording', (
       tester,
     ) async {
       final fake = FakeRecorderGateway(now: now);
@@ -56,19 +60,80 @@ void main() {
       await tester.tap(find.byType(FilledButton));
       await pumpTimes(tester, 4);
       expect(find.byType(StartScreen), findsOneWidget);
-      expect(services.settings.settings.lastMode, mode);
+      // No scores yet: the first 4x4 is what sets AEROBIC.
+      expect(services.settings.settings.lastMode, RecordMode.intervals);
+      expect(
+        services.settings.settings.sessionId,
+        engine.SessionSpec.norwegian4x4Id,
+      );
       expect(fake.startCalls, isEmpty);
     });
   }
 
-  testWidgets('goal selection survives Home Start', (tester) async {
+  testWidgets('backing out of setup restores the saved run type', (
+    tester,
+  ) async {
+    final services = fakeServices(
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.free,
+      ),
+    );
+    await pumpApp(tester, services, home: HomeScreen(now: now));
+    await tester.tap(find.byType(FilledButton));
+    await pumpTimes(tester, 4);
+    expect(services.settings.settings.lastMode, RecordMode.intervals);
+    Navigator.of(tester.element(find.byType(StartScreen))).pop();
+    await pumpTimes(tester, 4);
+    expect(services.settings.settings.lastMode, RecordMode.free);
+  });
+
+  testWidgets('scores loading: calm hero, Start keeps the last run type', (
+    tester,
+  ) async {
+    final live = _SlowLive();
+    final services = fakeServices(
+      live: live,
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.free,
+      ),
+    );
+    await pumpApp(tester, services, home: HomeScreen(now: now));
+    expect(find.text('Your scores are loading.'), findsOneWidget);
+    expect(find.text('Start free run'), findsOneWidget);
+    await tester.tap(find.byType(FilledButton));
+    await pumpTimes(tester, 4);
+    expect(find.byType(StartScreen), findsOneWidget);
+    expect(services.settings.settings.lastMode, RecordMode.free);
+  });
+
+  testWidgets('scores failed: says so, Start still works', (tester) async {
+    final services = fakeServices(
+      live: _FailingLive(),
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.laps,
+      ),
+    );
+    await pumpApp(tester, services, home: HomeScreen(now: now));
+    expect(find.text("Couldn't load your scores."), findsOneWidget);
+    expect(find.text('Start laps run'), findsOneWidget);
+    await tester.tap(find.byType(FilledButton));
+    await pumpTimes(tester, 4);
+    expect(find.byType(StartScreen), findsOneWidget);
+  });
+
+  testWidgets('Start from a goal run presets the recommendation', (
+    tester,
+  ) async {
     final services = fakeServices(
       settings: const AppSettings(onboardingDone: true, goalRun: true),
     );
     await pumpApp(tester, services, home: HomeScreen(now: now));
     await tester.tap(find.byType(FilledButton));
     await pumpTimes(tester, 4);
-    expect(services.settings.settings.goalRun, isTrue);
+    expect(services.settings.settings.goalRun, isFalse);
     expect(find.byType(StartScreen), findsOneWidget);
   });
 
@@ -83,7 +148,6 @@ void main() {
         planHeadline: (name: 'Tempo', subtitle: 'Week 3, session 2 of 3.'),
       ),
     );
-    expect(find.text('TEMPO TODAY'), findsOneWidget);
     expect(find.text('Week 3, session 2 of 3.'), findsOneWidget);
     expect(find.text('Start Tempo'), findsOneWidget);
   });
@@ -304,4 +368,18 @@ void main() {
     await pumpApp(tester, services, home: HomeScreen(now: now));
     expect(find.textContaining('Location is approximate'), findsOneWidget);
   });
+}
+
+class _SlowLive extends LiveContextSource {
+  _SlowLive() : super.prepared(const []);
+  final _never = Completer<void>();
+  @override
+  Future<void> prepare() => _never.future;
+}
+
+class _FailingLive extends LiveContextSource {
+  _FailingLive() : super.prepared(const []);
+  @override
+  Map<engine.IdentityLane, engine.IdentityScore> identityScores() =>
+      throw StateError('no scores');
 }
