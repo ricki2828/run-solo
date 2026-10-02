@@ -24,7 +24,7 @@ void main() {
       final text = RunBundleCodec.encode(bundle);
       final j = jsonDecode(text) as Map<String, Object?>;
       expect(j['kind'], RunBundleCodec.kind);
-      expect(j['schema'], 4);
+      expect(j['schema'], 5);
       final back = RunBundleCodec.decode(text);
       expect(RunBundleCodec.encode(back), text);
       expect(back.sidecar!.notes, 'windy');
@@ -77,12 +77,12 @@ void main() {
         'sidecar': null,
       };
       expect(
-        () => RunBundleCodec.decode(jsonEncode({...base, 'schema': 5})),
+        () => RunBundleCodec.decode(jsonEncode({...base, 'schema': 6})),
         throwsA(isA<RunFileNewerVersionException>()),
       );
       expect(
         () => RunBundleCodec.decode(
-          jsonEncode({...base, 'run': fourByFour.toJson()..['schema'] = 5}),
+          jsonEncode({...base, 'run': fourByFour.toJson()..['schema'] = 6}),
         ),
         throwsA(isA<RunFileNewerVersionException>()),
       );
@@ -91,7 +91,7 @@ void main() {
           jsonEncode({
             ...base,
             'sidecar': RunSidecar(runId: fourByFour.id).toJson()
-              ..['schema'] = 5,
+              ..['schema'] = 6,
           }),
         ),
         throwsA(isA<RunFileNewerVersionException>()),

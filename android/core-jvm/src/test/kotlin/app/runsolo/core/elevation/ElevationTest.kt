@@ -92,9 +92,22 @@ class ElevationTest {
     fun `hysteresis books a step once it is past the threshold`() {
         val t = ClimbTracker(3.0)
         for (e in listOf(0.0, 1.0, 2.9, 3.0, 4.0, 6.5, 6.0, 3.4, 3.0)) t.offer(e)
-        // 0 -> 3.0 books 3.0; 3.0 -> 6.5 books 3.5; 6.5 -> 3.4 is -3.1: book it; 3.4 -> 3.0 not enough.
+        // 0 -> 3.0 starts a climb (3.0), on to 6.5 (3.5 more); 6.5 -> 3.4 comes back 3.1, so the
+        // top at 6.5 is real and the descent is booked from it; 3.4 -> 3.0 carries on down.
         assertEquals(6.5, t.ascentM, 1e-9)
-        assertEquals(3.1, t.descentM, 1e-9)
+        assertEquals(3.5, t.descentM, 1e-9)
+    }
+
+    @Test
+    fun `a hill is booked right up to its top and its way down from the top`() {
+        val t = ClimbTracker(3.0)
+        // 20 m up in 1 m steps, a plateau with 1 m of noise, 15 m down.
+        for (i in 0..20) t.offer(i.toDouble())
+        for (i in 0 until 60) t.offer(20.0 + (if (i % 2 == 0) 0.8 else -0.8))
+        for (i in 1..15) t.offer(20.0 - i)
+        // The plateau's own noise (0.8 m) may add to the top; nothing more.
+        assertEquals(20.0, t.ascentM, 1.0)
+        assertEquals(15.0, t.descentM, 1.0)
     }
 
     @Test

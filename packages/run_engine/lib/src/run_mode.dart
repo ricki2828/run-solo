@@ -58,6 +58,19 @@ enum RunMode {
     return mode;
   }
 
+  /// Whether the run screen shows climb and grade as secondary figures. Keyed
+  /// on this flag, not a mode list, so a new mode decides for itself (the
+  /// trail mode turns it on). The phone records elevation in every mode;
+  /// this only says what the live screen shows.
+  bool get showsElevation => switch (this) {
+    RunMode.free => true,
+    RunMode.intervals || RunMode.laps || RunMode.cooper => false,
+  };
+
+  /// Whether the run screen also shows grade-adjusted pace live (a secondary
+  /// figure). Off in every mode for now; the trail mode turns it on.
+  bool get showsLiveGap => false;
+
   /// Whether the recorder accepts LAP input in this mode (§18.2).
   bool get lapCapable => switch (this) {
     RunMode.intervals || RunMode.laps => true,
