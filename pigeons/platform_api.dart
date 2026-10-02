@@ -416,6 +416,9 @@ class RecorderStatus {
     this.finishRequests,
     this.tipsMuted,
     this.autoPaused,
+    this.elevGainM,
+    this.elevLossM,
+    this.gradePct,
   });
   RecorderState state;
   String? runId;
@@ -459,6 +462,14 @@ class RecorderStatus {
   /// Settings -> Auto-pause), not the runner. Null/false otherwise. A manual
   /// pause on top of it makes it false.
   bool? autoPaused;
+
+  /// Climb and descent so far (metres, barometer + GPS fused on the phone)
+  /// and the grade over the last stretch (percent, + uphill). Null until
+  /// the recorder has an elevation (no barometer and no altitude yet) or,
+  /// for the grade, a full window of distance.
+  double? elevGainM;
+  double? elevLossM;
+  double? gradePct;
 }
 
 /// An in-progress journal found on app open without a finalised run file.
@@ -800,6 +811,9 @@ class TickEvent extends RecorderEvent {
     this.stepRemainingMs,
     this.stepRemainingM,
     this.autoPaused,
+    this.elevGainM,
+    this.elevLossM,
+    this.gradePct,
   });
 
   /// Wall time since Start, pauses included.
@@ -830,6 +844,11 @@ class TickEvent extends RecorderEvent {
 
   /// As `RecorderStatus.autoPaused`.
   bool? autoPaused;
+
+  /// As `RecorderStatus.elevGainM`, `elevLossM`, `gradePct`.
+  double? elevGainM;
+  double? elevLossM;
+  double? gradePct;
 }
 
 class LapEvent extends RecorderEvent {

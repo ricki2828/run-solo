@@ -71,10 +71,10 @@ class RunFileTest {
     }
 
     @Test
-    fun `gzip json round trip matches schema v4`() {
+    fun `gzip json round trip matches schema v5`() {
         val f = RunFile.fromReplay(JournalReplay.read(journal()), w0 + 50_000)
         val m = RunFile.readJson(f.toGzipBytes())
-        assertEquals(4L, m["schema"])
+        assertEquals(5L, m["schema"])
         assertEquals("id1", m["id"])
         assertEquals("intervals", m["mode"])
         assertEquals("km", m["units"])
@@ -89,7 +89,8 @@ class RunFileTest {
         val samples = m.list("samples")
         assertEquals(51, samples.size)
         val s30 = samples[30] as List<*>
-        assertEquals(8, s30.size)
+        assertEquals(9, s30.size, "8 fields and the GPS-altitude elevation (the trace is flat at 10 m)")
+        assertEquals(10L, s30[8])
         assertEquals(30_000L, s30[0])
         assertEquals(150L, s30[7])
         assertNull((samples[0] as List<*>)[7])
@@ -219,16 +220,76 @@ class RunFileTest {
     }
 
     @Test
-    fun `a schema-2 4x4 journal (update mid-run) finalises as a schema-4 intervals file with the norwegian-4x4 session`() {
+    fun `a schema-2 4x4 journal (update mid-run) finalises as a schema-5 intervals file with the norwegian-4x4 session`() {
         val v2 = """{"k":"hdr","schema":2,"t":$t0,"w":$w0,"id":"id1","device":"d","app":"a","tz":"UTC","mode":"fourByFour","preset":{"reps":5,"workSeconds":240,"recoverySeconds":120},"units":"km"}"""
         val rest = listOf(JournalLine.Lap(t0 + 60_000, w0 + 60_000, LapSource.button)).joinToString("") { JournalCodec.encode(it) + "\n" }
         val f = RunFile.fromReplay(JournalReplay.read((v2 + "\n" + rest).toByteArray()), w0 + 90_000)
         val m = RunFile.readJson(f.toGzipBytes())
-        assertEquals(4L, m["schema"])
+        assertEquals(5L, m["schema"])
         assertEquals("intervals", m["mode"])
         @Suppress("UNCHECKED_CAST")
         val spec = SessionSpec.fromJson(m["session"] as Map<String, Any?>)!!
         assertEquals(SessionSpec.norwegian4x4(5, 240, 120), spec)
         assertEquals(9, spec.steps.size)
+    }
+
+    /** 120 s at 3 m/s; GPS altitude is the truth + 2 m, the barometer (when [baro]) reads the truth, which climbs 12 m from 60 s. */
+    private fun elevationJournal(baro: Boolean): ByteArray {
+        val fixes = TraceFixture.straightLine(listOf(120 to 3.0), startT = t0)
+        val sb = StringBuilder(JournalCodec.encode(header.copy(mode = RunMode.laps, session = null))).append('\n')
+        for (f in fixes) {
+            val runT = f.t - t0
+            val truth = if (runT < 60_000) 30.0 else 30.0 + 12.0 * (runT - 60_000) / 60_000
+            val hpa = if (baro) 1013.25 * Math.pow(1.0 - truth / 44_330.77, 1.0 / 0.190263) else null
+            sb.append(JournalCodec.encode(JournalLine.Sample(f.t, w0 + runT, f.lat, f.lon, truth + 2.0, f.accuracyM, f.speedMps, null, hpa))).append('\n')
+        }
+        return sb.toString().toByteArray()
+    }
+
+    @Test
+    fun `a run with a barometer writes fused elevation per sample and its source`() {
+        val f = RunFile.fromReplay(JournalReplay.read(elevationJournal(baro = true)), w0 + 120_000)
+        assertEquals(app.runsolo.core.elevation.ElevSource.baro, f.elevSrc)
+        val withElev = f.samples.filter { it.elevM != null }
+        assertEquals(f.samples.size, withElev.size, "a value on every tick from the first, the level applied back to the early ones")
+        assertEquals(32.0, withElev.first().elevM!!, 1.0) // GPS reads 2 m high and sets the level
+        assertEquals(44.0, withElev.last().elevM!!, 1.5)
+        val json = f.toJson()
+        assertEquals("baro", json["elev_src"])
+        val rows = json["samples"] as List<*>
+        assertEquals(9, (rows.first() as List<*>).size)
+        assertEquals(9, (rows.last() as List<*>).size)
+        // Round trip through the gzip writer keeps both.
+        val m = RunFile.readJson(f.toGzipBytes())
+        assertEquals("baro", m["elev_src"])
+        assertEquals(9, (m.list("samples").last() as List<*>).size)
+    }
+
+    @Test
+    fun `a run with no barometer follows GPS altitude and is flagged gps`() {
+        val f = RunFile.fromReplay(JournalReplay.read(elevationJournal(baro = false)), w0 + 120_000)
+        assertEquals(app.runsolo.core.elevation.ElevSource.gps, f.elevSrc)
+        assertTrue(f.samples.count { it.elevM != null } > 100)
+    }
+
+    @Test
+    fun `a run with no altitude and no barometer writes no elevation at all`() {
+        val fixes = TraceFixture.straightLine(listOf(50 to 3.0), startT = t0)
+        val bytes = (listOf(JournalCodec.encode(header)) + fixes.map {
+            JournalCodec.encode(JournalLine.Sample(it.t, w0 + it.t - t0, it.lat, it.lon, null, it.accuracyM, it.speedMps, null))
+        }).joinToString("\n", postfix = "\n").toByteArray()
+        val f = RunFile.fromReplay(JournalReplay.read(bytes), w0 + 50_000)
+        assertNull(f.elevSrc)
+        assertTrue(f.samples.all { it.elevM == null })
+        assertTrue("elev_src" !in f.toJson())
+        assertTrue((f.toJson()["samples"] as List<*>).all { (it as List<*>).size == 8 })
+    }
+
+    @Test
+    fun `pressure survives the journal line`() {
+        val line = JournalLine.Sample(1_000, 2_000, 1.0, 2.0, 30.0, 5.0, 3.0, 140, 1013.256)
+        val back = JournalCodec.decode(JournalCodec.encode(line)) as JournalLine.Sample
+        assertEquals(1013.26, back.hpa!!, 1e-9)
+        assertNull((JournalCodec.decode(JournalCodec.encode(line.copy(hpa = null))) as JournalLine.Sample).hpa)
     }
 }

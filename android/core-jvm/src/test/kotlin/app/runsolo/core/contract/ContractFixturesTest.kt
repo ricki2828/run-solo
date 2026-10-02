@@ -59,10 +59,10 @@ class ContractFixturesTest {
     }
 
     @Test
-    fun `every current fixture is schema 4 - intervals and cooper carry a session, preset is gone`() {
+    fun `every current fixture is schema 5 - intervals and cooper carry a session, preset is gone`() {
         for ((name, json) in ContractFixtures.all()) {
             val m = Json.parseObject(json)
-            assertEquals(4L, m["schema"], name)
+            assertEquals(5L, m["schema"], name)
             assertTrue(m["mode"] in setOf("intervals", "laps", "free", "cooper"), "$name mode=${m["mode"]}")
             assertTrue(!m.containsKey("preset"), "$name still has preset")
             assertTrue(m.containsKey("session"), "$name has no session key")

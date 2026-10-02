@@ -9,6 +9,8 @@ import android.util.Log
 import app.runsolo.BuildConfig
 import app.runsolo.ble.BleHolder
 import app.runsolo.ble.BleHrClient
+import app.runsolo.core.elevation.LiveElevation
+import app.runsolo.core.elevation.PressureReading
 import app.runsolo.core.fs.JvmFileSystem
 import app.runsolo.core.gps.LivePace
 import app.runsolo.core.gps.MovingDetector
@@ -86,6 +88,9 @@ class RecordingSession(
     })
     private val ticker = SampleTicker(wall = { System.currentTimeMillis() })
     private val livePace = LivePace()
+
+    /** Climb so far and the current grade (barometer + GPS fused, see ElevationFuser). */
+    private val liveElev = LiveElevation()
     private val moving = MovingDetector()
 
     /** Stop/go for auto-pause only; [moving] keeps its own settings for the moving-time summary. */
@@ -117,6 +122,7 @@ class RecordingSession(
     private lateinit var core: RecorderCore
     private var location: LocationSource? = null
     private var ble: BleHrClient? = null
+    private var baro: PressureSource? = null
     private var tickRunnable: Runnable? = null
     private var attached = false
     private var finished = false
@@ -248,7 +254,10 @@ class RecordingSession(
         var lastLapDist = 0.0
         for (e in replayed.events) {
             when (e) {
-                is RunEvent.Sample -> if (e.hasFix && !paused) ticker.filter.offer(LocationFix(e.t, e.lat!!, e.lon!!, e.altM, e.accuracyM!!, e.speedMps))
+                is RunEvent.Sample -> {
+                    if (e.hasFix && !paused) ticker.filter.offer(LocationFix(e.t, e.lat!!, e.lon!!, e.altM, e.accuracyM!!, e.speedMps))
+                    liveElev.offer(e.t, e.hpa, e.altM, e.accuracyM, ticker.filter.totalM, paused)
+                }
                 is RunEvent.Pause -> { paused = true; reanchor = true }
                 is RunEvent.Resume -> { paused = false; ticker.filter.reanchor(); reanchor = false }
                 is RunEvent.AutoPause -> paused = true
@@ -320,6 +329,9 @@ class RecordingSession(
                     fault(FaultKind.GPS_LOST, "Location updates unavailable: ${e.message}")
                 }
             }
+            baro = PressureSource(context).also { src ->
+                if (!src.start(handler) { onPressure(it) }) Log.i(TAG, "no barometer: elevation follows GPS altitude")
+            }
             val client = BleHolder.client(context)
             ble = client
             client.listener = object : BleHrClient.Listener {
@@ -344,6 +356,11 @@ class RecordingSession(
         if (finished) return
         ticker.onFix(fix)
         tick(fix.t)
+    }
+
+    @Synchronized
+    private fun onPressure(reading: PressureReading) {
+        if (!finished) ticker.onPressure(reading)
     }
 
     @Synchronized
@@ -374,6 +391,8 @@ class RecordingSession(
         attached = false
         location?.stop()
         location = null
+        baro?.stop()
+        baro = null
         replay?.stop()
         ble?.let {
             it.listener = null
@@ -424,7 +443,10 @@ class RecordingSession(
         }
         // Sample first: the core's distance steps need this second's distance (Phase 3 §3.6).
         val samples = ticker.tick(t)
-        for (s in samples) writer.append(s)
+        for (s in samples) {
+            writer.append(s)
+            liveElev.offer(s.t, s.hpa, s.altM, s.accuracyM, ticker.distanceM, ticker.paused)
+        }
         val lost = ticker.gpsLost(t)
         dispatch.flush(t, ticker.distanceM)
         handle(core.tick(t, ticker.distanceM, gpsOk = !lost), t)
@@ -493,6 +515,9 @@ class RecordingSession(
                     stepRemainingMs = st.stepRemainingMs,
                     stepRemainingM = st.stepRemainingM,
                     autoPaused = core.autoPaused,
+                    elevGainM = liveElev.ascentM,
+                    elevLossM = liveElev.descentM,
+                    gradePct = liveElev.grade?.let { it * 100 },
                 ),
             )
         }
@@ -936,6 +961,9 @@ class RecordingSession(
             autoPaused = core.autoPaused,
             finishRequests = finishRequests.takeIf { it > 0 }?.toLong(),
             tipsMuted = tipsMuted(),
+            elevGainM = liveElev.ascentM,
+            elevLossM = liveElev.descentM,
+            gradePct = liveElev.grade?.let { it * 100 },
         )
     }
 

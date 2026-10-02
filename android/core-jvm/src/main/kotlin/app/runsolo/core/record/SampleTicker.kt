@@ -1,6 +1,8 @@
 package app.runsolo.core.record
 
 import app.runsolo.core.ble.HrJoin
+import app.runsolo.core.elevation.PressureJoin
+import app.runsolo.core.elevation.PressureReading
 import app.runsolo.core.gps.PointFilter
 import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.model.HrReading
@@ -31,6 +33,7 @@ import app.runsolo.core.model.LocationFix
 class SampleTicker(
     val filter: PointFilter = PointFilter(),
     val hrJoin: HrJoin = HrJoin(),
+    val pressureJoin: PressureJoin = PressureJoin(),
     private val wall: () -> Long = System::currentTimeMillis,
 ) {
     private val pending = ArrayList<LocationFix>()
@@ -86,13 +89,16 @@ class SampleTicker(
 
     fun onHrNoContact() = hrJoin.offerNoContact()
 
+    /** A barometer reading (batched, about 1 Hz): joined to the samples it falls within 3 s of. */
+    fun onPressure(reading: PressureReading) = pressureJoin.offer(reading)
+
     /** The samples for this tick, in time order; never empty (a tick without a fix is still a sample). */
     fun tick(nowT: Long): List<JournalLine.Sample> {
         val w = wall()
         val out = ArrayList<JournalLine.Sample>(1)
         if (pending.isEmpty()) {
             val t = if (nowT <= lastSampleT) lastSampleT + 1 else nowT
-            out.add(JournalLine.Sample.noFix(t, w, hrJoin.hrAt(nowT)))
+            out.add(JournalLine.Sample.noFix(t, w, hrJoin.hrAt(nowT), pressureJoin.hpaAt(nowT)))
         } else {
             pending.sortBy { it.t }
             for (fix in pending) {
@@ -103,7 +109,7 @@ class SampleTicker(
                     t = lastSampleT + 1
                     restamped++
                 }
-                out.add(JournalLine.Sample(t, w, fix.lat, fix.lon, fix.altM, fix.accuracyM, fix.speedMps, hrJoin.hrAt(fix.t)))
+                out.add(JournalLine.Sample(t, w, fix.lat, fix.lon, fix.altM, fix.accuracyM, fix.speedMps, hrJoin.hrAt(fix.t), pressureJoin.hpaAt(fix.t)))
                 lastSampleT = t
             }
             pending.clear()

@@ -46,11 +46,13 @@ sealed class JournalLine {
         val accuracyM: Double?,
         val speedMps: Double?,
         val hr: Int?,
+        /** The barometer's pressure at this tick, hPa (elevation, schema 5); null = no sensor or no reading. */
+        val hpa: Double? = null,
     ) : JournalLine() {
         val hasFix: Boolean get() = lat != null && lon != null && accuracyM != null
 
         companion object {
-            fun noFix(t: Long, w: Long, hr: Int?) = Sample(t, w, null, null, null, null, null, hr)
+            fun noFix(t: Long, w: Long, hr: Int?, hpa: Double? = null) = Sample(t, w, null, null, null, null, null, hr, hpa)
         }
     }
 

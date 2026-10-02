@@ -61,6 +61,7 @@ object JournalCodec {
                     line.speedMps.finiteOrNull()?.let { m["spd"] = it }
                 }
                 if (line.hr != null) m["hr"] = line.hr
+                line.hpa.finiteOrNull()?.let { m["hpa"] = Math.round(it * 100) / 100.0 }
             }
             is JournalLine.Lap -> { m["k"] = "lap"; m["t"] = line.t; m["w"] = line.w; m["src"] = line.source.name }
             is JournalLine.Pause -> { m["k"] = "pause"; m["t"] = line.t; m["w"] = line.w }
@@ -147,6 +148,7 @@ object JournalCodec {
                     accuracyM = m.doubleOrNull("acc"),
                     speedMps = m.doubleOrNull("spd"),
                     hr = m.longOrNull("hr")?.toInt(),
+                    hpa = m.doubleOrNull("hpa"),
                 )
             }
             "lap" -> JournalLine.Lap(t, w, LapSource.valueOf(m.string("src")))

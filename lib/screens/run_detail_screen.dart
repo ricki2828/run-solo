@@ -14,6 +14,7 @@ import '../theme/theme.dart';
 import '../theme/zones.dart';
 import '../widgets/chrome.dart';
 import '../widgets/coaching.dart';
+import '../widgets/elevation_profile.dart';
 import '../widgets/hold_button.dart';
 import '../widgets/rep_bars.dart';
 import '../widgets/recent_activity.dart' show runTypeColor;
@@ -142,6 +143,9 @@ class RunDetailBody extends StatelessWidget {
       now: services.now(),
     );
     final hasRoute = !a.indoor && !route.isEmpty;
+    // Null for a run with no elevation (indoor, an import, one recorded
+    // before the phone fused its barometer).
+    final elev = engine.RunElevation.of(d.run);
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
       children: [
@@ -165,6 +169,10 @@ class RunDetailBody extends StatelessWidget {
           ),
           const SizedBox(height: Space.x24),
         ],
+        if (elev != null) ...[
+          ElevationProfile(elevation: elev, units: units),
+          const SizedBox(height: Space.x24),
+        ],
         switch (d.summary.mode) {
           RecordMode.intervals => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -173,6 +181,7 @@ class RunDetailBody extends StatelessWidget {
               const SizedBox(height: Space.x24),
               _DistanceSplits(
                 free: free,
+                elevation: elev,
                 units: units,
                 color: d.summary.spec?.isGoal == true || d.summary.isParkrun
                     ? AuroraRunType.goal
@@ -193,12 +202,23 @@ class RunDetailBody extends StatelessWidget {
                   units: units,
                 ),
                 const SizedBox(height: Space.x24),
-                _LapsTable(view: a.laps, units: units),
+                _LapsTable(
+                  view: a.laps,
+                  units: units,
+                  elevation: elev,
+                  laps: d.run.laps,
+                ),
               ],
             ),
-          RecordMode.laps => _LapsTable(view: a.laps, units: units),
+          RecordMode.laps => _LapsTable(
+            view: a.laps,
+            units: units,
+            elevation: elev,
+            laps: d.run.laps,
+          ),
           RecordMode.free || RecordMode.cooper => _Splits(
             free: free,
+            elevation: elev,
             // The header already says moving time when it differs.
             showMoving:
                 movingGapMs(
@@ -879,9 +899,18 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
 }
 
 class _LapsTable extends StatelessWidget {
-  const _LapsTable({required this.view, required this.units});
+  const _LapsTable({
+    required this.view,
+    required this.units,
+    this.elevation,
+    this.laps = const [],
+  });
   final engine.LapsSummary? view;
   final Units units;
+
+  /// Adds a Climb column, one entry per recorded lap ([laps]).
+  final engine.RunElevation? elevation;
+  final List<engine.Lap> laps;
 
   @override
   Widget build(BuildContext context) {
@@ -893,11 +922,19 @@ class _LapsTable extends StatelessWidget {
         style: RunSoloType.body15.copyWith(color: t.inkSecondary),
       );
     }
+    final lapClimbs = elevation?.lapClimbs(laps);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _TableHeader(
-          cells: ['Lap', 'Time', units == Units.mi ? 'Mi' : 'Km', 'Pace', 'HR'],
+          cells: [
+            'Lap',
+            'Time',
+            units == Units.mi ? 'Mi' : 'Km',
+            'Pace',
+            'HR',
+            if (lapClimbs != null) 'Climb',
+          ],
         ),
         for (final r in view.laps)
           _TableRow(
@@ -909,6 +946,10 @@ class _LapsTable extends StatelessWidget {
               Fmt.distanceBare(r.distanceM, units),
               Fmt.pace(r.paceSecPerKm, units),
               r.meanHr == null ? '--' : '${r.meanHr!.round()}',
+              if (lapClimbs != null)
+                r.number - 1 < lapClimbs.length
+                    ? _climbCell(lapClimbs[r.number - 1], units)
+                    : '--',
             ],
           ),
         const SizedBox(height: Space.x16),
@@ -953,14 +994,25 @@ class _LapsTable extends StatelessWidget {
   }
 }
 
+/// "+12 m" for a stretch's climb; "0 m" on the flat. The descent is in the
+/// elevation card, a table cell has room for one figure.
+String _climbCell(engine.Climb c, Units units) {
+  final v = Fmt.elevation(c.ascentM, units);
+  return c.ascentM >= 0.5 ? '+$v' : v;
+}
+
 class _Splits extends StatelessWidget {
   const _Splits({
     required this.free,
     required this.units,
+    this.elevation,
     this.heat,
     this.showMoving = true,
   });
   final engine.FreeRunSummary free;
+
+  /// Fills the table's last column with each split's climb.
+  final engine.RunElevation? elevation;
   final bool showMoving;
   final Units units;
   final engine.HeatAdjustment? heat;
@@ -969,6 +1021,7 @@ class _Splits extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final unit = units == Units.mi ? 'mi' : 'km';
+    final climbs = elevation?.unitClimbs(units == Units.mi ? 1609.344 : 1000);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1001,7 +1054,7 @@ class _Splits extends StatelessWidget {
               unit.toUpperCase(),
               'Pace',
               heat?.adjusts == true ? 'Cool-day est.' : '',
-              '',
+              climbs == null ? '' : 'Climb',
             ],
           ),
           for (var i = 0; i < free.splitsSecPerUnit.length; i++)
@@ -1020,7 +1073,9 @@ class _Splits extends StatelessWidget {
                         units,
                       )
                     : '',
-                '',
+                climbs != null && i < climbs.length
+                    ? _climbCell(climbs[i], units)
+                    : '',
               ],
             ),
         ],
@@ -1037,8 +1092,10 @@ class _DistanceSplits extends StatelessWidget {
     required this.free,
     required this.units,
     required this.color,
+    this.elevation,
   });
   final engine.FreeRunSummary free;
+  final engine.RunElevation? elevation;
   final Units units;
   final Color color;
 
@@ -1047,6 +1104,7 @@ class _DistanceSplits extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final unit = units == Units.mi ? 'MI' : 'KM';
     final splits = free.splitsSecPerUnit;
+    final climbs = elevation?.unitClimbs(units == Units.mi ? 1609.344 : 1000);
     final quickest = splits.isEmpty
         ? -1
         : splits.indexOf(splits.reduce((a, b) => a < b ? a : b));
@@ -1112,6 +1170,20 @@ class _DistanceSplits extends StatelessWidget {
                       color: i == quickest ? t.semFaster : t.inkPrimary,
                     ),
                   ),
+                  if (climbs != null && i < climbs.length) ...[
+                    const SizedBox(width: Space.x12),
+                    SizedBox(
+                      width: 56,
+                      child: Text(
+                        _climbCell(climbs[i], units),
+                        key: ValueKey('split-climb-$i'),
+                        textAlign: TextAlign.right,
+                        style: RunSoloType.label13.copyWith(
+                          color: t.inkSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
               if (i + 1 < splits.length) const SizedBox(height: Space.x12),

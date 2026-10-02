@@ -42,7 +42,7 @@ void main() {
       );
       // Re-encoded as the current schema: `session`, never `preset` or `fourByFour`.
       final j = jsonDecode(RunFileCodec.encode(run)) as Map<String, Object?>;
-      expect(j['schema'], 4);
+      expect(j['schema'], 5);
       expect(j['mode'], 'intervals');
       expect(j.containsKey('preset'), isFalse);
       expect((j['session'] as Map)['templateId'], 'norwegian-4x4');

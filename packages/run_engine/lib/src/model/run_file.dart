@@ -21,6 +21,11 @@ class RunFileNewerVersionException extends RunFileFormatException {
   RunFileNewerVersionException(super.message);
 }
 
+/// Where a run's elevation came from: the phone's barometer (shape) anchored
+/// by GPS (level), or GPS altitude alone on a phone with no barometer. GPS-only
+/// is noisier, so its climb threshold is larger.
+enum ElevSource { baro, gps }
+
 /// Distance units chosen at Start; only affects display, never storage.
 enum Units { km, mi }
 
@@ -203,9 +208,13 @@ class Span {
   int get hashCode => Object.hash(t0Ms, t1Ms, auto);
 }
 
-/// One 1 Hz sample: `[t, lat, lon, alt, acc, speed, dist, hr]`. `lat`/`lon`
-/// are null when there is no fix; `hr` is null when no strap (never 0).
-/// `distM` is the recorder's cumulative distance over accepted points.
+/// One 1 Hz sample: `[t, lat, lon, alt, acc, speed, dist, hr]`, plus a ninth
+/// `elev` element from schema 5 when there is one. `lat`/`lon` are null when
+/// there is no fix; `hr` is null when no strap (never 0). `distM` is the
+/// recorder's cumulative distance over accepted points. `elevM` is the
+/// phone's fused elevation (barometer shape, GPS level; or smoothed GPS
+/// altitude when the phone has no barometer, see `RunFile.elevSrc`), while
+/// `altM` stays the raw GPS altitude.
 class Sample {
   const Sample({
     required this.tMs,
@@ -216,6 +225,7 @@ class Sample {
     this.speedMps,
     required this.distM,
     this.hr,
+    this.elevM,
   });
 
   final int tMs;
@@ -226,6 +236,9 @@ class Sample {
   final double? speedMps;
   final double distM;
   final int? hr;
+
+  /// Fused elevation in metres, null when the recorder had none at this tick.
+  final double? elevM;
 
   bool get hasFix => lat != null && lon != null;
 
@@ -238,6 +251,7 @@ class Sample {
     Object? speedMps = _unset,
     double? distM,
     Object? hr = _unset,
+    Object? elevM = _unset,
   }) => Sample(
     tMs: tMs ?? this.tMs,
     lat: identical(lat, _unset) ? this.lat : lat as double?,
@@ -247,6 +261,7 @@ class Sample {
     speedMps: identical(speedMps, _unset) ? this.speedMps : speedMps as double?,
     distM: distM ?? this.distM,
     hr: identical(hr, _unset) ? this.hr : hr as int?,
+    elevM: identical(elevM, _unset) ? this.elevM : elevM as double?,
   );
 
   List<Object?> toJson() => [
@@ -258,11 +273,12 @@ class Sample {
     _numOrNull(speedMps, 2),
     _num(distM),
     hr,
+    if (elevM != null) _numOrNull(elevM, 1),
   ];
 
   factory Sample.fromJson(Object? json) {
-    if (json is! List || json.length != 8) {
-      throw RunFileFormatException('sample must have 8 fields');
+    if (json is! List || (json.length != 8 && json.length != 9)) {
+      throw RunFileFormatException('sample must have 8 fields, or 9 with elev');
     }
     final t = json[0];
     if (t is! int) throw RunFileFormatException('sample.t must be int');
@@ -296,6 +312,7 @@ class Sample {
       speedMps: optNum(5, 'speed'),
       distM: dist.toDouble(),
       hr: hr as int?,
+      elevM: json.length == 9 ? optNum(8, 'elev') : null,
     );
   }
 }
@@ -321,6 +338,10 @@ const _unset = Object();
 ///   is schema 3's, so a schema-3 file reads as-is (all its pauses manual).
 ///   The bump makes an older build say "newer app" instead of failing on the
 ///   three-element span.
+/// - 5 (elevation): a sample may carry a ninth element, the fused elevation
+///   in metres ([Sample.elevM]), and the file may carry `elev_src` (`baro` or
+///   `gps`), written only when some sample has an elevation. Every other key
+///   is schema 4's, so a schema-4 file reads as-is (no elevation).
 class RunFile {
   RunFile({
     required this.id,
@@ -337,11 +358,12 @@ class RunFile {
     this.gaps = const [],
     required this.samples,
     this.nudgesFired = const [],
+    this.elevSrc,
     this.readSchema = schema,
   });
 
   /// The schema this build writes.
-  static const int schema = 4;
+  static const int schema = 5;
 
   /// The lowest schema this build reads (every older one is mapped forward).
   static const int minReadSchema = 1;
@@ -376,6 +398,11 @@ class RunFile {
   /// Optional key `nudges_fired`, written only when there are some, so a
   /// run without nudges is byte-for-byte what schema 3 always wrote.
   final List<FiredNudge> nudgesFired;
+
+  /// Where the samples' elevation mostly came from (the phone's barometer or
+  /// smoothed GPS altitude); null when no sample has one. Optional key
+  /// `elev_src`.
+  final ElevSource? elevSrc;
   final List<Sample> samples;
 
   int get elapsedMs => samples.isEmpty ? 0 : samples.last.tMs;
@@ -393,6 +420,7 @@ class RunFile {
     List<Span>? gaps,
     List<Sample>? samples,
     List<FiredNudge>? nudgesFired,
+    Object? elevSrc = _unset,
   }) => RunFile(
     id: id ?? this.id,
     device: device,
@@ -410,6 +438,7 @@ class RunFile {
     gaps: gaps ?? this.gaps,
     samples: samples ?? this.samples,
     nudgesFired: nudgesFired ?? this.nudgesFired,
+    elevSrc: identical(elevSrc, _unset) ? this.elevSrc : elevSrc as ElevSource?,
   );
 
   Map<String, Object?> toJson() => {
@@ -427,6 +456,7 @@ class RunFile {
     'pauses': pauses.map((p) => p.toJson()).toList(),
     'gaps': gaps.map((g) => g.toJson()).toList(),
     'samples': samples.map((s) => s.toJson()).toList(),
+    if (elevSrc != null) 'elev_src': elevSrc!.name,
     if (nudgesFired.isNotEmpty)
       'nudges_fired': [for (final n in nudgesFired) n.toJson()],
   };
@@ -450,6 +480,7 @@ class RunFile {
     'pauses',
     'gaps',
     'samples',
+    'elev_src',
     'nudges_fired',
   };
 
@@ -524,8 +555,19 @@ class RunFile {
       gaps: _readList(json, 'gaps').map(Span.fromJson).toList(),
       samples: samples,
       nudgesFired: _readNudges(json['nudges_fired']),
+      elevSrc: _readElevSrc(json['elev_src']),
       readSchema: schemaValue,
     );
+  }
+
+  static ElevSource? _readElevSrc(Object? raw) {
+    if (raw == null) return null;
+    final src = ElevSource.values.cast<ElevSource?>().firstWhere(
+      (e) => e!.name == raw,
+      orElse: () => null,
+    );
+    if (src == null) throw RunFileFormatException('elev_src must be baro|gps');
+    return src;
   }
 
   static List<FiredNudge> _readNudges(Object? raw) {

@@ -61,6 +61,25 @@ abstract final class Fmt {
 
   static String recovery(int seconds) => clock(seconds * 1000);
 
+  /// "124 m" / "407 ft": height is metres with km, feet with miles; "--"
+  /// without a value. Never signed (the label says climb or descent).
+  static String elevation(double? metres, Units units) {
+    if (metres == null) return '--';
+    return units == Units.mi
+        ? '${(metres * _feetPerMetre).round()} ft'
+        : '${metres.round()} m';
+  }
+
+  static const double _feetPerMetre = 3.28084;
+
+  /// "+3%", "-2%", "0%": the grade as a whole percent, "--" without one.
+  /// A grade under half a percent reads "0%", never "-0%".
+  static String grade(double? pct) {
+    if (pct == null) return '--';
+    final r = pct.round();
+    return r > 0 ? '+$r%' : '$r%';
+  }
+
   static const _months = [
     'Jan',
     'Feb',

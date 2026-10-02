@@ -1,5 +1,7 @@
 package app.runsolo.core.run
 
+import app.runsolo.core.elevation.ElevSource
+import app.runsolo.core.elevation.ElevationFuser
 import app.runsolo.core.gps.PointFilter
 import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.journal.Replay
@@ -17,7 +19,7 @@ import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 
 /**
- * Schema v4 run file (plan §4, §18.7; Phase 3 §3.8: `mode` `intervals` replaces `fourByFour`, `session`
+ * Schema v5 run file (plan §4, §18.7; Phase 3 §3.8: `mode` `intervals` replaces `fourByFour`, `session`
  * replaces `preset`), built from a journal replay. All `t` are run-timeline millis
  * since `start`; `d` values are cumulative accepted-haversine metres.
  *
@@ -29,6 +31,11 @@ import java.util.zip.GZIPOutputStream
  * A `pauses` entry is `[t0, t1]` for a pause the runner made and `[t0, t1, "auto"]` for one the
  * recorder made when the runner stopped (the array in memory is `[t0, t1, 1]`, see [isAutoPause]);
  * every file written before auto-pause has only the two-element form, which is still a manual pause.
+ *
+ * Schema 5 (elevation): a sample may carry a ninth element, the fused elevation in metres
+ * ([ElevationFuser]), present only when there is one; `elev_src` (`baro` or `gps`) says which sensor
+ * it mostly came from and is written only with at least one such sample. A run with no elevation is
+ * byte-for-byte what schema 4 wrote, but for the version.
  */
 data class RunFile(
     val id: String,
@@ -50,6 +57,8 @@ data class RunFile(
      * when there are some, so a run without nudges is byte-for-byte the schema 3 it always was.
      */
     val nudgesFired: List<Pair<String, Int>> = emptyList(),
+    /** Where the samples' [Sample.elevM] came from; null when no sample has one. */
+    val elevSrc: ElevSource? = null,
 ) {
     data class Lap(val i: Int, val t0: Long, val t1: Long, val d0: Double, val d1: Double, val kind: LapKind)
 
@@ -63,6 +72,8 @@ data class RunFile(
         val speedMps: Double?,
         val distM: Double,
         val hr: Int?,
+        /** Fused barometer + GPS elevation, metres; null = none at this tick. */
+        val elevM: Double? = null,
     ) {
         val hasFix: Boolean get() = lat != null && lon != null && accuracyM != null
     }
@@ -88,8 +99,12 @@ data class RunFile(
         },
         "pauses" to pauses.map { if (isAutoPause(it)) listOf(it[0], it[1], AUTO_PAUSE_KIND) else it.asList() },
         "gaps" to gaps.map { it.asList() },
-        "samples" to samples.map { listOf(it.t, it.lat, it.lon, it.altM, it.accuracyM, it.speedMps, it.distM, it.hr) },
+        "samples" to samples.map {
+            val row = listOf(it.t, it.lat, it.lon, it.altM, it.accuracyM, it.speedMps, it.distM, it.hr)
+            if (it.elevM == null) row else row + (Math.round(it.elevM * 10) / 10.0)
+        },
     ).apply {
+        if (elevSrc != null) put("elev_src", elevSrc.wire)
         if (nudgesFired.isNotEmpty()) put("nudges_fired", nudgesFired.map { listOf(it.first, it.second) })
     }
 
@@ -100,7 +115,7 @@ data class RunFile(
     }
 
     companion object {
-        const val SCHEMA = 4
+        const val SCHEMA = 5
 
         /** The third element of an auto-pause entry in the file's `pauses`. */
         const val AUTO_PAUSE_KIND = "auto"
@@ -119,6 +134,7 @@ data class RunFile(
         fun fromReplay(r: Replay, endEpochMs: Long): RunFile {
             val h: JournalLine.Header = r.header
             val filter = PointFilter()
+            val fuser = ElevationFuser()
             val samples = ArrayList<Sample>()
             val markers = ArrayList<Pair<Long, LapKind>>()
             val pauses = ArrayList<LongArray>()
@@ -141,7 +157,9 @@ data class RunFile(
                         if (last != null && e.t <= last.t) continue
                         if (e.hasFix && pauseStart == null) filter.offer(LocationFix(e.t, e.lat!!, e.lon!!, e.altM, e.accuracyM!!, e.speedMps))
                         val hr = e.hr?.takeIf { it > 0 }
-                        samples.add(Sample(e.t, e.lat, e.lon, e.altM, e.accuracyM, e.speedMps, filter.totalM, hr))
+                        // Elevation runs through every sample, paused or not, so the level stays right on resume.
+                        val elev = fuser.offer(e.t, e.hpa, e.altM, e.accuracyM)
+                        samples.add(Sample(e.t, e.lat, e.lon, e.altM, e.accuracyM, e.speedMps, filter.totalM, hr, elev))
                     }
                     is RunEvent.Lap -> markers.add(e.t to if (e.source == LapSource.auto) LapKind.auto else LapKind.manual)
                     is RunEvent.Pause -> {
@@ -175,6 +193,13 @@ data class RunFile(
                 pauses.removeAll { it[0] >= p } // an auto part a PAUSE took over: the run ends at its start, no span
                 gaps.removeAll { it[0] >= p }
             }
+            // The samples hold the fuser's relative series; the level GPS settled on makes it absolute for
+            // every tick, the first seconds included. No level (never a usable GPS altitude): no elevation.
+            val level = fuser.levelM
+            for (i in samples.indices) {
+                val e = samples[i].elevM ?: continue
+                samples[i] = samples[i].copy(elevM = level?.let { e + it })
+            }
             val laps = ArrayList<Lap>()
             var t0 = 0L
             var d0 = 0.0
@@ -194,6 +219,7 @@ data class RunFile(
                     .filter { it.kind == JournalLine.FiredKind.nudge }
                     .map { it.key to it.index }
                     .distinct(),
+                elevSrc = if (samples.any { it.elevM != null }) fuser.source else null,
             )
         }
 

@@ -22,6 +22,7 @@ sealed class RunEvent {
         val accuracyM: Double?,
         val speedMps: Double?,
         val hr: Int?,
+        val hpa: Double? = null,
     ) : RunEvent() {
         val hasFix: Boolean get() = lat != null && lon != null && accuracyM != null
     }
@@ -152,7 +153,7 @@ object JournalReplay {
                 runT = candidate
                 events.add(
                     when (line) {
-                        is JournalLine.Sample -> RunEvent.Sample(runT, line.lat, line.lon, line.altM, line.accuracyM, line.speedMps, line.hr)
+                        is JournalLine.Sample -> RunEvent.Sample(runT, line.lat, line.lon, line.altM, line.accuracyM, line.speedMps, line.hr, line.hpa)
                         is JournalLine.Lap -> RunEvent.Lap(runT, line.source)
                         is JournalLine.Pause -> RunEvent.Pause(runT)
                         is JournalLine.Resume -> RunEvent.Resume(runT)
