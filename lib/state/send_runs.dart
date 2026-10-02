@@ -26,6 +26,7 @@ import '../platform/platform_api.g.dart';
 import '../platform/transfer_gateway.dart';
 import 'health_workout.dart';
 import 'history_store.dart';
+import 'intervals_icu.dart';
 import 'settings.dart';
 
 /// File formats "Share file" offers.
@@ -320,28 +321,6 @@ class HealthTarget extends ExportTarget {
   }
 }
 
-/// Intervals.icu: a later PR.
-class IntervalsIcuTarget extends ExportTarget {
-  static const String targetId = 'intervals_icu';
-
-  @override
-  String get id => targetId;
-  @override
-  String get label => 'Intervals.icu';
-  @override
-  String get blurb => 'Coming soon';
-  @override
-  bool get supportsAutomatic => true;
-  @override
-  bool get comingSoon => true;
-
-  // TODO(send-runs): POST /api/v1/athlete/0/activities (multipart TCX/GPX,
-  // basic auth with the runner's own API key kept in secure storage).
-  @override
-  Future<SendResult> send(SendRequest req) async =>
-      const SendResult.failed('Not available yet');
-}
-
 /// Strava has no target: it takes a file the runner uploads themselves.
 const String kStravaUploadUrl = 'https://www.strava.com/upload/select';
 const String kStravaLine = "Save the file, then upload it on Strava's website";
@@ -351,10 +330,15 @@ List<ExportTarget> defaultExportTargets(
   HealthGateway health, {
   Future<Directory> Function()? tempDir,
   DateTime Function()? now,
+  SecretStore? secrets,
+  IntervalsHttp? intervalsHttp,
 }) => [
   ShareFileTarget(transfer: transfer, tempDir: tempDir),
   HealthTarget(gateway: health, now: now),
-  IntervalsIcuTarget(),
+  IntervalsIcuTarget(
+    store: secrets ?? SecureSecretStore(),
+    http: intervalsHttp,
+  ),
 ];
 
 /// What run detail shows for [record] against [target]; null when the run

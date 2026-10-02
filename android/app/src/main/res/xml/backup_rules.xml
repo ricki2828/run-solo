@@ -15,4 +15,8 @@
     <!-- In-progress journals (files/journals/<id>/journal.ndjson) and the overflow archive. -->
     <exclude domain="file" path="journals/" />
     <exclude domain="file" path="runs-archive/" />
+    <!-- The Intervals.icu key (flutter_secure_storage, shared preferences) is never backed up: it is
+         not in an include above, and is excluded by name so a future include of the whole domain
+         cannot pick it up. -->
+    <exclude domain="sharedpref" path="FlutterSecureStorage.xml" />
 </full-backup-content>

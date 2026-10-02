@@ -11,6 +11,7 @@
         <exclude domain="database" path="runsolo.db-journal" />
         <exclude domain="file" path="journals/" />
         <exclude domain="file" path="runs-archive/" />
+        <exclude domain="sharedpref" path="FlutterSecureStorage.xml" />
     </cloud-backup>
     <device-transfer>
         <include domain="database" path="runsolo.db" />
@@ -21,5 +22,6 @@
         <exclude domain="database" path="runsolo.db-journal" />
         <exclude domain="file" path="journals/" />
         <exclude domain="file" path="runs-archive/" />
+        <exclude domain="sharedpref" path="FlutterSecureStorage.xml" />
     </device-transfer>
 </data-extraction-rules>

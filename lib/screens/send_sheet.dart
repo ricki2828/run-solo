@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/services.dart';
+import '../state/intervals_icu.dart';
 import '../state/send_runs.dart';
 import '../theme/theme.dart';
 
@@ -176,8 +177,12 @@ class _SendSheetState extends State<SendSheet> {
                         : () => _share(ExportFormat.tcx, thenStrava: true),
                   ),
                 ),
-              ] else if (target.comingSoon)
-                _Block(label: target.label, blurb: 'Coming soon', muted: true)
+              ] else if (target is IntervalsIcuTarget && !target.connected)
+                _Block(
+                  label: target.label,
+                  blurb: 'Connect it in Settings, under Send runs to',
+                  muted: true,
+                )
               else
                 _Block(
                   label: target.label,
