@@ -398,8 +398,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     onChanged: target.comingSoon
                         ? null
                         : (v) => set(
-                            (x) =>
-                                x.withAutoSend(target.id, v, services.now()),
+                            (x) => x.withAutoSend(target.id, v, services.now()),
                           ),
                     reason: target.comingSoon
                         ? 'Coming soon'
