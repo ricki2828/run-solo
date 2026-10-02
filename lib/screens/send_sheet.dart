@@ -43,12 +43,15 @@ class SendSheet extends StatefulWidget {
 class _SendSheetState extends State<SendSheet> {
   bool _busy = false;
   String? _error;
+  bool _canInstall = false;
+  ExportTarget? _installFor;
 
   Future<void> _share(ExportFormat format, {bool thenStrava = false}) async {
     final services = AppServices.of(context);
     setState(() {
       _busy = true;
       _error = null;
+      _canInstall = false;
     });
     final r = await services.sender.sendManual(
       widget.runId,
@@ -75,6 +78,38 @@ class _SendSheetState extends State<SendSheet> {
         });
         return;
       }
+    }
+    Navigator.of(context).pop(true);
+  }
+
+  /// A service target: get it ready (permissions, install) from this tap,
+  /// then send.
+  Future<void> _sendTo(ExportTarget target) async {
+    final services = AppServices.of(context);
+    setState(() {
+      _busy = true;
+      _error = null;
+      _canInstall = false;
+    });
+    final setup = await target.prepare();
+    if (!mounted) return;
+    if (!setup.isReady) {
+      setState(() {
+        _busy = false;
+        _error = setup.message;
+        _canInstall = setup.canInstall;
+        _installFor = target;
+      });
+      return;
+    }
+    final r = await services.sender.sendManual(widget.runId, target.id);
+    if (!mounted) return;
+    if (!r.ok) {
+      setState(() {
+        _busy = false;
+        _error = r.error;
+      });
+      return;
     }
     Navigator.of(context).pop(true);
   }
@@ -141,11 +176,22 @@ class _SendSheetState extends State<SendSheet> {
                         : () => _share(ExportFormat.tcx, thenStrava: true),
                   ),
                 ),
-              ] else
+              ] else if (target.comingSoon)
+                _Block(label: target.label, blurb: 'Coming soon', muted: true)
+              else
                 _Block(
                   label: target.label,
-                  blurb: target.comingSoon ? 'Coming soon' : target.blurb,
-                  muted: target.comingSoon,
+                  blurb: target.blurb,
+                  state: sendStateLine(
+                    target,
+                    widget.sidecar.sends[target.id],
+                    autoOn: target.isEnabled(settings),
+                  ),
+                  child: _SheetButton(
+                    key: ValueKey('send-${target.id}'),
+                    label: 'Send to ${target.label}',
+                    onTap: _busy ? null : () => _sendTo(target),
+                  ),
                 ),
             ],
             if (_error != null) ...[
@@ -155,6 +201,14 @@ class _SendSheetState extends State<SendSheet> {
                 key: const ValueKey('send-error'),
                 style: RunSoloType.body15.copyWith(color: t.semWarn),
               ),
+              if (_canInstall && _installFor != null) ...[
+                const SizedBox(height: Space.x8),
+                _SheetButton(
+                  key: const ValueKey('send-install'),
+                  label: 'Open the Play Store',
+                  onTap: () => _installFor!.openInstall(),
+                ),
+              ],
             ],
           ],
         ),

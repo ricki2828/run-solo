@@ -478,6 +478,38 @@ enum class LiveBoardKind(val raw: Int) {
 }
 
 /**
+ * Whether the phone can take a workout. `notInstalled`: Android 13 and
+ * older without the Health Connect app. `needsUpdate`: it is there but too
+ * old. `unsupported`: this platform has no implementation.
+ */
+enum class HealthAvailability(val raw: Int) {
+  AVAILABLE(0),
+  NOT_INSTALLED(1),
+  NEEDS_UPDATE(2),
+  UNSUPPORTED(3);
+
+  companion object {
+    fun ofRaw(raw: Int): HealthAvailability? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+enum class HealthWriteOutcome(val raw: Int) {
+  WRITTEN(0),
+  WRITTEN_WITHOUT_ROUTE(1),
+  NOT_AVAILABLE(2),
+  PERMISSION_DENIED(3),
+  FAILED(4);
+
+  companion object {
+    fun ofRaw(raw: Int): HealthWriteOutcome? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+/**
  * One expanded step (named `SessionStep`: a generated `Step` would clash
  * with Flutter material's `Step`). `repIndex` is 1-based; a recovery carries
  * the rep number of the work step before it (run-file JSON key `rep`).
@@ -2372,6 +2404,343 @@ data class PhaseEvent (
     return result
   }
 }
+
+/**
+ * What the app may write. The route is a separate permission (Health
+ * Connect asks for it on its own).
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class HealthStatus (
+  val availability: HealthAvailability,
+  /** Exercise, heart rate and distance. */
+  val coreGranted: Boolean,
+  val routeGranted: Boolean
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): HealthStatus {
+      val availability = pigeonVar_list[0] as HealthAvailability
+      val coreGranted = pigeonVar_list[1] as Boolean
+      val routeGranted = pigeonVar_list[2] as Boolean
+      return HealthStatus(availability, coreGranted, routeGranted)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      availability,
+      coreGranted,
+      routeGranted,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as HealthStatus
+    return PlatformApiPigeonUtils.deepEquals(this.availability, other.availability) && PlatformApiPigeonUtils.deepEquals(this.coreGranted, other.coreGranted) && PlatformApiPigeonUtils.deepEquals(this.routeGranted, other.routeGranted)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.availability)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.coreGranted)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.routeGranted)
+    return result
+  }
+}
+
+/** Generated class from Pigeon that represents data sent in messages. */
+data class HealthLap (
+  val startEpochMs: Long,
+  val endEpochMs: Long,
+  val distanceM: Double
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): HealthLap {
+      val startEpochMs = pigeonVar_list[0] as Long
+      val endEpochMs = pigeonVar_list[1] as Long
+      val distanceM = pigeonVar_list[2] as Double
+      return HealthLap(startEpochMs, endEpochMs, distanceM)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      startEpochMs,
+      endEpochMs,
+      distanceM,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as HealthLap
+    return PlatformApiPigeonUtils.deepEquals(this.startEpochMs, other.startEpochMs) && PlatformApiPigeonUtils.deepEquals(this.endEpochMs, other.endEpochMs) && PlatformApiPigeonUtils.deepEquals(this.distanceM, other.distanceM)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.startEpochMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.endEpochMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.distanceM)
+    return result
+  }
+}
+
+/** Generated class from Pigeon that represents data sent in messages. */
+data class HealthPause (
+  val startEpochMs: Long,
+  val endEpochMs: Long
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): HealthPause {
+      val startEpochMs = pigeonVar_list[0] as Long
+      val endEpochMs = pigeonVar_list[1] as Long
+      return HealthPause(startEpochMs, endEpochMs)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      startEpochMs,
+      endEpochMs,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as HealthPause
+    return PlatformApiPigeonUtils.deepEquals(this.startEpochMs, other.startEpochMs) && PlatformApiPigeonUtils.deepEquals(this.endEpochMs, other.endEpochMs)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.startEpochMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.endEpochMs)
+    return result
+  }
+}
+
+/** Generated class from Pigeon that represents data sent in messages. */
+data class HealthHrSample (
+  val epochMs: Long,
+  val bpm: Long
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): HealthHrSample {
+      val epochMs = pigeonVar_list[0] as Long
+      val bpm = pigeonVar_list[1] as Long
+      return HealthHrSample(epochMs, bpm)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      epochMs,
+      bpm,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as HealthHrSample
+    return PlatformApiPigeonUtils.deepEquals(this.epochMs, other.epochMs) && PlatformApiPigeonUtils.deepEquals(this.bpm, other.bpm)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.epochMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.bpm)
+    return result
+  }
+}
+
+/** Generated class from Pigeon that represents data sent in messages. */
+data class HealthRoutePoint (
+  val epochMs: Long,
+  val lat: Double,
+  val lon: Double,
+  val altM: Double? = null,
+  val accuracyM: Double? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): HealthRoutePoint {
+      val epochMs = pigeonVar_list[0] as Long
+      val lat = pigeonVar_list[1] as Double
+      val lon = pigeonVar_list[2] as Double
+      val altM = pigeonVar_list[3] as Double?
+      val accuracyM = pigeonVar_list[4] as Double?
+      return HealthRoutePoint(epochMs, lat, lon, altM, accuracyM)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      epochMs,
+      lat,
+      lon,
+      altM,
+      accuracyM,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as HealthRoutePoint
+    return PlatformApiPigeonUtils.deepEquals(this.epochMs, other.epochMs) && PlatformApiPigeonUtils.deepEquals(this.lat, other.lat) && PlatformApiPigeonUtils.deepEquals(this.lon, other.lon) && PlatformApiPigeonUtils.deepEquals(this.altM, other.altM) && PlatformApiPigeonUtils.deepEquals(this.accuracyM, other.accuracyM)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.epochMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.lat)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.lon)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.altM)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.accuracyM)
+    return result
+  }
+}
+
+/**
+ * One run as the health store takes it. Every time is epoch milliseconds;
+ * Dart has already thinned the series and trimmed the route's ends.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class HealthWorkout (
+  /** The run id: writing the same run again replaces it, never duplicates. */
+  val clientRecordId: String,
+  /** Rises with each write so a re-send wins over what is stored. */
+  val version: Long,
+  val title: String,
+  val startEpochMs: Long,
+  val endEpochMs: Long,
+  /** The phone's offset when the run was made. */
+  val utcOffsetSeconds: Long,
+  val distanceM: Double,
+  val laps: List<HealthLap>,
+  val pauses: List<HealthPause>,
+  val hr: List<HealthHrSample>,
+  val route: List<HealthRoutePoint>
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): HealthWorkout {
+      val clientRecordId = pigeonVar_list[0] as String
+      val version = pigeonVar_list[1] as Long
+      val title = pigeonVar_list[2] as String
+      val startEpochMs = pigeonVar_list[3] as Long
+      val endEpochMs = pigeonVar_list[4] as Long
+      val utcOffsetSeconds = pigeonVar_list[5] as Long
+      val distanceM = pigeonVar_list[6] as Double
+      val laps = pigeonVar_list[7] as List<HealthLap>
+      val pauses = pigeonVar_list[8] as List<HealthPause>
+      val hr = pigeonVar_list[9] as List<HealthHrSample>
+      val route = pigeonVar_list[10] as List<HealthRoutePoint>
+      return HealthWorkout(clientRecordId, version, title, startEpochMs, endEpochMs, utcOffsetSeconds, distanceM, laps, pauses, hr, route)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      clientRecordId,
+      version,
+      title,
+      startEpochMs,
+      endEpochMs,
+      utcOffsetSeconds,
+      distanceM,
+      laps,
+      pauses,
+      hr,
+      route,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as HealthWorkout
+    return PlatformApiPigeonUtils.deepEquals(this.clientRecordId, other.clientRecordId) && PlatformApiPigeonUtils.deepEquals(this.version, other.version) && PlatformApiPigeonUtils.deepEquals(this.title, other.title) && PlatformApiPigeonUtils.deepEquals(this.startEpochMs, other.startEpochMs) && PlatformApiPigeonUtils.deepEquals(this.endEpochMs, other.endEpochMs) && PlatformApiPigeonUtils.deepEquals(this.utcOffsetSeconds, other.utcOffsetSeconds) && PlatformApiPigeonUtils.deepEquals(this.distanceM, other.distanceM) && PlatformApiPigeonUtils.deepEquals(this.laps, other.laps) && PlatformApiPigeonUtils.deepEquals(this.pauses, other.pauses) && PlatformApiPigeonUtils.deepEquals(this.hr, other.hr) && PlatformApiPigeonUtils.deepEquals(this.route, other.route)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.clientRecordId)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.version)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.title)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.startEpochMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.endEpochMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.utcOffsetSeconds)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.distanceM)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.laps)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.pauses)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.hr)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.route)
+    return result
+  }
+}
+
+/** Generated class from Pigeon that represents data sent in messages. */
+data class HealthWriteResult (
+  val outcome: HealthWriteOutcome,
+  /** Short reason for `failed`; display text only. */
+  val detail: String? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): HealthWriteResult {
+      val outcome = pigeonVar_list[0] as HealthWriteOutcome
+      val detail = pigeonVar_list[1] as String?
+      return HealthWriteResult(outcome, detail)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      outcome,
+      detail,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as HealthWriteResult
+    return PlatformApiPigeonUtils.deepEquals(this.outcome, other.outcome) && PlatformApiPigeonUtils.deepEquals(this.detail, other.detail)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.outcome)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.detail)
+    return result
+  }
+}
 private open class PlatformApiPigeonCodec : StandardMessageCodec() {
   override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
     return when (type) {
@@ -2451,158 +2820,203 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         }
       }
       144.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          SessionStep.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          HealthAvailability.ofRaw(it.toInt())
         }
       }
       145.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          SessionSpec.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          HealthWriteOutcome.ofRaw(it.toInt())
         }
       }
       146.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LiveEntry.fromList(it)
+          SessionStep.fromList(it)
         }
       }
       147.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LiveBoard.fromList(it)
+          SessionSpec.fromList(it)
         }
       }
       148.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LiveTarget.fromList(it)
+          LiveEntry.fromList(it)
         }
       }
       149.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          NudgePlan.fromList(it)
+          LiveBoard.fromList(it)
         }
       }
       150.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FastStartRule.fromList(it)
+          LiveTarget.fromList(it)
         }
       }
       151.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          RepFadeRule.fromList(it)
+          NudgePlan.fromList(it)
         }
       }
       152.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HrDriftRule.fromList(it)
+          FastStartRule.fromList(it)
         }
       }
       153.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LiveContext.fromList(it)
+          RepFadeRule.fromList(it)
         }
       }
       154.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StartResult.fromList(it)
+          HrDriftRule.fromList(it)
         }
       }
       155.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapSummary.fromList(it)
+          LiveContext.fromList(it)
         }
       }
       156.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          RecorderStatus.fromList(it)
+          StartResult.fromList(it)
         }
       }
       157.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          OrphanJournal.fromList(it)
+          LapSummary.fromList(it)
         }
       }
       158.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ReplayConfig.fromList(it)
+          RecorderStatus.fromList(it)
         }
       }
       159.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          PermissionStatus.fromList(it)
+          OrphanJournal.fromList(it)
         }
       }
       160.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BleStatus.fromList(it)
+          ReplayConfig.fromList(it)
         }
       }
       161.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ExitDiagnosis.fromList(it)
+          PermissionStatus.fromList(it)
         }
       }
       162.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BleDevice.fromList(it)
+          BleStatus.fromList(it)
         }
       }
       163.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BackupStatus.fromList(it)
+          ExitDiagnosis.fromList(it)
         }
       }
       164.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          PlaceName.fromList(it)
+          BleDevice.fromList(it)
         }
       }
       165.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TickEvent.fromList(it)
+          BackupStatus.fromList(it)
         }
       }
       166.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapEvent.fromList(it)
+          PlaceName.fromList(it)
         }
       }
       167.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapPendingEvent.fromList(it)
+          TickEvent.fromList(it)
         }
       }
       168.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CueEvent.fromList(it)
+          LapEvent.fromList(it)
         }
       }
       169.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          GpsProbeEvent.fromList(it)
+          LapPendingEvent.fromList(it)
         }
       }
       170.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CompareEvent.fromList(it)
+          CueEvent.fromList(it)
         }
       }
       171.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          GoalEvent.fromList(it)
+          GpsProbeEvent.fromList(it)
         }
       }
       172.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FaultEvent.fromList(it)
+          CompareEvent.fromList(it)
         }
       }
       173.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StateEvent.fromList(it)
+          GoalEvent.fromList(it)
         }
       }
       174.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
+          FaultEvent.fromList(it)
+        }
+      }
+      175.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          StateEvent.fromList(it)
+        }
+      }
+      176.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
           PhaseEvent.fromList(it)
+        }
+      }
+      177.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          HealthStatus.fromList(it)
+        }
+      }
+      178.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          HealthLap.fromList(it)
+        }
+      }
+      179.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          HealthPause.fromList(it)
+        }
+      }
+      180.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          HealthHrSample.fromList(it)
+        }
+      }
+      181.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          HealthRoutePoint.fromList(it)
+        }
+      }
+      182.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          HealthWorkout.fromList(it)
+        }
+      }
+      183.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          HealthWriteResult.fromList(it)
         }
       }
       else -> super.readValueOfType(type, buffer)
@@ -2670,128 +3084,164 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(143)
         writeValue(stream, value.raw.toLong())
       }
-      is SessionStep -> {
+      is HealthAvailability -> {
         stream.write(144)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is SessionSpec -> {
+      is HealthWriteOutcome -> {
         stream.write(145)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is LiveEntry -> {
+      is SessionStep -> {
         stream.write(146)
         writeValue(stream, value.toList())
       }
-      is LiveBoard -> {
+      is SessionSpec -> {
         stream.write(147)
         writeValue(stream, value.toList())
       }
-      is LiveTarget -> {
+      is LiveEntry -> {
         stream.write(148)
         writeValue(stream, value.toList())
       }
-      is NudgePlan -> {
+      is LiveBoard -> {
         stream.write(149)
         writeValue(stream, value.toList())
       }
-      is FastStartRule -> {
+      is LiveTarget -> {
         stream.write(150)
         writeValue(stream, value.toList())
       }
-      is RepFadeRule -> {
+      is NudgePlan -> {
         stream.write(151)
         writeValue(stream, value.toList())
       }
-      is HrDriftRule -> {
+      is FastStartRule -> {
         stream.write(152)
         writeValue(stream, value.toList())
       }
-      is LiveContext -> {
+      is RepFadeRule -> {
         stream.write(153)
         writeValue(stream, value.toList())
       }
-      is StartResult -> {
+      is HrDriftRule -> {
         stream.write(154)
         writeValue(stream, value.toList())
       }
-      is LapSummary -> {
+      is LiveContext -> {
         stream.write(155)
         writeValue(stream, value.toList())
       }
-      is RecorderStatus -> {
+      is StartResult -> {
         stream.write(156)
         writeValue(stream, value.toList())
       }
-      is OrphanJournal -> {
+      is LapSummary -> {
         stream.write(157)
         writeValue(stream, value.toList())
       }
-      is ReplayConfig -> {
+      is RecorderStatus -> {
         stream.write(158)
         writeValue(stream, value.toList())
       }
-      is PermissionStatus -> {
+      is OrphanJournal -> {
         stream.write(159)
         writeValue(stream, value.toList())
       }
-      is BleStatus -> {
+      is ReplayConfig -> {
         stream.write(160)
         writeValue(stream, value.toList())
       }
-      is ExitDiagnosis -> {
+      is PermissionStatus -> {
         stream.write(161)
         writeValue(stream, value.toList())
       }
-      is BleDevice -> {
+      is BleStatus -> {
         stream.write(162)
         writeValue(stream, value.toList())
       }
-      is BackupStatus -> {
+      is ExitDiagnosis -> {
         stream.write(163)
         writeValue(stream, value.toList())
       }
-      is PlaceName -> {
+      is BleDevice -> {
         stream.write(164)
         writeValue(stream, value.toList())
       }
-      is TickEvent -> {
+      is BackupStatus -> {
         stream.write(165)
         writeValue(stream, value.toList())
       }
-      is LapEvent -> {
+      is PlaceName -> {
         stream.write(166)
         writeValue(stream, value.toList())
       }
-      is LapPendingEvent -> {
+      is TickEvent -> {
         stream.write(167)
         writeValue(stream, value.toList())
       }
-      is CueEvent -> {
+      is LapEvent -> {
         stream.write(168)
         writeValue(stream, value.toList())
       }
-      is GpsProbeEvent -> {
+      is LapPendingEvent -> {
         stream.write(169)
         writeValue(stream, value.toList())
       }
-      is CompareEvent -> {
+      is CueEvent -> {
         stream.write(170)
         writeValue(stream, value.toList())
       }
-      is GoalEvent -> {
+      is GpsProbeEvent -> {
         stream.write(171)
         writeValue(stream, value.toList())
       }
-      is FaultEvent -> {
+      is CompareEvent -> {
         stream.write(172)
         writeValue(stream, value.toList())
       }
-      is StateEvent -> {
+      is GoalEvent -> {
         stream.write(173)
         writeValue(stream, value.toList())
       }
-      is PhaseEvent -> {
+      is FaultEvent -> {
         stream.write(174)
+        writeValue(stream, value.toList())
+      }
+      is StateEvent -> {
+        stream.write(175)
+        writeValue(stream, value.toList())
+      }
+      is PhaseEvent -> {
+        stream.write(176)
+        writeValue(stream, value.toList())
+      }
+      is HealthStatus -> {
+        stream.write(177)
+        writeValue(stream, value.toList())
+      }
+      is HealthLap -> {
+        stream.write(178)
+        writeValue(stream, value.toList())
+      }
+      is HealthPause -> {
+        stream.write(179)
+        writeValue(stream, value.toList())
+      }
+      is HealthHrSample -> {
+        stream.write(180)
+        writeValue(stream, value.toList())
+      }
+      is HealthRoutePoint -> {
+        stream.write(181)
+        writeValue(stream, value.toList())
+      }
+      is HealthWorkout -> {
+        stream.write(182)
+        writeValue(stream, value.toList())
+      }
+      is HealthWriteResult -> {
+        stream.write(183)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -3651,3 +4101,106 @@ override fun onListen(p0: Any?, sink: PigeonEventSink<RecorderEvent>) {}
 override fun onCancel(p0: Any?) {}
 }
       
+/**
+ * The workout write. Android: Health Connect (`androidx.health.connect`).
+ * iOS: HealthKit, a later PR. The app only ever writes; it reads nothing.
+ *
+ * Generated interface from Pigeon that represents a handler of messages from Flutter.
+ */
+interface HealthApi {
+  fun status(callback: (Result<HealthStatus>) -> Unit)
+  /**
+   * Ask for the core permissions (`route` false) or the route permission
+   * (`route` true). Resolves whether that group is now granted.
+   */
+  fun requestAccess(route: Boolean, callback: (Result<Boolean>) -> Unit)
+  /** Open the store page to install or update Health Connect. */
+  fun openInstall()
+  fun writeWorkout(workout: HealthWorkout, callback: (Result<HealthWriteResult>) -> Unit)
+
+  companion object {
+    /** The codec used by HealthApi. */
+    val codec: MessageCodec<Any?> by lazy {
+      PlatformApiPigeonCodec()
+    }
+    /** Sets up an instance of `HealthApi` to handle messages through the `binaryMessenger`. */
+    @JvmOverloads
+    fun setUp(binaryMessenger: BinaryMessenger, api: HealthApi?, messageChannelSuffix: String = "") {
+      val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.HealthApi.status$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            api.status{ result: Result<HealthStatus> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.HealthApi.requestAccess$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val routeArg = args[0] as Boolean
+            api.requestAccess(routeArg) { result: Result<Boolean> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.HealthApi.openInstall$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.openInstall()
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.HealthApi.writeWorkout$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val workoutArg = args[0] as HealthWorkout
+            api.writeWorkout(workoutArg) { result: Result<HealthWriteResult> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+    }
+  }
+}

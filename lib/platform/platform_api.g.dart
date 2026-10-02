@@ -266,6 +266,24 @@ enum LiveBoardKind {
   distanceInTime,
 }
 
+/// Whether the phone can take a workout. `notInstalled`: Android 13 and
+/// older without the Health Connect app. `needsUpdate`: it is there but too
+/// old. `unsupported`: this platform has no implementation.
+enum HealthAvailability {
+  available,
+  notInstalled,
+  needsUpdate,
+  unsupported,
+}
+
+enum HealthWriteOutcome {
+  written,
+  writtenWithoutRoute,
+  notAvailable,
+  permissionDenied,
+  failed,
+}
+
 /// One expanded step (named `SessionStep`: a generated `Step` would clash
 /// with Flutter material's `Step`). `repIndex` is 1-based; a recovery carries
 /// the rep number of the work step before it (run-file JSON key `rep`).
@@ -2388,6 +2406,400 @@ class PhaseEvent extends RecorderEvent {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// What the app may write. The route is a separate permission (Health
+/// Connect asks for it on its own).
+class HealthStatus {
+  HealthStatus({
+    required this.availability,
+    required this.coreGranted,
+    required this.routeGranted,
+  });
+
+  HealthAvailability availability;
+
+  /// Exercise, heart rate and distance.
+  bool coreGranted;
+
+  bool routeGranted;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      availability,
+      coreGranted,
+      routeGranted,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static HealthStatus decode(Object result) {
+    result as List<Object?>;
+    return HealthStatus(
+      availability: result[0]! as HealthAvailability,
+      coreGranted: result[1]! as bool,
+      routeGranted: result[2]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HealthStatus || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(availability, other.availability) && _deepEquals(coreGranted, other.coreGranted) && _deepEquals(routeGranted, other.routeGranted);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+class HealthLap {
+  HealthLap({
+    required this.startEpochMs,
+    required this.endEpochMs,
+    required this.distanceM,
+  });
+
+  int startEpochMs;
+
+  int endEpochMs;
+
+  double distanceM;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      startEpochMs,
+      endEpochMs,
+      distanceM,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static HealthLap decode(Object result) {
+    result as List<Object?>;
+    return HealthLap(
+      startEpochMs: result[0]! as int,
+      endEpochMs: result[1]! as int,
+      distanceM: result[2]! as double,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HealthLap || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(startEpochMs, other.startEpochMs) && _deepEquals(endEpochMs, other.endEpochMs) && _deepEquals(distanceM, other.distanceM);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+class HealthPause {
+  HealthPause({
+    required this.startEpochMs,
+    required this.endEpochMs,
+  });
+
+  int startEpochMs;
+
+  int endEpochMs;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      startEpochMs,
+      endEpochMs,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static HealthPause decode(Object result) {
+    result as List<Object?>;
+    return HealthPause(
+      startEpochMs: result[0]! as int,
+      endEpochMs: result[1]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HealthPause || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(startEpochMs, other.startEpochMs) && _deepEquals(endEpochMs, other.endEpochMs);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+class HealthHrSample {
+  HealthHrSample({
+    required this.epochMs,
+    required this.bpm,
+  });
+
+  int epochMs;
+
+  int bpm;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      epochMs,
+      bpm,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static HealthHrSample decode(Object result) {
+    result as List<Object?>;
+    return HealthHrSample(
+      epochMs: result[0]! as int,
+      bpm: result[1]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HealthHrSample || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(epochMs, other.epochMs) && _deepEquals(bpm, other.bpm);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+class HealthRoutePoint {
+  HealthRoutePoint({
+    required this.epochMs,
+    required this.lat,
+    required this.lon,
+    this.altM,
+    this.accuracyM,
+  });
+
+  int epochMs;
+
+  double lat;
+
+  double lon;
+
+  double? altM;
+
+  double? accuracyM;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      epochMs,
+      lat,
+      lon,
+      altM,
+      accuracyM,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static HealthRoutePoint decode(Object result) {
+    result as List<Object?>;
+    return HealthRoutePoint(
+      epochMs: result[0]! as int,
+      lat: result[1]! as double,
+      lon: result[2]! as double,
+      altM: result[3] as double?,
+      accuracyM: result[4] as double?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HealthRoutePoint || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(epochMs, other.epochMs) && _deepEquals(lat, other.lat) && _deepEquals(lon, other.lon) && _deepEquals(altM, other.altM) && _deepEquals(accuracyM, other.accuracyM);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// One run as the health store takes it. Every time is epoch milliseconds;
+/// Dart has already thinned the series and trimmed the route's ends.
+class HealthWorkout {
+  HealthWorkout({
+    required this.clientRecordId,
+    required this.version,
+    required this.title,
+    required this.startEpochMs,
+    required this.endEpochMs,
+    required this.utcOffsetSeconds,
+    required this.distanceM,
+    required this.laps,
+    required this.pauses,
+    required this.hr,
+    required this.route,
+  });
+
+  /// The run id: writing the same run again replaces it, never duplicates.
+  String clientRecordId;
+
+  /// Rises with each write so a re-send wins over what is stored.
+  int version;
+
+  String title;
+
+  int startEpochMs;
+
+  int endEpochMs;
+
+  /// The phone's offset when the run was made.
+  int utcOffsetSeconds;
+
+  double distanceM;
+
+  List<HealthLap> laps;
+
+  List<HealthPause> pauses;
+
+  List<HealthHrSample> hr;
+
+  List<HealthRoutePoint> route;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      clientRecordId,
+      version,
+      title,
+      startEpochMs,
+      endEpochMs,
+      utcOffsetSeconds,
+      distanceM,
+      laps,
+      pauses,
+      hr,
+      route,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static HealthWorkout decode(Object result) {
+    result as List<Object?>;
+    return HealthWorkout(
+      clientRecordId: result[0]! as String,
+      version: result[1]! as int,
+      title: result[2]! as String,
+      startEpochMs: result[3]! as int,
+      endEpochMs: result[4]! as int,
+      utcOffsetSeconds: result[5]! as int,
+      distanceM: result[6]! as double,
+      laps: (result[7]! as List<Object?>).cast<HealthLap>(),
+      pauses: (result[8]! as List<Object?>).cast<HealthPause>(),
+      hr: (result[9]! as List<Object?>).cast<HealthHrSample>(),
+      route: (result[10]! as List<Object?>).cast<HealthRoutePoint>(),
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HealthWorkout || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(clientRecordId, other.clientRecordId) && _deepEquals(version, other.version) && _deepEquals(title, other.title) && _deepEquals(startEpochMs, other.startEpochMs) && _deepEquals(endEpochMs, other.endEpochMs) && _deepEquals(utcOffsetSeconds, other.utcOffsetSeconds) && _deepEquals(distanceM, other.distanceM) && _deepEquals(laps, other.laps) && _deepEquals(pauses, other.pauses) && _deepEquals(hr, other.hr) && _deepEquals(route, other.route);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+class HealthWriteResult {
+  HealthWriteResult({
+    required this.outcome,
+    this.detail,
+  });
+
+  HealthWriteOutcome outcome;
+
+  /// Short reason for `failed`; display text only.
+  String? detail;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      outcome,
+      detail,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static HealthWriteResult decode(Object result) {
+    result as List<Object?>;
+    return HealthWriteResult(
+      outcome: result[0]! as HealthWriteOutcome,
+      detail: result[1] as String?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HealthWriteResult || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(outcome, other.outcome) && _deepEquals(detail, other.detail);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
@@ -2441,98 +2853,125 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is LiveBoardKind) {
       buffer.putUint8(143);
       writeValue(buffer, value.index);
-    }    else if (value is SessionStep) {
+    }    else if (value is HealthAvailability) {
       buffer.putUint8(144);
-      writeValue(buffer, value.encode());
-    }    else if (value is SessionSpec) {
+      writeValue(buffer, value.index);
+    }    else if (value is HealthWriteOutcome) {
       buffer.putUint8(145);
-      writeValue(buffer, value.encode());
-    }    else if (value is LiveEntry) {
+      writeValue(buffer, value.index);
+    }    else if (value is SessionStep) {
       buffer.putUint8(146);
       writeValue(buffer, value.encode());
-    }    else if (value is LiveBoard) {
+    }    else if (value is SessionSpec) {
       buffer.putUint8(147);
       writeValue(buffer, value.encode());
-    }    else if (value is LiveTarget) {
+    }    else if (value is LiveEntry) {
       buffer.putUint8(148);
       writeValue(buffer, value.encode());
-    }    else if (value is NudgePlan) {
+    }    else if (value is LiveBoard) {
       buffer.putUint8(149);
       writeValue(buffer, value.encode());
-    }    else if (value is FastStartRule) {
+    }    else if (value is LiveTarget) {
       buffer.putUint8(150);
       writeValue(buffer, value.encode());
-    }    else if (value is RepFadeRule) {
+    }    else if (value is NudgePlan) {
       buffer.putUint8(151);
       writeValue(buffer, value.encode());
-    }    else if (value is HrDriftRule) {
+    }    else if (value is FastStartRule) {
       buffer.putUint8(152);
       writeValue(buffer, value.encode());
-    }    else if (value is LiveContext) {
+    }    else if (value is RepFadeRule) {
       buffer.putUint8(153);
       writeValue(buffer, value.encode());
-    }    else if (value is StartResult) {
+    }    else if (value is HrDriftRule) {
       buffer.putUint8(154);
       writeValue(buffer, value.encode());
-    }    else if (value is LapSummary) {
+    }    else if (value is LiveContext) {
       buffer.putUint8(155);
       writeValue(buffer, value.encode());
-    }    else if (value is RecorderStatus) {
+    }    else if (value is StartResult) {
       buffer.putUint8(156);
       writeValue(buffer, value.encode());
-    }    else if (value is OrphanJournal) {
+    }    else if (value is LapSummary) {
       buffer.putUint8(157);
       writeValue(buffer, value.encode());
-    }    else if (value is ReplayConfig) {
+    }    else if (value is RecorderStatus) {
       buffer.putUint8(158);
       writeValue(buffer, value.encode());
-    }    else if (value is PermissionStatus) {
+    }    else if (value is OrphanJournal) {
       buffer.putUint8(159);
       writeValue(buffer, value.encode());
-    }    else if (value is BleStatus) {
+    }    else if (value is ReplayConfig) {
       buffer.putUint8(160);
       writeValue(buffer, value.encode());
-    }    else if (value is ExitDiagnosis) {
+    }    else if (value is PermissionStatus) {
       buffer.putUint8(161);
       writeValue(buffer, value.encode());
-    }    else if (value is BleDevice) {
+    }    else if (value is BleStatus) {
       buffer.putUint8(162);
       writeValue(buffer, value.encode());
-    }    else if (value is BackupStatus) {
+    }    else if (value is ExitDiagnosis) {
       buffer.putUint8(163);
       writeValue(buffer, value.encode());
-    }    else if (value is PlaceName) {
+    }    else if (value is BleDevice) {
       buffer.putUint8(164);
       writeValue(buffer, value.encode());
-    }    else if (value is TickEvent) {
+    }    else if (value is BackupStatus) {
       buffer.putUint8(165);
       writeValue(buffer, value.encode());
-    }    else if (value is LapEvent) {
+    }    else if (value is PlaceName) {
       buffer.putUint8(166);
       writeValue(buffer, value.encode());
-    }    else if (value is LapPendingEvent) {
+    }    else if (value is TickEvent) {
       buffer.putUint8(167);
       writeValue(buffer, value.encode());
-    }    else if (value is CueEvent) {
+    }    else if (value is LapEvent) {
       buffer.putUint8(168);
       writeValue(buffer, value.encode());
-    }    else if (value is GpsProbeEvent) {
+    }    else if (value is LapPendingEvent) {
       buffer.putUint8(169);
       writeValue(buffer, value.encode());
-    }    else if (value is CompareEvent) {
+    }    else if (value is CueEvent) {
       buffer.putUint8(170);
       writeValue(buffer, value.encode());
-    }    else if (value is GoalEvent) {
+    }    else if (value is GpsProbeEvent) {
       buffer.putUint8(171);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is CompareEvent) {
       buffer.putUint8(172);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is GoalEvent) {
       buffer.putUint8(173);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is FaultEvent) {
       buffer.putUint8(174);
+      writeValue(buffer, value.encode());
+    }    else if (value is StateEvent) {
+      buffer.putUint8(175);
+      writeValue(buffer, value.encode());
+    }    else if (value is PhaseEvent) {
+      buffer.putUint8(176);
+      writeValue(buffer, value.encode());
+    }    else if (value is HealthStatus) {
+      buffer.putUint8(177);
+      writeValue(buffer, value.encode());
+    }    else if (value is HealthLap) {
+      buffer.putUint8(178);
+      writeValue(buffer, value.encode());
+    }    else if (value is HealthPause) {
+      buffer.putUint8(179);
+      writeValue(buffer, value.encode());
+    }    else if (value is HealthHrSample) {
+      buffer.putUint8(180);
+      writeValue(buffer, value.encode());
+    }    else if (value is HealthRoutePoint) {
+      buffer.putUint8(181);
+      writeValue(buffer, value.encode());
+    }    else if (value is HealthWorkout) {
+      buffer.putUint8(182);
+      writeValue(buffer, value.encode());
+    }    else if (value is HealthWriteResult) {
+      buffer.putUint8(183);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -2588,67 +3027,87 @@ class _PigeonCodec extends StandardMessageCodec {
         final value = readValue(buffer) as int?;
         return value == null ? null : LiveBoardKind.values[value];
       case 144:
-        return SessionStep.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : HealthAvailability.values[value];
       case 145:
-        return SessionSpec.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : HealthWriteOutcome.values[value];
       case 146:
-        return LiveEntry.decode(readValue(buffer)!);
+        return SessionStep.decode(readValue(buffer)!);
       case 147:
-        return LiveBoard.decode(readValue(buffer)!);
+        return SessionSpec.decode(readValue(buffer)!);
       case 148:
-        return LiveTarget.decode(readValue(buffer)!);
+        return LiveEntry.decode(readValue(buffer)!);
       case 149:
-        return NudgePlan.decode(readValue(buffer)!);
+        return LiveBoard.decode(readValue(buffer)!);
       case 150:
-        return FastStartRule.decode(readValue(buffer)!);
+        return LiveTarget.decode(readValue(buffer)!);
       case 151:
-        return RepFadeRule.decode(readValue(buffer)!);
+        return NudgePlan.decode(readValue(buffer)!);
       case 152:
-        return HrDriftRule.decode(readValue(buffer)!);
+        return FastStartRule.decode(readValue(buffer)!);
       case 153:
-        return LiveContext.decode(readValue(buffer)!);
+        return RepFadeRule.decode(readValue(buffer)!);
       case 154:
-        return StartResult.decode(readValue(buffer)!);
+        return HrDriftRule.decode(readValue(buffer)!);
       case 155:
-        return LapSummary.decode(readValue(buffer)!);
+        return LiveContext.decode(readValue(buffer)!);
       case 156:
-        return RecorderStatus.decode(readValue(buffer)!);
+        return StartResult.decode(readValue(buffer)!);
       case 157:
-        return OrphanJournal.decode(readValue(buffer)!);
+        return LapSummary.decode(readValue(buffer)!);
       case 158:
-        return ReplayConfig.decode(readValue(buffer)!);
+        return RecorderStatus.decode(readValue(buffer)!);
       case 159:
-        return PermissionStatus.decode(readValue(buffer)!);
+        return OrphanJournal.decode(readValue(buffer)!);
       case 160:
-        return BleStatus.decode(readValue(buffer)!);
+        return ReplayConfig.decode(readValue(buffer)!);
       case 161:
-        return ExitDiagnosis.decode(readValue(buffer)!);
+        return PermissionStatus.decode(readValue(buffer)!);
       case 162:
-        return BleDevice.decode(readValue(buffer)!);
+        return BleStatus.decode(readValue(buffer)!);
       case 163:
-        return BackupStatus.decode(readValue(buffer)!);
+        return ExitDiagnosis.decode(readValue(buffer)!);
       case 164:
-        return PlaceName.decode(readValue(buffer)!);
+        return BleDevice.decode(readValue(buffer)!);
       case 165:
-        return TickEvent.decode(readValue(buffer)!);
+        return BackupStatus.decode(readValue(buffer)!);
       case 166:
-        return LapEvent.decode(readValue(buffer)!);
+        return PlaceName.decode(readValue(buffer)!);
       case 167:
-        return LapPendingEvent.decode(readValue(buffer)!);
+        return TickEvent.decode(readValue(buffer)!);
       case 168:
-        return CueEvent.decode(readValue(buffer)!);
+        return LapEvent.decode(readValue(buffer)!);
       case 169:
-        return GpsProbeEvent.decode(readValue(buffer)!);
+        return LapPendingEvent.decode(readValue(buffer)!);
       case 170:
-        return CompareEvent.decode(readValue(buffer)!);
+        return CueEvent.decode(readValue(buffer)!);
       case 171:
-        return GoalEvent.decode(readValue(buffer)!);
+        return GpsProbeEvent.decode(readValue(buffer)!);
       case 172:
-        return FaultEvent.decode(readValue(buffer)!);
+        return CompareEvent.decode(readValue(buffer)!);
       case 173:
-        return StateEvent.decode(readValue(buffer)!);
+        return GoalEvent.decode(readValue(buffer)!);
       case 174:
+        return FaultEvent.decode(readValue(buffer)!);
+      case 175:
+        return StateEvent.decode(readValue(buffer)!);
+      case 176:
         return PhaseEvent.decode(readValue(buffer)!);
+      case 177:
+        return HealthStatus.decode(readValue(buffer)!);
+      case 178:
+        return HealthLap.decode(readValue(buffer)!);
+      case 179:
+        return HealthPause.decode(readValue(buffer)!);
+      case 180:
+        return HealthHrSample.decode(readValue(buffer)!);
+      case 181:
+        return HealthRoutePoint.decode(readValue(buffer)!);
+      case 182:
+        return HealthWorkout.decode(readValue(buffer)!);
+      case 183:
+        return HealthWriteResult.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -3444,3 +3903,97 @@ Stream<RecorderEvent> recorderEvents( {String instanceName = ''}) {
   });
 }
     
+
+/// The workout write. Android: Health Connect (`androidx.health.connect`).
+/// iOS: HealthKit, a later PR. The app only ever writes; it reads nothing.
+class HealthApi {
+  /// Constructor for [HealthApi].  The [binaryMessenger] named argument is
+  /// available for dependency injection.  If it is left null, the default
+  /// BinaryMessenger will be used which routes to the host platform.
+  HealthApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+      : pigeonVar_binaryMessenger = binaryMessenger,
+        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  final BinaryMessenger? pigeonVar_binaryMessenger;
+
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  final String pigeonVar_messageChannelSuffix;
+
+  Future<HealthStatus> status() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.HealthApi.status$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as HealthStatus;
+  }
+
+  /// Ask for the core permissions (`route` false) or the route permission
+  /// (`route` true). Resolves whether that group is now granted.
+  Future<bool> requestAccess(bool route) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.HealthApi.requestAccess$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[route]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as bool;
+  }
+
+  /// Open the store page to install or update Health Connect.
+  Future<void> openInstall() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.HealthApi.openInstall$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  Future<HealthWriteResult> writeWorkout(HealthWorkout workout) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.HealthApi.writeWorkout$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[workout]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as HealthWriteResult;
+  }
+}

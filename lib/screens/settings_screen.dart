@@ -11,6 +11,7 @@ import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/max_hr.dart';
 import '../state/recording_controller.dart';
+import '../state/send_runs.dart' show ExportTarget, TargetSetup;
 import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
@@ -54,6 +55,29 @@ class _SettingsScreenState extends State<SettingsScreen>
     with WidgetsBindingObserver {
   PermissionSnapshot? _perms;
   bool _busy = false;
+
+  /// Why a Send-runs target could not be switched on (permission refused,
+  /// app missing), by target id.
+  final Map<String, TargetSetup> _setupProblems = {};
+
+  /// Switch an automatic target on or off. On: ask for what it needs first
+  /// (a permission prompt from this tap); if that fails it stays off and the
+  /// row says why.
+  Future<void> _toggleAuto(ExportTarget target, bool on) async {
+    final services = AppServices.of(context);
+    if (on) {
+      final setup = await target.prepare();
+      if (!mounted) return;
+      if (!setup.isReady) {
+        setState(() => _setupProblems[target.id] = setup);
+        return;
+      }
+    }
+    setState(() => _setupProblems.remove(target.id));
+    await services.settings.update(
+      (x) => x.withAutoSend(target.id, on, services.now()),
+    );
+  }
 
   /// False on Android 14: the volume-key toggle is disabled with a reason.
   bool _volumeKeyLaps = true;
@@ -390,25 +414,31 @@ class _SettingsScreenState extends State<SettingsScreen>
                   style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
               ),
-              for (final target in services.sender.targets)
+              for (final target in services.sender.targets) ...[
                 if (target.supportsAutomatic)
                   _Toggle(
                     label: target.label,
                     value: target.isEnabled(s),
                     onChanged: target.comingSoon
                         ? null
-                        : (v) => set(
-                            (x) => x.withAutoSend(target.id, v, services.now()),
-                          ),
+                        : (v) => _toggleAuto(target, v),
                     reason: target.comingSoon
                         ? 'Coming soon'
-                        : 'Sends each run when it finishes.',
+                        : _setupProblems[target.id]?.message ??
+                              'Sends each run when it finishes.',
                   )
                 else
                   _StaticRow(
                     label: target.label,
                     reason: 'Only when you tap Send on a run.',
                   ),
+                if (_setupProblems[target.id]?.canInstall ?? false)
+                  SettingsRow(
+                    label: 'Open the Play Store',
+                    value: '',
+                    onTap: target.openInstall,
+                  ),
+              ],
               const _Section('Motion'),
               _Toggle(
                 label: 'Reduced motion',

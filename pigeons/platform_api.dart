@@ -1009,3 +1009,133 @@ class PhaseEvent extends RecorderEvent {
 abstract class RecorderEvents {
   RecorderEvent recorderEvents();
 }
+
+// ---- Health (Send runs): Health Connect on Android, HealthKit on iOS later ----
+
+/// Whether the phone can take a workout. `notInstalled`: Android 13 and
+/// older without the Health Connect app. `needsUpdate`: it is there but too
+/// old. `unsupported`: this platform has no implementation.
+enum HealthAvailability { available, notInstalled, needsUpdate, unsupported }
+
+/// What the app may write. The route is a separate permission (Health
+/// Connect asks for it on its own).
+class HealthStatus {
+  HealthStatus({
+    required this.availability,
+    required this.coreGranted,
+    required this.routeGranted,
+  });
+  HealthAvailability availability;
+
+  /// Exercise, heart rate and distance.
+  bool coreGranted;
+  bool routeGranted;
+}
+
+class HealthLap {
+  HealthLap({
+    required this.startEpochMs,
+    required this.endEpochMs,
+    required this.distanceM,
+  });
+  int startEpochMs;
+  int endEpochMs;
+  double distanceM;
+}
+
+class HealthPause {
+  HealthPause({required this.startEpochMs, required this.endEpochMs});
+  int startEpochMs;
+  int endEpochMs;
+}
+
+class HealthHrSample {
+  HealthHrSample({required this.epochMs, required this.bpm});
+  int epochMs;
+  int bpm;
+}
+
+class HealthRoutePoint {
+  HealthRoutePoint({
+    required this.epochMs,
+    required this.lat,
+    required this.lon,
+    this.altM,
+    this.accuracyM,
+  });
+  int epochMs;
+  double lat;
+  double lon;
+  double? altM;
+  double? accuracyM;
+}
+
+/// One run as the health store takes it. Every time is epoch milliseconds;
+/// Dart has already thinned the series and trimmed the route's ends.
+class HealthWorkout {
+  HealthWorkout({
+    required this.clientRecordId,
+    required this.version,
+    required this.title,
+    required this.startEpochMs,
+    required this.endEpochMs,
+    required this.utcOffsetSeconds,
+    required this.distanceM,
+    required this.laps,
+    required this.pauses,
+    required this.hr,
+    required this.route,
+  });
+
+  /// The run id: writing the same run again replaces it, never duplicates.
+  String clientRecordId;
+
+  /// Rises with each write so a re-send wins over what is stored.
+  int version;
+  String title;
+  int startEpochMs;
+  int endEpochMs;
+
+  /// The phone's offset when the run was made.
+  int utcOffsetSeconds;
+  double distanceM;
+  List<HealthLap> laps;
+  List<HealthPause> pauses;
+  List<HealthHrSample> hr;
+  List<HealthRoutePoint> route;
+}
+
+enum HealthWriteOutcome {
+  written,
+  writtenWithoutRoute,
+  notAvailable,
+  permissionDenied,
+  failed,
+}
+
+class HealthWriteResult {
+  HealthWriteResult({required this.outcome, this.detail});
+  HealthWriteOutcome outcome;
+
+  /// Short reason for `failed`; display text only.
+  String? detail;
+}
+
+/// The workout write. Android: Health Connect (`androidx.health.connect`).
+/// iOS: HealthKit, a later PR. The app only ever writes; it reads nothing.
+@HostApi()
+abstract class HealthApi {
+  @async
+  HealthStatus status();
+
+  /// Ask for the core permissions (`route` false) or the route permission
+  /// (`route` true). Resolves whether that group is now granted.
+  @async
+  bool requestAccess(bool route);
+
+  /// Open the store page to install or update Health Connect.
+  void openInstall();
+
+  @async
+  HealthWriteResult writeWorkout(HealthWorkout workout);
+}

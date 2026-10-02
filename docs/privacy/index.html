@@ -27,7 +27,7 @@
 <body>
 <main>
   <h1>Run Supreme privacy policy</h1>
-  <p class="meta">Applies to the Run Supreme Android app. Last updated 2 October 2026.</p>
+  <p class="meta">Applies to the Run Supreme Android app. Last updated 3 October 2026.</p>
 
   <p>Run Supreme is a running app with no account, no ads and no analytics of our own. This page says
   plainly what stays on your phone, what two outside services receive so the app can work, and
@@ -41,6 +41,11 @@
   <p>Android's automatic backup may copy your run files to your Google account as part of your
   device backup, under Google's backup terms and your device settings. You can turn device backup
   off in Android settings. Files you export (JSON, TCX or GPX) go wherever you choose to send them.</p>
+  <p>Health Connect (Android's health data store) is one of those services. It is off by default. If you switch it on,
+  or tap Send to Health Connect on a run, Run Supreme writes that run to Health Connect on your phone: the exercise
+  session with its laps and pauses, the heart rate, the distance and, if you allow it, the route (without the first
+  and last 200 m). Sending the same run again replaces it, never duplicates it. From there, the apps you allow in
+  Health Connect can read it under their own policies. Run Supreme does not read anything from Health Connect.</p>
   <p>Run detail has a Send button. It makes a TCX or GPX file of that run (the first and last 200 m
   of the route are left out) and opens Android's share sheet, so you pick the app that receives it.
   The Strava row only opens Strava's upload page in your browser; you upload the file yourself.
@@ -94,6 +99,7 @@
     <tr><td>Precise location</td><td>To record your pace and route with GPS during a run you started. Recording runs as a visible notification while the run is in progress and stops when you press Stop. Run Supreme never records location in the background on its own.</td></tr>
     <tr><td>Nearby devices (Bluetooth)</td><td>To pair a heart-rate strap. Bluetooth is not used to work out where you are.</td></tr>
     <tr><td>Notifications</td><td>The recording notification with its LAP and Stop buttons, and cues while your screen is off.</td></tr>
+    <tr><td>Health Connect (write only)</td><td>Only if you switch on Health Connect in Settings, Send runs to, or tap Send to Health Connect on a run. Health Connect asks you for four write permissions: exercise, exercise route, heart rate and distance. Run Supreme writes the finished run (its laps and pauses, route, heart rate and distance) and reads nothing back from Health Connect. You can turn it off in Settings, or withdraw the permissions in Health Connect, at any time.</td></tr>
     <tr><td>Internet</td><td>Map tiles from Google and weather from Open-Meteo, as described above. Place names come from your phone's own geocoder, as described above. Nothing else.</td></tr>
   </table>
 
