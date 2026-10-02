@@ -600,7 +600,7 @@ class RunFile {
       final ok = switch (mode) {
         RunMode.intervals || RunMode.cooper => spec.steps.isNotEmpty,
         RunMode.laps => spec.templateId == SessionSpec.fartlekId,
-        RunMode.free => false,
+        RunMode.free || RunMode.trail => false,
       };
       if (!ok) {
         throw RunFileFormatException(
@@ -623,7 +623,7 @@ class RunFile {
               ),
       RunMode.cooper => SessionSpec.cooper,
       // A preset on a Laps/Free file was never written; ignore it as before.
-      RunMode.laps || RunMode.free => null,
+      RunMode.laps || RunMode.free || RunMode.trail => null,
     };
   }
 

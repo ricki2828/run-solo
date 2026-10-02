@@ -324,7 +324,8 @@ class BestEffortFinder {
 
   static bool _racesDistanceBoards(RunAnalysis a) => switch (a.mode) {
     RunMode.free || RunMode.laps => true,
-    RunMode.cooper => false,
+    // Hill pace is not comparable with road pace: no distance boards for Trail.
+    RunMode.cooper || RunMode.trail => false,
     RunMode.intervals => _searchWhole(a),
   };
 

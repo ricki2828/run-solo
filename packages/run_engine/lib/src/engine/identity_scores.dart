@@ -137,7 +137,9 @@ abstract final class IdentityScores {
           // A real clean 5K/10K GPS window counts despite an INT mode pick.
           // The finder still rejects indoor/noisy tracks and cuts pauses,
           // recording gaps and GPS jumps. Cooper is a 12-minute test.
-          if (input.mode == RunMode.cooper) continue;
+          if (input.mode == RunMode.cooper || input.mode == RunMode.trail) {
+            continue;
+          }
           for (final d in [BestEffortDistance.k5, BestEffortDistance.k10]) {
             if (efforts.efforts[d] case final e?) {
               add(

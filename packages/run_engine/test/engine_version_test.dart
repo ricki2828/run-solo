@@ -12,6 +12,7 @@ void main() {
       RunMode.laps,
       RunMode.free,
       RunMode.cooper,
+      RunMode.trail,
     ]);
   });
 

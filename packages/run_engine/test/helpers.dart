@@ -110,6 +110,7 @@ Map<String, Object?> legacyRunJson(RunFile run, int schema) {
           RunMode.laps => schema == 1 ? 'free' : 'laps',
           RunMode.free => 'free',
           RunMode.cooper => 'cooper',
+          RunMode.trail => 'trail',
         };
       case 'session':
         out['preset'] = run.mode == RunMode.intervals
@@ -137,6 +138,7 @@ Map<String, Object?> legacySidecarJson(RunSidecar s, int schema) {
     RunMode.laps => schema == 1 ? 'free' : 'laps',
     RunMode.free => 'free',
     RunMode.cooper => 'cooper',
+    RunMode.trail => 'trail',
   };
   if (schema == 1) {
     j

@@ -12,11 +12,15 @@ import 'model/run_file.dart' show RunFileFormatException;
 ///   Laps run with the fartlek session.
 /// - [free]: no lap input at all; summary only.
 /// - [cooper]: the 12-minute test (§18.4).
+/// - [trail]: a Free run on hills and dirt: no lap input, summary only, its
+///   own auto-pause profile (the native recorder keys it off this mode). It
+///   has no pace verdict yet (TrailVerdict, see `trail_run.dart`).
 enum RunMode {
   intervals,
   laps,
   free,
-  cooper;
+  cooper,
+  trail;
 
   /// Decodes a stored mode name written under [schema]:
   /// - 1: `free` → [laps] (§18.7 B1), `fourByFour` → [intervals];
@@ -74,6 +78,6 @@ enum RunMode {
   /// Whether the recorder accepts LAP input in this mode (§18.2).
   bool get lapCapable => switch (this) {
     RunMode.intervals || RunMode.laps => true,
-    RunMode.free || RunMode.cooper => false,
+    RunMode.free || RunMode.cooper || RunMode.trail => false,
   };
 }

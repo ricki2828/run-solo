@@ -35,6 +35,7 @@ export 'src/engine/predictor.dart';
 export 'src/engine/start_target.dart';
 export 'src/engine/rep_detector.dart';
 export 'src/engine/trace.dart';
+export 'src/engine/trail_run.dart';
 export 'src/engine/verdict_builder.dart';
 export 'src/engine_version.dart';
 export 'src/import/gpx_exporter.dart';
