@@ -10,6 +10,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 import '../app/format.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart' show Units;
+import '../platform/transfer_gateway.dart' show RouteFileTooBig;
 import '../state/history_store.dart';
 import '../state/route_library.dart';
 import '../theme/theme.dart';
@@ -88,6 +89,13 @@ class _FollowRouteSheetState extends State<FollowRouteSheet> {
         setState(() {
           _busy = false;
           _error = _importMessage(e);
+        });
+      }
+    } on RouteFileTooBig catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = '$e';
         });
       }
     } on RouteLibraryFull catch (e) {

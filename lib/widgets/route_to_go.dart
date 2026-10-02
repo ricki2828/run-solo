@@ -12,15 +12,16 @@ import '../app/format.dart';
 import '../platform/gateway.dart';
 import '../theme/theme.dart';
 
-/// "3.40 km" to go; the metres a turn is away are always metres, as the voice says them.
-String routeTurnText(RouteProgress r) {
+/// "Left turn in 120 m" (miles users: "in 130 yd"), "Left turn now" under 15 m.
+/// A "keep" is a nudge the voice says with no distance; the strip still shows how far.
+String routeTurnText(RouteProgress r, Units units) {
   final label = r.turnLabel;
   final m = r.turnInM;
   if (label == null || m == null) return '';
-  // A "keep" is a nudge, said with no distance by the voice; the strip
-  // still shows how far.
-  final rounded = m < 15 ? 'now' : 'in ${(m / 10).round() * 10} m';
-  return '$label $rounded';
+  if (m < 15) return '$label now';
+  final yd = units == Units.mi;
+  final v = yd ? m * 1.09361 : m;
+  return '$label in ${(v / 10).round() * 10} ${yd ? 'yd' : 'm'}';
 }
 
 const double _figureSize = 36;
@@ -51,7 +52,7 @@ class RouteToGoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final turn = routeTurnText(route);
+    final turn = routeTurnText(route, units);
     return Column(
       key: const ValueKey('route-to-go'),
       mainAxisSize: MainAxisSize.min,
@@ -156,7 +157,7 @@ class RouteStrip extends StatelessWidget {
   /// the distance and climb left.
   String get text {
     if (route.off) return 'OFF ROUTE · ${Fmt.distance(route.toGoM, units)}';
-    final turn = routeTurnText(route);
+    final turn = routeTurnText(route, units);
     if (turn.isNotEmpty) return turn;
     final climb = route.climbToGoM;
     return climb == null

@@ -32,6 +32,17 @@ abstract class TransferGateway {
   Future<PickedFile?> pickRouteFile();
 }
 
+/// A route file bigger than this is refused before it is read (a day's
+/// recording at 1 Hz is well under 1 MB; this is for the wrong file).
+const int kMaxRouteFileBytes = 10 * 1024 * 1024;
+
+/// Thrown by [TransferGateway.pickRouteFile] for a file over [kMaxRouteFileBytes].
+class RouteFileTooBig implements Exception {
+  const RouteFileTooBig();
+  @override
+  String toString() => 'That file is too big for a route, max 10 MB';
+}
+
 class PickedFile {
   const PickedFile({required this.name, required this.text});
   final String name;
@@ -91,6 +102,7 @@ class ShareSheetTransferGateway implements TransferGateway {
     );
     final f = await fs.openFile(acceptedTypeGroups: const [group]);
     if (f == null) return null;
+    if (await f.length() > kMaxRouteFileBytes) throw const RouteFileTooBig();
     return PickedFile(name: f.name, text: await f.readAsString());
   }
 }
@@ -158,6 +170,10 @@ class FakeTransferGateway implements TransferGateway {
   Future<List<PickedFile>> pickFiles() async => List.of(toPick);
 
   @override
-  Future<PickedFile?> pickRouteFile() async =>
-      toPickRoute.isEmpty ? null : toPickRoute.removeAt(0);
+  Future<PickedFile?> pickRouteFile() async {
+    if (toPickRoute.isEmpty) return null;
+    final f = toPickRoute.removeAt(0);
+    if (f.text.length > kMaxRouteFileBytes) throw const RouteFileTooBig();
+    return f;
+  }
 }

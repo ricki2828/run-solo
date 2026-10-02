@@ -115,4 +115,21 @@ class RouteTurnsTest {
         assertEquals("Off route", RouteWords.OFF_ROUTE)
         assertEquals("Back on route", RouteWords.BACK_ON_ROUTE)
     }
+
+    @Test
+    fun `miles users hear yards`() {
+        val turn = RouteTurn(100.0, 90.0, TurnKind.turn)
+        // 50 m is 55 yd, said as 50; short ones never below 10.
+        assertEquals("Right turn in 50 yd", RouteWords.turnCue(turn, 50.0, imperial = true))
+        assertEquals("Right turn in 10 yd", RouteWords.turnCue(turn, 3.0, imperial = true))
+        assertEquals("Keep right", RouteWords.turnCue(RouteTurn(1.0, 60.0, TurnKind.keep), 50.0, imperial = true))
+    }
+
+    @Test
+    fun `an imperial follower announces in yards`() {
+        val f = RouteFollower(RoutePath(RouteTestKit.route(listOf(0.0 to 0.0, 500.0 to 0.0, 500.0 to -500.0))), imperial = true)
+        val r = Runner(f)
+        r.run(listOf(0.0 to 0.0, 500.0 to 0.0, 500.0 to -200.0))
+        assertEquals(listOf("Right turn in 50 yd"), r.turnCues)
+    }
 }

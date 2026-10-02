@@ -1500,12 +1500,13 @@ class _FreeRunBlock extends StatelessWidget {
     // the hero, never under 36 sp. Keyed on the mode's flag, not a type list.
     final showElevation =
         runModeOf(s.mode).showsElevation && s.elevGainM != null;
-    // Following a route: its "to go" needs room. The current-pace dial steps
-    // aside where Trail's climb and grade rows share the screen (and shrinks
-    // on a short phone), and on a short phone the Trail GAP row steps aside
-    // too. The hero, time, distance, climb and grade all stay at 36 sp or more.
+    // Room on a short phone: Trail's GAP row steps aside (with its climb, grade,
+    // time and distance rows it overflowed 360x640 by ~39 px). Following a
+    // route also needs room for "to go": the current-pace dial steps aside
+    // where Trail's climb and grade rows share the screen, and shrinks on a
+    // short phone. The hero, time, distance, climb and grade all stay at 36 sp or more.
     final following = s.route != null;
-    final tightRoute = compact && following;
+    final hideGap = compact;
     final noDial = following && showElevation;
     return Column(
       key: const ValueKey('free-run-block'),
@@ -1566,7 +1567,7 @@ class _FreeRunBlock extends StatelessWidget {
             valueColor: t.inkPrimary,
             // Grade-adjusted pace live, only where the mode asks for it
             // (Trail): the current pace as it would run on the flat.
-            gapSecPerKm: runModeOf(s.mode).showsLiveGap && !tightRoute
+            gapSecPerKm: runModeOf(s.mode).showsLiveGap && !hideGap
                 ? engine.Gap.paceSecPerKm(s.livePaceSecPerKm, s.gradePct)
                 : null,
           ),

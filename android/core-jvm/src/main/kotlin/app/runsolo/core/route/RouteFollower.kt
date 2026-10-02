@@ -17,7 +17,12 @@ import kotlin.math.roundToInt
  * Off route = further than [Config.offM] (widened for a poor fix) for [Config.offAfterMs] without a break;
  * back on route = within [Config.backM] for [Config.backAfterMs]. The gap between the two is the hysteresis.
  */
-class RouteFollower(val path: RoutePath, private val config: Config = Config()) {
+class RouteFollower(
+    val path: RoutePath,
+    private val config: Config = Config(),
+    /** Miles users hear and read yards, not metres, for a turn ahead. */
+    private val imperial: Boolean = false,
+) {
     data class Config(
         val offM: Double = 40.0,
         val backM: Double = 25.0,
@@ -158,7 +163,7 @@ class RouteFollower(val path: RoutePath, private val config: Config = Config()) 
         if (ahead > config.turnAnnounceM) return null
         turnToldIndex = turnIndex
         if (ahead < MIN_WARNING_M) return null
-        return Event.Turn(t, turn, RouteWords.turnCue(turn, ahead))
+        return Event.Turn(t, turn, RouteWords.turnCue(turn, ahead, imperial))
     }
 
     companion object {
@@ -183,7 +188,13 @@ object RouteWords {
         TurnKind.uTurn -> "U-turn"
     }
 
+    private const val YARDS_PER_METRE = 1.09361
+
+    /** "50 m", or "50 yd" for miles users: whole 10s, never below 10. */
+    fun aheadText(aheadM: Double, imperial: Boolean): String =
+        if (imperial) "${RouteFollower.roundedAheadM(aheadM * YARDS_PER_METRE)} yd" else "${RouteFollower.roundedAheadM(aheadM)} m"
+
     /** "Left turn in 50 m"; a "keep" is a nudge, said with no distance. */
-    fun turnCue(turn: RouteTurn, aheadM: Double): String =
-        if (turn.kind == TurnKind.keep) turnLabel(turn) else "${turnLabel(turn)} in ${RouteFollower.roundedAheadM(aheadM)} m"
+    fun turnCue(turn: RouteTurn, aheadM: Double, imperial: Boolean = false): String =
+        if (turn.kind == TurnKind.keep) turnLabel(turn) else "${turnLabel(turn)} in ${aheadText(aheadM, imperial)}"
 }

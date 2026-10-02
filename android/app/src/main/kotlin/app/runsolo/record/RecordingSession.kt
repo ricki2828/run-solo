@@ -151,7 +151,7 @@ class RecordingSession(
 
     /** The route being followed, with its progress and off-route state (null: the run follows nothing). Native, so it works screen off. */
     private val followRoute: FollowRoute? = route
-    private val follower: RouteFollower? = route?.let { RouteFollower(RoutePath(it)) }
+    private val follower: RouteFollower? = route?.let { RouteFollower(RoutePath(it), imperial = units == Units.mi) }
 
     /** The live map's route (read-only view of the samples; recording never reads it). */
     private val liveRoute = LiveRoute()

@@ -143,6 +143,24 @@ void main() {
       expect(services.routes.routes, isEmpty);
     });
 
+    testWidgets('a file over 10 MB says it is too big', (tester) async {
+      final transfer = FakeTransferGateway(
+        toPickRoute: [
+          PickedFile(name: 'huge.gpx', text: 'x' * (kMaxRouteFileBytes + 1)),
+        ],
+      );
+      final (_, services) = await openStart(tester, transfer: transfer);
+      await tapVisible(tester, find.byKey(_row));
+      await settleAnimations(tester);
+      await tester.tap(find.byKey(const ValueKey('follow-import')));
+      await settleAnimations(tester);
+      expect(
+        find.text('That file is too big for a route, max 10 MB'),
+        findsOneWidget,
+      );
+      expect(services.routes.routes, isEmpty);
+    });
+
     testWidgets('cancelling the picker changes nothing', (tester) async {
       final (_, services) = await openStart(tester);
       await tapVisible(tester, find.byKey(_row));
@@ -272,6 +290,33 @@ void main() {
       expect(find.text('1.23 km'), findsOneWidget);
       expect(find.text('45 m'), findsOneWidget);
       expect(find.text('Left turn in 120 m'), findsOneWidget);
+    });
+
+    testWidgets('miles users read yards for the next turn', (tester) async {
+      final fake = FakeRecorderGateway(now: now)..emitRoute = true;
+      final services = fakeServices(
+        recorder: fake,
+        settings: const AppSettings(onboardingDone: true, units: Units.mi),
+      );
+      await services.recording.start(
+        RecordMode.free,
+        null,
+        Units.mi,
+        route: testRoute().toFollowRoute(),
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      await pumpTimes(tester, 4);
+      fake.routeProgress = RouteProgress(
+        toGoM: 3000,
+        off: false,
+        turnLabel: 'Left turn',
+        turnInM: 100,
+      );
+      fake.advance(const Duration(seconds: 3));
+      await pumpTimes(tester, 3);
+      // 100 m is 109 yd, shown as 110.
+      expect(find.text('Left turn in 110 yd'), findsOneWidget);
+      expect(find.textContaining('mi'), findsWidgets); // to go in miles
     });
 
     testWidgets('off route says OFF ROUTE in warn and drops the turn', (

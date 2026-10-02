@@ -10,6 +10,19 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
+import '../platform/transfer_gateway.dart'
+    show RouteFileTooBig, kMaxRouteFileBytes;
+
+class _ParseJob {
+  const _ParseJob(this.text, this.now, this.fallbackName);
+  final String text;
+  final DateTime now;
+  final String? fallbackName;
+}
+
+engine.SavedRoute _parseRoute(_ParseJob j) => const engine.RouteImporter()
+    .fromFile(j.text, now: j.now, fallbackName: j.fallbackName);
+
 abstract class RouteStore {
   Future<List<engine.SavedRoute>> load();
   Future<void> save(List<engine.SavedRoute> routes);
@@ -86,8 +99,12 @@ class RouteLibraryFull implements Exception {
 }
 
 class RouteLibrary extends ChangeNotifier {
-  RouteLibrary(this._store, {DateTime Function()? now})
+  RouteLibrary(this._store, {DateTime Function()? now, this.offIsolate = true})
     : _now = now ?? DateTime.now;
+
+  /// Parse files in a background isolate. Widget tests turn it off (a real
+  /// isolate never completes under their fake clock).
+  final bool offIsolate;
 
   final RouteStore _store;
   final DateTime Function() _now;
@@ -125,13 +142,19 @@ class RouteLibrary extends ChangeNotifier {
   Future<engine.SavedRoute> importText(
     String text, {
     String? fallbackName,
-  }) async => add(
-    const engine.RouteImporter().fromFile(
-      text,
-      now: _now().toUtc(),
-      fallbackName: fallbackName,
-    ),
-  );
+  }) async {
+    if (text.length > maxFileChars) throw const RouteFileTooBig();
+    final now = _now().toUtc();
+    // Parsing a big file must not hold the UI isolate.
+    final job = _ParseJob(text, now, fallbackName);
+    final route = offIsolate
+        ? await compute(_parseRoute, job)
+        : _parseRoute(job);
+    return add(route);
+  }
+
+  /// Same cap as the picker's, in characters (one byte each for GPX/TCX).
+  static const int maxFileChars = kMaxRouteFileBytes;
 
   /// One of the runner's own runs as a route ("Run this route again").
   Future<engine.SavedRoute> addFromRun(

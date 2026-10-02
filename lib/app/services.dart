@@ -284,7 +284,11 @@ class AppServices {
       )..preload(customSessions),
       courseNames: CourseNamesController(MemoryCourseNamesStore(courseNames))
         ..preload(courseNames),
-      routes: RouteLibrary(MemoryRouteStore(routes), now: now)..preload(routes),
+      routes: RouteLibrary(
+        MemoryRouteStore(routes),
+        now: now,
+        offIsolate: false,
+      )..preload(routes),
       live: live,
       placeGateway: places,
       exportTargets:

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
+import 'package:run_solo/platform/transfer_gateway.dart';
 import 'package:run_solo/state/route_library.dart';
 
 import '../route_fixtures.dart';
@@ -82,6 +83,21 @@ void main() {
         () => lib.add(testRoute(id: 'one-too-many')),
         throwsA(isA<RouteLibraryFull>()),
       );
+    });
+
+    test('a file over 10 MB is refused before it is parsed', () async {
+      final lib = library();
+      await expectLater(
+        lib.importText('x' * (kMaxRouteFileBytes + 1)),
+        throwsA(isA<RouteFileTooBig>()),
+      );
+      expect(lib.routes, isEmpty);
+    });
+
+    test('a big but allowed file still imports, off the UI isolate', () async {
+      final lib = library();
+      final r = await lib.importText(gpxText(lengthM: 40000));
+      expect(r.distanceM, greaterThan(39000));
     });
 
     test('a bad file is refused and nothing is added', () async {

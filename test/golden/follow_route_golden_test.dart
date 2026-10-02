@@ -36,6 +36,7 @@ Future<void> run(
   required bool map,
   required RecordMode mode,
   RouteProgress? progress,
+  bool route = true,
 }) async {
   final fake = FakeRecorderGateway(now: now)..emitRoute = true;
   final services = fakeServices(
@@ -50,7 +51,7 @@ Future<void> run(
     mode,
     null,
     Units.km,
-    route: testRoute().toFollowRoute(),
+    route: route ? testRoute().toFollowRoute() : null,
   );
   await pumpApp(tester, services, pushRoute: Routes.recording);
   tester.view.physicalSize = Size(1080, height * 3.0);
@@ -103,6 +104,22 @@ void main() {
     ) async {
       await run(tester, height: h, map: true, mode: RecordMode.free);
       await golden(tester, 'record_route_map_free_360x$h');
+    });
+  }
+
+  // Trail without a route: 360 x 640 overflowed by ~39 px on main (GAP row).
+  for (final h in [800, 640]) {
+    testWidgets('record: trail run, no route, NUMBERS at 360 x $h', (
+      tester,
+    ) async {
+      await run(
+        tester,
+        height: h,
+        map: false,
+        mode: RecordMode.trail,
+        route: false,
+      );
+      await golden(tester, 'record_trail_numbers_360x$h');
     });
   }
 
