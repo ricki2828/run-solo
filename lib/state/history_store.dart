@@ -433,6 +433,7 @@ abstract class RunStore implements HistoryStore {
     required bool ok,
     required DateTime at,
     String? error,
+    bool auto = true,
   });
 }
 
@@ -842,9 +843,16 @@ class MemoryRunStore implements RunStore {
     required bool ok,
     required DateTime at,
     String? error,
+    bool auto = true,
   }) async {
     final s = sidecars[id] ?? engine.RunSidecar(runId: id);
-    return sidecars[id] = s.withSend(targetId, ok: ok, at: at, error: error);
+    return sidecars[id] = s.withSend(
+      targetId,
+      ok: ok,
+      at: at,
+      error: error,
+      auto: auto,
+    );
   }
 
   @override
@@ -1570,13 +1578,15 @@ class FileRunStore implements RunStore {
     required bool ok,
     required DateTime at,
     String? error,
+    bool auto = true,
   }) async {
     final file = await _fileFor(id);
     if (file == null) return null;
     return sidecars.update(
       id,
       _sidecarFor(file),
-      (current) => current.withSend(targetId, ok: ok, at: at, error: error),
+      (current) =>
+          current.withSend(targetId, ok: ok, at: at, error: error, auto: auto),
       runFile: file,
     );
   }

@@ -171,24 +171,39 @@ class RunSidecar {
 
   /// Record one attempt to [targetId] at [at]. A success clears the failure
   /// count; a failure adds one and keeps [error] (short, user-readable).
+  ///
+  /// [auto] marks an automatic attempt. Only those count towards
+  /// [SendRecord.maxAutoTries]: a failed manual (Send button) attempt never
+  /// burns automatic retries, and never un-sends a run that already went.
   RunSidecar withSend(
     String targetId, {
     required bool ok,
     required DateTime at,
     String? error,
+    bool auto = true,
   }) {
     final prev = sends[targetId];
-    return copyWith(
-      sends: {
-        ...sends,
-        targetId: SendRecord(
-          ok: ok,
-          at: at.toUtc(),
-          tries: ok ? 0 : (prev == null || prev.ok ? 1 : prev.tries + 1),
-          error: ok ? null : error,
-        ),
-      },
-    );
+    final SendRecord next;
+    if (ok) {
+      next = SendRecord(ok: true, at: at.toUtc());
+    } else if (auto) {
+      next = SendRecord(
+        ok: false,
+        at: at.toUtc(),
+        tries: prev == null || prev.ok ? 1 : prev.tries + 1,
+        error: error,
+      );
+    } else if (prev == null || !prev.ok) {
+      next = SendRecord(
+        ok: false,
+        at: at.toUtc(),
+        tries: prev?.tries ?? 0,
+        error: error,
+      );
+    } else {
+      return this;
+    }
+    return copyWith(sends: {...sends, targetId: next});
   }
 
   /// Earlier verdicts, oldest first: every verdict that was unfrozen by a

@@ -126,6 +126,27 @@ void sendLogTests() {
       expect(s.autoSendDue('t'), isFalse);
     });
 
+    test('a failed manual send never burns automatic retries', () {
+      var s = fresh();
+      for (var i = 0; i < 5; i++) {
+        s = s.withSend('t', ok: false, at: t0, error: 'x', auto: false);
+      }
+      expect(s.sends['t']!.tries, 0);
+      expect(s.autoSendDue('t'), isTrue);
+      s = s.withSend('t', ok: false, at: t0, error: 'x');
+      expect(s.sends['t']!.tries, 1);
+      s = s.withSend('t', ok: false, at: t0, error: 'x', auto: false);
+      expect(s.sends['t']!.tries, 1);
+    });
+
+    test('a failed manual send never un-sends a sent run', () {
+      final s = fresh()
+          .withSend('t', ok: true, at: t0)
+          .withSend('t', ok: false, at: t0, error: 'x', auto: false);
+      expect(s.sends['t']!.ok, isTrue);
+      expect(s.autoSendDue('t'), isFalse);
+    });
+
     test('a later success clears the failure count', () {
       final s = fresh()
           .withSend('t', ok: false, at: t0, error: 'offline')

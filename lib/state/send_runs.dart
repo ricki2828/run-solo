@@ -130,6 +130,38 @@ class ShareFileTarget extends ExportTarget {
   final Future<Directory> Function() _tempDir;
 
   static const String targetId = 'share_file';
+  static const String _dirPrefix = 'runsupreme-send-';
+
+  /// Delete send temp dirs older than [olderThan]. Not deleted right after
+  /// the share: on Android the share call returns when the chooser opens,
+  /// before the receiving app has read the file. Called on app start and
+  /// before each send.
+  static Future<void> sweepStale(
+    Directory root, {
+    Duration olderThan = const Duration(hours: 1),
+    DateTime? now,
+  }) async {
+    final cutoff = (now ?? DateTime.now()).subtract(olderThan);
+    try {
+      await for (final e in root.list(followLinks: false)) {
+        if (e is! Directory ||
+            !e.uri.pathSegments
+                .where((s) => s.isNotEmpty)
+                .last
+                .startsWith(_dirPrefix)) {
+          continue;
+        }
+        if ((await e.stat()).modified.isBefore(cutoff)) {
+          await e.delete(recursive: true);
+        }
+      }
+    } catch (e) {
+      debugPrint('send: temp sweep failed ($e)');
+    }
+  }
+
+  /// [sweepStale] over this target's temp root.
+  Future<void> sweep() async => sweepStale(await _tempDir());
 
   @override
   String get id => targetId;
@@ -141,7 +173,9 @@ class ShareFileTarget extends ExportTarget {
   @override
   Future<SendResult> send(SendRequest req) async {
     try {
-      final dir = await (await _tempDir()).createTemp('runsupreme-send-');
+      final root = await _tempDir();
+      await sweepStale(root);
+      final dir = await root.createTemp(_dirPrefix);
       final file = File(
         '${dir.path}/${exportFileName(req.title, req.run.start, req.format)}',
       );
@@ -272,7 +306,7 @@ class SendCoordinator {
     if (t == null) return const SendResult.failed('Unknown target');
     final detail = await history.load(runId);
     if (detail == null) return const SendResult.failed('Run not found');
-    return _attempt(t, detail, format);
+    return _attempt(t, detail, format, auto: false);
   }
 
   /// After a run: every enabled automatic target whose log says a send is
@@ -285,9 +319,14 @@ class SendCoordinator {
     if (due.isEmpty) return;
     final detail = await history.load(runId);
     if (detail == null) return;
+    final since = settings.settings.autoSendSince;
     for (final t in due) {
       if (!detail.sidecar.autoSendDue(t.id)) continue;
-      await _attempt(t, detail, ExportFormat.tcx);
+      // Only runs that finished after the target was switched on; older
+      // ones go through the Send button.
+      final on = since[t.id];
+      if (on == null || !detail.run.end.isAfter(on)) continue;
+      await _attempt(t, detail, ExportFormat.tcx, auto: true);
     }
   }
 
@@ -305,8 +344,9 @@ class SendCoordinator {
   Future<SendResult> _attempt(
     ExportTarget t,
     RunDetail detail,
-    ExportFormat format,
-  ) async {
+    ExportFormat format, {
+    required bool auto,
+  }) async {
     final key = '${detail.run.id}|${t.id}';
     if (!_inFlight.add(key)) return const SendResult.failed('Already sending');
     try {
@@ -329,6 +369,7 @@ class SendCoordinator {
         ok: result.ok,
         at: _now(),
         error: result.error,
+        auto: auto,
       );
       return result;
     } finally {

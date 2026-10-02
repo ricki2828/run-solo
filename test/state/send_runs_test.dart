@@ -34,6 +34,11 @@ class _AutoTarget extends ExportTarget {
   }
 }
 
+final _boomOn = AppSettings(
+  autoSend: const {'boom'},
+  autoSendSince: {'boom': DateTime.utc(2026, 1, 1)},
+);
+
 void main() {
   final start = DateTime.utc(2026, 10, 2, 6);
   late engine.RunFile run;
@@ -46,7 +51,10 @@ void main() {
     run = fourByFourFile(n: 1, start: start);
     store = MemoryRunStore(files: [run], now: now);
     auto = _AutoTarget('auto');
-    final initial = AppSettings(autoSend: on);
+    final initial = AppSettings(
+      autoSend: on,
+      autoSendSince: {for (final id in on) id: DateTime.utc(2026, 1, 1)},
+    );
     settings = SettingsController(MemorySettingsStore(initial), initial);
     return coordinator = SendCoordinator(
       history: store,
@@ -178,6 +186,63 @@ void main() {
       expect(store.sidecars[run.id]!.sends['auto']!.tries, 0);
     });
 
+    test(
+      'only runs finished after the target was switched on go automatically',
+      () async {
+        build();
+        final late = run.end.add(const Duration(minutes: 1));
+        settings = SettingsController(
+          MemorySettingsStore(),
+          AppSettings(autoSend: const {'auto'}, autoSendSince: {'auto': late}),
+        );
+        coordinator = SendCoordinator(
+          history: store,
+          settings: settings,
+          targets: [auto],
+          now: now,
+        );
+        await coordinator.sendAuto(run.id);
+        await coordinator.reconcile();
+        expect(auto.sends, 0, reason: 'run finished before it was switched on');
+        // The Send button still works for it.
+        expect((await coordinator.sendManual(run.id, 'auto')).ok, isTrue);
+        expect(auto.sends, 1);
+      },
+    );
+
+    test(
+      'switched on with no recorded time sends nothing automatically',
+      () async {
+        build();
+        settings = SettingsController(
+          MemorySettingsStore(),
+          const AppSettings(autoSend: {'auto'}),
+        );
+        coordinator = SendCoordinator(
+          history: store,
+          settings: settings,
+          targets: [auto],
+          now: now,
+        );
+        await coordinator.sendAuto(run.id);
+        expect(auto.sends, 0);
+      },
+    );
+
+    test('a failed manual send does not use up automatic retries', () async {
+      build();
+      auto.offline = true;
+      for (var i = 0; i < 5; i++) {
+        await coordinator.sendManual(run.id, 'auto');
+      }
+      expect(store.sidecars[run.id]!.sends['auto']!.tries, 0);
+      auto.sends = 0;
+      for (var open = 0; open < 5; open++) {
+        await coordinator.reconcile();
+      }
+      expect(auto.sends, engine.SendRecord.maxAutoTries);
+    });
+
     test('the Send button sends again whatever the log says', () async {
       build();
       await coordinator.sendAuto(run.id);
@@ -191,10 +256,7 @@ void main() {
       final t = _ThrowingTarget();
       final c = SendCoordinator(
         history: store,
-        settings: SettingsController(
-          MemorySettingsStore(const AppSettings(autoSend: {'boom'})),
-          const AppSettings(autoSend: {'boom'}),
-        ),
+        settings: SettingsController(MemorySettingsStore(_boomOn), _boomOn),
         targets: [t],
         now: now,
       );
@@ -239,7 +301,10 @@ void main() {
     final r = freeRunFile(n: 1, start: start);
     await store.importBundles([engine.RunBundle(run: r)]);
     final t = _AutoTarget('auto')..offline = true;
-    const on = AppSettings(autoSend: {'auto'});
+    final on = AppSettings(
+      autoSend: const {'auto'},
+      autoSendSince: {'auto': DateTime.utc(2026, 1, 1)},
+    );
     SendCoordinator open() => SendCoordinator(
       history: FileRunStore(Directory('${dir.path}/runs')),
       settings: SettingsController(MemorySettingsStore(on), on),
@@ -258,6 +323,37 @@ void main() {
     expect((await store.load(r.id))!.sidecar.sends['auto']!.ok, isTrue);
     await open().sendAuto(r.id);
     expect(t.sends, engine.SendRecord.maxAutoTries + 1);
+  });
+
+  test('withAutoSend records the enable time and clears it when off', () {
+    final at = DateTime.utc(2026, 10, 2, 8);
+    final on = const AppSettings().withAutoSend('x', true, at);
+    expect(on.autoSend, {'x'});
+    expect(on.autoSendSince['x'], at);
+    final back = AppSettings.fromJson(on.toJson());
+    expect(back.autoSendSince['x'], at);
+    final off = on.withAutoSend('x', false, at);
+    expect(off.autoSend, isEmpty);
+    expect(off.autoSendSince, isEmpty);
+  });
+
+  test('sweepStale removes old send dirs only', () async {
+    final root = Directory.systemTemp.createTempSync('runsolo-sweep-');
+    addTearDown(() => root.deleteSync(recursive: true));
+    final old = Directory('${root.path}/runsupreme-send-old')..createSync();
+    final other = Directory('${root.path}/something-else')..createSync();
+    final fresh = Directory('${root.path}/runsupreme-send-new')..createSync();
+    await ShareFileTarget.sweepStale(
+      root,
+      now: DateTime.now().add(const Duration(hours: 2)),
+    );
+    expect(old.existsSync(), isFalse);
+    expect(fresh.existsSync(), isFalse, reason: 'also older than 1 h by then');
+    expect(other.existsSync(), isTrue);
+    final recent = Directory('${root.path}/runsupreme-send-recent')
+      ..createSync();
+    await ShareFileTarget.sweepStale(root);
+    expect(recent.existsSync(), isTrue);
   });
 
   test('autoSend settings round-trip and default to off', () {

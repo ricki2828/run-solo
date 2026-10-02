@@ -150,6 +150,9 @@ class AppServices {
   /// (none by default), and retries what an offline run left behind once on
   /// open. Off the run's critical path; a failure only logs.
   void startSends() {
+    for (final t in sender.targets) {
+      if (t is ShareFileTarget) unawaited(t.sweep());
+    }
     unawaited(_sendPass(sender.reconcile));
     recording.addListener(() {
       final s = recording.snapshot;
