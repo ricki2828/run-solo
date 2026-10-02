@@ -18,6 +18,9 @@ on:
   workflow_dispatch:
   push:
     tags: ['v*']
+    # TEMPORARY (I0 only, removed before review): workflow_dispatch cannot reach a workflow
+    # file that is not on main yet, so the first runs come from pushes to this branch.
+    branches: [ios-scaffold]
 
 concurrency:
   group: ios-${{ github.ref }}
