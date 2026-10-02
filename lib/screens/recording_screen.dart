@@ -1506,8 +1506,8 @@ class _FreeRunBlock extends StatelessWidget {
     // where Trail's climb and grade rows share the screen, and shrinks on a
     // short phone. The hero, time, distance, climb and grade all stay at 36 sp or more.
     final following = s.route != null;
-    final hideGap = compact;
-    final noDial = following && showElevation;
+    final hideGap = compact && following;
+    final noDial = showElevation && (following || compact);
     return Column(
       key: const ValueKey('free-run-block'),
       children: [
