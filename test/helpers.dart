@@ -9,6 +9,7 @@ import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/main.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/platform/health_gateway.dart';
 import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_solo/platform/transfer_gateway.dart';
 import 'package:run_solo/splash/intro_gate.dart';
@@ -43,6 +44,7 @@ AppServices fakeServices({
   Map<String, engine.RunSidecar> sidecars = const {},
   MapSurfaceFactory? maps,
   FakeTransferGateway? transfer,
+  FakeHealthGateway? health,
   FakeStorageGateway? storage,
   List<CustomSession> customSessions = const [],
   Map<String, String> courseNames = const {},
@@ -72,6 +74,7 @@ AppServices fakeServices({
   sidecars: sidecars,
   maps: maps,
   transfer: transfer,
+  health: health,
   storage: storage,
   now: now,
   customSessions: customSessions,

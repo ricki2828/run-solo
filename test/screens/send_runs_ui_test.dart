@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_solo/platform/health_gateway.dart';
+import 'package:run_solo/platform/platform_api.g.dart';
 import 'package:run_solo/platform/transfer_gateway.dart';
 import 'package:run_solo/screens/run_detail_screen.dart';
 import 'package:run_solo/screens/send_sheet.dart';
@@ -58,8 +60,9 @@ void main() {
     expect(find.text('Strava'), findsOneWidget);
     expect(find.text(kStravaLine), findsOneWidget);
     expect(find.text('Health Connect'), findsOneWidget);
+    expect(find.text('Send to Health Connect'), findsOneWidget);
     expect(find.text('Intervals.icu'), findsOneWidget);
-    expect(find.text('Coming soon'), findsNWidgets(2));
+    expect(find.text('Coming soon'), findsOneWidget);
     expect(find.textContaining('Compatible with'), findsNothing);
   });
 
@@ -123,14 +126,87 @@ void main() {
     expect(find.text('Only when you tap Send on a run.'), findsOneWidget);
     expect(find.text('Health Connect'), findsOneWidget);
     expect(find.text('Intervals.icu'), findsOneWidget);
-    expect(find.text('Coming soon'), findsNWidgets(2));
-    // Disabled rows cannot be switched on; nothing is on by default.
-    expect(
-      tester.widget<Switch>(switchFor('Health Connect')).onChanged,
-      isNull,
-    );
+    expect(find.text('Coming soon'), findsOneWidget);
+    // Coming-soon rows cannot be switched on; nothing is on by default.
     expect(tester.widget<Switch>(switchFor('Intervals.icu')).onChanged, isNull);
+    expect(tester.widget<Switch>(switchFor('Health Connect')).value, isFalse);
     expect(services.settings.settings.autoSend, isEmpty);
+  });
+
+  testWidgets('Settings: Health Connect on asks for access, then persists', (
+    tester,
+  ) async {
+    final health = FakeHealthGateway(coreGranted: false, routeGranted: false);
+    final services = fakeServices(health: health);
+    await pumpApp(tester, services, home: SettingsScreen(now: now));
+    await pumpTimes(tester, 4);
+    await scrollTo(tester, find.text('SEND RUNS TO'));
+    await tester.tap(switchFor('Health Connect'));
+    await pumpTimes(tester, 4);
+    expect(health.requests, [false, true]);
+    expect(services.settings.settings.autoSend, {'health'});
+    expect(services.settings.settings.autoSendSince['health'], isNotNull);
+  });
+
+  testWidgets('Settings: access refused keeps it off and says why', (
+    tester,
+  ) async {
+    final health = FakeHealthGateway(
+      coreGranted: false,
+      grantCoreOnRequest: false,
+    );
+    final services = fakeServices(health: health);
+    await pumpApp(tester, services, home: SettingsScreen(now: now));
+    await pumpTimes(tester, 4);
+    await scrollTo(tester, find.text('SEND RUNS TO'));
+    await tester.tap(switchFor('Health Connect'));
+    await pumpTimes(tester, 4);
+    expect(services.settings.settings.autoSend, isEmpty);
+    expect(find.textContaining('Allow Run Supreme to write'), findsOneWidget);
+  });
+
+  testWidgets('Settings: Health Connect missing offers the Play Store', (
+    tester,
+  ) async {
+    final health = FakeHealthGateway(
+      availability: HealthAvailability.notInstalled,
+      coreGranted: false,
+    );
+    final services = fakeServices(health: health);
+    await pumpApp(tester, services, home: SettingsScreen(now: now));
+    await pumpTimes(tester, 4);
+    await scrollTo(tester, find.text('SEND RUNS TO'));
+    await tester.tap(switchFor('Health Connect'));
+    await pumpTimes(tester, 4);
+    expect(find.text('Health Connect is not installed.'), findsOneWidget);
+    await scrollTo(tester, find.text('Open the Play Store'));
+    await tester.tap(find.text('Open the Play Store'));
+    await pumpTimes(tester, 2);
+    expect(health.installOpened, 1);
+    expect(services.settings.settings.autoSend, isEmpty);
+  });
+
+  testWidgets('Send sheet: Send to Health Connect writes the run', (
+    tester,
+  ) async {
+    final health = FakeHealthGateway();
+    final r = fourByFourFile(n: 1, start: d1);
+    await pumpApp(
+      tester,
+      fakeServices(files: [r], health: health),
+      home: RunDetailScreen(runId: r.id),
+    );
+    await pumpTimes(tester, 6);
+    await scrollTo(tester, find.text('Send'));
+    await tester.tap(find.text('Send'));
+    await settleAnimations(tester);
+    await tester.tap(find.byKey(const ValueKey('send-health')));
+    await pumpTimes(tester, 8);
+    await settleAnimations(tester);
+    expect(health.written.single.clientRecordId, r.id);
+    expect(find.byType(SendSheet), findsNothing);
+    await scrollTo(tester, find.text('Send'));
+    expect(find.textContaining('Sent '), findsOneWidget);
   });
 
   testWidgets('Settings: a live automatic target toggles and persists', (

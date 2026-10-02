@@ -21,7 +21,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
+import '../platform/health_gateway.dart';
+import '../platform/platform_api.g.dart';
 import '../platform/transfer_gateway.dart';
+import 'health_workout.dart';
 import 'history_store.dart';
 import 'settings.dart';
 
@@ -43,6 +46,7 @@ class SendRequest {
     required this.run,
     required this.title,
     this.format = ExportFormat.tcx,
+    this.utcOffsetMin,
   });
 
   final engine.RunFile run;
@@ -51,6 +55,25 @@ class SendRequest {
   /// one); names the file.
   final String title;
   final ExportFormat format;
+
+  /// The phone's UTC offset when the run finished (the sidecar's); null on
+  /// older runs, which fall back to the offset now.
+  final int? utcOffsetMin;
+}
+
+/// Whether a target can take a run right now, and if not why not.
+@immutable
+class TargetSetup {
+  const TargetSetup.ready() : message = null, canInstall = false;
+  const TargetSetup.blocked(String this.message, {this.canInstall = false});
+
+  /// Plain words for the runner; null when ready.
+  final String? message;
+
+  /// The fix is installing or updating an app: offer its store page.
+  final bool canInstall;
+
+  bool get isReady => message == null;
 }
 
 @immutable
@@ -83,6 +106,13 @@ abstract class ExportTarget {
   /// Switched on for automatic sending in Settings.
   bool isEnabled(AppSettings s) =>
       supportsAutomatic && !comingSoon && s.autoSend.contains(id);
+
+  /// Get the target ready (permissions, an installed app) from a runner's tap,
+  /// never from the background. Ready by default.
+  Future<TargetSetup> prepare() async => const TargetSetup.ready();
+
+  /// Open the store page when [prepare] says [TargetSetup.canInstall].
+  Future<void> openInstall() async {}
 
   /// Deliver [req]. Never throws for an expected failure (offline, refused):
   /// return [SendResult.failed] with a short reason.
@@ -193,28 +223,101 @@ class ShareFileTarget extends ExportTarget {
   }
 }
 
-/// Health: a later PR. Platform-neutral: one "health" target backed by one
-/// Pigeon `HealthApi` (Health Connect on Android, HealthKit on iOS).
+/// Health: one platform-neutral target over one [HealthGateway] (Health
+/// Connect on Android; HealthKit on iOS is a later PR). Writes the run as an
+/// exercise session with laps, pauses, heart rate, distance and route.
+/// Writing the same run again replaces it (the run id is the record id).
 class HealthTarget extends ExportTarget {
+  HealthTarget({required this.gateway, DateTime Function()? now, bool? ios})
+    : _now = now ?? DateTime.now,
+      _ios = ios ?? Platform.isIOS;
+
+  final HealthGateway gateway;
+  final DateTime Function() _now;
+  final bool _ios;
+
   static const String targetId = 'health';
 
   @override
   String get id => targetId;
   @override
-  String get label => Platform.isIOS ? 'Apple Health' : 'Health Connect';
+  String get label => _ios ? 'Apple Health' : 'Health Connect';
   @override
-  String get blurb => 'Coming soon';
+  String get blurb => 'Run, heart rate, distance and route';
   @override
   bool get supportsAutomatic => true;
-  @override
-  bool get comingSoon => true;
 
-  // TODO(send-runs): `HealthApi.writeWorkout(run file -> session, route, HR,
-  // distance, laps)`, implemented natively per platform. Android needs the
-  // Play health-apps declaration.
+  // HealthKit lands in its own PR.
   @override
-  Future<SendResult> send(SendRequest req) async =>
-      const SendResult.failed('Not available yet');
+  bool get comingSoon => _ios;
+
+  static TargetSetup? _problemOf(HealthAvailability a) => switch (a) {
+    HealthAvailability.available => null,
+    HealthAvailability.notInstalled => const TargetSetup.blocked(
+      'Health Connect is not installed.',
+      canInstall: true,
+    ),
+    HealthAvailability.needsUpdate => const TargetSetup.blocked(
+      'Health Connect needs an update.',
+      canInstall: true,
+    ),
+    HealthAvailability.unsupported => const TargetSetup.blocked(
+      'Health Connect is not available on this phone.',
+    ),
+  };
+
+  @override
+  Future<TargetSetup> prepare() async {
+    var s = await gateway.status();
+    final problem = _problemOf(s.availability);
+    if (problem != null) return problem;
+    if (!s.coreGranted) {
+      if (!await gateway.requestAccess(route: false)) {
+        return const TargetSetup.blocked(
+          'Allow Run Supreme to write exercise, heart rate and distance in '
+          'Health Connect.',
+        );
+      }
+    }
+    // The route is its own permission. Without it runs still go, minus the
+    // map, so a refusal is not a blocker.
+    if (!s.routeGranted) await gateway.requestAccess(route: true);
+    return const TargetSetup.ready();
+  }
+
+  @override
+  Future<void> openInstall() => gateway.openInstall();
+
+  @override
+  Future<SendResult> send(SendRequest req) async {
+    final s = await gateway.status();
+    final problem = _problemOf(s.availability);
+    if (problem != null) return SendResult.failed(problem.message!);
+    if (!s.coreGranted) {
+      return const SendResult.failed('Health Connect access is off');
+    }
+    final now = _now();
+    final workout = HealthWorkoutBuilder.build(
+      req.run,
+      title: req.title,
+      utcOffsetSeconds: (req.utcOffsetMin ?? now.timeZoneOffset.inMinutes) * 60,
+      version: now.millisecondsSinceEpoch,
+    );
+    final r = await gateway.writeWorkout(workout);
+    return switch (r.outcome) {
+      HealthWriteOutcome.written ||
+      HealthWriteOutcome.writtenWithoutRoute => const SendResult.ok(),
+      HealthWriteOutcome.notAvailable => const SendResult.failed(
+        'Health Connect is not available',
+      ),
+      HealthWriteOutcome.permissionDenied => const SendResult.failed(
+        'Health Connect access is off',
+      ),
+      HealthWriteOutcome.failed => SendResult.failed(
+        r.detail ?? 'Could not write to Health Connect',
+      ),
+    };
+  }
 }
 
 /// Intervals.icu: a later PR.
@@ -244,11 +347,13 @@ const String kStravaUploadUrl = 'https://www.strava.com/upload/select';
 const String kStravaLine = "Save the file, then upload it on Strava's website";
 
 List<ExportTarget> defaultExportTargets(
-  TransferGateway transfer, {
+  TransferGateway transfer,
+  HealthGateway health, {
   Future<Directory> Function()? tempDir,
+  DateTime Function()? now,
 }) => [
   ShareFileTarget(transfer: transfer, tempDir: tempDir),
-  HealthTarget(),
+  HealthTarget(gateway: health, now: now),
   IntervalsIcuTarget(),
 ];
 
@@ -357,6 +462,7 @@ class SendCoordinator {
             run: detail.run,
             title: runIdentityTitle(detail.summary),
             format: format,
+            utcOffsetMin: detail.sidecar.utcOffsetMin,
           ),
         );
       } catch (e) {

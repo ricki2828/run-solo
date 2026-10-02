@@ -14,6 +14,7 @@ import '../map/google_map_surface.dart';
 import '../map/map_surface.dart';
 import '../platform/fake_gateway.dart';
 import '../platform/gateway.dart';
+import '../platform/health_gateway.dart';
 import '../platform/pigeon_gateway.dart';
 import '../platform/transfer_gateway.dart';
 import '../state/courses.dart';
@@ -40,6 +41,7 @@ class AppServices {
     required this.maps,
     required this.transfer,
     required this.storage,
+    required this.health,
     SessionsController? sessions,
     CourseNamesController? courseNames,
     RecordingController? recording,
@@ -56,7 +58,8 @@ class AppServices {
        sender = SendCoordinator(
          history: history,
          settings: settings,
-         targets: exportTargets ?? defaultExportTargets(transfer),
+         targets:
+             exportTargets ?? defaultExportTargets(transfer, health, now: now),
          now: now,
        ),
        now = now ?? DateTime.now,
@@ -82,6 +85,7 @@ class AppServices {
   final RunStore history;
   final MapSurfaceFactory maps;
   final TransferGateway transfer;
+  final HealthGateway health;
   final StorageGateway storage;
   final RecordingController recording;
   final DateTime Function() now;
@@ -226,6 +230,7 @@ class AppServices {
     Map<String, engine.RunSidecar> sidecars = const {},
     MapSurfaceFactory? maps,
     FakeTransferGateway? transfer,
+    FakeHealthGateway? health,
     FakeStorageGateway? storage,
     DateTime Function()? now,
     List<CustomSession> customSessions = const [],
@@ -242,6 +247,7 @@ class AppServices {
     );
     final clock = now ?? DateTime.now;
     final xfer = transfer ?? FakeTransferGateway();
+    final fakeHealth = health ?? FakeHealthGateway();
     return AppServices(
       recorder: rec,
       ble: ble ?? FakeBleGateway(),
@@ -260,6 +266,7 @@ class AppServices {
           ),
       maps: maps ?? const FakeMapSurfaceFactory(),
       transfer: xfer,
+      health: fakeHealth,
       storage: storage ?? FakeStorageGateway(),
       now: now,
       sessions: SessionsController(
@@ -272,7 +279,12 @@ class AppServices {
       placeGateway: places,
       exportTargets:
           exportTargets ??
-          defaultExportTargets(xfer, tempDir: () async => Directory.systemTemp),
+          defaultExportTargets(
+            xfer,
+            fakeHealth,
+            tempDir: () async => Directory.systemTemp,
+            now: now,
+          ),
     );
   }
 
@@ -303,6 +315,7 @@ class AppServices {
       history: history,
       maps: const GoogleMapSurfaceFactory(),
       transfer: const ShareSheetTransferGateway(),
+      health: PigeonHealthGateway(),
       storage: PigeonStorageGateway(),
       placeGateway: PigeonPlaceGateway(),
       zoneMemento: FileZoneMementoStore(Directory('${support.path}/state')),
