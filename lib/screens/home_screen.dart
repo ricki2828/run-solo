@@ -7,6 +7,8 @@ import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
+import '../state/settings.dart';
+import '../widgets/goal_picker.dart';
 import '../state/home_progress.dart';
 import '../theme/theme.dart';
 import '../widgets/home_scores.dart';
@@ -43,7 +45,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   Future<List<RunSummary>>? _runs;
   Future<engine.HomeEstimates?>? _estimates;
-  Future<Map<engine.IdentityLane, engine.IdentityScore>>? _scores;
+  Future<Map<engine.IdentityLane, engine.IdentityScore>?>? _scores;
   Future<_HomeData>? _data;
   PermissionSnapshot? _perms;
   HistoryStore? _history;
@@ -81,10 +83,18 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  /// Never throws: a failed scores read comes back as [_HomeData.failed],
+  /// so Home still shows Start and the run list.
   static Future<_HomeData> _load(
     Future<List<RunSummary>> runs,
-    Future<Map<engine.IdentityLane, engine.IdentityScore>>? scores,
-  ) async => _HomeData(await runs, scores == null ? const {} : await scores);
+    Future<Map<engine.IdentityLane, engine.IdentityScore>?>? scores,
+  ) async {
+    final r = await runs;
+    final sc = scores == null
+        ? const <engine.IdentityLane, engine.IdentityScore>{}
+        : await scores;
+    return sc == null ? _HomeData(r, const {}, failed: true) : _HomeData(r, sc);
+  }
 
   void _loadEstimates() {
     // PD2: ESTIMATED TIMES and the fitness hero read the index's derived
@@ -95,7 +105,13 @@ class _HomeScreenState extends State<HomeScreen> {
       _estimates = live.prepare().then(
         (_) => live.homeEstimates(includeEvent: _hasEventCourse(live)),
       );
-      _scores = live.prepare().then((_) => live.identityScores());
+      // A failed read becomes null here, so no error is left unhandled.
+      _scores = live
+          .prepare()
+          .then<Map<engine.IdentityLane, engine.IdentityScore>?>(
+            (_) => live.identityScores(),
+          )
+          .catchError((_) => null);
     } else {
       _scores = null;
     }
@@ -115,11 +131,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Start and Change both open setup; with a recommendation, setup opens
-  /// preset to it.
+  /// preset to it. The preset stays only if a run was started or the runner
+  /// picked something else in setup: backing out puts the saved run type
+  /// back.
   Future<void> _start(Recommendation? rec) async {
     final services = AppServices.of(context);
-    if (rec != null) await services.settings.update(rec.apply);
-    if (!mounted) return;
     final perms = _perms;
     if (perms != null && !perms.canRecord) {
       final ok = await Navigator.of(context).pushNamed(Routes.permissions);
@@ -129,8 +145,46 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
     if (!mounted) return;
+    final before = services.settings.settings;
+    final runsBefore = (await services.history.list()).length;
+    if (rec != null) await services.settings.update(rec.apply);
+    final applied = services.settings.settings;
+    if (!mounted) return;
     await Navigator.of(context).pushNamed(Routes.start);
+    if (rec != null) {
+      final now = services.settings.settings;
+      bool same(AppSettings a, AppSettings b) =>
+          a.lastMode == b.lastMode &&
+          a.goalRun == b.goalRun &&
+          a.goalId == b.goalId &&
+          a.sessionId == b.sessionId;
+      final started = (await services.history.list()).length != runsBefore;
+      if (!started && same(now, applied)) {
+        await services.settings.update(
+          (s) => s.copyWith(
+            lastMode: before.lastMode,
+            goalRun: before.goalRun,
+            goalId: before.goalId,
+            sessionId: before.sessionId,
+          ),
+        );
+      }
+    }
     if (mounted) setState(_refresh);
+  }
+
+  /// What Start would run from the saved choice, before any recommendation.
+  static String _lastUsedName(AppSettings s, engine.SessionSpec picked) {
+    if (s.goalRun) {
+      final label = goalLabel(s);
+      return label == 'Distance or time' ? 'goal run' : label;
+    }
+    return switch (s.lastMode) {
+      RecordMode.free => 'free run',
+      RecordMode.laps => 'laps run',
+      RecordMode.cooper => '12-minute test',
+      RecordMode.intervals => picked.name,
+    };
   }
 
   void _openProgress() {
@@ -192,41 +246,58 @@ class _HomeScreenState extends State<HomeScreen> {
                     future: _data,
                     builder: (context, snap) {
                       final data = snap.data;
-                      if (data == null) return const SizedBox.shrink();
-                      final scores = data.scores;
                       final age = settings.birthYear == null
                           ? null
                           : _now.year - settings.birthYear!;
-                      final headline = ProgressHeadline.of(
-                        scores,
-                        now: _now,
-                        sex: settings.profileSex,
-                        age: age,
-                      );
-                      final rec = Recommendation.of(
-                        scores,
-                        data.runs,
-                        now: _now,
-                        sex: settings.profileSex,
-                        age: age,
-                        presetEdits: settings.allPresetEdits,
-                      );
+                      final rec = data == null || data.failed
+                          ? null
+                          : Recommendation.of(
+                              data.scores,
+                              data.runs,
+                              now: _now,
+                              sex: settings.profileSex,
+                              age: age,
+                              presetEdits: settings.allPresetEdits,
+                            );
+                      // Start and Change never wait on the scores: until
+                      // they load (or if they fail) Start keeps the last
+                      // run type.
+                      final String startLabel;
+                      if (plan != null) {
+                        startLabel = 'Start ${plan.name}';
+                      } else if (rec != null) {
+                        startLabel = rec.startLabel;
+                      } else {
+                        startLabel =
+                            'Start ${_lastUsedName(settings, services.pickedSession)}';
+                      }
                       return Column(
                         children: [
-                          _ProgressHero(headline: headline),
-                          const SizedBox(height: Space.x16),
-                          HomeScores(
-                            scores: scores,
-                            profileSex: settings.profileSex,
-                            age: age,
-                            onOpen: _openProgress,
+                          _ProgressHero(
+                            headline: data != null && !data.failed
+                                ? ProgressHeadline.of(
+                                    data.scores,
+                                    now: _now,
+                                    sex: settings.profileSex,
+                                    age: age,
+                                  )
+                                : data != null || snap.hasError
+                                ? ProgressHeadline.failed
+                                : ProgressHeadline.loading,
                           ),
                           const SizedBox(height: Space.x16),
+                          if (data != null && !data.failed) ...[
+                            HomeScores(
+                              scores: data.scores,
+                              profileSex: settings.profileSex,
+                              age: age,
+                              onOpen: _openProgress,
+                            ),
+                            const SizedBox(height: Space.x16),
+                          ],
                           _GetBetter(
-                            reason: plan?.subtitle ?? rec.reason,
-                            startLabel: plan != null
-                                ? 'Start ${plan.name}'
-                                : rec.startLabel,
+                            reason: plan?.subtitle ?? rec?.reason,
+                            startLabel: startLabel,
                             onStart: () => _start(plan == null ? rec : null),
                             onChange: () => _start(null),
                           ),
@@ -287,7 +358,8 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _HomeData {
-  const _HomeData(this.runs, this.scores);
+  const _HomeData(this.runs, this.scores, {this.failed = false});
+  final bool failed;
   final List<RunSummary> runs;
   final Map<engine.IdentityLane, engine.IdentityScore> scores;
 }
@@ -324,7 +396,7 @@ class _GetBetter extends StatelessWidget {
     required this.onStart,
     required this.onChange,
   });
-  final String reason;
+  final String? reason;
   final String startLabel;
   final VoidCallback onStart;
   final VoidCallback onChange;
@@ -335,16 +407,19 @@ class _GetBetter extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'HOW TO GET BETTER',
-          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-        ),
-        const SizedBox(height: Space.x4),
-        Text(
-          reason,
-          key: const ValueKey('home-recommendation'),
-          style: RunSoloType.body15.copyWith(color: t.inkPrimary),
-        ),
+        if (reason != null)
+          Text(
+            'HOW TO GET BETTER',
+            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+          ),
+        if (reason != null) ...[
+          const SizedBox(height: Space.x4),
+          Text(
+            reason!,
+            key: const ValueKey('home-recommendation'),
+            style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+          ),
+        ],
         const SizedBox(height: Space.x12),
         Row(
           children: [

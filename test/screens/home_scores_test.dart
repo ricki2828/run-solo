@@ -42,13 +42,13 @@ void main() {
       find.text('Men, recreational race finishers, all ages'),
       findsNWidgets(2),
     );
-    expect(find.text('percentile'), findsNWidgets(4));
+    expect(find.textContaining('percentile'), findsNWidgets(4));
     await tester.tap(find.byKey(const ValueKey('home-score-aerobic')));
     expect(opened, isTrue);
     final spoken = tester
         .getSemantics(find.byKey(const ValueKey('home-score-aerobic')))
         .label;
-    expect(spoken, contains('percentile'));
+    expect(spoken, matches(RegExp(r'\d+(st|nd|rd|th) percentile')));
     expect(spoken, isNot(contains('about')));
     expect(spoken, isNot(contains('estimate')));
     expect(tester.takeException(), isNull);
@@ -69,9 +69,9 @@ void main() {
           ),
         ),
       );
-      expect(find.text('--'), findsNWidgets(4));
+      expect(find.textContaining('--', findRichText: true), findsNWidgets(4));
       expect(find.text('Add your sex to compare'), findsNWidgets(4));
-      expect(find.text('62'), findsNothing);
+      expect(find.textContaining('62', findRichText: true), findsNothing);
     },
   );
 

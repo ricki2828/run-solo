@@ -46,6 +46,17 @@ abstract final class ScoreNorms {
     required int? age,
   }) => estimate(lane, vdot, source, sex: sex, age: age)?.percentile;
 
+  /// "th" for 60, "st" for 21, "th" for 11 to 13.
+  static String ordinalSuffix(int n) {
+    if (n % 100 >= 11 && n % 100 <= 13) return 'th';
+    return switch (n % 10) {
+      1 => 'st',
+      2 => 'nd',
+      3 => 'rd',
+      _ => 'th',
+    };
+  }
+
   /// Percentile points gained since six weeks ago; null when either side
   /// has no percentile.
   static int? change(
@@ -66,7 +77,7 @@ abstract final class ScoreNorms {
   }
 }
 
-enum ProgressKind { none, baseline, steady, up, down }
+enum ProgressKind { loading, failed, none, baseline, steady, up, down }
 
 /// What Home's hero says: the biggest move in the scores over the last six
 /// weeks, or why there is nothing to say yet.
@@ -79,6 +90,18 @@ class ProgressHeadline {
   final ProgressKind kind;
   final String title;
   final String line;
+
+  static const loading = ProgressHeadline(
+    kind: ProgressKind.loading,
+    title: 'YOUR SCORES',
+    line: 'Your scores are loading.',
+  );
+
+  static const failed = ProgressHeadline(
+    kind: ProgressKind.failed,
+    title: 'YOUR SCORES',
+    line: "Couldn't load your scores.",
+  );
 
   static ProgressHeadline of(
     Scores scores, {
@@ -98,9 +121,14 @@ class ProgressHeadline {
     engine.IdentityScore? top;
     var topChange = 0;
     var compared = false;
+    var profileMissing = true;
     for (final lane in engine.IdentityLane.values) {
       final s = scores[lane];
       if (s == null) continue;
+      if (ScoreNorms.percentile(s.lane, s.vdot, s.source, sex: sex, age: age) !=
+          null) {
+        profileMissing = false;
+      }
       final c = ScoreNorms.change(s, sex: sex, age: age);
       if (c == null) continue;
       compared = true;
@@ -116,12 +144,13 @@ class ProgressHeadline {
               title: 'HOLDING STEADY',
               line: 'Since $since. Nothing has moved yet.',
             )
-          : const ProgressHeadline(
+          : ProgressHeadline(
               kind: ProgressKind.baseline,
               title: 'SCORES SET',
-              line:
-                  'Changes show once you have six weeks of runs. Add your sex '
-                  'and birth year in Settings to compare.',
+              // Ask for the profile only when it is what's missing.
+              line: profileMissing
+                  ? 'Add your sex and birth year in Settings to compare.'
+                  : 'Changes show once you have six weeks of runs.',
             );
     }
     final lane = top.lane.name.toUpperCase();
@@ -137,12 +166,20 @@ class ProgressHeadline {
       kind: ProgressKind.down,
       title: '$lane DOWN ${-topChange}',
       line:
-          'Since $since. Your best effort in that time was a $what on '
-          '${_when(top.date, now)}.',
+          'Since $since. Your earlier best has rolled off. '
+          '${_bringsBack(top.lane)} brings it back.',
     );
   }
 
+  static String _bringsBack(engine.IdentityLane lane) => switch (lane) {
+    engine.IdentityLane.aerobic => 'A hard 5K',
+    engine.IdentityLane.speed => 'A clean interval session',
+    engine.IdentityLane.mid => 'A 5K or 10K run',
+    engine.IdentityLane.long => 'A 15K+ run',
+  };
+
   static String _sourceName(String source) => switch (source) {
+    'Cooper test' => '12-minute test',
     '4x4 work pace' => '4x4',
     '1K' => '1K effort',
     'mile' => 'mile effort',
@@ -206,10 +243,17 @@ class Recommendation {
         final c = waits[b]!.compareTo(waits[a]!);
         return c != 0 ? c : a.index.compareTo(b.index);
       });
-    final pick = ranked.firstWhere(
-      (l) => !_done(l, runs, now),
+    var pick = ranked.firstWhere(
+      (l) => _lastDone(l, runs, now) == null,
       orElse: () => ranked.first,
     );
+    if (_lastDone(pick, runs, now) != null) {
+      // Every lane's session was done recently: the one done longest ago.
+      pick = ranked.reduce(
+        (a, b) =>
+            _lastDone(b, runs, now)!.isBefore(_lastDone(a, runs, now)!) ? b : a,
+      );
+    }
     final s = scores[pick];
     final stalledWeeks = s == null
         ? null
@@ -224,30 +268,33 @@ class Recommendation {
     );
   }
 
-  static bool _done(
+  /// Start of the newest recent run that counts as [lane]'s session, or
+  /// null when none was done recently.
+  static DateTime? _lastDone(
     engine.IdentityLane lane,
     List<RunSummary> runs,
     DateTime now,
   ) {
-    bool within(RunSummary r, int days) =>
-        !r.missing && now.difference(r.start).inDays < days;
-    return runs.any(
-      (r) => switch (lane) {
+    DateTime? latest;
+    for (final r in runs) {
+      if (r.missing) continue;
+      final days = lane == engine.IdentityLane.long ? longDoneDays : doneDays;
+      if (now.difference(r.start).inDays >= days) continue;
+      final counts = switch (lane) {
         engine.IdentityLane.aerobic =>
-          within(r, doneDays) &&
-              r.isFourByFour &&
+          r.isFourByFour &&
               (r.spec?.templateId ?? engine.SessionSpec.norwegian4x4Id) ==
                   engine.SessionSpec.norwegian4x4Id,
-        engine.IdentityLane.speed =>
-          within(r, doneDays) && r.spec?.templateId == '400s',
+        engine.IdentityLane.speed => r.spec?.templateId == '400s',
         engine.IdentityLane.mid =>
-          within(r, doneDays) &&
-              r.mode != RecordMode.cooper &&
-              r.distanceM >= 5000,
-        engine.IdentityLane.long =>
-          within(r, longDoneDays) && r.distanceM >= 15000,
-      },
-    );
+          r.mode != RecordMode.cooper && r.distanceM >= 5000,
+        engine.IdentityLane.long => r.distanceM >= 15000,
+      };
+      if (counts && (latest == null || r.start.isAfter(latest))) {
+        latest = r.start;
+      }
+    }
+    return latest;
   }
 
   static Recommendation _build(

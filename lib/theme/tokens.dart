@@ -60,6 +60,7 @@ abstract final class NightSessionLight {
   static const Color accentArc = Color(0xFF0098B2);
   static const Color accentArcInk = Color(0xFFFFFFFF);
   static const Color semFaster = accentArc;
+  static const Color semImproving = Color(0xFF0B7F5B); // mint, light ground
   static const Color semSlower = Color(0xFFC93A1C);
   static const Color semHolding = inkPrimary;
   static const Color semNoise = Color(0xFF6B7079);
@@ -108,6 +109,7 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
     required this.accentArc,
     required this.accentArcInk,
     required this.semFaster,
+    required this.semImproving,
     required this.semSlower,
     required this.semHolding,
     required this.semNoise,
@@ -127,6 +129,7 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
     accentArc: NightSession.accentArc,
     accentArcInk: NightSession.accentArcInk,
     semFaster: NightSession.semFaster,
+    semImproving: NightSession.semImproving,
     semSlower: NightSession.semSlower,
     semHolding: NightSession.semHolding,
     semNoise: NightSession.semNoise,
@@ -146,6 +149,7 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
     accentArc: NightSessionLight.accentArc,
     accentArcInk: NightSessionLight.accentArcInk,
     semFaster: NightSessionLight.semFaster,
+    semImproving: NightSessionLight.semImproving,
     semSlower: NightSessionLight.semSlower,
     semHolding: NightSessionLight.semHolding,
     semNoise: NightSessionLight.semNoise,
@@ -164,6 +168,9 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
   final Color accentArc;
   final Color accentArcInk;
   final Color semFaster;
+
+  /// Mint: a labelled improvement in a score or comparison.
+  final Color semImproving;
   final Color semSlower;
   final Color semHolding;
   final Color semNoise;
@@ -183,6 +190,7 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
     Color? accentArc,
     Color? accentArcInk,
     Color? semFaster,
+    Color? semImproving,
     Color? semSlower,
     Color? semHolding,
     Color? semNoise,
@@ -201,6 +209,7 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
       accentArc: accentArc ?? this.accentArc,
       accentArcInk: accentArcInk ?? this.accentArcInk,
       semFaster: semFaster ?? this.semFaster,
+      semImproving: semImproving ?? this.semImproving,
       semSlower: semSlower ?? this.semSlower,
       semHolding: semHolding ?? this.semHolding,
       semNoise: semNoise ?? this.semNoise,
@@ -225,6 +234,7 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
       accentArc: l(accentArc, other.accentArc),
       accentArcInk: l(accentArcInk, other.accentArcInk),
       semFaster: l(semFaster, other.semFaster),
+      semImproving: l(semImproving, other.semImproving),
       semSlower: l(semSlower, other.semSlower),
       semHolding: l(semHolding, other.semHolding),
       semNoise: l(semNoise, other.semNoise),

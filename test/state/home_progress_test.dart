@@ -59,6 +59,32 @@ void main() {
       final h = headline(all());
       expect(h.kind, ProgressKind.baseline);
       expect(h.title, 'SCORES SET');
+      // Profile is known: never ask for it.
+      expect(h.line, 'Changes show once you have six weeks of runs.');
+    });
+
+    test('scores set but no profile: asks for it, nothing else', () {
+      final h = ProgressHeadline.of(
+        all(),
+        now: testNow,
+        sex: ProfileSex.notSet,
+        age: null,
+      );
+      expect(h.kind, ProgressKind.baseline);
+      expect(h.line, 'Add your sex and birth year in Settings to compare.');
+    });
+
+    test('12-minute test, not Cooper', () {
+      final s = {
+        engine.IdentityLane.aerobic: score(
+          engine.IdentityLane.aerobic,
+          vdot: 46,
+          prior: 40,
+          source: 'Cooper test',
+        ),
+      };
+      expect(headline(s).line, contains('Your 12-minute test on '));
+      expect(headline(s).line, isNot(contains('Cooper')));
     });
 
     test('steady: same reading as six weeks ago, period named', () {
@@ -105,6 +131,8 @@ void main() {
       final h = headline(s);
       expect(h.kind, ProgressKind.down);
       expect(h.title, startsWith('SPEED DOWN '));
+      expect(h.line, contains('Your earlier best has rolled off.'));
+      expect(h.line, contains('A clean interval session brings it back.'));
       expect(h.line, isNot(contains('!')));
     });
   });
@@ -155,6 +183,39 @@ void main() {
         run('a', 6, template: engine.SessionSpec.norwegian4x4Id),
       ]);
       expect(later.lane, engine.IdentityLane.aerobic);
+    });
+
+    test('every lane done recently: the one done longest ago', () {
+      final runs = [
+        run('a', 1, template: engine.SessionSpec.norwegian4x4Id),
+        run('s', 2, template: '400s'),
+        run('m', 0, m: 16000),
+      ];
+      // aerobic 1 day, speed 2 days, mid and long 0 days: speed is oldest.
+      final r = rec(const {}, runs);
+      expect(r.lane, engine.IdentityLane.speed);
+    });
+
+    test('ordinals', () {
+      String o(int n) => '$n${ScoreNorms.ordinalSuffix(n)}';
+      expect(
+        [
+          for (final n in [1, 2, 3, 4, 11, 12, 13, 21, 22, 60, 99]) o(n),
+        ],
+        [
+          '1st',
+          '2nd',
+          '3rd',
+          '4th',
+          '11th',
+          '12th',
+          '13th',
+          '21st',
+          '22nd',
+          '60th',
+          '99th',
+        ],
+      );
     });
 
     test('Start preset follows the recommendation', () {

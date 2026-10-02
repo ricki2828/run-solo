@@ -88,9 +88,29 @@ void main() {
           fiveK('then', 50, thenMs),
           fiveK('now', 3, nowMs),
         ], now: now);
+        // Real runs behind the scores, so Recent activity is realistic.
+        final runs = [
+          RunSummary(
+            id: 'now',
+            mode: RecordMode.free,
+            start: testNow.subtract(const Duration(days: 3)),
+            durationMs: 1500000,
+            distanceM: 5000,
+            laps: 0,
+          ),
+          RunSummary(
+            id: 'then',
+            mode: RecordMode.free,
+            start: testNow.subtract(const Duration(days: 50)),
+            durationMs: 1700000,
+            distanceM: 5000,
+            laps: 0,
+          ),
+        ];
         await pumpApp(
           tester,
           fakeServices(
+            runs: runs,
             live: live,
             settings: const AppSettings(
               onboardingDone: true,

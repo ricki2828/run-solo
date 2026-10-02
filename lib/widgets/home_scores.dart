@@ -175,14 +175,14 @@ class _EarnedScore extends StatelessWidget {
     final change = ScoreNorms.change(score, sex: profileSex, age: age);
     final (changeText, changeColour) = switch (change) {
       null => (null, t.inkSecondary),
-      > 0 => ('Up $change in 6 weeks', NightSession.semImproving),
+      > 0 => ('Up $change in 6 weeks', t.semImproving),
       < 0 => ('Down ${-change} in 6 weeks', t.semSlower),
       _ => ('No change in 6 weeks', t.semNoise),
     };
     return Semantics(
       button: true,
       label:
-          '${score.lane.name}, ${percentile == null ? 'percentile unavailable' : '$percentile percentile'}, ${changeText == null ? '' : '$changeText, '}$cohort. ${needsProfile ? 'Open settings.' : 'Open Progress.'}',
+          '${score.lane.name}, ${percentile == null ? 'percentile unavailable' : '$percentile${ScoreNorms.ordinalSuffix(percentile)} percentile'}, ${changeText == null ? '' : '$changeText, '}$cohort. ${needsProfile ? 'Open settings.' : 'Open Progress.'}',
       child: InkWell(
         key: ValueKey('home-score-${score.lane.name}'),
         onTap: needsProfile
@@ -204,23 +204,27 @@ class _EarnedScore extends StatelessWidget {
                 style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
               ),
               const SizedBox(height: Space.x4),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Text(
-                    label,
-                    style: RunSoloType.heading19.copyWith(
-                      fontSize: 30,
-                      color: t.inkPrimary,
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: label,
+                      style: RunSoloType.heading19.copyWith(
+                        fontSize: 30,
+                        color: t.inkPrimary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: Space.x4),
-                  Text(
-                    'percentile',
-                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                  ),
-                ],
+                    // "60th percentile": the ordinal sits tight on the number.
+                    TextSpan(
+                      text: percentile == null
+                          ? ' percentile'
+                          : '${ScoreNorms.ordinalSuffix(percentile)} percentile',
+                      style: RunSoloType.label13.copyWith(
+                        color: t.inkSecondary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
               if (changeText != null) ...[
                 const SizedBox(height: Space.x4),

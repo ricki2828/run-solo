@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
@@ -67,6 +69,60 @@ void main() {
       expect(fake.startCalls, isEmpty);
     });
   }
+
+  testWidgets('backing out of setup restores the saved run type', (
+    tester,
+  ) async {
+    final services = fakeServices(
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.free,
+      ),
+    );
+    await pumpApp(tester, services, home: HomeScreen(now: now));
+    await tester.tap(find.byType(FilledButton));
+    await pumpTimes(tester, 4);
+    expect(services.settings.settings.lastMode, RecordMode.intervals);
+    Navigator.of(tester.element(find.byType(StartScreen))).pop();
+    await pumpTimes(tester, 4);
+    expect(services.settings.settings.lastMode, RecordMode.free);
+  });
+
+  testWidgets('scores loading: calm hero, Start keeps the last run type', (
+    tester,
+  ) async {
+    final live = _SlowLive();
+    final services = fakeServices(
+      live: live,
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.free,
+      ),
+    );
+    await pumpApp(tester, services, home: HomeScreen(now: now));
+    expect(find.text('Your scores are loading.'), findsOneWidget);
+    expect(find.text('Start free run'), findsOneWidget);
+    await tester.tap(find.byType(FilledButton));
+    await pumpTimes(tester, 4);
+    expect(find.byType(StartScreen), findsOneWidget);
+    expect(services.settings.settings.lastMode, RecordMode.free);
+  });
+
+  testWidgets('scores failed: says so, Start still works', (tester) async {
+    final services = fakeServices(
+      live: _FailingLive(),
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.laps,
+      ),
+    );
+    await pumpApp(tester, services, home: HomeScreen(now: now));
+    expect(find.text("Couldn't load your scores."), findsOneWidget);
+    expect(find.text('Start laps run'), findsOneWidget);
+    await tester.tap(find.byType(FilledButton));
+    await pumpTimes(tester, 4);
+    expect(find.byType(StartScreen), findsOneWidget);
+  });
 
   testWidgets('Start from a goal run presets the recommendation', (
     tester,
@@ -312,4 +368,18 @@ void main() {
     await pumpApp(tester, services, home: HomeScreen(now: now));
     expect(find.textContaining('Location is approximate'), findsOneWidget);
   });
+}
+
+class _SlowLive extends LiveContextSource {
+  _SlowLive() : super.prepared(const []);
+  final _never = Completer<void>();
+  @override
+  Future<void> prepare() => _never.future;
+}
+
+class _FailingLive extends LiveContextSource {
+  _FailingLive() : super.prepared(const []);
+  @override
+  Map<engine.IdentityLane, engine.IdentityScore> identityScores() =>
+      throw StateError('no scores');
 }
