@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../platform/gateway.dart';
+import 'live_route.dart';
 import '../platform/session_codec.dart';
 import 'zone_memento.dart';
 
@@ -354,6 +355,37 @@ class RecordingController extends ChangeNotifier {
   /// The goal reached in a GOAL run (§G), for the "GOAL 49:12" lock card (G3).
   final ValueNotifier<GoalEvent?> lastGoal = ValueNotifier(null);
 
+  /// The route so far for the MAP view. Always fed (a delta is a handful of
+  /// numbers); only the map widget costs anything, and it exists only while
+  /// MAP is showing.
+  final LiveRouteTrack liveRoute = LiveRouteTrack();
+  Future<void>? _routeSync;
+
+  /// Fills any hole in [liveRoute] from native (a recreated screen, a missed
+  /// event). Best effort: a failure leaves the route as it is.
+  Future<void> syncRoute() {
+    final running = _routeSync;
+    if (running != null) return running;
+    final f = _syncRoute();
+    _routeSync = f;
+    // After the assignment, so a synchronous failure still resets it.
+    unawaited(
+      f.whenComplete(() {
+        if (identical(_routeSync, f)) _routeSync = null;
+      }),
+    );
+    return f;
+  }
+
+  Future<void> _syncRoute() async {
+    try {
+      final pts = await _gateway.routeSince(liveRoute.count);
+      liveRoute.apply(liveRoute.count, pts);
+    } catch (_) {
+      // The map is optional; recording does not depend on this read.
+    }
+  }
+
   /// When [lastCompare] arrived: a card older than 2 s is never shown (a
   /// screen that wakes or is recreated late drops it, A10.1).
   DateTime? lastCompareAt;
@@ -494,6 +526,7 @@ class RecordingController extends ChangeNotifier {
   }
 
   void _reset(RecordMode mode, SessionSpec? spec) {
+    liveRoute.clear();
     _lastLapDistanceM = 0;
     _finishSeen = 0;
     _finishPending = false;
@@ -574,6 +607,7 @@ class RecordingController extends ChangeNotifier {
   Future<void> discard() async {
     await _gateway.discard();
     unawaited(_zoneMemento.save(null));
+    liveRoute.clear();
     _snap = _snap.copyWith(state: RecorderState.idle);
     notifyListeners();
   }
@@ -582,6 +616,7 @@ class RecordingController extends ChangeNotifier {
   Future<String?> stop() async {
     final id = await _gateway.stop();
     unawaited(_zoneMemento.save(null));
+    liveRoute.clear();
     _snap = _snap.copyWith(state: RecorderState.idle);
     notifyListeners();
     return id;
@@ -634,6 +669,8 @@ class RecordingController extends ChangeNotifier {
         _onFault(e);
       case GpsProbeEvent():
         break; // the Start screen's (pre-start readiness), not the run's
+      case RoutePointsEvent():
+        if (!liveRoute.apply(e.fromIndex, e.latLon)) unawaited(syncRoute());
     }
     notifyListeners();
   }
@@ -822,6 +859,7 @@ class RecordingController extends ChangeNotifier {
     // Idle is final: the run is finalised, nothing left to read (and a late
     // read could still answer `finalising`).
     if (s.state != RecorderState.idle) unawaited(refreshStatus());
+    if (s.state == RecorderState.idle) liveRoute.clear();
   }
 
   void _onFault(FaultEvent f) {

@@ -134,6 +134,11 @@ abstract class RecorderGateway {
   /// mid-run; Start sends it before every Laps start.
   Future<void> setVolumeKeyLaps(bool enabled);
 
+  /// The live map's route from point [fromIndex] on, flat `[lat, lon, ...]`:
+  /// the catch-up after a recreated screen or a gap in [RoutePointsEvent]s.
+  /// Read-only; recording never depends on it. Empty when idle.
+  Future<List<double>> routeSince(int fromIndex);
+
   /// Broadcast; ≤ 2 Hz ticks plus lap / phase / state / cue / fault events.
   Stream<RecorderEvent> get events;
 }

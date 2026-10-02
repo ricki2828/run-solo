@@ -2073,6 +2073,55 @@ class GpsProbeEvent extends RecorderEvent {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// New simplified route points for the live map, about 1 Hz and only while a
+/// run records. [fromIndex] is the index of the first point in [latLon]
+/// (flat `[lat, lon, ...]`), so Dart can append deltas and spot a gap. Points
+/// come from the samples the recorder already keeps (no extra GPS request).
+class RoutePointsEvent extends RecorderEvent {
+  RoutePointsEvent({
+    required this.fromIndex,
+    required this.latLon,
+  });
+
+  int fromIndex;
+
+  List<double> latLon;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      fromIndex,
+      latLon,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static RoutePointsEvent decode(Object result) {
+    result as List<Object?>;
+    return RoutePointsEvent(
+      fromIndex: result[0]! as int,
+      latLon: (result[1]! as List<Object?>).cast<double>(),
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! RoutePointsEvent || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(fromIndex, other.fromIndex) && _deepEquals(latLon, other.latLon);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 /// A live "you vs you" compare fired (Phase 4 §3.2, LV1), for the overlay card.
 /// Sent whether or not tips are muted; [text] is the spoken phrase.
 class CompareEvent extends RecorderEvent {
@@ -2937,41 +2986,44 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is GpsProbeEvent) {
       buffer.putUint8(171);
       writeValue(buffer, value.encode());
-    }    else if (value is CompareEvent) {
+    }    else if (value is RoutePointsEvent) {
       buffer.putUint8(172);
       writeValue(buffer, value.encode());
-    }    else if (value is GoalEvent) {
+    }    else if (value is CompareEvent) {
       buffer.putUint8(173);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is GoalEvent) {
       buffer.putUint8(174);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is FaultEvent) {
       buffer.putUint8(175);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is StateEvent) {
       buffer.putUint8(176);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthStatus) {
+    }    else if (value is PhaseEvent) {
       buffer.putUint8(177);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthLap) {
+    }    else if (value is HealthStatus) {
       buffer.putUint8(178);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthPause) {
+    }    else if (value is HealthLap) {
       buffer.putUint8(179);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthHrSample) {
+    }    else if (value is HealthPause) {
       buffer.putUint8(180);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthRoutePoint) {
+    }    else if (value is HealthHrSample) {
       buffer.putUint8(181);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthWorkout) {
+    }    else if (value is HealthRoutePoint) {
       buffer.putUint8(182);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthWriteResult) {
+    }    else if (value is HealthWorkout) {
       buffer.putUint8(183);
+      writeValue(buffer, value.encode());
+    }    else if (value is HealthWriteResult) {
+      buffer.putUint8(184);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -3085,28 +3137,30 @@ class _PigeonCodec extends StandardMessageCodec {
       case 171:
         return GpsProbeEvent.decode(readValue(buffer)!);
       case 172:
-        return CompareEvent.decode(readValue(buffer)!);
+        return RoutePointsEvent.decode(readValue(buffer)!);
       case 173:
-        return GoalEvent.decode(readValue(buffer)!);
+        return CompareEvent.decode(readValue(buffer)!);
       case 174:
-        return FaultEvent.decode(readValue(buffer)!);
+        return GoalEvent.decode(readValue(buffer)!);
       case 175:
-        return StateEvent.decode(readValue(buffer)!);
+        return FaultEvent.decode(readValue(buffer)!);
       case 176:
-        return PhaseEvent.decode(readValue(buffer)!);
+        return StateEvent.decode(readValue(buffer)!);
       case 177:
-        return HealthStatus.decode(readValue(buffer)!);
+        return PhaseEvent.decode(readValue(buffer)!);
       case 178:
-        return HealthLap.decode(readValue(buffer)!);
+        return HealthStatus.decode(readValue(buffer)!);
       case 179:
-        return HealthPause.decode(readValue(buffer)!);
+        return HealthLap.decode(readValue(buffer)!);
       case 180:
-        return HealthHrSample.decode(readValue(buffer)!);
+        return HealthPause.decode(readValue(buffer)!);
       case 181:
-        return HealthRoutePoint.decode(readValue(buffer)!);
+        return HealthHrSample.decode(readValue(buffer)!);
       case 182:
-        return HealthWorkout.decode(readValue(buffer)!);
+        return HealthRoutePoint.decode(readValue(buffer)!);
       case 183:
+        return HealthWorkout.decode(readValue(buffer)!);
+      case 184:
         return HealthWriteResult.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -3519,6 +3573,29 @@ class RecorderApi {
         isNullValid: true,
     )
     ;
+  }
+
+  /// The live run's simplified route from point [fromIndex] on, as flat
+  /// `[lat, lon, lat, lon, ...]` (the live map's catch-up after the screen
+  /// was recreated or a [RoutePointsEvent] was missed). Empty when idle.
+  /// Read-only: recording never depends on it.
+  Future<List<double>> routeSince(int fromIndex) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.routeSince$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[fromIndex]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return (pigeonVar_replyValue! as List<Object?>).cast<double>();
   }
 
   /// Run files on disk (`runs/` + `runs-archive/`) as `runId -> relative path`,

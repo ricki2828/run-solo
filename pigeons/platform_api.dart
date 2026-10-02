@@ -676,6 +676,12 @@ abstract class RecorderApi {
   /// `PermissionsApi.volumeKeyLapsSupported()` is false.
   void setVolumeKeyLaps(bool enabled);
 
+  /// The live run's simplified route from point [fromIndex] on, as flat
+  /// `[lat, lon, lat, lon, ...]` (the live map's catch-up after the screen
+  /// was recreated or a [RoutePointsEvent] was missed). Empty when idle.
+  /// Read-only: recording never depends on it.
+  List<double> routeSince(int fromIndex);
+
   /// Run files on disk (`runs/` + `runs-archive/`) as `runId -> relative path`,
   /// for the Dart Reconciler. Journals and sidecars are not listed.
   Map<String, String> listRunFiles();
@@ -893,6 +899,16 @@ class GpsProbeEvent extends RecorderEvent {
 
   /// How long ago the last fix arrived; null if none yet.
   int? fixAgeMs;
+}
+
+/// New simplified route points for the live map, about 1 Hz and only while a
+/// run records. [fromIndex] is the index of the first point in [latLon]
+/// (flat `[lat, lon, ...]`), so Dart can append deltas and spot a gap. Points
+/// come from the samples the recorder already keeps (no extra GPS request).
+class RoutePointsEvent extends RecorderEvent {
+  RoutePointsEvent({required this.fromIndex, required this.latLon});
+  int fromIndex;
+  List<double> latLon;
 }
 
 /// A live "you vs you" compare fired (Phase 4 §3.2, LV1), for the overlay card.

@@ -12,8 +12,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
 
+import '../state/live_route.dart';
 import '../theme/theme.dart';
 import 'blank_snapshot.dart';
+import 'live_google_map.dart';
 import 'map_surface.dart';
 import 'route_builder.dart';
 
@@ -36,6 +38,22 @@ class GoogleMapSurfaceFactory implements MapSurfaceFactory {
       interactive: interactive,
       onLapTap: onLapTap,
     );
+  }
+
+  @override
+  Widget buildLive(
+    BuildContext context, {
+    required LiveRouteTrack track,
+    required Color color,
+  }) {
+    if (!available) {
+      return ListenableBuilder(
+        listenable: track,
+        builder: (context, _) =>
+            RouteShape(route: liveRouteGeometry(track.points)),
+      );
+    }
+    return LiveGoogleMap(track: track, color: color);
   }
 }
 

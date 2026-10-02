@@ -1,14 +1,15 @@
 /// The seam between run detail and `google_maps_flutter` (plan §18.3 W9).
 /// `GoogleMap` is a platform view that renders nothing under `flutter_test`,
 /// so screens ask a [MapSurfaceFactory] for a widget and tests get the fake.
-/// The same seam is where a follow-the-runner strip would plug in if the
-/// live map ever returns (post-launch backlog); the recorder never sees it.
+/// [MapSurfaceFactory.buildLive] is the follow-the-runner map for the record
+/// screen's MAP view; the recorder never sees it.
 library;
 
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../state/live_route.dart';
 import '../theme/theme.dart';
 import 'route_builder.dart';
 
@@ -30,6 +31,16 @@ abstract class MapSurfaceFactory {
     RouteGeometry route, {
     bool interactive = false,
     ValueChanged<int?>? onLapTap,
+  });
+
+  /// The record screen's MAP view: the interactive map following the last
+  /// point of [track] (north-up, recentring about 8 s after a pan), the
+  /// route so far in [color] and a marker at the current position. Never
+  /// throws; a failed load draws the route on our own canvas instead.
+  Widget buildLive(
+    BuildContext context, {
+    required LiveRouteTrack track,
+    required Color color,
   });
 }
 
@@ -53,6 +64,37 @@ class FakeMapSurfaceFactory implements MapSurfaceFactory {
     if (failLoad) return MapFailedCard(route: route);
     return RouteShape(route: route, key: const ValueKey('fake-map'));
   }
+
+  @override
+  Widget buildLive(
+    BuildContext context, {
+    required LiveRouteTrack track,
+    required Color color,
+  }) => ListenableBuilder(
+    listenable: track,
+    builder: (context, _) {
+      final route = liveRouteGeometry(track.points);
+      return failLoad
+          ? MapFailedCard(route: route)
+          : RouteShape(route: route, key: const ValueKey('fake-live-map'));
+    },
+  );
+}
+
+/// The track as drawable geometry (a start dot, the finish dot is the
+/// runner's current position). Empty until two points exist.
+RouteGeometry liveRouteGeometry(List<GeoPoint> points) {
+  if (points.length < 2) {
+    return const RouteGeometry(points: [], markers: [], bounds: null);
+  }
+  return RouteGeometry(
+    points: points,
+    markers: [
+      RouteMarker(point: points.first, kind: RouteMarkerKind.start),
+      RouteMarker(point: points.last, kind: RouteMarkerKind.finish),
+    ],
+    bounds: RouteBuilder.boundsOf(points),
+  );
 }
 
 /// The route drawn on our own canvas: fallback for no key / no GMS / load

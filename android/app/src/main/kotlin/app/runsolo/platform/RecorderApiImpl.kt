@@ -320,6 +320,9 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         active()?.kmSplits = enabled
     }
 
+    override fun routeSince(fromIndex: Long): List<Double> =
+        active()?.routeSince(fromIndex.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()) ?: emptyList()
+
     override fun muteTips() {
         active()?.muteTips()
     }

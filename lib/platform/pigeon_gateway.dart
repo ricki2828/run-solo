@@ -73,6 +73,9 @@ class PigeonRecorderGateway implements RecorderGateway {
   Future<void> muteTips() => _api.muteTips();
 
   @override
+  Future<List<double>> routeSince(int fromIndex) => _api.routeSince(fromIndex);
+
+  @override
   Future<void> setVolumeKeyLaps(bool enabled) => _api.setVolumeKeyLaps(enabled);
 }
 

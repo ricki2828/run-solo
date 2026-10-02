@@ -68,7 +68,8 @@
   you can delete them there.</p>
 
   <h2>2. Google Maps</h2>
-  <p>After a run, Run Supreme draws your route on a Google map. The map is provided by the Google
+  <p>After a run, and during a run if you switch the record screen to MAP, Run Supreme draws your
+  route on a Google map. The map is provided by the Google
   Maps SDK for Android, which runs inside the app and talks to Google directly to fetch map tiles.
   According to
   <a href="https://developers.google.com/maps/documentation/android-sdk/play-data-disclosure" rel="noopener">Google's own disclosure for this SDK</a>,
@@ -78,12 +79,17 @@
     <li>a Maps SDK identifier that Google uses to count daily active users of the SDK,</li>
     <li>request metadata and crash data from the SDK,</li>
     <li>map interaction and camera events, which describe the map area you are viewing. Because
-    the post-run map is zoomed in on your route, that map area amounts to a precise location.</li>
+    the post-run map is zoomed in on your route, that map area amounts to a precise location.
+    The live map during a run follows you, so while MAP is showing, the area Google receives is
+    where you are at that moment.</li>
   </ul>
   <p>In short: Google sees the map area you view and your IP address, like any maps app. Google does
   not receive your run file, your lap times or your heart rate from us. Google's handling of what it
   receives is covered by the <a href="https://policies.google.com/privacy" rel="noopener">Google Privacy Policy</a>.
-  The map only loads when you open a run's detail screen; there is no map while you are recording.</p>
+  The map only loads when you open a run's detail screen, or while MAP is selected on the record
+  screen during a run. NUMBERS is the default, and no map loads while it is showing or while the
+  screen is off. Run Supreme does not send your position to Google; Google only sees the map area
+  the map asks for.</p>
 
   <h2>3. Weather from Open-Meteo</h2>
   <p>To adjust for heat and humidity, Run Supreme can fetch the weather for each run from
@@ -131,7 +137,7 @@
   <ul>
     <li><strong>Delete everything</strong>: Settings, Data, "Delete all" removes every run and setting from the phone. Uninstalling the app does the same. What Google's Maps SDK already received (section 2) is held by Google, not us; your Google account's privacy controls apply to it.</li>
     <li><strong>Weather</strong>: Settings, Recording, "Weather for each run".</li>
-    <li><strong>Map</strong>: the map appears only on a run's detail screen; do not open it if you would rather Google did not receive that map area.</li>
+    <li><strong>Map</strong>: the map appears only on a run's detail screen, or on the record screen while you have MAP selected (NUMBERS is the default and each run type remembers your choice); do not use either if you would rather Google did not receive that map area.</li>
     <li><strong>Intervals.icu</strong>: Settings, Send runs to, Intervals.icu. Switch it off to stop automatic sending, or Disconnect to delete the key.</li>
     <li><strong>Backup</strong>: Android settings, Google, Backup.</li>
     <li><strong>Export</strong>: Settings, Data, "Export all" gives you your data as JSON or TCX.</li>

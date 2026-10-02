@@ -2113,6 +2113,51 @@ data class GpsProbeEvent (
 }
 
 /**
+ * New simplified route points for the live map, about 1 Hz and only while a
+ * run records. [fromIndex] is the index of the first point in [latLon]
+ * (flat `[lat, lon, ...]`), so Dart can append deltas and spot a gap. Points
+ * come from the samples the recorder already keeps (no extra GPS request).
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class RoutePointsEvent (
+  val fromIndex: Long,
+  val latLon: List<Double>
+) : RecorderEvent()
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): RoutePointsEvent {
+      val fromIndex = pigeonVar_list[0] as Long
+      val latLon = pigeonVar_list[1] as List<Double>
+      return RoutePointsEvent(fromIndex, latLon)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      fromIndex,
+      latLon,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as RoutePointsEvent
+    return PlatformApiPigeonUtils.deepEquals(this.fromIndex, other.fromIndex) && PlatformApiPigeonUtils.deepEquals(this.latLon, other.latLon)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.fromIndex)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.latLon)
+    return result
+  }
+}
+
+/**
  * A live "you vs you" compare fired (Phase 4 §3.2, LV1), for the overlay card.
  * Sent whether or not tips are muted; [text] is the spoken phrase.
  *
@@ -2961,60 +3006,65 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
       }
       172.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CompareEvent.fromList(it)
+          RoutePointsEvent.fromList(it)
         }
       }
       173.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          GoalEvent.fromList(it)
+          CompareEvent.fromList(it)
         }
       }
       174.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FaultEvent.fromList(it)
+          GoalEvent.fromList(it)
         }
       }
       175.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StateEvent.fromList(it)
+          FaultEvent.fromList(it)
         }
       }
       176.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          PhaseEvent.fromList(it)
+          StateEvent.fromList(it)
         }
       }
       177.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthStatus.fromList(it)
+          PhaseEvent.fromList(it)
         }
       }
       178.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthLap.fromList(it)
+          HealthStatus.fromList(it)
         }
       }
       179.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthPause.fromList(it)
+          HealthLap.fromList(it)
         }
       }
       180.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthHrSample.fromList(it)
+          HealthPause.fromList(it)
         }
       }
       181.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthRoutePoint.fromList(it)
+          HealthHrSample.fromList(it)
         }
       }
       182.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthWorkout.fromList(it)
+          HealthRoutePoint.fromList(it)
         }
       }
       183.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          HealthWorkout.fromList(it)
+        }
+      }
+      184.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           HealthWriteResult.fromList(it)
         }
@@ -3196,52 +3246,56 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(171)
         writeValue(stream, value.toList())
       }
-      is CompareEvent -> {
+      is RoutePointsEvent -> {
         stream.write(172)
         writeValue(stream, value.toList())
       }
-      is GoalEvent -> {
+      is CompareEvent -> {
         stream.write(173)
         writeValue(stream, value.toList())
       }
-      is FaultEvent -> {
+      is GoalEvent -> {
         stream.write(174)
         writeValue(stream, value.toList())
       }
-      is StateEvent -> {
+      is FaultEvent -> {
         stream.write(175)
         writeValue(stream, value.toList())
       }
-      is PhaseEvent -> {
+      is StateEvent -> {
         stream.write(176)
         writeValue(stream, value.toList())
       }
-      is HealthStatus -> {
+      is PhaseEvent -> {
         stream.write(177)
         writeValue(stream, value.toList())
       }
-      is HealthLap -> {
+      is HealthStatus -> {
         stream.write(178)
         writeValue(stream, value.toList())
       }
-      is HealthPause -> {
+      is HealthLap -> {
         stream.write(179)
         writeValue(stream, value.toList())
       }
-      is HealthHrSample -> {
+      is HealthPause -> {
         stream.write(180)
         writeValue(stream, value.toList())
       }
-      is HealthRoutePoint -> {
+      is HealthHrSample -> {
         stream.write(181)
         writeValue(stream, value.toList())
       }
-      is HealthWorkout -> {
+      is HealthRoutePoint -> {
         stream.write(182)
         writeValue(stream, value.toList())
       }
-      is HealthWriteResult -> {
+      is HealthWorkout -> {
         stream.write(183)
+        writeValue(stream, value.toList())
+      }
+      is HealthWriteResult -> {
+        stream.write(184)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -3335,6 +3389,13 @@ interface RecorderApi {
    * `PermissionsApi.volumeKeyLapsSupported()` is false.
    */
   fun setVolumeKeyLaps(enabled: Boolean)
+  /**
+   * The live run's simplified route from point [fromIndex] on, as flat
+   * `[lat, lon, lat, lon, ...]` (the live map's catch-up after the screen
+   * was recreated or a [RoutePointsEvent] was missed). Empty when idle.
+   * Read-only: recording never depends on it.
+   */
+  fun routeSince(fromIndex: Long): List<Double>
   /**
    * Run files on disk (`runs/` + `runs-archive/`) as `runId -> relative path`,
    * for the Dart Reconciler. Journals and sidecars are not listed.
@@ -3663,6 +3724,23 @@ interface RecorderApi {
             val wrapped: List<Any?> = try {
               api.setVolumeKeyLaps(enabledArg)
               listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.routeSince$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val fromIndexArg = args[0] as Long
+            val wrapped: List<Any?> = try {
+              listOf(api.routeSince(fromIndexArg))
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)
             }
