@@ -191,6 +191,31 @@ void main() {
     expect(find.byType(SingleChildScrollView), findsOneWidget);
   });
 
+  testWidgets('map cards draw the route in the run-type colour', (
+    tester,
+  ) async {
+    final services = fakeServices(
+      files: [
+        freeRunFile(n: 41, start: testNow.subtract(const Duration(days: 1))),
+        fourByFourFile(n: 42, start: testNow.subtract(const Duration(days: 2))),
+      ],
+    );
+    await pumpApp(tester, services, home: HomeScreen(now: now));
+    await pumpTimes(tester, 8);
+    final recent = find.byType(RecentActivity);
+    final runs = tester.widget<RecentActivity>(recent).runs;
+    final shapes = tester
+        .widgetList<RouteShape>(
+          find.descendant(of: recent, matching: find.byType(RouteShape)),
+        )
+        .toList();
+    expect(shapes, hasLength(2));
+    for (var i = 0; i < 2; i++) {
+      expect(shapes[i].color, runTypeColor(runs[i]));
+    }
+    expect(shapes[0].color, isNot(shapes[1].color));
+  });
+
   testWidgets('recent activity titles carry the run-type colours', (
     tester,
   ) async {

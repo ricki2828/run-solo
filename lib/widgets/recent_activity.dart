@@ -3,7 +3,6 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
 import '../app/services.dart';
-import '../map/map_surface.dart';
 import '../map/route_builder.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
@@ -48,6 +47,18 @@ class _RecentActivityState extends State<RecentActivity> {
       _store = store;
       _details.clear();
     }
+    _pruneMapCache();
+  }
+
+  @override
+  void didUpdateWidget(RecentActivity old) {
+    super.didUpdateWidget(old);
+    if (old.runs.length != widget.runs.length) _pruneMapCache();
+  }
+
+  void _pruneMapCache() {
+    final ids = {for (final r in widget.runs) r.id};
+    AppServices.of(context).maps.pruneCards(ids);
   }
 
   @override
@@ -180,7 +191,7 @@ class _ActivityRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _ActivityMap(detail: detail),
+              _ActivityMap(detail: detail, runId: run.id, color: typeColor),
               Row(
                 children: [
                   Expanded(
@@ -348,11 +359,18 @@ class _ActivityStat extends StatelessWidget {
   );
 }
 
-/// One static map per activity. There is no fake route for indoor runs or
+/// One map per activity: a cached Google snapshot behind the route, or the
+/// route shape alone until that exists. There is no fake route for indoor runs or
 /// incomplete GPS tracks; the card says so and still opens run detail.
 class _ActivityMap extends StatelessWidget {
-  const _ActivityMap({required this.detail});
+  const _ActivityMap({
+    required this.detail,
+    required this.runId,
+    required this.color,
+  });
   final Future<RunDetail?> detail;
+  final String runId;
+  final Color color;
 
   @override
   Widget build(BuildContext context) => FutureBuilder<RunDetail?>(
@@ -369,7 +387,8 @@ class _ActivityMap extends StatelessWidget {
           width: double.infinity,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(Radii.card),
-            child: RouteShape(route: route),
+            child: AppServices.of(context).maps
+                .buildCard(context, route, runId: runId, routeColor: color),
           ),
         ),
       );
