@@ -97,6 +97,7 @@ class AppSettings {
     this.pbSeen = const {},
     this.autoSend = const {},
     this.autoSendSince = const {},
+    this.liveMapTypes = const {},
   });
 
   final Units units;
@@ -277,6 +278,12 @@ class AppSettings {
     },
   );
 
+  /// Run types (`free`, `laps`, `intervals`, `goal`, `tests`) whose record
+  /// screen last showed the MAP view; every other type shows NUMBERS, the
+  /// default. Remembered per type so a long easy run can keep the map while
+  /// intervals keep the big numbers.
+  final Set<String> liveMapTypes;
+
   /// Every preset's edits, the 4x4 included.
   Map<String, PresetEdit> get allPresetEdits => {
     ...presetEdits,
@@ -360,6 +367,7 @@ class AppSettings {
     Map<String, String>? pbSeen,
     Set<String>? autoSend,
     Map<String, DateTime>? autoSendSince,
+    Set<String>? liveMapTypes,
   }) => AppSettings(
     units: units ?? this.units,
     reps: reps ?? this.reps,
@@ -400,6 +408,7 @@ class AppSettings {
     pbSeen: pbSeen ?? this.pbSeen,
     autoSend: autoSend ?? this.autoSend,
     autoSendSince: autoSendSince ?? this.autoSendSince,
+    liveMapTypes: liveMapTypes ?? this.liveMapTypes,
   );
 
   Map<String, Object?> toJson() => {
@@ -442,6 +451,7 @@ class AppSettings {
         for (final e in autoSendSince.entries)
           e.key: e.value.toUtc().toIso8601String(),
       },
+    'liveMapTypes': liveMapTypes.toList()..sort(),
   };
 
   /// Lenient: unknown or malformed keys fall back to defaults, never throw.
@@ -536,6 +546,11 @@ class AppSettings {
                     e.key as String: t.toUtc(),
             }
           : const {},
+      liveMapTypes: {
+        if (j['liveMapTypes'] case final List<Object?> l)
+          for (final v in l)
+            if (v is String) v,
+      },
     );
   }
 }
