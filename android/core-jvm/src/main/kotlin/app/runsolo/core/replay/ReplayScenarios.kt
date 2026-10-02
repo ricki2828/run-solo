@@ -1,5 +1,6 @@
 package app.runsolo.core.replay
 
+import app.runsolo.core.gps.MovingDetector
 import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.model.CueProfile
 import app.runsolo.core.model.HrReading
@@ -25,6 +26,7 @@ import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
 import kotlin.math.cos
 import kotlin.math.floor
+import kotlin.math.sin
 
 /**
  * One replay scenario per session kind (Phase 3 §3.9, I5): the same trace and presses go through
@@ -68,7 +70,7 @@ object ReplayScenarios {
     /** Phase 4 T4: replays with a LiveContext, each with a transcript fixture (declared first: [KINDS] reads it). */
     val T4_KINDS = listOf("t4-free-5k-fast", "t4-free-10k-fade", "t4-400s-fade", "t4-cooper-fast", "t4-5k-target", "t4-goal-half-best", "t4-goal-30min-best")
 
-    val KINDS = listOf("4x4", "400s", "30-30s", "yasso-800s", "1km-repeats", "fartlek", "cooper", "parkrun", "goal-10k", "goal-30min", "pause-end") + T4_KINDS // event-name-ok: debug replay ids, never in a store build
+    val KINDS = listOf("4x4", "400s", "30-30s", "yasso-800s", "1km-repeats", "fartlek", "cooper", "parkrun", "goal-10k", "goal-30min", "pause-end", "auto-pause") + T4_KINDS // event-name-ok: debug replay ids, never in a store build
 
     private const val LAT0 = -33.8688
     private const val LON0 = 151.2093
@@ -94,6 +96,8 @@ object ReplayScenarios {
         // #88: a Free run paused at 4:00 (the finish screen's tap) that never resumes; the trace
         // runs on a minute, the replay's end stops it while paused, so the file ends at the pause.
         "pause-end" -> pauseEnd()
+        // Auto-pause: a Free run with two stops at lights; the phone jitters while standing.
+        "auto-pause" -> autoPause()
         // GOAL runs (§G): one step from Start, then an open cool-down (60 s here, then the trace ends).
         "goal-10k" -> structured(kind, SessionSpec.goalDistance(10_000, "10K"), workMps = 4.0, start = null)
         "goal-30min" -> structured(kind, SessionSpec.goalTime(1_800, "30 min"), workMps = 3.5, start = null)
@@ -287,6 +291,31 @@ object ReplayScenarios {
         return Scenario("pause-end", RunMode.free, null, fixes, hr, listOf(ScriptedPress(240_000, Press.pause)))
     }
 
+    /**
+     * A Free run at 3 m/s with a 30 s and a 20 s stop at lights. While standing the fix wanders on a
+     * 0.6 m circle and reports 0.1 m/s, as a phone on a runner who has stopped. The recorder pauses
+     * itself about 5 s into each stop and resumes about 3 s after the runner moves.
+     */
+    private fun autoPause(): Scenario {
+        val mPerDegLon = 111_320.0 * cos(Math.toRadians(LAT0))
+        val fixes = arrayListOf(LocationFix(0, LAT0, LON0, 10.0, ACCURACY_M, 0.0))
+        var eastM = 0.0
+        var t = 0L
+        for ((secs, v) in listOf(60 to 3.0, 30 to 0.0, 60 to 3.0, 20 to 0.0, 60 to 3.0)) {
+            repeat(secs) {
+                t += 1000
+                eastM += v
+                val a = (t / 1000) * 0.9
+                val standing = v == 0.0
+                val north = if (standing) 0.6 * sin(a) else 0.0
+                val east = eastM + if (standing) 0.6 * cos(a) else 0.0
+                fixes.add(LocationFix(t, LAT0 + north / 111_000.0, LON0 + east / mPerDegLon, 10.0, ACCURACY_M, if (standing) 0.1 else v))
+            }
+        }
+        val hr = (1 until fixes.size).map { i -> HrReading(i * 1000L - 300, 150) }
+        return Scenario("auto-pause", RunMode.free, null, fixes, hr, emptyList())
+    }
+
     private fun closedLoop(mode: RunMode, spec: SessionSpec, presses: List<ScriptedPress>, work: (Int, Int) -> Double): Pair<List<LocationFix>, List<HrReading>> {
         val core = RecorderCore(mode, spec)
         val ticker = SampleTicker(wall = { 0L })
@@ -343,7 +372,11 @@ object ReplayScenarios {
         private val onOutputs: (List<RecorderCore.Output>) -> Unit = {},
         /** A scripted pause at this time (the caller journals it). */
         private val onPause: (Long) -> Unit = {},
+        /** The recorder paused itself / the runner moved again, as `RecordingSession` (the caller journals them). */
+        private val onAutoPause: (Long) -> Unit = {},
+        private val onAutoResume: (Long) -> Unit = {},
     ) {
+        private val moving = MovingDetector.forAutoPause()
         private var pressed = 0
         private var firstT: Long? = null
 
@@ -372,6 +405,17 @@ object ReplayScenarios {
             onSamples(samples)
             val out = core.tick(t, ticker.distanceM, !ticker.gpsLost(t))
             onOutputs(out)
+            // As RecordingSession.tick: the detector sees this second's last fix; an edge pauses or resumes.
+            val last = samples.last()
+            if (last.hasFix) {
+                val was = moving.moving
+                val now = moving.update(last.t, ticker.distanceM, last.speedMps, last.lat, last.lon)
+                if (was && !now) {
+                    if (core.autoPause(t)) onAutoPause(t)
+                } else if (!was && now) {
+                    if (core.autoResume(t)) onAutoResume(t)
+                }
+            }
             return out
         }
     }

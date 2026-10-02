@@ -25,6 +25,10 @@ import java.util.zip.GZIPOutputStream
  * `kind` is the kind of the marker that ENDS it (auto for a cue-driven lap, manual otherwise);
  * the final segment, ended by Stop, is `manual`. Pauses do not cut laps — they are listed in
  * `pauses` and the engine reads them from there. `kind = pause` is reserved and unused in v1.
+ *
+ * A `pauses` entry is `[t0, t1]` for a pause the runner made and `[t0, t1, "auto"]` for one the
+ * recorder made when the runner stopped (the array in memory is `[t0, t1, 1]`, see [isAutoPause]);
+ * every file written before auto-pause has only the two-element form, which is still a manual pause.
  */
 data class RunFile(
     val id: String,
@@ -82,7 +86,7 @@ data class RunFile(
         "laps" to laps.map {
             linkedMapOf("i" to it.i, "t0" to it.t0, "t1" to it.t1, "d0" to it.d0, "d1" to it.d1, "kind" to it.kind.name)
         },
-        "pauses" to pauses.map { it.asList() },
+        "pauses" to pauses.map { if (isAutoPause(it)) listOf(it[0], it[1], AUTO_PAUSE_KIND) else it.asList() },
         "gaps" to gaps.map { it.asList() },
         "samples" to samples.map { listOf(it.t, it.lat, it.lon, it.altM, it.accuracyM, it.speedMps, it.distM, it.hr) },
     ).apply {
@@ -98,6 +102,14 @@ data class RunFile(
     companion object {
         const val SCHEMA = 3
 
+        /** The third element of an auto-pause entry in the file's `pauses`. */
+        const val AUTO_PAUSE_KIND = "auto"
+
+        /** A `pauses` entry made by auto-pause: three elements, `[t0, t1, 1]`. */
+        fun isAutoPause(span: LongArray): Boolean = span.size > 2
+
+        private fun pauseSpan(t0: Long, t1: Long, auto: Boolean) = if (auto) longArrayOf(t0, t1, 1) else longArrayOf(t0, t1)
+
         /**
          * Builds the run file from a replay; distance is recomputed by [PointFilter] over raw
          * samples. A run stopped (or killed) while paused ends at the pause: the finish screen's
@@ -111,25 +123,46 @@ data class RunFile(
             val markers = ArrayList<Pair<Long, LapKind>>()
             val pauses = ArrayList<LongArray>()
             val gaps = ArrayList<LongArray>()
+            // One contiguous paused stretch can start as an auto-pause and be taken over by a manual
+            // PAUSE (the finish screen's tap): [pauseStart] is where the stretch began, [autoStart] where
+            // the auto part began (null once manual), [manualStart] where the manual part did.
             var pauseStart: Long? = null
+            var autoStart: Long? = null
+            var manualStart: Long? = null
             for (e in r.events) {
                 when (e) {
                     is RunEvent.Sample -> {
-                        // Paused: journaled, not measured (distance is frozen; the filter re-anchors on resume).
+                        // Manually paused: journaled, not measured (distance is frozen; the filter re-anchors on
+                        // resume). An auto-pause freezes the clock only: the runner may be moving again before
+                        // the recorder notices, so those fixes still count.
                         // Engine contract: samples strictly increasing in t (a clamped clock jump or a
                         // duplicate fix would repeat a t → dropped), hr > 0 or null.
                         val last = samples.lastOrNull()
                         if (last != null && e.t <= last.t) continue
-                        if (e.hasFix && pauseStart == null) filter.offer(LocationFix(e.t, e.lat!!, e.lon!!, e.altM, e.accuracyM!!, e.speedMps))
+                        if (e.hasFix && manualStart == null) filter.offer(LocationFix(e.t, e.lat!!, e.lon!!, e.altM, e.accuracyM!!, e.speedMps))
                         val hr = e.hr?.takeIf { it > 0 }
                         samples.add(Sample(e.t, e.lat, e.lon, e.altM, e.accuracyM, e.speedMps, filter.totalM, hr))
                     }
                     is RunEvent.Lap -> markers.add(e.t to if (e.source == LapSource.auto) LapKind.auto else LapKind.manual)
-                    is RunEvent.Pause -> if (pauseStart == null) pauseStart = e.t
-                    is RunEvent.Resume -> pauseStart?.let {
-                        pauses.add(longArrayOf(it, e.t))
+                    is RunEvent.Pause -> {
+                        if (pauseStart == null) pauseStart = e.t
+                        autoStart?.let { pauses.add(pauseSpan(it, e.t, auto = true)) }
+                        autoStart = null
+                        if (manualStart == null) manualStart = e.t
+                    }
+                    is RunEvent.AutoPause -> if (pauseStart == null) {
+                        pauseStart = e.t
+                        autoStart = e.t
+                    }
+                    is RunEvent.Resume, is RunEvent.AutoResume -> if (pauseStart != null) {
+                        autoStart?.let { pauses.add(pauseSpan(it, e.t, auto = true)) }
+                        manualStart?.let {
+                            pauses.add(pauseSpan(it, e.t, auto = false))
+                            filter.reanchor()
+                        }
                         pauseStart = null
-                        filter.reanchor()
+                        autoStart = null
+                        manualStart = null
                     }
                     is RunEvent.Gap -> gaps.add(longArrayOf(e.t, e.endT))
                     is RunEvent.Cue, is RunEvent.HrLink -> Unit
@@ -139,6 +172,7 @@ data class RunFile(
             val endT = pauseStart ?: r.endT
             pauseStart?.let { p ->
                 samples.removeAll { it.t > p }
+                pauses.removeAll { it[0] >= p } // an auto part a PAUSE took over: the run ends at its start, no span
                 gaps.removeAll { it[0] >= p }
             }
             val laps = ArrayList<Lap>()
@@ -150,7 +184,7 @@ data class RunFile(
                 t0 = t
                 d0 = d
             }
-            laps.add(Lap(laps.size, t0, endT, d0, filter.totalM, LapKind.manual))
+            laps.add(Lap(laps.size, t0, endT, d0, samples.lastOrNull()?.distM ?: filter.totalM, LapKind.manual))
             return RunFile(
                 id = h.id, device = h.device, app = h.app,
                 startEpochMs = h.w, endEpochMs = endEpochMs - (r.endT - endT), tz = h.tz,

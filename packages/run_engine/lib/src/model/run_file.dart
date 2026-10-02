@@ -156,32 +156,51 @@ class Lap {
 }
 
 /// A closed time span in ms since run start. Used for `pauses[]` and `gaps[]`.
+///
+/// A pause the recorder made itself when the runner stopped (auto-pause) is
+/// written `[t0, t1, "auto"]`; a pause the runner made, and every pause in a
+/// file written before auto-pause, is `[t0, t1]` ([auto] false). Both are
+/// paused time everywhere: moving time, lap paces and HR leave them out.
 class Span {
-  const Span(this.t0Ms, this.t1Ms);
+  const Span(this.t0Ms, this.t1Ms, {this.auto = false});
   final int t0Ms;
   final int t1Ms;
+
+  /// Made by auto-pause, not by the runner. Only `pauses[]` has these.
+  final bool auto;
 
   int get durationMs => t1Ms - t0Ms;
 
   bool overlaps(int aMs, int bMs) => t0Ms < bMs && t1Ms > aMs;
 
-  List<int> toJson() => [t0Ms, t1Ms];
+  List<Object> toJson() => auto ? [t0Ms, t1Ms, autoKind] : [t0Ms, t1Ms];
+
+  /// The third element of an auto-pause span.
+  static const String autoKind = 'auto';
 
   factory Span.fromJson(Object? json) {
-    if (json is! List || json.length != 2 || json.any((e) => e is! int)) {
-      throw RunFileFormatException('span must be [t0, t1] ints');
+    if (json is! List ||
+        !(json.length == 2 || (json.length == 3 && json[2] == autoKind)) ||
+        json[0] is! int ||
+        json[1] is! int) {
+      throw RunFileFormatException(
+        'span must be [t0, t1] ints, or [t0, t1, "auto"]',
+      );
     }
-    final s = Span(json[0] as int, json[1] as int);
+    final s = Span(json[0] as int, json[1] as int, auto: json.length == 3);
     if (s.t1Ms < s.t0Ms) throw RunFileFormatException('span t1 < t0');
     return s;
   }
 
   @override
   bool operator ==(Object other) =>
-      other is Span && other.t0Ms == t0Ms && other.t1Ms == t1Ms;
+      other is Span &&
+      other.t0Ms == t0Ms &&
+      other.t1Ms == t1Ms &&
+      other.auto == auto;
 
   @override
-  int get hashCode => Object.hash(t0Ms, t1Ms);
+  int get hashCode => Object.hash(t0Ms, t1Ms, auto);
 }
 
 /// One 1 Hz sample: `[t, lat, lon, alt, acc, speed, dist, hr]`. `lat`/`lon`

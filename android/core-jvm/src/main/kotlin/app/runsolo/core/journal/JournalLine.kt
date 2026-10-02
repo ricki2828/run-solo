@@ -60,6 +60,16 @@ sealed class JournalLine {
 
     data class Resume(override val t: Long, override val w: Long) : JournalLine()
 
+    /**
+     * The recorder paused itself: the runner stopped (a traffic light). Same effect on the clock
+     * as [Pause] (active time stops), but distance keeps counting and it is a different kind of
+     * span in the run file. An older build reads these as bad lines and skips them.
+     */
+    data class AutoPause(override val t: Long, override val w: Long) : JournalLine()
+
+    /** The runner moved again after an [AutoPause]. */
+    data class AutoResume(override val t: Long, override val w: Long) : JournalLine()
+
     data class Cue(override val t: Long, override val w: Long, val kind: CueKind) : JournalLine()
 
     /**

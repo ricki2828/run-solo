@@ -70,6 +70,9 @@ class PigeonRecorderGateway implements RecorderGateway {
   Future<void> setKmSplits(bool enabled) => _api.setKmSplits(enabled);
 
   @override
+  Future<void> setAutoPause(bool enabled) => _api.setAutoPause(enabled);
+
+  @override
   Future<void> muteTips() => _api.muteTips();
 
   @override

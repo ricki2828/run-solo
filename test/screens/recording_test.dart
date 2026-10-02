@@ -297,6 +297,47 @@ void main() {
     expect(fake.state, RecorderState.recording);
   });
 
+  testWidgets('auto-pause: AUTO-PAUSED in the paused styling, RESUME carries '
+      'on, moving again clears it', (tester) async {
+    final (fake, _) = await openRecording(tester, mode: RecordMode.free);
+    expect(find.text('AUTO-PAUSED'), findsNothing);
+    fake.simulateAutoPause();
+    await settle(tester);
+    expect(find.text('AUTO-PAUSED'), findsOneWidget);
+    expect(find.text('PAUSED'), findsNothing);
+    expect(find.text(kAutoPausedNote), findsOneWidget);
+    // The same card: dimmed numbers, one big RESUME, Pause / STOP stay live.
+    expect(timerText().hitTestable(), findsNothing);
+    expect(find.byKey(const ValueKey('stop')), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'RESUME'));
+    await settle(tester);
+    expect(find.text('AUTO-PAUSED'), findsNothing);
+    expect(fake.state, RecorderState.recording);
+
+    fake.simulateAutoPause();
+    await settle(tester);
+    expect(find.text('AUTO-PAUSED'), findsOneWidget);
+    fake.simulateAutoResume();
+    await settle(tester);
+    expect(find.text('AUTO-PAUSED'), findsNothing);
+    expect(fake.state, RecorderState.recording);
+  });
+
+  testWidgets('PAUSE on top of an auto-pause is the runner\'s: plain PAUSED, '
+      'no auto-resume from native', (tester) async {
+    final (fake, _) = await openRecording(tester, mode: RecordMode.free);
+    fake.simulateAutoPause();
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('stop')));
+    await settle(tester);
+    // STOP pauses first (the finish screen); it is now the runner's pause.
+    fake.simulateAutoResume();
+    await settle(tester);
+    expect(fake.state, RecorderState.paused);
+    expect(find.text('AUTO-PAUSED'), findsNothing);
+  });
+
   testWidgets('Android 14 volume-key note: one amber line, run keeps going', (
     tester,
   ) async {

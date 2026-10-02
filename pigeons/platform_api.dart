@@ -415,6 +415,7 @@ class RecorderStatus {
     this.pausedAtElapsedMs,
     this.finishRequests,
     this.tipsMuted,
+    this.autoPaused,
   });
   RecorderState state;
   String? runId;
@@ -453,6 +454,11 @@ class RecorderStatus {
   /// nothing to compare, or Coaching tips off in Settings), false while tips
   /// are on, true once "Mute tips" was tapped (app or notification).
   bool? tipsMuted;
+
+  /// `state == paused` and the recorder paused itself (the runner stopped,
+  /// Settings -> Auto-pause), not the runner. Null/false otherwise. A manual
+  /// pause on top of it makes it false.
+  bool? autoPaused;
 }
 
 /// An in-progress journal found on app open without a finalised run file.
@@ -663,6 +669,13 @@ abstract class RecorderApi {
   /// in progress too.
   void setKmSplits(bool enabled);
 
+  /// Settings -> Run -> "Auto-pause" (default on): the recorder pauses itself
+  /// when the runner stops and resumes when they move again, in Free, Laps
+  /// and Goal runs (and the warm-up/cool-down of other sessions; never in a
+  /// timed rep, a Cooper test or an event). Persisted natively; applies to a
+  /// run in progress too.
+  void setAutoPause(bool enabled);
+
   /// "Mute tips" in the app (LV2, A10.1): coaching off for this run only (no
   /// compare speech, no nudges; the app hides the card), the same as the
   /// notification action. A no-op when idle or already muted. Emits a
@@ -786,6 +799,7 @@ class TickEvent extends RecorderEvent {
     this.stepIndex,
     this.stepRemainingMs,
     this.stepRemainingM,
+    this.autoPaused,
   });
 
   /// Wall time since Start, pauses included.
@@ -813,6 +827,9 @@ class TickEvent extends RecorderEvent {
   int? stepIndex;
   int? stepRemainingMs;
   double? stepRemainingM;
+
+  /// As `RecorderStatus.autoPaused`.
+  bool? autoPaused;
 }
 
 class LapEvent extends RecorderEvent {

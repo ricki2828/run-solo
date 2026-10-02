@@ -240,6 +240,7 @@ class FakeRecorderGateway implements RecorderGateway {
     _startedAt = _now();
     _elapsedMs = 0;
     _pausedAtMs = null;
+    _autoPaused = false;
     _finishRequests = 0;
     _activeMs = 0;
     _lapStartElapsedMs = 0;
@@ -281,6 +282,14 @@ class FakeRecorderGateway implements RecorderGateway {
 
   @override
   Future<void> pause() async {
+    if (_state == RecorderState.paused && _autoPaused) {
+      // On top of an auto-pause: now the runner's, still begun at the
+      // auto-pause (native keeps that start).
+      _autoPaused = false;
+      _emitState();
+      _emitTick();
+      return;
+    }
     if (_state != RecorderState.recording) return;
     _state = RecorderState.paused;
     _pausedAtMs = _elapsedMs;
@@ -292,9 +301,29 @@ class FakeRecorderGateway implements RecorderGateway {
   Future<void> resume() async {
     if (_state != RecorderState.paused) return;
     _state = RecorderState.recording;
+    _autoPaused = false;
     _pausedAtMs = null;
     _emitState();
     _emitTick();
+  }
+
+  bool _autoPaused = false;
+
+  /// Test hook: native's auto-pause, the runner stopped. Only while
+  /// recording, like the real recorder.
+  void simulateAutoPause() {
+    if (_state != RecorderState.recording) return;
+    _state = RecorderState.paused;
+    _autoPaused = true;
+    _pausedAtMs = _elapsedMs;
+    _emitState();
+    _emitTick();
+  }
+
+  /// Test hook: the runner moves again after an auto-pause.
+  void simulateAutoResume() {
+    if (_state != RecorderState.paused || !_autoPaused) return;
+    unawaited(resume());
   }
 
   /// Same transition as the first LAP press in warm-up; ignored elsewhere.
@@ -436,6 +465,7 @@ class FakeRecorderGateway implements RecorderGateway {
     pausedAtElapsedMs: _state == RecorderState.paused ? _pausedAtMs : null,
     finishRequests: _finishRequests == 0 ? null : _finishRequests,
     tipsMuted: _state == RecorderState.idle ? null : tipsMuted,
+    autoPaused: _autoPaused,
     mode: _state == RecorderState.idle ? RecordMode.free : _mode,
     laps: List.of(_laps),
   );
@@ -535,6 +565,11 @@ class FakeRecorderGateway implements RecorderGateway {
 
   @override
   Future<void> setKmSplits(bool enabled) async => kmSplits = enabled;
+
+  bool autoPause = true;
+
+  @override
+  Future<void> setAutoPause(bool enabled) async => autoPause = enabled;
 
   /// `RecorderStatus.tipsMuted` (LV2): set by [start] from its LiveContext;
   /// tests may script it (a notification "Mute tips" is [muteTips]).
@@ -787,6 +822,7 @@ class FakeRecorderGateway implements RecorderGateway {
         stepRemainingM: _phaseTargetM == null
             ? null
             : math.max(0, _phaseTargetM! - _stepDistanceM),
+        autoPaused: _autoPaused,
       ),
     );
   }

@@ -62,6 +62,7 @@ class RecordingSnapshot {
     this.goalLapMs,
     this.goalLapM,
     this.tipsMuted,
+    this.autoPaused = false,
   });
 
   final RecorderState state;
@@ -145,6 +146,10 @@ class RecordingSnapshot {
   /// `RecorderStatus.tipsMuted` (LV2): null = no live coaching this run,
   /// false = tips on (the Mute tips button shows), true = muted this run.
   final bool? tipsMuted;
+
+  /// `RecorderStatus.autoPaused`: [paused] and the recorder paused itself
+  /// because the runner stopped (Settings → Auto-pause). False otherwise.
+  final bool autoPaused;
 
   /// The session step being run: `spec.steps[stepIndex]` as native sends
   /// it (work and recovery steps both counted; null in warm-up, cool-down
@@ -272,6 +277,7 @@ class RecordingSnapshot {
     double? goalLapM,
     bool? tipsMuted,
     bool clearTipsMuted = false,
+    bool? autoPaused,
   }) => RecordingSnapshot(
     state: state ?? this.state,
     runId: runId ?? this.runId,
@@ -308,6 +314,7 @@ class RecordingSnapshot {
     goalLapMs: goalLapMs ?? this.goalLapMs,
     goalLapM: goalLapM ?? this.goalLapM,
     tipsMuted: clearTipsMuted ? null : (tipsMuted ?? this.tipsMuted),
+    autoPaused: autoPaused ?? this.autoPaused,
   );
 }
 
@@ -489,6 +496,7 @@ class RecordingController extends ChangeNotifier {
       clearStepRemainingM: s.stepRemainingM == null,
       tipsMuted: s.tipsMuted,
       clearTipsMuted: s.tipsMuted == null,
+      autoPaused: s.autoPaused ?? false,
       hrPaired: s.hrConnected || _snap.hrPaired,
       goalLapMs: goalLap?.activeMs,
       goalLapM: goalLap?.distanceM,
@@ -581,6 +589,8 @@ class RecordingController extends ChangeNotifier {
   Future<void> muteTips() =>
       _snap.tipsMuted == false ? _gateway.muteTips() : Future.value();
   Future<void> pause() {
+    // On top of an auto-pause this makes it the runner's pause; it still
+    // began at the auto-pause (native keeps that start, #91).
     _pausedAtMs ??= displayElapsedMs;
     return _gateway.pause();
   }
@@ -731,6 +741,7 @@ class RecordingController extends ChangeNotifier {
       stepRemainingM: t.stepRemainingM,
       clearStepRemainingM: t.stepRemainingM == null,
       zone: zone,
+      autoPaused: t.autoPaused ?? false,
     );
   }
 
@@ -855,7 +866,14 @@ class RecordingController extends ChangeNotifier {
 
   void _onState(StateEvent s) {
     _trackPause(s.state);
-    _snap = _snap.copyWith(state: s.state, runId: s.runId, phase: s.phase);
+    _snap = _snap.copyWith(
+      state: s.state,
+      runId: s.runId,
+      phase: s.phase,
+      // Only a paused state can be an auto-pause; the status read that
+      // follows says which.
+      autoPaused: s.state == RecorderState.paused ? null : false,
+    );
     // Idle is final: the run is finalised, nothing left to read (and a late
     // read could still answer `finalising`).
     if (s.state != RecorderState.idle) unawaited(refreshStatus());

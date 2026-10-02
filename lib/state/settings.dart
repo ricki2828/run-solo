@@ -76,6 +76,7 @@ class AppSettings {
     this.tryNextDismissed,
     this.cues = true,
     this.kmSplits = true,
+    this.autoPause = true,
     this.coachingTips = true,
     this.showWhileRunning = true,
     this.haptics = true,
@@ -188,6 +189,10 @@ class AppSettings {
 
   /// Voice → "Km splits": a Free run says each km (Phase 4 LV1). Default on.
   final bool kmSplits;
+
+  /// Recording → "Auto-pause": the recorder pauses itself when you stop and
+  /// resumes when you move. Default on.
+  final bool autoPause;
 
   /// Voice → "Coaching tips" (LV2, A10.7): where you stand and short tips,
   /// spoken at your splits. Off = no compare speech and no nudges. Needs
@@ -341,6 +346,7 @@ class AppSettings {
     String? tryNextDismissed,
     bool? cues,
     bool? kmSplits,
+    bool? autoPause,
     bool? coachingTips,
     bool? showWhileRunning,
     bool? haptics,
@@ -381,6 +387,7 @@ class AppSettings {
     tryNextDismissed: tryNextDismissed ?? this.tryNextDismissed,
     cues: cues ?? this.cues,
     kmSplits: kmSplits ?? this.kmSplits,
+    autoPause: autoPause ?? this.autoPause,
     coachingTips: coachingTips ?? this.coachingTips,
     showWhileRunning: showWhileRunning ?? this.showWhileRunning,
     haptics: haptics ?? this.haptics,
@@ -424,6 +431,7 @@ class AppSettings {
     'tryNextDismissed': tryNextDismissed,
     'cues': cues,
     'kmSplits': kmSplits,
+    'autoPause': autoPause,
     'coachingTips': coachingTips,
     'showWhileRunning': showWhileRunning,
     'haptics': haptics,
@@ -505,6 +513,7 @@ class AppSettings {
           : null,
       cues: pick('cues', d.cues),
       kmSplits: pick('kmSplits', d.kmSplits),
+      autoPause: pick('autoPause', d.autoPause),
       coachingTips: pick('coachingTips', d.coachingTips),
       showWhileRunning: pick('showWhileRunning', d.showWhileRunning),
       haptics: pick('haptics', d.haptics),

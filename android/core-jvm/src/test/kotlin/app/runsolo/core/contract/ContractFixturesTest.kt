@@ -272,7 +272,24 @@ class ContractFixturesTest {
     @Test
     fun `replay fixtures - one per kind`() {
         val names = ContractFixtures.all().keys.filter { it.startsWith("replay_") }
-        assertEquals(18, names.size, names.toString())
+        assertEquals(19, names.size, names.toString())
+    }
+
+    @Test
+    fun `replay auto-pause - two stops at lights are auto spans, jitter never resumes, elapsed unchanged`() {
+        val m = fixture("replay_auto_pause")
+        val pauses = (m["pauses"] as List<*>).map { it as List<*> }
+        assertEquals(2, pauses.size, pauses.toString())
+        assertEquals(listOf("auto", "auto"), pauses.map { it[2] })
+        // Stop 1 is 60..90 s: paused ~4.5 s in (the stop timer starts at the last moving fix), resumed after 3 strides.
+        assertTrue((pauses[0][0] as Long) in 64_000L..66_000L, "pause 1 starts ${pauses[0]}")
+        assertTrue((pauses[0][1] as Long) in 92_000L..94_000L, "pause 1 ends ${pauses[0]}")
+        // Stop 2 is 150..170 s.
+        assertTrue((pauses[1][0] as Long) in 154_000L..156_000L, "pause 2 starts ${pauses[1]}")
+        assertTrue((pauses[1][1] as Long) in 172_000L..174_000L, "pause 2 ends ${pauses[1]}")
+        val laps = laps(m)
+        assertEquals(1, laps.size)
+        assertEquals(230_000L, laps[0]["t1"], "elapsed is the whole trace")
     }
 
     @Test

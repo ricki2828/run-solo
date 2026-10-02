@@ -53,7 +53,14 @@ import app.runsolo.core.model.TargetKind
  *    ignored; any manual press within [Config.debounceMs] of the previous manual lap is ignored,
  *    [Config.unstructuredDebounceMs] in a run without steps (Laps, by-feel): there LAP is the
  *    main control and a second press after a missed-looking first one would be a real extra lap.
- *  - Laps while paused are ignored.
+ *  - Laps while paused are ignored, except in an auto-pause: the runner is still running the
+ *    session and a LAP press counts.
+ *  - Auto-pause ([autoPause], called by the shell when the runner stops): the same freeze of the
+ *    active clock as a manual pause, so phase timers, moving time and the goal's moving time stop
+ *    while standing; distance keeps counting, and no auto-lap can fire while it lasts. It only
+ *    acts where [autoPauseAllowed] says so: Free, Laps and Goal runs; the warm-up and cool-down of
+ *    any other session (a rep or recovery must keep running, a standing recovery is legitimate);
+ *    never a Cooper test or an event (timed, elapsed time is the result).
  */
 class RecorderCore(
     val mode: RunMode,
@@ -127,6 +134,10 @@ class RecorderCore(
 
     /** 0-based index into [SessionSpec.steps] while a step runs; null otherwise. */
     var stepIndex: Int? = null
+        private set
+
+    /** True while the pause in force is an auto-pause ([state] is `paused`); a manual PAUSE or RESUME ends that. */
+    var autoPaused: Boolean = false
         private set
 
     /** True once [Output.AutoStop] was emitted (also after a [restore] that ends past the session). */
@@ -203,6 +214,12 @@ class RecorderCore(
     }
 
     fun pause(t: Long): List<Output> {
+        if (state == RecorderState.paused && autoPaused) {
+            // PAUSE (the finish screen's tap) on top of an auto-pause: the same pause, now the runner's.
+            // It began at the auto-pause, so a run stopped from here still ends there.
+            autoPaused = false
+            return emptyList()
+        }
         if (state != RecorderState.recording) return emptyList()
         state = RecorderState.paused
         pauseStartT = t
@@ -222,10 +239,59 @@ class RecorderCore(
         val ps = pauseStartT ?: t
         pausedTotalMs += (t - ps).coerceAtLeast(0)
         pauseStartT = null
+        autoPaused = false
         state = RecorderState.recording
         lastT = t
         lastDT = t // no distance was counted while paused; do not interpolate across the pause
         return emptyList()
+    }
+
+    /**
+     * Whether an auto-pause may act in the current part of the run (see the class rules). The
+     * Settings switch is the shell's: it simply never calls [autoPause] when off.
+     */
+    fun autoPauseAllowed(): Boolean {
+        return when (mode) {
+            RunMode.free, RunMode.laps -> true
+            RunMode.cooper -> false
+            RunMode.intervals -> when {
+                spec == null -> false // a by-feel 4x4 from an old journal
+                spec.isGoal -> true
+                spec.isEvent -> false
+                else -> phase == Phase.warmup || phase == Phase.cooldown
+            }
+        }
+    }
+
+    /**
+     * The runner stopped (the shell's [app.runsolo.core.gps.MovingDetector] edge). True when the
+     * recorder paused (the shell journals `apause`); a no-op unless recording and [autoPauseAllowed].
+     */
+    fun autoPause(t: Long): Boolean = state == RecorderState.recording && autoPauseAllowed() && enterAutoPause(t)
+
+    private fun enterAutoPause(t: Long): Boolean {
+        if (state != RecorderState.recording) return false
+        state = RecorderState.paused
+        autoPaused = true
+        pauseStartT = t
+        lastT = t
+        return true
+    }
+
+    /** The runner is moving again, or tapped RESUME in an auto-pause. True when an auto-pause ended (journal `aresume`). */
+    fun autoResume(t: Long): Boolean {
+        if (state != RecorderState.paused || !autoPaused) return false
+        resume(t)
+        return true
+    }
+
+    /**
+     * A LAP that moved the session on ends an auto-pause that no longer applies (a rep started):
+     * callers see [autoPaused] go from true to false across the call and journal `aresume` after the lap.
+     */
+    private fun leavingAutoPause(t: Long, out: List<Output>): List<Output> {
+        if (autoPaused && !autoPauseAllowed()) autoResume(t)
+        return out
     }
 
     fun stop(t: Long): List<Output> {
@@ -241,7 +307,7 @@ class RecorderCore(
     fun lap(source: LapSource, t: Long): Pair<LapDecision, List<Output>> {
         if (state == RecorderState.idle || state == RecorderState.finalising) return LapDecision.ignoredIdle to emptyList()
         if (!mode.lapInput) return LapDecision.ignoredModeNoLaps to emptyList()
-        if (state == RecorderState.paused) return LapDecision.ignoredPaused to emptyList()
+        if (state == RecorderState.paused && !autoPaused) return LapDecision.ignoredPaused to emptyList()
         if (source == LapSource.auto) {
             // Only restore() feeds auto laps; live auto-laps come from the cue scheduler in tick().
             return LapDecision.accepted to endTimedPhase(t, auto = true)
@@ -251,7 +317,7 @@ class RecorderCore(
         lastAutoLapT?.let { if (t - it < config.doubleLapGuardMs) return LapDecision.ignoredDoubleLap to emptyList() }
         val debounceMs = if (structured) config.debounceMs else config.unstructuredDebounceMs
         lastManualLapT?.let { if (t - it < debounceMs) return LapDecision.ignoredDebounce to emptyList() }
-        return LapDecision.accepted to applyManualLap(source, t)
+        return LapDecision.accepted to leavingAutoPause(t, applyManualLap(source, t))
     }
 
     /**
@@ -262,9 +328,9 @@ class RecorderCore(
      */
     fun startReps(t: Long): Pair<LapDecision, List<Output>> {
         if (state == RecorderState.idle || state == RecorderState.finalising) return LapDecision.ignoredIdle to emptyList()
-        if (state == RecorderState.paused) return LapDecision.ignoredPaused to emptyList()
+        if (state == RecorderState.paused && !autoPaused) return LapDecision.ignoredPaused to emptyList()
         if (!structured || phase != Phase.warmup) return LapDecision.ignoredNotWarmup to emptyList()
-        return LapDecision.accepted to applyManualLap(LapSource.button, t)
+        return LapDecision.accepted to leavingAutoPause(t, applyManualLap(LapSource.button, t))
     }
 
     /** Records a manual lap with no gate or guard: what was journaled did happen. */
@@ -295,7 +361,15 @@ class RecorderCore(
     fun tick(t: Long, distanceM: Double = lastD, gpsOk: Boolean = true): List<Output> {
         lastT = t
         this.gpsOk = gpsOk
-        if (state != RecorderState.recording) return emptyList()
+        if (state != RecorderState.recording) {
+            // Auto-pause: the clock is frozen, so no step can end, but distance keeps counting and a
+            // LAP press (or the first tick after the runner moves) must see where the runner is.
+            if (autoPaused) {
+                lastD = distanceM
+                lastDT = t
+            }
+            return emptyList()
+        }
         val prevT = lastDT
         val prevD = lastD
         lastD = distanceM
@@ -599,7 +673,7 @@ class RecorderCore(
                     }
                     is RunEvent.Lap -> {
                         // Replay bypasses every gate and guard: whatever was journaled did happen.
-                        if (core.state == RecorderState.paused) continue
+                        if (core.state == RecorderState.paused && !core.autoPaused) continue
                         if (e.source == LapSource.auto) {
                             // A distance auto-lap starts the next step exactly at the target, as live.
                             val endD = core.phaseTargetM?.let { core.phaseStartD + it } ?: filter.totalM
@@ -618,6 +692,9 @@ class RecorderCore(
                         filter.reanchor()
                         core.resume(t)
                     }
+                    // Auto-pause: the clock froze, the distance did not (never `paused`, no re-anchor).
+                    is RunEvent.AutoPause -> core.enterAutoPause(t)
+                    is RunEvent.AutoResume -> core.autoResume(t)
                     is RunEvent.Gap -> {
                         // The run was dark from e.t to e.endT; phase timers must not count it.
                         // If it was already paused, the open pause covers the span.

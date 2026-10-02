@@ -74,6 +74,41 @@ void main() {
     },
   );
 
+  testWidgets('auto-pauses: moving time sits under elapsed when they differ, '
+      'once', (tester) async {
+    final base = freeRunFile(n: 31, start: d1, seconds: 1800);
+    final stopped = base.copyWith(
+      pauses: const [
+        engine.Span(300000, 330000, auto: true), // a red light
+        engine.Span(900000, 975000, auto: true),
+      ],
+    );
+    await pumpApp(
+      tester,
+      fakeServices(files: [stopped]),
+      home: RunDetailScreen(runId: stopped.id),
+    );
+    await pumpTimes(tester, 6);
+    // 30:00 elapsed, 105 s stopped.
+    expect(find.widgetWithText(StatTile, '30:00'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('detail-moving'))).data,
+      'Moving 28:15, paused 1:45',
+    );
+    // The splits' own moving tile steps aside: one figure, one place.
+    expect(find.widgetWithText(StatTile, '28:15'), findsNothing);
+
+    // No stops: no extra line, the splits keep their moving tile.
+    await pumpApp(
+      tester,
+      fakeServices(files: [base]),
+      home: RunDetailScreen(runId: base.id),
+    );
+    await pumpTimes(tester, 6);
+    expect(find.byKey(const ValueKey('detail-moving')), findsNothing);
+    expect(find.widgetWithText(StatTile, '30:00'), findsNWidgets(2));
+  });
+
   testWidgets('INT run with no reps still shows eight KM splits', (
     tester,
   ) async {

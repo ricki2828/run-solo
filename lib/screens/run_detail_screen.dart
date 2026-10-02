@@ -199,6 +199,14 @@ class RunDetailBody extends StatelessWidget {
           RecordMode.laps => _LapsTable(view: a.laps, units: units),
           RecordMode.free || RecordMode.cooper => _Splits(
             free: free,
+            // The header already says moving time when it differs.
+            showMoving:
+                movingGapMs(
+                  free,
+                  d.summary.durationMs,
+                  isTest: d.summary.cooper != null,
+                ) ==
+                null,
             units: units,
             heat: d.summary.mode == RecordMode.cooper ? null : a.heat,
           ),
@@ -462,9 +470,32 @@ class _HeaderState extends State<_Header> {
             ),
           ],
         ),
+        if (movingGapMs(free, d.summary.durationMs, isTest: cooper != null)
+            case final gapMs?) ...[
+          const SizedBox(height: Space.x8),
+          Text(
+            'Moving ${Fmt.clock(d.summary.durationMs - gapMs)}, '
+            'paused ${Fmt.clock(gapMs)}',
+            key: const ValueKey('detail-moving'),
+            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+          ),
+        ],
       ],
     );
   }
+}
+
+/// Elapsed minus moving time, ms, when the two differ enough to say so
+/// (stops at lights, pauses): null otherwise, and for a test, whose own
+/// window is the time. Auto-pauses and manual pauses both count.
+int? movingGapMs(
+  engine.FreeRunSummary free,
+  int durationMs, {
+  bool isTest = false,
+}) {
+  if (isTest) return null;
+  final gap = durationMs - (free.movingSeconds * 1000).round();
+  return gap >= 5000 ? gap : null;
 }
 
 /// Map card states (A4): route on Google (or the shape fallback), "Indoor
@@ -923,8 +954,14 @@ class _LapsTable extends StatelessWidget {
 }
 
 class _Splits extends StatelessWidget {
-  const _Splits({required this.free, required this.units, this.heat});
+  const _Splits({
+    required this.free,
+    required this.units,
+    this.heat,
+    this.showMoving = true,
+  });
   final engine.FreeRunSummary free;
+  final bool showMoving;
   final Units units;
   final engine.HeatAdjustment? heat;
 
@@ -939,11 +976,12 @@ class _Splits extends StatelessWidget {
           spacing: Space.x24,
           runSpacing: Space.x12,
           children: [
-            StatTile(
-              label: 'moving',
-              value: Fmt.clock((free.movingSeconds * 1000).round()),
-              size: 28,
-            ),
+            if (showMoving)
+              StatTile(
+                label: 'moving',
+                value: Fmt.clock((free.movingSeconds * 1000).round()),
+                size: 28,
+              ),
             StatTile(
               label: 'avg pace',
               value: Fmt.paceUnit(free.avgPaceSecPerKm, units),

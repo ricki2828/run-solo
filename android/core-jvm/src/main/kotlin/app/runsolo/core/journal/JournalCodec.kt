@@ -65,6 +65,8 @@ object JournalCodec {
             is JournalLine.Lap -> { m["k"] = "lap"; m["t"] = line.t; m["w"] = line.w; m["src"] = line.source.name }
             is JournalLine.Pause -> { m["k"] = "pause"; m["t"] = line.t; m["w"] = line.w }
             is JournalLine.Resume -> { m["k"] = "resume"; m["t"] = line.t; m["w"] = line.w }
+            is JournalLine.AutoPause -> { m["k"] = "apause"; m["t"] = line.t; m["w"] = line.w }
+            is JournalLine.AutoResume -> { m["k"] = "aresume"; m["t"] = line.t; m["w"] = line.w }
             is JournalLine.Cue -> { m["k"] = "cue"; m["t"] = line.t; m["w"] = line.w; m["kind"] = line.kind.name }
             is JournalLine.Gap -> { m["k"] = "gap"; m["t"] = line.t; m["w"] = line.w; m["wall"] = line.wallGapMs }
             is JournalLine.HrLink -> { m["k"] = "hr"; m["t"] = line.t; m["w"] = line.w; m["on"] = line.connected }
@@ -150,6 +152,8 @@ object JournalCodec {
             "lap" -> JournalLine.Lap(t, w, LapSource.valueOf(m.string("src")))
             "pause" -> JournalLine.Pause(t, w)
             "resume" -> JournalLine.Resume(t, w)
+            "apause" -> JournalLine.AutoPause(t, w)
+            "aresume" -> JournalLine.AutoResume(t, w)
             "cue" -> JournalLine.Cue(t, w, CueKind.valueOf(m.string("kind")))
             "gap" -> JournalLine.Gap(t, w, m.long("wall"))
             "hr" -> JournalLine.HrLink(t, w, m["on"] as? Boolean ?: throw IllegalArgumentException("hr.on"))

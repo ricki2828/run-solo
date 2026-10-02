@@ -125,6 +125,11 @@ abstract class RecorderGateway {
   /// Voice → "Km splits": a Free run says each km. Persisted natively.
   Future<void> setKmSplits(bool enabled);
 
+  /// Settings → Recording → "Auto-pause": the recorder pauses itself when the
+  /// runner stops and resumes when they move. Persisted natively; read at
+  /// start and live.
+  Future<void> setAutoPause(bool enabled);
+
   /// "Mute tips" for this run (LV2): no compare speech, no nudges, no card.
   /// Native answers with a state event; `status().tipsMuted` turns true.
   Future<void> muteTips();
