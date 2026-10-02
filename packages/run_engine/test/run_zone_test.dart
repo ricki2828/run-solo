@@ -161,6 +161,20 @@ void main() {
       expect((z.zoneId, z.offsetMin), ('Asia/Singapore', 480));
     });
 
+    test('near a border the file zone wins over the grid', () {
+      // Edirne, Turkey, about 7 km from the Greek border: in January Greece
+      // is +2 and Turkey +3. The phone said Athens (roaming) at start.
+      const edirne = (lat: 41.67, lon: 26.56);
+      final jan = DateTime.utc(2026, 1, 15, 12);
+      final run = _run(jan, at: edirne, tz: 'Europe/Athens');
+      expect(RunZone.zoneAt(edirne.lat, edirne.lon), 'Europe/Istanbul');
+      final z = RunZone.resolve(run)!;
+      expect((z.zoneId, z.offsetMin), ('Europe/Athens', 120));
+      // Without a file zone (an import) the grid answers.
+      final imported = _run(jan, at: edirne, app: 'import:tcx');
+      expect(RunZone.resolve(imported)!.offsetMin, 180);
+    });
+
     test('an import tz placeholder is ignored', () {
       final run = _run(DateTime.utc(2026, 10, 2, 7), app: 'import:gpx');
       expect(RunZone.resolve(run), isNull);
@@ -193,6 +207,37 @@ void main() {
       expect(run.tz, 'UTC');
       final z = RunZone.resolve(run)!;
       expect((z.zoneId, z.offsetMin), ('Asia/Singapore', 480));
+      expect(_title(run, z), 'Afternoon');
+    });
+
+    test('timestamps that state an offset give the run its offset', () {
+      final withOffset = gpx
+          .replaceAll(' lat="1.3521" lon="103.8198"', ' lat="0" lon="0"')
+          .replaceAll(' lat="1.3530" lon="103.8198"', ' lat="0" lon="0"')
+          .replaceAll('07:00:00Z', '10:00:00+03:00')
+          .replaceAll('07:05:00Z', '10:05:00+03:00');
+      final run = const GpxImporter().import(withOffset);
+      expect(run.start, DateTime.utc(2026, 9, 24, 7));
+      expect(run.tz, '+03:00');
+      expect(RunFileCodec.decode(RunFileCodec.encode(run)).tz, '+03:00');
+      final z = RunZone.resolve(run)!;
+      expect((z.zoneId, z.offsetMin), (null, 180));
+      expect(_title(run, z), 'Morning');
+      expect(importTimeOffsetMin('2026-09-24T10:00:00-0330'), -210);
+      expect(importTimeOffsetMin('2026-09-24T10:00:00Z'), isNull);
+      expect(importTimeOffsetMin('2026-09-24T10:00:00'), isNull);
+    });
+
+    test('a no-fix TCX (treadmill) with an offset uses it', () {
+      const tcx = '''<?xml version="1.0"?>
+<TrainingCenterDatabase><Activities><Activity Sport="Running"><Id>x</Id>
+<Lap StartTime="2026-09-24T15:00:00+08:00"><TotalTimeSeconds>300</TotalTimeSeconds><DistanceMeters>1000</DistanceMeters><Track>
+<Trackpoint><Time>2026-09-24T15:00:00+08:00</Time><DistanceMeters>0</DistanceMeters></Trackpoint>
+<Trackpoint><Time>2026-09-24T15:05:00+08:00</Time><DistanceMeters>1000</DistanceMeters></Trackpoint>
+</Track></Lap></Activity></Activities></TrainingCenterDatabase>''';
+      final run = const TcxImporter().import(tcx);
+      final z = RunZone.resolve(run)!;
+      expect(z.offsetMin, 480);
       expect(_title(run, z), 'Afternoon');
     });
 

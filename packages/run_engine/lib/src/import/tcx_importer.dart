@@ -36,10 +36,12 @@ class TcxImporter {
     if (lapElements.isEmpty) throw ImportFormatException('no <Lap>');
 
     final points = <ImportPoint>[];
+    final timeTexts = <String?>[];
     for (final lap in lapElements) {
       for (final tp in lap.findAllElements('Trackpoint')) {
         final time = parseImportTime(tp.getElement('Time')?.innerText);
         if (time == null) continue;
+        timeTexts.add(tp.getElement('Time')?.innerText);
         final pos = tp.getElement('Position');
         final lat = _num(pos?.getElement('LatitudeDegrees'));
         final lon = _num(pos?.getElement('LongitudeDegrees'));
@@ -125,7 +127,7 @@ class TcxImporter {
       app: app,
       start: start,
       end: start.add(Duration(milliseconds: samples.last.tMs)),
-      tz: tz,
+      tz: importTz(tz, timeTexts),
       // §18.7: any <Lap> → `laps`, none → `free`. Never 4x4 by lap count:
       // Garmin/Coros write a <Lap> per auto-km, so a 10 km easy run would
       // otherwise enter the 4x4 trend. The 4x4 flip is a sidecar override.
