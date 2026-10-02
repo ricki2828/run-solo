@@ -107,6 +107,7 @@ class _Body extends StatelessWidget {
         TrailRunsChart(
           group: group,
           chartKey: const ValueKey('trail-board-chart'),
+          showValues: false,
         ),
         const SizedBox(height: Space.x24),
         for (var i = 0; i < ranked.length; i++)

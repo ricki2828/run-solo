@@ -8,9 +8,17 @@ import 'recent_bars_chart.dart';
 /// taller, the best run dashed. The one chart the run detail section and the
 /// trail board share.
 class TrailRunsChart extends StatelessWidget {
-  const TrailRunsChart({super.key, required this.group, this.chartKey});
+  const TrailRunsChart({
+    super.key,
+    required this.group,
+    this.chartKey,
+    this.showValues = true,
+  });
   final engine.TrailGroup group;
   final Key? chartKey;
+
+  /// The values list under the bars; off where the screen has its own table.
+  final bool showValues;
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +35,7 @@ class TrailRunsChart extends StatelessWidget {
       emptyTitle: 'Two runs on this trail draw the first chart.',
       best: best.movingMs / 1000,
       roundTo: 10,
+      showValues: showValues,
       caption: 'Moving time on ${group.name}',
     );
   }
