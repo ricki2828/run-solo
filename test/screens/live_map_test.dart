@@ -211,6 +211,29 @@ void main() {
     expect(route.count, 0);
   });
 
+  testWidgets('MAP view: AUTO-PAUSED shows over the map, the route stays, '
+      'moving again clears it', (tester) async {
+    final (fake, services) = await open(
+      tester,
+      mode: RecordMode.free,
+      settings: const AppSettings(onboardingDone: true, liveMapTypes: {'free'}),
+    );
+    fake.advance(const Duration(seconds: 60));
+    await pumpTimes(tester, 5);
+    final grown = services.recording.liveRoute.count;
+    fake.simulateAutoPause();
+    await pumpTimes(tester, 5);
+    expect(find.text('AUTO-PAUSED'), findsOneWidget);
+    expect(find.text('PAUSED'), findsNothing);
+    fake.advance(const Duration(seconds: 30));
+    await pumpTimes(tester, 4);
+    expect(services.recording.liveRoute.count, grown);
+    fake.simulateAutoResume();
+    await pumpTimes(tester, 5);
+    expect(find.text('AUTO-PAUSED'), findsNothing);
+    expect(find.byKey(_map), findsOneWidget);
+  });
+
   testWidgets('a missed route event is caught up from native', (tester) async {
     final (fake, services) = await open(tester, emitRoute: false);
     fake.emitRoute = true;
