@@ -59,17 +59,17 @@ class ContractFixturesTest {
     }
 
     @Test
-    fun `every current fixture is schema 5 - intervals and cooper carry a session, preset is gone`() {
+    fun `every current fixture is schema 6 - intervals and cooper carry a session, preset is gone`() {
         for ((name, json) in ContractFixtures.all()) {
             val m = Json.parseObject(json)
-            assertEquals(5L, m["schema"], name)
-            assertTrue(m["mode"] in setOf("intervals", "laps", "free", "cooper"), "$name mode=${m["mode"]}")
+            assertEquals(6L, m["schema"], name)
+            assertTrue(m["mode"] in setOf("intervals", "laps", "free", "cooper", "trail"), "$name mode=${m["mode"]}")
             assertTrue(!m.containsKey("preset"), "$name still has preset")
             assertTrue(m.containsKey("session"), "$name has no session key")
             val session = m["session"] as Map<*, *>?
             when (m["mode"]) {
                 "intervals", "cooper" -> assertTrue(session != null, name)
-                "free" -> assertNull(session, name)
+                "free", "trail" -> assertNull(session, name)
                 "laps" -> assertTrue(session == null || session["templateId"] == "fartlek", name)
             }
             // Canonical key order: ... mode, session, units ...
@@ -84,6 +84,14 @@ class ContractFixturesTest {
                 assertEquals(session, Json.parseObject(Json.write(spec.toJson())), "$name session round trip")
             }
         }
+    }
+
+    @Test
+    fun `trail fixture - mode trail, no session, a LAP press ignored, the stop is recorded`() {
+        val m = fixture("trail_run")
+        assertEquals("trail", m["mode"])
+        assertNull(m["session"])
+        assertEquals(1, laps(m).size)
     }
 
     @Test

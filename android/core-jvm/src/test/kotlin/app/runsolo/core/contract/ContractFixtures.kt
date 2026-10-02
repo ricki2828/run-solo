@@ -33,9 +33,9 @@ import java.io.File
  * hand-built. Checked into `src/test/fixtures/contract/` and copied verbatim into
  * `packages/run_engine/test/fixtures/contract/`; [ContractFixturesTest] fails when the
  * generator and the checked-in files drift, and CI compares the two copies. The top level is
- * schema 5 (elevation: a sample may carry a ninth element, `elev_src` beside the samples; otherwise schema 4's). `contract/schema1/`,
- * `contract/schema2/`, `contract/schema3/` and `contract/schema4/` are frozen output of the older writers: never
- * regenerated, schema4 pins that files written before elevation still read, schema3 before auto-pause, schema1/2 pin the v1 `free` → `laps` and the v2 `fourByFour` +
+ * schema 6 (the `trail` mode; otherwise schema 5's). `contract/schema1/`,
+ * `contract/schema2/`, `contract/schema3/`, `contract/schema4/` and `contract/schema5/` are frozen output of the older writers: never
+ * regenerated, schema5 pins that files written before the trail mode still read, schema4 pins that files written before elevation still read, schema3 before auto-pause, schema1/2 pin the v1 `free` → `laps` and the v2 `fourByFour` +
  * `preset` → `intervals` + norwegian-4x4 mappings on the Dart side.
  *
  * Regenerate: `java -cp <test classpath> app.runsolo.core.contract.ContractFixturesKt`.
@@ -62,6 +62,7 @@ object ContractFixtures {
         "laps_run_pause_manual_laps" to lapsRunPauseManualLaps(),
         "free_run_no_laps" to freeRunNoLaps(),
         "free_run_elevation" to freeRunElevation(),
+        "trail_run" to trailRun(),
     ) + ReplayScenarios.KINDS.associate { "replay_${it.replace('-', '_')}" to replayKind(it) }
 
     /** One simulated recording: a service loop over the core, per second. */
@@ -340,6 +341,19 @@ object ContractFixtures {
                 if (i == 255) s.resume()
                 if (i == 300) s.lap(LapSource.notification)
                 if (i == 360) s.lap(LapSource.volumeKey)
+            }
+        }
+        return s.finish()
+    }
+
+    /** A Trail run (schema 6): a slow hike, a 12 s stop at a viewpoint, the hike on; no LAP input, no session. */
+    private fun trailRun(): String {
+        val fixes = TraceFixture.straightLine(listOf(240 to 1.5, 12 to 0.0, 180 to 1.5), LAT0, LON0, 5.0, T0)
+        val s = Session("contract-trail", RunMode.trail, null)
+        for ((i, f) in fixes.withIndex()) {
+            if (i == 0) continue
+            s.second(f, 130 + (i % 5)) {
+                if (i == 100) s.lap(LapSource.button) // refused: a Trail run takes no LAP
             }
         }
         return s.finish()
