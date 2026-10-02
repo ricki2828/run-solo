@@ -346,7 +346,7 @@ packages:
     source: hosted
     version: "0.11.1"
   timezone_finder:
-    dependency: "direct main"
+    dependency: "direct dev"
     description:
       name: timezone_finder
       sha256: eda3f6a94d0de0b73fe621934bc7311efa298b33c4d1d1375d4c92dc6ce5e307

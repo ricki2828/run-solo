@@ -59,6 +59,39 @@ void main() {
       expect(RunZone.zoneAt(41.9, 12.5), 'Europe/Rome');
     });
 
+    test('cities across the world, coast and inland', () {
+      const cities = {
+        'Australia/Sydney': (-33.8568, 151.2153), // Opera House, on the water
+        'Australia/Perth': (-31.95, 115.86),
+        'Pacific/Auckland': (-36.85, 174.76),
+        'Asia/Kolkata': (28.61, 77.21),
+        'Asia/Kathmandu': (27.7, 85.32),
+        'Europe/London': (51.5, -0.12),
+        'Europe/Lisbon': (38.72, -9.14),
+        'Europe/Madrid': (40.42, -3.7),
+        'Europe/Istanbul': (41.01, 28.97),
+        'Africa/Johannesburg': (-26.2, 28.04),
+        'Africa/Cairo': (30.04, 31.24),
+        'America/New_York': (40.71, -74.0),
+        'America/Los_Angeles': (34.05, -118.24),
+        'America/Sao_Paulo': (-23.55, -46.63),
+        'America/St_Johns': (47.56, -52.71),
+        'Asia/Tokyo': (35.68, 139.69),
+        'Asia/Shanghai': (31.23, 121.47),
+        'Europe/Athens': (37.97, 23.72),
+        'Europe/Rome': (41.9, 12.5),
+      };
+      for (final MapEntry(key: id, value: (lat, lon)) in cities.entries) {
+        final got = RunZone.zoneAt(lat, lon)!;
+        final at = DateTime.utc(2026, 10, 2, 7);
+        expect(
+          RunZone.offsetAt(got, at),
+          RunZone.offsetAt(id, at),
+          reason: '$id: grid said $got',
+        );
+      }
+    });
+
     test('no zone in the open sea', () {
       expect(RunZone.zoneAt(0, -30), isNull);
     });
