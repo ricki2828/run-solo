@@ -45,7 +45,7 @@ void main() {
   });
 
   test(
-    'outside reference table uses honest bound and invalid evidence is hidden',
+    'outside reference table is a flagged fit and invalid evidence is hidden',
     () {
       expect(
         RacePercentileNorms.comparison(
@@ -54,7 +54,7 @@ void main() {
           '5K',
           female: false,
         ),
-        'above 90th',
+        'about 99th',
       );
       expect(
         RacePercentileNorms.comparison(
@@ -63,7 +63,7 @@ void main() {
           'Marathon',
           female: true,
         ),
-        'below 10th',
+        'about 1st',
       );
       expect(
         RacePercentileNorms.comparison(

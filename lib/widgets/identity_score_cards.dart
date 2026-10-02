@@ -89,24 +89,29 @@ class _ScoreCard extends StatelessWidget {
     final active = score != null;
     final s = score;
     String? estimate;
+    var extrapolated = false;
     if (s != null &&
         age != null &&
         (profileSex == ProfileSex.male || profileSex == ProfileSex.female)) {
       final female = profileSex == ProfileSex.female;
       if (lane == engine.IdentityLane.aerobic ||
           lane == engine.IdentityLane.speed) {
-        estimate = engine.FriendFitnessNorms.comparison(
+        final e = engine.FriendFitnessNorms.estimate(
           s.vdot,
           age!,
           female: female,
         );
+        estimate = e?.label;
+        extrapolated = e?.extrapolated ?? false;
       } else {
-        estimate = engine.RacePercentileNorms.comparison(
+        final e = engine.RacePercentileNorms.estimate(
           s.vdot,
           lane,
           s.source,
           female: female,
         );
+        estimate = e?.label;
+        extrapolated = e?.extrapolated ?? false;
       }
     }
 
@@ -188,7 +193,7 @@ class _ScoreCard extends StatelessWidget {
                                       'Compared with age- and sex-specific treadmill VO2peak norms.'
                                     else
                                       'Compared with sex-specific race finishers of all ages, not an age percentile.',
-                                    'Values beyond the published range show its nearest boundary.',
+                                    if (extrapolated) 'This is past the published table, so it is estimated from the shape of the data.',
                                     if (time != null) 'Equivalent times are estimates, not guaranteed results.',
                                     'Source: ${score!.source} on ${Fmt.dayDate(score!.date)}.',
                                   ].join('\n\n'),

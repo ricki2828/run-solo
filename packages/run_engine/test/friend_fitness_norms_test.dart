@@ -12,8 +12,11 @@ void main() {
       FriendFitnessNorms.comparison(38.35, 35, female: false),
       'about 45th',
     );
-    expect(FriendFitnessNorms.comparison(12, 85, female: false), 'below 10th');
-    expect(FriendFitnessNorms.comparison(80, 85, female: true), 'above 90th');
+    expect(
+      FriendFitnessNorms.estimate(12, 85, female: false)!.extrapolated,
+      isTrue,
+    );
+    expect(FriendFitnessNorms.comparison(80, 85, female: true), 'about 99th');
     expect(FriendFitnessNorms.comparison(45, 19, female: true), isNull);
     expect(FriendFitnessNorms.comparison(45, 90, female: true), isNull);
   });

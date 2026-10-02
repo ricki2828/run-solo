@@ -1,3 +1,5 @@
+import 'percentile_curve.dart';
+
 /// Context for run-derived VDOT, compared cautiously with measured treadmill
 /// VO2peak in the 2022 FRIEND US registry. Not a clinical VO2 measurement,
 /// race placing, or a percentile of Run Solo's 0-99 display score.
@@ -36,23 +38,26 @@ abstract final class FriendFitnessNorms {
     [49.0, 42.1, 37.8, 32.4, 27.3, 22.8, 20.8],
   ];
 
-  /// Estimate only between tabulated 10th and 90th percentiles. Outside
-  /// the table, return a bound instead of fabricating an exact percentile.
-  static String? comparison(double vdot, int age, {required bool female}) {
+  static final _menCurves = [
+    for (var c = 0; c < 7; c++) PercentileCurve([for (final r in men) r[c]]),
+  ];
+  static final _womenCurves = [
+    for (var c = 0; c < 7; c++) PercentileCurve([for (final r in women) r[c]]),
+  ];
+
+  /// Percentile 1..99 with an extrapolated flag. Inside the published 10th to
+  /// 90th range this is the table, unchanged; outside it is a fitted normal
+  /// tail per age/sex row (see [PercentileCurve]). Null outside ages 20-89.
+  static PercentileEstimate? estimate(
+    double vdot,
+    int age, {
+    required bool female,
+  }) {
     if (!vdot.isFinite || age < 20 || age > 89) return null;
     final decade = (age - 20) ~/ 10;
-    final table = female ? women : men;
-    if (vdot < table.first[decade]) return 'below 10th';
-    if (vdot > table.last[decade]) return 'above 90th';
-    for (var i = 0; i < 8; i++) {
-      final lower = table[i][decade];
-      final upper = table[i + 1][decade];
-      if (vdot <= upper) {
-        final fraction = upper == lower ? 0 : (vdot - lower) / (upper - lower);
-        final rounded = ((10 + i * 10 + fraction * 10) / 5).round() * 5;
-        return 'about ${rounded}th';
-      }
-    }
-    return 'about 90th';
+    return (female ? _womenCurves : _menCurves)[decade].at(vdot);
   }
+
+  static String? comparison(double vdot, int age, {required bool female}) =>
+      estimate(vdot, age, female: female)?.label;
 }
