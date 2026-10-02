@@ -246,6 +246,7 @@ class FakeRecorderGateway implements RecorderGateway {
     _lapStartActiveMs = 0;
     _lapStartDistanceM = 0;
     _totalDistanceM = 0;
+    _routeLatLon.clear();
     _lapIndex = 0;
     _laps.clear();
     _repIndex = 0;
@@ -722,7 +723,39 @@ class FakeRecorderGateway implements RecorderGateway {
   void _emitState() =>
       _emit(StateEvent(state: _state, runId: _runId, phase: _phase));
 
+  /// Scripted live-map points (opt-in so existing tests see no extra
+  /// events): a straight run north from a fixed start, a point every 4 m.
+  bool emitRoute = false;
+  final List<double> _routeLatLon = [];
+
+  void _extendRoute() {
+    if (!emitRoute || _gpsLost || _state != RecorderState.recording) return;
+    final from = _routeLatLon.length ~/ 2;
+    var n = from;
+    while (n * 4 <= _totalDistanceM) {
+      _routeLatLon
+        ..add(-33.8688 + n * 4 / 111320)
+        ..add(151.2093 + math.sin(n / 6) * 0.0002);
+      n++;
+    }
+    if (n > from) {
+      _emit(
+        RoutePointsEvent(
+          fromIndex: from,
+          latLon: _routeLatLon.sublist(from * 2),
+        ),
+      );
+    }
+  }
+
+  @override
+  Future<List<double>> routeSince(int fromIndex) async {
+    final from = (fromIndex * 2).clamp(0, _routeLatLon.length);
+    return _routeLatLon.sublist(from);
+  }
+
   void _emitTick() {
+    _extendRoute();
     final jitter = (_rng.nextDouble() - 0.5) * 6;
     _emit(
       TickEvent(

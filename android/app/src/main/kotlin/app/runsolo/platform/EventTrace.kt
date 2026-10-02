@@ -130,6 +130,8 @@ object EventTrace {
                 m["interrupted"] = e.interrupted
                 m["text"] = e.text
             }
+            // The live map's points are position data: never written to the trace log.
+            is RoutePointsEvent -> return
             is FaultEvent -> {
                 m["kind"] = "fault"
                 m["fault"] = dartName(e.kind)

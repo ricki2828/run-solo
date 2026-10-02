@@ -32,6 +32,7 @@ import app.runsolo.core.live.GoalCoach
 import app.runsolo.core.live.LiveCoach
 import app.runsolo.core.record.CueWords
 import app.runsolo.core.record.LapDispatch
+import app.runsolo.core.record.LiveRoute
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
 import app.runsolo.core.replay.ReplayScenarios
@@ -47,6 +48,7 @@ import app.runsolo.platform.LapSummary
 import app.runsolo.platform.PhaseEvent
 import app.runsolo.platform.RecorderEventBus
 import app.runsolo.platform.RecorderStatus
+import app.runsolo.platform.RoutePointsEvent
 import app.runsolo.platform.StateEvent
 import app.runsolo.platform.TickEvent
 import app.runsolo.platform.toPigeon
@@ -130,6 +132,11 @@ class RecordingSession(
     private var lapStartActive = 0L
     private var lapStartDist = 0.0
     private var lastTickEventWall = 0L
+
+    /** The live map's route (read-only view of the samples; recording never reads it). */
+    private val liveRoute = LiveRoute()
+    private var routeSentCount = 0
+    private var lastRouteEventWall = 0L
     private var lastNotificationRefreshWall = 0L
     private var gpsLostReported = false
 
@@ -427,6 +434,9 @@ class RecordingSession(
             writer.append(JournalLine.CueFired(t, System.currentTimeMillis(), JournalLine.FiredKind.nudge, n.rule, n.index, core.status(t).elapsedMs))
             Log.i(TAG, "nudge ${n.rule}#${n.index}")
         }
+        if (core.state == RecorderState.recording) {
+            for (s in samples) if (s.hasFix) liveRoute.offer(s.lat!!, s.lon!!, s.accuracyM!!)
+        }
         val last = samples.last()
         var pace: Double? = null
         if (last.hasFix) {
@@ -475,6 +485,12 @@ class RecordingSession(
                 ),
             )
         }
+        val routeWall = SystemClock.elapsedRealtime()
+        if (liveRoute.size > routeSentCount && routeWall - lastRouteEventWall >= 900) {
+            lastRouteEventWall = routeWall
+            RecorderEventBus.emit(RoutePointsEvent(fromIndex = routeSentCount.toLong(), latLon = liveRoute.since(routeSentCount)))
+            routeSentCount = liveRoute.size
+        }
         refreshSnapshot()
         if (r != null && !r.running && t >= r.endT) {
             // ReplaySource flips running before delivering the last fix, so this is that fix's tick.
@@ -482,6 +498,10 @@ class RecordingSession(
             onReplayFinished?.invoke()
         }
     }
+
+    /** The live map's catch-up read ([RoutePointsEvent] carries the deltas). */
+    @Synchronized
+    fun routeSince(fromIndex: Int): List<Double> = liveRoute.since(fromIndex)
 
     // ---- controls ----
 

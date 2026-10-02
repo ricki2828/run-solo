@@ -56,6 +56,8 @@ class RecorderApiStub : RecorderApi {
     override fun setKmSplits(enabled: Boolean) = Unit
     override fun discardRun() = false
     override fun muteTips() = Unit
+
+    override fun routeSince(fromIndex: Long): List<Double> = emptyList()
     override fun setVolumeKeyLaps(enabled: Boolean) = Unit
 
     override fun listRunFiles(): Map<String, String> = emptyMap()

@@ -272,6 +272,9 @@ class TraceGateway implements RecorderGateway {
   Future<void> setKmSplits(bool e) => throw UnimplementedError();
   @override
   Future<void> muteTips() => throw UnimplementedError();
+
+  @override
+  Future<List<double>> routeSince(int fromIndex) async => const [];
   @override
   Future<void> setVolumeKeyLaps(bool e) => throw UnimplementedError();
 }
