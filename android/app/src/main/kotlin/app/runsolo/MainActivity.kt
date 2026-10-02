@@ -18,6 +18,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import app.runsolo.platform.BleApi
 import app.runsolo.platform.BleApiImpl
+import app.runsolo.platform.HealthApi
+import app.runsolo.platform.HealthApiImpl
 import app.runsolo.platform.PermissionKind
 import app.runsolo.platform.PermissionStatus
 import app.runsolo.platform.PermissionsApi
@@ -40,6 +42,7 @@ import app.runsolo.record.LapInput
 import app.runsolo.record.LocationSource
 import app.runsolo.record.RecorderService
 import app.runsolo.record.ReplayRunner
+import androidx.health.connect.client.PermissionController
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.LocationSettingsRequest
@@ -51,6 +54,8 @@ import io.flutter.embedding.engine.FlutterEngine
 class MainActivity : FlutterActivity() {
     private lateinit var recorder: RecorderApiImpl
     private val permissionCallbacks = HashMap<Int, (Result<Boolean>) -> Unit>()
+    private val healthContract = PermissionController.createRequestPermissionResultContract()
+    private var healthCallback: ((Set<String>) -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Before super.onCreate (plan §4): shows the Lap Line splash on API 29+ and swaps
@@ -73,6 +78,10 @@ class MainActivity : FlutterActivity() {
         BleApi.setUp(flutterEngine.dartExecutor.binaryMessenger, BleApiImpl(applicationContext))
         PlaceApi.setUp(flutterEngine.dartExecutor.binaryMessenger, PlaceApiImpl(applicationContext))
         PermissionsApi.setUp(flutterEngine.dartExecutor.binaryMessenger, Permissions())
+        HealthApi.setUp(
+            flutterEngine.dartExecutor.binaryMessenger,
+            HealthApiImpl(applicationContext) { perms, cb -> requestHealth(perms, cb) },
+        )
         StorageApi.setUp(flutterEngine.dartExecutor.binaryMessenger, StorageApiImpl(applicationContext))
         RecorderEventsStreamHandler.register(flutterEngine.dartExecutor.binaryMessenger, RecorderEventBus)
         handleFinish(intent)
@@ -303,9 +312,27 @@ class MainActivity : FlutterActivity() {
             }
     }
 
+    /** Health Connect's own permission screen; answers the permissions granted afterwards. */
+    private fun requestHealth(permissions: Set<String>, callback: (Set<String>) -> Unit) {
+        healthCallback?.invoke(emptySet())
+        healthCallback = callback
+        try {
+            startActivityForResult(healthContract.createIntent(this, permissions), REQ_HEALTH)
+        } catch (_: Exception) {
+            healthCallback = null
+            callback(emptySet())
+        }
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_HEALTH) {
+            val cb = healthCallback ?: return
+            healthCallback = null
+            cb(healthContract.parseResult(resultCode, data))
+            return
+        }
         if (requestCode == REQ_LOCATION_SETTINGS) {
             val cb = permissionCallbacks.remove(REQ_LOCATION_SETTINGS) ?: return
             val lm = getSystemService(LOCATION_SERVICE) as LocationManager
@@ -321,5 +348,6 @@ class MainActivity : FlutterActivity() {
         private const val REQ_NOTIFICATIONS = 42
         private const val REQ_BLUETOOTH = 43
         private const val REQ_LOCATION_SETTINGS = 44
+        private const val REQ_HEALTH = 45
     }
 }
