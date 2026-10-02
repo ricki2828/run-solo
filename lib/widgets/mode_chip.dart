@@ -52,6 +52,7 @@ class ModeChipRow extends StatelessWidget {
   /// The picked test, under the TESTS title.
   final String testsLabel;
   final bool auroraList;
+
   /// Smaller Home grid tiles; Start keeps its regular size.
   final bool compactTiles;
 

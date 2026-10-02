@@ -42,6 +42,24 @@ abstract class MapSurfaceFactory {
     required LiveRouteTrack track,
     required Color color,
   });
+
+  /// Home's recent-run card background (non-interactive). Shows a cached
+  /// snapshot of the map with the route drawn on it, or the [RouteShape]
+  /// instantly while that is not available (not yet rendered, no key, no
+  /// GMS, offline, blank snapshot). Never throws, never a blank box and
+  /// never a failure caption.
+  ///
+  /// [routeColor] is the run-type colour the route is drawn in over the map.
+  Widget buildCard(
+    BuildContext context,
+    RouteGeometry route, {
+    required String runId,
+    Color? routeColor,
+  });
+
+  /// Drop cached card images of runs that no longer exist. [liveRunIds] is
+  /// every run id in History; an empty set deletes nothing.
+  Future<void> pruneCards(Set<String> liveRunIds);
 }
 
 /// Test / no-GMS stand-in: draws the route shape on a canvas.
@@ -79,6 +97,21 @@ class FakeMapSurfaceFactory implements MapSurfaceFactory {
           : RouteShape(route: route, key: const ValueKey('fake-live-map'));
     },
   );
+
+  @override
+  Widget buildCard(
+    BuildContext context,
+    RouteGeometry route, {
+    required String runId,
+    Color? routeColor,
+  }) => RouteShape(
+    route: route,
+    color: routeColor,
+    key: const ValueKey('fake-card-map'),
+  );
+
+  @override
+  Future<void> pruneCards(Set<String> liveRunIds) async {}
 }
 
 /// The track as drawable geometry (a start dot, the finish dot is the
@@ -100,9 +133,22 @@ RouteGeometry liveRouteGeometry(List<GeoPoint> points) {
 /// The route drawn on our own canvas: fallback for no key / no GMS / load
 /// failure, and the whole map surface in tests.
 class RouteShape extends StatelessWidget {
-  const RouteShape({super.key, required this.route, this.caption});
+  const RouteShape({
+    super.key,
+    required this.route,
+    this.caption,
+    this.color,
+    this.overlay = false,
+  });
   final RouteGeometry route;
   final String? caption;
+
+  /// Route colour; defaults to the primary ink.
+  final Color? color;
+
+  /// Drawn over a map image: transparent background and a dark casing under
+  /// the route so it stays the brightest thing on the card.
+  final bool overlay;
 
   @override
   Widget build(BuildContext context) {
@@ -112,16 +158,17 @@ class RouteShape extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(Radii.card),
         child: ColoredBox(
-          color: t.bgRaised,
+          color: overlay ? Colors.transparent : t.bgRaised,
           child: Stack(
             fit: StackFit.expand,
             children: [
               CustomPaint(
                 painter: _RoutePainter(
                   route: route,
-                  ink: t.inkPrimary,
+                  ink: color ?? t.inkPrimary,
                   muted: t.inkMuted,
                   ground: t.bgBase,
+                  casing: overlay,
                 ),
               ),
               if (caption != null)
@@ -157,8 +204,10 @@ class _RoutePainter extends CustomPainter {
     required this.ink,
     required this.muted,
     required this.ground,
+    this.casing = false,
   });
   final RouteGeometry route;
+  final bool casing;
   final Color ink;
   final Color muted;
   final Color ground;
@@ -184,6 +233,17 @@ class _RoutePainter extends CustomPainter {
     for (final p in route.points.skip(1)) {
       final o = map(p);
       path.lineTo(o.dx, o.dy);
+    }
+    if (casing) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = ground.withValues(alpha: 0.7)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 8
+          ..strokeJoin = StrokeJoin.round
+          ..strokeCap = StrokeCap.round,
+      );
     }
     canvas.drawPath(
       path,
@@ -235,5 +295,6 @@ class _RoutePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_RoutePainter old) => old.route != route;
+  bool shouldRepaint(_RoutePainter old) =>
+      old.route != route || old.ink != ink || old.casing != casing;
 }
