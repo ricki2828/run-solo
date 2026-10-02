@@ -928,6 +928,8 @@ String phaseTitle(RecordingSnapshot s) {
       return 'LAP ${s.lapIndex + 1}';
     case RecordMode.free:
       return 'FREE RUN';
+    case RecordMode.trail:
+      return 'TRAIL RUN';
     case RecordMode.cooper:
       return switch (s.phase) {
         Phase.warmup => 'WARM-UP',
@@ -1095,7 +1097,7 @@ class _Header extends StatelessWidget {
         _Vitals(
           s: s,
           maxHr: maxHr,
-          showTotal: s.mode != RecordMode.free,
+          showTotal: s.mode != RecordMode.free && s.mode != RecordMode.trail,
           compact: compact,
           secondary: secondary,
         ),

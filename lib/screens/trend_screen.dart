@@ -133,11 +133,10 @@ class _TrendScreenState extends State<TrendScreen> {
                         : 'Two sessions draw the first line.',
                   ),
                   RecordMode.cooper => _CooperTrend(runs: runs),
-                  RecordMode.laps || RecordMode.free => _DistanceTrend(
-                    runs: runs,
-                    units: units,
-                    mode: _type,
-                  ),
+                  // Trail has no pace trend (no pace verdict yet), so the
+                  // selector never offers it; the case only keeps the switch exhaustive.
+                  RecordMode.laps || RecordMode.free || RecordMode.trail =>
+                    _DistanceTrend(runs: runs, units: units, mode: _type),
                 },
                 const SizedBox(height: Space.x24),
                 if (runs.isEmpty)

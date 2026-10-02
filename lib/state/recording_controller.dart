@@ -235,7 +235,7 @@ class RecordingSnapshot {
   /// Free runs have no lap input at all (plan §18.2).
   bool get lapsEnabled => switch (mode) {
     RecordMode.intervals || RecordMode.laps => true,
-    RecordMode.free || RecordMode.cooper => false,
+    RecordMode.free || RecordMode.cooper || RecordMode.trail => false,
   };
   bool get recording => state == RecorderState.recording;
   bool get paused => state == RecorderState.paused;
@@ -568,7 +568,7 @@ class RecordingController extends ChangeNotifier {
       mode: mode,
       spec: switch (mode) {
         RecordMode.intervals || RecordMode.cooper || RecordMode.laps => spec,
-        RecordMode.free => null,
+        RecordMode.free || RecordMode.trail => null,
       },
       hrPaired: _snap.hrPaired,
     );
@@ -819,7 +819,7 @@ class RecordingController extends ChangeNotifier {
     final counts = switch (_snap.mode) {
       RecordMode.intervals => ended == Phase.work,
       RecordMode.laps => true,
-      RecordMode.free || RecordMode.cooper => false,
+      RecordMode.free || RecordMode.cooper || RecordMode.trail => false,
     };
     if (counts && lapDistanceM > 0 && lapMs > 0) {
       paces.add(lapMs / 1000 / (lapDistanceM / 1000));

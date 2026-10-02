@@ -22,7 +22,7 @@ ENUMS = {
     "nextPhase": {"none", "warmup", "work", "recovery", "cooldown"},
     "source": {"button", "notification", "volumeKey", "auto"},
     "cue": {"halfway", "thirtySeconds", "tenSeconds", "phaseEnd", "start", "stop", "distanceToGo", "lastRep", "minuteMark", "countdown", "projection"},
-    "mode": {"intervals", "laps", "free", "cooper"},
+    "mode": {"intervals", "laps", "free", "cooper", "trail"},
     "fault": {"gpsLost", "gpsWeak", "hrDisconnected", "journalWriteFailed", "lowStorage", "osKilledMidRun", "startFailed", "lapIgnored", "volumeKeyUnavailable"},
 }
 # Enums inside status.spec (the Pigeon SessionSpec) and its steps.

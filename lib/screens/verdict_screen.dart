@@ -21,6 +21,7 @@ import 'course_board_screen.dart';
 import 'board_detail_screen.dart';
 import 'bronco_result_screen.dart';
 import 'run_detail_screen.dart';
+import 'trail_suggest_card.dart';
 
 /// Post-run screen (design brief §4.6). A 4x4 gets the verdict with the M4
 /// reveal; a Laps or Free run gets its summary (no verdict word, plan
@@ -146,9 +147,18 @@ class _VerdictScreenState extends State<VerdictScreen> {
               detail: detail,
               justFinished: widget.justFinished,
             ),
-          RecordMode.laps || RecordMode.free => _SummaryScreen(
+          // A Trail run has no pace verdict yet: the same neutral summary
+          // as a Free run (TODO(TrailVerdict): same-trail / grade-adjusted
+          // pace verdict, see engine `TrailVerdict`).
+          RecordMode.laps ||
+          RecordMode.free ||
+          RecordMode.trail => _SummaryScreen(
             detail: detail,
             justFinished: widget.justFinished,
+            // A re-tag (Trail suggestion) reloads the run under its new type.
+            onChanged: () => setState(() {
+              _load = _loadDetail();
+            }),
           ),
         };
       },
@@ -847,9 +857,14 @@ class _GrainPainter extends CustomPainter {
 /// Laps / Free summary after Stop (plan §18.2 post-run column): no verdict
 /// word. Reuses the detail body.
 class _SummaryScreen extends StatelessWidget {
-  const _SummaryScreen({required this.detail, required this.justFinished});
+  const _SummaryScreen({
+    required this.detail,
+    required this.justFinished,
+    required this.onChanged,
+  });
   final RunDetail detail;
   final bool justFinished;
+  final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -861,9 +876,12 @@ class _SummaryScreen extends StatelessWidget {
         'FARTLEK',
       RecordMode.laps => 'LAPS RUN',
       RecordMode.free => 'FREE RUN',
+      RecordMode.trail => 'TRAIL RUN',
       RecordMode.cooper => '12-MINUTE TEST',
       RecordMode.intervals => 'INTERVALS',
     };
+    final suggestTrail =
+        justFinished && trailSuggested(detail.run, detail.summary.mode);
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
@@ -873,6 +891,19 @@ class _SummaryScreen extends StatelessWidget {
         child: Column(
           children: [
             Expanded(child: RunDetailBody(detail: detail, showHeader: true)),
+            if (suggestTrail)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  Space.screenGutter,
+                  Space.x8,
+                  Space.screenGutter,
+                  0,
+                ),
+                child: TrailSuggestCard(
+                  runId: detail.run.id,
+                  onSaved: onChanged,
+                ),
+              ),
             // A10.3: the run's board chips above Done.
             Padding(
               padding: const EdgeInsets.fromLTRB(

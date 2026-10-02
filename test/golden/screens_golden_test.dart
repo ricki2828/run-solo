@@ -708,6 +708,67 @@ void main() {
     await golden(tester, 'start_tests_mode');
   });
 
+  testWidgets('start: TRAIL run type picked, first-run instructions', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360 * 3, 640 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await pumpApp(
+      tester,
+      fakeServices(
+        settings: const AppSettings(
+          onboardingDone: true,
+          lastMode: RecordMode.trail,
+        ),
+      ),
+      pushRoute: Routes.start,
+    );
+    await pumpTimes(tester, 4);
+    expect(find.text('Hills, dirt, climbs'), findsOneWidget);
+    await golden(tester, 'start_trail_360x640');
+  });
+
+  testWidgets('recent activity: a Trail run card at 360 wide', (tester) async {
+    tester.view.physicalSize = const Size(360 * 3, 400 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final runs = [
+      RunSummary(
+        id: 'trail',
+        mode: RecordMode.trail,
+        start: DateTime(2026, 9, 24, 6).toUtc(),
+        durationMs: 72 * 60 * 1000,
+        distanceM: 8400,
+        laps: 0,
+        place: 'Mount Macedon',
+        street: 'Sanctuary Rd',
+        row: const IndexRow(
+          lapCount: 0,
+          place: 'Mount Macedon',
+          street: 'Sanctuary Rd',
+        ),
+      ),
+    ];
+    await pumpApp(
+      tester,
+      fakeServices(runs: runs),
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: RecentActivity(runs: runs, units: Units.km, now: now()),
+        ),
+      ),
+    );
+    await pumpTimes(tester, 6);
+    expect(
+      find.textContaining('Trail run', findRichText: true),
+      findsOneWidget,
+    );
+    await golden(tester, 'recent_activity_trail_360');
+  });
+
   testWidgets('run detail: map failed to load, no Play services', (
     tester,
   ) async {

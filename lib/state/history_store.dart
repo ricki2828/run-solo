@@ -36,6 +36,7 @@ RecordMode recordModeOf(engine.RunMode m) => switch (m) {
   engine.RunMode.laps => RecordMode.laps,
   engine.RunMode.free => RecordMode.free,
   engine.RunMode.cooper => RecordMode.cooper,
+  engine.RunMode.trail => RecordMode.trail,
 };
 
 engine.RunMode runModeOf(RecordMode m) => switch (m) {
@@ -43,13 +44,15 @@ engine.RunMode runModeOf(RecordMode m) => switch (m) {
   RecordMode.laps => engine.RunMode.laps,
   RecordMode.free => engine.RunMode.free,
   RecordMode.cooper => engine.RunMode.cooper,
+  RecordMode.trail => engine.RunMode.trail,
 };
 
-/// Short label per run type ("4x4", "LAPS", "FREE", "TEST").
+/// Short label per run type ("4x4", "LAPS", "FREE", "TRAIL", "TEST").
 String modeLabel(RecordMode m) => switch (m) {
   RecordMode.intervals => 'INT',
   RecordMode.laps => 'LAPS',
   RecordMode.free => 'FREE',
+  RecordMode.trail => 'TRAIL',
   RecordMode.cooper => 'TEST',
 };
 
@@ -57,6 +60,7 @@ String modeTitle(RecordMode m) => switch (m) {
   RecordMode.intervals => 'Intervals',
   RecordMode.laps => 'Laps run',
   RecordMode.free => 'Free run',
+  RecordMode.trail => 'Trail run',
   RecordMode.cooper => '12-minute test',
 };
 

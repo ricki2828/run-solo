@@ -309,7 +309,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
             _ when s.goalRun => s.goalSpec(kEventNames.parkrun)!.toPigeon(),
             RecordMode.intervals => services.pickedSession.toPigeon(),
             RecordMode.cooper => engine.SessionSpec.cooper.toPigeon(),
-            RecordMode.laps || RecordMode.free => null,
+            RecordMode.laps || RecordMode.free || RecordMode.trail => null,
           };
       // LC1: the live compare's history, 150 ms or none; off until LV2.
       // PD2 (#84 review P1): the target raced is the one shown, so a tap
@@ -590,6 +590,21 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                         '12 minutes.',
                     'Walk to cool down - your VO2 estimate comes from the '
                         '12-minute distance.',
+                  ],
+                );
+        case RecordMode.trail:
+          final has = runs.any((r) => r.mode == RecordMode.trail);
+          spec = has
+              ? null
+              : (
+                  'FIRST TRAIL RUN',
+                  AuroraRunType.trail,
+                  const [
+                    'Tap START and go. Walking the climbs is fine.',
+                    'Auto-pause waits for 10 seconds of standing still, so '
+                        'a slow hike never pauses it.',
+                    'Hold STOP when you are done. There is no pace verdict '
+                        'for trail runs yet.',
                   ],
                 );
         case RecordMode.free:
@@ -955,6 +970,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                       RecordMode.intervals => 'START WARM-UP',
                       RecordMode.laps => 'START LAPS RUN',
                       RecordMode.free => 'START FREE RUN',
+                      RecordMode.trail => 'START TRAIL RUN',
                       RecordMode.cooper =>
                         _pickedTest == 'bronco' ? 'START BRONCO' : 'START TEST',
                     }),
