@@ -41,7 +41,7 @@ print(ios[-1][1]["udid"] if ios else "")')
   echo "sim=$SIM_NAME"
 } > "$LOGS/versions.txt"
 
-G="./gradlew --no-daemon --continue -Pk0.simDevice=$SIM_NAME"
+G="./gradlew --no-daemon --continue '-Pk0.simDevice=$SIM_NAME'"
 fail=0
 phase port python3 kmp-core/port.py || fail=1
 phase test bash -c "cd kmp-core && $G jvmTest macosArm64Test iosSimulatorArm64Test" || fail=1
