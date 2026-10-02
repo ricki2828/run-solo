@@ -95,6 +95,8 @@ class AppSettings {
     this.sessionId = engine.SessionSpec.norwegian4x4Id,
     this.presetEdits = const {},
     this.pbSeen = const {},
+    this.autoSend = const {},
+    this.autoSendSince = const {},
   });
 
   final Units units;
@@ -251,6 +253,30 @@ class AppSettings {
   /// index field.
   final Map<String, String> pbSeen;
 
+  /// Settings → Send runs to: ids of the export targets switched on for
+  /// automatic sending after each run. All off by default; a run is sent
+  /// only to services the runner switched on (or by the Send button).
+  final Set<String> autoSend;
+
+  /// When each [autoSend] target was switched on. Only runs that finished
+  /// after it are sent automatically; older runs go only via the Send
+  /// button. A target with no entry sends nothing automatically.
+  final Map<String, DateTime> autoSendSince;
+
+  /// Switch [id] on (at [now]) or off.
+  AppSettings withAutoSend(String id, bool on, DateTime now) => copyWith(
+    autoSend: {
+      for (final x in autoSend)
+        if (x != id) x,
+      if (on) id,
+    },
+    autoSendSince: {
+      for (final e in autoSendSince.entries)
+        if (e.key != id) e.key: e.value,
+      if (on) id: now.toUtc(),
+    },
+  );
+
   /// Every preset's edits, the 4x4 included.
   Map<String, PresetEdit> get allPresetEdits => {
     ...presetEdits,
@@ -332,6 +358,8 @@ class AppSettings {
     String? sessionId,
     Map<String, PresetEdit>? presetEdits,
     Map<String, String>? pbSeen,
+    Set<String>? autoSend,
+    Map<String, DateTime>? autoSendSince,
   }) => AppSettings(
     units: units ?? this.units,
     reps: reps ?? this.reps,
@@ -370,6 +398,8 @@ class AppSettings {
     sessionId: sessionId ?? this.sessionId,
     presetEdits: presetEdits ?? this.presetEdits,
     pbSeen: pbSeen ?? this.pbSeen,
+    autoSend: autoSend ?? this.autoSend,
+    autoSendSince: autoSendSince ?? this.autoSendSince,
   );
 
   Map<String, Object?> toJson() => {
@@ -406,6 +436,12 @@ class AppSettings {
       for (final e in presetEdits.entries) e.key: e.value.toJson(),
     },
     'pbSeen': pbSeen,
+    if (autoSend.isNotEmpty) 'autoSend': autoSend.toList()..sort(),
+    if (autoSendSince.isNotEmpty)
+      'autoSendSince': {
+        for (final e in autoSendSince.entries)
+          e.key: e.value.toUtc().toIso8601String(),
+      },
   };
 
   /// Lenient: unknown or malformed keys fall back to defaults, never throw.
@@ -486,6 +522,20 @@ class AppSettings {
       sessionId: pick('sessionId', d.sessionId),
       presetEdits: _edits(j['presetEdits']),
       pbSeen: _seen(j['pbSeen']),
+      autoSend: j['autoSend'] is List
+          ? {
+              for (final v in j['autoSend'] as List)
+                if (v is String) v,
+            }
+          : const {},
+      autoSendSince: j['autoSendSince'] is Map
+          ? {
+              for (final e in (j['autoSendSince'] as Map).entries)
+                if (e.key is String && e.value is String)
+                  if (DateTime.tryParse(e.value as String) case final t?)
+                    e.key as String: t.toUtc(),
+            }
+          : const {},
     );
   }
 }

@@ -21,6 +21,7 @@ import 'package:run_solo/widgets/rep_bars.dart';
 import 'package:run_solo/screens/home_screen.dart';
 import 'package:run_solo/screens/permissions_screen.dart';
 import 'package:run_solo/screens/run_detail_screen.dart';
+import 'package:run_solo/screens/send_sheet.dart';
 import 'package:run_solo/screens/settings_screen.dart';
 import 'package:run_solo/screens/shell_screen.dart';
 import 'package:run_solo/screens/trend_screen.dart';
@@ -839,6 +840,37 @@ void main() {
     );
     await pumpTimes(tester, 4);
     await golden(tester, 'settings');
+  });
+
+  testWidgets('settings: Send runs to section', (tester) async {
+    await pumpApp(
+      tester,
+      fakeServices(settings: const AppSettings(onboardingDone: true)),
+      home: SettingsScreen(now: now),
+    );
+    await pumpTimes(tester, 4);
+    await scrollTo(tester, find.text('SEND RUNS TO'));
+    await Scrollable.ensureVisible(
+      tester.element(find.text('SEND RUNS TO')),
+      alignment: 0.05,
+    );
+    await pumpTimes(tester, 2);
+    await golden(tester, 'settings_send_runs');
+  });
+
+  testWidgets('run detail: Send sheet', (tester) async {
+    final r = fourByFourFile(n: 1, start: d1);
+    await pumpApp(
+      tester,
+      fakeServices(files: [r]),
+      home: RunDetailScreen(runId: r.id),
+    );
+    await pumpTimes(tester, 6);
+    await scrollTo(tester, find.text('Send'));
+    await tester.tap(find.text('Send'));
+    await settleAnimations(tester);
+    expect(find.byType(SendSheet), findsOneWidget);
+    await golden(tester, 'send_sheet');
   });
 
   testWidgets('start: three run types', (tester) async {

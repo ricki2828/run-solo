@@ -54,14 +54,14 @@ class TcxExporter {
               'Activity',
               nest: () {
                 builder.attribute('Sport', 'Running');
-                builder.element('Id', nest: _iso(run.start));
+                builder.element('Id', nest: isoUtc(run.start));
                 for (final lap in lapSpans) {
                   builder.element(
                     'Lap',
                     nest: () {
                       builder.attribute(
                         'StartTime',
-                        _iso(run.start.add(Duration(milliseconds: lap.t0Ms))),
+                        isoUtc(run.start.add(Duration(milliseconds: lap.t0Ms))),
                       );
                       builder.element(
                         'TotalTimeSeconds',
@@ -92,7 +92,7 @@ class TcxExporter {
                               nest: () {
                                 builder.element(
                                   'Time',
-                                  nest: _iso(
+                                  nest: isoUtc(
                                     run.start.add(
                                       Duration(milliseconds: s.tMs),
                                     ),
@@ -160,7 +160,8 @@ class TcxExporter {
     return builder.buildDocument().toXmlString(pretty: true, indent: ' ');
   }
 
-  static String _iso(DateTime t) {
+  /// UTC ISO-8601 with milliseconds, shared with the GPX exporter.
+  static String isoUtc(DateTime t) {
     final u = t.toUtc();
     String two(int v) => v.toString().padLeft(2, '0');
     final ms = u.millisecond.toString().padLeft(3, '0');

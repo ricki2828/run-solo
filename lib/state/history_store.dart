@@ -423,6 +423,18 @@ abstract class RunStore implements HistoryStore {
 
   /// Count a place lookup that found no name (the app stops after three).
   Future<void> addPlaceTry(String id);
+
+  /// Send runs: log one attempt to [targetId] in the run's sidecar and
+  /// return the sidecar now on disk (null when the run is gone). Display and
+  /// retry bookkeeping only: no verdict is touched.
+  Future<engine.RunSidecar?> recordSend(
+    String id,
+    String targetId, {
+    required bool ok,
+    required DateTime at,
+    String? error,
+    bool auto = true,
+  });
 }
 
 /// K1: [info] with one field changed, keeping the other.
@@ -822,6 +834,25 @@ class MemoryRunStore implements RunStore {
   Future<void> addPlaceTry(String id) async {
     final s = sidecars[id] ?? engine.RunSidecar(runId: id);
     sidecars[id] = s.copyWith(placeTries: s.placeTries + 1);
+  }
+
+  @override
+  Future<engine.RunSidecar?> recordSend(
+    String id,
+    String targetId, {
+    required bool ok,
+    required DateTime at,
+    String? error,
+    bool auto = true,
+  }) async {
+    final s = sidecars[id] ?? engine.RunSidecar(runId: id);
+    return sidecars[id] = s.withSend(
+      targetId,
+      ok: ok,
+      at: at,
+      error: error,
+      auto: auto,
+    );
   }
 
   @override
@@ -1539,6 +1570,26 @@ class FileRunStore implements RunStore {
     id,
     (current) => current.copyWith(placeTries: current.placeTries + 1),
   );
+
+  @override
+  Future<engine.RunSidecar?> recordSend(
+    String id,
+    String targetId, {
+    required bool ok,
+    required DateTime at,
+    String? error,
+    bool auto = true,
+  }) async {
+    final file = await _fileFor(id);
+    if (file == null) return null;
+    return sidecars.update(
+      id,
+      _sidecarFor(file),
+      (current) =>
+          current.withSend(targetId, ok: ok, at: at, error: error, auto: auto),
+      runFile: file,
+    );
+  }
 
   /// A display-only sidecar change: through the writer, never recreating a
   /// deleted run's sidecar, and no re-analysis (it feeds no verdict).

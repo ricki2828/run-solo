@@ -22,6 +22,8 @@ dependencies:
   # share sheet writes RunBundle JSON files, SAF picks them back. No network.
   share_plus: ^11.0.0
   file_selector: ^1.0.3
+  # Send runs: "Open Strava upload page" opens the browser (no other network use).
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:

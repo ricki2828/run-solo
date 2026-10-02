@@ -9,10 +9,19 @@ import 'dart:io';
 
 import 'package:file_selector/file_selector.dart' as fs;
 import 'package:share_plus/share_plus.dart' as sp;
+import 'package:url_launcher/url_launcher.dart' as ul;
 
 abstract class TransferGateway {
   /// Offer [paths] (local files) through the system share sheet.
-  Future<void> shareFiles(List<String> paths, {String? subject});
+  /// [mimeType] defaults to the Run Supreme bundle's `application/json`.
+  Future<void> shareFiles(
+    List<String> paths, {
+    String? subject,
+    String mimeType = 'application/json',
+  });
+
+  /// Open [url] in the phone's browser. False when nothing could open it.
+  Future<bool> openUrl(Uri url);
 
   /// Let the user pick one or more documents; returns their contents.
   /// Empty when cancelled.
@@ -29,16 +38,22 @@ class ShareSheetTransferGateway implements TransferGateway {
   const ShareSheetTransferGateway();
 
   @override
-  Future<void> shareFiles(List<String> paths, {String? subject}) async {
+  Future<void> shareFiles(
+    List<String> paths, {
+    String? subject,
+    String mimeType = 'application/json',
+  }) async {
     await sp.SharePlus.instance.share(
       sp.ShareParams(
-        files: [
-          for (final p in paths) sp.XFile(p, mimeType: 'application/json'),
-        ],
+        files: [for (final p in paths) sp.XFile(p, mimeType: mimeType)],
         subject: subject,
       ),
     );
   }
+
+  @override
+  Future<bool> openUrl(Uri url) =>
+      ul.launchUrl(url, mode: ul.LaunchMode.externalApplication);
 
   @override
   Future<List<PickedFile>> pickFiles() async {
@@ -76,13 +91,34 @@ class FakeTransferGateway implements TransferGateway {
     return c.future;
   }
 
+  /// Mime type of each [shareFiles] call, parallel to [shared].
+  final List<String> sharedMimeTypes = [];
+
+  /// URLs handed to the browser, in order.
+  final List<Uri> opened = [];
+
+  /// Make the next [shareFiles] throw (the share sheet could not open).
+  bool failShare = false;
+
   @override
-  Future<void> shareFiles(List<String> paths, {String? subject}) async {
+  Future<bool> openUrl(Uri url) async {
+    opened.add(url);
+    return true;
+  }
+
+  @override
+  Future<void> shareFiles(
+    List<String> paths, {
+    String? subject,
+    String mimeType = 'application/json',
+  }) async {
+    if (failShare) throw StateError('share sheet unavailable');
     // Read now: callers may delete the temp files after sharing.
     for (final p in paths) {
       if (!await File(p).exists()) throw StateError('shared file missing: $p');
     }
     shared.add(List.of(paths));
+    sharedMimeTypes.add(mimeType);
     for (final c in _waiting) {
       c.complete(List.of(paths));
     }
