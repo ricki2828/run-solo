@@ -142,6 +142,7 @@ class _LaneAnalysis extends StatelessWidget {
     final String contextLine;
     var needsProfile = false;
     String? estimate;
+    var extrapolated = false;
     if (s == null) {
       contextLine = switch (lane) {
         engine.IdentityLane.aerobic => 'Your first qualifying session sets it.',
@@ -165,21 +166,25 @@ class _LaneAnalysis extends StatelessWidget {
       final female = profileSex == ProfileSex.female;
       if (lane == engine.IdentityLane.aerobic ||
           lane == engine.IdentityLane.speed) {
-        estimate = engine.FriendFitnessNorms.comparison(
+        final e = engine.FriendFitnessNorms.estimate(
           s.vdot,
           age,
           female: female,
         );
+        estimate = e?.label;
+        extrapolated = e?.extrapolated ?? false;
         contextLine =
             'Estimate, compared with US ${female ? 'women' : 'men'} '
             '${age ~/ 10 * 10} to ${age ~/ 10 * 10 + 9} tested on a lab treadmill.';
       } else {
-        estimate = engine.RacePercentileNorms.comparison(
+        final e = engine.RacePercentileNorms.estimate(
           s.vdot,
           lane,
           s.source,
           female: female,
         );
+        estimate = e?.label;
+        extrapolated = e?.extrapolated ?? false;
         final distance = engine.RacePercentileNorms.referenceDistance(
           lane,
           s.source,
@@ -229,14 +234,12 @@ class _LaneAnalysis extends StatelessWidget {
               '$timeLabel $time',
               style: RunSoloType.body15.copyWith(color: t.inkPrimary),
             ),
-          if (estimate?.startsWith('above') ?? false)
+          if (extrapolated && estimate != null)
             Text(
-              'The table stops at 90, so you could be higher.',
-              style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-            ),
-          if (estimate?.startsWith('below') ?? false)
-            Text(
-              'The table stops at 10, so you could be lower.',
+              '${(int.tryParse(number ?? '') ?? 50) > 50 ? 'Above' : 'Below'} '
+              'the published table, so this is an estimate from the shape of '
+              'the data.',
+              key: ValueKey('analysis-${lane.name}-extrapolated'),
               style: RunSoloType.label13.copyWith(color: t.inkSecondary),
             ),
           if (needsProfile)

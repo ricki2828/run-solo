@@ -3,10 +3,11 @@ import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/app/identity_display.dart';
 
 void main() {
-  test('percentile display is a number, including published bounds', () {
+  test('percentile display is a number, including extrapolated ones', () {
     expect(IdentityDisplay.percentileNumber('about 45th'), '45');
-    expect(IdentityDisplay.percentileNumber('above 90th'), '90');
-    expect(IdentityDisplay.percentileNumber('below 10th'), '10');
+    expect(IdentityDisplay.percentileNumber('about 96th'), '96');
+    expect(IdentityDisplay.percentileNumber('about 1st'), '1');
+    expect(IdentityDisplay.percentileNumber('about 3rd'), '3');
     expect(IdentityDisplay.percentileNumber(null), isNull);
   });
 

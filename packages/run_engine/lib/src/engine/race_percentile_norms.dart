@@ -1,13 +1,16 @@
+import 'dart:math' as math;
+
 import 'fitness_hero.dart';
 import 'identity_scores.dart';
+import 'percentile_curve.dart';
 
 /// Recreational race finisher reference, NOT all people of the same age.
 /// RunRepeat's published finish-time tables (updated 2024):
 /// https://runrepeat.com/how-do-you-masure-up-the-runners-percentile-calculator
 /// Table rows are fastest 10%, 20%, ... 90%. These tables do not stratify age.
 /// MID/LONG use VDOT to estimate an equivalent race time, so a training run
-/// is not misrepresented as an actual race placing. Bound rather than invent
-/// percentiles beyond the tabulated range.
+/// is not misrepresented as an actual race placing. Past the tabulated range
+/// a log-normal tail is fitted (see [PercentileCurve]) and flagged extrapolated.
 abstract final class RacePercentileNorms {
   static const source = 'RunRepeat recreational race finishers';
   static const _female5k = [
@@ -107,8 +110,15 @@ abstract final class RacePercentileNorms {
     return (low + high) / 2;
   }
 
+  static PercentileCurve _curve(List<int> seconds) =>
+      PercentileCurve([for (final s in seconds.reversed) -math.log(s)]);
+
+  static final _curves = <List<int>, PercentileCurve>{};
+
   /// Null for lanes whose evidence cannot be compared with these race tables.
-  static String? comparison(
+  /// Percentile 1..99; [PercentileEstimate.extrapolated] marks values beyond
+  /// the published 10th to 90th range.
+  static PercentileEstimate? estimate(
     double vdot,
     IdentityLane lane,
     String evidence, {
@@ -129,17 +139,17 @@ abstract final class RacePercentileNorms {
               : (female ? _female5k : _male5k));
     final seconds = equivalentSeconds(vdot, metres);
     if (seconds == null) return null;
-    if (seconds < table.first) return 'above 90th';
-    if (seconds > table.last) return 'below 10th';
-    for (var i = 0; i < table.length - 1; i++) {
-      if (seconds <= table[i + 1]) {
-        final fraction = (seconds - table[i]) / (table[i + 1] - table[i]);
-        final mark = ((90 - i * 10 - fraction * 10) / 5).round() * 5;
-        return 'about ${mark}th';
-      }
-    }
-    return 'about 10th';
+    return _curves
+        .putIfAbsent(table, () => _curve(table))
+        .at(-math.log(seconds));
   }
+
+  static String? comparison(
+    double vdot,
+    IdentityLane lane,
+    String evidence, {
+    required bool female,
+  }) => estimate(vdot, lane, evidence, female: female)?.label;
 
   static String referenceDistance(IdentityLane lane, String evidence) =>
       lane == IdentityLane.mid

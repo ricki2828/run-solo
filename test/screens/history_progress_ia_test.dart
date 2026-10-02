@@ -11,7 +11,8 @@ import '../helpers.dart';
 import '../run_fixtures.dart';
 
 class _EarnedLive extends LiveContextSource {
-  _EarnedLive() : super.prepared(const []);
+  _EarnedLive({this.vdot = 38}) : super.prepared(const []);
+  final double vdot;
 
   @override
   Map<engine.IdentityLane, engine.IdentityScore> identityScores() => {
@@ -19,7 +20,7 @@ class _EarnedLive extends LiveContextSource {
       lane: engine.IdentityScore(
         lane: lane,
         score: 62,
-        vdot: 38,
+        vdot: vdot,
         runId: lane.name,
         date: testNow,
         source: lane == engine.IdentityLane.mid ? '5K' : '4x4',
@@ -105,4 +106,45 @@ void main() {
     expect(find.textContaining('Estimate, compared with US men'), findsWidgets);
     expect(find.textContaining('VDOT'), findsNothing);
   });
+
+  for (final (vdot, number, line) in [
+    (
+      56.0,
+      '95',
+      'Above the published table, so this is an estimate from the shape of the data.',
+    ),
+    (
+      17.0,
+      '4',
+      'Below the published table, so this is an estimate from the shape of the data.',
+    ),
+  ]) {
+    testWidgets('Progress: vdot $vdot is a flagged $number percentile', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        fakeServices(
+          settings: const AppSettings(
+            onboardingDone: true,
+            birthYear: 1982,
+            profileSex: ProfileSex.male,
+          ),
+          live: _EarnedLive(vdot: vdot),
+        ),
+        home: const ProgressScreen(),
+      );
+      await pumpTimes(tester, 6);
+      final card = find.byKey(const ValueKey('analysis-aerobic'));
+      expect(
+        find.descendant(of: card, matching: find.text('$number percentile')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: card, matching: find.text(line)),
+        findsOneWidget,
+      );
+      expect(find.textContaining('table stops'), findsNothing);
+    });
+  }
 }
