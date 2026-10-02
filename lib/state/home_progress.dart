@@ -14,8 +14,9 @@ abstract final class ScoreNorms {
   static bool isLab(engine.IdentityLane lane) =>
       lane == engine.IdentityLane.aerobic || lane == engine.IdentityLane.speed;
 
-  /// The comparison text for [vdot], or null when the profile is not enough.
-  static String? comparison(
+  /// The engine's percentile for [vdot], or null when the profile is not
+  /// enough. Rendered as returned, never clamped.
+  static engine.PercentileEstimate? estimate(
     engine.IdentityLane lane,
     double vdot,
     String source, {
@@ -27,9 +28,9 @@ abstract final class ScoreNorms {
     if (isLab(lane)) {
       return age == null
           ? null
-          : engine.FriendFitnessNorms.comparison(vdot, age, female: female);
+          : engine.FriendFitnessNorms.estimate(vdot, age, female: female);
     }
-    return engine.RacePercentileNorms.comparison(
+    return engine.RacePercentileNorms.estimate(
       vdot,
       lane,
       source,
@@ -43,11 +44,7 @@ abstract final class ScoreNorms {
     String source, {
     required ProfileSex sex,
     required int? age,
-  }) {
-    final c = comparison(lane, vdot, source, sex: sex, age: age);
-    final m = c == null ? null : RegExp(r'\d+').firstMatch(c);
-    return m == null ? null : int.parse(m.group(0)!);
-  }
+  }) => estimate(lane, vdot, source, sex: sex, age: age)?.percentile;
 
   /// Percentile points gained since six weeks ago; null when either side
   /// has no percentile.

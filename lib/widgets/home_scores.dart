@@ -153,16 +153,14 @@ class _EarnedScore extends StatelessWidget {
     final sexKnown =
         profileSex == ProfileSex.male || profileSex == ProfileSex.female;
     final female = profileSex == ProfileSex.female;
-    final comparison = ScoreNorms.comparison(
+    final percentile = ScoreNorms.percentile(
       score.lane,
       score.vdot,
       score.source,
       sex: profileSex,
       age: age,
     );
-    final label = comparison == null
-        ? '--'
-        : RegExp(r'\d+').firstMatch(comparison)!.group(0)!;
+    final label = percentile?.toString() ?? '--';
     // A card that names what to add opens Settings, not Progress.
     final needsProfile = !sexKnown || (lab && age == null);
     final cohort = !sexKnown
@@ -184,7 +182,7 @@ class _EarnedScore extends StatelessWidget {
     return Semantics(
       button: true,
       label:
-          '${score.lane.name}, ${comparison ?? 'percentile unavailable'}, ${changeText == null ? '' : '$changeText, '}$cohort, estimate. ${needsProfile ? 'Open settings.' : 'Open Progress.'}',
+          '${score.lane.name}, ${percentile == null ? 'percentile unavailable' : '$percentile percentile'}, ${changeText == null ? '' : '$changeText, '}$cohort. ${needsProfile ? 'Open settings.' : 'Open Progress.'}',
       child: InkWell(
         key: ValueKey('home-score-${score.lane.name}'),
         onTap: needsProfile

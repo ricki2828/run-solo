@@ -45,6 +45,12 @@ void main() {
     expect(find.text('percentile'), findsNWidgets(4));
     await tester.tap(find.byKey(const ValueKey('home-score-aerobic')));
     expect(opened, isTrue);
+    final spoken = tester
+        .getSemantics(find.byKey(const ValueKey('home-score-aerobic')))
+        .label;
+    expect(spoken, contains('percentile'));
+    expect(spoken, isNot(contains('about')));
+    expect(spoken, isNot(contains('estimate')));
     expect(tester.takeException(), isNull);
   });
 
