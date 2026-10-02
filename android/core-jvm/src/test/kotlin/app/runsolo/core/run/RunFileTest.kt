@@ -153,6 +153,18 @@ class RunFileTest {
     }
 
     @Test
+    fun `a trail run is written with mode trail and no session`() {
+        val fixes = TraceFixture.straightLine(listOf(5 to 1.5), startT = t0)
+        val lines = ArrayList<JournalLine>()
+        lines.add(header.copy(mode = RunMode.trail, session = null))
+        for (f in fixes) lines.add(JournalLine.Sample(f.t, w0 + (f.t - t0), f.lat, f.lon, f.altM, f.accuracyM, f.speedMps, null))
+        val f = RunFile.fromReplay(JournalReplay.read(lines.joinToString("") { JournalCodec.encode(it) + "\n" }.toByteArray()), w0 + 5000)
+        val json = RunFile.readJson(f.toGzipBytes())
+        assertEquals("trail", json["mode"])
+        assertEquals(null, json["session"])
+    }
+
+    @Test
     fun `no-fix ticks keep time and HR and repeat the distance`() {
         val fixes = TraceFixture.straightLine(listOf(3 to 3.0), startT = t0)
         val lines = ArrayList<JournalLine>()

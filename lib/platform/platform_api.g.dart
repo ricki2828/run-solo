@@ -109,11 +109,14 @@ int _deepHash(Object? value) {
 ///   MediaSession; `lap()` is a no-op (`FaultKind.lapIgnored` in debug builds).
 /// - `cooper`: the 12-minute test with the Cooper spec: no LAP, `startReps`
 ///   starts the 12:00, projection cues. Not offered in the UI yet.
+/// - `trail`: a `free` run on hills and dirt: no LAP, no session, and its own
+///   trail-tuned auto-pause profile (`MovingDetector.forTrailAutoPause`).
 enum RecordMode {
   intervals,
   laps,
   free,
   cooper,
+  trail,
 }
 
 enum Units {

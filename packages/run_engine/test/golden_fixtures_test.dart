@@ -48,6 +48,7 @@ void main() {
 
       switch (f.run.mode) {
         case RunMode.free:
+        case RunMode.trail:
         case RunMode.cooper:
           test('free run has a summary and no verdict', () {
             expect(analysis.verdict, isNull);

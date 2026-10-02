@@ -9,30 +9,31 @@ package app.runsolo.core.model
  * Run type picked at Start (plan §18.2, Phase 3 §3.8). `intervals` follows a [SessionSpec]
  * (schema ≤ 2 `fourByFour` maps here); `laps` is the lap-capable by-feel run (schema-1 `free`
  * maps here, §18.7 B1), optionally a fartlek; `free` has no lap input at all; `cooper` runs
- * the Cooper spec (no LAP input; `startReps` starts the test).
+ * the Cooper spec (no LAP input; `startReps` starts the test); `trail` is a Free run on hills and
+ * dirt (no LAP input, no session) with its own trail-tuned auto-pause profile.
  */
 enum class RunMode {
-    intervals, laps, free, cooper;
+    intervals, laps, free, cooper, trail;
 
     /** Whether LAP presses (button, notification, volume key) are accepted at all. Exhaustive: a new mode must decide. */
     val lapInput: Boolean
         get() = when (this) {
             intervals, laps -> true
-            free, cooper -> false
+            free, cooper, trail -> false
         }
 
     /** Volume-key laps default (W8): on only for the by-feel Laps run. */
     val volumeKeyLapsDefault: Boolean
         get() = when (this) {
             laps -> true
-            intervals, free, cooper -> false
+            intervals, free, cooper, trail -> false
         }
 
     /** Whether the run's phases follow its session's steps (Cooper: warm-up, the 12:00 work step, cool-down). */
     val followsSteps: Boolean
         get() = when (this) {
             intervals, cooper -> true
-            laps, free -> false
+            laps, free, trail -> false
         }
 
     companion object {

@@ -64,8 +64,8 @@ class JournalCodecTest {
     }
 
     @Test
-    fun `header without a session (laps, free), cooper and fartlek sessions`() {
-        for (m in listOf(RunMode.laps, RunMode.free)) {
+    fun `header without a session (laps, free, trail), cooper and fartlek sessions`() {
+        for (m in listOf(RunMode.laps, RunMode.free, RunMode.trail)) {
             val h = header.copy(mode = m, session = null)
             assertEquals(h, JournalCodec.decode(JournalCodec.encode(h)))
         }
