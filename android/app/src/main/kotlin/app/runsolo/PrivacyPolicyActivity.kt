@@ -20,6 +20,6 @@ class PrivacyPolicyActivity : Activity() {
     }
 
     companion object {
-        const val PRIVACY_URL = "https://runsolo.app/privacy"
+        const val PRIVACY_URL = "https://runsolo.app/privacy/"
     }
 }

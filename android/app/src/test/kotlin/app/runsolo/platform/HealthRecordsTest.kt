@@ -96,6 +96,23 @@ class HealthRecordsTest {
     }
 
     @Test
+    fun `a re-send with fewer heart-rate chunks deletes the stale tail ids`() {
+        val three = (0 until HealthRecords.HR_CHUNK * 2 + 1).map { HealthHrSample(t0 + it * 10L, 140) }
+        val big = workout(hr = three)
+        assertEquals(3, HealthRecords.heartRateChunks(big))
+        assertEquals(3, HealthRecords.toRecords(big, true).count { it is HeartRateRecord })
+        assertEquals(HealthRecords.HR_MAX_CHUNKS - 3, HealthRecords.staleHeartRateIds(big).size)
+        val small = workout(hr = three.take(10))
+        val stale = HealthRecords.staleHeartRateIds(small)
+        // Chunk 0 is rewritten in place; chunks 1..63 (which the longer write used) are deleted.
+        assertEquals(HealthRecords.heartRateId(small, 1), stale.first())
+        assertTrue(HealthRecords.heartRateId(small, 2) in stale)
+        assertTrue(HealthRecords.heartRateId(small, 0) !in stale)
+        // No heart rate at all: every id goes.
+        assertEquals(HealthRecords.HR_MAX_CHUNKS, HealthRecords.staleHeartRateIds(workout(hr = emptyList())).size)
+    }
+
+    @Test
     fun `implausible heart rates are dropped and no hr means no hr record`() {
         val w = workout(hr = listOf(HealthHrSample(t0 + 1_000, 0), HealthHrSample(t0 + 2_000, 400)))
         assertTrue(HealthRecords.toRecords(w, true).none { it is HeartRateRecord })

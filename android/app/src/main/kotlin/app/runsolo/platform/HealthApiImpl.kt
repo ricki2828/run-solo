@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.records.HeartRateRecord
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -104,6 +105,12 @@ class HealthApiImpl(
                 }
                 val withRoute = ROUTE in granted
                 client.insertRecords(HealthRecords.toRecords(workout, includeRoute = withRoute))
+                // A re-send with less heart rate than before must not leave the old tail chunks.
+                client.deleteRecords(
+                    HeartRateRecord::class,
+                    recordIdsList = emptyList(),
+                    clientRecordIdsList = HealthRecords.staleHeartRateIds(workout),
+                )
                 reply(
                     if (!withRoute && workout.route.isNotEmpty()) HealthWriteOutcome.WRITTEN_WITHOUT_ROUTE
                     else HealthWriteOutcome.WRITTEN,

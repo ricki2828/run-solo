@@ -128,7 +128,7 @@ Also true of the app and worth having ready if asked: `FOREGROUND_SERVICE_LOCATI
     - Exercise route (`WRITE_EXERCISE_ROUTE`): "Saves the GPS route of the run (without the first and last 200 m) on the session so the runner can see the run's map in their health apps. Optional: runs are saved without it if the runner declines."
     - Heart rate (`WRITE_HEART_RATE`): "Saves the heart-rate readings from the runner's own chest strap during the run on the session."
     - Distance (`WRITE_DISTANCE`): "Saves the distance covered in the run on the session."
-  - Off by default; switched on by the runner in Settings, Send runs to, or per run with Send. A privacy-policy screen is wired for Health Connect's permission page (`PrivacyPolicyActivity`, alias `ViewPermissionUsageActivity`; opens https://runsolo.app/privacy). The policy page names the four permissions (section 4).
+  - Off by default; switched on by the runner in Settings, Send runs to, or per run with Send. A privacy-policy screen is wired for Health Connect's permission page (`PrivacyPolicyActivity`, alias `ViewPermissionUsageActivity`; opens https://runsolo.app/privacy/). The policy page names the four permissions (section 4).
   - Before the Play submit: the Health Connect permissions form in Play Console must be completed for the new permissions, or the upload is blocked. Founder to confirm on submit.
 
 ## 10. News app / COVID / other

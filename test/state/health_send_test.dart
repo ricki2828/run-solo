@@ -64,6 +64,29 @@ void main() {
       );
     });
 
+    test('touching and overlapping pauses are merged, unsorted input too', () {
+      final paused = run.copyWith(
+        pauses: [
+          const engine.Span(50000, 70000),
+          const engine.Span(10000, 20000),
+          const engine.Span(20000, 25000),
+          const engine.Span(15000, 22000),
+          const engine.Span(60000, 65000),
+        ],
+      );
+      final w = HealthWorkoutBuilder.build(
+        paused,
+        title: 't',
+        utcOffsetSeconds: 0,
+        version: 1,
+      );
+      final s = paused.start.millisecondsSinceEpoch;
+      expect(
+        [for (final p in w.pauses) (p.startEpochMs - s, p.endEpochMs - s)],
+        [(10000, 25000), (50000, 70000)],
+      );
+    });
+
     test(
       'heart rate is thinned to one point per 5 s and keeps real values',
       () {

@@ -23,12 +23,29 @@ object HealthRecords {
     /** Heart-rate samples per record; a long run becomes several records. */
     const val HR_CHUNK = 900
 
+    /**
+     * Chunk ids that can exist for one run (80 h at one sample per 5 s). A re-send that needs
+     * fewer chunks deletes the rest, see [staleHeartRateIds].
+     */
+    const val HR_MAX_CHUNKS = 64
+
     const val MIN_BPM = 1L
     const val MAX_BPM = 300L
 
     fun sessionId(w: HealthWorkout) = w.clientRecordId
     fun distanceId(w: HealthWorkout) = "${w.clientRecordId}-distance"
     fun heartRateId(w: HealthWorkout, chunk: Int) = "${w.clientRecordId}-hr-$chunk"
+
+    /** How many heart-rate records [toRecords] writes for [w]. */
+    fun heartRateChunks(w: HealthWorkout): Int {
+        val end = maxOf(w.endEpochMs, w.startEpochMs + 1000)
+        val n = w.hr.count { it.epochMs in w.startEpochMs..end && it.bpm in MIN_BPM..MAX_BPM }
+        return minOf((n + HR_CHUNK - 1) / HR_CHUNK, HR_MAX_CHUNKS)
+    }
+
+    /** Heart-rate record ids an earlier, longer write of this run may have left behind. */
+    fun staleHeartRateIds(w: HealthWorkout): List<String> =
+        (heartRateChunks(w) until HR_MAX_CHUNKS).map { heartRateId(w, it) }
 
     fun toRecords(w: HealthWorkout, includeRoute: Boolean): List<Record> {
         val zone = ZoneOffset.ofTotalSeconds(w.utcOffsetSeconds.toInt().coerceIn(-18 * 3600, 18 * 3600))
@@ -105,7 +122,7 @@ object HealthRecords {
         val hr = w.hr
             .filter { inside(it.epochMs) && it.bpm in MIN_BPM..MAX_BPM }
             .sortedBy { it.epochMs }
-        hr.chunked(HR_CHUNK).forEachIndexed { i, chunk ->
+        hr.chunked(HR_CHUNK).take(HR_MAX_CHUNKS).forEachIndexed { i, chunk ->
             val first = Instant.ofEpochMilli(chunk.first().epochMs)
             val last = Instant.ofEpochMilli(chunk.last().epochMs)
             out += HeartRateRecord(

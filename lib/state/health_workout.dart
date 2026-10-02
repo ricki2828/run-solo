@@ -9,6 +9,25 @@ import '../platform/platform_api.g.dart';
 
 int _min(int a, int b) => a < b ? a : b;
 
+/// Pauses sorted, with touching and overlapping ones joined: the store wants
+/// non-overlapping segments (auto-pause adds many short ones).
+List<engine.Span> _mergedPauses(List<engine.Span> pauses) {
+  final sorted = [
+    for (final p in pauses)
+      if (p.t1Ms > p.t0Ms) p,
+  ]..sort((a, b) => a.t0Ms.compareTo(b.t0Ms));
+  final out = <engine.Span>[];
+  for (final p in sorted) {
+    if (out.isNotEmpty && p.t0Ms <= out.last.t1Ms) {
+      final last = out.removeLast();
+      out.add(engine.Span(last.t0Ms, p.t1Ms > last.t1Ms ? p.t1Ms : last.t1Ms));
+    } else {
+      out.add(p);
+    }
+  }
+  return out;
+}
+
 abstract final class HealthWorkoutBuilder {
   /// Heart rate and route points closer than this are thinned: a 1 Hz run
   /// would otherwise write thousands of points per hour.
@@ -77,8 +96,8 @@ abstract final class HealthWorkoutBuilder {
             ),
       ],
       pauses: [
-        for (final p in run.pauses)
-          if (p.t1Ms > p.t0Ms && startMs + p.t0Ms < endMs)
+        for (final p in _mergedPauses(run.pauses))
+          if (startMs + p.t0Ms < endMs)
             HealthPause(
               startEpochMs: startMs + p.t0Ms,
               endEpochMs: _min(startMs + p.t1Ms, endMs),
