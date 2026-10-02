@@ -162,7 +162,7 @@ class LiveCoach(
      */
     fun onTick(prevT: Long, prevD: Double, t: Long, d: Double, hr: Int? = null, activeAt: (Long) -> Long): KmCue? {
         val goalCooldown = goalReached && spec?.isGoal == true
-        if (!goalCooldown && (spec?.steps?.isNotEmpty() == true || (mode != RunMode.free && mode != RunMode.laps))) return null
+        if (!goalCooldown && (spec?.steps?.isNotEmpty() == true || (mode != RunMode.free && mode != RunMode.laps && mode != RunMode.trail))) return null
         val km = floor(d / 1_000).toInt()
         if (km <= lastKm || d <= prevD) {
             kmHr.add(hr)
@@ -179,7 +179,7 @@ class LiveCoach(
         val hrMean = kmHr.close(clean = !skipped)
         kmHr.add(hr)
         // A goal's open cool-down says km splits only: no compare, no nudge.
-        val base = if ((mode == RunMode.free || goalCooldown) && kmSplits) LiveWords.kmSplit(km, active, splitMs) else null
+        val base = if ((mode == RunMode.free || mode == RunMode.trail || goalCooldown) && kmSplits) LiveWords.kmSplit(km, active, splitMs) else null
         val nudge = if (mode == RunMode.free && kmSplits) kmNudge(km, active, splitMs, hrMean) else null
         val fire = if (goalCooldown) null else compareAtKm(km, active)
         return KmCue(km, base, fire, nudge).takeIf { it.base != null || it.fire != null }

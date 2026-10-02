@@ -1,5 +1,7 @@
 package app.runsolo.core.gps
 
+import app.runsolo.core.model.RunMode
+
 /**
  * Moving / stopped detection from accepted points. Fed the cumulative accepted distance at
  * each accepted sample (and, when the fix has them, its reported speed and position):
@@ -8,7 +10,8 @@ package app.runsolo.core.gps
  *  - moving → stopped once nothing has counted as progress for [stopAfterMs] (a kerb wait, a
  *    traffic light).
  * What counts as progress depends on what the sample carries, best first:
- *  1. the fix's own speed (Doppler, near zero when standing) at or above [stallSpeedMps];
+ *  1. the fix's own speed (Doppler, near zero when standing) at or above [stallSpeedMps] for
+ *     [progressSamples] samples running (a lone blip while standing is jitter, not progress);
  *  2. a position more than [anchorRadiusM] from where progress was last seen (GPS jitter
  *     wanders inside that circle; a walker leaves it within the stop window);
  *  3. the accepted distance advancing by more than [progressEpsM] in one step.
@@ -26,6 +29,15 @@ class MovingDetector(
     private val stallSpeedMps: Double = 0.5,
     private val anchorRadiusM: Double = 3.0,
     private val maxGapMs: Long = Long.MAX_VALUE,
+    /** Consecutive samples at or above [stallSpeedMps] that count as progress (1 = every one does). */
+    private val progressSamples: Int = 1,
+    /**
+     * A reported speed alone starts movement, without the net-displacement check. At hike pace
+     * three seconds of travel is about the size of the GPS position error, so the check would
+     * refuse real movement; the Doppler speed is near zero when standing, so it is the better judge.
+     * Without a reported speed the check still applies.
+     */
+    private val trustReportedSpeed: Boolean = false,
 ) {
     var moving: Boolean = false
         private set
@@ -36,6 +48,7 @@ class MovingDetector(
     private var lastD = 0.0
     private var lastProgressT = 0L
     private var fastStreak = 0
+    private var progressStreak = 0
     private var anchor: Pair<Double, Double>? = null
     private val recent = ArrayDeque<Triple<Long, Double, Double>>()
 
@@ -55,6 +68,7 @@ class MovingDetector(
             // Not evidence either way: start the stop timer and the start streak over.
             lastProgressT = t
             fastStreak = 0
+            progressStreak = 0
             anchor = pos
             recent.clear()
             lastT = t
@@ -68,10 +82,11 @@ class MovingDetector(
             recent.addLast(Triple(t, pos.first, pos.second))
             while (recent.size > startSamples + 1) recent.removeFirst()
         }
-        val fast = speed >= minSpeedMps && wentSomewhere()
+        val fast = speed >= minSpeedMps && ((trustReportedSpeed && speedMps != null) || wentSomewhere())
         fastStreak = if (fast) fastStreak + 1 else 0
+        progressStreak = if (speedMps != null && speedMps >= stallSpeedMps) progressStreak + 1 else 0
         val progress = when {
-            speedMps != null -> speedMps >= stallSpeedMps
+            speedMps != null -> progressStreak >= progressSamples
             pos != null && anchor != null -> Geo.haversineM(anchor!!.first, anchor!!.second, pos.first, pos.second) > anchorRadiusM
             else -> step > progressEpsM
         }
@@ -96,6 +111,39 @@ class MovingDetector(
     }
 
     companion object {
+        /**
+         * The auto-pause profile for a run of [mode]: the trail one for Trail, the road one for
+         * everything else. The only place a mode picks its thresholds.
+         */
+        fun forAutoPause(mode: RunMode): MovingDetector = if (mode == RunMode.trail) forTrailAutoPause() else forAutoPause()
+
+        /**
+         * The trail auto-pause profile, the one place its thresholds live. Standing is a speed
+         * under [TRAIL_STAND_MPS] (0.3 m/s) for [TRAIL_STOP_AFTER_MS] (10 s) or more, so a
+         * power-hike (2 km/h = 0.56 m/s) or a slow scramble never pauses it. Two samples in a row
+         * at or above that speed count as movement, so one Doppler blip while standing does not
+         * restart the 10 s. It resumes after [TRAIL_RESUME_SAMPLES] samples at [TRAIL_RESUME_MPS]
+         * (0.35 m/s, just over the stop speed, so a steep scramble resumes; the sample count
+         * carries the hysteresis, and a Doppler speed near zero is what standing reports). A gap over 3 s
+         * is not a stop. Unverified until a device run.
+         */
+        fun forTrailAutoPause() = MovingDetector(
+            minSpeedMps = TRAIL_RESUME_MPS,
+            startSamples = TRAIL_RESUME_SAMPLES,
+            stopAfterMs = TRAIL_STOP_AFTER_MS,
+            stallSpeedMps = TRAIL_STAND_MPS,
+            anchorRadiusM = 3.0,
+            maxGapMs = 3_000,
+            progressSamples = TRAIL_PROGRESS_SAMPLES,
+            trustReportedSpeed = true,
+        )
+
+        const val TRAIL_STAND_MPS = 0.3
+        const val TRAIL_STOP_AFTER_MS = 10_000L
+        const val TRAIL_RESUME_MPS = 0.35
+        const val TRAIL_RESUME_SAMPLES = 3
+        const val TRAIL_PROGRESS_SAMPLES = 2
+
         /**
          * The auto-pause preset: stop after 4.5 s without progress, restart after 3 samples at
          * a jog or better (1 m/s), standing is below 0.5 m/s, a gap over 3 s is not a stop.

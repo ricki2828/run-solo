@@ -94,7 +94,7 @@ class RecordingSession(
     private val moving = MovingDetector()
 
     /** Stop/go for auto-pause only; [moving] keeps its own settings for the moving-time summary. */
-    private val autoDetector = MovingDetector.forAutoPause()
+    private val autoDetector = MovingDetector.forAutoPause(mode)
     // The recorder runs on its own thread: the 1 Hz tick, journal writes (incl. fsync) and
     // sensor callbacks never wait behind Flutter's main-thread work (on a slow emulator the
     // first Flutter frame starved the main looper for seconds and the run lost its ticks).

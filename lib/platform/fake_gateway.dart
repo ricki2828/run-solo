@@ -229,7 +229,7 @@ class FakeRecorderGateway implements RecorderGateway {
       mode,
       switch (mode) {
         RecordMode.intervals || RecordMode.cooper || RecordMode.laps => spec,
-        RecordMode.free => null,
+        RecordMode.free || RecordMode.trail => null,
       },
     );
     return StartResult(runId: _runId);
@@ -394,6 +394,7 @@ class FakeRecorderGateway implements RecorderGateway {
       // Plan §18.2 / A5: no lap input in a Free run or a 12-minute test
       // (RunMode.lapInput); START TEST is startReps, never a lap.
       case RecordMode.free:
+      case RecordMode.trail:
       case RecordMode.cooper:
         lapsIgnored += 1;
         return;

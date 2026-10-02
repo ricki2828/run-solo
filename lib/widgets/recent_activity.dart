@@ -133,6 +133,7 @@ Color runTypeColor(RunSummary run) => switch (run.mode) {
     AuroraRunType.tests,
   RecordMode.laps => AuroraRunType.laps,
   RecordMode.cooper => AuroraRunType.tests,
+  RecordMode.trail => AuroraRunType.trail,
   RecordMode.intervals when run.spec?.isGoal == true || run.isParkrun =>
     AuroraRunType.goal,
   RecordMode.intervals => AuroraRunType.intervals,

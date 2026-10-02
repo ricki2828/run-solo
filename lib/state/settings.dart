@@ -328,7 +328,7 @@ class AppSettings {
 
   /// Effective volume-key lap for a run type (plan §18.2 defaults).
   bool volumeKeyLapFor(RecordMode mode) => switch (mode) {
-    RecordMode.free || RecordMode.cooper => false,
+    RecordMode.free || RecordMode.cooper || RecordMode.trail => false,
     RecordMode.laps => volumeKeyLap ?? true,
     RecordMode.intervals => volumeKeyLap ?? false,
   };

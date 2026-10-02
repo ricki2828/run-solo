@@ -14,7 +14,7 @@ import '../widgets/where_when_line.dart';
 import 'boards_overview.dart';
 import 'trend_screen.dart';
 
-enum HistoryFilter { all, intervals, laps, free, tests }
+enum HistoryFilter { all, intervals, laps, free, trail, tests }
 
 /// The first History list of the session, timed for Settings → Diagnostics
 /// (dogfood only).
@@ -28,7 +28,7 @@ Future<List<RunSummary>> _timedFirstList(Future<List<RunSummary>> list) {
 }
 
 /// History list (design brief §4.8, plan §3.8): newest first, grouped by
-/// month, filter chips All / Intervals / Laps / Free / Tests, each row
+/// month, filter chips All / Intervals / Laps / Free / Trail / Tests, each row
 /// titled by its session, verdict arrow in the
 /// semantic colour, tap opens the verdict (4x4) or the run detail.
 class HistoryScreen extends StatefulWidget {
@@ -142,6 +142,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             r.mode == RecordMode.intervals,
                           HistoryFilter.laps => r.mode == RecordMode.laps,
                           HistoryFilter.free => r.mode == RecordMode.free,
+                          HistoryFilter.trail => r.mode == RecordMode.trail,
                           HistoryFilter.tests => r.mode == RecordMode.cooper,
                         };
                       }).toList();
@@ -163,6 +164,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                       HistoryFilter.intervals => 'Intervals',
                                       HistoryFilter.laps => 'Laps',
                                       HistoryFilter.free => 'Free',
+                                      HistoryFilter.trail => 'Trail',
                                       HistoryFilter.tests => 'Tests',
                                     },
                                     selected: _filter == f,
@@ -418,10 +420,8 @@ class HistoryRow extends StatelessWidget {
                                 'Fartlek · ${Fmt.distance(run.distanceM, units)}',
                               RecordMode.laps =>
                                 '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',
-                              RecordMode.free => Fmt.distance(
-                                run.distanceM,
-                                units,
-                              ),
+                              RecordMode.free || RecordMode.trail =>
+                                Fmt.distance(run.distanceM, units),
                               // The test's own window (27-Sep field test:
                               // total distance counted the cool-down).
                               RecordMode.cooper => Fmt.distance(

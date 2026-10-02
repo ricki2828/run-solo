@@ -25,7 +25,7 @@ void main() {
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
     // TESTS is a run type in the mode row (founder 28-Sep).
-    await tester.tap(find.byKey(const ValueKey('tests-chip')));
+    await tapVisible(tester, find.byKey(const ValueKey('tests-chip')));
     await tester.pumpAndSettle();
     // Cooper stays the default pick, health note on screen before any start.
     expect(find.byKey(const ValueKey('pick-cooper')), findsOneWidget);

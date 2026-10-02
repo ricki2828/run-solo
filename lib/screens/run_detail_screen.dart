@@ -216,7 +216,7 @@ class RunDetailBody extends StatelessWidget {
             elevation: elev,
             laps: d.run.laps,
           ),
-          RecordMode.free || RecordMode.cooper => _Splits(
+          RecordMode.free || RecordMode.trail || RecordMode.cooper => _Splits(
             free: free,
             elevation: elev,
             // The header already says moving time when it differs.

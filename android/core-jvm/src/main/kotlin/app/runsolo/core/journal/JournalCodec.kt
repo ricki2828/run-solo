@@ -108,7 +108,7 @@ object JournalCodec {
         return when (mode) {
             RunMode.intervals -> m.obj("preset")?.let { SessionSpec.fromLegacyPreset(it) }
             RunMode.cooper -> SessionSpec.COOPER
-            RunMode.laps, RunMode.free -> null
+            RunMode.laps, RunMode.free, RunMode.trail -> null
         }
     }
 

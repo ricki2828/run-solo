@@ -62,7 +62,8 @@ import app.runsolo.core.model.TargetKind
  *    not re-anchor the GPS filter on resume: the first fix steps from where the runner stopped, so
  *    the ground covered before the recorder noticed they were moving again still counts.
  *    It only acts where [autoPauseAllowed] says so:
- *    - Free, Laps and Goal runs: always.
+ *    - Free, Trail, Laps and Goal runs: always (a Trail run uses its own, slower stop profile,
+ *      [app.runsolo.core.gps.MovingDetector.forAutoPause] with the trail mode).
  *    - Any other structured session (4x4, repeats, Bronco, ...): only in its warm-up and cool-down.
  *      A rep or recovery must keep its own clock (a standing recovery is legitimate, a timed rep
  *      is the training), but a stop at the lights in the warm-up or cool-down is not training
@@ -259,7 +260,7 @@ class RecorderCore(
      */
     fun autoPauseAllowed(): Boolean {
         return when (mode) {
-            RunMode.free, RunMode.laps -> true
+            RunMode.free, RunMode.laps, RunMode.trail -> true
             RunMode.cooper -> false
             RunMode.intervals -> when {
                 spec == null -> false // a by-feel 4x4 from an old journal
@@ -641,6 +642,7 @@ class RecorderCore(
                 }
                 RunMode.laps -> if (spec == null || (spec.isFartlek && spec.steps.isEmpty())) null else "laps takes no session but a fartlek"
                 RunMode.free -> if (spec == null) null else "free takes no session"
+                RunMode.trail -> if (spec == null) null else "trail takes no session"
                 RunMode.cooper -> if (spec?.templateId == SessionSpec.COOPER_ID) null else "cooper needs the Cooper session"
             }
         }

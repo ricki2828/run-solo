@@ -7,7 +7,7 @@ import '../theme/theme.dart';
 import 'structure_glyph.dart';
 
 /// The run types at Start and Home, in the founder's order (26-Sep, plan
-/// §G): FREE · LAPS · GOAL · INTERVALS, then TESTS as a run type alongside
+/// §G): FREE · TRAIL · LAPS · GOAL · INTERVALS, then TESTS as a run type alongside
 /// them (founder 28-Sep: tests are their own run type, not an eyebrow at
 /// the bottom). INTERVALS shows the last-used session and its glyph (A8);
 /// GOAL shows the picked goal. Four across only from [rowMinWidth];
@@ -61,6 +61,7 @@ class ModeChipRow extends StatelessWidget {
 
   static const List<RecordMode> offered = [
     RecordMode.free,
+    RecordMode.trail,
     RecordMode.laps,
     RecordMode.intervals,
   ];
@@ -70,18 +71,21 @@ class ModeChipRow extends StatelessWidget {
       RecordMode.intervals => 'INTERVALS',
       RecordMode.laps => 'LAPS',
       RecordMode.free => 'FREE',
+      RecordMode.trail => 'TRAIL',
       RecordMode.cooper => 'TEST',
     },
     subtitle: switch (m) {
       RecordMode.intervals => session.name,
       RecordMode.laps => 'LAP by hand',
       RecordMode.free => 'Just run',
+      RecordMode.trail => 'Hills, dirt, climbs',
       RecordMode.cooper => '12 minutes',
     },
     selected: !goal && selected == m,
     compact: auroraList || compactTiles,
     typeColor: switch (m) {
       RecordMode.free => AuroraRunType.free,
+      RecordMode.trail => AuroraRunType.trail,
       RecordMode.laps => AuroraRunType.laps,
       RecordMode.intervals => AuroraRunType.intervals,
       RecordMode.cooper => AuroraRunType.tests,
@@ -96,6 +100,7 @@ class ModeChipRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final chips = <Widget>[
       _mode(RecordMode.free),
+      _mode(RecordMode.trail),
       _mode(RecordMode.laps),
       if (onGoal != null)
         ModeChip(

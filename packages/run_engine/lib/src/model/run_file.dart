@@ -342,6 +342,10 @@ const _unset = Object();
 ///   in metres ([Sample.elevM]), and the file may carry `elev_src` (`baro` or
 ///   `gps`), written only when some sample has an elevation. Every other key
 ///   is schema 4's, so a schema-4 file reads as-is (no elevation).
+/// - 6 (trail): `mode` may be `trail` (a Free run on hills and dirt: no laps,
+///   no session). Every other key is schema 5's, so a schema-5 file reads
+///   as-is. The bump makes an older build say "newer app" instead of
+///   refusing the unknown mode name.
 class RunFile {
   RunFile({
     required this.id,
@@ -363,7 +367,7 @@ class RunFile {
   });
 
   /// The schema this build writes.
-  static const int schema = 5;
+  static const int schema = 6;
 
   /// The lowest schema this build reads (every older one is mapped forward).
   static const int minReadSchema = 1;
@@ -600,7 +604,7 @@ class RunFile {
       final ok = switch (mode) {
         RunMode.intervals || RunMode.cooper => spec.steps.isNotEmpty,
         RunMode.laps => spec.templateId == SessionSpec.fartlekId,
-        RunMode.free => false,
+        RunMode.free || RunMode.trail => false,
       };
       if (!ok) {
         throw RunFileFormatException(
@@ -623,7 +627,7 @@ class RunFile {
               ),
       RunMode.cooper => SessionSpec.cooper,
       // A preset on a Laps/Free file was never written; ignore it as before.
-      RunMode.laps || RunMode.free => null,
+      RunMode.laps || RunMode.free || RunMode.trail => null,
     };
   }
 

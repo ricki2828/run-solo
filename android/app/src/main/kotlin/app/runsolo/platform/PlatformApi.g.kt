@@ -205,12 +205,15 @@ class FlutterError (
  *   MediaSession; `lap()` is a no-op (`FaultKind.lapIgnored` in debug builds).
  * - `cooper`: the 12-minute test with the Cooper spec: no LAP, `startReps`
  *   starts the 12:00, projection cues. Not offered in the UI yet.
+ * - `trail`: a `free` run on hills and dirt: no LAP, no session, and its own
+ *   trail-tuned auto-pause profile (`MovingDetector.forTrailAutoPause`).
  */
 enum class RecordMode(val raw: Int) {
   INTERVALS(0),
   LAPS(1),
   FREE(2),
-  COOPER(3);
+  COOPER(3),
+  TRAIL(4);
 
   companion object {
     fun ofRaw(raw: Int): RecordMode? {

@@ -168,6 +168,9 @@ abstract final class LivePlanner {
       case RunMode.laps:
         add(k5.key, '5K', LiveBoardPlanKind.distance, k5.metres);
         add(k10.key, '10K', LiveBoardPlanKind.distance, k10.metres);
+      case RunMode.trail:
+        // No boards: a trail pace is not comparable with road bests.
+        break;
       case RunMode.intervals when session != null && session.isGoal:
         final key = GoalCatalogue.boardKeyOf(session);
         final time = Leaderboards.kindOf(key) == BoardKind.distanceInTime;

@@ -46,6 +46,14 @@ abstract final class AuroraRunType {
   static const Color goal = Color(0xFFB48CFF); // violet
   static const Color intervals = Color(0xFFFF6EC7); // magenta
   static const Color tests = Color(0xFF8CFF5C); // lime
+
+  /// Trail: moss, an earthy amber-green (hue 64 deg, 62 % saturation). It sits
+  /// between Tests lime (103 deg, fully saturated) and the Z3/warning amber
+  /// (40 deg), 39 deg and 24 deg away and visibly duller than both, so it
+  /// reads as dirt and lichen where the others glow. It is nowhere near the
+  /// improving mint (159 deg). 9.2:1 on the raised card ground. Always shown
+  /// with the word "Trail", like every run-type colour.
+  static const Color trail = Color(0xFFB8C04C);
 }
 
 /// Light variant (design brief §2.2). Not the default; kept so the tokens stay paired.

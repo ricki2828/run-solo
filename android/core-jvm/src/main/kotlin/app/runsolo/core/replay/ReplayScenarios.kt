@@ -376,7 +376,7 @@ object ReplayScenarios {
         private val onAutoPause: (Long) -> Unit = {},
         private val onAutoResume: (Long) -> Unit = {},
     ) {
-        private val moving = MovingDetector.forAutoPause()
+        private val moving = MovingDetector.forAutoPause(core.mode)
         private var pressed = 0
         private var firstT: Long? = null
 

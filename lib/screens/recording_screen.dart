@@ -744,7 +744,7 @@ class _RecordingScreenState extends State<RecordingScreen>
 }
 
 /// The run type the MAP / NUMBERS choice is remembered under: the chip the
-/// runner picked (`free`, `laps`, `intervals`, `goal`, `tests`).
+/// runner picked (`free`, `trail`, `laps`, `intervals`, `goal`, `tests`).
 String liveRunType(RecordingSnapshot s) {
   if (isEventRun(s) || s.isGoal) return 'goal';
   if (s.isCooper || s.bronco) return 'tests';
@@ -757,6 +757,7 @@ Color liveRunTypeColor(String type) => switch (type) {
   'intervals' => AuroraRunType.intervals,
   'goal' => AuroraRunType.goal,
   'tests' => AuroraRunType.tests,
+  'trail' => AuroraRunType.trail,
   _ => AuroraRunType.free,
 };
 
@@ -928,6 +929,8 @@ String phaseTitle(RecordingSnapshot s) {
       return 'LAP ${s.lapIndex + 1}';
     case RecordMode.free:
       return 'FREE RUN';
+    case RecordMode.trail:
+      return 'TRAIL RUN';
     case RecordMode.cooper:
       return switch (s.phase) {
         Phase.warmup => 'WARM-UP',
@@ -1095,7 +1098,7 @@ class _Header extends StatelessWidget {
         _Vitals(
           s: s,
           maxHr: maxHr,
-          showTotal: s.mode != RecordMode.free,
+          showTotal: s.mode != RecordMode.free && s.mode != RecordMode.trail,
           compact: compact,
           secondary: secondary,
         ),
@@ -1518,6 +1521,11 @@ class _FreeRunBlock extends StatelessWidget {
             units: units,
             labelColor: secondary,
             valueColor: t.inkPrimary,
+            // Grade-adjusted pace live, only where the mode asks for it
+            // (Trail): the current pace as it would run on the flat.
+            gapSecPerKm: runModeOf(s.mode).showsLiveGap
+                ? engine.Gap.paceSecPerKm(s.livePaceSecPerKm, s.gradePct)
+                : null,
           ),
         ],
         const SizedBox(height: Space.x8),

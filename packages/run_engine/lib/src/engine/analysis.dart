@@ -44,7 +44,7 @@ SessionSpec? effectiveSession(RunFile run, RunMode mode) {
     RunMode.cooper => SessionSpec.cooper,
     RunMode.laps =>
       own?.templateId == SessionSpec.fartlekId ? SessionSpec.fartlek : null,
-    RunMode.free => null,
+    RunMode.free || RunMode.trail => null,
   };
 }
 
@@ -56,7 +56,7 @@ String? comparisonKeyOf(
   RunMode mode, {
   String? courseId,
 }) => switch (mode) {
-  RunMode.free => null,
+  RunMode.free || RunMode.trail => null,
   RunMode.laps =>
     session?.templateId == SessionSpec.fartlekId ? ComparisonKey.fartlek : null,
   RunMode.intervals =>
@@ -363,8 +363,10 @@ class RunEngine {
     // mislabelled as a 4x4.
     switch (mode) {
       case RunMode.free:
+      case RunMode.trail:
       case RunMode.cooper:
-        // A Cooper file reads as a summary plus its own result block (C1),
+        // A Trail run is a Free run with no pace verdict (TrailVerdict, see
+        // trail_run.dart): a summary only. A Cooper file reads as a summary plus its own result block (C1),
         // never a 4x4.
         return RunAnalysis(
           cooper: mode == RunMode.cooper

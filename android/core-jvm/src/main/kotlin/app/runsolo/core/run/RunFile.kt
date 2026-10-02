@@ -19,7 +19,7 @@ import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 
 /**
- * Schema v5 run file (plan §4, §18.7; Phase 3 §3.8: `mode` `intervals` replaces `fourByFour`, `session`
+ * Schema v6 run file (plan §4, §18.7; Phase 3 §3.8: `mode` `intervals` replaces `fourByFour`, `session`
  * replaces `preset`), built from a journal replay. All `t` are run-timeline millis
  * since `start`; `d` values are cumulative accepted-haversine metres.
  *
@@ -115,7 +115,7 @@ data class RunFile(
     }
 
     companion object {
-        const val SCHEMA = 5
+        const val SCHEMA = 6
 
         /** The third element of an auto-pause entry in the file's `pauses`. */
         const val AUTO_PAUSE_KIND = "auto"

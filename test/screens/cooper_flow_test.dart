@@ -37,7 +37,7 @@ void main() {
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
     // TESTS is a run type in the mode row (founder 28-Sep).
-    await tester.tap(find.byKey(const ValueKey('tests-chip')));
+    await tapVisible(tester, find.byKey(const ValueKey('tests-chip')));
     await tester.pumpAndSettle();
     expect(
       find.text(
