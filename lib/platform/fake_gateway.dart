@@ -748,8 +748,16 @@ class FakeRecorderGateway implements RecorderGateway {
     }
   }
 
+  /// Tests: make [routeSince] throw (before any await, like a bad channel).
+  bool routeThrows = false;
+
   @override
-  Future<List<double>> routeSince(int fromIndex) async {
+  Future<List<double>> routeSince(int fromIndex) {
+    if (routeThrows) throw StateError('route channel down');
+    return _routeSince(fromIndex);
+  }
+
+  Future<List<double>> _routeSince(int fromIndex) async {
     final from = (fromIndex * 2).clamp(0, _routeLatLon.length);
     return _routeLatLon.sublist(from);
   }

@@ -410,8 +410,23 @@ class _RecordingScreenState extends State<RecordingScreen>
                                   ? HrZones.secondaryOnZone
                                   : t.inkSecondary,
                               paused: s.paused,
+                              cardLink: _cardLink,
                             ),
                           ),
+                          // The GPS bar stays, as in NUMBERS.
+                          if (!s.showEndRep) ...[
+                            const SizedBox(height: Space.x8),
+                            Visibility(
+                              visible: !s.paused,
+                              maintainSize: true,
+                              maintainAnimation: true,
+                              maintainState: true,
+                              child: GpsBar(
+                                accuracyM: s.gpsAccuracyM,
+                                lost: s.gpsLost,
+                              ),
+                            ),
+                          ],
                         ] else ...[
                           const Spacer(),
                           if ((isEventRun(s) || s.isGoal) &&
@@ -670,7 +685,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                   link: _cardLink,
                   width:
                       MediaQuery.sizeOf(context).width - 2 * Space.recordGutter,
-                  anchorBottom: !s.isPreset && s.lapsEnabled,
+                  anchorBottom: !mapOn && !s.isPreset && s.lapsEnabled,
                   card: card,
                 ),
                 // The PAUSED card leaves the Pause / STOP row live below it,
@@ -740,70 +755,113 @@ Color liveRunTypeColor(String type) => switch (type) {
   _ => AuroraRunType.free,
 };
 
-/// The MAP view's hero: the same biggest number the NUMBERS layout leads
-/// with for this phase (rep average in a rep, countdown in a recovery, to go
-/// in an event or goal, run average in a Free run, the lap clock in Laps).
+const String kCooperCooldownCaption = 'Cool down, then stop';
+
+/// A4: with no fix the metres never extrapolate; they read "--".
+String timerFigureText(RecordingSnapshot s, RecordingController ctl) {
+  final toGo = s.metresToGo;
+  if (toGo == null) return Fmt.clock(timerFigureMs(s, ctl));
+  return s.gpsLost ? '--' : metresText(toGo);
+}
+
+/// The 4x4 / Laps timer's milliseconds: a timed phase (and a fixed warm-up)
+/// counts down, anything else counts up through the lap.
+int timerFigureMs(RecordingSnapshot s, RecordingController ctl) {
+  final fixedWarmup = s.phase == Phase.warmup && s.spec?.warmupSeconds != null;
+  return s.timed || fixedWarmup
+      ? ctl.displayRemainingMs
+      : ctl.displayLapElapsedMs;
+}
+
+/// The segment's average pace (sec/km), from 20 m.
+double? segmentAverage(RecordingSnapshot s, RecordingController ctl) {
+  final ms = ctl.displayLapElapsedMs;
+  return s.lapDistanceM > 20 && ms > 0
+      ? ms / 1000 / (s.lapDistanceM / 1000)
+      : null;
+}
+
+/// The Free run's average pace (sec/km), from 20 m.
+double? runAverageSecPerKm(RecordingSnapshot s, RecordingController ctl) {
+  final ms = ctl.displayElapsedMs;
+  return s.totalDistanceM > 20 && ms > 0
+      ? ms / 1000 / (s.totalDistanceM / 1000)
+      : null;
+}
+
+/// The 12-minute test's big clock and its caption.
+(int, String) cooperClock(RecordingSnapshot s, RecordingController ctl) =>
+    switch (s.phase) {
+      Phase.work => (ctl.displayRemainingMs, 'left in the test'),
+      Phase.cooldown => (ctl.displayLapElapsedMs, kCooperCooldownCaption),
+      _ => (ctl.displayElapsedMs, 'warm up, then tap START TEST'),
+    };
+
+/// The event / goal "to go" figure (distance, or time for a time goal).
+String eventToGoText(
+  RecordingSnapshot s,
+  RecordingController ctl,
+  Units units,
+) {
+  final togo = s.metresToGo;
+  if (s.distanceStep || togo != null) {
+    return togo == null || s.gpsLost ? '--' : eventDistanceToGo(togo, units);
+  }
+  return Fmt.clock(ctl.displayRemainingMs + 999);
+}
+
+/// The event / goal "on pace for" figure (finish time, or distance for a
+/// time goal).
+String eventFinishText(
+  RecordingSnapshot s,
+  RecordingController ctl,
+  Units units,
+) {
+  if (s.distanceStep || s.metresToGo != null) {
+    final projected = eventProjectedSeconds(s, ctl.displayLapActiveMs);
+    return projected == null ? '--' : Fmt.clock(projected.round() * 1000);
+  }
+  final projected = goalProjectedMetres(s, ctl.displayLapActiveMs);
+  return projected == null ? '--' : goalDistanceText(projected, units);
+}
+
+/// The MAP view's hero: the dominant figure of the NUMBERS layout for this
+/// phase, from the same helpers those blocks draw. Branch order mirrors the
+/// record screen's layout chain, so every mode and phase agrees.
 LiveHero liveHero(RecordingSnapshot s, RecordingController ctl, Units units) {
   final unit = units == Units.mi ? 'mi' : 'km';
   if ((isEventRun(s) || s.isGoal) && s.phase == Phase.work) {
-    final togo = s.metresToGo;
-    final last = eventLastStretch(s);
-    if (s.distanceStep || togo != null) {
-      if (last) {
-        final projected = eventProjectedSeconds(s, ctl.displayLapActiveMs);
-        return LiveHero(
-          text: projected == null ? '--' : Fmt.clock(projected.round() * 1000),
-          label: 'on pace for',
-        );
-      }
-      return LiveHero(
-        text: togo == null || s.gpsLost ? '--' : eventDistanceToGo(togo, units),
-        label: 'to go',
-      );
-    }
-    if (last) {
-      final projected = goalProjectedMetres(s, ctl.displayLapActiveMs);
-      return LiveHero(
-        text: projected == null ? '--' : goalDistanceText(projected, units),
-        label: 'on pace for',
-      );
-    }
-    return LiveHero(
-      text: Fmt.clock(ctl.displayRemainingMs + 999),
-      label: 'to go',
-    );
+    // To go leads; on the last stretch the projected finish does.
+    return eventLastStretch(s)
+        ? LiveHero(text: eventFinishText(s, ctl, units), label: 'on pace for')
+        : LiveHero(text: eventToGoText(s, ctl, units), label: 'to go');
   }
-  if (s.isPreset && s.phase == Phase.work) {
-    final ms = ctl.displayLapElapsedMs;
-    final avg = s.lapDistanceM > 20 && ms > 0
-        ? ms / 1000 / (s.lapDistanceM / 1000)
-        : null;
-    return LiveHero(text: Fmt.pace(avg, units), label: 'REP AVERAGE /$unit');
-  }
-  if (s.isPreset || s.isCooper) {
-    final toGo = s.metresToGo;
-    final fixedWarmup =
-        s.phase == Phase.warmup && s.spec?.warmupSeconds != null;
-    final remaining =
-        s.timed || fixedWarmup || (s.isCooper && s.phase == Phase.work);
-    final text = toGo != null
-        ? (s.gpsLost ? '--' : metresText(toGo))
-        : Fmt.clock(
-            remaining ? ctl.displayRemainingMs : ctl.displayLapElapsedMs,
-          );
-    return LiveHero(text: text, label: timerCaption(s));
-  }
-  if (s.lapsEnabled) {
+  if (s.isGoal && s.phase == Phase.cooldown) {
     return LiveHero(
       text: Fmt.clock(ctl.displayLapElapsedMs),
-      label: 'this lap',
+      label: 'cool-down',
     );
   }
-  final ms = ctl.displayElapsedMs;
-  final avg = s.totalDistanceM > 20 && ms > 0
-      ? ms / 1000 / (s.totalDistanceM / 1000)
-      : null;
-  return LiveHero(text: Fmt.pace(avg, units), label: 'RUN AVERAGE PACE /$unit');
+  if (s.isPreset) {
+    if (s.phase == Phase.work) {
+      return LiveHero(
+        text: Fmt.pace(segmentAverage(s, ctl), units),
+        label: 'REP AVERAGE /$unit',
+      );
+    }
+    return LiveHero(text: timerFigureText(s, ctl), label: timerCaption(s));
+  }
+  if (s.isCooper) {
+    final (ms, caption) = cooperClock(s, ctl);
+    return LiveHero(text: Fmt.clock(ms), label: caption);
+  }
+  if (s.lapsEnabled) {
+    return LiveHero(text: timerFigureText(s, ctl), label: timerCaption(s));
+  }
+  return LiveHero(
+    text: Fmt.pace(runAverageSecPerKm(s, ctl), units),
+    label: 'RUN AVERAGE PACE /$unit',
+  );
 }
 
 /// Metres to go (A8): whole metres, rounded down to 5 m under 100 m and
@@ -1223,19 +1281,12 @@ class _CooperBlock extends StatelessWidget {
   /// is primary).
   final LayerLink? card;
 
-  /// "Cool down, then stop" (A5).
-  static const String cooldownCaption = 'Cool down, then stop';
-
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
     final testing = s.phase == Phase.work;
-    final (clockMs, caption) = switch (s.phase) {
-      Phase.work => (ctl.displayRemainingMs, 'left in the test'),
-      Phase.cooldown => (ctl.displayLapElapsedMs, cooldownCaption),
-      _ => (ctl.displayElapsedMs, 'warm up, then tap START TEST'),
-    };
+    final (clockMs, caption) = cooperClock(s, ctl);
     final metres = testing || s.phase == Phase.cooldown
         ? s.lapDistanceM
         : s.totalDistanceM;
@@ -1324,10 +1375,7 @@ class _FreeRunBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
-    final activeMs = ctl.displayElapsedMs;
-    final runAverage = s.totalDistanceM > 20 && activeMs > 0
-        ? activeMs / 1000 / (s.totalDistanceM / 1000)
-        : null;
+    final runAverage = runAverageSecPerKm(s, ctl);
     final unit = units == Units.mi ? 'mi' : 'km';
     return Column(
       key: const ValueKey('free-run-block'),
@@ -1409,11 +1457,7 @@ class _TimerBlock extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
     final recovery = s.phase == Phase.recovery;
-    final fixedWarmup =
-        s.phase == Phase.warmup && s.spec?.warmupSeconds != null;
-    final ms = s.timed || fixedWarmup
-        ? ctl.displayRemainingMs
-        : ctl.displayLapElapsedMs;
+    final ms = timerFigureMs(s, ctl);
     final toGo = s.metresToGo;
     final target = s.currentStep?.value ?? 0;
     final total = !recovery && s.phase != Phase.work
@@ -1434,12 +1478,7 @@ class _TimerBlock extends StatelessWidget {
     final digits = FittedBox(
       fit: BoxFit.scaleDown,
       child: Text(
-        // A8: with no fix the metres never extrapolate; they read "--".
-        toGo == null
-            ? Fmt.clock(ms)
-            : s.gpsLost
-            ? '--'
-            : metresText(toGo),
+        timerFigureText(s, ctl),
         key: const ValueKey('timer'),
         softWrap: false,
         style: (style ?? RunSoloType.timer120).copyWith(
@@ -1513,10 +1552,7 @@ class _SegmentPace extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final onZone = s.zone > 0;
     final secondary = onZone ? HrZones.secondaryOnZone : t.inkSecondary;
-    final activeMs = ctl.displayLapElapsedMs;
-    final segmentAvg = s.lapDistanceM > 20 && activeMs > 0
-        ? activeMs / 1000 / (s.lapDistanceM / 1000)
-        : null;
+    final segmentAvg = segmentAverage(s, ctl);
     final reference = s.phase == Phase.work
         ? (s.lastRepPaceSecPerKm ?? segmentAvg)
         : segmentAvg;
@@ -2253,27 +2289,9 @@ class EventBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final muted = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
-    final togo = s.metresToGo;
     final last = eventLastStretch(s);
-    final String toGoText;
-    final String finishText;
-    if (s.distanceStep || togo != null) {
-      final projected = eventProjectedSeconds(s, ctl.displayLapActiveMs);
-      toGoText = togo == null || s.gpsLost
-          ? '--'
-          : eventDistanceToGo(togo, units);
-      finishText = projected == null
-          ? '--'
-          : Fmt.clock(projected.round() * 1000);
-    } else {
-      // G3 time goal: time to go counts down on its own (no GPS needed);
-      // the projection is the distance at the goal time.
-      final projected = goalProjectedMetres(s, ctl.displayLapActiveMs);
-      toGoText = Fmt.clock(ctl.displayRemainingMs + 999);
-      finishText = projected == null
-          ? '--'
-          : goalDistanceText(projected, units);
-    }
+    final toGoText = eventToGoText(s, ctl, units);
+    final finishText = eventFinishText(s, ctl, units);
     Widget number(String key, String text, String label, {required bool big}) {
       final dashed = text == '--';
       return Column(

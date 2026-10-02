@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import '../map/map_surface.dart';
 import '../state/live_route.dart';
 import '../theme/theme.dart';
+import '../widgets/compare_card.dart';
 
 /// The biggest number for the phase, as the NUMBERS layout would show it.
 class LiveHero {
@@ -30,6 +31,7 @@ class LiveMapView extends StatefulWidget {
     required this.compact,
     required this.secondary,
     required this.paused,
+    this.cardLink,
   });
 
   final MapSurfaceFactory maps;
@@ -45,6 +47,10 @@ class LiveMapView extends StatefulWidget {
 
   /// Paused: the numbers hide under the PAUSED card, the map too.
   final bool paused;
+
+  /// The live compare card's slot (LV1/LV2): a zero-height anchor under the
+  /// hero, so a card slides in over the top of the map, never the hero.
+  final LayerLink? cardLink;
 
   @override
   State<LiveMapView> createState() => _LiveMapViewState();
@@ -117,7 +123,10 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
             ],
           ),
         ),
-        const SizedBox(height: Space.x8),
+        CompareSlot(
+          link: widget.cardLink,
+          child: const SizedBox(width: double.infinity, height: Space.x8),
+        ),
         Expanded(
           child: _foreground
               ? widget.maps.buildLive(

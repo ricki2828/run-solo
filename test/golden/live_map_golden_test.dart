@@ -5,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_solo/state/settings.dart';
 
 import '../helpers.dart';
@@ -58,4 +60,73 @@ void main() {
       await golden(tester, 'record_map_rep_360x$h');
     });
   }
+
+  // Laps: the LAP button keeps its size and place under the map.
+  for (final h in [800, 640]) {
+    testWidgets('record: laps map view at 360 x $h', (tester) async {
+      final fake = FakeRecorderGateway(now: now)..emitRoute = true;
+      final services = fakeServices(
+        recorder: fake,
+        maps: const FakeMapSurfaceFactory(available: true),
+        settings: const AppSettings(
+          onboardingDone: true,
+          liveMapTypes: {'laps'},
+        ),
+      );
+      await services.recording.start(RecordMode.laps, null, Units.km);
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 4);
+      for (var i = 0; i < 95; i++) {
+        fake.advance(const Duration(seconds: 1));
+        await tester.pump();
+      }
+      await pumpTimes(tester, 5);
+      await settleAnimations(tester);
+      await golden(tester, 'record_map_laps_360x$h');
+    });
+  }
+
+  testWidgets('record: free map view at 360 x 800', (tester) async {
+    final fake = FakeRecorderGateway(now: now)..emitRoute = true;
+    final services = fakeServices(
+      recorder: fake,
+      maps: const FakeMapSurfaceFactory(available: true),
+      settings: const AppSettings(onboardingDone: true, liveMapTypes: {'free'}),
+    );
+    await services.recording.start(RecordMode.free, null, Units.km);
+    await pumpApp(tester, services, pushRoute: Routes.recording);
+    tester.view.physicalSize = const Size(1080, 800 * 3.0);
+    await pumpTimes(tester, 4);
+    for (var i = 0; i < 95; i++) {
+      fake.advance(const Duration(seconds: 1));
+      await tester.pump();
+    }
+    await pumpTimes(tester, 5);
+    await settleAnimations(tester);
+    await golden(tester, 'record_map_free_360x800');
+  });
+
+  testWidgets('record: goal cool-down map view at 360 x 800', (tester) async {
+    final fake = FakeRecorderGateway(now: now)..emitRoute = true;
+    final services = fakeServices(
+      recorder: fake,
+      maps: const FakeMapSurfaceFactory(available: true),
+      settings: const AppSettings(onboardingDone: true, liveMapTypes: {'goal'}),
+    );
+    await services.recording.start(
+      RecordMode.intervals,
+      engine.SessionSpec.goalTime(1800, '30 min').toPigeon(),
+      Units.km,
+    );
+    await pumpApp(tester, services, pushRoute: Routes.recording);
+    tester.view.physicalSize = const Size(1080, 800 * 3.0);
+    await pumpTimes(tester, 4);
+    for (var i = 0; i < 1870; i++) {
+      fake.advance(const Duration(seconds: 1));
+    }
+    await pumpTimes(tester, 6);
+    await settleAnimations(tester);
+    await golden(tester, 'record_map_goal_cooldown_360x800');
+  });
 }

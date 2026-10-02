@@ -363,16 +363,28 @@ class RecordingController extends ChangeNotifier {
 
   /// Fills any hole in [liveRoute] from native (a recreated screen, a missed
   /// event). Best effort: a failure leaves the route as it is.
-  Future<void> syncRoute() => _routeSync ??= () async {
+  Future<void> syncRoute() {
+    final running = _routeSync;
+    if (running != null) return running;
+    final f = _syncRoute();
+    _routeSync = f;
+    // After the assignment, so a synchronous failure still resets it.
+    unawaited(
+      f.whenComplete(() {
+        if (identical(_routeSync, f)) _routeSync = null;
+      }),
+    );
+    return f;
+  }
+
+  Future<void> _syncRoute() async {
     try {
       final pts = await _gateway.routeSince(liveRoute.count);
       liveRoute.apply(liveRoute.count, pts);
     } catch (_) {
       // The map is optional; recording does not depend on this read.
-    } finally {
-      _routeSync = null;
     }
-  }();
+  }
 
   /// When [lastCompare] arrived: a card older than 2 s is never shown (a
   /// screen that wakes or is recreated late drops it, A10.1).

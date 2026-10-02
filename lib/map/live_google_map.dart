@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
 
 import '../state/live_route.dart';
+import 'route_builder.dart';
 import '../theme/theme.dart';
 import 'blank_snapshot.dart';
 import 'map_surface.dart';
@@ -42,6 +43,14 @@ class _LiveGoogleMapState extends State<LiveGoogleMap> {
   bool _programmatic = false;
   Timer? _loadWatch;
   Timer? _recentre;
+
+  /// The polyline's points for display: appended as the route grows and
+  /// thinned (Douglas-Peucker) when it passes [_maxDisplayPoints]; native
+  /// keeps the full route. [_epoch] restarts it when the route is cleared.
+  static const int _maxDisplayPoints = 2000;
+  final List<gm.LatLng> _line = [];
+  int _fed = 0;
+  int _epoch = 0;
 
   @override
   void initState() {
@@ -99,8 +108,30 @@ class _LiveGoogleMapState extends State<LiveGoogleMap> {
     }
   }
 
+  void _syncLine() {
+    final track = widget.track;
+    if (track.epoch != _epoch || track.count < _fed) {
+      _epoch = track.epoch;
+      _line.clear();
+      _fed = 0;
+    }
+    for (final p in track.since(_fed)) {
+      _line.add(gm.LatLng(p.lat, p.lon));
+    }
+    _fed = track.count;
+    if (_line.length > _maxDisplayPoints) {
+      final thin = simplifyForDisplay([
+        for (final p in _line) GeoPoint(p.latitude, p.longitude),
+      ], _maxDisplayPoints ~/ 2);
+      _line
+        ..clear()
+        ..addAll([for (final p in thin) gm.LatLng(p.lat, p.lon)]);
+    }
+  }
+
   void _onTrack() {
     if (!mounted) return;
+    _syncLine();
     setState(() {});
     if (_recentre == null || !_recentre!.isActive) unawaited(_follow());
   }
@@ -166,8 +197,10 @@ class _LiveGoogleMapState extends State<LiveGoogleMap> {
 
   @override
   Widget build(BuildContext context) {
-    final points = widget.track.points;
-    if (_failed) return MapFailedCard(route: liveRouteGeometry(points));
+    if (_failed) {
+      return MapFailedCard(route: liveRouteGeometry(widget.track.points));
+    }
+    if (_fed != widget.track.count) _syncLine();
     final last = widget.track.last;
     // Before the first fix there is nowhere to look yet.
     if (last == null || _styleJson == null) {
@@ -197,10 +230,10 @@ class _LiveGoogleMapState extends State<LiveGoogleMap> {
         tiltGesturesEnabled: false,
         padding: const EdgeInsets.only(left: 8, bottom: 8),
         polylines: {
-          if (points.length > 1)
+          if (_line.length > 1)
             gm.Polyline(
               polylineId: const gm.PolylineId('live'),
-              points: [for (final p in points) gm.LatLng(p.lat, p.lon)],
+              points: List.of(_line),
               color: widget.color,
               width: 5,
               jointType: gm.JointType.round,
