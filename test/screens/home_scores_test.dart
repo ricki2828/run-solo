@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
-import 'package:run_solo/screens/home_screen.dart';
-import 'package:run_solo/state/history_store.dart';
-import 'package:run_solo/state/run_index.dart';
 import 'package:run_solo/state/settings.dart';
-import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/widgets/home_scores.dart';
 
 import '../helpers.dart';
