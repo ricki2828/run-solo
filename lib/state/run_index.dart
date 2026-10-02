@@ -349,6 +349,10 @@ class IndexRow {
     this.zoneId,
     this.movingMs,
     this.medianLapSec,
+    this.climbM,
+    this.descentM,
+    this.elevSrc,
+    this.gapSecPerKm,
   });
 
   /// Bump when a field is added, so old rows are rebuilt once.
@@ -359,7 +363,8 @@ class IndexRow {
   /// 6: [movingMs], [medianLapSec].
   /// 7: [street].
   /// 8: [zoneId], and [utcOffsetMin] is the offset where the run STARTED.
-  static const int currentVersion = 8;
+  /// 9: [climbM], [descentM], [elevSrc], [gapSecPerKm] (elevation).
+  static const int currentVersion = 9;
 
   final int version;
   final int lapCount;
@@ -430,6 +435,21 @@ class IndexRow {
   /// Laps run with no measurable lap.
   final double? medianLapSec;
 
+  /// Total climb and descent in metres (barometer + GPS fused on the phone,
+  /// dead band applied, pauses left out); null for a run with no elevation
+  /// (indoor, an import, a run before schema 5).
+  final double? climbM;
+  final double? descentM;
+
+  /// Where the elevation came from, so a later comparison can weigh a GPS-only
+  /// figure less than a barometer one.
+  final engine.ElevSource? elevSrc;
+
+  /// The whole run's grade-adjusted pace in s/km (Minetti energy-cost model,
+  /// an estimate); the same-trail / GAP verdict reads this. Null without
+  /// elevation or under 500 m.
+  final double? gapSecPerKm;
+
   factory IndexRow.of(
     engine.RunFile run,
     engine.RunAnalysis? a,
@@ -448,6 +468,8 @@ class IndexRow {
       zoneId: sidecar?.zoneId,
       stampedOffsetMin: sidecar?.utcOffsetMin,
     );
+    final elev = engine.RunElevation.of(run);
+    double dp1(double v) => (v * 10).round() / 10;
     return IndexRow(
       lapCount: run.laps.length,
       session: run.session,
@@ -480,6 +502,10 @@ class IndexRow {
               engine.RunMode.laps
           ? engine.RunTimes.medianLapSec(run)
           : null,
+      climbM: elev == null ? null : dp1(elev.ascentM),
+      descentM: elev == null ? null : dp1(elev.descentM),
+      elevSrc: elev?.src,
+      gapSecPerKm: elev?.gapSecPerKm == null ? null : dp1(elev!.gapSecPerKm!),
     );
   }
 
@@ -508,6 +534,10 @@ class IndexRow {
     'zone_id': ?zoneId,
     'moving_ms': ?movingMs,
     'median_lap_s': ?medianLapSec,
+    'climb_m': ?climbM,
+    'descent_m': ?descentM,
+    'elev_src': ?elevSrc?.name,
+    'gap_s_per_km': ?gapSecPerKm,
   };
 
   /// null for a missing or unreadable row (the entry is then stale).
@@ -553,6 +583,12 @@ class IndexRow {
         zoneId: j['zone_id'] as String?,
         movingMs: j['moving_ms'] as int?,
         medianLapSec: d('median_lap_s'),
+        climbM: d('climb_m'),
+        descentM: d('descent_m'),
+        elevSrc: engine.ElevSource.values
+            .where((e) => e.name == j['elev_src'])
+            .firstOrNull,
+        gapSecPerKm: d('gap_s_per_km'),
       );
     } catch (e) {
       debugPrint('index: unreadable row ($e)');

@@ -249,4 +249,67 @@ void main() {
     await pumpTimes(tester, 4);
     expect(find.textContaining('File missing'), findsOneWidget);
   });
+
+  group('elevation', () {
+    testWidgets('a free run with elevation: card, totals, climb per km', (
+      tester,
+    ) async {
+      final r = withElevation(freeRunFile(n: 71, start: d1, seconds: 1800));
+      final e = engine.RunElevation.of(r)!;
+      await pumpApp(
+        tester,
+        fakeServices(files: [r]),
+        home: RunDetailScreen(runId: r.id),
+      );
+      await pumpTimes(tester, 6);
+      expect(find.byKey(const ValueKey('elevation-card')), findsOneWidget);
+      expect(find.text('${e.ascentM.round()} m'), findsWidgets);
+      expect(
+        find.textContaining('GRADE-ADJUSTED PACE (ESTIMATE)'),
+        findsOneWidget,
+      );
+      await scrollTo(tester, find.text('CLIMB').last);
+      // The splits table gains a Climb column, one cell per full km.
+      final km = e.unitClimbs(1000);
+      expect(find.text('CLIMB'), findsNWidgets(2));
+      expect(
+        find.text(
+          km.first.ascentM >= 0.5
+              ? '+${km.first.ascentM.round()} m'
+              : '${km.first.ascentM.round()} m',
+        ),
+        findsWidgets,
+      );
+    });
+
+    testWidgets('a run with no elevation shows no card and no climb column', (
+      tester,
+    ) async {
+      final r = freeRunFile(n: 72, start: d1, seconds: 1800);
+      await pumpApp(
+        tester,
+        fakeServices(files: [r]),
+        home: RunDetailScreen(runId: r.id),
+      );
+      await pumpTimes(tester, 6);
+      expect(find.byKey(const ValueKey('elevation-card')), findsNothing);
+      expect(find.text('CLIMB'), findsNothing);
+    });
+
+    testWidgets('a Laps run gets a climb cell per lap', (tester) async {
+      final r = withElevation(lapsRunFile(n: 73, start: d1));
+      await pumpApp(
+        tester,
+        fakeServices(files: [r]),
+        home: RunDetailScreen(runId: r.id),
+      );
+      await pumpTimes(tester, 6);
+      expect(find.byKey(const ValueKey('elevation-card')), findsOneWidget);
+      await scrollTo(tester, find.text('CLIMB').last);
+      expect(
+        find.text('CLIMB'),
+        findsNWidgets(2),
+      ); // the card tile and the column
+    });
+  });
 }

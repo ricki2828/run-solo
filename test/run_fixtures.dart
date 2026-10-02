@@ -3,6 +3,8 @@
 /// hand-written analyses.
 library;
 
+import 'dart:math' as math;
+
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_engine/testing.dart' as synth;
 
@@ -87,6 +89,20 @@ engine.RunFile freeRunFile({
       ),
     )
     .run;
+
+/// [run] with the phone's fused elevation on every sample: a gentle rise
+/// with a rolling swell (about 36 m up and down per 2.8 km), so it books
+/// climb, descent and a spread of grades.
+engine.RunFile withElevation(
+  engine.RunFile run, {
+  engine.ElevSource src = engine.ElevSource.baro,
+}) => run.copyWith(
+  samples: [
+    for (final s in run.samples)
+      s.copyWith(elevM: 40 + 0.004 * s.distM + 18 * math.sin(s.distM / 450)),
+  ],
+  elevSrc: src,
+);
 
 /// Four manual laps of varying pace, no phases (plan §18.2 Laps run).
 engine.RunFile lapsRunFile({

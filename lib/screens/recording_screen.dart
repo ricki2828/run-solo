@@ -9,6 +9,7 @@ import '../app/format.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
+import '../state/history_store.dart' show runModeOf;
 import '../state/recording_controller.dart';
 import '../theme/theme.dart';
 import '../theme/zones.dart';
@@ -1143,6 +1144,78 @@ class AuxFigure extends StatelessWidget {
   );
 }
 
+/// Climb so far and the current grade, as secondary figures under the main
+/// numbers (founder 2-Oct). Same 36 sp floor as every other number on the
+/// screen (A8); the hero stays the biggest. With [gapSecPerKm] (modes that
+/// show grade-adjusted pace live) it is a third figure on a second row, so
+/// no figure shrinks below the floor. The phone's barometer and GPS are
+/// fused on the device; nothing here leaves it.
+class ElevationRow extends StatelessWidget {
+  const ElevationRow({
+    super.key,
+    required this.s,
+    required this.units,
+    required this.labelColor,
+    required this.valueColor,
+    this.gapSecPerKm,
+  });
+  final RecordingSnapshot s;
+  final Units units;
+  final Color labelColor;
+  final Color valueColor;
+
+  /// The flat-equivalent pace (an estimate); null = not shown.
+  final double? gapSecPerKm;
+
+  @override
+  Widget build(BuildContext context) {
+    final climb = AuxFigure(
+      label: 'CLIMB',
+      value: Fmt.elevation(s.elevGainM, units),
+      labelColor: labelColor,
+      valueColor: valueColor,
+      valueKey: const ValueKey('live-climb'),
+    );
+    final grade = AuxFigure(
+      label: 'GRADE',
+      value: Fmt.grade(s.gradePct),
+      labelColor: labelColor,
+      valueColor: valueColor,
+      valueKey: const ValueKey('live-grade'),
+    );
+    final gap = gapSecPerKm == null
+        ? null
+        : AuxFigure(
+            label: 'GAP (ESTIMATE)',
+            value: Fmt.pace(gapSecPerKm, units),
+            labelColor: labelColor,
+            valueColor: valueColor,
+            valueKey: const ValueKey('live-gap'),
+          );
+    return Column(
+      key: const ValueKey('elevation-row'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(child: climb),
+            const SizedBox(width: Space.x16),
+            Expanded(child: grade),
+          ],
+        ),
+        if (gap != null)
+          Row(
+            children: [
+              Expanded(child: gap),
+              const Spacer(),
+            ],
+          ),
+      ],
+    );
+  }
+}
+
 /// Heart rate and total time as a row of large tabular figures with small
 /// labels (founder, tester 0.2). Bone digits on every zone background
 /// (≥ 7:1, zone contrast test); a dropped strap reads "--" + reconnecting in
@@ -1384,6 +1457,10 @@ class _FreeRunBlock extends StatelessWidget {
     final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
     final runAverage = runAverageSecPerKm(s, ctl);
     final unit = units == Units.mi ? 'mi' : 'km';
+    // Secondary figures, once the phone has an elevation: never bigger than
+    // the hero, never under 36 sp. Keyed on the mode's flag, not a type list.
+    final showElevation =
+        runModeOf(s.mode).showsElevation && s.elevGainM != null;
     return Column(
       key: const ValueKey('free-run-block'),
       children: [
@@ -1434,11 +1511,20 @@ class _FreeRunBlock extends StatelessWidget {
             ],
           ),
         ),
+        if (showElevation) ...[
+          SizedBox(height: compact ? Space.x4 : Space.x8),
+          ElevationRow(
+            s: s,
+            units: units,
+            labelColor: secondary,
+            valueColor: t.inkPrimary,
+          ),
+        ],
         const SizedBox(height: Space.x8),
         // Founder 25-Sep: the current-pace dial here too, needle against the
         // run's average so far.
         SizedBox(
-          width: compact ? 150 : 200,
+          width: compact ? (showElevation ? 112 : 150) : 200,
           child: PaceDial(
             currentSecPerKm: s.livePaceSecPerKm,
             referenceSecPerKm: runAverage,

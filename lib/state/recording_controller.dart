@@ -63,6 +63,9 @@ class RecordingSnapshot {
     this.goalLapM,
     this.tipsMuted,
     this.autoPaused = false,
+    this.elevGainM,
+    this.elevLossM,
+    this.gradePct,
   });
 
   final RecorderState state;
@@ -150,6 +153,14 @@ class RecordingSnapshot {
   /// `RecorderStatus.autoPaused`: [paused] and the recorder paused itself
   /// because the runner stopped (Settings → Auto-pause). False otherwise.
   final bool autoPaused;
+
+  /// Climb and descent so far (m) and the grade over the last stretch
+  /// (percent, + uphill), from the phone's barometer + GPS fusion
+  /// (`RecorderStatus.elevGainM`...). Null until there is an elevation, and
+  /// for the grade until a full window of distance.
+  final double? elevGainM;
+  final double? elevLossM;
+  final double? gradePct;
 
   /// The session step being run: `spec.steps[stepIndex]` as native sends
   /// it (work and recovery steps both counted; null in warm-up, cool-down
@@ -278,6 +289,10 @@ class RecordingSnapshot {
     bool? tipsMuted,
     bool clearTipsMuted = false,
     bool? autoPaused,
+    double? elevGainM,
+    double? elevLossM,
+    double? gradePct,
+    bool clearGrade = false,
   }) => RecordingSnapshot(
     state: state ?? this.state,
     runId: runId ?? this.runId,
@@ -315,6 +330,9 @@ class RecordingSnapshot {
     goalLapM: goalLapM ?? this.goalLapM,
     tipsMuted: clearTipsMuted ? null : (tipsMuted ?? this.tipsMuted),
     autoPaused: autoPaused ?? this.autoPaused,
+    elevGainM: elevGainM ?? this.elevGainM,
+    elevLossM: elevLossM ?? this.elevLossM,
+    gradePct: clearGrade ? null : (gradePct ?? this.gradePct),
   );
 }
 
@@ -497,6 +515,10 @@ class RecordingController extends ChangeNotifier {
       tipsMuted: s.tipsMuted,
       clearTipsMuted: s.tipsMuted == null,
       autoPaused: s.autoPaused ?? false,
+      elevGainM: s.elevGainM,
+      elevLossM: s.elevLossM,
+      gradePct: s.gradePct,
+      clearGrade: s.gradePct == null,
       hrPaired: s.hrConnected || _snap.hrPaired,
       goalLapMs: goalLap?.activeMs,
       goalLapM: goalLap?.distanceM,
@@ -742,6 +764,10 @@ class RecordingController extends ChangeNotifier {
       clearStepRemainingM: t.stepRemainingM == null,
       zone: zone,
       autoPaused: t.autoPaused ?? false,
+      elevGainM: t.elevGainM,
+      elevLossM: t.elevLossM,
+      gradePct: t.gradePct,
+      clearGrade: t.gradePct == null,
     );
   }
 

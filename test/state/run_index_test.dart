@@ -353,4 +353,60 @@ void main() {
       expect(back.medianLapSec, isNotNull);
     });
   });
+
+  group('elevation (v9)', () {
+    test(
+      'a run with elevation indexes climb, descent, source and GAP',
+      () async {
+        final run = withElevation(freeRunFile(n: 41, start: d1, seconds: 1800));
+        final e = engine.RunElevation.of(run)!;
+        final store = await storeWith([run]);
+        await store.list();
+        final row = (await store.readIndex()).entries[run.id]!.row!;
+        expect(row.version, IndexRow.currentVersion);
+        // The stored file rounds elevation to 0.1 m, so the figures agree to about that.
+        expect(row.climbM, closeTo(e.ascentM, 1));
+        expect(row.descentM, closeTo(e.descentM, 1));
+        expect(row.elevSrc, engine.ElevSource.baro);
+        expect(row.gapSecPerKm, closeTo(e.gapSecPerKm!, 1));
+        // And it survives the JSON round trip.
+        final back = IndexRow.fromJson(row.toJson())!;
+        expect(back.climbM, row.climbM);
+        expect(back.elevSrc, engine.ElevSource.baro);
+        expect(back.gapSecPerKm, row.gapSecPerKm);
+      },
+    );
+
+    test('a run with none leaves the fields null and writes no keys', () async {
+      final run = freeRunFile(n: 42, start: d1);
+      final store = await storeWith([run]);
+      await store.list();
+      final row = (await store.readIndex()).entries[run.id]!.row!;
+      expect(row.climbM, isNull);
+      expect(row.elevSrc, isNull);
+      expect(row.gapSecPerKm, isNull);
+      final j = row.toJson();
+      for (final k in ['climb_m', 'descent_m', 'elev_src', 'gap_s_per_km']) {
+        expect(j.containsKey(k), isFalse, reason: k);
+      }
+    });
+
+    test('a row from before v9 is rebuilt once and gains the fields', () async {
+      final run = withElevation(freeRunFile(n: 43, start: d1, seconds: 1800));
+      final store = await storeWith([run]);
+      await store.list();
+      final j = jsonDecode(store.indexFile.readAsStringSync()) as Map;
+      final row = ((j['runs'] as List).single as Map)['row'] as Map;
+      row['v'] = 8;
+      for (final k in ['climb_m', 'descent_m', 'elev_src', 'gap_s_per_km']) {
+        row.remove(k);
+      }
+      store.indexFile.writeAsStringSync(jsonEncode(j));
+      expect((await store.readIndex()).entries[run.id]!.row!.climbM, isNull);
+      await store.list();
+      final back = (await store.readIndex()).entries[run.id]!.row!;
+      expect(back.version, IndexRow.currentVersion);
+      expect(back.climbM, isNotNull);
+    });
+  });
 }

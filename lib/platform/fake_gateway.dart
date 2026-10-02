@@ -118,6 +118,12 @@ class FakeRecorderGateway implements RecorderGateway {
 
   /// Simulated horizontal accuracy in metres (null while [gpsLost]).
   double gpsAccuracyM = 8;
+
+  /// Scripted elevation figures (null = the phone has none yet): climb and
+  /// descent so far in metres, the grade in percent.
+  double? elevGainM;
+  double? elevLossM;
+  double? gradePct;
   bool hrPaired = true;
   bool cuesEnabled = true;
 
@@ -466,6 +472,9 @@ class FakeRecorderGateway implements RecorderGateway {
     finishRequests: _finishRequests == 0 ? null : _finishRequests,
     tipsMuted: _state == RecorderState.idle ? null : tipsMuted,
     autoPaused: _autoPaused,
+    elevGainM: elevGainM,
+    elevLossM: elevLossM,
+    gradePct: gradePct,
     mode: _state == RecorderState.idle ? RecordMode.free : _mode,
     laps: List.of(_laps),
   );
@@ -823,6 +832,9 @@ class FakeRecorderGateway implements RecorderGateway {
             ? null
             : math.max(0, _phaseTargetM! - _stepDistanceM),
         autoPaused: _autoPaused,
+        elevGainM: elevGainM,
+        elevLossM: elevLossM,
+        gradePct: gradePct,
       ),
     );
   }

@@ -531,4 +531,61 @@ void main() {
     await settleAnimations(tester);
     expect(find.byType(RecordingScreen), findsOneWidget);
   });
+
+  group('elevation (secondary figures)', () {
+    testWidgets(
+      'a free run shows climb and grade at 36 sp or more, under the hero',
+      (tester) async {
+        final (fake, _) = await openRecording(tester, mode: RecordMode.free);
+        expect(find.byKey(const ValueKey('elevation-row')), findsNothing);
+        fake
+          ..elevGainM = 124.4
+          ..elevLossM = 80
+          ..gradePct = 3.2;
+        fake.advance(const Duration(seconds: 2));
+        await settle(tester);
+        expect(find.byKey(const ValueKey('elevation-row')), findsOneWidget);
+        expect(find.text('124 m'), findsOneWidget);
+        expect(find.text('+3%'), findsOneWidget);
+        for (final k in ['live-climb', 'live-grade']) {
+          final text = tester.widget<Text>(find.byKey(ValueKey(k)));
+          expect(text.style!.fontSize, greaterThanOrEqualTo(36), reason: k);
+        }
+        // The hero stays the biggest number on the screen.
+        final hero = tester.widget<Text>(
+          find.byKey(const ValueKey('run-average')),
+        );
+        expect(
+          hero.style!.fontSize,
+          greaterThan(
+            tester
+                .widget<Text>(find.byKey(const ValueKey('live-climb')))
+                .style!
+                .fontSize!,
+          ),
+        );
+      },
+    );
+
+    testWidgets('no elevation yet (no barometer or altitude): nothing shown', (
+      tester,
+    ) async {
+      final (fake, _) = await openRecording(tester, mode: RecordMode.free);
+      fake.advance(const Duration(seconds: 2));
+      await settle(tester);
+      expect(find.byKey(const ValueKey('elevation-row')), findsNothing);
+    });
+
+    testWidgets('a mode that does not show elevation ignores the figures', (
+      tester,
+    ) async {
+      final (fake, _) = await openRecording(tester, mode: RecordMode.intervals);
+      fake
+        ..elevGainM = 50
+        ..gradePct = 2;
+      fake.advance(const Duration(seconds: 2));
+      await settle(tester);
+      expect(find.byKey(const ValueKey('elevation-row')), findsNothing);
+    });
+  });
 }
