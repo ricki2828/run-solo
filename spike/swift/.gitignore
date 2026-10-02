@@ -1,0 +1,3 @@
+RunCore.xcframework/
+.build/
+.swiftpm/

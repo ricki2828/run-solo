@@ -1,0 +1,45 @@
+name: kmp-spike
+
+# K0 spike only (ai/plans/run-supreme-ios-plan.md §2.2, §7.1): core-jvm as Kotlin Multiplatform on
+# a macOS runner. Never runs on main or on PRs; ci.yml is untouched. Read logs/digest.txt (the
+# k0-digest artifact or the job summary), not the full log.
+# Pinned together: Kotlin 2.4.0 (spike/kmp-core/build.gradle.kts), Gradle 9.3.1 (wrapper),
+# JDK 17, runner image macos-26 with its default Xcode (recorded in the digest).
+on:
+  push:
+    branches: [k0-kmp-spike]
+    paths: ['spike/**', '.github/workflows/kmp-spike.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: kmp-spike-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  spike:
+    runs-on: macos-26
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+      - name: Kotlin/Native toolchain cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-kotlin-2.4.0
+      - name: Spike
+        run: spike/ci_run.sh
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: k0-digest
+          path: |
+            spike/logs/
+            spike/kmp-core/build/reports/conformance/
+            spike/kmp-core/build/ported/port-report.txt
