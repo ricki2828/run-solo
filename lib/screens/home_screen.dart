@@ -7,7 +7,7 @@ import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
-import '../state/next_session.dart';
+import '../state/home_progress.dart';
 import '../theme/theme.dart';
 import '../widgets/home_scores.dart';
 import '../widgets/recent_activity.dart';
@@ -43,13 +43,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   Future<List<RunSummary>>? _runs;
   Future<engine.HomeEstimates?>? _estimates;
-  Future<
-    ({
-      engine.FitnessHero? hero,
-      Map<engine.IdentityLane, engine.IdentityScore> scores,
-    })
-  >?
-  _scores;
+  Future<Map<engine.IdentityLane, engine.IdentityScore>>? _scores;
+  Future<_HomeData>? _data;
   PermissionSnapshot? _perms;
   HistoryStore? _history;
 
@@ -79,10 +74,17 @@ class _HomeScreenState extends State<HomeScreen> {
     final services = AppServices.of(context);
     _runs = services.history.list();
     _loadEstimates();
+    final runs = _runs!, scores = _scores;
+    _data = _load(runs, scores);
     services.permissions.status().then((p) {
       if (mounted) setState(() => _perms = p);
     });
   }
+
+  static Future<_HomeData> _load(
+    Future<List<RunSummary>> runs,
+    Future<Map<engine.IdentityLane, engine.IdentityScore>>? scores,
+  ) async => _HomeData(await runs, scores == null ? const {} : await scores);
 
   void _loadEstimates() {
     // PD2: ESTIMATED TIMES and the fitness hero read the index's derived
@@ -93,9 +95,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _estimates = live.prepare().then(
         (_) => live.homeEstimates(includeEvent: _hasEventCourse(live)),
       );
-      _scores = live.prepare().then(
-        (_) => (hero: live.fitnessHero(), scores: live.identityScores()),
-      );
+      _scores = live.prepare().then((_) => live.identityScores());
+    } else {
+      _scores = null;
     }
   }
 
@@ -112,7 +114,12 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(_refresh);
   }
 
-  Future<void> _start() async {
+  /// Start and Change both open setup; with a recommendation, setup opens
+  /// preset to it.
+  Future<void> _start(Recommendation? rec) async {
+    final services = AppServices.of(context);
+    if (rec != null) await services.settings.update(rec.apply);
+    if (!mounted) return;
     final perms = _perms;
     if (perms != null && !perms.canRecord) {
       final ok = await Navigator.of(context).pushNamed(Routes.permissions);
@@ -154,9 +161,6 @@ class _HomeScreenState extends State<HomeScreen> {
         final settings = services.settings.settings;
         final perms = _perms;
         final plan = widget.planHeadline;
-        final next = plan != null
-            ? NextSession.plan(plan.name)
-            : NextSession.lastUsed(settings, services.pickedSession);
         return Scaffold(
           body: SafeArea(
             child: SingleChildScrollView(
@@ -184,57 +188,58 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                   const SizedBox(height: Space.x32),
-                  FutureBuilder<List<RunSummary>>(
-                    future: _runs,
-                    builder: (context, snap) => HomeHeadline(
-                      next: next,
-                      runs: snap.data ?? const [],
-                      units: settings.units,
-                      planSubtitle: widget.planHeadline?.subtitle,
-                    ),
-                  ),
-                  const SizedBox(height: Space.x16),
-                  FutureBuilder<
-                    ({
-                      engine.FitnessHero? hero,
-                      Map<engine.IdentityLane, engine.IdentityScore> scores,
-                    })
-                  >(
-                    future: _scores,
-                    builder: (context, snap) => HomeScores(
-                      scores: snap.data?.scores ?? const {},
-                      profileSex: settings.profileSex,
-                      age: settings.birthYear == null
+                  FutureBuilder<_HomeData>(
+                    future: _data,
+                    builder: (context, snap) {
+                      final data = snap.data;
+                      if (data == null) return const SizedBox.shrink();
+                      final scores = data.scores;
+                      final age = settings.birthYear == null
                           ? null
-                          : _now.year - settings.birthYear!,
-                      onOpen: _openProgress,
-                    ),
-                  ),
-                  const SizedBox(height: Space.x16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: _start,
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(next.startLabel, maxLines: 1),
+                          : _now.year - settings.birthYear!;
+                      final headline = ProgressHeadline.of(
+                        scores,
+                        now: _now,
+                        sex: settings.profileSex,
+                        age: age,
+                      );
+                      final rec = Recommendation.of(
+                        scores,
+                        data.runs,
+                        now: _now,
+                        sex: settings.profileSex,
+                        age: age,
+                        presetEdits: settings.allPresetEdits,
+                      );
+                      return Column(
+                        children: [
+                          _ProgressHero(headline: headline),
+                          const SizedBox(height: Space.x16),
+                          HomeScores(
+                            scores: scores,
+                            profileSex: settings.profileSex,
+                            age: age,
+                            onOpen: _openProgress,
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: Space.x8),
-                      OutlinedButton(
-                        onPressed: _start,
-                        child: const Text('Change'),
-                      ),
-                    ],
+                          const SizedBox(height: Space.x16),
+                          _GetBetter(
+                            reason: plan?.subtitle ?? rec.reason,
+                            startLabel: plan != null
+                                ? 'Start ${plan.name}'
+                                : rec.startLabel,
+                            onStart: () => _start(plan == null ? rec : null),
+                            onChange: () => _start(null),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: Space.x12),
                   if (perms != null && !perms.canRecord)
                     Padding(
                       padding: const EdgeInsets.only(bottom: Space.x12),
                       child: InkWell(
-                        onTap: _start,
+                        onTap: () => _start(null),
                         child: Text(
                           perms.coarseOnly
                               ? 'Location is approximate. Precise is needed for pace.'
@@ -281,47 +286,80 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// Headline, line and Start all come from [next]. The number is the one that
-/// session is judged on, from its last comparable run; none yet means "set
-/// your line" for that session.
-class HomeHeadline extends StatelessWidget {
-  const HomeHeadline({
-    super.key,
-    required this.next,
-    required this.runs,
-    required this.units,
-    this.planSubtitle,
-  });
-  final NextSession next;
+class _HomeData {
+  const _HomeData(this.runs, this.scores);
   final List<RunSummary> runs;
-  final Units units;
-  final String? planSubtitle;
+  final Map<engine.IdentityLane, engine.IdentityScore> scores;
+}
+
+class _ProgressHero extends StatelessWidget {
+  const _ProgressHero({required this.headline});
+  final ProgressHeadline headline;
 
   @override
   Widget build(BuildContext context) {
-    final String title, subtitle;
-    if (next.kind == NextKind.plan) {
-      title = '${next.name.toUpperCase()} TODAY';
-      subtitle = planSubtitle ?? 'Next up in your plan.';
-    } else if (nextBeat(next, runs, units) case final beat?) {
-      title = 'BEAT ${beat.value}';
-      subtitle = beat.line;
-    } else {
-      title = 'SET YOUR LINE';
-      subtitle = hasUnusableRun(next, runs)
-          ? next.kind == NextKind.interval
-                ? 'Your last ${next.name} had no clean reps to beat. Your next one sets the line.'
-                : 'Your last ${next.name} had nothing to compare. Your next one sets the line.'
-          : 'Your first ${next.name} is the one to beat.';
-    }
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(title, style: RunSoloType.display64.copyWith(color: t.inkPrimary)),
         Text(
-          subtitle,
+          headline.title,
+          style: RunSoloType.display44.copyWith(color: t.inkPrimary),
+        ),
+        Text(
+          headline.line,
           style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+        ),
+      ],
+    );
+  }
+}
+
+/// One recommended session with its reason. Start opens setup preset to it;
+/// Change opens the same screen to pick something else.
+class _GetBetter extends StatelessWidget {
+  const _GetBetter({
+    required this.reason,
+    required this.startLabel,
+    required this.onStart,
+    required this.onChange,
+  });
+  final String reason;
+  final String startLabel;
+  final VoidCallback onStart;
+  final VoidCallback onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'HOW TO GET BETTER',
+          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+        ),
+        const SizedBox(height: Space.x4),
+        Text(
+          reason,
+          key: const ValueKey('home-recommendation'),
+          style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+        ),
+        const SizedBox(height: Space.x12),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton(
+                onPressed: onStart,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(startLabel, maxLines: 1),
+                ),
+              ),
+            ),
+            const SizedBox(width: Space.x8),
+            OutlinedButton(onPressed: onChange, child: const Text('Change')),
+          ],
         ),
       ],
     );

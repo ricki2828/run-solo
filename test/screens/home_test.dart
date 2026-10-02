@@ -32,7 +32,9 @@ void main() {
     tester,
   ) async {
     await pumpApp(tester, fakeServices(), home: HomeScreen(now: now));
-    expect(find.text('SET YOUR LINE'), findsOneWidget);
+    expect(find.text('SET YOUR SCORES'), findsOneWidget);
+    expect(find.text('HOW TO GET BETTER'), findsOneWidget);
+    expect(find.text('BEAT 4:22'), findsNothing);
     expect(find.text('LOCKED'), findsNothing);
     expect(find.text('NEW RUN'), findsNothing);
     expect(find.text('Start Norwegian 4x4'), findsOneWidget);
@@ -44,7 +46,7 @@ void main() {
     RecordMode.cooper,
     RecordMode.intervals,
   ]) {
-    testWidgets('Start remembers $mode and opens setup before recording', (
+    testWidgets('Start presets the recommendation from $mode, no recording', (
       tester,
     ) async {
       final fake = FakeRecorderGateway(now: now);
@@ -56,19 +58,26 @@ void main() {
       await tester.tap(find.byType(FilledButton));
       await pumpTimes(tester, 4);
       expect(find.byType(StartScreen), findsOneWidget);
-      expect(services.settings.settings.lastMode, mode);
+      // No scores yet: the first 4x4 is what sets AEROBIC.
+      expect(services.settings.settings.lastMode, RecordMode.intervals);
+      expect(
+        services.settings.settings.sessionId,
+        engine.SessionSpec.norwegian4x4Id,
+      );
       expect(fake.startCalls, isEmpty);
     });
   }
 
-  testWidgets('goal selection survives Home Start', (tester) async {
+  testWidgets('Start from a goal run presets the recommendation', (
+    tester,
+  ) async {
     final services = fakeServices(
       settings: const AppSettings(onboardingDone: true, goalRun: true),
     );
     await pumpApp(tester, services, home: HomeScreen(now: now));
     await tester.tap(find.byType(FilledButton));
     await pumpTimes(tester, 4);
-    expect(services.settings.settings.goalRun, isTrue);
+    expect(services.settings.settings.goalRun, isFalse);
     expect(find.byType(StartScreen), findsOneWidget);
   });
 
@@ -83,7 +92,6 @@ void main() {
         planHeadline: (name: 'Tempo', subtitle: 'Week 3, session 2 of 3.'),
       ),
     );
-    expect(find.text('TEMPO TODAY'), findsOneWidget);
     expect(find.text('Week 3, session 2 of 3.'), findsOneWidget);
     expect(find.text('Start Tempo'), findsOneWidget);
   });
