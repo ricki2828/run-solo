@@ -701,7 +701,7 @@ void main() {
   ) async {
     await pumpApp(tester, fakeServices(), pushRoute: Routes.start);
     await pumpTimes(tester, 4);
-    await tester.tap(find.byKey(const ValueKey('tests-chip')));
+    await tapVisible(tester, find.byKey(const ValueKey('tests-chip')));
     await settleAnimations(tester);
     await tapVisible(tester, find.byKey(const ValueKey('pick-bronco')));
     await settleAnimations(tester);
