@@ -88,6 +88,23 @@ void main() {
     expect(services.settings.settings.lastMode, RecordMode.free);
   });
 
+  testWidgets('starting a run keeps the recommendation as the run type', (
+    tester,
+  ) async {
+    final services = fakeServices(
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.free,
+      ),
+    );
+    await pumpApp(tester, services, home: HomeScreen(now: now));
+    await tester.tap(find.byType(FilledButton));
+    await pumpTimes(tester, 4);
+    await tester.tap(find.text('START WARM-UP'));
+    await pumpTimes(tester, 6);
+    expect(services.settings.settings.lastMode, RecordMode.intervals);
+  });
+
   testWidgets('scores loading: calm hero, Start keeps the last run type', (
     tester,
   ) async {
