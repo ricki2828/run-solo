@@ -1268,7 +1268,16 @@ data class RecorderStatus (
    * Settings -> Auto-pause), not the runner. Null/false otherwise. A manual
    * pause on top of it makes it false.
    */
-  val autoPaused: Boolean? = null
+  val autoPaused: Boolean? = null,
+  /**
+   * Climb and descent so far (metres, barometer + GPS fused on the phone)
+   * and the grade over the last stretch (percent, + uphill). Null until
+   * the recorder has an elevation (no barometer and no altitude yet) or,
+   * for the grade, a full window of distance.
+   */
+  val elevGainM: Double? = null,
+  val elevLossM: Double? = null,
+  val gradePct: Double? = null
 )
  {
   companion object {
@@ -1293,7 +1302,10 @@ data class RecorderStatus (
       val finishRequests = pigeonVar_list[17] as Long?
       val tipsMuted = pigeonVar_list[18] as Boolean?
       val autoPaused = pigeonVar_list[19] as Boolean?
-      return RecorderStatus(state, runId, mode, laps, elapsedMs, lapIndex, gpsFix, hrConnected, phase, repIndex, phaseRemainingMs, spec, stepIndex, stepRemainingMs, stepRemainingM, journalOk, pausedAtElapsedMs, finishRequests, tipsMuted, autoPaused)
+      val elevGainM = pigeonVar_list[20] as Double?
+      val elevLossM = pigeonVar_list[21] as Double?
+      val gradePct = pigeonVar_list[22] as Double?
+      return RecorderStatus(state, runId, mode, laps, elapsedMs, lapIndex, gpsFix, hrConnected, phase, repIndex, phaseRemainingMs, spec, stepIndex, stepRemainingMs, stepRemainingM, journalOk, pausedAtElapsedMs, finishRequests, tipsMuted, autoPaused, elevGainM, elevLossM, gradePct)
     }
   }
   fun toList(): List<Any?> {
@@ -1318,6 +1330,9 @@ data class RecorderStatus (
       finishRequests,
       tipsMuted,
       autoPaused,
+      elevGainM,
+      elevLossM,
+      gradePct,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -1328,7 +1343,7 @@ data class RecorderStatus (
       return true
     }
     val other = other as RecorderStatus
-    return PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.laps, other.laps) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapIndex, other.lapIndex) && PlatformApiPigeonUtils.deepEquals(this.gpsFix, other.gpsFix) && PlatformApiPigeonUtils.deepEquals(this.hrConnected, other.hrConnected) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.spec, other.spec) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.journalOk, other.journalOk) && PlatformApiPigeonUtils.deepEquals(this.pausedAtElapsedMs, other.pausedAtElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.finishRequests, other.finishRequests) && PlatformApiPigeonUtils.deepEquals(this.tipsMuted, other.tipsMuted) && PlatformApiPigeonUtils.deepEquals(this.autoPaused, other.autoPaused)
+    return PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.laps, other.laps) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapIndex, other.lapIndex) && PlatformApiPigeonUtils.deepEquals(this.gpsFix, other.gpsFix) && PlatformApiPigeonUtils.deepEquals(this.hrConnected, other.hrConnected) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.spec, other.spec) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.journalOk, other.journalOk) && PlatformApiPigeonUtils.deepEquals(this.pausedAtElapsedMs, other.pausedAtElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.finishRequests, other.finishRequests) && PlatformApiPigeonUtils.deepEquals(this.tipsMuted, other.tipsMuted) && PlatformApiPigeonUtils.deepEquals(this.autoPaused, other.autoPaused) && PlatformApiPigeonUtils.deepEquals(this.elevGainM, other.elevGainM) && PlatformApiPigeonUtils.deepEquals(this.elevLossM, other.elevLossM) && PlatformApiPigeonUtils.deepEquals(this.gradePct, other.gradePct)
   }
 
   override fun hashCode(): Int {
@@ -1353,6 +1368,9 @@ data class RecorderStatus (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.finishRequests)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.tipsMuted)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.autoPaused)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.elevGainM)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.elevLossM)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.gradePct)
     return result
   }
 }
@@ -1818,7 +1836,11 @@ data class TickEvent (
   val stepRemainingMs: Long? = null,
   val stepRemainingM: Double? = null,
   /** As `RecorderStatus.autoPaused`. */
-  val autoPaused: Boolean? = null
+  val autoPaused: Boolean? = null,
+  /** As `RecorderStatus.elevGainM`, `elevLossM`, `gradePct`. */
+  val elevGainM: Double? = null,
+  val elevLossM: Double? = null,
+  val gradePct: Double? = null
 ) : RecorderEvent()
  {
   companion object {
@@ -1838,7 +1860,10 @@ data class TickEvent (
       val stepRemainingMs = pigeonVar_list[12] as Long?
       val stepRemainingM = pigeonVar_list[13] as Double?
       val autoPaused = pigeonVar_list[14] as Boolean?
-      return TickEvent(elapsedMs, lapElapsedMs, lapDistanceM, lapPaceLiveSecPerKm, totalDistanceM, hr, gpsAccuracyM, state, phase, repIndex, phaseRemainingMs, stepIndex, stepRemainingMs, stepRemainingM, autoPaused)
+      val elevGainM = pigeonVar_list[15] as Double?
+      val elevLossM = pigeonVar_list[16] as Double?
+      val gradePct = pigeonVar_list[17] as Double?
+      return TickEvent(elapsedMs, lapElapsedMs, lapDistanceM, lapPaceLiveSecPerKm, totalDistanceM, hr, gpsAccuracyM, state, phase, repIndex, phaseRemainingMs, stepIndex, stepRemainingMs, stepRemainingM, autoPaused, elevGainM, elevLossM, gradePct)
     }
   }
   fun toList(): List<Any?> {
@@ -1858,6 +1883,9 @@ data class TickEvent (
       stepRemainingMs,
       stepRemainingM,
       autoPaused,
+      elevGainM,
+      elevLossM,
+      gradePct,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -1868,7 +1896,7 @@ data class TickEvent (
       return true
     }
     val other = other as TickEvent
-    return PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapElapsedMs, other.lapElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapDistanceM, other.lapDistanceM) && PlatformApiPigeonUtils.deepEquals(this.lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.totalDistanceM, other.totalDistanceM) && PlatformApiPigeonUtils.deepEquals(this.hr, other.hr) && PlatformApiPigeonUtils.deepEquals(this.gpsAccuracyM, other.gpsAccuracyM) && PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.autoPaused, other.autoPaused)
+    return PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapElapsedMs, other.lapElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapDistanceM, other.lapDistanceM) && PlatformApiPigeonUtils.deepEquals(this.lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.totalDistanceM, other.totalDistanceM) && PlatformApiPigeonUtils.deepEquals(this.hr, other.hr) && PlatformApiPigeonUtils.deepEquals(this.gpsAccuracyM, other.gpsAccuracyM) && PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.autoPaused, other.autoPaused) && PlatformApiPigeonUtils.deepEquals(this.elevGainM, other.elevGainM) && PlatformApiPigeonUtils.deepEquals(this.elevLossM, other.elevLossM) && PlatformApiPigeonUtils.deepEquals(this.gradePct, other.gradePct)
   }
 
   override fun hashCode(): Int {
@@ -1888,6 +1916,9 @@ data class TickEvent (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.stepRemainingMs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.stepRemainingM)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.autoPaused)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.elevGainM)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.elevLossM)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.gradePct)
     return result
   }
 }

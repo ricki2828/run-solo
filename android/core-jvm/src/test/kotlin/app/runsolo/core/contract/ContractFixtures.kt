@@ -1,5 +1,6 @@
 package app.runsolo.core.contract
 
+import app.runsolo.core.elevation.PressureReading
 import app.runsolo.core.fs.FakeFileSystem
 import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.journal.JournalWriter
@@ -32,9 +33,9 @@ import java.io.File
  * hand-built. Checked into `src/test/fixtures/contract/` and copied verbatim into
  * `packages/run_engine/test/fixtures/contract/`; [ContractFixturesTest] fails when the
  * generator and the checked-in files drift, and CI compares the two copies. The top level is
- * schema 4 (auto-pause: `pauses[]` may carry `"auto"`; otherwise schema 3's). `contract/schema1/`,
- * `contract/schema2/` and `contract/schema3/` are frozen output of the older writers: never
- * regenerated, schema3 pins that files written before auto-pause still read, schema1/2 pin the v1 `free` → `laps` and the v2 `fourByFour` +
+ * schema 5 (elevation: a sample may carry a ninth element, `elev_src` beside the samples; otherwise schema 4's). `contract/schema1/`,
+ * `contract/schema2/`, `contract/schema3/` and `contract/schema4/` are frozen output of the older writers: never
+ * regenerated, schema4 pins that files written before elevation still read, schema3 before auto-pause, schema1/2 pin the v1 `free` → `laps` and the v2 `fourByFour` +
  * `preset` → `intervals` + norwegian-4x4 mappings on the Dart side.
  *
  * Regenerate: `java -cp <test classpath> app.runsolo.core.contract.ContractFixturesKt`.
@@ -60,6 +61,7 @@ object ContractFixtures {
         "gps_dropout_hr" to gpsDropoutHr(),
         "laps_run_pause_manual_laps" to lapsRunPauseManualLaps(),
         "free_run_no_laps" to freeRunNoLaps(),
+        "free_run_elevation" to freeRunElevation(),
     ) + ReplayScenarios.KINDS.associate { "replay_${it.replace('-', '_')}" to replayKind(it) }
 
     /** One simulated recording: a service loop over the core, per second. */
@@ -91,10 +93,11 @@ object ContractFixtures {
         }
 
         /** Advance one second: deliver [fix] (if any) and [hr] (if any), tick core + sampler, journal. */
-        fun second(fix: LocationFix?, hr: Int?, before: () -> Unit = {}) {
+        fun second(fix: LocationFix?, hr: Int?, hpa: Double? = null, before: () -> Unit = {}) {
             t += 1000
             wall += 1000
             hr?.let { ticker.onHr(HrReading(t - 200, it)) }
+            hpa?.let { ticker.onPressure(PressureReading(t - 300, it)) }
             fix?.let { ticker.onFix(it.copy(t = t)) }
             before()
             // As RecordingSession: sample first, so the core sees this second's distance.
@@ -338,6 +341,31 @@ object ContractFixtures {
                 if (i == 300) s.lap(LapSource.notification)
                 if (i == 360) s.lap(LapSource.volumeKey)
             }
+        }
+        return s.finish()
+    }
+
+    /**
+     * Elevation (schema 5): 8 min free run at 3 m/s with a barometer. A minute flat while the level
+     * is anchored, 30 m up in 3 min, 2 min flat, then 15 m down in 2 min. GPS altitude reads 2 m high
+     * (the anchor takes the GPS level, the barometer the shape).
+     */
+    private fun freeRunElevation(): String {
+        val fixes = TraceFixture.straightLine(listOf(480 to 3.0), LAT0, LON0, 5.0, T0)
+        val truth = { i: Int ->
+            when {
+                i < 60 -> 20.0
+                i < 240 -> 20.0 + 30.0 * (i - 60) / 180
+                i < 360 -> 50.0
+                else -> 50.0 - 15.0 * (i - 360) / 120
+            }
+        }
+        val s = Session("contract-free-elev", RunMode.free, null)
+        for ((i, f) in fixes.withIndex()) {
+            if (i == 0) continue
+            val h = truth(i)
+            val hpa = 1013.25 * Math.pow(1.0 - h / 44_330.77, 1.0 / 0.190263)
+            s.second(f.copy(altM = h + 2.0), 140 + (i % 7), hpa)
         }
         return s.finish()
     }

@@ -1090,6 +1090,9 @@ class RecorderStatus {
     this.finishRequests,
     this.tipsMuted,
     this.autoPaused,
+    this.elevGainM,
+    this.elevLossM,
+    this.gradePct,
   });
 
   RecorderState state;
@@ -1147,6 +1150,16 @@ class RecorderStatus {
   /// pause on top of it makes it false.
   bool? autoPaused;
 
+  /// Climb and descent so far (metres, barometer + GPS fused on the phone)
+  /// and the grade over the last stretch (percent, + uphill). Null until
+  /// the recorder has an elevation (no barometer and no altitude yet) or,
+  /// for the grade, a full window of distance.
+  double? elevGainM;
+
+  double? elevLossM;
+
+  double? gradePct;
+
   List<Object?> _toList() {
     return <Object?>[
       state,
@@ -1169,6 +1182,9 @@ class RecorderStatus {
       finishRequests,
       tipsMuted,
       autoPaused,
+      elevGainM,
+      elevLossM,
+      gradePct,
     ];
   }
 
@@ -1198,6 +1214,9 @@ class RecorderStatus {
       finishRequests: result[17] as int?,
       tipsMuted: result[18] as bool?,
       autoPaused: result[19] as bool?,
+      elevGainM: result[20] as double?,
+      elevLossM: result[21] as double?,
+      gradePct: result[22] as double?,
     );
   }
 
@@ -1210,7 +1229,7 @@ class RecorderStatus {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(autoPaused, other.autoPaused);
+    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct);
   }
 
   @override
@@ -1721,6 +1740,9 @@ class TickEvent extends RecorderEvent {
     this.stepRemainingMs,
     this.stepRemainingM,
     this.autoPaused,
+    this.elevGainM,
+    this.elevLossM,
+    this.gradePct,
   });
 
   /// Wall time since Start, pauses included.
@@ -1761,6 +1783,13 @@ class TickEvent extends RecorderEvent {
   /// As `RecorderStatus.autoPaused`.
   bool? autoPaused;
 
+  /// As `RecorderStatus.elevGainM`, `elevLossM`, `gradePct`.
+  double? elevGainM;
+
+  double? elevLossM;
+
+  double? gradePct;
+
   List<Object?> _toList() {
     return <Object?>[
       elapsedMs,
@@ -1778,6 +1807,9 @@ class TickEvent extends RecorderEvent {
       stepRemainingMs,
       stepRemainingM,
       autoPaused,
+      elevGainM,
+      elevLossM,
+      gradePct,
     ];
   }
 
@@ -1802,6 +1834,9 @@ class TickEvent extends RecorderEvent {
       stepRemainingMs: result[12] as int?,
       stepRemainingM: result[13] as double?,
       autoPaused: result[14] as bool?,
+      elevGainM: result[15] as double?,
+      elevLossM: result[16] as double?,
+      gradePct: result[17] as double?,
     );
   }
 
@@ -1814,7 +1849,7 @@ class TickEvent extends RecorderEvent {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapElapsedMs, other.lapElapsedMs) && _deepEquals(lapDistanceM, other.lapDistanceM) && _deepEquals(lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && _deepEquals(totalDistanceM, other.totalDistanceM) && _deepEquals(hr, other.hr) && _deepEquals(gpsAccuracyM, other.gpsAccuracyM) && _deepEquals(state, other.state) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(autoPaused, other.autoPaused);
+    return _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapElapsedMs, other.lapElapsedMs) && _deepEquals(lapDistanceM, other.lapDistanceM) && _deepEquals(lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && _deepEquals(totalDistanceM, other.totalDistanceM) && _deepEquals(hr, other.hr) && _deepEquals(gpsAccuracyM, other.gpsAccuracyM) && _deepEquals(state, other.state) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct);
   }
 
   @override
