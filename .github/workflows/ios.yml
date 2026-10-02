@@ -1,0 +1,116 @@
+name: ios
+
+# iOS builds on GitHub's macOS runners (iOS plan §6.1, §11). Manual runs and v* tags only:
+# nothing here runs on branch pushes or pull requests, so iOS never slows the Android checks
+# in ci.yml. Verify a branch with:  gh workflow run ios.yml --ref <branch>
+#
+# Pins, bump together: Flutter 3.47.5 (same as ci.yml and the dev host), Xcode as selected
+# below (the job summary records the exact Xcode and CocoaPods versions of each run).
+# Plugins come through CocoaPods only (pubspec: enable-swift-package-manager false).
+#
+# Release build path for T4 (decided in I0): `flutter build ios --release --config-only`, then
+# `xcodebuild archive` and `xcodebuild -exportArchive -allowProvisioningUpdates` with the
+# App Store Connect API key flags and ExportOptions destination=upload. `flutter build ipa`
+# cannot pass the API key flags, and without them automatic signing on a runner with no
+# Xcode account fails. One build, no `--no-codesign` pass before it.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.47.5'
+  XCODE_VERSION: 'latest-stable'
+
+jobs:
+  verify:
+    name: simulator build (no signing)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Versions
+        run: |
+          mkdir -p build/ios-logs
+          {
+            echo "### iOS toolchain"
+            echo '```'
+            xcodebuild -version
+            flutter --version | head -1
+            echo "CocoaPods $(pod --version)"
+            sw_vers -productVersion | sed 's/^/macOS /'
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: flutter pub get
+        run: |
+          set -o pipefail
+          flutter pub get 2>&1 | tee build/ios-logs/1-pub-get.log
+      - name: Xcode project targets (add_targets.rb)
+        run: |
+          set -o pipefail
+          ruby -e "require 'xcodeproj'" 2>/dev/null || gem install xcodeproj --user-install
+          ruby ios/tools/add_targets.rb 2>&1 | tee build/ios-logs/2-add-targets.log
+      - name: pod install
+        working-directory: ios
+        run: |
+          set -o pipefail
+          pod install --repo-update 2>&1 | tee ../build/ios-logs/3-pod-install.log
+      - name: flutter build ios --simulator
+        run: |
+          set -o pipefail
+          flutter build ios --simulator --debug 2>&1 | tee build/ios-logs/4-build.log
+      - name: dSYMs
+        # Debug builds keep DWARF in the object files; dsymutil links them while DerivedData
+        # still exists. Release dSYMs come from the T4 archive.
+        run: |
+          set -o pipefail
+          mkdir -p build/ios-dsyms
+          app=build/ios/iphonesimulator/Runner.app
+          dsymutil "$app/Runner" -o build/ios-dsyms/Runner.app.dSYM 2>&1 | tee build/ios-logs/5-dsym.log
+          for fw in "$app"/Frameworks/*.framework; do
+            name=$(basename "$fw" .framework)
+            [ -f "$fw/$name" ] && dsymutil "$fw/$name" -o "build/ios-dsyms/$name.framework.dSYM" 2>&1 | tee -a build/ios-logs/5-dsym.log
+          done
+          ls build/ios-dsyms
+      - name: Error digest
+        if: always()
+        run: |
+          python3 ios/tools/error_digest.py build/ios-logs/digest.txt \
+            build/ios-logs/1-pub-get.log build/ios-logs/2-add-targets.log \
+            build/ios-logs/3-pod-install.log build/ios-logs/4-build.log build/ios-logs/5-dsym.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-verify-digest
+          path: build/ios-logs/digest.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-verify-logs
+          path: |
+            build/ios-logs/
+            ios/Podfile.lock
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ios-verify-dsyms
+          path: build/ios-dsyms/
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ios-simulator-app
+          path: build/ios/iphonesimulator/Runner.app
+          retention-days: 7

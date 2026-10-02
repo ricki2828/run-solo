@@ -5,7 +5,8 @@ Everything is outlined (no live text) and boolean-cut, so each file is plain fil
 that work as SVG and as Android VectorDrawable (no masks, no clip paths).
 
 It writes the SVG masters (assets/brand/svg), the Android resources the app ships
-(android/app/src/main/res) and the Play Store graphics (store/play).
+(android/app/src/main/res), the iOS app icon (ios/Runner/Assets.xcassets) and the Play
+Store graphics (store/play).
 
     python3 -m venv /tmp/brandvenv && /tmp/brandvenv/bin/pip install -r assets/brand/requirements.txt
     /tmp/brandvenv/bin/python assets/brand/build_brand.py [--hero photo.jpg]
@@ -25,6 +26,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 RES = REPO / "android" / "app" / "src" / "main" / "res"
 STORE = REPO / "store" / "play"
+IOS_ICON = REPO / "ios" / "Runner" / "Assets.xcassets" / "AppIcon.appiconset"
 FONT = HERE.parent / "fonts" / "BarlowCondensed-Bold.ttf"
 
 BONE, ARC, BG = "#EDEAE3", "#19E6FF", "#0A0B0D"
@@ -362,6 +364,19 @@ def play_icon(t):
     return img
 
 
+def ios_icon(t):
+    """1024 x 1024 iOS app icon, same crop as the Play icon (iOS masks the corners itself).
+
+    RGB, no alpha: App Store upload rejects an icon with transparency."""
+    size, crop = 1024, 80
+    k = size / crop
+    img = Image.new("RGBA", (size, size), BG)
+    x = scaled(t, k, -(108 - crop) / 2 * k, -(108 - crop) / 2 * k)
+    paint(img, BONE, ICON_R, x)
+    paint(img, ARC, ICON_LINE, x)
+    return img.convert("RGB")
+
+
 def feature_graphic(hero=None):
     """1024 x 500: wordmark left, a large R right, one lap line running through both (brief section 6)."""
     w, h = 1024, 500
@@ -448,9 +463,27 @@ def main():
     STORE.mkdir(parents=True, exist_ok=True)
     play_icon(t).save(STORE / "icon-512.png", optimize=True)
     feature_graphic(args.hero).save(STORE / "feature-graphic-1024x500.png", optimize=True)
+    # iOS: one 1024 px universal icon; Xcode 14+ derives every other size from it.
+    IOS_ICON.mkdir(parents=True, exist_ok=True)
+    ios_icon(t).save(IOS_ICON / "Icon-App-1024x1024@1x.png", optimize=True)
+    write("Contents.json",
+          '{\n'
+          '  "images" : [\n'
+          '    {\n'
+          '      "filename" : "Icon-App-1024x1024@1x.png",\n'
+          '      "idiom" : "universal",\n'
+          '      "platform" : "ios",\n'
+          '      "size" : "1024x1024"\n'
+          '    }\n'
+          '  ],\n'
+          '  "info" : {\n'
+          '    "author" : "xcode",\n'
+          '    "version" : 1\n'
+          '  }\n'
+          '}\n', IOS_ICON)
     # Flutter paths for the Lap Draw intro (B3, brief A9).
     write("brand/lap_line_paths.dart", dart_paths(), REPO / "lib")
-    print("brand assets written to", HERE, RES, STORE, REPO / "lib" / "brand")
+    print("brand assets written to", HERE, RES, IOS_ICON, STORE, REPO / "lib" / "brand")
 
 
 if __name__ == "__main__":

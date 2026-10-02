@@ -35,6 +35,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # iOS plugins come through CocoaPods only. google_maps_flutter_ios ships no Package.swift,
+  # so leaving Swift Package Manager on would mix SPM and CocoaPods in one Xcode project.
+  config:
+    enable-swift-package-manager: false
 
   assets:
     - assets/maps/night_session.json
