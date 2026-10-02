@@ -23,6 +23,7 @@ import '../state/live_context.dart';
 import '../state/max_hr.dart';
 import '../state/places.dart';
 import '../state/recording_controller.dart';
+import '../state/intervals_icu.dart';
 import '../state/send_runs.dart';
 import '../state/sessions.dart';
 import '../state/settings.dart';
@@ -156,6 +157,7 @@ class AppServices {
   void startSends() {
     for (final t in sender.targets) {
       if (t is ShareFileTarget) unawaited(t.sweep());
+      if (t is IntervalsIcuTarget) unawaited(t.load());
     }
     unawaited(_sendPass(sender.reconcile));
     recording.addListener(() {
@@ -284,6 +286,7 @@ class AppServices {
             fakeHealth,
             tempDir: () async => Directory.systemTemp,
             now: now,
+            secrets: MemorySecretStore(),
           ),
     );
   }

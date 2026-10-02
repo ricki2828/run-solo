@@ -53,6 +53,20 @@
   is off by default, and a run goes to a service only after you switch it on. Once a file is with
   another app or service, that app's own privacy policy applies.</p>
 
+  <h3>Intervals.icu (only if you connect it)</h3>
+  <p>Intervals.icu receives data from Run Supreme only after you connect your own account: in
+  Settings, Send runs to, you paste your personal API key and athlete id (both come from
+  Intervals.icu, Settings, Developer settings). Nothing is sent to Intervals.icu before that, and
+  nothing is sent for runs recorded before you switched it on. When it is connected, Run Supreme
+  uploads a run's TCX file (route, lap times and heart rate, with the first and last 200 m of the
+  route left out), the run's title, and the run's id, which Intervals.icu uses to refuse a second
+  copy of the same run. You can also send a single run from its Send button. The key is stored in
+  your phone's Android Keystore-backed secure storage, is sent only to Intervals.icu, is never
+  written to logs, and is not part of Android's device backup. Settings, Send runs to,
+  Intervals.icu, Manage connection, Disconnect deletes the key from the phone. Runs already
+  uploaded stay in your Intervals.icu account, where Intervals.icu's own privacy policy applies;
+  you can delete them there.</p>
+
   <h2>2. Google Maps</h2>
   <p>After a run, Run Supreme draws your route on a Google map. The map is provided by the Google
   Maps SDK for Android, which runs inside the app and talks to Google directly to fetch map tiles.
@@ -100,7 +114,7 @@
     <tr><td>Nearby devices (Bluetooth)</td><td>To pair a heart-rate strap. Bluetooth is not used to work out where you are.</td></tr>
     <tr><td>Notifications</td><td>The recording notification with its LAP and Stop buttons, and cues while your screen is off.</td></tr>
     <tr><td>Health Connect (write only)</td><td>Only if you switch on Health Connect in Settings, Send runs to, or tap Send to Health Connect on a run. Health Connect asks you for four write permissions: exercise, exercise route, heart rate and distance. Run Supreme writes the finished run (its laps and pauses, route, heart rate and distance) and reads nothing back from Health Connect. You can turn it off in Settings, or withdraw the permissions in Health Connect, at any time.</td></tr>
-    <tr><td>Internet</td><td>Map tiles from Google and weather from Open-Meteo, as described above. Place names come from your phone's own geocoder, as described above. Nothing else.</td></tr>
+    <tr><td>Internet</td><td>Map tiles from Google and weather from Open-Meteo, as described above. Place names come from your phone's own geocoder, as described above. If you connect Intervals.icu, the runs you send to it. Nothing else.</td></tr>
   </table>
 
   <h2>5. What we do not do</h2>
@@ -118,6 +132,7 @@
     <li><strong>Delete everything</strong>: Settings, Data, "Delete all" removes every run and setting from the phone. Uninstalling the app does the same. What Google's Maps SDK already received (section 2) is held by Google, not us; your Google account's privacy controls apply to it.</li>
     <li><strong>Weather</strong>: Settings, Recording, "Weather for each run".</li>
     <li><strong>Map</strong>: the map appears only on a run's detail screen; do not open it if you would rather Google did not receive that map area.</li>
+    <li><strong>Intervals.icu</strong>: Settings, Send runs to, Intervals.icu. Switch it off to stop automatic sending, or Disconnect to delete the key.</li>
     <li><strong>Backup</strong>: Android settings, Google, Backup.</li>
     <li><strong>Export</strong>: Settings, Data, "Export all" gives you your data as JSON or TCX.</li>
   </ul>

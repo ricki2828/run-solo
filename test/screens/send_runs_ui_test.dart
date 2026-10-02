@@ -6,6 +6,7 @@ import 'package:run_solo/platform/transfer_gateway.dart';
 import 'package:run_solo/screens/run_detail_screen.dart';
 import 'package:run_solo/screens/send_sheet.dart';
 import 'package:run_solo/screens/settings_screen.dart';
+import 'package:run_solo/state/intervals_icu.dart';
 import 'package:run_solo/state/send_runs.dart';
 
 import '../helpers.dart';
@@ -62,7 +63,7 @@ void main() {
     expect(find.text('Health Connect'), findsOneWidget);
     expect(find.text('Send to Health Connect'), findsOneWidget);
     expect(find.text('Intervals.icu'), findsOneWidget);
-    expect(find.text('Coming soon'), findsOneWidget);
+    expect(find.text('Coming soon'), findsNothing);
     expect(find.textContaining('Compatible with'), findsNothing);
   });
 
@@ -126,10 +127,11 @@ void main() {
     expect(find.text('Only when you tap Send on a run.'), findsOneWidget);
     expect(find.text('Health Connect'), findsOneWidget);
     expect(find.text('Intervals.icu'), findsOneWidget);
-    expect(find.text('Coming soon'), findsOneWidget);
-    // Coming-soon rows cannot be switched on; nothing is on by default.
-    expect(tester.widget<Switch>(switchFor('Intervals.icu')).onChanged, isNull);
+    expect(find.text('Coming soon'), findsNothing);
+    // Health starts off; Intervals needs a key before it can be switched on.
     expect(tester.widget<Switch>(switchFor('Health Connect')).value, isFalse);
+    expect(tester.widget<Switch>(switchFor('Intervals.icu')).value, isFalse);
+    expect(find.text('Not connected'), findsOneWidget);
     expect(services.settings.settings.autoSend, isEmpty);
   });
 
@@ -225,6 +227,56 @@ void main() {
     await pumpTimes(tester, 2);
     expect(services.settings.settings.autoSend, isEmpty);
   });
+  testWidgets('Settings: Intervals.icu switch asks for a key, then connects, '
+      'tests and disconnects', (tester) async {
+    final store = MemorySecretStore();
+    final http = _OkHttp();
+    final target = IntervalsIcuTarget(store: store, http: http);
+    final services = fakeServices(exportTargets: [target]);
+    await pumpApp(tester, services, home: SettingsScreen(now: now));
+    await pumpTimes(tester, 4);
+    await scrollTo(tester, find.text('SEND RUNS TO'));
+    expect(find.text('Not connected'), findsOneWidget);
+
+    // Switching on with no key opens the Connect sheet and stays off.
+    await tester.tap(switchFor('Intervals.icu'));
+    await settleAnimations(tester);
+    expect(find.text('CONNECT INTERVALS.ICU'), findsOneWidget);
+    expect(find.textContaining('Developer settings'), findsOneWidget);
+    expect(services.settings.settings.autoSend, isEmpty);
+
+    await tester.enterText(find.byKey(const ValueKey('intervals-key')), 'k3y');
+    await tester.enterText(
+      find.byKey(const ValueKey('intervals-athlete')),
+      'i99',
+    );
+    await tester.tap(find.byKey(const ValueKey('intervals-test')));
+    await pumpTimes(tester, 4);
+    expect(find.text('Connected'), findsOneWidget);
+    expect(store.values, isEmpty, reason: 'testing does not save');
+
+    await tester.tap(find.byKey(const ValueKey('intervals-save')));
+    await settleAnimations(tester);
+    expect(store.values[IntervalsIcuTarget.keyName], 'k3y');
+    expect(store.values[IntervalsIcuTarget.athleteName], 'i99');
+    expect(services.settings.settings.autoSend, {IntervalsIcuTarget.targetId});
+    expect(find.text('Connected'), findsOneWidget);
+
+    // Disconnect removes the key and switches automatic sending off.
+    await tester.tap(find.text('Manage connection'));
+    await settleAnimations(tester);
+    await tester.tap(find.byKey(const ValueKey('intervals-disconnect')));
+    await settleAnimations(tester);
+    expect(store.values, isEmpty);
+    expect(services.settings.settings.autoSend, isEmpty);
+    expect(find.text('Not connected'), findsOneWidget);
+  });
+}
+
+class _OkHttp implements IntervalsHttp {
+  @override
+  Future<IntervalsResponse> send(IntervalsRequest req) async =>
+      const IntervalsResponse(200, '{}');
 }
 
 class _LiveTarget extends ExportTarget {

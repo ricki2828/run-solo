@@ -33,6 +33,8 @@ class BackupRulesTest {
     private val expectedExcludes = setOf(
         "database:runsolo.db-wal", "database:runsolo.db-shm", "database:runsolo.db-journal",
         "file:${RunPaths.JOURNALS_DIR}/", "file:${RunPaths.ARCHIVE_DIR}/",
+        // The Intervals.icu key (flutter_secure_storage) is never backed up.
+        "sharedpref:FlutterSecureStorage.xml",
     )
 
     @Test

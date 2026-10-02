@@ -24,6 +24,8 @@ dependencies:
   file_selector: ^1.0.3
   # Send runs: "Open Strava upload page" opens the browser (no other network use).
   url_launcher: ^6.3.0
+  # Send runs: the Intervals.icu API key, in the Android Keystore (never in settings or backups).
+  flutter_secure_storage: ^9.2.4
 
 dev_dependencies:
   flutter_test:

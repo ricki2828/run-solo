@@ -10,11 +10,13 @@ import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/max_hr.dart';
+import '../state/intervals_icu.dart';
 import '../state/recording_controller.dart';
 import '../state/send_runs.dart' show ExportTarget, TargetSetup;
 import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
+import 'intervals_connect_sheet.dart';
 import 'send_sheet.dart' show kSendPrivacyLine;
 
 /// Privacy copy (plan §18.6, addendum A7): one paragraph on every surface.
@@ -104,6 +106,22 @@ class _SettingsScreenState extends State<SettingsScreen>
   void _toast(String text) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  /// Switching Intervals.icu on without a key opens the Connect sheet first
+  /// and only turns on once a key is saved.
+  Future<void> _toggleIntervals(
+    BuildContext context,
+    IntervalsIcuTarget target,
+    bool on,
+    Future<void> Function(AppSettings Function(AppSettings)) set,
+    DateTime now,
+  ) async {
+    if (on && !target.connected) {
+      final saved = await showIntervalsConnectSheet(context, target: target);
+      if (saved != true) return;
+    }
+    await set((x) => x.withAutoSend(target.id, on, now));
   }
 
   /// Plan §4 export: one `RunBundle` JSON per run (file + sidecar) through
@@ -415,7 +433,41 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
               for (final target in services.sender.targets) ...[
-                if (target.supportsAutomatic)
+                if (target is IntervalsIcuTarget)
+                  ListenableBuilder(
+                    listenable: target,
+                    builder: (context, _) => Column(
+                      children: [
+                        _Toggle(
+                          label: target.label,
+                          value: target.isEnabled(s) && target.connected,
+                          onChanged: (v) => _toggleIntervals(
+                            context,
+                            target,
+                            v,
+                            set,
+                            services.now(),
+                          ),
+                          reason: target.connected
+                              ? 'Sends each run when it finishes.'
+                              : 'Connect your account to switch it on.',
+                        ),
+                        SettingsRow(
+                          label: target.connected
+                              ? 'Manage connection'
+                              : 'Connect',
+                          value: target.connected
+                              ? 'Connected'
+                              : 'Not connected',
+                          onTap: () => showIntervalsConnectSheet(
+                            context,
+                            target: target,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (target.supportsAutomatic)
                   _Toggle(
                     label: target.label,
                     value: target.isEnabled(s),
