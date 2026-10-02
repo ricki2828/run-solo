@@ -123,7 +123,8 @@ class MovingDetector(
          * power-hike (2 km/h = 0.56 m/s) or a slow scramble never pauses it. Two samples in a row
          * at or above that speed count as movement, so one Doppler blip while standing does not
          * restart the 10 s. It resumes after [TRAIL_RESUME_SAMPLES] samples at [TRAIL_RESUME_MPS]
-         * that also went somewhere, a hike pace and well above standing jitter. A gap over 3 s
+         * (0.35 m/s, just over the stop speed, so a steep scramble resumes; the sample count
+         * carries the hysteresis, and a Doppler speed near zero is what standing reports). A gap over 3 s
          * is not a stop. Unverified until a device run.
          */
         fun forTrailAutoPause() = MovingDetector(
@@ -139,7 +140,7 @@ class MovingDetector(
 
         const val TRAIL_STAND_MPS = 0.3
         const val TRAIL_STOP_AFTER_MS = 10_000L
-        const val TRAIL_RESUME_MPS = 0.5
+        const val TRAIL_RESUME_MPS = 0.35
         const val TRAIL_RESUME_SAMPLES = 3
         const val TRAIL_PROGRESS_SAMPLES = 2
 

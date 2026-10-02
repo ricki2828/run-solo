@@ -95,6 +95,18 @@ class TrailAutoPauseTest {
     }
 
     @Test
+    fun `a steep scramble at 0_4 m per s resumes after a stop, a 0_2 m per s wobble does not`() {
+        val f = Feed()
+        f.move(20, 1.5)
+        f.stand(12)
+        assertFalse(f.d.moving)
+        assertFalse(f.move(40, 0.2), "0.2 m/s is standing")
+        assertFalse(f.move(2, 0.4))
+        assertTrue(f.move(1, 0.4), "three samples of scrambling resume")
+        repeat(60) { assertTrue(f.move(1, 0.4), "and it stays going at ${it + 1}") }
+    }
+
+    @Test
     fun `a trail run auto-pauses through the recorder like a free run`() {
         val c = RecorderCore(RunMode.trail, null).also { it.start(0) }
         c.tick(10_000, 15.0)

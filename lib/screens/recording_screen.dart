@@ -744,7 +744,7 @@ class _RecordingScreenState extends State<RecordingScreen>
 }
 
 /// The run type the MAP / NUMBERS choice is remembered under: the chip the
-/// runner picked (`free`, `laps`, `intervals`, `goal`, `tests`).
+/// runner picked (`free`, `trail`, `laps`, `intervals`, `goal`, `tests`).
 String liveRunType(RecordingSnapshot s) {
   if (isEventRun(s) || s.isGoal) return 'goal';
   if (s.isCooper || s.bronco) return 'tests';
@@ -757,6 +757,7 @@ Color liveRunTypeColor(String type) => switch (type) {
   'intervals' => AuroraRunType.intervals,
   'goal' => AuroraRunType.goal,
   'tests' => AuroraRunType.tests,
+  'trail' => AuroraRunType.trail,
   _ => AuroraRunType.free,
 };
 

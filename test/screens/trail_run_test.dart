@@ -7,6 +7,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/history_screen.dart';
+import 'package:run_solo/screens/recording_screen.dart' show liveRunTypeColor;
 import 'package:run_solo/screens/trail_suggest_card.dart';
 import 'package:run_solo/screens/verdict_screen.dart';
 import 'package:run_solo/state/history_store.dart';
@@ -196,6 +197,11 @@ void main() {
     final rows = tester.widgetList<HistoryRow>(find.byType(HistoryRow));
     expect([for (final r in rows) r.run.id], [recorded.id]);
     expect(find.text('TRAIL'), findsWidgets);
+  });
+
+  test('the live map route draws in the Trail hue', () {
+    expect(liveRunTypeColor('trail'), AuroraRunType.trail);
+    expect(liveRunTypeColor('free'), AuroraRunType.free);
   });
 
   test('the Trail hue is a token, distinct from every other run type', () {
