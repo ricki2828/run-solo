@@ -8,6 +8,7 @@ import 'screens/permissions_screen.dart';
 import 'screens/recording_screen.dart';
 import 'screens/run_detail_screen.dart';
 import 'screens/settings_screen.dart';
+import 'state/settings.dart';
 import 'screens/shell_screen.dart';
 import 'screens/start_screen.dart';
 import 'screens/verdict_screen.dart';
@@ -95,7 +96,10 @@ class RunSoloApp extends StatelessWidget {
                 ),
             onGenerateRoute: (settings) {
               final page = switch (settings.name) {
-                Routes.start => const StartScreen(),
+                Routes.start => StartScreen(
+                  preset:
+                      settings.arguments as AppSettings Function(AppSettings)?,
+                ),
                 Routes.permissions => PermissionsScreen(
                   onboarding: settings.arguments == true,
                 ),

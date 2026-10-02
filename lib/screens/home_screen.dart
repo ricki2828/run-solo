@@ -131,11 +131,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Start and Change both open setup; with a recommendation, setup opens
-  /// preset to it. The preset stays only if a run was started or the runner
-  /// picked something else in setup: backing out puts the saved run type
-  /// back.
+  /// preset to it (setup keeps it only if a run starts).
   Future<void> _start(Recommendation? rec) async {
-    final services = AppServices.of(context);
     final perms = _perms;
     if (perms != null && !perms.canRecord) {
       final ok = await Navigator.of(context).pushNamed(Routes.permissions);
@@ -145,31 +142,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
     if (!mounted) return;
-    final before = services.settings.settings;
-    final runsBefore = (await services.history.list()).length;
-    if (rec != null) await services.settings.update(rec.apply);
-    final applied = services.settings.settings;
-    if (!mounted) return;
-    await Navigator.of(context).pushNamed(Routes.start);
-    if (rec != null) {
-      final now = services.settings.settings;
-      bool same(AppSettings a, AppSettings b) =>
-          a.lastMode == b.lastMode &&
-          a.goalRun == b.goalRun &&
-          a.goalId == b.goalId &&
-          a.sessionId == b.sessionId;
-      final started = (await services.history.list()).length != runsBefore;
-      if (!started && same(now, applied)) {
-        await services.settings.update(
-          (s) => s.copyWith(
-            lastMode: before.lastMode,
-            goalRun: before.goalRun,
-            goalId: before.goalId,
-            sessionId: before.sessionId,
-          ),
-        );
-      }
-    }
+    await Navigator.of(context).pushNamed(Routes.start, arguments: rec?.apply);
     if (mounted) setState(_refresh);
   }
 

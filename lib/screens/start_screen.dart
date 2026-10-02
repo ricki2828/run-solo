@@ -35,7 +35,12 @@ bool debugLiveCompareAtStart = kLiveCompare;
 /// Cue toggles, strap status, START. Typed start errors map to copy here;
 /// permission errors route to the checklist.
 class StartScreen extends StatefulWidget {
-  const StartScreen({super.key});
+  const StartScreen({super.key, this.preset});
+
+  /// Home's recommendation: setup opens on it. It is kept only if a run
+  /// starts or the runner picks something else here; backing out puts the
+  /// saved run type back.
+  final AppSettings Function(AppSettings)? preset;
 
   @override
   State<StartScreen> createState() => _StartScreenState();
@@ -64,6 +69,17 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         p.accuracyM! <= gpsReadyAccuracyM;
   }
 
+  SettingsController? _presetController;
+  AppSettings? _presetBefore;
+  AppSettings? _presetApplied;
+  bool _presetKept = false;
+
+  static bool _samePick(AppSettings a, AppSettings b) =>
+      a.lastMode == b.lastMode &&
+      a.goalRun == b.goalRun &&
+      a.goalId == b.goalId &&
+      a.sessionId == b.sessionId;
+
   @override
   void initState() {
     super.initState();
@@ -72,6 +88,23 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    final c = _presetController, before = _presetBefore;
+    if (c != null &&
+        before != null &&
+        !_presetKept &&
+        _presetApplied != null &&
+        _samePick(c.settings, _presetApplied!)) {
+      scheduleMicrotask(
+        () => c.update(
+          (s) => s.copyWith(
+            lastMode: before.lastMode,
+            goalRun: before.goalRun,
+            goalId: before.goalId,
+            sessionId: before.sessionId,
+          ),
+        ),
+      );
+    }
     WidgetsBinding.instance.removeObserver(this);
     _stopProbe();
     super.dispose();
@@ -210,6 +243,15 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _services = AppServices.of(context);
+    final preset = widget.preset;
+    if (preset != null && _presetController == null) {
+      final c = _presetController = _services!.settings;
+      _presetBefore = c.settings;
+      // After this build: the update notifies listeners.
+      scheduleMicrotask(
+        () => c.update(preset).then((_) => _presetApplied = c.settings),
+      );
+    }
     _syncProbe();
     if (_runs == null) {
       AppServices.of(context).history.list().then((r) {
@@ -312,6 +354,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     setState(() => _starting = false);
     final err = result.error;
     if (err == null || err == StartError.alreadyRunning) {
+      _presetKept = true;
       await Navigator.of(context).pushReplacementNamed(Routes.recording);
       return;
     }
