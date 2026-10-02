@@ -1,6 +1,8 @@
 package app.runsolo.platform
 
 import androidx.health.connect.client.records.DistanceRecord
+import androidx.health.connect.client.records.ExerciseRoute
+import androidx.health.connect.client.records.ExerciseRouteResult
 import androidx.health.connect.client.records.ExerciseSegment
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
@@ -37,6 +39,10 @@ class HealthRecordsTest {
         route = route,
     )
 
+    /** The route's points, or null when the session carries no route. */
+    private fun routeOf(s: ExerciseSessionRecord): List<ExerciseRoute.Location>? =
+        (s.exerciseRouteResult as? ExerciseRouteResult.Data)?.exerciseRoute?.route
+
     @Test
     fun `session is a run with laps, route and the phone offset`() {
         val recs = HealthRecords.toRecords(workout(), includeRoute = true)
@@ -44,23 +50,23 @@ class HealthRecordsTest {
         assertEquals(ExerciseSessionRecord.EXERCISE_TYPE_RUNNING, s.exerciseType)
         assertEquals("Morning run", s.title)
         assertEquals(2, s.laps.size)
-        assertEquals(100.0, s.laps[0].length.inMeters, 1e-6)
+        assertEquals(100.0, s.laps[0].length!!.inMeters, 1e-6)
         assertEquals(36_000, s.startZoneOffset!!.totalSeconds)
         assertEquals(36_000, s.endZoneOffset!!.totalSeconds)
-        assertEquals(2, s.exerciseRoute!!.route.size)
+        assertEquals(2, routeOf(s)!!.size)
     }
 
     @Test
     fun `route is left out without the route permission`() {
         val s = HealthRecords.toRecords(workout(), includeRoute = false).filterIsInstance<ExerciseSessionRecord>().single()
-        assertNull(s.exerciseRoute)
+        assertNull(routeOf(s))
     }
 
     @Test
     fun `route points outside the session are dropped`() {
         val w = workout(route = listOf(HealthRoutePoint(t0 - 1_000, 1.0, 1.0), HealthRoutePoint(t0 + 5_000, 1.0, 1.0)))
         val s = HealthRecords.toRecords(w, true).filterIsInstance<ExerciseSessionRecord>().single()
-        assertEquals(1, s.exerciseRoute!!.route.size)
+        assertEquals(1, routeOf(s)!!.size)
     }
 
     @Test
