@@ -421,6 +421,7 @@ class RecorderStatus {
     this.elevGainM,
     this.elevLossM,
     this.gradePct,
+    this.route,
   });
   RecorderState state;
   String? runId;
@@ -472,6 +473,49 @@ class RecorderStatus {
   double? elevGainM;
   double? elevLossM;
   double? gradePct;
+
+  /// Where the runner is on the followed route; null when the run follows none.
+  RouteProgress? route;
+}
+
+/// A route to follow (Follow a route): chosen on Start from the route library,
+/// simplified in Dart (at most 5,000 points), journaled as the `route` line after
+/// the header and followed natively (progress, off-route alerts, turn cues), so it
+/// works with the screen off. `latLon` is flat `[lat, lon, ...]` in route order;
+/// `elevM` is one elevation per point, or null when the route has none.
+class FollowRoute {
+  FollowRoute({
+    required this.id,
+    required this.name,
+    required this.latLon,
+    this.elevM,
+  });
+  String id;
+  String name;
+  List<double> latLon;
+  List<double>? elevM;
+}
+
+/// The followed route's live figures, from the recorder's own fixes. [toGoM] is
+/// the route still ahead of the runner's progress (progress only moves forward);
+/// [climbToGoM] the route's ascent still ahead, null when the route has no
+/// elevation. [off] is the off-route state (more than about 40 m away for about
+/// 10 s, with hysteresis). [turnLabel] and [turnInM] are the next turn from the
+/// route's shape ("Left turn", "Keep right", ...), null when none is ahead or
+/// while off route.
+class RouteProgress {
+  RouteProgress({
+    required this.toGoM,
+    this.climbToGoM,
+    required this.off,
+    this.turnLabel,
+    this.turnInM,
+  });
+  double toGoM;
+  double? climbToGoM;
+  bool off;
+  String? turnLabel;
+  double? turnInM;
 }
 
 /// An in-progress journal found on app open without a finalised run file.
@@ -621,11 +665,14 @@ abstract class RecorderApi {
   /// header; null = no compare, no overlay, no nudges, nothing said. The
   /// previous Cooper VO2 for "up 2 on last time" is the last
   /// `cooperHistory` entry.
+  /// `route`: a route to follow (Free, Trail and Goal runs), journaled as the
+  /// `route` line; null = follow nothing.
   StartResult start(
     RecordMode mode,
     SessionSpec? spec,
     Units units,
     LiveContext? liveContext,
+    FollowRoute? route,
   );
 
   /// Debug builds only: like `start`, fed from a fixture instead of GPS/BLE.
@@ -707,6 +754,11 @@ abstract class RecorderApi {
   /// was recreated or a [RoutePointsEvent] was missed). Empty when idle.
   /// Read-only: recording never depends on it.
   List<double> routeSince(int fromIndex);
+
+  /// The route the live run follows (as `start` got it, or as the journal had
+  /// it after a restore), so the map can draw it under the runner's track.
+  /// Null when idle or the run follows none. Read-only.
+  FollowRoute? followedRoute();
 
   /// Run files on disk (`runs/` + `runs-archive/`) as `runId -> relative path`,
   /// for the Dart Reconciler. Journals and sidecars are not listed.
@@ -816,6 +868,7 @@ class TickEvent extends RecorderEvent {
     this.elevGainM,
     this.elevLossM,
     this.gradePct,
+    this.route,
   });
 
   /// Wall time since Start, pauses included.
@@ -851,6 +904,9 @@ class TickEvent extends RecorderEvent {
   double? elevGainM;
   double? elevLossM;
   double? gradePct;
+
+  /// As `RecorderStatus.route`.
+  RouteProgress? route;
 }
 
 class LapEvent extends RecorderEvent {

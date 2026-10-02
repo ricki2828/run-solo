@@ -21,7 +21,8 @@ class PigeonRecorderGateway implements RecorderGateway {
     SessionSpec? spec,
     Units units, {
     LiveContext? liveContext,
-  }) => _api.start(mode, spec, units, liveContext);
+    FollowRoute? route,
+  }) => _api.start(mode, spec, units, liveContext, route);
 
   @override
   Future<void> pause() => _api.pause();
@@ -77,6 +78,9 @@ class PigeonRecorderGateway implements RecorderGateway {
 
   @override
   Future<List<double>> routeSince(int fromIndex) => _api.routeSince(fromIndex);
+
+  @override
+  Future<FollowRoute?> followedRoute() => _api.followedRoute();
 
   @override
   Future<void> setVolumeKeyLaps(bool enabled) => _api.setVolumeKeyLaps(enabled);

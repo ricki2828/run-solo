@@ -1,6 +1,7 @@
 package app.runsolo.platform
 
 import app.runsolo.core.model.LiveContext as CoreLiveContext
+import app.runsolo.core.route.FollowRoute as CoreFollowRoute
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -114,8 +115,8 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         return Result.success(core)
     }
 
-    private fun newSession(mode: app.runsolo.core.model.RunMode, spec: CoreSpec?, units: Units, replay: ReplayRunner?, liveContext: CoreLiveContext?): RecordingSession =
-        RecordingSession(context, UUID.randomUUID().toString(), mode, spec, units.toCore(), replay, volumeKeyLaps(mode), liveContext)
+    private fun newSession(mode: app.runsolo.core.model.RunMode, spec: CoreSpec?, units: Units, replay: ReplayRunner?, liveContext: CoreLiveContext?, route: CoreFollowRoute?): RecordingSession =
+        RecordingSession(context, UUID.randomUUID().toString(), mode, spec, units.toCore(), replay, volumeKeyLaps(mode), liveContext, route)
             .also { it.kmSplits = prefs.getBoolean(RecorderService.PREF_KM_SPLITS, true) }
             .also { it.autoPause = prefs.getBoolean(RecorderService.PREF_AUTO_PAUSE, true) }
 
@@ -127,7 +128,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     internal fun volumeKeyLaps(mode: app.runsolo.core.model.RunMode): Boolean =
         mode == app.runsolo.core.model.RunMode.laps && prefs.getBoolean(RecorderService.PREF_VOLUME_KEY_LAPS, mode.volumeKeyLapsDefault)
 
-    private fun startWith(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ((CoreSpec?) -> ReplayRunner?)?, liveContext: LiveContext? = null): StartResult {
+    private fun startWith(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ((CoreSpec?) -> ReplayRunner?)?, liveContext: LiveContext? = null, route: FollowRoute? = null): StartResult {
         probe.stop() // the run's own location request takes over
         active()?.let { return StartResult(runId = it.runId, error = null) }
         val coreMode = mode.toCore()
@@ -146,16 +147,25 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
                 null
             }
         }
+        // A route that breaks the contract never blocks Start either: the run just follows nothing.
+        val coreRoute = route?.let { r ->
+            try {
+                r.toCore()
+            } catch (e: IllegalArgumentException) {
+                Log.w(TAG, "start: route dropped: $e")
+                null
+            }
+        }
         // A T4 replay kind brings its own context (the debug intent has no app to build one).
-        val session = newSession(coreMode, coreSpec, units, runner, coreContext ?: runner?.context)
+        val session = newSession(coreMode, coreSpec, units, runner, coreContext ?: runner?.context, coreRoute)
         return begin(session) {
             it.startNew(device = "${Build.MANUFACTURER} ${Build.MODEL}", app = BuildConfig.VERSION_NAME, tz = TimeZone.getDefault().id)
         }
     }
 
     /** [liveContext]: the live compare's history (Phase 4 §3.2), journaled after the header. */
-    override fun start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?): StartResult =
-        startWith(mode, spec, units, null, liveContext)
+    override fun start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?): StartResult =
+        startWith(mode, spec, units, null, liveContext, route)
 
     override fun startReplay(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ReplayConfig): StartResult {
         if (!BuildConfig.REPLAY_ENABLED) return StartResult(runId = null, error = StartError.REPLAY_UNAVAILABLE)
@@ -180,7 +190,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     /** The session [resumeRecovered] continues: the journaled live context comes back with the run (BLOCK-1), so it keeps comparing. */
     internal fun resumeSession(runId: String, replayed: Replay): RecordingSession {
         val h = replayed.header
-        return RecordingSession(context, runId, h.mode, h.session, h.units, null, volumeKeyLaps(h.mode), replayed.liveContext)
+        return RecordingSession(context, runId, h.mode, h.session, h.units, null, volumeKeyLaps(h.mode), replayed.liveContext, replayed.route)
             .also { it.kmSplits = prefs.getBoolean(RecorderService.PREF_KM_SPLITS, true) }
             .also { it.autoPause = prefs.getBoolean(RecorderService.PREF_AUTO_PAUSE, true) }
     }
@@ -324,6 +334,8 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
 
     override fun routeSince(fromIndex: Long): List<Double> =
         active()?.routeSince(fromIndex.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()) ?: emptyList()
+
+    override fun followedRoute(): FollowRoute? = active()?.followedRoute()?.toPigeon()
 
     override fun setAutoPause(enabled: Boolean) {
         // commit(), not apply(): the next start() may come from a new process.

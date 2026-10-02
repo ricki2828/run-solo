@@ -124,6 +124,22 @@ class FakeRecorderGateway implements RecorderGateway {
   double? elevGainM;
   double? elevLossM;
   double? gradePct;
+
+  /// Scripted route figures (Follow a route). Null = follow what `start`
+  /// was given: the route's length less the distance run, never off route.
+  RouteProgress? routeProgress;
+  double _routeLengthM = 0;
+  bool _following = false;
+
+  RouteProgress? get _route {
+    if (routeProgress != null) return routeProgress;
+    if (!_following) return null;
+    return RouteProgress(
+      toGoM: math.max(0, _routeLengthM - _totalDistanceM),
+      off: false,
+    );
+  }
+
   bool hrPaired = true;
   bool cuesEnabled = true;
 
@@ -213,8 +229,14 @@ class FakeRecorderGateway implements RecorderGateway {
     SessionSpec? spec,
     Units units, {
     LiveContext? liveContext,
+    FollowRoute? route,
   }) async {
-    startCalls.add((mode: mode, spec: spec, liveContext: liveContext));
+    startCalls.add((
+      mode: mode,
+      spec: spec,
+      liveContext: liveContext,
+      route: route,
+    ));
     gpsProbeRunning = false; // as native: any start ends the probe
     if (startError != null) return StartResult(error: startError);
     if (_state != RecorderState.idle) {
@@ -223,6 +245,9 @@ class FakeRecorderGateway implements RecorderGateway {
     // As RecordingSession: no coaching without a context or with Coaching
     // tips off in Settings.
     tipsMuted = liveContext == null || liveContext.coachingMuted ? null : false;
+    _following = route != null;
+    _followed = route;
+    _routeLengthM = route == null ? 0 : _routeLength(route);
     _runCounter += 1;
     _begin(
       'fake-${_runCounter.toString().padLeft(3, '0')}',
@@ -236,8 +261,28 @@ class FakeRecorderGateway implements RecorderGateway {
   }
 
   /// Every `start` call, for tests that check what the app sent.
-  final List<({RecordMode mode, SessionSpec? spec, LiveContext? liveContext})>
+  final List<
+    ({
+      RecordMode mode,
+      SessionSpec? spec,
+      LiveContext? liveContext,
+      FollowRoute? route,
+    })
+  >
   startCalls = [];
+
+  static double _routeLength(FollowRoute r) {
+    var d = 0.0;
+    for (var i = 2; i + 1 < r.latLon.length; i += 2) {
+      d += engine.haversineM(
+        r.latLon[i - 2],
+        r.latLon[i - 1],
+        r.latLon[i],
+        r.latLon[i + 1],
+      );
+    }
+    return d;
+  }
 
   void _begin(String runId, RecordMode mode, SessionSpec? spec) {
     _runId = runId;
@@ -443,6 +488,7 @@ class FakeRecorderGateway implements RecorderGateway {
       ),
     );
     _state = RecorderState.idle;
+    _following = false;
     _emit(CueEvent(kind: CueKind.stop));
     _emitState();
     _runId = null;
@@ -476,6 +522,7 @@ class FakeRecorderGateway implements RecorderGateway {
     elevGainM: elevGainM,
     elevLossM: elevLossM,
     gradePct: gradePct,
+    route: _state == RecorderState.idle ? null : _route,
     mode: _state == RecorderState.idle ? RecordMode.free : _mode,
     laps: List.of(_laps),
   );
@@ -510,6 +557,7 @@ class FakeRecorderGateway implements RecorderGateway {
     _timer = null;
     liveDiscarded.add(_runId!);
     _state = RecorderState.idle;
+    _following = false;
     _phase = Phase.none;
     _emitState();
     _runId = null;
@@ -793,6 +841,12 @@ class FakeRecorderGateway implements RecorderGateway {
     }
   }
 
+  FollowRoute? _followed;
+
+  @override
+  Future<FollowRoute?> followedRoute() async =>
+      _state == RecorderState.idle ? null : _followed;
+
   /// Tests: make [routeSince] throw (before any await, like a bad channel).
   bool routeThrows = false;
 
@@ -836,6 +890,7 @@ class FakeRecorderGateway implements RecorderGateway {
         elevGainM: elevGainM,
         elevLossM: elevLossM,
         gradePct: gradePct,
+        route: _route,
       ),
     );
   }

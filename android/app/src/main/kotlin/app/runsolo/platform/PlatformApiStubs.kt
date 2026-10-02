@@ -5,7 +5,7 @@ package app.runsolo.platform
  * Real implementations (RecorderService, BleHrClient) land in Phase 1.
  */
 class RecorderApiStub : RecorderApi {
-    override fun start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?): StartResult =
+    override fun start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?): StartResult =
         StartResult(runId = null, error = StartError.NO_FINE_PERMISSION)
 
     override fun startReplay(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ReplayConfig): StartResult =
@@ -59,6 +59,7 @@ class RecorderApiStub : RecorderApi {
     override fun muteTips() = Unit
 
     override fun routeSince(fromIndex: Long): List<Double> = emptyList()
+    override fun followedRoute(): FollowRoute? = null
     override fun setVolumeKeyLaps(enabled: Boolean) = Unit
 
     override fun listRunFiles(): Map<String, String> = emptyMap()

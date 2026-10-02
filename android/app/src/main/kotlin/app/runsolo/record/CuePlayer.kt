@@ -162,6 +162,16 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
         say(CueKind.phaseEnd, text)
     }
 
+    /**
+     * A route alert (off route, back on route, a turn ahead): the buzz always (a pocketed phone, music playing), the
+     * words only when cues are on. Never drops or delays a cue already queued: it is said in order like any line.
+     */
+    @Synchronized
+    fun alert(text: String, pattern: LongArray) {
+        vibrate(pattern)
+        announce(text)
+    }
+
     /** Spoken without a vibration pattern of its own (e.g. "GPS weak"). */
     @Synchronized
     fun announce(text: String) {

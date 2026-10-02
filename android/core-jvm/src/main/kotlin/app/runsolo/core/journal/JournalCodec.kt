@@ -14,6 +14,7 @@ import app.runsolo.core.model.LiveContext
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
+import app.runsolo.core.route.FollowRoute
 
 /** Line ↔ JSON. Keys are short because the journal is written at 1 Hz for an hour. */
 object JournalCodec {
@@ -77,6 +78,7 @@ object JournalCodec {
                 m["kind"] = line.kind.name; m["key"] = line.key; m["i"] = line.index; m["at"] = line.atMs
             }
             is JournalLine.TipsMuted -> { m["k"] = "tm"; m["t"] = line.t; m["w"] = line.w }
+            is JournalLine.RouteLine -> { m["k"] = "route"; m["t"] = line.t; m["w"] = line.w; m["route"] = line.route.toJson() }
         }
         return Json.write(m)
     }
@@ -162,6 +164,7 @@ object JournalCodec {
             "lctx" -> JournalLine.LiveContextLine(t, w, LiveContext.fromJson(m.obj("ctx") ?: throw IllegalArgumentException("lctx.ctx")))
             "cf" -> JournalLine.CueFired(t, w, JournalLine.FiredKind.valueOf(m.string("kind")), m.string("key"), m.int("i"), m.long("at"))
             "tm" -> JournalLine.TipsMuted(t, w)
+            "route" -> JournalLine.RouteLine(t, w, FollowRoute.fromJson(m.obj("route") ?: throw IllegalArgumentException("route.route")))
             else -> throw IllegalArgumentException("Unknown journal line kind '$k'")
         }
     }

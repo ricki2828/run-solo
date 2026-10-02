@@ -240,6 +240,7 @@ class TraceGateway implements RecorderGateway {
     SessionSpec? s,
     Units u, {
     LiveContext? liveContext,
+    FollowRoute? route,
   }) => throw UnimplementedError();
   @override
   Future<void> pause() => throw UnimplementedError();
@@ -277,6 +278,9 @@ class TraceGateway implements RecorderGateway {
 
   @override
   Future<List<double>> routeSince(int fromIndex) async => const [];
+
+  @override
+  Future<FollowRoute?> followedRoute() async => null;
   @override
   Future<void> setVolumeKeyLaps(bool e) => throw UnimplementedError();
 }
