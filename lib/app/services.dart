@@ -22,6 +22,7 @@ import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../state/max_hr.dart';
 import '../state/places.dart';
+import '../state/route_library.dart';
 import '../state/recording_controller.dart';
 import '../state/intervals_icu.dart';
 import '../state/send_runs.dart';
@@ -45,6 +46,7 @@ class AppServices {
     required this.health,
     SessionsController? sessions,
     CourseNamesController? courseNames,
+    RouteLibrary? routes,
     RecordingController? recording,
     DateTime Function()? now,
     ZoneMementoStore? zoneMemento,
@@ -67,6 +69,7 @@ class AppServices {
        sessions = sessions ?? SessionsController(MemorySessionsStore()),
        courseNames =
            courseNames ?? CourseNamesController(MemoryCourseNamesStore()),
+       routes = routes ?? RouteLibrary(MemoryRouteStore(), now: now),
        recording =
            recording ??
            RecordingController(
@@ -89,6 +92,9 @@ class AppServices {
   final HealthGateway health;
   final StorageGateway storage;
   final RecordingController recording;
+
+  /// Follow a route: the routes kept on the phone.
+  final RouteLibrary routes;
   final DateTime Function() now;
 
   /// Names a run's start point once it is finished (and lazily for old runs
@@ -237,6 +243,7 @@ class AppServices {
     DateTime Function()? now,
     List<CustomSession> customSessions = const [],
     Map<String, String> courseNames = const {},
+    List<engine.SavedRoute> routes = const [],
     LiveContextSource? live,
     RunStore? history,
     PlaceGateway? places,
@@ -277,6 +284,7 @@ class AppServices {
       )..preload(customSessions),
       courseNames: CourseNamesController(MemoryCourseNamesStore(courseNames))
         ..preload(courseNames),
+      routes: RouteLibrary(MemoryRouteStore(routes), now: now)..preload(routes),
       live: live,
       placeGateway: places,
       exportTargets:
@@ -305,6 +313,10 @@ class AppServices {
       FileCourseNamesStore(Directory('${support.path}/state')),
     );
     await courseNames.load();
+    final routes = RouteLibrary(
+      FileRouteStore(Directory('${support.path}/state')),
+    );
+    await routes.load();
     final history = FileRunStore(
       Directory('${support.path}/runs'),
       profile: () => MaxHr.profileFor(settings.settings, DateTime.now()),
@@ -331,6 +343,7 @@ class AppServices {
       ),
       sessions: sessions,
       courseNames: courseNames,
+      routes: routes,
     );
     services.startWeather();
     services.startPlaces();

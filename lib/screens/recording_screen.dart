@@ -8,6 +8,7 @@ import '../app/event_names.dart';
 import '../app/format.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
+import '../map/map_surface.dart' show usesTerrainMap;
 import '../platform/gateway.dart';
 import '../state/history_store.dart' show runModeOf;
 import '../state/recording_controller.dart';
@@ -18,6 +19,7 @@ import '../widgets/delta_glyph.dart';
 import '../widgets/gps_bar.dart';
 import '../widgets/lap_button.dart';
 import '../widgets/pace_dial.dart';
+import '../widgets/route_to_go.dart';
 import '../widgets/zone_gauge.dart';
 import 'live_map_view.dart';
 
@@ -415,6 +417,10 @@ class _RecordingScreenState extends State<RecordingScreen>
                                   : t.inkSecondary,
                               paused: s.paused,
                               cardLink: _cardLink,
+                              route: s.route,
+                              plan: ctl.followedPlan,
+                              units: settings.units,
+                              terrain: usesTerrainMap(s.mode),
                             ),
                           ),
                           // The GPS bar stays, as in NUMBERS.
@@ -463,6 +469,21 @@ class _RecordingScreenState extends State<RecordingScreen>
                                 ),
                               ),
                             ],
+                            if (s.route != null)
+                              _PausedHidden(
+                                paused: s.paused,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(
+                                    top: Space.x12,
+                                  ),
+                                  child: RouteStrip(
+                                    route: s.route!,
+                                    units: settings.units,
+                                    valueColor: t.inkPrimary,
+                                    warnColor: t.semWarn,
+                                  ),
+                                ),
+                              ),
                             const Spacer(),
                           ] else if (s.isGoal && s.phase == Phase.cooldown) ...[
                             // G3: after the goal, the cool-down's time is
@@ -476,6 +497,21 @@ class _RecordingScreenState extends State<RecordingScreen>
                                 compact: compact,
                               ),
                             ),
+                            if (s.route != null)
+                              _PausedHidden(
+                                paused: s.paused,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(
+                                    top: Space.x12,
+                                  ),
+                                  child: RouteStrip(
+                                    route: s.route!,
+                                    units: settings.units,
+                                    valueColor: t.inkPrimary,
+                                    warnColor: t.semWarn,
+                                  ),
+                                ),
+                              ),
                             const Spacer(),
                           ] else if (s.isPreset) ...[
                             // 4x4 (founder field test 25-Sep): no big LAP.
@@ -1464,6 +1500,13 @@ class _FreeRunBlock extends StatelessWidget {
     // the hero, never under 36 sp. Keyed on the mode's flag, not a type list.
     final showElevation =
         runModeOf(s.mode).showsElevation && s.elevGainM != null;
+    // Following a route: its "to go" needs room. The current-pace dial steps
+    // aside where Trail's climb and grade rows share the screen (and shrinks
+    // on a short phone), and on a short phone the Trail GAP row steps aside
+    // too. The hero, time, distance, climb and grade all stay at 36 sp or more.
+    final following = s.route != null;
+    final tightRoute = compact && following;
+    final noDial = following && showElevation;
     return Column(
       key: const ValueKey('free-run-block'),
       children: [
@@ -1523,23 +1566,39 @@ class _FreeRunBlock extends StatelessWidget {
             valueColor: t.inkPrimary,
             // Grade-adjusted pace live, only where the mode asks for it
             // (Trail): the current pace as it would run on the flat.
-            gapSecPerKm: runModeOf(s.mode).showsLiveGap
+            gapSecPerKm: runModeOf(s.mode).showsLiveGap && !tightRoute
                 ? engine.Gap.paceSecPerKm(s.livePaceSecPerKm, s.gradePct)
                 : null,
           ),
         ],
-        const SizedBox(height: Space.x8),
-        // Founder 25-Sep: the current-pace dial here too, needle against the
-        // run's average so far.
-        SizedBox(
-          width: compact ? (showElevation ? 112 : 150) : 200,
-          child: PaceDial(
-            currentSecPerKm: s.livePaceSecPerKm,
-            referenceSecPerKm: runAverage,
+        // Follow a route: what is left of it, under the numbers, never over
+        // the hero.
+        if (s.route != null) ...[
+          SizedBox(height: compact ? Space.x4 : Space.x8),
+          RouteToGoRow(
+            route: s.route!,
             units: units,
-            onZone: s.zone > 0,
+            labelColor: secondary,
+            valueColor: t.inkPrimary,
+            warnColor: t.semWarn,
           ),
-        ),
+        ],
+        if (!noDial) ...[
+          const SizedBox(height: Space.x8),
+          // Founder 25-Sep: the current-pace dial here too, needle against the
+          // run's average so far.
+          SizedBox(
+            width: compact
+                ? (following ? 96 : (showElevation ? 112 : 150))
+                : 200,
+            child: PaceDial(
+              currentSecPerKm: s.livePaceSecPerKm,
+              referenceSecPerKm: runAverage,
+              units: units,
+              onZone: s.zone > 0,
+            ),
+          ),
+        ],
       ],
     );
   }

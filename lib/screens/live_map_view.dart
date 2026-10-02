@@ -10,9 +10,12 @@ library;
 import 'package:flutter/material.dart';
 
 import '../map/map_surface.dart';
+import '../map/route_builder.dart';
+import '../platform/gateway.dart';
 import '../state/live_route.dart';
 import '../theme/theme.dart';
 import '../widgets/compare_card.dart';
+import '../widgets/route_to_go.dart';
 
 /// The biggest number for the phase, as the NUMBERS layout would show it.
 class LiveHero {
@@ -32,6 +35,10 @@ class LiveMapView extends StatefulWidget {
     required this.secondary,
     required this.paused,
     this.cardLink,
+    this.route,
+    this.plan,
+    this.units = Units.km,
+    this.terrain = false,
   });
 
   final MapSurfaceFactory maps;
@@ -51,6 +58,15 @@ class LiveMapView extends StatefulWidget {
   /// The live compare card's slot (LV1/LV2): a zero-height anchor under the
   /// hero, so a card slides in over the top of the map, never the hero.
   final LayerLink? cardLink;
+
+  /// Follow a route: the live figures (a strip line under the hero) and the
+  /// planned line to draw under the track. Null = following nothing.
+  final RouteProgress? route;
+  final List<GeoPoint>? plan;
+  final Units units;
+
+  /// Free and Trail runs: Google's terrain map instead of the night style.
+  final bool terrain;
 
   @override
   State<LiveMapView> createState() => _LiveMapViewState();
@@ -127,12 +143,30 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
           link: widget.cardLink,
           child: const SizedBox(width: double.infinity, height: Space.x8),
         ),
+        // The route's strip sits under the hero, never over it: distance and
+        // climb to go, the next turn, or OFF ROUTE.
+        if (widget.route != null)
+          Visibility(
+            visible: !widget.paused,
+            maintainSize: true,
+            maintainAnimation: true,
+            maintainState: true,
+            child: RouteStrip(
+              route: widget.route!,
+              units: widget.units,
+              // The hero stays the brightest number: the strip is the label tone.
+              valueColor: widget.secondary,
+              warnColor: t.semWarn,
+            ),
+          ),
         Expanded(
           child: _foreground
               ? widget.maps.buildLive(
                   context,
                   track: widget.track,
                   color: widget.typeColor,
+                  plan: widget.plan,
+                  terrain: widget.terrain,
                 )
               : const SizedBox.shrink(key: ValueKey('map-off')),
         ),

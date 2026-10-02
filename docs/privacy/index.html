@@ -67,9 +67,21 @@
   uploaded stay in your Intervals.icu account, where Intervals.icu's own privacy policy applies;
   you can delete them there.</p>
 
+  <h3>Routes you follow</h3>
+  <p>Start has a "Follow a route" choice for Free, Trail and Goal runs. You can pick a GPX or TCX file
+  with Android's file picker, or turn one of your own past runs into a route. Run Supreme reads only the
+  file you pick, on your phone, and keeps a simplified copy of the route (its points and, if the file has
+  them, elevations) in the app's own storage. The file itself is not copied or sent anywhere, and
+  nothing about the route leaves the phone: the distance left, the "off route" alert and the turn hints
+  (worked out from the route's shape, not from any map or trail data) are all calculated on the phone, and the
+  alert and hints are spoken by your phone's own voice. Saved routes are part of the app's stored data, so they are
+  included in Android's automatic backup with your runs, and you can delete any of them from Start,
+  Follow a route.</p>
+
   <h2>2. Google Maps</h2>
   <p>After a run, and during a run if you switch the record screen to MAP, Run Supreme draws your
-  route on a Google map. The map is provided by the Google
+  route on a Google map (for Free and Trail runs, Google's terrain map with its contour lines; a route you are following is drawn on
+  top by Run Supreme, and is not sent to Google). The map is provided by the Google
   Maps SDK for Android, which runs inside the app and talks to Google directly to fetch map tiles.
   According to
   <a href="https://developers.google.com/maps/documentation/android-sdk/play-data-disclosure" rel="noopener">Google's own disclosure for this SDK</a>,
@@ -118,6 +130,7 @@
     <tr><th>Permission</th><th>Why</th></tr>
     <tr><td>Precise location</td><td>To record your pace and route with GPS during a run you started. Recording runs as a visible notification while the run is in progress and stops when you press Stop. Run Supreme never records location in the background on its own.</td></tr>
     <tr><td>Barometer (no permission needed)</td><td>If your phone has one, Run Supreme reads its air-pressure sensor during a run you started, to work out climb and descent. The readings stay on your phone: they become the run's elevation, are stored with the run, and are never sent anywhere.</td></tr>
+    <tr><td>Files (no permission needed)</td><td>When you choose "Import a GPX or TCX file" under Follow a route, Android's file picker hands Run Supreme the one file you pick. Run Supreme cannot see any other file, and keeps only the simplified route.</td></tr>
     <tr><td>Nearby devices (Bluetooth)</td><td>To pair a heart-rate strap. Bluetooth is not used to work out where you are.</td></tr>
     <tr><td>Notifications</td><td>The recording notification with its LAP and Stop buttons, and cues while your screen is off.</td></tr>
     <tr><td>Health Connect (write only)</td><td>Only if you switch on Health Connect in Settings, Send runs to, or tap Send to Health Connect on a run. Health Connect asks you for four write permissions: exercise, exercise route, heart rate and distance. Run Supreme writes the finished run (its laps and pauses, route, heart rate and distance) and reads nothing back from Health Connect. You can turn it off in Settings, or withdraw the permissions in Health Connect, at any time.</td></tr>
@@ -139,6 +152,7 @@
     <li><strong>Delete everything</strong>: Settings, Data, "Delete all" removes every run and setting from the phone. Uninstalling the app does the same. What Google's Maps SDK already received (section 2) is held by Google, not us; your Google account's privacy controls apply to it.</li>
     <li><strong>Weather</strong>: Settings, Recording, "Weather for each run".</li>
     <li><strong>Map</strong>: maps appear on a run's detail screen, behind your recent runs on Home (no setting turns that off), and on the record screen while you have MAP selected (NUMBERS is the default and each run type remembers your choice); do not use these if you would rather Google did not receive that map area.</li>
+    <li><strong>Routes</strong>: Start, Follow a route lists the routes saved on your phone; the bin beside each one deletes it. Uninstalling the app removes them too.</li>
     <li><strong>Intervals.icu</strong>: Settings, Send runs to, Intervals.icu. Switch it off to stop automatic sending, or Disconnect to delete the key.</li>
     <li><strong>Backup</strong>: Android settings, Google, Backup.</li>
     <li><strong>Export</strong>: Settings, Data, "Export all" gives you your data as JSON or TCX.</li>

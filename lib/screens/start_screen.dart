@@ -22,6 +22,7 @@ import '../widgets/mode_chip.dart';
 import '../widgets/structure_glyph.dart';
 import '../widgets/value_stepper.dart';
 import 'custom_builder_screen.dart';
+import 'follow_route_sheet.dart';
 import 'intervals_sheet.dart';
 
 /// The live compare at Start ([kLiveCompare]); tests turn it on to check
@@ -53,6 +54,10 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
 
   bool _starting = false;
   String? _error;
+
+  /// Follow a route: the route picked for this run (Free, Trail and Goal);
+  /// not remembered, each run chooses its own.
+  engine.SavedRoute? _route;
 
   /// K1 / A10.10: the event's START waits for a fix (pre-start probe,
   /// #54). Ready = a fix in the last 5 s at 20 m or better.
@@ -275,6 +280,19 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     });
   }
 
+  /// Free, Trail and Goal runs can follow a route; the timed 5 km, Laps,
+  /// intervals and tests cannot.
+  bool _followable(AppSettings s) =>
+      !s.eventRun &&
+      (s.goalRun ||
+          s.lastMode == RecordMode.free ||
+          s.lastMode == RecordMode.trail);
+
+  Future<void> _chooseRoute() async {
+    final picked = await showFollowRouteSheet(context, selectedId: _route?.id);
+    if (picked != null && mounted) setState(() => _route = picked);
+  }
+
   Future<void> _start({
     engine.SessionSpec? testSpec,
     RecordMode? testMode,
@@ -339,6 +357,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         spec,
         s.units,
         liveContext: live,
+        route: _followable(s) ? _route?.toFollowRoute() : null,
       );
     } catch (e) {
       // A PlatformException must never strand the button in "starting".
@@ -873,6 +892,15 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                           style: text.bodyMedium?.copyWith(
                             color: t.inkSecondary,
                           ),
+                        ),
+                      ],
+                      if (_followable(s)) ...[
+                        const SizedBox(height: Space.x16),
+                        FollowRouteRow(
+                          route: _route,
+                          units: s.units,
+                          onChoose: _chooseRoute,
+                          onClear: () => setState(() => _route = null),
                         ),
                       ],
                       const SizedBox(height: Space.x16),

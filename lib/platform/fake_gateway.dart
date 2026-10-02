@@ -129,13 +129,19 @@ class FakeRecorderGateway implements RecorderGateway {
   /// was given: the route's length less the distance run, never off route.
   RouteProgress? routeProgress;
   double _routeLengthM = 0;
+  double? _routeClimbM;
   bool _following = false;
 
   RouteProgress? get _route {
     if (routeProgress != null) return routeProgress;
     if (!_following) return null;
+    final toGo = math.max(0.0, _routeLengthM - _totalDistanceM);
     return RouteProgress(
-      toGoM: math.max(0, _routeLengthM - _totalDistanceM),
+      toGoM: toGo,
+      // The climb left, in proportion to the distance left.
+      climbToGoM: _routeClimbM == null || _routeLengthM == 0
+          ? null
+          : _routeClimbM! * toGo / _routeLengthM,
       off: false,
     );
   }
@@ -248,6 +254,7 @@ class FakeRecorderGateway implements RecorderGateway {
     _following = route != null;
     _followed = route;
     _routeLengthM = route == null ? 0 : _routeLength(route);
+    _routeClimbM = route?.elevM == null ? null : _routeClimb(route!.elevM!);
     _runCounter += 1;
     _begin(
       'fake-${_runCounter.toString().padLeft(3, '0')}',
@@ -270,6 +277,14 @@ class FakeRecorderGateway implements RecorderGateway {
     })
   >
   startCalls = [];
+
+  static double _routeClimb(List<double> elev) {
+    var up = 0.0;
+    for (var i = 1; i < elev.length; i++) {
+      up += math.max(0, elev[i] - elev[i - 1]);
+    }
+    return up;
+  }
 
   static double _routeLength(FollowRoute r) {
     var d = 0.0;

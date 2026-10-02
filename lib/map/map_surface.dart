@@ -9,6 +9,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../platform/gateway.dart' show RecordMode;
 import '../state/live_route.dart';
 import '../theme/theme.dart';
 import 'route_builder.dart';
@@ -26,21 +27,31 @@ abstract class MapSurfaceFactory {
   /// 4:3 lite-mode bitmap with the route, or the interactive full-screen map
   /// when [interactive]. Implementations must never throw: a failed load
   /// renders [MapFailedCard] with the route still drawn on our own canvas.
+  /// [terrain]: Google's terrain map (contours) instead of the Night Session
+  /// style, for Free and Trail runs' detail.
   Widget build(
     BuildContext context,
     RouteGeometry route, {
     bool interactive = false,
     ValueChanged<int?>? onLapTap,
+    bool terrain = false,
   });
 
   /// The record screen's MAP view: the interactive map following the last
   /// point of [track] (north-up, recentring about 8 s after a pan), the
   /// route so far in [color] and a marker at the current position. Never
   /// throws; a failed load draws the route on our own canvas instead.
+  ///
+  /// [plan] is a route being followed (Follow a route): drawn under the
+  /// track in a muted Bone, the track stays the run type's colour on top.
+  /// [terrain] asks for Google's terrain map (contours) instead of the
+  /// Night Session style (Free and Trail runs).
   Widget buildLive(
     BuildContext context, {
     required LiveRouteTrack track,
     required Color color,
+    List<GeoPoint>? plan,
+    bool terrain = false,
   });
 
   /// Home's recent-run card background (non-interactive). Shows a cached
@@ -78,9 +89,13 @@ class FakeMapSurfaceFactory implements MapSurfaceFactory {
     RouteGeometry route, {
     bool interactive = false,
     ValueChanged<int?>? onLapTap,
+    bool terrain = false,
   }) {
     if (failLoad) return MapFailedCard(route: route);
-    return RouteShape(route: route, key: const ValueKey('fake-map'));
+    return _terrainMark(
+      terrain,
+      RouteShape(route: route, key: const ValueKey('fake-map')),
+    );
   }
 
   @override
@@ -88,13 +103,23 @@ class FakeMapSurfaceFactory implements MapSurfaceFactory {
     BuildContext context, {
     required LiveRouteTrack track,
     required Color color,
+    List<GeoPoint>? plan,
+    bool terrain = false,
   }) => ListenableBuilder(
     listenable: track,
     builder: (context, _) {
-      final route = liveRouteGeometry(track.points);
+      final route = liveRouteGeometry(track.points, plan: plan);
       return failLoad
           ? MapFailedCard(route: route)
-          : RouteShape(route: route, key: const ValueKey('fake-live-map'));
+          : _terrainMark(
+              terrain,
+              RouteShape(
+                route: route,
+                color: plan == null ? null : color,
+                plan: plan,
+                key: const ValueKey('fake-live-map'),
+              ),
+            );
     },
   );
 
@@ -114,11 +139,28 @@ class FakeMapSurfaceFactory implements MapSurfaceFactory {
   Future<void> pruneCards(Set<String> liveRunIds) async {}
 }
 
+/// Tests: the fake map's terrain request, as a key above the shape
+/// (`fake-terrain`); the real map is a platform view tests cannot look into.
+Widget _terrainMark(bool terrain, Widget child) => terrain
+    ? KeyedSubtree(key: const ValueKey('fake-terrain'), child: child)
+    : child;
+
+/// Free and Trail runs show Google's terrain map (contours), in the live map
+/// and on run detail; every other run type keeps the Night Session style.
+bool usesTerrainMap(RecordMode mode) =>
+    mode == RecordMode.free || mode == RecordMode.trail;
+
 /// The track as drawable geometry (a start dot, the finish dot is the
-/// runner's current position). Empty until two points exist.
-RouteGeometry liveRouteGeometry(List<GeoPoint> points) {
+/// runner's current position). Empty until two points exist, unless a [plan]
+/// (a route being followed) gives the canvas something to fit.
+RouteGeometry liveRouteGeometry(List<GeoPoint> points, {List<GeoPoint>? plan}) {
+  final extra = plan != null && plan.length > 1 ? plan : const <GeoPoint>[];
   if (points.length < 2) {
-    return const RouteGeometry(points: [], markers: [], bounds: null);
+    return RouteGeometry(
+      points: const [],
+      markers: const [],
+      bounds: extra.isEmpty ? null : RouteBuilder.boundsOf(extra),
+    );
   }
   return RouteGeometry(
     points: points,
@@ -126,7 +168,7 @@ RouteGeometry liveRouteGeometry(List<GeoPoint> points) {
       RouteMarker(point: points.first, kind: RouteMarkerKind.start),
       RouteMarker(point: points.last, kind: RouteMarkerKind.finish),
     ],
-    bounds: RouteBuilder.boundsOf(points),
+    bounds: RouteBuilder.boundsOf([...points, ...extra]),
   );
 }
 
@@ -139,9 +181,14 @@ class RouteShape extends StatelessWidget {
     this.caption,
     this.color,
     this.overlay = false,
+    this.plan,
   });
   final RouteGeometry route;
   final String? caption;
+
+  /// A route being followed (Follow a route), drawn under [route] in a muted
+  /// Bone.
+  final List<GeoPoint>? plan;
 
   /// Route colour; defaults to the primary ink.
   final Color? color;
@@ -165,6 +212,8 @@ class RouteShape extends StatelessWidget {
               CustomPaint(
                 painter: _RoutePainter(
                   route: route,
+                  plan: plan,
+                  planInk: t.inkSecondary,
                   ink: color ?? t.inkPrimary,
                   muted: t.inkMuted,
                   ground: t.bgBase,
@@ -201,12 +250,16 @@ class MapFailedCard extends StatelessWidget {
 class _RoutePainter extends CustomPainter {
   _RoutePainter({
     required this.route,
+    this.plan,
+    this.planInk,
     required this.ink,
     required this.muted,
     required this.ground,
     this.casing = false,
   });
   final RouteGeometry route;
+  final List<GeoPoint>? plan;
+  final Color? planInk;
   final bool casing;
   final Color ink;
   final Color muted;
@@ -215,7 +268,8 @@ class _RoutePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final b = route.bounds;
-    if (b == null || route.isEmpty) return;
+    final hasPlan = plan != null && plan!.length > 1;
+    if (b == null || (route.isEmpty && !hasPlan)) return;
     const pad = 24.0;
     final w = size.width - 2 * pad;
     final h = size.height - 2 * pad;
@@ -228,6 +282,33 @@ class _RoutePainter extends CustomPainter {
       pad + (p.lon - b.west) * k * cosLat + (w - spanLon * k * cosLat) / 2,
       pad + (b.north - p.lat) * k + (h - spanLat * k) / 2,
     );
+    if (hasPlan) {
+      final p0 = map(plan!.first);
+      final planPath = Path()..moveTo(p0.dx, p0.dy);
+      for (final p in plan!.skip(1)) {
+        final o = map(p);
+        planPath.lineTo(o.dx, o.dy);
+      }
+      canvas.drawPath(
+        planPath,
+        Paint()
+          ..color = ground.withValues(alpha: 0.7)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 8
+          ..strokeJoin = StrokeJoin.round
+          ..strokeCap = StrokeCap.round,
+      );
+      canvas.drawPath(
+        planPath,
+        Paint()
+          ..color = planInk ?? muted
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 4
+          ..strokeJoin = StrokeJoin.round
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+    if (route.isEmpty) return;
     final first = map(route.points.first);
     final path = Path()..moveTo(first.dx, first.dy);
     for (final p in route.points.skip(1)) {
@@ -296,5 +377,8 @@ class _RoutePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_RoutePainter old) =>
-      old.route != route || old.ink != ink || old.casing != casing;
+      old.route != route ||
+      old.plan != plan ||
+      old.ink != ink ||
+      old.casing != casing;
 }

@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../platform/gateway.dart';
+import '../map/route_builder.dart' show GeoPoint;
 import 'live_route.dart';
 import '../platform/session_codec.dart';
 import 'zone_memento.dart';
@@ -576,6 +577,24 @@ class RecordingController extends ChangeNotifier {
   /// track: what Start sent, or read back from native after a restore
   /// ([syncRoute]). Null for none.
   FollowRoute? followedRoute;
+
+  List<GeoPoint>? _plan;
+  FollowRoute? _planFor;
+
+  /// [followedRoute] as map points, made once per route (the map reads it on
+  /// every rebuild).
+  List<GeoPoint>? get followedPlan {
+    final r = followedRoute;
+    if (r == null) return null;
+    if (!identical(r, _planFor)) {
+      _planFor = r;
+      _plan = [
+        for (var i = 0; i + 1 < r.latLon.length; i += 2)
+          GeoPoint(r.latLon[i], r.latLon[i + 1]),
+      ];
+    }
+    return _plan;
+  }
 
   /// After `resumeRecovered` succeeded on the gateway.
   Future<void> attachResumed(RecordMode mode) async {
