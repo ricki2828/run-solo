@@ -1,5 +1,6 @@
 import '../model/run_file.dart';
 import '../model/verdict.dart';
+import 'elevation.dart';
 import '../run_mode.dart';
 
 /// Whether a finished Free run looks like a trail run, so the result screen
@@ -38,10 +39,17 @@ abstract final class TrailSuggestion {
     return gain == null ? null : gain / (run.distanceM / 1000);
   }
 
-  /// Total climb in metres from the GPS altitude, noise filtered (median, then
-  /// a deadband); null when too few samples carry an altitude. TODO(barometer):
-  /// read the barometric altitude here once the recorder writes it.
+  /// Total climb in metres: the run's stored elevation (the phone's barometer
+  /// fused with GPS, `RunFile.elevSrc`, the same figure the index keeps as
+  /// `climbM`) when it has one, else the raw GPS altitude below.
   static double? gainM(RunFile run) {
+    final stored = RunElevation.of(run);
+    return stored?.ascentM ?? gpsGainM(run);
+  }
+
+  /// Total climb in metres from the GPS altitude alone, noise filtered
+  /// (median, then a deadband); null when too few samples carry an altitude.
+  static double? gpsGainM(RunFile run) {
     final alts = <double>[
       for (final s in run.samples)
         if (s.altM != null) s.altM!,

@@ -283,17 +283,15 @@ void main() {
   });
 
   group('RunMode', () {
-    test(
-      'only free shows live elevation for now, and no mode shows live GAP',
-      () {
-        expect(RunMode.free.showsElevation, isTrue);
-        for (final m in [RunMode.intervals, RunMode.laps, RunMode.cooper]) {
-          expect(m.showsElevation, isFalse, reason: m.name);
-        }
-        for (final m in RunMode.values) {
-          expect(m.showsLiveGap, isFalse, reason: m.name);
-        }
-      },
-    );
+    test('free and trail show live elevation, only trail shows live GAP', () {
+      expect(RunMode.free.showsElevation, isTrue);
+      expect(RunMode.trail.showsElevation, isTrue);
+      for (final m in [RunMode.intervals, RunMode.laps, RunMode.cooper]) {
+        expect(m.showsElevation, isFalse, reason: m.name);
+      }
+      for (final m in RunMode.values) {
+        expect(m.showsLiveGap, m == RunMode.trail, reason: m.name);
+      }
+    });
   });
 }

@@ -567,6 +567,34 @@ void main() {
       },
     );
 
+    testWidgets(
+      'a trail run shows climb, grade and live GAP; a free run no GAP',
+      (tester) async {
+        for (final mode in [RecordMode.trail, RecordMode.free]) {
+          final (fake, _) = await openRecording(tester, mode: mode);
+          fake
+            ..elevGainM = 124.4
+            ..elevLossM = 80
+            ..gradePct = 8;
+          fake.advance(const Duration(seconds: 6));
+          await settle(tester);
+          expect(find.byKey(const ValueKey('elevation-row')), findsOneWidget);
+          expect(
+            find.byKey(const ValueKey('live-gap')),
+            mode == RecordMode.trail ? findsOneWidget : findsNothing,
+            reason: mode.name,
+          );
+          if (mode == RecordMode.trail) {
+            expect(find.text('TRAIL RUN'), findsOneWidget);
+            final gap = tester.widget<Text>(
+              find.byKey(const ValueKey('live-gap')),
+            );
+            expect(gap.style!.fontSize, greaterThanOrEqualTo(36));
+          }
+        }
+      },
+    );
+
     testWidgets('no elevation yet (no barometer or altitude): nothing shown', (
       tester,
     ) async {

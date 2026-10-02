@@ -1520,6 +1520,11 @@ class _FreeRunBlock extends StatelessWidget {
             units: units,
             labelColor: secondary,
             valueColor: t.inkPrimary,
+            // Grade-adjusted pace live, only where the mode asks for it
+            // (Trail): the current pace as it would run on the flat.
+            gapSecPerKm: runModeOf(s.mode).showsLiveGap
+                ? engine.Gap.paceSecPerKm(s.livePaceSecPerKm, s.gradePct)
+                : null,
           ),
         ],
         const SizedBox(height: Space.x8),

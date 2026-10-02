@@ -109,6 +109,20 @@ void main() {
       expect(TrailSuggestion.gainM(run), 0);
     });
 
+    test('stored barometer climb wins over the raw GPS altitude', () {
+      // GPS altitude says flat, the stored (barometer) elevation says hilly.
+      final flatGps = withAltitude(base, 5, (i, d) => 12);
+      final hilly = withAltitude(base, 5, (i, d) => hills(i, d));
+      final baro = hilly.copyWith(
+        elevSrc: ElevSource.baro,
+        samples: [for (final s in hilly.samples) s.copyWith(elevM: s.altM)],
+      );
+      expect(RunElevation.of(baro), isNotNull);
+      expect(TrailSuggestion.gainM(baro), RunElevation.of(baro)!.ascentM);
+      expect(TrailSuggestion.suggests(baro), isTrue);
+      expect(TrailSuggestion.suggests(flatGps), isFalse);
+    });
+
     test('too short, or without altitude, is not judged', () {
       final short = withAltitude(base, 1, (i, d) => hills(i, d * 5));
       expect(TrailSuggestion.gainPerKm(short), isNull);

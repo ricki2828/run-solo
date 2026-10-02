@@ -154,6 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     return switch (s.lastMode) {
       RecordMode.free => 'free run',
+      RecordMode.trail => 'trail run',
       RecordMode.laps =>
         picked.templateId == engine.SessionSpec.broncoId
             ? 'Bronco test'
