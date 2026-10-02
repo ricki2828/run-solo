@@ -119,6 +119,7 @@ class RunIndexEntry {
     return engine.BoardInput(
       runId: id,
       date: start,
+      utcOffsetMin: row?.utcOffsetMin,
       mode: mode,
       comparisonKey: comparisonKey,
       efforts: derived?.bestEfforts.efforts ?? const {},
@@ -345,6 +346,7 @@ class IndexRow {
     this.street,
     this.title,
     this.utcOffsetMin,
+    this.zoneId,
     this.movingMs,
     this.medianLapSec,
   });
@@ -356,7 +358,8 @@ class IndexRow {
   /// 5: [startLat], [startLon], [place], [title], [utcOffsetMin] (run identity).
   /// 6: [movingMs], [medianLapSec].
   /// 7: [street].
-  static const int currentVersion = 7;
+  /// 8: [zoneId], and [utcOffsetMin] is the offset where the run STARTED.
+  static const int currentVersion = 8;
 
   final int version;
   final int lapCount;
@@ -409,9 +412,14 @@ class IndexRow {
   /// The runner's own name for the run (sidecar `title`); null = automatic.
   final String? title;
 
-  /// UTC offset in minutes when the run finished (sidecar); null on older
-  /// runs, which fall back to the phone's current zone.
+  /// UTC offset in minutes where the run started, at its start instant
+  /// (zone from the start fix, else the file's zone, else the sidecar's
+  /// stamp); null only when none is known, and then the phone's current
+  /// zone is used.
   final int? utcOffsetMin;
+
+  /// The IANA zone the run started in; null without a fix or a file zone.
+  final String? zoneId;
 
   /// The run's duration without paused time, ms (warm-up stays in). Null
   /// only in a row built by a test; every rebuilt row has it.
@@ -435,6 +443,11 @@ class IndexRow {
         ? engine.ParkrunCourses.startOf(run)
         : null;
     double dp5(double v) => (v * 1e5).round() / 1e5;
+    final zone = engine.RunZone.resolve(
+      run,
+      zoneId: sidecar?.zoneId,
+      stampedOffsetMin: sidecar?.utcOffsetMin,
+    );
     return IndexRow(
       lapCount: run.laps.length,
       session: run.session,
@@ -459,7 +472,8 @@ class IndexRow {
       place: sidecar?.place,
       street: sidecar?.street,
       title: sidecar?.title,
-      utcOffsetMin: sidecar?.utcOffsetMin,
+      utcOffsetMin: zone?.offsetMin,
+      zoneId: zone?.zoneId,
       movingMs: engine.RunTimes.movingMs(run),
       medianLapSec:
           (sidecar?.runTypeOverride ?? a?.mode ?? run.mode) ==
@@ -491,6 +505,7 @@ class IndexRow {
     'street': ?street,
     'title': ?title,
     'utc_offset_min': ?utcOffsetMin,
+    'zone_id': ?zoneId,
     'moving_ms': ?movingMs,
     'median_lap_s': ?medianLapSec,
   };
@@ -535,6 +550,7 @@ class IndexRow {
         street: j['street'] as String?,
         title: j['title'] as String?,
         utcOffsetMin: j['utc_offset_min'] as int?,
+        zoneId: j['zone_id'] as String?,
         movingMs: j['moving_ms'] as int?,
         medianLapSec: d('median_lap_s'),
       );

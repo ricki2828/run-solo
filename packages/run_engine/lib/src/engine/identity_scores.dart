@@ -1,4 +1,5 @@
 import '../model/session_spec.dart';
+import 'run_identity.dart';
 import '../run_mode.dart';
 import 'best_efforts.dart';
 import 'fitness_hero.dart';
@@ -88,7 +89,7 @@ abstract final class IdentityScores {
           obs.add(
             _Evidence(
               input.runId,
-              input.date.toLocal(),
+              RunIdentity.localStart(input.date, input.utcOffsetMin),
               FitnessHero.vdot(metres, adjusted),
               source,
               board,

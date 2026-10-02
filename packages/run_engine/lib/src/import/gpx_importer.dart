@@ -35,7 +35,9 @@ class GpxImporter {
       app: app,
       start: start,
       end: start.add(Duration(milliseconds: samples.last.tMs)),
-      tz: tz,
+      tz: importTz(tz, [
+        for (final p in trkpts) p.getElement('time')?.innerText,
+      ]),
       mode: mode,
       session: null,
       units: units,

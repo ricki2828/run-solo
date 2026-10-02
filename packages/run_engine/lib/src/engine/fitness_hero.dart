@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../model/session_spec.dart';
+import 'run_identity.dart';
 import 'event_names.dart';
 import 'live_plan.dart';
 import 'predictor.dart';
@@ -112,7 +113,7 @@ class FitnessHero {
       if (c.input.comparisonKey == ComparisonKey.cooper && raw != null) {
         out.add(
           _Obs(
-            c.input.date.toLocal(),
+            RunIdentity.localStart(c.input.date, c.input.utcOffsetMin),
             c.input.cooperVo2Adj ?? raw,
             'Cooper test',
             c.input.runId,

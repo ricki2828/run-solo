@@ -15,6 +15,7 @@ export 'src/engine/event_names.dart';
 export 'src/engine/parkrun_courses.dart';
 export 'src/engine/plans.dart';
 export 'src/engine/run_identity.dart';
+export 'src/engine/run_zone.dart';
 export 'src/engine/run_times.dart';
 export 'src/engine/fitness_hero.dart';
 export 'src/engine/fix_laps.dart';

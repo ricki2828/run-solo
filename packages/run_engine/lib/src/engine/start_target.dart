@@ -1,4 +1,5 @@
 import '../model/session_spec.dart';
+import 'run_identity.dart';
 import 'event_names.dart';
 import 'goal.dart';
 import 'leaderboards.dart';
@@ -7,12 +8,12 @@ import 'predictor.dart';
 
 /// Every prediction input the index holds (PD2): one run's inputs from its
 /// board input and derived data, never its run file. The local date is the
-/// run's start in the phone's time zone ("from your 5K on Sat 12 Sep").
+/// run's start where it was run ("from your 5K on Sat 12 Sep").
 List<PredictionInput> predictionInputsOf(Iterable<LiveCandidate> runs) => [
   for (final c in runs)
     ...PredictionInput.ofDerived(
       runId: c.input.runId,
-      localDate: c.input.date.toLocal(),
+      localDate: RunIdentity.localStart(c.input.date, c.input.utcOffsetMin),
       mode: c.input.mode,
       comparisonKey: c.input.comparisonKey,
       efforts: c.derived.bestEfforts,

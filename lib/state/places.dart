@@ -59,8 +59,9 @@ class PlaceResolver {
         _inFlight.remove(id);
       });
 
-  /// At finish: remember the phone's UTC offset for the run (so its time of
-  /// day is the zone it was run in), then name the start.
+  /// At finish: remember the phone's UTC offset (the fallback for an indoor
+  /// run), work out the zone the run started in from its fix, then name the
+  /// start.
   Future<PlaceLookup?> onFinished(String id, {DateTime? now}) async {
     try {
       await store.setUtcOffset(
@@ -69,6 +70,11 @@ class PlaceResolver {
       );
     } catch (e) {
       debugPrint('place: could not stamp offset for $id ($e)');
+    }
+    try {
+      await store.stampLocalTime(id);
+    } catch (e) {
+      debugPrint('place: could not stamp local time for $id ($e)');
     }
     return ensure(id);
   }

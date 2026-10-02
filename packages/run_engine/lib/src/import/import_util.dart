@@ -44,6 +44,31 @@ double haversineM(double lat1, double lon1, double lat2, double lon2) {
   return 2 * r * math.atan2(math.sqrt(a), math.sqrt(1 - a));
 }
 
+/// The UTC offset in minutes an imported timestamp states itself ("+03:00"
+/// is 180); null for "Z", no offset, or text that is not a timestamp.
+int? importTimeOffsetMin(String? text) {
+  final m = RegExp(r'([+-])(\d\d):?(\d\d)$').firstMatch(text?.trim() ?? '');
+  if (m == null) return null;
+  final minutes = int.parse(m[2]!) * 60 + int.parse(m[3]!);
+  return m[1] == '-' ? -minutes : minutes;
+}
+
+/// The run file `tz` for an import: [requested] unless it is the bare "UTC"
+/// placeholder and the timestamps carry an offset, then that offset as
+/// "+HH:MM" (the file has no IANA zone to give). [RunZone] reads it back.
+String importTz(String requested, Iterable<String?> timeTexts) {
+  if (requested != 'UTC') return requested;
+  for (final t in timeTexts) {
+    final m = importTimeOffsetMin(t);
+    if (m == null) continue;
+    final a = m.abs();
+    final hh = (a ~/ 60).toString().padLeft(2, '0');
+    final mm = (a % 60).toString().padLeft(2, '0');
+    return '${m < 0 ? '-' : '+'}$hh:$mm';
+  }
+  return requested;
+}
+
 /// Parses a TCX/GPX timestamp. A value without `Z` or an offset is taken as
 /// UTC (never the phone's local zone, which would shift with travel).
 DateTime? parseImportTime(String? text) {
