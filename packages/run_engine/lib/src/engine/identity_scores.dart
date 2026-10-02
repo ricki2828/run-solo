@@ -4,6 +4,7 @@ import '../run_mode.dart';
 import 'best_efforts.dart';
 import 'fitness_hero.dart';
 import 'live_plan.dart';
+import 'trail_verdict.dart';
 
 /// Stable identity readings built from verified run evidence, never a verdict.
 /// A score is only shown when its lane has an eligible observation. We use
@@ -151,6 +152,15 @@ abstract final class IdentityScores {
             }
           }
         } else {
+          // LONG: a Trail run of 15 km or more counts at its effort time
+          // (grade-adjusted, see TrailEffort), never at its hilly pace.
+          if (input.mode == RunMode.trail) {
+            final d = input.trailDistanceM, ms = input.trailEffortMs;
+            if (d != null && ms != null && d >= 15000) {
+              add(d, ms, TrailEffort.longSource, null);
+            }
+            continue;
+          }
           if (input.mode != RunMode.free &&
               input.mode != RunMode.laps &&
               !(input.mode == RunMode.intervals &&

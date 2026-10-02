@@ -455,4 +455,7 @@ abstract final class TrailEffort {
 
   /// The wording on the score detail line.
   static const String note = 'Trail runs count using effort pace';
+
+  /// What a LONG reading set by a trail run is called.
+  static const String longSource = 'Trail run (effort pace)';
 }
