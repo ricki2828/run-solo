@@ -280,9 +280,11 @@ void main() {
     int? hr,
     String name, {
     int? height,
+    void Function(FakeRecorderGateway fake)? script,
   }) async {
     final fake = FakeRecorderGateway(now: now)..scriptedHr = hr;
     if (hr == null) fake.hrPaired = false;
+    script?.call(fake);
     final services = fakeServices(recorder: fake);
     await services.recording.start(
       mode,
@@ -339,8 +341,49 @@ void main() {
     });
   }
 
+  // Elevation (founder 2-Oct): climb and grade as secondary figures on a Free
+  // run, the hero still the biggest; 36 sp floor on the short phone too.
+  for (final h in [800, 640]) {
+    testWidgets('record: free run with climb and grade at 360 x $h', (
+      tester,
+    ) async {
+      await recordWithHr(
+        tester,
+        RecordMode.free,
+        138,
+        'record_free_elevation_360x$h',
+        height: h,
+        script: (fake) => fake
+          ..elevGainM = 124
+          ..elevLossM = 87
+          ..gradePct = 3.2,
+      );
+    });
+  }
+
   final d1 = DateTime.utc(2026, 9, 10, 6);
   final d2 = DateTime.utc(2026, 9, 14, 6);
+
+  // The elevation card: totals, profile on the faint grid, GAP as an
+  // estimate, and the climb column in the splits.
+  for (final h in [800, 640]) {
+    testWidgets('run detail: elevation profile at 360 x $h', (tester) async {
+      tester.view.physicalSize = Size(360 * 3, h * 3.0);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final run = withElevation(freeRunFile(n: 61, start: d1, seconds: 2400));
+      await pumpApp(
+        tester,
+        fakeServices(files: [run]),
+        home: RunDetailScreen(runId: run.id),
+      );
+      await pumpTimes(tester, 6);
+      await scrollTo(tester, find.text('ELEVATION'));
+      await settleAnimations(tester);
+      await golden(tester, 'detail_elevation_360x$h');
+    });
+  }
 
   Future<void> verdictGolden(
     WidgetTester tester,
