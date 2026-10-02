@@ -40,9 +40,9 @@ void main() {
         run.preset,
         const Preset(reps: 4, workSeconds: 240, recoverySeconds: 180),
       );
-      // Re-encoded as schema 3: `session`, never `preset` or `fourByFour`.
+      // Re-encoded as the current schema: `session`, never `preset` or `fourByFour`.
       final j = jsonDecode(RunFileCodec.encode(run)) as Map<String, Object?>;
-      expect(j['schema'], 3);
+      expect(j['schema'], 4);
       expect(j['mode'], 'intervals');
       expect(j.containsKey('preset'), isFalse);
       expect((j['session'] as Map)['templateId'], 'norwegian-4x4');

@@ -51,6 +51,8 @@ class RecorderNotification(private val context: Context) {
          * shows at most three actions, so it only fits beside Pause and Stop when there is no LAP.
          */
         val muteTipsAction: Boolean = false,
+        /** The pause in force is the recorder's (the runner stopped), not the runner's. */
+        val autoPaused: Boolean = false,
     )
 
     fun build(c: Content): Notification {
@@ -96,7 +98,7 @@ class RecorderNotification(private val context: Context) {
         val rep = "Rep ${c.repIndex}${c.reps?.let { "/$it" } ?: ""}"
         val toGo = c.metresToGo?.let { " · ${it.toInt()} m to go" }
         return when {
-            c.state == RecorderState.paused -> "Paused · tap to finish"
+            c.state == RecorderState.paused -> (if (c.autoPaused) "Auto-paused" else "Paused") + " · tap to finish"
             c.cooper && c.phase == Phase.work -> "12-minute test"
             c.phase == Phase.work -> rep + (toGo ?: " · work")
             c.phase == Phase.recovery -> "Recover" + (toGo ?: " · $rep")

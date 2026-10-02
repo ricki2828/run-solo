@@ -192,7 +192,10 @@ class _RecordingScreenState extends State<RecordingScreen>
       _finishing = true;
       _stoppedAtMs = ctl.pausedAtElapsedMs;
     });
-    if (ctl.snapshot.recording) {
+    // An auto-pause counts too: PAUSE on top of it makes it the runner's, so
+    // the runner moving again cannot resume the recorder under the finish
+    // screen. The run still ends where the auto-pause began.
+    if (ctl.snapshot.recording || ctl.snapshot.autoPaused) {
       try {
         await ctl.pause();
         if (mounted) setState(() => _stoppedAtMs = ctl.pausedAtElapsedMs);
@@ -696,9 +699,10 @@ class _RecordingScreenState extends State<RecordingScreen>
                         MediaQuery.paddingOf(context).bottom + 56 + Space.x16,
                     child: _PausedOverlay(
                       onResume: ctl.resume,
+                      auto: s.autoPaused,
                       note: s.isCooper && s.phase == Phase.work
                           ? kCooperPausedNote
-                          : null,
+                          : (s.autoPaused ? kAutoPausedNote : null),
                     ),
                   ),
                 if (_finishing)
@@ -991,6 +995,9 @@ String stepDetail(SessionStep st) {
 
 /// Under Pause during the 12-minute test (A5).
 const String kCooperPauseWarning = 'Pausing ends the test';
+
+/// Under AUTO-PAUSED: the recorder paused itself because you stopped.
+const String kAutoPausedNote = 'You stopped. It resumes when you move.';
 
 /// On the PAUSED card when the test was paused (A5: no estimate).
 const String kCooperPausedNote =
@@ -2031,8 +2038,11 @@ class _FinishScreen extends StatelessWidget {
 }
 
 class _PausedOverlay extends StatelessWidget {
-  const _PausedOverlay({required this.onResume, this.note});
+  const _PausedOverlay({required this.onResume, this.note, this.auto = false});
   final Future<void> Function() onResume;
+
+  /// The recorder paused itself (Settings → Auto-pause): AUTO-PAUSED, same card.
+  final bool auto;
 
   /// One line under PAUSED (a paused 12-minute test gives no estimate).
   final String? note;
@@ -2048,9 +2058,13 @@ class _PausedOverlay extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                'PAUSED',
-                style: RunSoloType.display44.copyWith(color: t.inkSecondary),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  auto ? 'AUTO-PAUSED' : 'PAUSED',
+                  key: const ValueKey('paused-title'),
+                  style: RunSoloType.display44.copyWith(color: t.inkSecondary),
+                ),
               ),
               if (note != null) ...[
                 const SizedBox(height: Space.x12),

@@ -163,6 +163,7 @@ class RecorderService : Service() {
         const val PREF_CUES = "cues"
         const val PREF_VOLUME_KEY_LAPS = "volumeKeyLaps"
         const val PREF_KM_SPLITS = "kmSplits"
+        const val PREF_AUTO_PAUSE = "autoPause"
 
         /** Session handed from the Activity to the service on ACTION_START. Main thread only. */
         @Volatile

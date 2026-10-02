@@ -271,6 +271,8 @@ class TraceGateway implements RecorderGateway {
   @override
   Future<void> setKmSplits(bool e) => throw UnimplementedError();
   @override
+  Future<void> setAutoPause(bool e) => throw UnimplementedError();
+  @override
   Future<void> muteTips() => throw UnimplementedError();
 
   @override

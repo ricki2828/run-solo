@@ -205,6 +205,28 @@ void main() {
     expect(sw.value, isTrue);
   });
 
+  testWidgets('Auto-pause: on by default, says where it applies, switches off '
+      'and tells the recorder', (tester) async {
+    final fake = FakeRecorderGateway(now: now);
+    final services = fakeServices(recorder: fake);
+    await pumpApp(tester, services, home: SettingsScreen(now: now));
+    await pumpTimes(tester, 3);
+    await scrollTo(tester, find.text('Auto-pause'));
+    expect(find.text(kAutoPauseLine), findsOneWidget);
+    final toggle = find.descendant(
+      of: find
+          .ancestor(of: find.text('Auto-pause'), matching: find.byType(Row))
+          .first,
+      matching: find.byType(Switch),
+    );
+    expect(tester.widget<Switch>(toggle).value, isTrue);
+    expect(services.settings.settings.autoPause, isTrue);
+    await tester.tap(toggle);
+    await pumpTimes(tester, 3);
+    expect(services.settings.settings.autoPause, isFalse);
+    expect(fake.autoPause, isFalse);
+  });
+
   testWidgets('"Weather for each run" defaults on and switches off (§18.6)', (
     tester,
   ) async {

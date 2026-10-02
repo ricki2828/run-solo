@@ -74,7 +74,7 @@ class JournalWriter(
             return
         }
         val forced = line is JournalLine.Lap || line is JournalLine.Pause ||
-            line is JournalLine.Resume || line is JournalLine.Gap || line is JournalLine.Header ||
+            line is JournalLine.Resume || line is JournalLine.AutoPause || line is JournalLine.AutoResume || line is JournalLine.Gap || line is JournalLine.Header ||
             line is JournalLine.LiveContextLine || line is JournalLine.CueFired ||
             line is JournalLine.TipsMuted
         if (!ok) {

@@ -1089,6 +1089,7 @@ class RecorderStatus {
     this.pausedAtElapsedMs,
     this.finishRequests,
     this.tipsMuted,
+    this.autoPaused,
   });
 
   RecorderState state;
@@ -1141,6 +1142,11 @@ class RecorderStatus {
   /// are on, true once "Mute tips" was tapped (app or notification).
   bool? tipsMuted;
 
+  /// `state == paused` and the recorder paused itself (the runner stopped,
+  /// Settings -> Auto-pause), not the runner. Null/false otherwise. A manual
+  /// pause on top of it makes it false.
+  bool? autoPaused;
+
   List<Object?> _toList() {
     return <Object?>[
       state,
@@ -1162,6 +1168,7 @@ class RecorderStatus {
       pausedAtElapsedMs,
       finishRequests,
       tipsMuted,
+      autoPaused,
     ];
   }
 
@@ -1190,6 +1197,7 @@ class RecorderStatus {
       pausedAtElapsedMs: result[16] as int?,
       finishRequests: result[17] as int?,
       tipsMuted: result[18] as bool?,
+      autoPaused: result[19] as bool?,
     );
   }
 
@@ -1202,7 +1210,7 @@ class RecorderStatus {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted);
+    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(autoPaused, other.autoPaused);
   }
 
   @override
@@ -1712,6 +1720,7 @@ class TickEvent extends RecorderEvent {
     this.stepIndex,
     this.stepRemainingMs,
     this.stepRemainingM,
+    this.autoPaused,
   });
 
   /// Wall time since Start, pauses included.
@@ -1749,6 +1758,9 @@ class TickEvent extends RecorderEvent {
 
   double? stepRemainingM;
 
+  /// As `RecorderStatus.autoPaused`.
+  bool? autoPaused;
+
   List<Object?> _toList() {
     return <Object?>[
       elapsedMs,
@@ -1765,6 +1777,7 @@ class TickEvent extends RecorderEvent {
       stepIndex,
       stepRemainingMs,
       stepRemainingM,
+      autoPaused,
     ];
   }
 
@@ -1788,6 +1801,7 @@ class TickEvent extends RecorderEvent {
       stepIndex: result[11] as int?,
       stepRemainingMs: result[12] as int?,
       stepRemainingM: result[13] as double?,
+      autoPaused: result[14] as bool?,
     );
   }
 
@@ -1800,7 +1814,7 @@ class TickEvent extends RecorderEvent {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapElapsedMs, other.lapElapsedMs) && _deepEquals(lapDistanceM, other.lapDistanceM) && _deepEquals(lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && _deepEquals(totalDistanceM, other.totalDistanceM) && _deepEquals(hr, other.hr) && _deepEquals(gpsAccuracyM, other.gpsAccuracyM) && _deepEquals(state, other.state) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM);
+    return _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapElapsedMs, other.lapElapsedMs) && _deepEquals(lapDistanceM, other.lapDistanceM) && _deepEquals(lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && _deepEquals(totalDistanceM, other.totalDistanceM) && _deepEquals(hr, other.hr) && _deepEquals(gpsAccuracyM, other.gpsAccuracyM) && _deepEquals(state, other.state) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(autoPaused, other.autoPaused);
   }
 
   @override
@@ -3514,6 +3528,29 @@ class RecorderApi {
   /// in progress too.
   Future<void> setKmSplits(bool enabled) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.setKmSplits$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[enabled]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// Settings -> Run -> "Auto-pause" (default on): the recorder pauses itself
+  /// when the runner stops and resumes when they move again, in Free, Laps
+  /// and Goal runs (and the warm-up/cool-down of other sessions; never in a
+  /// timed rep, a Cooper test or an event). Persisted natively; applies to a
+  /// run in progress too.
+  Future<void> setAutoPause(bool enabled) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.setAutoPause$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,

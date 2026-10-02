@@ -117,6 +117,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     private fun newSession(mode: app.runsolo.core.model.RunMode, spec: CoreSpec?, units: Units, replay: ReplayRunner?, liveContext: CoreLiveContext?): RecordingSession =
         RecordingSession(context, UUID.randomUUID().toString(), mode, spec, units.toCore(), replay, volumeKeyLaps(mode), liveContext)
             .also { it.kmSplits = prefs.getBoolean(RecorderService.PREF_KM_SPLITS, true) }
+            .also { it.autoPause = prefs.getBoolean(RecorderService.PREF_AUTO_PAUSE, true) }
 
     /**
      * Volume-key laps are a Laps-run feature only (W8): the user's setting, default on, applies
@@ -181,6 +182,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         val h = replayed.header
         return RecordingSession(context, runId, h.mode, h.session, h.units, null, volumeKeyLaps(h.mode), replayed.liveContext)
             .also { it.kmSplits = prefs.getBoolean(RecorderService.PREF_KM_SPLITS, true) }
+            .also { it.autoPause = prefs.getBoolean(RecorderService.PREF_AUTO_PAUSE, true) }
     }
 
     override fun pause() {
@@ -322,6 +324,12 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
 
     override fun routeSince(fromIndex: Long): List<Double> =
         active()?.routeSince(fromIndex.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()) ?: emptyList()
+
+    override fun setAutoPause(enabled: Boolean) {
+        // commit(), not apply(): the next start() may come from a new process.
+        prefs.edit().putBoolean(RecorderService.PREF_AUTO_PAUSE, enabled).commit()
+        active()?.autoPause = enabled
+    }
 
     override fun muteTips() {
         active()?.muteTips()

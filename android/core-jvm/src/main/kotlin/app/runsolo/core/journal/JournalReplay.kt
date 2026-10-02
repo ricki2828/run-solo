@@ -11,6 +11,9 @@ import app.runsolo.core.model.LiveContext
 sealed class RunEvent {
     abstract val t: Long
 
+    /** A pause or resume, manual or automatic: what decides whether the run is paused at its end. */
+    val isPauseEdge: Boolean get() = this is Pause || this is Resume || this is AutoPause || this is AutoResume
+
     data class Sample(
         override val t: Long,
         val lat: Double?,
@@ -26,6 +29,8 @@ sealed class RunEvent {
     data class Lap(override val t: Long, val source: LapSource) : RunEvent()
     data class Pause(override val t: Long) : RunEvent()
     data class Resume(override val t: Long) : RunEvent()
+    data class AutoPause(override val t: Long) : RunEvent()
+    data class AutoResume(override val t: Long) : RunEvent()
     data class Cue(override val t: Long, val kind: CueKind) : RunEvent()
 
     /** [t] is where the run went dark; [endT] where it resumed. */
@@ -58,7 +63,7 @@ data class Replay(
     val tipsMuted: Boolean = false,
 ) {
     val isPaused: Boolean
-        get() = events.lastOrNull { it is RunEvent.Pause || it is RunEvent.Resume } is RunEvent.Pause
+        get() = events.lastOrNull { it.isPauseEdge }.let { it is RunEvent.Pause || it is RunEvent.AutoPause }
 }
 
 object JournalReplay {
@@ -151,6 +156,8 @@ object JournalReplay {
                         is JournalLine.Lap -> RunEvent.Lap(runT, line.source)
                         is JournalLine.Pause -> RunEvent.Pause(runT)
                         is JournalLine.Resume -> RunEvent.Resume(runT)
+                        is JournalLine.AutoPause -> RunEvent.AutoPause(runT)
+                        is JournalLine.AutoResume -> RunEvent.AutoResume(runT)
                         is JournalLine.Cue -> RunEvent.Cue(runT, line.kind)
                         is JournalLine.HrLink -> RunEvent.HrLink(runT, line.connected)
                         is JournalLine.Header, is JournalLine.Gap,

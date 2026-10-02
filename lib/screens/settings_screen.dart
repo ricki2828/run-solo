@@ -36,6 +36,11 @@ const String kOnboardingInternetLine =
 /// Settings → Voice sublines (A10.7).
 const String kCoachingTipsLine =
     'Where you stand and short tips, spoken at your splits.';
+
+/// Settings → Recording → Auto-pause.
+const String kAutoPauseLine =
+    'Pauses when you stop, resumes when you move. Free, Goal and Laps runs; '
+    'never in a timed rep or a test.';
 const String kShowWhileRunningLine =
     'A 2 s card on the run screen when a rank is spoken.';
 
@@ -353,6 +358,15 @@ class _SettingsScreenState extends State<SettingsScreen>
                 reason: kShowWhileRunningLine,
               ),
               const _Section('Recording'),
+              _Toggle(
+                label: 'Auto-pause',
+                value: s.autoPause,
+                onChanged: (v) {
+                  set((x) => x.copyWith(autoPause: v));
+                  services.recorder.setAutoPause(v);
+                },
+                reason: kAutoPauseLine,
+              ),
               _Toggle(
                 label: 'Keep screen on',
                 value: s.keepScreenOn,

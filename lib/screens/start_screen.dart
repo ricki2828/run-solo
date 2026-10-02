@@ -247,6 +247,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     try {
       await services.recorder.setCues(s.cues);
       await services.recorder.setKmSplits(s.kmSplits);
+      await services.recorder.setAutoPause(s.autoPause);
       if ((testMode ?? s.recordMode) == RecordMode.laps) {
         await services.recorder.setVolumeKeyLaps(
           s.volumeKeyLapFor(RecordMode.laps),

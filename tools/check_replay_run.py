@@ -31,7 +31,7 @@ def main() -> int:
         if not ok:
             errors.append(msg)
 
-    check(run["schema"] == 3, f"schema {run['schema']}")
+    check(run["schema"] == 4, f"schema {run['schema']}")
     check(run["mode"] == fx["mode"], f"mode {run['mode']} != {fx['mode']}")
     check(run["session"] == fx["session"], f"session differs:\n  device  {run['session']}\n  fixture {fx['session']}")
     check(run["gaps"] == [], f"gaps {run['gaps']}")
@@ -54,6 +54,14 @@ def main() -> int:
         else:
             check(abs(a["t1"] - b["t1"] - offset) <= T_TOL_MS, f"lap {i} t1 {a['t1']} vs {b['t1']}+{offset}")
             check(abs(a["d1"] - b["d1"]) <= DIST_TOL_M, f"lap {i} d1 {a['d1']:.2f} vs {b['d1']:.2f}")
+
+    # Pauses: the same spans, auto or not (auto-pause fires on the stop in the trace, on both sides).
+    pa, pf = run["pauses"], fx["pauses"]
+    check(len(pa) == len(pf), f"{len(pa)} pauses {pa}, fixture has {len(pf)} {pf}")
+    for i, (a, b) in enumerate(zip(pa, pf)):
+        check(a[2:] == b[2:], f"pause {i} kind {a[2:]} vs {b[2:]}")
+        check(abs(a[0] - b[0] - offset) <= T_TOL_MS and abs(a[1] - b[1] - offset) <= T_TOL_MS,
+              f"pause {i} {a[:2]} vs {b[:2]}+{offset}")
 
     s, fs = run["samples"], fx["samples"]
     if auto_stop:
