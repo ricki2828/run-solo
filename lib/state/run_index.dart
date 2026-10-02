@@ -119,6 +119,7 @@ class RunIndexEntry {
     return engine.BoardInput(
       runId: id,
       date: start,
+      utcOffsetMin: row?.utcOffsetMin,
       mode: mode,
       comparisonKey: comparisonKey,
       efforts: derived?.bestEfforts.efforts ?? const {},

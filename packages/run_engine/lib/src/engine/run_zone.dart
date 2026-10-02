@@ -119,10 +119,12 @@ abstract final class RunZone {
 
   /// The zone [run] started in, best evidence first:
   /// 1. [zoneId], already worked out and stored in the sidecar;
-  /// 2. the start fix (any run with a GPS fix, imported or not);
-  /// 3. the run file's `tz`, the phone's zone when the run began (not for an
-  ///    import, whose `tz` is a placeholder, and a bare "UTC" is no evidence);
-  /// 4. [stampedOffsetMin], the phone's offset stamped at finish.
+  /// 2. the run file's `tz`: the phone's IANA zone when the run began, which
+  ///    phones keep current as the runner travels (not for an import, whose
+  ///    `tz` is a placeholder, and a bare "UTC" is no evidence);
+  /// 3. [stampedOffsetMin], the phone's offset stamped at finish;
+  /// 4. the start fix, through the coarse zone grid (imports, and files
+  ///    with no usable zone).
   /// Null when none is available: the caller then falls back to the phone's
   /// current zone, which is only right for a run that has no better record.
   static RunLocalZone? resolve(
@@ -138,20 +140,15 @@ abstract final class RunZone {
 
     final stored = from(zoneId);
     if (stored != null) return stored;
-    final fix = RunIdentity.startOf(run);
-    if (fix != null) {
-      final fromFix = from(zoneAt(fix.lat, fix.lon));
-      if (fromFix != null) return fromFix;
-    }
-    // A bare "UTC" is what a placeholder looks like (no phone reports it for
-    // a real place), so it is no evidence.
     final utcLike = const {'UTC', 'Etc/UTC', 'GMT', 'Etc/GMT'}.contains(run.tz);
     if (!run.app.startsWith('import:') && !utcLike) {
       final fromFile = from(run.tz);
       if (fromFile != null) return fromFile;
     }
-    return stampedOffsetMin == null
-        ? null
-        : (zoneId: null, offsetMin: stampedOffsetMin);
+    if (stampedOffsetMin != null) {
+      return (zoneId: null, offsetMin: stampedOffsetMin);
+    }
+    final fix = RunIdentity.startOf(run);
+    return fix == null ? null : from(zoneAt(fix.lat, fix.lon));
   }
 }

@@ -11,6 +11,7 @@ class BoardInput {
   const BoardInput({
     required this.runId,
     required this.date,
+    this.utcOffsetMin,
     required this.mode,
     this.comparisonKey,
     this.efforts = const {},
@@ -27,6 +28,10 @@ class BoardInput {
 
   final String runId;
   final DateTime date;
+
+  /// UTC offset where the run started (null: the phone's zone), for the
+  /// run's own calendar date.
+  final int? utcOffsetMin;
   final RunMode mode;
   final String? comparisonKey;
   final Map<BestEffortDistance, BestEffort> efforts;

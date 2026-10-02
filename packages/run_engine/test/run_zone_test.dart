@@ -112,14 +112,21 @@ void main() {
       expect(RunIdentity.timeOfDay(local), 'Afternoon');
     });
 
-    test(
-      'the fix beats a stamped offset from the phone (Athens at finish)',
-      () {
-        final run = _run(DateTime.utc(2026, 10, 2, 7), at: _singapore);
-        final z = RunZone.resolve(run, stampedOffsetMin: 180)!;
-        expect(z.offsetMin, 480);
-      },
-    );
+    test('the file zone (phone at start) beats a stamp made later', () {
+      final run = _run(
+        DateTime.utc(2026, 10, 2, 7),
+        at: _singapore,
+        tz: 'Asia/Singapore',
+      );
+      final z = RunZone.resolve(run, stampedOffsetMin: 180)!;
+      expect((z.zoneId, z.offsetMin), ('Asia/Singapore', 480));
+    });
+
+    test('with no usable file zone: stamp, then the start fix', () {
+      final run = _run(DateTime.utc(2026, 10, 2, 7), at: _singapore);
+      expect(RunZone.resolve(run, stampedOffsetMin: 480)!.zoneId, isNull);
+      expect(RunZone.resolve(run)!.zoneId, 'Asia/Singapore');
+    });
 
     test('Athens across the late-October clock change', () {
       // EEST (+3) until 04:00 local on Sun 25 Oct 2026 (01:00 UTC), then +2.

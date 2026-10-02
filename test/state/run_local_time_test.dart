@@ -67,6 +67,7 @@ void main() {
       final r = relocated(
         freeRunFile(n: 1, start: DateTime.utc(2026, 10, 2, 7)),
         singapore,
+        tz: 'Asia/Singapore',
       );
       await store.importBundles([
         engine.RunBundle(
