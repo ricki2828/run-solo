@@ -13,13 +13,13 @@ class RouteSignature {
     : assert(points.length >= 2);
 
   /// The simplified track, 5 dp (about 1 m), start to finish.
-  final List<RoutePoint> points;
+  final List<SigPoint> points;
 
   /// The run's distance, metres.
   final double lengthM;
 
-  RoutePoint get start => points.first;
-  RoutePoint get end => points.last;
+  SigPoint get start => points.first;
+  SigPoint get end => points.last;
 
   /// Finishes within [RouteMatch.endTolM] of where it started.
   bool get isLoop {
@@ -53,10 +53,10 @@ class RouteSignature {
   /// Null for a run with no GPS track or under [minLengthM].
   static RouteSignature? of(RunFile run) {
     if (run.distanceM < minLengthM) return null;
-    final raw = <RoutePoint>[
+    final raw = <SigPoint>[
       for (final s in run.samples)
         if (s.lat != null && s.lon != null && (s.accM ?? 0) <= maxAccuracyM)
-          RoutePoint(s.lat!, s.lon!),
+          SigPoint(s.lat!, s.lon!),
     ];
     if (raw.length < 2) return null;
     final line = _Local(raw.first);
@@ -70,7 +70,7 @@ class RouteSignature {
     if (keep.length < 2) return null;
     return RouteSignature(
       points: [
-        for (final i in keep) RoutePoint(_dp5(raw[i].lat), _dp5(raw[i].lon)),
+        for (final i in keep) SigPoint(_dp5(raw[i].lat), _dp5(raw[i].lon)),
       ],
       lengthM: run.distanceM,
     );
@@ -102,12 +102,12 @@ class RouteSignature {
     if (len == null || p is! List || p.length < 4 || p.length.isOdd) {
       return null;
     }
-    final pts = <RoutePoint>[];
+    final pts = <SigPoint>[];
     var la = 0, lo = 0;
     for (var i = 0; i < p.length; i += 2) {
       la += (p[i] as num).toInt();
       lo += (p[i + 1] as num).toInt();
-      pts.add(RoutePoint(la / 1e5, lo / 1e5));
+      pts.add(SigPoint(la / 1e5, lo / 1e5));
     }
     return RouteSignature(points: pts, lengthM: len);
   }
@@ -138,8 +138,8 @@ class RouteSignature {
   }
 }
 
-class RoutePoint {
-  const RoutePoint(this.lat, this.lon);
+class SigPoint {
+  const SigPoint(this.lat, this.lon);
   final double lat;
   final double lon;
 }
@@ -152,7 +152,7 @@ class _Pt {
 
 /// Equirectangular metres around an origin; plenty for a run's footprint.
 class _Local {
-  _Local(RoutePoint origin)
+  _Local(SigPoint origin)
     : _lat0 = origin.lat,
       _lon0 = origin.lon,
       _kx = math.cos(origin.lat * math.pi / 180) * _mPerDeg;
@@ -162,7 +162,7 @@ class _Local {
   final double _lon0;
   final double _kx;
 
-  _Pt project(RoutePoint p) =>
+  _Pt project(SigPoint p) =>
       _Pt((p.lon - _lon0) * _kx, (p.lat - _lat0) * _mPerDeg);
 }
 

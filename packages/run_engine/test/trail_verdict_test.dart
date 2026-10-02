@@ -8,16 +8,13 @@ RouteSignature route({double dLat = 0, bool loop = true, double sizeM = 600}) {
   final k = sizeM / 111194.9;
   final pts = loop
       ? [
-          RoutePoint(lat0 + dLat, lon0),
-          RoutePoint(lat0 + dLat + k, lon0 + k),
-          RoutePoint(lat0 + dLat + 2 * k, lon0),
-          RoutePoint(lat0 + dLat + k, lon0 - k),
-          RoutePoint(lat0 + dLat, lon0),
+          SigPoint(lat0 + dLat, lon0),
+          SigPoint(lat0 + dLat + k, lon0 + k),
+          SigPoint(lat0 + dLat + 2 * k, lon0),
+          SigPoint(lat0 + dLat + k, lon0 - k),
+          SigPoint(lat0 + dLat, lon0),
         ]
-      : [
-          RoutePoint(lat0 + dLat, lon0),
-          RoutePoint(lat0 + dLat + 3 * k, lon0 + k),
-        ];
+      : [SigPoint(lat0 + dLat, lon0), SigPoint(lat0 + dLat + 3 * k, lon0 + k)];
   return RouteSignature(
     points: pts,
     lengthM: loop ? 4 * k * 111194.9 : 3.2 * 111194.9 * k,
