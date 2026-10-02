@@ -310,19 +310,22 @@ void main() {
       },
     );
 
-    test('finish records the UTC offset once; old runs have none', () async {
+    test('finish stamps the phone offset; the start fix then wins', () async {
       final r = freeRunFile(n: 1, start: d1);
       await store.importBundles([engine.RunBundle(run: r)]);
-      expect((await store.list()).single.utcOffsetMin, isNull);
       final places = PlaceResolver(
         store: store,
         gateway: FakePlaceGateway(name: 'Albert Park'),
       );
+      // The phone is in +10:00 at finish; the fixture starts in Sydney, and
+      // the zone worked out from the fix is the one saved (Sydney, +10:00
+      // in September).
       final at = DateTime.parse('2026-09-10T08:00:00+10:00');
       await places.onFinished(r.id, now: at);
       await store.setUtcOffset(r.id, 0);
       final s = (await store.list()).single;
-      expect(s.utcOffsetMin, at.timeZoneOffset.inMinutes);
+      expect(s.utcOffsetMin, 600);
+      expect((await store.load(r.id))!.sidecar.zoneId, 'Australia/Sydney');
       expect(s.place, 'Albert Park');
     });
 

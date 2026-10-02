@@ -118,6 +118,30 @@ String whenOf(DateTime start, int? utcOffsetMin) {
   return '${Fmt.dayDate(local)} · ${Fmt.hhmm(local)}';
 }
 
+/// Where the run started, as a wall clock: its stored zone, else the start
+/// fix, else the file's own zone, else the offset stamped at finish. Null
+/// only when the run carries none of them (then the phone's zone is used).
+engine.RunLocalZone? _zoneOf(engine.RunFile run, engine.RunSidecar? sidecar) =>
+    engine.RunZone.resolve(
+      run,
+      zoneId: sidecar?.zoneId,
+      stampedOffsetMin: sidecar?.utcOffsetMin,
+    );
+
+/// [sidecar] carrying the run's resolved zone and start-instant offset; the
+/// same object when nothing changes (so nothing is written).
+engine.RunSidecar _withLocalTime(
+  engine.RunFile run,
+  engine.RunSidecar sidecar,
+) {
+  final z = _zoneOf(run, sidecar);
+  if (z == null ||
+      (z.zoneId == sidecar.zoneId && z.offsetMin == sidecar.utcOffsetMin)) {
+    return sidecar;
+  }
+  return sidecar.copyWith(zoneId: z.zoneId, utcOffsetMin: z.offsetMin);
+}
+
 /// The session name alone, for the one place the run-type colour goes
 /// (Aurora rule): the title minus its time-of-day word.
 String runSessionName(RunSummary r) => runTitle(r);
@@ -421,6 +445,12 @@ abstract class RunStore implements HistoryStore {
   /// Keeps an offset already recorded.
   Future<void> setUtcOffset(String id, int minutes);
 
+  /// Work out where the run started (zone and offset at the start instant,
+  /// from its fix) and save it with the run, so its time of day is the clock
+  /// there. Backfills older runs; keeps what is stored when nothing better
+  /// is known (an indoor run keeps its stamped offset). Display only.
+  Future<void> stampLocalTime(String id);
+
   /// Count a place lookup that found no name (the app stops after three).
   Future<void> addPlaceTry(String id);
 
@@ -616,7 +646,7 @@ RunSummary _summaryOf(
   place: sidecar?.place,
   street: sidecar?.street,
   customTitle: sidecar?.title,
-  utcOffsetMin: sidecar?.utcOffsetMin,
+  utcOffsetMin: _zoneOf(run, sidecar)?.offsetMin,
   // Only a 4x4 carries a verdict word (plan §18.2); guard by the effective
   // mode so nothing else ever shows one.
   verdict:
@@ -828,6 +858,14 @@ class MemoryRunStore implements RunStore {
   Future<void> setUtcOffset(String id, int minutes) async {
     final s = sidecars[id] ?? engine.RunSidecar(runId: id);
     sidecars[id] = s.copyWith(utcOffsetMin: s.utcOffsetMin ?? minutes);
+  }
+
+  @override
+  Future<void> stampLocalTime(String id) async {
+    final run = files.where((f) => f.id == id).firstOrNull;
+    if (run == null) return;
+    final s = sidecars[id] ?? engine.RunSidecar(runId: id);
+    sidecars[id] = _withLocalTime(run, s);
   }
 
   @override
@@ -1180,6 +1218,29 @@ class FileRunStore implements RunStore {
         decoded[e.key] = (decoded[e.key]!.$1, now);
       } catch (err) {
         debugPrint('history: could not freeze verdict for ${e.key} ($err)');
+      }
+    }
+
+    // Backfill: a run without a stored zone (every run before the start fix
+    // was used) gets it written now, before its entry is stamped, so the
+    // row and the sidecar agree. Display only: no verdict reads it.
+    for (final id in affected) {
+      final d = decoded[id];
+      if (d == null) continue;
+      final (run, sidecar) = d;
+      final current = sidecar ?? engine.RunSidecar(runId: id);
+      if (identical(_withLocalTime(run, current), current)) continue;
+      try {
+        final file = files[id]!;
+        final now = await sidecars.update(
+          id,
+          _sidecarFor(file),
+          (c) => _withLocalTime(run, c),
+          runFile: file,
+        );
+        decoded[id] = (run, now);
+      } catch (err) {
+        debugPrint('history: could not stamp local time for $id ($err)');
       }
     }
 
@@ -1564,6 +1625,15 @@ class FileRunStore implements RunStore {
     (current) =>
         current.copyWith(utcOffsetMin: current.utcOffsetMin ?? minutes),
   );
+
+  @override
+  Future<void> stampLocalTime(String id) async {
+    final file = await _fileFor(id);
+    if (file == null) return;
+    final d = await _decode(file);
+    if (d == null) return;
+    await _writeIdentity(id, (current) => _withLocalTime(d.$1, current));
+  }
 
   @override
   Future<void> addPlaceTry(String id) => _writeIdentity(

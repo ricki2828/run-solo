@@ -8,6 +8,10 @@ environment:
 
 dependencies:
   xml: ^6.5.0
+  # Offline lat/lon -> IANA zone (boundary polygons compiled in) and the zone
+  # rules, so a run's time of day is the wall clock where it started.
+  timezone: ^0.11.1
+  timezone_finder: ^0.2.0
 
 dev_dependencies:
   lints: ^6.0.0

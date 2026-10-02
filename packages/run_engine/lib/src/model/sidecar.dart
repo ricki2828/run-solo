@@ -97,6 +97,7 @@ class RunSidecar {
     this.streetTried = false,
     this.title,
     this.utcOffsetMin,
+    this.zoneId,
     this.placeTries = 0,
     this.sends = const {},
     this.readSchema = schema,
@@ -148,9 +149,16 @@ class RunSidecar {
   /// Display only, so it survives every recalculation.
   final String? title;
 
-  /// The phone's UTC offset in minutes when the run finished: buckets the
-  /// time of day in the zone the runner was in. Absent on older runs.
+  /// The UTC offset in minutes where and when the run STARTED: buckets the
+  /// time of day in the zone the runner was in. With [zoneId] set it was
+  /// worked out from the start fix (DST-correct at the start instant);
+  /// without, it is the phone's offset stamped at finish (an indoor run).
+  /// Absent on older runs until they are backfilled.
   final int? utcOffsetMin;
+
+  /// The IANA zone the run started in ("Asia/Singapore"), from the start
+  /// fix or the run file's own `tz`. Absent for a run with neither.
+  final String? zoneId;
 
   /// Place lookups that found no name (geocoder absent, offline, failed).
   /// The app stops asking after three.
@@ -226,6 +234,7 @@ class RunSidecar {
       !streetTried &&
       title == null &&
       utcOffsetMin == null &&
+      zoneId == null &&
       placeTries == 0 &&
       sends.isEmpty &&
       parkrun == null;
@@ -245,6 +254,7 @@ class RunSidecar {
     bool? streetTried,
     Object? title = _unset,
     Object? utcOffsetMin = _unset,
+    Object? zoneId = _unset,
     int? placeTries,
     Map<String, SendRecord>? sends,
   }) => RunSidecar(
@@ -257,6 +267,7 @@ class RunSidecar {
     utcOffsetMin: identical(utcOffsetMin, _unset)
         ? this.utcOffsetMin
         : utcOffsetMin as int?,
+    zoneId: identical(zoneId, _unset) ? this.zoneId : zoneId as String?,
     placeTries: placeTries ?? this.placeTries,
     parkrun: identical(parkrun, _unset)
         ? this.parkrun
@@ -344,6 +355,7 @@ class RunSidecar {
     if (streetTried) 'street_tried': true,
     'title': ?title,
     'utc_offset_min': ?utcOffsetMin,
+    'zone_id': ?zoneId,
     if (placeTries > 0) 'place_tries': placeTries,
     if (sends.isNotEmpty)
       'sends': {for (final e in sends.entries) e.key: e.value.toJson()},
@@ -426,6 +438,7 @@ class RunSidecar {
       utcOffsetMin: json['utc_offset_min'] is int
           ? json['utc_offset_min'] as int
           : null,
+      zoneId: optString('zone_id'),
       placeTries: json['place_tries'] is int ? json['place_tries'] as int : 0,
       sends: _readSends(json['sends']),
       readSchema: schemaValue,

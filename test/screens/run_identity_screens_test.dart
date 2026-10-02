@@ -201,7 +201,12 @@ void main() {
       await pumpTimes(tester);
       expect(find.byType(HistoryRow), findsOneWidget);
       expect(find.text('Sunday easy'), findsOneWidget);
-      expect(whereWhenLine(whereWhen('Albert Park', start)), findsOneWidget);
+      // The fixture starts in Sydney (+10:00 in September): the row shows
+      // the clock there, not the phone's.
+      expect(
+        whereWhenLine(whereWhen('Albert Park', start, utcOffsetMin: 600)),
+        findsOneWidget,
+      );
       await tester.runAsync(() => store.derivedIdle);
     });
   });
@@ -236,7 +241,12 @@ void main() {
       await pumpApp(tester, services, home: RunDetailScreen(runId: r.id));
       await pumpTimes(tester, 6);
       // An old run with no place: named lazily when the detail opens.
-      expect(whereWhenLine(whereWhen('Albert Park', start)), findsOneWidget);
+      // The fixture starts in Sydney (+10:00 in September): the row shows
+      // the clock there, not the phone's.
+      expect(
+        whereWhenLine(whereWhen('Albert Park', start, utcOffsetMin: 600)),
+        findsOneWidget,
+      );
       expect(places.calls, hasLength(1));
       await tester.tap(find.byKey(const ValueKey('rename-run')));
       await pumpTimes(tester, 4);
