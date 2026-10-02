@@ -289,7 +289,7 @@ python3 - "$run_id" "$MODE" "${vk_t:-}" "$sdk" <<'PY' || fail "run file assertio
 import gzip, json, sys
 run_id, mode, vk_t, sdk = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
 f = json.load(gzip.open("/tmp/run.json.gz"))
-assert f["schema"] == 4 and f["id"] == run_id, f"header: schema {f['schema']}"
+assert f["schema"] == 5 and f["id"] == run_id, f"header: schema {f['schema']}"
 assert f["mode"] == mode, f"mode {f['mode']} != {mode}"
 laps, gaps, samples = f["laps"], f["gaps"], f["samples"]
 assert len(gaps) == 1 and gaps[0][1] > gaps[0][0] > 0, f"gaps={gaps}"
