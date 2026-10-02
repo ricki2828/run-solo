@@ -9,9 +9,11 @@ import '../state/boards.dart';
 import '../state/courses.dart';
 import '../state/history_store.dart';
 import '../state/settings.dart';
+import '../state/trails.dart';
 import '../theme/theme.dart';
 import '../widgets/board_spark.dart';
 import 'board_detail_screen.dart';
+import 'trail_board_screen.dart';
 
 /// The boards overview (LB3c, mockup frames 1-9): every board the runs
 /// have earned, grouped Distance, parkrun, Goals, Intervals, Tests. Each
@@ -75,7 +77,9 @@ class _BoardsOverviewState extends State<BoardsOverview> {
           );
         }
         final boards = data.boards;
-        if (boards.isEmpty) {
+        // A trail with two runs has a board, whatever the other boards say.
+        final trails = trailBoards(data.runs);
+        if (boards.isEmpty && trails.isEmpty) {
           return _Empty(parkrun: kEventNames.parkrun);
         }
         final units = services.settings.settings.units;
@@ -124,6 +128,20 @@ class _BoardsOverviewState extends State<BoardsOverview> {
                 const SizedBox(height: Space.x12),
               ],
               const SizedBox(height: Space.x16),
+            ],
+            if (trails.isNotEmpty) ...[
+              const _SectionHeader('TRAILS'),
+              for (final g in trails) ...[
+                _TrailCard(
+                  group: g,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => TrailBoardScreen(trailKey: g.key),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: Space.x12),
+              ],
             ],
           ],
         );
@@ -422,6 +440,70 @@ class _BoardCard extends StatelessWidget {
                 values: [for (final r in spark) board.rankValue(r)],
                 lowerBetter: !higher,
                 best: board.rankValue(pb),
+                bestColor: t.accentArc,
+                newestColor: t.inkPrimary,
+                barColor: t.inkMuted,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One trail's card on the Boards tab: its best moving time, how the last
+/// run stood, the bars of the last 8.
+class _TrailCard extends StatelessWidget {
+  const _TrailCard({required this.group, required this.onTap});
+  final engine.TrailGroup group;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final best = group.best;
+    final last = group.runs.last;
+    final n = group.runs.length;
+    final rank = 1 + group.runs.where((r) => r.movingMs < last.movingMs).length;
+    final off = last.movingMs - best.movingMs;
+    final sub = rank == 1
+        ? '$n runs · last was your best'
+        : '$n runs · last #$rank, ${Fmt.clock(off)} off';
+    final shown = group.runs.length > 8
+        ? group.runs.sublist(group.runs.length - 8)
+        : group.runs;
+    return Material(
+      key: ValueKey('board-card-${group.key}'),
+      color: t.bgRaised,
+      borderRadius: BorderRadius.circular(Radii.card),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(Radii.card),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(Space.x16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                group.name,
+                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+              ),
+              const SizedBox(height: Space.x4),
+              Text(
+                Fmt.clock(best.movingMs),
+                style: RunSoloType.display44.copyWith(color: t.inkPrimary),
+              ),
+              const SizedBox(height: Space.x4),
+              Text(
+                sub,
+                style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+              ),
+              const SizedBox(height: Space.x12),
+              BoardSpark(
+                values: [for (final r in shown) r.movingMs / 1000],
+                lowerBetter: true,
+                best: best.movingMs / 1000,
                 bestColor: t.accentArc,
                 newestColor: t.inkPrimary,
                 barColor: t.inkMuted,

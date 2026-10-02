@@ -22,6 +22,7 @@ import 'board_detail_screen.dart';
 import 'bronco_result_screen.dart';
 import 'run_detail_screen.dart';
 import 'trail_suggest_card.dart';
+import 'trail_verdict_screen.dart';
 
 /// Post-run screen (design brief §4.6). A 4x4 gets the verdict with the M4
 /// reveal; a Laps or Free run gets its summary (no verdict word, plan
@@ -147,12 +148,17 @@ class _VerdictScreenState extends State<VerdictScreen> {
               detail: detail,
               justFinished: widget.justFinished,
             ),
-          // A Trail run has no pace verdict yet: the same neutral summary
-          // as a Free run (TODO(TrailVerdict): same-trail / grade-adjusted
-          // pace verdict, see engine `TrailVerdict`).
-          RecordMode.laps ||
-          RecordMode.free ||
-          RecordMode.trail => _SummaryScreen(
+          // A Trail run is judged on the same trail when there is a match,
+          // else on effort pace (engine `TrailVerdict`).
+          RecordMode.trail => TrailVerdictScreen(
+            detail: detail,
+            all: all,
+            justFinished: widget.justFinished,
+            onChanged: () => setState(() {
+              _load = _loadDetail();
+            }),
+          ),
+          RecordMode.laps || RecordMode.free => _SummaryScreen(
             detail: detail,
             justFinished: widget.justFinished,
             // A re-tag (Trail suggestion) reloads the run under its new type.
@@ -429,7 +435,7 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                         child: child,
                       ),
                     ),
-                    child: _VerdictWord(
+                    child: VerdictWord(
                       text: v?.headline.text ?? 'NO VERDICT',
                       state: state,
                     ),
@@ -478,7 +484,7 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                 Row(
                   children: [
                     Expanded(
-                      child: _SecondaryButton(
+                      child: VerdictSecondaryButton(
                         label: 'DETAILS',
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute(
@@ -506,7 +512,7 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
             ),
           ),
           // 2 % static grain, verdict screen only.
-          const IgnorePointer(child: _Grain()),
+          const IgnorePointer(child: VerdictGrain()),
         ],
       ),
     );
@@ -662,7 +668,7 @@ class _GoalResultScreen extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: _SecondaryButton(
+                  child: VerdictSecondaryButton(
                     label: 'DETAILS',
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
@@ -691,8 +697,8 @@ class _GoalResultScreen extends StatelessWidget {
   }
 }
 
-class _VerdictWord extends StatelessWidget {
-  const _VerdictWord({required this.text, required this.state});
+class VerdictWord extends StatelessWidget {
+  const VerdictWord({super.key, required this.text, required this.state});
   final String text;
   final RevealState state;
 
@@ -795,8 +801,12 @@ class _Lines extends StatelessWidget {
   }
 }
 
-class _SecondaryButton extends StatelessWidget {
-  const _SecondaryButton({required this.label, required this.onTap});
+class VerdictSecondaryButton extends StatelessWidget {
+  const VerdictSecondaryButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+  });
   final String label;
   final VoidCallback onTap;
 
@@ -829,8 +839,8 @@ class _SecondaryButton extends StatelessWidget {
 
 /// Static 2 % noise (design brief §2.2 texture): a deterministic dot field,
 /// no animation, no image asset.
-class _Grain extends StatelessWidget {
-  const _Grain();
+class VerdictGrain extends StatelessWidget {
+  const VerdictGrain({super.key});
 
   @override
   Widget build(BuildContext context) => CustomPaint(painter: _GrainPainter());
