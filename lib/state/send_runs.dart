@@ -159,14 +159,15 @@ class ShareFileTarget extends ExportTarget {
   }
 }
 
-/// Health Connect: a later PR.
-class HealthConnectTarget extends ExportTarget {
-  static const String targetId = 'health_connect';
+/// Health: a later PR. Platform-neutral: one "health" target backed by one
+/// Pigeon `HealthApi` (Health Connect on Android, HealthKit on iOS).
+class HealthTarget extends ExportTarget {
+  static const String targetId = 'health';
 
   @override
   String get id => targetId;
   @override
-  String get label => 'Health Connect';
+  String get label => Platform.isIOS ? 'Apple Health' : 'Health Connect';
   @override
   String get blurb => 'Coming soon';
   @override
@@ -174,8 +175,9 @@ class HealthConnectTarget extends ExportTarget {
   @override
   bool get comingSoon => true;
 
-  // TODO(send-runs): write ExerciseSessionRecord (laps, route, HR, distance)
-  // through a Pigeon call; needs the Play health-apps declaration.
+  // TODO(send-runs): `HealthApi.writeWorkout(run file -> session, route, HR,
+  // distance, laps)`, implemented natively per platform. Android needs the
+  // Play health-apps declaration.
   @override
   Future<SendResult> send(SendRequest req) async =>
       const SendResult.failed('Not available yet');
@@ -212,7 +214,7 @@ List<ExportTarget> defaultExportTargets(
   Future<Directory> Function()? tempDir,
 }) => [
   ShareFileTarget(transfer: transfer, tempDir: tempDir),
-  HealthConnectTarget(),
+  HealthTarget(),
   IntervalsIcuTarget(),
 ];
 
