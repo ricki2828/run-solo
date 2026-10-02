@@ -13,7 +13,7 @@ class ElevationTest {
     /** Pressure at [altM] on a standard day: the inverse of the fuser's formula. */
     private fun hpaAt(altM: Double): Double = 1013.25 * (1.0 - altM / 44_330.77).pow(1.0 / 0.190263)
 
-    private class Result(val est: List<Double>, val ascentM: Double, val descentM: Double, val source: ElevSource?)
+    private class Result(val est: List<Double>, val ascentM: Double, val descentM: Double, val source: ElevSource?, var level: Double? = null)
 
     /**
      * Runs a 1 Hz track through the fuser and a climb tracker at the source's own threshold.
@@ -32,17 +32,18 @@ class ElevationTest {
         val rnd = Random(seed)
         val fuser = ElevationFuser()
         val est = ArrayList<Double>()
-        val estimates = ArrayList<Double>()
+        var level: Double? = null
         for (i in 0 until seconds) {
             val h = truth(i)
             val hpa = if (baro) hpaAt(h) + baroDriftHpaPerHour * i / 3600.0 + rnd.nextGaussian() * baroNoiseHpa else null
             val alt = h + rnd.nextGaussian() * gpsNoiseM
-            fuser.offer(1_000L * i, hpa, alt, 8.0)?.let { est.add(it); estimates.add(it) }
+            fuser.offer(1_000L * i, hpa, alt, 8.0)?.let { est.add(it) }
         }
         val src = fuser.source
+        level = fuser.levelM
         val tracker = ClimbTracker(if (src == null) 3.0 else ClimbTracker.thresholdFor(src))
         for (e in est) tracker.offer(e)
-        return Result(est, tracker.ascentM, tracker.descentM, src)
+        return Result(est.map { it + (level ?: 0.0) }, tracker.ascentM, tracker.descentM, src, level)
     }
 
     @Test
@@ -132,25 +133,74 @@ class ElevationTest {
     }
 
     @Test
-    fun `a barometer with no GPS fix has no level yet`() {
+    fun `a barometer with no GPS fix has a relative series and no level yet`() {
         val f = ElevationFuser()
-        assertNull(f.offer(0, hpaAt(100.0), null, null))
-        assertNull(f.source)
-        // The mean of the first twenty usable fixes sets the level; the barometer carries it from there.
-        var level: Double? = null
-        for (i in 1..25) level = f.offer(1_000L * i, hpaAt(100.0), 103.0, 6.0)
-        assertEquals(103.0, level!!, 0.5)
+        // Relative from the very first tick: the climb is visible although there is no level.
+        assertEquals(0.0, f.offer(0, hpaAt(100.0), null, null)!! - f.relativeM!!, 1e-9)
+        assertNull(f.levelM)
+        assertNull(f.elevationM)
+        var rel = 0.0
+        for (i in 1..40) rel = f.offer(1_000L * i, hpaAt(100.0 + i), null, null)!!
+        assertTrue(rel - ElevationFuser.altitudeOfPressure(hpaAt(100.0)) > 30.0, "rel=$rel")
         assertEquals(ElevSource.baro, f.source)
-        // Ten metres up (a few seconds for the low-pass to settle).
-        var up = level
-        for (i in 26..40) up = f.offer(1_000L * i, hpaAt(110.0), null, null)
-        assertEquals(113.0, up!!, 1.0)
     }
 
     @Test
-    fun `an unusable fix does not anchor the level`() {
+    fun `the first usable fixes set the level and absolute is relative plus level`() {
         val f = ElevationFuser()
-        assertNull(f.offer(0, hpaAt(100.0), 400.0, 80.0)) // accuracy 80 m: too poor
+        var rel = 0.0
+        for (i in 1..25) rel = f.offer(1_000L * i, hpaAt(100.0), 103.0, 6.0)!!
+        assertEquals(103.0, rel + f.levelM!!, 0.5)
+        assertEquals(103.0, f.elevationM!!, 0.5)
+    }
+
+    @Test
+    fun `a climb in the first ten seconds is booked, before the level exists`() {
+        val f = ElevationFuser()
+        val t = ClimbTracker(ClimbTracker.BARO_THRESHOLD_M)
+        // 12 m up in the first 10 s (a stair-case start), then flat for a minute while GPS anchors.
+        val rels = ArrayList<Double>()
+        for (i in 0 until 70) {
+            val h = if (i < 10) 50.0 + 1.2 * i else 62.0
+            f.offer(1_000L * i, hpaAt(h), 55.0 + 2.0 * (i % 3), 6.0)?.let { rels.add(it); t.offer(it) }
+        }
+        assertEquals(70, rels.size, "a relative value on every tick from t=0")
+        assertTrue(t.ascentM in 8.0..14.0, "booked ${t.ascentM}")
+        // The stored absolute series is continuous: no step where the level lands.
+        val lv = f.levelM!!
+        val abs = rels.map { it + lv }
+        val maxStep = abs.zipWithNext { a, b -> Math.abs(b - a) }.maxOrNull()!!
+        assertTrue(maxStep < 3.0, "step $maxStep")
+    }
+
+    @Test
+    fun `the barometer returning after a gap continues from where the series was`() {
+        val f = ElevationFuser()
+        var last = 0.0
+        for (i in 0 until 60) last = f.offer(1_000L * i, hpaAt(100.0), 100.0, 6.0)!!
+        // 30 s with no barometer: GPS carries it (and reads 4 m low, as real GPS does).
+        for (i in 60 until 90) last = f.offer(1_000L * i, null, 96.0, 6.0)!!
+        val before = last
+        // The barometer is back, reading a pressure that implies the same altitude as before.
+        var after = 0.0
+        for (i in 90 until 100) after = f.offer(1_000L * i, hpaAt(100.0), 96.0, 6.0)!!
+        assertEquals(before, after, 0.5) // no step from GPS-smoothed minus baro
+    }
+
+    @Test
+    fun `a short barometer gap holds the series instead of leaving a hole`() {
+        val f = ElevationFuser()
+        for (i in 0 until 30) f.offer(1_000L * i, hpaAt(100.0), 100.0, 6.0)
+        val held = f.offer(30_000, null, 100.0, 6.0)
+        assertNotNull(held)
+        assertEquals(f.relativeM!!, held!!, 1e-9)
+    }
+
+    @Test
+    fun `an unusable fix does not set the level`() {
+        val f = ElevationFuser()
+        for (i in 0 until 40) f.offer(1_000L * i, hpaAt(100.0), 400.0, 80.0) // accuracy 80 m: too poor
+        assertNull(f.levelM)
     }
 
     @Test
@@ -158,10 +208,27 @@ class ElevationTest {
         val f = ElevationFuser()
         var last: Double? = null
         for (i in 0 until 60) last = f.offer(1_000L * i, hpaAt(100.0), 100.0, 6.0)
+        val atHandover = last!! + f.levelM!!
         for (i in 60 until 120) last = f.offer(1_000L * i, null, 100.0, 6.0)
-        assertEquals(100.0, last!!, 1.0)
+        assertEquals(100.0, last!! + f.levelM!!, 1.0)
+        assertEquals(100.0, atHandover, 1.0)
         for (i in 120 until 180) last = f.offer(1_000L * i, hpaAt(100.0), 100.0, 6.0)
-        assertEquals(100.0, last!!, 1.0)
+        assertEquals(100.0, last!! + f.levelM!!, 1.0)
+    }
+
+    @Test
+    fun `batched pressure still joins every tick and the source stays baro`() {
+        // Readings arrive in batches of up to 1 s late, stamped with their own time.
+        val ticker = app.runsolo.core.record.SampleTicker(wall = { 0L })
+        var withHpa = 0
+        for (i in 1..60) {
+            val t = 10_000L + 1_000L * i
+            // the batch carries the reading taken 900 ms ago and the one before it
+            ticker.onPressure(PressureReading(t - 900, hpaAt(100.0)))
+            ticker.onFix(app.runsolo.core.model.LocationFix(t, 1.0, 2.0, 100.0, 5.0, 3.0))
+            for (s in ticker.tick(t)) if (s.hpa != null) withHpa++
+        }
+        assertEquals(60, withHpa)
     }
 
     @Test

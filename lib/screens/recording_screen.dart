@@ -1186,7 +1186,7 @@ class ElevationRow extends StatelessWidget {
     final gap = gapSecPerKm == null
         ? null
         : AuxFigure(
-            label: 'GAP (ESTIMATE)',
+            label: 'GAP',
             value: Fmt.pace(gapSecPerKm, units),
             labelColor: labelColor,
             valueColor: valueColor,

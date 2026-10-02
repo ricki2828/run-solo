@@ -15,6 +15,7 @@ class LiveElevation(private val fuser: ElevationFuser = ElevationFuser()) {
     private var gpsGradeNow: Double? = null
 
     val source: ElevSource? get() = fuser.source
+    /** Absolute elevation; null until GPS has set the level (climb and grade do not need it). */
     val elevationM: Double? get() = fuser.elevationM
 
     /** Ascent so far, metres, by the run's source's threshold; null until there is any elevation. */

@@ -251,13 +251,13 @@ class RunFileTest {
         val f = RunFile.fromReplay(JournalReplay.read(elevationJournal(baro = true)), w0 + 120_000)
         assertEquals(app.runsolo.core.elevation.ElevSource.baro, f.elevSrc)
         val withElev = f.samples.filter { it.elevM != null }
-        assertTrue(withElev.size > 90, "anchored after 20 fixes, then every tick: ${withElev.size}")
+        assertEquals(f.samples.size, withElev.size, "a value on every tick from the first, the level applied back to the early ones")
         assertEquals(32.0, withElev.first().elevM!!, 1.0) // GPS reads 2 m high and sets the level
         assertEquals(44.0, withElev.last().elevM!!, 1.5)
         val json = f.toJson()
         assertEquals("baro", json["elev_src"])
         val rows = json["samples"] as List<*>
-        assertEquals(8, (rows.first() as List<*>).size, "no elevation yet while the level is anchored")
+        assertEquals(9, (rows.first() as List<*>).size)
         assertEquals(9, (rows.last() as List<*>).size)
         // Round trip through the gzip writer keeps both.
         val m = RunFile.readJson(f.toGzipBytes())

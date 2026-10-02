@@ -193,6 +193,13 @@ data class RunFile(
                 pauses.removeAll { it[0] >= p } // an auto part a PAUSE took over: the run ends at its start, no span
                 gaps.removeAll { it[0] >= p }
             }
+            // The samples hold the fuser's relative series; the level GPS settled on makes it absolute for
+            // every tick, the first seconds included. No level (never a usable GPS altitude): no elevation.
+            val level = fuser.levelM
+            for (i in samples.indices) {
+                val e = samples[i].elevM ?: continue
+                samples[i] = samples[i].copy(elevM = level?.let { e + it })
+            }
             val laps = ArrayList<Lap>()
             var t0 = 0L
             var d0 = 0.0

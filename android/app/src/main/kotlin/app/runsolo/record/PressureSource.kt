@@ -10,8 +10,10 @@ import android.util.Log
 import app.runsolo.core.elevation.PressureReading
 
 /**
- * The phone's barometer (`TYPE_PRESSURE`), if it has one. About 1 Hz with up to 5 s of report
- * latency, so the sensor hub batches and the CPU is not woken for every reading. Needs no
+ * The phone's barometer (`TYPE_PRESSURE`), if it has one. About 1 Hz with up to 1 s of report
+ * latency: the hub may batch a little to save power, but never for longer than the join window
+ * of `PressureJoin` (3 s), so every 1 Hz tick finds a reading and the source never alternates between
+ * barometer and GPS ticks. Needs no
  * permission, and the readings never leave the phone: they go into the journal and become the
  * run file's elevation, nothing more.
  */
@@ -53,6 +55,6 @@ class PressureSource(context: Context) {
     private companion object {
         const val TAG = "PressureSource"
         const val SAMPLING_PERIOD_US = 1_000_000
-        const val MAX_REPORT_LATENCY_US = 5_000_000
+        const val MAX_REPORT_LATENCY_US = 1_000_000
     }
 }
