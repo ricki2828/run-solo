@@ -97,6 +97,7 @@ Data types. "Collected" in Play's sense includes what the Maps SDK sends to Goog
 | Personal info | any | No | | | | | No account, no name, no email |
 | Financial info | any | No | | | | | |
 | Messages / Photos / Audio / Files / Calendar / Contacts / Web browsing / Search history | any | No | | | | | TTS cues are generated on-device; nothing recorded |
+| Files and docs | **Files and docs** | **No** | No | | | | **Follow a route (3 Oct):** the runner may pick one GPX/TCX file with the system file picker (Storage Access Framework, no storage permission). It is read on the phone and only a simplified copy of the route (points, optional elevation) is kept in the app's own `files/state/routes.json`, which Auto Backup includes like the rest of `state/`. Nothing is uploaded; the "Off route" alert and turn hints are computed on the phone and spoken by on-device TTS. No new Data safety declaration. The terrain map is the same Maps SDK, so the Location rows above already cover it. |
 
 Notes the founder should confirm against the live form (plan §18.6 leaves these to him):
 

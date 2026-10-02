@@ -165,7 +165,11 @@ class RunDetailBody extends StatelessWidget {
         if (hasRoute) ...[
           AspectRatio(
             aspectRatio: 4 / 3,
-            child: _MapCard(route: route, indoor: a.indoor),
+            child: _MapCard(
+              route: route,
+              indoor: a.indoor,
+              terrain: usesTerrainMap(d.summary.mode),
+            ),
           ),
           const SizedBox(height: Space.x24),
         ],
@@ -521,9 +525,16 @@ int? movingGapMs(
 /// Map card states (A4): route on Google (or the shape fallback), "Indoor
 /// run, no route", "Map needs Google Play services".
 class _MapCard extends StatefulWidget {
-  const _MapCard({required this.route, required this.indoor});
+  const _MapCard({
+    required this.route,
+    required this.indoor,
+    this.terrain = false,
+  });
   final RouteGeometry route;
   final bool indoor;
+
+  /// Free and Trail runs: Google's terrain map.
+  final bool terrain;
 
   @override
   State<_MapCard> createState() => _MapCardState();
@@ -577,10 +588,11 @@ class _MapCardState extends State<_MapCard> {
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
                 fullscreenDialog: true,
-                builder: (_) => FullScreenMap(route: route),
+                builder: (_) =>
+                    FullScreenMap(route: route, terrain: widget.terrain),
               ),
             ),
-            child: services.maps.build(context, route),
+            child: services.maps.build(context, route, terrain: widget.terrain),
           ),
         );
       },
@@ -611,8 +623,9 @@ class _MapMessage extends StatelessWidget {
 
 /// Interactive map with a 56 dp close button top left (A4).
 class FullScreenMap extends StatefulWidget {
-  const FullScreenMap({super.key, required this.route});
+  const FullScreenMap({super.key, required this.route, this.terrain = false});
   final RouteGeometry route;
+  final bool terrain;
 
   @override
   State<FullScreenMap> createState() => _FullScreenMapState();
@@ -634,6 +647,7 @@ class _FullScreenMapState extends State<FullScreenMap> {
             widget.route,
             interactive: true,
             onLapTap: (i) => setState(() => _highlighted = i),
+            terrain: widget.terrain,
           ),
           SafeArea(
             child: Align(

@@ -6,6 +6,7 @@ import app.runsolo.core.model.LiveContext
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
+import app.runsolo.core.route.FollowRoute
 
 /**
  * One NDJSON line of `runs/<id>/journal.ndjson`.
@@ -114,4 +115,11 @@ sealed class JournalLine {
      * and skips it. Not a run event.
      */
     data class TipsMuted(override val t: Long, override val w: Long) : JournalLine()
+
+    /**
+     * `route`: the route being followed (Follow a route), written straight after the header (and the live
+     * context) when the run follows one, so `restore()` keeps following it after a kill. No line (older build,
+     * or no route) = a run that follows nothing. An older build reads it as a bad line and skips it. Not a run event.
+     */
+    data class RouteLine(override val t: Long, override val w: Long, val route: FollowRoute) : JournalLine()
 }

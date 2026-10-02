@@ -1096,6 +1096,7 @@ class RecorderStatus {
     this.elevGainM,
     this.elevLossM,
     this.gradePct,
+    this.route,
   });
 
   RecorderState state;
@@ -1163,6 +1164,9 @@ class RecorderStatus {
 
   double? gradePct;
 
+  /// Where the runner is on the followed route; null when the run follows none.
+  RouteProgress? route;
+
   List<Object?> _toList() {
     return <Object?>[
       state,
@@ -1188,6 +1192,7 @@ class RecorderStatus {
       elevGainM,
       elevLossM,
       gradePct,
+      route,
     ];
   }
 
@@ -1220,6 +1225,7 @@ class RecorderStatus {
       elevGainM: result[20] as double?,
       elevLossM: result[21] as double?,
       gradePct: result[22] as double?,
+      route: result[23] as RouteProgress?,
     );
   }
 
@@ -1232,7 +1238,134 @@ class RecorderStatus {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct);
+    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct) && _deepEquals(route, other.route);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// A route to follow (Follow a route): chosen on Start from the route library,
+/// simplified in Dart (at most 5,000 points), journaled as the `route` line after
+/// the header and followed natively (progress, off-route alerts, turn cues), so it
+/// works with the screen off. `latLon` is flat `[lat, lon, ...]` in route order;
+/// `elevM` is one elevation per point, or null when the route has none.
+class FollowRoute {
+  FollowRoute({
+    required this.id,
+    required this.name,
+    required this.latLon,
+    this.elevM,
+  });
+
+  String id;
+
+  String name;
+
+  List<double> latLon;
+
+  List<double>? elevM;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      id,
+      name,
+      latLon,
+      elevM,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static FollowRoute decode(Object result) {
+    result as List<Object?>;
+    return FollowRoute(
+      id: result[0]! as String,
+      name: result[1]! as String,
+      latLon: (result[2]! as List<Object?>).cast<double>(),
+      elevM: (result[3] as List<Object?>?)?.cast<double>(),
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! FollowRoute || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(id, other.id) && _deepEquals(name, other.name) && _deepEquals(latLon, other.latLon) && _deepEquals(elevM, other.elevM);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// The followed route's live figures, from the recorder's own fixes. [toGoM] is
+/// the route still ahead of the runner's progress (progress only moves forward);
+/// [climbToGoM] the route's ascent still ahead, null when the route has no
+/// elevation. [off] is the off-route state (more than about 40 m away for about
+/// 10 s, with hysteresis). [turnLabel] and [turnInM] are the next turn from the
+/// route's shape ("Left turn", "Keep right", ...), null when none is ahead or
+/// while off route.
+class RouteProgress {
+  RouteProgress({
+    required this.toGoM,
+    this.climbToGoM,
+    required this.off,
+    this.turnLabel,
+    this.turnInM,
+  });
+
+  double toGoM;
+
+  double? climbToGoM;
+
+  bool off;
+
+  String? turnLabel;
+
+  double? turnInM;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      toGoM,
+      climbToGoM,
+      off,
+      turnLabel,
+      turnInM,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static RouteProgress decode(Object result) {
+    result as List<Object?>;
+    return RouteProgress(
+      toGoM: result[0]! as double,
+      climbToGoM: result[1] as double?,
+      off: result[2]! as bool,
+      turnLabel: result[3] as String?,
+      turnInM: result[4] as double?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! RouteProgress || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(toGoM, other.toGoM) && _deepEquals(climbToGoM, other.climbToGoM) && _deepEquals(off, other.off) && _deepEquals(turnLabel, other.turnLabel) && _deepEquals(turnInM, other.turnInM);
   }
 
   @override
@@ -1746,6 +1879,7 @@ class TickEvent extends RecorderEvent {
     this.elevGainM,
     this.elevLossM,
     this.gradePct,
+    this.route,
   });
 
   /// Wall time since Start, pauses included.
@@ -1793,6 +1927,9 @@ class TickEvent extends RecorderEvent {
 
   double? gradePct;
 
+  /// As `RecorderStatus.route`.
+  RouteProgress? route;
+
   List<Object?> _toList() {
     return <Object?>[
       elapsedMs,
@@ -1813,6 +1950,7 @@ class TickEvent extends RecorderEvent {
       elevGainM,
       elevLossM,
       gradePct,
+      route,
     ];
   }
 
@@ -1840,6 +1978,7 @@ class TickEvent extends RecorderEvent {
       elevGainM: result[15] as double?,
       elevLossM: result[16] as double?,
       gradePct: result[17] as double?,
+      route: result[18] as RouteProgress?,
     );
   }
 
@@ -1852,7 +1991,7 @@ class TickEvent extends RecorderEvent {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapElapsedMs, other.lapElapsedMs) && _deepEquals(lapDistanceM, other.lapDistanceM) && _deepEquals(lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && _deepEquals(totalDistanceM, other.totalDistanceM) && _deepEquals(hr, other.hr) && _deepEquals(gpsAccuracyM, other.gpsAccuracyM) && _deepEquals(state, other.state) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct);
+    return _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapElapsedMs, other.lapElapsedMs) && _deepEquals(lapDistanceM, other.lapDistanceM) && _deepEquals(lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && _deepEquals(totalDistanceM, other.totalDistanceM) && _deepEquals(hr, other.hr) && _deepEquals(gpsAccuracyM, other.gpsAccuracyM) && _deepEquals(state, other.state) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct) && _deepEquals(route, other.route);
   }
 
   @override
@@ -2999,83 +3138,89 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is RecorderStatus) {
       buffer.putUint8(158);
       writeValue(buffer, value.encode());
-    }    else if (value is OrphanJournal) {
+    }    else if (value is FollowRoute) {
       buffer.putUint8(159);
       writeValue(buffer, value.encode());
-    }    else if (value is ReplayConfig) {
+    }    else if (value is RouteProgress) {
       buffer.putUint8(160);
       writeValue(buffer, value.encode());
-    }    else if (value is PermissionStatus) {
+    }    else if (value is OrphanJournal) {
       buffer.putUint8(161);
       writeValue(buffer, value.encode());
-    }    else if (value is BleStatus) {
+    }    else if (value is ReplayConfig) {
       buffer.putUint8(162);
       writeValue(buffer, value.encode());
-    }    else if (value is ExitDiagnosis) {
+    }    else if (value is PermissionStatus) {
       buffer.putUint8(163);
       writeValue(buffer, value.encode());
-    }    else if (value is BleDevice) {
+    }    else if (value is BleStatus) {
       buffer.putUint8(164);
       writeValue(buffer, value.encode());
-    }    else if (value is BackupStatus) {
+    }    else if (value is ExitDiagnosis) {
       buffer.putUint8(165);
       writeValue(buffer, value.encode());
-    }    else if (value is PlaceName) {
+    }    else if (value is BleDevice) {
       buffer.putUint8(166);
       writeValue(buffer, value.encode());
-    }    else if (value is TickEvent) {
+    }    else if (value is BackupStatus) {
       buffer.putUint8(167);
       writeValue(buffer, value.encode());
-    }    else if (value is LapEvent) {
+    }    else if (value is PlaceName) {
       buffer.putUint8(168);
       writeValue(buffer, value.encode());
-    }    else if (value is LapPendingEvent) {
+    }    else if (value is TickEvent) {
       buffer.putUint8(169);
       writeValue(buffer, value.encode());
-    }    else if (value is CueEvent) {
+    }    else if (value is LapEvent) {
       buffer.putUint8(170);
       writeValue(buffer, value.encode());
-    }    else if (value is GpsProbeEvent) {
+    }    else if (value is LapPendingEvent) {
       buffer.putUint8(171);
       writeValue(buffer, value.encode());
-    }    else if (value is RoutePointsEvent) {
+    }    else if (value is CueEvent) {
       buffer.putUint8(172);
       writeValue(buffer, value.encode());
-    }    else if (value is CompareEvent) {
+    }    else if (value is GpsProbeEvent) {
       buffer.putUint8(173);
       writeValue(buffer, value.encode());
-    }    else if (value is GoalEvent) {
+    }    else if (value is RoutePointsEvent) {
       buffer.putUint8(174);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is CompareEvent) {
       buffer.putUint8(175);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is GoalEvent) {
       buffer.putUint8(176);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is FaultEvent) {
       buffer.putUint8(177);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthStatus) {
+    }    else if (value is StateEvent) {
       buffer.putUint8(178);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthLap) {
+    }    else if (value is PhaseEvent) {
       buffer.putUint8(179);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthPause) {
+    }    else if (value is HealthStatus) {
       buffer.putUint8(180);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthHrSample) {
+    }    else if (value is HealthLap) {
       buffer.putUint8(181);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthRoutePoint) {
+    }    else if (value is HealthPause) {
       buffer.putUint8(182);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthWorkout) {
+    }    else if (value is HealthHrSample) {
       buffer.putUint8(183);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthWriteResult) {
+    }    else if (value is HealthRoutePoint) {
       buffer.putUint8(184);
+      writeValue(buffer, value.encode());
+    }    else if (value is HealthWorkout) {
+      buffer.putUint8(185);
+      writeValue(buffer, value.encode());
+    }    else if (value is HealthWriteResult) {
+      buffer.putUint8(186);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -3163,56 +3308,60 @@ class _PigeonCodec extends StandardMessageCodec {
       case 158:
         return RecorderStatus.decode(readValue(buffer)!);
       case 159:
-        return OrphanJournal.decode(readValue(buffer)!);
+        return FollowRoute.decode(readValue(buffer)!);
       case 160:
-        return ReplayConfig.decode(readValue(buffer)!);
+        return RouteProgress.decode(readValue(buffer)!);
       case 161:
-        return PermissionStatus.decode(readValue(buffer)!);
+        return OrphanJournal.decode(readValue(buffer)!);
       case 162:
-        return BleStatus.decode(readValue(buffer)!);
+        return ReplayConfig.decode(readValue(buffer)!);
       case 163:
-        return ExitDiagnosis.decode(readValue(buffer)!);
+        return PermissionStatus.decode(readValue(buffer)!);
       case 164:
-        return BleDevice.decode(readValue(buffer)!);
+        return BleStatus.decode(readValue(buffer)!);
       case 165:
-        return BackupStatus.decode(readValue(buffer)!);
+        return ExitDiagnosis.decode(readValue(buffer)!);
       case 166:
-        return PlaceName.decode(readValue(buffer)!);
+        return BleDevice.decode(readValue(buffer)!);
       case 167:
-        return TickEvent.decode(readValue(buffer)!);
+        return BackupStatus.decode(readValue(buffer)!);
       case 168:
-        return LapEvent.decode(readValue(buffer)!);
+        return PlaceName.decode(readValue(buffer)!);
       case 169:
-        return LapPendingEvent.decode(readValue(buffer)!);
+        return TickEvent.decode(readValue(buffer)!);
       case 170:
-        return CueEvent.decode(readValue(buffer)!);
+        return LapEvent.decode(readValue(buffer)!);
       case 171:
-        return GpsProbeEvent.decode(readValue(buffer)!);
+        return LapPendingEvent.decode(readValue(buffer)!);
       case 172:
-        return RoutePointsEvent.decode(readValue(buffer)!);
+        return CueEvent.decode(readValue(buffer)!);
       case 173:
-        return CompareEvent.decode(readValue(buffer)!);
+        return GpsProbeEvent.decode(readValue(buffer)!);
       case 174:
-        return GoalEvent.decode(readValue(buffer)!);
+        return RoutePointsEvent.decode(readValue(buffer)!);
       case 175:
-        return FaultEvent.decode(readValue(buffer)!);
+        return CompareEvent.decode(readValue(buffer)!);
       case 176:
-        return StateEvent.decode(readValue(buffer)!);
+        return GoalEvent.decode(readValue(buffer)!);
       case 177:
-        return PhaseEvent.decode(readValue(buffer)!);
+        return FaultEvent.decode(readValue(buffer)!);
       case 178:
-        return HealthStatus.decode(readValue(buffer)!);
+        return StateEvent.decode(readValue(buffer)!);
       case 179:
-        return HealthLap.decode(readValue(buffer)!);
+        return PhaseEvent.decode(readValue(buffer)!);
       case 180:
-        return HealthPause.decode(readValue(buffer)!);
+        return HealthStatus.decode(readValue(buffer)!);
       case 181:
-        return HealthHrSample.decode(readValue(buffer)!);
+        return HealthLap.decode(readValue(buffer)!);
       case 182:
-        return HealthRoutePoint.decode(readValue(buffer)!);
+        return HealthPause.decode(readValue(buffer)!);
       case 183:
-        return HealthWorkout.decode(readValue(buffer)!);
+        return HealthHrSample.decode(readValue(buffer)!);
       case 184:
+        return HealthRoutePoint.decode(readValue(buffer)!);
+      case 185:
+        return HealthWorkout.decode(readValue(buffer)!);
+      case 186:
         return HealthWriteResult.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -3245,14 +3394,16 @@ class RecorderApi {
   /// header; null = no compare, no overlay, no nudges, nothing said. The
   /// previous Cooper VO2 for "up 2 on last time" is the last
   /// `cooperHistory` entry.
-  Future<StartResult> start(RecordMode mode, SessionSpec? spec, Units units, LiveContext? liveContext) async {
+  /// `route`: a route to follow (Free, Trail and Goal runs), journaled as the
+  /// `route` line; null = follow nothing.
+  Future<StartResult> start(RecordMode mode, SessionSpec? spec, Units units, LiveContext? liveContext, FollowRoute? route) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.start$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[mode, spec, units, liveContext]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[mode, spec, units, liveContext, route]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
@@ -3671,6 +3822,28 @@ class RecorderApi {
     )
     ;
     return (pigeonVar_replyValue! as List<Object?>).cast<double>();
+  }
+
+  /// The route the live run follows (as `start` got it, or as the journal had
+  /// it after a restore), so the map can draw it under the runner's track.
+  /// Null when idle or the run follows none. Read-only.
+  Future<FollowRoute?> followedRoute() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.followedRoute$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+    return pigeonVar_replyValue as FollowRoute?;
   }
 
   /// Run files on disk (`runs/` + `runs-archive/`) as `runId -> relative path`,

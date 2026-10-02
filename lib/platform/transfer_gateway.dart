@@ -26,6 +26,21 @@ abstract class TransferGateway {
   /// Let the user pick one or more documents; returns their contents.
   /// Empty when cancelled.
   Future<List<PickedFile>> pickFiles();
+
+  /// Let the user pick one GPX or TCX route file (Follow a route); its text,
+  /// or null when cancelled. The file is read here and never copied or sent.
+  Future<PickedFile?> pickRouteFile();
+}
+
+/// A route file bigger than this is refused before it is read (a day's
+/// recording at 1 Hz is well under 1 MB; this is for the wrong file).
+const int kMaxRouteFileBytes = 10 * 1024 * 1024;
+
+/// Thrown by [TransferGateway.pickRouteFile] for a file over [kMaxRouteFileBytes].
+class RouteFileTooBig implements Exception {
+  const RouteFileTooBig();
+  @override
+  String toString() => 'That file is too big for a route, max 10 MB';
 }
 
 class PickedFile {
@@ -69,10 +84,36 @@ class ShareSheetTransferGateway implements TransferGateway {
     }
     return out;
   }
+
+  @override
+  Future<PickedFile?> pickRouteFile() async {
+    // GPX and TCX have no registered Android type of their own: the extension
+    // narrows the picker where it can, the XML types where it cannot.
+    const group = fs.XTypeGroup(
+      label: 'GPX or TCX route',
+      extensions: ['gpx', 'tcx'],
+      mimeTypes: [
+        'application/gpx+xml',
+        'application/vnd.garmin.tcx+xml',
+        'application/xml',
+        'text/xml',
+        'application/octet-stream',
+      ],
+    );
+    final f = await fs.openFile(acceptedTypeGroups: const [group]);
+    if (f == null) return null;
+    if (await f.length() > kMaxRouteFileBytes) throw const RouteFileTooBig();
+    return PickedFile(name: f.name, text: await f.readAsString());
+  }
 }
 
 class FakeTransferGateway implements TransferGateway {
-  FakeTransferGateway({List<PickedFile>? toPick}) : toPick = toPick ?? [];
+  FakeTransferGateway({List<PickedFile>? toPick, List<PickedFile>? toPickRoute})
+    : toPick = toPick ?? [],
+      toPickRoute = toPickRoute ?? [];
+
+  /// What the next [pickRouteFile] returns (one per call; null once empty).
+  final List<PickedFile> toPickRoute;
 
   /// Paths handed to the share sheet, one list per call.
   final List<List<String>> shared = [];
@@ -127,4 +168,12 @@ class FakeTransferGateway implements TransferGateway {
 
   @override
   Future<List<PickedFile>> pickFiles() async => List.of(toPick);
+
+  @override
+  Future<PickedFile?> pickRouteFile() async {
+    if (toPickRoute.isEmpty) return null;
+    final f = toPickRoute.removeAt(0);
+    if (f.text.length > kMaxRouteFileBytes) throw const RouteFileTooBig();
+    return f;
+  }
 }

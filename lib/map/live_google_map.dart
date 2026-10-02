@@ -23,9 +23,22 @@ import 'map_surface.dart';
 const Duration kLiveMapRecentre = Duration(seconds: 8);
 
 class LiveGoogleMap extends StatefulWidget {
-  const LiveGoogleMap({super.key, required this.track, required this.color});
+  const LiveGoogleMap({
+    super.key,
+    required this.track,
+    required this.color,
+    this.plan,
+    this.terrain = false,
+  });
   final LiveRouteTrack track;
   final Color color;
+
+  /// A route being followed (Follow a route), drawn under the track.
+  final List<GeoPoint>? plan;
+
+  /// Google's terrain map (contours), for Free and Trail runs. Styles apply
+  /// to the normal map type only, so terrain is Google's own look.
+  final bool terrain;
 
   @override
   State<LiveGoogleMap> createState() => _LiveGoogleMapState();
@@ -106,6 +119,21 @@ class _LiveGoogleMapState extends State<LiveGoogleMap> {
       debugPrint('live map: prepare failed ($e)');
       if (mounted) setState(() => _failed = true);
     }
+  }
+
+  /// The followed route as map points (made once per plan).
+  List<gm.LatLng> _planCache = const [];
+  List<GeoPoint>? _planFor;
+
+  List<gm.LatLng> get _plan {
+    final plan = widget.plan;
+    if (!identical(plan, _planFor)) {
+      _planFor = plan;
+      _planCache = plan == null
+          ? const []
+          : [for (final p in plan) gm.LatLng(p.lat, p.lon)];
+    }
+    return _planCache;
   }
 
   void _syncLine() {
@@ -198,7 +226,12 @@ class _LiveGoogleMapState extends State<LiveGoogleMap> {
   @override
   Widget build(BuildContext context) {
     if (_failed) {
-      return MapFailedCard(route: liveRouteGeometry(widget.track.points));
+      return RouteShape(
+        route: liveRouteGeometry(widget.track.points, plan: widget.plan),
+        color: widget.plan == null ? null : widget.color,
+        plan: widget.plan,
+        caption: 'Map failed to load',
+      );
     }
     if (_fed != widget.track.count) _syncLine();
     final last = widget.track.last;
@@ -216,7 +249,8 @@ class _LiveGoogleMapState extends State<LiveGoogleMap> {
           target: gm.LatLng(last.lat, last.lon),
           zoom: _followZoom,
         ),
-        style: _styleJson,
+        mapType: widget.terrain ? gm.MapType.terrain : gm.MapType.normal,
+        style: widget.terrain ? null : _styleJson,
         liteModeEnabled: false,
         mapToolbarEnabled: false,
         myLocationEnabled: false,
@@ -230,6 +264,38 @@ class _LiveGoogleMapState extends State<LiveGoogleMap> {
         tiltGesturesEnabled: false,
         padding: const EdgeInsets.only(left: 8, bottom: 8),
         polylines: {
+          // The route being followed: a dark casing and a muted Bone line,
+          // under the runner's own track in the run type's colour.
+          if (_plan.length > 1) ...[
+            gm.Polyline(
+              polylineId: const gm.PolylineId('plan-casing'),
+              points: _plan,
+              color: Theme.of(context).extension<RunSoloTokens>()!.bgBase,
+              width: 9,
+              jointType: gm.JointType.round,
+              startCap: gm.Cap.roundCap,
+              endCap: gm.Cap.roundCap,
+            ),
+            gm.Polyline(
+              polylineId: const gm.PolylineId('plan'),
+              points: _plan,
+              color: Theme.of(context).extension<RunSoloTokens>()!.inkSecondary,
+              width: 5,
+              jointType: gm.JointType.round,
+              startCap: gm.Cap.roundCap,
+              endCap: gm.Cap.roundCap,
+            ),
+          ],
+          if (_line.length > 1 && widget.terrain)
+            gm.Polyline(
+              polylineId: const gm.PolylineId('live-casing'),
+              points: List.of(_line),
+              color: Theme.of(context).extension<RunSoloTokens>()!.bgBase,
+              width: 9,
+              jointType: gm.JointType.round,
+              startCap: gm.Cap.roundCap,
+              endCap: gm.Cap.roundCap,
+            ),
           if (_line.length > 1)
             gm.Polyline(
               polylineId: const gm.PolylineId('live'),

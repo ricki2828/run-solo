@@ -38,6 +38,10 @@ import app.runsolo.core.record.LiveRoute
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
 import app.runsolo.core.replay.ReplayScenarios
+import app.runsolo.core.route.FollowRoute
+import app.runsolo.core.route.RouteFollower
+import app.runsolo.core.route.RoutePath
+import app.runsolo.core.route.RouteWords
 import app.runsolo.core.run.Finaliser
 import app.runsolo.platform.CompareEvent
 import app.runsolo.platform.CueEvent
@@ -51,6 +55,7 @@ import app.runsolo.platform.PhaseEvent
 import app.runsolo.platform.RecorderEventBus
 import app.runsolo.platform.RecorderStatus
 import app.runsolo.platform.RoutePointsEvent
+import app.runsolo.platform.RouteProgress
 import app.runsolo.platform.StateEvent
 import app.runsolo.platform.TickEvent
 import app.runsolo.platform.toPigeon
@@ -77,6 +82,8 @@ class RecordingSession(
      * Cooper curve drives the minute projections.
      */
     private val liveContext: LiveContext? = null,
+    /** The route this run follows (Follow a route): journaled as the `route` line, handed back from the journal on resume. */
+    route: FollowRoute? = null,
 ) : app.runsolo.platform.StartGuard.Session {
     // Application context: the session outlives the Activity (swipe from Recents keeps the
     // service alive; an Activity context would unbind TTS and leak the Activity).
@@ -142,6 +149,10 @@ class RecordingSession(
     private var lapStartDist = 0.0
     private var lastTickEventWall = 0L
 
+    /** The route being followed, with its progress and off-route state (null: the run follows nothing). Native, so it works screen off. */
+    private val followRoute: FollowRoute? = route
+    private val follower: RouteFollower? = route?.let { RouteFollower(RoutePath(it), imperial = units == Units.mi) }
+
     /** The live map's route (read-only view of the samples; recording never reads it). */
     private val liveRoute = LiveRoute()
     private var routeSentCount = 0
@@ -196,6 +207,7 @@ class RecordingSession(
         writer.open()
         writer.append(JournalLine.Header(t, startWallMs, runId, device, app, tz, mode, spec, units))
         liveContext?.let { writer.append(JournalLine.LiveContextLine(t, startWallMs, it)) }
+        followRoute?.let { writer.append(JournalLine.RouteLine(t, startWallMs, it)) }
         core = RecorderCore(mode, spec, coreConfig)
         handle(core.start(t), t)
         dispatch.ticked(t, 0.0)
@@ -256,6 +268,8 @@ class RecordingSession(
             when (e) {
                 is RunEvent.Sample -> {
                     if (e.hasFix && !paused) ticker.filter.offer(LocationFix(e.t, e.lat!!, e.lon!!, e.altM, e.accuracyM!!, e.speedMps))
+                    // Progress along the followed route, rebuilt quietly: nothing is said for what already happened.
+                    if (e.hasFix && !paused) follower?.offer(e.t, e.lat!!, e.lon!!, e.accuracyM!!, quiet = true)
                     liveElev.offer(e.t, e.hpa, e.altM, e.accuracyM, ticker.filter.totalM, paused)
                 }
                 is RunEvent.Pause -> { paused = true; reanchor = true }
@@ -269,6 +283,7 @@ class RecordingSession(
                 else -> Unit
             }
         }
+        follower?.restartClock() // the fixes' clock starts over after a kill
         ticker.filter.reanchor() // the runner moved during the dark span; do not count the jump
         lapStartDist = lastLapDist
         dispatch.ticked(t, ticker.distanceM)
@@ -466,6 +481,10 @@ class RecordingSession(
             for (s in samples) if (s.hasFix) liveRoute.offer(s.lat!!, s.lon!!, s.accuracyM!!)
         }
         val last = samples.last()
+        // Follow a route: progress, off-route and turn cues, on this thread so the screen can be off.
+        if (follower != null && core.state == RecorderState.recording && last.hasFix) {
+            for (e in follower.offer(last.t, last.lat!!, last.lon!!, last.accuracyM!!)) routeEvent(e)
+        }
         var pace: Double? = null
         if (last.hasFix) {
             pace = livePace.update(last.t, ticker.distanceM)
@@ -518,6 +537,7 @@ class RecordingSession(
                     elevGainM = liveElev.ascentM,
                     elevLossM = liveElev.descentM,
                     gradePct = liveElev.grade?.let { it * 100 },
+                    route = routeProgress(),
                 ),
             )
         }
@@ -534,6 +554,9 @@ class RecordingSession(
             onReplayFinished?.invoke()
         }
     }
+
+    /** The route this run follows (null: none), for the map to draw under the runner's track. */
+    fun followedRoute(): FollowRoute? = followRoute
 
     /** The live map's catch-up read ([RoutePointsEvent] carries the deltas). */
     @Synchronized
@@ -964,7 +987,42 @@ class RecordingSession(
             elevGainM = liveElev.ascentM,
             elevLossM = liveElev.descentM,
             gradePct = liveElev.grade?.let { it * 100 },
+            route = routeProgress(),
         )
+    }
+
+    /** The followed route's figures for the app; the next turn only while it is close enough to matter. */
+    private fun routeProgress(): RouteProgress? {
+        val f = follower ?: return null
+        val turnIn = f.nextTurnInM?.takeIf { it <= TURN_STRIP_M }
+        return RouteProgress(
+            toGoM = f.toGoM,
+            climbToGoM = f.climbToGoM,
+            off = f.off,
+            turnLabel = turnIn?.let { f.nextTurn?.let { turn -> RouteWords.turnLabel(turn) } },
+            turnInM = turnIn,
+        )
+    }
+
+    /** Off route, back on route and the turn cues: a buzz and a line through the cue player (its settings apply to the voice). */
+    private fun routeEvent(e: RouteFollower.Event) {
+        when (e) {
+            is RouteFollower.Event.OffRoute -> {
+                cues.alert(RouteWords.OFF_ROUTE, longArrayOf(0, 400, 150, 400, 150, 400))
+                logSaid(RouteWords.OFF_ROUTE)
+                Log.i(TAG, "off route at ${core.status(e.t).elapsedMs} ms, ${"%.0f".format(follower?.offsetM ?: 0.0)} m from the line")
+            }
+            is RouteFollower.Event.BackOnRoute -> {
+                cues.alert(RouteWords.BACK_ON_ROUTE, longArrayOf(0, 120, 80, 120))
+                logSaid(RouteWords.BACK_ON_ROUTE)
+                Log.i(TAG, "back on route at ${core.status(e.t).elapsedMs} ms")
+            }
+            is RouteFollower.Event.Turn -> {
+                cues.alert(e.text, longArrayOf(0, 150))
+                logSaid(e.text)
+                Log.i(TAG, "route turn: ${e.text}")
+            }
+        }
     }
 
     /** null: no live coaching this run (nothing to compare, or Coaching tips off in Settings). */
@@ -998,6 +1056,9 @@ class RecordingSession(
 
     companion object {
         const val TAG = "RunSolo/session"
+
+        /** The strip shows the next turn from this far out. */
+        private const val TURN_STRIP_M = 300.0
         private const val VOLUME_KEY_UNAVAILABLE_MARKER = "volume-key-unavailable"
     }
 }

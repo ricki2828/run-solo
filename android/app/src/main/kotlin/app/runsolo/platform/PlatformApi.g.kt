@@ -1280,7 +1280,9 @@ data class RecorderStatus (
    */
   val elevGainM: Double? = null,
   val elevLossM: Double? = null,
-  val gradePct: Double? = null
+  val gradePct: Double? = null,
+  /** Where the runner is on the followed route; null when the run follows none. */
+  val route: RouteProgress? = null
 )
  {
   companion object {
@@ -1308,7 +1310,8 @@ data class RecorderStatus (
       val elevGainM = pigeonVar_list[20] as Double?
       val elevLossM = pigeonVar_list[21] as Double?
       val gradePct = pigeonVar_list[22] as Double?
-      return RecorderStatus(state, runId, mode, laps, elapsedMs, lapIndex, gpsFix, hrConnected, phase, repIndex, phaseRemainingMs, spec, stepIndex, stepRemainingMs, stepRemainingM, journalOk, pausedAtElapsedMs, finishRequests, tipsMuted, autoPaused, elevGainM, elevLossM, gradePct)
+      val route = pigeonVar_list[23] as RouteProgress?
+      return RecorderStatus(state, runId, mode, laps, elapsedMs, lapIndex, gpsFix, hrConnected, phase, repIndex, phaseRemainingMs, spec, stepIndex, stepRemainingMs, stepRemainingM, journalOk, pausedAtElapsedMs, finishRequests, tipsMuted, autoPaused, elevGainM, elevLossM, gradePct, route)
     }
   }
   fun toList(): List<Any?> {
@@ -1336,6 +1339,7 @@ data class RecorderStatus (
       elevGainM,
       elevLossM,
       gradePct,
+      route,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -1346,7 +1350,7 @@ data class RecorderStatus (
       return true
     }
     val other = other as RecorderStatus
-    return PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.laps, other.laps) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapIndex, other.lapIndex) && PlatformApiPigeonUtils.deepEquals(this.gpsFix, other.gpsFix) && PlatformApiPigeonUtils.deepEquals(this.hrConnected, other.hrConnected) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.spec, other.spec) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.journalOk, other.journalOk) && PlatformApiPigeonUtils.deepEquals(this.pausedAtElapsedMs, other.pausedAtElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.finishRequests, other.finishRequests) && PlatformApiPigeonUtils.deepEquals(this.tipsMuted, other.tipsMuted) && PlatformApiPigeonUtils.deepEquals(this.autoPaused, other.autoPaused) && PlatformApiPigeonUtils.deepEquals(this.elevGainM, other.elevGainM) && PlatformApiPigeonUtils.deepEquals(this.elevLossM, other.elevLossM) && PlatformApiPigeonUtils.deepEquals(this.gradePct, other.gradePct)
+    return PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.laps, other.laps) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapIndex, other.lapIndex) && PlatformApiPigeonUtils.deepEquals(this.gpsFix, other.gpsFix) && PlatformApiPigeonUtils.deepEquals(this.hrConnected, other.hrConnected) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.spec, other.spec) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.journalOk, other.journalOk) && PlatformApiPigeonUtils.deepEquals(this.pausedAtElapsedMs, other.pausedAtElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.finishRequests, other.finishRequests) && PlatformApiPigeonUtils.deepEquals(this.tipsMuted, other.tipsMuted) && PlatformApiPigeonUtils.deepEquals(this.autoPaused, other.autoPaused) && PlatformApiPigeonUtils.deepEquals(this.elevGainM, other.elevGainM) && PlatformApiPigeonUtils.deepEquals(this.elevLossM, other.elevLossM) && PlatformApiPigeonUtils.deepEquals(this.gradePct, other.gradePct) && PlatformApiPigeonUtils.deepEquals(this.route, other.route)
   }
 
   override fun hashCode(): Int {
@@ -1374,6 +1378,121 @@ data class RecorderStatus (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.elevGainM)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.elevLossM)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.gradePct)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.route)
+    return result
+  }
+}
+
+/**
+ * A route to follow (Follow a route): chosen on Start from the route library,
+ * simplified in Dart (at most 5,000 points), journaled as the `route` line after
+ * the header and followed natively (progress, off-route alerts, turn cues), so it
+ * works with the screen off. `latLon` is flat `[lat, lon, ...]` in route order;
+ * `elevM` is one elevation per point, or null when the route has none.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class FollowRoute (
+  val id: String,
+  val name: String,
+  val latLon: List<Double>,
+  val elevM: List<Double>? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): FollowRoute {
+      val id = pigeonVar_list[0] as String
+      val name = pigeonVar_list[1] as String
+      val latLon = pigeonVar_list[2] as List<Double>
+      val elevM = pigeonVar_list[3] as List<Double>?
+      return FollowRoute(id, name, latLon, elevM)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      id,
+      name,
+      latLon,
+      elevM,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as FollowRoute
+    return PlatformApiPigeonUtils.deepEquals(this.id, other.id) && PlatformApiPigeonUtils.deepEquals(this.name, other.name) && PlatformApiPigeonUtils.deepEquals(this.latLon, other.latLon) && PlatformApiPigeonUtils.deepEquals(this.elevM, other.elevM)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.id)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.name)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.latLon)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.elevM)
+    return result
+  }
+}
+
+/**
+ * The followed route's live figures, from the recorder's own fixes. [toGoM] is
+ * the route still ahead of the runner's progress (progress only moves forward);
+ * [climbToGoM] the route's ascent still ahead, null when the route has no
+ * elevation. [off] is the off-route state (more than about 40 m away for about
+ * 10 s, with hysteresis). [turnLabel] and [turnInM] are the next turn from the
+ * route's shape ("Left turn", "Keep right", ...), null when none is ahead or
+ * while off route.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class RouteProgress (
+  val toGoM: Double,
+  val climbToGoM: Double? = null,
+  val off: Boolean,
+  val turnLabel: String? = null,
+  val turnInM: Double? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): RouteProgress {
+      val toGoM = pigeonVar_list[0] as Double
+      val climbToGoM = pigeonVar_list[1] as Double?
+      val off = pigeonVar_list[2] as Boolean
+      val turnLabel = pigeonVar_list[3] as String?
+      val turnInM = pigeonVar_list[4] as Double?
+      return RouteProgress(toGoM, climbToGoM, off, turnLabel, turnInM)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      toGoM,
+      climbToGoM,
+      off,
+      turnLabel,
+      turnInM,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as RouteProgress
+    return PlatformApiPigeonUtils.deepEquals(this.toGoM, other.toGoM) && PlatformApiPigeonUtils.deepEquals(this.climbToGoM, other.climbToGoM) && PlatformApiPigeonUtils.deepEquals(this.off, other.off) && PlatformApiPigeonUtils.deepEquals(this.turnLabel, other.turnLabel) && PlatformApiPigeonUtils.deepEquals(this.turnInM, other.turnInM)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.toGoM)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.climbToGoM)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.off)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.turnLabel)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.turnInM)
     return result
   }
 }
@@ -1843,7 +1962,9 @@ data class TickEvent (
   /** As `RecorderStatus.elevGainM`, `elevLossM`, `gradePct`. */
   val elevGainM: Double? = null,
   val elevLossM: Double? = null,
-  val gradePct: Double? = null
+  val gradePct: Double? = null,
+  /** As `RecorderStatus.route`. */
+  val route: RouteProgress? = null
 ) : RecorderEvent()
  {
   companion object {
@@ -1866,7 +1987,8 @@ data class TickEvent (
       val elevGainM = pigeonVar_list[15] as Double?
       val elevLossM = pigeonVar_list[16] as Double?
       val gradePct = pigeonVar_list[17] as Double?
-      return TickEvent(elapsedMs, lapElapsedMs, lapDistanceM, lapPaceLiveSecPerKm, totalDistanceM, hr, gpsAccuracyM, state, phase, repIndex, phaseRemainingMs, stepIndex, stepRemainingMs, stepRemainingM, autoPaused, elevGainM, elevLossM, gradePct)
+      val route = pigeonVar_list[18] as RouteProgress?
+      return TickEvent(elapsedMs, lapElapsedMs, lapDistanceM, lapPaceLiveSecPerKm, totalDistanceM, hr, gpsAccuracyM, state, phase, repIndex, phaseRemainingMs, stepIndex, stepRemainingMs, stepRemainingM, autoPaused, elevGainM, elevLossM, gradePct, route)
     }
   }
   fun toList(): List<Any?> {
@@ -1889,6 +2011,7 @@ data class TickEvent (
       elevGainM,
       elevLossM,
       gradePct,
+      route,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -1899,7 +2022,7 @@ data class TickEvent (
       return true
     }
     val other = other as TickEvent
-    return PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapElapsedMs, other.lapElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapDistanceM, other.lapDistanceM) && PlatformApiPigeonUtils.deepEquals(this.lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.totalDistanceM, other.totalDistanceM) && PlatformApiPigeonUtils.deepEquals(this.hr, other.hr) && PlatformApiPigeonUtils.deepEquals(this.gpsAccuracyM, other.gpsAccuracyM) && PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.autoPaused, other.autoPaused) && PlatformApiPigeonUtils.deepEquals(this.elevGainM, other.elevGainM) && PlatformApiPigeonUtils.deepEquals(this.elevLossM, other.elevLossM) && PlatformApiPigeonUtils.deepEquals(this.gradePct, other.gradePct)
+    return PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapElapsedMs, other.lapElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapDistanceM, other.lapDistanceM) && PlatformApiPigeonUtils.deepEquals(this.lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.totalDistanceM, other.totalDistanceM) && PlatformApiPigeonUtils.deepEquals(this.hr, other.hr) && PlatformApiPigeonUtils.deepEquals(this.gpsAccuracyM, other.gpsAccuracyM) && PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.autoPaused, other.autoPaused) && PlatformApiPigeonUtils.deepEquals(this.elevGainM, other.elevGainM) && PlatformApiPigeonUtils.deepEquals(this.elevLossM, other.elevLossM) && PlatformApiPigeonUtils.deepEquals(this.gradePct, other.gradePct) && PlatformApiPigeonUtils.deepEquals(this.route, other.route)
   }
 
   override fun hashCode(): Int {
@@ -1922,6 +2045,7 @@ data class TickEvent (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.elevGainM)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.elevLossM)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.gradePct)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.route)
     return result
   }
 }
@@ -2989,130 +3113,140 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
       }
       159.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          OrphanJournal.fromList(it)
+          FollowRoute.fromList(it)
         }
       }
       160.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ReplayConfig.fromList(it)
+          RouteProgress.fromList(it)
         }
       }
       161.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          PermissionStatus.fromList(it)
+          OrphanJournal.fromList(it)
         }
       }
       162.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BleStatus.fromList(it)
+          ReplayConfig.fromList(it)
         }
       }
       163.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ExitDiagnosis.fromList(it)
+          PermissionStatus.fromList(it)
         }
       }
       164.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BleDevice.fromList(it)
+          BleStatus.fromList(it)
         }
       }
       165.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BackupStatus.fromList(it)
+          ExitDiagnosis.fromList(it)
         }
       }
       166.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          PlaceName.fromList(it)
+          BleDevice.fromList(it)
         }
       }
       167.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TickEvent.fromList(it)
+          BackupStatus.fromList(it)
         }
       }
       168.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapEvent.fromList(it)
+          PlaceName.fromList(it)
         }
       }
       169.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapPendingEvent.fromList(it)
+          TickEvent.fromList(it)
         }
       }
       170.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CueEvent.fromList(it)
+          LapEvent.fromList(it)
         }
       }
       171.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          GpsProbeEvent.fromList(it)
+          LapPendingEvent.fromList(it)
         }
       }
       172.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          RoutePointsEvent.fromList(it)
+          CueEvent.fromList(it)
         }
       }
       173.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CompareEvent.fromList(it)
+          GpsProbeEvent.fromList(it)
         }
       }
       174.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          GoalEvent.fromList(it)
+          RoutePointsEvent.fromList(it)
         }
       }
       175.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FaultEvent.fromList(it)
+          CompareEvent.fromList(it)
         }
       }
       176.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StateEvent.fromList(it)
+          GoalEvent.fromList(it)
         }
       }
       177.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          PhaseEvent.fromList(it)
+          FaultEvent.fromList(it)
         }
       }
       178.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthStatus.fromList(it)
+          StateEvent.fromList(it)
         }
       }
       179.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthLap.fromList(it)
+          PhaseEvent.fromList(it)
         }
       }
       180.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthPause.fromList(it)
+          HealthStatus.fromList(it)
         }
       }
       181.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthHrSample.fromList(it)
+          HealthLap.fromList(it)
         }
       }
       182.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthRoutePoint.fromList(it)
+          HealthPause.fromList(it)
         }
       }
       183.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthWorkout.fromList(it)
+          HealthHrSample.fromList(it)
         }
       }
       184.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          HealthRoutePoint.fromList(it)
+        }
+      }
+      185.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          HealthWorkout.fromList(it)
+        }
+      }
+      186.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           HealthWriteResult.fromList(it)
         }
@@ -3242,108 +3376,116 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(158)
         writeValue(stream, value.toList())
       }
-      is OrphanJournal -> {
+      is FollowRoute -> {
         stream.write(159)
         writeValue(stream, value.toList())
       }
-      is ReplayConfig -> {
+      is RouteProgress -> {
         stream.write(160)
         writeValue(stream, value.toList())
       }
-      is PermissionStatus -> {
+      is OrphanJournal -> {
         stream.write(161)
         writeValue(stream, value.toList())
       }
-      is BleStatus -> {
+      is ReplayConfig -> {
         stream.write(162)
         writeValue(stream, value.toList())
       }
-      is ExitDiagnosis -> {
+      is PermissionStatus -> {
         stream.write(163)
         writeValue(stream, value.toList())
       }
-      is BleDevice -> {
+      is BleStatus -> {
         stream.write(164)
         writeValue(stream, value.toList())
       }
-      is BackupStatus -> {
+      is ExitDiagnosis -> {
         stream.write(165)
         writeValue(stream, value.toList())
       }
-      is PlaceName -> {
+      is BleDevice -> {
         stream.write(166)
         writeValue(stream, value.toList())
       }
-      is TickEvent -> {
+      is BackupStatus -> {
         stream.write(167)
         writeValue(stream, value.toList())
       }
-      is LapEvent -> {
+      is PlaceName -> {
         stream.write(168)
         writeValue(stream, value.toList())
       }
-      is LapPendingEvent -> {
+      is TickEvent -> {
         stream.write(169)
         writeValue(stream, value.toList())
       }
-      is CueEvent -> {
+      is LapEvent -> {
         stream.write(170)
         writeValue(stream, value.toList())
       }
-      is GpsProbeEvent -> {
+      is LapPendingEvent -> {
         stream.write(171)
         writeValue(stream, value.toList())
       }
-      is RoutePointsEvent -> {
+      is CueEvent -> {
         stream.write(172)
         writeValue(stream, value.toList())
       }
-      is CompareEvent -> {
+      is GpsProbeEvent -> {
         stream.write(173)
         writeValue(stream, value.toList())
       }
-      is GoalEvent -> {
+      is RoutePointsEvent -> {
         stream.write(174)
         writeValue(stream, value.toList())
       }
-      is FaultEvent -> {
+      is CompareEvent -> {
         stream.write(175)
         writeValue(stream, value.toList())
       }
-      is StateEvent -> {
+      is GoalEvent -> {
         stream.write(176)
         writeValue(stream, value.toList())
       }
-      is PhaseEvent -> {
+      is FaultEvent -> {
         stream.write(177)
         writeValue(stream, value.toList())
       }
-      is HealthStatus -> {
+      is StateEvent -> {
         stream.write(178)
         writeValue(stream, value.toList())
       }
-      is HealthLap -> {
+      is PhaseEvent -> {
         stream.write(179)
         writeValue(stream, value.toList())
       }
-      is HealthPause -> {
+      is HealthStatus -> {
         stream.write(180)
         writeValue(stream, value.toList())
       }
-      is HealthHrSample -> {
+      is HealthLap -> {
         stream.write(181)
         writeValue(stream, value.toList())
       }
-      is HealthRoutePoint -> {
+      is HealthPause -> {
         stream.write(182)
         writeValue(stream, value.toList())
       }
-      is HealthWorkout -> {
+      is HealthHrSample -> {
         stream.write(183)
         writeValue(stream, value.toList())
       }
-      is HealthWriteResult -> {
+      is HealthRoutePoint -> {
         stream.write(184)
+        writeValue(stream, value.toList())
+      }
+      is HealthWorkout -> {
+        stream.write(185)
+        writeValue(stream, value.toList())
+      }
+      is HealthWriteResult -> {
+        stream.write(186)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -3367,8 +3509,10 @@ interface RecorderApi {
    * header; null = no compare, no overlay, no nudges, nothing said. The
    * previous Cooper VO2 for "up 2 on last time" is the last
    * `cooperHistory` entry.
+   * `route`: a route to follow (Free, Trail and Goal runs), journaled as the
+   * `route` line; null = follow nothing.
    */
-  fun start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?): StartResult
+  fun start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?): StartResult
   /** Debug builds only: like `start`, fed from a fixture instead of GPS/BLE. */
   fun startReplay(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ReplayConfig): StartResult
   /**
@@ -3453,6 +3597,12 @@ interface RecorderApi {
    */
   fun routeSince(fromIndex: Long): List<Double>
   /**
+   * The route the live run follows (as `start` got it, or as the journal had
+   * it after a restore), so the map can draw it under the runner's track.
+   * Null when idle or the run follows none. Read-only.
+   */
+  fun followedRoute(): FollowRoute?
+  /**
    * Run files on disk (`runs/` + `runs-archive/`) as `runId -> relative path`,
    * for the Dart Reconciler. Journals and sidecars are not listed.
    */
@@ -3478,8 +3628,9 @@ interface RecorderApi {
             val specArg = args[1] as SessionSpec?
             val unitsArg = args[2] as Units
             val liveContextArg = args[3] as LiveContext?
+            val routeArg = args[4] as FollowRoute?
             val wrapped: List<Any?> = try {
-              listOf(api.start(modeArg, specArg, unitsArg, liveContextArg))
+              listOf(api.start(modeArg, specArg, unitsArg, liveContextArg, routeArg))
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)
             }
@@ -3815,6 +3966,21 @@ interface RecorderApi {
             val fromIndexArg = args[0] as Long
             val wrapped: List<Any?> = try {
               listOf(api.routeSince(fromIndexArg))
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.followedRoute$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              listOf(api.followedRoute())
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)
             }

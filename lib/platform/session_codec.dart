@@ -8,6 +8,13 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import 'platform_api.g.dart' as p;
 
+/// A saved route as the recorder takes it (Follow a route): flat lat/lon and
+/// one elevation per point, or none.
+extension SavedRouteToPigeon on engine.SavedRoute {
+  p.FollowRoute toFollowRoute() =>
+      p.FollowRoute(id: id, name: name, latLon: latLon, elevM: elevM);
+}
+
 extension EngineSessionToPigeon on engine.SessionSpec {
   p.SessionSpec toPigeon() => p.SessionSpec(
     templateId: templateId,

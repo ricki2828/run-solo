@@ -5,6 +5,7 @@ import app.runsolo.core.model.LapSource as CoreLapSource
 import app.runsolo.core.model.LiveBoard as CoreLiveBoard
 import app.runsolo.core.model.LiveBoardKind as CoreLiveBoardKind
 import app.runsolo.core.model.LiveContext as CoreLiveContext
+import app.runsolo.core.route.FollowRoute as CoreFollowRoute
 import app.runsolo.core.model.LiveEntry as CoreLiveEntry
 import app.runsolo.core.model.LiveTarget as CoreLiveTarget
 import app.runsolo.core.model.NudgePlan as CoreNudgePlan
@@ -147,3 +148,8 @@ fun LiveContext.toCore(): CoreLiveContext = CoreLiveContext(
     builtAtMs = builtAtMs,
     engineVersion = engineVersion.toInt(),
 )
+
+/** The route to follow as the core takes it; throws [IllegalArgumentException] for one that breaks its contract. */
+fun FollowRoute.toCore(): CoreFollowRoute = CoreFollowRoute(id = id, name = name, latLon = latLon, elevM = elevM)
+
+fun CoreFollowRoute.toPigeon(): FollowRoute = FollowRoute(id = id, name = name, latLon = latLon, elevM = elevM)

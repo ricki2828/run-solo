@@ -34,12 +34,14 @@ class GoogleMapSurfaceFactory implements MapSurfaceFactory {
     RouteGeometry route, {
     bool interactive = false,
     ValueChanged<int?>? onLapTap,
+    bool terrain = false,
   }) {
     if (!available || route.isEmpty) return RouteShape(route: route);
     return _GoogleRouteMap(
       route: route,
       interactive: interactive,
       onLapTap: onLapTap,
+      terrain: terrain,
     );
   }
 
@@ -48,15 +50,25 @@ class GoogleMapSurfaceFactory implements MapSurfaceFactory {
     BuildContext context, {
     required LiveRouteTrack track,
     required Color color,
+    List<GeoPoint>? plan,
+    bool terrain = false,
   }) {
     if (!available) {
       return ListenableBuilder(
         listenable: track,
-        builder: (context, _) =>
-            RouteShape(route: liveRouteGeometry(track.points)),
+        builder: (context, _) => RouteShape(
+          route: liveRouteGeometry(track.points, plan: plan),
+          color: plan == null ? null : color,
+          plan: plan,
+        ),
       );
     }
-    return LiveGoogleMap(track: track, color: color);
+    return LiveGoogleMap(
+      track: track,
+      color: color,
+      plan: plan,
+      terrain: terrain,
+    );
   }
 
   @override
@@ -105,6 +117,7 @@ class _GoogleRouteMap extends StatefulWidget {
     required this.route,
     required this.interactive,
     this.onLapTap,
+    this.terrain = false,
     this.mapOnly = false,
     this.onSnapshot,
     this.onFailed,
@@ -112,6 +125,11 @@ class _GoogleRouteMap extends StatefulWidget {
   final RouteGeometry route;
   final bool interactive;
   final ValueChanged<int?>? onLapTap;
+
+  /// Google's terrain map (contours) instead of the Night Session style.
+  /// Styles apply to the normal map type only, so terrain is Google's own
+  /// look; the route line keeps a dark casing to stay readable on it.
+  final bool terrain;
 
   /// Card mode: no polyline, no markers, no camera padding offset; the
   /// snapshot is the bare styled map.
@@ -335,7 +353,8 @@ class _GoogleRouteMapState extends State<_GoogleRouteMap> {
         target: gm.LatLng(b.centre.lat, b.centre.lon),
         zoom: 15,
       ),
-      style: _styleJson,
+      mapType: widget.terrain ? gm.MapType.terrain : gm.MapType.normal,
+      style: widget.terrain ? null : _styleJson,
       // Not lite mode: lite mode supports only click events, so
       // onCameraIdle (which drives the blank-snapshot check) may never fire.
       // The card is a full map with every gesture off and a tap layer on top.
@@ -357,6 +376,18 @@ class _GoogleRouteMapState extends State<_GoogleRouteMap> {
       polylines: widget.mapOnly
           ? const {}
           : {
+              if (widget.terrain)
+                gm.Polyline(
+                  polylineId: const gm.PolylineId('route-casing'),
+                  points: [
+                    for (final p in route.points) gm.LatLng(p.lat, p.lon),
+                  ],
+                  color: t.bgBase,
+                  width: 8,
+                  jointType: gm.JointType.round,
+                  startCap: gm.Cap.roundCap,
+                  endCap: gm.Cap.roundCap,
+                ),
               gm.Polyline(
                 polylineId: const gm.PolylineId('route'),
                 points: [for (final p in route.points) gm.LatLng(p.lat, p.lon)],

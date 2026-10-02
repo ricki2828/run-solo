@@ -79,12 +79,14 @@ abstract class RecorderGateway {
   /// Must be called while the Activity is visible (FGS start, B2). [spec]:
   /// required for intervals and cooper, the fartlek or bronco spec or null for laps,
   /// null for free (CONTRACT.md I1). [liveContext]: the live compare's
-  /// history (Phase 4 §3.2), or null for none.
+  /// history (Phase 4 §3.2), or null for none. [route]: a route to follow
+  /// (Follow a route; Free, Trail and Goal runs), or null for none.
   Future<StartResult> start(
     RecordMode mode,
     SessionSpec? spec,
     Units units, {
     LiveContext? liveContext,
+    FollowRoute? route,
   });
   Future<void> pause();
   Future<void> resume();
@@ -143,6 +145,10 @@ abstract class RecorderGateway {
   /// the catch-up after a recreated screen or a gap in [RoutePointsEvent]s.
   /// Read-only; recording never depends on it. Empty when idle.
   Future<List<double>> routeSince(int fromIndex);
+
+  /// The route the live run follows (as Start gave it, or as the journal had
+  /// it after a restore); null when idle or following none. Read-only.
+  Future<FollowRoute?> followedRoute();
 
   /// Broadcast; ≤ 2 Hz ticks plus lap / phase / state / cue / fault events.
   Stream<RecorderEvent> get events;

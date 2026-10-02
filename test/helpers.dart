@@ -48,6 +48,7 @@ AppServices fakeServices({
   FakeStorageGateway? storage,
   List<CustomSession> customSessions = const [],
   Map<String, String> courseNames = const {},
+  List<engine.SavedRoute> routes = const [],
   LiveContextSource? live,
   RunStore? history,
   FakePlaceGateway? places,
@@ -79,6 +80,7 @@ AppServices fakeServices({
   now: now,
   customSessions: customSessions,
   courseNames: courseNames,
+  routes: routes,
   history: history,
 );
 

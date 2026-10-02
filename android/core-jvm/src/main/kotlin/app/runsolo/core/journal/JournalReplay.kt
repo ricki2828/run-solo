@@ -3,6 +3,7 @@ package app.runsolo.core.journal
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.LiveContext
+import app.runsolo.core.route.FollowRoute
 
 /**
  * A journal event on the RUN timeline (millis since the header, pauses and gaps included).
@@ -62,6 +63,8 @@ data class Replay(
     val cuesFired: List<JournalLine.CueFired> = emptyList(),
     /** A `tm` line: tips were muted for this run (LV2); restore keeps them muted. */
     val tipsMuted: Boolean = false,
+    /** The `route` line's route (Follow a route); null = the run follows nothing. */
+    val route: FollowRoute? = null,
 ) {
     val isPaused: Boolean
         get() = events.lastOrNull { it.isPauseEdge }.let { it is RunEvent.Pause || it is RunEvent.AutoPause }
@@ -99,6 +102,7 @@ object JournalReplay {
         var liveContext: LiveContext? = null
         val cuesFired = ArrayList<JournalLine.CueFired>()
         var tipsMuted = false
+        var route: FollowRoute? = null
         var clockJumps = 0
         var outOfOrder = 0
         var truncated = false
@@ -132,6 +136,7 @@ object JournalReplay {
             if (line is JournalLine.LiveContextLine) { if (liveContext == null) liveContext = line.context; continue }
             if (line is JournalLine.CueFired) { cuesFired.add(line); continue }
             if (line is JournalLine.TipsMuted) { tipsMuted = true; continue }
+            if (line is JournalLine.RouteLine) { if (route == null) route = line.route; continue }
             val runT: Long
             if (line is JournalLine.Gap) {
                 // Run time continues through the dark span; the new device base is line.t.
@@ -163,7 +168,7 @@ object JournalReplay {
                         is JournalLine.HrLink -> RunEvent.HrLink(runT, line.connected)
                         is JournalLine.Header, is JournalLine.Gap,
                         is JournalLine.LiveContextLine, is JournalLine.CueFired,
-                        is JournalLine.TipsMuted -> throw IllegalStateException()
+                        is JournalLine.TipsMuted, is JournalLine.RouteLine -> throw IllegalStateException()
                     },
                 )
             }
@@ -189,6 +194,7 @@ object JournalReplay {
             liveContext = liveContext,
             cuesFired = cuesFired,
             tipsMuted = tipsMuted,
+            route = route,
         )
     }
 }

@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../platform/gateway.dart';
+import '../map/route_builder.dart' show GeoPoint;
 import 'live_route.dart';
 import '../platform/session_codec.dart';
 import 'zone_memento.dart';
@@ -66,6 +67,7 @@ class RecordingSnapshot {
     this.elevGainM,
     this.elevLossM,
     this.gradePct,
+    this.route,
   });
 
   final RecorderState state;
@@ -161,6 +163,14 @@ class RecordingSnapshot {
   final double? elevGainM;
   final double? elevLossM;
   final double? gradePct;
+
+  /// Where the runner is on the route they are following (Follow a route):
+  /// distance and climb to go, off-route, the next turn. Null when the run
+  /// follows no route.
+  final RouteProgress? route;
+
+  /// The run follows a route.
+  bool get followsRoute => route != null;
 
   /// The session step being run: `spec.steps[stepIndex]` as native sends
   /// it (work and recovery steps both counted; null in warm-up, cool-down
@@ -293,6 +303,8 @@ class RecordingSnapshot {
     double? elevLossM,
     double? gradePct,
     bool clearGrade = false,
+    RouteProgress? route,
+    bool clearRoute = false,
   }) => RecordingSnapshot(
     state: state ?? this.state,
     runId: runId ?? this.runId,
@@ -333,6 +345,7 @@ class RecordingSnapshot {
     elevGainM: elevGainM ?? this.elevGainM,
     elevLossM: elevLossM ?? this.elevLossM,
     gradePct: clearGrade ? null : (gradePct ?? this.gradePct),
+    route: clearRoute ? null : (route ?? this.route),
   );
 }
 
@@ -406,6 +419,11 @@ class RecordingController extends ChangeNotifier {
     try {
       final pts = await _gateway.routeSince(liveRoute.count);
       liveRoute.apply(liveRoute.count, pts);
+      // After a restore Start's route is gone from memory: native has it.
+      if (_snap.followsRoute && followedRoute == null) {
+        followedRoute = await _gateway.followedRoute();
+        if (followedRoute != null) notifyListeners();
+      }
     } catch (_) {
       // The map is optional; recording does not depend on this read.
     }
@@ -519,6 +537,8 @@ class RecordingController extends ChangeNotifier {
       elevLossM: s.elevLossM,
       gradePct: s.gradePct,
       clearGrade: s.gradePct == null,
+      route: s.route,
+      clearRoute: s.route == null,
       hrPaired: s.hrConnected || _snap.hrPaired,
       goalLapMs: goalLap?.activeMs,
       goalLapM: goalLap?.distanceM,
@@ -535,18 +555,45 @@ class RecordingController extends ChangeNotifier {
     SessionSpec? spec,
     Units units, {
     LiveContext? liveContext,
+    FollowRoute? route,
   }) async {
     final result = await _gateway.start(
       mode,
       spec,
       units,
       liveContext: liveContext,
+      route: route,
     );
     if (result.error == null || result.error == StartError.alreadyRunning) {
       _reset(mode, spec);
+      // The planned line for the map: native streams only what the runner has run.
+      followedRoute = route;
       await attach();
     }
     return result;
+  }
+
+  /// The route this run follows, for the map to draw under the runner's
+  /// track: what Start sent, or read back from native after a restore
+  /// ([syncRoute]). Null for none.
+  FollowRoute? followedRoute;
+
+  List<GeoPoint>? _plan;
+  FollowRoute? _planFor;
+
+  /// [followedRoute] as map points, made once per route (the map reads it on
+  /// every rebuild).
+  List<GeoPoint>? get followedPlan {
+    final r = followedRoute;
+    if (r == null) return null;
+    if (!identical(r, _planFor)) {
+      _planFor = r;
+      _plan = [
+        for (var i = 0; i + 1 < r.latLon.length; i += 2)
+          GeoPoint(r.latLon[i], r.latLon[i + 1]),
+      ];
+    }
+    return _plan;
   }
 
   /// After `resumeRecovered` succeeded on the gateway.
@@ -557,6 +604,7 @@ class RecordingController extends ChangeNotifier {
 
   void _reset(RecordMode mode, SessionSpec? spec) {
     liveRoute.clear();
+    followedRoute = null;
     _lastLapDistanceM = 0;
     _finishSeen = 0;
     _finishPending = false;
@@ -768,6 +816,8 @@ class RecordingController extends ChangeNotifier {
       elevLossM: t.elevLossM,
       gradePct: t.gradePct,
       clearGrade: t.gradePct == null,
+      route: t.route,
+      clearRoute: t.route == null,
     );
   }
 
@@ -903,7 +953,10 @@ class RecordingController extends ChangeNotifier {
     // Idle is final: the run is finalised, nothing left to read (and a late
     // read could still answer `finalising`).
     if (s.state != RecorderState.idle) unawaited(refreshStatus());
-    if (s.state == RecorderState.idle) liveRoute.clear();
+    if (s.state == RecorderState.idle) {
+      liveRoute.clear();
+      followedRoute = null;
+    }
   }
 
   void _onFault(FaultEvent f) {
