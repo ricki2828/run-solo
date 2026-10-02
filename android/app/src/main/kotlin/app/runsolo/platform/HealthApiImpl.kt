@@ -73,7 +73,7 @@ class HealthApiImpl(
     }
 
     override fun openInstall() {
-        val pkg = HealthConnectClient.DEFAULT_PROVIDER_PACKAGE_NAME
+        val pkg = PROVIDER_PACKAGE
         val market = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val web = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$pkg"))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -119,6 +119,9 @@ class HealthApiImpl(
 
     companion object {
         private const val TAG = "RunSolo/health"
+
+        /** Health Connect's app on Android 13 and older (the client's own constant is internal). */
+        private const val PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
 
         /** The three core write permissions. The route is asked on its own (Health Connect requires it). */
         val CORE = setOf(
