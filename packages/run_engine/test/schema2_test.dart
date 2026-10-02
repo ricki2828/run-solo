@@ -15,13 +15,13 @@ void main() {
     final fourByFour = fixture('four_by_four_manual_clean_hr').run;
     final lapsRun = fixture('laps_run_manual_clean_hr').run;
 
-    test('this build writes schema 3', () {
+    test('this build writes schema 4', () {
       final j = jsonDecode(RunFileCodec.encode(lapsRun)) as Map;
-      expect(j['schema'], 3);
+      expect(j['schema'], 4);
       expect(j['mode'], 'laps');
     });
 
-    test('a schema-1 free file decodes as laps and re-encodes as schema 3', () {
+    test('a schema-1 free file decodes as laps and re-encodes as schema 4', () {
       final text = asSchema1(lapsRun);
       expect(text, contains('"schema":1'));
       expect(text, contains('"mode":"free"'));
@@ -31,7 +31,7 @@ void main() {
       expect(run.laps.length, lapsRun.laps.length);
       final again = RunFileCodec.encode(run);
       expect(again, RunFileCodec.encode(lapsRun));
-      expect(RunFileCodec.decode(again).readSchema, 3);
+      expect(RunFileCodec.decode(again).readSchema, 4);
     });
 
     test('a schema-1 fourByFour file is unchanged by the bump', () {
@@ -65,9 +65,9 @@ void main() {
       );
     });
 
-    test('schema 4 is newer, schema 0 and an unknown mode are malformed', () {
+    test('schema 5 is newer, schema 0 and an unknown mode are malformed', () {
       expect(
-        () => RunFile.fromJson(lapsRun.toJson()..['schema'] = 4),
+        () => RunFile.fromJson(lapsRun.toJson()..['schema'] = 5),
         throwsA(isA<RunFileNewerVersionException>()),
       );
       expect(
@@ -196,7 +196,7 @@ void main() {
           'verdict_history': <Object?>[],
         };
         expect(
-          () => RunSidecar.fromJson(base()..['schema'] = 4),
+          () => RunSidecar.fromJson(base()..['schema'] = 5),
           throwsA(isA<RunFileNewerVersionException>()),
         );
         expect(

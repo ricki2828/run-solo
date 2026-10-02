@@ -40,13 +40,16 @@ class AutoPauseRunFileTest {
         RunFile.fromReplay(JournalReplay.read(journal(*events)), w0 + 50_000)
 
     @Test
-    fun `an auto-pause is a span with the auto kind, and the distance keeps counting through it`() {
+    fun `an auto-pause is a span with the auto kind, and the distance does not re-anchor`() {
         val plain = file()
         val f = file(40_000L to apause, 45_000L to aresume)
         assertEquals(1, f.pauses.size)
         assertEquals(listOf(40_000L, 45_000L), f.pauses[0].take(2))
         assertTrue(RunFile.isAutoPause(f.pauses[0]))
-        assertEquals(plain.distanceM, f.distanceM, 0.001, "the runner may be moving again before it notices: nothing is frozen or re-anchored")
+        // Frozen like a manual pause, but with no re-anchor: the first fix after it steps from where the
+        // runner stopped, so ground really covered (this trace keeps moving) is not lost, as a manual pause loses it.
+        assertEquals(plain.distanceM, f.distanceM, 1.0)
+        assertTrue(f.distanceM > file(40_000L to pause, 45_000L to resume).distanceM + 10.0, "a manual pause drops the paused steps")
         assertEquals(51, f.samples.size)
         assertEquals(50_000, f.elapsedMs, "elapsed is unchanged")
     }

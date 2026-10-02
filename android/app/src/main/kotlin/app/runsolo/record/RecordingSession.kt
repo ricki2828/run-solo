@@ -86,7 +86,10 @@ class RecordingSession(
     })
     private val ticker = SampleTicker(wall = { System.currentTimeMillis() })
     private val livePace = LivePace()
-    private val moving = MovingDetector.forAutoPause()
+    private val moving = MovingDetector()
+
+    /** Stop/go for auto-pause only; [moving] keeps its own settings for the moving-time summary. */
+    private val autoDetector = MovingDetector.forAutoPause()
     // The recorder runs on its own thread: the 1 Hz tick, journal writes (incl. fsync) and
     // sensor callbacks never wait behind Flutter's main-thread work (on a slow emulator the
     // first Flutter frame starved the main looper for seconds and the run lost its ticks).
@@ -241,12 +244,15 @@ class RecordingSession(
         // Seed the live distance from the journal (same pause rule as the finaliser) so the
         // tick totals continue instead of restarting from zero; lap distance from the last marker.
         var paused = false
+        var reanchor = false // only a manual pause re-anchors on resume (see SampleTicker)
         var lastLapDist = 0.0
         for (e in replayed.events) {
             when (e) {
                 is RunEvent.Sample -> if (e.hasFix && !paused) ticker.filter.offer(LocationFix(e.t, e.lat!!, e.lon!!, e.altM, e.accuracyM!!, e.speedMps))
-                is RunEvent.Pause -> paused = true
-                is RunEvent.Resume -> { paused = false; ticker.filter.reanchor() }
+                is RunEvent.Pause -> { paused = true; reanchor = true }
+                is RunEvent.Resume -> { paused = false; ticker.filter.reanchor(); reanchor = false }
+                is RunEvent.AutoPause -> paused = true
+                is RunEvent.AutoResume -> { paused = false; if (reanchor) ticker.filter.reanchor(); reanchor = false }
                 is RunEvent.Lap -> {
                     lastLapDist = ticker.filter.totalM
                     laps.indexOfFirst { it.tMs == e.t }.takeIf { it >= 0 }?.let { i -> laps[i] = laps[i].copy(distanceM = lastLapDist) }
@@ -275,8 +281,7 @@ class RecordingSession(
         if (core.finalStepEnd != null) coach.goalReachedAt(ticker.distanceM, null)
         coachPrevT = t
         coachPrevD = ticker.distanceM
-        // An auto-pause stops the clock, not the distance: only a manual pause freezes it.
-        if (core.state == RecorderState.paused && !core.autoPaused) ticker.onPause()
+        if (core.state == RecorderState.paused) if (core.autoPaused) ticker.onAutoPause() else ticker.onPause()
         ExitDiagnostics.noteResume(context, runId, nowWall)
         scheduleTick()
         Log.i(TAG, "resumed $runId after ${gap / 1000}s gap; phase=${core.phase} rep=${core.repIndex} paused=${core.state == RecorderState.paused}")
@@ -442,8 +447,10 @@ class RecordingSession(
         var pace: Double? = null
         if (last.hasFix) {
             pace = livePace.update(last.t, ticker.distanceM)
-            val wasMoving = moving.moving
-            val isMoving = moving.update(last.t, ticker.distanceM, last.speedMps, last.lat, last.lon)
+            moving.update(last.t, ticker.distanceM)
+            // The detector must see the runner move while the distance is frozen, so it reads the unfrozen filter.
+            val wasMoving = autoDetector.moving
+            val isMoving = autoDetector.update(last.t, ticker.moveDistanceM, last.speedMps, last.lat, last.lon)
             if (wasMoving && !isMoving) autoPauseNow(t) else if (!wasMoving && isMoving) autoResumeNow(t, speak = true)
         }
         val step = core.stepIndex
@@ -564,11 +571,12 @@ class RecordingSession(
     }
 
     /**
-     * The runner stopped ([MovingDetector]'s edge): the clock freezes (journal `apause`), distance keeps
-     * counting. Free, Laps and Goal runs, and the warm-up/cool-down of other sessions; the core decides.
+     * The runner stopped ([MovingDetector]'s edge): the clock and the distance freeze (journal `apause`), as in a
+     * manual pause but with no re-anchor on resume. Free, Laps and Goal runs, and the warm-up/cool-down of other sessions; the core decides.
      */
     private fun autoPauseNow(t: Long) {
         if (!autoPause || !core.autoPause(t)) return
+        ticker.onAutoPause()
         cues.dropNudge()
         writer.append(JournalLine.AutoPause(t, System.currentTimeMillis()))
         if (replay == null) cues.announce("Paused")
@@ -580,6 +588,7 @@ class RecordingSession(
     /** Moving again (or RESUME tapped in an auto-pause): the clock runs (journal `aresume`). */
     private fun autoResumeNow(t: Long, speak: Boolean) {
         if (!core.autoResume(t)) return
+        ticker.onAutoResume()
         writer.append(JournalLine.AutoResume(t, System.currentTimeMillis()))
         if (speak && replay == null) cues.announce("Resumed")
         Log.i(TAG, "auto-resume at ${core.status(t).elapsedMs} ms")

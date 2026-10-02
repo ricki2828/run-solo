@@ -56,11 +56,18 @@ import app.runsolo.core.model.TargetKind
  *  - Laps while paused are ignored, except in an auto-pause: the runner is still running the
  *    session and a LAP press counts.
  *  - Auto-pause ([autoPause], called by the shell when the runner stops): the same freeze of the
- *    active clock as a manual pause, so phase timers, moving time and the goal's moving time stop
- *    while standing; distance keeps counting, and no auto-lap can fire while it lasts. It only
- *    acts where [autoPauseAllowed] says so: Free, Laps and Goal runs; the warm-up and cool-down of
- *    any other session (a rep or recovery must keep running, a standing recovery is legitimate);
- *    never a Cooper test or an event (timed, elapsed time is the result).
+ *    active clock and distance as a manual pause, so phase timers, moving time, the goal's moving
+ *    time and the distance totals stop while standing (a phone jittering at the lights adds
+ *    nothing), and no auto-lap or step end can fire while it lasts. Unlike a manual pause it does
+ *    not re-anchor the GPS filter on resume: the first fix steps from where the runner stopped, so
+ *    the ground covered before the recorder noticed they were moving again still counts.
+ *    It only acts where [autoPauseAllowed] says so:
+ *    - Free, Laps and Goal runs: always.
+ *    - Any other structured session (4x4, repeats, Bronco, ...): only in its warm-up and cool-down.
+ *      A rep or recovery must keep its own clock (a standing recovery is legitimate, a timed rep
+ *      is the training), but a stop at the lights in the warm-up or cool-down is not training
+ *      load, so pausing there keeps the open warm-up and the moving time honest.
+ *    - Never a Cooper test or an event (timed, elapsed time is the result), nor an unknown template.
  */
 class RecorderCore(
     val mode: RunMode,
@@ -362,8 +369,8 @@ class RecorderCore(
         lastT = t
         this.gpsOk = gpsOk
         if (state != RecorderState.recording) {
-            // Auto-pause: the clock is frozen, so no step can end, but distance keeps counting and a
-            // LAP press (or the first tick after the runner moves) must see where the runner is.
+            // Auto-pause: the clock and distance are frozen, so no step can end; keep the base the
+            // first tick after the runner moves interpolates from (the distance is the frozen one).
             if (autoPaused) {
                 lastD = distanceM
                 lastDT = t
@@ -654,6 +661,7 @@ class RecorderCore(
             core.start(base)
             val filter = PointFilter()
             var paused = false
+            var reanchor = false // a manual pause (or a PAUSE over an auto-pause) re-anchors on resume; an auto-pause does not
             var prevSampleT = base
             for (e in replay.events) {
                 val t = e.t + base
@@ -685,16 +693,26 @@ class RecorderCore(
                     }
                     is RunEvent.Pause -> {
                         paused = true
+                        reanchor = true
                         core.pause(t)
                     }
                     is RunEvent.Resume -> {
                         paused = false
                         filter.reanchor()
+                        reanchor = false
                         core.resume(t)
                     }
-                    // Auto-pause: the clock froze, the distance did not (never `paused`, no re-anchor).
-                    is RunEvent.AutoPause -> core.enterAutoPause(t)
-                    is RunEvent.AutoResume -> core.autoResume(t)
+                    // Auto-pause: the clock and the distance freeze; resuming does not re-anchor.
+                    is RunEvent.AutoPause -> {
+                        paused = true
+                        core.enterAutoPause(t)
+                    }
+                    is RunEvent.AutoResume -> {
+                        paused = false
+                        if (reanchor) filter.reanchor()
+                        reanchor = false
+                        core.autoResume(t)
+                    }
                     is RunEvent.Gap -> {
                         // The run was dark from e.t to e.endT; phase timers must not count it.
                         // If it was already paused, the open pause covers the span.

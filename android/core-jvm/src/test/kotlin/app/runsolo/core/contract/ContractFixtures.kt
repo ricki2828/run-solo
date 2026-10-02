@@ -32,8 +32,9 @@ import java.io.File
  * hand-built. Checked into `src/test/fixtures/contract/` and copied verbatim into
  * `packages/run_engine/test/fixtures/contract/`; [ContractFixturesTest] fails when the
  * generator and the checked-in files drift, and CI compares the two copies. The top level is
- * schema 3 (Phase 3 §3.8). `contract/schema1/` and `contract/schema2/` are frozen output of the
- * older writers: never regenerated, they pin the v1 `free` → `laps` and the v2 `fourByFour` +
+ * schema 4 (auto-pause: `pauses[]` may carry `"auto"`; otherwise schema 3's). `contract/schema1/`,
+ * `contract/schema2/` and `contract/schema3/` are frozen output of the older writers: never
+ * regenerated, schema3 pins that files written before auto-pause still read, schema1/2 pin the v1 `free` → `laps` and the v2 `fourByFour` +
  * `preset` → `intervals` + norwegian-4x4 mappings on the Dart side.
  *
  * Regenerate: `java -cp <test classpath> app.runsolo.core.contract.ContractFixturesKt`.

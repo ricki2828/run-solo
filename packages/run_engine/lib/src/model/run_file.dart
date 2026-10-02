@@ -316,6 +316,11 @@ const _unset = Object();
 ///   `intervals` with no session (still by-feel); `cooper` → the Cooper
 ///   session. The file is rewritten as schema 3 only when something else
 ///   writes it (lazy, as schema 1 → 2 was).
+/// - 4 (auto-pause): a `pauses[]` entry may be `[t0, t1, "auto"]`, a pause
+///   the recorder made when the runner stopped ([Span.auto]). Every other key
+///   is schema 3's, so a schema-3 file reads as-is (all its pauses manual).
+///   The bump makes an older build say "newer app" instead of failing on the
+///   three-element span.
 class RunFile {
   RunFile({
     required this.id,
@@ -336,7 +341,7 @@ class RunFile {
   });
 
   /// The schema this build writes.
-  static const int schema = 3;
+  static const int schema = 4;
 
   /// The lowest schema this build reads (every older one is mapped forward).
   static const int minReadSchema = 1;

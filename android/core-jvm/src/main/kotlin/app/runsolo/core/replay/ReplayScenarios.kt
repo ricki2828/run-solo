@@ -409,11 +409,11 @@ object ReplayScenarios {
             val last = samples.last()
             if (last.hasFix) {
                 val was = moving.moving
-                val now = moving.update(last.t, ticker.distanceM, last.speedMps, last.lat, last.lon)
+                val now = moving.update(last.t, ticker.moveDistanceM, last.speedMps, last.lat, last.lon)
                 if (was && !now) {
-                    if (core.autoPause(t)) onAutoPause(t)
+                    if (core.autoPause(t)) { ticker.onAutoPause(); onAutoPause(t) }
                 } else if (!was && now) {
-                    if (core.autoResume(t)) onAutoResume(t)
+                    if (core.autoResume(t)) { ticker.onAutoResume(); onAutoResume(t) }
                 }
             }
             return out

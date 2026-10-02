@@ -19,6 +19,12 @@ import app.runsolo.core.model.LocationFix
  * filter re-anchors on resume so distance covered during the pause is excluded — the
  * finaliser applies the same rule from the journal's pause/resume lines.
  *
+ * An auto-pause ([onAutoPause]/[onAutoResume]) freezes the distance the same way, so a phone
+ * jittering at a traffic light adds nothing, but does NOT re-anchor on resume: the next accepted
+ * fix steps from where the runner stopped, so the ground covered before the recorder noticed they
+ * were moving again still counts. [moveDistanceM] is a second filter that sees every fix whatever
+ * the pause state, for the stop/go detector (which must see the runner move to resume).
+ *
  * The service calls [onFix] from the location callback, [onHr] from the GATT callback and
  * [tick] from its 1 s timer (with the replay clock in replay mode).
  */
@@ -43,15 +49,33 @@ class SampleTicker(
     var paused: Boolean = false
         private set
 
+    /** Cumulative distance of a filter that ignores pauses (feeds the stop/go detector only). */
+    val moveDistanceM: Double get() = shadow.totalM
+    private val shadow = PointFilter()
+
+    /** Set by a manual pause (and a PAUSE over an auto-pause): the next resume re-anchors. */
+    private var reanchorOnResume = false
+
     fun onPause() {
         paused = true
+        reanchorOnResume = true
+    }
+
+    /** The recorder paused itself: distance freezes, resume will not re-anchor. */
+    fun onAutoPause() {
+        if (paused) return
+        paused = true
+        reanchorOnResume = false
     }
 
     fun onResume() {
         if (!paused) return
         paused = false
-        filter.reanchor()
+        if (reanchorOnResume) filter.reanchor()
+        reanchorOnResume = false
     }
+
+    fun onAutoResume() = onResume()
 
     fun onFix(fix: LocationFix) {
         pending.add(fix)
@@ -72,6 +96,7 @@ class SampleTicker(
         } else {
             pending.sortBy { it.t }
             for (fix in pending) {
+                shadow.offer(fix)
                 if (!paused) filter.offer(fix)
                 var t = fix.t
                 if (t <= lastSampleT) {

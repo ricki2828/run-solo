@@ -71,10 +71,10 @@ class RunFileTest {
     }
 
     @Test
-    fun `gzip json round trip matches schema v3`() {
+    fun `gzip json round trip matches schema v4`() {
         val f = RunFile.fromReplay(JournalReplay.read(journal()), w0 + 50_000)
         val m = RunFile.readJson(f.toGzipBytes())
-        assertEquals(3L, m["schema"])
+        assertEquals(4L, m["schema"])
         assertEquals("id1", m["id"])
         assertEquals("intervals", m["mode"])
         assertEquals("km", m["units"])
@@ -219,12 +219,12 @@ class RunFileTest {
     }
 
     @Test
-    fun `a schema-2 4x4 journal (update mid-run) finalises as a schema-3 intervals file with the norwegian-4x4 session`() {
+    fun `a schema-2 4x4 journal (update mid-run) finalises as a schema-4 intervals file with the norwegian-4x4 session`() {
         val v2 = """{"k":"hdr","schema":2,"t":$t0,"w":$w0,"id":"id1","device":"d","app":"a","tz":"UTC","mode":"fourByFour","preset":{"reps":5,"workSeconds":240,"recoverySeconds":120},"units":"km"}"""
         val rest = listOf(JournalLine.Lap(t0 + 60_000, w0 + 60_000, LapSource.button)).joinToString("") { JournalCodec.encode(it) + "\n" }
         val f = RunFile.fromReplay(JournalReplay.read((v2 + "\n" + rest).toByteArray()), w0 + 90_000)
         val m = RunFile.readJson(f.toGzipBytes())
-        assertEquals(3L, m["schema"])
+        assertEquals(4L, m["schema"])
         assertEquals("intervals", m["mode"])
         @Suppress("UNCHECKED_CAST")
         val spec = SessionSpec.fromJson(m["session"] as Map<String, Any?>)!!

@@ -5,6 +5,7 @@ import app.runsolo.core.journal.JournalCodec
 import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.journal.JournalReplay
 import app.runsolo.core.model.LapSource
+import app.runsolo.core.model.LocationFix
 import app.runsolo.core.model.Phase
 import app.runsolo.core.model.RecorderState
 import app.runsolo.core.model.RunMode
@@ -233,6 +234,40 @@ class AutoPauseTest {
         c.autoResume(61_000)
         val after = c.tick(62_000, 1_053.0)
         assertTrue(after.isNotEmpty(), "the goal step ends on the first tick that is moving again")
+    }
+
+    @Test
+    fun `distance and goal totals do not grow while standing with GPS jitter, and resuming loses no ground`() {
+        val ticker = SampleTicker(wall = { 0L })
+        val core = started(RunMode.intervals, SessionSpec.goalDistance(1_000, "1 K"))
+        val mPerDeg = 111_320.0
+        fun fix(t: Long, eastM: Double, northM: Double = 0.0, speed: Double = 3.0) = LocationFix(t, northM / mPerDeg, eastM / mPerDeg, null, 5.0, speed)
+        fun second(t: Long, f: LocationFix): List<RecorderCore.Output> {
+            ticker.onFix(f)
+            ticker.tick(t)
+            return core.tick(t, ticker.distanceM)
+        }
+        for (s in 1..20) second(s * 1000L, fix(s * 1000L, 3.0 * s))
+        val before = ticker.distanceM
+        val remainingBefore = core.status(20_000).stepRemainingM!!
+        assertTrue(core.autoPause(21_000))
+        ticker.onAutoPause()
+        // 30 s standing: the fix wanders on a 1.2 m circle, 2.3 m between fixes, reporting 0.1 m/s.
+        var out = emptyList<RecorderCore.Output>()
+        for (s in 22..51) {
+            val a = s * 2.1
+            out = out + second(s * 1000L, fix(s * 1000L, 60.0 + 1.2 * cos(a), 1.2 * sin(a), 0.1))
+        }
+        assertEquals(before, ticker.distanceM, 0.0, "the filter's distance is frozen")
+        assertEquals(before, core.distanceM, 0.0, "so is the core's")
+        assertEquals(remainingBefore, core.status(51_000).stepRemainingM!!, 0.0, "and the goal's metres to go")
+        assertEquals(emptyList(), out)
+        // Moving again: no re-anchor, so the first fix steps from where the runner stopped.
+        assertTrue(core.autoResume(52_000))
+        ticker.onAutoResume()
+        for (s in 53..55) second(s * 1000L, fix(s * 1000L, 60.0 + 3.0 * (s - 52)))
+        assertEquals(before + 9.0, ticker.distanceM, 2.5, "about 9 m run since the stop, none of the jitter")
+        assertEquals(RecorderState.recording, core.state)
     }
 
     @Test
