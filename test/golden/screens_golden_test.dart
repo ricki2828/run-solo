@@ -1159,7 +1159,7 @@ void main() {
       await pumpTimes(tester, 6);
       await settleAnimations(tester);
       await golden(tester, 'start_session_400s_360x$h');
-      await tester.tap(find.text('INTERVALS'));
+      await tapVisible(tester, find.text('INTERVALS'));
       await pumpTimes(tester, 6);
       await tester.pump(const Duration(milliseconds: 600));
       await golden(tester, 'intervals_sheet_360x$h');
