@@ -7,6 +7,7 @@ import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
+import '../state/history_weeks.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
@@ -28,9 +29,10 @@ Future<List<RunSummary>> _timedFirstList(Future<List<RunSummary>> list) {
 }
 
 /// History list (design brief §4.8, plan §3.8): newest first, grouped by
-/// month, filter chips All / Intervals / Laps / Free / Trail / Tests, each row
-/// titled by its session, verdict arrow in the
-/// semantic colour, tap opens the verdict (4x4) or the run detail.
+/// week (this week, last week, date ranges, then months) with each period's
+/// totals, filter chips All / Intervals / Laps / Free / Trail / Tests, each
+/// row titled by its session, verdict arrow in the semantic colour, tap opens
+/// the verdict (4x4) or the run detail.
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key, this.onStart});
 
@@ -186,7 +188,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 ),
                               ),
                             ),
-                          ..._grouped(runs, units, t),
+                          if (runs.isNotEmpty) ..._grouped(runs, units, t),
                           const SizedBox(height: Space.x24),
                         ],
                       );
@@ -281,41 +283,50 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   List<Widget> _grouped(List<RunSummary> runs, Units units, RunSoloTokens t) {
     final out = <Widget>[];
-    String? month;
-    for (final r in runs) {
-      final m = Fmt.monthYear(r.start);
-      if (m != month) {
-        month = m;
+    final now = AppServices.of(context).now();
+    for (final g in groupByWeek(runs, now)) {
+      out.add(
+        Padding(
+          padding: const EdgeInsets.only(top: Space.x16, bottom: Space.x8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                g.header,
+                style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+              ),
+              const SizedBox(height: Space.x4),
+              Text(
+                g.runs.isEmpty ? 'No runs yet this week' : g.totals(units),
+                key: ValueKey('history-totals-${g.header}'),
+                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+              ),
+            ],
+          ),
+        ),
+      );
+      for (final r in g.runs) {
         out.add(
-          Padding(
-            padding: const EdgeInsets.only(top: Space.x16, bottom: Space.x8),
-            child: Text(
-              m.toUpperCase(),
-              style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-            ),
+          HistoryRow(
+            run: r,
+            units: units,
+            onLongPress: () => _confirmDelete(r),
+            onTap: r.missing
+                ? null
+                : () async {
+                    await Navigator.of(context).pushNamed(
+                      r.isFourByFour ? Routes.verdict : Routes.runDetail,
+                      arguments: r.id,
+                    );
+                    if (mounted) {
+                      setState(() {
+                        _runs = AppServices.of(context).history.list();
+                      });
+                    }
+                  },
           ),
         );
       }
-      out.add(
-        HistoryRow(
-          run: r,
-          units: units,
-          onLongPress: () => _confirmDelete(r),
-          onTap: r.missing
-              ? null
-              : () async {
-                  await Navigator.of(context).pushNamed(
-                    r.isFourByFour ? Routes.verdict : Routes.runDetail,
-                    arguments: r.id,
-                  );
-                  if (mounted) {
-                    setState(() {
-                      _runs = AppServices.of(context).history.list();
-                    });
-                  }
-                },
-        ),
-      );
     }
     return out;
   }
