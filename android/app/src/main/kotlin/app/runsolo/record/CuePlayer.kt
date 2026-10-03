@@ -197,6 +197,14 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
         if (thenRelease) main.postDelayed({ release() }, RELEASE_SAFETY_MS)
     }
 
+    /** Releases now when nothing is being said, else once the last line is done, and in any case within [IDLE_CAP_MS]. */
+    @Synchronized
+    fun releaseWhenIdle() {
+        if (inFlight == 0 && pendingLine == null) return release()
+        releaseWhenIdle = true
+        main.postDelayed({ release() }, IDLE_CAP_MS)
+    }
+
     @Synchronized
     private fun flushPending() {
         val line = pendingLine ?: return
@@ -291,6 +299,9 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
         private const val TAG = "RunSolo/cues"
 
         /** A one-shot player is released this long after its line was asked for, whatever TTS did. */
+        /** The longest a finished run's last cue may keep the player alive. */
+        private const val IDLE_CAP_MS = 2_000L
+
         private const val RELEASE_SAFETY_MS = 30_000L
     }
 }

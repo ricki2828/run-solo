@@ -73,15 +73,15 @@ summary.start.free-goal-distance	5	Free run. Goal: 10 kilometres.
 summary.start.free-goal-distance-miles	5	Free run. Goal: 26.2 miles.
 summary.start.free-goal-time	7	Free run. Goal: 1 hour 15 minutes.
 summary.start.event	3	5K time trial.
-summary.end.stats	10	5 kilometres 20, 41 minutes, 7 minutes 53 per kilometre.
-summary.end.climb	14	5 kilometres 20, 41 minutes, 7 minutes 53 per kilometre, 230 metres of climb.
-summary.end.miles	14	3 miles 11, 30 minutes, 9 minutes 39 per mile, 755 feet of climb.
-summary.end.over-an-hour	16	42 kilometres 20, 4 hours 59 minutes, 7 minutes 7 per kilometre, 1230 metres of climb.
-summary.end.no-pace-4x4	10	5 kilometres 20, 41 minutes. Faster. New best Norwegian 4x4.
+summary.end.stats	12	Run saved. 5 kilometres 20, 41 minutes, 7 minutes 53 per kilometre.
+summary.end.climb	16	Run saved. 5 kilometres 20, 41 minutes, 7 minutes 53 per kilometre, 230 metres of climb.
+summary.end.miles	16	Run saved. 3 miles 11, 30 minutes, 9 minutes 39 per mile, 755 feet of climb.
+summary.end.over-an-hour	18	Run saved. 42 kilometres 20, 4 hours 59 minutes, 7 minutes 7 per kilometre, 1230 metres of climb.
+summary.end.no-pace-4x4	12	Run saved. 5 kilometres 20, 41 minutes. Faster. New best Norwegian 4x4.
 summary.start.trail-emoji-name	11	Trail run. Following Kastro loop, 6.2 kilometres, 230 metres of climb.
-summary.end.verdict-trail-faster	25	6 kilometres 21, 41 minutes, 6 minutes 36 per kilometre, 231 metres of climb. Faster on this trail, 2 minutes 10 quicker than last time.
-summary.end.verdict-no-change	11	5 kilometres, 25 minutes, 5 minutes per kilometre. No real change.
-summary.end.verdict-4x4-best	15	5 kilometres 20, 41 minutes, 7 minutes 53 per kilometre. Faster. New best Norwegian 4x4.
+summary.end.verdict-trail-faster	27	Run saved. 6 kilometres 21, 41 minutes, 6 minutes 36 per kilometre, 231 metres of climb. Faster on this trail, 2 minutes 10 quicker than last time.
+summary.end.verdict-no-change	13	Run saved. 5 kilometres, 25 minutes, 5 minutes per kilometre. No real change.
+summary.end.verdict-4x4-best	17	Run saved. 5 kilometres 20, 41 minutes, 7 minutes 53 per kilometre. Faster. New best Norwegian 4x4.
 nudge.fast-start	11	Fast start. Ease off a little. Your best 5K started slower.
 nudge.rep-fade	12	That one dropped off a bit. Hold your form on the next.
 nudge.hr-drift	12	Heart rate's up for this pace today. Fine to ease a touch.
