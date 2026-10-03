@@ -167,6 +167,20 @@ class WeatherQueue {
   /// old run, spread over opens instead of one burst.
   static const int maxRequestsPerPass = 30;
 
+  /// The heat slowdown (0.047 = 4.7%) at the start of the run now being
+  /// recorded, from its first fix: one request, sent only when "Weather for
+  /// each run" is on, null when off, offline, or the hour is not served. The
+  /// live true pace uses it; nothing is stored.
+  Future<double?> slowdownAt(double lat, double lon) async {
+    if (!enabled()) return null;
+    final at = now();
+    final req = engine.WeatherRequest.forStart(lat, lon, now: at);
+    final res = await provider.fetch(req.uri);
+    if (res is! WeatherFetched) return null;
+    final rec = req.parse(res.body, now: at);
+    return rec.status == engine.WeatherStatus.ok ? rec.heat?.fraction : null;
+  }
+
   Future<WeatherDrainResult>? _draining;
   String? _priorityRunId;
   bool _priorityReady = false;

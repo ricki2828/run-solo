@@ -28,7 +28,7 @@ abstract final class SpokenVerdict {
   }
 
   /// A Trail run: on the same trail it names the gap ("Faster on this trail,
-  /// 2 minutes 10 quicker than last time."); on effort pace, or with a
+  /// 2 minutes 10 quicker than last time."); on true pace, or with a
   /// baseline, just the headline.
   static String? ofTrail(TrailResult r) {
     if (r.basis == TrailBasis.none) return null;

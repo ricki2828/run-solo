@@ -155,6 +155,25 @@ class WeatherRequest {
           ),
         )
         .toUtc();
+    return _build(loc, mid, now);
+  }
+
+  /// The same request for the hour a run STARTS in, from its first fix
+  /// (lat, lon), so the live screen can take the start-of-run heat into its
+  /// true pace. Rounded to 0.1 degrees before anything is built, like every
+  /// weather request; nothing else is sent.
+  static WeatherRequest forStart(
+    double lat,
+    double lon, {
+    required DateTime now,
+  }) => _build(CoarseLocation.round(lat, lon), now.toUtc(), now, pastDays: 1);
+
+  static WeatherRequest _build(
+    CoarseLocation loc,
+    DateTime mid,
+    DateTime now, {
+    int pastDays = 92,
+  }) {
     const hourly =
         'temperature_2m,relative_humidity_2m,dew_point_2m,'
         'shortwave_radiation,wind_speed_10m';
@@ -164,7 +183,7 @@ class WeatherRequest {
       uri = Uri.parse(
         'https://api.open-meteo.com/v1/forecast?latitude=${loc.latText}'
         '&longitude=${loc.lonText}&hourly=$hourly&wind_speed_unit=ms'
-        '&past_days=92&timezone=UTC',
+        '&past_days=$pastDays&timezone=UTC',
       );
     } else {
       final day = _date(mid);

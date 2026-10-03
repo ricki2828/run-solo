@@ -71,9 +71,10 @@ enum RunMode {
     RunMode.intervals || RunMode.laps || RunMode.cooper => false,
   };
 
-  /// Whether the run screen also shows grade-adjusted pace live (a secondary
-  /// figure). Only the trail mode shows it.
-  bool get showsLiveGap => this == RunMode.trail;
+  /// Whether the run screen also shows TRUE PACE live (a secondary figure
+  /// beside the pace dial: hills from the live grade, heat from the
+  /// start-of-run weather). Free and Trail show it.
+  bool get showsLiveTruePace => this == RunMode.free || this == RunMode.trail;
 
   /// Whether the recorder accepts LAP input in this mode (§18.2).
   bool get lapCapable => switch (this) {
