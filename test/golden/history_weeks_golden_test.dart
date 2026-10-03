@@ -71,12 +71,12 @@ void main() {
         await store.list();
         await store.derivedIdle;
       });
-      tester.view.physicalSize = Size(1080, h * 3.0);
       await pumpApp(
         tester,
         fakeServices(history: store),
         home: const HistoryScreen(),
       );
+      tester.view.physicalSize = Size(1080, h * 3.0);
       await tester.tap(find.byKey(const ValueKey('history-view-1')));
       for (
         var i = 0;
