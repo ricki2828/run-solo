@@ -103,6 +103,28 @@ class SummaryWordsTest {
     }
 
     @Test
+    fun `end leaves the pace out when asked, for a 4x4 or a Cooper test`() {
+        assertEquals(
+            "5 kilometres, 25 minutes. Faster.",
+            SummaryWords.end(5_000.0, 1_500_000, Units.km, verdict = "Faster.", withPace = false),
+        )
+    }
+
+    @Test
+    fun `route names are made speakable`() {
+        assertEquals("Kastro loop", SummaryWords.speakable("Kastro-loop \uD83C\uDFC3 https://example.com/x"))
+        assertEquals("Dawn run and hills", SummaryWords.speakable("Dawn run \u2014 & hills"))
+        assertEquals("a route", SummaryWords.speakable("\uD83C\uDFC3\uD83C\uDFC3 \u2014 https://x.co"))
+        assertEquals("Mount Wellington summit via the old", SummaryWords.speakable("Mount Wellington summit via the old pipe track and back").take(35))
+        assertTrue(SummaryWords.speakable("word ".repeat(30)).length <= 40)
+        assertEquals(
+            "Trail run. Following Kastro loop, 6.2 kilometres.",
+            SummaryWords.start(RunMode.trail, null, Units.km, "Kastro \uD83C\uDFC3 - loop \u2014", 6_210.0, null),
+        )
+        assertEquals("Trail run. Following a route, 6.2 kilometres.", SummaryWords.start(RunMode.trail, null, Units.km, "\uD83C\uDFC3", 6_210.0, null))
+    }
+
+    @Test
     fun `start of an event is its own name`() {
         assertEquals("${ReplayScenarios.PARKRUN.spoken}.", SummaryWords.start(RunMode.intervals, ReplayScenarios.PARKRUN, Units.km))
     }

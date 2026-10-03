@@ -735,8 +735,9 @@ abstract class RecorderApi {
   /// whenever voice cues are off.
   void setSpokenSummary(bool enabled);
 
-  /// The end-of-run line: distance, time, average pace and (from 20 m) the
-  /// climb in [units], then [verdict] (the result screen's own words, already
+  /// The end-of-run line: distance, time, average pace ([includePace] false
+  /// for a 4x4 or Cooper, where a whole-run pace means nothing) and (from
+  /// 20 m) the climb in [units], then [verdict] (the result screen's own words, already
   /// speakable; null when none is computed yet). Says nothing when voice cues
   /// or the spoken summary are off. Fire and forget; the audio outlives the
   /// call.
@@ -746,6 +747,7 @@ abstract class RecorderApi {
     double? climbM,
     String? verdict,
     Units units,
+    bool includePace,
   );
 
   /// Settings -> Run -> "Auto-pause" (default on): the recorder pauses itself

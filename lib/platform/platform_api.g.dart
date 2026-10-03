@@ -3755,19 +3755,20 @@ class RecorderApi {
     ;
   }
 
-  /// The end-of-run line: distance, time, average pace and (from 20 m) the
-  /// climb in [units], then [verdict] (the result screen's own words, already
+  /// The end-of-run line: distance, time, average pace ([includePace] false
+  /// for a 4x4 or Cooper, where a whole-run pace means nothing) and (from
+  /// 20 m) the climb in [units], then [verdict] (the result screen's own words, already
   /// speakable; null when none is computed yet). Says nothing when voice cues
   /// or the spoken summary are off. Fire and forget; the audio outlives the
   /// call.
-  Future<void> speakRunSummary(double distanceM, int timeMs, double? climbM, String? verdict, Units units) async {
+  Future<void> speakRunSummary(double distanceM, int timeMs, double? climbM, String? verdict, Units units, bool includePace) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.speakRunSummary$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[distanceM, timeMs, climbM, verdict, units]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[distanceM, timeMs, climbM, verdict, units, includePace]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(

@@ -45,12 +45,14 @@ class SpokenSummaryCall {
     required this.climbM,
     required this.verdict,
     required this.units,
+    required this.includePace,
   });
   final double distanceM;
   final int timeMs;
   final double? climbM;
   final String? verdict;
   final Units units;
+  final bool includePace;
 }
 
 class FakeRecorderGateway implements RecorderGateway {
@@ -670,12 +672,14 @@ class FakeRecorderGateway implements RecorderGateway {
     double? climbM,
     String? verdict,
     required Units units,
+    bool includePace = true,
   }) async => lastSpokenSummary = SpokenSummaryCall(
     distanceM: distanceM,
     timeMs: timeMs,
     climbM: climbM,
     verdict: verdict,
     units: units,
+    includePace: includePace,
   );
 
   bool autoPause = true;

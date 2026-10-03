@@ -342,10 +342,10 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     }
 
     /** The end-of-run line on a player of its own (the run's is gone): words from [SummaryWords], released once said. */
-    override fun speakRunSummary(distanceM: Double, timeMs: Long, climbM: Double?, verdict: String?, units: Units) {
+    override fun speakRunSummary(distanceM: Double, timeMs: Long, climbM: Double?, verdict: String?, units: Units, includePace: Boolean) {
         val on = prefs.getBoolean(RecorderService.PREF_CUES, true) && prefs.getBoolean(RecorderService.PREF_SPOKEN_SUMMARY, true)
         if (!on) return
-        val text = SummaryWords.end(distanceM, timeMs, units.toCore(), climbM, verdict) ?: return
+        val text = SummaryWords.end(distanceM, timeMs, units.toCore(), climbM, verdict, includePace) ?: return
         CuePlayer(context).apply {
             enabled = true
             init()

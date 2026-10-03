@@ -36,13 +36,14 @@ object SummaryWords {
         val miles = units == Units.mi
         return when (mode) {
             RunMode.trail -> {
+                val name = routeName?.let { speakable(it) }
                 if (routeName == null) return "Trail run."
                 val dist = routeM?.takeIf { it > 0 }?.let { distance(it, miles, hundredths = false) }
                 val climb = routeClimbM?.takeIf { it > 0 }?.let { height(it, miles, step = true) + " of climb" }
                 val tries = listOf(
-                    listOfNotNull(routeName, dist, climb),
-                    listOfNotNull(routeName, dist),
-                    listOfNotNull(routeName),
+                    listOfNotNull(name, dist, climb),
+                    listOfNotNull(name, dist),
+                    listOfNotNull(name),
                 )
                 for (parts in tries) {
                     val text = "Trail run. Following ${parts.joinToString(", ")}."
@@ -61,6 +62,18 @@ object SummaryWords {
         }
     }
 
+    /** A route name as TTS should read it: no URLs, emoji or dashes, one line, at most [MAX_NAME] characters; "a route" when nothing is left. */
+    fun speakable(raw: String): String {
+        var s = raw.replace(Regex("""(https?://|www\.)\S+"""), " ")
+        s = s.replace(Regex("[\\u2012-\\u2015\\u2212_]"), " ").replace(" - ", " ").replace("-", " ")
+        s = s.filter { it.isLetterOrDigit() || it == ' ' || it == '\'' || it == '.' || it == ',' || it == '&' }
+        s = s.replace("&", " and ").replace(Regex("\\s+"), " ").trim().trim('.', ',').trim()
+        if (s.length > MAX_NAME) s = s.take(MAX_NAME).substringBeforeLast(' ', s.take(MAX_NAME)).trim()
+        return s.ifEmpty { "a route" }
+    }
+
+    private const val MAX_NAME = 40
+
     private fun goal(spec: SessionSpec, miles: Boolean): String {
         val step = spec.steps.first()
         return if (step.target == TargetKind.distance) distance(step.value.toDouble(), miles, hundredths = false) else duration(step.value * 1_000L, seconds = false)
@@ -71,7 +84,7 @@ object SummaryWords {
      * or more; then [verdict] (the result screen's own words) when there is one. Null when there is
      * no distance to speak of (indoor, GPS never came).
      */
-    fun end(distanceM: Double, timeMs: Long, units: Units, climbM: Double? = null, verdict: String? = null): String? {
+    fun end(distanceM: Double, timeMs: Long, units: Units, climbM: Double? = null, verdict: String? = null, withPace: Boolean = true): String? {
         if (distanceM < 10 || timeMs <= 0) return verdict?.trim()?.takeIf { it.isNotEmpty() }
         val miles = units == Units.mi
         val unitM = if (miles) M_PER_MI else 1_000.0
@@ -79,7 +92,7 @@ object SummaryWords {
         parts.add(distance(distanceM, miles, hundredths = true))
         parts.add(duration(timeMs, seconds = true))
         val paceS = (timeMs / 1_000.0) / (distanceM / unitM)
-        if (distanceM >= 100 && paceS.isFinite()) parts.add("${minutesSeconds(paceS.roundToLong())} per ${if (miles) "mile" else "kilometre"}")
+        if (withPace && distanceM >= 100 && paceS.isFinite()) parts.add("${minutesSeconds(paceS.roundToLong())} per ${if (miles) "mile" else "kilometre"}")
         if (climbM != null && climbM >= MIN_CLIMB_M) parts.add(height(climbM, miles, step = false) + " of climb")
         val stats = parts.joinToString(", ") + "."
         val line = verdict?.trim()?.takeIf { it.isNotEmpty() }

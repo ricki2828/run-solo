@@ -172,6 +172,8 @@ object VoiceCopyFixture {
         add("summary.end.climb", SummaryWords.end(5_200.0, 2_460_000, Units.km, climbM = 230.0))
         add("summary.end.miles", SummaryWords.end(5_000.0, 1_800_000, Units.mi, climbM = 230.0))
         add("summary.end.over-an-hour", SummaryWords.end(42_195.0, 17_999_000, Units.km, climbM = 1_230.0))
+        add("summary.end.no-pace-4x4", SummaryWords.end(5_200.0, 2_460_000, Units.km, verdict = "Faster. New best Norwegian 4x4.", withPace = false))
+        add("summary.start.trail-emoji-name", SummaryWords.start(RunMode.trail, null, Units.km, "Kastro \uD83C\uDFC3 loop https://x.co", 6_210.0, 231.0))
         add("summary.end.verdict-trail-faster", SummaryWords.end(6_210.0, 2_460_000, Units.km, climbM = 231.0, verdict = "Faster on this trail, 2 minutes 10 quicker than last time."))
         add("summary.end.verdict-no-change", SummaryWords.end(5_000.0, 1_500_000, Units.km, verdict = "No real change."))
         add("summary.end.verdict-4x4-best", SummaryWords.end(5_200.0, 2_460_000, Units.km, verdict = "Faster. New best Norwegian 4x4."))

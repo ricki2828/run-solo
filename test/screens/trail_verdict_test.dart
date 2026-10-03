@@ -13,6 +13,7 @@ import 'package:run_solo/screens/verdict_screen.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/live_context.dart';
 import 'package:run_solo/state/run_index.dart';
+import 'package:run_solo/state/spoken_summary.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/theme/theme.dart';
 
@@ -312,6 +313,63 @@ void main() {
       expect(said.distanceM, now.distanceM);
       expect(said.climbM, isNotNull);
       expect(said.units, Units.km);
+    });
+
+    testWidgets('a Free run with auto-pauses says moving time, not the clock', (
+      tester,
+    ) async {
+      final base = freeRunFile(n: 20, start: d2);
+      final run = base.copyWith(
+        pauses: [
+          const engine.Span(300000, 480000),
+          const engine.Span(900000, 960000),
+        ],
+      );
+      final moving = engine.RunTimes.movingMs(run);
+      expect(moving, lessThan(run.end.difference(run.start).inMilliseconds));
+      final services = fakeServices(
+        files: [run],
+        settings: const AppSettings(onboardingDone: true),
+      );
+      await pumpApp(
+        tester,
+        services,
+        pushRoute: Routes.verdictJustFinished,
+        pushArguments: run.id,
+      );
+      await pumpTimes(tester, 6);
+      await tester.pump(const Duration(milliseconds: 2000));
+      final said =
+          (services.recorder as FakeRecorderGateway).lastSpokenSummary!;
+      expect(said.timeMs, moving);
+      expect(said.includePace, isTrue);
+      expect(said.verdict, isNull);
+    });
+
+    test('whole-run pace is left out for a 4x4 and Cooper only', () {
+      RunSummary of(RecordMode m, {engine.SessionSpec? spec}) => RunSummary(
+        id: 'x',
+        mode: m,
+        start: d2,
+        durationMs: 1,
+        distanceM: 1,
+        laps: 0,
+        spec: spec,
+      );
+      expect(spokenPaceOf(of(RecordMode.free)), isTrue);
+      expect(spokenPaceOf(of(RecordMode.laps)), isTrue);
+      expect(spokenPaceOf(of(RecordMode.trail)), isTrue);
+      expect(spokenPaceOf(of(RecordMode.cooper)), isFalse);
+      expect(spokenPaceOf(of(RecordMode.intervals)), isFalse);
+      expect(
+        spokenPaceOf(
+          of(
+            RecordMode.intervals,
+            spec: engine.SessionSpec.goalDistance(10000, "10K"),
+          ),
+        ),
+        isTrue,
+      );
     });
 
     testWidgets('silent with voice cues off or the switch off', (tester) async {

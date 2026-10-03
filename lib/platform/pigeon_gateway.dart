@@ -80,7 +80,15 @@ class PigeonRecorderGateway implements RecorderGateway {
     double? climbM,
     String? verdict,
     required Units units,
-  }) => _api.speakRunSummary(distanceM, timeMs, climbM, verdict, units);
+    bool includePace = true,
+  }) => _api.speakRunSummary(
+    distanceM,
+    timeMs,
+    climbM,
+    verdict,
+    units,
+    includePace,
+  );
 
   @override
   Future<void> setAutoPause(bool enabled) => _api.setAutoPause(enabled);

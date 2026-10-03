@@ -139,6 +139,7 @@ abstract class RecorderGateway {
     double? climbM,
     String? verdict,
     required Units units,
+    bool includePace = true,
   });
 
   /// Settings → Recording → "Auto-pause": the recorder pauses itself when the

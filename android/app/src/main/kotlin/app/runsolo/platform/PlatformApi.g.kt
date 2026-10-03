@@ -3574,13 +3574,14 @@ interface RecorderApi {
    */
   fun setSpokenSummary(enabled: Boolean)
   /**
-   * The end-of-run line: distance, time, average pace and (from 20 m) the
-   * climb in [units], then [verdict] (the result screen's own words, already
+   * The end-of-run line: distance, time, average pace ([includePace] false
+   * for a 4x4 or Cooper, where a whole-run pace means nothing) and (from
+   * 20 m) the climb in [units], then [verdict] (the result screen's own words, already
    * speakable; null when none is computed yet). Says nothing when voice cues
    * or the spoken summary are off. Fire and forget; the audio outlives the
    * call.
    */
-  fun speakRunSummary(distanceM: Double, timeMs: Long, climbM: Double?, verdict: String?, units: Units)
+  fun speakRunSummary(distanceM: Double, timeMs: Long, climbM: Double?, verdict: String?, units: Units, includePace: Boolean)
   /**
    * Settings -> Run -> "Auto-pause" (default on): the recorder pauses itself
    * when the runner stops and resumes when they move again, in Free, Laps
@@ -3949,8 +3950,9 @@ interface RecorderApi {
             val climbMArg = args[2] as Double?
             val verdictArg = args[3] as String?
             val unitsArg = args[4] as Units
+            val includePaceArg = args[5] as Boolean
             val wrapped: List<Any?> = try {
-              api.speakRunSummary(distanceMArg, timeMsArg, climbMArg, verdictArg, unitsArg)
+              api.speakRunSummary(distanceMArg, timeMsArg, climbMArg, verdictArg, unitsArg, includePaceArg)
               listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)

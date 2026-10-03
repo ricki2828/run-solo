@@ -280,6 +280,7 @@ class TraceGateway implements RecorderGateway {
     double? climbM,
     String? verdict,
     required Units units,
+    bool includePace = true,
   }) => throw UnimplementedError();
   @override
   Future<void> setAutoPause(bool e) => throw UnimplementedError();

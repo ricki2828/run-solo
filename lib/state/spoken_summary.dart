@@ -37,6 +37,14 @@ String? spokenVerdictOf(RunDetail d, List<RunSummary> all) {
   }
 }
 
+/// A whole-run pace means something for a Free, Laps, Trail or goal run; not
+/// for a 4x4 or Cooper test, whose reps and test distance say it better.
+bool spokenPaceOf(RunSummary s) => switch (s.mode) {
+  RecordMode.intervals => s.spec?.isGoal == true,
+  RecordMode.cooper => false,
+  RecordMode.free || RecordMode.laps || RecordMode.trail => true,
+};
+
 /// Says the end-of-run line for a run that has just finished. Never throws:
 /// a missing voice is not worth a broken result screen.
 Future<void> speakRunSummary(
@@ -51,12 +59,12 @@ Future<void> speakRunSummary(
         d.summary.row?.climbM ?? engine.RunElevation.of(d.run)?.ascentM;
     await recorder.speakRunSummary(
       distanceM: d.summary.distanceM,
-      timeMs: d.summary.mode == RecordMode.trail
-          ? trailFactsOfDetail(d).movingMs
-          : d.summary.durationMs,
+      // The time the result screen leads with: moving time, every mode.
+      timeMs: d.summary.row?.movingMs ?? engine.RunTimes.movingMs(d.run),
       climbM: climb,
       verdict: spokenVerdictOf(d, all),
       units: settings.units,
+      includePace: spokenPaceOf(d.summary),
     );
   } catch (_) {}
 }

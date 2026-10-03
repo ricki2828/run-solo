@@ -65,7 +65,7 @@ event.end.no-board	5	5K time trial done, 24:00.
 summary.start.trail	11	Trail run. Following Kastro loop, 6.2 kilometres, 230 metres of climb.
 summary.start.trail-miles	11	Trail run. Following Kastro loop, 3.9 miles, 760 feet of climb.
 summary.start.trail-no-climb	7	Trail run. Following Kastro loop, 6.2 kilometres.
-summary.start.trail-long-name	15	Trail run. Following Mount Wellington summit via the old pipe track and back, 16.2 kilometres.
+summary.start.trail-long-name	15	Trail run. Following Mount Wellington summit via the old, 16.2 kilometres, 1230 metres of climb.
 summary.start.trail-no-route	2	Trail run.
 summary.start.4x4	9	Norwegian 4x4. Warm up as long as you like.
 summary.start.free	2	Free run.
@@ -77,6 +77,8 @@ summary.end.stats	10	5 kilometres 20, 41 minutes, 7 minutes 53 per kilometre.
 summary.end.climb	14	5 kilometres 20, 41 minutes, 7 minutes 53 per kilometre, 230 metres of climb.
 summary.end.miles	14	3 miles 11, 30 minutes, 9 minutes 39 per mile, 755 feet of climb.
 summary.end.over-an-hour	16	42 kilometres 20, 4 hours 59 minutes, 7 minutes 7 per kilometre, 1230 metres of climb.
+summary.end.no-pace-4x4	10	5 kilometres 20, 41 minutes. Faster. New best Norwegian 4x4.
+summary.start.trail-emoji-name	11	Trail run. Following Kastro loop, 6.2 kilometres, 230 metres of climb.
 summary.end.verdict-trail-faster	25	6 kilometres 21, 41 minutes, 6 minutes 36 per kilometre, 231 metres of climb. Faster on this trail, 2 minutes 10 quicker than last time.
 summary.end.verdict-no-change	11	5 kilometres, 25 minutes, 5 minutes per kilometre. No real change.
 summary.end.verdict-4x4-best	15	5 kilometres 20, 41 minutes, 7 minutes 53 per kilometre. Faster. New best Norwegian 4x4.
