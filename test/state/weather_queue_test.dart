@@ -442,4 +442,61 @@ void main() {
     expect(await q.queued(), isEmpty);
     expect(provider.requests, isEmpty);
   });
+
+  group('start-of-run heat for the live true pace', () {
+    WeatherFetch hour(num temp, num dew) => WeatherFetched({
+      'hourly': {
+        'time': ['2026-09-10T06:00'],
+        'temperature_2m': [temp],
+        'relative_humidity_2m': [65],
+        'dew_point_2m': [dew],
+        'shortwave_radiation': [300],
+        'wind_speed_10m': [2],
+      },
+    });
+
+    Future<(double?, FakeWeatherProvider)> ask(
+      WeatherFetch Function(Uri) answer, {
+      bool on = true,
+    }) async {
+      final provider = FakeWeatherProvider([answer]);
+      final store = FileRunStore(runsDir);
+      final q = WeatherQueue(
+        file: File('${dir.path}/state/weather-queue.json'),
+        store: store,
+        provider: provider,
+        now: () => d1,
+        enabled: () => on,
+      );
+      return (await q.slowdownAt(-33.87, 151.21), provider);
+    }
+
+    test('the slowdown of the starting hour, from a coarse location', () async {
+      final (v, provider) = await ask((_) => hour(30, 22));
+      expect(v, engine.HeatModel.of(tempC: 30, dewPointC: 22).fraction);
+      expect(v, greaterThan(0.04));
+      final uri = provider.requests.single;
+      // Rounded to 0.1 degree, nothing else in the URL.
+      expect(uri.queryParameters['latitude'], '-33.9');
+      expect(uri.queryParameters['longitude'], '151.2');
+      expect(uri.queryParameters['past_days'], '1');
+    });
+
+    test('setting off, offline or an unserved hour: null, no throw', () async {
+      expect((await ask((_) => hour(30, 22), on: false)).$1, isNull);
+      expect((await ask((_) => const WeatherRetryLater('offline'))).$1, isNull);
+      expect(
+        (await ask(
+          (_) => WeatherFetched({
+            'hourly': {'time': []},
+          }),
+        )).$1,
+        isNull,
+      );
+    });
+
+    test('a cool start is a zero slowdown, not null', () async {
+      expect((await ask((_) => hour(10, 4))).$1, 0);
+    });
+  });
 }

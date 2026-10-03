@@ -132,8 +132,35 @@ class _RecordingScreenState extends State<RecordingScreen>
 
   /// The service discarded the run (`FaultKind.startFailed`): nothing to
   /// save, back to Start with the message.
+  /// The heat slowdown at the start of this run (from its first fix), for
+  /// the live true pace; null until fetched, and when it never is (setting
+  /// off, offline). One request per run, never retried mid-run.
+  double? _startSlowdown;
+  String? _slowdownRun;
+
+  void _maybeFetchStartHeat(RecordingSnapshot s) {
+    final run = s.runId;
+    if (run == null || _slowdownRun == run) return;
+    final first = _ctl!.liveRoute.points.firstOrNull;
+    final weather = _services?.weather;
+    if (first == null || weather == null) return;
+    _slowdownRun = run;
+    _startSlowdown = null;
+    weather
+        .slowdownAt(first.lat, first.lon)
+        .then((v) {
+          if (mounted && _slowdownRun == run) {
+            setState(() => _startSlowdown = v);
+          }
+        })
+        .catchError((Object _) {});
+  }
+
   void _onSnapshot() {
     final s = _ctl!.snapshot;
+    if (s.active && runModeOf(s.mode).showsLiveTruePace) {
+      _maybeFetchStartHeat(s);
+    }
     _applyKeepScreenOn();
     // #90: the paused notification's "tap to finish" lands on the finish
     // screen directly.
@@ -617,6 +644,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                               maxHr: maxHr,
                               compact: compact,
                               card: _cardLink,
+                              startSlowdown: _startSlowdown,
                             ),
                           // END REP: the banner already says GPS is lost,
                           // and the short phone needs the bar's height.
@@ -1394,6 +1422,7 @@ class _CooperBlock extends StatelessWidget {
     this.compact = false,
     this.card,
   });
+
   final RecordingSnapshot s;
   final RecordingController ctl;
   final Units units;
@@ -1481,7 +1510,12 @@ class _FreeRunBlock extends StatelessWidget {
     required this.maxHr,
     this.compact = false,
     this.card,
+    this.startSlowdown,
   });
+
+  /// The heat slowdown at the start of the run (null = none known): the
+  /// heat share of the live true pace.
+  final double? startSlowdown;
   final RecordingSnapshot s;
   final RecordingController ctl;
   final Units units;
@@ -1520,7 +1554,7 @@ class _FreeRunBlock extends StatelessWidget {
     final runAverage = runAverageSecPerKm(s, ctl);
     final showElevation =
         runModeOf(s.mode).showsElevation && s.elevGainM != null;
-    final showGap = runModeOf(s.mode).showsLiveGap;
+    final showGap = runModeOf(s.mode).showsLiveTruePace;
     final route = s.route;
     final turn = route == null || route.off ? '' : routeTurnText(route, units);
     final routeH = route == null
@@ -1528,7 +1562,7 @@ class _FreeRunBlock extends StatelessWidget {
         : _figH + (turn.isEmpty ? 0 : Space.x4 + _textH(AuxFigure.style));
     // Founder 3-Oct: the screen reads as clusters, top to bottom: RUN
     // (distance, time, average pace, equal size), PACE (the current-pace
-    // speedo, always shown, with Trail's GAP beside it), CLIMB, ROUTE.
+    // speedo, always shown, with TRUE PACE beside it), CLIMB, ROUTE.
     // Priority when height is short: the dial shrinks, the RUN trio steps
     // down a size, then GAP and grade go. Never the dial, the trio or the
     // heart rate; no number under 36 sp.
@@ -1594,14 +1628,19 @@ class _FreeRunBlock extends StatelessWidget {
               paceStyle: AuxFigure.style.copyWith(fontSize: 40),
               extra: gapOn
                   ? AuxFigure(
-                      label: 'GAP',
+                      label: 'TRUE PACE',
                       value: Fmt.pace(
-                        engine.Gap.paceSecPerKm(s.livePaceSecPerKm, s.gradePct),
+                        engine.RunTruePace.live(
+                          paceSecPerKm: s.livePaceSecPerKm,
+                          gradePct: s.gradePct,
+                          slowdown: startSlowdown,
+                          distanceM: s.totalDistanceM,
+                        ),
                         units,
                       ),
                       labelColor: secondary,
                       valueColor: t.inkPrimary,
-                      valueKey: const ValueKey('live-gap'),
+                      valueKey: const ValueKey('live-true-pace'),
                     )
                   : null,
             ),

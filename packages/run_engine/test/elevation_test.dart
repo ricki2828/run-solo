@@ -290,7 +290,11 @@ void main() {
         expect(m.showsElevation, isFalse, reason: m.name);
       }
       for (final m in RunMode.values) {
-        expect(m.showsLiveGap, m == RunMode.trail, reason: m.name);
+        expect(
+          m.showsLiveTruePace,
+          m == RunMode.trail || m == RunMode.free,
+          reason: m.name,
+        );
       }
     });
   });
