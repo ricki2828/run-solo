@@ -25,7 +25,7 @@ Generated straight into the app and the store folder (do not hand-edit; regenera
 | `res/drawable/ic_stat_runsupreme.xml` | Notification small icon, used by `RecorderNotification` with `setColor(#19E6FF)` |
 | `res/drawable/splash_icon.xml` | Android 12 splash icon. Not referenced yet: B3 sets it as `windowSplashScreenAnimatedIcon` on `#0A0B0D` |
 | `store/play/icon-512.png` | Play Store icon, 512 x 512, the launcher artwork cropped to the central 80 dp (Play masks the corners) |
-| `store/play/feature-graphic-1024x500.png` | Play feature graphic: wordmark left, large R right, one lap line through both. Vector version; `--hero` adds the licensed photo (`store/art/LICENSES.md`) |
+| `store/play/feature-graphic-wordmark-1024x500.png` | Alternate Play feature graphic (the primary is built by `store/play/build_screens.py`): wordmark left, large R right, one lap line through both. Vector version; `--hero` adds the licensed photo (`store/art/LICENSES.md`) |
 
 ## Geometry (font units, cap height 700)
 

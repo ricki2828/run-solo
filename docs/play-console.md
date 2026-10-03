@@ -20,26 +20,42 @@ Founder approves the wording (plan §18.9 item 8) before anything is typed into 
 
 ## 1. Store listing
 
-- **App name (30 chars)**: `Run Supreme: 4x4 Interval Run` (29). The brief's alternative
-  `Run Supreme: Norwegian 4x4 Run` is 30, at the limit; founder picks.
-- **Short description (80)**: `4x4 interval timer with GPS pace. Tells you if you beat your last run.` (70)
-- **Long description**: design brief §6, with the A7 privacy paragraph replacing the older line:
+- **App name (30 chars)**: `Run Supreme: 4x4 Interval Run` (29). Founder approved 3-Oct-2026. (The ampersand version is 32 chars, over the limit.)
+- **Short description (80)**: `Run scores, honest verdicts and trail runs. See what is improving. No account.` (78)
+- **Tagline** (feature graphic, first screenshot): Track progress. Get better. Approved 3-Oct-2026; the old "You against your last run" line is retired.
+- **Long description** (source: `store/play/listing.md`):
 
-> Run Supreme is a Norwegian 4x4 timer that records your pace with GPS and tells you, in one word, whether you beat your last 4x4.
+> Run Supreme shows you how your running is going, whatever mix of runs you do.
 >
-> Warm up as long as you like, tap START 4x4, and the app runs every rep and recovery with voice and vibration cues, so your phone can stay in your pocket. When you stop, you get the verdict: FASTER, HOLDING or SLOWER, with the rep paces, fade and recovery pace that decided it. Small differences inside GPS noise are called what they are: no real change.
+> Your Home screen gives you four scores: AEROBIC, SPEED, MID and LONG. Each is a percentile estimate from your own runs, compared with research-based norms for your age and sex. You see what moved, and over what period. Under that is one suggested session and why it would help, with Start already set to it. Tap Change to pick something else.
 >
-> Pair any Bluetooth heart rate strap, including Whoop broadcast, and Run Supreme adds time in zone and tells you when you ran faster at the same effort.
+> Intervals and 4x4
+> Pick a session, warm up as long as you like, then the app runs every rep and recovery with voice and vibration cues. Your phone can stay in your pocket. When you stop you get a plain verdict: faster, holding or slower, with the rep paces and fade that decided it. Differences inside GPS noise are called no real change.
 >
-> Free runs get a clean summary. Every 4x4 goes on a trend line with your bests. Follow a fixed 8-week 4x4 plan or a 5k plan: pick your days, tick sessions off, start the right session from the plan.
+> Big numbers while you run
+> The number that matters is the biggest one on screen, and it changes with the phase: rep pace in a rep, time to go in a recovery. Switch to a live map if you want one, then switch back.
 >
-> No account. No feed. No ads. No analytics of our own. Your recorded route, times and heart rate stay on your phone unless you choose to send them. Map tiles come from Google, which sees the map area you view (on a run's detail screen, or on the record screen if you switch it to MAP during a run) and your IP address. Weather comes from Open-Meteo using your location rounded to about 10 km. Your phone's own geocoder names a run's start point and may use Google Play services. Send a run as a TCX or GPX file any time.
+> Trail runs
+> Trail runs get their own verdicts. Run the same trail again and you are compared with your last run on that trail, not with a flat road. Elevation comes from your phone's barometer where it has one. Grade-adjusted pace is an estimate of your flat-ground equivalent.
 >
-> Coming in the paid version: tempo and easy-run verdicts, adaptive plans, iOS. Join the waitlist inside the app.
+> Follow a route
+> Load a route and follow it, with turn alerts and an off-route warning if you drift.
+>
+> Also
+> - Auto-pause at traffic lights and gates
+> - Pair a Bluetooth heart rate strap for time in zone
+> - Estimated race times from your recent runs
+> - Your bests and recent attempts on a chart, like for like
+> - Send any run to Health Connect, Intervals.icu, or as a TCX or GPX file (works with Strava)
+>
+> Private by default
+> No account. No feed. No ads. Your routes, times and heart rate stay on your phone unless you choose to send them. Map tiles come from Google, which sees the map area you view and your IP address. Weather comes from Open-Meteo using your location rounded to about 10 km. Your phone's own geocoder names a run's start point and may use Google Play services.
+>
+> Run Supreme is a training tool, not medical advice. Scores and estimates are guides based on research, not measurements of your health.
 
 - **Category**: Health & Fitness. **Tags**: Running, Fitness tracker, Interval training.
 - **Countries**: English-speaking non-EU per plan §10: AU, NZ, US, CA, GB, SG, ZA. (IE is EU, so not in the list.)
-- **Graphics**: icon `store/play/icon-512.png` (Lap Line R), feature graphic `store/play/feature-graphic-1024x500.png` (vector version until the hero photo is licensed, `store/art/LICENSES.md`); both rebuilt by `assets/brand/build_brand.py`; 6 screenshots 1080x2400 with the brief's captions; HR pairing as #7 if there is room. No Hyrox marks or keywords anywhere.
+- **Graphics**: icon `store/play/icon-512.png` (Lap Line R), feature graphic `store/play/feature-graphic-1024x500.png` (progress direction, built by `store/play/build_screens.py`; the wordmark version is `feature-graphic-wordmark-1024x500.png` from `assets/brand/build_brand.py`); 8 screenshots 1080x1920 in `store/play/screens/` (also `build_screens.py`; Play wants each side 320-3840 px and the long side at most twice the short one, so 1080x2400 would be rejected). Screenshot 07 (live map) uses a fake-map golden: replace with a real device capture before upload. No Hyrox marks or keywords anywhere.
 - **Contact details**: email above; website `https://runsolo.app`.
 
 ## 2. Privacy policy

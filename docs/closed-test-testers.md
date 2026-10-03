@@ -27,7 +27,7 @@ Release notes (first closed release):
 
 ## Message to send testers (copy, paste, personalise the first line)
 
-> Hey, thanks for helping test Run Supreme. It is a simple Android running app: a 4x4 interval timer that records your pace with GPS and tells you if you beat your last run. No account, no ads, your runs stay on your phone.
+> Hey, thanks for helping test Run Supreme. It is a simple Android running app: tracks your run scores and progress, times 4x4 and interval sessions, and records trail runs with GPS. No account, no ads, your runs stay on your phone.
 >
 > **To get it (two steps, both needed):**
 > 1. Open this link on your phone, signed in to the Google account your Play Store uses, and tap **Become a tester**: `<opt-in link>`

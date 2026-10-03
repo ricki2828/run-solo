@@ -27,7 +27,7 @@ void main() {
       ),
     );
     // One frame, no post-frame work yet: this is what the phone shows first.
-    expect(find.text('YOU AGAINST\nYOUR LAST RUN'), findsOneWidget);
+    expect(find.text('TRACK PROGRESS.\nGET BETTER.'), findsOneWidget);
     expect(find.byType(HomeScreen), findsNothing);
   });
 
@@ -49,7 +49,7 @@ void main() {
     await settleAnimations(tester);
     expect(services.settings.settings.onboardingDone, isTrue);
     expect(find.byType(HomeScreen), findsOneWidget);
-    expect(find.text('YOU AGAINST\nYOUR LAST RUN'), findsNothing);
+    expect(find.text('TRACK PROGRESS.\nGET BETTER.'), findsNothing);
   });
 
   testWidgets('back from set up lands on the intro, never Home', (
@@ -64,7 +64,7 @@ void main() {
 
     await tester.binding.handlePopRoute();
     await settleAnimations(tester);
-    expect(find.text('YOU AGAINST\nYOUR LAST RUN'), findsOneWidget);
+    expect(find.text('TRACK PROGRESS.\nGET BETTER.'), findsOneWidget);
     expect(find.byType(HomeScreen), findsNothing);
     expect(services.settings.settings.onboardingDone, isFalse);
   });
@@ -84,7 +84,7 @@ void main() {
     await pumpTimes(tester, 5);
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(RecordingScreen), findsOneWidget);
-    expect(find.text('YOU AGAINST\nYOUR LAST RUN'), findsNothing);
+    expect(find.text('TRACK PROGRESS.\nGET BETTER.'), findsNothing);
     expect(services.settings.settings.onboardingDone, isFalse);
   });
 
@@ -158,7 +158,7 @@ void main() {
     final fade = find.byKey(const ValueKey('more-below-fade'));
     await pumpApp(tester, fakeServices(settings: _fresh), onboarding: true);
     await settleAnimations(tester);
-    expect(find.text('YOU AGAINST\nYOUR LAST RUN'), findsOneWidget);
+    expect(find.text('TRACK PROGRESS.\nGET BETTER.'), findsOneWidget);
     expect(fade, findsNothing, reason: 'the intro fits at 360 x 780');
 
     tester.view.physicalSize = const Size(1080, 640 * 3.0);

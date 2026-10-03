@@ -148,10 +148,10 @@ class _OnboardingIntro extends StatelessWidget {
               const SizedBox(height: Space.x48),
               const LapLineMark(height: 48),
               const SizedBox(height: Space.x32),
-              Text('YOU AGAINST\nYOUR LAST RUN', style: text.displayMedium),
+              Text('TRACK PROGRESS.\nGET BETTER.', style: text.displayMedium),
               const SizedBox(height: Space.x16),
               Text(
-                'Record a 4x4. Next time you get a verdict.',
+                'See your scores. Get a clear next session.',
                 style: text.bodyLarge?.copyWith(color: t.inkSecondary),
               ),
               const SizedBox(height: Space.x24),
