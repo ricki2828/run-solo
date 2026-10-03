@@ -969,14 +969,14 @@ class _AllTable extends StatelessWidget {
             child: Row(
               children: [
                 SizedBox(width: 22, child: Text('#', style: _head(t))),
-                SizedBox(width: 76, child: Text(valueHeader, style: _head(t))),
-                SizedBox(width: 56, child: Text('BEHIND', style: _head(t))),
+                SizedBox(width: 68, child: Text(valueHeader, style: _head(t))),
+                SizedBox(width: 52, child: Text('BEHIND', style: _head(t))),
                 Expanded(child: Text('DATE', style: _head(t))),
                 InkWell(
                   key: const ValueKey('board-heat-info'),
                   onTap: () => showTruePaceInfoSheet(context),
                   child: SizedBox(
-                    width: 76,
+                    width: 70,
                     child: Text(
                       'ACTUAL (i)',
                       style: _head(t),
@@ -1030,7 +1030,7 @@ class _AllTable extends StatelessWidget {
                     ),
             ),
             SizedBox(
-              width: 76,
+              width: 68,
               child: Text(
                 view.fmt(view.board.rankValue(r), units),
                 style: RunSoloType.label13.copyWith(
@@ -1040,7 +1040,7 @@ class _AllTable extends StatelessWidget {
               ),
             ),
             SizedBox(
-              width: 56,
+              width: 52,
               child: Text(
                 view.gap(view.board.rankValue(r), units),
                 style: RunSoloType.label13.copyWith(
@@ -1070,7 +1070,7 @@ class _AllTable extends StatelessWidget {
               ),
             ),
             SizedBox(
-              width: 76,
+              width: 70,
               child: Text(
                 view.fmt(r.metric, units),
                 style: RunSoloType.label13.copyWith(
