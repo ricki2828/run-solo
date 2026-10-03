@@ -44,7 +44,8 @@ class RouteSignature {
   /// Under this distance a run has no usable route.
   static const double minLengthM = 500;
 
-  /// The polyline is thinned until it has at most this many points.
+  /// The polyline is thinned towards this many points, as far as the
+  /// deviation cap allows (a long twisty trail keeps more).
   static const int maxPoints = 60;
 
   /// Fixes worse than this accuracy are left out.
@@ -61,10 +62,14 @@ class RouteSignature {
     if (raw.length < 2) return null;
     final line = _Local(raw.first);
     final xy = [for (final p in raw) line.project(p)];
+    // Thin towards [maxPoints], but never so far that the simplified line
+    // strays from the track by more than half the match tolerance: a long
+    // twisty trail keeps more points rather than losing its shape.
+    const maxEps = RouteMatch.coverTolM / 2;
     var eps = 10.0;
     var keep = _simplify(xy, eps);
-    while (keep.length > maxPoints) {
-      eps *= 1.5;
+    while (keep.length > maxPoints && eps < maxEps) {
+      eps = math.min(eps * 1.5, maxEps);
       keep = _simplify(xy, eps);
     }
     if (keep.length < 2) return null;

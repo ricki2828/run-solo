@@ -196,4 +196,92 @@ void main() {
   test('the same trail 4 percent bigger still matches', () {
     expect(RouteMatch.same(clean, noisy(scale: 1.04, noiseM: 3)), isTrue);
   });
+
+  group('a long twisty trail', () {
+    // About 30 km of switchbacks: a drift plus two wiggles, a fix every 10 m
+    // of path, so thinning to 60 points would cut every corner.
+    List<(double, double)> twisty({double noiseM = 0, int seed = 1}) {
+      final rnd = math.Random(seed);
+      const lat0 = 37.4, lon0 = 24.9, mPerDeg = 111194.9;
+      final kx = math.cos(lat0 * math.pi / 180) * mPerDeg;
+      final out = <(double, double)>[];
+      for (var s = 0.0; s <= 24000; s += 10) {
+        final x =
+            s * 0.6 +
+            900 * math.sin(s / 1700) +
+            250 * math.sin(s / 210) +
+            (rnd.nextDouble() - 0.5) * 2 * noiseM;
+        final y =
+            s * 0.8 +
+            700 * math.cos(s / 1300) +
+            200 * math.sin(s / 170) +
+            (rnd.nextDouble() - 0.5) * 2 * noiseM;
+        out.add((lat0 + y / mPerDeg, lon0 + x / kx));
+      }
+      return out;
+    }
+
+    test(
+      'keeps its shape: no point of the track is far from the signature',
+      () {
+        final fixes = twisty();
+        final s = sig(fixes);
+        expect(s.points.length, greaterThan(RouteSignature.maxPoints));
+        expect(RouteMatch.similarity(s, s), 1);
+        // Every fix lies within the cap of the simplified line.
+        final local = [
+          for (final p in s.points)
+            (
+              (p.lon - s.start.lon) *
+                  111194.9 *
+                  math.cos(s.start.lat * math.pi / 180),
+              (p.lat - s.start.lat) * 111194.9,
+            ),
+        ];
+        var worst = 0.0;
+        for (final f in fixes) {
+          final x =
+              (f.$2 - s.start.lon) *
+              111194.9 *
+              math.cos(s.start.lat * math.pi / 180);
+          final y = (f.$1 - s.start.lat) * 111194.9;
+          var best = double.infinity;
+          for (var i = 0; i + 1 < local.length; i++) {
+            final (ax, ay) = local[i];
+            final (bx, by) = local[i + 1];
+            final dx = bx - ax, dy = by - ay;
+            final l2 = dx * dx + dy * dy;
+            final t = l2 == 0
+                ? 0.0
+                : (((x - ax) * dx + (y - ay) * dy) / l2).clamp(0.0, 1.0);
+            best = math.min(
+              best,
+              math.sqrt(
+                math.pow(x - (ax + t * dx), 2) + math.pow(y - (ay + t * dy), 2),
+              ),
+            );
+          }
+          worst = math.max(worst, best);
+        }
+        expect(worst, lessThanOrEqualTo(RouteMatch.coverTolM / 2 + 2));
+      },
+    );
+
+    test('matches itself with GPS noise, and not its reverse', () {
+      final clean = twisty();
+      final a = sig(clean);
+      final b = sig(
+        twisty(noiseM: 5, seed: 9),
+        stepMs: 700,
+        distanceM: lengthOf(clean),
+      );
+      expect(RouteMatch.same(a, b), isTrue);
+      expect(RouteMatch.same(b, a), isTrue);
+      final back = sig(
+        twisty(noiseM: 4, seed: 3).reversed.toList(),
+        distanceM: lengthOf(clean),
+      );
+      expect(RouteMatch.same(a, back), isFalse);
+    });
+  });
 }
