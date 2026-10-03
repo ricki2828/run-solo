@@ -85,7 +85,7 @@ void main() {
       expect(find.text('FREE RUN'), findsNothing);
       expect(find.byKey(const ValueKey('trail-suggest')), findsNothing);
       // A Trail run gets the trail result (this file has GPS altitude only,
-      // no barometer elevation, so no effort pace to judge).
+      // no barometer elevation, so no true pace to judge).
       expect(find.byType(TrailVerdictScreen), findsOneWidget);
       expect(find.text('NO VERDICT'), findsOneWidget);
     });

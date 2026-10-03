@@ -18,4 +18,11 @@
 ///    none), parkrun copy takes the flavour's event name, courses key the
 ///    comparison, and a plausible official time replaces the GPS finish.
 ///    Every other verdict keeps its words (re-frozen without history).
-const int engineVersion = 4;
+///
+/// 5: True Pace. Every pace a verdict compares is the pace with the hills
+///    (Minetti 2002) and the heat (Hadley table) taken out, always on (the
+///    "Compare heat-adjusted paces" setting is retired). A flat, cool run, or
+///    one with no elevation or weather, compares on its actual pace exactly as
+///    before; only a hilly or hot one reads differently. Priors enter at their
+///    own True Pace, so runs without weather are no longer left out.
+const int engineVersion = 5;

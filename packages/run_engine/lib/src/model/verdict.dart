@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../engine/true_pace.dart';
 import '../run_mode.dart';
 import 'run_file.dart';
 import 'sidecar.dart';
@@ -58,8 +59,9 @@ class Verdict {
     this.inputsKey = '',
     this.comparisonNote,
     this.nominalRepMetres,
-    this.heatCompare = false,
-    this.heatNote,
+    this.rawSecPerKm,
+    this.gradeFactor = 1,
+    this.heatFactor = 1,
   });
 
   final VerdictStage stage;
@@ -112,17 +114,39 @@ class Verdict {
   /// km, the UI shows them as the time for this distance (pace × m ÷ 1000).
   final int? nominalRepMetres;
 
-  /// W2: computed with "Compare heat-adjusted paces" on. A frozen verdict
-  /// from the other setting is recomputed (the flip is like an engine bump).
-  final bool heatCompare;
+  /// True Pace: the actual (raw) work pace of this run, s/km, when hills or
+  /// heat moved it; null on a flat cool run, where [currentSecPerKm] IS the
+  /// actual pace. [currentSecPerKm] and [baselineSecPerKm] are always True
+  /// Pace (hills and heat taken out).
+  final double? rawSecPerKm;
 
-  /// W2, only with [heatCompare]: which pace the verdict compared,
-  /// "Compared on heat-adjusted pace." or why it fell back to raw.
-  final String? heatNote;
+  /// The hills and heat multipliers that turned the raw pace into
+  /// [currentSecPerKm] (1 = no effect).
+  final double gradeFactor;
+  final double heatFactor;
 
-  /// This verdict, stamped with the heat-compare setting it was computed
-  /// under and its note.
-  Verdict withHeat({required bool compare, String? note}) => Verdict(
+  /// The factors as [TruePaceFactors].
+  TruePaceFactors get truePaceFactors =>
+      TruePaceFactors(grade: gradeFactor, heat: heatFactor);
+
+  /// "4:22 true pace (4:31 actual, hot day)" for a verdict whose hills or
+  /// heat moved the pace; null when True Pace equals the actual pace.
+  String? truePaceLine(Units units) {
+    final raw = rawSecPerKm;
+    if (raw == null || truePaceFactors.neutral) return null;
+    return TruePaceText.headline(
+      raw,
+      truePaceFactors,
+      units,
+      repMetres: nominalRepMetres?.toDouble(),
+    );
+  }
+
+  /// This verdict, stamped with the hills and heat behind its paces.
+  Verdict withTruePace({
+    required double? rawSecPerKm,
+    required TruePaceFactors factors,
+  }) => Verdict(
     stage: stage,
     headline: headline,
     subline: subline,
@@ -142,8 +166,9 @@ class Verdict {
     inputsKey: inputsKey,
     comparisonNote: comparisonNote,
     nominalRepMetres: nominalRepMetres,
-    heatCompare: compare,
-    heatNote: note,
+    rawSecPerKm: factors.neutral ? null : rawSecPerKm,
+    gradeFactor: factors.grade,
+    heatFactor: factors.heat,
   );
 
   static String inputsKeyFor(
@@ -191,9 +216,11 @@ class Verdict {
     'inputs_key': inputsKey,
     'comparison_note': comparisonNote,
     'nominal_rep_m': nominalRepMetres,
-    // W2: only when on, so every raw verdict is byte-for-byte unchanged.
-    if (heatCompare) 'heat_compare': true,
-    'heat_note': ?heatNote,
+    // True Pace: only when hills or heat moved the pace, so every flat,
+    // cool verdict is byte-for-byte unchanged.
+    'raw_s_per_km': ?rawSecPerKm,
+    if (gradeFactor != 1) 'grade_x': gradeFactor,
+    if (heatFactor != 1) 'heat_x': heatFactor,
   };
 
   factory Verdict.fromJson(Map<String, Object?> json) {
@@ -253,8 +280,9 @@ class Verdict {
       inputsKey: (json['inputs_key'] as String?) ?? '',
       comparisonNote: json['comparison_note'] as String?,
       nominalRepMetres: optInt('nominal_rep_m'),
-      heatCompare: json['heat_compare'] == true,
-      heatNote: json['heat_note'] as String?,
+      rawSecPerKm: optDouble('raw_s_per_km'),
+      gradeFactor: optDouble('grade_x') ?? 1,
+      heatFactor: optDouble('heat_x') ?? 1,
     );
   }
 }

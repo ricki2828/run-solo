@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../model/run_file.dart';
 import 'run_times.dart';
+import 'true_pace.dart';
 
 /// Elevation analysis over a run file's fused elevation (`Sample.elevM`):
 /// total climb and descent with a dead band, the profile against distance,
@@ -216,6 +217,14 @@ class Climb {
   final double descentM;
 }
 
+/// Cumulative time, distance and flat-equivalent distance at every sample.
+class _Cumulative {
+  const _Cumulative(this.t, this.dist, this.eq);
+  final List<int> t;
+  final List<double> dist;
+  final List<double> eq;
+}
+
 /// Everything the elevation views and the index row read from a run.
 class RunElevation {
   RunElevation._({
@@ -225,9 +234,15 @@ class RunElevation {
     required this.ascentM,
     required this.descentM,
     required this.gapSecPerKm,
-  });
+    required _Cumulative cum,
+  }) : _cumT = cum.t,
+       _cumDist = cum.dist,
+       _cumEq = cum.eq;
 
   final ElevSource src;
+  final List<int> _cumT;
+  final List<double> _cumDist;
+  final List<double> _cumEq;
   final List<ElevPoint> points;
   final List<ClimbStep> steps;
 
@@ -260,6 +275,9 @@ class RunElevation {
     var eqM = 0.0;
     double? lastGrade;
     double? prevDist;
+    // Cumulative flat-equivalent distance at every sample, so True Pace can
+    // read the grade factor of any stretch (a rep, a best effort).
+    final cumT = <int>[], cumDist = <double>[], cumEq = <double>[];
     for (final s in run.samples) {
       final dist = s.distM;
       final e = s.elevM;
@@ -268,6 +286,9 @@ class RunElevation {
           eqM += (dist - prevDist) * Gap.ratio(lastGrade ?? 0);
         }
         prevDist = dist;
+        cumT.add(s.tMs);
+        cumDist.add(dist);
+        cumEq.add(eqM);
         continue;
       }
       // Samples inside a pause or a dark gap: the level is followed, the
@@ -288,6 +309,9 @@ class RunElevation {
         eqM += (dist - prevDist) * Gap.ratio(lastGrade ?? 0);
       }
       prevDist = dist;
+      cumT.add(s.tMs);
+      cumDist.add(dist);
+      cumEq.add(eqM);
     }
     if (points.length < 2) return null;
     final movingS = RunTimes.movingMs(run) / 1000;
@@ -301,7 +325,103 @@ class RunElevation {
       ascentM: tracker.ascentM,
       descentM: tracker.descentM,
       gapSecPerKm: gap,
+      cum: _Cumulative(cumT, cumDist, cumEq),
     );
+  }
+
+  /// The whole run's hill factor on pace for True Pace (see `TruePace`):
+  /// flat-equivalent distance over distance, so a hilly run is under 1 (the
+  /// flat pace is quicker than the clock pace). 1 when the run is too short,
+  /// or its elevation is GPS-only (too noisy for the grade model).
+  double get gradeFactor => gradeFactorBetweenM(0, double.infinity);
+
+  /// Booked climb plus descent (dead band applied, so sensor wobble books
+  /// nothing) per km over a stretch; under [minHillyMPerKm] the stretch is
+  /// flat and its hills factor is exactly 1.
+  static const double minHillyMPerKm = 5;
+
+  bool _hilly(double plainM, bool Function(ClimbStep) inStretch) {
+    var m = 0.0;
+    for (final s in steps) {
+      if (inStretch(s)) m += s.deltaM.abs();
+    }
+    return m / (plainM / 1000) >= minHillyMPerKm;
+  }
+
+  /// The hill factor over the stretch between two distances (metres from
+  /// the start); 1 when there is too little of it or the elevation is
+  /// GPS-only. Clamped to `TruePace.minGrade`..`TruePace.maxGrade`.
+  double gradeFactorBetweenM(double fromM, double toM) {
+    if (src != ElevSource.baro || _cumDist.length < 2) return 1;
+    final a = _eqAtDist(fromM), b = _eqAtDist(toM);
+    final plain = b.$1 - a.$1, eq = b.$2 - a.$2;
+    if (plain < minGradeStretchM || eq <= 0) return 1;
+    if (!_hilly(plain, (s) => s.distM > a.$1 && s.distM <= b.$1)) return 1;
+    return TruePace.clampGrade(plain / eq);
+  }
+
+  /// The hill factor between two times (ms since the run's start): a rep,
+  /// a lap or a best-effort window.
+  double gradeFactorBetweenMs(int t0Ms, int t1Ms) {
+    final (plain, eq) = flatEquivalentBetweenMs(t0Ms, t1Ms);
+    if (plain < minGradeStretchM || eq <= 0) return 1;
+    if (!_hilly(plain, (s) => s.tMs > t0Ms && s.tMs <= t1Ms)) return 1;
+    return TruePace.clampGrade(plain / eq);
+  }
+
+  /// The hill factor over several time windows together (the clean reps of
+  /// a session), weighted by distance; 1 when they are flat or too short.
+  double gradeFactorOverWindows(Iterable<(int, int)> windowsMs) {
+    var plain = 0.0, eq = 0.0;
+    final ws = windowsMs.toList();
+    for (final (t0, t1) in ws) {
+      final (p, e) = flatEquivalentBetweenMs(t0, t1);
+      plain += p;
+      eq += e;
+    }
+    if (plain < minGradeStretchM || eq <= 0) return 1;
+    if (!_hilly(plain, (s) => ws.any((w) => s.tMs > w.$1 && s.tMs <= w.$2))) {
+      return 1;
+    }
+    return TruePace.clampGrade(plain / eq);
+  }
+
+  /// Distance and flat-equivalent distance covered between two times, so a
+  /// set of stretches (the reps of a session) can be weighted by distance.
+  /// (0, 0) for GPS-only elevation.
+  (double, double) flatEquivalentBetweenMs(int t0Ms, int t1Ms) {
+    if (src != ElevSource.baro || _cumT.length < 2 || t1Ms <= t0Ms) {
+      return (0, 0);
+    }
+    final a = _atTime(t0Ms), b = _atTime(t1Ms);
+    return (b.$1 - a.$1, b.$2 - a.$2);
+  }
+
+  /// Under this much distance a stretch's grade factor is noise.
+  static const double minGradeStretchM = 200;
+
+  (double, double) _atTime(int tMs) {
+    // Before the first sample the run has covered nothing measured yet.
+    final i = _lastAtOrBefore(_cumT.length, (k) => _cumT[k] <= tMs);
+    return i < 0 ? (_cumDist.first, _cumEq.first) : (_cumDist[i], _cumEq[i]);
+  }
+
+  (double, double) _eqAtDist(double distM) {
+    final i = _lastAtOrBefore(_cumDist.length, (k) => _cumDist[k] <= distM);
+    return i < 0 ? (_cumDist.first, _cumEq.first) : (_cumDist[i], _cumEq[i]);
+  }
+
+  static int _lastAtOrBefore(int n, bool Function(int) ok) {
+    var lo = -1, hi = n;
+    while (hi - lo > 1) {
+      final mid = (lo + hi) >> 1;
+      if (ok(mid)) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    return lo;
   }
 
   /// Climb booked inside each lap (t0 < step time <= t1; the last lap takes

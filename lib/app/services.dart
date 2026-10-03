@@ -126,10 +126,9 @@ class AppServices {
       _lastFinishedRunId = s.runId;
       final id = s.runId!;
       // Hold first scoring before any asynchronous work can let Home or the
-      // result screen freeze a raw verdict. Non-intervals and an off setting
-      // have no weather-adjusted verdict to await.
+      // result screen freeze a verdict without its heat. Non-intervals and
+      // an off weather setting have no heat-adjusted verdict to await.
       if (s.mode == RecordMode.intervals &&
-          settings.settings.compareHeatAdjusted &&
           settings.settings.weatherPerRun &&
           history is FileRunStore) {
         (history as FileRunStore).holdFirstVerdictForWeather(id);
@@ -271,7 +270,6 @@ class AppServices {
             fake: rec,
             profile: () => MaxHr.profileFor(settingsCtl.settings, clock()),
             now: clock,
-            heatCompare: () => settingsCtl.settings.compareHeatAdjusted,
           ),
       maps: maps ?? const FakeMapSurfaceFactory(),
       transfer: xfer,
@@ -324,7 +322,6 @@ class AppServices {
     final history = FileRunStore(
       Directory('${support.path}/runs'),
       profile: () => MaxHr.profileFor(settings.settings, DateTime.now()),
-      heatCompare: () => settings.settings.compareHeatAdjusted,
     );
     final services = AppServices(
       recorder: PigeonRecorderGateway(),

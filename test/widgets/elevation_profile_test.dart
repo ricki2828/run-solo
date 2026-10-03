@@ -15,6 +15,7 @@ void main() {
     engine.ElevSource src = engine.ElevSource.baro,
     Units units = Units.km,
     ValueChanged<engine.ElevPoint?>? onScrub,
+    double? truePace = 321,
   }) async {
     final run = withElevation(
       freeRunFile(n: 70, start: start, seconds: 1800),
@@ -30,6 +31,7 @@ void main() {
             child: ElevationProfile(
               elevation: e,
               units: units,
+              truePaceSecPerKm: truePace,
               onScrub: onScrub,
             ),
           ),
@@ -39,19 +41,21 @@ void main() {
     return e;
   }
 
-  testWidgets('shows climb, descent, GAP as an estimate and the source', (
+  testWidgets('shows climb, descent, true pace as an estimate and the source', (
     tester,
   ) async {
     final e = await pump(tester);
     expect(find.text('ELEVATION'), findsOneWidget);
     expect(find.text('${e.ascentM.round()} m'), findsOneWidget);
     expect(find.text('${e.descentM.round()} m'), findsOneWidget);
-    expect(
-      find.textContaining('GRADE-ADJUSTED PACE (ESTIMATE)'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('TRUE PACE (ESTIMATE)'), findsOneWidget);
     expect(find.byKey(const ValueKey('elevation-gap')), findsOneWidget);
     expect(find.textContaining('barometer'), findsOneWidget);
+  });
+
+  testWidgets('no true pace, no tile', (tester) async {
+    await pump(tester, truePace: null);
+    expect(find.byKey(const ValueKey('elevation-gap')), findsNothing);
   });
 
   testWidgets('a GPS-only run says it is rougher', (tester) async {

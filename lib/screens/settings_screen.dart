@@ -414,18 +414,16 @@ class _SettingsScreenState extends State<SettingsScreen>
                 value: s.weatherPerRun,
                 onChanged: (v) => set((x) => x.copyWith(weatherPerRun: v)),
               ),
-              _Toggle(
-                label: 'Compare heat-adjusted paces',
-                value: s.compareHeatAdjusted,
-                onChanged: (v) =>
-                    set((x) => x.copyWith(compareHeatAdjusted: v)),
-              ),
               Padding(
                 padding: const EdgeInsets.only(bottom: Space.x12),
                 child: Text(
-                  'Verdicts compare paces adjusted for heat and humidity '
-                  '(research-based estimate). Runs without weather compare '
-                  'on raw pace.',
+                  'True pace is your pace with the hills and the heat taken '
+                  'out: what it would be on flat ground on a cool day. Every '
+                  'comparison, score, board and trend uses it, and your '
+                  'actual pace is always shown beside it. Hills come from an '
+                  'energy model and heat from temperature and dew point '
+                  '(research-based), so a run with no weather or no '
+                  'barometer reading is only adjusted for what we know.',
                   style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
               ),

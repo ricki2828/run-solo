@@ -142,14 +142,14 @@ void main() {
     });
   });
 
-  group('no match: effort pace', () {
+  group('no match: true pace', () {
     final old = trailLoopRun(n: 1, start: d1, secPerKm: 420);
 
     testWidgets('a reversed loop is a different trail', (tester) async {
       final now = trailLoopRun(n: 5, start: d2, secPerKm: 400, reverse: true);
       await show(tester, now, [old]);
       expect(find.text('ON THIS TRAIL'), findsNothing);
-      expect(sub(tester), startsWith('Effort pace '));
+      expect(sub(tester), startsWith('True pace '));
       expect(sub(tester), contains('recent trail runs'));
       expect(find.textContaining('First time on this trail'), findsOneWidget);
     });
@@ -158,7 +158,7 @@ void main() {
       final now = trailLoopRun(n: 6, start: d2);
       await show(tester, now, []);
       expect(word(tester), 'BASELINE SET');
-      expect(sub(tester), startsWith('Effort pace '));
+      expect(sub(tester), contains(' true pace'));
       expect(sub(tester), endsWith('Your next trail run gets a verdict.'));
     });
 
@@ -166,7 +166,7 @@ void main() {
       final flat = trailLoopRun(n: 7, start: d2).copyWith(elevSrc: null);
       await show(tester, flat, []);
       expect(word(tester), 'NO VERDICT');
-      expect(sub(tester), 'No elevation on this run, so no effort pace.');
+      expect(sub(tester), 'No elevation on this run, so no true pace.');
     });
   });
 
@@ -237,7 +237,7 @@ void main() {
     });
   });
 
-  testWidgets('the score detail says trail runs count using effort pace', (
+  testWidgets('the score detail says trail runs count at true pace', (
     tester,
   ) async {
     final hilly = engine.LiveCandidate(
@@ -246,7 +246,8 @@ void main() {
         date: now().subtract(const Duration(days: 2)),
         mode: engine.RunMode.trail,
         trailDistanceM: 15500,
-        trailEffortMs: (15.5 * 330 * 1000).round(),
+        trailMovingMs: (15.5 * 440 * 1000).round(),
+        gradeFactor: 0.75,
       ),
       const engine.RunDerived(
         bestEfforts: engine.RunBestEfforts(efforts: {}, fromStartSplitsMs: []),
@@ -267,7 +268,7 @@ void main() {
     );
     await pumpTimes(tester, 8);
     expect(find.byKey(const ValueKey('analysis-long-trail')), findsOneWidget);
-    expect(find.text('Trail runs count using effort pace.'), findsWidgets);
+    expect(find.text('Trail runs count at true pace.'), findsWidgets);
     // A lane no trail run set carries no such line.
     expect(find.byKey(const ValueKey('analysis-mid-trail')), findsNothing);
   });

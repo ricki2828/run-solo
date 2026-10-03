@@ -363,34 +363,30 @@ void main() {
       ).toJson(),
     );
 
-    test(
-      'adjusted twin and line; the verdict is word for word the raw one',
-      () {
-        final raw = engine.analyze(run, now: fixedNow);
-        final hot = engine.analyze(
-          run,
-          sidecar: withWeather(28, 21),
-          now: fixedNow,
-        );
-        expect(
-          hot.verdict!.toJson()..remove('computed_at'),
-          raw.verdict!.toJson()..remove('computed_at'),
-        );
-        final adj = hot.heat!.fraction!;
-        expect(
-          hot.heatAdjustedWorkPaceSecPerKm,
-          closeTo(raw.intervals!.avgWorkPaceSecPerKm! * (1 - adj), 1e-9),
-        );
-        expect(
-          hot.heatLine,
-          'Heat-adjusted estimate: '
-          '${PaceFormat.pace(hot.heatAdjustedWorkPaceSecPerKm!, run.units)} '
-          '(28 °C, dew point 21).',
-        );
-        expect(raw.heatLine, isNull);
-        expect(raw.heatAdjustedWorkPaceSecPerKm, isNull);
-      },
-    );
+    test('true pace twin; the verdict compares it, the actual pace stays', () {
+      final raw = engine.analyze(run, now: fixedNow);
+      final hot = engine.analyze(
+        run,
+        sidecar: withWeather(28, 21),
+        now: fixedNow,
+      );
+      final adj = hot.heat!.fraction!;
+      expect(
+        hot.trueWorkPaceSecPerKm,
+        closeTo(raw.intervals!.avgWorkPaceSecPerKm! * (1 - adj), 1e-9),
+      );
+      // The verdict compares the true pace; the actual one rides along.
+      expect(hot.verdict!.currentSecPerKm, hot.trueWorkPaceSecPerKm);
+      expect(
+        hot.verdict!.rawSecPerKm,
+        closeTo(raw.intervals!.avgWorkPaceSecPerKm!, 1e-9),
+      );
+      // The heat share is in the True Pace breakdown, not a second line.
+      expect(hot.heatLine, isNull);
+      expect(raw.heatLine, isNull);
+      expect(raw.trueWorkPaceSecPerKm, raw.intervals!.avgWorkPaceSecPerKm);
+      expect(raw.verdict!.rawSecPerKm, isNull);
+    });
 
     test('cool: no line; too hot: said, not adjusted; pending: nothing', () {
       expect(
@@ -404,8 +400,15 @@ void main() {
         sidecar: withWeather(38, 28),
         now: fixedNow,
       );
-      expect(tooHot.heatLine, 'Too hot to compare (38 °C, dew point 28).');
-      expect(tooHot.heatAdjustedWorkPaceSecPerKm, isNull);
+      expect(
+        tooHot.heatLine,
+        'Too hot to adjust (38 °C, dew point 28), so true pace leaves the '
+        'heat in.',
+      );
+      expect(
+        tooHot.trueWorkPaceSecPerKm,
+        tooHot.intervals!.avgWorkPaceSecPerKm,
+      );
       final pending = engine.analyze(
         run,
         sidecar: RunSidecar(

@@ -40,7 +40,7 @@ class FitnessHero {
   final DateTime asOf;
 
   /// What set it: "Cooper test", "5K", "10K", "parkrun", "run", "21K",
-  /// "marathon" or "trail run" (counted at its effort pace).
+  /// "marathon" or "trail run" (counted at its true pace).
   final String sourceLabel;
 
   /// The run behind this reading; the Home score opens that run.
@@ -122,15 +122,13 @@ class FitnessHero {
       }
     }
     for (final c in runs) {
-      // A qualifying Trail run counts at its effort time (see TrailEffort).
-      final d = c.input.trailDistanceM, ms = c.input.trailEffortMs;
+      // A qualifying Trail run counts at its true pace (see TrailScore).
+      final d = c.input.trailDistanceM, ms = c.input.trailMovingMs;
       if (d != null && ms != null) {
         out.add(
           _Obs(
             RunIdentity.localStart(c.input.date, c.input.utcOffsetMin),
-            c.input.heatFraction == null
-                ? vdot(d, ms)
-                : vdot(d, (ms * (1 - c.input.heatFraction!)).round()),
+            vdot(d, c.input.factorsFor().applyForScore(ms.toDouble()).round()),
             'trail run',
             c.input.runId,
           ),

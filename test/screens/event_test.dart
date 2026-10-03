@@ -145,7 +145,7 @@ void main() {
     await pumpTimes(tester, 6);
     expect(find.text('COURSE 1 · 5 RUNS'), findsOneWidget);
     expect(find.text('LAST 5'), findsOneWidget);
-    expect(find.text('HEAT-ADJ'), findsOneWidget);
+    expect(find.text('TRUE PACE'), findsOneWidget);
     expect(find.byKey(const ValueKey('board-trend')), findsOneWidget);
     final best = CourseBoard.fold(runs, course, now: services.now()).best!;
     expect(

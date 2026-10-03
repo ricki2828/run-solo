@@ -183,7 +183,7 @@ class ProgressHeadline {
     '4x4 work pace' => '4x4',
     '1K' => '1K effort',
     'mile' => 'mile effort',
-    'trail run' || engine.TrailEffort.longSource => 'trail run',
+    'trail run' || engine.TrailScore.longSource => 'trail run',
     _ => source,
   };
 

@@ -73,7 +73,8 @@ const List<String> kSteadyHeatSheet = [
       'temperature and dew point table (Maximum Performance Running, 2013). '
       'Hot, humid air slows you; cold never earns a bonus.',
   'Built for steady running. Short hard reps are probably less affected.',
-  'Your verdict always uses the raw pace.',
+  'True pace takes this heat out of your pace, together with the hills, so '
+      'runs on different days compare fairly.',
   '$kOpenMeteoAttribution (CC BY 4.0)',
 ];
 
@@ -297,7 +298,25 @@ class WeatherChip extends StatelessWidget {
 Future<void> showHeatInfoSheet(BuildContext context, {required bool cooper}) =>
     _showSheet(context, cooper ? kCooperHeatSheet : kSteadyHeatSheet);
 
-Future<void> _showSheet(BuildContext context, List<String> paragraphs) {
+/// What true pace is, for the board tables' ACTUAL header.
+const List<String> kTruePaceSheet = [
+  'True pace is your pace with the hills and the heat taken out: what it '
+      'would be on flat ground on a cool day. Boards rank it, and your actual '
+      'value is shown beside it.',
+  'Hills use an energy model (Minetti 2002) and heat uses temperature and dew '
+      'point (Hadley table). Both are research-based estimates. A run with no '
+      'weather or no barometer reading is only adjusted for what we know.',
+  '$kOpenMeteoAttribution (CC BY 4.0)',
+];
+
+Future<void> showTruePaceInfoSheet(BuildContext context) =>
+    _showSheet(context, kTruePaceSheet, title: 'TRUE PACE');
+
+Future<void> _showSheet(
+  BuildContext context,
+  List<String> paragraphs, {
+  String title = 'HEAT ADJUSTMENT',
+}) {
   final t = Theme.of(context).extension<RunSoloTokens>()!;
   return showModalBottomSheet<void>(
     context: context,
@@ -314,7 +333,7 @@ Future<void> _showSheet(BuildContext context, List<String> paragraphs) {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'HEAT ADJUSTMENT',
+              title,
               style: RunSoloType.title28.copyWith(color: t.inkPrimary),
             ),
             for (final p in paragraphs) ...[

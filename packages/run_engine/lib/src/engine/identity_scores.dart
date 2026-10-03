@@ -92,12 +92,14 @@ abstract final class IdentityScores {
           double metres,
           int milliseconds,
           String source,
-          String? board,
-        ) {
+          String? board, [
+          double? grade,
+        ]) {
           if (milliseconds <= 0) return;
-          final adjusted = input.heatFraction == null
-              ? milliseconds
-              : (milliseconds * (1 - input.heatFraction!)).round();
+          final adjusted = input
+              .factorsFor(grade)
+              .applyForScore(milliseconds.toDouble())
+              .round();
           obs.add(
             _Evidence(
               input.runId,
@@ -121,6 +123,7 @@ abstract final class IdentityScores {
                 e.elapsedMs,
                 d == BestEffortDistance.km1 ? '1K' : 'mile',
                 d.key,
+                e.gradeFactor,
               );
             }
           }
@@ -131,6 +134,7 @@ abstract final class IdentityScores {
                 (pace * 1000).round(),
                 '4x4 work pace',
                 input.comparisonKey,
+                input.headlineGradeFactor,
               );
             }
           }
@@ -148,16 +152,17 @@ abstract final class IdentityScores {
                 e.elapsedMs,
                 d == BestEffortDistance.k5 ? '5K' : '10K',
                 d.key,
+                e.gradeFactor,
               );
             }
           }
         } else {
-          // LONG: a Trail run of 15 km or more counts at its effort time
-          // (grade-adjusted, see TrailEffort), never at its hilly pace.
+          // LONG: a Trail run of 15 km or more counts at its true pace (see
+          // TrailScore), never at its hilly pace.
           if (input.mode == RunMode.trail) {
-            final d = input.trailDistanceM, ms = input.trailEffortMs;
+            final d = input.trailDistanceM, ms = input.trailMovingMs;
             if (d != null && ms != null && d >= 15000) {
-              add(d, ms, TrailEffort.longSource, null);
+              add(d, ms, TrailScore.longSource, null);
             }
             continue;
           }
@@ -177,6 +182,7 @@ abstract final class IdentityScores {
                 e.elapsedMs,
                 d == BestEffortDistance.half ? 'Half marathon' : 'Marathon',
                 d.key,
+                e.gradeFactor,
               );
             }
           }

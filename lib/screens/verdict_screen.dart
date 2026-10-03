@@ -164,7 +164,7 @@ class _VerdictScreenState extends State<VerdictScreen> {
               justFinished: widget.justFinished,
             ),
           // A Trail run is judged on the same trail when there is a match,
-          // else on effort pace (engine `TrailVerdict`).
+          // else on true pace (engine `TrailVerdict`).
           RecordMode.trail => TrailVerdictScreen(
             detail: detail,
             all: all,
@@ -782,14 +782,16 @@ class _Lines extends StatelessWidget {
     final lines = <String>[];
     if (v != null) {
       lines.add(v.subline);
-      // W2: "Compared on heat-adjusted pace." once, under the subline, when
-      // the verdict was computed with the heat-compare setting on.
-      if (v.heatNote != null) lines.add(v.heatNote!);
+      // True pace: "4:22 true pace (4:31 actual, hot day)" once, under the
+      // subline, when the hills or the heat moved the pace compared.
+      final truePace = v.truePaceLine(
+        units == Units.mi ? engine.Units.mi : engine.Units.km,
+      );
+      if (truePace != null) lines.add(truePace);
       // I3: "Last time: 4 reps, 3:00 recovery." on its own line (D4).
       if (v.comparisonNote != null) lines.add(v.comparisonNote!);
       if (v.hrLine != null) lines.add(v.hrLine!);
-      // A6: "Heat-adjusted estimate: 4:28/km (28 °C, dew point 21)." after
-      // the HR line; the verdict itself stays on the raw pace.
+      // Too hot for the heat model: said once after the HR line.
       if (a.heatLine != null) lines.add(a.heatLine!);
     }
     if (flagged) {

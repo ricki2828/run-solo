@@ -249,30 +249,21 @@ void main() {
     expect(services.settings.settings.weatherPerRun, isFalse);
   });
 
-  testWidgets('"Compare heat-adjusted paces" defaults off and switches on '
-      '(W2)', (tester) async {
+  testWidgets('True pace has one plain paragraph and no toggle', (
+    tester,
+  ) async {
     final services = fakeServices();
     await pumpApp(tester, services, home: SettingsScreen(now: now));
     await pumpTimes(tester, 3);
-    await scrollTo(tester, find.text('Compare heat-adjusted paces'));
-    final toggle = find.descendant(
-      of: find
-          .ancestor(
-            of: find.text('Compare heat-adjusted paces'),
-            matching: find.byType(Row),
-          )
-          .first,
-      matching: find.byType(Switch),
-    );
-    expect(tester.widget<Switch>(toggle).value, isFalse);
-    await tester.tap(toggle);
-    await pumpTimes(tester, 3);
-    expect(services.settings.settings.compareHeatAdjusted, isTrue);
-    expect(
-      AppSettings.fromJson(services.settings.settings.toJson())
-          .compareHeatAdjusted,
-      isTrue,
-    );
+    await scrollTo(tester, find.textContaining('True pace is your pace'));
+    expect(find.textContaining('hills and the heat taken out'), findsOneWidget);
+    expect(find.text('Compare heat-adjusted paces'), findsNothing);
+    // The paragraph is plain: no em dash, and "estimate" stays in details.
+    final text = tester
+        .widget<Text>(find.textContaining('True pace is your pace'))
+        .data!;
+    expect(text.contains('\u2014'), isFalse);
+    expect(text.toLowerCase().contains('estimate'), isFalse);
   });
 
   testWidgets('Diagnostics shows the phone timings (not in play)', (

@@ -88,7 +88,7 @@ void main() {
     });
 
     test('trail run, from either lane, reads as "trail run"', () {
-      for (final source in ['trail run', engine.TrailEffort.longSource]) {
+      for (final source in ['trail run', engine.TrailScore.longSource]) {
         final s = {
           engine.IdentityLane.aerobic: score(
             engine.IdentityLane.aerobic,

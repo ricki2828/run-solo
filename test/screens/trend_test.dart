@@ -5,7 +5,6 @@ import 'package:run_solo/screens/trend_screen.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/run_index.dart';
-import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/widgets/recent_bars_chart.dart';
 
 import '../helpers.dart';
@@ -284,10 +283,10 @@ void main() {
       final km = comparableRuns(all, RecordMode.free, Units.km)!;
       // 5.8 km rounds to 6: 5 to 7 km, so only the latest.
       expect(km.points.length, 1);
-      expect(km.caption, 'Average pace, runs of 5 to 7 km only');
+      expect(km.caption, 'True pace, runs of 5 to 7 km only');
       final mi = comparableRuns([run(5800)], RecordMode.free, Units.mi)!;
       // 5.8 km = 3.6 mi, rounds to 3.5: 2.5 to 4.5 mi.
-      expect(mi.caption, 'Average pace, runs of 2.5 to 4.5 mi only');
+      expect(mi.caption, 'True pace, runs of 2.5 to 4.5 mi only');
     });
   });
 
@@ -339,7 +338,7 @@ void main() {
     });
   });
 
-  group('W2 heat-adjusted series', () {
+  group('true pace series', () {
     final files = [
       for (var i = 0; i < 3; i++)
         fourByFourFile(
@@ -364,7 +363,8 @@ void main() {
     // Only the newest run has weather.
     final sidecars = {files.last.id: hot(files.last)};
 
-    test('off: raw leads, the adjusted twin is the ghost', () async {
+    test('true pace leads, the actual pace is the ghost; a run with no '
+        'weather is its own true pace with no ghost', () async {
       final all = await fakeServices(
         files: files,
         sidecars: sidecars,
@@ -372,21 +372,7 @@ void main() {
       final pts = trendPoints(all.reversed.toList());
       final raw = all.first.workPaceSecPerKm!;
       final f = all.first.heatFraction!;
-      expect(pts.last.paceSecPerKm, raw);
-      expect(pts.last.ghostSecPerKm, closeTo(raw * (1 - f), 1e-9));
-      expect(pts.first.ghostSecPerKm, isNull);
-    });
-
-    test('on: the adjusted series leads, raw is the ghost; a run without '
-        'weather stays raw with no ghost', () async {
-      final all = await fakeServices(
-        files: files,
-        sidecars: sidecars,
-      ).history.list();
-      final pts = trendPoints(all.reversed.toList(), heatAdjusted: true);
-      final raw = all.first.workPaceSecPerKm!;
-      final f = all.first.heatFraction!;
-      expect(pts.last.paceSecPerKm, closeTo(raw * (1 - f), 1e-9));
+      expect(pts.last.paceSecPerKm, closeTo(raw * (1 - f), 0.06));
       expect(pts.last.ghostSecPerKm, raw);
       expect(pts.first.paceSecPerKm, all.last.workPaceSecPerKm);
       expect(pts.first.ghostSecPerKm, isNull);
@@ -397,37 +383,24 @@ void main() {
     ) async {
       await pumpApp(
         tester,
-        fakeServices(
-          files: files,
-          settings: const AppSettings(
-            onboardingDone: true,
-            compareHeatAdjusted: true,
-          ),
-        ),
+        fakeServices(files: files),
         home: const TrendScreen(),
       );
       await pumpTimes(tester, 6);
       expect(find.byKey(const ValueKey('trend-legend')), findsNothing);
-      expect(find.textContaining('HEAT-ADJUSTED'), findsNothing);
+      expect(find.textContaining('TRUE PACE'), findsNothing);
     });
 
-    testWidgets('on, with weather: hero says heat-adjusted, legend leads '
-        'with HEAT-ADJ', (tester) async {
+    testWidgets('with weather: hero says true pace, legend leads with TRUE '
+        'PACE', (tester) async {
       await pumpApp(
         tester,
-        fakeServices(
-          files: files,
-          sidecars: sidecars,
-          settings: const AppSettings(
-            onboardingDone: true,
-            compareHeatAdjusted: true,
-          ),
-        ),
+        fakeServices(files: files, sidecars: sidecars),
         home: const TrendScreen(),
       );
       await pumpTimes(tester, 6);
       expect(find.byKey(const ValueKey('trend-legend')), findsOneWidget);
-      expect(find.textContaining('HEAT-ADJUSTED'), findsOneWidget);
+      expect(find.textContaining('TRUE PACE'), findsWidgets);
       final labels = tester
           .widgetList<Text>(
             find.descendant(
@@ -437,7 +410,7 @@ void main() {
           )
           .map((t) => t.data)
           .toList();
-      expect(labels, ['HEAT-ADJ', 'RAW']);
+      expect(labels, ['TRUE PACE', 'ACTUAL']);
     });
   });
 }

@@ -14,8 +14,9 @@
 /// [SidecarWriter] (and never recreates a deleted run's sidecar). The
 /// request carries the run's first fix rounded to 0.1° and the dates only;
 /// only the rounded pair is stored. Verdicts are computed and frozen
-/// without weather; weather only adds the adjusted line (W2 decides what
-/// the "compare heat-adjusted" setting does with it).
+/// with whatever weather has arrived by then (the first verdict waits a
+/// bounded time for it); weather that lands later still feeds the run's
+/// true pace in the index, never a frozen verdict.
 library;
 
 import 'dart:async';

@@ -3,6 +3,7 @@ import '../model/session_spec.dart';
 import '../run_mode.dart';
 import 'analysis.dart';
 import 'constants.dart';
+import 'elevation.dart';
 import 'trace.dart';
 
 /// A distance a best effort is found for (Phase 4 plan §3.1). Board keys use
@@ -44,9 +45,25 @@ class BestEffort {
     required this.startOffsetM,
     required this.splitsMs,
     this.avgHr,
+    this.gradeFactor = 1,
   });
 
   final BestEffortDistance distance;
+
+  /// The hills factor on this window's time (True Pace; 1 on the flat or
+  /// without barometer elevation).
+  final double gradeFactor;
+
+  /// This effort with its hills factor.
+  BestEffort withGrade(double g) => BestEffort(
+    distance: distance,
+    elapsedMs: elapsedMs,
+    startMs: startMs,
+    startOffsetM: startOffsetM,
+    splitsMs: splitsMs,
+    avgHr: avgHr,
+    gradeFactor: g,
+  );
   final int elapsedMs;
 
   /// Window start, ms since the run's start.
@@ -70,6 +87,8 @@ class BestEffort {
     'start_offset_m': double.parse(startOffsetM.toStringAsFixed(1)),
     'splits_ms': splitsMs,
     'avg_hr': avgHr == null ? null : double.parse(avgHr!.toStringAsFixed(1)),
+    if (gradeFactor != 1)
+      'grade_x': double.parse(gradeFactor.toStringAsFixed(4)),
   };
 
   factory BestEffort.fromJson(
@@ -82,6 +101,7 @@ class BestEffort {
     startOffsetM: (json['start_offset_m'] as num).toDouble(),
     splitsMs: [for (final s in json['splits_ms'] as List) s as int],
     avgHr: (json['avg_hr'] as num?)?.toDouble(),
+    gradeFactor: (json['grade_x'] as num?)?.toDouble() ?? 1,
   );
 }
 
@@ -111,9 +131,21 @@ class BestDistance {
     required this.metres,
     required this.startMs,
     required this.startOffsetM,
+    this.gradeFactor = 1,
   });
 
   final BestTimeWindow window;
+
+  /// The hills factor over the window (True Pace); 1 without it.
+  final double gradeFactor;
+
+  BestDistance withGrade(double g) => BestDistance(
+    window: window,
+    metres: metres,
+    startMs: startMs,
+    startOffsetM: startOffsetM,
+    gradeFactor: g,
+  );
   final double metres;
   final int startMs;
   final double startOffsetM;
@@ -122,6 +154,8 @@ class BestDistance {
     'metres': double.parse(metres.toStringAsFixed(1)),
     'start_ms': startMs,
     'start_offset_m': double.parse(startOffsetM.toStringAsFixed(1)),
+    if (gradeFactor != 1)
+      'grade_x': double.parse(gradeFactor.toStringAsFixed(4)),
   };
 
   factory BestDistance.fromJson(
@@ -132,6 +166,7 @@ class BestDistance {
     metres: (json['metres'] as num).toDouble(),
     startMs: json['start_ms'] as int,
     startOffsetM: (json['start_offset_m'] as num).toDouble(),
+    gradeFactor: (json['grade_x'] as num?)?.toDouble() ?? 1,
   );
 }
 
@@ -172,6 +207,32 @@ class RunBestEfforts {
   /// long. Empty for sessions that race no distance board (intervals other
   /// than the event and goals, Cooper).
   final List<int> fromStartSplitsMs;
+
+  /// These efforts with the hills factor of each window read from the run's
+  /// elevation (True Pace); unchanged without barometer elevation.
+  RunBestEfforts withGradeFactors(RunElevation? elevation) {
+    if (elevation == null || elevation.src != ElevSource.baro) return this;
+    return RunBestEfforts(
+      efforts: {
+        for (final e in efforts.entries)
+          e.key: e.value.withGrade(
+            elevation.gradeFactorBetweenMs(e.value.startMs, e.value.endMs),
+          ),
+      },
+      fromStartSplitsMs: fromStartSplitsMs,
+      distances: {
+        for (final d in distances.entries)
+          d.key: d.value.withGrade(
+            elevation.gradeFactorBetweenMs(
+              d.value.startMs,
+              d.value.startMs + d.key.seconds * 1000,
+            ),
+          ),
+      },
+      wholeRunM: wholeRunM,
+      wholeRunMs: wholeRunMs,
+    );
+  }
 
   Map<String, Object?> toJson() => {
     'efforts': {for (final e in efforts.values) e.distance.key: e.toJson()},

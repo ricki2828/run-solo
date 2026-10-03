@@ -6,15 +6,17 @@ import '../model/verdict.dart';
 import '../run_mode.dart';
 import '../weather/heat_model.dart';
 import '../weather/weather.dart';
-import 'format.dart';
 import 'constants.dart';
 import 'cooper_result.dart';
 import 'event_names.dart';
 import 'fix_laps.dart';
 import 'goal.dart';
 import 'metrics.dart';
+import 'elevation.dart';
 import 'rep_detector.dart';
+import 'run_true_pace.dart';
 import 'session_detector.dart';
+import 'true_pace.dart';
 import 'trace.dart';
 import 'verdict_builder.dart';
 
@@ -66,47 +68,16 @@ String? comparisonKeyOf(
   RunMode.cooper => session?.comparisonKey,
 };
 
-/// The line under a verdict when the run has weather (v1 plan §18.5):
-/// the adjusted headline in the verdict's own unit, with the conditions.
+/// The line when it was too hot for the heat model: the weather is shown,
+/// but True Pace has no heat step to take out (v1 plan §18.5). Null in every
+/// other case: the True Pace breakdown already names the heat share.
 String? heatLineFor(WeatherRecord? w, IntervalMetrics? m, Units units) {
   final heat = w?.heat;
-  if (heat == null) return null;
+  if (heat == null || !heat.tooHot) return null;
   final conditions =
       '${heat.tempC.round()} °C, dew point ${heat.dewPointC.round()}';
-  if (heat.tooHot) return 'Too hot to compare ($conditions).';
-  final pace = m?.avgWorkPaceSecPerKm;
-  if (!heat.adjusts || pace == null) return null;
-  final adjusted = heat.pace(pace)!;
-  final metres = m!.kind == IntervalMetricKind.repTime
-      ? m.nominalRepMetres
-      : null;
-  final value = metres == null
-      ? PaceFormat.pace(adjusted, units)
-      : PaceFormat.mmss(adjusted * metres / 1000);
-  return 'Heat-adjusted estimate: $value ($conditions).';
+  return 'Too hot to adjust ($conditions), so true pace leaves the heat in.';
 }
-
-/// W2 notes under a verdict computed with "Compare heat-adjusted paces" on.
-/// How many earlier runs of the key an adjusted verdict compared: the
-/// [withWeather] of [earlier] that have weather (older ones without are
-/// left out, #74 review P3).
-String heatComparedNote(int withWeather, int earlier) {
-  String runs(int n) => n == 1 ? 'run' : 'runs';
-  if (earlier == 0) return 'Heat-adjusted. No earlier runs to compare yet.';
-  if (withWeather == 0) {
-    return 'Heat-adjusted, but none of your earlier ${runs(earlier)} '
-        'have weather yet.';
-  }
-  if (withWeather == earlier) {
-    return 'Heat-adjusted, compared with your $earlier earlier '
-        '${runs(earlier)}.';
-  }
-  return 'Heat-adjusted, compared with $withWeather of your $earlier '
-      '${runs(earlier)} that have weather.';
-}
-
-const String heatMissingNote = 'No weather for this run, compared on raw pace.';
-const String heatTooHotNote = 'Too hot to adjust, compared on raw pace.';
 
 /// A parkrun recorded without its lap boundaries (Start pressed at the
 /// line, no warm-up LAP; or an imported file): the 5 km from the start and,
@@ -206,7 +177,17 @@ class RunAnalysis {
     this.heatLine,
     this.goal,
     this.cooper,
+    this.truePace,
+    this.workFactors = TruePaceFactors.none,
   });
+
+  /// The whole run's True Pace (moving pace, hills and heat); null for a run
+  /// under 500 m.
+  final RunTruePace? truePace;
+
+  /// The hills and heat factors of the work pace (intervals); neutral for
+  /// every other run.
+  final TruePaceFactors workFactors;
 
   /// A GOAL run's locked-in result (Phase 4 plan §G); null otherwise. Goal
   /// runs carry no verdict word.
@@ -217,22 +198,22 @@ class RunAnalysis {
   final CooperResult? cooper;
 
   /// The sidecar's weather (W1): pending, ok, failed or skipped; null
-  /// before the first fetch. Never an input to the verdict (plan §18.5:
-  /// computed and frozen without weather).
+  /// before the first fetch. Its heat share is an input to true pace, so to
+  /// the verdict computed (and then frozen) with it; none, pending or failed
+  /// leaves the heat out.
   final WeatherRecord? weather;
 
-  /// "Heat-adjusted estimate: 4:41/km (28 °C, dew point 21)." shown under the
-  /// verdict; "Too hot to compare …" above the table; null without weather
-  /// or when the heat did not slow anything.
+  /// "Too hot to adjust (38 °C, dew point 28) …"; null otherwise (the True
+  /// Pace breakdown covers heat that was adjusted).
   final String? heatLine;
 
   HeatAdjustment? get heat => weather?.heat;
 
-  /// The heat-adjusted twin of the headline work pace (and, through [heat],
-  /// of any per-rep pace); null without usable weather.
-  double? get heatAdjustedWorkPaceSecPerKm {
+  /// The True Pace of the headline work pace (hills and heat taken out);
+  /// null for a run with no work pace.
+  double? get trueWorkPaceSecPerKm {
     final p = intervals?.avgWorkPaceSecPerKm;
-    return p == null ? null : heat?.pace(p);
+    return p == null ? null : workFactors.apply(p);
   }
 
   final String runId;
@@ -314,6 +295,7 @@ class RunAnalysis {
           recoveryLabel: plannedRecoveryLabel,
           officialTime: officialTime,
           heatFraction: heat?.fraction,
+          gradeFactor: workFactors.grade,
         );
 
   /// The sidecar with this verdict frozen (plan §4, §17 R3).
@@ -340,7 +322,6 @@ class RunEngine {
     List<PriorRun> priors = const [],
     UserProfile profile = UserProfile.none,
     DateTime? now,
-    bool compareHeatAdjusted = false,
   }) {
     final at = now ?? DateTime.now().toUtc();
     final trace = Trace(run.samples);
@@ -358,6 +339,15 @@ class RunEngine {
     final parkrunInfo = sidecar?.parkrun;
     final key = comparisonKeyOf(session, mode, courseId: parkrunInfo?.courseId);
     final weather = WeatherRecord.fromJson(sidecar?.weather);
+    // True Pace: the hills and the heat of this run, taken out of every pace
+    // a verdict, score or board compares.
+    final elevation = RunElevation.of(run);
+    final slowdown = weather?.heat?.fraction;
+    final truePace = RunTruePace.of(
+      run,
+      elevation: elevation,
+      slowdown: slowdown,
+    );
 
     // Exhaustive (W7): a new mode fails to compile here instead of being
     // mislabelled as a 4x4.
@@ -389,6 +379,7 @@ class RunEngine {
           gpsQuality: quality,
           engineVersion: engineVersion,
           weather: weather,
+          truePace: truePace,
           session: session,
           comparisonKey: key,
         );
@@ -411,6 +402,7 @@ class RunEngine {
           gpsQuality: quality,
           engineVersion: engineVersion,
           weather: weather,
+          truePace: truePace,
           session: session,
           comparisonKey: key,
         );
@@ -437,6 +429,7 @@ class RunEngine {
         gpsQuality: quality,
         engineVersion: engineVersion,
         weather: weather,
+        truePace: truePace,
         session: session,
         comparisonKey: key,
         goal: GoalResult.of(run, spec),
@@ -522,6 +515,13 @@ class RunEngine {
         : metrics;
     final officialTime = !identical(headline, metrics);
 
+    // True Pace: the run's work pace with its hills and heat taken out, and
+    // the same for every prior, so the verdict compares like with like.
+    final raw = headline.avgWorkPaceSecPerKm;
+    final workFactors = raw == null
+        ? TruePaceFactors.none
+        : RunTruePace.forWork(elevation, headline, slowdown: slowdown);
+
     final frozen = sidecar?.frozenVerdict;
     final inputsKey =
         sidecar?.inputsKey ?? Verdict.inputsKeyFor(const [], null);
@@ -529,40 +529,23 @@ class RunEngine {
     final VerdictSource source;
     if (frozen != null &&
         frozen.engineVersion == engineVersion &&
-        frozen.inputsKey == inputsKey &&
-        frozen.heatCompare == compareHeatAdjusted) {
+        frozen.inputsKey == inputsKey) {
       verdict = frozen;
       source = VerdictSource.frozen;
     } else {
-      // W2: with the setting on, a run with usable weather compares its
-      // heat-adjusted headline with the adjusted twins of priors that have
-      // weather too; a run without (none, pending, failed, too hot) keeps
-      // its raw verdict against raw priors, and says so.
-      final fraction = weather?.heat?.fraction;
-      final raw = headline.avgWorkPaceSecPerKm;
-      final adjust = compareHeatAdjusted && fraction != null && raw != null;
-      final earlier = [
-        for (final p in priors)
-          if (p.comparisonKey == key && p.start.isBefore(run.start)) p,
-      ];
       verdict = VerdictBuilder(constants, names: names)
           .build(
             run: run,
             detection: detection,
-            metrics: adjust
-                ? headline.withHeadlinePace(raw * (1 - fraction))
-                : headline,
+            metrics: raw == null || workFactors.neutral
+                ? headline
+                : headline.withHeadlinePace(workFactors.apply(raw)),
             gates: VerdictGates(
               indoor: indoor,
               noisy: noisy,
               gpsQuality: quality,
             ),
-            priors: adjust
-                ? [
-                    for (final p in priors)
-                      if (p.heatFraction != null) p.heatAdjusted(),
-                  ]
-                : priors,
+            priors: [for (final p in priors) p.truePace()],
             now: at,
             inputsKey: inputsKey,
             comparisonKey: key!,
@@ -571,19 +554,7 @@ class RunEngine {
             minCleanReps: minCleanRepsFor(key, spec),
             officialTime: officialTime,
           )
-          .withHeat(
-            compare: compareHeatAdjusted,
-            note: !compareHeatAdjusted
-                ? null
-                : adjust
-                ? heatComparedNote(
-                    earlier.where((p) => p.heatFraction != null).length,
-                    earlier.length,
-                  )
-                : weather?.heat?.tooHot == true
-                ? heatTooHotNote
-                : heatMissingNote,
-          );
+          .withTruePace(rawSecPerKm: raw, factors: workFactors);
       source = VerdictSource.computed;
     }
 
@@ -601,6 +572,8 @@ class RunEngine {
       engineVersion: engineVersion,
       weather: weather,
       heatLine: heatLineFor(weather, headline, run.units),
+      truePace: truePace,
+      workFactors: workFactors,
       session: session,
       comparisonKey: key,
       lapEditsInvalid: lapEditsInvalid,

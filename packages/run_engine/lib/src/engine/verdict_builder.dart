@@ -10,6 +10,7 @@ import 'event_names.dart';
 import 'format.dart';
 import 'metrics.dart';
 import 'rep_detector.dart';
+import 'true_pace.dart';
 
 /// What the engine needs to know about an earlier 4x4 to compare against it.
 /// The store keeps these in the index; [PriorRun.fromMetrics] builds one from
@@ -33,20 +34,28 @@ class PriorRun {
     this.recoveryLabel,
     this.officialTime = false,
     this.heatFraction,
+    this.gradeFactor = 1,
   });
 
   final String id;
 
-  /// W2: the run's heat slowdown (0.047 = 4.7%, 0 when cool); null without
-  /// usable weather or when too hot to compare, which keeps it out of
-  /// heat-adjusted comparisons.
+  /// The run's heat slowdown (0.047 = 4.7%, 0 when cool); null without
+  /// usable weather or when too hot to adjust, which counts as no heat.
   final double? heatFraction;
 
-  /// This prior with its headline pace heat-adjusted ([heatFraction] set).
-  PriorRun heatAdjusted() => PriorRun(
+  /// The hills factor over the work reps ([TruePace]); 1 without elevation.
+  final double gradeFactor;
+
+  /// The factors that turn this run's work pace into its True Pace.
+  TruePaceFactors get factors =>
+      TruePace.factors(gradeFactor: gradeFactor, slowdown: heatFraction);
+
+  /// This prior with its headline pace as True Pace (hills and heat taken
+  /// out), the pace every verdict compares.
+  PriorRun truePace() => PriorRun(
     id: id,
     start: start,
-    avgWorkPaceSecPerKm: avgWorkPaceSecPerKm * (1 - heatFraction!),
+    avgWorkPaceSecPerKm: factors.apply(avgWorkPaceSecPerKm),
     fadeSecPerKm: fadeSecPerKm,
     recoveryPaceSecPerKm: recoveryPaceSecPerKm,
     timeInZoneSeconds: timeInZoneSeconds,
@@ -59,6 +68,7 @@ class PriorRun {
     recoveryLabel: recoveryLabel,
     officialTime: officialTime,
     heatFraction: heatFraction,
+    gradeFactor: gradeFactor,
   );
 
   /// K1: [avgWorkPaceSecPerKm] comes from the runner's official time, not
@@ -104,6 +114,7 @@ class PriorRun {
     'recovery_label': recoveryLabel,
     if (officialTime) 'official': true,
     'heat_adj': ?heatFraction,
+    if (gradeFactor != 1) 'grade_x': gradeFactor,
   };
 
   factory PriorRun.fromJson(Map<String, Object?> j) {
@@ -128,6 +139,7 @@ class PriorRun {
       recoveryLabel: j['recovery_label'] as String?,
       officialTime: j['official'] == true,
       heatFraction: d('heat_adj'),
+      gradeFactor: d('grade_x') ?? 1,
     );
   }
 
@@ -141,6 +153,7 @@ class PriorRun {
     String? recoveryLabel,
     bool officialTime = false,
     double? heatFraction,
+    double gradeFactor = 1,
   }) {
     if (!eligible || m.avgWorkPaceSecPerKm == null) return null;
     return PriorRun(
@@ -161,6 +174,7 @@ class PriorRun {
       recoveryLabel: recoveryLabel,
       officialTime: officialTime,
       heatFraction: heatFraction,
+      gradeFactor: gradeFactor,
     );
   }
 }
