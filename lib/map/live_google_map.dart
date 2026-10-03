@@ -80,7 +80,13 @@ class _LiveGoogleMapState extends State<LiveGoogleMap> {
     // A rejected key still creates the map (see GoogleRouteMap): if nothing
     // has settled in 10 s, show the route on our own canvas instead.
     _loadWatch = Timer(const Duration(seconds: 10), () {
-      if (mounted && !_checked) setState(() => _failed = true);
+      if (!mounted || _checked) return;
+      recordMapVerdict(
+        'live map',
+        const SnapshotVerdict(blank: true, reason: 'no idle in 10 s'),
+        mapType: widget.terrain ? 'terrain' : 'night',
+      );
+      setState(() => _failed = true);
     });
   }
 
@@ -201,24 +207,29 @@ class _LiveGoogleMapState extends State<LiveGoogleMap> {
       await Future<void>.delayed(const Duration(milliseconds: 600));
       final png = await c.takeSnapshot();
       if (png == null) {
+        recordMapVerdict(
+          'live map',
+          const SnapshotVerdict(blank: true, reason: 'no snapshot'),
+          mapType: widget.terrain ? 'terrain' : 'night',
+        );
         if (mounted) setState(() => _failed = true);
         return;
       }
-      final codec = await ui.instantiateImageCodec(png);
-      final frame = await codec.getNextFrame();
-      final rgba = await frame.image.toByteData(
-        format: ui.ImageByteFormat.rawRgba,
+      final verdict = await judgeSnapshotPng(png);
+      recordMapVerdict(
+        'live map',
+        verdict,
+        mapType: widget.terrain ? 'terrain' : 'night',
       );
-      final blank =
-          rgba == null ||
-          isBlankSnapshot(
-            rgba.buffer.asUint8List(),
-            width: frame.image.width,
-            height: frame.image.height,
-          );
+      final blank = verdict.blank;
       if (blank && mounted) setState(() => _failed = true);
     } catch (e) {
       debugPrint('live map: snapshot check failed ($e)');
+      recordMapVerdict(
+        'live map',
+        SnapshotVerdict(blank: true, reason: 'snapshot error: $e'),
+        mapType: widget.terrain ? 'terrain' : 'night',
+      );
       if (mounted) setState(() => _failed = true);
     }
   }

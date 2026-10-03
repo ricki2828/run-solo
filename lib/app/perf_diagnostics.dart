@@ -38,6 +38,15 @@ class PerfDiagnostics extends ChangeNotifier {
   /// The first History list of this app session (index read + refresh).
   int? historyFirstOpenMs;
 
+  /// Last map check, with why it passed or failed (dominant colour, share,
+  /// map type): a device report names the cause of "Map failed to load".
+  String? lastMapVerdict;
+
+  void recordMap(String line) {
+    lastMapVerdict = line;
+    notifyListeners();
+  }
+
   void recordPrepare(Duration d, int runs) {
     prepareMs = d.inMilliseconds;
     runCount = runs;
@@ -79,6 +88,7 @@ class PerfDiagnostics extends ChangeNotifier {
     'Slowest Start this session: '
         '${_build(worstBuildMs, worstBuildOutcome)}',
     'History first open: ${_ms(historyFirstOpenMs)}',
+    'Last map check: ${lastMapVerdict ?? 'not yet'}',
   ];
 
   @visibleForTesting
@@ -90,5 +100,6 @@ class PerfDiagnostics extends ChangeNotifier {
     worstBuildOutcome = null;
     runCount = null;
     historyFirstOpenMs = null;
+    lastMapVerdict = null;
   }
 }
