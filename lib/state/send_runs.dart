@@ -357,6 +357,25 @@ String? sendStateLine(
       : 'Failed, will retry when you next open the app';
 }
 
+/// How a [SendCoordinator.sendAllPast] pass ended.
+@immutable
+class BackfillResult {
+  const BackfillResult({
+    required this.total,
+    required this.sent,
+    this.firstError,
+  });
+
+  /// Runs attempted (runs whose file is missing are not counted).
+  final int total;
+  final int sent;
+
+  /// The first failure's short reason, null when every run went.
+  final String? firstError;
+
+  int get failed => total - sent;
+}
+
 /// Sends runs and keeps the log. One per app (see `AppServices`).
 class SendCoordinator {
   SendCoordinator({
@@ -396,6 +415,49 @@ class SendCoordinator {
     final detail = await history.load(runId);
     if (detail == null) return const SendResult.failed('Run not found');
     return _attempt(t, detail, format, auto: false);
+  }
+
+  /// Settings "Send all past runs": every run on the phone, oldest first, to
+  /// [targetId], whatever the log says. Safe to run twice: a health write
+  /// replaces the record with the same run id. Logged like any other manual
+  /// send. [onProgress] gets (done, total) before the first run and after
+  /// each one.
+  Future<BackfillResult> sendAllPast(
+    String targetId, {
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final t = target(targetId);
+    if (t == null) {
+      return const BackfillResult(
+        total: 0,
+        sent: 0,
+        firstError: 'Unknown target',
+      );
+    }
+    final runs = [
+      for (final r in await history.list())
+        if (!r.missing) r,
+    ]..sort((a, b) => a.start.compareTo(b.start));
+    onProgress?.call(0, runs.length);
+    var sent = 0;
+    String? firstError;
+    for (var i = 0; i < runs.length; i++) {
+      final detail = await history.load(runs[i].id);
+      final result = detail == null
+          ? const SendResult.failed('Run not found')
+          : await _attempt(t, detail, ExportFormat.tcx, auto: false);
+      if (result.ok) {
+        sent += 1;
+      } else {
+        firstError ??= result.error;
+      }
+      onProgress?.call(i + 1, runs.length);
+    }
+    return BackfillResult(
+      total: runs.length,
+      sent: sent,
+      firstError: firstError,
+    );
   }
 
   /// After a run: every enabled automatic target whose log says a send is
