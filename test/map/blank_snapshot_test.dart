@@ -1,6 +1,12 @@
+import 'dart:async';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_solo/app/perf_diagnostics.dart';
+import 'package:run_solo/map/map_surface.dart';
+import 'package:run_solo/map/route_builder.dart';
 import 'package:run_solo/map/blank_snapshot.dart';
 
 /// W9: a map whose key or SHA-1 was refused stays the SDK's light grey with
@@ -93,5 +99,88 @@ void main() {
   test('empty or truncated buffers are blank', () {
     expect(isBlankSnapshot(Uint8List(0), width: 10, height: 10), isTrue);
     expect(isBlankSnapshot(Uint8List(10), width: 10, height: 10), isTrue);
+  });
+
+  // Terrain is Google's own light, tinted palette (the dark style is ignored).
+  int terrainPixel(int x, int y, int w, int h, int land) {
+    if ((y - (x * h ~/ w)).abs() < 3) return 0x1B1D20; // casing under route
+    if (y > h - 24 && x < 80) return 0x4285F4; // logo
+    return land;
+  }
+
+  test('SDK neutral light range is blank (#E5E3DF to #F5F5F5)', () {
+    for (final c in [0xE5E3DF, 0xEEEEEE, 0xF5F5F5]) {
+      expect(
+        isBlankSnapshot(bitmap(w, h, (x, y) => c), width: w, height: h),
+        isTrue,
+        reason: c.toRadixString(16),
+      );
+    }
+  });
+
+  test('light beige terrain filling the view is not blank', () {
+    final b = bitmap(w, h, (x, y) => terrainPixel(x, y, w, h, 0xE8E0C8));
+    expect(isBlankSnapshot(b, width: w, height: h), isFalse);
+  });
+
+  test('light green terrain filling the view is not blank', () {
+    final b = bitmap(w, h, (x, y) => terrainPixel(x, y, w, h, 0xC8E6C9));
+    expect(isBlankSnapshot(b, width: w, height: h), isFalse);
+  });
+
+  test('mostly water (dark style) is not blank', () {
+    final b = bitmap(w, h, (x, y) => x < w * 0.95 ? 0x050506 : 0x0F1114);
+    expect(isBlankSnapshot(b, width: w, height: h), isFalse);
+  });
+
+  test('light blue terrain water is not blank', () {
+    final b = bitmap(w, h, (x, y) => 0xAADAFF);
+    expect(isBlankSnapshot(b, width: w, height: h), isFalse);
+  });
+
+  test('verdict reports dominant colour, share and reason', () {
+    final v = analyseSnapshot(
+      bitmap(w, h, (x, y) => 0xE8E0C8),
+      width: w,
+      height: h,
+    );
+    expect(v.blank, isFalse);
+    expect(v.dominantHex, '#E8E0C8');
+    expect(v.share, closeTo(1.0, 0.001));
+    expect(v.describe(mapType: 'terrain'), contains('#E8E0C8'));
+  });
+
+  Future<Uint8List> png(int rgb) async {
+    const s = 64;
+    final px = bitmap(s, s, (x, y) => rgb);
+    final c = Completer<ui.Image>();
+    ui.decodeImageFromPixels(px, s, s, ui.PixelFormat.rgba8888, c.complete);
+    final bytes = await (await c.future).toByteData(
+      format: ui.ImageByteFormat.png,
+    );
+    return bytes!.buffer.asUint8List();
+  }
+
+  testWidgets('terrain surface: a light non-grey snapshot is not failed', (
+    tester,
+  ) async {
+    // The platform view cannot run in tests; this drives the same decode and
+    // verdict both surfaces use, then renders what each verdict shows.
+    final beige = await tester.runAsync(
+      () async => judgeSnapshotPng(await png(0xE8E0C8)),
+    );
+    final grey = await tester.runAsync(
+      () async => judgeSnapshotPng(await png(0xE5E3DF)),
+    );
+    expect(beige!.blank, isFalse);
+    expect(grey!.blank, isTrue);
+    const route = RouteGeometry(points: [], markers: [], bounds: null);
+    Widget shown(SnapshotVerdict v) => v.blank
+        ? const MapFailedCard(route: route)
+        : const SizedBox(key: ValueKey('terrain-ok'));
+    await tester.pumpWidget(MaterialApp(home: shown(beige)));
+    expect(find.byType(MapFailedCard), findsNothing);
+    recordMapVerdict('test', beige, mapType: 'terrain');
+    expect(PerfDiagnostics.instance.lastMapVerdict, contains('#E8E0C8'));
   });
 }

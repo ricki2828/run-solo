@@ -173,7 +173,13 @@ class _GoogleRouteMapState extends State<_GoogleRouteMap> {
     // snapshot anyway after a short delay.
     _idleFallback = Timer(const Duration(seconds: 4), _checkBlank);
     _loadWatch = Timer(const Duration(seconds: 10), () {
-      if (mounted && !_checked) _fail();
+      if (!mounted || _checked) return;
+      recordMapVerdict(
+        widget.mapOnly ? 'card' : 'run map',
+        const SnapshotVerdict(blank: true, reason: 'no idle in 10 s'),
+        mapType: widget.terrain ? 'terrain' : 'night',
+      );
+      _fail();
     });
   }
 
@@ -199,21 +205,21 @@ class _GoogleRouteMapState extends State<_GoogleRouteMap> {
       await Future<void>.delayed(const Duration(milliseconds: 600));
       final png = await c.takeSnapshot().timeout(const Duration(seconds: 8));
       if (png == null) {
+        recordMapVerdict(
+          widget.mapOnly ? 'card' : 'run map',
+          const SnapshotVerdict(blank: true, reason: 'no snapshot'),
+          mapType: widget.terrain ? 'terrain' : 'night',
+        );
         if (mounted) _fail();
         return;
       }
-      final codec = await ui.instantiateImageCodec(png);
-      final frame = await codec.getNextFrame();
-      final rgba = await frame.image.toByteData(
-        format: ui.ImageByteFormat.rawRgba,
+      final verdict = await judgeSnapshotPng(png);
+      recordMapVerdict(
+        widget.mapOnly ? 'card' : 'run map',
+        verdict,
+        mapType: widget.terrain ? 'terrain' : 'night',
       );
-      final blank =
-          rgba == null ||
-          isBlankSnapshot(
-            rgba.buffer.asUint8List(),
-            width: frame.image.width,
-            height: frame.image.height,
-          );
+      final blank = verdict.blank;
       if (!mounted) return;
       if (blank) {
         _fail(MapFailure.blank);
@@ -222,6 +228,11 @@ class _GoogleRouteMapState extends State<_GoogleRouteMap> {
       }
     } catch (e) {
       debugPrint('map: snapshot check failed ($e)');
+      recordMapVerdict(
+        widget.mapOnly ? 'card' : 'run map',
+        SnapshotVerdict(blank: true, reason: 'snapshot error: $e'),
+        mapType: widget.terrain ? 'terrain' : 'night',
+      );
       if (mounted) _fail();
     }
   }
