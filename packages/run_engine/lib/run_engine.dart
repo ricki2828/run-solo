@@ -38,6 +38,8 @@ export 'src/engine/trace.dart';
 export 'src/engine/route_match.dart';
 export 'src/engine/trail_run.dart';
 export 'src/engine/spoken_verdict.dart';
+export 'src/engine/true_pace.dart';
+export 'src/engine/run_true_pace.dart';
 export 'src/engine/trail_verdict.dart';
 export 'src/engine/verdict_builder.dart';
 export 'src/engine_version.dart';

@@ -229,11 +229,17 @@ class _LaneAnalysis extends StatelessWidget {
               style: RunSoloType.body15.copyWith(color: t.inkPrimary),
             ),
           ],
+          if (s != null && s.source != 'Cooper test')
+            Text(
+              'Scored at true pace: hills and heat taken out.',
+              key: ValueKey('analysis-${lane.name}-truepace'),
+              style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+            ),
           if (s != null &&
-              (s.source == engine.TrailEffort.longSource ||
+              (s.source == engine.TrailScore.longSource ||
                   s.source == 'trail run'))
             Text(
-              '${engine.TrailEffort.note}.',
+              '${engine.TrailScore.note}.',
               key: ValueKey('analysis-${lane.name}-trail'),
               style: RunSoloType.body15.copyWith(color: t.inkPrimary),
             ),

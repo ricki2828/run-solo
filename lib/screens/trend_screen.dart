@@ -48,7 +48,6 @@ class _TrendScreenState extends State<TrendScreen> {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final settings = AppServices.of(context).settings.settings;
     final units = settings.units;
-    final heatAdjusted = settings.compareHeatAdjusted;
     // Own Material ancestor on the base colour: bare Text under a route
     // without a Scaffold falls back to the debug yellow underline.
     return Material(
@@ -126,7 +125,6 @@ class _TrendScreenState extends State<TrendScreen> {
                   RecordMode.intervals => _FourByFourTrend(
                     runs: runs,
                     units: units,
-                    heatAdjusted: heatAdjusted,
                     emptyText:
                         key == null || key == engine.ComparisonKey.norwegian4x4
                         ? 'Two 4x4s draw the first line.'
@@ -173,46 +171,37 @@ class TrendPoint {
   final int index;
   final DateTime start;
 
-  /// The pace the verdict compared: heat-adjusted with "Compare
-  /// heat-adjusted paces" on and weather for the run (W2), raw otherwise.
+  /// The pace the verdict compared: TRUE PACE (hills and heat taken out; the
+  /// actual pace on a flat, cool run).
   final double paceSecPerKm;
   final double? medianSecPerKm;
   final bool best;
 
-  /// The other twin, drawn behind in ink.secondary (design brief A6): the
-  /// adjusted pace with the setting off, the raw one with it on. Null
-  /// without usable weather, or when the heat slowed nothing.
+  /// The actual pace, drawn behind in ink.secondary (design brief A6). Null
+  /// when hills and heat moved nothing.
   final double? ghostSecPerKm;
 }
 
-List<TrendPoint> trendPoints(
-  List<RunSummary> chronological, {
-  bool heatAdjusted = false,
-}) {
+List<TrendPoint> trendPoints(List<RunSummary> chronological) {
   final out = <TrendPoint>[];
   final prior = <double>[];
   for (final r in chronological) {
     final raw = r.workPaceSecPerKm;
     if (raw == null) continue;
-    final adj = r.heatAdjustedWorkPaceSecPerKm;
-    final twin = adj == null || adj == raw ? null : adj;
-    final pace = heatAdjusted && twin != null ? twin : raw;
+    final truePace = r.trueWorkPaceSecPerKm ?? raw;
+    final moved = (truePace - raw).abs() >= 0.5;
     final window = prior.length > 6 ? prior.sublist(prior.length - 6) : prior;
     out.add(
       TrendPoint(
         index: out.length + 1,
         start: r.start,
-        paceSecPerKm: pace,
+        paceSecPerKm: truePace,
         medianSecPerKm: window.isEmpty ? null : median(window),
         best: r.verdict?.bestIn365Days ?? false,
-        ghostSecPerKm: twin == null
-            ? null
-            : heatAdjusted
-            ? raw
-            : twin,
+        ghostSecPerKm: moved ? raw : null,
       ),
     );
-    if (r.eligibleAsPrior) prior.add(pace);
+    if (r.eligibleAsPrior) prior.add(truePace);
   }
   return out;
 }
@@ -227,20 +216,16 @@ class _FourByFourTrend extends StatelessWidget {
   const _FourByFourTrend({
     required this.runs,
     required this.units,
-    this.heatAdjusted = false,
     this.emptyText = 'Two 4x4s draw the first line.',
   });
   final String emptyText;
   final List<RunSummary> runs;
   final Units units;
 
-  /// "Compare heat-adjusted paces" (W2): the adjusted series leads.
-  final bool heatAdjusted;
-
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final points = trendPoints(runs, heatAdjusted: heatAdjusted);
+    final points = trendPoints(runs);
     final ghost = points.any((p) => p.ghostSecPerKm != null);
     if (points.length < 2) {
       return ChartEmptyState(
@@ -298,7 +283,7 @@ class _FourByFourTrend extends StatelessWidget {
       children: [
         Text(
           'MEDIAN WORK PACE, LAST ${recent.length}'
-          '${heatAdjusted && ghost ? ', HEAT-ADJUSTED' : ''}',
+          '${ghost ? ', TRUE PACE' : ''}',
           style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
         ),
         const SizedBox(height: Space.x8),
@@ -360,10 +345,7 @@ class _FourByFourTrend extends StatelessWidget {
             caption: 'Shaded = GPS noise around your previous median',
           ),
         ),
-        if (ghost) ...[
-          const SizedBox(height: Space.x8),
-          _TrendLegend(heatAdjusted: heatAdjusted),
-        ],
+        if (ghost) ...[const SizedBox(height: Space.x8), const _TrendLegend()],
         const SizedBox(height: Space.x24),
         Text(
           'BESTS',
@@ -410,10 +392,9 @@ class _FourByFourTrend extends StatelessWidget {
 }
 
 /// Two micro labels under the chart when it draws both twins (brief A6):
-/// the leading series in Bone, the ghost in ink.secondary.
+/// true pace in Bone, the actual pace behind it in ink.secondary.
 class _TrendLegend extends StatelessWidget {
-  const _TrendLegend({required this.heatAdjusted});
-  final bool heatAdjusted;
+  const _TrendLegend();
 
   @override
   Widget build(BuildContext context) {
@@ -426,15 +407,12 @@ class _TrendLegend extends StatelessWidget {
         Text(label, style: RunSoloType.micro11.copyWith(color: color)),
       ],
     );
-    final (lead, back) = heatAdjusted
-        ? ('HEAT-ADJ', 'RAW')
-        : ('RAW', 'HEAT-ADJ');
     return Row(
       key: const ValueKey('trend-legend'),
       children: [
-        item(lead, t.inkPrimary),
+        item('TRUE PACE', t.inkPrimary),
         const SizedBox(width: Space.x16),
-        item(back, t.inkSecondary),
+        item('ACTUAL', t.inkSecondary),
       ],
     );
   }
@@ -447,6 +425,10 @@ double? movingPaceOf(RunSummary r) {
   if (ms == null || ms <= 0 || r.distanceM <= 0) return r.avgSecPerKm;
   return ms / 1000 / (r.distanceM / 1000);
 }
+
+/// TRUE PACE of a Free run (hills and heat taken out), else its moving pace
+/// (a run under 500 m, or a store with no true pace).
+double? truePaceOf(RunSummary r) => r.truePaceSecPerKm ?? movingPaceOf(r);
 
 /// What a Laps / Free chart draws: the comparable runs with their value
 /// (seconds per km for Free, median lap seconds for Laps), and the plain
@@ -487,14 +469,14 @@ ComparableRuns? comparableRuns(
     for (final r in chronological)
       if (r.distanceM / unitM >= lo &&
           r.distanceM / unitM <= hi &&
-          movingPaceOf(r) != null)
-        (r, movingPaceOf(r)!),
+          truePaceOf(r) != null)
+        (r, truePaceOf(r)!),
   ];
   String n(double v) => v == v.roundToDouble() ? '${v.round()}' : '$v';
   final unit = units == Units.mi ? 'mi' : 'km';
   return (
     points: points,
-    caption: 'Average pace, runs of ${n(lo)} to ${n(hi)} $unit only',
+    caption: 'True pace, runs of ${n(lo)} to ${n(hi)} $unit only',
   );
 }
 
@@ -518,7 +500,15 @@ class _DistanceTrend extends StatelessWidget {
         RecentBarsChart(
           key: const ValueKey('distance-trend-chart'),
           points: [
-            for (final (r, v) in shown) BarPoint(date: r.start, value: v),
+            for (final (r, v) in shown)
+              BarPoint(
+                date: r.start,
+                value: v,
+                // The actual pace behind a Free run's true pace.
+                twin: laps || (movingPaceOf(r) ?? v) - v < 0.5
+                    ? null
+                    : movingPaceOf(r),
+              ),
           ],
           lowerIsBetter: true,
           format: laps
@@ -538,9 +528,9 @@ class _DistanceTrend extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     if (runs.isEmpty) return const SizedBox.shrink();
     final totalM = runs.fold(0.0, (a, r) => a + r.distanceM);
-    // Free: the tiles use the same moving pace as the chart.
+    // Free: the tiles use the same true pace as the chart.
     double? paceOf(RunSummary r) =>
-        mode == RecordMode.free ? movingPaceOf(r) : r.avgSecPerKm;
+        mode == RecordMode.free ? truePaceOf(r) : r.avgSecPerKm;
     final paced = [
       for (final r in runs)
         if (paceOf(r) != null) paceOf(r)!,

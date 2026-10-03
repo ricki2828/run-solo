@@ -76,7 +76,7 @@ void main() {
       );
     });
 
-    test('5K and 10K rows from a 5K; source with the day; cool conditions', () {
+    test('5K and 10K rows from a 5K; source with the day', () {
       final h = HomeEstimates.of(
         [
           run(
@@ -95,10 +95,33 @@ void main() {
       // A 5K from a 5K: no band; the 10K from it has one.
       expect(h.rows.first.band, isNull);
       expect(h.rows.last.band, matches(RegExp(r'^\d+:\d\d to \d+:\d\d$')));
-      expect(h.sourceLines, [
-        'From your 5K on Sat 12 Sep · in cool conditions',
-      ]);
+      // A flat, cool run is its own true pace: nothing to say.
+      expect(h.sourceLines, ['From your 5K on Sat 12 Sep']);
       expect(carriesEstimateMarker(h.rows.first.semantics), isTrue);
+    });
+
+    test('a hot or hilly source reads at true pace and says so', () {
+      for (final (heat, hills) in [(0.04, 1.0), (0.0, 0.95)]) {
+        final h = HomeEstimates.of(
+          [
+            run(
+              'a',
+              efforts: {
+                BestEffortDistance.k5: be(
+                  BestEffortDistance.k5,
+                  1470,
+                ).withGrade(hills),
+              },
+              heat: heat,
+            ),
+          ],
+          now: now,
+          names: names,
+        );
+        // Quicker than the clock 24:30: hills and heat are taken out.
+        expect(h.rows.first.time, isNot('24:30'));
+        expect(h.sourceLines, ['From your 5K on Sat 12 Sep · flat, cool day']);
+      }
     });
 
     test(

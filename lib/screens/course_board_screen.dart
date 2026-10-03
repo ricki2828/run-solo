@@ -322,7 +322,7 @@ Future<bool> showOfficialTimeSheet(
 }
 
 /// One course's board (K1; A10.2 detail layout): best, trend, last 5 and
-/// every run ranked with its heat-adjusted twin.
+/// every run ranked by its true pace time, the actual time beside it.
 class CourseBoardScreen extends StatefulWidget {
   const CourseBoardScreen({super.key, required this.courseId});
   final String courseId;
@@ -382,7 +382,7 @@ class _CourseBoardScreenState extends State<CourseBoardScreen> {
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    _clock(best.finishSeconds),
+                    _clock(best.rankSeconds),
                     style: RunSoloType.display96.copyWith(color: t.inkPrimary),
                   ),
                 ),
@@ -398,6 +398,12 @@ class _CourseBoardScreenState extends State<CourseBoardScreen> {
                     ],
                   ],
                 ),
+                if (best.trueSeconds != null &&
+                    _clock(best.trueSeconds!) != _clock(best.finishSeconds))
+                  Text(
+                    'True pace time. Actual ${_clock(best.finishSeconds)}.',
+                    style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                  ),
                 const SizedBox(height: Space.x12),
                 _Trend(secPerMonth: board.trendSecPerMonth),
                 const SizedBox(height: Space.x24),
@@ -406,13 +412,13 @@ class _CourseBoardScreenState extends State<CourseBoardScreen> {
                   _BoardRow(
                     rank: board.rankOf(e.run.id)!,
                     entry: e,
-                    showHeat: false,
+                    showTrue: false,
                   ),
                 const SizedBox(height: Space.x24),
                 _Eyebrow('ALL'),
                 const _BoardHeader(),
                 for (final (i, e) in board.ranked.indexed)
-                  _BoardRow(rank: i + 1, entry: e, showHeat: true),
+                  _BoardRow(rank: i + 1, entry: e, showTrue: true),
               ],
             ],
           ),
@@ -515,7 +521,7 @@ class _BoardHeader extends StatelessWidget {
           Expanded(child: Text('TIME', style: s)),
           Expanded(child: Text('DATE', style: s)),
           Expanded(
-            child: Text('HEAT-ADJ', style: s, textAlign: TextAlign.right),
+            child: Text('TRUE PACE', style: s, textAlign: TextAlign.right),
           ),
         ],
       ),
@@ -527,11 +533,11 @@ class _BoardRow extends StatelessWidget {
   const _BoardRow({
     required this.rank,
     required this.entry,
-    required this.showHeat,
+    required this.showTrue,
   });
   final int rank;
   final CourseBoardEntry entry;
-  final bool showHeat;
+  final bool showTrue;
 
   @override
   Widget build(BuildContext context) {
@@ -541,7 +547,7 @@ class _BoardRow extends StatelessWidget {
       color: t.inkPrimary,
       fontFeatures: const [FontFeature.tabularFigures()],
     );
-    final heat = entry.heatAdjustedSeconds;
+    final truth = entry.trueSeconds;
     return InkWell(
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => RunDetailScreen(runId: entry.run.id)),
@@ -589,7 +595,7 @@ class _BoardRow extends StatelessWidget {
             ),
             Expanded(
               child: Text(
-                showHeat && heat != null ? _clock(heat) : '',
+                showTrue && truth != null ? _clock(truth) : '',
                 textAlign: TextAlign.right,
                 style: num.copyWith(color: t.inkSecondary),
               ),

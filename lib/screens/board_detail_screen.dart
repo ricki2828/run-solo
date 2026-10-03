@@ -45,8 +45,6 @@ class _BoardDetailScreenState extends State<BoardDetailScreen>
   /// the screen opened; marking seen after the replay must not restart it.
   bool _seenChecked = false;
   bool _pbMoment = false;
-  bool _heatOn = false;
-  bool _heatTouched = false;
   int? _selected;
 
   @override
@@ -64,7 +62,6 @@ class _BoardDetailScreenState extends State<BoardDetailScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     final services = AppServices.of(context);
-    _heatOn = services.settings.settings.compareHeatAdjusted;
     final history = services.history;
     _load ??= () async {
       final boards = await history.boards();
@@ -159,15 +156,8 @@ class _BoardDetailScreenState extends State<BoardDetailScreen>
               now: services.now(),
               pb: _pb,
               pbMoment: _pbMoment,
-              heatOn: _heatTouched
-                  ? _heatOn
-                  : services.settings.settings.compareHeatAdjusted,
               selected: _selected,
               onSelect: (i) => setState(() => _selected = i),
-              onToggleHeat: () => setState(() {
-                _heatTouched = true;
-                _heatOn = !_heatOn;
-              }),
             );
           },
         ),
@@ -188,7 +178,6 @@ class _BoardView {
     required this.lower,
     required this.roundTo,
     required this.steps,
-    required this.hasHeatTwin,
   });
 
   final String key;
@@ -206,9 +195,6 @@ class _BoardView {
 
   /// Axis step candidates; the first with at most ~3 gaps wins.
   final List<double> steps;
-
-  /// Goal boards carry no heat twin (#81): their heat column stays a dash.
-  final bool hasHeatTwin;
 
   static _BoardView of(
     String key,
@@ -251,7 +237,6 @@ class _BoardView {
           board.kind != engine.BoardKind.distanceInTime,
       roundTo: roundTo,
       steps: steps,
-      hasHeatTwin: engine.Leaderboards.hasHeatTwin(key),
     );
   }
 
@@ -307,10 +292,8 @@ class _DetailBody extends StatelessWidget {
     required this.now,
     required this.pb,
     required this.pbMoment,
-    required this.heatOn,
     required this.selected,
     required this.onSelect,
-    required this.onToggleHeat,
   });
 
   final _BoardView view;
@@ -319,10 +302,8 @@ class _DetailBody extends StatelessWidget {
   final DateTime now;
   final AnimationController pb;
   final bool pbMoment;
-  final bool heatOn;
   final int? selected;
   final ValueChanged<int?> onSelect;
-  final VoidCallback onToggleHeat;
 
   static const _months = [
     'Jan',
@@ -380,7 +361,6 @@ class _DetailBody extends StatelessWidget {
             child: _BoardChart(
               view: view,
               units: units,
-              heatOn: heatOn,
               animation: pb,
               pbMoment: pbMoment,
               selected: selected,
@@ -390,13 +370,7 @@ class _DetailBody extends StatelessWidget {
           const SizedBox(height: Space.x8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
-            child: _Legend(
-              heatOn: heatOn,
-              hasHeatTwin:
-                  view.hasHeatTwin &&
-                  view.board.kind != engine.BoardKind.cooper,
-              onToggleHeat: onToggleHeat,
-            ),
+            child: const _Legend(),
           ),
         ],
         const SizedBox(height: Space.x24),
@@ -411,7 +385,6 @@ class _DetailBody extends StatelessWidget {
         _AllTable(
           view: view,
           units: units,
-          heatOn: heatOn,
           selectedRunId: selected == null
               ? null
               : _BoardChart.shownRuns(view.board)[selected!].runId,
@@ -778,7 +751,6 @@ class _BoardChart extends StatelessWidget {
   const _BoardChart({
     required this.view,
     required this.units,
-    required this.heatOn,
     required this.animation,
     required this.pbMoment,
     required this.selected,
@@ -787,7 +759,6 @@ class _BoardChart extends StatelessWidget {
 
   final _BoardView view;
   final Units units;
-  final bool heatOn;
   final AnimationController animation;
   final bool pbMoment;
   final int? selected;
@@ -807,7 +778,6 @@ class _BoardChart extends StatelessWidget {
     final board = view.board;
     final shown = shownRuns(board);
     final pbRun = board.pb!;
-    final twins = board.kind != engine.BoardKind.cooper;
     final direction = switch (board.kind) {
       engine.BoardKind.cooper => 'Higher is taller',
       engine.BoardKind.distanceInTime => 'Further is taller',
@@ -817,11 +787,14 @@ class _BoardChart extends StatelessWidget {
       chartKey: const ValueKey('board-chart'),
       points: [
         for (final e in shown)
+          // The bar is the true value the board ranks; the tick is the
+          // actual one, only where hills or heat moved it.
           BarPoint(
             date: e.date,
-            value: e.metric,
-            twin: twins ? e.adjMetric : null,
-            noWeather: twins && e.adjMetric == null,
+            value: board.rankValue(e),
+            twin: e.adjMetric == null || e.adjMetric == e.metric
+                ? null
+                : e.metric,
           ),
       ],
       lowerIsBetter: view.lower,
@@ -838,15 +811,19 @@ class _BoardChart extends StatelessWidget {
       ),
       maxBars: _maxBars,
       showValues: false,
-      showTwins: heatOn && twins,
+      showTwins: true,
       selected: selected,
       onSelect: onSelect,
       selectedLabel: (i) {
         final e = shown[i];
         final gap = e.runId == pbRun.runId && e.metric == pbRun.metric
             ? 'your best'
-            : '${view.gap(e.metric, units).replaceFirst('+', '')} off your best';
-        return '${Fmt.dayDate(e.date)} · ${view.fmt(e.metric, units)} · $gap';
+            : '${view.gap(board.rankValue(e), units).replaceFirst('+', '')} off your best';
+        final actual = e.adjMetric == null || e.adjMetric == e.metric
+            ? ''
+            : ' (actual ${view.fmt(e.metric, units)})';
+        return '${Fmt.dayDate(e.date)} · '
+            '${view.fmt(board.rankValue(e), units)}$actual · $gap';
       },
       moment: pbMoment && board.length >= 2 ? animation : null,
       previousBest: pbMoment && board.length >= 2
@@ -856,39 +833,25 @@ class _BoardChart extends StatelessWidget {
   }
 }
 
-/// The chart legend: your best / newest / best, plus the heat-adjusted
-/// tick and no-weather ring when the heat layer shows. Tapping it toggles
-/// that layer (A11.3.5).
+/// The chart legend: your best / best, plus the actual-value tick (the bars
+/// are true pace; the tick shows what the run really was).
 class _Legend extends StatelessWidget {
-  const _Legend({
-    required this.heatOn,
-    required this.hasHeatTwin,
-    required this.onToggleHeat,
-  });
-  final bool heatOn;
-  final bool hasHeatTwin;
-  final VoidCallback onToggleHeat;
+  const _Legend();
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return InkWell(
+    return Padding(
       key: const ValueKey('board-legend'),
-      onTap: hasHeatTwin ? onToggleHeat : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: Space.x4),
-        child: Wrap(
-          spacing: Space.x16,
-          runSpacing: Space.x4,
-          children: [
-            _item(_Swatch(fill: t.accentArc), 'your best', t),
-            _item(_Swatch(dashed: t.inkSecondary), 'best', t),
-            if (heatOn && hasHeatTwin) ...[
-              _item(_Swatch(tick: t.inkSecondary), 'heat-adjusted estimate', t),
-              _item(_Swatch(ring: t.inkMuted), 'no weather', t),
-            ],
-          ],
-        ),
+      padding: const EdgeInsets.symmetric(vertical: Space.x4),
+      child: Wrap(
+        spacing: Space.x16,
+        runSpacing: Space.x4,
+        children: [
+          _item(_Swatch(fill: t.accentArc), 'your best', t),
+          _item(_Swatch(dashed: t.inkSecondary), 'best', t),
+          _item(_Swatch(tick: t.inkSecondary), 'actual', t),
+        ],
       ),
     );
   }
@@ -904,11 +867,10 @@ class _Legend extends StatelessWidget {
 }
 
 class _Swatch extends StatelessWidget {
-  const _Swatch({this.fill, this.dashed, this.tick, this.ring});
+  const _Swatch({this.fill, this.dashed, this.tick});
   final Color? fill;
   final Color? dashed;
   final Color? tick;
-  final Color? ring;
 
   @override
   Widget build(BuildContext context) {
@@ -916,23 +878,17 @@ class _Swatch extends StatelessWidget {
       width: 16,
       height: 12,
       child: CustomPaint(
-        painter: _SwatchPainter(
-          fill: fill,
-          dashed: dashed,
-          tick: tick,
-          ring: ring,
-        ),
+        painter: _SwatchPainter(fill: fill, dashed: dashed, tick: tick),
       ),
     );
   }
 }
 
 class _SwatchPainter extends CustomPainter {
-  _SwatchPainter({this.fill, this.dashed, this.tick, this.ring});
+  _SwatchPainter({this.fill, this.dashed, this.tick});
   final Color? fill;
   final Color? dashed;
   final Color? tick;
-  final Color? ring;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -966,42 +922,26 @@ class _SwatchPainter extends CustomPainter {
           ..strokeWidth = 2,
       );
     }
-    if (ring != null) {
-      canvas.drawCircle(
-        Offset(6, size.height / 2),
-        2.5,
-        Paint()
-          ..color = ring!
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.2,
-      );
-    }
   }
 
   @override
   bool shouldRepaint(_SwatchPainter old) =>
-      old.fill != fill ||
-      old.dashed != dashed ||
-      old.tick != tick ||
-      old.ring != ring;
+      old.fill != fill || old.dashed != dashed || old.tick != tick;
 }
 
-/// The ALL table (A11.3.7): # · value · gap · date · heat-adj, tabular.
-/// #1 carries the 6 dp Arc dot; an official course time carries its tag;
-/// a run with no weather says so, never a dash that reads as zero. A row
-/// opens its run; the header's (i) opens the heat sheet (A6).
+/// The ALL table (A11.3.7): # · true value · gap · date · actual, tabular.
+/// #1 carries the 6 dp Arc dot; an official course time carries its tag.
+/// A row opens its run; the header's (i) opens the true pace sheet.
 class _AllTable extends StatelessWidget {
   const _AllTable({
     required this.view,
     required this.units,
-    required this.heatOn,
     required this.selectedRunId,
     required this.shortDate,
   });
 
   final _BoardView view;
   final Units units;
-  final bool heatOn;
   final String? selectedRunId;
   final String Function(DateTime) shortDate;
 
@@ -1015,9 +955,6 @@ class _AllTable extends StatelessWidget {
       engine.BoardKind.interval => 'PACE',
       _ => 'TIME',
     };
-    final heatHeader = board.kind == engine.BoardKind.cooper
-        ? 'HEAT-ADJ EST.'
-        : 'HEAT-ADJ';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
       child: Column(
@@ -1032,14 +969,11 @@ class _AllTable extends StatelessWidget {
                 Expanded(child: Text('DATE', style: _head(t))),
                 InkWell(
                   key: const ValueKey('board-heat-info'),
-                  onTap: () => showHeatInfoSheet(
-                    context,
-                    cooper: board.kind == engine.BoardKind.cooper,
-                  ),
+                  onTap: () => showTruePaceInfoSheet(context),
                   child: SizedBox(
                     width: 76,
                     child: Text(
-                      '$heatHeader (i)',
+                      'ACTUAL (i)',
                       style: _head(t),
                       textAlign: TextAlign.right,
                     ),
@@ -1132,28 +1066,14 @@ class _AllTable extends StatelessWidget {
             ),
             SizedBox(
               width: 76,
-              child: !view.hasHeatTwin
-                  ? Text(
-                      '–',
-                      style: RunSoloType.label13.copyWith(
-                        fontSize: 14,
-                        color: t.inkMuted,
-                      ),
-                      textAlign: TextAlign.right,
-                    )
-                  : r.adjMetric == null
-                  ? Align(
-                      alignment: Alignment.centerRight,
-                      child: _Tag(text: 'no weather', color: t.inkSecondary),
-                    )
-                  : Text(
-                      '${view.fmt(view.board.kind == engine.BoardKind.cooper ? r.metric : r.adjMetric!, units)}${i == 0 ? ' est.' : ''}',
-                      style: RunSoloType.label13.copyWith(
-                        fontSize: 14,
-                        color: t.inkSecondary,
-                      ),
-                      textAlign: TextAlign.right,
-                    ),
+              child: Text(
+                view.fmt(r.metric, units),
+                style: RunSoloType.label13.copyWith(
+                  fontSize: 14,
+                  color: t.inkSecondary,
+                ),
+                textAlign: TextAlign.right,
+              ),
             ),
           ],
         ),

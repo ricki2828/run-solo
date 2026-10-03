@@ -28,6 +28,7 @@ TrailRunFacts run(
   RouteSignature? r,
   double? climb = 300,
   double? gap = 360,
+  double heat = 1,
   String? street = 'Kastro',
   double distanceM = 6000,
 }) => TrailRunFacts(
@@ -36,7 +37,10 @@ TrailRunFacts run(
   movingMs: movingSec * 1000,
   distanceM: distanceM,
   climbM: climb,
-  gapSecPerKm: gap,
+  // [gap] is the hills-only pace the test wants; as a hills factor on the
+  // actual pace. Null = no elevation at all.
+  gradeFactor: gap == null ? null : gap / (movingSec * 1000 / distanceM),
+  heatFactor: heat,
   route: r,
   street: street,
 );
@@ -104,6 +108,37 @@ void main() {
       );
     });
 
+    test('same trail compares heat-adjusted moving time', () {
+      // 2600 s on a cool day, then 2650 s on a hot one (6% slowdown): 2491 s
+      // once the heat is out, so the hot run was the better one.
+      final a = run('a', d, 2600, r: loop);
+      final b = run('b', d2, 2650, r: loop, heat: 0.94);
+      final v = TrailVerdict.of(b, [a]);
+      expect(v.tone, TrailTone.faster);
+      expect(v.headline, 'FASTER ON THIS TRAIL');
+      expect(v.subline, '1:49 quicker than 12 Sep, your last run here.');
+      expect(v.deltaSec, closeTo(2600 - 2650 * 0.94, 1e-9));
+      expect(v.lines, contains('Moving time 44:10, was 43:20.'));
+      expect(v.lines, contains('In cool conditions that is 41:31, was 43:20.'));
+      expect(v.isTrailBest, isTrue);
+      // Cool both times: no heat line, the clock is the comparison.
+      final c = TrailVerdict.of(run('c', d3, 2650, r: loop), [a]);
+      expect(c.tone, TrailTone.slower);
+      expect(c.lines.any((l) => l.startsWith('In cool conditions')), isFalse);
+    });
+
+    test('the best on a trail is the best once the heat is out', () {
+      final hot = run('a', d, 2640, r: loop, heat: 0.9); // 2376 cool
+      final b = run('b', d2, 2500, r: loop);
+      final g = Trails.group([hot, b]).single;
+      expect(g.best.id, 'a');
+      final v = TrailVerdict.of(run('c', d3, 2450, r: loop), [hot, b]);
+      expect(
+        v.lines.last,
+        'Your best here is 39:36 (12 Sep, cool-day time). You were 1:14 off.',
+      );
+    });
+
     test('feet with miles', () {
       final a = run('a', d, 2600, r: loop, climb: 100);
       final b = run('b', d2, 2500, r: loop, climb: 100);
@@ -121,19 +156,19 @@ void main() {
     });
   });
 
-  group('no match: effort pace', () {
+  group('no match: true pace', () {
     test('no earlier trail run is a baseline', () {
       final v = TrailVerdict.of(run('a', d, 2600, r: loop, gap: 341), []);
       expect(v.basis, TrailBasis.baseline);
       expect(v.headline, 'BASELINE SET');
       expect(
         v.subline,
-        'Effort pace 5:41/km over 6.0 km with 300 m of climb. Your next '
-        'trail run gets a verdict.',
+        '5:41 true pace (7:13 actual, hilly) over 6.0 km with 300 m of '
+        'climb. Your next trail run gets a verdict.',
       );
     });
 
-    test('a different trail is judged on effort pace vs the median', () {
+    test('a different trail is judged on true pace vs the median', () {
       final others = [
         run('a', d, 2600, r: route(dLat: 0.05), gap: 380),
         run('b', d2, 2600, r: route(dLat: 0.09), gap: 370),
@@ -149,7 +184,7 @@ void main() {
       expect(v.basis, TrailBasis.effortPace);
       expect(v.tone, TrailTone.faster);
       expect(v.headline, 'FASTER');
-      expect(v.subline, contains('Effort pace 30 s/km quicker'));
+      expect(v.subline, contains('True pace 30 s/km quicker'));
       expect(v.subline, contains('(5:50 vs 6:20/km)'));
       expect(v.comparedWith, 'median');
     });
@@ -170,7 +205,7 @@ void main() {
       expect(level.subline, contains('Inside the noise (12 s/km).'));
     });
 
-    test('a run with no route is judged on effort pace too', () {
+    test('a run with no route is judged on true pace too', () {
       final a = run('a', d, 2600, r: loop, gap: 380);
       final v = TrailVerdict.of(run('n', d3, 2500, gap: 340), [a]);
       expect(v.basis, TrailBasis.effortPace);
@@ -181,6 +216,19 @@ void main() {
       final v = TrailVerdict.of(run('a', d, 2600, gap: null, climb: null), []);
       expect(v.headline, 'NO VERDICT');
       expect(v.basis, TrailBasis.none);
+      expect(v.subline, 'No elevation on this run, so no true pace.');
+    });
+
+    test('heat is taken out of a hot trail run, and the actual pace stays', () {
+      // 7:13 actual, hills 5:41, hot day (6%): 5:21 true.
+      final a = run('a', d, 2600, r: route(dLat: 0.05), gap: 380);
+      final v = TrailVerdict.of(
+        run('n', d3, 2600, r: loop, gap: 380, heat: 0.94),
+        [a],
+      );
+      expect(v.tone, TrailTone.faster);
+      expect(v.subline, contains('True pace 23 s/km quicker'));
+      expect(v.lines.last, contains('actual, hilly, hot day)'));
     });
 
     test('the wording has no em dash', () {
@@ -221,37 +269,19 @@ void main() {
     });
   });
 
-  group('effort for the identity lanes', () {
-    int? effort({
-      double distanceM = 15000,
-      int movingMs = 2 * 3600 * 1000,
-      double? gap = 400,
-      double? climb = 600,
-      ElevSource? src = ElevSource.baro,
-    }) => TrailEffort.effortMs(
-      distanceM: distanceM,
-      movingMs: movingMs,
-      gapSecPerKm: gap,
-      climbM: climb,
-      elevSrc: src,
-    );
-
-    test('a hilly 15K counts at its effort time', () {
-      // 15 km at 400 s/km effort = 6000 s, against 7200 s on the clock.
-      expect(effort(), 6000 * 1000);
+  group('trail scores for the identity lanes', () {
+    test('a trail run of 3 km or more is scored from its moving time', () {
+      expect(TrailScore.movingMs(distanceM: 15000, movingMs: 7200000), 7200000);
+      expect(TrailScore.movingMs(distanceM: 2000, movingMs: 600000), isNull);
+      expect(TrailScore.movingMs(distanceM: 5000, movingMs: 0), isNull);
     });
 
-    test('never more than the credit cap, never worse than the clock', () {
-      expect(effort(gap: 200), (7200 * 1000 * 0.75).round());
-      expect(effort(gap: 600), 7200 * 1000);
-    });
-
-    test('too short, flat, GPS-only or without GAP does not count', () {
-      expect(effort(distanceM: 2000), isNull);
-      expect(effort(climb: 30), isNull);
-      expect(effort(src: ElevSource.gps), isNull);
-      expect(effort(gap: null), isNull);
-      expect(effort(src: null), isNull);
+    test('the lanes score it at true pace, hills clamped to 25 percent', () {
+      // 15 km, 2 h on the clock, hills worth far more than the clamp: the
+      // factor is the clamp's 0.75, not 0.5.
+      const f = TruePaceFactors(grade: 0.75);
+      expect(f.apply(7200 * 1000), 5400 * 1000);
+      expect(TruePace.factors(gradeFactor: 0.5).grade, TruePace.minGrade);
     });
   });
 }

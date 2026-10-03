@@ -1,6 +1,6 @@
 import '../model/run_file.dart';
-import 'elevation.dart';
 import 'format.dart';
+import 'true_pace.dart';
 import 'route_match.dart';
 
 /// What the same-trail verdict and the trail boards read about one Trail run.
@@ -13,7 +13,8 @@ class TrailRunFacts {
     required this.movingMs,
     required this.distanceM,
     this.climbM,
-    this.gapSecPerKm,
+    this.gradeFactor,
+    this.heatFactor = 1,
     this.route,
     this.place,
     this.street,
@@ -25,11 +26,30 @@ class TrailRunFacts {
   final double distanceM;
   final double? climbM;
 
-  /// Grade-adjusted pace for the whole run, s/km; null without elevation.
-  final double? gapSecPerKm;
+  /// The whole run's hills factor ([TruePace]; 1 for GPS-only elevation);
+  /// null without elevation, which leaves a first-time trail run with no
+  /// verdict.
+  final double? gradeFactor;
+
+  /// The whole run's heat factor (1 without weather or on a cool day).
+  final double heatFactor;
   final RouteSignature? route;
   final String? place;
   final String? street;
+
+  TruePaceFactors get factors =>
+      TruePaceFactors(grade: gradeFactor ?? 1, heat: heatFactor);
+
+  /// The actual moving pace, s/km.
+  double get rawPaceSecPerKm => movingMs / distanceM;
+
+  /// TRUE PACE, s/km (flat ground, cool day); null without elevation.
+  double? get truePaceSecPerKm =>
+      gradeFactor == null ? null : factors.apply(rawPaceSecPerKm);
+
+  /// Moving time with the heat taken out, ms. The same trail has the same
+  /// hills every time, so a same-trail comparison only needs the heat.
+  int get heatAdjustedMovingMs => (movingMs * heatFactor).round();
 }
 
 /// Runs that went the same way round the same trail, oldest first. The
@@ -47,9 +67,11 @@ class TrailGroup {
 
   TrailRunFacts get anchor => runs.first;
 
-  /// The fastest run by moving time (ties go to the earlier run).
-  TrailRunFacts get best =>
-      runs.reduce((a, b) => b.movingMs < a.movingMs ? b : a);
+  /// The fastest run by heat-adjusted moving time (ties go to the earlier
+  /// run).
+  TrailRunFacts get best => runs.reduce(
+    (a, b) => b.heatAdjustedMovingMs < a.heatAdjustedMovingMs ? b : a,
+  );
 }
 
 abstract final class Trails {
@@ -108,8 +130,8 @@ enum TrailBasis { sameTrail, effortPace, baseline, none }
 enum TrailTone { faster, slower, same, baseline, none }
 
 /// A Trail run's result: judged against your earlier runs on the SAME trail
-/// when there are any, else on grade-adjusted effort pace against your recent
-/// trail runs. Never frozen into the sidecar; it is worked out from the index
+/// when there are any (heat-adjusted moving time: the hills are identical),
+/// else on True Pace against your recent trail runs. Never frozen into the sidecar; it is worked out from the index
 /// each time it is shown, so it always agrees with the boards.
 class TrailResult {
   const TrailResult({
@@ -142,7 +164,8 @@ class TrailResult {
   /// "last", "best" or "median": what the headline was measured against.
   final String? comparedWith;
 
-  /// Seconds (moving time) or s/km (effort pace), positive = faster.
+  /// Seconds (heat-adjusted moving time) or s/km (true pace), positive =
+  /// faster.
   final double? deltaSec;
 
   /// How many runs this trail has, this one included (0 off a trail).
@@ -150,15 +173,16 @@ class TrailResult {
 }
 
 abstract final class TrailVerdict {
-  /// Moving time on one trail: inside this, two runs are level.
+  /// Heat-adjusted moving time on one trail: inside this, two runs are
+  /// level.
   static double timeFloorSec(int refMs) => _max(15, refMs / 1000 * 0.015);
 
-  /// Effort pace, s/km: inside this, two runs are level. Wider than the
-  /// road floor because the grade model is an estimate.
+  /// True pace, s/km: inside this, two runs are level. Wider than the road
+  /// floor because the grade model is an estimate.
   static double paceFloorSecPerKm(double refSecPerKm) =>
       _max(12, refSecPerKm * 0.025);
 
-  /// Recent trail runs the effort-pace median is taken over.
+  /// Recent trail runs the true-pace median is taken over.
   static const int medianSetSize = 6;
 
   static double _max(double a, double b) => a > b ? a : b;
@@ -199,9 +223,12 @@ abstract final class TrailVerdict {
     Units units,
   ) {
     final last = prior.last;
-    final best = prior.reduce((a, b) => b.movingMs < a.movingMs ? b : a);
-    final deltaS = (last.movingMs - cur.movingMs) / 1000;
-    final floor = timeFloorSec(last.movingMs);
+    final best = prior.reduce(
+      (a, b) => b.heatAdjustedMovingMs < a.heatAdjustedMovingMs ? b : a,
+    );
+    final deltaS =
+        (last.heatAdjustedMovingMs - cur.heatAdjustedMovingMs) / 1000;
+    final floor = timeFloorSec(last.heatAdjustedMovingMs);
     final when = _dayMonth(last.start);
     final TrailTone tone;
     final String headline;
@@ -228,11 +255,14 @@ abstract final class TrailVerdict {
           '(${PaceFormat.mmss(floor)}).';
     }
 
-    final isBest = cur.movingMs < best.movingMs - floor * 1000;
+    final isBest =
+        cur.heatAdjustedMovingMs < best.heatAdjustedMovingMs - floor * 1000;
     final lines = <String>[
       '${group.name}, your ${_ordinal(prior.length + 1)} run here.',
       'Moving time ${_clock(cur.movingMs)}, was ${_clock(last.movingMs)}.',
     ];
+    final heat = _heatLine(cur, last);
+    if (heat != null) lines.add(heat);
     final climb = _climbLine(cur, last, units);
     if (climb != null) lines.add(climb);
     if (isBest) {
@@ -240,9 +270,10 @@ abstract final class TrailVerdict {
     } else if (best.id == last.id) {
       lines.add('That $when run is also your best here.');
     } else {
-      final off = (cur.movingMs - best.movingMs) / 1000;
+      final off = (cur.heatAdjustedMovingMs - best.heatAdjustedMovingMs) / 1000;
       lines.add(
-        'Your best here is ${_clock(best.movingMs)} (${_dayMonth(best.start)}). '
+        'Your best here is ${_clock(best.heatAdjustedMovingMs)} '
+        '(${_dayMonth(best.start)}${_cool(best) ? '' : ', cool-day time'}). '
         '${off.abs() < floor ? 'You were level with it.' : 'You were ${PaceFormat.mmss(off)} off.'}',
       );
     }
@@ -260,48 +291,57 @@ abstract final class TrailVerdict {
     );
   }
 
+  /// Neither run was run in heat worth naming, so no heat line is needed.
+  static bool _cool(TrailRunFacts r) => !r.factors.hot;
+
+  /// "In cool conditions that is 1:01:12, was 1:02:40." when either run was
+  /// hot, so the heat-adjusted comparison is never a surprise.
+  static String? _heatLine(TrailRunFacts cur, TrailRunFacts last) {
+    if (_cool(cur) && _cool(last)) return null;
+    return 'In cool conditions that is ${_clock(cur.heatAdjustedMovingMs)}, '
+        'was ${_clock(last.heatAdjustedMovingMs)}.';
+  }
+
   static TrailResult _effort(
     TrailRunFacts cur,
     List<TrailRunFacts> earlier,
     Units units,
   ) {
-    final gap = cur.gapSecPerKm;
-    if (gap == null) {
+    final truePace = cur.truePaceSecPerKm;
+    if (truePace == null) {
       return const TrailResult(
         basis: TrailBasis.none,
         tone: TrailTone.none,
         headline: 'NO VERDICT',
-        subline: 'No elevation on this run, so no effort pace.',
+        subline: 'No elevation on this run, so no true pace.',
       );
     }
-    final withGap = [
+    final withPace = [
       for (final r in earlier)
-        if (r.gapSecPerKm != null) r,
+        if (r.truePaceSecPerKm != null) r,
     ];
     final distKm = cur.distanceM / 1000;
     final climb = cur.climbM == null
         ? ''
         : ' with ${_height(cur.climbM!, units)} of climb';
     final dist = '${distKm.toStringAsFixed(1)} km';
-    final now = PaceFormat.pace(gap, units);
-    if (withGap.isEmpty) {
+    final now = TruePaceText.headline(cur.rawPaceSecPerKm, cur.factors, units);
+    if (withPace.isEmpty) {
       return TrailResult(
         basis: TrailBasis.baseline,
         tone: TrailTone.baseline,
         headline: 'BASELINE SET',
-        subline:
-            'Effort pace $now over $dist$climb. Your next trail run gets a '
-            'verdict.',
+        subline: '$now over $dist$climb. Your next trail run gets a verdict.',
       );
     }
-    final set = withGap.length > medianSetSize
-        ? withGap.sublist(withGap.length - medianSetSize)
-        : withGap;
-    final median = _median([for (final r in set) r.gapSecPerKm!]);
-    final delta = median - gap;
+    final set = withPace.length > medianSetSize
+        ? withPace.sublist(withPace.length - medianSetSize)
+        : withPace;
+    final median = _median([for (final r in set) r.truePaceSecPerKm!]);
+    final delta = median - truePace;
     final floor = paceFloorSecPerKm(median);
     final vs =
-        '(${PaceFormat.paceBare(gap, units)} vs ${PaceFormat.pace(median, units)})';
+        '(${PaceFormat.paceBare(truePace, units)} vs ${PaceFormat.pace(median, units)})';
     final TrailTone tone;
     final String headline;
     final String subline;
@@ -309,19 +349,19 @@ abstract final class TrailVerdict {
       tone = TrailTone.faster;
       headline = 'FASTER';
       subline =
-          'Effort pace ${PaceFormat.delta(delta, units)} quicker than your '
+          'True pace ${PaceFormat.delta(delta, units)} quicker than your '
           'recent trail runs $vs.';
     } else if (delta <= -floor) {
       tone = TrailTone.slower;
       headline = 'SLOWER';
       subline =
-          'Effort pace ${PaceFormat.delta(delta, units)} slower than your '
+          'True pace ${PaceFormat.delta(delta, units)} slower than your '
           'recent trail runs $vs.';
     } else {
       tone = TrailTone.same;
       headline = 'NO REAL CHANGE';
       subline =
-          'Effort pace within ${PaceFormat.delta(delta, units)} of your '
+          'True pace within ${PaceFormat.delta(delta, units)} of your '
           'recent trail runs $vs. Inside the noise '
           '(${PaceFormat.delta(floor, units)}).';
     }
@@ -331,9 +371,9 @@ abstract final class TrailVerdict {
       headline: headline,
       subline: subline,
       lines: [
-        'First time on this trail, so it is judged on effort pace: your pace '
-            'with the hills evened out.',
-        'Over $dist$climb.',
+        'First time on this trail, so it is judged on true pace: your pace '
+            'with the hills and the heat taken out.',
+        '$now over $dist$climb.',
       ],
       comparedWith: 'median',
       deltaSec: delta,
@@ -408,54 +448,35 @@ String _dayMonth(DateTime d) => '${d.day} ${_months[d.month - 1]}';
 /// SPEED, which comes from interval sessions only.
 ///
 /// Why: a hilly run is a bigger effort than its pace says, and the lanes
-/// otherwise ignore every trail run. Grade-adjusted pace (Minetti 2002, see
-/// [Gap]) is the flat pace that would cost the same energy, so the run is
-/// scored as if it had been run flat at that pace over the same distance: the
-/// same Daniels-Gilbert VDOT as a road run, fed the effort time
-/// (GAP x distance) instead of the clock time. The lanes keep the best
-/// observation in a window, so a slow hilly 15K can lift LONG when its effort
-/// time beats the road evidence, and can never pull a score down.
-///
-/// Fair only when:
-/// - the run is at least [minDistanceM] (a short hilly burst proves little);
-/// - the elevation is the barometer's (GPS-only altitude is too noisy for
-///   the grade model; those runs just do not count here);
-/// - it climbed at least [minClimbPerKm] m per km (on a flat run the GAP is
-///   the pace, nothing to adjust, and it counts as a road run if run as
-///   Free), and the adjustment is never worth more than [maxCredit] of the
-///   clock time, so one wild grade estimate cannot mint a fantasy score.
+/// otherwise ignore every trail run. The run is scored at its TRUE PACE
+/// ([TruePace]: hills per Minetti 2002, heat per the §18.5 table) held over
+/// the same distance: the same Daniels-Gilbert VDOT as a road run, fed the
+/// flat, cool-day time instead of the clock time. This replaces the old
+/// separate "effort pace" credit, and its caps still apply through the one
+/// model:
+/// - at least [minDistanceM] (a short hilly burst proves little);
+/// - only barometer elevation counts as hills (GPS-only altitude is too noisy
+///   for the grade model, so such a run is scored on its clock time and
+///   heat);
+/// - the hills move the time by at most 25% either way ([TruePace.minGrade],
+///   [TruePace.maxGrade]), so one wild grade estimate cannot mint a fantasy
+///   score. The old "never worse than the clock" rule is gone: True Pace is
+///   a fair pace, a long net descent reads slower, and the lanes keep the
+///   best reading in a window, so an easy day never lowers a score.
 ///
 /// This is the one place to tune the rule: change it here and Home, the
 /// scores and the detail line all follow.
-abstract final class TrailEffort {
+abstract final class TrailScore {
   static const double minDistanceM = 3000;
-  static const double minClimbPerKm = 10;
-  static const double maxCredit = 0.25;
 
-  /// The effort time in ms over [distanceM] for the lanes to score, or null
-  /// when the run does not count.
-  static int? effortMs({
-    required double distanceM,
-    required int movingMs,
-    required double? gapSecPerKm,
-    required double? climbM,
-    required ElevSource? elevSrc,
-  }) {
-    if (gapSecPerKm == null || climbM == null) return null;
-    if (elevSrc != ElevSource.baro) return null;
-    if (distanceM < minDistanceM || movingMs <= 0) return null;
-    if (climbM / (distanceM / 1000) < minClimbPerKm) return null;
-    final effort = gapSecPerKm * distanceM / 1000 * 1000;
-    final floor = movingMs * (1 - maxCredit);
-    final ms = (effort < floor ? floor : effort).round();
-    // Never a worse score than the clock gives: a descent-heavy run is not
-    // marked down for being easy.
-    return ms > movingMs ? movingMs : ms;
-  }
+  /// The moving time a trail run is scored from (the lanes apply True Pace
+  /// to it), or null when the run is too short to count.
+  static int? movingMs({required double distanceM, required int movingMs}) =>
+      distanceM < minDistanceM || movingMs <= 0 ? null : movingMs;
 
   /// The wording on the score detail line.
-  static const String note = 'Trail runs count using effort pace';
+  static const String note = 'Trail runs count at true pace';
 
   /// What a LONG reading set by a trail run is called.
-  static const String longSource = 'Trail run (effort pace)';
+  static const String longSource = 'Trail run (true pace)';
 }

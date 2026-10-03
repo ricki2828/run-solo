@@ -148,6 +148,7 @@ class RunDetailBody extends StatelessWidget {
     // Null for a run with no elevation (indoor, an import, one recorded
     // before the phone fused its barometer).
     final elev = engine.RunElevation.of(d.run);
+    final breakdown = truePaceBreakdownOf(a, units);
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
       children: [
@@ -161,6 +162,10 @@ class RunDetailBody extends StatelessWidget {
         // A6: the weather chip sits under the header, before the map.
         if (weather != null) ...[
           WeatherChip(view: weather),
+          const SizedBox(height: Space.x16),
+        ],
+        if (breakdown != null) ...[
+          TruePaceBreakdown(line: breakdown),
           const SizedBox(height: Space.x16),
         ],
         // No route (indoor, or no GPS): no empty box, the figures speak.
@@ -185,7 +190,11 @@ class RunDetailBody extends StatelessWidget {
           const SizedBox(height: Space.x24),
         ],
         if (elev != null) ...[
-          ElevationProfile(elevation: elev, units: units),
+          ElevationProfile(
+            elevation: elev,
+            units: units,
+            truePaceSecPerKm: a.truePace?.trueSecPerKm,
+          ),
           const SizedBox(height: Space.x24),
         ],
         if (d.summary.mode == RecordMode.trail)
@@ -273,6 +282,51 @@ class RunDetailBody extends StatelessWidget {
           ),
         ],
         const SizedBox(height: Space.x24),
+      ],
+    );
+  }
+}
+
+/// "True pace 4:58/km = actual 5:21, hills -0:18, heat -0:05" for a run
+/// whose hills or heat moved its pace; null for a flat, cool run (true pace
+/// is the actual pace) and for one with nothing to compare. A session reads
+/// on its work pace, every other run on its moving pace.
+String? truePaceBreakdownOf(engine.RunAnalysis a, Units units) {
+  final eu = units == Units.mi ? engine.Units.mi : engine.Units.km;
+  final work = a.intervals?.avgWorkPaceSecPerKm;
+  if (work != null) {
+    return engine.TruePaceText.breakdown(
+      work,
+      a.workFactors,
+      eu,
+      label: 'True work pace',
+    );
+  }
+  final tp = a.truePace;
+  return tp == null
+      ? null
+      : engine.TruePaceText.breakdown(tp.rawSecPerKm, tp.factors, eu);
+}
+
+/// The breakdown line on run detail, with the honest caveat: hills and heat
+/// are estimates.
+class TruePaceBreakdown extends StatelessWidget {
+  const TruePaceBreakdown({super.key, required this.line});
+  final String line;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Column(
+      key: const ValueKey('true-pace-breakdown'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(line, style: RunSoloType.body15.copyWith(color: t.inkPrimary)),
+        const SizedBox(height: Space.x4),
+        Text(
+          'Hills and heat are estimates.',
+          style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+        ),
       ],
     );
   }

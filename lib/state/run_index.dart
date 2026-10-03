@@ -142,21 +142,20 @@ class RunIndexEntry {
           ? row!.cooper!.vo2Adjusted
           : null,
       heatFraction: heatAdj,
-      trailDistanceM: trailEffortMs == null ? null : distanceM,
-      trailEffortMs: trailEffortMs,
+      gradeFactor: row?.gradeFactor ?? 1,
+      headlineGradeFactor: row?.workGradeFactor ?? 1,
+      trailDistanceM: trailMovingMs == null ? null : distanceM,
+      trailMovingMs: trailMovingMs,
     );
   }
 
-  /// What this run adds to the AEROBIC and LONG lanes when it is a Trail run
-  /// that qualifies (engine `TrailEffort`); null otherwise.
-  int? get trailEffortMs => mode != engine.RunMode.trail || row == null
+  /// The moving time a Trail run is scored from in the AEROBIC and LONG
+  /// lanes (engine `TrailScore`, at True Pace); null otherwise.
+  int? get trailMovingMs => mode != engine.RunMode.trail || row == null
       ? null
-      : engine.TrailEffort.effortMs(
+      : engine.TrailScore.movingMs(
           distanceM: distanceM,
           movingMs: row!.movingMs ?? durationMs,
-          gapSecPerKm: row!.gapSecPerKm,
-          climbM: row!.climbM,
-          elevSrc: row!.elevSrc,
         );
 
   /// The live compare's view of this run (LC1); null until the background
@@ -367,6 +366,11 @@ class IndexRow {
     this.descentM,
     this.elevSrc,
     this.gapSecPerKm,
+    this.truePaceSecPerKm,
+    this.gradeFactor,
+    this.heatFactor,
+    this.workTruePaceSecPerKm,
+    this.workGradeFactor,
     this.route,
     this.routeName,
     this.routeOffCount,
@@ -384,7 +388,9 @@ class IndexRow {
   /// 9: [climbM], [descentM], [elevSrc], [gapSecPerKm] (elevation).
   /// 10: [route] (same-trail match).
   /// 11: [routeName], [routeOffCount], [routeOffMs] (the followed route).
-  static const int currentVersion = 11;
+  /// 12: True Pace: [truePaceSecPerKm], [gradeFactor], [heatFactor],
+  /// [workTruePaceSecPerKm], [workGradeFactor].
+  static const int currentVersion = 12;
 
   final int version;
   final int lapCount;
@@ -465,15 +471,39 @@ class IndexRow {
   /// figure less than a barometer one.
   final engine.ElevSource? elevSrc;
 
-  /// The whole run's grade-adjusted pace in s/km (Minetti energy-cost model,
-  /// an estimate); the same-trail / GAP verdict reads this. Null without
+  /// The whole run's hills-only pace in s/km (Minetti energy-cost model, an
+  /// estimate); superseded by [truePaceSecPerKm], kept so rows stay
+  /// readable. Null without
   /// elevation or under 500 m.
   final double? gapSecPerKm;
+
+  /// TRUE PACE of the whole run, s/km: the moving pace with the hills and the
+  /// heat taken out (engine `TruePace`), i.e. flat ground on a cool day. The
+  /// pace every comparison, score, board and trend uses. Null for a run under
+  /// 500 m.
+  final double? truePaceSecPerKm;
+
+  /// The whole run's hills and heat multipliers behind [truePaceSecPerKm],
+  /// for the breakdown line (1 = no effect). [gradeFactor] is 1 without
+  /// barometer elevation (see [elevSrc]).
+  final double? gradeFactor;
+  final double? heatFactor;
+
+  /// Intervals: the session's work pace as True Pace, and the hills factor
+  /// over its work reps (the heat factor is [heatFactor]); null for every
+  /// other run.
+  final double? workTruePaceSecPerKm;
+  final double? workGradeFactor;
+
+  /// The whole run's True Pace factors (neutral when none are stored).
+  engine.TruePaceFactors get truePaceFactors =>
+      engine.TruePaceFactors(grade: gradeFactor ?? 1, heat: heatFactor ?? 1);
 
   /// The simplified GPS track of a Trail run, so two runs can be matched as
   /// the same trail without opening a file. Null for every other run type,
   /// for a run with no fixes or under 500 m.
   final engine.RouteSignature? route;
+
   /// The route the run followed (run file `route`), how many times it left
   /// it and for how long: History's route badge reads these.
   final String? routeName;
@@ -536,6 +566,17 @@ class IndexRow {
       descentM: elev == null ? null : dp1(elev.descentM),
       elevSrc: elev?.src,
       gapSecPerKm: elev?.gapSecPerKm == null ? null : dp1(elev!.gapSecPerKm!),
+      truePaceSecPerKm: a?.truePace == null
+          ? null
+          : dp1(a!.truePace!.trueSecPerKm),
+      gradeFactor: a?.truePace == null ? null : dp4(a!.truePace!.factors.grade),
+      heatFactor: a?.truePace == null ? null : dp4(a!.truePace!.factors.heat),
+      workTruePaceSecPerKm: a?.trueWorkPaceSecPerKm == null
+          ? null
+          : dp1(a!.trueWorkPaceSecPerKm!),
+      workGradeFactor: a?.trueWorkPaceSecPerKm == null
+          ? null
+          : dp4(a!.workFactors.grade),
       route:
           (sidecar?.runTypeOverride ?? a?.mode ?? run.mode) ==
               engine.RunMode.trail
@@ -576,6 +617,11 @@ class IndexRow {
     'descent_m': ?descentM,
     'elev_src': ?elevSrc?.name,
     'gap_s_per_km': ?gapSecPerKm,
+    'true_s_per_km': ?truePaceSecPerKm,
+    'grade_x': ?gradeFactor,
+    'heat_x': ?heatFactor,
+    'work_true_s_per_km': ?workTruePaceSecPerKm,
+    'work_grade_x': ?workGradeFactor,
     'route': ?route?.toJson(),
     'route_name': ?routeName,
     'route_off_n': ?routeOffCount,
@@ -631,6 +677,11 @@ class IndexRow {
             .where((e) => e.name == j['elev_src'])
             .firstOrNull,
         gapSecPerKm: d('gap_s_per_km'),
+        truePaceSecPerKm: d('true_s_per_km'),
+        gradeFactor: d('grade_x'),
+        heatFactor: d('heat_x'),
+        workTruePaceSecPerKm: d('work_true_s_per_km'),
+        workGradeFactor: d('work_grade_x'),
         route: engine.RouteSignature.fromJson(j['route']),
         routeName: j['route_name'] as String?,
         routeOffCount: j['route_off_n'] as int?,

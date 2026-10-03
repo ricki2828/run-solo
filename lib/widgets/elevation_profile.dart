@@ -9,7 +9,7 @@ import '../theme/theme.dart';
 import 'chrome.dart';
 
 /// Run detail's elevation card: climb and descent, the profile against
-/// distance, and the grade-adjusted pace (an estimate). Same chart style as
+/// distance, and the run's true pace (an estimate). Same chart style as
 /// Trends (tokens only, faint grid, labels in the right gutter).
 ///
 /// Tap or drag along the profile to read a point (distance, height, grade);
@@ -23,10 +23,14 @@ class ElevationProfile extends StatefulWidget {
     super.key,
     required this.elevation,
     required this.units,
+    this.truePaceSecPerKm,
     this.onScrub,
   });
 
   final engine.RunElevation elevation;
+
+  /// The run's true pace (hills and heat taken out); null shows no tile.
+  final double? truePaceSecPerKm;
   final Units units;
   final ValueChanged<engine.ElevPoint?>? onScrub;
 
@@ -59,7 +63,7 @@ class _ElevationProfileState extends State<ElevationProfile> {
     final units = widget.units;
     final gps = e.src == engine.ElevSource.gps;
     final sel = _selected;
-    final gap = e.gapSecPerKm;
+    final truePace = widget.truePaceSecPerKm;
     return Container(
       key: const ValueKey('elevation-card'),
       decoration: BoxDecoration(
@@ -92,11 +96,11 @@ class _ElevationProfileState extends State<ElevationProfile> {
                 value: Fmt.elevation(e.descentM, units),
                 size: 28,
               ),
-              if (gap != null)
+              if (truePace != null)
                 StatTile(
                   key: const ValueKey('elevation-gap'),
-                  label: 'grade-adjusted pace (estimate)',
-                  value: Fmt.paceUnit(gap, units),
+                  label: 'true pace (estimate)',
+                  value: Fmt.paceUnit(truePace, units),
                   size: 28,
                 ),
             ],

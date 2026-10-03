@@ -2,6 +2,7 @@ import '../model/run_file.dart';
 import '../run_mode.dart';
 import 'analysis.dart';
 import 'best_efforts.dart';
+import 'elevation.dart';
 import 'cooper_projection.dart';
 import 'trace.dart';
 
@@ -169,7 +170,9 @@ class RunDerived {
   /// - 4: PD2, the whole-run prediction input (`RunBestEfforts.wholeRun*`).
   /// - 5: continuous 5K/10K windows from INT runs without detected reps;
   ///   rebuild old runs so MID can see valid evidence from those traces.
-  static const int currentVersion = 5;
+  /// - 6: True Pace: every best effort carries the hills factor of its
+  ///   window, so boards rank hills and heat taken out; rebuild old runs.
+  static const int currentVersion = 6;
 
   /// The version this data was built at; JSON without one is 1.
   final int version;
@@ -186,7 +189,7 @@ class RunDerived {
     List<FiredNudge>? nudgesFired,
     BestEffortFinder finder = const BestEffortFinder(),
   }) {
-    final efforts = finder.find(run, a);
+    final efforts = finder.find(run, a).withGradeFactors(RunElevation.of(run));
     return RunDerived(
       bestEfforts: efforts,
       live: LiveFigures.of(

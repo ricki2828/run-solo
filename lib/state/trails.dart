@@ -1,5 +1,5 @@
 /// Trail runs as the same-trail verdict and the trail boards read them:
-/// index-row fields only (route, moving time, climb, effort pace), never a
+/// index-row fields only (route, moving time, climb, true pace), never a
 /// run file. The matching and the wording live in the engine
 /// (`route_match.dart`, `trail_verdict.dart`).
 library;
@@ -19,7 +19,10 @@ engine.TrailRunFacts? trailFactsOf(RunSummary r) {
     movingMs: row?.movingMs ?? r.durationMs,
     distanceM: r.distanceM,
     climbM: row?.climbM,
-    gapSecPerKm: row?.gapSecPerKm,
+    // No elevation at all (elevSrc null) leaves a first-time trail run with
+    // no true pace and no verdict.
+    gradeFactor: row?.elevSrc == null ? null : row?.gradeFactor ?? 1,
+    heatFactor: row?.heatFactor ?? 1,
     route: row?.route,
     place: r.place,
     street: r.street,
@@ -51,13 +54,23 @@ engine.TrailRunFacts trailFactsOfDetail(RunDetail d) {
 
 engine.TrailRunFacts _fromFile(RunDetail d) {
   final elev = engine.RunElevation.of(d.run);
+  final truePace =
+      d.analysis.truePace ??
+      engine.RunTruePace.of(
+        d.run,
+        elevation: elev,
+        slowdown: engine.WeatherRecord.fromJson(d.sidecar.weather)
+            ?.heat
+            ?.fraction,
+      );
   return engine.TrailRunFacts(
     id: d.run.id,
     start: d.summary.localStart,
     movingMs: engine.RunTimes.movingMs(d.run),
     distanceM: d.summary.distanceM,
     climbM: elev?.ascentM,
-    gapSecPerKm: elev?.gapSecPerKm,
+    gradeFactor: elev == null ? null : truePace?.factors.grade ?? 1,
+    heatFactor: truePace?.factors.heat ?? 1,
     route: engine.RouteSignature.of(d.run),
     place: d.summary.place,
     street: d.summary.street,

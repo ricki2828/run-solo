@@ -25,7 +25,7 @@ RevealState trailRevealState(engine.TrailTone tone) => switch (tone) {
 };
 
 /// The Trail result: judged against your earlier runs on the SAME trail when
-/// there is a match, else on effort pace against your recent trail runs, with
+/// there is a match, else on true pace against your recent trail runs, with
 /// the 4x4 verdict's choreographed reveal (M4: moving time 0-250 ms, word and
 /// lines 600-900 ms, a cyan PB chip for the best on the trail). The wording
 /// and the matching live in the engine; this lays them out.

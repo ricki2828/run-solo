@@ -207,7 +207,7 @@ class CourseBoardEntry {
     required this.run,
     required this.finishSeconds,
     required this.official,
-    this.heatAdjustedSeconds,
+    this.trueSeconds,
   });
   final RunSummary run;
 
@@ -215,11 +215,15 @@ class CourseBoardEntry {
   final double finishSeconds;
   final bool official;
 
-  /// The heat-adjusted twin (W1); null without weather, never estimated.
-  final double? heatAdjustedSeconds;
+  /// The finish at TRUE PACE (hills and heat taken out): what the board
+  /// ranks and trends on. Null without a work pace.
+  final double? trueSeconds;
+
+  /// The time this entry ranks by: the true time, else the actual finish.
+  double get rankSeconds => trueSeconds ?? finishSeconds;
 }
 
-/// One course's board (plan §7 K1: best, last 5, trend, heat column). A fold
+/// One course's board (plan §7 K1: best, last 5, trend, true column). A fold
 /// over History until LB2's boards land.
 @immutable
 class CourseBoard {
@@ -266,7 +270,7 @@ class CourseBoard {
       if (!r.eligibleAsPrior) continue;
       final finish = pace * nominal / 1000;
       final entered = r.parkrun?.officialTimeSeconds;
-      final heat = r.analysis?.heatAdjustedWorkPaceSecPerKm;
+      final truePace = r.trueWorkPaceSecPerKm;
       entries.add(
         CourseBoardEntry(
           run: r,
@@ -274,14 +278,13 @@ class CourseBoard {
           official:
               r.indexedOfficialTime ??
               (entered != null && (finish - entered).abs() < 0.5),
-          // The index carries no heat twin yet: blank, never estimated.
-          heatAdjustedSeconds: heat == null ? null : heat * nominal / 1000,
+          trueSeconds: truePace == null ? null : truePace * nominal / 1000,
         ),
       );
     }
     final ranked = List.of(entries)
       ..sort((a, b) {
-        final c = a.finishSeconds.compareTo(b.finishSeconds);
+        final c = a.rankSeconds.compareTo(b.rankSeconds);
         return c != 0 ? c : a.run.start.compareTo(b.run.start);
       });
     final newest = List.of(entries)
@@ -301,7 +304,7 @@ class CourseBoard {
     if (recent < 4) return null;
     final pts = [
       for (final e in newestFirst.take(8))
-        (e.run.start.millisecondsSinceEpoch / 86400000.0, e.finishSeconds),
+        (e.run.start.millisecondsSinceEpoch / 86400000.0, e.rankSeconds),
     ];
     final slopes = <double>[];
     for (var i = 0; i < pts.length; i++) {

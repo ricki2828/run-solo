@@ -84,7 +84,6 @@ class AppSettings {
     this.volumeKeyLap,
     this.keepScreenOn = true,
     this.weatherPerRun = true,
-    this.compareHeatAdjusted = false,
     this.reducedMotion = false,
     this.typedMaxHr,
     this.birthYear,
@@ -223,11 +222,6 @@ class AppSettings {
   /// the location rounded to about 10 km. Off = nothing is sent.
   final bool weatherPerRun;
 
-  /// "Compare heat-adjusted paces" (W2, v1 plan §18.5, default off):
-  /// verdicts compare heat-adjusted headlines; flipping it recomputes every
-  /// verdict, like an engine bump, keeping history. The trend chart leads
-  /// with the adjusted series.
-  final bool compareHeatAdjusted;
   final bool reducedMotion;
 
   /// Max HR typed in Settings; null = not entered (plan D3, N1: the old
@@ -360,7 +354,6 @@ class AppSettings {
     bool? volumeKeyLap,
     bool? keepScreenOn,
     bool? weatherPerRun,
-    bool? compareHeatAdjusted,
     bool? reducedMotion,
     int? typedMaxHr,
     bool clearTypedMaxHr = false,
@@ -402,7 +395,6 @@ class AppSettings {
     volumeKeyLap: volumeKeyLap ?? this.volumeKeyLap,
     keepScreenOn: keepScreenOn ?? this.keepScreenOn,
     weatherPerRun: weatherPerRun ?? this.weatherPerRun,
-    compareHeatAdjusted: compareHeatAdjusted ?? this.compareHeatAdjusted,
     reducedMotion: reducedMotion ?? this.reducedMotion,
     typedMaxHr: clearTypedMaxHr ? null : (typedMaxHr ?? this.typedMaxHr),
     birthYear: clearBirthYear ? null : (birthYear ?? this.birthYear),
@@ -447,7 +439,6 @@ class AppSettings {
     'volumeKeyLap': volumeKeyLap,
     'keepScreenOn': keepScreenOn,
     'weatherPerRun': weatherPerRun,
-    'compareHeatAdjusted': compareHeatAdjusted,
     'reducedMotion': reducedMotion,
     'typedMaxHr': typedMaxHr,
     'birthYear': birthYear,
@@ -532,7 +523,6 @@ class AppSettings {
           : null,
       keepScreenOn: pick('keepScreenOn', d.keepScreenOn),
       weatherPerRun: pick('weatherPerRun', d.weatherPerRun),
-      compareHeatAdjusted: pick('compareHeatAdjusted', d.compareHeatAdjusted),
       reducedMotion: pick('reducedMotion', d.reducedMotion),
       typedMaxHr: typed,
       birthYear: optInt('birthYear'),

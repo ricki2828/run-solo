@@ -4,6 +4,7 @@ import '../model/session_spec.dart';
 import '../run_mode.dart';
 import 'best_efforts.dart';
 import 'goal.dart';
+import 'true_pace.dart';
 
 /// What a board fold needs to know about one run (Phase 4 plan §3.1, LB2).
 /// Built by the app from its index entry; the engine never reads files.
@@ -24,8 +25,10 @@ class BoardInput {
     this.cooperVo2,
     this.cooperVo2Adj,
     this.heatFraction,
+    this.gradeFactor = 1,
+    this.headlineGradeFactor = 1,
     this.trailDistanceM,
-    this.trailEffortMs,
+    this.trailMovingMs,
   });
 
   final String runId;
@@ -61,16 +64,31 @@ class BoardInput {
   final double? cooperVo2Adj;
 
   /// Steady-effort heat slowdown (§18.5; 0.047 = 4.7%); null without
-  /// weather or when too hot to compare. Only for the heat column.
+  /// weather or when too hot to adjust (no heat step, see [TruePace]).
   final double? heatFraction;
 
-  /// A Trail run's distance and effort time ([TrailEffort.effortMs]: its
-  /// grade-adjusted pace over that distance) when it counts towards the
-  /// AEROBIC and LONG lanes; null for every other run and for a trail run
-  /// that does not qualify. Only the identity lanes and the Home VO2 hero
-  /// read this; boards and predictions never do.
+  /// The whole run's hills factor on pace and time ([TruePace]); 1 without
+  /// barometer elevation. Best efforts carry their own
+  /// ([BestEffort.gradeFactor]); this one serves whole-run figures (a 15K+
+  /// run, a parkrun's official time, a custom goal).
+  final double gradeFactor;
+
+  /// The hills factor over a session's work reps ([headlineSecPerKm]).
+  final double headlineGradeFactor;
+
+  /// A Trail run's distance and moving time ([TrailScore.movingMs]) when it
+  /// counts towards the AEROBIC and LONG lanes, scored at its True Pace
+  /// ([factorsFor]); null for every other run and for a trail run too short.
+  /// Only the identity lanes and the Home VO2 hero read this; boards and
+  /// predictions never do.
   final double? trailDistanceM;
-  final int? trailEffortMs;
+  final int? trailMovingMs;
+
+  /// True Pace factors for a stretch of this run with its own hills factor.
+  TruePaceFactors factorsFor([double? grade]) => TruePace.factors(
+    gradeFactor: grade ?? gradeFactor,
+    slowdown: heatFraction,
+  );
 }
 
 /// One run's value on one board.
@@ -89,8 +107,9 @@ class BoardRun {
   /// Seconds (time boards), s/km (interval boards) or VO2 (Cooper).
   final double metric;
 
-  /// The heat-adjusted twin: the heat column, and the rank on a
-  /// heat-adjusted board ([Leaderboard.heatAdjusted]).
+  /// The True Pace twin (hills and heat taken out; equal to [metric] on a
+  /// flat, cool run): what a board ranks and trends on, with [metric] (the
+  /// actual value) shown beside it. Null only on a board with no twin.
   final double? adjMetric;
 
   /// The time came from the event's results page, not the GPS (K1). The
@@ -138,29 +157,22 @@ class Leaderboard {
     this.kind,
     this.metres,
     this.ranked, {
-    this.heatAdjusted = false,
+    this.trueRanked = true,
   });
 
   /// Rank [runs] on [key]. Ties: the earlier date ranks higher.
   ///
-  /// [heatAdjusted] ("Compare heat-adjusted paces", W2): a board with a
-  /// heat twin ranks by [BoardRun.adjMetric]. A run without one (no usable
-  /// weather, too hot) stays ranked on its raw value ([onRawValue], shown
-  /// with a "no weather" tag), so a PB never drops off a board because of
-  /// a setting. Goal boards have no twin and stay raw.
+  /// A board ranks by [BoardRun.adjMetric], the True Pace twin (hills and
+  /// heat taken out), with the actual value kept beside it. A run with no
+  /// twin ranks on its actual value. Goal boards have no twin and stay raw.
   factory Leaderboard.of(
     String key,
     BoardKind kind,
     List<BoardRun> runs, {
     double? metres,
-    bool heatAdjusted = false,
+    bool trueRanked = true,
   }) {
-    // The Cooper board always ranks by the prime figure (27-Sep call: the
-    // heat-adjusted number is the number for tests); other boards rank raw
-    // unless the W2 toggle is on.
-    final adjusted =
-        (heatAdjusted || kind == BoardKind.cooper) &&
-        Leaderboards.hasHeatTwin(key);
+    final adjusted = trueRanked;
     final higher = kind == BoardKind.cooper || kind == BoardKind.distanceInTime;
     double v(BoardRun r) => adjusted ? (r.adjMetric ?? r.metric) : r.metric;
     final ranked = [...runs]
@@ -173,20 +185,20 @@ class Leaderboard {
       kind,
       metres,
       List.unmodifiable(ranked),
-      heatAdjusted: adjusted,
+      trueRanked: adjusted,
     );
   }
 
-  /// Ranked by the heat-adjusted twin (W2 setting on, and the board has
-  /// one). [BoardRun.metric] stays raw, to show alongside.
-  final bool heatAdjusted;
+  /// Ranked by the True Pace twin. [BoardRun.metric] stays the actual
+  /// value, to show alongside.
+  final bool trueRanked;
 
-  /// On a heat-adjusted board, [r] has no twin and ranks on its raw value.
-  bool onRawValue(BoardRun r) => heatAdjusted && r.adjMetric == null;
+  /// [r] has no twin on a True Pace board, and ranks on its actual value.
+  bool onRawValue(BoardRun r) => trueRanked && r.adjMetric == null;
 
   /// The value this board ranks [r] by.
   double rankValue(BoardRun r) =>
-      heatAdjusted ? (r.adjMetric ?? r.metric) : r.metric;
+      trueRanked ? (r.adjMetric ?? r.metric) : r.metric;
 
   final String key;
   final BoardKind kind;
@@ -284,25 +296,27 @@ abstract final class Leaderboards {
         'comparison key "$key" uses the reserved "$reservedPrefix"',
       );
     }
-    double? adj(double seconds) =>
-        r.heatFraction == null ? null : seconds * (1 - r.heatFraction!);
+    // The True Pace twin of a time over a stretch with hills factor [grade]
+    // (null = the whole run's): hills and heat taken out, so equal to the
+    // actual time on a flat, cool run.
+    double adj(double seconds, [double? grade]) =>
+        r.factorsFor(grade).apply(seconds);
     final out = <String, BoardRun>{
       for (final e in r.efforts.values)
         e.distance.key: BoardRun(
           runId: r.runId,
           date: r.date,
           metric: e.elapsedMs / 1000,
-          adjMetric: adj(e.elapsedMs / 1000),
+          adjMetric: adj(e.elapsedMs / 1000, e.gradeFactor),
         ),
-      // Distance in time: heat makes it shorter, so the cool twin is longer.
+      // Distance in time: hills and heat make it shorter, so the flat,
+      // cool twin is longer.
       for (final d in r.distances.values)
         d.window.key: BoardRun(
           runId: r.runId,
           date: r.date,
           metric: d.metres,
-          adjMetric: r.heatFraction == null
-              ? null
-              : d.metres / (1 - r.heatFraction!),
+          adjMetric: d.metres / r.factorsFor(d.gradeFactor).combined,
         ),
     };
     // A GOAL run (§G) rides the be:* boards; a custom goal also ranks its
@@ -314,7 +328,15 @@ abstract final class Leaderboards {
         final metric = g.kind == GoalKind.distance
             ? g.goalMs! / 1000
             : g.goalDistanceM!;
-        out[bk] = BoardRun(runId: r.runId, date: r.date, metric: metric);
+        out[bk] = BoardRun(
+          runId: r.runId,
+          date: r.date,
+          metric: metric,
+          // Whole-run factors: a time shrinks, a distance in time grows.
+          adjMetric: g.kind == GoalKind.distance
+              ? adj(metric)
+              : metric / r.factorsFor().combined,
+        );
       }
       return out;
     }
@@ -328,7 +350,7 @@ abstract final class Leaderboards {
           runId: r.runId,
           date: r.date,
           metric: ms / 1000,
-          adjMetric: adj(ms / 1000),
+          adjMetric: adj(ms / 1000, gps?.gradeFactor),
           official: r.officialTimeMs != null,
         );
       }
@@ -353,17 +375,11 @@ abstract final class Leaderboards {
         runId: r.runId,
         date: r.date,
         metric: r.headlineSecPerKm!,
-        adjMetric: r.heatFraction == null
-            ? null
-            : r.headlineSecPerKm! * (1 - r.heatFraction!),
+        adjMetric: adj(r.headlineSecPerKm!, r.headlineGradeFactor),
       );
     }
     return out;
   }
-
-  /// Whether a board's runs carry a heat twin: every board but a custom
-  /// goal's own (`goal:*`).
-  static bool hasHeatTwin(String key) => !ComparisonKey.isGoal(key);
 
   static BoardKind kindOf(String key) {
     if (BestTimeWindow.ofKey(key) != null) return BoardKind.distanceInTime;
@@ -391,11 +407,11 @@ abstract final class Leaderboards {
     return null;
   }
 
-  /// Every board across [runs], keyed by board key; [heatAdjusted] ranks
-  /// by the heat twin (see [Leaderboard.of]).
+  /// Every board across [runs], keyed by board key; [trueRanked] ranks by
+  /// the True Pace twin (see [Leaderboard.of]).
   static Map<String, Leaderboard> fold(
     Iterable<BoardInput> runs, {
-    bool heatAdjusted = false,
+    bool trueRanked = true,
   }) {
     final byKey = <String, List<BoardRun>>{};
     for (final r in runs) {
@@ -410,7 +426,7 @@ abstract final class Leaderboards {
           kindOf(e.key),
           e.value,
           metres: metresOf(e.key),
-          heatAdjusted: heatAdjusted,
+          trueRanked: trueRanked,
         ),
     };
   }

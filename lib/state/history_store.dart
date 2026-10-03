@@ -281,11 +281,28 @@ class RunSummary {
   /// without usable weather or when too hot to compare.
   double? get heatFraction => indexedHeatFraction ?? analysis?.heat?.fraction;
 
-  /// The heat-adjusted twin of [workPaceSecPerKm] (W2 trend).
-  double? get heatAdjustedWorkPaceSecPerKm {
-    final p = workPaceSecPerKm, f = heatFraction;
-    return p == null || f == null ? null : p * (1 - f);
-  }
+  /// True Pace of [workPaceSecPerKm] (hills and heat taken out); null for a
+  /// run with no work pace. The trend and the boards plot this, raw beside.
+  double? get trueWorkPaceSecPerKm =>
+      row?.workTruePaceSecPerKm ?? analysis?.trueWorkPaceSecPerKm;
+
+  /// The hills and heat behind [trueWorkPaceSecPerKm] (neutral without).
+  engine.TruePaceFactors get workFactors => row == null
+      ? analysis?.workFactors ?? engine.TruePaceFactors.none
+      : engine.TruePaceFactors(
+          grade: row!.workGradeFactor ?? 1,
+          heat: row!.heatFactor ?? 1,
+        );
+
+  /// TRUE PACE of the whole run, s/km; null for a run under 500 m.
+  double? get truePaceSecPerKm =>
+      row?.truePaceSecPerKm ?? analysis?.truePace?.trueSecPerKm;
+
+  /// The whole run's hills and heat factors (neutral without).
+  engine.TruePaceFactors get truePaceFactors =>
+      row?.truePaceFactors ??
+      analysis?.truePace?.factors ??
+      engine.TruePaceFactors.none;
 
   /// A 12-minute test's figures (C1): the row's, else the analysis's.
   CooperFigures? get cooper =>
@@ -541,18 +558,12 @@ class _Analyser {
   _Analyser({
     required this.profile,
     required this.now,
-    bool Function()? heatCompare,
     engine.RunEngine? runEngine,
-  }) : heatCompare = heatCompare ?? _off,
-       runEngine = runEngine ?? const engine.RunEngine(names: kEventNames);
-
-  static bool _off() => false;
+  }) : runEngine = runEngine ?? const engine.RunEngine(names: kEventNames);
 
   final engine.UserProfile Function() profile;
   final DateTime Function() now;
 
-  /// "Compare heat-adjusted paces" (W2), read at each pass.
-  final bool Function() heatCompare;
   final engine.RunEngine runEngine;
 
   /// Oldest → newest; returns analyses keyed by id plus the computed
@@ -574,7 +585,6 @@ class _Analyser {
     final analyses = <String, engine.RunAnalysis>{};
     final frozen = <String, engine.Verdict>{};
     final p = profile();
-    final heat = heatCompare();
     for (final run in ordered) {
       final sidecar = sidecars[run.id] ?? engine.RunSidecar(runId: run.id);
       engine.RunAnalysis a;
@@ -585,7 +595,6 @@ class _Analyser {
           priors: List.of(priors),
           profile: p,
           now: now().toUtc(),
-          compareHeatAdjusted: heat,
         );
       } catch (e) {
         debugPrint('history: analysis failed for ${run.id} ($e)');
@@ -683,14 +692,12 @@ class MemoryRunStore implements RunStore {
     this.fake,
     engine.UserProfile Function()? profile,
     DateTime Function()? now,
-    bool Function()? heatCompare,
   }) : runs = runs ?? [],
        files = files ?? [],
        sidecars = sidecars ?? {},
        _analyser = _Analyser(
          profile: profile ?? (() => engine.UserProfile.none),
          now: now ?? DateTime.now,
-         heatCompare: heatCompare,
        );
 
   final List<RunSummary> runs;
@@ -946,7 +953,6 @@ class FileRunStore implements RunStore {
     SidecarWriter? sidecarWriter,
     engine.UserProfile Function()? profile,
     DateTime Function()? now,
-    bool Function()? heatCompare,
     engine.RunEngine? runEngine,
   }) : archiveDir =
            archiveDir ?? Directory('${runsDir.parent.path}/runs-archive'),
@@ -954,7 +960,6 @@ class FileRunStore implements RunStore {
        _analyser = _Analyser(
          profile: profile ?? (() => engine.UserProfile.none),
          now: now ?? DateTime.now,
-         heatCompare: heatCompare,
          runEngine: runEngine,
        );
 
@@ -1031,14 +1036,12 @@ class FileRunStore implements RunStore {
   Future<RunIndex> readIndex() => RunIndex.read(indexFile);
 
   /// Fingerprint of the analysis inputs that live outside the files (W5b):
-  /// the max-HR resolver's inputs, the event names and (W2) the
-  /// heat-compare setting, spelled only when on so an update with it off
-  /// rebuilds nothing. A change rebuilds every entry.
+  /// the max-HR resolver's inputs and the event names. A change rebuilds
+  /// every entry.
   String _inputs() {
     final p = _analyser.profile();
     return 'p:${p.age}|${p.maxHr}|${p.observedMaxHr};'
-        'n:${_analyser.runEngine.names.parkrun}'
-        '${_analyser.heatCompare() ? ';h:1' : ''}';
+        'n:${_analyser.runEngine.names.parkrun}';
   }
 
   /// Run files by id, from their names only (nothing decoded).

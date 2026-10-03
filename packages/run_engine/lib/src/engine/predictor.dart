@@ -7,6 +7,7 @@ import 'analysis.dart';
 import 'best_efforts.dart';
 import 'event_names.dart';
 import 'goal.dart';
+import 'true_pace.dart';
 
 /// Words that mark a research-derived number as an estimate (Phase 4 plan
 /// §2, WARN-4). Every engine string carrying such a number contains one;
@@ -58,11 +59,12 @@ class PredictionInput {
   final int elapsedMs;
   final PredictionSourceKind kind;
 
-  /// The time in cool conditions (§18.5 heat model, steady effort); null
-  /// without weather or when it was too hot to compare.
+  /// The True Pace time: the time on flat ground on a cool day (hills per
+  /// [TruePace], heat per the §18.5 steady-effort model); null when neither
+  /// moved it (no weather and no barometer elevation, or a flat, cool run).
   final int? adjElapsedMs;
 
-  /// The time predictions use: heat-adjusted when available.
+  /// The time predictions use: the True Pace time when it differs.
   int get effectiveMs => adjElapsedMs ?? elapsedMs;
   bool get heatAdjusted => adjElapsedMs != null;
 
@@ -77,6 +79,7 @@ class PredictionInput {
     RunBestEfforts efforts, {
     required DateTime localDate,
     double? heatFraction,
+    double gradeFactor = 1,
   }) => analysis.indoor || analysis.noisy
       ? const []
       : ofDerived(
@@ -86,6 +89,7 @@ class PredictionInput {
           comparisonKey: analysis.comparisonKey,
           efforts: efforts,
           heatFraction: heatFraction,
+          gradeFactor: gradeFactor,
         );
 
   /// The same inputs from what the index keeps per run (PD2: the Home card
@@ -98,6 +102,7 @@ class PredictionInput {
     required String? comparisonKey,
     required RunBestEfforts efforts,
     double? heatFraction,
+    double gradeFactor = 1,
   }) {
     final parkrun =
         mode == RunMode.intervals &&
@@ -111,17 +116,26 @@ class PredictionInput {
         comparisonKey != null &&
         ComparisonKey.isGoal(comparisonKey);
     if (!parkrun && !freeOrLaps && !goal) return const [];
-    int? adj(int ms) =>
-        heatFraction == null ? null : (ms * (1 - heatFraction)).round();
-    PredictionInput of(double metres, int ms, PredictionSourceKind kind) =>
-        PredictionInput(
-          runId: runId,
-          date: localDate,
-          distanceM: metres,
-          elapsedMs: ms,
-          kind: kind,
-          adjElapsedMs: adj(ms),
-        );
+    // [grade] is the stretch's own hills factor (a best effort carries its
+    // own); the whole-run input uses the run's.
+    int? adj(int ms, double grade) {
+      final f = TruePace.factors(gradeFactor: grade, slowdown: heatFraction);
+      return f.neutral ? null : f.apply(ms.toDouble()).round();
+    }
+
+    PredictionInput of(
+      double metres,
+      int ms,
+      PredictionSourceKind kind, [
+      double? grade,
+    ]) => PredictionInput(
+      runId: runId,
+      date: localDate,
+      distanceM: metres,
+      elapsedMs: ms,
+      kind: kind,
+      adjElapsedMs: adj(ms, grade ?? gradeFactor),
+    );
     final k5 = efforts.efforts[BestEffortDistance.k5];
     final k10 = efforts.efforts[BestEffortDistance.k10];
     final wholeM = efforts.wholeRunM;
@@ -134,19 +148,22 @@ class PredictionInput {
           parkrun
               ? PredictionSourceKind.parkrun
               : PredictionSourceKind.bestEffort5k,
+          k5.gradeFactor,
         ),
       if (k10 != null && (freeOrLaps || goal))
         of(
           k10.distance.metres,
           k10.elapsedMs,
           PredictionSourceKind.bestEffort10k,
+          k10.gradeFactor,
         ),
       for (final (d, kind) in [
         (BestEffortDistance.half, PredictionSourceKind.bestEffortHalf),
         (BestEffortDistance.marathon, PredictionSourceKind.bestEffortMarathon),
       ])
         if (efforts.efforts[d] case final e?)
-          if (freeOrLaps || goal) of(d.metres, e.elapsedMs, kind),
+          if (freeOrLaps || goal)
+            of(d.metres, e.elapsedMs, kind, e.gradeFactor),
       if (freeOrLaps &&
           wholeM != null &&
           wholeMs != null &&
@@ -212,9 +229,9 @@ class Prediction {
       ? '$headline · $sourceLine'
       : '$headline ($band) · $sourceLine';
 
-  /// Shown under the card when the input was heat-adjusted.
+  /// Shown under the card when the input was taken to true pace.
   String? get conditionsNote => source.heatAdjusted
-      ? 'Estimate for a cool day, from a heat-adjusted run.'
+      ? 'Estimate for a flat, cool day, from a true pace run.'
       : null;
 
   /// "Target 24:30 (predicted)" on the parkrun Start card.

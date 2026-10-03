@@ -18,6 +18,7 @@ List<PredictionInput> predictionInputsOf(Iterable<LiveCandidate> runs) => [
       comparisonKey: c.input.comparisonKey,
       efforts: c.derived.bestEfforts,
       heatFraction: c.input.heatFraction,
+      gradeFactor: c.input.gradeFactor,
     ),
 ];
 
@@ -204,14 +205,14 @@ class HomeEstimates {
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
   ];
 
-  /// "From your 5K on Sat 12 Sep", plus " · in cool conditions" when the
-  /// input was heat-adjusted.
+  /// "From your 5K on Sat 12 Sep", plus " · flat, cool day" when the input
+  /// was taken to true pace.
   static String homeSourceLine(Prediction p) {
     final d = p.source.date;
     final name = p.sourceName;
     final when = '${_days[d.weekday - 1]} ${d.day} ${_months[d.month - 1]}';
     return 'From your $name on $when'
-        '${p.source.heatAdjusted ? ' · in cool conditions' : ''}';
+        '${p.source.heatAdjusted ? ' · flat, cool day' : ''}';
   }
 }
 

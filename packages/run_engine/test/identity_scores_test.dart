@@ -24,9 +24,13 @@ void main() {
     int? wholeMs,
     double? trailM,
     int? trailMs,
+    double grade = 1,
+    double effortGrade = 1,
   }) {
     final efforts = RunBestEfforts(
-      efforts: bests,
+      efforts: {
+        for (final e in bests.entries) e.key: e.value.withGrade(effortGrade),
+      },
       fromStartSplitsMs: const [],
       wholeRunM: wholeM,
       wholeRunMs: wholeMs,
@@ -43,7 +47,8 @@ void main() {
         heatFraction: heat,
         efforts: efforts.efforts,
         trailDistanceM: trailM,
-        trailEffortMs: trailMs,
+        trailMovingMs: trailMs,
+        gradeFactor: grade,
       ),
       RunDerived(bestEfforts: efforts),
     );
@@ -152,7 +157,67 @@ void main() {
     expect(IdentityScores.of([prior], now: now)[IdentityLane.mid], isNull);
   });
 
-  group('trail runs count at their effort pace', () {
+  group('scores move with true pace, not with flat cool runs', () {
+    LiveCandidate fiveK({double? heat, double hills = 1}) => run(
+      'five',
+      heat: heat,
+      effortGrade: hills,
+      bests: {BestEffortDistance.k5: best(BestEffortDistance.k5, 1500)},
+    );
+    double mid(LiveCandidate c) =>
+        IdentityScores.of([c], now: now)[IdentityLane.mid]!.vdot;
+
+    test('a flat, cool 5K scores exactly its clock time', () {
+      expect(mid(fiveK(heat: 0)), FitnessHero.vdot(5000, 1500000));
+      expect(mid(fiveK()), FitnessHero.vdot(5000, 1500000));
+    });
+
+    test('a hot 5K scores better than the same time on a cool day', () {
+      final hot = mid(fiveK(heat: 0.06));
+      expect(hot, greaterThan(mid(fiveK(heat: 0))));
+      expect(
+        hot,
+        closeTo(FitnessHero.vdot(5000, (1500000 * 0.94).round()), 1e-9),
+      );
+    });
+
+    test('a hilly 5K scores better than the same time on the flat', () {
+      final hilly = mid(fiveK(hills: 0.9));
+      expect(hilly, greaterThan(mid(fiveK())));
+      expect(
+        hilly,
+        closeTo(FitnessHero.vdot(5000, (1500000 * 0.9).round()), 1e-9),
+      );
+    });
+
+    test('hills and heat multiply, and SPEED reads the work pace hills', () {
+      final both = mid(fiveK(heat: 0.05, hills: 0.9));
+      expect(
+        both,
+        closeTo(FitnessHero.vdot(5000, (1500000 * 0.95 * 0.9).round()), 1e-9),
+      );
+      final session = LiveCandidate(
+        BoardInput(
+          runId: 'x',
+          date: now.subtract(const Duration(days: 1)),
+          mode: RunMode.intervals,
+          comparisonKey: ComparisonKey.norwegian4x4,
+          verdictGrade: true,
+          headlineSecPerKm: 280,
+          heatFraction: 0.04,
+          headlineGradeFactor: 0.9,
+        ),
+        const RunDerived(bestEfforts: RunBestEfforts.none),
+      );
+      final speed = IdentityScores.of([session], now: now)[IdentityLane.speed]!;
+      expect(
+        speed.vdot,
+        closeTo(FitnessHero.vdot(1000, (280000 * 0.96 * 0.9).round()), 1e-9),
+      );
+    });
+  });
+
+  group('trail runs count at their true pace', () {
     // A flat road 16 km at 6:00/km: the LONG reading before trail existed.
     final road = run(
       'road',
@@ -160,21 +225,23 @@ void main() {
       wholeMs: 16 * 360 * 1000,
       daysAgo: 3,
     );
-    // A slow, hilly 15.5 km: 8:00/km on the clock (2:04), 5:30/km effort.
+    // A slow, hilly 15.5 km: 7:20/km on the clock, hills worth 25% (the
+    // clamp), so 5:30/km true pace.
     final hilly = run(
       'hilly',
       mode: RunMode.trail,
       trailM: 15500,
-      trailMs: (15.5 * 330 * 1000).round(),
+      trailMs: (15.5 * 440 * 1000).round(),
+      grade: 0.7,
       daysAgo: 1,
     );
 
-    test('a slow hilly 15K lifts LONG fairly, on its effort time', () {
+    test('a slow hilly 15K lifts LONG fairly, at its true pace', () {
       final withoutTrail = IdentityScores.of([road], now: now);
       final withTrail = IdentityScores.of([road, hilly], now: now);
       expect(withoutTrail[IdentityLane.long]!.source, '15K+ run');
       expect(withTrail[IdentityLane.long]!.runId, 'hilly');
-      expect(withTrail[IdentityLane.long]!.source, TrailEffort.longSource);
+      expect(withTrail[IdentityLane.long]!.source, TrailScore.longSource);
       expect(
         withTrail[IdentityLane.long]!.vdot,
         closeTo(FitnessHero.vdot(15500, (15.5 * 330 * 1000).round()), 1e-9),
@@ -183,15 +250,15 @@ void main() {
         withTrail[IdentityLane.long]!.score,
         greaterThan(withoutTrail[IdentityLane.long]!.score),
       );
-      // The clock pace alone (8:00/km) would have scored far lower.
+      // The clock pace alone (7:20/km) would have scored far lower.
       expect(
-        FitnessHero.vdot(15500, (15.5 * 480 * 1000).round()),
+        FitnessHero.vdot(15500, (15.5 * 440 * 1000).round()),
         lessThan(withoutTrail[IdentityLane.long]!.vdot),
       );
     });
 
     test('a flat road run is unchanged by trail runs that do not count', () {
-      // No effort time: a flat, short or GPS-only trail run.
+      // No scoring time: a trail run too short to count.
       final nothing = run('flat-trail', mode: RunMode.trail, daysAgo: 1);
       final alone = IdentityScores.of([road], now: now);
       final mixed = IdentityScores.of([road, nothing], now: now);
@@ -208,7 +275,7 @@ void main() {
         expect(scores[IdentityLane.speed], isNull);
         expect(scores[IdentityLane.mid], isNull);
         expect(scores[IdentityLane.aerobic]!.source, 'trail run');
-        expect(scores[IdentityLane.long]!.source, TrailEffort.longSource);
+        expect(scores[IdentityLane.long]!.source, TrailScore.longSource);
       },
     );
 
