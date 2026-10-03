@@ -35,13 +35,23 @@ class GoogleMapSurfaceFactory implements MapSurfaceFactory {
     bool interactive = false,
     ValueChanged<int?>? onLapTap,
     bool terrain = false,
+    List<GeoPoint>? plan,
+    Color? routeColor,
   }) {
-    if (!available || route.isEmpty) return RouteShape(route: route);
+    if (!available || route.isEmpty) {
+      return RouteShape(
+        route: route,
+        plan: plan,
+        color: plan == null ? null : routeColor,
+      );
+    }
     return _GoogleRouteMap(
       route: route,
       interactive: interactive,
       onLapTap: onLapTap,
       terrain: terrain,
+      plan: plan,
+      routeColor: routeColor,
     );
   }
 
@@ -118,6 +128,8 @@ class _GoogleRouteMap extends StatefulWidget {
     required this.interactive,
     this.onLapTap,
     this.terrain = false,
+    this.plan,
+    this.routeColor,
     this.mapOnly = false,
     this.onSnapshot,
     this.onFailed,
@@ -130,6 +142,11 @@ class _GoogleRouteMap extends StatefulWidget {
   /// Styles apply to the normal map type only, so terrain is Google's own
   /// look; the route line keeps a dark casing to stay readable on it.
   final bool terrain;
+
+  /// The route the run followed, under the run's line (muted Bone, dark
+  /// casing), and the colour the run's own line takes then.
+  final List<GeoPoint>? plan;
+  final Color? routeColor;
 
   /// Card mode: no polyline, no markers, no camera padding offset; the
   /// snapshot is the bare styled map.
@@ -342,7 +359,11 @@ class _GoogleRouteMapState extends State<_GoogleRouteMap> {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final route = widget.route;
     if (_failed) return MapFailedCard(route: route);
-    final b = route.bounds!;
+    final plan = widget.plan;
+    final hasPlan = plan != null && plan.length > 1;
+    final b = hasPlan
+        ? RouteBuilder.boundsOf([...route.points, ...plan])
+        : route.bounds!;
     final bounds = gm.LatLngBounds(
       southwest: gm.LatLng(b.south, b.west),
       northeast: gm.LatLng(b.north, b.east),
@@ -376,7 +397,27 @@ class _GoogleRouteMapState extends State<_GoogleRouteMap> {
       polylines: widget.mapOnly
           ? const {}
           : {
-              if (widget.terrain)
+              if (hasPlan) ...[
+                gm.Polyline(
+                  polylineId: const gm.PolylineId('plan-casing'),
+                  points: [for (final p in plan) gm.LatLng(p.lat, p.lon)],
+                  color: t.bgBase,
+                  width: 9,
+                  jointType: gm.JointType.round,
+                  startCap: gm.Cap.roundCap,
+                  endCap: gm.Cap.roundCap,
+                ),
+                gm.Polyline(
+                  polylineId: const gm.PolylineId('plan'),
+                  points: [for (final p in plan) gm.LatLng(p.lat, p.lon)],
+                  color: t.inkSecondary,
+                  width: 5,
+                  jointType: gm.JointType.round,
+                  startCap: gm.Cap.roundCap,
+                  endCap: gm.Cap.roundCap,
+                ),
+              ],
+              if (widget.terrain || hasPlan)
                 gm.Polyline(
                   polylineId: const gm.PolylineId('route-casing'),
                   points: [
@@ -391,7 +432,9 @@ class _GoogleRouteMapState extends State<_GoogleRouteMap> {
               gm.Polyline(
                 polylineId: const gm.PolylineId('route'),
                 points: [for (final p in route.points) gm.LatLng(p.lat, p.lon)],
-                color: t.inkPrimary,
+                color: hasPlan
+                    ? (widget.routeColor ?? t.inkPrimary)
+                    : t.inkPrimary,
                 width: 4,
                 jointType: gm.JointType.round,
                 startCap: gm.Cap.roundCap,

@@ -7,6 +7,9 @@ import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.journal.Replay
 import app.runsolo.core.journal.RunEvent
 import app.runsolo.core.json.Json
+import app.runsolo.core.route.FollowRoute
+import app.runsolo.core.route.RouteFollower
+import app.runsolo.core.route.RoutePath
 import app.runsolo.core.model.LapKind
 import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.LocationFix
@@ -36,6 +39,10 @@ import java.util.zip.GZIPOutputStream
  * ([ElevationFuser]), present only when there is one; `elev_src` (`baro` or `gps`) says which sensor
  * it mostly came from and is written only with at least one such sample. A run with no elevation is
  * byte-for-byte what schema 4 wrote, but for the version.
+ *
+ * Schema 7 (followed route): `route` holds the planned route the run followed (`pts`: `[lat, lon]` or
+ * `[lat, lon, ele]`) and `off`, the run-time spans `[t0, t1]` spent off it, worked out at finalise by running
+ * the recorder's own [RouteFollower] over the journal's samples. Written only when the run followed a route.
  */
 data class RunFile(
     val id: String,
@@ -59,7 +66,12 @@ data class RunFile(
     val nudgesFired: List<Pair<String, Int>> = emptyList(),
     /** Where the samples' [Sample.elevM] came from; null when no sample has one. */
     val elevSrc: ElevSource? = null,
+    /** The route the run followed and the spans it spent off it (schema 7); null = it followed none. */
+    val route: FollowedRoute? = null,
 ) {
+    /** The planned route as the recorder had it, and the run-time spans `[t0, t1]` spent off it. */
+    data class FollowedRoute(val route: FollowRoute, val offSpans: List<LongArray>)
+
     data class Lap(val i: Int, val t0: Long, val t1: Long, val d0: Double, val d1: Double, val kind: LapKind)
 
     /** lat/lon/accuracy null = no fix at that tick; `distM` then repeats the last value. */
@@ -106,6 +118,22 @@ data class RunFile(
     ).apply {
         if (elevSrc != null) put("elev_src", elevSrc.wire)
         if (nudgesFired.isNotEmpty()) put("nudges_fired", nudgesFired.map { listOf(it.first, it.second) })
+        route?.let { fr ->
+            val ele = fr.route.elevM
+            put(
+                "route",
+                linkedMapOf(
+                    "id" to fr.route.id,
+                    "name" to fr.route.name,
+                    "pts" to (0 until fr.route.size).map { i ->
+                        // 6 decimal places is about 11 cm: more is false precision and bytes.
+                        val p = listOf(round6(fr.route.latLon[2 * i]), round6(fr.route.latLon[2 * i + 1]))
+                        if (ele == null) p else p + (Math.round(ele[i] * 10) / 10.0)
+                    },
+                    "off" to fr.offSpans.map { it.asList() },
+                ),
+            )
+        }
     }
 
     fun toGzipBytes(): ByteArray {
@@ -115,7 +143,9 @@ data class RunFile(
     }
 
     companion object {
-        const val SCHEMA = 6
+        const val SCHEMA = 7
+
+        private fun round6(v: Double): Double = Math.round(v * 1e6) / 1e6
 
         /** The third element of an auto-pause entry in the file's `pauses`. */
         const val AUTO_PAUSE_KIND = "auto"
@@ -135,6 +165,9 @@ data class RunFile(
             val h: JournalLine.Header = r.header
             val filter = PointFilter()
             val fuser = ElevationFuser()
+            val follower = r.route?.let { RouteFollower(RoutePath(it)) }
+            val offSpans = ArrayList<LongArray>()
+            var offStart: Long? = null
             val samples = ArrayList<Sample>()
             val markers = ArrayList<Pair<Long, LapKind>>()
             val pauses = ArrayList<LongArray>()
@@ -160,6 +193,20 @@ data class RunFile(
                         // Elevation runs through every sample, paused or not, so the level stays right on resume.
                         val elev = fuser.offer(e.t, e.hpa, e.altM, e.accuracyM)
                         samples.add(Sample(e.t, e.lat, e.lon, e.altM, e.accuracyM, e.speedMps, filter.totalM, hr, elev))
+                        // Off-route spans: the recorder's follower over the same fixes, while recording.
+                        if (follower != null && e.hasFix && pauseStart == null) {
+                            follower.offer(e.t, e.lat!!, e.lon!!, e.accuracyM!!, quiet = true)
+                            val start = offStart
+                            // Back-dated: from the first fix beyond the limit to the first back within it,
+                            // not from when the follower was sure of it (about 10 s and 3 s later).
+                            val prevEnd = offSpans.lastOrNull()?.get(1) ?: 0L
+                            if (follower.off && start == null) offStart = maxOf(follower.offBeganT ?: e.t, prevEnd)
+                            if (!follower.off && start != null) {
+                                val end = (follower.backBeganT ?: e.t).coerceAtLeast(start)
+                                offSpans.add(longArrayOf(start, end))
+                                offStart = null
+                            }
+                        }
                     }
                     is RunEvent.Lap -> markers.add(e.t to if (e.source == LapSource.auto) LapKind.auto else LapKind.manual)
                     is RunEvent.Pause -> {
@@ -182,7 +229,10 @@ data class RunFile(
                         autoStart = null
                         manualStart = null
                     }
-                    is RunEvent.Gap -> gaps.add(longArrayOf(e.t, e.endT))
+                    is RunEvent.Gap -> {
+                        gaps.add(longArrayOf(e.t, e.endT))
+                        follower?.restartClock() // the fixes' clock restarts after a kill
+                    }
                     is RunEvent.Cue, is RunEvent.HrLink -> Unit
                 }
             }
@@ -200,6 +250,9 @@ data class RunFile(
                 val e = samples[i].elevM ?: continue
                 samples[i] = samples[i].copy(elevM = level?.let { e + it })
             }
+            // Still off route at the end of the run: the span closes where the run does.
+            offStart?.let { if (endT > it) offSpans.add(longArrayOf(it, endT)) }
+            offSpans.removeAll { it[0] >= endT }
             val laps = ArrayList<Lap>()
             var t0 = 0L
             var d0 = 0.0
@@ -220,6 +273,7 @@ data class RunFile(
                     .map { it.key to it.index }
                     .distinct(),
                 elevSrc = if (samples.any { it.elevM != null }) fuser.source else null,
+                route = r.route?.let { FollowedRoute(it, offSpans) },
             )
         }
 

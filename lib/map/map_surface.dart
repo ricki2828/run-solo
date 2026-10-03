@@ -29,12 +29,18 @@ abstract class MapSurfaceFactory {
   /// renders [MapFailedCard] with the route still drawn on our own canvas.
   /// [terrain]: Google's terrain map (contours) instead of the Night Session
   /// style, for Free and Trail runs' detail.
+  ///
+  /// [plan] is the route the run followed (the run file's `route`): drawn
+  /// under the run's own line in a muted Bone, the run in [routeColor] (the
+  /// run type's colour) on top.
   Widget build(
     BuildContext context,
     RouteGeometry route, {
     bool interactive = false,
     ValueChanged<int?>? onLapTap,
     bool terrain = false,
+    List<GeoPoint>? plan,
+    Color? routeColor,
   });
 
   /// The record screen's MAP view: the interactive map following the last
@@ -90,11 +96,18 @@ class FakeMapSurfaceFactory implements MapSurfaceFactory {
     bool interactive = false,
     ValueChanged<int?>? onLapTap,
     bool terrain = false,
+    List<GeoPoint>? plan,
+    Color? routeColor,
   }) {
     if (failLoad) return MapFailedCard(route: route);
     return _terrainMark(
       terrain,
-      RouteShape(route: route, key: const ValueKey('fake-map')),
+      RouteShape(
+        route: route,
+        plan: plan,
+        color: plan == null ? null : routeColor,
+        key: const ValueKey('fake-map'),
+      ),
     );
   }
 

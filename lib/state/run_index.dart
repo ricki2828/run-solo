@@ -368,6 +368,9 @@ class IndexRow {
     this.elevSrc,
     this.gapSecPerKm,
     this.route,
+    this.routeName,
+    this.routeOffCount,
+    this.routeOffMs,
   });
 
   /// Bump when a field is added, so old rows are rebuilt once.
@@ -380,7 +383,8 @@ class IndexRow {
   /// 8: [zoneId], and [utcOffsetMin] is the offset where the run STARTED.
   /// 9: [climbM], [descentM], [elevSrc], [gapSecPerKm] (elevation).
   /// 10: [route] (same-trail match).
-  static const int currentVersion = 10;
+  /// 11: [routeName], [routeOffCount], [routeOffMs] (the followed route).
+  static const int currentVersion = 11;
 
   final int version;
   final int lapCount;
@@ -470,6 +474,11 @@ class IndexRow {
   /// the same trail without opening a file. Null for every other run type,
   /// for a run with no fixes or under 500 m.
   final engine.RouteSignature? route;
+  /// The route the run followed (run file `route`), how many times it left
+  /// it and for how long: History's route badge reads these.
+  final String? routeName;
+  final int? routeOffCount;
+  final int? routeOffMs;
 
   factory IndexRow.of(
     engine.RunFile run,
@@ -532,6 +541,9 @@ class IndexRow {
               engine.RunMode.trail
           ? engine.RouteSignature.of(run)
           : null,
+      routeName: run.route?.name,
+      routeOffCount: run.route?.offRouteCount,
+      routeOffMs: run.route?.offRouteMs,
     );
   }
 
@@ -565,6 +577,9 @@ class IndexRow {
     'elev_src': ?elevSrc?.name,
     'gap_s_per_km': ?gapSecPerKm,
     'route': ?route?.toJson(),
+    'route_name': ?routeName,
+    'route_off_n': ?routeOffCount,
+    'route_off_ms': ?routeOffMs,
   };
 
   /// null for a missing or unreadable row (the entry is then stale).
@@ -617,6 +632,9 @@ class IndexRow {
             .firstOrNull,
         gapSecPerKm: d('gap_s_per_km'),
         route: engine.RouteSignature.fromJson(j['route']),
+        routeName: j['route_name'] as String?,
+        routeOffCount: j['route_off_n'] as int?,
+        routeOffMs: j['route_off_ms'] as int?,
       );
     } catch (e) {
       debugPrint('index: unreadable row ($e)');

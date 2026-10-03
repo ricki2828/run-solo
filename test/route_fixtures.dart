@@ -53,3 +53,33 @@ String gpxText({String name = 'Hill loop', double lengthM = 3000}) {
   b.write('</rte></gpx>');
   return b.toString();
 }
+
+/// A followed route for a run file (schema 7): the planned line arcs away
+/// from the line the run actually took, so the two read apart on a map, and the run was off it for [off] (run-time spans, ms).
+engine.RunFile withFollowedRoute(
+  engine.RunFile run, {
+  String id = 'route-1',
+  String name = 'Hill loop',
+  List<(int, int)> off = const [(60000, 110000), (200000, 250000)],
+}) {
+  final fixes = [
+    for (var i = 0; i < run.samples.length; i += 12)
+      if (run.samples[i].hasFix) run.samples[i],
+  ];
+  return run.copyWith(
+    route: engine.FollowedRoute(
+      id: id,
+      name: name,
+      points: [
+        for (var i = 0; i < fixes.length; i++)
+          engine.RouteVertex(
+            // An arc bulging away from the line run, meeting it at both ends.
+            fixes[i].lat! + math.sin(i / (fixes.length - 1) * math.pi) * 0.0025,
+            fixes[i].lon!,
+            20 + i * 0.5,
+          ),
+      ],
+      offRoute: [for (final (a, b) in off) engine.Span(a, b)],
+    ),
+  );
+}

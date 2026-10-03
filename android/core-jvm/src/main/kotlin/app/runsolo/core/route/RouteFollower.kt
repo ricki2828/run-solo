@@ -64,6 +64,17 @@ class RouteFollower(
     val toGoM: Double get() = max(0.0, path.totalM - progressM)
     val climbToGoM: Double? get() = path.climbToGoM(progressM)
 
+    /**
+     * When the current (or last) excursion really began: the first fix beyond the off-route limit of the streak
+     * that tripped the alert, which is [Config.offAfterMs] before the alert. For totals that are not short.
+     */
+    var offBeganT: Long? = null
+        private set
+
+    /** When the runner was first back within the on-route limit, [Config.backAfterMs] before "back on route". */
+    var backBeganT: Long? = null
+        private set
+
     private var lastOnT: Long? = null
     private var lastFixT: Long? = null
     private var offSinceT: Long? = null
@@ -110,6 +121,7 @@ class RouteFollower(
                 val since = offSinceT ?: t.also { offSinceT = it }
                 if (t - since >= config.offAfterMs) {
                     off = true
+                    offBeganT = since
                     offSinceT = null
                     backSinceT = null
                     lastAlertT = t
@@ -125,6 +137,7 @@ class RouteFollower(
             val since = backSinceT ?: t.also { backSinceT = it }
             if (t - since >= config.backAfterMs) {
                 off = false
+                backBeganT = since
                 backSinceT = null
                 offSinceT = null
                 lastOnT = t

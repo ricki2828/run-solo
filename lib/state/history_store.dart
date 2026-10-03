@@ -177,6 +177,8 @@ class RunSummary {
     this.street,
     this.customTitle,
     this.utcOffsetMin,
+    this.routeName,
+    this.routeOffCount,
   });
 
   /// From the index (W5b): no file decoded, no analysis.
@@ -203,6 +205,8 @@ class RunSummary {
     street: e.row!.street,
     customTitle: e.row!.title,
     utcOffsetMin: e.row!.utcOffsetMin,
+    routeName: e.row!.routeName,
+    routeOffCount: e.row!.routeOffCount,
   );
 
   final String id;
@@ -254,6 +258,11 @@ class RunSummary {
   /// The phone's UTC offset (minutes) when the run finished; null on older
   /// runs.
   final int? utcOffsetMin;
+
+  /// The route the run followed (Follow a route) and how many times it left
+  /// it; null when it followed none. History's route badge.
+  final String? routeName;
+  final int? routeOffCount;
 
   /// The start as the runner lived it (see [engine.RunIdentity.localStart]).
   DateTime get localStart => engine.RunIdentity.localStart(start, utcOffsetMin);
@@ -651,6 +660,8 @@ RunSummary _summaryOf(
   street: sidecar?.street,
   customTitle: sidecar?.title,
   utcOffsetMin: _zoneOf(run, sidecar)?.offsetMin,
+  routeName: run.route?.name,
+  routeOffCount: run.route?.offRouteCount,
   // Only a 4x4 carries a verdict word (plan §18.2); guard by the effective
   // mode so nothing else ever shows one.
   verdict:

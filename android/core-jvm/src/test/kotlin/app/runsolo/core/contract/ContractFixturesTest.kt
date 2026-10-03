@@ -59,10 +59,10 @@ class ContractFixturesTest {
     }
 
     @Test
-    fun `every current fixture is schema 6 - intervals and cooper carry a session, preset is gone`() {
+    fun `every current fixture is schema 7 - intervals and cooper carry a session, preset is gone`() {
         for ((name, json) in ContractFixtures.all()) {
             val m = Json.parseObject(json)
-            assertEquals(6L, m["schema"], name)
+            assertEquals(7L, m["schema"], name)
             assertTrue(m["mode"] in setOf("intervals", "laps", "free", "cooper", "trail"), "$name mode=${m["mode"]}")
             assertTrue(!m.containsKey("preset"), "$name still has preset")
             assertTrue(m.containsKey("session"), "$name has no session key")
@@ -83,6 +83,31 @@ class ContractFixturesTest {
                 assertEquals(emptyList(), spec.problems(), name)
                 assertEquals(session, Json.parseObject(Json.write(spec.toJson())), "$name session round trip")
             }
+        }
+    }
+
+    @Test
+    fun `followed route fixture - the planned route, one off-route span, otherwise a free run`() {
+        val m = fixture("followed_route")
+        assertEquals("free", m["mode"])
+        val r = m["route"] as Map<*, *>
+        assertEquals("Park loop", r["name"])
+        assertEquals(101, (r["pts"] as List<*>).size)
+        assertEquals(1, (r["off"] as List<*>).size)
+        // No other fixture follows a route: the key is absent, not empty.
+        for ((name, json) in ContractFixtures.all()) {
+            if (name != "followed_route") assertTrue(!Json.parseObject(json).containsKey("route"), name)
+        }
+    }
+
+    @Test
+    fun `schema-6 fixtures are frozen - schema 6, no route key`() {
+        val files = File(ContractFixtures.SCHEMA6_DIR).listFiles { f -> f.name.endsWith(".json") }!!
+        assertTrue(files.size >= 13)
+        for (f in files) {
+            val m = Json.parseObject(f.readText())
+            assertEquals(6L, m["schema"], f.name)
+            assertTrue(!m.containsKey("route"), f.name)
         }
     }
 

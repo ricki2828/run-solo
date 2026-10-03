@@ -164,6 +164,12 @@ class RouteLibrary extends ChangeNotifier {
     const engine.RouteImporter().fromRun(run, name: name, now: _now().toUtc()),
   );
 
+  /// "Run this route again" from a run that followed a route: the planned
+  /// line the run kept (not the line it ran). The library entry it came from
+  /// is returned as it is while it is still there.
+  Future<engine.SavedRoute> addFromFollowed(engine.FollowedRoute r) async =>
+      add(const engine.RouteImporter().fromFollowed(r, now: _now().toUtc()));
+
   /// Adds [route]; a route already in the library (same id) is returned as it is.
   Future<engine.SavedRoute> add(engine.SavedRoute route) async {
     final have = byId(route.id);

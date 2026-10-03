@@ -319,6 +319,88 @@ class Sample {
 
 const _unset = Object();
 
+/// A point of a followed route in the run file: `[lat, lon]` or `[lat, lon, ele]`.
+class RouteVertex {
+  const RouteVertex(this.lat, this.lon, [this.ele]);
+  final double lat;
+  final double lon;
+  final double? ele;
+
+  List<double> toJson() => [lat, lon, ?ele];
+
+  factory RouteVertex.fromJson(Object? json) {
+    if (json is! List ||
+        !(json.length == 2 || json.length == 3) ||
+        json.any((e) => e is! num)) {
+      throw RunFileFormatException('route point must be [lat, lon(, ele)]');
+    }
+    return RouteVertex(
+      (json[0] as num).toDouble(),
+      (json[1] as num).toDouble(),
+      json.length == 3 ? (json[2] as num).toDouble() : null,
+    );
+  }
+}
+
+/// The route a run followed (schema 7): the planned line as the recorder had
+/// it (so the run keeps it if the library entry goes) and the stretches the
+/// run spent off it. [offRoute] spans are on the run's timeline, like pauses.
+/// Optional key `route`, written only when the run followed one.
+class FollowedRoute {
+  const FollowedRoute({
+    required this.id,
+    required this.name,
+    required this.points,
+    this.offRoute = const [],
+  });
+
+  final String id;
+  final String name;
+  final List<RouteVertex> points;
+  final List<Span> offRoute;
+
+  bool get hasElevation =>
+      points.isNotEmpty && points.every((p) => p.ele != null);
+
+  /// How many times the run left the route, and for how long in all.
+  int get offRouteCount => offRoute.length;
+  int get offRouteMs => offRoute.fold(0, (a, s) => a + s.durationMs);
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'name': name,
+    'pts': [for (final p in points) p.toJson()],
+    'off': [for (final s in offRoute) s.toJson()],
+  };
+
+  static const Set<String> _keys = {'id', 'name', 'pts', 'off'};
+
+  factory FollowedRoute.fromJson(Object? json) {
+    if (json is! Map<String, Object?>) {
+      throw RunFileFormatException('route must be an object');
+    }
+    for (final k in json.keys) {
+      if (!_keys.contains(k)) {
+        throw RunFileNewerVersionException('unknown route key "$k"');
+      }
+    }
+    final id = json['id'];
+    final name = json['name'];
+    final pts = json['pts'];
+    final off = json['off'];
+    if (id is! String || name is! String || pts is! List || pts.length < 2) {
+      throw RunFileFormatException('route needs id, name and 2+ points');
+    }
+    if (off is! List) throw RunFileFormatException('route off must be a list');
+    return FollowedRoute(
+      id: id,
+      name: name,
+      points: [for (final p in pts) RouteVertex.fromJson(p)],
+      offRoute: [for (final s in off) Span.fromJson(s)],
+    );
+  }
+}
+
 /// The run file (plan §4, §18.7). Written by Kotlin at `stop()` as schema
 /// [schema]; this reader accepts every schema from 1 up to it.
 ///
@@ -342,6 +424,10 @@ const _unset = Object();
 ///   in metres ([Sample.elevM]), and the file may carry `elev_src` (`baro` or
 ///   `gps`), written only when some sample has an elevation. Every other key
 ///   is schema 4's, so a schema-4 file reads as-is (no elevation).
+/// - 7 (followed route): the file may carry `route`, the route the run
+///   followed ([FollowedRoute]: its planned points and the spans spent off
+///   it), written only when the run followed one. Every other key is schema
+///   6's, so a schema-6 file reads as-is (no route).
 /// - 6 (trail): `mode` may be `trail` (a Free run on hills and dirt: no laps,
 ///   no session). Every other key is schema 5's, so a schema-5 file reads
 ///   as-is. The bump makes an older build say "newer app" instead of
@@ -363,11 +449,12 @@ class RunFile {
     required this.samples,
     this.nudgesFired = const [],
     this.elevSrc,
+    this.route,
     this.readSchema = schema,
   });
 
   /// The schema this build writes.
-  static const int schema = 6;
+  static const int schema = 7;
 
   /// The lowest schema this build reads (every older one is mapped forward).
   static const int minReadSchema = 1;
@@ -407,6 +494,10 @@ class RunFile {
   /// smoothed GPS altitude); null when no sample has one. Optional key
   /// `elev_src`.
   final ElevSource? elevSrc;
+
+  /// The route this run followed, null when it followed none. Optional key
+  /// `route`.
+  final FollowedRoute? route;
   final List<Sample> samples;
 
   int get elapsedMs => samples.isEmpty ? 0 : samples.last.tMs;
@@ -425,6 +516,7 @@ class RunFile {
     List<Sample>? samples,
     List<FiredNudge>? nudgesFired,
     Object? elevSrc = _unset,
+    Object? route = _unset,
   }) => RunFile(
     id: id ?? this.id,
     device: device,
@@ -443,6 +535,7 @@ class RunFile {
     samples: samples ?? this.samples,
     nudgesFired: nudgesFired ?? this.nudgesFired,
     elevSrc: identical(elevSrc, _unset) ? this.elevSrc : elevSrc as ElevSource?,
+    route: identical(route, _unset) ? this.route : route as FollowedRoute?,
   );
 
   Map<String, Object?> toJson() => {
@@ -463,6 +556,7 @@ class RunFile {
     if (elevSrc != null) 'elev_src': elevSrc!.name,
     if (nudgesFired.isNotEmpty)
       'nudges_fired': [for (final n in nudgesFired) n.toJson()],
+    if (route != null) 'route': route!.toJson(),
   };
 
   /// Strict: unknown schema, unknown or missing keys, wrong types, naive
@@ -486,6 +580,7 @@ class RunFile {
     'samples',
     'elev_src',
     'nudges_fired',
+    'route',
   };
 
   factory RunFile.fromJson(Map<String, Object?> json) {
@@ -560,6 +655,9 @@ class RunFile {
       samples: samples,
       nudgesFired: _readNudges(json['nudges_fired']),
       elevSrc: _readElevSrc(json['elev_src']),
+      route: json['route'] == null
+          ? null
+          : FollowedRoute.fromJson(json['route']),
       readSchema: schemaValue,
     );
   }

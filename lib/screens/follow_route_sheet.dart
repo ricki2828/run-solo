@@ -163,7 +163,12 @@ class _FollowRouteSheetState extends State<FollowRouteSheet> {
       final name =
           r.customTitle ??
           (r.place != null ? '${r.place} run' : runIdentityTitle(r));
-      final route = await services.routes.addFromRun(detail.run, name: name);
+      // A run that followed a route keeps the planned line: run that, not
+      // the (wobblier) line it actually ran.
+      final followed = detail.run.route;
+      final route = followed != null
+          ? await services.routes.addFromFollowed(followed)
+          : await services.routes.addFromRun(detail.run, name: name);
       if (mounted) Navigator.of(context).pop(route);
     } on RouteLibraryFull catch (e) {
       if (mounted) {
