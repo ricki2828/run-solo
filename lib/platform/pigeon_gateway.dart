@@ -71,6 +71,18 @@ class PigeonRecorderGateway implements RecorderGateway {
   Future<void> setKmSplits(bool enabled) => _api.setKmSplits(enabled);
 
   @override
+  Future<void> setSpokenSummary(bool enabled) => _api.setSpokenSummary(enabled);
+
+  @override
+  Future<void> speakRunSummary({
+    required double distanceM,
+    required int timeMs,
+    double? climbM,
+    String? verdict,
+    required Units units,
+  }) => _api.speakRunSummary(distanceM, timeMs, climbM, verdict, units);
+
+  @override
   Future<void> setAutoPause(bool enabled) => _api.setAutoPause(enabled);
 
   @override

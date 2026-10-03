@@ -33,6 +33,7 @@ import app.runsolo.core.live.CooperCurve
 import app.runsolo.core.live.GoalCoach
 import app.runsolo.core.live.LiveCoach
 import app.runsolo.core.record.CueWords
+import app.runsolo.core.record.SummaryWords
 import app.runsolo.core.record.LapDispatch
 import app.runsolo.core.record.LiveRoute
 import app.runsolo.core.record.RecorderCore
@@ -320,6 +321,7 @@ class RecordingSession(
         cues.enabled = cuesEnabled
         cues.init()
         enableLapInput()
+        speakStart()
         val r = replay
         if (r != null) {
             // One clock, one tick per delivered fix (see ReplaySource): no timer in replay mode.
@@ -416,6 +418,18 @@ class RecordingSession(
         ble = null
         lapInput.disable()
         cues.release()
+    }
+
+    /**
+     * "Trail run. Following Kastro loop, 6.2 kilometres, 230 metres of climb.": what the run is, once, as
+     * recording begins (never for a resumed run or a replay, whose transcripts are pinned). Muted cues or
+     * the setting off: silent ([CuePlayer.enabled]).
+     */
+    private fun speakStart() {
+        if (!spokenSummary || resumed || replay != null) return
+        val path = follower?.path
+        val text = SummaryWords.start(mode, spec, units, followRoute?.name, path?.totalM, path?.totalClimbM) ?: return
+        cues.announceSummary(text)
     }
 
     /** 1 Hz timer on the recorder thread; replay mode ticks per delivered fix instead. */
@@ -860,6 +874,10 @@ class RecordingSession(
         )
         Log.i(TAG, "compare ${r.boardKey}#${r.index} rank ${r.rank}/${r.of} spoken=${fire.speak}")
     }
+
+    /** Settings → Voice → "Spoken summary" (default on): one line as recording starts, set before start. */
+    @Volatile
+    var spokenSummary: Boolean = true
 
     /** Settings → Voice → "Km splits" (default on): a Free run says each km. Set before start and on change. */
     @Volatile

@@ -49,10 +49,15 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
     private var inFlight = 0
     var enabled: Boolean = true
 
+    /** A summary line asked for before TTS finished starting; said once it is ready (or toned if it never is). */
+    private var pendingLine: String? = null
+    private var releaseWhenIdle = false
+
     fun init() {
         try {
             tts = TextToSpeech(context) { status ->
                 ttsReady = status == TextToSpeech.SUCCESS
+                main.post { flushPending() }
                 if (ttsReady) {
                     tts?.setLanguage(Locale.getDefault())
                     tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -95,6 +100,7 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
         } catch (_: Exception) {
         }
         tts = null
+        pendingLine = null
         tone?.release()
         tone = null
         inFlight = 0
@@ -172,6 +178,32 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
         announce(text)
     }
 
+    /**
+     * A spoken summary (start or end of a run, [SummaryWords][app.runsolo.core.record.SummaryWords]): no
+     * vibration, and unlike [announce] it waits for TTS to finish starting instead of falling back to a
+     * tone, because it is asked for right after [init]. [then] true releases the player once the line
+     * is done (the end-of-run player has nothing else to say).
+     */
+    @Synchronized
+    fun announceSummary(text: String, thenRelease: Boolean = false) {
+        if (!enabled) {
+            if (thenRelease) release()
+            return
+        }
+        releaseWhenIdle = thenRelease
+        followUp.cancel()
+        speech.queued(now(), CueComposer.words(text))
+        if (ttsReady || tts == null) say(null, text) else pendingLine = text
+        if (thenRelease) main.postDelayed({ release() }, RELEASE_SAFETY_MS)
+    }
+
+    @Synchronized
+    private fun flushPending() {
+        val line = pendingLine ?: return
+        pendingLine = null
+        say(null, line)
+    }
+
     /** Spoken without a vibration pattern of its own (e.g. "GPS weak"). */
     @Synchronized
     fun announce(text: String) {
@@ -208,7 +240,10 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
     @Synchronized
     private fun done() {
         if (inFlight > 0) inFlight--
-        if (inFlight == 0) abandonFocus()
+        if (inFlight == 0) {
+            abandonFocus()
+            if (releaseWhenIdle && pendingLine == null) release()
+        }
     }
 
     private fun vibrate(kind: CueKind) = vibrate(
@@ -254,5 +289,8 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
 
     companion object {
         private const val TAG = "RunSolo/cues"
+
+        /** A one-shot player is released this long after its line was asked for, whatever TTS did. */
+        private const val RELEASE_SAFETY_MS = 30_000L
     }
 }

@@ -17,10 +17,12 @@ import app.runsolo.core.journal.JournalReplay
 import app.runsolo.core.journal.Replay
 import app.runsolo.core.model.SessionSpec as CoreSpec
 import app.runsolo.core.record.RecorderCore
+import app.runsolo.core.record.SummaryWords
 import app.runsolo.core.reconcile.Reconciler
 import app.runsolo.core.run.Finaliser
 import app.runsolo.core.run.JournalMigration
 import app.runsolo.core.run.RunPaths
+import app.runsolo.record.CuePlayer
 import app.runsolo.record.ExitDiagnostics
 import app.runsolo.record.GpsProbe
 import app.runsolo.record.LocationSource
@@ -118,6 +120,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     private fun newSession(mode: app.runsolo.core.model.RunMode, spec: CoreSpec?, units: Units, replay: ReplayRunner?, liveContext: CoreLiveContext?, route: CoreFollowRoute?): RecordingSession =
         RecordingSession(context, UUID.randomUUID().toString(), mode, spec, units.toCore(), replay, volumeKeyLaps(mode), liveContext, route)
             .also { it.kmSplits = prefs.getBoolean(RecorderService.PREF_KM_SPLITS, true) }
+            .also { it.spokenSummary = prefs.getBoolean(RecorderService.PREF_SPOKEN_SUMMARY, true) }
             .also { it.autoPause = prefs.getBoolean(RecorderService.PREF_AUTO_PAUSE, true) }
 
     /**
@@ -192,6 +195,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         val h = replayed.header
         return RecordingSession(context, runId, h.mode, h.session, h.units, null, volumeKeyLaps(h.mode), replayed.liveContext, replayed.route)
             .also { it.kmSplits = prefs.getBoolean(RecorderService.PREF_KM_SPLITS, true) }
+            .also { it.spokenSummary = prefs.getBoolean(RecorderService.PREF_SPOKEN_SUMMARY, true) }
             .also { it.autoPause = prefs.getBoolean(RecorderService.PREF_AUTO_PAUSE, true) }
     }
 
@@ -330,6 +334,23 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         // commit(), not apply(): the next start() may come from a new process.
         prefs.edit().putBoolean(RecorderService.PREF_KM_SPLITS, enabled).commit()
         active()?.kmSplits = enabled
+    }
+
+    override fun setSpokenSummary(enabled: Boolean) {
+        // commit(), not apply(): the next start() may come from a new process.
+        prefs.edit().putBoolean(RecorderService.PREF_SPOKEN_SUMMARY, enabled).commit()
+    }
+
+    /** The end-of-run line on a player of its own (the run's is gone): words from [SummaryWords], released once said. */
+    override fun speakRunSummary(distanceM: Double, timeMs: Long, climbM: Double?, verdict: String?, units: Units) {
+        val on = prefs.getBoolean(RecorderService.PREF_CUES, true) && prefs.getBoolean(RecorderService.PREF_SPOKEN_SUMMARY, true)
+        if (!on) return
+        val text = SummaryWords.end(distanceM, timeMs, units.toCore(), climbM, verdict) ?: return
+        CuePlayer(context).apply {
+            enabled = true
+            init()
+            announceSummary(text, thenRelease = true)
+        }
     }
 
     override fun routeSince(fromIndex: Long): List<Double> =

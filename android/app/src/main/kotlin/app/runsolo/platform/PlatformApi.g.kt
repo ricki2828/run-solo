@@ -3567,6 +3567,21 @@ interface RecorderApi {
    */
   fun setKmSplits(enabled: Boolean)
   /**
+   * Settings → Voice → "Spoken summary" (default on): a line as recording
+   * starts ("Trail run. Following Kastro loop, 6.2 kilometres.") and, via
+   * [speakRunSummary], one when the run is done. Persisted natively; skipped
+   * whenever voice cues are off.
+   */
+  fun setSpokenSummary(enabled: Boolean)
+  /**
+   * The end-of-run line: distance, time, average pace and (from 20 m) the
+   * climb in [units], then [verdict] (the result screen's own words, already
+   * speakable; null when none is computed yet). Says nothing when voice cues
+   * or the spoken summary are off. Fire and forget; the audio outlives the
+   * call.
+   */
+  fun speakRunSummary(distanceM: Double, timeMs: Long, climbM: Double?, verdict: String?, units: Units)
+  /**
    * Settings -> Run -> "Auto-pause" (default on): the recorder pauses itself
    * when the runner stops and resumes when they move again, in Free, Laps
    * and Goal runs (and the warm-up/cool-down of other sessions; never in a
@@ -3896,6 +3911,46 @@ interface RecorderApi {
             val enabledArg = args[0] as Boolean
             val wrapped: List<Any?> = try {
               api.setKmSplits(enabledArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.setSpokenSummary$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val enabledArg = args[0] as Boolean
+            val wrapped: List<Any?> = try {
+              api.setSpokenSummary(enabledArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.speakRunSummary$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val distanceMArg = args[0] as Double
+            val timeMsArg = args[1] as Long
+            val climbMArg = args[2] as Double?
+            val verdictArg = args[3] as String?
+            val unitsArg = args[4] as Units
+            val wrapped: List<Any?> = try {
+              api.speakRunSummary(distanceMArg, timeMsArg, climbMArg, verdictArg, unitsArg)
               listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)

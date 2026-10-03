@@ -20,6 +20,9 @@ import app.runsolo.core.model.StepKind
 import app.runsolo.core.model.TargetKind
 import app.runsolo.core.record.CueWords
 import app.runsolo.core.record.RecorderCore
+import app.runsolo.core.record.SummaryWords
+import app.runsolo.core.model.RunMode
+import app.runsolo.core.model.Units
 import app.runsolo.core.replay.ReplayScenarios
 import java.io.File
 
@@ -150,6 +153,28 @@ object VoiceCopyFixture {
         add("event.end.one-second-off", goal(event, RecorderCore.StepEnd(0, 1_441_000, 5_000.0), course))
         add("event.end.level", goal(event, RecorderCore.StepEnd(0, 1_440_000, 5_000.0), course))
         add("event.end.no-board", goal(event, RecorderCore.StepEnd(0, 1_440_000, 5_000.0), null))
+
+        // The spoken summaries at the start and end of a run (SummaryWords): one per mode, the
+        // longest numbers where a number varies. The verdict words are the result screen's own.
+        val tenKSpoken = SessionSpec.goalDistance(10_000, "10K").copy(spokenName = "10 K")
+        add("summary.start.trail", SummaryWords.start(RunMode.trail, null, Units.km, "Kastro loop", 6_210.0, 231.0))
+        add("summary.start.trail-miles", SummaryWords.start(RunMode.trail, null, Units.mi, "Kastro loop", 6_210.0, 231.0))
+        add("summary.start.trail-no-climb", SummaryWords.start(RunMode.trail, null, Units.km, "Kastro loop", 6_210.0, null))
+        add("summary.start.trail-long-name", SummaryWords.start(RunMode.trail, null, Units.km, "Mount Wellington summit via the old pipe track and back", 16_210.0, 1_231.0))
+        add("summary.start.trail-no-route", SummaryWords.start(RunMode.trail, null, Units.km))
+        add("summary.start.4x4", SummaryWords.start(RunMode.intervals, fourByFour, Units.km))
+        add("summary.start.free", SummaryWords.start(RunMode.free, null, Units.km))
+        add("summary.start.free-goal-distance", SummaryWords.start(RunMode.free, tenKSpoken, Units.km))
+        add("summary.start.free-goal-distance-miles", SummaryWords.start(RunMode.free, SessionSpec.goalDistance(42_195, "Marathon"), Units.mi))
+        add("summary.start.free-goal-time", SummaryWords.start(RunMode.free, SessionSpec.goalTime(4_500, "1 h 15"), Units.km))
+        add("summary.start.event", SummaryWords.start(RunMode.intervals, ReplayScenarios.PARKRUN, Units.km))
+        add("summary.end.stats", SummaryWords.end(5_200.0, 2_460_000, Units.km))
+        add("summary.end.climb", SummaryWords.end(5_200.0, 2_460_000, Units.km, climbM = 230.0))
+        add("summary.end.miles", SummaryWords.end(5_000.0, 1_800_000, Units.mi, climbM = 230.0))
+        add("summary.end.over-an-hour", SummaryWords.end(42_195.0, 17_999_000, Units.km, climbM = 1_230.0))
+        add("summary.end.verdict-trail-faster", SummaryWords.end(6_210.0, 2_460_000, Units.km, climbM = 231.0, verdict = "Faster on this trail, 2 minutes 10 quicker than last time."))
+        add("summary.end.verdict-no-change", SummaryWords.end(5_000.0, 1_500_000, Units.km, verdict = "No real change."))
+        add("summary.end.verdict-4x4-best", SummaryWords.end(5_200.0, 2_460_000, Units.km, verdict = "Faster. New best Norwegian 4x4."))
 
         // Nudges (engine-owned lines, as packed into the LiveContext).
         add("nudge.fast-start", ReplayScenarios.T4.FAST_START_5K)

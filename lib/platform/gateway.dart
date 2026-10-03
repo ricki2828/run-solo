@@ -127,6 +127,20 @@ abstract class RecorderGateway {
   /// Voice → "Km splits": a Free run says each km. Persisted natively.
   Future<void> setKmSplits(bool enabled);
 
+  /// Voice → "Spoken summary": a line at the start and end of a run.
+  /// Persisted natively.
+  Future<void> setSpokenSummary(bool enabled);
+
+  /// The end-of-run line (see the Pigeon `speakRunSummary`); [verdict] is the
+  /// result screen's words, null when none is computed yet.
+  Future<void> speakRunSummary({
+    required double distanceM,
+    required int timeMs,
+    double? climbM,
+    String? verdict,
+    required Units units,
+  });
+
   /// Settings → Recording → "Auto-pause": the recorder pauses itself when the
   /// runner stops and resumes when they move. Persisted natively; read at
   /// start and live.

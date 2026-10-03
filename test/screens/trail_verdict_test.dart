@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/app/services.dart';
+import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/boards_overview.dart';
 import 'package:run_solo/screens/score_analysis.dart';
@@ -52,6 +53,7 @@ void main() {
     engine.RunFile current,
     List<engine.RunFile> earlier, {
     bool haptics = false,
+    AppSettings? settings,
   }) => fakeServices(
     files: [current],
     // The run on screen is in History too, as a phone's index has it.
@@ -61,7 +63,7 @@ void main() {
     sidecars: {
       current.id: engine.RunSidecar(runId: current.id, street: 'Kastro'),
     },
-    settings: AppSettings(onboardingDone: true, haptics: haptics),
+    settings: settings ?? AppSettings(onboardingDone: true, haptics: haptics),
   );
 
   Future<void> show(
@@ -267,5 +269,71 @@ void main() {
     expect(find.text('Trail runs count using effort pace.'), findsWidgets);
     // A lane no trail run set carries no such line.
     expect(find.byKey(const ValueKey('analysis-mid-trail')), findsNothing);
+  });
+
+  group('spoken summary (end of run)', () {
+    final old = trailLoopRun(n: 1, start: d1, secPerKm: 420);
+
+    Future<FakeRecorderGateway> finish(
+      WidgetTester tester,
+      engine.RunFile current, {
+      AppSettings? settings,
+      bool justFinished = true,
+    }) async {
+      final services = open(current, [old], settings: settings);
+      await pumpApp(
+        tester,
+        services,
+        pushRoute: justFinished ? Routes.verdictJustFinished : Routes.verdict,
+        pushArguments: current.id,
+      );
+      await pumpTimes(tester, 6);
+      await tester.pump(const Duration(milliseconds: 2000));
+      return services.recorder as FakeRecorderGateway;
+    }
+
+    testWidgets('says the stats and the on-screen verdict, once', (
+      tester,
+    ) async {
+      final now = trailLoopRun(n: 2, start: d2, secPerKm: 400);
+      final rec = await finish(tester, now);
+      final said = rec.lastSpokenSummary!;
+      expect(
+        said.verdict,
+        'Faster on this trail, 2 minutes quicker than last time.',
+      );
+      // The word on screen and the word said agree.
+      expect(word(tester), 'FASTER');
+      expect(
+        said.verdict!.toLowerCase(),
+        startsWith(word(tester).toLowerCase()),
+      );
+      expect(said.timeMs, 2400000);
+      expect(said.distanceM, now.distanceM);
+      expect(said.climbM, isNotNull);
+      expect(said.units, Units.km);
+    });
+
+    testWidgets('silent with voice cues off or the switch off', (tester) async {
+      final now = trailLoopRun(n: 2, start: d2, secPerKm: 400);
+      var rec = await finish(
+        tester,
+        now,
+        settings: const AppSettings(onboardingDone: true, cues: false),
+      );
+      expect(rec.lastSpokenSummary, isNull);
+      rec = await finish(
+        tester,
+        now,
+        settings: const AppSettings(onboardingDone: true, spokenSummary: false),
+      );
+      expect(rec.lastSpokenSummary, isNull);
+    });
+
+    testWidgets('opening an old run from History says nothing', (tester) async {
+      final now = trailLoopRun(n: 2, start: d2, secPerKm: 400);
+      final rec = await finish(tester, now, justFinished: false);
+      expect(rec.lastSpokenSummary, isNull);
+    });
   });
 }

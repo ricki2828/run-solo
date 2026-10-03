@@ -344,6 +344,16 @@ class _SettingsScreenState extends State<SettingsScreen>
                 reason: s.cues ? null : 'Turn on voice cues first',
               ),
               _Toggle(
+                label: 'Spoken summary',
+                value: s.cues && s.spokenSummary,
+                onChanged: s.cues
+                    ? (v) => set((x) => x.copyWith(spokenSummary: v))
+                    : null,
+                reason: s.cues
+                    ? 'Says what the run is at the start and how it went at the end.'
+                    : 'Turn on voice cues first',
+              ),
+              _Toggle(
                 label: 'Coaching tips',
                 value: s.tipsSpoken,
                 onChanged: s.cues
