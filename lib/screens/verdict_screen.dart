@@ -10,6 +10,7 @@ import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/max_hr.dart';
+import '../state/spoken_summary.dart';
 import '../theme/theme.dart';
 import '../widgets/board_chips.dart';
 import '../widgets/chrome.dart';
@@ -50,6 +51,9 @@ class VerdictScreen extends StatefulWidget {
 class _VerdictScreenState extends State<VerdictScreen> {
   Future<(RunDetail?, RunSummary?, List<RunSummary>)>? _load;
 
+  /// The spoken summary is said once, for the run that has just finished.
+  bool _spoke = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -72,6 +76,17 @@ class _VerdictScreenState extends State<VerdictScreen> {
     if (observed != null) {
       await services.settings.update(
         (s) => MaxHr.foldObserved(s, observed, detail.run.end),
+      );
+    }
+    if (widget.justFinished && !_spoke) {
+      _spoke = true;
+      unawaited(
+        speakRunSummary(
+          services.recorder,
+          services.settings.settings,
+          detail,
+          all,
+        ),
       );
     }
     return (detail, previous, all);

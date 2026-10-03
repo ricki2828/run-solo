@@ -37,6 +37,24 @@ class FakeFinalisedRun {
   final SessionSpec? spec;
 }
 
+/// One `speakRunSummary` call as the fake saw it.
+class SpokenSummaryCall {
+  const SpokenSummaryCall({
+    required this.distanceM,
+    required this.timeMs,
+    required this.climbM,
+    required this.verdict,
+    required this.units,
+    required this.includePace,
+  });
+  final double distanceM;
+  final int timeMs;
+  final double? climbM;
+  final String? verdict;
+  final Units units;
+  final bool includePace;
+}
+
 class FakeRecorderGateway implements RecorderGateway {
   FakeRecorderGateway({
     this.autoTick = false,
@@ -638,6 +656,31 @@ class FakeRecorderGateway implements RecorderGateway {
 
   @override
   Future<void> setKmSplits(bool enabled) async => kmSplits = enabled;
+
+  bool spokenSummary = true;
+
+  @override
+  Future<void> setSpokenSummary(bool enabled) async => spokenSummary = enabled;
+
+  /// What `speakRunSummary` was last asked to say (null: never called).
+  SpokenSummaryCall? lastSpokenSummary;
+
+  @override
+  Future<void> speakRunSummary({
+    required double distanceM,
+    required int timeMs,
+    double? climbM,
+    String? verdict,
+    required Units units,
+    bool includePace = true,
+  }) async => lastSpokenSummary = SpokenSummaryCall(
+    distanceM: distanceM,
+    timeMs: timeMs,
+    climbM: climbM,
+    verdict: verdict,
+    units: units,
+    includePace: includePace,
+  );
 
   bool autoPause = true;
 

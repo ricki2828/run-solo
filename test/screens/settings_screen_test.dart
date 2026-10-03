@@ -457,4 +457,47 @@ void main() {
     expect(back.showWhileRunning, isFalse);
     expect(AppSettings.fromJson(const {}).coachingTips, isTrue);
   });
+
+  testWidgets('Spoken summary: a Voice switch, default on, needs voice cues', (
+    tester,
+  ) async {
+    final services = fakeServices();
+    await pumpApp(tester, services, home: SettingsScreen(now: now));
+    await pumpTimes(tester, 3);
+    tester.view.physicalSize = const Size(1080, 9000);
+    await pumpTimes(tester, 3);
+    expect(
+      tester.getTopLeft(find.text('Spoken summary')).dy,
+      allOf(
+        greaterThan(tester.getTopLeft(find.text('Voice cues')).dy),
+        lessThan(tester.getTopLeft(find.text('RECORDING')).dy),
+      ),
+    );
+    Finder switchOf(String label) => find.descendant(
+      of: find.ancestor(of: find.text(label), matching: find.byType(Row)).first,
+      matching: find.byType(Switch),
+    );
+    Switch toggle(String label) => tester.widget<Switch>(switchOf(label));
+    expect(services.settings.settings.spokenSummary, isTrue);
+    expect(toggle('Spoken summary').value, isTrue);
+
+    await tester.tap(switchOf('Spoken summary'));
+    await pumpTimes(tester, 3);
+    expect(services.settings.settings.spokenSummary, isFalse);
+    expect(toggle('Spoken summary').value, isFalse);
+
+    // Voice cues off: the switch is locked, with its reason.
+    await tester.tap(switchOf('Voice cues'));
+    await pumpTimes(tester, 3);
+    expect(toggle('Spoken summary').onChanged, isNull);
+    expect(find.text('Turn on voice cues first'), findsWidgets);
+  });
+
+  test('Spoken summary persists, and an old file has it on', () {
+    final back = AppSettings.fromJson(
+      const AppSettings(spokenSummary: false).toJson(),
+    );
+    expect(back.spokenSummary, isFalse);
+    expect(AppSettings.fromJson(const {}).spokenSummary, isTrue);
+  });
 }

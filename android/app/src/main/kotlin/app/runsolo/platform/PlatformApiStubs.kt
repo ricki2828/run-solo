@@ -54,6 +54,8 @@ class RecorderApiStub : RecorderApi {
     override fun stopGpsProbe() = Unit
 
     override fun setKmSplits(enabled: Boolean) = Unit
+    override fun setSpokenSummary(enabled: Boolean) = Unit
+    override fun speakRunSummary(distanceM: Double, timeMs: Long, climbM: Double?, verdict: String?, units: Units, includePace: Boolean) = Unit
     override fun setAutoPause(enabled: Boolean) = Unit
     override fun discardRun() = false
     override fun muteTips() = Unit

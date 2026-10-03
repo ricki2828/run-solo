@@ -76,6 +76,7 @@ class AppSettings {
     this.tryNextDismissed,
     this.cues = true,
     this.kmSplits = true,
+    this.spokenSummary = true,
     this.autoPause = true,
     this.coachingTips = true,
     this.showWhileRunning = true,
@@ -189,6 +190,11 @@ class AppSettings {
 
   /// Voice → "Km splits": a Free run says each km (Phase 4 LV1). Default on.
   final bool kmSplits;
+
+  /// Voice → "Spoken summary": a line as a run starts and one when it ends
+  /// (trail, 4x4 and free runs say what they are and how they went). Needs
+  /// [cues]. Default on.
+  final bool spokenSummary;
 
   /// Recording → "Auto-pause": the recorder pauses itself when you stop and
   /// resumes when you move. Default on.
@@ -346,6 +352,7 @@ class AppSettings {
     String? tryNextDismissed,
     bool? cues,
     bool? kmSplits,
+    bool? spokenSummary,
     bool? autoPause,
     bool? coachingTips,
     bool? showWhileRunning,
@@ -387,6 +394,7 @@ class AppSettings {
     tryNextDismissed: tryNextDismissed ?? this.tryNextDismissed,
     cues: cues ?? this.cues,
     kmSplits: kmSplits ?? this.kmSplits,
+    spokenSummary: spokenSummary ?? this.spokenSummary,
     autoPause: autoPause ?? this.autoPause,
     coachingTips: coachingTips ?? this.coachingTips,
     showWhileRunning: showWhileRunning ?? this.showWhileRunning,
@@ -431,6 +439,7 @@ class AppSettings {
     'tryNextDismissed': tryNextDismissed,
     'cues': cues,
     'kmSplits': kmSplits,
+    'spokenSummary': spokenSummary,
     'autoPause': autoPause,
     'coachingTips': coachingTips,
     'showWhileRunning': showWhileRunning,
@@ -513,6 +522,7 @@ class AppSettings {
           : null,
       cues: pick('cues', d.cues),
       kmSplits: pick('kmSplits', d.kmSplits),
+      spokenSummary: pick('spokenSummary', d.spokenSummary),
       autoPause: pick('autoPause', d.autoPause),
       coachingTips: pick('coachingTips', d.coachingTips),
       showWhileRunning: pick('showWhileRunning', d.showWhileRunning),

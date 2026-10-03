@@ -729,6 +729,27 @@ abstract class RecorderApi {
   /// in progress too.
   void setKmSplits(bool enabled);
 
+  /// Settings → Voice → "Spoken summary" (default on): a line as recording
+  /// starts ("Trail run. Following Kastro loop, 6.2 kilometres.") and, via
+  /// [speakRunSummary], one when the run is done. Persisted natively; skipped
+  /// whenever voice cues are off.
+  void setSpokenSummary(bool enabled);
+
+  /// The end-of-run line: distance, time, average pace ([includePace] false
+  /// for a 4x4 or Cooper, where a whole-run pace means nothing) and (from
+  /// 20 m) the climb in [units], then [verdict] (the result screen's own words, already
+  /// speakable; null when none is computed yet). Says nothing when voice cues
+  /// or the spoken summary are off. Fire and forget; the audio outlives the
+  /// call.
+  void speakRunSummary(
+    double distanceM,
+    int timeMs,
+    double? climbM,
+    String? verdict,
+    Units units,
+    bool includePace,
+  );
+
   /// Settings -> Run -> "Auto-pause" (default on): the recorder pauses itself
   /// when the runner stops and resumes when they move again, in Free, Laps
   /// and Goal runs (and the warm-up/cool-down of other sessions; never in a

@@ -17,11 +17,13 @@ class VoiceCopyFixtureTest {
     }
 
     @Test
-    fun `every line fits 16 words, has no em dash, and every id is unique`() {
+    fun `every line fits its word budget (16, a run summary 32), has no em dash, and every id is unique`() {
         val lines = VoiceCopyFixture.lines()
         assertEquals(lines.map { it.first }.distinct(), lines.map { it.first })
         for ((id, text) in lines) {
-            assertTrue(CueComposer.words(text) <= CueComposer.MAX_WORDS, "$id: $text")
+            // A run summary is read once, at the start or the finish, not a cue: the end stats plus the verdict get 32 words.
+            val budget = if (id.startsWith("summary.end")) 32 else CueComposer.MAX_WORDS
+            assertTrue(CueComposer.words(text) <= budget, "$id: $text")
             assertFalse(text.contains('—'), "$id: $text")
             assertFalse(text.isBlank(), id)
         }

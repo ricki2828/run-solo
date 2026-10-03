@@ -272,6 +272,17 @@ class TraceGateway implements RecorderGateway {
   @override
   Future<void> setKmSplits(bool e) => throw UnimplementedError();
   @override
+  Future<void> setSpokenSummary(bool e) => throw UnimplementedError();
+  @override
+  Future<void> speakRunSummary({
+    required double distanceM,
+    required int timeMs,
+    double? climbM,
+    String? verdict,
+    required Units units,
+    bool includePace = true,
+  }) => throw UnimplementedError();
+  @override
   Future<void> setAutoPause(bool e) => throw UnimplementedError();
   @override
   Future<void> muteTips() => throw UnimplementedError();
