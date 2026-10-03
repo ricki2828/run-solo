@@ -969,7 +969,7 @@ class _AllTable extends StatelessWidget {
             child: Row(
               children: [
                 SizedBox(width: 22, child: Text('#', style: _head(t))),
-                SizedBox(width: 68, child: Text(valueHeader, style: _head(t))),
+                SizedBox(width: 78, child: Text(valueHeader, style: _head(t))),
                 SizedBox(width: 52, child: Text('BEHIND', style: _head(t))),
                 Expanded(child: Text('DATE', style: _head(t))),
                 InkWell(
@@ -1030,7 +1030,7 @@ class _AllTable extends StatelessWidget {
                     ),
             ),
             SizedBox(
-              width: 68,
+              width: 78,
               child: Text(
                 view.fmt(view.board.rankValue(r), units),
                 style: RunSoloType.label13.copyWith(
