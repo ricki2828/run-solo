@@ -516,7 +516,11 @@ class _Hero extends StatelessWidget {
         ? 'Your first ${view.title} on the board · ${Fmt.dayDate(pbRun.date)}'
         : board.kind == engine.BoardKind.cooper
         ? 'Your best estimate · ${Fmt.dayDate(pbRun.date)}'
-        : 'Your best · ${Fmt.dayDate(pbRun.date)}';
+        : 'Your best true ${view.board.kind == engine.BoardKind.interval
+              ? 'pace'
+              : view.board.kind == engine.BoardKind.distanceInTime
+              ? 'distance'
+              : 'time'} · ${Fmt.dayDate(pbRun.date)}';
     final l2 = _provenance(pbRun);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -951,9 +955,10 @@ class _AllTable extends StatelessWidget {
     final board = view.board;
     final valueHeader = switch (board.kind) {
       engine.BoardKind.cooper => 'VO2 est.',
-      engine.BoardKind.distanceInTime => units == Units.mi ? 'MI' : 'KM',
-      engine.BoardKind.interval => 'PACE',
-      _ => 'TIME',
+      engine.BoardKind.distanceInTime =>
+        units == Units.mi ? 'TRUE MI' : 'TRUE KM',
+      engine.BoardKind.interval => 'TRUE PACE',
+      _ => 'TRUE TIME',
     };
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
@@ -964,8 +969,8 @@ class _AllTable extends StatelessWidget {
             child: Row(
               children: [
                 SizedBox(width: 22, child: Text('#', style: _head(t))),
-                SizedBox(width: 58, child: Text(valueHeader, style: _head(t))),
-                SizedBox(width: 50, child: Text('GAP', style: _head(t))),
+                SizedBox(width: 76, child: Text(valueHeader, style: _head(t))),
+                SizedBox(width: 56, child: Text('BEHIND', style: _head(t))),
                 Expanded(child: Text('DATE', style: _head(t))),
                 InkWell(
                   key: const ValueKey('board-heat-info'),
@@ -1025,7 +1030,7 @@ class _AllTable extends StatelessWidget {
                     ),
             ),
             SizedBox(
-              width: 58,
+              width: 76,
               child: Text(
                 view.fmt(view.board.rankValue(r), units),
                 style: RunSoloType.label13.copyWith(
@@ -1035,7 +1040,7 @@ class _AllTable extends StatelessWidget {
               ),
             ),
             SizedBox(
-              width: 50,
+              width: 56,
               child: Text(
                 view.gap(view.board.rankValue(r), units),
                 style: RunSoloType.label13.copyWith(

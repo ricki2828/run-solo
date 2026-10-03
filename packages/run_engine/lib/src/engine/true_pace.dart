@@ -169,7 +169,8 @@ abstract final class TruePaceText {
     String part(String label, int sec) =>
         '$label ${sec < 0 ? '-' : '+'}${PaceFormat.mmss(sec.abs().toDouble())}';
     final parts = [
-      if (f.grade != 1 && h != r) part('hills', h - r),
+      if (f.grade != 1 && h != r)
+        part(f.grade > 1 ? 'downhill' : 'hills', h - r),
       if (f.heat != 1 && t != h) part('heat', t - h),
     ];
     final unit = PaceFormat.unitLabel(units);

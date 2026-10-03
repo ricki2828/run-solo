@@ -54,7 +54,7 @@ void main() {
     await pumpDetail(tester, fiveParkruns());
     expect(find.text('5K · 5 RUNS'), findsOneWidget);
     expect(find.byKey(const ValueKey('board-hero')), findsOneWidget);
-    expect(find.textContaining('Your best · '), findsOneWidget);
+    expect(find.textContaining('Your best true time · '), findsOneWidget);
     // The best effort's own window offsets (A11.6).
     expect(find.textContaining('From'), findsOneWidget);
     expect(find.textContaining('of a'), findsOneWidget);
@@ -65,8 +65,8 @@ void main() {
     // The table: header, rank, true value, gap, date and the actual value
     // beside it (the fixtures carry no weather or hills, so they match).
     expect(find.text('ALL'), findsOneWidget);
-    expect(find.text('TIME'), findsOneWidget);
-    expect(find.text('GAP'), findsOneWidget);
+    expect(find.text('TRUE TIME'), findsOneWidget);
+    expect(find.text('BEHIND'), findsOneWidget);
     expect(find.textContaining('ACTUAL'), findsOneWidget);
     expect(find.text('no weather'), findsNothing);
   });
@@ -181,7 +181,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 700));
     expect(find.text('NORWEGIAN 4X4 · 2 SESSIONS'), findsOneWidget);
-    expect(find.text('PACE'), findsOneWidget);
+    expect(find.text('TRUE PACE'), findsOneWidget);
     expect(find.text('Not enough sessions yet for a trend'), findsOneWidget);
   });
 

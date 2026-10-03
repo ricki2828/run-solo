@@ -272,7 +272,7 @@ void main() {
           const TruePaceFactors(grade: 1.05),
           Units.km,
         ),
-        'True pace 5:37/km = actual 5:21, hills +0:16',
+        'True pace 5:37/km = actual 5:21, downhill +0:16',
       );
       expect(
         TruePaceText.breakdown(
