@@ -356,9 +356,9 @@ class RunFileTest {
         assertEquals(listOf(10.0, 10.0).size, ((r["pts"] as List<*>)[0] as List<*>).size - 1) // lat, lon, ele
         val off = (r["off"] as List<*>).map { (it as List<*>).map { v -> (v as Number).toLong() } }
         assertEquals(1, off.size)
-        // Left the line at 80 s, over 40 m at 90 s, flagged 10 s on, back near it by ~137 s.
-        assertTrue(off[0][0] in 98_000..102_000, "off from ${off[0][0]}")
-        assertTrue(off[0][1] in 136_000..142_000, "off to ${off[0][1]}")
+        // Back-dated: over 40 m at 91 s (the 11th fix north of the line), back within 25 m at 134 s.
+        assertTrue(off[0][0] in 90_000..92_000, "off from ${off[0][0]}")
+        assertTrue(off[0][1] in 133_000..135_000, "off to ${off[0][1]}")
     }
 
     @Test
@@ -394,5 +394,19 @@ class RunFileTest {
         val m = RunFile.readJson(fs.readBytes((out as Finaliser.Outcome.Done).path))
         @Suppress("UNCHECKED_CAST")
         assertEquals("r1", (m["route"] as Map<String, Any?>)["id"])
+    }
+
+    @Test
+    fun `route coordinates are written to 6 decimal places`() {
+        val odd = FollowRoute("r2", "Odd", (0..10).flatMap { listOf(-33.123456789012 + it * 1e-4, 151.987654321098 + it * 1e-4) })
+        val h = header.copy(mode = RunMode.free, session = null)
+        val j = JournalCodec.encode(h) + "\n" + JournalCodec.encode(JournalLine.RouteLine(t0, w0, odd)) + "\n" +
+            JournalCodec.encode(JournalLine.Sample(t0 + 1000, w0 + 1000, -33.12, 151.98, 10.0, 5.0, 4.0, null)) + "\n"
+        val f = RunFile.fromReplay(JournalReplay.read(j.toByteArray()), w0 + 1000)
+        @Suppress("UNCHECKED_CAST")
+        val pts = (RunFile.readJson(f.toGzipBytes())["route"] as Map<String, Any?>)["pts"] as List<List<Double>>
+        assertEquals(-33.123457, pts[0][0])
+        assertEquals(151.987654, pts[0][1])
+        for (p in pts) for (v in p) assertTrue(v.toString().substringAfter('.').length <= 6, "$v")
     }
 }

@@ -24,16 +24,16 @@ void main() {
       expect(r.hasElevation, isTrue);
       expect(r.points.first.lat, closeTo(-33.8688, 1e-6));
       expect(r.offRouteCount, 1);
-      expect(r.offRoute.single.t0Ms, 120000);
-      expect(r.offRoute.single.t1Ms, 157000);
-      expect(r.offRouteMs, 37000);
+      expect(r.offRoute.single.t0Ms, 110000);
+      expect(r.offRoute.single.t1Ms, 154000);
+      expect(r.offRouteMs, 44000);
     });
 
     test('it survives a re-encode and decode, byte for byte', () {
       final once = RunFileCodec.encode(run);
       final back = RunFileCodec.decode(once);
       expect(RunFileCodec.encode(back), once);
-      expect(back.route!.offRoute.single.t1Ms, 157000);
+      expect(back.route!.offRoute.single.t1Ms, 154000);
       expect(back.route!.points.length, run.route!.points.length);
     });
 

@@ -126,7 +126,8 @@ data class RunFile(
                     "id" to fr.route.id,
                     "name" to fr.route.name,
                     "pts" to (0 until fr.route.size).map { i ->
-                        val p = listOf(fr.route.latLon[2 * i], fr.route.latLon[2 * i + 1])
+                        // 6 decimal places is about 11 cm: more is false precision and bytes.
+                        val p = listOf(round6(fr.route.latLon[2 * i]), round6(fr.route.latLon[2 * i + 1]))
                         if (ele == null) p else p + (Math.round(ele[i] * 10) / 10.0)
                     },
                     "off" to fr.offSpans.map { it.asList() },
@@ -143,6 +144,8 @@ data class RunFile(
 
     companion object {
         const val SCHEMA = 7
+
+        private fun round6(v: Double): Double = Math.round(v * 1e6) / 1e6
 
         /** The third element of an auto-pause entry in the file's `pauses`. */
         const val AUTO_PAUSE_KIND = "auto"
@@ -194,9 +197,13 @@ data class RunFile(
                         if (follower != null && e.hasFix && pauseStart == null) {
                             follower.offer(e.t, e.lat!!, e.lon!!, e.accuracyM!!, quiet = true)
                             val start = offStart
-                            if (follower.off && start == null) offStart = e.t
+                            // Back-dated: from the first fix beyond the limit to the first back within it,
+                            // not from when the follower was sure of it (about 10 s and 3 s later).
+                            val prevEnd = offSpans.lastOrNull()?.get(1) ?: 0L
+                            if (follower.off && start == null) offStart = maxOf(follower.offBeganT ?: e.t, prevEnd)
                             if (!follower.off && start != null) {
-                                offSpans.add(longArrayOf(start, e.t))
+                                val end = (follower.backBeganT ?: e.t).coerceAtLeast(start)
+                                offSpans.add(longArrayOf(start, end))
                                 offStart = null
                             }
                         }
