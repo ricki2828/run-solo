@@ -14,7 +14,7 @@ concurrency:
 env:
   # Pinned to the same stable the dev host runs (~/tools/flutter). Bump both together.
   FLUTTER_VERSION: '3.47.5'
-  JAVA_VERSION: '17'
+  JAVA_VERSION: '21'
 
 jobs:
   changes:
