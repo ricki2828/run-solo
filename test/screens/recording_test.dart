@@ -559,6 +559,17 @@ void main() {
           expect(at('free-distance').top, lessThan(at('timer').top));
           expect(at('timer').top, closeTo(at('run-average').top, 0.5));
           expect(at('timer').left, lessThan(at('run-average').left));
+          // The PACE cluster: the speedo is always there, 36 sp or more.
+          expect(find.byType(PaceDial), findsOneWidget);
+          final dial = tester.widget<Text>(
+            find.byKey(const ValueKey('dial-pace')),
+          );
+          expect(dial.style!.fontSize, greaterThanOrEqualTo(36));
+          expect(
+            at('dial-pace').top,
+            greaterThan(at('timer').bottom),
+            reason: 'PACE cluster sits under the RUN trio',
+          );
           expect(tester.takeException(), isNull);
         });
       }

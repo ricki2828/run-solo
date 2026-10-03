@@ -24,6 +24,9 @@ class PaceDial extends StatelessWidget {
     this.onZone = false,
     this.label = 'CURRENT PACE',
     this.paceStyle,
+    this.beside = false,
+    this.dialWidth,
+    this.extra,
   });
 
   final double? currentSecPerKm;
@@ -36,6 +39,17 @@ class PaceDial extends StatelessWidget {
   /// Style of the pace under the dial; defaults to display64. Smaller when
   /// the dial sits beside a bigger primary number (4x4 segment average).
   final TextStyle? paceStyle;
+
+  /// Free / Trail pace cluster: the arc on the left, the labelled pace on the
+  /// right (with [extra] under it, e.g. Trail's GAP), so the dial costs half
+  /// the height of the stacked layout and is never hidden for room.
+  final bool beside;
+
+  /// [beside] only: the arc's width (null = half the row).
+  final double? dialWidth;
+
+  /// [beside] only: a second figure under the pace.
+  final Widget? extra;
 
   /// −1 (slower by the whole span) … 0 (on reference) … +1 (faster).
   double? get position {
@@ -60,35 +74,81 @@ class PaceDial extends StatelessWidget {
               : p < -0.05
               ? ', slower than the reference'
               : ', on the reference'}',
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AspectRatio(
-            aspectRatio: 2,
-            child: CustomPaint(
-              painter: _DialPainter(
-                position: p,
-                ink: t.inkPrimary,
-                track: onZone ? HrZones.gaugeEmpty : t.lineHair,
-                secondary: secondary,
-              ),
+      child: beside
+          ? _besideLayout(secondary, t, p)
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _arc(secondary, t, p),
+                const SizedBox(height: Space.x4),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    Fmt.pace(currentSecPerKm, units),
+                    key: const ValueKey('dial-pace'),
+                    softWrap: false,
+                    style: (paceStyle ?? RunSoloType.display64).copyWith(
+                      color: t.inkPrimary,
+                    ),
+                  ),
+                ),
+                Text(
+                  label,
+                  style: RunSoloType.micro11.copyWith(color: secondary),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: Space.x4),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              Fmt.pace(currentSecPerKm, units),
-              key: const ValueKey('dial-pace'),
-              softWrap: false,
-              style: (paceStyle ?? RunSoloType.display64).copyWith(
-                color: t.inkPrimary,
-              ),
-            ),
-          ),
-          Text(label, style: RunSoloType.micro11.copyWith(color: secondary)),
-        ],
+    );
+  }
+
+  Widget _arc(Color secondary, RunSoloTokens t, double? p) => AspectRatio(
+    aspectRatio: 2,
+    child: CustomPaint(
+      painter: _DialPainter(
+        position: p,
+        ink: t.inkPrimary,
+        track: onZone ? HrZones.gaugeEmpty : t.lineHair,
+        secondary: secondary,
       ),
+    ),
+  );
+
+  Widget _besideLayout(Color secondary, RunSoloTokens t, double? p) {
+    final arc = _arc(secondary, t, p);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (dialWidth == null)
+          Expanded(child: arc)
+        else
+          SizedBox(width: dialWidth, child: arc),
+        const SizedBox(width: Space.x16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: RunSoloType.micro11.copyWith(color: secondary),
+              ),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  Fmt.pace(currentSecPerKm, units),
+                  key: const ValueKey('dial-pace'),
+                  softWrap: false,
+                  style: (paceStyle ?? RunSoloType.display44).copyWith(
+                    color: t.inkPrimary,
+                  ),
+                ),
+              ),
+              ?extra,
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

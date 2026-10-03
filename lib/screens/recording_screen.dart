@@ -330,6 +330,13 @@ class _RecordingScreenState extends State<RecordingScreen>
           // hidden too, so no half line peeks out (A10.1: covered = hidden).
           final shown = ctl.lastCompare.value;
           final shownAt = ctl.lastCompareAt;
+          // The last branch of the layout chain below: Free and Trail.
+          final freeBlock =
+              !((isEventRun(s) || s.isGoal) && s.phase == Phase.work) &&
+              !(s.isGoal && s.phase == Phase.cooldown) &&
+              !s.isPreset &&
+              !s.isCooper &&
+              !s.lapsEnabled;
           final cardShowing =
               cardEnabled &&
               shown != null &&
@@ -358,7 +365,10 @@ class _RecordingScreenState extends State<RecordingScreen>
               !_finishing &&
               !_stopping;
           // In MAP the numbers' leftover space belongs to the map.
-          final Widget gap = mapOn ? const SizedBox.shrink() : const Spacer();
+          // Free / Trail have no LAP button: their block takes that room.
+          final Widget gap = mapOn || freeBlock
+              ? const SizedBox.shrink()
+              : const Spacer();
           return Scaffold(
             backgroundColor: Colors.transparent,
             body: Stack(
@@ -438,7 +448,8 @@ class _RecordingScreenState extends State<RecordingScreen>
                             ),
                           ],
                         ] else ...[
-                          const Spacer(),
+                          // The Free / Trail block takes the room itself.
+                          if (!freeBlock) const Spacer(),
                           if ((isEventRun(s) || s.isGoal) &&
                               s.phase == Phase.work) ...[
                             // K1 / A10.10, G3 (A8): distance or time to go is
@@ -1195,12 +1206,11 @@ class AuxFigure extends StatelessWidget {
   );
 }
 
-/// Climb so far and the current grade, as secondary figures under the main
-/// numbers (founder 2-Oct). Same 36 sp floor as every other number on the
-/// screen (A8); the hero stays the biggest. With [gapSecPerKm] (modes that
-/// show grade-adjusted pace live) it is a third figure on a second row, so
-/// no figure shrinks below the floor. The phone's barometer and GPS are
-/// fused on the device; nothing here leaves it.
+/// The CLIMB cluster: climb so far and the current grade side by side,
+/// aligned (founder 2-Oct, clustered 3-Oct). Same 36 sp floor as every other
+/// number on the screen (A8). [showGrade] false (a short phone following a
+/// route) leaves the climb alone. The phone's barometer and GPS are fused on
+/// the device; nothing here leaves it.
 class ElevationRow extends StatelessWidget {
   const ElevationRow({
     super.key,
@@ -1208,60 +1218,41 @@ class ElevationRow extends StatelessWidget {
     required this.units,
     required this.labelColor,
     required this.valueColor,
-    this.gapSecPerKm,
+    this.showGrade = true,
   });
   final RecordingSnapshot s;
   final Units units;
   final Color labelColor;
   final Color valueColor;
-
-  /// The flat-equivalent pace (an estimate); null = not shown.
-  final double? gapSecPerKm;
+  final bool showGrade;
 
   @override
   Widget build(BuildContext context) {
-    final climb = AuxFigure(
-      label: 'CLIMB',
-      value: Fmt.elevation(s.elevGainM, units),
-      labelColor: labelColor,
-      valueColor: valueColor,
-      valueKey: const ValueKey('live-climb'),
-    );
-    final grade = AuxFigure(
-      label: 'GRADE',
-      value: Fmt.grade(s.gradePct),
-      labelColor: labelColor,
-      valueColor: valueColor,
-      valueKey: const ValueKey('live-grade'),
-    );
-    final gap = gapSecPerKm == null
-        ? null
-        : AuxFigure(
-            label: 'GAP',
-            value: Fmt.pace(gapSecPerKm, units),
+    return Row(
+      key: const ValueKey('elevation-row'),
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: AuxFigure(
+            label: 'CLIMB',
+            value: Fmt.elevation(s.elevGainM, units),
             labelColor: labelColor,
             valueColor: valueColor,
-            valueKey: const ValueKey('live-gap'),
-          );
-    return Column(
-      key: const ValueKey('elevation-row'),
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(child: climb),
-            const SizedBox(width: Space.x16),
-            Expanded(child: grade),
-          ],
-        ),
-        if (gap != null)
-          Row(
-            children: [
-              Expanded(child: gap),
-              const Spacer(),
-            ],
+            valueKey: const ValueKey('live-climb'),
           ),
+        ),
+        const SizedBox(width: Space.x16),
+        Expanded(
+          child: showGrade
+              ? AuxFigure(
+                  label: 'GRADE',
+                  value: Fmt.grade(s.gradePct),
+                  labelColor: labelColor,
+                  valueColor: valueColor,
+                  valueKey: const ValueKey('live-grade'),
+                )
+              : const SizedBox.shrink(),
+        ),
       ],
     );
   }
@@ -1502,97 +1493,202 @@ class _FreeRunBlock extends StatelessWidget {
   /// Short screen (< 720 dp): each number one step down.
   final bool compact;
 
+  static double _textH(TextStyle style) {
+    final p = TextPainter(
+      text: TextSpan(text: '0', style: style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    return p.height;
+  }
+
+  /// A label over a 36 sp value (AuxFigure, route figures).
+  static final double _figH =
+      _textH(RunSoloType.micro11) + _textH(AuxFigure.style);
+
+  /// The RUN trio's height at [size]: distance, then time and pace.
+  static double _trioH(double size) =>
+      2 *
+          (_textH(RunSoloType.micro11) +
+              _textH(RunSoloType.display44.copyWith(fontSize: size))) +
+      Space.x4 +
+      Space.x8;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
     final runAverage = runAverageSecPerKm(s, ctl);
-    // Secondary figures, once the phone has an elevation: never bigger than
-    // the three equal primaries, never under 36 sp. Keyed on the mode's flag,
-    // not a type list.
     final showElevation =
         runModeOf(s.mode).showsElevation && s.elevGainM != null;
-    // Room on a short phone: Trail's GAP row steps aside (with its climb, grade,
-    // time and distance rows it overflowed 360x640 by ~39 px). Following a
-    // route also needs room for "to go": the current-pace dial steps aside
-    // where Trail's climb and grade rows share the screen, and shrinks on a
-    // short phone. Distance, time, pace, climb and grade all stay at 36 sp or more.
-    final following = s.route != null;
-    final hideGap = compact && following;
-    // Only Trail (the mode with the GAP row) overflows a short phone; a Free
-    // run's climb and grade rows leave room for the dial.
-    final noDial =
-        showElevation &&
-        (following || (compact && runModeOf(s.mode).showsLiveGap));
-    return Column(
-      key: const ValueKey('free-run-block'),
-      children: [
-        // Founder 3-Oct (reverses 30-Sep): distance, time and average pace
-        // at one size, distance first, none a hero. The compare card hangs
-        // from the slot under them, over the secondary figures.
-        EqualFigures(
-          figures: liveHero(s, ctl, units).figures,
-          valueKeys: const [
-            ValueKey('free-distance'),
-            ValueKey('timer'),
-            ValueKey('run-average'),
-          ],
-          cap: compact ? 52 : 64,
-          labelColor: secondary,
-          valueColor: t.inkPrimary,
-        ),
-        CompareSlot(
-          link: card,
-          child: SizedBox(
-            width: double.infinity,
-            height: compact ? Space.x8 : Space.x16,
-          ),
-        ),
-        if (showElevation) ...[
-          SizedBox(height: compact ? Space.x4 : Space.x8),
-          ElevationRow(
-            s: s,
-            units: units,
-            labelColor: secondary,
-            valueColor: t.inkPrimary,
-            // Grade-adjusted pace live, only where the mode asks for it
-            // (Trail): the current pace as it would run on the flat.
-            gapSecPerKm: runModeOf(s.mode).showsLiveGap && !hideGap
-                ? engine.Gap.paceSecPerKm(s.livePaceSecPerKm, s.gradePct)
-                : null,
-          ),
-        ],
-        // Follow a route: what is left of it, under the numbers, never over
-        // the hero.
-        if (s.route != null) ...[
-          SizedBox(height: compact ? Space.x4 : Space.x8),
-          RouteToGoRow(
-            route: s.route!,
-            units: units,
-            labelColor: secondary,
-            valueColor: t.inkPrimary,
-            warnColor: t.semWarn,
-          ),
-        ],
-        if (!noDial) ...[
-          const SizedBox(height: Space.x8),
-          // Founder 25-Sep: the current-pace dial here too, needle against the
-          // run's average so far.
-          SizedBox(
-            width: compact
-                ? (following ? 96 : (showElevation ? 112 : 150))
-                : 200,
-            child: PaceDial(
+    final showGap = runModeOf(s.mode).showsLiveGap;
+    final route = s.route;
+    final turn = route == null || route.off ? '' : routeTurnText(route, units);
+    final routeH = route == null
+        ? 0.0
+        : _figH + (turn.isEmpty ? 0 : Space.x4 + _textH(AuxFigure.style));
+    // Founder 3-Oct: the screen reads as clusters, top to bottom: RUN
+    // (distance, time, average pace, equal size), PACE (the current-pace
+    // speedo, always shown, with Trail's GAP beside it), CLIMB, ROUTE.
+    // Priority when height is short: the dial shrinks, the RUN trio steps
+    // down a size, then GAP and grade go. Never the dial, the trio or the
+    // heart rate; no number under 36 sp.
+    return Expanded(
+      child: LayoutBuilder(
+        builder: (context, c) {
+          const divider = 1.0;
+          const minGap = Space.x8 + divider;
+          final width = c.maxWidth;
+          final half = (width - Space.x16) / 2;
+          // Plans from the roomiest to the leanest.
+          final plans = <_FreePlan>[
+            _FreePlan(compact ? 52 : 64, half, true, true),
+            _FreePlan(compact ? 48 : 56, half, true, true),
+            _FreePlan(compact ? 44 : 48, 112, true, true),
+            _FreePlan(44, 112, false, true),
+            _FreePlan(44, 112, false, false),
+            _FreePlan(40, 96, false, false),
+          ];
+          _FreePlan fit = plans.last;
+          for (final p in plans) {
+            if (_planH(p, width, showGap, showElevation, routeH, minGap) <=
+                c.maxHeight) {
+              fit = p;
+              break;
+            }
+          }
+          final size = EqualFigures.sizeFor(width, fit.trioCap);
+          final dialW = fit.dialWidth;
+          final gapOn = showGap && fit.gap;
+          final clusters = <Widget>[
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                EqualFigures(
+                  figures: liveHero(s, ctl, units).figures,
+                  valueKeys: const [
+                    ValueKey('free-distance'),
+                    ValueKey('timer'),
+                    ValueKey('run-average'),
+                  ],
+                  cap: size,
+                  labelColor: secondary,
+                  valueColor: t.inkPrimary,
+                ),
+                // The compare card hangs from here, over the clusters below.
+                CompareSlot(
+                  link: card,
+                  child: const SizedBox(
+                    width: double.infinity,
+                    height: Space.x8,
+                  ),
+                ),
+              ],
+            ),
+            PaceDial(
               currentSecPerKm: s.livePaceSecPerKm,
               referenceSecPerKm: runAverage,
               units: units,
               onZone: s.zone > 0,
+              beside: true,
+              dialWidth: dialW == half ? null : dialW,
+              paceStyle: AuxFigure.style.copyWith(fontSize: 40),
+              extra: gapOn
+                  ? AuxFigure(
+                      label: 'GAP',
+                      value: Fmt.pace(
+                        engine.Gap.paceSecPerKm(s.livePaceSecPerKm, s.gradePct),
+                        units,
+                      ),
+                      labelColor: secondary,
+                      valueColor: t.inkPrimary,
+                      valueKey: const ValueKey('live-gap'),
+                    )
+                  : null,
             ),
-          ),
-        ],
-      ],
+            if (showElevation)
+              ElevationRow(
+                s: s,
+                units: units,
+                labelColor: secondary,
+                valueColor: t.inkPrimary,
+                showGrade: fit.grade,
+              ),
+            if (route != null)
+              RouteToGoRow(
+                route: route,
+                units: units,
+                labelColor: secondary,
+                valueColor: t.inkPrimary,
+                warnColor: t.semWarn,
+              ),
+          ];
+          final contentH = _planH(
+            fit,
+            width,
+            showGap,
+            showElevation,
+            routeH,
+            minGap,
+          );
+          final extra = c.maxHeight - contentH;
+          final between = clusters.length > 1
+              ? (minGap + extra / (clusters.length - 1)).clamp(minGap, 40.0)
+              : 0.0;
+          final children = <Widget>[];
+          for (var i = 0; i < clusters.length; i++) {
+            if (i > 0) {
+              children.add(
+                SizedBox(
+                  height: between,
+                  child: Center(
+                    child: Container(height: divider, color: t.lineHair),
+                  ),
+                ),
+              );
+            }
+            children.add(clusters[i]);
+          }
+          return Column(
+            key: const ValueKey('free-run-block'),
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          );
+        },
+      ),
     );
   }
+
+  double _planH(
+    _FreePlan p,
+    double width,
+    bool showGap,
+    bool showElevation,
+    double routeH,
+    double minGap,
+  ) {
+    final size = EqualFigures.sizeFor(width, p.trioCap);
+    final paceCol =
+        _textH(RunSoloType.micro11) +
+        _textH(AuxFigure.style.copyWith(fontSize: 40)) +
+        (showGap && p.gap ? _figH : 0);
+    final pace = paceCol > p.dialWidth / 2 ? paceCol : p.dialWidth / 2;
+    final parts = <double>[
+      _trioH(size),
+      pace,
+      if (showElevation) _figH,
+      if (routeH > 0) routeH,
+    ];
+    return parts.fold(0.0, (a, b) => a + b) + (parts.length - 1) * minGap;
+  }
+}
+
+class _FreePlan {
+  const _FreePlan(this.trioCap, this.dialWidth, this.gap, this.grade);
+  final double trioCap;
+  final double dialWidth;
+  final bool gap;
+  final bool grade;
 }
 
 class _TimerBlock extends StatelessWidget {
