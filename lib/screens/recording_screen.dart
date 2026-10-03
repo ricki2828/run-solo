@@ -900,9 +900,21 @@ LiveHero liveHero(RecordingSnapshot s, RecordingController ctl, Units units) {
   if (s.lapsEnabled) {
     return LiveHero(text: timerFigureText(s, ctl), label: timerCaption(s));
   }
+  // Free and Trail (founder 3-Oct, reversing 30-Sep): distance, time and
+  // average pace are equal in size, distance first. NUMBERS and MAP both draw
+  // these figures.
+  final distance = Fmt.distance(s.totalDistanceM, units);
   return LiveHero(
-    text: Fmt.pace(runAverageSecPerKm(s, ctl), units),
-    label: 'RUN AVERAGE PACE /$unit',
+    text: distance,
+    label: 'DISTANCE',
+    figures: [
+      LiveFigure(label: 'DISTANCE', value: distance),
+      LiveFigure(label: 'TIME', value: Fmt.clock(ctl.displayElapsedMs)),
+      LiveFigure(
+        label: 'AVG PACE /$unit',
+        value: Fmt.pace(runAverageSecPerKm(s, ctl), units),
+      ),
+    ],
   );
 }
 
@@ -1495,16 +1507,16 @@ class _FreeRunBlock extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
     final runAverage = runAverageSecPerKm(s, ctl);
-    final unit = units == Units.mi ? 'mi' : 'km';
     // Secondary figures, once the phone has an elevation: never bigger than
-    // the hero, never under 36 sp. Keyed on the mode's flag, not a type list.
+    // the three equal primaries, never under 36 sp. Keyed on the mode's flag,
+    // not a type list.
     final showElevation =
         runModeOf(s.mode).showsElevation && s.elevGainM != null;
     // Room on a short phone: Trail's GAP row steps aside (with its climb, grade,
     // time and distance rows it overflowed 360x640 by ~39 px). Following a
     // route also needs room for "to go": the current-pace dial steps aside
     // where Trail's climb and grade rows share the screen, and shrinks on a
-    // short phone. The hero, time, distance, climb and grade all stay at 36 sp or more.
+    // short phone. Distance, time, pace, climb and grade all stay at 36 sp or more.
     final following = s.route != null;
     final hideGap = compact && following;
     // Only Trail (the mode with the GAP row) overflows a short phone; a Free
@@ -1515,51 +1527,25 @@ class _FreeRunBlock extends StatelessWidget {
     return Column(
       key: const ValueKey('free-run-block'),
       children: [
-        // Founder 30-Sep: the run's average pace is the single biggest,
-        // brightest number; time and distance step down to the secondary size.
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            Fmt.pace(runAverage, units),
-            key: const ValueKey('run-average'),
-            softWrap: false,
-            style: (compact ? RunSoloType.display96 : RunSoloType.timer120)
-                .copyWith(color: t.inkPrimary),
-          ),
+        // Founder 3-Oct (reverses 30-Sep): distance, time and average pace
+        // at one size, distance first, none a hero. The compare card hangs
+        // from the slot under them, over the secondary figures.
+        EqualFigures(
+          figures: liveHero(s, ctl, units).figures,
+          valueKeys: const [
+            ValueKey('free-distance'),
+            ValueKey('timer'),
+            ValueKey('run-average'),
+          ],
+          cap: compact ? 52 : 64,
+          labelColor: secondary,
+          valueColor: t.inkPrimary,
         ),
-        Text(
-          runAverage == null
-              ? 'RUN AVERAGE PACE · from 20 m'
-              : 'RUN AVERAGE PACE /$unit',
-          style: RunSoloType.label13.copyWith(color: secondary),
-        ),
-        SizedBox(height: compact ? Space.x8 : Space.x16),
-        // The compare card sits over this secondary row, never the average.
         CompareSlot(
           link: card,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: AuxFigure(
-                  label: 'TIME',
-                  value: Fmt.clock(ctl.displayElapsedMs),
-                  labelColor: secondary,
-                  valueColor: t.inkPrimary,
-                  valueKey: const ValueKey('timer'),
-                ),
-              ),
-              const SizedBox(width: Space.x16),
-              Expanded(
-                child: AuxFigure(
-                  label: 'DISTANCE',
-                  value: Fmt.distance(s.totalDistanceM, units),
-                  labelColor: secondary,
-                  valueColor: t.inkPrimary,
-                  valueKey: const ValueKey('free-distance'),
-                ),
-              ),
-            ],
+          child: SizedBox(
+            width: double.infinity,
+            height: compact ? Space.x8 : Space.x16,
           ),
         ),
         if (showElevation) ...[

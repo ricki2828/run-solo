@@ -262,7 +262,7 @@ void main() {
         findsOneWidget,
         reason: 'the route has elevation (${route.climbM})',
       );
-      // Hero unchanged: the run average stays the biggest, brightest number.
+      // The equal primaries stay bigger than the route figures.
       final hero = tester.widget<Text>(
         find.byKey(const ValueKey('run-average')),
       );

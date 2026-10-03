@@ -285,18 +285,42 @@ void main() {
     expect(tester.widget<Text>(find.byKey(_hero)).data, isNot('--:--'));
   }
 
+  testWidgets('MAP strip on a free run: distance, time, pace at one size', (
+    tester,
+  ) async {
+    final (fake, _) = await open(
+      tester,
+      mode: RecordMode.free,
+      settings: const AppSettings(onboardingDone: true, liveMapTypes: {'free'}),
+    );
+    fake.advance(const Duration(seconds: 120));
+    await pumpTimes(tester, 5);
+    expect(find.byKey(_map), findsOneWidget);
+    Text fig(String k) => tester.widget<Text>(find.byKey(ValueKey(k)));
+    final size = fig('map-hero').style!.fontSize!;
+    expect(size, greaterThanOrEqualTo(36));
+    expect(fig('map-hero-time').style!.fontSize, size);
+    expect(fig('map-hero-pace').style!.fontSize, size);
+    Rect at(String k) => tester.getRect(find.byKey(ValueKey(k)));
+    expect(at('map-hero').top, lessThan(at('map-hero-time').top));
+    expect(at('map-hero-time').left, lessThan(at('map-hero-pace').left));
+    expect(tester.takeException(), isNull);
+  });
+
   Future<void> run(FakeRecorderGateway f, int seconds) async {
     for (var i = 0; i < seconds; i++) {
       f.advance(const Duration(seconds: 1));
     }
   }
 
-  testWidgets('hero = numbers: free run average', (tester) async {
+  // Founder 3-Oct: Free leads with distance, then time and average pace at
+  // the same size; the MAP strip carries all three.
+  testWidgets('hero = numbers: free run distance', (tester) async {
     await heroMatches(
       tester,
       mode: RecordMode.free,
       script: (f) => run(f, 120),
-      numbers: find.byKey(const ValueKey('run-average')),
+      numbers: find.byKey(const ValueKey('free-distance')),
     );
   });
 

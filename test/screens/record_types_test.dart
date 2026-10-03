@@ -59,7 +59,7 @@ void main() {
     expect(find.textContaining('LAP '), findsNothing);
     // Founder 25-Sep: current-pace dial against the run's average so far.
     expect(find.byType(PaceDial), findsOneWidget);
-    expect(find.textContaining('RUN AVERAGE PACE'), findsOneWidget);
+    expect(find.textContaining('AVG PACE'), findsOneWidget);
     // Pause and hold-to-stop remain.
     expect(find.text('PAUSE'), findsOneWidget);
     expect(find.text('STOP'), findsOneWidget);
