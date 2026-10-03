@@ -18,10 +18,123 @@ import '../widgets/compare_card.dart';
 import '../widgets/route_to_go.dart';
 
 /// The biggest number for the phase, as the NUMBERS layout would show it.
+///
+/// Free and Trail have no single biggest number (founder 3-Oct): distance,
+/// time and average pace are [figures], equal in size, distance first. [text]
+/// and [label] then carry the lead figure (distance).
 class LiveHero {
-  const LiveHero({required this.text, required this.label});
+  const LiveHero({
+    required this.text,
+    required this.label,
+    this.figures = const [],
+  });
   final String text;
   final String label;
+  final List<LiveFigure> figures;
+}
+
+/// One of an equal-size set of figures: a small label over a value.
+class LiveFigure {
+  const LiveFigure({required this.label, required this.value});
+  final String label;
+  final String value;
+}
+
+/// Distance on its own row, time and average pace side by side under it, all
+/// at ONE size: the largest that fits the worst-case strings (an hour-plus
+/// clock in a half-width column, a double-digit distance), never under the
+/// 36 sp floor and never over [cap]. The size comes from the worst case, not
+/// the live text, so it does not jump when the clock rolls past an hour.
+/// [figures] is distance, time, pace; [valueKeys] the same order.
+class EqualFigures extends StatelessWidget {
+  const EqualFigures({
+    super.key,
+    required this.figures,
+    required this.valueKeys,
+    required this.cap,
+    required this.labelColor,
+    required this.valueColor,
+    this.rowGap = Space.x4,
+  }) : assert(figures.length == 3 && valueKeys.length == 3);
+  final List<LiveFigure> figures;
+  final List<Key> valueKeys;
+  final double cap;
+  final Color labelColor;
+  final Color valueColor;
+  final double rowGap;
+
+  static const double _gap = Space.x16;
+  static const double floor = 36;
+
+  static double _width(String text, TextStyle style) {
+    final p = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    return p.width;
+  }
+
+  /// The shared size for a column [maxWidth] wide.
+  static double sizeFor(double maxWidth, double cap) {
+    const ref = 100.0;
+    final base = RunSoloType.display44.copyWith(
+      fontSize: ref,
+      fontWeight: FontWeight.w700,
+    );
+    final half = (maxWidth - _gap) / 2;
+    final fit = [
+      half / _width('8:88:88', base) * ref,
+      maxWidth / _width('88.88 mi', base) * ref,
+    ].reduce((a, b) => a < b ? a : b);
+    return fit.clamp(floor, cap).floorToDouble();
+  }
+
+  Widget _one(int i, TextStyle style) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(
+        figures[i].label,
+        style: RunSoloType.micro11.copyWith(color: labelColor),
+      ),
+      Text(
+        figures[i].value,
+        key: valueKeys[i],
+        softWrap: false,
+        maxLines: 1,
+        overflow: TextOverflow.visible,
+        style: style,
+      ),
+    ],
+  );
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) {
+      final style = RunSoloType.display44.copyWith(
+        fontSize: sizeFor(c.maxWidth, cap),
+        fontWeight: FontWeight.w700,
+        color: valueColor,
+      );
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _one(0, style),
+          SizedBox(height: rowGap),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(child: _one(1, style)),
+              const SizedBox(width: _gap),
+              Expanded(child: _one(2, style)),
+            ],
+          ),
+        ],
+      );
+    },
+  );
 }
 
 class LiveMapView extends StatefulWidget {
@@ -112,32 +225,47 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
           maintainSize: true,
           maintainAnimation: true,
           maintainState: true,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  h.text,
-                  key: const ValueKey('map-hero'),
-                  softWrap: false,
-                  style: RunSoloType.display64
-                      .copyWith(
-                        color: t.inkPrimary,
-                        fontSize: widget.compact ? 52 : 64,
-                      )
-                      .copyWith(fontWeight: FontWeight.w700),
+          child: h.figures.isNotEmpty
+              // Free / Trail: distance, time and average pace at one size.
+              ? EqualFigures(
+                  figures: h.figures,
+                  valueKeys: const [
+                    ValueKey('map-hero'),
+                    ValueKey('map-hero-time'),
+                    ValueKey('map-hero-pace'),
+                  ],
+                  cap: widget.compact ? 40 : 44,
+                  labelColor: widget.secondary,
+                  valueColor: t.inkPrimary,
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        h.text,
+                        key: const ValueKey('map-hero'),
+                        softWrap: false,
+                        style: RunSoloType.display64
+                            .copyWith(
+                              color: t.inkPrimary,
+                              fontSize: widget.compact ? 52 : 64,
+                            )
+                            .copyWith(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    Text(
+                      h.label,
+                      key: const ValueKey('map-hero-label'),
+                      style: RunSoloType.label13.copyWith(
+                        color: widget.secondary,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              Text(
-                h.label,
-                key: const ValueKey('map-hero-label'),
-                style: RunSoloType.label13.copyWith(color: widget.secondary),
-              ),
-            ],
-          ),
         ),
         CompareSlot(
           link: widget.cardLink,

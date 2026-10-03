@@ -107,6 +107,38 @@ void main() {
     await golden(tester, 'record_map_free_360x800');
   });
 
+  // Free and Trail MAP strip (founder 3-Oct): distance, time and average pace
+  // at one size.
+  for (final mode in [RecordMode.free, RecordMode.trail]) {
+    for (final h in [800, 640]) {
+      if (mode == RecordMode.free && h == 800) {
+        continue; // kept below under its original name
+      }
+      testWidgets('record: ${mode.name} map view at 360 x $h', (tester) async {
+        final fake = FakeRecorderGateway(now: now)..emitRoute = true;
+        final services = fakeServices(
+          recorder: fake,
+          maps: const FakeMapSurfaceFactory(available: true),
+          settings: AppSettings(
+            onboardingDone: true,
+            liveMapTypes: {mode.name},
+          ),
+        );
+        await services.recording.start(mode, null, Units.km);
+        await pumpApp(tester, services, pushRoute: Routes.recording);
+        tester.view.physicalSize = Size(1080, h * 3.0);
+        await pumpTimes(tester, 4);
+        for (var i = 0; i < 95; i++) {
+          fake.advance(const Duration(seconds: 1));
+          await tester.pump();
+        }
+        await pumpTimes(tester, 5);
+        await settleAnimations(tester);
+        await golden(tester, 'record_map_${mode.name}_360x$h');
+      });
+    }
+  }
+
   testWidgets('record: goal cool-down map view at 360 x 800', (tester) async {
     final fake = FakeRecorderGateway(now: now)..emitRoute = true;
     final services = fakeServices(

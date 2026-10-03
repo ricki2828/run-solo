@@ -532,6 +532,50 @@ void main() {
     expect(find.byType(RecordingScreen), findsOneWidget);
   });
 
+  // Founder 3-Oct (reverses 30-Sep): distance, time and average pace are one
+  // size, distance first; none is a hero.
+  group('free and trail: distance, time and pace equal', () {
+    for (final mode in [RecordMode.free, RecordMode.trail]) {
+      for (final h in [800, 640]) {
+        testWidgets('${mode.name} at 360 x $h', (tester) async {
+          final (fake, _) = await openRecording(tester, mode: mode);
+          tester.view.physicalSize = Size(1080, h * 3.0);
+          fake.advance(const Duration(seconds: 120));
+          await settle(tester);
+          Text fig(String k) => tester.widget<Text>(find.byKey(ValueKey(k)));
+          final distance = fig('free-distance');
+          final time = fig('timer');
+          final pace = fig('run-average');
+          final size = distance.style!.fontSize!;
+          expect(size, greaterThanOrEqualTo(36));
+          expect(time.style!.fontSize, size);
+          expect(pace.style!.fontSize, size);
+          // Same ink on all three, in Bone.
+          expect(distance.style!.color, RunSoloTokens.dark.inkPrimary);
+          expect(time.style!.color, distance.style!.color);
+          expect(pace.style!.color, distance.style!.color);
+          // Distance first (above), then time, then pace (beside it).
+          Rect at(String k) => tester.getRect(find.byKey(ValueKey(k)));
+          expect(at('free-distance').top, lessThan(at('timer').top));
+          expect(at('timer').top, closeTo(at('run-average').top, 0.5));
+          expect(at('timer').left, lessThan(at('run-average').left));
+          // The PACE cluster: the speedo is always there, 36 sp or more.
+          expect(find.byType(PaceDial), findsOneWidget);
+          final dial = tester.widget<Text>(
+            find.byKey(const ValueKey('dial-pace')),
+          );
+          expect(dial.style!.fontSize, greaterThanOrEqualTo(36));
+          expect(
+            at('dial-pace').top,
+            greaterThan(at('timer').bottom),
+            reason: 'PACE cluster sits under the RUN trio',
+          );
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+  });
+
   group('elevation (secondary figures)', () {
     testWidgets(
       'a free run shows climb and grade at 36 sp or more, under the hero',
@@ -551,7 +595,7 @@ void main() {
           final text = tester.widget<Text>(find.byKey(ValueKey(k)));
           expect(text.style!.fontSize, greaterThanOrEqualTo(36), reason: k);
         }
-        // The hero stays the biggest number on the screen.
+        // The three equal primaries stay bigger than climb and grade.
         final hero = tester.widget<Text>(
           find.byKey(const ValueKey('run-average')),
         );
