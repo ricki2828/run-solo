@@ -97,7 +97,7 @@ List<HistoryGroup> groupByWeek(List<RunSummary> runs, DateTime now) {
       add('THIS WEEK', r);
     } else if (back == 1) {
       add('LAST WEEK', r);
-    } else if (back <= historyWeeksBack && local.year == now.year) {
+    } else if (back <= historyWeeksBack) {
       add(_range(monday), r);
     } else {
       add('${_monthsFull[local.month - 1]} ${local.year}', r);

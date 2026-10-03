@@ -168,4 +168,23 @@ void main() {
       expect(one.totals(Units.km), '1 run · 5.0 km · 0:25');
     });
   });
+
+  test('New Year: late December reads as last week and a date range', () {
+    // Thursday 7 Jan 2027: this week is Mon 4 to Sun 10 Jan.
+    final now = DateTime(2027, 1, 7, 10);
+    final gs = groupByWeek([
+      _run('jan', DateTime.utc(2027, 1, 5, 6), offset: 0),
+      _run('dec30', DateTime.utc(2026, 12, 30, 6), offset: 0), // last week
+      _run('dec24', DateTime.utc(2026, 12, 24, 6), offset: 0), // 21 to 27 Dec
+      _run('dec2', DateTime.utc(2026, 12, 2, 6), offset: 0), // 5 weeks back
+      _run('oct', DateTime.utc(2026, 10, 1, 6), offset: 0), // beyond 8 weeks
+    ], now);
+    expect(_ids(gs), {
+      'THIS WEEK': ['jan'],
+      'LAST WEEK': ['dec30'],
+      '21 TO 27 DEC': ['dec24'],
+      '30 NOV TO 6 DEC': ['dec2'],
+      'OCTOBER 2026': ['oct'],
+    });
+  });
 }
