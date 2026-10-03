@@ -136,8 +136,10 @@ void main() {
       v.note,
       '+${(f * 100).toStringAsFixed(1)}% for heat, a rough estimate',
     );
-    // The verdict screen's line comes from the same model.
-    expect(a.heatLine, startsWith('Heat-adjusted estimate: '));
+    // True pace takes this heat out; the verdict screen names it in its
+    // breakdown, not in a second heat line.
+    expect(a.heatLine, isNull);
+    expect(a.trueWorkPaceSecPerKm, closeTo(raw * (1 - f), 1e-9));
   });
 
   test('miles: both paces per mile', () {

@@ -195,7 +195,7 @@ void main() {
 
   test('timely weather is used before the first verdict freeze', () async {
     final r = fourByFourFile(n: 1, start: d1);
-    final store = FileRunStore(runsDir, heatCompare: () => true);
+    final store = FileRunStore(runsDir);
     await store.importBundles([engine.RunBundle(run: r)]);
     final provider = HeldWeatherProvider();
     final q = WeatherQueue(
@@ -218,18 +218,16 @@ void main() {
     await fetch;
     store.releaseFirstVerdictForWeather(r.id);
     final detail = (await first)!;
-    expect(detail.sidecar.frozenVerdict?.heatCompare, isTrue);
-    expect(
-      detail.sidecar.frozenVerdict?.heatNote,
-      isNot(engine.heatMissingNote),
-    );
+    // Frozen with its heat taken out: the weather made it in on time.
+    expect(detail.sidecar.frozenVerdict?.heatFactor, lessThan(1));
+    expect(detail.sidecar.frozenVerdict?.rawSecPerKm, isNotNull);
     expect((await weatherOf(r.id))!.isOk, isTrue);
     expect(provider.calls, 1);
   });
 
   test('timeout freezes raw once; later weather cannot rewrite it', () async {
     final r = fourByFourFile(n: 1, start: d1);
-    final store = FileRunStore(runsDir, heatCompare: () => true);
+    final store = FileRunStore(runsDir);
     await store.importBundles([engine.RunBundle(run: r)]);
     final provider = HeldWeatherProvider();
     final q = WeatherQueue(
@@ -245,8 +243,9 @@ void main() {
     final frozen = (await SidecarWriter.read(
       File('${runsDir.path}/run-${r.id}.edits.json'),
     ))!.frozenVerdict!;
-    expect(frozen.heatCompare, isTrue);
-    expect(frozen.heatNote, engine.heatMissingNote);
+    // Frozen without weather: the actual pace, once.
+    expect(frozen.heatFactor, 1);
+    expect(frozen.rawSecPerKm, isNull);
     provider.reply.complete(hourAt(r));
     await fetch;
     final after = (await SidecarWriter.read(

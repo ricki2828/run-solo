@@ -364,7 +364,7 @@ void main() {
   final d1 = DateTime.utc(2026, 9, 10, 6);
   final d2 = DateTime.utc(2026, 9, 14, 6);
 
-  // The elevation card: totals, profile on the faint grid, GAP as an
+  // The elevation card: totals, profile on the faint grid, true pace as an
   // estimate, and the climb column in the splits.
   for (final h in [800, 640]) {
     testWidgets('run detail: elevation profile at 360 x $h', (tester) async {
@@ -1876,7 +1876,6 @@ void main() {
         files: files,
         settings: AppSettings(
           onboardingDone: true,
-          compareHeatAdjusted: true,
           pbSeen: {'be:5000': files.last.id},
         ),
         // Three runs with weather (heat ticks), two without (rings).

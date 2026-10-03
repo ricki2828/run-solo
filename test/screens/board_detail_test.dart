@@ -62,13 +62,13 @@ void main() {
     expect(find.textContaining('quicker a month'), findsOneWidget);
     // The ALL table carries the gaps.
     expect(find.textContaining('+'), findsWidgets);
-    // The table: header, rank, gap, date and the no-weather tag (the
-    // fixtures carry no weather, so nothing is estimated).
+    // The table: header, rank, true value, gap, date and the actual value
+    // beside it (the fixtures carry no weather or hills, so they match).
     expect(find.text('ALL'), findsOneWidget);
     expect(find.text('TIME'), findsOneWidget);
     expect(find.text('GAP'), findsOneWidget);
-    expect(find.textContaining('HEAT-ADJ'), findsOneWidget);
-    expect(find.text('no weather'), findsWidgets);
+    expect(find.textContaining('ACTUAL'), findsOneWidget);
+    expect(find.text('no weather'), findsNothing);
   });
 
   testWidgets('the PB moment plays once, then the board is seen', (
@@ -152,7 +152,7 @@ void main() {
     expect(find.textContaining('Your best estimate · '), findsOneWidget);
     expect(find.textContaining('in 12 minutes'), findsOneWidget);
     expect(find.text('VO2 est.'), findsWidgets);
-    expect(find.textContaining('HEAT-ADJ EST.'), findsOneWidget);
+    expect(find.textContaining('ACTUAL'), findsOneWidget);
   });
 
   testWidgets('an interval board reads in pace, counted in sessions', (
@@ -185,16 +185,15 @@ void main() {
     expect(find.text('Not enough sessions yet for a trend'), findsOneWidget);
   });
 
-  testWidgets('a row opens its run; the legend toggles the heat layer', (
+  testWidgets('a row opens its run; the legend names the actual tick', (
     tester,
   ) async {
     final files = fiveParkruns();
     await pumpDetail(tester, files);
-    await tester.tap(find.byKey(const ValueKey('board-legend')));
-    await tester.pump();
-    // The heat layer lists its two marks while it shows.
-    expect(find.text('heat-adjusted estimate'), findsOneWidget);
-    expect(find.text('no weather'), findsWidgets);
+    // True pace is the bars; the actual value is a tick, always listed.
+    expect(find.byKey(const ValueKey('board-legend')), findsOneWidget);
+    expect(find.text('actual'), findsOneWidget);
+    expect(find.text('heat-adjusted estimate'), findsNothing);
     await tester.tap(find.byKey(ValueKey('board-row-${files.last.id}')));
     await pumpTimes(tester, 8);
     expect(find.byType(RunDetailScreen), findsOneWidget);

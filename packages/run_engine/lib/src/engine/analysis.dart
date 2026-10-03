@@ -198,8 +198,9 @@ class RunAnalysis {
   final CooperResult? cooper;
 
   /// The sidecar's weather (W1): pending, ok, failed or skipped; null
-  /// before the first fetch. Never an input to the verdict (plan §18.5:
-  /// computed and frozen without weather).
+  /// before the first fetch. Its heat share is an input to true pace, so to
+  /// the verdict computed (and then frozen) with it; none, pending or failed
+  /// leaves the heat out.
   final WeatherRecord? weather;
 
   /// "Too hot to adjust (38 °C, dew point 28) …"; null otherwise (the True

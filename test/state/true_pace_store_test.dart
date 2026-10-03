@@ -3,24 +3,23 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/state/history_store.dart';
+import 'package:run_solo/state/run_index.dart';
 
 import '../run_fixtures.dart';
 
-/// Phase 3 W2 on the file store: the heat-compare flip joins the index
-/// fingerprint, so it recomputes every verdict (like an engine bump) and
-/// flipping back restores them. History reads the index, so the rows are
-/// what is checked here, not `RunSummary.analysis`.
+/// True Pace on the file store: History reads the index, so the rows carry
+/// the true pace and the factors behind it (IndexRow v12), the verdict stays
+/// frozen when weather arrives later, and there is no heat-compare flag in
+/// the index fingerprint any more.
 void main() {
   final d1 = DateTime.utc(2026, 9, 10, 6);
   late Directory dir;
   late Directory runsDir;
-  var heat = false;
   final stores = <FileRunStore>[];
 
   setUp(() async {
-    dir = await Directory.systemTemp.createTemp('runsolo-w2-');
+    dir = await Directory.systemTemp.createTemp('runsolo-truepace-');
     runsDir = Directory('${dir.path}/runs');
-    heat = false;
   });
   tearDown(() async {
     for (final s in stores) {
@@ -39,7 +38,6 @@ void main() {
     final store = FileRunStore(
       runsDir,
       profile: () => const engine.UserProfile(age: 40),
-      heatCompare: () => heat,
     );
     store.deriveBatch = FileRunStore.deriveInIsolate;
     stores.add(store);
@@ -68,43 +66,33 @@ void main() {
       if (r.verdict != null) r.id: r.verdict!.toJson()..remove('computed_at'),
   };
 
-  test('off: the fingerprint is spelled as before W2', () async {
+  test('the index fingerprint carries no heat flag', () async {
     final store = await warm();
     expect((await store.readIndex()).inputs, isNot(contains('h:')));
   });
 
-  test('a flip rebuilds every entry; flipping back restores the verdicts '
-      'and the fingerprint', () async {
+  test('no weather, no elevation: true pace is the actual pace', () async {
     final store = await warm();
-    final before = await store.readIndex();
-    final original = verdicts(await store.list());
-    expect(original.keys, containsAll([a1.id, a2.id, a3.id]));
-
-    heat = true;
-    final on = await store.list();
-    expect(store.decoded, hasLength(4));
-    expect((await store.readIndex()).inputs, endsWith(';h:1'));
-    for (final r in on.where((r) => r.verdict != null)) {
-      // No weather on any run: raw verdicts, each saying so.
-      expect(r.verdict!.heatCompare, isTrue, reason: r.id);
-      expect(r.verdict!.heatNote, engine.heatMissingNote, reason: r.id);
+    for (final r in await store.list()) {
+      final row = r.row!;
+      expect(row.version, IndexRow.currentVersion);
+      expect(row.truePaceFactors.neutral, isTrue, reason: r.id);
+      if (r.workPaceSecPerKm != null) {
+        expect(
+          r.trueWorkPaceSecPerKm,
+          closeTo(r.workPaceSecPerKm!, 0.06),
+          reason: r.id,
+        );
+      }
+      if (row.truePaceSecPerKm != null) {
+        expect(row.truePaceSecPerKm, closeTo(row.movingMs! / r.distanceM, 0.1));
+      }
     }
-
-    heat = false;
-    store.decoded.clear();
-    final back = await store.list();
-    expect(store.decoded, hasLength(4));
-    expect(verdicts(back), original);
-    expect((await store.readIndex()).inputs, before.inputs);
-    store.decoded.clear();
-    await store.list();
-    expect(store.decoded, isEmpty, reason: 'stable once rebuilt');
   });
 
-  test('on: weather arriving later keeps the verdict and fills the trend '
+  test('weather arriving later keeps the verdict and fills the true pace '
       'twin', () async {
     final store = await warm();
-    heat = true;
     final staged = verdicts(await store.list());
     await store.setWeather(a3.id, ok(28, 21));
     final rows = await store.list();
@@ -112,8 +100,32 @@ void main() {
     final row = rows.firstWhere((r) => r.id == a3.id);
     expect(row.heatFraction, greaterThan(0.04));
     expect(
-      row.heatAdjustedWorkPaceSecPerKm,
-      closeTo(row.workPaceSecPerKm! * (1 - row.heatFraction!), 1e-9),
+      row.trueWorkPaceSecPerKm,
+      closeTo(row.workPaceSecPerKm! * (1 - row.heatFraction!), 0.06),
     );
+    expect(row.workFactors.heat, closeTo(1 - row.heatFraction!, 1e-3));
+    expect(row.row!.heatFactor, closeTo(1 - row.heatFraction!, 1e-3));
+    // The whole-run pace takes the heat out too.
+    expect(row.truePaceSecPerKm, lessThan(row.row!.movingMs! / row.distanceM));
+  });
+
+  test('an old row (v11) is rebuilt once and gains the true pace', () async {
+    final store = await warm();
+    final index = await store.readIndex();
+    final stale = {
+      for (final e in index.entries.entries)
+        e.key: RunIndexEntry.fromJson({
+          ...e.value.toJson(),
+          'row': {...e.value.row!.toJson(), 'v': IndexRow.currentVersion - 1},
+        }),
+    };
+    await store.indexFile.writeAsString(
+      RunIndex(stale, inputs: index.inputs).encode(),
+    );
+    await store.list();
+    expect(store.decoded, hasLength(4));
+    store.decoded.clear();
+    await store.list();
+    expect(store.decoded, isEmpty, reason: 'stable once rebuilt');
   });
 }

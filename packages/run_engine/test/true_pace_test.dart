@@ -164,6 +164,43 @@ void main() {
     });
   });
 
+  group('live', () {
+    test('grade only: the pace as it would run on the flat', () {
+      // 5% up at 6:00/km: Minetti ratio 1.303, so 4:36 on the flat.
+      expect(
+        RunTruePace.live(paceSecPerKm: 360, gradePct: 5)!,
+        closeTo(360 / Gap.ratio(0.05), 1e-9),
+      );
+      expect(RunTruePace.live(paceSecPerKm: 360, gradePct: 0), 360);
+      // The clamp holds on a wall: 25% off at most.
+      expect(
+        RunTruePace.live(paceSecPerKm: 360, gradePct: 30)!,
+        closeTo(360 * TruePace.minGrade, 1e-9),
+      );
+    });
+
+    test('heat ramps in over the distance so far', () {
+      final slow = _slowdown(34, 27);
+      // Early on the heat has no say; from 9 km it has all of it.
+      expect(
+        RunTruePace.live(paceSecPerKm: 330, slowdown: slow, distanceM: 1000),
+        330,
+      );
+      expect(
+        RunTruePace.live(paceSecPerKm: 330, slowdown: slow, distanceM: 12000)!,
+        closeTo(330 * (1 - slow), 1e-9),
+      );
+    });
+
+    test('no pace, no figure; no grade yet, heat only', () {
+      expect(RunTruePace.live(paceSecPerKm: null, gradePct: 4), isNull);
+      expect(
+        RunTruePace.live(paceSecPerKm: 330, slowdown: 0.05, distanceM: 20000),
+        closeTo(330 * 0.95, 1e-9),
+      );
+    });
+  });
+
   group('words', () {
     test('headline reads true first, actual and the reason beside it', () {
       // 4:31 actual, 4:22 true, a hot day.

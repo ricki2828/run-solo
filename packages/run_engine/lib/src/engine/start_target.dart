@@ -72,10 +72,12 @@ class StartTarget {
       );
       BoardRun? pb;
       if (courseKey != null) {
+        // The target is a time on the clock: the fastest actual finish, not
+        // the fastest true pace.
         final board = Leaderboards.fold([
           for (final c in runs)
             if (c.input.comparisonKey == courseKey) c.input,
-        ])[courseKey];
+        ], trueRanked: false)[courseKey];
         pb = board?.pb;
       }
       final pbMs = pb == null ? null : (pb.metric * 1000).round();

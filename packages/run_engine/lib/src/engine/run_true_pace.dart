@@ -2,6 +2,7 @@ import '../model/run_file.dart';
 import 'elevation.dart';
 import 'metrics.dart';
 import 'run_times.dart';
+import '../weather/heat_model.dart';
 import 'true_pace.dart';
 
 /// True Pace for a whole run: moving pace x hills x heat. See [TruePace].
@@ -35,6 +36,28 @@ class RunTruePace {
         slowdown: slowdown,
       ),
     );
+  }
+
+  /// TRUE PACE live, for the Free and Trail pace group: the current pace
+  /// [paceSecPerKm] on the live grade [gradePct] (percent, + uphill), with
+  /// the start-of-run heat [slowdown] taken out. The heat share ramps in over
+  /// the distance so far ([distanceM], `HeatModel.distanceRamp`, a display
+  /// figure like the per-split heat). Null without a pace; with no grade yet
+  /// (the first 50 m) only the heat applies.
+  static double? live({
+    required double? paceSecPerKm,
+    double? gradePct,
+    double? slowdown,
+    double distanceM = 0,
+  }) {
+    if (paceSecPerKm == null) return null;
+    final grade = gradePct == null ? null : 1 / Gap.ratio(gradePct / 100);
+    return TruePace.factors(
+      gradeFactor: grade,
+      slowdown: slowdown,
+      midpointM: distanceM,
+      ramp: HeatModel.distanceRamp,
+    ).apply(paceSecPerKm);
   }
 
   /// The factors for a session's work pace: the hills over the clean reps'

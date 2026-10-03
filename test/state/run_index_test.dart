@@ -471,7 +471,7 @@ void main() {
       expect(groups, hasLength(1));
       expect([for (final r in groups.single.runs) r.id], [a.id, b.id]);
       expect(groups.single.best.id, b.id);
-      // Every Trail run still has a verdict: the others judge on effort pace.
+      // Every Trail run still has a verdict: the others judge on true pace.
       final facts = trailFactsOfAll(rows);
       final v = engine.TrailVerdict.of(
         facts.firstWhere((f) => f.id == backwards.id),
@@ -509,7 +509,7 @@ void main() {
     });
 
     test(
-      'a qualifying Trail run feeds the identity lanes at effort pace',
+      'a qualifying Trail run feeds the identity lanes at true pace',
       () async {
         final store = await storeWith([a]);
         await store.list();
@@ -517,18 +517,21 @@ void main() {
         final input = e.boardInput();
         final row = e.row!;
         expect(row.gapSecPerKm, isNotNull);
-        expect(input.trailDistanceM, e.distanceM);
+        // The row stores the true pace and the hills behind it.
+        expect(row.truePaceSecPerKm, isNotNull);
+        expect(row.gradeFactor, lessThan(1), reason: 'a hilly trail run');
         expect(
-          input.trailEffortMs,
-          engine.TrailEffort.effortMs(
-            distanceM: e.distanceM,
-            movingMs: row.movingMs!,
-            gapSecPerKm: row.gapSecPerKm,
-            climbM: row.climbM,
-            elevSrc: row.elevSrc,
-          ),
+          row.truePaceSecPerKm,
+          closeTo(row.movingMs! / e.distanceM * row.gradeFactor!, 0.2),
         );
-        expect(input.trailEffortMs, lessThanOrEqualTo(row.movingMs!));
+        expect(input.trailDistanceM, e.distanceM);
+        expect(input.trailMovingMs, row.movingMs);
+        // The lanes apply the run's own factors to that moving time.
+        expect(input.gradeFactor, row.gradeFactor);
+        expect(
+          input.factorsFor().apply(row.movingMs!.toDouble()),
+          lessThan(row.movingMs!),
+        );
         // A Free run, however hilly, never carries it.
         final free = withElevation(
           freeRunFile(n: 57, start: d1, seconds: 1800),
@@ -536,7 +539,7 @@ void main() {
         final store2 = await storeWith([free]);
         await store2.list();
         final fe = (await store2.readIndex()).entries[free.id]!;
-        expect(fe.boardInput().trailEffortMs, isNull);
+        expect(fe.boardInput().trailMovingMs, isNull);
       },
     );
   });

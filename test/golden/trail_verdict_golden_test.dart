@@ -100,7 +100,7 @@ void main() {
       await result(tester, h, run, [old], 'trail_verdict_slower');
     });
 
-    testWidgets('trail verdict: no match, effort pace at 360 x $h', (
+    testWidgets('trail verdict: no match, true pace at 360 x $h', (
       tester,
     ) async {
       final run = trailLoopRun(n: 4, start: d3, secPerKm: 380, reverse: true);

@@ -44,6 +44,97 @@ void main() {
     expect(find.textContaining('°'), findsNothing);
   });
 
+  // True pace: one breakdown line on run detail when hills or heat moved the
+  // pace, with the caveat that they are estimates.
+  group('true pace breakdown', () {
+    engine.RunSidecar hotSidecar(String id) => engine.RunSidecar(
+      runId: id,
+      weather: engine.WeatherRecord(
+        status: engine.WeatherStatus.ok,
+        fetchedAt: d1,
+        latR: -33.9,
+        lonR: 151.2,
+        tempC: 30,
+        rh: 65,
+        dewPointC: 22,
+        adj: engine.HeatModel.of(tempC: 30, dewPointC: 22).fraction,
+      ).toJson(),
+    );
+    final breakdown = RegExp(
+      r'^True pace \d+:\d\d/km = actual \d+:\d\d(, hills [-+]\d+:\d\d)?'
+      r'(, heat [-+]\d+:\d\d)?$',
+    );
+
+    Text line(WidgetTester tester) => tester.widget<Text>(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey('true-pace-breakdown')),
+            matching: find.byType(Text),
+          )
+          .first,
+    );
+
+    testWidgets('a hilly, hot Free run: hills and heat both named', (
+      tester,
+    ) async {
+      final r = withElevation(freeRunFile(n: 81, start: d1, seconds: 1800));
+      await pumpApp(
+        tester,
+        fakeServices(files: [r], sidecars: {r.id: hotSidecar(r.id)}),
+        home: RunDetailScreen(runId: r.id),
+      );
+      await pumpTimes(tester, 6);
+      expect(find.byKey(const ValueKey('true-pace-breakdown')), findsOneWidget);
+      final text = line(tester).data!;
+      expect(text, matches(breakdown));
+      expect(text, contains(', hills -'));
+      expect(text, contains(', heat -'));
+      expect(find.text('Hills and heat are estimates.'), findsOneWidget);
+      // The elevation card carries the same true pace, as an estimate.
+      expect(find.textContaining('TRUE PACE (ESTIMATE)'), findsOneWidget);
+    });
+
+    testWidgets('a hot flat run names only the heat', (tester) async {
+      final r = freeRunFile(n: 82, start: d1, seconds: 1800);
+      await pumpApp(
+        tester,
+        fakeServices(files: [r], sidecars: {r.id: hotSidecar(r.id)}),
+        home: RunDetailScreen(runId: r.id),
+      );
+      await pumpTimes(tester, 6);
+      final text = line(tester).data!;
+      expect(text, matches(breakdown));
+      expect(text, contains(', heat -'));
+      expect(text, isNot(contains('hills')));
+    });
+
+    testWidgets('a flat, cool run has no breakdown (true pace is actual)', (
+      tester,
+    ) async {
+      final r = freeRunFile(n: 83, start: d1, seconds: 1800);
+      await pumpApp(
+        tester,
+        fakeServices(files: [r]),
+        home: RunDetailScreen(runId: r.id),
+      );
+      await pumpTimes(tester, 6);
+      expect(find.byKey(const ValueKey('true-pace-breakdown')), findsNothing);
+      expect(find.textContaining('estimate'), findsNothing);
+    });
+
+    testWidgets('a session reads on its work pace', (tester) async {
+      final r = fourByFourFile(n: 84, start: d1);
+      await pumpApp(
+        tester,
+        fakeServices(files: [r], sidecars: {r.id: hotSidecar(r.id)}),
+        home: RunDetailScreen(runId: r.id),
+      );
+      await pumpTimes(tester, 6);
+      expect(line(tester).data, startsWith('True work pace '));
+      expect(line(tester).data, contains(', heat -'));
+    });
+  });
+
   testWidgets(
     'test: tiles show the 12:00 window and the prime score (27-Sep)',
     (tester) async {
@@ -264,10 +355,7 @@ void main() {
       await pumpTimes(tester, 6);
       expect(find.byKey(const ValueKey('elevation-card')), findsOneWidget);
       expect(find.text('${e.ascentM.round()} m'), findsWidgets);
-      expect(
-        find.textContaining('GRADE-ADJUSTED PACE (ESTIMATE)'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('TRUE PACE (ESTIMATE)'), findsOneWidget);
       await scrollTo(tester, find.text('CLIMB').last);
       // The splits table gains a Climb column, one cell per full km.
       final km = e.unitClimbs(1000);

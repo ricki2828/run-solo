@@ -278,9 +278,10 @@ void main() {
     expect(find.byKey(const ValueKey('fake-map')), findsOneWidget);
   });
 
-  // A6: with weather, one line after the HR line; the verdict word is the
-  // raw one (the engine test pins it word for word).
-  testWidgets('warm run: heat-adjusted estimate line under the verdict', (
+  // True pace: with weather, the pace the verdict compared reads under the
+  // subline with the actual pace beside it ("4:41 true pace (5:00 actual,
+  // hot day)"). No second "heat-adjusted estimate" line.
+  testWidgets('warm run: true pace line under the verdict, actual beside it', (
     tester,
   ) async {
     final r1 = fourByFourFile(n: 1, start: d1);
@@ -306,43 +307,18 @@ void main() {
     await pumpTimes(tester, 6);
     await reveal(tester);
     expect(word(tester), 'BASELINE SET');
-    final line = find.textContaining('Heat-adjusted estimate: ');
+    final line = find.textContaining(' true pace (');
     expect(line, findsOneWidget);
-    expect(
-      engine.carriesEstimateMarker(tester.widget<Text>(line).data!),
-      isTrue,
-    );
+    expect(tester.widget<Text>(line).data, endsWith(' actual, hot day)'));
+    expect(find.textContaining('Heat-adjusted estimate'), findsNothing);
   });
 
-  testWidgets('W2 on: the heat note sits under the subline, once', (
+  testWidgets('a cool run has no true pace line (it is the actual pace)', (
     tester,
   ) async {
     final r1 = fourByFourFile(n: 1, start: d1);
-    final weather = engine.WeatherRecord(
-      status: engine.WeatherStatus.ok,
-      fetchedAt: d1,
-      tempC: 28,
-      rh: 62,
-      dewPointC: 21,
-      adj: engine.HeatModel.of(tempC: 28, dewPointC: 21).fraction,
-    );
-    await pumpApp(
-      tester,
-      fakeServices(
-        files: [r1],
-        sidecars: {
-          r1.id: engine.RunSidecar(runId: r1.id, weather: weather.toJson()),
-        },
-        settings: const AppSettings(
-          onboardingDone: true,
-          compareHeatAdjusted: true,
-        ),
-      ),
-      pushRoute: Routes.verdict,
-      pushArguments: r1.id,
-    );
-    await pumpTimes(tester, 6);
+    await openVerdict(tester, [r1], r1.id);
     await reveal(tester);
-    expect(find.text(engine.heatComparedNote(0, 0)), findsOneWidget);
+    expect(find.textContaining(' true pace'), findsNothing);
   });
 }

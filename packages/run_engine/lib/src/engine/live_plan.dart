@@ -132,7 +132,13 @@ abstract final class LivePlanner {
     EventNames names = EventNames.generic,
   }) {
     final byId = {for (final r in runs) r.input.runId: r};
-    final boards = Leaderboards.fold(byId.values.map((r) => r.input));
+    // Live racing is against the clock: boards ranked by actual time, so the
+    // ghosts are the fastest real runs (true pace is for comparing days, not
+    // for racing one).
+    final boards = Leaderboards.fold(
+      byId.values.map((r) => r.input),
+      trueRanked: false,
+    );
     final out = <LiveBoardPlan>[];
 
     void add(
