@@ -404,34 +404,53 @@ class HistoryRow extends StatelessWidget {
                         color: t.inkSecondary,
                       ),
                     ),
-                    Text(
-                      run.missing
-                          ? 'File missing'
-                          : switch (run.mode) {
-                              RecordMode.intervals =>
-                                run.detectedReps != null
-                                    ? '${run.detectedReps} reps · ${Fmt.distance(run.distanceM, units)}'
-                                    : run.spec != null
-                                    ? '${run.spec!.name} · ${Fmt.distance(run.distanceM, units)}'
-                                    : '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',
-                              RecordMode.laps
-                                  when run.spec?.templateId ==
-                                      engine.SessionSpec.fartlekId =>
-                                'Fartlek · ${Fmt.distance(run.distanceM, units)}',
-                              RecordMode.laps =>
-                                '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',
-                              RecordMode.free || RecordMode.trail =>
-                                Fmt.distance(run.distanceM, units),
-                              // The test's own window (27-Sep field test:
-                              // total distance counted the cool-down).
-                              RecordMode.cooper => Fmt.distance(
-                                run.cooper?.testDistanceM ?? run.distanceM,
-                                units,
-                              ),
-                            },
-                      style: RunSoloType.label13.copyWith(
-                        color: run.missing ? t.semWarn : t.inkSecondary,
-                      ),
+                    Row(
+                      children: [
+                        // Follow a route: a small badge on a run that followed one.
+                        if (run.routeName != null)
+                          Padding(
+                            padding: const EdgeInsets.only(right: Space.x4),
+                            child: Icon(
+                              Icons.alt_route,
+                              key: ValueKey('route-badge-${run.id}'),
+                              size: 14,
+                              color: t.inkSecondary,
+                              semanticLabel: 'Followed ${run.routeName}',
+                            ),
+                          ),
+                        Flexible(
+                          child: Text(
+                            run.missing
+                                ? 'File missing'
+                                : switch (run.mode) {
+                                    RecordMode.intervals =>
+                                      run.detectedReps != null
+                                          ? '${run.detectedReps} reps · ${Fmt.distance(run.distanceM, units)}'
+                                          : run.spec != null
+                                          ? '${run.spec!.name} · ${Fmt.distance(run.distanceM, units)}'
+                                          : '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',
+                                    RecordMode.laps
+                                        when run.spec?.templateId ==
+                                            engine.SessionSpec.fartlekId =>
+                                      'Fartlek · ${Fmt.distance(run.distanceM, units)}',
+                                    RecordMode.laps =>
+                                      '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',
+                                    RecordMode.free || RecordMode.trail =>
+                                      Fmt.distance(run.distanceM, units),
+                                    // The test's own window (27-Sep field test:
+                                    // total distance counted the cool-down).
+                                    RecordMode.cooper => Fmt.distance(
+                                      run.cooper?.testDistanceM ??
+                                          run.distanceM,
+                                      units,
+                                    ),
+                                  },
+                            style: RunSoloType.label13.copyWith(
+                              color: run.missing ? t.semWarn : t.inkSecondary,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

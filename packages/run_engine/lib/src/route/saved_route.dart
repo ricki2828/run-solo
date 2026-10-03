@@ -351,6 +351,18 @@ class RouteImporter {
     );
   }
 
+  /// "Run this route again" from a run that followed a route: the planned
+  /// line the run kept, not the line it actually ran. The id is the route's
+  /// own, so it is the library entry it came from (when that is still there).
+  SavedRoute fromFollowed(FollowedRoute r, {DateTime? now}) =>
+      RouteBuilder.build(
+        id: r.id,
+        name: r.name,
+        raw: [for (final p in r.points) RoutePoint(p.lat, p.lon, p.ele)],
+        source: RouteSource.run,
+        createdAt: now ?? DateTime.now().toUtc(),
+      );
+
   SavedRoute _fromXml(
     String text,
     RouteSource source,

@@ -31,7 +31,7 @@ def main() -> int:
         if not ok:
             errors.append(msg)
 
-    check(run["schema"] == 6, f"schema {run['schema']}")
+    check(run["schema"] == 7, f"schema {run['schema']}")
     check(run["mode"] == fx["mode"], f"mode {run['mode']} != {fx['mode']}")
     check(run["session"] == fx["session"], f"session differs:\n  device  {run['session']}\n  fixture {fx['session']}")
     check(run["gaps"] == [], f"gaps {run['gaps']}")

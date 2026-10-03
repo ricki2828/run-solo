@@ -10,6 +10,7 @@ import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
 import app.runsolo.core.replay.TraceFixture
+import app.runsolo.core.route.FollowRoute
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -71,10 +72,10 @@ class RunFileTest {
     }
 
     @Test
-    fun `gzip json round trip matches schema v5`() {
+    fun `gzip json round trip matches schema v7`() {
         val f = RunFile.fromReplay(JournalReplay.read(journal()), w0 + 50_000)
         val m = RunFile.readJson(f.toGzipBytes())
-        assertEquals(6L, m["schema"])
+        assertEquals(7L, m["schema"])
         assertEquals("id1", m["id"])
         assertEquals("intervals", m["mode"])
         assertEquals("km", m["units"])
@@ -232,12 +233,12 @@ class RunFileTest {
     }
 
     @Test
-    fun `a schema-2 4x4 journal (update mid-run) finalises as a schema-6 intervals file with the norwegian-4x4 session`() {
+    fun `a schema-2 4x4 journal (update mid-run) finalises as a schema-7 intervals file with the norwegian-4x4 session`() {
         val v2 = """{"k":"hdr","schema":2,"t":$t0,"w":$w0,"id":"id1","device":"d","app":"a","tz":"UTC","mode":"fourByFour","preset":{"reps":5,"workSeconds":240,"recoverySeconds":120},"units":"km"}"""
         val rest = listOf(JournalLine.Lap(t0 + 60_000, w0 + 60_000, LapSource.button)).joinToString("") { JournalCodec.encode(it) + "\n" }
         val f = RunFile.fromReplay(JournalReplay.read((v2 + "\n" + rest).toByteArray()), w0 + 90_000)
         val m = RunFile.readJson(f.toGzipBytes())
-        assertEquals(6L, m["schema"])
+        assertEquals(7L, m["schema"])
         assertEquals("intervals", m["mode"])
         @Suppress("UNCHECKED_CAST")
         val spec = SessionSpec.fromJson(m["session"] as Map<String, Any?>)!!
@@ -303,5 +304,95 @@ class RunFileTest {
         val back = JournalCodec.decode(JournalCodec.encode(line)) as JournalLine.Sample
         assertEquals(1013.26, back.hpa!!, 1e-9)
         assertNull((JournalCodec.decode(JournalCodec.encode(line.copy(hpa = null))) as JournalLine.Sample).hpa)
+    }
+
+    // ---- followed route (schema 7) ----
+
+    private val kLon = 111_320.0 * Math.cos(Math.toRadians(-33.0))
+    private fun lat(y: Double) = -33.0 + y / 111_320.0
+    private fun lon(x: Double) = 151.0 + x / kLon
+    private val route = FollowRoute(
+        "r1", "Park loop",
+        (0..100).flatMap { listOf(lat(0.0), lon(it * 10.0)) },
+        (0..100).map { 10.0 + it * 0.2 },
+    )
+
+    /** [xy] a position per second from t0 + 1 s; a journal of a free run that follows [route] (or none). */
+    private fun routeJournal(withRoute: Boolean, xy: List<Pair<Double, Double>>, extra: (Int) -> String = { "" }): ByteArray {
+        val h = header.copy(mode = RunMode.free, session = null)
+        val sb = StringBuilder(JournalCodec.encode(h)).append('\n')
+        if (withRoute) sb.append(JournalCodec.encode(JournalLine.RouteLine(t0, w0, route))).append('\n')
+        for ((i, p) in xy.withIndex()) {
+            val t = t0 + (i + 1) * 1000L
+            sb.append(extra(i))
+            sb.append(JournalCodec.encode(JournalLine.Sample(t, w0 + (i + 1) * 1000L, lat(p.second), lon(p.first), 10.0, 5.0, 4.0, null))).append('\n')
+        }
+        return sb.toString().toByteArray()
+    }
+
+    private fun walk(): List<Pair<Double, Double>> {
+        var x = 0.0
+        var y = 0.0
+        return (1..200).map { s ->
+            when {
+                s <= 80 -> x += 4.0
+                s <= 110 -> y += 4.0
+                s <= 140 -> y -= 4.0
+                else -> x += 4.0
+            }
+            x to y
+        }
+    }
+
+    @Test
+    fun `a followed route is kept in the file with the span spent off it`() {
+        val f = RunFile.fromReplay(JournalReplay.read(routeJournal(true, walk())), w0 + 200_000)
+        val m = RunFile.readJson(f.toGzipBytes())
+        assertEquals(7L, m["schema"])
+        @Suppress("UNCHECKED_CAST")
+        val r = m["route"] as Map<String, Any?>
+        assertEquals("Park loop", r["name"])
+        assertEquals(101, (r["pts"] as List<*>).size)
+        assertEquals(listOf(10.0, 10.0).size, ((r["pts"] as List<*>)[0] as List<*>).size - 1) // lat, lon, ele
+        val off = (r["off"] as List<*>).map { (it as List<*>).map { v -> (v as Number).toLong() } }
+        assertEquals(1, off.size)
+        // Left the line at 80 s, over 40 m at 90 s, flagged 10 s on, back near it by ~137 s.
+        assertTrue(off[0][0] in 98_000..102_000, "off from ${off[0][0]}")
+        assertTrue(off[0][1] in 136_000..142_000, "off to ${off[0][1]}")
+    }
+
+    @Test
+    fun `a run that followed nothing writes no route key`() {
+        val f = RunFile.fromReplay(JournalReplay.read(routeJournal(false, walk())), w0 + 200_000)
+        assertNull(f.route)
+        assertTrue(!RunFile.readJson(f.toGzipBytes()).containsKey("route"))
+    }
+
+    @Test
+    fun `a run that stayed on the route has an empty off list`() {
+        val onRoute = (1..100).map { it * 4.0 to 0.0 }
+        val f = RunFile.fromReplay(JournalReplay.read(routeJournal(true, onRoute)), w0 + 100_000)
+        assertEquals(0, f.route!!.offSpans.size)
+    }
+
+    @Test
+    fun `still off route when the run ends closes the span at the end`() {
+        val away = (1..100).map { if (it <= 60) it * 4.0 to 0.0 else 240.0 to (it - 60) * 4.0 }
+        val f = RunFile.fromReplay(JournalReplay.read(routeJournal(true, away)), w0 + 100_000)
+        val span = f.route!!.offSpans.single()
+        assertEquals(100_000L, span[1])
+    }
+
+    @Test
+    fun `recovery keeps the route - an orphaned journal finalises with it`() {
+        val fs = app.runsolo.core.fs.FakeFileSystem()
+        fs.mkdirs(RunPaths.RUNS_DIR)
+        fs.mkdirs(RunPaths.journalDir("id1"))
+        fs.writeBytes(RunPaths.journal("id1"), routeJournal(true, walk()))
+        val out = Finaliser(fs).finalise("id1", w0 + 200_000, activeRunId = null)
+        assertTrue(out is Finaliser.Outcome.Done)
+        val m = RunFile.readJson(fs.readBytes((out as Finaliser.Outcome.Done).path))
+        @Suppress("UNCHECKED_CAST")
+        assertEquals("r1", (m["route"] as Map<String, Any?>)["id"])
     }
 }

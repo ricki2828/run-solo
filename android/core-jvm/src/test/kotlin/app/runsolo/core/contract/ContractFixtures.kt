@@ -22,6 +22,7 @@ import app.runsolo.core.record.SampleTicker
 import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.core.replay.TraceFixture
 import app.runsolo.core.run.Finaliser
+import app.runsolo.core.route.FollowRoute
 import app.runsolo.core.run.RunFile
 import app.runsolo.core.run.RunPaths
 import java.io.File
@@ -33,9 +34,9 @@ import java.io.File
  * hand-built. Checked into `src/test/fixtures/contract/` and copied verbatim into
  * `packages/run_engine/test/fixtures/contract/`; [ContractFixturesTest] fails when the
  * generator and the checked-in files drift, and CI compares the two copies. The top level is
- * schema 6 (the `trail` mode; otherwise schema 5's). `contract/schema1/`,
- * `contract/schema2/`, `contract/schema3/`, `contract/schema4/` and `contract/schema5/` are frozen output of the older writers: never
- * regenerated, schema5 pins that files written before the trail mode still read, schema4 pins that files written before elevation still read, schema3 before auto-pause, schema1/2 pin the v1 `free` → `laps` and the v2 `fourByFour` +
+ * schema 7 (`route`, the followed route; otherwise schema 6's). `contract/schema1/`,
+ * `contract/schema2/`, `contract/schema3/`, `contract/schema4/`, `contract/schema5/` and `contract/schema6/` are frozen output of the older writers: never
+ * regenerated, schema6 pins that files written before the followed route still read, schema5 pins that files written before the trail mode still read, schema4 pins that files written before elevation still read, schema3 before auto-pause, schema1/2 pin the v1 `free` → `laps` and the v2 `fourByFour` +
  * `preset` → `intervals` + norwegian-4x4 mappings on the Dart side.
  *
  * Regenerate: `java -cp <test classpath> app.runsolo.core.contract.ContractFixturesKt`.
@@ -44,6 +45,7 @@ object ContractFixtures {
     const val DIR = "src/test/fixtures/contract"
     const val SCHEMA1_DIR = "src/test/fixtures/contract/schema1"
     const val SCHEMA2_DIR = "src/test/fixtures/contract/schema2"
+    const val SCHEMA6_DIR = "src/test/fixtures/contract/schema6"
     private const val T0 = 1_000_000L
     private const val W0 = 1_758_672_000_000L // 2025-09-24T00:00:00Z
     private const val LAT0 = -33.8688
@@ -63,10 +65,11 @@ object ContractFixtures {
         "free_run_no_laps" to freeRunNoLaps(),
         "free_run_elevation" to freeRunElevation(),
         "trail_run" to trailRun(),
+        "followed_route" to followedRoute(),
     ) + ReplayScenarios.KINDS.associate { "replay_${it.replace('-', '_')}" to replayKind(it) }
 
     /** One simulated recording: a service loop over the core, per second. */
-    private class Session(id: String, mode: RunMode, session: SessionSpec?) {
+    private class Session(id: String, mode: RunMode, session: SessionSpec?, route: FollowRoute? = null) {
         val fs = FakeFileSystem()
         val writer = JournalWriter(fs, id, onWriteFailed = { throw it })
         val ticker = SampleTicker(wall = { wall })
@@ -79,6 +82,7 @@ object ContractFixtures {
             fs.mkdirs(RunPaths.RUNS_DIR)
             writer.open()
             writer.append(JournalLine.Header(T0, W0, id, "contract-fixture", "core-jvm-test", "Australia/Sydney", mode, session, Units.km))
+            route?.let { writer.append(JournalLine.RouteLine(T0, W0, it)) }
             emit(core.start(T0))
         }
 
@@ -355,6 +359,37 @@ object ContractFixtures {
             s.second(f, 130 + (i % 5)) {
                 if (i == 100) s.lap(LapSource.button) // refused: a Trail run takes no LAP
             }
+        }
+        return s.finish()
+    }
+
+    /**
+     * A followed route (schema 7): a free run along a 1 km route (elevation on it), 100 s on the line, 30 s
+     * heading north off it (over 40 m for over 10 s: one off-route span), 30 s back, then 60 s on again.
+     * The file carries the planned route and the span.
+     */
+    private fun followedRoute(): String {
+        val kLon = 111_320.0 * Math.cos(Math.toRadians(LAT0))
+        val ll = ArrayList<Double>()
+        val ele = ArrayList<Double>()
+        for (i in 0..100) {
+            ll.add(LAT0)
+            ll.add(LON0 + i * 10.0 / kLon)
+            ele.add(10.0 + i * 0.2)
+        }
+        val route = FollowRoute("contract-route", "Park loop", ll, ele)
+        val s = Session("contract-followed", RunMode.free, null, route)
+        var x = 0.0
+        var y = 0.0
+        for (sec in 1..220) {
+            when {
+                sec <= 100 -> x += 4.0
+                sec <= 130 -> y += 4.0
+                sec <= 160 -> y -= 4.0
+                else -> x += 4.0
+            }
+            val fix = LocationFix(T0 + sec * 1000L, LAT0 + y / 111_320.0, LON0 + x / kLon, 10.0, 5.0, 4.0)
+            s.second(fix, 140 + (sec % 5))
         }
         return s.finish()
     }

@@ -16,8 +16,8 @@ void main() {
     ]);
   });
 
-  test('run file and sidecar write schema 6 (sidecar 3) and read from 1', () {
-    expect(RunFile.schema, 6);
+  test('run file and sidecar write schema 7 (sidecar 3) and read from 1', () {
+    expect(RunFile.schema, 7);
     expect(RunFile.minReadSchema, 1);
     expect(RunSidecar.schema, 3);
     expect(RunSidecar.minReadSchema, 1);

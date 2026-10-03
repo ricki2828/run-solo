@@ -15,6 +15,7 @@ import '../theme/zones.dart';
 import '../widgets/chrome.dart';
 import '../widgets/coaching.dart';
 import '../widgets/elevation_profile.dart';
+import '../widgets/followed_route_line.dart';
 import '../widgets/hold_button.dart';
 import '../widgets/rep_bars.dart';
 import '../widgets/recent_activity.dart' show runTypeColor;
@@ -170,8 +171,17 @@ class RunDetailBody extends StatelessWidget {
               route: route,
               indoor: a.indoor,
               terrain: usesTerrainMap(d.summary.mode),
+              plan: d.run.route == null
+                  ? null
+                  : followedPlanPoints(d.run.route!),
+              routeColor: runTypeColor(d.summary),
             ),
           ),
+          SizedBox(height: d.run.route == null ? Space.x24 : Space.x12),
+        ],
+        // Follow a route: the route followed and how often the run left it.
+        if (d.run.route != null) ...[
+          FollowedRouteLine(route: d.run.route!),
           const SizedBox(height: Space.x24),
         ],
         if (elev != null) ...[
@@ -532,9 +542,15 @@ class _MapCard extends StatefulWidget {
     required this.route,
     required this.indoor,
     this.terrain = false,
+    this.plan,
+    this.routeColor,
   });
   final RouteGeometry route;
   final bool indoor;
+
+  /// The route the run followed (muted Bone under the run's line).
+  final List<GeoPoint>? plan;
+  final Color? routeColor;
 
   /// Free and Trail runs: Google's terrain map.
   final bool terrain;
@@ -565,13 +581,23 @@ class _MapCardState extends State<_MapCard> {
       builder: (context, snap) {
         // Until the GMS check answers, draw our own shape: never a
         // GoogleMap for a frame on a device without Play services.
-        if (!snap.hasData) return RouteShape(route: route);
+        if (!snap.hasData) {
+          return RouteShape(
+            route: route,
+            plan: widget.plan,
+            color: widget.plan == null ? null : widget.routeColor,
+          );
+        }
         final gms = snap.data!.gmsAvailable;
         if (!gms && services.maps.available) {
           return Stack(
             fit: StackFit.expand,
             children: [
-              RouteShape(route: route),
+              RouteShape(
+                route: route,
+                plan: widget.plan,
+                color: widget.plan == null ? null : widget.routeColor,
+              ),
               Positioned(
                 left: Space.x12,
                 bottom: Space.x8,
@@ -591,11 +617,21 @@ class _MapCardState extends State<_MapCard> {
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
                 fullscreenDialog: true,
-                builder: (_) =>
-                    FullScreenMap(route: route, terrain: widget.terrain),
+                builder: (_) => FullScreenMap(
+                  route: route,
+                  terrain: widget.terrain,
+                  plan: widget.plan,
+                  routeColor: widget.routeColor,
+                ),
               ),
             ),
-            child: services.maps.build(context, route, terrain: widget.terrain),
+            child: services.maps.build(
+              context,
+              route,
+              terrain: widget.terrain,
+              plan: widget.plan,
+              routeColor: widget.routeColor,
+            ),
           ),
         );
       },
@@ -626,9 +662,17 @@ class _MapMessage extends StatelessWidget {
 
 /// Interactive map with a 56 dp close button top left (A4).
 class FullScreenMap extends StatefulWidget {
-  const FullScreenMap({super.key, required this.route, this.terrain = false});
+  const FullScreenMap({
+    super.key,
+    required this.route,
+    this.terrain = false,
+    this.plan,
+    this.routeColor,
+  });
   final RouteGeometry route;
   final bool terrain;
+  final List<GeoPoint>? plan;
+  final Color? routeColor;
 
   @override
   State<FullScreenMap> createState() => _FullScreenMapState();
@@ -651,6 +695,8 @@ class _FullScreenMapState extends State<FullScreenMap> {
             interactive: true,
             onLapTap: (i) => setState(() => _highlighted = i),
             terrain: widget.terrain,
+            plan: widget.plan,
+            routeColor: widget.routeColor,
           ),
           SafeArea(
             child: Align(
