@@ -335,6 +335,19 @@ class RunElevation {
   /// or its elevation is GPS-only (too noisy for the grade model).
   double get gradeFactor => gradeFactorBetweenM(0, double.infinity);
 
+  /// Booked climb plus descent (dead band applied, so sensor wobble books
+  /// nothing) per km over a stretch; under [minHillyMPerKm] the stretch is
+  /// flat and its hills factor is exactly 1.
+  static const double minHillyMPerKm = 5;
+
+  bool _hilly(double plainM, bool Function(ClimbStep) inStretch) {
+    var m = 0.0;
+    for (final s in steps) {
+      if (inStretch(s)) m += s.deltaM.abs();
+    }
+    return m / (plainM / 1000) >= minHillyMPerKm;
+  }
+
   /// The hill factor over the stretch between two distances (metres from
   /// the start); 1 when there is too little of it or the elevation is
   /// GPS-only. Clamped to `TruePace.minGrade`..`TruePace.maxGrade`.
@@ -343,6 +356,7 @@ class RunElevation {
     final a = _eqAtDist(fromM), b = _eqAtDist(toM);
     final plain = b.$1 - a.$1, eq = b.$2 - a.$2;
     if (plain < minGradeStretchM || eq <= 0) return 1;
+    if (!_hilly(plain, (s) => s.distM > a.$1 && s.distM <= b.$1)) return 1;
     return TruePace.clampGrade(plain / eq);
   }
 
@@ -351,6 +365,24 @@ class RunElevation {
   double gradeFactorBetweenMs(int t0Ms, int t1Ms) {
     final (plain, eq) = flatEquivalentBetweenMs(t0Ms, t1Ms);
     if (plain < minGradeStretchM || eq <= 0) return 1;
+    if (!_hilly(plain, (s) => s.tMs > t0Ms && s.tMs <= t1Ms)) return 1;
+    return TruePace.clampGrade(plain / eq);
+  }
+
+  /// The hill factor over several time windows together (the clean reps of
+  /// a session), weighted by distance; 1 when they are flat or too short.
+  double gradeFactorOverWindows(Iterable<(int, int)> windowsMs) {
+    var plain = 0.0, eq = 0.0;
+    final ws = windowsMs.toList();
+    for (final (t0, t1) in ws) {
+      final (p, e) = flatEquivalentBetweenMs(t0, t1);
+      plain += p;
+      eq += e;
+    }
+    if (plain < minGradeStretchM || eq <= 0) return 1;
+    if (!_hilly(plain, (s) => ws.any((w) => s.tMs > w.$1 && s.tMs <= w.$2))) {
+      return 1;
+    }
     return TruePace.clampGrade(plain / eq);
   }
 

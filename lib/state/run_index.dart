@@ -156,6 +156,7 @@ class RunIndexEntry {
       : engine.TrailScore.movingMs(
           distanceM: distanceM,
           movingMs: row!.movingMs ?? durationMs,
+          elevSrc: row!.elevSrc,
         );
 
   /// The live compare's view of this run (LC1); null until the background

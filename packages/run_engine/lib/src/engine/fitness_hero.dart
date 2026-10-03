@@ -128,7 +128,7 @@ class FitnessHero {
         out.add(
           _Obs(
             RunIdentity.localStart(c.input.date, c.input.utcOffsetMin),
-            vdot(d, c.input.factorsFor().apply(ms.toDouble()).round()),
+            vdot(d, c.input.factorsFor().applyForScore(ms.toDouble()).round()),
             'trail run',
             c.input.runId,
           ),

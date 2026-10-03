@@ -455,12 +455,11 @@ String _dayMonth(DateTime d) => '${d.day} ${_months[d.month - 1]}';
 /// separate "effort pace" credit, and its caps still apply through the one
 /// model:
 /// - at least [minDistanceM] (a short hilly burst proves little);
-/// - only barometer elevation counts as hills (GPS-only altitude is too noisy
-///   for the grade model, so such a run is scored on its clock time and
-///   heat);
-/// - the hills move the time by at most 25% either way ([TruePace.minGrade],
-///   [TruePace.maxGrade]), so one wild grade estimate cannot mint a fantasy
-///   score. The old "never worse than the clock" rule is gone: True Pace is
+/// - it has barometer elevation (GPS-only altitude is too noisy for the
+///   grade model, so such a run does not count here, as before);
+/// - hills and heat together move the time by at most 20% for scoring
+///   ([TruePace.minScoringFactor]; the display clamps are wider), so one wild
+///   grade estimate cannot mint a fantasy score. The old "never worse than the clock" rule is gone: True Pace is
 ///   a fair pace, a long net descent reads slower, and the lanes keep the
 ///   best reading in a window, so an easy day never lowers a score.
 ///
@@ -470,9 +469,14 @@ abstract final class TrailScore {
   static const double minDistanceM = 3000;
 
   /// The moving time a trail run is scored from (the lanes apply True Pace
-  /// to it), or null when the run is too short to count.
-  static int? movingMs({required double distanceM, required int movingMs}) =>
-      distanceM < minDistanceM || movingMs <= 0 ? null : movingMs;
+  /// to it), or null when the run is too short or has no barometer.
+  static int? movingMs({
+    required double distanceM,
+    required int movingMs,
+    required ElevSource? elevSrc,
+  }) => elevSrc != ElevSource.baro || distanceM < minDistanceM || movingMs <= 0
+      ? null
+      : movingMs;
 
   /// The wording on the score detail line.
   static const String note = 'Trail runs count at true pace';

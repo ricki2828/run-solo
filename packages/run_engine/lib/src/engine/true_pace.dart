@@ -41,7 +41,18 @@ abstract final class TruePace {
   /// Below this slowdown or hill effect the breakdown names no reason.
   static const double reasonThreshold = 0.01;
 
-  static double clampGrade(double f) => f.clamp(minGrade, maxGrade);
+  /// Barometer noise on a road run reads as a tiny grade; inside this the
+  /// hills factor is exactly 1, so a flat run's true pace stays its actual
+  /// pace.
+  static const double gradeDeadband = 0.005;
+
+  /// For SCORING (identity lanes, the Home hero, predictions) hills and heat
+  /// together never count a run more than 20% faster than its clock; the
+  /// display keeps the wider [minGrade] x [minHeat] range.
+  static const double minScoringFactor = 0.80;
+
+  static double clampGrade(double f) =>
+      (f - 1).abs() < gradeDeadband ? 1.0 : f.clamp(minGrade, maxGrade);
 
   /// The heat factor for a whole-run [slowdown] fraction (0.047 = 4.7 %);
   /// 1 when null (no weather, too hot to adjust).
@@ -91,6 +102,14 @@ class TruePaceFactors {
 
   /// The flat, cool-day pace for a raw [secPerKm] (or time over the stretch).
   double apply(double raw) => raw * combined;
+
+  /// [apply] for scores: never more than 20% faster than [raw]
+  /// ([TruePace.minScoringFactor]).
+  double applyForScore(double raw) =>
+      raw *
+      (combined < TruePace.minScoringFactor
+          ? TruePace.minScoringFactor
+          : combined);
 
   /// "hilly", "hot day", "hilly, hot day"; null when neither is worth
   /// naming.

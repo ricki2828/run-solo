@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:run_engine/run_engine.dart';
 import 'package:test/test.dart';
 
@@ -130,6 +132,21 @@ void main() {
       expect(tp.factors.heat, 1);
       expect(tp.factors.grade, closeTo(1 / Gap.ratio(0.04), 0.01));
       expect(tp.trueSecPerKm, lessThan(tp.rawSecPerKm));
+    });
+
+    test('a noisy flat barometer road run keeps true == actual', () {
+      // 1.2 m of barometer wobble on a flat road: no hills to speak of.
+      for (final wobble in [0.6, 1.2]) {
+        final run = _run(1800, (i) => 80 + wobble * math.sin(i * 0.63));
+        final e = RunElevation.of(run)!;
+        expect(e.gradeFactor, 1, reason: 'wobble $wobble');
+        final tp = RunTruePace.of(run, elevation: e, slowdown: 0)!;
+        expect(tp.trueSecPerKm, tp.rawSecPerKm);
+      }
+      // The deadband is exactly the noise floor, not a hill.
+      expect(TruePace.clampGrade(1.004), 1);
+      expect(TruePace.clampGrade(0.996), 1);
+      expect(TruePace.clampGrade(0.99), 0.99);
     });
 
     test('GPS-only elevation is too noisy for the grade model: hills = 1', () {

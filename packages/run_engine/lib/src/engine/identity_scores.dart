@@ -98,7 +98,7 @@ abstract final class IdentityScores {
           if (milliseconds <= 0) return;
           final adjusted = input
               .factorsFor(grade)
-              .apply(milliseconds.toDouble())
+              .applyForScore(milliseconds.toDouble())
               .round();
           obs.add(
             _Evidence(

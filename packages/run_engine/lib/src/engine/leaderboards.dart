@@ -109,7 +109,8 @@ class BoardRun {
 
   /// The True Pace twin (hills and heat taken out; equal to [metric] on a
   /// flat, cool run): what a board ranks and trends on, with [metric] (the
-  /// actual value) shown beside it. Null only on a board with no twin.
+  /// actual value) shown beside it. Null only on a run with nothing to adjust it by (a Cooper test with no
+  /// usable weather).
   final double? adjMetric;
 
   /// The time came from the event's results page, not the GPS (K1). The
@@ -164,7 +165,8 @@ class Leaderboard {
   ///
   /// A board ranks by [BoardRun.adjMetric], the True Pace twin (hills and
   /// heat taken out), with the actual value kept beside it. A run with no
-  /// twin ranks on its actual value. Goal boards have no twin and stay raw.
+  /// twin ranks on its actual value. Every board has a twin, a custom goal's
+  /// from the whole run's factors.
   factory Leaderboard.of(
     String key,
     BoardKind kind,

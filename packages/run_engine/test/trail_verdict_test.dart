@@ -270,17 +270,39 @@ void main() {
   });
 
   group('trail scores for the identity lanes', () {
-    test('a trail run of 3 km or more is scored from its moving time', () {
-      expect(TrailScore.movingMs(distanceM: 15000, movingMs: 7200000), 7200000);
-      expect(TrailScore.movingMs(distanceM: 2000, movingMs: 600000), isNull);
-      expect(TrailScore.movingMs(distanceM: 5000, movingMs: 0), isNull);
+    test('a barometer trail run of 3 km or more is scored from its moving '
+        'time', () {
+      int? ms({double d = 15000, int t = 7200000, ElevSource? s}) =>
+          TrailScore.movingMs(
+            distanceM: d,
+            movingMs: t,
+            elevSrc: s ?? ElevSource.baro,
+          );
+      expect(ms(), 7200000);
+      expect(ms(d: 2000, t: 600000), isNull);
+      expect(ms(t: 0), isNull);
+      // GPS-only altitude is too noisy for the grade model: no score.
+      expect(
+        TrailScore.movingMs(
+          distanceM: 15000,
+          movingMs: 7200000,
+          elevSrc: ElevSource.gps,
+        ),
+        isNull,
+      );
+      expect(
+        TrailScore.movingMs(distanceM: 15000, movingMs: 7200000, elevSrc: null),
+        isNull,
+      );
     });
 
-    test('the lanes score it at true pace, hills clamped to 25 percent', () {
-      // 15 km, 2 h on the clock, hills worth far more than the clamp: the
-      // factor is the clamp's 0.75, not 0.5.
-      const f = TruePaceFactors(grade: 0.75);
-      expect(f.apply(7200 * 1000), 5400 * 1000);
+    test('for scoring, hills and heat count at most 20% off the clock', () {
+      const f = TruePaceFactors(grade: 0.75, heat: 0.92); // 0.69 combined
+      expect(f.apply(7200 * 1000), closeTo(7200 * 1000 * 0.69, 1));
+      expect(f.applyForScore(7200 * 1000), closeTo(7200 * 1000 * 0.8, 1e-6));
+      // Inside the cap, scoring equals the display.
+      const g = TruePaceFactors(grade: 0.9, heat: 0.95);
+      expect(g.applyForScore(1000), g.apply(1000));
       expect(TruePace.factors(gradeFactor: 0.5).grade, TruePace.minGrade);
     });
   });

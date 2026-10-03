@@ -68,20 +68,10 @@ class RunTruePace {
     IntervalMetrics metrics, {
     double? slowdown,
   }) {
-    double? grade;
-    if (elevation != null) {
-      var plain = 0.0, eq = 0.0;
-      for (final r in metrics.reps) {
-        if (!r.clean) continue;
-        final (p, e) = elevation.flatEquivalentBetweenMs(
-          r.trimmedT0Ms,
-          r.trimmedT1Ms,
-        );
-        plain += p;
-        eq += e;
-      }
-      if (plain >= RunElevation.minGradeStretchM && eq > 0) grade = plain / eq;
-    }
+    final grade = elevation?.gradeFactorOverWindows([
+      for (final r in metrics.reps)
+        if (r.clean) (r.trimmedT0Ms, r.trimmedT1Ms),
+    ]);
     return TruePace.factors(gradeFactor: grade, slowdown: slowdown);
   }
 }

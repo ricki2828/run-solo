@@ -120,7 +120,7 @@ class PredictionInput {
     // own); the whole-run input uses the run's.
     int? adj(int ms, double grade) {
       final f = TruePace.factors(gradeFactor: grade, slowdown: heatFraction);
-      return f.neutral ? null : f.apply(ms.toDouble()).round();
+      return f.neutral ? null : f.applyForScore(ms.toDouble()).round();
     }
 
     PredictionInput of(

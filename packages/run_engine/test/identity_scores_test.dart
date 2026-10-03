@@ -225,8 +225,8 @@ void main() {
       wholeMs: 16 * 360 * 1000,
       daysAgo: 3,
     );
-    // A slow, hilly 15.5 km: 7:20/km on the clock, hills worth 25% (the
-    // clamp), so 5:30/km true pace.
+    // A slow, hilly 15.5 km: 7:20/km on the clock, hills worth far more than
+    // the scoring cap (20%), so it counts at 5:52/km.
     final hilly = run(
       'hilly',
       mode: RunMode.trail,
@@ -244,7 +244,7 @@ void main() {
       expect(withTrail[IdentityLane.long]!.source, TrailScore.longSource);
       expect(
         withTrail[IdentityLane.long]!.vdot,
-        closeTo(FitnessHero.vdot(15500, (15.5 * 330 * 1000).round()), 1e-9),
+        closeTo(FitnessHero.vdot(15500, (15.5 * 352 * 1000).round()), 1e-9),
       );
       expect(
         withTrail[IdentityLane.long]!.score,
