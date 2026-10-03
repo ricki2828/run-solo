@@ -1,5 +1,4 @@
 import '../model/run_file.dart';
-import '../model/verdict.dart';
 import 'elevation.dart';
 import '../run_mode.dart';
 
@@ -85,12 +84,4 @@ abstract final class TrailSuggestion {
         })(),
     ];
   }
-}
-
-/// Seam for the Trail result. A Trail run has no pace verdict for now (a
-/// hilly pace says little); its result screen is a neutral summary.
-/// TODO(TrailVerdict): the same-trail / grade-adjusted-pace verdict plugs in
-/// here; until then [verdictFor] is always null and no screen invents one.
-abstract final class TrailVerdict {
-  static Verdict? verdictFor(RunFile run) => null;
 }

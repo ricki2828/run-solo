@@ -5,7 +5,9 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/state/history_store.dart';
+import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/state/run_index.dart';
+import 'package:run_solo/state/trails.dart';
 
 import '../run_fixtures.dart';
 
@@ -408,5 +410,134 @@ void main() {
       expect(back.version, IndexRow.currentVersion);
       expect(back.climbM, isNotNull);
     });
+  });
+
+  group('trail route (v10)', () {
+    final a = trailLoopRun(n: 51, start: d1, secPerKm: 420);
+    final b = trailLoopRun(
+      n: 52,
+      start: d1.add(const Duration(days: 8)),
+      secPerKm: 400,
+    );
+    final backwards = trailLoopRun(
+      n: 53,
+      start: d1.add(const Duration(days: 9)),
+      reverse: true,
+    );
+    final elsewhere = trailLoopRun(
+      n: 54,
+      start: d1.add(const Duration(days: 10)),
+      dLat: 0.05,
+    );
+
+    test('a Trail run keeps a compact route; other runs keep none', () async {
+      final free = withElevation(freeRunFile(n: 55, start: d1, seconds: 1800));
+      final store = await storeWith([a, free]);
+      await store.list();
+      final entries = (await store.readIndex()).entries;
+      final row = entries[a.id]!.row!;
+      expect(row.version, IndexRow.currentVersion);
+      expect(row.route, isNotNull);
+      expect(row.route!.points.length, lessThanOrEqualTo(60));
+      expect(
+        jsonEncode(row.route!.toJson()).length,
+        lessThan(1000),
+        reason: 'a route is a few hundred bytes of the index, not a track',
+      );
+      expect(entries[free.id]!.row!.route, isNull);
+      expect(rawEntry(store, free.id)['row'], isNot(contains('route')));
+    });
+
+    test('the route survives a fresh store reading the index', () async {
+      final store = await storeWith([a, b]);
+      await store.list();
+      await store.derivedIdle;
+      final again = FileRunStore(runsDir);
+      again.deriveBatch = FileRunStore.deriveInIsolate;
+      stores.add(again);
+      final rows = await again.list();
+      expect(again.decoded, isEmpty, reason: 'read from the index');
+      expect([for (final r in rows) r.row!.route != null], [true, true]);
+      expect(
+        engine.RouteMatch.same(rows[0].row!.route!, rows[1].row!.route!),
+        isTrue,
+      );
+    });
+
+    test('the same trail groups, a reversed or other route does not', () async {
+      final store = await storeWith([a, b, backwards, elsewhere]);
+      final rows = await store.list();
+      final groups = trailBoards(rows);
+      expect(groups, hasLength(1));
+      expect([for (final r in groups.single.runs) r.id], [a.id, b.id]);
+      expect(groups.single.best.id, b.id);
+      // Every Trail run still has a verdict: the others judge on effort pace.
+      final facts = trailFactsOfAll(rows);
+      final v = engine.TrailVerdict.of(
+        facts.firstWhere((f) => f.id == backwards.id),
+        facts,
+      );
+      expect(v.basis, engine.TrailBasis.effortPace);
+    });
+
+    test('a row from before v10 is rebuilt once and gains the route', () async {
+      final store = await storeWith([a]);
+      await store.list();
+      final j = jsonDecode(store.indexFile.readAsStringSync()) as Map;
+      final row = ((j['runs'] as List).single as Map)['row'] as Map;
+      row['v'] = 9;
+      row.remove('route');
+      store.indexFile.writeAsStringSync(jsonEncode(j));
+      expect((await store.readIndex()).entries[a.id]!.row!.route, isNull);
+      await store.list();
+      final back = (await store.readIndex()).entries[a.id]!.row!;
+      expect(back.version, IndexRow.currentVersion);
+      expect(back.route, isNotNull);
+    });
+
+    test('re-tagging a Free run as Trail gives it a route', () async {
+      final free = trailLoopRun(
+        n: 56,
+        start: d1,
+      ).copyWith(mode: engine.RunMode.free);
+      final store = await storeWith([free]);
+      expect((await store.list()).single.row!.route, isNull);
+      await store.setOverride(free.id, RecordMode.trail);
+      expect((await store.list()).single.row!.route, isNotNull);
+      await store.setOverride(free.id, null);
+      expect((await store.list()).single.row!.route, isNull);
+    });
+
+    test(
+      'a qualifying Trail run feeds the identity lanes at effort pace',
+      () async {
+        final store = await storeWith([a]);
+        await store.list();
+        final e = (await store.readIndex()).entries[a.id]!;
+        final input = e.boardInput();
+        final row = e.row!;
+        expect(row.gapSecPerKm, isNotNull);
+        expect(input.trailDistanceM, e.distanceM);
+        expect(
+          input.trailEffortMs,
+          engine.TrailEffort.effortMs(
+            distanceM: e.distanceM,
+            movingMs: row.movingMs!,
+            gapSecPerKm: row.gapSecPerKm,
+            climbM: row.climbM,
+            elevSrc: row.elevSrc,
+          ),
+        );
+        expect(input.trailEffortMs, lessThanOrEqualTo(row.movingMs!));
+        // A Free run, however hilly, never carries it.
+        final free = withElevation(
+          freeRunFile(n: 57, start: d1, seconds: 1800),
+        );
+        final store2 = await storeWith([free]);
+        await store2.list();
+        final fe = (await store2.readIndex()).entries[free.id]!;
+        expect(fe.boardInput().trailEffortMs, isNull);
+      },
+    );
   });
 }

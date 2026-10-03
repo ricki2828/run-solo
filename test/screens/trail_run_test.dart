@@ -9,6 +9,7 @@ import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/history_screen.dart';
 import 'package:run_solo/screens/recording_screen.dart' show liveRunTypeColor;
 import 'package:run_solo/screens/trail_suggest_card.dart';
+import 'package:run_solo/screens/trail_verdict_screen.dart';
 import 'package:run_solo/screens/verdict_screen.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/settings.dart';
@@ -80,11 +81,13 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('trail-suggest-yes')));
       await pumpTimes(tester, 8);
-      expect(find.text('TRAIL RUN'), findsOneWidget);
+      expect(find.textContaining('TRAIL RUN'), findsOneWidget);
       expect(find.text('FREE RUN'), findsNothing);
       expect(find.byKey(const ValueKey('trail-suggest')), findsNothing);
-      // No pace verdict word for a Trail run.
-      expect(find.byKey(const ValueKey('verdict-word')), findsNothing);
+      // A Trail run gets the trail result (this file has GPS altitude only,
+      // no barometer elevation, so no effort pace to judge).
+      expect(find.byType(TrailVerdictScreen), findsOneWidget);
+      expect(find.text('NO VERDICT'), findsOneWidget);
     });
 
     testWidgets('Not now hides the card and changes nothing', (tester) async {

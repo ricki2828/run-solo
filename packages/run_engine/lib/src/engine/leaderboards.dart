@@ -24,6 +24,8 @@ class BoardInput {
     this.cooperVo2,
     this.cooperVo2Adj,
     this.heatFraction,
+    this.trailDistanceM,
+    this.trailEffortMs,
   });
 
   final String runId;
@@ -61,6 +63,14 @@ class BoardInput {
   /// Steady-effort heat slowdown (§18.5; 0.047 = 4.7%); null without
   /// weather or when too hot to compare. Only for the heat column.
   final double? heatFraction;
+
+  /// A Trail run's distance and effort time ([TrailEffort.effortMs]: its
+  /// grade-adjusted pace over that distance) when it counts towards the
+  /// AEROBIC and LONG lanes; null for every other run and for a trail run
+  /// that does not qualify. Only the identity lanes and the Home VO2 hero
+  /// read this; boards and predictions never do.
+  final double? trailDistanceM;
+  final int? trailEffortMs;
 }
 
 /// One run's value on one board.

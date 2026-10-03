@@ -60,7 +60,6 @@ void main() {
       expect(a.verdict, isNull);
       expect(a.comparisonKey, isNull);
       expect(a.freeRun, isNotNull);
-      expect(TrailVerdict.verdictFor(run), isNull);
     });
 
     test('re-tagging a free run as trail recomputes it as trail', () {

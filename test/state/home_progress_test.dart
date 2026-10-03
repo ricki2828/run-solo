@@ -87,6 +87,25 @@ void main() {
       expect(headline(s).line, isNot(contains('Cooper')));
     });
 
+    test('trail run, from either lane, reads as "trail run"', () {
+      for (final source in ['trail run', engine.TrailEffort.longSource]) {
+        final s = {
+          engine.IdentityLane.aerobic: score(
+            engine.IdentityLane.aerobic,
+            vdot: 46,
+            prior: 40,
+            source: source,
+          ),
+        };
+        expect(
+          headline(s).line,
+          contains('Your trail run on '),
+          reason: source,
+        );
+        expect(headline(s).line, isNot(contains('effort pace')));
+      }
+    });
+
     test('steady: same reading as six weeks ago, period named', () {
       final h = headline(all(prior: 40));
       expect(h.kind, ProgressKind.steady);

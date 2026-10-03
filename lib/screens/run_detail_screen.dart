@@ -18,6 +18,7 @@ import '../widgets/elevation_profile.dart';
 import '../widgets/hold_button.dart';
 import '../widgets/rep_bars.dart';
 import '../widgets/recent_activity.dart' show runTypeColor;
+import '../widgets/trail_runs_section.dart';
 import '../widgets/weather_chip.dart';
 import '../widgets/where_when_line.dart';
 import 'send_sheet.dart';
@@ -177,6 +178,8 @@ class RunDetailBody extends StatelessWidget {
           ElevationProfile(elevation: elev, units: units),
           const SizedBox(height: Space.x24),
         ],
+        if (d.summary.mode == RecordMode.trail)
+          TrailRunsSection(runId: d.run.id),
         switch (d.summary.mode) {
           RecordMode.intervals => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

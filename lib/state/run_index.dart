@@ -142,8 +142,22 @@ class RunIndexEntry {
           ? row!.cooper!.vo2Adjusted
           : null,
       heatFraction: heatAdj,
+      trailDistanceM: trailEffortMs == null ? null : distanceM,
+      trailEffortMs: trailEffortMs,
     );
   }
+
+  /// What this run adds to the AEROBIC and LONG lanes when it is a Trail run
+  /// that qualifies (engine `TrailEffort`); null otherwise.
+  int? get trailEffortMs => mode != engine.RunMode.trail || row == null
+      ? null
+      : engine.TrailEffort.effortMs(
+          distanceM: distanceM,
+          movingMs: row!.movingMs ?? durationMs,
+          gapSecPerKm: row!.gapSecPerKm,
+          climbM: row!.climbM,
+          elevSrc: row!.elevSrc,
+        );
 
   /// The live compare's view of this run (LC1); null until the background
   /// batch has built its derived data.
@@ -353,6 +367,7 @@ class IndexRow {
     this.descentM,
     this.elevSrc,
     this.gapSecPerKm,
+    this.route,
   });
 
   /// Bump when a field is added, so old rows are rebuilt once.
@@ -364,7 +379,8 @@ class IndexRow {
   /// 7: [street].
   /// 8: [zoneId], and [utcOffsetMin] is the offset where the run STARTED.
   /// 9: [climbM], [descentM], [elevSrc], [gapSecPerKm] (elevation).
-  static const int currentVersion = 9;
+  /// 10: [route] (same-trail match).
+  static const int currentVersion = 10;
 
   final int version;
   final int lapCount;
@@ -450,6 +466,11 @@ class IndexRow {
   /// elevation or under 500 m.
   final double? gapSecPerKm;
 
+  /// The simplified GPS track of a Trail run, so two runs can be matched as
+  /// the same trail without opening a file. Null for every other run type,
+  /// for a run with no fixes or under 500 m.
+  final engine.RouteSignature? route;
+
   factory IndexRow.of(
     engine.RunFile run,
     engine.RunAnalysis? a,
@@ -506,6 +527,11 @@ class IndexRow {
       descentM: elev == null ? null : dp1(elev.descentM),
       elevSrc: elev?.src,
       gapSecPerKm: elev?.gapSecPerKm == null ? null : dp1(elev!.gapSecPerKm!),
+      route:
+          (sidecar?.runTypeOverride ?? a?.mode ?? run.mode) ==
+              engine.RunMode.trail
+          ? engine.RouteSignature.of(run)
+          : null,
     );
   }
 
@@ -538,6 +564,7 @@ class IndexRow {
     'descent_m': ?descentM,
     'elev_src': ?elevSrc?.name,
     'gap_s_per_km': ?gapSecPerKm,
+    'route': ?route?.toJson(),
   };
 
   /// null for a missing or unreadable row (the entry is then stale).
@@ -589,6 +616,7 @@ class IndexRow {
             .where((e) => e.name == j['elev_src'])
             .firstOrNull,
         gapSecPerKm: d('gap_s_per_km'),
+        route: engine.RouteSignature.fromJson(j['route']),
       );
     } catch (e) {
       debugPrint('index: unreadable row ($e)');

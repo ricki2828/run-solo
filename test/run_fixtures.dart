@@ -262,3 +262,51 @@ engine.RunFile cooperTestFile({
     samples: samples,
   );
 }
+
+/// A Trail run once round a lopsided loop (about 6 km at [secPerKm] a km,
+/// with the phone's barometer climb) starting at the same place every time,
+/// so two of them are the same trail. [reverse] runs it the other way,
+/// [dLat] moves it 111 m per 0.001 degree north (a different trail), [noiseM]
+/// wobbles the fixes, [climbAmpM] sets how hilly it is.
+engine.RunFile trailLoopRun({
+  required int n,
+  required DateTime start,
+  int secPerKm = 400,
+  bool reverse = false,
+  double dLat = 0,
+  double noiseM = 4,
+  double climbAmpM = 18,
+}) {
+  const km = 6;
+  final base = freeRunFile(
+    n: n,
+    start: start,
+    seconds: secPerKm * km,
+    secPerKm: secPerKm,
+  );
+  final rnd = math.Random(n);
+  const lat0 = 37.4, lon0 = 24.9, mPerDeg = 111194.9;
+  final kx = math.cos(lat0 * math.pi / 180) * mPerDeg;
+  final scale = base.distanceM / 2200;
+  final total = base.distanceM;
+  return base.copyWith(
+    mode: engine.RunMode.trail,
+    elevSrc: engine.ElevSource.baro,
+    samples: [
+      for (final s in base.samples)
+        () {
+          var f = s.distM / total;
+          if (reverse) f = 1 - f;
+          final th = f * 2 * math.pi;
+          final r = (300 + 110 * math.cos(2 * th) + 70 * math.sin(th)) * scale;
+          final x = r * math.cos(th) + (rnd.nextDouble() - 0.5) * 2 * noiseM;
+          final y = r * math.sin(th) + (rnd.nextDouble() - 0.5) * 2 * noiseM;
+          return s.copyWith(
+            lat: lat0 + dLat + y / mPerDeg,
+            lon: lon0 + x / kx,
+            elevM: 40 + climbAmpM * math.sin(s.distM / 150),
+          );
+        }(),
+    ],
+  );
+}

@@ -229,6 +229,14 @@ class _LaneAnalysis extends StatelessWidget {
               style: RunSoloType.body15.copyWith(color: t.inkPrimary),
             ),
           ],
+          if (s != null &&
+              (s.source == engine.TrailEffort.longSource ||
+                  s.source == 'trail run'))
+            Text(
+              '${engine.TrailEffort.note}.',
+              key: ValueKey('analysis-${lane.name}-trail'),
+              style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+            ),
           if (time != null && timeLabel != null)
             Text(
               '$timeLabel $time',

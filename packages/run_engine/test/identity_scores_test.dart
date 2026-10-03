@@ -22,6 +22,8 @@ void main() {
     Map<BestEffortDistance, BestEffort> bests = const {},
     double? wholeM,
     int? wholeMs,
+    double? trailM,
+    int? trailMs,
   }) {
     final efforts = RunBestEfforts(
       efforts: bests,
@@ -40,6 +42,8 @@ void main() {
         cooperVo2: vo2,
         heatFraction: heat,
         efforts: efforts.efforts,
+        trailDistanceM: trailM,
+        trailEffortMs: trailMs,
       ),
       RunDerived(bestEfforts: efforts),
     );
@@ -146,5 +150,78 @@ void main() {
     ], now: now)[IdentityLane.mid]!;
     expect(score.changeVs6Weeks, greaterThan(0));
     expect(IdentityScores.of([prior], now: now)[IdentityLane.mid], isNull);
+  });
+
+  group('trail runs count at their effort pace', () {
+    // A flat road 16 km at 6:00/km: the LONG reading before trail existed.
+    final road = run(
+      'road',
+      wholeM: 16000,
+      wholeMs: 16 * 360 * 1000,
+      daysAgo: 3,
+    );
+    // A slow, hilly 15.5 km: 8:00/km on the clock (2:04), 5:30/km effort.
+    final hilly = run(
+      'hilly',
+      mode: RunMode.trail,
+      trailM: 15500,
+      trailMs: (15.5 * 330 * 1000).round(),
+      daysAgo: 1,
+    );
+
+    test('a slow hilly 15K lifts LONG fairly, on its effort time', () {
+      final withoutTrail = IdentityScores.of([road], now: now);
+      final withTrail = IdentityScores.of([road, hilly], now: now);
+      expect(withoutTrail[IdentityLane.long]!.source, '15K+ run');
+      expect(withTrail[IdentityLane.long]!.runId, 'hilly');
+      expect(withTrail[IdentityLane.long]!.source, TrailEffort.longSource);
+      expect(
+        withTrail[IdentityLane.long]!.vdot,
+        closeTo(FitnessHero.vdot(15500, (15.5 * 330 * 1000).round()), 1e-9),
+      );
+      expect(
+        withTrail[IdentityLane.long]!.score,
+        greaterThan(withoutTrail[IdentityLane.long]!.score),
+      );
+      // The clock pace alone (8:00/km) would have scored far lower.
+      expect(
+        FitnessHero.vdot(15500, (15.5 * 480 * 1000).round()),
+        lessThan(withoutTrail[IdentityLane.long]!.vdot),
+      );
+    });
+
+    test('a flat road run is unchanged by trail runs that do not count', () {
+      // No effort time: a flat, short or GPS-only trail run.
+      final nothing = run('flat-trail', mode: RunMode.trail, daysAgo: 1);
+      final alone = IdentityScores.of([road], now: now);
+      final mixed = IdentityScores.of([road, nothing], now: now);
+      for (final lane in IdentityLane.values) {
+        expect(mixed[lane]?.score, alone[lane]?.score, reason: '$lane');
+        expect(mixed[lane]?.runId, alone[lane]?.runId, reason: '$lane');
+      }
+    });
+
+    test(
+      'a trail run lifts AEROBIC only through the hero, never SPEED or MID',
+      () {
+        final scores = IdentityScores.of([hilly], now: now);
+        expect(scores[IdentityLane.speed], isNull);
+        expect(scores[IdentityLane.mid], isNull);
+        expect(scores[IdentityLane.aerobic]!.source, 'trail run');
+        expect(scores[IdentityLane.long]!.source, TrailEffort.longSource);
+      },
+    );
+
+    test('under 15 km feeds AEROBIC but not LONG', () {
+      final short = run(
+        'short',
+        mode: RunMode.trail,
+        trailM: 9000,
+        trailMs: 9 * 340 * 1000,
+      );
+      final scores = IdentityScores.of([short], now: now);
+      expect(scores[IdentityLane.aerobic], isNotNull);
+      expect(scores[IdentityLane.long], isNull);
+    });
   });
 }
