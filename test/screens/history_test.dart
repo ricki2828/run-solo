@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/screens/history_screen.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/settings.dart';
@@ -48,7 +51,7 @@ void main() {
     },
   );
 
-  testWidgets('newest first, grouped by month, filter chips', (tester) async {
+  testWidgets('newest first, grouped by week, filter chips', (tester) async {
     final services = fakeServices(
       runs: [
         summary(
@@ -78,8 +81,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('history-view-1')));
     await pumpTimes(tester);
 
-    expect(find.text('SEPTEMBER 2026'), findsOneWidget);
-    expect(find.text('AUGUST 2026'), findsOneWidget);
+    expect(find.text('THIS WEEK'), findsOneWidget);
+    expect(find.text('LAST WEEK'), findsOneWidget);
+    expect(find.text('24 TO 30 AUG'), findsOneWidget);
+    expect(find.text('SEPTEMBER 2026'), findsNothing);
     expect(find.byType(HistoryRow), findsNWidgets(3));
 
     final rows = tester
@@ -94,7 +99,15 @@ void main() {
     await tester.tap(find.text('Free'));
     await pumpTimes(tester);
     expect(find.byType(HistoryRow), findsOneWidget);
-    expect(find.text('AUGUST 2026'), findsNothing);
+    expect(find.text('24 TO 30 AUG'), findsNothing);
+    expect(find.text('THIS WEEK'), findsOneWidget);
+    // This week has no Free run now: anchored, not dropped.
+    expect(find.text('No runs yet this week'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('history-totals-LAST WEEK')),
+      findsOneWidget,
+    );
+    expect(find.text('1 run · 5.0 km · 0:25'), findsOneWidget);
 
     await tester.tap(find.text('Intervals'));
     await pumpTimes(tester);
@@ -124,5 +137,94 @@ void main() {
     await pumpTimes(tester);
     expect(find.text('File missing'), findsOneWidget);
     expect(find.text('8:03/mi'), findsOneWidget);
+  });
+
+  testWidgets('totals follow the filter; units follow the setting', (
+    tester,
+  ) async {
+    final runs = [
+      summary(
+        id: 'a',
+        start: DateTime(2026, 9, 22, 7),
+        durationMs: 30 * 60 * 1000,
+        distanceM: 10000,
+      ),
+      summary(
+        id: 'b',
+        start: DateTime(2026, 9, 23, 7),
+        fourByFour: false,
+        durationMs: 40 * 60 * 1000,
+        distanceM: 8000,
+        laps: 1,
+      ),
+    ];
+    await pumpApp(
+      tester,
+      fakeServices(
+        runs: runs,
+        settings: const AppSettings(onboardingDone: true, units: Units.mi),
+      ),
+      home: const HistoryScreen(),
+    );
+    await pumpTimes(tester);
+    await tester.tap(find.byKey(const ValueKey('history-view-1')));
+    await pumpTimes(tester);
+    expect(find.text('2 runs · 11.2 mi · 1:10'), findsOneWidget);
+    await tester.tap(find.text('Free'));
+    await pumpTimes(tester);
+    expect(find.text('1 run · 5.0 mi · 0:40'), findsOneWidget);
+    expect(find.text('2 runs · 11.2 mi · 1:10'), findsNothing);
+  });
+
+  testWidgets('File store: weeks, month fallback, totals from index rows', (
+    tester,
+  ) async {
+    final dir = Directory.systemTemp.createTempSync('runsolo-hweek-');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final store = FileRunStore(Directory('${dir.path}/runs'));
+    final files = [
+      withElevation(
+        freeRunFile(n: 1, start: DateTime.utc(2026, 9, 22, 12), seconds: 1800),
+      ),
+      freeRunFile(n: 2, start: DateTime.utc(2026, 9, 16, 12), seconds: 1800),
+      freeRunFile(n: 3, start: DateTime.utc(2026, 8, 5, 12), seconds: 1800),
+      freeRunFile(n: 4, start: DateTime.utc(2026, 2, 5, 12), seconds: 1800),
+    ];
+    await tester.runAsync(() async {
+      await store.importBundles([
+        for (final f in files) engine.RunBundle(run: f),
+      ]);
+      await store.list();
+      await store.derivedIdle;
+    });
+    await pumpApp(
+      tester,
+      fakeServices(history: store),
+      home: const HistoryScreen(),
+    );
+    for (var i = 0; i < 60 && find.text('THIS WEEK').evaluate().isEmpty; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
+    await tester.tap(find.byKey(const ValueKey('history-view-1')));
+    await pumpTimes(tester);
+    expect(find.text('THIS WEEK'), findsOneWidget);
+    expect(find.text('LAST WEEK'), findsOneWidget);
+    expect(find.text('3 TO 9 AUG'), findsOneWidget);
+    expect(find.text('FEBRUARY 2026'), findsOneWidget);
+    // This week's run carries the fused elevation: its climb is in the line.
+    final thisWeek = tester.widget<Text>(
+      find.byKey(const ValueKey('history-totals-THIS WEEK')),
+    );
+    expect(
+      thisWeek.data,
+      matches(RegExp(r'^1 run · [\d.]+ km · 0:\d\d · \+\d+ m$')),
+    );
+    final lastWeek = tester.widget<Text>(
+      find.byKey(const ValueKey('history-totals-LAST WEEK')),
+    );
+    expect(lastWeek.data, isNot(contains('+')));
   });
 }
