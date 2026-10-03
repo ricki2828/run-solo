@@ -42,6 +42,7 @@ flutter:
 
   assets:
     - assets/maps/night_session.json
+    - assets/maps/night_session_card.json
     - assets/plans/
     # Splash runner photograph (Unsplash license, assets/brand/splash_runner.LICENSE.txt).
     - assets/brand/splash_runner.jpg

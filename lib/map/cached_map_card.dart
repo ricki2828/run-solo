@@ -158,8 +158,10 @@ class _CachedMapCardState extends State<CachedMapCard> {
                       gaplessPlayback: true,
                       errorBuilder: (_, _, _) => ColoredBox(color: t.bgRaised),
                     ),
-                    // Muted background: the route stays the bright thing.
-                    ColoredBox(color: t.bgBase.withValues(alpha: 0.4)),
+                    // Light dimming only: the card style is already dark, and
+                    // the place has to stay readable. The route is drawn over
+                    // this, in the run-type colour, with a dark casing.
+                    ColoredBox(color: t.bgBase.withValues(alpha: 0.1)),
                   ],
                 ),
               ),
