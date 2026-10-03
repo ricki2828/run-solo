@@ -8,7 +8,7 @@ with a real device capture before upload. Re-run whenever the goldens change.
     python3 -m venv /tmp/brandvenv && /tmp/brandvenv/bin/pip install -r assets/brand/requirements.txt
     /tmp/brandvenv/bin/python store/play/build_screens.py
 
-Writes store/play/screens/NN-name.png (1080x1920) and store/play/feature-graphic-progress-1024x500.png.
+Writes store/play/screens/NN-name.png (1080x1920) and store/play/feature-graphic-1024x500.png.
 """
 import sys
 from pathlib import Path
@@ -116,8 +116,8 @@ def main():
     for name, golden, head, sub, placeholder in SHOTS:
         frame(golden, head, sub).save(OUT / f"{name}.png", optimize=True)
         print(f"{name}.png  <- {golden}.png" + ("   REPLACE WITH DEVICE CAPTURE (fake map)" if placeholder else ""))
-    feature_graphic().save(HERE / "feature-graphic-progress-1024x500.png", optimize=True)
-    print("feature-graphic-progress-1024x500.png")
+    feature_graphic().save(HERE / "feature-graphic-1024x500.png", optimize=True)
+    print("feature-graphic-1024x500.png")
 
 
 if __name__ == "__main__":

@@ -462,7 +462,7 @@ def main():
 
     STORE.mkdir(parents=True, exist_ok=True)
     play_icon(t).save(STORE / "icon-512.png", optimize=True)
-    feature_graphic(args.hero).save(STORE / "feature-graphic-1024x500.png", optimize=True)
+    feature_graphic(args.hero).save(STORE / "feature-graphic-wordmark-1024x500.png", optimize=True)
     # iOS: one 1024 px universal icon; Xcode 14+ derives every other size from it.
     IOS_ICON.mkdir(parents=True, exist_ok=True)
     ios_icon(t).save(IOS_ICON / "Icon-App-1024x1024@1x.png", optimize=True)

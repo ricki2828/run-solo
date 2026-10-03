@@ -1,6 +1,6 @@
 # Play listing draft: progress direction
 
-Replaces the "beats your last run" copy in `docs/play-console.md` section 1 once Ricki approves. The old tagline "You against your last run" is retired (Home is about scores, progress and how to get better). Draft only, nothing typed into the Console.
+Status: founder approved 3-Oct-2026: tagline option 1, title A. `docs/play-console.md` section 1 now carries the approved copy; the other options stay here for reference. The old tagline "You against your last run" is retired (Home is about scores, progress and how to get better).
 
 ## Store title (max 30)
 
