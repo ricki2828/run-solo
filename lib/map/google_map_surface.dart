@@ -165,6 +165,7 @@ class _GoogleRouteMap extends StatefulWidget {
 
 class _GoogleRouteMapState extends State<_GoogleRouteMap> {
   static String? _styleJson;
+  static String? _cardStyleJson;
   static final Map<String, gm.BitmapDescriptor> _icons = {};
 
   Set<gm.Marker> _markers = const {};
@@ -265,9 +266,17 @@ class _GoogleRouteMapState extends State<_GoogleRouteMap> {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final dpr = MediaQuery.devicePixelRatioOf(context);
     try {
-      _styleJson ??= await rootBundle.loadString(
-        'assets/maps/night_session.json',
-      );
+      if (widget.mapOnly) {
+        // Home cards: Night Session with lighter roads, tinted water and
+        // parks, and suburb / park names, so the run's place is readable.
+        _cardStyleJson ??= await rootBundle.loadString(
+          'assets/maps/night_session_card.json',
+        );
+      } else {
+        _styleJson ??= await rootBundle.loadString(
+          'assets/maps/night_session.json',
+        );
+      }
       final markers = <gm.Marker>{};
       for (final m
           in widget.mapOnly ? const <RouteMarker>[] : widget.route.markers) {
@@ -386,7 +395,9 @@ class _GoogleRouteMapState extends State<_GoogleRouteMap> {
         zoom: 15,
       ),
       mapType: widget.terrain ? gm.MapType.terrain : gm.MapType.normal,
-      style: widget.terrain ? null : _styleJson,
+      style: widget.terrain
+          ? null
+          : (widget.mapOnly ? _cardStyleJson : _styleJson),
       // Not lite mode: lite mode supports only click events, so
       // onCameraIdle (which drives the blank-snapshot check) may never fire.
       // The card is a full map with every gesture off and a tap layer on top.

@@ -17,9 +17,9 @@ import 'package:path_provider/path_provider.dart';
 
 import 'route_builder.dart';
 
-/// Bump when `assets/maps/night_session.json` or the map drawing on the
+/// Bump when `assets/maps/night_session_card.json` or the map drawing on the
 /// card changes, so cached PNGs are rebuilt.
-const int kMapStyleVersion = 2;
+const int kMapStyleVersion = 3;
 
 /// Why a card render failed; decides whether and when it is retried.
 enum MapFailure {
