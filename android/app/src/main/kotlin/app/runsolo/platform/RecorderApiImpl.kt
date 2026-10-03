@@ -345,7 +345,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     override fun speakRunSummary(distanceM: Double, timeMs: Long, climbM: Double?, verdict: String?, units: Units, includePace: Boolean) {
         val on = prefs.getBoolean(RecorderService.PREF_CUES, true) && prefs.getBoolean(RecorderService.PREF_SPOKEN_SUMMARY, true)
         if (!on) return
-        val text = SummaryWords.end(distanceM, timeMs, units.toCore(), climbM, verdict, includePace) ?: return
+        val text = SummaryWords.end(distanceM, timeMs, units.toCore(), climbM, verdict, includePace)
         CuePlayer(context).apply {
             enabled = true
             init()

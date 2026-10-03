@@ -14,6 +14,8 @@ import kotlin.math.roundToLong
  * (`VoiceCopyFixture`). Null = nothing to say.
  */
 object SummaryWords {
+    const val RUN_SAVED = "Run saved"
+
     /** A climb under this is not worth saying at the end of a run. */
     const val MIN_CLIMB_M = 20.0
 
@@ -82,10 +84,11 @@ object SummaryWords {
     /**
      * What the run came to: distance, time, average pace, and the climb when it is [MIN_CLIMB_M]
      * or more; then [verdict] (the result screen's own words) when there is one. Null when there is
-     * no distance to speak of (indoor, GPS never came).
+     * no distance to speak of (indoor, GPS never came). Always opens with "Run saved.".
      */
-    fun end(distanceM: Double, timeMs: Long, units: Units, climbM: Double? = null, verdict: String? = null, withPace: Boolean = true): String? {
-        if (distanceM < 10 || timeMs <= 0) return verdict?.trim()?.takeIf { it.isNotEmpty() }
+    fun end(distanceM: Double, timeMs: Long, units: Units, climbM: Double? = null, verdict: String? = null, withPace: Boolean = true): String {
+        val line = verdict?.trim()?.takeIf { it.isNotEmpty() }
+        if (distanceM < 10 || timeMs <= 0) return if (line == null) "$RUN_SAVED." else "$RUN_SAVED. $line"
         val miles = units == Units.mi
         val unitM = if (miles) M_PER_MI else 1_000.0
         val parts = ArrayList<String>()
@@ -95,9 +98,14 @@ object SummaryWords {
         if (withPace && distanceM >= 100 && paceS.isFinite()) parts.add("${minutesSeconds(paceS.roundToLong())} per ${if (miles) "mile" else "kilometre"}")
         if (climbM != null && climbM >= MIN_CLIMB_M) parts.add(height(climbM, miles, step = false) + " of climb")
         val stats = parts.joinToString(", ") + "."
-        val line = verdict?.trim()?.takeIf { it.isNotEmpty() }
-        return if (line == null) stats else "$stats $line"
+        return if (line == null) "$RUN_SAVED. $stats" else "$RUN_SAVED. $stats $line"
     }
+
+    /**
+     * The stop cue's words. With the spoken summary on, the end line opens with "Run saved." (one voice,
+     * nothing to cut off), so the stop cue itself is silent (it still buzzes); with it off, "Run saved".
+     */
+    fun stopCue(spokenSummaryOn: Boolean): String? = if (spokenSummaryOn) null else RUN_SAVED
 
     /** "6.2 kilometres" / "1 kilometre" / "800 metres" (start), "5 kilometres 20" (end, hundredths, 5.05 is "5 kilometres oh 5"). */
     fun distance(m: Double, miles: Boolean, hundredths: Boolean): String {

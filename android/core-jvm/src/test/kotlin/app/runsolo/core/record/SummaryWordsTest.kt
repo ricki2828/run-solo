@@ -60,37 +60,37 @@ class SummaryWordsTest {
     @Test
     fun `end says distance, time, pace and climb`() {
         assertEquals(
-            "5 kilometres 20, 41 minutes, 7 minutes 53 per kilometre, 230 metres of climb.",
+            "Run saved. 5 kilometres 20, 41 minutes, 7 minutes 53 per kilometre, 230 metres of climb.",
             SummaryWords.end(5_200.0, 2_460_000, Units.km, climbM = 230.0),
         )
     }
 
     @Test
     fun `end number phrasing`() {
-        assertEquals("5 kilometres, 25 minutes, 5 minutes per kilometre.", SummaryWords.end(5_000.0, 1_500_000, Units.km))
-        assertEquals("5 kilometres oh 5, 25 minutes 12, 4 minutes 59 per kilometre.", SummaryWords.end(5_050.0, 1_512_000, Units.km))
-        assertEquals("800 metres, 4 minutes, 5 minutes per kilometre.", SummaryWords.end(800.0, 240_000, Units.km))
-        assertEquals("1 kilometre 50, 45 seconds, 30 seconds per kilometre.", SummaryWords.end(1_500.0, 45_000, Units.km))
-        assertEquals("21 kilometres 10, 1 hour 50 minutes, 5 minutes 13 per kilometre.", SummaryWords.end(21_100.0, 6_600_000, Units.km))
+        assertEquals("Run saved. 5 kilometres, 25 minutes, 5 minutes per kilometre.", SummaryWords.end(5_000.0, 1_500_000, Units.km))
+        assertEquals("Run saved. 5 kilometres oh 5, 25 minutes 12, 4 minutes 59 per kilometre.", SummaryWords.end(5_050.0, 1_512_000, Units.km))
+        assertEquals("Run saved. 800 metres, 4 minutes, 5 minutes per kilometre.", SummaryWords.end(800.0, 240_000, Units.km))
+        assertEquals("Run saved. 1 kilometre 50, 45 seconds, 30 seconds per kilometre.", SummaryWords.end(1_500.0, 45_000, Units.km))
+        assertEquals("Run saved. 21 kilometres 10, 1 hour 50 minutes, 5 minutes 13 per kilometre.", SummaryWords.end(21_100.0, 6_600_000, Units.km))
     }
 
     @Test
     fun `end in miles`() {
         assertEquals(
-            "3 miles 11, 30 minutes, 9 minutes 39 per mile, 755 feet of climb.",
+            "Run saved. 3 miles 11, 30 minutes, 9 minutes 39 per mile, 755 feet of climb.",
             SummaryWords.end(5_000.0, 1_800_000, Units.mi, climbM = 230.0),
         )
     }
 
     @Test
     fun `end leaves a small climb out and keeps 20 metres`() {
-        assertEquals("5 kilometres, 25 minutes, 5 minutes per kilometre.", SummaryWords.end(5_000.0, 1_500_000, Units.km, climbM = 19.0))
-        assertEquals("5 kilometres, 25 minutes, 5 minutes per kilometre, 20 metres of climb.", SummaryWords.end(5_000.0, 1_500_000, Units.km, climbM = 20.0))
+        assertEquals("Run saved. 5 kilometres, 25 minutes, 5 minutes per kilometre.", SummaryWords.end(5_000.0, 1_500_000, Units.km, climbM = 19.0))
+        assertEquals("Run saved. 5 kilometres, 25 minutes, 5 minutes per kilometre, 20 metres of climb.", SummaryWords.end(5_000.0, 1_500_000, Units.km, climbM = 20.0))
     }
 
     @Test
     fun `end speaks the verdict after the stats, and the stats alone when none is computed yet`() {
-        val stats = "5 kilometres, 25 minutes, 5 minutes per kilometre."
+        val stats = "Run saved. 5 kilometres, 25 minutes, 5 minutes per kilometre."
         assertEquals("$stats No real change.", SummaryWords.end(5_000.0, 1_500_000, Units.km, verdict = "No real change."))
         assertEquals(stats, SummaryWords.end(5_000.0, 1_500_000, Units.km, verdict = null))
         assertEquals(stats, SummaryWords.end(5_000.0, 1_500_000, Units.km, verdict = "  "))
@@ -98,14 +98,14 @@ class SummaryWordsTest {
 
     @Test
     fun `end with no distance says only the verdict`() {
-        assertEquals("No verdict.", SummaryWords.end(0.0, 1_500_000, Units.km, verdict = "No verdict."))
-        assertNull(SummaryWords.end(0.0, 1_500_000, Units.km))
+        assertEquals("Run saved. No verdict.", SummaryWords.end(0.0, 1_500_000, Units.km, verdict = "No verdict."))
+        assertEquals("Run saved.", SummaryWords.end(0.0, 1_500_000, Units.km))
     }
 
     @Test
     fun `end leaves the pace out when asked, for a 4x4 or a Cooper test`() {
         assertEquals(
-            "5 kilometres, 25 minutes. Faster.",
+            "Run saved. 5 kilometres, 25 minutes. Faster.",
             SummaryWords.end(5_000.0, 1_500_000, Units.km, verdict = "Faster.", withPace = false),
         )
     }
@@ -122,6 +122,13 @@ class SummaryWordsTest {
             SummaryWords.start(RunMode.trail, null, Units.km, "Kastro \uD83C\uDFC3 - loop \u2014", 6_210.0, null),
         )
         assertEquals("Trail run. Following a route, 6.2 kilometres.", SummaryWords.start(RunMode.trail, null, Units.km, "\uD83C\uDFC3", 6_210.0, null))
+    }
+
+    @Test
+    fun `the stop cue is silent when the summary says Run saved, and says it when the summary is off`() {
+        assertNull(SummaryWords.stopCue(true))
+        assertEquals("Run saved", SummaryWords.stopCue(false))
+        assertTrue(SummaryWords.end(5_000.0, 1_500_000, Units.km).startsWith("Run saved. "))
     }
 
     @Test

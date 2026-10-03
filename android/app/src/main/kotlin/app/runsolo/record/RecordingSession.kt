@@ -417,7 +417,8 @@ class RecordingSession(
         }
         ble = null
         lapInput.disable()
-        cues.release()
+        // A cue still being said ("Run saved" with the summary off) finishes first, up to a short cap.
+        cues.releaseWhenIdle()
     }
 
     /**
@@ -697,7 +698,9 @@ class RecordingSession(
         val out = core.stop(t)
         refreshSnapshot()
         for (o in out) if (o is RecorderCore.Output.Cue) {
-            cues.play(o.kind, cueText(o))
+            // "Run saved" opens the spoken summary when that is on (a real run only: replays keep the cue pinned).
+            val words = if (o.kind == CueKind.stop && replay == null && spokenSummary) SummaryWords.stopCue(true) else cueText(o)
+            cues.play(o.kind, words)
             writer.append(JournalLine.Cue(o.t, System.currentTimeMillis(), o.kind))
         }
         RecorderEventBus.emit(StateEvent(state = app.runsolo.platform.RecorderState.FINALISING, runId = runId, phase = app.runsolo.platform.Phase.NONE))
