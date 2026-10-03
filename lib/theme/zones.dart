@@ -32,6 +32,35 @@ abstract final class HrZones {
     'MAX',
   ];
 
+  /// Zone hues for post-run distributions (run detail "Time in zone"). The
+  /// in-run backgrounds above stay near black; these are the brighter hues,
+  /// used only for bars and swatches, never behind text. Each is >= 5.5:1
+  /// against the dark surfaces and >= 4.0:1 against every light surface, so
+  /// both sets clear the 3:1 graphics floor. Index 0 is unused. Rows always
+  /// carry the zone name, so colour is never the only cue.
+  static const List<Color> distributionDark = [
+    NightSession.semNoise,
+    Color(0xFF4D9BFF), // Z1 blue
+    Color(0xFF2FD07A), // Z2 green
+    Color(0xFFFFBE2E), // Z3 amber
+    Color(0xFFFF7A2E), // Z4 orange
+    Color(0xFFFF4D5E), // Z5 red
+  ];
+
+  static const List<Color> distributionLight = [
+    NightSessionLight.semNoise,
+    Color(0xFF1A63C7),
+    Color(0xFF12803F),
+    Color(0xFF9A6200),
+    Color(0xFFBE3E08),
+    Color(0xFFC41230),
+  ];
+
+  static Color distribution(int zone, Brightness brightness) =>
+      (brightness == Brightness.dark
+      ? distributionDark
+      : distributionLight)[zone.clamp(0, count)];
+
   /// Secondary labels on a zone background. The addendum says Bone at 70 %
   /// (7.0:1 or better on every zone); measured with WCAG relative luminance
   /// that is 6.4:1 on Z2 and 6.0:1 on Z3, so this is Bone at 80 %, the
@@ -41,6 +70,12 @@ abstract final class HrZones {
 
   /// Empty gauge segment.
   static const Color gaugeEmpty = Color(0x33FFFFFF);
+
+  /// Title-case zone name for rows ("Tempo").
+  static String name(int zone) {
+    final w = words[zone.clamp(1, count)];
+    return '${w[0]}${w.substring(1).toLowerCase()}';
+  }
 
   static Color background(int zone) => backgrounds[zone.clamp(0, count)];
 

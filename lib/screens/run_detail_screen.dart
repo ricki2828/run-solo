@@ -11,18 +11,19 @@ import '../state/history_store.dart';
 import '../state/send_runs.dart';
 import '../state/zone_histogram.dart';
 import '../theme/theme.dart';
-import '../theme/zones.dart';
 import '../widgets/chrome.dart';
 import '../widgets/coaching.dart';
 import '../widgets/elevation_profile.dart';
 import '../widgets/followed_route_line.dart';
 import '../widgets/hold_button.dart';
 import '../widgets/rep_bars.dart';
+import '../widgets/time_in_zone.dart';
 import '../widgets/recent_activity.dart' show runTypeColor;
 import '../widgets/trail_runs_section.dart';
 import '../widgets/weather_chip.dart';
 import '../widgets/where_when_line.dart';
 import 'send_sheet.dart';
+import 'settings_screen.dart' show maxHrSourceLine;
 import 'verdict_screen.dart';
 
 /// Run detail (design brief §4.7, addendum A4): header, post-run map, rep /
@@ -259,7 +260,10 @@ class RunDetailBody extends StatelessWidget {
         },
         if (d.run.hasHr) ...[
           const SizedBox(height: Space.x24),
-          _ZoneStrip(seconds: zoneSecondsOf(d.run, maxHr), maxHr: maxHr),
+          TimeInZone(
+            seconds: zoneSecondsOf(d.run, maxHr),
+            maxHrLine: maxHrSourceLine(services.maxHr),
+          ),
         ],
         const SizedBox(height: Space.x32),
         _SendRow(detail: d),
@@ -1307,59 +1311,6 @@ class _DistanceSplits extends StatelessWidget {
             ],
         ],
       ),
-    );
-  }
-}
-
-/// Time in each HR zone as a 5-segment bar plus the minutes per zone.
-class _ZoneStrip extends StatelessWidget {
-  const _ZoneStrip({required this.seconds, required this.maxHr});
-  final List<double> seconds;
-  final int maxHr;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final total = seconds.skip(1).fold(0.0, (a, b) => a + b);
-    if (total == 0) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'TIME IN ZONE · MAX HR $maxHr',
-          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-        ),
-        const SizedBox(height: Space.x8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(2),
-          child: SizedBox(
-            height: 12,
-            child: Row(
-              children: [
-                for (var z = 1; z <= 5; z++)
-                  if (seconds[z] > 0)
-                    Expanded(
-                      flex: (seconds[z] / total * 1000).round().clamp(1, 1000),
-                      child: ColoredBox(color: HrZones.background(z)),
-                    ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: Space.x8),
-        Wrap(
-          spacing: Space.x16,
-          children: [
-            for (var z = 1; z <= 5; z++)
-              Text(
-                'Z$z ${Fmt.clock((seconds[z] * 1000).round())}',
-                style: RunSoloType.label13.copyWith(
-                  color: seconds[z] > 0 ? t.inkPrimary : t.inkMuted,
-                ),
-              ),
-          ],
-        ),
-      ],
     );
   }
 }

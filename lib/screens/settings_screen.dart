@@ -12,7 +12,7 @@ import '../platform/gateway.dart';
 import '../state/max_hr.dart';
 import '../state/intervals_icu.dart';
 import '../state/recording_controller.dart';
-import '../state/send_runs.dart' show ExportTarget, TargetSetup;
+import '../state/send_runs.dart' show ExportTarget, HealthTarget, TargetSetup;
 import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
@@ -98,6 +98,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   void dispose() {
+    _backfill.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -127,6 +128,70 @@ class _SettingsScreenState extends State<SettingsScreen>
       if (saved != true) return;
     }
     await set((x) => x.withAutoSend(target.id, on, now));
+  }
+
+  /// Backfill progress as (done, total); null when none is running.
+  final ValueNotifier<(int, int)?> _backfill = ValueNotifier(null);
+  bool _backfillDone = false;
+
+  /// "Send all past runs": permissions first, then confirm with the count,
+  /// then one pass with inline progress. Idempotent (a health write replaces
+  /// the record with the same run id).
+  Future<void> _sendAllPast(ExportTarget target) async {
+    final services = AppServices.of(context);
+    final setup = await target.prepare();
+    if (!mounted) return;
+    if (!setup.isReady) {
+      setState(() => _setupProblems[target.id] = setup);
+      return;
+    }
+    final runs = [
+      for (final r in await services.history.list())
+        if (!r.missing) r,
+    ];
+    if (!mounted) return;
+    if (runs.isEmpty) {
+      _toast('No runs to send yet.');
+      return;
+    }
+    final n = runs.length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Send $n run${n == 1 ? '' : 's'} to ${target.label}?'),
+        content: const Text('Runs already there are updated, not doubled.'),
+        actions: [
+          TextButton(
+            key: const ValueKey('backfill-cancel'),
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('CANCEL'),
+          ),
+          TextButton(
+            key: const ValueKey('backfill-confirm'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('SEND'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    _backfill.value = (0, n);
+    try {
+      final r = await services.sender.sendAllPast(
+        target.id,
+        onProgress: (done, total) => _backfill.value = (done, total),
+      );
+      if (!mounted) return;
+      setState(() => _backfillDone = r.failed == 0);
+      _toast(
+        r.failed == 0
+            ? 'Sent ${r.sent} run${r.sent == 1 ? '' : 's'} to ${target.label}.'
+            : 'Sent ${r.sent} of ${r.total}. ${r.firstError ?? 'Some failed'}. '
+                  'Tap Send all past runs to try the rest again.',
+      );
+    } finally {
+      _backfill.value = null;
+    }
   }
 
   /// Plan §4 export: one `RunBundle` JSON per run (file + sidecar) through
@@ -505,6 +570,40 @@ class _SettingsScreenState extends State<SettingsScreen>
                   _StaticRow(
                     label: target.label,
                     reason: 'Only when you tap Send on a run.',
+                  ),
+                if (target is HealthTarget && target.isEnabled(s))
+                  ValueListenableBuilder<(int, int)?>(
+                    valueListenable: _backfill,
+                    builder: (context, p, _) => p == null
+                        ? SettingsRow(
+                            label: 'Send all past runs',
+                            value: _backfillDone ? 'Done' : '',
+                            onTap: () => _sendAllPast(target),
+                          )
+                        : Padding(
+                            key: const ValueKey('backfill-progress'),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: Space.x12,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Sending ${p.$1} of ${p.$2}',
+                                  style: RunSoloType.body15.copyWith(
+                                    color: t.inkPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: Space.x8),
+                                LinearProgressIndicator(
+                                  value: p.$2 == 0 ? null : p.$1 / p.$2,
+                                  minHeight: 6,
+                                  color: t.inkPrimary,
+                                  backgroundColor: t.bgSunken,
+                                ),
+                              ],
+                            ),
+                          ),
                   ),
                 if (_setupProblems[target.id]?.canInstall ?? false)
                   SettingsRow(
