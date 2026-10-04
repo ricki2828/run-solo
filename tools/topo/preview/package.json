@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "description": "Headless preview of assets/maps/aurora_topo.json against built packs (dev tool, not used by the app or CI)",
+  "dependencies": { "maplibre-gl": "^5", "pmtiles": "^4", "puppeteer-core": "^24" }
+}

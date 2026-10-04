@@ -150,6 +150,23 @@ jobs:
           drift=$(git status --porcelain -- assets/brand/svg android/app/src/main/res/drawable android/app/src/main/res/mipmap-anydpi-v26 lib/brand)
           if [ -n "$drift" ]; then echo "Brand vectors drifted; run build_brand.py and commit:"; echo "$drift"; git diff --stat; exit 1; fi
 
+  topo-style:
+    name: topo style is current and valid
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Style matches tokens and run colours keep 3:1 against the map
+        run: python3 tools/topo/build_style.py --check
+      - name: MapLibre style-spec validator
+        run: npx --yes -p @maplibre/maplibre-gl-style-spec@26.4.4 gl-style-validate assets/maps/aurora_topo.json
+
   core-jvm:
     name: core-jvm tests (pure Kotlin)
     runs-on: ubuntu-latest
