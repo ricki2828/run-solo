@@ -1711,8 +1711,8 @@ class _FreeRunBlock extends StatelessWidget {
             // heart rate).
             final gaps = clusters.length - 1 + (reserve ? open : 0);
             final share = (c.maxHeight - contentH) / (gaps + 2);
-            final top = share.clamp(0.0, Space.x24);
-            final between = (minGap + share).clamp(minGap, 56.0);
+            final top = share.clamp(0.0, Space.x32);
+            final between = (minGap + share).clamp(minGap, 96.0);
             Widget sep() => SizedBox(
               height: between,
               child: Center(
