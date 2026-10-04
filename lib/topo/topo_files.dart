@@ -48,6 +48,42 @@ class TopoFiles {
     });
   }
 
+  /// A one-off style for a Home card: the base style with the run's route
+  /// data inside the file (a snapshot re-reads the style, so a route set on
+  /// the live map afterwards would not be in it). Delete it with
+  /// [dropCardStyle] when the snapshot is done.
+  Future<String> cardStyleFor(
+    InstalledPack pack, {
+    required String key,
+    required Map<String, Map<String, Object?>> data,
+  }) async {
+    await (_glyphs ??= _copyGlyphs().catchError((Object e) {
+      _glyphs = null;
+      throw e;
+    }));
+    final bytes = await _load(kTopoStyleAsset);
+    final text = TopoStyle.build(
+      utf8.decode(
+        bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
+      ),
+      packDir: pack.directory,
+      glyphsDir: glyphsDir,
+      routeData: data,
+    );
+    final safe = key.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final file = File('${_dir.path}/styles/card-$safe.json');
+    await _writeAtomic(file, text);
+    return file.path;
+  }
+
+  Future<void> dropCardStyle(String path) async {
+    try {
+      await File(path).delete();
+    } on Object {
+      // Already gone.
+    }
+  }
+
   Future<String> _prepare(InstalledPack pack, String path) async {
     await (_glyphs ??= _copyGlyphs().catchError((Object e) {
       _glyphs = null;
@@ -62,17 +98,20 @@ class TopoFiles {
       ),
       packDir: pack.directory,
       glyphsDir: glyphsDir,
-      attribution: pack.region.mapText.isEmpty ? null : pack.region.mapText,
     );
     await _writeAtomic(file, text);
-    // Older styles of the same pack are dead weight.
+    // Card styles that outlived their snapshot (a killed app) and older
+    // styles of the same pack are dead weight.
     final prefix = '${pack.id}-';
+    final stale = DateTime.now().subtract(const Duration(minutes: 10));
     await for (final e in file.parent.list()) {
-      if (e is File &&
-          e.path != path &&
-          e.uri.pathSegments.last.startsWith(prefix)) {
-        await e.delete().catchError((Object _) => e);
-      }
+      if (e is! File || e.path == path) continue;
+      final name = e.uri.pathSegments.last;
+      final oldStyle = name.startsWith(prefix);
+      // A card style in use is minutes old at most.
+      final deadCard =
+          name.startsWith('card-') && e.lastModifiedSync().isBefore(stale);
+      if (oldStyle || deadCard) await e.delete().catchError((Object _) => e);
     }
     return path;
   }

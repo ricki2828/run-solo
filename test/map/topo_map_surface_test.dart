@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/app/routes.dart';
+import 'package:run_solo/map/cached_map_card.dart';
 import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/map/route_builder.dart';
 import 'package:run_solo/map/snapshot_cache.dart';
@@ -54,7 +55,9 @@ InstalledPack _pack(
     version: '1',
     files: const [PackFileSpec(name: 'basemap.pmtiles', size: 1, sha256: 'a')],
     mapText: text,
-    credits: const [],
+    credits: const [
+      PackCredit(text: '© OpenStreetMap contributors', license: 'ODbL 1.0'),
+    ],
   ),
   directory: '/x/$id',
 );
@@ -92,6 +95,7 @@ class _FakeEngine implements TopoEngine {
   Widget card(
     InstalledPack pack,
     RouteGeometry route, {
+    required Color routeColor,
     required ValueChanged<Uint8List> onSnapshot,
     required ValueChanged<MapFailure> onFailed,
   }) {
@@ -179,7 +183,20 @@ void main() {
     expect(find.byKey(const ValueKey('topo-detail-milos')), findsOneWidget);
     expect(find.byKey(const ValueKey('fake-map')), findsNothing);
     expect(find.byKey(const ValueKey('map-style-toggle')), findsOneWidget);
-    expect(find.text('OSM | Protomaps'), findsOneWidget);
+    expect(find.byKey(const ValueKey('topo-attribution')), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('topo-attribution'))).data,
+      '© OSM · Protomaps',
+    );
+  });
+
+  testWidgets('the credit line opens the full credits', (tester) async {
+    await tester.pumpWidget(host((c) => detail(c, _inMilos)));
+    await tester.tap(find.byKey(const ValueKey('topo-credits-button')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('topo-credits-sheet')), findsOneWidget);
+    expect(find.text('Map data'), findsOneWidget);
+    expect(find.textContaining('ODbL'), findsOneWidget);
   });
 
   testWidgets('toggle: Google then back, remembered in settings', (
@@ -191,7 +208,7 @@ void main() {
     expect(settings.settings.topoMap, isFalse);
     expect(find.byKey(const ValueKey('fake-map')), findsOneWidget);
     expect(find.byKey(const ValueKey('topo-detail-milos')), findsNothing);
-    expect(find.text('OSM | Protomaps'), findsNothing);
+    expect(find.byKey(const ValueKey('topo-attribution')), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('map-style-topo')));
     await tester.pump();
@@ -361,9 +378,15 @@ void main() {
         await tester.pump();
         await tester.pump();
         expect(store.reads, hasLength(1));
-        expect(store.reads.single, contains('-topo-milos-1'));
+        expect(store.reads.single, contains('-topo-milos-1-'));
         expect(store.reads.single, startsWith('run-1_v$kMapStyleVersion-topo'));
         expect(find.byKey(const ValueKey('topo-card-milos')), findsOneWidget);
+        // The credit line sits on the card; the route is baked into the image.
+        expect(find.byKey(const ValueKey('topo-attribution')), findsOneWidget);
+        expect(
+          tester.widget<CachedMapCard>(find.byType(CachedMapCard)).bakedRoute,
+          isTrue,
+        );
       },
     );
 
@@ -440,5 +463,32 @@ void main() {
     expect(packOnly.available, isTrue);
     packs.packs = [];
     expect(packOnly.available, isFalse);
+  });
+
+  group('credit line', () {
+    test('short whole names from the pack text', () {
+      expect(
+        creditNames(
+          '© OpenStreetMap contributors | Protomaps | © Mapterhorn | Copernicus DEM',
+        ),
+        ['OSM', 'Protomaps', 'Mapterhorn', 'Copernicus'],
+      );
+      expect(creditNames(''), isEmpty);
+    });
+
+    test('drops whole names, never cuts one, always one line', () {
+      const style = TextStyle(fontSize: 11);
+      const names = ['OSM', 'Protomaps', 'Mapterhorn', 'Copernicus'];
+      String line(double w) => creditLine(names, w, style, TextDirection.ltr);
+      expect(line(1000), '© OSM · Protomaps · Mapterhorn · Copernicus');
+      final narrow = line(150);
+      expect(narrow, endsWith(' …'));
+      expect(narrow, isNot(contains('\n')));
+      for (final part
+          in narrow.replaceAll('© ', '').replaceAll(' …', '').split(' · ')) {
+        expect(names, contains(part));
+      }
+      expect(line(1), '©');
+    });
   });
 }

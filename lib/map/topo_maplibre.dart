@@ -76,12 +76,14 @@ class MapLibreTopoEngine implements TopoEngine {
   Widget card(
     InstalledPack pack,
     RouteGeometry route, {
+    required Color routeColor,
     required ValueChanged<Uint8List> onSnapshot,
     required ValueChanged<MapFailure> onFailed,
   }) => _TopoStaticMap(
     pack: pack,
     files: files,
     route: route,
+    routeColor: routeColor,
     mapOnly: true,
     onSnapshot: onSnapshot,
     onFailed: onFailed,
@@ -93,6 +95,19 @@ ml.LatLng _ll(GeoPoint p) => ml.LatLng(p.lat, p.lon);
 Iterable<(double, double)> _pairs(Iterable<GeoPoint> pts) sync* {
   for (final p in pts) {
     yield (p.lat, p.lon);
+  }
+}
+
+Iterable<(double, double, Color, Color)> _markDots(
+  RouteGeometry route,
+  RunSoloTokens t,
+) sync* {
+  for (final m in route.markers) {
+    if (m.kind == RouteMarkerKind.start) {
+      yield (m.point.lat, m.point.lon, t.inkPrimary, t.inkPrimary);
+    } else if (m.kind == RouteMarkerKind.finish) {
+      yield (m.point.lat, m.point.lon, t.bgBase, t.inkPrimary);
+    }
   }
 }
 
@@ -134,6 +149,9 @@ Widget _mapView({
   tiltGesturesEnabled: false,
   compassEnabled: false,
   logoEnabled: false,
+  // The app draws one credit line (CreditPlate) over this corner; the
+  // native button is made invisible and sits under it.
+  attributionButtonColor: Colors.transparent,
   myLocationEnabled: false,
   minMaxZoomPreference: const ml.MinMaxZoomPreference(3, 17.5),
   cameraTargetBounds: limit == null
@@ -172,7 +190,8 @@ class _TopoStaticMap extends StatefulWidget {
 }
 
 class _TopoStaticMapState extends State<_TopoStaticMap> {
-  late final Future<String> _style = widget.files.styleFor(widget.pack);
+  Future<String>? _style;
+  String? _cardStyle;
   ml.MapLibreMapController? _ctl;
   bool _failed = false;
   bool _done = false;
@@ -189,9 +208,40 @@ class _TopoStaticMapState extends State<_TopoStaticMap> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_style != null) return;
+    _style = widget.mapOnly
+        ? _makeCardStyle()
+        : widget.files.styleFor(widget.pack);
+  }
+
+  /// The card's style carries the route inside the file: the snapshotter
+  /// re-reads the style, so a route set on the live map would not be in it.
+  Future<String> _makeCardStyle() async {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final path = await widget.files.cardStyleFor(
+      widget.pack,
+      key: '${routeFingerprint(widget.route)}-${identityHashCode(this)}',
+      data: {
+        TopoStyle.trackSource: TopoStyle.line(
+          _pairs(widget.route.points),
+          colour: widget.routeColor ?? t.inkPrimary,
+          casing: t.bgBase,
+        ),
+        TopoStyle.marksSource: TopoStyle.dots(_markDots(widget.route, t)),
+      },
+    );
+    _cardStyle = path;
+    return path;
+  }
+
+  @override
   void dispose() {
     _watch?.cancel();
     _settle?.cancel();
+    final card = _cardStyle;
+    if (card != null) unawaited(widget.files.dropCardStyle(card));
     super.dispose();
   }
 
@@ -254,13 +304,7 @@ class _TopoStaticMapState extends State<_TopoStaticMap> {
         await _setSource(
           c,
           TopoStyle.marksSource,
-          TopoStyle.dots([
-            for (final m in widget.route.markers)
-              if (m.kind == RouteMarkerKind.start)
-                (m.point.lat, m.point.lon, t.inkPrimary, t.inkPrimary)
-              else if (m.kind == RouteMarkerKind.finish)
-                (m.point.lat, m.point.lon, t.bgBase, t.inkPrimary),
-          ]),
+          TopoStyle.dots(_markDots(widget.route, t)),
         );
       }
       await c.moveCamera(
@@ -269,13 +313,11 @@ class _TopoStaticMapState extends State<_TopoStaticMap> {
             southwest: ml.LatLng(b.south, b.west),
             northeast: ml.LatLng(b.north, b.east),
           ),
-          // The card's route is drawn over the snapshot by RouteShape with
-          // 24 dp all round, so the camera must fit the same way. Detail
-          // leaves room for the switch (top) and the attribution (bottom).
+          // Room for the switch (detail, top) and the credit line (bottom).
           left: 24,
           top: widget.mapOnly ? 24 : 56,
           right: 24,
-          bottom: widget.mapOnly ? 24 : 48,
+          bottom: widget.mapOnly ? 32 : 48,
         ),
       );
     } on Object catch (e) {
@@ -387,6 +429,7 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
   bool _failed = false;
   int _prog = 0;
   bool _programmatic = false;
+  bool _following = false;
   Timer? _watch;
   Timer? _recentre;
 
@@ -416,6 +459,7 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
     widget.track.removeListener(_onTrack);
     _watch?.cancel();
     _recentre?.cancel();
+    _paintTimer?.cancel();
     super.dispose();
   }
 
@@ -440,8 +484,40 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
     if (!mounted) return;
     _syncLine();
     if (!_loaded) return;
-    unawaited(_paint());
+    _schedulePaint();
     if (_recentre == null || !_recentre!.isActive) unawaited(_follow());
+  }
+
+  /// Sends the line at most once per [_paintEvery], one call in flight, so a
+  /// slow native side cannot pile up whole-route sends. The newest line wins.
+  static const Duration _paintEvery = Duration(seconds: 2);
+  bool _painting = false;
+  bool _dirty = false;
+  Timer? _paintTimer;
+  DateTime _lastPaint = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _schedulePaint() {
+    _dirty = true;
+    if (_painting || (_paintTimer?.isActive ?? false)) return;
+    final wait = _paintEvery - DateTime.now().difference(_lastPaint);
+    if (wait <= Duration.zero) {
+      unawaited(_flushPaint());
+    } else {
+      _paintTimer = Timer(wait, () => unawaited(_flushPaint()));
+    }
+  }
+
+  Future<void> _flushPaint() async {
+    if (_painting || !_dirty || !mounted) return;
+    _painting = true;
+    _dirty = false;
+    try {
+      await _paint();
+    } finally {
+      _painting = false;
+      _lastPaint = DateTime.now();
+      if (_dirty && mounted) _schedulePaint();
+    }
   }
 
   Future<void> _paint() async {
@@ -486,6 +562,8 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
     final c = _ctl;
     final p = widget.track.last;
     if (c == null || p == null || !_loaded) return;
+    if (_following) return;
+    _following = true;
     final token = ++_prog;
     _programmatic = true;
     try {
@@ -495,6 +573,8 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
       );
     } on Object {
       // The map is optional; the run goes on.
+    } finally {
+      _following = false;
     }
     // The move events of our own move land before this.
     Future<void>.delayed(const Duration(milliseconds: 300), () {

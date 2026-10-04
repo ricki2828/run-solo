@@ -105,12 +105,12 @@ def palette(tokens: dict) -> dict[str, Rgb]:
         "road_major": mix(base, ink2, 0.18),
         "road_highway": mix(base, ink2, 0.22),
         # trail layers sit above the roads in brightness but under every run-type colour
-        "track": mix(base, ink2, 0.34),
-        "path": mix(base, ink2, 0.38),
-        "contour": mix(land, muted, 0.40),
-        "contour_index": mix(land, muted, 0.62),
+        "track": mix(base, ink2, 0.40),
+        "path": mix(base, ink2, 0.45),
+        "contour": mix(land, muted, 0.75),
+        "contour_index": mix(land, muted, 1.0),
         "hill_shadow": sunken,
-        "hill_highlight": mix(land, ink2, 0.30),
+        "hill_highlight": mix(land, ink2, 0.40),
         "hill_accent": mix(land, sunken, 0.5),
         "label_place": mix(muted, ink2, 0.45),
         "label_minor": muted,
@@ -183,7 +183,7 @@ def build(tokens: dict) -> dict:
             "type": "hillshade",
             "source": "terrain",
             "paint": {
-                "hillshade-exaggeration": 0.45,
+                "hillshade-exaggeration": 0.6,
                 "hillshade-shadow-color": p["hill_shadow"],
                 "hillshade-highlight-color": p["hill_highlight"],
                 "hillshade-accent-color": p["hill_accent"],
@@ -227,7 +227,7 @@ def build(tokens: dict) -> dict:
             "maxzoom": 13,
             "filter": ["all", ele_mod(50), not_index],
             "layout": {"line-join": "round"},
-            "paint": {"line-color": p["contour"], "line-width": w((11, 0.4), (13, 0.6)), "line-opacity": 0.8},
+            "paint": {"line-color": p["contour"], "line-width": w((11, 0.5), (13, 0.8)), "line-opacity": 0.9},
         },
         {
             "id": "contour-20",
@@ -237,7 +237,7 @@ def build(tokens: dict) -> dict:
             "minzoom": 13,
             "filter": ["all", ele_mod(20), not_index],
             "layout": {"line-join": "round"},
-            "paint": {"line-color": p["contour"], "line-width": w((13, 0.5), (16, 0.8)), "line-opacity": 0.8},
+            "paint": {"line-color": p["contour"], "line-width": w((13, 0.7), (16, 1.0)), "line-opacity": 0.9},
         },
         {
             "id": "contour-index",
@@ -247,7 +247,7 @@ def build(tokens: dict) -> dict:
             "minzoom": 9,
             "filter": ele_mod(100),
             "layout": {"line-join": "round"},
-            "paint": {"line-color": p["contour_index"], "line-width": w((9, 0.5), (13, 0.9), (16, 1.3))},
+            "paint": {"line-color": p["contour_index"], "line-width": w((9, 0.7), (13, 1.2), (16, 1.6))},
         },
         # --- roads ---
         {
@@ -301,7 +301,7 @@ def build(tokens: dict) -> dict:
             "layout": {"line-join": "round", "line-cap": "butt"},
             "paint": {
                 "line-color": p["track"],
-                "line-width": w((12, 0.7), (14, 1.4), (17, 3)),
+                "line-width": w((12, 1.0), (14, 1.8), (17, 3.2)),
                 "line-dasharray": [3, 1.5],
             },
         },
@@ -315,7 +315,7 @@ def build(tokens: dict) -> dict:
             "layout": {"line-join": "round", "line-cap": "butt"},
             "paint": {
                 "line-color": p["path"],
-                "line-width": w((13, 0.8), (15, 1.5), (17, 2.6)),
+                "line-width": w((13, 1.1), (15, 2.0), (17, 3.0)),
                 "line-dasharray": [2, 1.5],
             },
         },
@@ -452,11 +452,11 @@ def contrast_report(tokens: dict) -> tuple[list[str], float]:
     land = pal["land"]
     # hillshade highlight is applied at about exaggeration strength, so composite it over land
     pal = dict(pal)
-    pal["hill_highlight"] = mix(land, pal["hill_highlight"], 0.45)
+    pal["hill_highlight"] = mix(land, pal["hill_highlight"], 0.6)
     map_keys = [
         "land", "park", "wood", "scrub", "urban", "water", "water_line", "building",
         "road_minor", "road_medium", "road_major", "road_highway",
-        "track", "path", "contour", "contour_index", "hill_highlight", "boundary",
+        "track", "path", "hill_highlight", "boundary",
     ]
     lines, worst = [], 99.0
     for rt, rgb in run_type_colours(tokens).items():
@@ -465,6 +465,32 @@ def contrast_report(tokens: dict) -> tuple[list[str], float]:
         worst = min(worst, c)
         lines.append(f"{rt:10s} {hexs(rgb)}  min {c:5.2f}:1 vs {k}")
     return lines, worst
+
+
+def legibility_report(tokens: dict) -> tuple[list[str], bool]:
+    """The map's own features must read against land (emulator shots at luma 11-21 were unreadable).
+
+    Contours are exempt from the route gate above: they are 0.5-1.6 px lines under the route's dark casing.
+    """
+    pal = palette(tokens)
+    land = pal["land"]
+    brightest_road = max(contrast(pal[k], land) for k in ("road_minor", "road_medium", "road_major", "road_highway"))
+    need = [
+        ("contour", 2.0), ("contour_index", 3.0), ("track", 2.0), ("path", 2.0),
+        ("label_minor", 3.0), ("label_contour", 3.0), ("label_place", 3.0),
+    ]
+    lines, ok = [], True
+    for k, floor in need:
+        c = contrast(pal[k], land)
+        good = c >= floor
+        ok &= good
+        lines.append(f"{k:14s} {hexs(pal[k])}  {c:4.2f}:1 vs land (need >= {floor:.1f}) {'ok' if good else 'FAIL'}")
+    for k in ("track", "path"):
+        c = contrast(pal[k], land)
+        good = c > brightest_road + 0.3
+        ok &= good
+        lines.append(f"{k:14s} lighter than the brightest road ({brightest_road:.2f}:1): {'ok' if good else 'FAIL'}")
+    return lines, ok
 
 
 def render(tokens: dict) -> str:
@@ -483,6 +509,13 @@ def main() -> int:
     print("\n".join(report))
     if worst < MIN_ROUTE_CONTRAST:
         print(f"FAIL: worst contrast {worst:.2f}:1", file=sys.stderr)
+        return 1
+
+    leg, leg_ok = legibility_report(tokens)
+    print("map features vs land")
+    print("\n".join(leg))
+    if not leg_ok:
+        print("FAIL: a map feature is too dim", file=sys.stderr)
         return 1
 
     text = render(tokens)

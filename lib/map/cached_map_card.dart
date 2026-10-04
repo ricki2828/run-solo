@@ -34,8 +34,12 @@ class CachedMapCard extends StatefulWidget {
     required this.queue,
     required this.renderer,
     this.routeColor,
+    this.bakedRoute = false,
   });
   final RouteGeometry route;
+
+  /// The renderer's snapshot already has the route drawn in: no overlay.
+  final bool bakedRoute;
   final Color? routeColor;
   final String Function(Size size, double pixelRatio) cacheKey;
   final MapCardStore cache;
@@ -165,11 +169,12 @@ class _CachedMapCardState extends State<CachedMapCard> {
                   ],
                 ),
               ),
-              RouteShape(
-                route: widget.route,
-                color: widget.routeColor,
-                overlay: true,
-              ),
+              if (!widget.bakedRoute)
+                RouteShape(
+                  route: widget.route,
+                  color: widget.routeColor,
+                  overlay: true,
+                ),
             ],
           ],
         );

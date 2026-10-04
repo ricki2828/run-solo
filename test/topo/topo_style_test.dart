@@ -39,7 +39,6 @@ void main() {
       _template(),
       packDir: '/data/topo/milos',
       glyphsDir: '/data/topo-assets/glyphs',
-      attribution: '© OSM | Protomaps',
     );
     final style = jsonDecode(built) as Map<String, dynamic>;
 
@@ -63,10 +62,6 @@ void main() {
         style['glyphs'],
         'file:///data/topo-assets/glyphs/{fontstack}/{range}.pbf',
       );
-    });
-
-    test('the pack text goes on the base source for the native control', () {
-      expect(style['sources']['basemap']['attribution'], '© OSM | Protomaps');
     });
 
     test('every label uses the one bundled font stack', () {
@@ -100,6 +95,37 @@ void main() {
       ]);
       // Casings under the lines they belong to.
       expect(ids.indexOf('rs-track-casing'), lessThan(ids.indexOf('rs-track')));
+    });
+
+    test('a path with quotes or backslashes still makes valid JSON', () {
+      final odd = TopoStyle.build(
+        _template(),
+        packDir: r'/data/we"ird\dir',
+        glyphsDir: '/g',
+      );
+      final style = jsonDecode(odd) as Map<String, dynamic>;
+      expect(
+        style['sources']['basemap']['url'],
+        r'pmtiles://file:///data/we"ird\dir/basemap.pmtiles',
+      );
+    });
+
+    test('route data can ride inside the file (card snapshots)', () {
+      final fc = TopoStyle.line(
+        const [(36.7, 24.4), (36.71, 24.41)],
+        colour: const Color(0xFFFF8800),
+        casing: const Color(0xFF050506),
+      );
+      final baked = jsonDecode(
+        TopoStyle.build(
+          _template(),
+          packDir: '/p',
+          glyphsDir: '/g',
+          routeData: {TopoStyle.trackSource: fc},
+        ),
+      ) as Map<String, dynamic>;
+      expect(baked['sources']['rs-track']['data']['features'], hasLength(1));
+      expect(baked['sources']['rs-plan']['data']['features'], isEmpty);
     });
 
     test('the template itself is not touched', () {
@@ -219,6 +245,28 @@ void main() {
       expect(File(v1).existsSync(), isFalse);
       expect(File(v2).existsSync(), isTrue);
       expect(v2, contains('v$kMapStyleVersion'));
+    });
+
+    test('a card style carries its route and can be dropped', () async {
+      final f = files();
+      final fc = TopoStyle.line(
+        const [(36.7, 24.4), (36.71, 24.41)],
+        colour: const Color(0xFF7CDBFF),
+        casing: const Color(0xFF050506),
+      );
+      final path = await f.cardStyleFor(
+        _pack('${packsRoot.path}/milos'),
+        key: 'abc 1',
+        data: {TopoStyle.trackSource: fc},
+      );
+      final style = jsonDecode(File(path).readAsStringSync()) as Map;
+      expect(
+        ((style['sources'] as Map)['rs-track']['data']['features'] as List),
+        hasLength(1),
+      );
+      await f.dropCardStyle(path);
+      expect(File(path).existsSync(), isFalse);
+      await f.dropCardStyle(path); // already gone: no throw
     });
 
     test('a failed load can be retried', () async {

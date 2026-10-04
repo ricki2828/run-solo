@@ -44,25 +44,27 @@ class TopoStyle {
       '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
 
   /// [template] with the pack and glyph paths filled in and the route layers
-  /// added on top. [attribution] (the pack's `map_text`) goes on the base
-  /// map source so MapLibre's own attribution control carries it too.
+  /// added on top. The paths are put into the decoded JSON values (so any
+  /// character in a path is escaped by `jsonEncode`, never spliced into
+  /// text). [routeData] puts GeoJSON straight into the route sources: a
+  /// snapshot re-reads the style file, so only data inside the file shows in
+  /// it. MapLibre's own attribution button is left without text; the app
+  /// draws its credit line.
   static String build(
     String template, {
     required String packDir,
     required String glyphsDir,
-    String? attribution,
+    Map<String, Map<String, Object?>> routeData = const {},
   }) {
-    final filled = template
-        .replaceAll('{pack}', packDir)
-        .replaceAll('{glyphs}', glyphsDir);
-    final style = (jsonDecode(filled) as Map).cast<String, Object?>();
+    final style = (_fill(jsonDecode(template), packDir, glyphsDir) as Map)
+        .cast<String, Object?>();
     _swapFonts(style['layers']);
     final sources = (style['sources'] as Map).cast<String, Object?>();
-    if (attribution != null && sources['basemap'] is Map) {
-      (sources['basemap']! as Map)['attribution'] = attribution;
-    }
     for (final id in const [planSource, trackSource, marksSource, meSource]) {
-      sources[id] = {'type': 'geojson', 'data': emptyCollection};
+      sources[id] = {
+        'type': 'geojson',
+        'data': routeData[id] ?? emptyCollection,
+      };
     }
     final layers = (style['layers'] as List).cast<Object?>();
     layers.addAll(_routeLayers);
@@ -72,6 +74,17 @@ class TopoStyle {
     };
     return jsonEncode(style);
   }
+
+  static Object? _fill(Object? v, String packDir, String glyphsDir) =>
+      switch (v) {
+        String s =>
+          s.replaceAll('{pack}', packDir).replaceAll('{glyphs}', glyphsDir),
+        List l => [for (final e in l) _fill(e, packDir, glyphsDir)],
+        Map m => {
+          for (final e in m.entries) e.key: _fill(e.value, packDir, glyphsDir),
+        },
+        _ => v,
+      };
 
   /// Every `text-font` in the style becomes [kTopoFontStack]: the style
   /// names "Noto Sans Regular" / "Italic", the bundled glyph folder is one

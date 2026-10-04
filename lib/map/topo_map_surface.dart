@@ -46,10 +46,12 @@ abstract class TopoEngine {
   });
 
   /// The one-shot map behind a Home card: must call [onSnapshot] with a
-  /// verified map-only PNG or [onFailed].
+  /// verified PNG that already has the route in [routeColor] drawn in, or
+  /// [onFailed].
   Widget card(
     InstalledPack pack,
     RouteGeometry route, {
+    required Color routeColor,
     required ValueChanged<Uint8List> onSnapshot,
     required ValueChanged<MapFailure> onFailed,
   });
@@ -176,22 +178,48 @@ class TopoMapSurfaceFactory implements MapSurfaceFactory {
       );
     }
     final hash = routeFingerprint(route);
-    return CachedMapCard(
-      route: route,
-      routeColor: routeColor,
-      cacheKey: (size, dpr) => MapSnapshotCache.keyFor(
-        runId: runId,
-        styleVersion: kMapStyleVersion,
-        routeHash: hash,
-        width: size.width,
-        height: size.height,
-        pixelRatio: dpr,
-        engine: 'topo-${pack.id}-${pack.version}',
-      ),
-      cache: _cache,
-      queue: _queue,
-      renderer: (size, onSnapshot, onFailed) =>
-          engine.card(pack, route, onSnapshot: onSnapshot, onFailed: onFailed),
+    final colour = routeColor ?? const Color(0xFFFFFFFF);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        CachedMapCard(
+          route: route,
+          routeColor: routeColor,
+          bakedRoute: true,
+          cacheKey: (size, dpr) => MapSnapshotCache.keyFor(
+            runId: runId,
+            styleVersion: kMapStyleVersion,
+            routeHash: hash,
+            width: size.width,
+            height: size.height,
+            pixelRatio: dpr,
+            engine:
+                'topo-${pack.id}-${pack.version}-'
+                '${colour.toARGB32().toRadixString(16)}',
+          ),
+          cache: _cache,
+          queue: _queue,
+          renderer: (size, onSnapshot, onFailed) => engine.card(
+            pack,
+            route,
+            routeColor: colour,
+            onSnapshot: onSnapshot,
+            onFailed: onFailed,
+          ),
+        ),
+        if (pack.region.mapText.isNotEmpty)
+          Positioned(
+            left: Space.x8,
+            right: Space.x8,
+            bottom: Space.x4,
+            child: IgnorePointer(
+              child: Align(
+                alignment: Alignment.bottomRight,
+                child: CreditPlate(pack: pack, tappable: false),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -310,13 +338,11 @@ class _Choice extends StatelessWidget {
         if (showing != null && showing.region.mapText.isNotEmpty)
           Positioned(
             left: Space.x8,
+            right: Space.x8,
             bottom: Space.x8,
-            right: 96,
-            child: IgnorePointer(
-              child: _Plate(
-                key: const ValueKey('topo-attribution'),
-                text: showing.region.mapText,
-              ),
+            child: Align(
+              alignment: Alignment.bottomRight,
+              child: CreditPlate(pack: showing),
             ),
           ),
         if (showing == null && topoWanted)
@@ -387,31 +413,135 @@ class MapStyleToggle extends StatelessWidget {
   }
 }
 
-/// A small dark plate so map text reads on any ground.
-class _Plate extends StatelessWidget {
-  const _Plate({super.key, required this.text});
-  final String text;
+/// `© OpenStreetMap contributors | Protomaps | © Mapterhorn | Copernicus
+/// DEM` as short whole names: `OSM`, `Protomaps`, `Mapterhorn`, `Copernicus`.
+List<String> creditNames(String mapText) => [
+  for (final raw in mapText.split('|'))
+    if (raw.trim().isNotEmpty)
+      raw
+          .replaceAll('©', '')
+          .replaceAll('contributors', '')
+          .replaceAll(RegExp(r'\bDEM\b'), '')
+          .replaceAll('OpenStreetMap', 'OSM')
+          .trim(),
+];
+
+/// The most whole names that fit [maxWidth] on one line, as `© A · B · C`;
+/// a trailing `…` shows when some were left out. Never cuts a word.
+String creditLine(
+  List<String> names,
+  double maxWidth,
+  TextStyle style,
+  TextDirection dir,
+) {
+  double width(String t) {
+    final p = TextPainter(
+      text: TextSpan(text: t, style: style),
+      textDirection: dir,
+      maxLines: 1,
+    )..layout();
+    return p.width;
+  }
+
+  for (var n = names.length; n > 0; n--) {
+    final line =
+        '© ${names.take(n).join(' · ')}${n < names.length ? ' …' : ''}';
+    if (width(line) <= maxWidth) return line;
+  }
+  return '©';
+}
+
+/// One compact line of credit on the map. Tapping opens the pack's full
+/// credits. MapLibre's own button is hidden under it.
+class CreditPlate extends StatelessWidget {
+  const CreditPlate({super.key, required this.pack, this.tappable = true});
+  final InstalledPack pack;
+  final bool tappable;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: t.bgBase.withValues(alpha: 0.8),
+    final style = RunSoloType.micro11.copyWith(color: t.inkSecondary);
+    final names = creditNames(pack.region.mapText);
+    final plate = LayoutBuilder(
+      builder: (context, c) {
+        // Padding of 8 each side inside the plate.
+        final line = creditLine(
+          names,
+          (c.maxWidth.isFinite ? c.maxWidth : 400) - 16,
+          style,
+          Directionality.of(context),
+        );
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: t.bgBase.withValues(alpha: 0.82),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            child: Text(
+              line,
+              key: const ValueKey('topo-attribution'),
+              maxLines: 1,
+              softWrap: false,
+              style: style,
+            ),
+          ),
+        );
+      },
+    );
+    if (!tappable) return plate;
+    return Semantics(
+      button: true,
+      label: 'Map credits',
+      excludeSemantics: true,
+      child: InkWell(
+        key: const ValueKey('topo-credits-button'),
         borderRadius: BorderRadius.circular(6),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-        child: Text(
-          text,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+        onTap: () => showCredits(context, pack),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 32),
+          child: Align(widthFactor: 1, child: plate),
         ),
       ),
     );
   }
 }
+
+/// The pack's full credits, each with its licence.
+Future<void> showCredits(BuildContext context, InstalledPack pack) =>
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) {
+        final t = Theme.of(context).extension<RunSoloTokens>()!;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(Space.x16),
+            child: Column(
+              key: const ValueKey('topo-credits-sheet'),
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Map data',
+                  style: RunSoloType.heading19.copyWith(color: t.inkPrimary),
+                ),
+                for (final c in pack.region.credits)
+                  Padding(
+                    padding: const EdgeInsets.only(top: Space.x12),
+                    child: Text(
+                      c.license == null ? c.text : '${c.text}\n${c.license}',
+                      style: RunSoloType.label13.copyWith(
+                        color: t.inkSecondary,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
 
 const String kDownloadMapPrompt = 'Download the offline map for this area';
 
