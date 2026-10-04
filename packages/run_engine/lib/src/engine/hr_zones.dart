@@ -21,24 +21,23 @@ class HrZones {
     [max * 0.60, max * 0.70, max * 0.80, max * 0.90],
   );
 
-  /// Heart-rate reserve (Karvonen): `rest + p * (max - rest)` for
-  /// p = 40/60/70/80/90 %. Bottoms are whole bpm, calibrated to Whoop's
-  /// published zones for rest 54 / max 188 (108, 136, 149, 162, 176): a
-  /// raw 134.4 becomes 136 there but 161.2 becomes 162, which no plain
-  /// ceil or round reproduces, so this is `round(raw + 0.2) + 1` (the
-  /// bottom is the next whole bpm above the previous zone's top).
-  /// Throws if [rest] is not below [max].
+  /// Heart-rate reserve (Karvonen): zone bottom = `round(rest + p * (max -
+  /// rest))` for p = 40 % (Z1 floor) and 60/70/80/90 % (Z2..Z5). Plain
+  /// maths: Whoop's published zones for rest 54 / max 188 (108, 136, 149,
+  /// 162, 176) differ from it by up to about 2 bpm (its internal rounding
+  /// is unknown); pick Custom to match them exactly. Throws if [rest] is
+  /// not below [max].
   factory HrZones.reserve(int rest, int max) {
     if (rest >= max) {
       throw ArgumentError('resting HR $rest must be below max HR $max');
     }
     final hrr = (max - rest).toDouble();
-    int bottom(double p) => (rest + p * hrr + 0.2).round() + 1;
-    return HrZones._(HrZoneMethod.reserve, (rest + 0.4 * hrr).ceil(), [
-      bottom(0.60),
-      bottom(0.70),
-      bottom(0.80),
-      bottom(0.90),
+    int at(double p) => (rest + p * hrr).round();
+    return HrZones._(HrZoneMethod.reserve, at(0.4), [
+      at(0.60),
+      at(0.70),
+      at(0.80),
+      at(0.90),
     ]);
   }
 

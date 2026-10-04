@@ -3,16 +3,19 @@ import 'package:test/test.dart';
 
 void main() {
   group('reserve', () {
-    test('matches Whoop for rest 54 / max 188', () {
+    // Plain Karvonen. Whoop's own zones for rest 54 / max 188 are 108,
+    // 136, 149, 162, 176: up to about 2 bpm off (unknown internal
+    // rounding), so exact matching is what Custom is for (see below).
+    test('rest 54 / max 188 is plain Karvonen', () {
       final z = HrZones.reserve(54, 188);
       expect(
         [for (var k = 1; k <= 5; k++) z.bottom(k)],
-        [108, 136, 149, 162, 176],
+        [108, 134, 148, 161, 175],
       );
-      expect([for (var k = 1; k <= 4; k++) z.top(k)], [135, 148, 161, 175]);
+      expect([for (var k = 1; k <= 4; k++) z.top(k)], [133, 147, 160, 174]);
       expect(z.top(5), isNull);
-      expect(z.zoneOf(135), 1);
-      expect(z.zoneOf(136), 2);
+      expect(z.zoneOf(133), 1);
+      expect(z.zoneOf(134), 2);
       expect(z.zoneOf(188), 5);
     });
 
@@ -68,6 +71,15 @@ void main() {
       expect(z.zoneOf(119), 1);
       expect(z.zoneOf(120), 2);
       expect(z.bottom(1), 100);
+    });
+
+    test('accepts the Whoop zones for rest 54 / max 188 exactly', () {
+      final z = HrZones.custom([136, 149, 162, 176], z1Floor: 108);
+      expect(
+        [for (var k = 1; k <= 5; k++) z.bottom(k)],
+        [108, 136, 149, 162, 176],
+      );
+      expect([for (var k = 1; k <= 4; k++) z.top(k)], [135, 148, 161, 175]);
     });
 
     test('rejects non-ascending, equal, out-of-range and wrong length', () {

@@ -50,17 +50,17 @@ void main() {
     expect(find.text('171–190 bpm'), findsOneWidget); // Z5
   });
 
-  testWidgets('reserve shows the Whoop ranges', (tester) async {
+  testWidgets('reserve shows plain Karvonen ranges', (tester) async {
     await pumpSection(
       tester,
       whoop.copyWith(hrZoneMethod: engine.HrZoneMethod.reserve),
     );
     for (final r in [
-      '108–135 bpm',
-      '136–148 bpm',
-      '149–161 bpm',
-      '162–175 bpm',
-      '176–188 bpm',
+      '108–133 bpm',
+      '134–147 bpm',
+      '148–160 bpm',
+      '161–174 bpm',
+      '175–188 bpm',
     ]) {
       expect(find.text(r), findsOneWidget, reason: r);
     }
@@ -94,8 +94,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('hr-method-custom')));
     await tester.pump();
     expect(s.value.hrZoneMethod, engine.HrZoneMethod.custom);
-    expect(s.value.customZones, [108, 136, 149, 162, 176]);
-    expect(find.text(' – 135'), findsOneWidget);
+    expect(s.value.customZones, [108, 134, 148, 161, 175]);
+    expect(find.text(' – 133'), findsOneWidget);
   });
 
   testWidgets('custom: non-ascending shows an error and is not saved', (
