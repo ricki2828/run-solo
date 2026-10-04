@@ -29,8 +29,16 @@ void main() {
         ];
         await pumpApp(
           tester,
-          fakeServices(runs: runs, plan: state == 'home' ? null : plan),
-          home: state == 'plan' ? PlanScreen(now: now) : HomeScreen(now: now),
+          fakeServices(
+            runs: runs,
+            plan: state == 'home' || state == 'start' ? null : plan,
+          ),
+          home: state == 'plan'
+              ? PlanScreen(now: now)
+              : state == 'start'
+              ? null
+              : HomeScreen(now: now),
+          pushRoute: state == 'start' ? Routes.start : null,
         );
         tester.view.physicalSize = Size(1080, height * 3);
         await pumpTimes(tester, 8);
