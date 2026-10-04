@@ -14,6 +14,7 @@ import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 import 'package:path_provider/path_provider.dart';
 
 import '../state/live_route.dart';
+import '../theme/theme.dart';
 import 'map_surface.dart';
 import 'route_builder.dart';
 
@@ -48,10 +49,12 @@ class TopoPack {
     }
 
     await copy('assets/topo/sbg.pmtiles', '$dir/sbg.pmtiles');
-    await copy(
-      'assets/topo/glyphs/NotoSans/0-255.pbf',
-      '$dir/glyphs/NotoSans/0-255.pbf',
-    );
+    for (final r in const ['0-255', '256-511', '8192-8447', '8448-8703']) {
+      await copy(
+        'assets/topo/glyphs/NotoSans/$r.pbf',
+        '$dir/glyphs/NotoSans/$r.pbf',
+      );
+    }
     await File('$dir/style.json').writeAsString(jsonEncode(topoStyle(dir)));
     return TopoPack._(dir);
   }
@@ -204,14 +207,14 @@ class TopoMap extends StatefulWidget {
   const TopoMap({
     super.key,
     required this.route,
-    this.color = const Color(0xFFF2EFE6),
+    this.color,
     this.centre,
     this.zoom = 14.5,
     this.viaJson = false,
     this.onReady,
   });
   final List<GeoPoint> route;
-  final Color color;
+  final Color? color;
   final GeoPoint? centre;
   final double zoom;
   final bool viaJson;
@@ -232,7 +235,10 @@ class _TopoMapState extends State<TopoMap> {
     future: _pack,
     builder: (context, snap) {
       final pack = snap.data;
-      if (pack == null) return const ColoredBox(color: Color(0xFF050506));
+      if (pack == null)
+        return ColoredBox(
+          color: Theme.of(context).extension<RunSoloTokens>()!.bgBase,
+        );
       final c = widget.centre ?? const GeoPoint(1.3115, 103.8150);
       return ml.MapLibreMap(
         styleString: widget.viaJson ? pack.styleJson : pack.stylePath,
@@ -256,7 +262,7 @@ class _TopoMapState extends State<TopoMap> {
         ml.LineOptions(
           geometry: [for (final p in widget.route) ml.LatLng(p.lat, p.lon)],
           lineColor:
-              '#${(widget.color.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}',
+              '#${((widget.color ?? Theme.of(context).extension<RunSoloTokens>()!.inkPrimary).toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}',
           lineWidth: 4,
         ),
       );
