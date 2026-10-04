@@ -117,6 +117,8 @@ Data types. "Collected" in Play's sense includes what the Maps SDK sends to Goog
 | Messages / Photos / Audio / Files / Calendar / Contacts / Web browsing / Search history | any | No | | | | | TTS cues are generated on-device; nothing recorded |
 | Files and docs | **Files and docs** | **No** | No | | | | **Follow a route (3 Oct):** the runner may pick one GPX/TCX file with the system file picker (Storage Access Framework, no storage permission). It is read on the phone and only a simplified copy of the route (points, optional elevation) is kept in the app's own `files/state/routes.json`, which Auto Backup includes like the rest of `state/`. Nothing is uploaded; the "Off route" alert and turn hints are computed on the phone and spoken by on-device TTS. No new Data safety declaration. The terrain map is the same Maps SDK, so the Location rows above already cover it. |
 
+Offline maps (4-Oct): the user taps Download in Settings and the app fetches map files from our Cloudflare R2 bucket. The request carries the region picked and the IP address, plus a User-Agent naming the app and version. No new Play data type: the IP address is already covered by the approximate location row, and nothing is added to Device IDs or App activity. Re-check against the live form when Topo tiles land.
+
 Notes the founder should confirm against the live form (plan §18.6 leaves these to him):
 
 1. Open-Meteo is declared as **collected** (the app itself sends the rounded coordinate to a service provider), not as **shared**.

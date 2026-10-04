@@ -1,0 +1,57 @@
+{
+  "regions": [
+    {
+      "attribution": {
+        "credits": [
+          {
+            "license": "ODbL 1.0 (Produced Work)",
+            "text": "\u00a9 OpenStreetMap contributors",
+            "url": "https://www.openstreetmap.org/copyright"
+          },
+          {
+            "text": "Basemap tiles by Protomaps (OSM, Natural Earth)",
+            "url": "https://protomaps.com"
+          },
+          {
+            "text": "\u00a9 Mapterhorn",
+            "url": "https://mapterhorn.com/attribution"
+          },
+          {
+            "license": "COPERNICUS full, free and open license",
+            "text": "Produced using Copernicus WorldDEM-30 \u00a9 DLR e.V. 2010-2014 and \u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved",
+            "url": "https://dataspace.copernicus.eu/explore-data/data-collections/copernicus-contributing-missions/collections-description/COP-DEM"
+          }
+        ],
+        "map_text": "\u00a9 OpenStreetMap contributors | Protomaps | \u00a9 Mapterhorn | Copernicus DEM"
+      },
+      "bbox": [
+        24.3,
+        36.64,
+        24.55,
+        36.76
+      ],
+      "files": [
+        {
+          "name": "basemap.pmtiles",
+          "sha256": "9baa33b9b833a62f189c8f6af16187e2b66a05439280be86742b787e225c64b7",
+          "size": 1286967
+        },
+        {
+          "name": "contours.pmtiles",
+          "sha256": "bd3fa8fee22ed0d3c110d11d0b0eaba520cb16dfd241d024f444c56974b76722",
+          "size": 196158
+        },
+        {
+          "name": "terrain.pmtiles",
+          "sha256": "26cd8906363a31691b2dd2e640df5ccd3686956ba17f49c849f1d4d6ab6774bd",
+          "size": 1639428
+        }
+      ],
+      "id": "milos",
+      "name": "Milos, Greece",
+      "total_bytes": 3122553,
+      "version": "20261002"
+    }
+  ],
+  "schema": 1
+}

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'app/routes.dart';
 import 'app/services.dart';
 import 'screens/fix_laps_screen.dart';
+import 'screens/offline_maps_screen.dart';
 import 'screens/pairing_screen.dart';
 import 'screens/permissions_screen.dart';
 import 'screens/recording_screen.dart';
@@ -119,6 +120,7 @@ class RunSoloApp extends StatelessWidget {
                   runId: settings.arguments as String,
                 ),
                 Routes.settings => SettingsScreen(now: now),
+                Routes.offlineMaps => const OfflineMapsScreen(),
                 _ => null,
               };
               if (page == null) return null;

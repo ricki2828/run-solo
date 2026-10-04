@@ -31,8 +31,17 @@ import '../state/sessions.dart';
 import '../state/settings.dart';
 import '../state/weather.dart';
 import '../state/zone_memento.dart';
+import '../topo/pack_manager.dart';
 
 const bool kFakePlatform = bool.fromEnvironment('RUN_SOLO_FAKE');
+
+/// Where offline map packs are hosted (the bucket root holding regions.json).
+/// Public Cloudflare R2 bucket; override with `--dart-define=TOPO_BASE_URL=`
+/// (empty turns Offline maps off: no PackManager, no Settings row).
+const String kTopoBaseUrl = String.fromEnvironment(
+  'TOPO_BASE_URL',
+  defaultValue: 'https://pub-b1d26357d23144f8a9c96f35588be8fe.r2.dev',
+);
 
 class AppServices {
   AppServices({
@@ -53,6 +62,7 @@ class AppServices {
     ZoneMementoStore? zoneMemento,
     this.weather,
     this.live,
+    this.topo,
     PlaceGateway? placeGateway,
     List<ExportTarget>? exportTargets,
     Future<Directory> Function()? tempDir,
@@ -112,6 +122,10 @@ class AppServices {
 
   /// Weather per finished run (W1); null in tests and the fake APK.
   final WeatherQueue? weather;
+
+  /// Offline map packs; null when no hosting is configured (and in most
+  /// tests), which hides Settings > Offline maps.
+  final PackManager? topo;
 
   /// The live compare's context at Start (LC1); null in tests and the fake
   /// APK. Only used when `kLiveCompare` is on.
@@ -251,6 +265,7 @@ class AppServices {
     List<engine.SavedRoute> routes = const [],
     LiveContextSource? live,
     WeatherQueue? weather,
+    PackManager? topo,
     RunStore? history,
     PlaceGateway? places,
     List<ExportTarget>? exportTargets,
@@ -296,6 +311,7 @@ class AppServices {
       )..preload(routes),
       live: live,
       weather: weather,
+      topo: topo,
       placeGateway: places,
       tempDir: () async => Directory.systemTemp,
       exportTargets:
@@ -332,6 +348,14 @@ class AppServices {
       Directory('${support.path}/runs'),
       profile: () => MaxHr.profileFor(settings.settings, DateTime.now()),
     );
+    PackManager? topo;
+    if (kTopoBaseUrl.isNotEmpty) {
+      topo = PackManager(
+        root: Directory('${support.path}/topo'),
+        baseUrl: Uri.parse(kTopoBaseUrl),
+      );
+      await topo.load();
+    }
     final services = AppServices(
       recorder: PigeonRecorderGateway(),
       ble: PigeonBleGateway(),
@@ -351,6 +375,7 @@ class AppServices {
         provider: const OpenMeteoProvider(),
         enabled: () => settings.settings.weatherPerRun,
       ),
+      topo: topo,
       sessions: sessions,
       courseNames: courseNames,
       routes: routes,

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Run Supreme privacy policy</title>
-<meta name="description" content="What Run Supreme stores on your phone, what you can choose to send, what Google Maps, Open-Meteo and your phone's geocoder receive, and the controls you have.">
+<meta name="description" content="What Run Supreme stores on your phone, what you can choose to send, what Google Maps, our offline map storage, Open-Meteo and your phone's geocoder receive, and the controls you have.">
 <style>
   :root { --bg:#0b0b0c; --ink:#ece7dc; --mute:#9c978d; --line:#26262a; --accent:#2fd7e6; }
   @media (prefers-color-scheme: light) { :root { --bg:#f6f3ec; --ink:#141414; --mute:#5c5a55; --line:#dcd7cc; --accent:#0a8f9c; } }
@@ -112,6 +112,11 @@
   screen is off. Run Supreme does not send your position to Google; Google only sees the map area
   the map asks for.</p>
 
+  <h3>Offline maps</h3>
+  <p>Offline maps you choose to download come from our map storage (Cloudflare); the download reveals which region you picked and your IP address, nothing else. Maps then work offline. Nothing else is sent with the download: no account, no device ID, no run data. Cloudflare
+  sees the IP address the request comes from, as any web request does. Maps only download when you
+  tap Download in Settings, under Offline maps.</p>
+
   <h2>3. Weather from Open-Meteo</h2>
   <p>To adjust for heat and humidity, Run Supreme can fetch the weather for each run from
   <a href="https://open-meteo.com" rel="noopener">Open-Meteo</a>. The request contains your run's
@@ -143,7 +148,7 @@
     <tr><td>Nearby devices (Bluetooth)</td><td>To pair a heart-rate strap. Bluetooth is not used to work out where you are.</td></tr>
     <tr><td>Notifications</td><td>The recording notification with its LAP and Stop buttons, and cues while your screen is off.</td></tr>
     <tr><td>Health Connect (write only)</td><td>Only if you switch on Health Connect in Settings, Send runs to, or tap Send to Health Connect on a run. Health Connect asks you for four write permissions: exercise, exercise route, heart rate and distance. Run Supreme writes the finished run (its laps and pauses, route, heart rate and distance) and reads nothing back from Health Connect. You can turn it off in Settings, or withdraw the permissions in Health Connect, at any time.</td></tr>
-    <tr><td>Internet</td><td>Map tiles from Google and weather from Open-Meteo, as described above. Place names come from your phone's own geocoder, as described above. If you connect Intervals.icu, the runs you send to it and the planned workouts you add to its calendar. Nothing else.</td></tr>
+    <tr><td>Internet</td><td>Map tiles from Google, offline maps you choose to download from Cloudflare, and weather from Open-Meteo, as described above. Place names come from your phone's own geocoder, as described above. If you connect Intervals.icu, the runs you send to it and the planned workouts you add to its calendar. Nothing else.</td></tr>
   </table>
 
   <h2>5. What we do not do</h2>
