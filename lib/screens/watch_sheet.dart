@@ -1,0 +1,222 @@
+import 'package:flutter/material.dart';
+import 'package:run_engine/run_engine.dart' as engine;
+
+import '../app/format.dart';
+import '../app/services.dart';
+import '../platform/gateway.dart' show Units;
+import '../state/watch_guide.dart';
+import '../theme/theme.dart';
+
+/// "Send to watch" for a structured session. This is also the hook for the
+/// 4-week plan: build a [engine.FitWorkout] with `FitWorkout.fromSession`
+/// (pass `workPace` for a True Pace window) and open this sheet.
+Future<void> showWatchWorkoutSheet(
+  BuildContext context, {
+  required engine.FitWorkout workout,
+}) => _show(context, WatchSheet.workout(workout: workout));
+
+/// "Send to watch" for a route: a past run's route or a saved route.
+Future<void> showWatchRouteSheet(
+  BuildContext context, {
+  required engine.SavedRoute route,
+}) => _show(context, WatchSheet.route(route: route));
+
+Future<void> _show(BuildContext context, Widget sheet) {
+  final t = Theme.of(context).extension<RunSoloTokens>()!;
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    showDragHandle: true,
+    backgroundColor: t.bgBase,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(Radii.sheet)),
+    ),
+    builder: (_) => sheet,
+  );
+}
+
+class WatchSheet extends StatefulWidget {
+  const WatchSheet.workout({super.key, required engine.FitWorkout this.workout})
+    : route = null;
+  const WatchSheet.route({super.key, required engine.SavedRoute this.route})
+    : workout = null;
+
+  final engine.FitWorkout? workout;
+  final engine.SavedRoute? route;
+
+  @override
+  State<WatchSheet> createState() => _WatchSheetState();
+}
+
+class _WatchSheetState extends State<WatchSheet> {
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _share() async {
+    final exporter = AppServices.of(context).watch;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final w = widget.workout;
+    final error = w != null
+        ? await exporter.shareWorkout(w)
+        : await exporter.shareRoute(widget.route!);
+    if (!mounted) return;
+    if (error != null) {
+      setState(() {
+        _busy = false;
+        _error = error;
+      });
+      return;
+    }
+    Navigator.of(context).pop();
+  }
+
+  /// "Hard reps: heart rate 162 to 181 bpm" (or a pace window), from the
+  /// first step that carries a target; null when none does.
+  String? _targetLine(Units units) {
+    final w = widget.workout;
+    if (w == null) return null;
+    for (final s in w.steps) {
+      final lo = s.target.low, hi = s.target.high;
+      if (s.target.isOpen || lo == null || hi == null) continue;
+      if (s.target.typeCode == 1) {
+        return 'Hard reps carry a heart rate range of ${lo - 100} to '
+            '${hi - 100} bpm, worked out from your max heart rate.';
+      }
+      // Speed in mm/s: the low edge is the slow pace.
+      final slow = Fmt.pace(1000000 / lo, units);
+      final fast = Fmt.pace(1000000 / hi, units);
+      return 'Hard reps carry a pace range of $fast to $slow per '
+          '${units == Units.mi ? 'mi' : 'km'}.';
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final units = AppServices.of(context).settings.settings.units;
+    final workout = widget.workout;
+    final isWorkout = workout != null;
+    final name = isWorkout ? workout.name : widget.route!.name;
+    final target = _targetLine(units);
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          Space.screenGutter,
+          Space.x4,
+          Space.screenGutter,
+          Space.x24,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'SEND TO WATCH',
+              style: RunSoloType.title28.copyWith(color: t.inkPrimary),
+            ),
+            const SizedBox(height: Space.x8),
+            Text(
+              name,
+              key: const ValueKey('watch-name'),
+              style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+            ),
+            const SizedBox(height: Space.x4),
+            Text(
+              isWorkout
+                  ? 'A workout file for your watch. Warm-up, reps, recoveries '
+                        'and cool-down are in it.'
+                  : 'A GPX course file for navigation on your watch.',
+              style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+            ),
+            if (target != null) ...[
+              const SizedBox(height: Space.x8),
+              Text(
+                target,
+                key: const ValueKey('watch-target'),
+                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+              ),
+            ],
+            const SizedBox(height: Space.x16),
+            OutlinedButton(
+              key: const ValueKey('watch-share'),
+              onPressed: _busy ? null : _share,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, 48),
+                foregroundColor: t.inkPrimary,
+                side: BorderSide(color: t.lineHair),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(Radii.button),
+                ),
+              ),
+              child: Text(
+                isWorkout ? 'Share workout file' : 'Share course file',
+                style: RunSoloType.body15,
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: Space.x12),
+              Text(
+                _error!,
+                key: const ValueKey('watch-error'),
+                style: RunSoloType.body15.copyWith(color: t.semWarn),
+              ),
+            ],
+            const SizedBox(height: Space.x16),
+            Text(
+              'WHAT WORKS ON YOUR WATCH',
+              style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+            ),
+            for (final e in WatchGuide.entries)
+              _Brand(
+                entry: e,
+                text: isWorkout ? e.workout : e.route,
+                works: isWorkout ? e.workoutWorks : true,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Brand extends StatelessWidget {
+  const _Brand({required this.entry, required this.text, required this.works});
+  final WatchGuideEntry entry;
+  final String text;
+  final bool works;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Container(
+      key: ValueKey('watch-${entry.brand.name}'),
+      margin: const EdgeInsets.only(top: Space.x8),
+      padding: const EdgeInsets.only(top: Space.x12),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: t.lineHair)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            entry.label,
+            style: RunSoloType.body17.copyWith(
+              color: works ? t.inkPrimary : t.inkMuted,
+            ),
+          ),
+          const SizedBox(height: Space.x4),
+          Text(
+            text,
+            style: RunSoloType.label13.copyWith(
+              color: works ? t.inkSecondary : t.inkMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

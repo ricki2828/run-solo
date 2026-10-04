@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/services.dart';
+import '../state/history_store.dart';
 import '../state/intervals_icu.dart';
 import '../state/send_runs.dart';
 import '../theme/theme.dart';
+import 'watch_sheet.dart';
 
 /// Privacy promise, one line, on every Send surface (founder 2 Oct).
 const String kSendPrivacyLine =
@@ -46,6 +48,34 @@ class _SendSheetState extends State<SendSheet> {
   String? _error;
   bool _canInstall = false;
   ExportTarget? _installFor;
+
+  /// This run's route as a course for a watch; null for an indoor run or
+  /// before it is loaded.
+  engine.SavedRoute? _watchRoute;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_loadWatchRoute);
+  }
+
+  Future<void> _loadWatchRoute() async {
+    final services = AppServices.of(context);
+    try {
+      final detail = await services.history.load(widget.runId);
+      if (detail == null) return;
+      final r = detail.summary;
+      final route = const engine.RouteImporter().fromRun(
+        detail.run,
+        name:
+            r.customTitle ??
+            (r.place != null ? '${r.place} run' : runIdentityTitle(r)),
+      );
+      if (mounted) setState(() => _watchRoute = route);
+    } catch (_) {
+      // No fixes, or too short to be a route: no watch block.
+    }
+  }
 
   Future<void> _share(ExportFormat format, {bool thenStrava = false}) async {
     final services = AppServices.of(context);
@@ -199,6 +229,18 @@ class _SendSheetState extends State<SendSheet> {
                   ),
                 ),
             ],
+            if (_watchRoute != null)
+              _Block(
+                label: 'Route to your watch',
+                blurb: 'The route of this run as a GPX course',
+                child: _SheetButton(
+                  key: const ValueKey('send-watch-route'),
+                  label: 'Send route to watch',
+                  onTap: _busy
+                      ? null
+                      : () => showWatchRouteSheet(context, route: _watchRoute!),
+                ),
+              ),
             if (_error != null) ...[
               const SizedBox(height: Space.x12),
               Text(

@@ -14,6 +14,7 @@ import '../platform/transfer_gateway.dart' show RouteFileTooBig;
 import '../state/history_store.dart';
 import '../state/route_library.dart';
 import '../theme/theme.dart';
+import 'watch_sheet.dart';
 
 /// Said once under the route on Start and in the sheet: the turn cues are the
 /// route's shape, not map data.
@@ -412,6 +413,13 @@ class _RouteTile extends StatelessWidget {
                 ),
               ),
             ),
+          ),
+          IconButton(
+            key: ValueKey('route-watch-${route.id}'),
+            tooltip: 'Send to watch',
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            onPressed: () => showWatchRouteSheet(context, route: route),
+            icon: Icon(Icons.watch_outlined, color: t.inkSecondary),
           ),
           IconButton(
             key: ValueKey('route-delete-${route.id}'),
