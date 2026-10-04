@@ -1,6 +1,3 @@
-import 'dart:io' show Platform;
-
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -40,11 +37,7 @@ class ShellScreen extends StatefulWidget {
 }
 
 class _ShellScreenState extends State<ShellScreen> {
-  // Debug builds only: the iOS CI smoke picks a tab with RUN_SOLO_TAB (no tap driver there).
-  AppTab _tab = kDebugMode
-      ? AppTab.values.asNameMap()[Platform.environment['RUN_SOLO_TAB']] ??
-            AppTab.home
-      : AppTab.home;
+  AppTab _tab = AppTab.home;
   bool _checked = false;
   late bool _onboarding = widget.onboarding;
 
