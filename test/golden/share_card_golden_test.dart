@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/map/route_builder.dart';
 import 'package:run_solo/share/share_card.dart';
 import 'package:run_solo/theme/theme.dart';
@@ -38,7 +39,7 @@ void main() {
       time: '41:20',
       truePace: '4:58/km',
       verdict: 'FASTER',
-      verdictBetter: true,
+      verdictHeadline: engine.VerdictHeadline.faster,
       route: route,
     ),
     'scores': const ScoresCardData(

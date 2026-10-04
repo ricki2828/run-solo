@@ -115,6 +115,71 @@ class _LapLineMarkPainter extends CustomPainter {
   bool shouldRepaint(_LapLineMarkPainter old) => old.color != color;
 }
 
+/// The whole Lap Line mark: the R cut at the lap line, with the Arc line
+/// running out of the leg (final frame of the Lap Draw intro).
+class LapLineFullMark extends StatelessWidget {
+  const LapLineFullMark({super.key, this.height = 48});
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final s = height / LapLineGeometry.cap;
+    return ExcludeSemantics(
+      child: CustomPaint(
+        size: Size(
+          (LapLineGeometry.markTailEndX - LapLineGeometry.rLeft) * s,
+          height,
+        ),
+        painter: _LapLineFullPainter(t.inkPrimary, t.accentArc),
+      ),
+    );
+  }
+}
+
+class _LapLineFullPainter extends CustomPainter {
+  _LapLineFullPainter(this.bone, this.arc);
+  final Color bone;
+  final Color arc;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.height / LapLineGeometry.cap;
+    canvas.translate(-LapLineGeometry.rLeft * s, 0);
+    canvas.scale(s);
+    final cut = Path()
+      ..addRect(
+        Rect.fromLTRB(
+          0,
+          LapLineGeometry.cutY - LapLineGeometry.cutThickness / 2,
+          LapLineGeometry.markTailEndX + 10,
+          LapLineGeometry.cutY + LapLineGeometry.cutThickness / 2,
+        ),
+      );
+    canvas.drawPath(
+      Path.combine(PathOperation.difference, lapLineR(), cut),
+      Paint()..color = bone,
+    );
+    final t = LapLineGeometry.lineThickness;
+    final r = Radius.circular(t / 2);
+    canvas.drawRRect(
+      RRect.fromLTRBAndCorners(
+        LapLineGeometry.legEntryX,
+        LapLineGeometry.cutY - t / 2,
+        LapLineGeometry.markTailEndX,
+        LapLineGeometry.cutY + t / 2,
+        topRight: r,
+        bottomRight: r,
+      ),
+      Paint()..color = arc,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_LapLineFullPainter old) =>
+      old.bone != bone || old.arc != arc;
+}
+
 /// Full-bleed 2 px Bone rule with a 24 px gap (design brief §2.2).
 class LapLineDivider extends StatelessWidget {
   const LapLineDivider({super.key, this.gapAt = 0.5});
