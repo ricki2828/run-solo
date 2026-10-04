@@ -8,6 +8,7 @@ import 'screens/pairing_screen.dart';
 import 'screens/permissions_screen.dart';
 import 'screens/recording_screen.dart';
 import 'screens/run_detail_screen.dart';
+import 'screens/plan_screen.dart';
 import 'screens/settings_screen.dart';
 import 'state/settings.dart';
 import 'screens/shell_screen.dart';
@@ -121,6 +122,7 @@ class RunSoloApp extends StatelessWidget {
                 ),
                 Routes.settings => SettingsScreen(now: now),
                 Routes.offlineMaps => const OfflineMapsScreen(),
+                Routes.plan => PlanScreen(now: now),
                 _ => null,
               };
               if (page == null) return null;

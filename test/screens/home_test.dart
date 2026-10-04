@@ -154,19 +154,36 @@ void main() {
     expect(find.byType(StartScreen), findsOneWidget);
   });
 
-  testWidgets('plan input has priority without inventing enrolment', (
+  testWidgets('a running plan sets the line, the reason and Start', (
     tester,
   ) async {
-    await pumpApp(
-      tester,
-      fakeServices(),
-      home: HomeScreen(
-        now: now,
-        planHeadline: (name: 'Tempo', subtitle: 'Week 3, session 2 of 3.'),
-      ),
+    final plan = engine.BlockPlanner.build(
+      lane: engine.IdentityLane.aerobic,
+      perWeek: 3,
+      start: testNow,
     );
-    expect(find.text('Week 3, session 2 of 3.'), findsOneWidget);
-    expect(find.text('Start Tempo'), findsOneWidget);
+    final services = fakeServices(plan: plan);
+    await pumpApp(tester, services, home: HomeScreen(now: now));
+    expect(
+      find.text('This week: 0 of 3 done · Next: Norwegian 4x4 today'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('home-recommendation')), findsOneWidget);
+    expect(find.text('Start Norwegian 4x4'), findsOneWidget);
+    await tester.tap(find.byType(FilledButton));
+    await pumpTimes(tester, 4);
+    expect(find.byType(StartScreen), findsOneWidget);
+    expect(services.settings.settings.reps, 3);
+  });
+
+  testWidgets('no plan offers to build one; the link opens Plan', (
+    tester,
+  ) async {
+    await pumpApp(tester, fakeServices(), home: HomeScreen(now: now));
+    final link = find.byKey(const ValueKey('home-plan-link'));
+    expect(link, findsOneWidget);
+    expect(find.text('Build a 4-week plan around your scores'), findsOneWidget);
+    expect(find.byKey(const ValueKey('home-plan-line')), findsNothing);
   });
 
   testWidgets('recent activity lists the last sessions of any kind', (

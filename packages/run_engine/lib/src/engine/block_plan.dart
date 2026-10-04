@@ -359,7 +359,7 @@ abstract final class BlockPlanner {
 
   /// Week 3 is the light one for LONG (week 4 is its test); week 4 is the
   /// light one, with the test, for the rest.
-  static bool _light(IdentityLane lane, int w) =>
+  static bool isLight(IdentityLane lane, int w) =>
       lane == IdentityLane.long ? w == 3 : w == 4;
 
   static String _laneName(IdentityLane l) => l.name.toUpperCase();
@@ -371,7 +371,7 @@ abstract final class BlockPlanner {
     required int typical,
     required int longBase,
   }) {
-    final light = _light(lane, week);
+    final light = isLight(lane, week);
     final test = week == weeks;
     BlockSession easy(String why) => BlockSession(
       id: '',

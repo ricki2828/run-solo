@@ -17,6 +17,7 @@ import '../platform/gateway.dart';
 import '../platform/health_gateway.dart';
 import '../platform/pigeon_gateway.dart';
 import '../platform/transfer_gateway.dart';
+import '../state/block_plan.dart';
 import '../state/courses.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
@@ -56,6 +57,7 @@ class AppServices {
     required this.health,
     SessionsController? sessions,
     CourseNamesController? courseNames,
+    BlockPlanController? plans,
     RouteLibrary? routes,
     RecordingController? recording,
     DateTime Function()? now,
@@ -82,6 +84,7 @@ class AppServices {
        sessions = sessions ?? SessionsController(MemorySessionsStore()),
        courseNames =
            courseNames ?? CourseNamesController(MemoryCourseNamesStore()),
+       plans = plans ?? BlockPlanController(MemoryBlockPlanStore()),
        routes = routes ?? RouteLibrary(MemoryRouteStore(), now: now),
        recording =
            recording ??
@@ -234,6 +237,9 @@ class AppServices {
   /// K1: the runner's names for event courses (`state/courses.json`).
   final CourseNamesController courseNames;
 
+  /// The 4-week progress block (`state/plan.json`), if one is running.
+  final BlockPlanController plans;
+
   /// Saved custom Intervals templates (`state/sessions.json`, plan §3.4).
   final SessionsController sessions;
 
@@ -262,6 +268,7 @@ class AppServices {
     DateTime Function()? now,
     List<CustomSession> customSessions = const [],
     Map<String, String> courseNames = const {},
+    engine.BlockPlan? plan,
     List<engine.SavedRoute> routes = const [],
     LiveContextSource? live,
     WeatherQueue? weather,
@@ -304,6 +311,7 @@ class AppServices {
       )..preload(customSessions),
       courseNames: CourseNamesController(MemoryCourseNamesStore(courseNames))
         ..preload(courseNames),
+      plans: BlockPlanController(MemoryBlockPlanStore(plan))..preload(plan),
       routes: RouteLibrary(
         MemoryRouteStore(routes),
         now: now,
@@ -340,6 +348,10 @@ class AppServices {
       FileCourseNamesStore(Directory('${support.path}/state')),
     );
     await courseNames.load();
+    final plans = BlockPlanController(
+      FileBlockPlanStore(Directory('${support.path}/state')),
+    );
+    await plans.load();
     final routes = RouteLibrary(
       FileRouteStore(Directory('${support.path}/state')),
     );
@@ -378,6 +390,7 @@ class AppServices {
       topo: topo,
       sessions: sessions,
       courseNames: courseNames,
+      plans: plans,
       routes: routes,
     );
     services.startWeather();
