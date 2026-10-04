@@ -24,6 +24,9 @@ void main() {
     expect(find.textContaining('GPS is the pace'), findsOneWidget);
     expect(find.text('NEEDED'), findsNWidgets(2), reason: 'location, battery');
     expect(find.text('DENIED'), findsOneWidget, reason: 'notifications');
+    // The longer privacy paragraph (offline maps line) pushes the last rows
+    // below the fold of a lazy list.
+    await tester.scrollUntilVisible(find.text('OPTIONAL'), 200);
     expect(find.text('OPTIONAL'), findsOneWidget, reason: 'bluetooth');
     expect(
       find.textContaining('Recording needs precise location'),

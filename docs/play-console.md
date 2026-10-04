@@ -51,7 +51,7 @@ Founder approves the wording (plan §18.9 item 8) before anything is typed into 
 > - Send any run to Health Connect, Intervals.icu, or as a TCX or GPX file (works with Strava)
 >
 > Private by default
-> No account. No feed. No ads. Your routes, times and heart rate stay on your phone unless you choose to send them. Map tiles come from Google, which sees the map area you view and your IP address. Weather comes from Open-Meteo using your location rounded to about 10 km. Your phone's own geocoder names a run's start point and may use Google Play services.
+> No account. No feed. No ads. Your routes, times and heart rate stay on your phone unless you choose to send them. Map tiles come from Google, which sees the map area you view and your IP address. Offline maps you choose to download come from our map storage (Cloudflare); the download reveals which region you picked and your IP address, nothing else. Maps then work offline. Weather comes from Open-Meteo using your location rounded to about 10 km. Your phone's own geocoder names a run's start point and may use Google Play services.
 >
 > Run Supreme is a training tool, not medical advice. Scores and estimates are guides based on research, not measurements of your health.
 
@@ -116,6 +116,8 @@ Data types. "Collected" in Play's sense includes what the Maps SDK sends to Goog
 | Financial info | any | No | | | | | |
 | Messages / Photos / Audio / Files / Calendar / Contacts / Web browsing / Search history | any | No | | | | | TTS cues are generated on-device; nothing recorded |
 | Files and docs | **Files and docs** | **No** | No | | | | **Follow a route (3 Oct):** the runner may pick one GPX/TCX file with the system file picker (Storage Access Framework, no storage permission). It is read on the phone and only a simplified copy of the route (points, optional elevation) is kept in the app's own `files/state/routes.json`, which Auto Backup includes like the rest of `state/`. Nothing is uploaded; the "Off route" alert and turn hints are computed on the phone and spoken by on-device TTS. No new Data safety declaration. The terrain map is the same Maps SDK, so the Location rows above already cover it. |
+
+Offline maps (4-Oct): the user taps Download in Settings and the app fetches map files from our Cloudflare R2 bucket. The request carries the region picked and the IP address, plus a User-Agent naming the app and version. No new Play data type: the IP address is already covered by the approximate location row, and nothing is added to Device IDs or App activity. Re-check against the live form when Topo tiles land.
 
 Notes the founder should confirm against the live form (plan §18.6 leaves these to him):
 

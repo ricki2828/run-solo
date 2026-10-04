@@ -26,7 +26,9 @@ const String kPrivacyParagraph =
     'Your recorded route, times and heart rate stay on your phone unless you '
     'choose to send them. '
     'Map tiles come from Google, which sees the map area you view and your '
-    'IP address. Weather comes from Open-Meteo using '
+    'IP address. Offline maps you choose to download come from our map '
+    'storage (Cloudflare); the download reveals which region you picked and '
+    'your IP address, nothing else. Maps then work offline. Weather comes from Open-Meteo using '
     'your location rounded to about 10 km. Your phone\'s own geocoder names '
     'a run\'s start point and may use Google Play services.';
 const String kNoAnalyticsLine = 'No analytics of our own. No account. No ads.';
