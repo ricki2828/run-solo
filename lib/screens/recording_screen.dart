@@ -1581,199 +1581,202 @@ class _FreeRunBlock extends StatelessWidget {
     // before the card is allowed to cover anything. Never the dial, the trio
     // or the heart rate; no number under 36 sp.
     final cardH = CompareCard.heightFor(compact: compact);
+    // The card's slot is zero tall until a card shows, then opens (and
+    // closes) over ~250 ms, pushing the lower clusters down instead of
+    // covering them. Reduced motion: instant.
+    final slotOpen = reserveCard && cardShowing;
     return Expanded(
-      child: LayoutBuilder(
-        builder: (context, c) {
-          const divider = 1.0;
-          const minGap = Space.x8 + divider;
-          final width = c.maxWidth;
-          final half = (width - Space.x16) / 2;
-          // Plans from the roomiest to the leanest.
-          final plans = <_FreePlan>[
-            _FreePlan(compact ? 52 : 64, half, true, true, big: true),
-            _FreePlan(compact ? 52 : 64, half, true, true),
-            _FreePlan(compact ? 48 : 56, half, true, true),
-            _FreePlan(compact ? 44 : 48, 112, true, true),
-            _FreePlan(44, 112, false, true),
-            _FreePlan(44, 112, false, false),
-            _FreePlan(40, 96, false, false),
-          ];
-          double heightOf(_FreePlan p, {required bool reserve}) =>
-              _planH(p, width, showGap, showElevation, routeH, minGap) +
-              (reserve ? minGap + cardH : 0);
-          // The card's own slot first; the leanest plan with the card
-          // covering the tail only when nothing roomier fits.
-          var reserve = reserveCard;
-          _FreePlan? fit;
-          if (reserve) {
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(end: slotOpen ? 1.0 : 0.0),
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+        builder: (context, open, _) => LayoutBuilder(
+          builder: (context, c) {
+            const divider = 1.0;
+            const minGap = Space.x8 + divider;
+            final width = c.maxWidth;
+            final half = (width - Space.x16) / 2;
+            // Plans from the roomiest to the leanest.
+            final plans = <_FreePlan>[
+              _FreePlan(compact ? 52 : 64, half, true, true, big: true),
+              _FreePlan(compact ? 52 : 64, half, true, true),
+              _FreePlan(compact ? 48 : 56, half, true, true),
+              _FreePlan(compact ? 44 : 48, 112, true, true),
+              _FreePlan(44, 112, false, true),
+              _FreePlan(44, 112, false, false),
+              _FreePlan(40, 96, false, false),
+            ];
+            double heightOf(_FreePlan p, {required double slot}) =>
+                _planH(p, width, showGap, showElevation, routeH, minGap) + slot;
+            // The card's own slot when some plan fits with it open; else the
+            // card covers the tail while it shows (below).
+            final full = minGap + cardH;
+            final reserve =
+                reserveCard &&
+                plans.any((p) => heightOf(p, slot: full) <= c.maxHeight);
+            final slot = reserve ? open * full : 0.0;
+            _FreePlan? fit;
             for (final p in plans) {
-              if (heightOf(p, reserve: true) <= c.maxHeight) {
+              if (heightOf(p, slot: slot) <= c.maxHeight) {
                 fit = p;
                 break;
               }
             }
-            if (fit == null) reserve = false;
-          }
-          if (fit == null) {
-            for (final p in plans) {
-              if (heightOf(p, reserve: false) <= c.maxHeight) {
-                fit = p;
-                break;
-              }
-            }
-          }
-          final plan = fit ?? plans.last;
-          final size = EqualFigures.sizeFor(width, plan.trioCap);
-          final gapOn = showGap && plan.gap;
-          final trueFigure = gapOn
-              ? AuxFigure(
-                  label: 'TRUE PACE',
-                  value: Fmt.pace(
-                    engine.RunTruePace.live(
-                      paceSecPerKm: s.livePaceSecPerKm,
-                      gradePct: s.gradePct,
-                      slowdown: startSlowdown,
-                      distanceM: s.totalDistanceM,
+            final plan = fit ?? plans.last;
+            final size = EqualFigures.sizeFor(width, plan.trioCap);
+            final gapOn = showGap && plan.gap;
+            final trueFigure = gapOn
+                ? AuxFigure(
+                    label: 'TRUE PACE',
+                    value: Fmt.pace(
+                      engine.RunTruePace.live(
+                        paceSecPerKm: s.livePaceSecPerKm,
+                        gradePct: s.gradePct,
+                        slowdown: startSlowdown,
+                        distanceM: s.totalDistanceM,
+                      ),
+                      units,
                     ),
-                    units,
-                  ),
+                    labelColor: secondary,
+                    valueColor: t.inkPrimary,
+                    valueKey: const ValueKey('live-true-pace'),
+                  )
+                : null;
+            final bigDial = SizedBox(
+              width: width * 0.6,
+              child: PaceDial(
+                currentSecPerKm: s.livePaceSecPerKm,
+                referenceSecPerKm: runAverage,
+                units: units,
+                onZone: s.zone > 0,
+                paceStyle: AuxFigure.style.copyWith(fontSize: 56),
+              ),
+            );
+            final dial = plan.big
+                ? (trueFigure == null
+                      ? Center(child: bigDial)
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            bigDial,
+                            const SizedBox(width: Space.x16),
+                            Expanded(child: trueFigure),
+                          ],
+                        ))
+                : PaceDial(
+                    currentSecPerKm: s.livePaceSecPerKm,
+                    referenceSecPerKm: runAverage,
+                    units: units,
+                    onZone: s.zone > 0,
+                    beside: true,
+                    dialWidth: plan.dialWidth == half ? null : plan.dialWidth,
+                    paceStyle: AuxFigure.style.copyWith(fontSize: 40),
+                    extra: trueFigure,
+                  );
+            final clusters = <Widget>[
+              EqualFigures(
+                figures: liveHero(s, ctl, units).figures,
+                valueKeys: const [
+                  ValueKey('free-distance'),
+                  ValueKey('timer'),
+                  ValueKey('run-average'),
+                ],
+                cap: size,
+                labelColor: secondary,
+                valueColor: t.inkPrimary,
+              ),
+              dial,
+              if (showElevation)
+                ElevationRow(
+                  s: s,
+                  units: units,
                   labelColor: secondary,
                   valueColor: t.inkPrimary,
-                  valueKey: const ValueKey('live-true-pace'),
-                )
-              : null;
-          final bigDial = SizedBox(
-            width: width * 0.6,
-            child: PaceDial(
-              currentSecPerKm: s.livePaceSecPerKm,
-              referenceSecPerKm: runAverage,
-              units: units,
-              onZone: s.zone > 0,
-              paceStyle: AuxFigure.style.copyWith(fontSize: 56),
-            ),
-          );
-          final dial = plan.big
-              ? (trueFigure == null
-                    ? Center(child: bigDial)
-                    : Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          bigDial,
-                          const SizedBox(width: Space.x16),
-                          Expanded(child: trueFigure),
-                        ],
-                      ))
-              : PaceDial(
-                  currentSecPerKm: s.livePaceSecPerKm,
-                  referenceSecPerKm: runAverage,
+                  showGrade: plan.grade,
+                ),
+              if (route != null)
+                RouteToGoRow(
+                  route: route,
                   units: units,
-                  onZone: s.zone > 0,
-                  beside: true,
-                  dialWidth: plan.dialWidth == half ? null : plan.dialWidth,
-                  paceStyle: AuxFigure.style.copyWith(fontSize: 40),
-                  extra: trueFigure,
-                );
-          final clusters = <Widget>[
-            EqualFigures(
-              figures: liveHero(s, ctl, units).figures,
-              valueKeys: const [
-                ValueKey('free-distance'),
-                ValueKey('timer'),
-                ValueKey('run-average'),
-              ],
-              cap: size,
-              labelColor: secondary,
-              valueColor: t.inkPrimary,
-            ),
-            dial,
-            if (showElevation)
-              ElevationRow(
-                s: s,
-                units: units,
-                labelColor: secondary,
-                valueColor: t.inkPrimary,
-                showGrade: plan.grade,
+                  labelColor: secondary,
+                  valueColor: t.inkPrimary,
+                  warnColor: t.semWarn,
+                ),
+            ];
+            final contentH = heightOf(plan, slot: slot);
+            // Spare height is shared by the top margin, the gaps and the
+            // bottom, so the clusters sit evenly (no dead band under the
+            // heart rate).
+            final gaps = clusters.length - 1 + (reserve ? open : 0);
+            final share = (c.maxHeight - contentH) / (gaps + 2);
+            final top = share.clamp(0.0, Space.x32);
+            final between = (minGap + share).clamp(minGap, 96.0);
+            Widget sep() => SizedBox(
+              height: between,
+              child: Center(
+                child: Container(height: divider, color: t.lineHair),
               ),
-            if (route != null)
-              RouteToGoRow(
-                route: route,
-                units: units,
-                labelColor: secondary,
-                valueColor: t.inkPrimary,
-                warnColor: t.semWarn,
-              ),
-          ];
-          final contentH = heightOf(plan, reserve: reserve);
-          // Spare height is shared by the top margin, the gaps and the
-          // bottom, so the clusters sit evenly (no dead band under the
-          // heart rate).
-          final gaps = clusters.length - 1 + (reserve ? 1 : 0);
-          final share = (c.maxHeight - contentH) / (gaps + 2);
-          final top = share.clamp(0.0, Space.x24);
-          final between = (minGap + share).clamp(minGap, 56.0);
-          Widget sep() => SizedBox(
-            height: between,
-            child: Center(
-              child: Container(height: divider, color: t.lineHair),
-            ),
-          );
-          final children = <Widget>[SizedBox(height: top)];
-          // Without a slot of its own the card covers the last cluster(s)
-          // until it is 'cardH' tall; they hide while it shows.
-          var coverFrom = clusters.length;
-          if (!reserve && reserveCard) {
-            var h = 0.0;
-            while (coverFrom > 2 && h < cardH) {
-              coverFrom--;
-              h +=
-                  (coverFrom == clusters.length - 1 ? 0 : minGap) +
-                  (clusters[coverFrom] is RouteToGoRow ? routeH : _figH);
+            );
+            final children = <Widget>[SizedBox(height: top)];
+            // Without a slot of its own the card covers the last cluster(s)
+            // until it is 'cardH' tall; they hide while it shows.
+            var coverFrom = clusters.length;
+            if (!reserve && reserveCard) {
+              var h = 0.0;
+              while (coverFrom > 2 && h < cardH) {
+                coverFrom--;
+                h +=
+                    (coverFrom == clusters.length - 1 ? 0 : minGap) +
+                    (clusters[coverFrom] is RouteToGoRow ? routeH : _figH);
+              }
             }
-          }
-          final covered = <Widget>[];
-          for (var i = 0; i < clusters.length; i++) {
-            if (i > 0 && i != coverFrom && i < coverFrom) children.add(sep());
-            if (i >= coverFrom) {
-              if (i > coverFrom) covered.add(const SizedBox(height: minGap));
-              covered.add(clusters[i]);
-            } else {
-              children.add(clusters[i]);
+            final covered = <Widget>[];
+            for (var i = 0; i < clusters.length; i++) {
+              if (i > 0 && i != coverFrom && i < coverFrom) children.add(sep());
+              if (i >= coverFrom) {
+                if (i > coverFrom) covered.add(const SizedBox(height: minGap));
+                covered.add(clusters[i]);
+              } else {
+                children.add(clusters[i]);
+              }
             }
-          }
-          if (covered.isNotEmpty) {
-            children.add(sep());
-            children.add(
-              CompareSlot(
-                link: card,
-                child: Visibility(
-                  visible: !cardShowing,
-                  maintainSize: true,
-                  maintainAnimation: true,
-                  maintainState: true,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: covered,
+            if (covered.isNotEmpty) {
+              children.add(sep());
+              children.add(
+                CompareSlot(
+                  link: card,
+                  child: Visibility(
+                    visible: !cardShowing,
+                    maintainSize: true,
+                    maintainAnimation: true,
+                    maintainState: true,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: covered,
+                    ),
                   ),
                 ),
-              ),
+              );
+            }
+            if (reserve) {
+              children.add(SizedBox(height: open * between));
+              children.add(
+                CompareSlot(
+                  link: card,
+                  child: SizedBox(width: double.infinity, height: open * cardH),
+                ),
+              );
+            }
+            return Column(
+              key: const ValueKey('free-run-block'),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
             );
-          }
-          if (reserve) {
-            children.add(SizedBox(height: between));
-            children.add(
-              CompareSlot(
-                link: card,
-                child: SizedBox(width: double.infinity, height: cardH),
-              ),
-            );
-          }
-          return Column(
-            key: const ValueKey('free-run-block'),
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: children,
-          );
-        },
+          },
+        ),
       ),
     );
   }

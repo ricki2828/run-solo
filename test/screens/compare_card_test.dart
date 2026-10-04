@@ -114,6 +114,29 @@ const _liveKeys = [
 ];
 
 void main() {
+  group('Free and Trail: the card slot', () {
+    for (final h in [800, 640]) {
+      testWidgets('is zero tall with no card, open when one shows at $h', (
+        tester,
+      ) async {
+        final (fake, _) = await openRun(
+          tester,
+          mode: RecordMode.free,
+          seconds: 300,
+        );
+        tester.view.physicalSize = Size(1080, h * 3.0);
+        await step(tester, fake, 5);
+        final slot = find.descendant(
+          of: find.byKey(const ValueKey('free-run-block')),
+          matching: find.byType(CompositedTransformTarget),
+        );
+        expect(tester.getSize(slot).height, 0);
+        await show(tester, fake, km3());
+        expect(tester.getSize(slot).height, greaterThan(80));
+      });
+    }
+  });
+
   group('Free and Trail: the card covers no live number', () {
     for (final mode in [RecordMode.free, RecordMode.trail]) {
       for (final h in [800, 640]) {
