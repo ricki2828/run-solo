@@ -1,0 +1,15 @@
+<!doctype html><meta charset=utf8><link rel=stylesheet href=/nm/maplibre-gl/dist/maplibre-gl.css>
+<style>html,body,#m{margin:0;height:100%;background:#0A0B0D}</style><div id=m></div>
+<script src=/nm/pmtiles/dist/pmtiles.js></script>
+<script type=module>import * as maplibregl from "/nm/maplibre-gl/dist/maplibre-gl.mjs";
+const q=new URLSearchParams(location.search);
+maplibregl.addProtocol('pmtiles',new pmtiles.Protocol().tile);
+const map=new maplibregl.Map({container:'m',style:'/style.json?pack='+q.get('pack'),center:[+q.get('lon'),+q.get('lat')],zoom:+q.get('z'),fadeDuration:0,attributionControl:false});
+map.on('error',e=>{window.__err=e.error&&e.error.message;console.log('error',window.__err)});
+map.on('load',()=>{
+ if(q.get('route')==='1'){const c=map.getCenter();const pts=[];for(let i=0;i<40;i++)pts.push([c.lng-0.004+i*0.0002,c.lat+Math.sin(i/4)*0.0015]);
+  map.addSource('r',{type:'geojson',data:{type:'Feature',geometry:{type:'LineString',coordinates:pts}}});
+  const cols=['#7CDBFF','#B48CFF','#FF6EC7','#B8C04C'];
+  cols.forEach((col,k)=>{map.addLayer({id:'r'+k,type:'line',source:'r',paint:{'line-color':col,'line-width':4,'line-translate':[0,(k-1.5)*14]}})});}
+ map.once('idle',()=>setTimeout(()=>{window.__done=true},500));});
+</script>
