@@ -178,7 +178,7 @@ class TopoMapSurfaceFactory implements MapSurfaceFactory {
       );
     }
     final hash = routeFingerprint(route);
-    final colour = routeColor ?? const Color(0xFFFFFFFF);
+    final colour = routeColor ?? Theme.of(context).extension<RunSoloTokens>()!.inkPrimary;
     return Stack(
       fit: StackFit.expand,
       children: [
