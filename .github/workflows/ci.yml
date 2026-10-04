@@ -28,6 +28,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       native: ${{ steps.diff.outputs.native }}
+      core: ${{ steps.diff.outputs.core }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,7 +38,25 @@ jobs:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+          REF: ${{ github.ref }}
         run: |
+          # core: the Kotlin/Native job (macOS minutes) runs only when the shared core or this
+          # workflow changed: PRs by their diff, main pushes by the pushed range, else always.
+          core_re='^(android/core-jvm/|\.github/workflows/ci\.yml$)'
+          if [ "$EVENT" = "pull_request" ]; then
+            range="$BASE...$HEAD"
+          elif [ "$EVENT" = "push" ] && [ "$REF" = "refs/heads/main" ] && [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            range="$BEFORE..$SHA"
+          else
+            range=""
+          fi
+          if [ -z "$range" ] || git diff --name-only "$range" | grep -qE "$core_re"; then
+            echo "core=true" >> "$GITHUB_OUTPUT"; echo "core changed (or not a diffable event): Kotlin/Native job runs"
+          else
+            echo "core=false" >> "$GITHUB_OUTPUT"; echo "core unchanged: Kotlin/Native job skipped"
+          fi
           if [ "$EVENT" != "pull_request" ]; then
             echo "native=true" >> "$GITHUB_OUTPUT"; echo "not a PR: full emulator set"; exit 0
           fi
@@ -180,7 +199,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Test
         working-directory: android/core-jvm
-        run: ./gradlew test --no-daemon
+        run: ./gradlew jvmTest --no-daemon
       - name: Regenerate fixtures; any drift is uploaded (fixtures are never hand-edited)
         if: ${{ !cancelled() }}
         working-directory: android/core-jvm
@@ -203,6 +222,52 @@ jobs:
       - name: Fail on fixture drift
         if: ${{ !cancelled() && env.drift == '1' }}
         run: exit 1
+
+  core-native:
+    # The shared recorder core (Kotlin Multiplatform, plan K1) on Kotlin/Native: the common tests,
+    # every contract fixture byte for byte included, on macosArm64 and the iOS simulator. The JVM
+    # compile of common code accepts JVM-only stdlib calls; only a Native compile catches them.
+    name: core on Kotlin/Native (macOS + iOS simulator)
+    needs: changes
+    if: ${{ needs.changes.result != 'success' || needs.changes.outputs.core == 'true' }}
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - uses: gradle/actions/setup-gradle@v4
+      # restore + save, not actions/cache: its post step skips the save when the job fails.
+      - name: Kotlin/Native toolchain cache
+        id: konan
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-kotlin-2.4.0 # bump with Kotlin in core-jvm/build.gradle.kts
+      - name: Native tests
+        working-directory: android/core-jvm
+        run: |
+          # Newest iPhone simulator on the image (the Gradle default device name may not exist).
+          sim=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)["devices"]
+          ios = sorted((r, x["name"]) for r, xs in d.items() if "iOS" in r for x in xs if x["name"].startswith("iPhone"))
+          print(ios[-1][1] if ios else "")')
+          echo "simulator: $sim"
+          ./gradlew macosArm64Test iosSimulatorArm64Test --no-daemon --continue "-Pcore.simDevice=$sim"
+      - name: Save Kotlin/Native toolchain
+        if: ${{ !cancelled() && steps.konan.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-kotlin-2.4.0 # bump with Kotlin in core-jvm/build.gradle.kts
+      - uses: actions/upload-artifact@v4
+        if: ${{ failure() }}
+        with:
+          name: core-native-test-reports
+          path: android/core-jvm/build/reports/tests/
 
   build-apk:
     name: build debug APK + 16 KB check

@@ -30,7 +30,7 @@ The dev host is aarch64 Linux with no Android SDK (`aapt2` cannot run there), so
 Android-module tests are built **only in GitHub Actions**. Every push to `main` and every PR runs:
 
 1. `flutter` job: Pigeon drift check, `dart format`, `flutter analyze`, `flutter test`, `dart test` in `packages/run_engine`.
-2. `core-jvm` job: `./gradlew test` in `android/core-jvm` (pure JVM).
+2. `core-jvm` job: `./gradlew jvmTest` in `android/core-jvm` (pure JVM); `core-native` (macOS, only when the core changed) runs the same tests on Kotlin/Native.
 3. `build-apk` job: `flutter build apk --debug --flavor play` (uploaded as artifact **`run-solo-debug-apk`**), a release AAB build (debug-signed for now), and the 16 KB page-size check on both (ELF `LOAD` alignment of every 64-bit `.so` plus `zipalign -P 16`). Fails the job if misaligned.
 4. `emulator` job: API 29 / 34 / 36 x86_64 emulators install and launch the debug APK, then run the replay-mode lifecycle test.
 5. `release-aab` job (**manual run or a `v*` tag only**, not on PRs): `flutter build appbundle --release --flavor play`, signed with the Play upload key, signer + 16 KB + Maps meta-data verified, artifacts `run-solo-play-aab-<ref>` (the `.aab` to upload to Play; native debug symbols are inside it via `ndk.debugSymbolLevel = "FULL"`) and `run-solo-play-symbols-<ref>` (R8 `mapping.txt`, Dart split-debug-info) kept 90 days. Upload `mapping.txt` with the release in Play Console so vitals traces are readable. The job preflights the upload key with `keytool` before building.
@@ -56,7 +56,7 @@ The debug package is `app.runsolo.debug`, so it installs beside a Play build.
 
 - Flutter: `~/tools/flutter/bin` (add `~/tools/bin` first on PATH: it holds an `unzip` shim the Flutter tool needs). Use it for `flutter create`, `flutter analyze`, `flutter test`, `dart run pigeon`, `dart test`. **Do not** run `flutter doctor --android-licenses` or any `flutter build`/`flutter run` for Android here.
 - Memory: `earlyoom` SIGTERMs the largest process once available RAM drops below ~10% (~1.5 GB). The Flutter tool build, the Dart analysis server (~860 MB) and Gradle each need headroom, so run one heavy thing at a time and expect `flutter analyze` / `flutter test` to be killed when other services are busy; CI is the gate. `export FLUTTER_TOOL_ARGS=--old_gen_heap_size=400` keeps the tool smaller.
-- Gradle: `android/core-jvm/gradle.properties` disables the daemon, caps the JVM at 768 MB and runs the Kotlin compiler in-process. `cd android/core-jvm && ./gradlew test` is the only Gradle invocation that works on the host.
+- Gradle: `android/core-jvm/gradle.properties` disables the daemon, caps the JVM at 768 MB and runs the Kotlin compiler in-process. `cd android/core-jvm && ./gradlew jvmTest` is the only Gradle invocation that works on the host.
 - Java 17 is present; no Android SDK, no Gradle install (the wrapper downloads Gradle 9.3.1).
 
 ## Dogfood build (the one to put on the Pixel)

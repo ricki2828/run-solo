@@ -1,0 +1,90 @@
+package app.runsolo.core.contract
+
+import app.runsolo.core.json.Json
+import app.runsolo.core.testio.File
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class EventTraceFixtureTest {
+    private fun lines(): List<Map<String, Any?>> = EventTraceFixture.generate().lineSequence().filter { it.isNotBlank() }.map { Json.parseObject(it) }.toList()
+
+    @Test
+    fun `checked-in event trace matches the generator byte for byte`() {
+        val file = File(EventTraceFixture.DIR, "${EventTraceFixture.NAME}.ndjson")
+        assertTrue(file.exists(), "missing ${file.path}; regenerate with EventTraceFixtureKt.main")
+        assertEquals(EventTraceFixture.generate(), file.readText(), "event trace drifted; regenerate and copy to run_engine")
+    }
+
+    @Test
+    fun `trace shape - 9 laps pause one kill gap phases in order ticks monotonic`() {
+        val ev = lines()
+        val laps = ev.filter { it["kind"] == "lap" }
+        assertEquals(8, laps.size, "8 lap markers → 9 laps in the file (4 work, 3 recovery, no recovery after rep 4)")
+        assertEquals(listOf("notification") + List(7) { "auto" }, laps.map { it["source"] })
+        // Active lap time excludes the pause (rep 2 work) and the dark gap (rep 3 work): every work lap is 240 s.
+        assertEquals(List(4) { 240_000L }, laps.filterIndexed { i, _ -> i % 2 == 1 }.map { it["activeMs"] })
+        assertEquals(listOf(60_000L) + List(3) { 180_000L }, laps.filterIndexed { i, _ -> i % 2 == 0 }.map { it["activeMs"] })
+        assertEquals(240_000L + 20_000L, (laps[3]["tMs"] as Long) - (laps[2]["tMs"] as Long), "wall time of rep 2 includes the pause")
+        assertEquals(240_000L + 30_000L, (laps[5]["tMs"] as Long) - (laps[4]["tMs"] as Long), "wall time of rep 3 includes the gap")
+        val phases = ev.filter { it["kind"] == "phase" }.map { it["phase"] }
+        assertEquals(listOf("warmup", "work", "recovery", "work", "recovery", "work", "recovery", "work", "cooldown"), phases)
+        val states = ev.filter { it["kind"] == "state" }.map { it["state"] }
+        assertEquals(listOf("recording", "paused", "recording", "recording", "finalising", "idle"), states)
+        val ticks = ev.filter { it["kind"] == "tick" }
+        val ts = ticks.map { it["elapsedMs"] as Long }
+        assertTrue(ts.zipWithNext().all { (a, b) -> b > a }, "elapsed monotonic")
+        // The kill: one jump of 30 s between consecutive ticks, nothing else larger than 1 s.
+        val jumps = ts.zipWithNext().map { (a, b) -> b - a }.filter { it > 1000 }
+        assertEquals(listOf(31_000L), jumps)
+        // Paused ticks: state paused, distance frozen.
+        val pausedTicks = ticks.filter { it["state"] == "paused" }
+        assertEquals(20, pausedTicks.size)
+        assertEquals(1, pausedTicks.map { it["totalDistanceM"] }.toSet().size)
+        // Rep 3 work continues after the resume with its countdown intact.
+        val afterResume = ticks.first { (it["elapsedMs"] as Long) > 960_000 + 31_000 }
+        assertEquals("work", afterResume["phase"])
+        assertEquals(3L, afterResume["repIndex"])
+        assertTrue((afterResume["phaseRemainingMs"] as Long) in 170_000L..180_000L, "remaining ${afterResume["phaseRemainingMs"]}")
+        // Cue lines keep `kind: cue` and carry the cue name in `cue`.
+        val cues = ev.filter { it["kind"] == "cue" }.map { it["cue"] }
+        assertEquals(6 * 7, cues.count { it != "stop" && it != "lastRep" }) // 6 cues per timed phase × 7 phases (rep 1's start rides with the LAP)
+        assertEquals(1, cues.count { it == "lastRep" }) // at the start of rep 4
+        assertEquals("stop", cues.last())
+        // Status snapshots carry laps and mode.
+        val status = ev.last { it["kind"] == "status" }
+        assertEquals("intervals", status["mode"])
+        assertEquals(8, (status["laps"] as List<*>).size)
+        // Every live lap's distance is the tick-stream total at the lap time (PR #26 review P3):
+        // manual laps wait for the next tick and are interpolated, auto laps land on a tick.
+        val tickTs = ticks.map { it["elapsedMs"] as Long }
+        for (lap in ev.filter { it["kind"] == "lap" }) {
+            val tMs = lap["tMs"] as Long
+            val i = tickTs.indexOfFirst { it >= tMs }
+            val at = if (tickTs[i] == tMs) (ticks[i]["totalDistanceM"] as Number).toDouble() else {
+                val (t0, t1) = tickTs[i - 1] to tickTs[i]
+                val (d0, d1) = (ticks[i - 1]["totalDistanceM"] as Number).toDouble() to (ticks[i]["totalDistanceM"] as Number).toDouble()
+                d0 + (d1 - d0) * (tMs - t0) / (t1 - t0)
+            }
+            assertEquals(at, (lap["distanceM"] as Number).toDouble(), 0.1, "lap ${lap["index"]}")
+        }
+        // The manual lap's press goes out at once (lapPending) and names what the lap ends and
+        // starts; its lap line (same index, time, active time and source) follows.
+        val pending = ev.filter { it["kind"] == "lapPending" }
+        assertEquals(1, pending.size)
+        val p = pending.single()
+        val lap0 = laps.first()
+        for (k in listOf("index", "tMs", "activeMs", "source")) assertEquals(lap0[k], p[k], k)
+        assertTrue(ev.indexOf(p) < ev.indexOf(lap0), "lapPending before its lap")
+        assertEquals(listOf("warmup", 0L, "work", 1L, 240_000L), listOf(p["endedPhase"], p["endedRepIndex"], p["nextPhase"], p["nextRepIndex"], p["nextPhaseDurationMs"]))
+        // ... and the session in the Pigeon shape, with the step being run.
+        assertEquals("norwegian-4x4", (status["spec"] as Map<*, *>)["templateId"])
+        assertEquals(7, ((status["spec"] as Map<*, *>)["steps"] as List<*>).size)
+        val recovery1 = ev.first { it["kind"] == "status" && it["phase"] == "recovery" }
+        assertEquals(1L, recovery1["stepIndex"])
+        assertEquals(180_000L, recovery1["stepRemainingMs"])
+        assertEquals(null, recovery1["stepRemainingM"])
+        val warmup = ev.first { it["kind"] == "status" }
+        assertEquals(null, warmup["stepIndex"])
+    }
+}

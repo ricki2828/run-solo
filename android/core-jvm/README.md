@@ -1,8 +1,21 @@
 # core-jvm
 
-Pure Kotlin/JVM recording core (plan §2 rule 6). No Android imports, no third-party
+Pure Kotlin recording core (plan §2 rule 6). No Android imports, no third-party
 dependencies; the Android shell (`RecorderService`, `BleHrClient`, `LapInput`) is a thin
 adapter over these packages.
+
+Kotlin Multiplatform since K1 (iOS plan §2.2): the code lives in `src/commonMain`; Android
+consumes the `jvm` target exactly as before (`includeBuild`, coordinates `app.runsolo:core-jvm`).
+The few JVM-only calls go through `platform/Platform.kt` (expect/actual): on the JVM each actual
+is the original call (`Math.sin`, `String.format`, `Instant`, `GZIPOutputStream`...), so Android
+output is unchanged; the Apple actuals (`src/appleMain`) use pure-Kotlin equivalents proven equal
+in `jvmTest` (`CommonFormattersJvmTest`, `FdlibmJvmTest`) plus POSIX and zlib. Apple targets
+(iosArm64, iosSimulatorArm64, macosArm64) are only declared on a macOS host.
+
+Rules for common code: no `java.*`, no `String.format`, no `String.toByteArray()` (use
+`encodeToByteArray`), no `kotlin.math` sin/cos/atan2 (import them from `platform`). Kotlin/Native
+rejects `, ( ) #` in backticked test names (the JVM rejects `: . ; [ ] / < >`). The JVM compile
+does not catch the stdlib ones; the CI `core-native` job does.
 
 | Package | What |
 |---|---|
@@ -27,5 +40,6 @@ the founder's Whoop broadcast and check them in as a parser fixture — some bro
 no contact (null HR); FLP fix-time vs receipt-time skew against the ±2 s HR join; a real
 `am kill` mid-run on API 29/34/36 (the emulator job).
 
-Tests: `./gradlew test` (CI, or on the host when RAM allows). Without Gradle, `kotlinc` +
+Tests: `./gradlew jvmTest` (CI, or on the host when RAM allows); `macosArm64Test` and
+`iosSimulatorArm64Test` on a Mac (CI `core-native`). Without Gradle, `kotlinc` +
 `junit-platform-console-standalone` compile and run the same sources in well under 1 GB.

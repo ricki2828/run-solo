@@ -19,7 +19,9 @@ SOURCES = [
     ("lib", "*.dart"),
     ("packages/run_engine/lib", "*.dart"),
     ("android/app/src/main/kotlin", "*.kt"),
-    ("android/core-jvm/src/main/kotlin", "*.kt"),
+    ("android/core-jvm/src/commonMain/kotlin", "*.kt"),
+    ("android/core-jvm/src/jvmMain/kotlin", "*.kt"),
+    ("android/core-jvm/src/appleMain/kotlin", "*.kt"),
 ]
 RESOURCES = ["android/app/src/main/res", "android/app/src/play", "fastlane", "store"]
 ALLOWED_FILES = {"lib/app/event_names.dart"}
