@@ -314,10 +314,11 @@ class IntervalsIcuClient {
         '${dateLocal.year}-${two(dateLocal.month)}-${two(dateLocal.day)}';
     return IntervalsRequest(
       method: 'POST',
-      uri: intervalsUri(
-        c.athleteId,
-        'events/bulk',
-      ).replace(queryParameters: {'upsert': 'true'}),
+      // Two segments: a tail with a slash would be escaped as %2F.
+      uri: intervalsUri(c.athleteId).replace(
+        pathSegments: ['api', 'v1', 'athlete', c.athleteId, 'events', 'bulk'],
+        queryParameters: {'upsert': 'true'},
+      ),
       headers: {
         'Authorization': intervalsAuthHeader(c.apiKey),
         'Accept': 'application/json',

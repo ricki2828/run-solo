@@ -33,7 +33,7 @@ abstract final class WatchGuide {
       brand: WatchBrand.garmin,
       label: 'Garmin',
       workoutWorks: true,
-      intervals: 'Intervals.icu sends it to Garmin Connect once you link Garmin there (Settings, Connections, tick Upload planned workouts). It reaches the watch up to a week ahead.',
+      intervals: 'Goes to Garmin Connect once you link Garmin there (Settings, Connections, tick Upload planned workouts). It reaches the watch up to a week ahead.',
       workout:
           'Needs a computer. Garmin Connect on your phone cannot take a '
           'workout file. Plug the watch into a computer with its USB cable '
@@ -49,7 +49,7 @@ abstract final class WatchGuide {
       brand: WatchBrand.coros,
       label: 'COROS',
       workoutWorks: false,
-      intervals: 'Intervals.icu sends it to COROS. Add the Intervals.icu Training Plan to your calendar in the COROS app once.',
+      intervals: 'Goes to COROS. Add the Intervals.icu Training Plan to your calendar in the COROS app once.',
       workout:
           'Not supported. COROS only imports finished activities, not '
           'planned workouts. Build the session in the COROS app by hand.',
@@ -61,7 +61,7 @@ abstract final class WatchGuide {
       brand: WatchBrand.suunto,
       label: 'Suunto',
       workoutWorks: false,
-      intervals: 'Intervals.icu sends it through SuuntoPlus Guides. Documented for Suunto 3, 5 and 9 watches; newer ones are not confirmed.',
+      intervals: 'Goes through SuuntoPlus Guides. Documented for Suunto 3, 5 and 9 watches; newer ones are not confirmed.',
       workout:
           'Not supported. We found no way to import a workout file into '
           'the Suunto app. Build the session in the app by hand.',

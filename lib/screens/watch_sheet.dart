@@ -245,8 +245,8 @@ class _WatchSheetState extends State<WatchSheet> {
             const SizedBox(height: Space.x4),
             Text(
               isWorkout
-                  ? 'A workout file for your watch. Warm-up, reps, recoveries '
-                        'and cool-down are in it.'
+                  ? 'Warm-up, reps, recoveries and cool-down, ready for your '
+                        'watch.'
                   : 'A GPX course file for navigation on your watch.',
               style: RunSoloType.body15.copyWith(color: t.inkSecondary),
             ),
@@ -299,7 +299,10 @@ class _WatchSheetState extends State<WatchSheet> {
               _Brand(
                 entry: e,
                 lines: isWorkout
-                    ? ['Intervals.icu: ${e.intervals}', 'File: ${e.workout}']
+                    ? [
+                        'Via Intervals.icu: ${e.intervals}',
+                        'File: ${e.workout}',
+                      ]
                     : [e.route],
                 works:
                     !isWorkout ||
