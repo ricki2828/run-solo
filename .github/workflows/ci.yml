@@ -70,7 +70,7 @@ jobs:
       - name: Pigeon output is committed and current
         run: |
           dart run pigeon --input pigeons/platform_api.dart
-          git diff --exit-code -- lib/platform android/app/src/main/kotlin/app/runsolo/platform
+          git diff --exit-code -- lib/platform android/app/src/main/kotlin/app/runsolo/platform ios/Runner/PlatformApi.g.swift
       - name: Format
         # Generated Pigeon output is excluded: it is checked for drift above, not formatted.
         run: |

@@ -7,6 +7,7 @@ import '../app/services.dart';
 import '../map/map_surface.dart';
 import '../map/route_builder.dart';
 import '../platform/gateway.dart';
+import '../platform/host_caps.dart';
 import '../state/history_store.dart';
 import '../state/send_runs.dart';
 import '../state/zone_histogram.dart';
@@ -262,7 +263,9 @@ class RunDetailBody extends StatelessWidget {
         TimeInZone(
           seconds: zoneSecondsOf(d.run, maxHr),
           maxHrLine: maxHrSourceLine(services.maxHr),
-          onPairStrap: () => Navigator.of(context).pushNamed(Routes.pairing),
+          onPairStrap: HostCaps.strapPairing
+              ? () => Navigator.of(context).pushNamed(Routes.pairing)
+              : null,
         ),
         const SizedBox(height: Space.x32),
         _SendRow(detail: d),

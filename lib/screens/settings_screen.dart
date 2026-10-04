@@ -9,6 +9,7 @@ import '../app/perf_diagnostics.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
+import '../platform/host_caps.dart';
 import '../state/max_hr.dart';
 import '../state/intervals_icu.dart';
 import '../state/recording_controller.dart';
@@ -324,11 +325,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
               const _Section('Heart rate'),
-              SettingsRow(
-                label: 'Strap',
-                value: s.strap?.label ?? 'Pair',
-                onTap: () => Navigator.of(context).pushNamed(Routes.pairing),
-              ),
+              if (HostCaps.strapPairing)
+                SettingsRow(
+                  label: 'Strap',
+                  value: s.strap?.label ?? 'Pair',
+                  onTap: () => Navigator.of(context).pushNamed(Routes.pairing),
+                ),
               SettingsRow(
                 label: 'Max HR (entered)',
                 value: s.typedMaxHr == null ? 'Not entered' : '${s.typedMaxHr}',
@@ -531,7 +533,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
               for (final target in services.sender.targets) ...[
-                if (target is IntervalsIcuTarget)
+                if (target is HealthTarget && !HostCaps.healthExport)
+                  const SizedBox.shrink()
+                else if (target is IntervalsIcuTarget)
                   ListenableBuilder(
                     listenable: target,
                     builder: (context, _) => Column(

@@ -28,5 +28,5 @@ Not added yet, on purpose: Bluetooth, HealthKit and motion usage strings, `bluet
 
 ## Known gaps for P1
 
-- The Pigeon contract only has Kotlin hosts. The app builds on iOS, but every platform call throws a channel error at runtime until P1 adds the Swift host stubs.
+- Pigeon Swift hosts are stubs (`Runner/PlatformHost.swift`, P1): safe defaults, nothing records. Generated `Runner/PlatformApi.g.swift` is covered by the Pigeon drift check in `ci.yml`; add new Swift files to `project.pbxproj` by hand for Runner (extra targets still go through `add_targets.rb`). Dart hides strap pairing, the Bluetooth row and the Health toggle on iOS (`lib/platform/host_caps.dart`).
 - Google Maps on iOS needs `GMSServices.provideAPIKey` in `AppDelegate` before a map is shown, or the plugin aborts. P1 or P7 wires it (secret `RUN_SOLO_MAPS_API_KEY_IOS`).

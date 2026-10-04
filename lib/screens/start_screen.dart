@@ -8,6 +8,7 @@ import '../app/perf_diagnostics.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
+import '../platform/host_caps.dart';
 import '../platform/session_codec.dart';
 import '../state/courses.dart';
 import '../state/history_store.dart';
@@ -907,18 +908,20 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                       const SizedBox(height: Space.x16),
                       Row(
                         children: [
-                          Icon(Icons.favorite, size: 16, color: t.hrZone),
-                          const SizedBox(width: Space.x8),
-                          Text(
-                            s.strap == null
-                                ? 'No strap'
-                                : 'Strap: ${s.strap!.label}',
-                            style: RunSoloType.body15.copyWith(
-                              color: s.strap == null
-                                  ? t.inkSecondary
-                                  : t.inkPrimary,
+                          if (HostCaps.strapPairing) ...[
+                            Icon(Icons.favorite, size: 16, color: t.hrZone),
+                            const SizedBox(width: Space.x8),
+                            Text(
+                              s.strap == null
+                                  ? 'No strap'
+                                  : 'Strap: ${s.strap!.label}',
+                              style: RunSoloType.body15.copyWith(
+                                color: s.strap == null
+                                    ? t.inkSecondary
+                                    : t.inkPrimary,
+                              ),
                             ),
-                          ),
+                          ],
                           const Spacer(),
                           StatusPill(
                             label: s.units == Units.km ? 'KM' : 'MI',
