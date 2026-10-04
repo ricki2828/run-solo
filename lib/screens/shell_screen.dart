@@ -48,16 +48,6 @@ class _ShellScreenState extends State<ShellScreen> {
   bool _checked = false;
 
   @override
-  void initState() {
-    super.initState();
-    debugPrint(
-      'SHELLTAB env=${Platform.environment['RUN_SOLO_TAB']} tab=$_tab',
-    );
-  }
-
-  late bool _onboarding = widget.onboarding;
-
-  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_checked || !widget.checkRecoveryOnOpen) return;
