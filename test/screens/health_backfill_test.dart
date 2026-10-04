@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_solo/app/services.dart';
 import 'package:run_solo/platform/health_gateway.dart';
 import 'package:run_solo/platform/platform_api.g.dart';
 import 'package:run_solo/screens/settings_screen.dart';
+import 'package:run_solo/state/settings.dart';
 
 import '../helpers.dart';
 import '../run_fixtures.dart';
@@ -13,6 +15,8 @@ void main() {
     of: find.ancestor(of: find.text(label), matching: find.byType(Row)).first,
     matching: find.byType(Switch),
   );
+
+  late AppServices services;
 
   Future<FakeHealthGateway> open(
     WidgetTester tester, {
@@ -29,11 +33,8 @@ void main() {
           seconds: 600,
         ),
     ];
-    await pumpApp(
-      tester,
-      fakeServices(health: g, files: files),
-      home: SettingsScreen(now: now),
-    );
+    services = fakeServices(health: g, files: files);
+    await pumpApp(tester, services, home: SettingsScreen(now: now));
     await pumpTimes(tester, 4);
     await scrollTo(tester, find.text('SEND RUNS TO'));
     if (on) {
@@ -62,6 +63,11 @@ void main() {
     expect(g.written.length, 3);
     expect({for (final w in g.written) w.clientRecordId}.length, 3);
     expect(find.text('Sent 3 runs to Health Connect.'), findsOneWidget);
+    final saved = services.settings.settings.pastRunsSent['health']!;
+    expect(saved.count, 3);
+    expect(find.byKey(const ValueKey('backfill-done')), findsOneWidget);
+    expect(find.text('All 3 past runs sent on 24 Sep'), findsOneWidget);
+    expect(find.text('Send again'), findsOneWidget);
     expect(find.byKey(const ValueKey('backfill-progress')), findsNothing);
   });
 
@@ -78,14 +84,41 @@ void main() {
   testWidgets('running it twice reuses the run ids (upsert)', (tester) async {
     final g = await open(tester, runs: 2);
     for (var pass = 0; pass < 2; pass++) {
-      await scrollTo(tester, find.text('Send all past runs'));
-      await tester.tap(find.text('Send all past runs'));
+      final button = find.text(pass == 0 ? 'Send all past runs' : 'Send again');
+      await scrollTo(tester, button);
+      await tester.tap(button);
       await pumpTimes(tester, 4);
       await tester.tap(find.byKey(const ValueKey('backfill-confirm')));
       await pumpTimes(tester, 10);
     }
     expect(g.written.length, 4);
     expect({for (final w in g.written) w.clientRecordId}.length, 2);
+  });
+
+  testWidgets('the finished pass is remembered across a restart', (
+    tester,
+  ) async {
+    await open(tester, runs: 2);
+    await scrollTo(tester, find.text('Send all past runs'));
+    await tester.tap(find.text('Send all past runs'));
+    await pumpTimes(tester, 4);
+    await tester.tap(find.byKey(const ValueKey('backfill-confirm')));
+    await pumpTimes(tester, 10);
+    final reread = AppSettings.fromJson(services.settings.settings.toJson());
+    expect(reread.pastRunsSent['health']!.count, 2);
+    expect(reread.pastRunsSent['health']!.at, services.now().toUtc());
+  });
+
+  testWidgets('a failed pass is not remembered as done', (tester) async {
+    final g = await open(tester);
+    g.outcome = HealthWriteOutcome.failed;
+    await scrollTo(tester, find.text('Send all past runs'));
+    await tester.tap(find.text('Send all past runs'));
+    await pumpTimes(tester, 4);
+    await tester.tap(find.byKey(const ValueKey('backfill-confirm')));
+    await pumpTimes(tester, 10);
+    expect(services.settings.settings.pastRunsSent, isEmpty);
+    expect(find.text('Send all past runs'), findsOneWidget);
   });
 
   testWidgets('permission lost: asks, and stops with a reason when refused', (

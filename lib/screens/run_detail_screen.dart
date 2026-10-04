@@ -258,13 +258,12 @@ class RunDetailBody extends StatelessWidget {
             heat: d.summary.mode == RecordMode.cooper ? null : a.heat,
           ),
         },
-        if (d.run.hasHr) ...[
-          const SizedBox(height: Space.x24),
-          TimeInZone(
-            seconds: zoneSecondsOf(d.run, maxHr),
-            maxHrLine: maxHrSourceLine(services.maxHr),
-          ),
-        ],
+        const SizedBox(height: Space.x24),
+        TimeInZone(
+          seconds: zoneSecondsOf(d.run, maxHr),
+          maxHrLine: maxHrSourceLine(services.maxHr),
+          onPairStrap: () => Navigator.of(context).pushNamed(Routes.pairing),
+        ),
         const SizedBox(height: Space.x32),
         _SendRow(detail: d),
         if (onFixLaps != null)

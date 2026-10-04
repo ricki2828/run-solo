@@ -10,15 +10,59 @@ import '../theme/zones.dart';
 /// with no time stay as dimmed rows so the scale reads. Hues are for
 /// graphics only; every row says its zone in words.
 class TimeInZone extends StatelessWidget {
-  const TimeInZone({super.key, required this.seconds, required this.maxHrLine});
+  const TimeInZone({
+    super.key,
+    required this.seconds,
+    required this.maxHrLine,
+    this.onPairStrap,
+  });
   final List<double> seconds;
   final String maxHrLine;
+
+  /// Tap on the empty state (a run with no heart rate): the strap setting.
+  final VoidCallback? onPairStrap;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final shares = ZoneShares.from(seconds);
-    if (shares == null) return const SizedBox.shrink();
+    if (shares == null) {
+      return Column(
+        key: const ValueKey('time-in-zone'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'TIME IN ZONE',
+            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+          ),
+          InkWell(
+            key: const ValueKey('time-in-zone-empty'),
+            onTap: onPairStrap,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: Space.x8),
+                      child: Text(
+                        'No heart rate for this run. Pair a strap in Settings '
+                        'to see zones.',
+                        style: RunSoloType.body15.copyWith(
+                          color: t.inkSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (onPairStrap != null)
+                    Icon(Icons.chevron_right, color: t.inkSecondary),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     final brightness = Theme.of(context).brightness;
     final total = shares.seconds.fold(0.0, (a, b) => a + b);
     final note = shares.partialNote;
