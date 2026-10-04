@@ -294,6 +294,10 @@ class RunSummary {
           heat: row!.heatFactor ?? 1,
         );
 
+  /// The resting-HR proxy from the run's first minutes (index row only);
+  /// null without a strap or a rest-ish start.
+  int? get restingHrBpm => row?.restingHrBpm;
+
   /// TRUE PACE of the whole run, s/km; null for a run under 500 m.
   double? get truePaceSecPerKm =>
       row?.truePaceSecPerKm ?? analysis?.truePace?.trueSecPerKm;
