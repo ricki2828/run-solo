@@ -21,17 +21,23 @@ void main() {
 
   group('zoneSecondsOf', () {
     test('buckets by share of max HR', () {
-      final z = zoneSecondsOf(runWith((s) => s < 300 ? 100 : 140), 190);
+      final z = zoneSecondsOf(
+        runWith((s) => s < 300 ? 100 : 140),
+        engine.HrZones.percentMax(190),
+      );
       expect(z[1], closeTo(300, 3)); // 100/190 = 53 %
       expect(z[3], closeTo(300, 3)); // 140/190 = 74 %
       expect(z[0], 0);
     });
 
     test('paused time counts in no zone', () {
-      final all = zoneSecondsOf(runWith((_) => 140), 190);
+      final all = zoneSecondsOf(
+        runWith((_) => 140),
+        engine.HrZones.percentMax(190),
+      );
       final paused = zoneSecondsOf(
         runWith((_) => 140, p: [const engine.Span(100000, 220000)]),
-        190,
+        engine.HrZones.percentMax(190),
       );
       expect(all[3] - paused[3], closeTo(120, 2));
     });
@@ -45,14 +51,20 @@ void main() {
             const engine.Span(150000, 250000),
           ],
         ),
-        190,
+        engine.HrZones.percentMax(190),
       );
-      final all = zoneSecondsOf(runWith((_) => 140), 190);
+      final all = zoneSecondsOf(
+        runWith((_) => 140),
+        engine.HrZones.percentMax(190),
+      );
       expect(all[3] - z[3], closeTo(150, 2));
     });
 
     test('moving time with no reading lands in slot 0', () {
-      final z = zoneSecondsOf(runWith((s) => s < 100 ? null : 140), 190);
+      final z = zoneSecondsOf(
+        runWith((s) => s < 100 ? null : 140),
+        engine.HrZones.percentMax(190),
+      );
       expect(z[0], closeTo(100, 3));
     });
   });

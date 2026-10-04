@@ -353,18 +353,19 @@ class RecordingController extends ChangeNotifier {
   RecordingController(
     this._gateway, {
     DateTime Function()? now,
-    int Function()? maxHr,
+    engine.HrZones Function()? zones,
     ZoneMementoStore? zoneMemento,
   }) : _now = now ?? DateTime.now,
-       _maxHr = maxHr ?? (() => 190),
+       _zones = zones ?? (() => engine.HrZones.percentMax(190)),
        _zoneMemento = zoneMemento ?? MemoryZoneMementoStore();
 
   final RecorderGateway _gateway;
   final DateTime Function() _now;
 
-  /// Resolved max HR (plan D3 `maxHrFor`), read when a run starts or the
-  /// screen re-attaches; a mid-run settings change applies on the next run.
-  final int Function() _maxHr;
+  /// The chosen HR zones (Settings; share of the resolved max HR by default),
+  /// read when a run starts or the screen re-attaches; a mid-run settings
+  /// change applies on the next run.
+  final engine.HrZones Function() _zones;
 
   /// The engine's zone tracker (plan §18.1): hysteresis, dwell, loss and
   /// first-sample rules live there, fixture-tested; this only feeds ticks.
@@ -469,7 +470,7 @@ class RecordingController extends ChangeNotifier {
           status.state == RecorderState.paused;
       if (live && m != null && m.runId == status.runId && m.zone > 0) {
         _tracker = engine.HrZoneTracker.seeded(
-          maxHr: _maxHr().toDouble(),
+          zones: _zones(),
           zone: m.zone,
           hr: m.hr,
           atMs: m.elapsedMs,
@@ -477,7 +478,7 @@ class RecordingController extends ChangeNotifier {
         _snap = _snap.copyWith(zone: m.zone, runId: status.runId);
         notifyListeners();
       } else {
-        _tracker = engine.HrZoneTracker(maxHr: _maxHr().toDouble());
+        _tracker = engine.HrZoneTracker(zones: _zones());
       }
     }
     await refreshStatus();
@@ -611,7 +612,7 @@ class RecordingController extends ChangeNotifier {
     _clearPending();
     lastCompare.value = null; // never a card from the previous run
     lastCompareAt = null;
-    _tracker = engine.HrZoneTracker(maxHr: _maxHr().toDouble());
+    _tracker = engine.HrZoneTracker(zones: _zones());
     _snap = RecordingSnapshot(
       mode: mode,
       spec: switch (mode) {
@@ -765,7 +766,7 @@ class RecordingController extends ChangeNotifier {
     _lastTickElapsedMs = t.elapsedMs;
     final fix = t.gpsAccuracyM != null;
     final update = (_tracker ??= engine.HrZoneTracker(
-      maxHr: _maxHr().toDouble(),
+      zones: _zones(),
     )).update(t.elapsedMs, t.hr);
     final zone = update.state.zone;
     if (update.changed && _snap.runId != null) {

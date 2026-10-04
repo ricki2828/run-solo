@@ -26,7 +26,7 @@ import '../widgets/where_when_line.dart';
 import '../share/share_card.dart';
 import '../share/share_card_sheet.dart';
 import 'send_sheet.dart';
-import 'settings_screen.dart' show maxHrSourceLine;
+import 'settings_screen.dart' show zonesSourceLine;
 import 'verdict_screen.dart';
 
 /// Run detail (design brief §4.7, addendum A4): header, post-run map, rep /
@@ -130,7 +130,6 @@ class RunDetailBody extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final services = AppServices.of(context);
     final units = services.settings.settings.units;
-    final maxHr = services.maxHr.maxHr;
     final d = detail;
     final a = d.analysis;
     final free = a.freeRun;
@@ -263,8 +262,11 @@ class RunDetailBody extends StatelessWidget {
         },
         const SizedBox(height: Space.x24),
         TimeInZone(
-          seconds: zoneSecondsOf(d.run, maxHr),
-          maxHrLine: maxHrSourceLine(services.maxHr),
+          seconds: zoneSecondsOf(d.run, services.hrZones),
+          maxHrLine: zonesSourceLine(
+            services.settings.settings.hrZoneMethod,
+            services.maxHr,
+          ),
           onPairStrap: HostCaps.strapPairing
               ? () => Navigator.of(context).pushNamed(Routes.pairing)
               : null,

@@ -46,6 +46,24 @@ abstract final class MaxHrRules {
       y >= nowYear - 100 && y <= nowYear - 10;
 }
 
+abstract final class HrZoneRules {
+  static const int minResting = 30;
+  static const int maxResting = 120;
+
+  static bool validResting(int v) => v >= minResting && v <= maxResting;
+
+  /// Five ascending bottoms (Z1..Z5) or null. Anything else is dropped.
+  static List<int>? parseCustom(Object? raw) {
+    if (raw is! List || raw.length != 5 || raw.any((e) => e is! int)) {
+      return null;
+    }
+    final v = raw.cast<int>();
+    return engine.HrZones.validate(v.sublist(1), z1Floor: v[0]) == null
+        ? v
+        : null;
+  }
+}
+
 @immutable
 class SavedStrap {
   const SavedStrap({required this.address, this.name});
@@ -107,6 +125,9 @@ class AppSettings {
     this.weatherPerRun = true,
     this.reducedMotion = false,
     this.typedMaxHr,
+    this.hrZoneMethod = engine.HrZoneMethod.percentMax,
+    this.restingHr,
+    this.customZones,
     this.birthYear,
     this.observedMaxHr,
     this.observedMaxHrAt,
@@ -251,6 +272,17 @@ class AppSettings {
   /// constant 190 migrates to null so the age / observed sources can win).
   final int? typedMaxHr;
 
+  /// Settings → Heart rate zones → Method. Default share of max HR, which
+  /// is what every run used before the choice existed.
+  final engine.HrZoneMethod hrZoneMethod;
+
+  /// Resting HR typed for the reserve method; null = not entered.
+  final int? restingHr;
+
+  /// The custom table: bottoms of Z1..Z5 in bpm (five values, ascending);
+  /// null = not edited yet.
+  final List<int>? customZones;
+
   /// Asked once in onboarding, skippable; drives the 220 − age fallback.
   final int? birthYear;
 
@@ -389,6 +421,10 @@ class AppSettings {
     bool? weatherPerRun,
     bool? reducedMotion,
     int? typedMaxHr,
+    engine.HrZoneMethod? hrZoneMethod,
+    int? restingHr,
+    bool clearRestingHr = false,
+    List<int>? customZones,
     bool clearTypedMaxHr = false,
     int? birthYear,
     bool clearBirthYear = false,
@@ -432,6 +468,9 @@ class AppSettings {
     weatherPerRun: weatherPerRun ?? this.weatherPerRun,
     reducedMotion: reducedMotion ?? this.reducedMotion,
     typedMaxHr: clearTypedMaxHr ? null : (typedMaxHr ?? this.typedMaxHr),
+    hrZoneMethod: hrZoneMethod ?? this.hrZoneMethod,
+    restingHr: clearRestingHr ? null : (restingHr ?? this.restingHr),
+    customZones: customZones ?? this.customZones,
     birthYear: clearBirthYear ? null : (birthYear ?? this.birthYear),
     observedMaxHr: clearObservedMaxHr
         ? null
@@ -478,6 +517,9 @@ class AppSettings {
     'weatherPerRun': weatherPerRun,
     'reducedMotion': reducedMotion,
     'typedMaxHr': typedMaxHr,
+    'hrZoneMethod': hrZoneMethod.name,
+    'restingHr': restingHr,
+    'customZones': customZones,
     'birthYear': birthYear,
     'observedMaxHr': observedMaxHr,
     'observedMaxHrAt': observedMaxHrAt?.toUtc().toIso8601String(),
@@ -567,6 +609,15 @@ class AppSettings {
       weatherPerRun: pick('weatherPerRun', d.weatherPerRun),
       reducedMotion: pick('reducedMotion', d.reducedMotion),
       typedMaxHr: typed,
+      // Unknown or malformed zone settings fall back to share of max.
+      hrZoneMethod:
+          engine.HrZoneMethod.values.asNameMap()[pick('hrZoneMethod', '')] ??
+          d.hrZoneMethod,
+      restingHr: switch (optInt('restingHr')) {
+        final int v when HrZoneRules.validResting(v) => v,
+        _ => null,
+      },
+      customZones: HrZoneRules.parseCustom(j['customZones']),
       birthYear: optInt('birthYear'),
       observedMaxHr: optInt('observedMaxHr'),
       observedMaxHrAt: observedAtRaw is String
