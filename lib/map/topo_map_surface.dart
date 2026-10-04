@@ -235,10 +235,11 @@ class _TopoMapState extends State<TopoMap> {
     future: _pack,
     builder: (context, snap) {
       final pack = snap.data;
-      if (pack == null)
+      if (pack == null) {
         return ColoredBox(
           color: Theme.of(context).extension<RunSoloTokens>()!.bgBase,
         );
+      }
       final c = widget.centre ?? const GeoPoint(1.3115, 103.8150);
       return ml.MapLibreMap(
         styleString: widget.viaJson ? pack.styleJson : pack.stylePath,
