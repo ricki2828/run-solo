@@ -15,6 +15,8 @@ import '../state/intervals_icu.dart';
 import '../state/recording_controller.dart';
 import '../state/send_runs.dart' show ExportTarget, HealthTarget, TargetSetup;
 import '../state/settings.dart';
+import '../topo/pack_manager.dart';
+import '../topo/pack_models.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import 'intervals_connect_sheet.dart';
@@ -31,6 +33,12 @@ const String kPrivacyParagraph =
     'a run\'s start point and may use Google Play services.';
 const String kNoAnalyticsLine = 'No analytics of our own. No account. No ads.';
 const String kOpenMeteoAttribution = 'Weather data by Open-Meteo.com';
+
+/// About, when offline maps are in the build: whose data the Topo map draws.
+/// Each installed pack adds its own credit lines (name, licence) below.
+const String kTopoAttributionLine =
+    'Offline maps: © OpenStreetMap contributors (ODbL), basemap tiles by '
+    'Protomaps, terrain by Mapterhorn, with Copernicus DEM data.';
 const String kOnboardingInternetLine =
     'Maps and weather use the internet. Runs stay on your phone unless you send them.';
 
@@ -44,6 +52,16 @@ const String kAutoPauseLine =
     'never in a timed rep or a test.';
 const String kShowWhileRunningLine =
     'A 2 s card on the run screen when a rank is spoken.';
+
+/// Credit lines of every installed pack, each once.
+List<PackCredit> _packCredits(PackManager topo) {
+  final seen = <String>{};
+  return [
+    for (final p in topo.installed)
+      for (final c in p.region.credits)
+        if (seen.add(c.text)) c,
+  ];
+}
 
 /// Settings (design brief §4.11, plan D3 / §18): units, heart rate (strap,
 /// max HR + source, reset observed max, pending-max sheet, birth year),
@@ -681,6 +699,35 @@ class _SettingsScreenState extends State<SettingsScreen>
                 kOpenMeteoAttribution,
                 style: RunSoloType.label13.copyWith(color: t.inkSecondary),
               ),
+              if (services.topo case final topo?)
+                ListenableBuilder(
+                  listenable: topo,
+                  builder: (context, _) => Column(
+                    key: const ValueKey('topo-credits'),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: Space.x8),
+                      Text(
+                        kTopoAttributionLine,
+                        style: RunSoloType.label13.copyWith(
+                          color: t.inkSecondary,
+                        ),
+                      ),
+                      for (final c in _packCredits(topo))
+                        Padding(
+                          padding: const EdgeInsets.only(top: Space.x4),
+                          child: Text(
+                            c.license == null
+                                ? c.text
+                                : '${c.text} (${c.license})',
+                            style: RunSoloType.micro11.copyWith(
+                              color: t.inkSecondary,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               if (kPerfDiagnostics) ...[
                 const _Section('Diagnostics'),
                 ListenableBuilder(

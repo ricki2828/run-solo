@@ -13,6 +13,9 @@ import 'package:run_solo/state/settings.dart';
 
 import '../helpers.dart';
 import '../run_fixtures.dart';
+import '../topo/scripted_pack_manager.dart';
+
+import 'package:run_solo/topo/pack_models.dart';
 
 /// Settings (brief §4.11, plan D3, §18.6 copy, Phase 2 battery row).
 void main() {
@@ -314,6 +317,33 @@ void main() {
     expect(find.text(kNoAnalyticsLine), findsOneWidget);
     expect(find.text(kOpenMeteoAttribution), findsOneWidget);
     expect(find.textContaining('never leave your phone'), findsNothing);
+  });
+
+  testWidgets('About credits the offline map data only when maps are in', (
+    tester,
+  ) async {
+    await pumpApp(tester, fakeServices(), home: SettingsScreen(now: now));
+    await pumpTimes(tester, 3);
+    await scrollTo(tester, find.byKey(const ValueKey('privacy-paragraph')));
+    expect(find.byKey(const ValueKey('topo-credits')), findsNothing);
+
+    final packs = ScriptedPackManager(
+      scriptedRegions: [fixtureRegion('milos', 'Milos, Greece', 100)],
+      statuses: const {'milos': PackStatus(PackStatusKind.installed)},
+    );
+    await pumpApp(
+      tester,
+      fakeServices(topo: packs),
+      home: SettingsScreen(now: now),
+    );
+    await pumpTimes(tester, 3);
+    await scrollTo(tester, find.byKey(const ValueKey('topo-credits')));
+    expect(find.text(kTopoAttributionLine), findsOneWidget);
+    expect(
+      find.text('© OpenStreetMap contributors (ODbL 1.0 (Produced Work))'),
+      findsOneWidget,
+    );
+    expect(find.text('© Mapterhorn'), findsOneWidget);
   });
 
   testWidgets('Move runs shares one bundle file per run', (tester) async {

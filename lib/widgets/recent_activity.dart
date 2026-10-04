@@ -3,6 +3,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
 import '../app/services.dart';
+import '../map/map_surface.dart' show usesTerrainMap;
 import '../map/route_builder.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
@@ -402,8 +403,13 @@ class _ActivityMap extends StatelessWidget {
           width: double.infinity,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(Radii.card),
-            child: AppServices.of(context).maps
-                .buildCard(context, route, runId: runId, routeColor: color),
+            child: AppServices.of(context).maps.buildCard(
+              context,
+              route,
+              runId: runId,
+              routeColor: color,
+              terrain: usesTerrainMap(d.summary.mode),
+            ),
           ),
         ),
       );

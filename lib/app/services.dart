@@ -12,6 +12,8 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../map/google_map_surface.dart';
 import '../map/map_surface.dart';
+import '../map/topo_map_surface.dart';
+import '../map/topo_maplibre.dart';
 import '../platform/fake_gateway.dart';
 import '../platform/gateway.dart';
 import '../platform/health_gateway.dart';
@@ -32,6 +34,7 @@ import '../state/settings.dart';
 import '../state/weather.dart';
 import '../state/zone_memento.dart';
 import '../topo/pack_manager.dart';
+import '../topo/topo_files.dart';
 
 const bool kFakePlatform = bool.fromEnvironment('RUN_SOLO_FAKE');
 
@@ -362,7 +365,14 @@ class AppServices {
       permissions: PigeonPermissionsGateway(),
       settings: settings,
       history: history,
-      maps: const GoogleMapSurfaceFactory(),
+      maps: topo == null
+          ? const GoogleMapSurfaceFactory()
+          : TopoMapSurfaceFactory(
+              packs: topo,
+              settings: settings,
+              fallback: const GoogleMapSurfaceFactory(),
+              engine: MapLibreTopoEngine(TopoFiles(packsRoot: topo.root)),
+            ),
       transfer: const ShareSheetTransferGateway(),
       health: PigeonHealthGateway(),
       storage: PigeonStorageGateway(),

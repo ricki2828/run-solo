@@ -662,7 +662,9 @@ class _MapCardState extends State<_MapCard> {
           );
         }
         final gms = snap.data!.gmsAvailable;
-        if (!gms && services.maps.available) {
+        if (!gms &&
+            services.maps.available &&
+            services.maps.needsGoogle(route, terrain: widget.terrain)) {
           return Stack(
             fit: StackFit.expand,
             children: [

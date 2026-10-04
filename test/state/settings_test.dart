@@ -105,4 +105,12 @@ void main() {
     await c.update((s) => s.copyWith(clearStrap: true));
     expect(c.settings.strap, isNull);
   });
+
+  test('Topo map choice: on by default, remembered, old files read as on', () {
+    expect(const AppSettings().topoMap, isTrue);
+    final off = const AppSettings().copyWith(topoMap: false);
+    expect(AppSettings.fromJson(off.toJson()).topoMap, isFalse);
+    expect(AppSettings.fromJson({'reps': 4}).topoMap, isTrue);
+    expect(AppSettings.fromJson({'topoMap': 'x'}).topoMap, isTrue);
+  });
 }
