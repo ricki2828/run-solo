@@ -298,6 +298,70 @@ class IntervalsIcuClient {
     }
   }
 
+  /// A planned workout on the calendar: `POST events/bulk?upsert=true` with
+  /// one `WORKOUT` event (Intervals.icu API guide, 29 Mar 2024, updated 3 Feb
+  /// 2026). [externalId] is the upsert key, so sending the same session for
+  /// the same day again replaces it. [dateLocal] is a plain local date.
+  IntervalsRequest workoutRequest(
+    IntervalsCredentials c, {
+    required String name,
+    required String description,
+    required DateTime dateLocal,
+    required String externalId,
+  }) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    final day =
+        '${dateLocal.year}-${two(dateLocal.month)}-${two(dateLocal.day)}';
+    return IntervalsRequest(
+      method: 'POST',
+      // Two segments: a tail with a slash would be escaped as %2F.
+      uri: intervalsUri(c.athleteId).replace(
+        pathSegments: ['api', 'v1', 'athlete', c.athleteId, 'events', 'bulk'],
+        queryParameters: {'upsert': 'true'},
+      ),
+      headers: {
+        'Authorization': intervalsAuthHeader(c.apiKey),
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: utf8.encode(
+        jsonEncode([
+          {
+            'category': 'WORKOUT',
+            'start_date_local': '${day}T00:00:00',
+            'type': 'Run',
+            'name': name,
+            'description': description,
+            'external_id': externalId,
+          },
+        ]),
+      ),
+    );
+  }
+
+  Future<IntervalsOutcome> pushWorkout(
+    IntervalsCredentials c, {
+    required String name,
+    required String description,
+    required DateTime dateLocal,
+    required String externalId,
+  }) async {
+    try {
+      final res = await http.send(
+        workoutRequest(
+          c,
+          name: name,
+          description: description,
+          dateLocal: dateLocal,
+          externalId: externalId,
+        ),
+      );
+      return mapUploadResponse(res);
+    } on IntervalsNetworkError {
+      return const IntervalsOutcome.failed('No network');
+    }
+  }
+
   /// One line for the Connect sheet.
   Future<({bool ok, String line})> test(IntervalsCredentials c) async {
     try {
@@ -393,6 +457,37 @@ class IntervalsIcuTarget extends ExportTarget with ChangeNotifier {
     }
     _connected = false;
     notifyListeners();
+  }
+
+  /// Put a planned workout on the runner's calendar (Send to watch). Null
+  /// when it went, else a plain reason.
+  Future<String?> pushWorkout({
+    required String name,
+    required String description,
+    required DateTime dateLocal,
+    required String externalId,
+  }) async {
+    final c = await credentials();
+    if (c == null) return 'Connect Intervals.icu in Settings';
+    try {
+      final o = await client.pushWorkout(
+        c,
+        name: name,
+        description: description,
+        dateLocal: dateLocal,
+        externalId: externalId,
+      );
+      if (!o.ok) {
+        intervalsLog('workout push failed (${o.line})', secrets: [c.apiKey]);
+      }
+      return o.ok ? null : o.line;
+    } catch (e) {
+      intervalsLog(
+        'workout push threw (${e.runtimeType})',
+        secrets: [c.apiKey],
+      );
+      return 'Could not send';
+    }
   }
 
   @override

@@ -22,6 +22,7 @@ import 'package:run_solo/screens/home_screen.dart';
 import 'package:run_solo/screens/permissions_screen.dart';
 import 'package:run_solo/screens/run_detail_screen.dart';
 import 'package:run_solo/screens/send_sheet.dart';
+import 'package:run_solo/screens/watch_sheet.dart';
 import 'package:run_solo/screens/settings_screen.dart';
 import 'package:run_solo/screens/shell_screen.dart';
 import 'package:run_solo/screens/trend_screen.dart';
@@ -37,6 +38,7 @@ import 'package:run_solo/widgets/lap_button.dart';
 import 'package:run_solo/widgets/weather_chip.dart';
 
 import '../helpers.dart';
+import '../route_fixtures.dart';
 import '../run_fixtures.dart';
 
 /// Brief-fidelity goldens (design brief §2.2 tokens, §4.4 record states).
@@ -975,6 +977,28 @@ void main() {
     await settleAnimations(tester);
     expect(find.byType(SendSheet), findsOneWidget);
     await golden(tester, 'send_sheet');
+  });
+
+  testWidgets('start: Send to watch sheet (workout)', (tester) async {
+    await pumpApp(tester, fakeServices(), pushRoute: Routes.start);
+    await pumpTimes(tester, 4);
+    const key = ValueKey('session-send-watch');
+    await tester.ensureVisible(find.byKey(key));
+    await tester.pump();
+    await tester.tap(find.byKey(key));
+    await settleAnimations(tester);
+    expect(find.byType(WatchSheet), findsOneWidget);
+    await golden(tester, 'watch_sheet_workout');
+  });
+
+  testWidgets('Send to watch sheet (route)', (tester) async {
+    await pumpApp(
+      tester,
+      fakeServices(),
+      home: Scaffold(body: WatchSheet.route(route: testRoute())),
+    );
+    await pumpTimes(tester, 3);
+    await golden(tester, 'watch_sheet_route');
   });
 
   testWidgets('start: three run types', (tester) async {

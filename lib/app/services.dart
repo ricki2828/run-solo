@@ -26,6 +26,7 @@ import '../state/route_library.dart';
 import '../state/recording_controller.dart';
 import '../state/intervals_icu.dart';
 import '../state/send_runs.dart';
+import '../state/watch_export.dart';
 import '../state/sessions.dart';
 import '../state/settings.dart';
 import '../state/weather.dart';
@@ -54,6 +55,7 @@ class AppServices {
     this.live,
     PlaceGateway? placeGateway,
     List<ExportTarget>? exportTargets,
+    Future<Directory> Function()? tempDir,
   }) : places = PlaceResolver(
          store: history,
          gateway: placeGateway ?? FakePlaceGateway(),
@@ -65,6 +67,7 @@ class AppServices {
              exportTargets ?? defaultExportTargets(transfer, health, now: now),
          now: now,
        ),
+       watch = WatchExporter(transfer: transfer, tempDir: tempDir, now: now),
        now = now ?? DateTime.now,
        sessions = sessions ?? SessionsController(MemorySessionsStore()),
        courseNames =
@@ -103,6 +106,9 @@ class AppServices {
 
   /// Send runs: the Send button and the automatic after-run sends.
   final SendCoordinator sender;
+
+  /// Send to watch: a session as a FIT workout, a route as a GPX course.
+  final WatchExporter watch;
 
   /// Weather per finished run (W1); null in tests and the fake APK.
   final WeatherQueue? weather;
@@ -291,6 +297,7 @@ class AppServices {
       live: live,
       weather: weather,
       placeGateway: places,
+      tempDir: () async => Directory.systemTemp,
       exportTargets:
           exportTargets ??
           defaultExportTargets(

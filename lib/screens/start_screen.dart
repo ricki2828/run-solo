@@ -13,6 +13,7 @@ import '../platform/session_codec.dart';
 import '../state/courses.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
+import '../state/max_hr.dart';
 import '../state/recording_controller.dart';
 import '../state/sessions.dart';
 import '../state/settings.dart';
@@ -26,6 +27,7 @@ import '../widgets/value_stepper.dart';
 import 'custom_builder_screen.dart';
 import 'follow_route_sheet.dart';
 import 'intervals_sheet.dart';
+import 'watch_sheet.dart';
 
 /// The live compare at Start ([kLiveCompare]); tests turn it on to check
 /// what `start()` is handed.
@@ -413,6 +415,18 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       case StartError.alreadyRunning:
         break;
     }
+  }
+
+  /// The picked session as a watch workout, with the heart rate band in bpm
+  /// from the runner's max HR. Null for a session with no steps (fartlek).
+  engine.FitWorkout? _watchWorkout() => engine.FitWorkout.fromSession(
+    AppServices.of(context).pickedSession,
+    maxHr: _maxHr(),
+  );
+
+  int _maxHr() {
+    final services = AppServices.of(context);
+    return MaxHr.resolve(services.settings.settings, services.now()).maxHr;
   }
 
   /// The Intervals sheet (A8). Picking a card selects Intervals too; the
@@ -810,6 +824,13 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                           onEdit: set,
                           // A custom template edits in place (same id); a preset
                           // becomes a new template pre-filled from its edits.
+                          onSendToWatch: _watchWorkout() == null
+                              ? null
+                              : () => showWatchWorkoutSheet(
+                                  context,
+                                  workout: _watchWorkout()!,
+                                  maxHr: _maxHr(),
+                                ),
                           onSaveAsCustom: () => _build(
                             services.sessions.byTemplateId(s.sessionId) ??
                                 SessionChoice.asCustom(
@@ -1089,6 +1110,7 @@ class _SessionCard extends StatelessWidget {
     required this.onChange,
     required this.onEdit,
     required this.onSaveAsCustom,
+    required this.onSendToWatch,
   });
 
   final engine.SessionSpec spec;
@@ -1096,6 +1118,9 @@ class _SessionCard extends StatelessWidget {
   final VoidCallback onChange;
   final Future<void> Function(AppSettings Function(AppSettings)) onEdit;
   final VoidCallback onSaveAsCustom;
+
+  /// Null when the session has nothing a watch can run (fartlek).
+  final VoidCallback? onSendToWatch;
 
   @override
   Widget build(BuildContext context) {
@@ -1264,6 +1289,25 @@ class _SessionCard extends StatelessWidget {
               preset != null
                   ? 'Anything else: Save as custom ›'
                   : 'Edit in the builder ›',
+              style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+            ),
+          ),
+        ),
+      );
+    }
+    if (onSendToWatch != null) {
+      children.add(
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const ValueKey('session-send-watch'),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(56, 48),
+              padding: EdgeInsets.zero,
+            ),
+            onPressed: onSendToWatch,
+            child: Text(
+              'Send to watch ›',
               style: RunSoloType.body15.copyWith(color: t.inkPrimary),
             ),
           ),

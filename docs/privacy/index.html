@@ -49,6 +49,9 @@
   <p>Run detail has a Send button. It makes a TCX or GPX file of that run (the first and last 200 m
   of the route are left out) and opens Android's share sheet, so you pick the app that receives it.
   The Strava row only opens Strava's upload page in your browser; you upload the file yourself.
+  Start's session card and a saved route have Send to watch: it makes a workout file (.fit) of the
+  session, or a GPX course of the route, and opens the same share sheet. The course holds the whole
+  route, including where it starts and ends, because a watch needs the full line to navigate it.
   Settings has a Send runs to section for services that can receive runs automatically. Every one
   is off by default, and a run goes to a service only after you switch it on. Once a file is with
   another app or service, that app's own privacy policy applies.</p>
@@ -66,6 +69,12 @@
   Intervals.icu, Manage connection, Disconnect deletes the key from the phone. Runs already
   uploaded stay in your Intervals.icu account, where Intervals.icu's own privacy policy applies;
   you can delete them there.</p>
+  <p>If Intervals.icu is connected, Send to watch can also add a planned workout to your Intervals.icu
+  calendar, only when you tap Add for today or Add for tomorrow. That sends the session's name and steps
+  (lengths, any heart rate or pace range, repeats), the date you chose, and an id that lets a second send
+  replace the first. It contains no run, route or heart rate history. Intervals.icu then passes it on to
+  the watch service you linked there (for example Garmin, COROS or Suunto), under their policies. Delete
+  it from your Intervals.icu calendar to remove it.</p>
 
   <h3>Routes you follow</h3>
   <p>Start has a "Follow a route" choice for Free, Trail and Goal runs. You can pick a GPX or TCX file
@@ -134,7 +143,7 @@
     <tr><td>Nearby devices (Bluetooth)</td><td>To pair a heart-rate strap. Bluetooth is not used to work out where you are.</td></tr>
     <tr><td>Notifications</td><td>The recording notification with its LAP and Stop buttons, and cues while your screen is off.</td></tr>
     <tr><td>Health Connect (write only)</td><td>Only if you switch on Health Connect in Settings, Send runs to, or tap Send to Health Connect on a run. Health Connect asks you for four write permissions: exercise, exercise route, heart rate and distance. Run Supreme writes the finished run (its laps and pauses, route, heart rate and distance) and reads nothing back from Health Connect. You can turn it off in Settings, or withdraw the permissions in Health Connect, at any time.</td></tr>
-    <tr><td>Internet</td><td>Map tiles from Google and weather from Open-Meteo, as described above. Place names come from your phone's own geocoder, as described above. If you connect Intervals.icu, the runs you send to it. Nothing else.</td></tr>
+    <tr><td>Internet</td><td>Map tiles from Google and weather from Open-Meteo, as described above. Place names come from your phone's own geocoder, as described above. If you connect Intervals.icu, the runs you send to it and the planned workouts you add to its calendar. Nothing else.</td></tr>
   </table>
 
   <h2>5. What we do not do</h2>
