@@ -253,11 +253,12 @@ class _Header extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.center,
     children: [
       const LapLineMark(height: 34),
-      const Spacer(),
-      Flexible(
+      const SizedBox(width: 12),
+      Expanded(
         child: Text(
           right,
           maxLines: 1,
+          textAlign: TextAlign.right,
           overflow: TextOverflow.ellipsis,
           style: RunSoloType.micro11.copyWith(color: rightColour),
         ),
@@ -427,7 +428,11 @@ class _ScoresBody extends StatelessWidget {
                           ),
                           if (lane.unit.isNotEmpty)
                             TextSpan(
-                              text: ' ${lane.unit}',
+                              // The ordinal sits tight on the number: "62nd percentile".
+                              text:
+                                  RegExp(r'^(st|nd|rd|th) ').hasMatch(lane.unit)
+                                  ? lane.unit
+                                  : ' ${lane.unit}',
                               style: RunSoloType.label13.copyWith(
                                 color: t.inkSecondary,
                               ),
