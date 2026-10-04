@@ -299,9 +299,14 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   void _refreshLoad() {
     final runs = _runs, services = _services;
     if (runs == null || services == null) return;
+    // A failed scores read is no scores: the notice then judges on minutes.
+    var scores = const <engine.IdentityLane, engine.IdentityScore>{};
+    try {
+      scores = services.live?.identityScores() ?? scores;
+    } catch (_) {}
     final ctx = PlanContext(
       runs: runs,
-      scores: services.live?.identityScores() ?? const {},
+      scores: scores,
       now: services.now(),
       maxHr: services.maxHr.maxHr,
     );

@@ -178,7 +178,7 @@ void main() {
     await pumpTimes(tester, 6);
     expect(
       find.textContaining('above your usual, so this one is easy.'),
-      findsOneWidget,
+      findsNWidgets(2), // a ratio this high eases two sessions
     );
   });
 
