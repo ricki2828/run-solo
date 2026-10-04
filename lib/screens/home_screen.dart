@@ -501,6 +501,9 @@ class _GetBetter extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: TextButton(
               key: const ValueKey('home-plan-link'),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: Space.x12),
+              ),
               onPressed: onPlan,
               child: Text(planLabel!),
             ),

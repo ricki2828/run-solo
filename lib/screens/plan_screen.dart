@@ -139,18 +139,26 @@ class _CreateFormState extends State<_CreateForm> {
             style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
           ),
           const SizedBox(height: Space.x8),
-          Wrap(
-            spacing: Space.x8,
-            runSpacing: Space.x8,
+          Row(
             children: [
-              for (final l in engine.IdentityLane.values)
-                ChoiceChip(
-                  key: ValueKey('plan-lane-${l.name}'),
-                  label: Text(l.name.toUpperCase()),
-                  showCheckmark: false,
-                  selected: l == lane,
-                  onSelected: (_) => setState(() => _lane = l),
+              for (final l in engine.IdentityLane.values) ...[
+                if (l != engine.IdentityLane.values.first)
+                  const SizedBox(width: Space.x8),
+                Expanded(
+                  child: ChoiceChip(
+                    key: ValueKey('plan-lane-${l.name}'),
+                    showCheckmark: false,
+                    labelPadding: EdgeInsets.zero,
+                    padding: const EdgeInsets.symmetric(horizontal: Space.x4),
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(l.name.toUpperCase()),
+                    ),
+                    selected: l == lane,
+                    onSelected: (_) => setState(() => _lane = l),
+                  ),
                 ),
+              ],
             ],
           ),
           const SizedBox(height: Space.x8),
