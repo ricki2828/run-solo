@@ -107,8 +107,8 @@ def palette(tokens: dict) -> dict[str, Rgb]:
         # trail layers sit above the roads in brightness but under every run-type colour
         "track": mix(base, ink2, 0.40),
         "path": mix(base, ink2, 0.45),
-        "contour": mix(land, muted, 0.75),
-        "contour_index": mix(land, muted, 1.0),
+        "contour": mix(land, muted, 1.15),
+        "contour_index": mix(muted, ink2, 0.55),
         "hill_shadow": sunken,
         "hill_highlight": mix(land, ink2, 0.40),
         "hill_accent": mix(land, sunken, 0.5),
@@ -237,7 +237,7 @@ def build(tokens: dict) -> dict:
             "minzoom": 13,
             "filter": ["all", ele_mod(20), not_index],
             "layout": {"line-join": "round"},
-            "paint": {"line-color": p["contour"], "line-width": w((13, 0.7), (16, 1.0)), "line-opacity": 0.9},
+            "paint": {"line-color": p["contour"], "line-width": w((13, 0.8), (16, 1.3)), "line-opacity": 1.0},
         },
         {
             "id": "contour-index",
@@ -247,7 +247,7 @@ def build(tokens: dict) -> dict:
             "minzoom": 9,
             "filter": ele_mod(100),
             "layout": {"line-join": "round"},
-            "paint": {"line-color": p["contour_index"], "line-width": w((9, 0.7), (13, 1.2), (16, 1.6))},
+            "paint": {"line-color": p["contour_index"], "line-width": w((9, 0.8), (13, 1.4), (16, 2.0))},
         },
         # --- roads ---
         {
@@ -476,7 +476,7 @@ def legibility_report(tokens: dict) -> tuple[list[str], bool]:
     land = pal["land"]
     brightest_road = max(contrast(pal[k], land) for k in ("road_minor", "road_medium", "road_major", "road_highway"))
     need = [
-        ("contour", 2.0), ("contour_index", 3.0), ("track", 2.0), ("path", 2.0),
+        ("contour", 3.0), ("contour_index", 4.5), ("track", 2.0), ("path", 2.0),
         ("label_minor", 3.0), ("label_contour", 3.0), ("label_place", 3.0),
     ]
     lines, ok = [], True

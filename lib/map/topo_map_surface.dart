@@ -178,7 +178,8 @@ class TopoMapSurfaceFactory implements MapSurfaceFactory {
       );
     }
     final hash = routeFingerprint(route);
-    final colour = routeColor ?? Theme.of(context).extension<RunSoloTokens>()!.inkPrimary;
+    final colour =
+        routeColor ?? Theme.of(context).extension<RunSoloTokens>()!.inkPrimary;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -215,7 +216,7 @@ class TopoMapSurfaceFactory implements MapSurfaceFactory {
             child: IgnorePointer(
               child: Align(
                 alignment: Alignment.bottomRight,
-                child: CreditPlate(pack: pack, tappable: false),
+                child: CreditPlate(pack: pack, tappable: false, compact: true),
               ),
             ),
           ),
@@ -454,24 +455,37 @@ String creditLine(
 /// One compact line of credit on the map. Tapping opens the pack's full
 /// credits. MapLibre's own button is hidden under it.
 class CreditPlate extends StatelessWidget {
-  const CreditPlate({super.key, required this.pack, this.tappable = true});
+  const CreditPlate({
+    super.key,
+    required this.pack,
+    this.tappable = true,
+    this.compact = false,
+  });
   final InstalledPack pack;
   final bool tappable;
+
+  /// Home cards: smaller type and up to two lines, so every name shows.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final style = RunSoloType.micro11.copyWith(color: t.inkSecondary);
+    final style = RunSoloType.micro11.copyWith(
+      color: t.inkSecondary,
+      fontSize: compact ? 9 : null,
+    );
     final names = creditNames(pack.region.mapText);
     final plate = LayoutBuilder(
       builder: (context, c) {
         // Padding of 8 each side inside the plate.
-        final line = creditLine(
-          names,
-          (c.maxWidth.isFinite ? c.maxWidth : 400) - 16,
-          style,
-          Directionality.of(context),
-        );
+        final line = compact
+            ? '© ${names.join(' · ')}'
+            : creditLine(
+                names,
+                (c.maxWidth.isFinite ? c.maxWidth : 400) - 16,
+                style,
+                Directionality.of(context),
+              );
         return DecoratedBox(
           decoration: BoxDecoration(
             color: t.bgBase.withValues(alpha: 0.82),
@@ -482,8 +496,8 @@ class CreditPlate extends StatelessWidget {
             child: Text(
               line,
               key: const ValueKey('topo-attribution'),
-              maxLines: 1,
-              softWrap: false,
+              maxLines: compact ? 2 : 1,
+              softWrap: compact,
               style: style,
             ),
           ),

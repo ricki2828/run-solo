@@ -10,7 +10,9 @@
 library;
 
 import 'dart:async';
+import 'dart:math' show Point;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
@@ -149,9 +151,11 @@ Widget _mapView({
   tiltGesturesEnabled: false,
   compassEnabled: false,
   logoEnabled: false,
-  // The app draws one credit line (CreditPlate) over this corner; the
-  // native button is made invisible and sits under it.
+  // The app draws one credit line (CreditPlate); the native button is pushed
+  // out of the view (and made transparent in case a device keeps it on).
   attributionButtonColor: Colors.transparent,
+  attributionButtonPosition: ml.AttributionButtonPosition.bottomRight,
+  attributionButtonMargins: const Point<num>(-120, -120),
   myLocationEnabled: false,
   minMaxZoomPreference: const ml.MinMaxZoomPreference(3, 17.5),
   cameraTargetBounds: limit == null
@@ -330,11 +334,50 @@ class _TopoStaticMapState extends State<_TopoStaticMap> {
     }
   }
 
+  /// Rows cut from the top and bottom of a card snapshot (the logo's band).
+  static const int _logoBand = 40;
+
+  static Future<Uint8List> _cropRows(
+    Uint8List png,
+    int top,
+    int width,
+    int height,
+  ) async {
+    final codec = await ui.instantiateImageCodec(png);
+    final src = (await codec.getNextFrame()).image;
+    final rec = ui.PictureRecorder();
+    ui.Canvas(rec).drawImageRect(
+      src,
+      ui.Rect.fromLTWH(
+        0,
+        top.toDouble(),
+        src.width.toDouble(),
+        height.toDouble(),
+      ),
+      ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      ui.Paint(),
+    );
+    final out = await rec.endRecording().toImage(width, height);
+    final bytes = await out.toByteData(format: ui.ImageByteFormat.png);
+    return bytes!.buffer.asUint8List();
+  }
+
   Future<void> _snapshot() async {
     final c = _ctl;
     if (c == null || _done || !mounted) return;
     try {
-      final png = await c.takeSnapshot().timeout(const Duration(seconds: 8));
+      // The native snapshotter stamps a MapLibre logo bottom-left that
+      // cannot be switched off from Dart. Take a taller frame at the same
+      // camera and cut the extra rows off top and bottom: same picture,
+      // no logo. Sizes are logical (the snapshotter draws at 1x, so a
+      // device-pixel size would show a wider area on a dense screen).
+      final box = context.findRenderObject() as RenderBox;
+      final w = box.size.width.round();
+      final h = box.size.height.round();
+      final raw = await c
+          .takeSnapshot(width: w, height: h + 2 * _logoBand)
+          .timeout(const Duration(seconds: 8));
+      final png = await _cropRows(raw, _logoBand, w, h);
       final verdict = await judgeSnapshotPng(png);
       recordMapVerdict(_surface, verdict, mapType: 'topo');
       if (!mounted || _done) return;
