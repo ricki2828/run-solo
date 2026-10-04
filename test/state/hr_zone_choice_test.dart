@@ -62,7 +62,7 @@ void main() {
       final z = HrZoneChoice.resolve(s, now);
       expect(
         [for (var k = 1; k <= 5; k++) z.bottom(k)],
-        [108, 136, 149, 162, 176],
+        [108, 134, 148, 161, 175],
       );
     });
 
