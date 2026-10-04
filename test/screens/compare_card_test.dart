@@ -102,7 +102,49 @@ void expectClear(WidgetTester tester, Finder primary) {
 
 Finder timer() => find.byKey(const ValueKey('timer'));
 
+/// Free / Trail live figures: none may sit under the card while it shows.
+const _liveKeys = [
+  'free-distance',
+  'timer',
+  'run-average',
+  'dial-pace',
+  'live-true-pace',
+  'live-climb',
+  'live-grade',
+];
+
 void main() {
+  group('Free and Trail: the card covers no live number', () {
+    for (final mode in [RecordMode.free, RecordMode.trail]) {
+      for (final h in [800, 640]) {
+        testWidgets('${mode.name} with climb at 360 x $h', (tester) async {
+          final (fake, _) = await openRun(tester, mode: mode, seconds: 300);
+          tester.view.physicalSize = Size(1080, h * 3.0);
+          fake
+            ..elevGainM = 124
+            ..elevLossM = 80
+            ..gradePct = 3.2;
+          await step(tester, fake, 5);
+          await show(tester, fake, km3());
+          final c = tester.getRect(card);
+          for (final k in _liveKeys) {
+            final f = find.byKey(ValueKey(k));
+            if (f.evaluate().isEmpty) continue;
+            expect(
+              c.overlaps(tester.getRect(f)),
+              isFalse,
+              reason: '$k under the card at $h',
+            );
+          }
+          expect(
+            c.bottom,
+            lessThanOrEqualTo(tester.getRect(find.byType(GpsBar)).top),
+          );
+        });
+      }
+    }
+  });
+
   group('bounds: never over the primary, always above the GPS bar', () {
     for (final h in [800, 640]) {
       testWidgets('Free run km split at 360 x $h', (tester) async {
