@@ -113,13 +113,14 @@ class AppleFileSystem(private val root: String) : FileSystem {
     override fun size(path: String): Long = memScoped {
         val st = alloc<stat>()
         if (stat(p(path), st.ptr) != 0) fail("stat", path)
-        st.st_size
+        st.st_size.toLong()
     }
 
     override fun lastModifiedMs(path: String): Long? = memScoped {
         val st = alloc<stat>()
         if (stat(p(path), st.ptr) != 0) null
-        else st.st_mtimespec.tv_sec * 1000 + st.st_mtimespec.tv_nsec / 1_000_000
+        // time_t/long are 32-bit on watchosArm64 (arm64_32): widen before the multiply.
+        else st.st_mtimespec.tv_sec.toLong() * 1000 + st.st_mtimespec.tv_nsec.toLong() / 1_000_000
     }
 
     private fun writeAll(fd: Int, bytes: ByteArray, path: String) {

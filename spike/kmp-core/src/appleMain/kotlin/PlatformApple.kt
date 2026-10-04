@@ -93,4 +93,8 @@ actual class FileNotFoundException actual constructor(message: String?) : IOExce
 /** Spike: Kotlin/Native's own Double.toString; DoubleFormatProbeTest measures how it differs from the JVM. */
 actual fun formatDouble(d: Double): String = d.toString()
 
-actual fun currentTimeMillis(): Long = (platform.Foundation.NSDate().timeIntervalSince1970 * 1000.0).toLong()
+actual fun currentTimeMillis(): Long = memScoped {
+    val tv = alloc<platform.posix.timeval>()
+    platform.posix.gettimeofday(tv.ptr, null)
+    tv.tv_sec.toLong() * 1000 + tv.tv_usec.toLong() / 1000
+}
