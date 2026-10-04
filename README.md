@@ -64,7 +64,7 @@ The debug package is `app.runsolo.debug`, so it installs beside a Play build.
 The debug APK is ~160 MB, JIT and unsigned-for-purpose: fine for the emulator, useless for
 battery or smoothness. For phone testing download **`run-solo-dogfood-apk`** instead:
 
-- release-mode AOT Dart, R8 + resource shrinking, `--obfuscate --split-debug-info`, arm64-v8a only, target under 30 MiB (CI fails above it and prints the size in the job summary)
+- release-mode AOT Dart, R8 + resource shrinking, `--obfuscate --split-debug-info`, arm64-v8a only, target under 36 MiB (30 until the offline Topo map engine, maplibre_gl, added ~12.7 MiB) (CI fails above it and prints the size in the job summary)
 - applicationId **`app.runsolo.dogfood`**, so it installs beside `app.runsolo.debug` and a future Play build; plain `app.runsolo` is reserved for Play-signed builds
 - replay mode and the debug intents stay available (`BuildConfig.REPLAY_ENABLED`), same as debug
 - signed with the CI dogfood key (`CN=Run Solo dogfood`). Secrets: `RUN_SOLO_DOGFOOD_KEYSTORE_BASE64`, `RUN_SOLO_DOGFOOD_STORE_PASSWORD`, `RUN_SOLO_DOGFOOD_KEY_PASSWORD`; offline copy in `~/.secrets/run-solo/` on the dev host (never committed). Reinstalling over an older dogfood build works as long as this key is unchanged.

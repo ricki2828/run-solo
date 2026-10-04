@@ -121,6 +121,7 @@ class AppSettings {
     this.autoSendSince = const {},
     this.pastRunsSent = const {},
     this.liveMapTypes = const {},
+    this.topoMap = true,
   });
 
   final Units units;
@@ -316,6 +317,11 @@ class AppSettings {
   /// intervals keep the big numbers.
   final Set<String> liveMapTypes;
 
+  /// Free and Trail maps: the offline Topo map (true) or Google's terrain
+  /// map (false). Topo only draws where an installed offline pack covers the
+  /// run; everywhere else Google stays.
+  final bool topoMap;
+
   /// Every preset's edits, the 4x4 included.
   Map<String, PresetEdit> get allPresetEdits => {
     ...presetEdits,
@@ -402,6 +408,7 @@ class AppSettings {
     Map<String, DateTime>? autoSendSince,
     Map<String, PastRunsSent>? pastRunsSent,
     Set<String>? liveMapTypes,
+    bool? topoMap,
   }) => AppSettings(
     units: units ?? this.units,
     reps: reps ?? this.reps,
@@ -445,6 +452,7 @@ class AppSettings {
     autoSendSince: autoSendSince ?? this.autoSendSince,
     pastRunsSent: pastRunsSent ?? this.pastRunsSent,
     liveMapTypes: liveMapTypes ?? this.liveMapTypes,
+    topoMap: topoMap ?? this.topoMap,
   );
 
   Map<String, Object?> toJson() => {
@@ -493,6 +501,7 @@ class AppSettings {
         for (final e in pastRunsSent.entries) e.key: e.value.toJson(),
       },
     'liveMapTypes': liveMapTypes.toList()..sort(),
+    'topoMap': topoMap,
   };
 
   /// Lenient: unknown or malformed keys fall back to defaults, never throw.
@@ -600,6 +609,7 @@ class AppSettings {
           for (final v in l)
             if (v is String) v,
       },
+      topoMap: j['topoMap'] is bool ? j['topoMap'] as bool : true,
     );
   }
 }

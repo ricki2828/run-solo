@@ -20,6 +20,8 @@ dependencies:
   # Post-run route map (plan §18.3). The only network user besides Phase 3's
   # weather client. Sits behind `MapSurface`; tests never construct it.
   google_maps_flutter: ^2.10.0
+  # Offline Topo maps: second map engine (PMTiles from disk), see lib/map/topo_map_surface.dart.
+  maplibre_gl: ^0.27.1
   # Move runs between Run Supreme installs (dogfood → Play, plan §4 import): the
   # share sheet writes RunBundle JSON files, SAF picks them back. No network.
   share_plus: ^11.0.0
@@ -46,6 +48,9 @@ flutter:
     - assets/maps/night_session.json
     - assets/maps/night_session_card.json
     - assets/maps/aurora_topo.json
+    # Glyphs the offline Topo map's labels need (Noto Sans, OFL); copied to the files dir on first use.
+    - assets/topo/glyphs/
+    - assets/topo/glyphs/NotoSans/
     - assets/plans/
     # Splash runner photograph (Unsplash license, assets/brand/splash_runner.LICENSE.txt).
     - assets/brand/splash_runner.jpg

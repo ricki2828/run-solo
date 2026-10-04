@@ -117,6 +117,22 @@
   sees the IP address the request comes from, as any web request does. Maps only download when you
   tap Download in Settings, under Offline maps.</p>
 
+  <h2>2a. Offline maps (Topo)</h2>
+  <p>For Free and Trail runs, Run Supreme can draw the route on its own offline Topo map instead of Google's
+  map, where you have downloaded the map for that area (Settings, Offline maps) and Topo is the map you picked
+  on the run screen or run detail. Topo is drawn on your phone from a map file you downloaded once. Drawing it
+  makes no network request at all: no tiles are fetched, no Google service is used, and your position and your
+  route never leave the phone. Where no downloaded map covers the run, or you pick Google, the Google map in
+  section 2 is used.</p>
+  <p>The only request is the download itself, and only when you tap Download (or Refresh) in Settings,
+  Offline maps. It goes to Run Supreme's own map hosting (Cloudflare R2) and carries the file you asked for,
+  that is the region's id such as "milos" in the address, and your IP address, like any download. It
+  contains no account, device ID, location, run or route. The hosting is not told which runs you have or where
+  you run; it can see which regions are downloaded. Delete a region in Settings, Offline maps to remove its file
+  from your phone.</p>
+  <p>Map data: &copy; OpenStreetMap contributors (ODbL), basemap tiles by Protomaps, terrain by Mapterhorn, with
+  Copernicus DEM data. The map shows this credit on screen and Settings, About lists it in full.</p>
+
   <h2>3. Weather from Open-Meteo</h2>
   <p>To adjust for heat and humidity, Run Supreme can fetch the weather for each run from
   <a href="https://open-meteo.com" rel="noopener">Open-Meteo</a>. The request contains your run's
@@ -148,7 +164,7 @@
     <tr><td>Nearby devices (Bluetooth)</td><td>To pair a heart-rate strap. Bluetooth is not used to work out where you are.</td></tr>
     <tr><td>Notifications</td><td>The recording notification with its LAP and Stop buttons, and cues while your screen is off.</td></tr>
     <tr><td>Health Connect (write only)</td><td>Only if you switch on Health Connect in Settings, Send runs to, or tap Send to Health Connect on a run. Health Connect asks you for four write permissions: exercise, exercise route, heart rate and distance. Run Supreme writes the finished run (its laps and pauses, route, heart rate and distance) and reads nothing back from Health Connect. You can turn it off in Settings, or withdraw the permissions in Health Connect, at any time.</td></tr>
-    <tr><td>Internet</td><td>Map tiles from Google, offline maps you choose to download from Cloudflare, and weather from Open-Meteo, as described above. Place names come from your phone's own geocoder, as described above. If you connect Intervals.icu, the runs you send to it and the planned workouts you add to its calendar. Nothing else.</td></tr>
+    <tr><td>Internet</td><td>Map tiles from Google, offline map downloads from our own hosting (only when you tap Download), and weather from Open-Meteo, as described above. Place names come from your phone's own geocoder, as described above. If you connect Intervals.icu, the runs you send to it. Nothing else.</td></tr>
   </table>
 
   <h2>5. What we do not do</h2>

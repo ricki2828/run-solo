@@ -67,12 +67,19 @@ abstract class MapSurfaceFactory {
   /// never a failure caption.
   ///
   /// [routeColor] is the run-type colour the route is drawn in over the map.
+  /// [terrain] marks a Free or Trail run: the only runs that can get the
+  /// offline Topo map on their card.
   Widget buildCard(
     BuildContext context,
     RouteGeometry route, {
     required String runId,
     Color? routeColor,
+    bool terrain = false,
   });
+
+  /// Whether [build] for this run would put a Google map on screen (and so
+  /// needs Play services). False when the offline Topo map takes it.
+  bool needsGoogle(RouteGeometry route, {bool terrain = false});
 
   /// Drop cached card images of runs that no longer exist. [liveRunIds] is
   /// every run id in History; an empty set deletes nothing.
@@ -142,11 +149,15 @@ class FakeMapSurfaceFactory implements MapSurfaceFactory {
     RouteGeometry route, {
     required String runId,
     Color? routeColor,
+    bool terrain = false,
   }) => RouteShape(
     route: route,
     color: routeColor,
     key: const ValueKey('fake-card-map'),
   );
+
+  @override
+  bool needsGoogle(RouteGeometry route, {bool terrain = false}) => true;
 
   @override
   Future<void> pruneCards(Set<String> liveRunIds) async {}

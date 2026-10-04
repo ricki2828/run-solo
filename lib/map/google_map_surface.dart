@@ -82,6 +82,9 @@ class GoogleMapSurfaceFactory implements MapSurfaceFactory {
   }
 
   @override
+  bool needsGoogle(RouteGeometry route, {bool terrain = false}) => true;
+
+  @override
   Future<void> pruneCards(Set<String> liveRunIds) =>
       MapSnapshotCache.shared.pruneOrphans(liveRunIds);
 
@@ -91,6 +94,7 @@ class GoogleMapSurfaceFactory implements MapSurfaceFactory {
     RouteGeometry route, {
     required String runId,
     Color? routeColor,
+    bool terrain = false,
   }) {
     if (!available || route.isEmpty) {
       return RouteShape(route: route, color: routeColor);

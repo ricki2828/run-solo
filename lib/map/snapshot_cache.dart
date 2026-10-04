@@ -19,7 +19,7 @@ import 'route_builder.dart';
 
 /// Bump when `assets/maps/night_session_card.json` or the map drawing on the
 /// card changes, so cached PNGs are rebuilt.
-const int kMapStyleVersion = 3;
+const int kMapStyleVersion = 4;
 
 /// Why a card render failed; decides whether and when it is retried.
 enum MapFailure {
@@ -105,9 +105,14 @@ class MapSnapshotCache implements MapCardStore {
     required double width,
     required double height,
     required double pixelRatio,
+    String engine = '',
   }) {
     final id = _safeId(runId);
-    return '${id}_v${styleVersion}_${routeHash}_${width.round()}x'
+    // The engine is part of the key: a card drawn from Topo must not be
+    // served as the Google image (or the other way round) after the choice,
+    // or the pack, changes. Google keys keep their old shape.
+    final eng = engine.isEmpty ? '' : '-${_safeId(engine)}';
+    return '${id}_v$styleVersion${eng}_${routeHash}_${width.round()}x'
         '${height.round()}@${pixelRatio.toStringAsFixed(2)}';
   }
 
