@@ -46,6 +46,7 @@ class _ShellScreenState extends State<ShellScreen> {
             AppTab.home
       : AppTab.home;
   bool _checked = false;
+  late bool _onboarding = widget.onboarding;
 
   @override
   void didChangeDependencies() {
