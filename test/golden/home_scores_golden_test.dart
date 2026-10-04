@@ -14,7 +14,7 @@ import '../helpers.dart';
 
 void main() {
   for (final height in [640, 800]) {
-    for (final state in ['empty', 'one_run', 'plan_input']) {
+    for (final state in ['empty', 'one_run', 'plan']) {
       testWidgets('scores Home $state 360x$height', (tester) async {
         final r = RunSummary(
           id: 'last',
@@ -31,13 +31,17 @@ void main() {
         );
         await pumpApp(
           tester,
-          fakeServices(runs: state == 'one_run' ? [r] : []),
-          home: HomeScreen(
-            now: now,
-            planHeadline: state == 'plan_input'
-                ? (name: 'Tempo', subtitle: 'Week 3, session 2 of 3.')
+          fakeServices(
+            runs: state == 'one_run' || state == 'plan' ? [r] : [],
+            plan: state == 'plan'
+                ? engine.BlockPlanner.build(
+                    lane: engine.IdentityLane.aerobic,
+                    perWeek: 3,
+                    start: testNow.subtract(const Duration(days: 2)),
+                  )
                 : null,
           ),
+          home: HomeScreen(now: now),
         );
         tester.view.physicalSize = Size(1080, height * 3);
         await pumpTimes(tester, 8);

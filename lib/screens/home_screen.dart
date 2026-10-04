@@ -5,6 +5,7 @@ import '../app/format.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
+import '../state/block_plan.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../state/settings.dart';
@@ -24,7 +25,6 @@ class HomeScreen extends StatefulWidget {
     this.now,
     this.onShowHistory,
     this.onShowProgress,
-    this.planHeadline,
   });
 
   /// Injected for tests; defaults to the wall clock.
@@ -35,9 +35,6 @@ class HomeScreen extends StatefulWidget {
 
   /// Switches the shell to Progress. Standalone Home pushes Progress.
   final VoidCallback? onShowProgress;
-
-  /// Supplied only by a future persisted plan integration, never inferred.
-  final ({String name, String subtitle})? planHeadline;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -136,9 +133,9 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(_refresh);
   }
 
-  /// Start and Change both open setup; with a recommendation, setup opens
+  /// Start and Change both open setup; with a session to preset, setup opens
   /// preset to it (setup keeps it only if a run starts).
-  Future<void> _start(Recommendation? rec) async {
+  Future<void> _start(AppSettings Function(AppSettings)? apply) async {
     final perms = _perms;
     if (perms != null && !perms.canRecord) {
       final ok = await Navigator.of(context).pushNamed(Routes.permissions);
@@ -148,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
     if (!mounted) return;
-    await Navigator.of(context).pushNamed(Routes.start, arguments: rec?.apply);
+    await Navigator.of(context).pushNamed(Routes.start, arguments: apply);
     if (mounted) setState(_refresh);
   }
 
@@ -180,6 +177,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _openPlan() async {
+    await Navigator.of(context).pushNamed(Routes.plan);
+    if (mounted) setState(_refresh);
+  }
+
   void _openRun(RunSummary r) {
     Navigator.of(context).pushNamed(
       r.isFourByFour ? Routes.verdict : Routes.runDetail,
@@ -193,11 +195,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final text = Theme.of(context).textTheme;
     final services = AppServices.of(context);
     return ListenableBuilder(
-      listenable: services.settings,
+      listenable: Listenable.merge([services.settings, services.plans]),
       builder: (context, _) {
         final settings = services.settings.settings;
         final perms = _perms;
-        final plan = widget.planHeadline;
         return Scaffold(
           body: SafeArea(
             child: SingleChildScrollView(
@@ -242,12 +243,25 @@ class _HomeScreenState extends State<HomeScreen> {
                               age: age,
                               presetEdits: settings.allPresetEdits,
                             );
+                      // The running plan, if any: judged from History's index
+                      // rows and the same scores as the hero.
+                      final planCtx = data == null
+                          ? null
+                          : PlanContext(
+                              runs: data.runs,
+                              scores: data.scores,
+                              now: _now,
+                            );
+                      final planView = planCtx?.view(services.plans.plan);
+                      final next = planView?.finished == false
+                          ? planView!.next
+                          : null;
                       // Start and Change never wait on the scores: until
                       // they load (or if they fail) Start keeps the last
                       // run type.
                       final String startLabel;
-                      if (plan != null) {
-                        startLabel = 'Start ${plan.name}';
+                      if (next != null) {
+                        startLabel = 'Start ${next.session.name}';
                       } else if (rec != null) {
                         startLabel = rec.startLabel;
                       } else {
@@ -279,10 +293,33 @@ class _HomeScreenState extends State<HomeScreen> {
                             const SizedBox(height: Space.x16),
                           ],
                           _GetBetter(
-                            reason: plan?.subtitle ?? rec?.reason,
+                            summary: next == null || planView == null
+                                ? null
+                                : PlanText.homeLine(planView, _now),
+                            reason: next?.session.reason ?? rec?.reason,
+                            target: next == null
+                                ? null
+                                : PlanText.targetLine(
+                                    next.session,
+                                    planCtx?.vdot,
+                                    settings.units,
+                                  ),
                             startLabel: startLabel,
-                            onStart: () => _start(plan == null ? rec : null),
+                            onStart: () => _start(
+                              next == null
+                                  ? rec?.apply
+                                  : PlanStart.apply(next.session),
+                            ),
                             onChange: () => _start(null),
+                            planLabel: planView == null
+                                ? (data == null || data.failed
+                                      ? null
+                                      : 'Build a 4-week plan around your scores')
+                                : planView.finished
+                                ? 'Plan done: ${planView.doneCount} of '
+                                      '${planView.totalCount}. Build the next 4 weeks'
+                                : 'See the plan',
+                            onPlan: _openPlan,
                           ),
                         ],
                       );
@@ -386,11 +423,25 @@ class _GetBetter extends StatelessWidget {
     required this.startLabel,
     required this.onStart,
     required this.onChange,
+    this.summary,
+    this.target,
+    this.planLabel,
+    this.onPlan,
   });
   final String? reason;
+
+  /// The plan's "This week: 2 of 3 done · Next: ..." line, when one runs.
+  final String? summary;
+
+  /// The pace the session aims at, when there is an estimate.
+  final String? target;
   final String startLabel;
   final VoidCallback onStart;
   final VoidCallback onChange;
+
+  /// The link to the Plan screen (or to build a plan).
+  final String? planLabel;
+  final VoidCallback? onPlan;
 
   @override
   Widget build(BuildContext context) {
@@ -403,12 +454,30 @@ class _GetBetter extends StatelessWidget {
             'HOW TO GET BETTER',
             style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
           ),
+        if (summary != null) ...[
+          const SizedBox(height: Space.x4),
+          Text(
+            summary!,
+            key: const ValueKey('home-plan-line'),
+            style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+          ),
+        ],
         if (reason != null) ...[
           const SizedBox(height: Space.x4),
           Text(
             reason!,
             key: const ValueKey('home-recommendation'),
-            style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+            style: RunSoloType.body15.copyWith(
+              color: summary == null ? t.inkPrimary : t.inkSecondary,
+            ),
+          ),
+        ],
+        if (target != null) ...[
+          const SizedBox(height: Space.x4),
+          Text(
+            target!,
+            key: const ValueKey('home-plan-target'),
+            style: RunSoloType.label13.copyWith(color: t.inkSecondary),
           ),
         ],
         const SizedBox(height: Space.x12),
@@ -427,6 +496,18 @@ class _GetBetter extends StatelessWidget {
             OutlinedButton(onPressed: onChange, child: const Text('Change')),
           ],
         ),
+        if (planLabel != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const ValueKey('home-plan-link'),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: Space.x12),
+              ),
+              onPressed: onPlan,
+              child: Text(planLabel!),
+            ),
+          ),
       ],
     );
   }

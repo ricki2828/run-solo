@@ -6,6 +6,7 @@ library;
 
 export 'src/engine/analysis.dart';
 export 'src/engine/best_efforts.dart';
+export 'src/engine/block_plan.dart';
 export 'src/engine/coach_report.dart';
 export 'src/engine/coaching_rules.dart';
 export 'src/engine/constants.dart';

@@ -13,4 +13,5 @@ abstract final class Routes {
   static const String fixLaps = '/fix-laps';
   static const String settings = '/settings';
   static const String offlineMaps = '/settings/offline-maps';
+  static const String plan = '/plan';
 }
