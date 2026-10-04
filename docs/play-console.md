@@ -27,6 +27,8 @@ Founder approves the wording (plan §18.9 item 8) before anything is typed into 
 
 > Run Supreme shows you how your running is going, whatever mix of runs you do.
 >
+> Run Supreme is where you get better at your runs, with no account and nothing uploaded. It tells you honestly how you are progressing and what to run next, free, on your phone.
+>
 > Your Home screen gives you four scores: AEROBIC, SPEED, MID and LONG. Each is a percentile estimate from your own runs, compared with research-based norms for your age and sex. You see what moved, and over what period. Under that is one suggested session and why it would help, with Start already set to it. Tap Change to pick something else.
 >
 > Intervals and 4x4
