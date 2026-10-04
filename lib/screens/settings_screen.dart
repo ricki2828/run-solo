@@ -19,6 +19,7 @@ import '../topo/pack_manager.dart';
 import '../topo/pack_models.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
+import '../widgets/hr_zones_section.dart';
 import 'intervals_connect_sheet.dart';
 import 'send_sheet.dart' show kSendPrivacyLine;
 
@@ -108,6 +109,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// False on Android 14: the volume-key toggle is disabled with a reason.
   bool _volumeKeyLaps = true;
   bool _volumeKeyChecked = false;
+
+  /// Lowest resting-HR proxy across the 30 newest runs, offered to the
+  /// reserve method; null until history loads or when no run has one.
+  int? _restingSuggestion;
+  bool _suggestionLoaded = false;
 
   @override
   void initState() {
@@ -302,11 +308,27 @@ class _SettingsScreenState extends State<SettingsScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _refreshPerms();
+    _loadRestingSuggestion();
     if (_volumeKeyChecked) return;
     _volumeKeyChecked = true;
     AppServices.of(context).permissions.volumeKeyLapsSupported().then((ok) {
       if (mounted && ok != _volumeKeyLaps) setState(() => _volumeKeyLaps = ok);
     });
+  }
+
+  void _loadRestingSuggestion() {
+    if (_suggestionLoaded) return;
+    _suggestionLoaded = true;
+    AppServices.of(context).history.list().then((runs) {
+      final recent = [...runs.where((r) => !r.missing)]
+        ..sort((a, b) => b.start.compareTo(a.start));
+      final bpm = [
+        for (final r in recent.take(30))
+          if (r.restingHrBpm != null) r.restingHrBpm!,
+      ];
+      if (!mounted || bpm.isEmpty) return;
+      setState(() => _restingSuggestion = bpm.reduce((a, b) => a < b ? a : b));
+    }, onError: (Object _) {});
   }
 
   void _refreshPerms() {
@@ -408,13 +430,11 @@ class _SettingsScreenState extends State<SettingsScreen>
                         ),
                       ),
               ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: Space.x8),
-                child: Text(
-                  'Zones: 1 under 60 %, 2 to 70 %, 3 to 80 %, 4 to 90 %, 5 above. '
-                  'The 4x4 band is 85 to 95 % of max.',
-                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                ),
+              HrZonesSection(
+                settings: s,
+                now: now,
+                onChange: services.settings.update,
+                restingSuggestion: _restingSuggestion,
               ),
               // A10.7: Profile, under Heart rate (birth year stays there).
               const _Section('Profile'),
@@ -907,6 +927,13 @@ class _SettingsScreenState extends State<SettingsScreen>
 
 /// "Max HR 192, seen on your strap 3 Sep" / "Max HR 185, entered" /
 /// "Max HR 180, from your age" / "Max HR 190, default".
+/// The one line under run detail's time in zone: which zones were used.
+String zonesSourceLine(engine.HrZoneMethod m, MaxHrResolution r) => switch (m) {
+  engine.HrZoneMethod.percentMax => maxHrSourceLine(r),
+  engine.HrZoneMethod.reserve => 'Heart rate reserve zones, max HR ${r.maxHr}',
+  engine.HrZoneMethod.custom => 'Your custom zones',
+};
+
 String maxHrSourceLine(MaxHrResolution r) => switch (r.source) {
   MaxHrSource.observed =>
     'Max HR ${r.maxHr}, seen on your strap${r.observedAt == null ? '' : ' ${Fmt.dayDate(r.observedAt!)}'}',

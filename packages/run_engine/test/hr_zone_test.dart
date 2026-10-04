@@ -31,7 +31,7 @@ void main() {
   }
 
   test('boundaries and raw zones', () {
-    final z = HrZoneTracker(maxHr: maxHr);
+    final z = HrZoneTracker(zones: HrZones.percentMax(maxHr));
     expect(z.lowerBound(2), 114);
     expect(z.lowerBound(3), 133);
     expect(z.lowerBound(4), 152);
@@ -48,7 +48,10 @@ void main() {
 
   test('(a) ramp 120→175 at 1 bpm/s: exactly four transitions, each ≥ 5 s '
       'after its boundary', () {
-    final changes = run(HrZoneTracker(maxHr: maxHr), ramp(from: 120, to: 175));
+    final changes = run(
+      HrZoneTracker(zones: HrZones.percentMax(maxHr)),
+      ramp(from: 120, to: 175),
+    );
     // t=0: first sample 120 (63 %) → Z2 at once (W4).
     // Z3: boundary 133 crossed at t=13, +2 bpm hysteresis at t=15, dwell 5 s
     // → t=20. Z4: 152 at t=32, 154 at t=34 → t=39. Z5: 171 at t=51, 173 at
@@ -69,7 +72,7 @@ void main() {
     final ticks = <(int, int?)>[
       for (var t = 0; t < 60; t++) (t * 1000, (t ~/ 2).isEven ? 149 : 155),
     ];
-    final tracker = HrZoneTracker(maxHr: maxHr);
+    final tracker = HrZoneTracker(zones: HrZones.percentMax(maxHr));
     final changes = run(tracker, ticks);
     expect(changes, [
       (0, 3),
@@ -79,7 +82,7 @@ void main() {
 
   test('(c) strap drop for 3 s → no change; 6 s → zone 0; return is immediate '
       'once 5 s have passed since the last change', () {
-    final tracker = HrZoneTracker(maxHr: maxHr);
+    final tracker = HrZoneTracker(zones: HrZones.percentMax(maxHr));
     final ticks = <(int, int?)>[
       for (var t = 0; t < 10; t++) (t * 1000, 160),
       // 3 s without HR (t=10,11,12), then back.
@@ -103,7 +106,7 @@ void main() {
 
   test('(c′) after a loss, HR returning ≥ 5 s after the zone-0 change sets '
       'the zone at once', () {
-    final tracker = HrZoneTracker(maxHr: maxHr);
+    final tracker = HrZoneTracker(zones: HrZones.percentMax(maxHr));
     final ticks = <(int, int?)>[
       for (var t = 0; t < 10; t++) (t * 1000, 160),
       for (var t = 10; t < 30; t++) (t * 1000, null),
@@ -114,7 +117,7 @@ void main() {
   });
 
   test('(e) first sample 165 → zone 4 at t=0, no dwell', () {
-    final tracker = HrZoneTracker(maxHr: maxHr);
+    final tracker = HrZoneTracker(zones: HrZones.percentMax(maxHr));
     final u = tracker.update(0, 165);
     expect(u.changed, isTrue);
     expect(u.state, const ZoneState(zone: 4, sinceMs: 0));
@@ -123,7 +126,7 @@ void main() {
   test('(f) recreate seeded with (zone 4, 165) → first frame is zone 4, '
       'not a change', () {
     final tracker = HrZoneTracker.seeded(
-      maxHr: maxHr,
+      zones: HrZones.percentMax(maxHr),
       zone: 4,
       hr: 165,
       atMs: 600000,
@@ -142,7 +145,7 @@ void main() {
 
   test('(f′) seeded with no HR (zone 0) behaves like a fresh tracker', () {
     final tracker = HrZoneTracker.seeded(
-      maxHr: maxHr,
+      zones: HrZones.percentMax(maxHr),
       zone: 0,
       hr: null,
       atMs: 600000,
@@ -152,7 +155,7 @@ void main() {
   });
 
   test('a 3 s spike back to the old zone resets the dwell', () {
-    final tracker = HrZoneTracker(maxHr: maxHr);
+    final tracker = HrZoneTracker(zones: HrZones.percentMax(maxHr));
     final ticks = <(int, int?)>[
       (0, 140), // Z3
       (1000, 156), // candidate Z4 from t=1
@@ -172,7 +175,7 @@ void main() {
   });
 
   test('hysteresis: 1 bpm past a boundary is not a crossing, 2 bpm is', () {
-    final up = HrZoneTracker(maxHr: maxHr);
+    final up = HrZoneTracker(zones: HrZones.percentMax(maxHr));
     up.update(0, 140); // Z3
     expect(up.zoneWithHysteresis(152, 3), 3);
     expect(up.zoneWithHysteresis(153, 3), 3);
@@ -187,7 +190,7 @@ void main() {
 
   test('downward ramp emits each zone once, ≥ 5 s apart', () {
     final changes = run(
-      HrZoneTracker(maxHr: maxHr),
+      HrZoneTracker(zones: HrZones.percentMax(maxHr)),
       ramp(
         from: 175,
         to: 175,
@@ -212,7 +215,7 @@ void main() {
       for (var t = 0; t < 1800; t++)
         (t * 1000, next() % 23 == 0 ? null : 140 + next() % 30),
     ];
-    final changes = run(HrZoneTracker(maxHr: maxHr), ticks);
+    final changes = run(HrZoneTracker(zones: HrZones.percentMax(maxHr)), ticks);
     for (var i = 1; i < changes.length; i++) {
       expect(
         changes[i].$1 - changes[i - 1].$1,

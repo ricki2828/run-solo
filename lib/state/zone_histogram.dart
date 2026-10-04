@@ -4,10 +4,10 @@ library;
 import 'package:run_engine/run_engine.dart' as engine;
 
 /// Moving seconds spent in each HR zone 0-5 over the run (run detail
-/// "Time in zone"; zones per addendum A1 shares, no hysteresis needed for a
+/// "Time in zone"; the runner's chosen [zones], no hysteresis needed for a
 /// histogram). Index 0 is moving time with no heart rate. Paused time
 /// (manual and auto) counts nowhere.
-List<double> zoneSecondsOf(engine.RunFile run, int maxHrUsed) {
+List<double> zoneSecondsOf(engine.RunFile run, engine.HrZones zones) {
   final out = List<double>.filled(6, 0);
   final samples = run.samples;
   final pauses = _merged(run.pauses);
@@ -25,16 +25,7 @@ List<double> zoneSecondsOf(engine.RunFile run, int maxHrUsed) {
       out[0] += dt;
       continue;
     }
-    final f = hr / maxHrUsed;
-    final z = f < 0.6
-        ? 1
-        : f < 0.7
-        ? 2
-        : f < 0.8
-        ? 3
-        : f < 0.9
-        ? 4
-        : 5;
+    final z = zones.zoneOf(hr);
     out[z] += dt;
   }
   return out;

@@ -23,6 +23,7 @@ import '../state/block_plan.dart';
 import '../state/courses.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
+import '../state/hr_zone_choice.dart';
 import '../state/max_hr.dart';
 import '../state/places.dart';
 import '../state/route_library.dart';
@@ -95,10 +96,10 @@ class AppServices {
              recorder,
              now: now,
              zoneMemento: zoneMemento,
-             maxHr: () => MaxHr.resolve(
+             zones: () => HrZoneChoice.resolve(
                settings.settings,
                (now ?? DateTime.now)(),
-             ).maxHr,
+             ),
            );
 
   final RecorderGateway recorder;
@@ -252,6 +253,9 @@ class AppServices {
 
   /// The engine profile from settings (plan D3 `maxHrFor` inputs).
   engine.UserProfile get profile => MaxHr.profileFor(settings.settings, now());
+
+  /// The runner's chosen HR zones (Settings → Heart rate zones).
+  engine.HrZones get hrZones => HrZoneChoice.resolve(settings.settings, now());
 
   MaxHrResolution get maxHr => MaxHr.resolve(settings.settings, now());
 

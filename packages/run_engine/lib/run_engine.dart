@@ -24,6 +24,7 @@ export 'src/engine/fix_laps.dart';
 export 'src/engine/format.dart';
 export 'src/engine/goal.dart';
 export 'src/engine/hr_zone.dart';
+export 'src/engine/hr_zones.dart';
 export 'src/engine/identity_scores.dart';
 export 'src/engine/friend_fitness_norms.dart';
 export 'src/engine/leaderboards.dart';

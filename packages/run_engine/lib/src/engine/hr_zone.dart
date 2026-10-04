@@ -1,11 +1,13 @@
 /// HR zones for the in-run background (plan §18.1, W4). Pure Dart so the
 /// hysteresis, dwell and strap-loss rules are fixture-tested.
 ///
-/// Zones are shares of the resolved max HR (`MetricsCalculator.maxHrFor`,
-/// never `settings.maxHr` raw): Z1 < 60 %, Z2 60–70, Z3 70–80, Z4 80–90,
-/// Z5 ≥ 90. Zone 0 = no HR. The engine's 85–95 % time-in-zone window is a
+/// Zones come from an [HrZones] (share of the resolved max HR by default:
+/// Z1 < 60 %, Z2 60–70, Z3 70–80, Z4 80–90, Z5 ≥ 90; or reserve / custom).
+/// Zone 0 = no HR. The engine's 85–95 % time-in-zone window is a
 /// different concept ("in the 4x4 band") and is untouched.
 library;
+
+import 'hr_zones.dart';
 
 /// The tracker's output: current zone (0–5) and when it became current.
 class ZoneState {
@@ -38,10 +40,11 @@ class ZoneUpdate {
 }
 
 class HrZoneTracker {
-  /// [maxHr] is the resolved value from `maxHrFor`. Constructor for a fresh
-  /// recording: zone 0 until the first HR sample.
+  /// [zones] is built from the resolved max HR (`maxHrFor`) or the runner's
+  /// chosen method. Constructor for a fresh recording: zone 0 until the
+  /// first HR sample.
   HrZoneTracker({
-    required this.maxHr,
+    required this.zones,
     this.hysteresisBpm = 2,
     this.dwellMs = 5000,
     this.lossMs = 5000,
@@ -53,7 +56,7 @@ class HrZoneTracker {
   /// once so the first frame is not black for 5 s. [atMs] is the run clock
   /// of the last tick the controller saw.
   HrZoneTracker.seeded({
-    required this.maxHr,
+    required this.zones,
     required int zone,
     required int? hr,
     required int atMs,
@@ -67,8 +70,8 @@ class HrZoneTracker {
        _lastChangeMs = null,
        _lastHrMs = hr == null ? null : atMs;
 
-  /// The resolved max HR the zones are shares of.
-  final double maxHr;
+  /// The zone boundaries in bpm.
+  final HrZones zones;
 
   /// A boundary crossing counts only when HR is this far past the boundary.
   final double hysteresisBpm;
@@ -93,23 +96,10 @@ class HrZoneTracker {
   int get zone => _state.zone;
 
   /// Lower boundary (bpm) of zone [z] for z in 2..5.
-  double lowerBound(int z) =>
-      maxHr *
-      switch (z) {
-        2 => 0.60,
-        3 => 0.70,
-        4 => 0.80,
-        5 => 0.90,
-        _ => throw ArgumentError.value(z, 'z', 'zones 2..5 have a lower bound'),
-      };
+  double lowerBound(int z) => zones.lowerBound(z);
 
   /// Zone of a raw HR with no hysteresis (1–5).
-  int rawZone(int hr) {
-    for (var z = 5; z >= 2; z--) {
-      if (hr >= lowerBound(z)) return z;
-    }
-    return 1;
-  }
+  int rawZone(int hr) => zones.zoneOf(hr);
 
   /// Zone [hr] resolves to when the current zone is [from], with hysteresis:
   /// stepping up into zone k needs `hr >= lower(k) + h`; stepping down out of
