@@ -36,8 +36,12 @@ import '../topo/pack_manager.dart';
 const bool kFakePlatform = bool.fromEnvironment('RUN_SOLO_FAKE');
 
 /// Where offline map packs are hosted (the bucket root holding regions.json).
-/// Empty until the hosting exists: Settings then has no Offline maps row.
-const String kTopoBaseUrl = String.fromEnvironment('TOPO_BASE_URL');
+/// Public Cloudflare R2 bucket; override with `--dart-define=TOPO_BASE_URL=`
+/// (empty turns Offline maps off: no PackManager, no Settings row).
+const String kTopoBaseUrl = String.fromEnvironment(
+  'TOPO_BASE_URL',
+  defaultValue: 'https://pub-b1d26357d23144f8a9c96f35588be8fe.r2.dev',
+);
 
 class AppServices {
   AppServices({

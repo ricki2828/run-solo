@@ -19,6 +19,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 
+import '../app/version.dart';
 import 'pack_models.dart';
 
 /// True when the phone is on Wi-Fi. TODO: no connectivity plugin is in the
@@ -36,6 +37,7 @@ class PackManager extends ChangeNotifier {
     this.wifi,
     HttpClient Function()? clientFactory,
     this.idleTimeout = const Duration(seconds: 30),
+    this.userAgent = 'RunSupreme/$kAppVersion (Android)',
   }) : _newClient = clientFactory ?? HttpClient.new;
 
   /// `<app files>/topo`.
@@ -46,6 +48,9 @@ class PackManager extends ChangeNotifier {
   final int capBytes;
   final WifiProbe? wifi;
   final Duration idleTimeout;
+
+  /// Cloudflare refuses some default agents, so we always say who we are.
+  final String userAgent;
   final HttpClient Function() _newClient;
 
   List<PackRegion> _regions = const [];
@@ -219,6 +224,10 @@ class PackManager extends ChangeNotifier {
 
   // ---- network: explicit user actions only ----
 
+  HttpClient _client() => _newClient()
+    ..connectionTimeout = idleTimeout
+    ..userAgent = userAgent;
+
   Uri _url(String path) {
     final base = baseUrl;
     if (base == null) {
@@ -237,7 +246,7 @@ class PackManager extends ChangeNotifier {
     _refreshing = true;
     _refreshError = null;
     notifyListeners();
-    final client = _newClient()..connectionTimeout = idleTimeout;
+    final client = _client();
     try {
       final req = await client.getUrl(_url('regions.json'));
       final res = await req.close().timeout(idleTimeout);
@@ -450,7 +459,7 @@ class PackManager extends ChangeNotifier {
 
   Future<void> _range(_Job job, File part, PackFileSpec spec, int from) async {
     final id = job.region.id;
-    final client = _newClient()..connectionTimeout = idleTimeout;
+    final client = _client();
     job.client = client;
     RandomAccessFile? out;
     try {

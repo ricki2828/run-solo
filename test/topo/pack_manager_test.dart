@@ -59,6 +59,16 @@ void main() {
     expect(m.regions.single.id, 'milos');
   });
 
+  test('every request names the app in User-Agent', () async {
+    final m = await withIndex([server.addPack('milos')]);
+    await m.download('milos');
+    expect(server.userAgents, isNotEmpty);
+    expect(
+      server.userAgents.every((u) => u == 'RunSupreme/0.1.0+1 (Android)'),
+      isTrue,
+    );
+  });
+
   test(
     'refresh is cached on disk and a new manager reads it offline',
     () async {

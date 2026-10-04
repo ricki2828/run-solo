@@ -25,6 +25,7 @@ class FakePackServer {
   final Map<String, Uint8List> files = {};
   final List<String> requests = [];
   final List<String?> ranges = [];
+  final List<String?> userAgents = [];
 
   /// Cut the connection after this many body bytes, once (then resets).
   int? cutAfter;
@@ -82,6 +83,7 @@ class FakePackServer {
   Future<void> _handle(HttpRequest req) async {
     requests.add(req.uri.path);
     ranges.add(req.headers.value(HttpHeaders.rangeHeader));
+    userAgents.add(req.headers.value(HttpHeaders.userAgentHeader));
     final res = req.response;
     final status = failStatus;
     final body = files[req.uri.path];
