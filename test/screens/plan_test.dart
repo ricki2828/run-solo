@@ -105,7 +105,12 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('plan-row-w1s1')));
     await pumpTimes(tester, 4);
     expect(find.textContaining('SWAP'), findsOneWidget);
-    await tester.tap(find.textContaining('Tempo intervals').first);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.textContaining('Tempo intervals'),
+      ),
+    );
     await pumpTimes(tester, 4);
     expect(services.plans.plan!.sessions.first.presetId, 'tempo');
     expect(services.plans.plan!.sessions.first.swapped, isTrue);

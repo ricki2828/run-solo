@@ -119,94 +119,97 @@ class _CreateFormState extends State<_CreateForm> {
           presetEdits: settings.allPresetEdits,
         ).lane;
     final name = lane.name.toUpperCase();
-    return ListView(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(Space.screenGutter),
-      children: [
-        Text(
-          'BUILD YOUR 4 WEEKS',
-          style: RunSoloType.display44.copyWith(color: t.inkPrimary),
-        ),
-        Text(
-          'A plan around your scores. It follows what you actually run, and '
-          'a missed session is skipped, never piled on.',
-          style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-        ),
-        const SizedBox(height: Space.x24),
-        Text(
-          'WHAT TO IMPROVE',
-          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-        ),
-        const SizedBox(height: Space.x8),
-        Wrap(
-          spacing: Space.x8,
-          runSpacing: Space.x8,
-          children: [
-            for (final l in engine.IdentityLane.values)
-              ChoiceChip(
-                key: ValueKey('plan-lane-${l.name}'),
-                label: Text(l.name.toUpperCase()),
-                selected: l == lane,
-                onSelected: (_) => setState(() => _lane = l),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'BUILD YOUR 4 WEEKS',
+            style: RunSoloType.display44.copyWith(color: t.inkPrimary),
+          ),
+          Text(
+            'A plan around your scores. It follows what you actually run, and '
+            'a missed session is skipped, never piled on.',
+            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+          ),
+          const SizedBox(height: Space.x24),
+          Text(
+            'WHAT TO IMPROVE',
+            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+          ),
+          const SizedBox(height: Space.x8),
+          Wrap(
+            spacing: Space.x8,
+            runSpacing: Space.x8,
+            children: [
+              for (final l in engine.IdentityLane.values)
+                ChoiceChip(
+                  key: ValueKey('plan-lane-${l.name}'),
+                  label: Text(l.name.toUpperCase()),
+                  selected: l == lane,
+                  onSelected: (_) => setState(() => _lane = l),
+                ),
+            ],
+          ),
+          const SizedBox(height: Space.x8),
+          Text(
+            _blurb[lane]!,
+            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+          ),
+          const SizedBox(height: Space.x24),
+          Text(
+            'RUNS A WEEK',
+            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+          ),
+          Row(
+            children: [
+              IconButton(
+                key: const ValueKey('plan-fewer'),
+                tooltip: 'Fewer runs',
+                onPressed: _perWeek > engine.BlockPlanner.minPerWeek
+                    ? () => setState(() => _perWeek--)
+                    : null,
+                icon: const Icon(Icons.remove),
               ),
-          ],
-        ),
-        const SizedBox(height: Space.x8),
-        Text(
-          _blurb[lane]!,
-          style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-        ),
-        const SizedBox(height: Space.x24),
-        Text(
-          'RUNS A WEEK',
-          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-        ),
-        Row(
-          children: [
-            IconButton(
-              key: const ValueKey('plan-fewer'),
-              tooltip: 'Fewer runs',
-              onPressed: _perWeek > engine.BlockPlanner.minPerWeek
-                  ? () => setState(() => _perWeek--)
-                  : null,
-              icon: const Icon(Icons.remove),
-            ),
-            Text(
-              '$_perWeek',
-              key: const ValueKey('plan-per-week'),
-              style: RunSoloType.display44.copyWith(color: t.inkPrimary),
-            ),
-            IconButton(
-              key: const ValueKey('plan-more'),
-              tooltip: 'More runs',
-              onPressed: _perWeek < engine.BlockPlanner.maxPerWeek
-                  ? () => setState(() => _perWeek++)
-                  : null,
-              icon: const Icon(Icons.add),
-            ),
-          ],
-        ),
-        Text(
-          'Week 3 or 4 is lighter. Week 4 ends with a test that re-measures '
-          '$name.',
-          style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-        ),
-        const SizedBox(height: Space.x24),
-        FilledButton(
-          key: const ValueKey('plan-build'),
-          onPressed: () async {
-            await services.plans.create(
-              engine.BlockPlanner.build(
-                lane: lane,
-                perWeek: _perWeek,
-                start: widget.ctx.now,
-                baseline: widget.ctx.baseline,
+              Text(
+                '$_perWeek',
+                key: const ValueKey('plan-per-week'),
+                style: RunSoloType.display44.copyWith(color: t.inkPrimary),
               ),
-            );
-            widget.onBuilt();
-          },
-          child: const Text('Build my 4 weeks'),
-        ),
-      ],
+              IconButton(
+                key: const ValueKey('plan-more'),
+                tooltip: 'More runs',
+                onPressed: _perWeek < engine.BlockPlanner.maxPerWeek
+                    ? () => setState(() => _perWeek++)
+                    : null,
+                icon: const Icon(Icons.add),
+              ),
+            ],
+          ),
+          Text(
+            'Week 3 or 4 is lighter. Week 4 ends with a test that re-measures '
+            '$name.',
+            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+          ),
+          const SizedBox(height: Space.x24),
+          FilledButton(
+            key: const ValueKey('plan-build'),
+            onPressed: () async {
+              await services.plans.create(
+                engine.BlockPlanner.build(
+                  lane: lane,
+                  perWeek: _perWeek,
+                  start: widget.ctx.now,
+                  baseline: widget.ctx.baseline,
+                ),
+              );
+              widget.onBuilt();
+            },
+            child: const Text('Build my 4 weeks'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -228,71 +231,76 @@ class _PlanBody extends StatelessWidget {
     final units = services.settings.settings.units;
     final plan = view.plan;
     final lane = plan.lane.name.toUpperCase();
-    return ListView(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(Space.screenGutter),
-      children: [
-        Text(
-          '$lane BLOCK',
-          style: RunSoloType.display44.copyWith(color: t.inkPrimary),
-        ),
-        Text(
-          view.finished
-              ? 'Done: ${view.doneCount} of ${view.totalCount} sessions.'
-              : 'Week ${view.currentWeek} of 4 · ${view.doneCount} of '
-                    '${view.totalCount} done · ${plan.perWeek} a week',
-          key: const ValueKey('plan-summary'),
-          style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-        ),
-        if (view.shifts > 0) ...[
-          const SizedBox(height: Space.x4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           Text(
-            PlanText.shiftLine(view.shifts),
+            '$lane BLOCK',
+            style: RunSoloType.display44.copyWith(color: t.inkPrimary),
+          ),
+          Text(
+            view.finished
+                ? 'Done: ${view.doneCount} of ${view.totalCount} sessions.'
+                : 'Week ${view.currentWeek} of 4 · ${view.doneCount} of '
+                      '${view.totalCount} done · ${plan.perWeek} a week',
+            key: const ValueKey('plan-summary'),
             style: RunSoloType.body15.copyWith(color: t.inkSecondary),
           ),
-        ],
-        if (view.finished) ...[
-          const SizedBox(height: Space.x12),
-          FilledButton(
-            key: const ValueKey('plan-build-next'),
-            onPressed: onBuildNext,
-            child: const Text('Build the next 4 weeks'),
-          ),
-        ],
-        for (var w = 1; w <= engine.BlockPlanner.weeks; w++) ...[
-          const SizedBox(height: Space.x24),
-          Row(
-            children: [
-              Text(
-                'WEEK $w',
-                style: RunSoloType.heading19.copyWith(
-                  color: view.currentWeek == w ? t.inkPrimary : t.inkSecondary,
-                ),
-              ),
-              if (PlanText.weekTag(plan, w) != null) ...[
-                const SizedBox(width: Space.x8),
+          if (view.shifts > 0) ...[
+            const SizedBox(height: Space.x4),
+            Text(
+              PlanText.shiftLine(view.shifts),
+              style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+            ),
+          ],
+          if (view.finished) ...[
+            const SizedBox(height: Space.x12),
+            FilledButton(
+              key: const ValueKey('plan-build-next'),
+              onPressed: onBuildNext,
+              child: const Text('Build the next 4 weeks'),
+            ),
+          ],
+          for (var w = 1; w <= engine.BlockPlanner.weeks; w++) ...[
+            const SizedBox(height: Space.x24),
+            Row(
+              children: [
                 Text(
-                  PlanText.weekTag(plan, w)!,
-                  style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+                  'WEEK $w',
+                  style: RunSoloType.heading19.copyWith(
+                    color: view.currentWeek == w
+                        ? t.inkPrimary
+                        : t.inkSecondary,
+                  ),
                 ),
+                if (PlanText.weekTag(plan, w) != null) ...[
+                  const SizedBox(width: Space.x8),
+                  Text(
+                    PlanText.weekTag(plan, w)!,
+                    style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+                  ),
+                ],
               ],
-            ],
+            ),
+            for (final s in view.weeks[w - 1])
+              _SessionRow(state: s, ctx: ctx, units: units),
+          ],
+          const SizedBox(height: Space.x24),
+          Text(
+            'Paces are True Pace estimates from your recent runs: flat ground, '
+            'cool day.',
+            style: RunSoloType.label13.copyWith(color: t.inkMuted),
           ),
-          for (final s in view.weeks[w - 1])
-            _SessionRow(state: s, ctx: ctx, units: units),
+          const SizedBox(height: Space.x12),
+          TextButton(
+            key: const ValueKey('plan-end'),
+            onPressed: () => _confirmEnd(context, services),
+            child: const Text('End plan'),
+          ),
         ],
-        const SizedBox(height: Space.x24),
-        Text(
-          'Paces are True Pace estimates from your recent runs: flat ground, '
-          'cool day.',
-          style: RunSoloType.label13.copyWith(color: t.inkMuted),
-        ),
-        const SizedBox(height: Space.x12),
-        TextButton(
-          key: const ValueKey('plan-end'),
-          onPressed: () => _confirmEnd(context, services),
-          child: const Text('End plan'),
-        ),
-      ],
+      ),
     );
   }
 
