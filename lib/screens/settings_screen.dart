@@ -505,6 +505,18 @@ class _SettingsScreenState extends State<SettingsScreen>
                   style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
               ),
+              if (services.topo case final topo?)
+                ListenableBuilder(
+                  listenable: topo,
+                  builder: (context, _) => SettingsRow(
+                    label: 'Offline maps',
+                    value: topo.installed.isEmpty
+                        ? ''
+                        : '${topo.installed.length} on phone',
+                    onTap: () =>
+                        Navigator.of(context).pushNamed(Routes.offlineMaps),
+                  ),
+                ),
               SettingsRow(
                 label: 'Move runs to another Run Supreme',
                 value: _busy ? 'Working' : '',

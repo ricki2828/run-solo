@@ -9,6 +9,7 @@ import 'package:run_solo/topo/pack_models.dart';
 import 'fake_pack_server.dart';
 
 void main() {
+  contractTests();
   late FakePackServer server;
   late Directory dir;
 
@@ -448,5 +449,28 @@ void main() {
       {'name': '../a', 'size': 1, 'sha256': 'a'},
     ];
     expect(() => PackRegion.fromJson(bad), throwsFormatException);
+  });
+}
+
+void contractTests() {
+  test('regions.json from tools/topo/make_regions_json.py parses', () {
+    final j = jsonDecode(
+      File('test/topo/fixtures/regions_milos.json').readAsStringSync(),
+    ) as Map<String, Object?>;
+    expect(j['schema'], 1);
+    final r = PackRegion.fromJson(
+      ((j['regions']! as List).single as Map).cast<String, Object?>(),
+    );
+    expect(r.id, 'milos');
+    expect(r.name, 'Milos, Greece');
+    expect(r.files.map((f) => f.name).toSet(), {
+      'basemap.pmtiles',
+      'terrain.pmtiles',
+      'contours.pmtiles',
+    });
+    expect(r.totalBytes, 3122553);
+    expect(r.mapText, contains('OpenStreetMap'));
+    expect(r.credits.length, greaterThanOrEqualTo(3));
+    expect(r.contains(36.7, 24.4), isTrue);
   });
 }

@@ -375,18 +375,24 @@ class PackManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The cap is a budget on what packs take once installed: an update
-  /// replaces the old files, so they do not count against it.
-  void _checkCap(PackRegion region) {
+  /// Bytes the pack would take beyond the cap, or null when it fits. The cap
+  /// is a budget on what packs take once installed: an update replaces the
+  /// old files, so they do not count against it.
+  int? shortfall(PackRegion region) {
     final id = region.id;
     final replaced = _installed[id]?.region.totalBytes ?? 0;
     final alreadyHere = _partialBytes(id);
     final after = usedBytes - replaced - alreadyHere + region.totalBytes;
-    if (after > capBytes) {
+    return after > capBytes ? after - capBytes : null;
+  }
+
+  void _checkCap(PackRegion region) {
+    final over = shortfall(region);
+    if (over != null) {
       throw PackException(
         PackErrorKind.storageCap,
         'Not enough room under your offline maps limit.',
-        bytes: after - capBytes,
+        bytes: over,
       );
     }
   }
