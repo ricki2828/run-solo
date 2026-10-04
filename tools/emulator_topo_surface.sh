@@ -15,6 +15,9 @@ until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep
 sleep 15
 adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
 adb install -r "$APK"
+# A dense screen (3x) so the card snapshot path is checked at full resolution, not just mdpi.
+adb shell wm size 1080x2160 || true
+adb shell wm density 480 || true
 adb logcat -c || true
 adb logcat -v time > "$OUT/logcat.txt" 2>&1 &
 LOGCAT_PID=$!

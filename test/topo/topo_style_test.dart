@@ -133,6 +133,71 @@ void main() {
     });
   });
 
+  group('pixel scale (card snapshots at density)', () {
+    test('sizes, zoom stops and layer zooms move together', () {
+      final layers = <Object?>[
+        <String, Object?>{
+          'minzoom': 13,
+          'paint': <String, Object?>{
+            'line-width': [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              11,
+              0.5,
+              16,
+              2,
+            ],
+            'circle-radius': 6,
+            'line-color': '#fff',
+          },
+          'layout': <String, Object?>{'text-size': 11},
+        },
+      ];
+      TopoStyle.scaleForPixelRatio(layers, 4); // log2(4) = 2
+      final l = layers.single! as Map;
+      expect(l['minzoom'], 15);
+      final paint = l['paint'] as Map;
+      expect(paint['line-width'], [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        13,
+        2.0,
+        18,
+        8,
+      ]);
+      expect(paint['circle-radius'], 24);
+      expect(paint['line-color'], '#fff');
+      expect((l['layout'] as Map)['text-size'], 44);
+    });
+
+    test('the real style scales and stays valid JSON; 1x is untouched', () {
+      final one = TopoStyle.build(_template(), packDir: '/p', glyphsDir: '/g');
+      expect(
+        TopoStyle.build(
+          _template(),
+          packDir: '/p',
+          glyphsDir: '/g',
+          pixelScale: 1,
+        ),
+        one,
+      );
+      final three = jsonDecode(
+        TopoStyle.build(
+          _template(),
+          packDir: '/p',
+          glyphsDir: '/g',
+          pixelScale: 3,
+        ),
+      ) as Map<String, dynamic>;
+      final route = (three['layers'] as List).firstWhere(
+        (l) => l['id'] == 'rs-track',
+      );
+      expect(route['paint']['line-width'], 15);
+    });
+  });
+
   group('route data', () {
     test('a line is lon/lat, with colours as properties', () {
       final fc = TopoStyle.line(

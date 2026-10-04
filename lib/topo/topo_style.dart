@@ -9,6 +9,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/painting.dart' show Color;
 
@@ -55,6 +56,7 @@ class TopoStyle {
     required String packDir,
     required String glyphsDir,
     Map<String, Map<String, Object?>> routeData = const {},
+    double pixelScale = 1,
   }) {
     final style = (_fill(jsonDecode(template), packDir, glyphsDir) as Map)
         .cast<String, Object?>();
@@ -68,11 +70,81 @@ class TopoStyle {
     }
     final layers = (style['layers'] as List).cast<Object?>();
     layers.addAll(_routeLayers);
+    if (pixelScale != 1) scaleForPixelRatio(layers, pixelScale);
     style['metadata'] = {
       ...((style['metadata'] as Map?)?.cast<String, Object?>() ?? const {}),
       'placeholders': <String>[],
     };
     return jsonEncode(style);
+  }
+
+  /// Paint and layout sizes that are in screen pixels.
+  static const _pxPaint = [
+    'line-width',
+    'line-gap-width',
+    'line-blur',
+    'circle-radius',
+    'circle-stroke-width',
+    'text-halo-width',
+    'text-halo-blur',
+  ];
+  static const _pxLayout = ['text-size', 'symbol-spacing'];
+
+  /// Makes a style drawn at 1x look the same drawn [k] times denser: the
+  /// native snapshotter cannot take a pixel ratio, so a card is shot with
+  /// k times the pixels at zoom + log2(k), and every size in pixels, and every
+  /// zoom a layer or a size ramp is keyed to, moves with it.
+  static void scaleForPixelRatio(List<Object?> layers, double k) {
+    final s = math.log(k) / math.ln2;
+    for (final l in layers) {
+      if (l is! Map) continue;
+      for (final key in const ['minzoom', 'maxzoom']) {
+        if (l[key] is num) l[key] = (l[key] as num) + s;
+      }
+      final paint = l['paint'];
+      if (paint is Map) {
+        for (final n in _pxPaint) {
+          if (paint.containsKey(n)) paint[n] = _scale(paint[n], k, s);
+        }
+      }
+      final layout = l['layout'];
+      if (layout is Map) {
+        for (final n in _pxLayout) {
+          if (layout.containsKey(n)) layout[n] = _scale(layout[n], k, s);
+        }
+      }
+    }
+  }
+
+  static bool _zoomInput(Object? v) =>
+      v is List && v.isNotEmpty && v[0] == 'zoom';
+
+  static Object? _scale(Object? v, double k, double s) {
+    if (v is num) return v * k;
+    if (v is! List || v.isEmpty) return v;
+    if (v[0] == 'interpolate' && v.length >= 5 && _zoomInput(v[2])) {
+      return [
+        v[0],
+        v[1],
+        v[2],
+        for (var i = 3; i + 1 < v.length; i += 2) ...[
+          (v[i] as num) + s,
+          _scale(v[i + 1], k, s),
+        ],
+      ];
+    }
+    if (v[0] == 'step' && v.length >= 3 && _zoomInput(v[1])) {
+      return [
+        v[0],
+        v[1],
+        _scale(v[2], k, s),
+        for (var i = 3; i + 1 < v.length; i += 2) ...[
+          (v[i] as num) + s,
+          _scale(v[i + 1], k, s),
+        ],
+      ];
+    }
+    return v;
   }
 
   static Object? _fill(Object? v, String packDir, String glyphsDir) =>

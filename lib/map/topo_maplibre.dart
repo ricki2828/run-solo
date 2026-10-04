@@ -10,6 +10,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:math' show Point;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -157,7 +158,7 @@ Widget _mapView({
   attributionButtonPosition: ml.AttributionButtonPosition.bottomRight,
   attributionButtonMargins: const Point<num>(-120, -120),
   myLocationEnabled: false,
-  minMaxZoomPreference: const ml.MinMaxZoomPreference(3, 17.5),
+  minMaxZoomPreference: const ml.MinMaxZoomPreference(3, 20),
   cameraTargetBounds: limit == null
       ? ml.CameraTargetBounds.unbounded
       : ml.CameraTargetBounds(limit),
@@ -196,6 +197,9 @@ class _TopoStaticMap extends StatefulWidget {
 class _TopoStaticMapState extends State<_TopoStaticMap> {
   Future<String>? _style;
   String? _cardStyle;
+
+  /// The card is shot at this many times the logical size (see [_snapshot]).
+  double _dpr = 1;
   ml.MapLibreMapController? _ctl;
   bool _failed = false;
   bool _done = false;
@@ -224,9 +228,11 @@ class _TopoStaticMapState extends State<_TopoStaticMap> {
   /// re-reads the style, so a route set on the live map would not be in it.
   Future<String> _makeCardStyle() async {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
+    _dpr = MediaQuery.devicePixelRatioOf(context);
     final path = await widget.files.cardStyleFor(
       widget.pack,
       key: '${routeFingerprint(widget.route)}-${identityHashCode(this)}',
+      pixelScale: _dpr,
       data: {
         TopoStyle.trackSource: TopoStyle.line(
           _pairs(widget.route.points),
@@ -324,6 +330,10 @@ class _TopoStaticMapState extends State<_TopoStaticMap> {
           bottom: widget.mapOnly ? 32 : 48,
         ),
       );
+      if (widget.mapOnly && _dpr > 1) {
+        // Same picture, _dpr times the pixels: see [_snapshot].
+        await c.moveCamera(ml.CameraUpdate.zoomBy(math.log(_dpr) / math.ln2));
+      }
     } on Object catch (e) {
       debugPrint('topo map: style setup failed ($e)');
     }
@@ -367,17 +377,18 @@ class _TopoStaticMapState extends State<_TopoStaticMap> {
     if (c == null || _done || !mounted) return;
     try {
       // The native snapshotter stamps a MapLibre logo bottom-left that
-      // cannot be switched off from Dart. Take a taller frame at the same
-      // camera and cut the extra rows off top and bottom: same picture,
-      // no logo. Sizes are logical (the snapshotter draws at 1x, so a
-      // device-pixel size would show a wider area on a dense screen).
+      // cannot be switched off, and draws at 1x with no pixel-ratio option.
+      // So: a frame _dpr times the size (and a taller one by the logo's
+      // band) at zoom + log2(_dpr) (set in _onStyle, with every size in the
+      // card style scaled to match), then the extra rows are cut off.
       final box = context.findRenderObject() as RenderBox;
-      final w = box.size.width.round();
-      final h = box.size.height.round();
+      final w = (box.size.width * _dpr).round();
+      final h = (box.size.height * _dpr).round();
+      final band = (_logoBand * _dpr).round();
       final raw = await c
-          .takeSnapshot(width: w, height: h + 2 * _logoBand)
+          .takeSnapshot(width: w, height: h + 2 * band)
           .timeout(const Duration(seconds: 8));
-      final png = await _cropRows(raw, _logoBand, w, h);
+      final png = await _cropRows(raw, band, w, h);
       final verdict = await judgeSnapshotPng(png);
       recordMapVerdict(_surface, verdict, mapType: 'topo');
       if (!mounted || _done) return;

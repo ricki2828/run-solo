@@ -56,6 +56,7 @@ class TopoFiles {
     InstalledPack pack, {
     required String key,
     required Map<String, Map<String, Object?>> data,
+    double pixelScale = 1,
   }) async {
     await (_glyphs ??= _copyGlyphs().catchError((Object e) {
       _glyphs = null;
@@ -69,6 +70,7 @@ class TopoFiles {
       packDir: pack.directory,
       glyphsDir: glyphsDir,
       routeData: data,
+      pixelScale: pixelScale,
     );
     final safe = key.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
     final file = File('${_dir.path}/styles/card-$safe.json');

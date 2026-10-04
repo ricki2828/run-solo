@@ -86,7 +86,9 @@ class _HarnessState extends State<_Harness> {
   }
 
   Future<void> _run() async {
-    log('start');
+    log(
+      'start dpr=${WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio}',
+    );
     final support = await getApplicationSupportDirectory();
     final packs = PackManager(
       root: Directory('${support.path}/topo'),
