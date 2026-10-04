@@ -376,6 +376,7 @@ class IndexRow {
     this.routeName,
     this.routeOffCount,
     this.routeOffMs,
+    this.restingHrBpm,
   });
 
   /// Bump when a field is added, so old rows are rebuilt once.
@@ -391,7 +392,8 @@ class IndexRow {
   /// 11: [routeName], [routeOffCount], [routeOffMs] (the followed route).
   /// 12: True Pace: [truePaceSecPerKm], [gradeFactor], [heatFactor],
   /// [workTruePaceSecPerKm], [workGradeFactor].
-  static const int currentVersion = 12;
+  /// 13: [restingHrBpm].
+  static const int currentVersion = 13;
 
   final int version;
   final int lapCount;
@@ -511,6 +513,11 @@ class IndexRow {
   final int? routeOffCount;
   final int? routeOffMs;
 
+  /// The lowest 2-minute HR in the first minutes of the run ([engine.RestingHr]),
+  /// the readiness line's resting-HR proxy; null without a strap or a rest-ish
+  /// start.
+  final int? restingHrBpm;
+
   factory IndexRow.of(
     engine.RunFile run,
     engine.RunAnalysis? a,
@@ -586,6 +593,7 @@ class IndexRow {
       routeName: run.route?.name,
       routeOffCount: run.route?.offRouteCount,
       routeOffMs: run.route?.offRouteMs,
+      restingHrBpm: engine.RestingHr.of(run),
     );
   }
 
@@ -627,6 +635,7 @@ class IndexRow {
     'route_name': ?routeName,
     'route_off_n': ?routeOffCount,
     'route_off_ms': ?routeOffMs,
+    'rest_hr': ?restingHrBpm,
   };
 
   /// null for a missing or unreadable row (the entry is then stale).
@@ -687,6 +696,7 @@ class IndexRow {
         routeName: j['route_name'] as String?,
         routeOffCount: j['route_off_n'] as int?,
         routeOffMs: j['route_off_ms'] as int?,
+        restingHrBpm: j['rest_hr'] as int?,
       );
     } catch (e) {
       debugPrint('index: unreadable row ($e)');

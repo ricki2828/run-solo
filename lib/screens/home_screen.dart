@@ -12,6 +12,7 @@ import '../widgets/goal_picker.dart';
 import '../state/home_progress.dart';
 import '../theme/theme.dart';
 import '../widgets/home_scores.dart';
+import '../widgets/readiness_line.dart';
 import '../widgets/recent_activity.dart';
 import 'progress_screen.dart';
 
@@ -312,6 +313,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          ReadinessLine(runs: runs, now: _now),
                           FutureBuilder<engine.HomeEstimates?>(
                             future: _estimates,
                             builder: (context, estimateSnap) =>
