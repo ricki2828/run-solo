@@ -15,12 +15,13 @@ import 'package:path_provider/path_provider.dart';
 
 import 'map/route_builder.dart';
 import 'map/topo_map_surface.dart';
+import 'theme/theme.dart';
 
 void log(String m) => debugPrint('TOPO_SPIKE $m');
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MaterialApp(home: _Spike()));
+  runApp(MaterialApp(theme: runSoloTheme(), home: const _Spike()));
 }
 
 enum _Stage { google1, topo1, google2, topo2Json, both, done }
