@@ -15,6 +15,8 @@ dependencies:
     path: packages/run_engine
   # App files dir (settings sidecar, run files).
   path_provider: ^2.1.5
+  # sha256 of downloaded offline map packs (pure Dart, already in the lock).
+  crypto: ^3.0.7
   # Post-run route map (plan §18.3). The only network user besides Phase 3's
   # weather client. Sits behind `MapSurface`; tests never construct it.
   google_maps_flutter: ^2.10.0
