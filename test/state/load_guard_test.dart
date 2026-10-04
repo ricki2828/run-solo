@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
+import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/load_guard.dart';
 import 'package:run_solo/state/run_index.dart';
@@ -95,6 +96,23 @@ void main() {
         await store.derivedIdle;
       },
     );
+  });
+
+  group('dates', () {
+    test('an SGT 6am run stored as UTC counts on its own day', () {
+      final r = RunSummary(
+        id: 'sgt',
+        mode: RecordMode.free,
+        start: DateTime.utc(2026, 10, 4, 22),
+        durationMs: 2400000,
+        distanceM: 6000,
+        laps: 0,
+        utcOffsetMin: 480,
+        row: const IndexRow(lapCount: 0, movingMs: 2400000),
+      );
+      final s = LoadInputs.runs([r]).single.start;
+      expect([s.day, s.hour], [5, 6]);
+    });
   });
 
   group('dismissal', () {

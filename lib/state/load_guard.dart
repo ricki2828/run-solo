@@ -6,6 +6,7 @@ library;
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../platform/gateway.dart';
+import 'block_plan.dart';
 import 'history_store.dart';
 import 'settings.dart';
 
@@ -15,7 +16,7 @@ abstract final class LoadInputs {
     for (final r in all)
       if (!r.missing)
         engine.LoadRun(
-          start: r.start,
+          start: PlanInputs.wallClock(r),
           movingMin: (r.row?.movingMs ?? r.durationMs) / 60000.0,
           distanceM: r.distanceM,
           truePaceSecPerKm: r.truePaceSecPerKm,
