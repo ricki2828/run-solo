@@ -26,9 +26,16 @@ Tagline = 4-6 words (feature graphic, first screenshot). Short description max 8
 
 Recommended: **1, "Track progress. Get better."** It says the two things Home does, works for someone who mixes 4x4s, trails and free runs, and is short enough to be the biggest text on the feature graphic. Option 5 is the runner-up if we want the mixed-runs point explicit.
 
+## Positioning (founder approved 4-Oct-2026)
+
+- Website (`docs/index.html`) names competitors: "Strava is where you show your runs; Run Supreme is where you get better at them, with no account and nothing uploaded." and "Runna gives you a plan that charges you every year; Run Supreme tells you honestly how you're progressing and what to run next, free, on your phone."
+- Play listing does NOT name them. Play's metadata policy asks for honest, relevant text with no unrelated references and no brand use without permission; it does not ban comparisons outright, but a named rival in the description risks a keyword-stuffing or brand flag and a trademark complaint. The description carries the same claim without the names. The existing "works with Strava" line stays (plain compatibility).
+
 ## Full description (max 4000)
 
 Run Supreme shows you how your running is going, whatever mix of runs you do.
+
+Run Supreme is where you get better at your runs, with no account and nothing uploaded. It tells you honestly how you are progressing and what to run next, free, on your phone.
 
 Your Home screen gives you four scores: AEROBIC, SPEED, MID and LONG. Each is a percentile estimate from your own runs, compared with research-based norms for your age and sex. You see what moved, and over what period. Under that is one suggested session and why it would help, with Start already set to it. Tap Change to pick something else.
 
