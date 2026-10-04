@@ -165,7 +165,7 @@ jobs:
       - name: Style matches tokens and run colours keep 3:1 against the map
         run: python3 tools/topo/build_style.py --check
       - name: MapLibre style-spec validator
-        run: npx --yes @maplibre/maplibre-gl-style-spec@24 gl-style-validate assets/maps/aurora_topo.json
+        run: npx --yes -p @maplibre/maplibre-gl-style-spec@26.4.4 gl-style-validate assets/maps/aurora_topo.json
 
   core-jvm:
     name: core-jvm tests (pure Kotlin)
