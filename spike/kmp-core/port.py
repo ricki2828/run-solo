@@ -46,9 +46,14 @@ RULES = [
     # Charsets / String(bytes) are JVM-only; UTF-8 is the only charset used.
     (".toByteArray(Charsets.UTF_8)", None, ".toByteArray(Charsets.UTF_8)", ".encodeToByteArray()"),
     (".toString(Charsets.UTF_8)", None, ".toString(Charsets.UTF_8)", ".decodeToString()"),
-    ("String.toByteArray()", None, "re:(?<![A-Za-z])(\\)|\"|text|cut|newer|unknownMode|v1|v2|bytes)\\.toByteArray\\(\\)", "\\1.encodeToByteArray()"),
+    # String.toByteArray() is JVM-only stdlib; jvmTest compiles commonTest with it, Native does not.
+    ("String.toByteArray()", None, "re:((?<=[)\"}])|\\b(?:text|cut|newer|unknownMode|v1|v2|bytes))\\.toByteArray\\(\\)", "\\1.encodeToByteArray()"),
     ("String(bytes)", None, "StringBuilder(String(journal()))", "StringBuilder(journal().decodeToString())"),
-    ("Map.putIfAbsent", None, "re:(?m)\\.putIfAbsent\\((\\w+), (.*)\\)$", ".getOrPut(\\1) { \\2 }"),
+    ("Map.putIfAbsent", None, "re:(?m)\\.putIfAbsent\\(([\\w.]+), (.*?)\\)(\\s*(?://.*)?)$", ".getOrPut(\\1) { \\2 }\\3"),
+    ("MutableCollection.removeIf", None, ".removeIf {", ".removeAll {"),
+    ("String.format %.1f", "LapDispatchTest.kt", '"%.1f".format(d)', "formatDouble(kotlin.math.round(d * 10) / 10)"),
+    # Kotlin/Native rejects , ( ) # in names (JVM only rejects : . ; [ ] / < >).
+    ("test names , ( ) #", None, "re:(?m)^(\\s*fun `)([^`\\n]*[,()#][^`\\n]*)`", None),
     ("System.currentTimeMillis", None, "System::currentTimeMillis", "::currentTimeMillis"),
     # RunFile: java.time.Instant + java.util.zip.
     ("Instant.toString", None, "re:(?:java\\.time\\.)?Instant\\.ofEpochMilli\\(([^()]*(?:\\([^()]*\\))?[^()]*)\\)\\.toString\\(\\)", f"isoInstant(\\1)"),
@@ -71,7 +76,9 @@ def apply(rel: str, text: str, counts: dict) -> str:
     for rule, only, pat, rep in RULES:
         if only and only != name:
             continue
-        if pat.startswith("re:"):
+        if rep is None:  # test-name sanitiser
+            text, n = re.subn(pat[3:], lambda m: m.group(1) + re.sub(r"[,()#]", lambda c: {",": "", "#": "no "}.get(c.group(0), " "), m.group(2)).replace("  ", " ").rstrip() + "`", text)
+        elif pat.startswith("re:"):
             text, n = re.subn(pat[3:], rep, text)
         else:
             n = text.count(pat)

@@ -78,9 +78,10 @@ class AppleFileSystem(private val root: String) : FileSystem {
         }
     }
 
+    // Creates [root] too: Application Support does not exist on a fresh iOS install.
     override fun mkdirs(dir: String) {
-        var cur = root
-        for (part in dir.split('/').filter { it.isNotEmpty() }) {
+        var cur = ""
+        for (part in "$root/$dir".split('/').filter { it.isNotEmpty() }) {
             cur = "$cur/$part"
             if (mkdir(cur, 0x1ed.convert()) != 0 && !isDirAbs(cur)) fail("mkdir", cur)
         }

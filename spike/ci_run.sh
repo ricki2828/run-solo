@@ -49,7 +49,7 @@ phase xcf bash -c "cd kmp-core && $G assembleRunCoreReleaseXCFramework" || fail=
 XCF=kmp-core/build/XCFrameworks/release/RunCore.xcframework
 {
   echo "xcframework $(du -sk "$XCF" 2>/dev/null | cut -f1) KB"
-  for s in "$XCF"/*/; do echo "  $(basename "$s"): $(du -sk "$s" | cut -f1) KB (binary $(du -k "$s"/RunCore.framework/RunCore 2>/dev/null | cut -f1) KB)"; done
+  for s in "$XCF"/*/; do echo "  $(basename "$s"): $(du -sk "$s" | cut -f1) KB (binary $(du -kL "$s"/RunCore.framework/RunCore 2>/dev/null | cut -f1) KB)"; done
 } > "$LOGS/sizes.txt" 2>&1
 rm -rf swift/RunCore.xcframework && cp -R "$XCF" swift/ 2>/dev/null
 phase swift_macos bash -c "cd swift && swift test" || fail=1
