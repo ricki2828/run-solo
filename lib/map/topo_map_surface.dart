@@ -171,9 +171,11 @@ class TopoMapSurfaceFactory implements MapSurfaceFactory {
     bool interactive = false,
     ValueChanged<int?>? onLapTap,
     bool terrain = false,
+    List<GeoPoint>? plan,
+    Color? routeColor,
   }) {
     if (route.isEmpty) return RouteShape(route: route);
-    return TopoMap(route: route.points);
+    return TopoMap(route: route.points, color: routeColor);
   }
 
   @override
