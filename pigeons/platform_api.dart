@@ -8,6 +8,8 @@
     kotlinOut:
         'android/app/src/main/kotlin/app/runsolo/platform/PlatformApi.g.kt',
     kotlinOptions: KotlinOptions(package: 'app.runsolo.platform'),
+    swiftOut: 'ios/Runner/PlatformApi.g.swift',
+    swiftOptions: SwiftOptions(),
     dartPackageName: 'run_solo',
   ),
 )

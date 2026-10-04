@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/services.dart';
 import '../platform/gateway.dart';
+import '../platform/host_caps.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/setup_row.dart';
@@ -162,14 +163,18 @@ class _PermissionsScreenState extends State<PermissionsScreen>
           },
         ),
       ),
-      SetupRow(
-        icon: Icons.bluetooth,
-        title: 'Nearby devices',
-        why: 'Only for a heart-rate strap. Skip it if you run without one.',
-        detail: _deniedHint(PermissionKind.bluetooth, 'Denied. Allow it under'),
-        state: s.bluetooth ? SetupState.ok : SetupState.optional,
-        onTap: () => _request(PermissionKind.bluetooth),
-      ),
+      if (HostCaps.strapPairing)
+        SetupRow(
+          icon: Icons.bluetooth,
+          title: 'Nearby devices',
+          why: 'Only for a heart-rate strap. Skip it if you run without one.',
+          detail: _deniedHint(
+            PermissionKind.bluetooth,
+            'Denied. Allow it under',
+          ),
+          state: s.bluetooth ? SetupState.ok : SetupState.optional,
+          onTap: () => _request(PermissionKind.bluetooth),
+        ),
       if (_denied.contains(PermissionKind.notifications) ||
           _denied.contains(PermissionKind.bluetooth)) ...[
         const SizedBox(height: Space.x12),

@@ -85,12 +85,44 @@ jobs:
             [ -f "$fw/$name" ] && dsymutil "$fw/$name" -o "build/ios-dsyms/$name.framework.dSYM" 2>&1 | tee -a build/ios-logs/5-dsym.log
           done
           ls build/ios-dsyms
+      - name: Simulator smoke (launch, screenshot Home)
+        run: |
+          set -o pipefail
+          {
+            udid=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          c=[x for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')]
+          print(c[-1]['udid'])")
+            echo "simulator $udid"
+            xcrun simctl boot "$udid"
+            xcrun simctl bootstatus "$udid" -b
+            xcrun simctl install "$udid" build/ios/iphonesimulator/Runner.app
+            xcrun simctl launch --console-pty "$udid" app.runsupreme > build/ios-logs/launch.log 2>&1 &
+            sleep 25
+            mkdir -p build/ios-smoke
+            xcrun simctl io "$udid" screenshot build/ios-smoke/home.png
+            data=$(xcrun simctl get_app_container "$udid" app.runsupreme data)
+            support="$data/Library/Application Support"
+            echo "--- Application Support ($support)"
+            ls -la "$support"
+            # journals/ is made by Swift, state/ or runs/ by Dart: both under one root = path_provider dir equals Swift dir.
+            [ -d "$support/journals" ] || { echo "SMOKE FAIL: Swift journals/ missing"; exit 1; }
+            [ -d "$support/state" ] || [ -d "$support/runs" ] || { echo "SMOKE FAIL: Dart state/ not in the Swift directory"; exit 1; }
+            xcrun simctl spawn "$udid" launchctl list | grep -i runsupreme || { echo "SMOKE FAIL: app not running after 25 s"; exit 1; }
+            echo "SMOKE OK"
+          } 2>&1 | tee build/ios-logs/6-smoke.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-smoke-screenshot
+          path: build/ios-smoke/
       - name: Error digest
         if: always()
         run: |
           python3 ios/tools/error_digest.py build/ios-logs/digest.txt \
             build/ios-logs/1-pub-get.log build/ios-logs/2-add-targets.log \
-            build/ios-logs/3-pod-install.log build/ios-logs/4-build.log build/ios-logs/5-dsym.log
+            build/ios-logs/3-pod-install.log build/ios-logs/4-build.log build/ios-logs/5-dsym.log build/ios-logs/6-smoke.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
