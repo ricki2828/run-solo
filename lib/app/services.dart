@@ -244,6 +244,7 @@ class AppServices {
     Map<String, String> courseNames = const {},
     List<engine.SavedRoute> routes = const [],
     LiveContextSource? live,
+    WeatherQueue? weather,
     RunStore? history,
     PlaceGateway? places,
     List<ExportTarget>? exportTargets,
@@ -288,6 +289,7 @@ class AppServices {
         offIsolate: false,
       )..preload(routes),
       live: live,
+      weather: weather,
       placeGateway: places,
       exportTargets:
           exportTargets ??
