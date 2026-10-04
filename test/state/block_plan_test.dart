@@ -5,6 +5,8 @@ import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/state/block_plan.dart';
 import 'package:run_solo/state/history_store.dart';
+import 'package:run_solo/state/run_index.dart';
+import 'package:run_solo/state/sessions.dart';
 import 'package:run_solo/state/settings.dart';
 
 import '../run_fixtures.dart';
@@ -136,6 +138,67 @@ void main() {
     });
   });
 
+  group('dates are the runner\'s own wall clock', () {
+    RunSummary run(String id, DateTime startUtc, int? offsetMin) => RunSummary(
+      id: id,
+      mode: RecordMode.intervals,
+      start: startUtc,
+      durationMs: 2400000,
+      distanceM: 6000,
+      laps: 4,
+      utcOffsetMin: offsetMin,
+      row: const IndexRow(lapCount: 4, movingMs: 2400000),
+    );
+
+    test('an SGT 6am run stored as UTC lands on its own Monday', () {
+      // 22:00 UTC on Sunday 4 Oct is 06:00 Monday 5 Oct in Singapore.
+      final sgt = run('sgt', DateTime.utc(2026, 10, 4, 22), 480);
+      final w = PlanInputs.wallClock(sgt);
+      expect([w.year, w.month, w.day, w.hour], [2026, 10, 5, 6]);
+      expect(w.isUtc, isFalse);
+      final plan = engine.BlockPlanner.build(
+        lane: engine.IdentityLane.aerobic,
+        perWeek: 3,
+        start: DateTime(2026, 10, 5),
+      );
+      final ctx = PlanContext(
+        runs: [sgt],
+        scores: const {},
+        now: DateTime(2026, 10, 5, 12),
+      );
+      expect(ctx.view(plan)!.weekDone, 1);
+    });
+
+    test(
+      'a run before the recorded offset existed falls back to the phone',
+      () {
+        final r = run('old', DateTime.utc(2026, 10, 5, 3), null);
+        final w = PlanInputs.wallClock(r);
+        expect(w, DateTime.utc(2026, 10, 5, 3).toLocal());
+      },
+    );
+  });
+
+  group('Start preset keeps saved edits', () {
+    test('a saved recovery edit survives the plan setting the reps', () {
+      final rec = engine.SessionStep.recoveryDistance(300, rep: 1);
+      final s = AppSettings(
+        presetEdits: {'400s': PresetEdit(reps: 12, recovery: rec)},
+      );
+      final plan = engine.BlockPlanner.build(
+        lane: engine.IdentityLane.speed,
+        perWeek: 3,
+        start: DateTime(2026, 10, 5),
+      );
+      final key = plan.sessions.first;
+      final a = PlanStart.apply(key)(s);
+      expect(a.presetEdits['400s']!.reps, key.reps);
+      expect(a.presetEdits['400s']!.recovery, rec);
+      final other = AppSettings(presetEdits: {'tempo': PresetEdit(reps: 4)});
+      expect(PlanStart.apply(key)(other).presetEdits['tempo']!.reps, 4);
+    });
+  });
+
   group('text', () {
     final p = plan0();
     test('home line, today, next week and finished', () {
@@ -164,8 +227,18 @@ void main() {
 
     test('target line labels the pace an estimate; none without a VDOT', () {
       final rep = p.sessions.first;
-      expect(PlanText.targetLine(rep, null, Units.km), isNull);
-      final line = PlanText.targetLine(rep, 45, Units.km)!;
+      // No estimate: effort-only guidance, never nothing.
+      final fallback = PlanText.targetLine(rep, null, Units.km);
+      expect(fallback, contains('No pace estimate yet'));
+      expect(fallback, isNot(contains('/km')));
+      final easy = p.sessions.firstWhere(
+        (s) => s.kind == engine.BlockKind.easy,
+      );
+      expect(
+        PlanText.targetLine(easy, null, Units.km),
+        contains('full sentences'),
+      );
+      final line = PlanText.targetLine(rep, 45, Units.km);
       expect(line, contains('estimate'));
       expect(line, contains('/km'));
     });

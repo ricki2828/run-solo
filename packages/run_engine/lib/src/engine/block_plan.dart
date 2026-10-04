@@ -296,6 +296,7 @@ abstract final class BlockPlanner {
 
   /// Chronological order for n sessions: hard early, the long one last.
   static const _order = {
+    1: [BlockRole.key],
     2: [BlockRole.key, BlockRole.support],
     3: [BlockRole.key, BlockRole.easy, BlockRole.support],
     4: [BlockRole.key, BlockRole.easy, BlockRole.second, BlockRole.support],
@@ -328,8 +329,15 @@ abstract final class BlockPlanner {
         ? _round5((baseline.longestRunMin ?? 60).clamp(45, 100))
         : _round5((typical * 1.5).round().clamp(40, 90));
     final sessions = <BlockSession>[];
+    final firstWeekDays = firstMonday(start).difference(dateOnly(start)).inDays;
     for (var w = 1; w <= weeks; w++) {
-      final roles = _order[n]!;
+      // Weeks run Monday to Sunday. A short first week keeps the sessions it
+      // has room for, one a day at most.
+      final days = w == 1 ? firstWeekDays : 7;
+      final count = days >= 7
+          ? n
+          : (n * days / 7).round().clamp(1, math.min(n, days));
+      final roles = _order[count]!;
       for (var i = 0; i < roles.length; i++) {
         final role = roles[i];
         final s = _session(
@@ -342,7 +350,7 @@ abstract final class BlockPlanner {
         sessions.add(
           s.copyWithSlot(
             id: 'w${w}s${i + 1}',
-            dayOffset: (i * 7) ~/ roles.length,
+            dayOffset: (i * days) ~/ roles.length,
           ),
         );
       }
@@ -353,6 +361,28 @@ abstract final class BlockPlanner {
       start: dateOnly(start),
       sessions: sessions,
     );
+  }
+
+  /// The first Monday after [start] (a Monday start gives the next one): week
+  /// 1 runs from [start] to the Sunday before it.
+  static DateTime firstMonday(DateTime start) {
+    final d = dateOnly(start);
+    return addDays(d, 8 - d.weekday);
+  }
+
+  /// The first day of plan week [week] (1 to 4), the block moved back by
+  /// [shifts] weeks.
+  static DateTime weekStart(DateTime start, int week, int shifts) => week == 1
+      ? addDays(dateOnly(start), 7 * shifts)
+      : addDays(firstMonday(start), 7 * (week - 2 + shifts));
+
+  /// The day after plan week [week] ends (a Monday).
+  static DateTime weekEnd(DateTime start, int week, int shifts) =>
+      addDays(firstMonday(start), 7 * (week - 1 + shifts));
+
+  static int _clampReps(String preset, int reps) {
+    final p = SessionCatalogue.byId(preset)!;
+    return reps.clamp(p.minReps ?? p.defaultReps, p.maxReps ?? p.defaultReps);
   }
 
   static int _round5(int v) => (v / 5).round() * 5;
@@ -451,7 +481,6 @@ abstract final class BlockPlanner {
     String why, {
     bool isTest = false,
   }) {
-    final p = SessionCatalogue.byId(preset)!;
     return BlockSession(
       id: '',
       week: week,
@@ -459,7 +488,7 @@ abstract final class BlockPlanner {
       role: role,
       kind: BlockKind.interval,
       presetId: preset,
-      reps: reps.clamp(p.minReps ?? p.defaultReps, p.maxReps ?? p.defaultReps),
+      reps: _clampReps(preset, reps),
       reason: why,
       isTest: isTest,
     );
@@ -476,6 +505,13 @@ abstract final class BlockPlanner {
 
     final laneName = _laneName(lane);
     final test = week == weeks;
+    // Text and value come from the same clamped number.
+    String upFrom(String preset, List<int> reps) {
+      final now = _clampReps(preset, reps[week - 1]);
+      final prev = _clampReps(preset, reps[week - 2]);
+      return '$laneName session of the week: $now reps, up from $prev.';
+    }
+
     switch (lane) {
       case IdentityLane.aerobic:
         if (test) {
@@ -494,7 +530,7 @@ abstract final class BlockPlanner {
           reps[week - 1],
           week == 1
               ? 'Starts building $laneName: the 4x4 is the session that moves it.'
-              : '$laneName session of the week: ${reps[week - 1]} reps, up from ${reps[week - 2]}.',
+              : upFrom(SessionSpec.norwegian4x4Id, reps),
         );
       case IdentityLane.speed:
         if (test) {
@@ -513,7 +549,7 @@ abstract final class BlockPlanner {
           reps[week - 1],
           week == 1
               ? 'Starts building $laneName with clean 400s.'
-              : '$laneName session of the week: ${reps[week - 1]} reps, up from ${reps[week - 2]}.',
+              : upFrom('400s', reps),
         );
       case IdentityLane.mid:
         if (test) {
@@ -536,7 +572,7 @@ abstract final class BlockPlanner {
           reps[week - 1],
           week == 1
               ? 'Starts building $laneName with 1 km repeats at about 5K effort.'
-              : '$laneName session of the week: ${reps[week - 1]} reps, up from ${reps[week - 2]}.',
+              : upFrom('1km-repeats', reps),
         );
       case IdentityLane.long:
         if (test) {
@@ -685,7 +721,9 @@ abstract final class BlockPaces {
     return t == null ? null : t / (metres / 1000);
   }
 
-  /// The pace the session aims at, or null with no VDOT.
+  /// The pace the session aims at, or null with no VDOT or no threshold
+  /// (a VDOT the pace model cannot place). Callers must not drop the session's
+  /// guidance on null: the app falls back to effort-only wording.
   static double? target(BlockSession s, double? vdot) {
     if (vdot == null) return null;
     final th = threshold(vdot);
@@ -816,22 +854,26 @@ abstract final class BlockResolver {
     ];
     final starts = <DateTime>[];
     final matches = <Map<String, String>>[];
+    final ends = <DateTime>[];
     for (var w = 1; w <= BlockPlanner.weeks; w++) {
-      var ws = addDays(plan.start, 7 * (w - 1 + shifts));
-      var m = _match(byWeek[w - 1], sorted, ws);
-      while (!today.isBefore(addDays(ws, 7)) &&
+      var ws = BlockPlanner.weekStart(plan.start, w, shifts);
+      var we = BlockPlanner.weekEnd(plan.start, w, shifts);
+      var m = _match(byWeek[w - 1], sorted, ws, we);
+      while (!today.isBefore(we) &&
           m.isEmpty &&
           shifts < BlockPlanner.maxShifts) {
         shifts++;
-        ws = addDays(plan.start, 7 * (w - 1 + shifts));
-        m = _match(byWeek[w - 1], sorted, ws);
+        ws = BlockPlanner.weekStart(plan.start, w, shifts);
+        we = BlockPlanner.weekEnd(plan.start, w, shifts);
+        m = _match(byWeek[w - 1], sorted, ws, we);
       }
       starts.add(ws);
+      ends.add(we);
       matches.add(m);
     }
     int? current;
     for (var w = 1; w <= BlockPlanner.weeks; w++) {
-      if (today.isBefore(addDays(starts[w - 1], 7))) {
+      if (today.isBefore(ends[w - 1])) {
         current = w;
         break;
       }
@@ -856,7 +898,7 @@ abstract final class BlockResolver {
         final ranToday = sorted.any((r) => dateOnly(r.start) == today);
         var from = today.isBefore(ws) ? ws : today;
         if (ranToday && !today.isBefore(ws)) from = addDays(today, 1);
-        final room = math.max(0, addDays(ws, 7).difference(from).inDays);
+        final room = math.max(0, ends[w - 1].difference(from).inDays);
         if (undone.length > room) {
           final order = [...undone]
             ..sort((a, b) {
@@ -1022,8 +1064,8 @@ abstract final class BlockResolver {
     List<BlockSession> sessions,
     List<PlanRun> runs,
     DateTime weekStart,
+    DateTime end,
   ) {
-    final end = addDays(weekStart, 7);
     final out = <String, String>{};
     for (final r in runs) {
       if (r.start.isBefore(weekStart) || !r.start.isBefore(end)) continue;

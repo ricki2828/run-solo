@@ -109,12 +109,20 @@ class BlockPlanController extends ChangeNotifier {
 
 /// What the plan reads from History: index-row fields only.
 abstract final class PlanInputs {
+  /// The run's start as the wall clock where it was run (its own recorded
+  /// offset, not the phone's current zone), as a plain local DateTime so the
+  /// plan's day maths compares like with like.
+  static DateTime wallClock(RunSummary r) {
+    final l = r.localStart;
+    return DateTime(l.year, l.month, l.day, l.hour, l.minute, l.second);
+  }
+
   static List<engine.PlanRun> runs(List<RunSummary> all) => [
     for (final r in all)
       if (!r.missing)
         engine.PlanRun(
           id: r.id,
-          start: r.start,
+          start: wallClock(r),
           movingMs: r.row?.movingMs ?? r.durationMs,
           distanceM: r.distanceM,
           kind: switch (r.mode) {
@@ -207,10 +215,21 @@ abstract final class PlanText {
     return 'This week: ${v.weekDone} of ${v.weekTotal} done · Next: $when';
   }
 
-  /// The pace the session aims at, in plain words; null with no estimate.
-  static String? targetLine(engine.BlockSession s, double? vdot, Units units) {
+  /// How hard to run it, in plain words. With a pace estimate it names the
+  /// pace; with none (no scores yet, or a VDOT the pace model cannot place)
+  /// it falls back to effort only, so the guidance never just disappears.
+  static String targetLine(engine.BlockSession s, double? vdot, Units units) {
     final pace = engine.BlockPaces.target(s, vdot);
-    if (pace == null) return null;
+    if (pace == null) {
+      return switch (s.kind) {
+        engine.BlockKind.easy ||
+        engine.BlockKind.long => 'Easy effort: you can talk in full sentences.',
+        engine.BlockKind.goal =>
+          'Run it as fast as you can hold. No pace estimate yet.',
+        engine.BlockKind.interval =>
+          'Hard but even effort. No pace estimate yet: a 5K or a 4x4 sets one.',
+      };
+    }
     final p = Fmt.paceUnit(pace, units);
     return switch (s.kind) {
       engine.BlockKind.easy ||

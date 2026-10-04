@@ -197,8 +197,8 @@ class _CreateFormState extends State<_CreateForm> {
             ],
           ),
           Text(
-            'Week 3 or 4 is lighter. Week 4 ends with a test that re-measures '
-            '$name.',
+            'Weeks run Monday to Sunday, so your first week may be short. Week 3 '
+            'or 4 is lighter. Week 4 ends with a test that re-measures $name.',
             style: RunSoloType.body15.copyWith(color: t.inkSecondary),
           ),
           const SizedBox(height: Space.x24),
@@ -292,6 +292,12 @@ class _PlanBody extends StatelessWidget {
                   ),
                 ],
               ],
+            ),
+            Text(
+              '${Fmt.dayMonth(engine.BlockPlanner.weekStart(plan.start, w, view.shifts))}'
+              ' to ${Fmt.dayMonth(engine.addDays(engine.BlockPlanner.weekEnd(plan.start, w, view.shifts), -1))}',
+              key: ValueKey('plan-week-$w-range'),
+              style: RunSoloType.label13.copyWith(color: t.inkSecondary),
             ),
             for (final s in view.weeks[w - 1])
               _SessionRow(state: s, ctx: ctx, units: units),

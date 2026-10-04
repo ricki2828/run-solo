@@ -14,7 +14,7 @@ void main() {
   for (final height in [640, 800]) {
     for (final state in ['create', 'plan']) {
       testWidgets('plan screen $state 360x$height', (tester) async {
-        final start = testNow.subtract(const Duration(days: 8));
+        final start = DateTime(2026, 9, 14);
         await pumpApp(
           tester,
           fakeServices(

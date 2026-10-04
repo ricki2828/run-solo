@@ -70,12 +70,14 @@ void main() {
   testWidgets('lists 4 weeks with done, next and a reason on every row', (
     tester,
   ) async {
-    final start = testNow.subtract(const Duration(days: 1));
+    // Monday of this week: weeks run Monday to Sunday.
+    final start = DateTime(2026, 9, 21);
     final services = fakeServices(
       plan: planAt(start),
-      runs: [fourRun('a', start.add(const Duration(hours: 7)))],
+      runs: [fourRun('a', DateTime(2026, 9, 23, 7))],
     );
     await pumpApp(tester, services, home: PlanScreen(now: now));
+    expect(find.text('21 Sep to 27 Sep'), findsOneWidget);
     expect(find.text('AEROBIC BLOCK'), findsOneWidget);
     expect(find.textContaining('Week 1 of 4 · 1 of 12 done'), findsOneWidget);
     expect(find.text('DONE'), findsOneWidget);
@@ -87,10 +89,10 @@ void main() {
   testWidgets('a missed session reads as missed, not added on top', (
     tester,
   ) async {
-    final start = testNow.subtract(const Duration(days: 8));
+    final start = DateTime(2026, 9, 14);
     final services = fakeServices(
       plan: planAt(start),
-      runs: [fourRun('a', start.add(const Duration(hours: 7)))],
+      runs: [fourRun('a', DateTime(2026, 9, 14, 7))],
     );
     await pumpApp(tester, services, home: PlanScreen(now: now));
     expect(find.text('MISSED'), findsNWidgets(2));
@@ -148,9 +150,7 @@ void main() {
   });
 
   testWidgets('a finished block offers the next one', (tester) async {
-    final services = fakeServices(
-      plan: planAt(testNow.subtract(const Duration(days: 60))),
-    );
+    final services = fakeServices(plan: planAt(DateTime(2026, 7, 27)));
     await pumpApp(tester, services, home: PlanScreen(now: now));
     expect(find.textContaining('Done: 0 of 12'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('plan-build-next')));

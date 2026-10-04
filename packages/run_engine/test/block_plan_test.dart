@@ -368,6 +368,105 @@ void main() {
     });
   });
 
+  group('Monday weeks', () {
+    final thu = DateTime(2026, 10, 8);
+    BlockPlan fromThu(int n) =>
+        BlockPlanner.build(lane: IdentityLane.aerobic, perWeek: n, start: thu);
+
+    test('week 1 runs to Sunday, the rest Monday to Sunday', () {
+      expect(BlockPlanner.firstMonday(thu), DateTime(2026, 10, 12));
+      expect(
+        BlockPlanner.firstMonday(DateTime(2026, 10, 12)),
+        DateTime(2026, 10, 19),
+      );
+      expect(BlockPlanner.weekStart(thu, 1, 0), thu);
+      expect(BlockPlanner.weekEnd(thu, 1, 0), DateTime(2026, 10, 12));
+      expect(BlockPlanner.weekStart(thu, 2, 0), DateTime(2026, 10, 12));
+      expect(BlockPlanner.weekEnd(thu, 4, 0), DateTime(2026, 11, 2));
+      expect(BlockPlanner.weekStart(thu, 2, 1), DateTime(2026, 10, 19));
+    });
+
+    test('a short first week scales its sessions, one a day at most', () {
+      int inWeek1(BlockPlan p) => p.sessions.where((s) => s.week == 1).length;
+      expect(inWeek1(fromThu(4)), 2); // 4 days of 7
+      expect(inWeek1(fromThu(6)), 3);
+      expect(inWeek1(fromThu(2)), 1);
+      expect(
+        inWeek1(
+          BlockPlanner.build(
+            lane: IdentityLane.mid,
+            perWeek: 5,
+            start: DateTime(2026, 10, 10),
+          ),
+        ),
+        1,
+      ); // Saturday
+      expect(
+        inWeek1(
+          BlockPlanner.build(
+            lane: IdentityLane.mid,
+            perWeek: 5,
+            start: DateTime(2026, 10, 5),
+          ),
+        ),
+        5,
+      );
+      final p = fromThu(4);
+      expect(p.sessions.where((s) => s.week == 2), hasLength(4));
+      expect(
+        p.sessions.where((s) => s.week == 1).every((s) => s.dayOffset < 4),
+        isTrue,
+      );
+    });
+
+    test('a Sunday run ticks week 1, a Monday run week 2', () {
+      final p = fromThu(3);
+      final sun = steady('sun', DateTime(2026, 10, 11, 18), min: 50);
+      final mon = steady('mon', DateTime(2026, 10, 12, 7), min: 50);
+      final v = BlockResolver.resolve(p, [
+        sun,
+        mon,
+      ], now: DateTime(2026, 10, 12, 20));
+      expect(
+        v.weeks[0].where((s) => s.status == BlockStatus.done),
+        hasLength(1),
+      );
+      expect(
+        v.weeks[1].where((s) => s.status == BlockStatus.done),
+        hasLength(1),
+      );
+      expect(v.currentWeek, 2);
+    });
+
+    test(
+      'week 1 over on Monday: unfinished sessions are missed, not carried',
+      () {
+        final p = fromThu(4);
+        final v = BlockResolver.resolve(p, [
+          steady('a', DateTime(2026, 10, 8, 7), min: 50),
+        ], now: DateTime(2026, 10, 12, 8));
+        expect(
+          v.weeks[0].where((s) => s.status == BlockStatus.missed),
+          hasLength(1),
+        );
+        expect(v.currentWeek, 2);
+      },
+    );
+  });
+
+  group('reason text matches the clamped reps', () {
+    test('every interval reason names the reps it really has', () {
+      for (final lane in IdentityLane.values) {
+        final p = build(lane, 2);
+        for (final s in p.sessions) {
+          final m = RegExp(r'session of the week: (\d+) reps')
+              .firstMatch(s.reason);
+          if (m != null) expect(int.parse(m.group(1)!), s.reps);
+        }
+      }
+    });
+  });
+
   group('paces', () {
     test('faster runners get faster targets, hard work faster than easy', () {
       final slow = BlockPaces.threshold(35)!;
@@ -385,6 +484,15 @@ void main() {
 
     test('threshold of VDOT 50 is near 4:00 per km', () {
       expect(BlockPaces.threshold(50)!, inInclusiveRange(235, 255));
+    });
+
+    test('no threshold: no pace, never a crash', () {
+      final easy = build(
+        IdentityLane.aerobic,
+        3,
+      ).sessions.firstWhere((s) => s.kind == BlockKind.easy);
+      expect(BlockPaces.target(easy, double.nan), isNull);
+      expect(BlockPaces.target(easy, 0), isNull);
     });
 
     test('median vdot ignores junk', () {

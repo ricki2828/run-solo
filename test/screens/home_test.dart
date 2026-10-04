@@ -165,7 +165,7 @@ void main() {
     final services = fakeServices(plan: plan);
     await pumpApp(tester, services, home: HomeScreen(now: now));
     expect(
-      find.text('This week: 0 of 3 done · Next: Norwegian 4x4 today'),
+      find.text('This week: 0 of 2 done · Next: Norwegian 4x4 today'),
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey('home-recommendation')), findsOneWidget);
