@@ -88,7 +88,10 @@ void main() {
     expect(find.text('Download on Wi-Fi only'), findsOneWidget);
 
     await tester.ensureVisible(find.byKey(const ValueKey('get-sg')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('get-sg')));
+    await tester.ensureVisible(find.byKey(const ValueKey('cancel-umbria')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('cancel-umbria')));
     expect(m.calls, ['download:sg', 'cancel:umbria']);
   });
