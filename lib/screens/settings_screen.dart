@@ -132,7 +132,6 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   /// Backfill progress as (done, total); null when none is running.
   final ValueNotifier<(int, int)?> _backfill = ValueNotifier(null);
-  bool _backfillDone = false;
 
   /// "Send all past runs": permissions first, then confirm with the count,
   /// then one pass with inline progress. Idempotent (a health write replaces
@@ -182,7 +181,19 @@ class _SettingsScreenState extends State<SettingsScreen>
         onProgress: (done, total) => _backfill.value = (done, total),
       );
       if (!mounted) return;
-      setState(() => _backfillDone = r.failed == 0);
+      if (r.failed == 0) {
+        await services.settings.update(
+          (x) => x.copyWith(
+            pastRunsSent: {
+              ...x.pastRunsSent,
+              target.id: PastRunsSent(
+                count: r.sent,
+                at: services.now().toUtc(),
+              ),
+            },
+          ),
+        );
+      }
       _toast(
         r.failed == 0
             ? 'Sent ${r.sent} run${r.sent == 1 ? '' : 's'} to ${target.label}.'
@@ -575,11 +586,22 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ValueListenableBuilder<(int, int)?>(
                     valueListenable: _backfill,
                     builder: (context, p, _) => p == null
-                        ? SettingsRow(
-                            label: 'Send all past runs',
-                            value: _backfillDone ? 'Done' : '',
-                            onTap: () => _sendAllPast(target),
-                          )
+                        ? switch (s.pastRunsSent[target.id]) {
+                            final done? => SettingsRow(
+                              key: const ValueKey('backfill-done'),
+                              label:
+                                  'All ${done.count} past run'
+                                  '${done.count == 1 ? '' : 's'} sent on '
+                                  '${Fmt.dayMonth(done.at.toLocal())}',
+                              value: 'Send again',
+                              onTap: () => _sendAllPast(target),
+                            ),
+                            null => SettingsRow(
+                              label: 'Send all past runs',
+                              value: '',
+                              onTap: () => _sendAllPast(target),
+                            ),
+                          }
                         : Padding(
                             key: const ValueKey('backfill-progress'),
                             padding: const EdgeInsets.symmetric(

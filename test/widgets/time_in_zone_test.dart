@@ -88,10 +88,19 @@ void main() {
     expect(find.text('Heart rate for 82% of the run'), findsOneWidget);
   });
 
-  testWidgets('no HR: no zone card', (tester) async {
+  testWidgets('no HR: plain empty state that opens the strap setting', (
+    tester,
+  ) async {
     final run = freeRunFile(n: 73, start: start, hr: false);
     await open(tester, run);
-    expect(find.text('TIME IN ZONE'), findsNothing);
+    await scrollTo(tester, find.text('TIME IN ZONE'));
+    expect(find.text('TIME IN ZONE'), findsOneWidget);
+    expect(find.textContaining('No heart rate for this run'), findsOneWidget);
+    expect(find.byKey(const ValueKey('time-in-zone-bar')), findsNothing);
+    await scrollTo(tester, find.byKey(const ValueKey('time-in-zone-empty')));
+    await tester.tap(find.byKey(const ValueKey('time-in-zone-empty')));
+    await pumpTimes(tester, 6);
+    expect(find.text('HEART RATE STRAP'), findsOneWidget);
   });
 
   test('zone hues are 3:1 against the surfaces in both themes', () {

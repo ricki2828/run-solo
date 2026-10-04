@@ -61,6 +61,27 @@ class SavedStrap {
       SavedStrap(address: j['address'] as String, name: j['name'] as String?);
 }
 
+/// A finished "Send all past runs" pass: [count] runs, at [at] (UTC).
+@immutable
+class PastRunsSent {
+  const PastRunsSent({required this.count, required this.at});
+  final int count;
+  final DateTime at;
+
+  Map<String, Object?> toJson() => {
+    'count': count,
+    'at': at.toUtc().toIso8601String(),
+  };
+
+  static PastRunsSent? tryParse(Object? v) {
+    if (v is! Map || v['count'] is! int || v['at'] is! String) return null;
+    final at = DateTime.tryParse(v['at'] as String);
+    return at == null
+        ? null
+        : PastRunsSent(count: v['count'] as int, at: at.toUtc());
+  }
+}
+
 @immutable
 class AppSettings {
   const AppSettings({
@@ -98,6 +119,7 @@ class AppSettings {
     this.pbSeen = const {},
     this.autoSend = const {},
     this.autoSendSince = const {},
+    this.pastRunsSent = const {},
     this.liveMapTypes = const {},
   });
 
@@ -269,6 +291,11 @@ class AppSettings {
   /// button. A target with no entry sends nothing automatically.
   final Map<String, DateTime> autoSendSince;
 
+  /// Per target id: the last "Send all past runs" pass that finished with no
+  /// failures (how many runs, and when), so Settings can say so after a
+  /// restart.
+  final Map<String, PastRunsSent> pastRunsSent;
+
   /// Switch [id] on (at [now]) or off.
   AppSettings withAutoSend(String id, bool on, DateTime now) => copyWith(
     autoSend: {
@@ -373,6 +400,7 @@ class AppSettings {
     Map<String, String>? pbSeen,
     Set<String>? autoSend,
     Map<String, DateTime>? autoSendSince,
+    Map<String, PastRunsSent>? pastRunsSent,
     Set<String>? liveMapTypes,
   }) => AppSettings(
     units: units ?? this.units,
@@ -415,6 +443,7 @@ class AppSettings {
     pbSeen: pbSeen ?? this.pbSeen,
     autoSend: autoSend ?? this.autoSend,
     autoSendSince: autoSendSince ?? this.autoSendSince,
+    pastRunsSent: pastRunsSent ?? this.pastRunsSent,
     liveMapTypes: liveMapTypes ?? this.liveMapTypes,
   );
 
@@ -458,6 +487,10 @@ class AppSettings {
       'autoSendSince': {
         for (final e in autoSendSince.entries)
           e.key: e.value.toUtc().toIso8601String(),
+      },
+    if (pastRunsSent.isNotEmpty)
+      'pastRunsSent': {
+        for (final e in pastRunsSent.entries) e.key: e.value.toJson(),
       },
     'liveMapTypes': liveMapTypes.toList()..sort(),
   };
@@ -553,6 +586,13 @@ class AppSettings {
                 if (e.key is String && e.value is String)
                   if (DateTime.tryParse(e.value as String) case final t?)
                     e.key as String: t.toUtc(),
+            }
+          : const {},
+      pastRunsSent: j['pastRunsSent'] is Map
+          ? {
+              for (final e in (j['pastRunsSent'] as Map).entries)
+                if (e.key is String)
+                  e.key as String: ?PastRunsSent.tryParse(e.value),
             }
           : const {},
       liveMapTypes: {

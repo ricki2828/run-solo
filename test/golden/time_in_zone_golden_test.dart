@@ -63,6 +63,30 @@ void main() {
       await golden(tester, 'time_in_zone_dark_360x$h');
     });
 
+    testWidgets('run detail: time in zone, no heart rate, 360 x $h', (
+      tester,
+    ) async {
+      tester.view.physicalSize = Size(360 * 3, h * 3.0);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final run = freeRunFile(
+        n: 82,
+        start: DateTime.utc(2026, 10, 2, 6),
+        seconds: 2400,
+        hr: false,
+      );
+      await pumpApp(
+        tester,
+        fakeServices(files: [run]),
+        home: RunDetailScreen(runId: run.id),
+      );
+      await pumpTimes(tester, 6);
+      await scrollTo(tester, find.text('TIME IN ZONE'));
+      await settleAnimations(tester);
+      await golden(tester, 'time_in_zone_no_hr_360x$h');
+    });
+
     testWidgets('time in zone, light, 360 x $h', (tester) async {
       await loadRunSoloFonts();
       tester.view.physicalSize = Size(360 * 3, h * 3.0);
