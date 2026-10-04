@@ -43,9 +43,10 @@ class HrZonesSection extends StatelessWidget {
     final s = settings;
     final maxHr = MaxHr.resolve(s, now).maxHr;
     final zones = HrZoneChoice.resolve(s, now);
-    final reserveMissing =
+    final reserveFallback =
         s.hrZoneMethod == engine.HrZoneMethod.reserve &&
         zones.method != engine.HrZoneMethod.reserve;
+    final restTooHigh = reserveFallback && (s.restingHr ?? 0) >= maxHr;
     return Column(
       key: const ValueKey('hr-zones-section'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -91,12 +92,15 @@ class HrZonesSection extends StatelessWidget {
             suggestion: restingSuggestion,
             onChange: onChange,
           ),
-        if (reserveMissing)
+        if (reserveFallback)
           Padding(
             padding: const EdgeInsets.only(bottom: Space.x8),
             child: Text(
-              'Add your resting heart rate to use this. Until then zones '
-              'follow % of max HR.',
+              restTooHigh
+                  ? 'Resting HR must be below max HR. Zones are still using '
+                        '% of max HR.'
+                  : 'Zones are still using % of max HR until you add a '
+                        'resting heart rate.',
               key: const ValueKey('hr-reserve-prompt'),
               style: RunSoloType.label13.copyWith(color: t.semWarn),
             ),
@@ -318,7 +322,7 @@ class _CustomTableState extends State<_CustomTable> {
   void _edited() {
     final v = [for (final c in _ctl) int.tryParse(c.text)];
     if (v.any((e) => e == null)) {
-      setState(() => _error = 'Fill in every zone');
+      setState(() => _error = 'Fill in every zone. Not saved.');
       return;
     }
     final bottoms = v.cast<int>();
@@ -326,7 +330,7 @@ class _CustomTableState extends State<_CustomTable> {
       bottoms.sublist(1),
       z1Floor: bottoms[0],
     );
-    setState(() => _error = err);
+    setState(() => _error = err == null ? null : '$err. Not saved.');
     if (err == null) {
       widget.onChange((x) => x.copyWith(customZones: bottoms));
     }

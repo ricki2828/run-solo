@@ -56,7 +56,8 @@ class HrZones {
   static const int maxBpm = 230;
 
   /// Null when [bounds] (four Z2..Z5 bottoms) is usable: strictly ascending
-  /// and within 60-230 bpm; [z1Floor], when given, must sit below Z2.
+  /// and within 60-230 bpm; [z1Floor], when given, must also be within
+  /// 60-230 and sit below Z2.
   static String? validate(List<num> bounds, {num? z1Floor}) {
     if (bounds.length != 4) return 'Need four zone boundaries';
     for (final b in bounds) {
@@ -69,8 +70,11 @@ class HrZones {
         return 'Each zone must start higher than the one before';
       }
     }
-    if (z1Floor != null && (z1Floor < 0 || z1Floor >= bounds[0])) {
-      return 'Zone 1 must start below zone 2';
+    if (z1Floor != null) {
+      if (z1Floor < minBpm || z1Floor > maxBpm) {
+        return 'Zones must sit between $minBpm and $maxBpm bpm';
+      }
+      if (z1Floor >= bounds[0]) return 'Zone 1 must start below zone 2';
     }
     return null;
   }

@@ -56,6 +56,32 @@ void main() {
       }
     });
 
+    test('exact boundaries match the old hr / max maths', () {
+      final z = HrZones.percentMax(190);
+      int old(int hr) {
+        final f = hr / 190;
+        return f < 0.6
+            ? 1
+            : f < 0.7
+            ? 2
+            : f < 0.8
+            ? 3
+            : f < 0.9
+            ? 4
+            : 5;
+      }
+
+      for (final hr in [113, 114, 132, 133, 151, 152, 170, 171]) {
+        expect(z.zoneOf(hr), old(hr), reason: 'hr $hr');
+      }
+      expect(
+        [
+          for (final hr in [114, 133, 152, 171]) z.zoneOf(hr),
+        ],
+        [2, 3, 4, 5],
+      );
+    });
+
     test('max 190 boundaries are 114 / 133 / 152 / 171', () {
       final z = HrZones.percentMax(190);
       expect(
@@ -89,6 +115,7 @@ void main() {
       expect(HrZones.validate([120, 140, 160, 231]), isNotNull);
       expect(HrZones.validate([120, 140, 160]), isNotNull);
       expect(HrZones.validate([120, 140, 160, 180], z1Floor: 120), isNotNull);
+      expect(HrZones.validate([120, 140, 160, 180], z1Floor: 59), isNotNull);
       expect(HrZones.validate([60, 140, 160, 230]), isNull);
       expect(() => HrZones.custom([120, 120, 160, 180]), throwsArgumentError);
     });

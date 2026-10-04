@@ -117,4 +117,63 @@ void main() {
     expect(find.byKey(const ValueKey('hr-custom-error')), findsNothing);
     expect(s.value.customZones, [108, 136, 150, 162, 176]);
   });
+
+  testWidgets('reserve with no resting HR says so and shows % of max ranges', (
+    tester,
+  ) async {
+    await pumpSection(
+      tester,
+      const AppSettings(
+        typedMaxHr: 190,
+        hrZoneMethod: engine.HrZoneMethod.reserve,
+      ),
+    );
+    final msg = tester.widget<Text>(
+      find.byKey(const ValueKey('hr-reserve-prompt')),
+    );
+    expect(msg.data, contains('still using % of max HR'));
+    expect(find.text('114–132 bpm'), findsOneWidget);
+  });
+
+  testWidgets('reserve with resting HR at or above max says it must be lower', (
+    tester,
+  ) async {
+    await pumpSection(
+      tester,
+      const AppSettings(
+        typedMaxHr: 190,
+        restingHr: 100,
+        hrZoneMethod: engine.HrZoneMethod.reserve,
+      ),
+    );
+    // 100 is valid on its own; push max below it.
+    await pumpSection(
+      tester,
+      const AppSettings(
+        typedMaxHr: 120,
+        restingHr: 120,
+        hrZoneMethod: engine.HrZoneMethod.reserve,
+      ),
+    );
+    final msg = tester.widget<Text>(
+      find.byKey(const ValueKey('hr-reserve-prompt')),
+    );
+    expect(msg.data, startsWith('Resting HR must be below max HR'));
+  });
+
+  testWidgets('custom: an invalid edit says it was not saved', (tester) async {
+    await pumpSection(
+      tester,
+      whoop.copyWith(
+        hrZoneMethod: engine.HrZoneMethod.custom,
+        customZones: [108, 136, 149, 162, 176],
+      ),
+    );
+    await tester.enterText(find.byKey(const ValueKey('hr-custom-3')), '130');
+    await tester.pump();
+    final err = tester.widget<Text>(
+      find.byKey(const ValueKey('hr-custom-error')),
+    );
+    expect(err.data, endsWith('Not saved.'));
+  });
 }
