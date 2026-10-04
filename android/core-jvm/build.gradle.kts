@@ -7,13 +7,13 @@ version = "0.1.0"
 
 java {
     // Must match the Kotlin jvmTarget below or Gradle fails the build ("Inconsistent JVM
-    // Target Compatibility"). Bytecode is Java 8; the toolchain that compiles it is JDK 17.
+    // Target Compatibility"). Bytecode is Java 8; the toolchain that compiles it is JDK 21.
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
     compilerOptions {
         // Compile against the Java 8 API surface (javac --release 8): anything newer than the
         // JDK APIs Android 10 (API 29, minSdk) ships fails at compile time instead of with
