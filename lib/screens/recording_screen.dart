@@ -645,6 +645,10 @@ class _RecordingScreenState extends State<RecordingScreen>
                               compact: compact,
                               card: _cardLink,
                               startSlowdown: _startSlowdown,
+                              reserveCard:
+                                  settings.showWhileRunning &&
+                                  s.tipsMuted != true,
+                              cardShowing: cardShowing,
                             ),
                           // END REP: the banner already says GPS is lost,
                           // and the short phone needs the bar's height.
@@ -1511,7 +1515,16 @@ class _FreeRunBlock extends StatelessWidget {
     this.compact = false,
     this.card,
     this.startSlowdown,
+    this.reserveCard = false,
+    this.cardShowing = false,
   });
+
+  /// The compare card may show: it gets a slot of its own below the
+  /// clusters, so it covers no live number. Where the phone is too short for
+  /// that, it covers the ROUTE or CLIMB cluster and those hide while it
+  /// shows (A10.1: covered = hidden).
+  final bool reserveCard;
+  final bool cardShowing;
 
   /// The heat slowdown at the start of the run (null = none known): the
   /// heat share of the live true pace.
@@ -1562,10 +1575,12 @@ class _FreeRunBlock extends StatelessWidget {
         : _figH + (turn.isEmpty ? 0 : Space.x4 + _textH(AuxFigure.style));
     // Founder 3-Oct: the screen reads as clusters, top to bottom: RUN
     // (distance, time, average pace, equal size), PACE (the current-pace
-    // speedo, always shown, with TRUE PACE beside it), CLIMB, ROUTE.
-    // Priority when height is short: the dial shrinks, the RUN trio steps
-    // down a size, then GAP and grade go. Never the dial, the trio or the
-    // heart rate; no number under 36 sp.
+    // speedo, always shown, with TRUE PACE beside it), CLIMB, ROUTE, then the
+    // compare card's own slot. Priority when height is short: the dial
+    // shrinks, the RUN trio steps down a size, then TRUE PACE and grade go,
+    // before the card is allowed to cover anything. Never the dial, the trio
+    // or the heart rate; no number under 36 sp.
+    final cardH = CompareCard.heightFor(compact: compact);
     return Expanded(
       child: LayoutBuilder(
         builder: (context, c) {
@@ -1575,6 +1590,7 @@ class _FreeRunBlock extends StatelessWidget {
           final half = (width - Space.x16) / 2;
           // Plans from the roomiest to the leanest.
           final plans = <_FreePlan>[
+            _FreePlan(compact ? 52 : 64, half, true, true, big: true),
             _FreePlan(compact ? 52 : 64, half, true, true),
             _FreePlan(compact ? 48 : 56, half, true, true),
             _FreePlan(compact ? 44 : 48, 112, true, true),
@@ -1582,75 +1598,101 @@ class _FreeRunBlock extends StatelessWidget {
             _FreePlan(44, 112, false, false),
             _FreePlan(40, 96, false, false),
           ];
-          _FreePlan fit = plans.last;
-          for (final p in plans) {
-            if (_planH(p, width, showGap, showElevation, routeH, minGap) <=
-                c.maxHeight) {
-              fit = p;
-              break;
+          double heightOf(_FreePlan p, {required bool reserve}) =>
+              _planH(p, width, showGap, showElevation, routeH, minGap) +
+              (reserve ? minGap + cardH : 0);
+          // The card's own slot first; the leanest plan with the card
+          // covering the tail only when nothing roomier fits.
+          var reserve = reserveCard;
+          _FreePlan? fit;
+          if (reserve) {
+            for (final p in plans) {
+              if (heightOf(p, reserve: true) <= c.maxHeight) {
+                fit = p;
+                break;
+              }
+            }
+            if (fit == null) reserve = false;
+          }
+          if (fit == null) {
+            for (final p in plans) {
+              if (heightOf(p, reserve: false) <= c.maxHeight) {
+                fit = p;
+                break;
+              }
             }
           }
-          final size = EqualFigures.sizeFor(width, fit.trioCap);
-          final dialW = fit.dialWidth;
-          final gapOn = showGap && fit.gap;
-          final clusters = <Widget>[
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                EqualFigures(
-                  figures: liveHero(s, ctl, units).figures,
-                  valueKeys: const [
-                    ValueKey('free-distance'),
-                    ValueKey('timer'),
-                    ValueKey('run-average'),
-                  ],
-                  cap: size,
+          final plan = fit ?? plans.last;
+          final size = EqualFigures.sizeFor(width, plan.trioCap);
+          final gapOn = showGap && plan.gap;
+          final trueFigure = gapOn
+              ? AuxFigure(
+                  label: 'TRUE PACE',
+                  value: Fmt.pace(
+                    engine.RunTruePace.live(
+                      paceSecPerKm: s.livePaceSecPerKm,
+                      gradePct: s.gradePct,
+                      slowdown: startSlowdown,
+                      distanceM: s.totalDistanceM,
+                    ),
+                    units,
+                  ),
                   labelColor: secondary,
                   valueColor: t.inkPrimary,
-                ),
-                // The compare card hangs from here, over the clusters below.
-                CompareSlot(
-                  link: card,
-                  child: const SizedBox(
-                    width: double.infinity,
-                    height: Space.x8,
-                  ),
-                ),
-              ],
-            ),
-            PaceDial(
+                  valueKey: const ValueKey('live-true-pace'),
+                )
+              : null;
+          final bigDial = SizedBox(
+            width: width * 0.6,
+            child: PaceDial(
               currentSecPerKm: s.livePaceSecPerKm,
               referenceSecPerKm: runAverage,
               units: units,
               onZone: s.zone > 0,
-              beside: true,
-              dialWidth: dialW == half ? null : dialW,
-              paceStyle: AuxFigure.style.copyWith(fontSize: 40),
-              extra: gapOn
-                  ? AuxFigure(
-                      label: 'TRUE PACE',
-                      value: Fmt.pace(
-                        engine.RunTruePace.live(
-                          paceSecPerKm: s.livePaceSecPerKm,
-                          gradePct: s.gradePct,
-                          slowdown: startSlowdown,
-                          distanceM: s.totalDistanceM,
-                        ),
-                        units,
-                      ),
-                      labelColor: secondary,
-                      valueColor: t.inkPrimary,
-                      valueKey: const ValueKey('live-true-pace'),
-                    )
-                  : null,
+              paceStyle: AuxFigure.style.copyWith(fontSize: 56),
             ),
+          );
+          final dial = plan.big
+              ? (trueFigure == null
+                    ? Center(child: bigDial)
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          bigDial,
+                          const SizedBox(width: Space.x16),
+                          Expanded(child: trueFigure),
+                        ],
+                      ))
+              : PaceDial(
+                  currentSecPerKm: s.livePaceSecPerKm,
+                  referenceSecPerKm: runAverage,
+                  units: units,
+                  onZone: s.zone > 0,
+                  beside: true,
+                  dialWidth: plan.dialWidth == half ? null : plan.dialWidth,
+                  paceStyle: AuxFigure.style.copyWith(fontSize: 40),
+                  extra: trueFigure,
+                );
+          final clusters = <Widget>[
+            EqualFigures(
+              figures: liveHero(s, ctl, units).figures,
+              valueKeys: const [
+                ValueKey('free-distance'),
+                ValueKey('timer'),
+                ValueKey('run-average'),
+              ],
+              cap: size,
+              labelColor: secondary,
+              valueColor: t.inkPrimary,
+            ),
+            dial,
             if (showElevation)
               ElevationRow(
                 s: s,
                 units: units,
                 labelColor: secondary,
                 valueColor: t.inkPrimary,
-                showGrade: fit.grade,
+                showGrade: plan.grade,
               ),
             if (route != null)
               RouteToGoRow(
@@ -1661,35 +1703,73 @@ class _FreeRunBlock extends StatelessWidget {
                 warnColor: t.semWarn,
               ),
           ];
-          final contentH = _planH(
-            fit,
-            width,
-            showGap,
-            showElevation,
-            routeH,
-            minGap,
+          final contentH = heightOf(plan, reserve: reserve);
+          // Spare height is shared by the top margin, the gaps and the
+          // bottom, so the clusters sit evenly (no dead band under the
+          // heart rate).
+          final gaps = clusters.length - 1 + (reserve ? 1 : 0);
+          final share = (c.maxHeight - contentH) / (gaps + 2);
+          final top = share.clamp(0.0, Space.x24);
+          final between = (minGap + share).clamp(minGap, 56.0);
+          Widget sep() => SizedBox(
+            height: between,
+            child: Center(
+              child: Container(height: divider, color: t.lineHair),
+            ),
           );
-          final extra = c.maxHeight - contentH;
-          final between = clusters.length > 1
-              ? (minGap + extra / (clusters.length - 1)).clamp(minGap, 40.0)
-              : 0.0;
-          final children = <Widget>[];
+          final children = <Widget>[SizedBox(height: top)];
+          // Without a slot of its own the card covers the last cluster(s)
+          // until it is 'cardH' tall; they hide while it shows.
+          var coverFrom = clusters.length;
+          if (!reserve && reserveCard) {
+            var h = 0.0;
+            while (coverFrom > 2 && h < cardH) {
+              coverFrom--;
+              h +=
+                  (coverFrom == clusters.length - 1 ? 0 : minGap) +
+                  (clusters[coverFrom] is RouteToGoRow ? routeH : _figH);
+            }
+          }
+          final covered = <Widget>[];
           for (var i = 0; i < clusters.length; i++) {
-            if (i > 0) {
-              children.add(
-                SizedBox(
-                  height: between,
-                  child: Center(
-                    child: Container(height: divider, color: t.lineHair),
+            if (i > 0 && i != coverFrom && i < coverFrom) children.add(sep());
+            if (i >= coverFrom) {
+              if (i > coverFrom) covered.add(const SizedBox(height: minGap));
+              covered.add(clusters[i]);
+            } else {
+              children.add(clusters[i]);
+            }
+          }
+          if (covered.isNotEmpty) {
+            children.add(sep());
+            children.add(
+              CompareSlot(
+                link: card,
+                child: Visibility(
+                  visible: !cardShowing,
+                  maintainSize: true,
+                  maintainAnimation: true,
+                  maintainState: true,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: covered,
                   ),
                 ),
-              );
-            }
-            children.add(clusters[i]);
+              ),
+            );
+          }
+          if (reserve) {
+            children.add(SizedBox(height: between));
+            children.add(
+              CompareSlot(
+                link: card,
+                child: SizedBox(width: double.infinity, height: cardH),
+              ),
+            );
           }
           return Column(
             key: const ValueKey('free-run-block'),
-            mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: children,
           );
@@ -1707,13 +1787,24 @@ class _FreeRunBlock extends StatelessWidget {
     double minGap,
   ) {
     final size = EqualFigures.sizeFor(width, p.trioCap);
-    final paceCol =
-        _textH(RunSoloType.micro11) +
-        _textH(AuxFigure.style.copyWith(fontSize: 40)) +
-        (showGap && p.gap ? _figH : 0);
-    final pace = paceCol > p.dialWidth / 2 ? paceCol : p.dialWidth / 2;
+    final label = _textH(RunSoloType.micro11);
+    final double pace;
+    if (p.big) {
+      final w = width * 0.6;
+      pace =
+          w / 2 +
+          Space.x4 +
+          _textH(AuxFigure.style.copyWith(fontSize: 56)) +
+          label;
+    } else {
+      final paceCol =
+          label +
+          _textH(AuxFigure.style.copyWith(fontSize: 40)) +
+          (showGap && p.gap ? _figH : 0);
+      pace = paceCol > p.dialWidth / 2 ? paceCol : p.dialWidth / 2;
+    }
     final parts = <double>[
-      _trioH(size),
+      _trioH(size) - Space.x8,
       pace,
       if (showElevation) _figH,
       if (routeH > 0) routeH,
@@ -1723,11 +1814,20 @@ class _FreeRunBlock extends StatelessWidget {
 }
 
 class _FreePlan {
-  const _FreePlan(this.trioCap, this.dialWidth, this.gap, this.grade);
+  const _FreePlan(
+    this.trioCap,
+    this.dialWidth,
+    this.gap,
+    this.grade, {
+    this.big = false,
+  });
   final double trioCap;
   final double dialWidth;
   final bool gap;
   final bool grade;
+
+  /// The stacked speedo (arc, then the pace under it) when there is room.
+  final bool big;
 }
 
 class _TimerBlock extends StatelessWidget {
