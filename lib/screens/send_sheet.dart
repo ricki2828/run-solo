@@ -10,7 +10,7 @@ import 'watch_sheet.dart';
 
 /// Privacy promise, one line, on every Send surface (founder 2 Oct).
 const String kSendPrivacyLine =
-    'Runs stay on your phone unless you choose to send them.';
+    'Runs and sessions stay on your phone unless you choose to send them.';
 
 /// The Send sheet on run detail: every target, what each does, and where the
 /// run already went. Resolves true when something was sent (run detail then
