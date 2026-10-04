@@ -42,6 +42,8 @@ RULES = [
      '"$h:${m.toString().padStart(2, \'0\')}:${sec.toString().padStart(2, \'0\')}" else "$m:${sec.toString().padStart(2, \'0\')}"'),
     ("String.format %.2f", None, "re:String\\.format\\((?:java\\.util\\.)?Locale\\.US, \"%\\.2f\", ", f"fixed2("),
     ("import java.util.Locale", None, "import java.util.Locale\n", ""),
+    # libm differs by an ulp between Apple and the JVM (trip 5); fdlibm in common code is bit-equal.
+    ("kotlin.math sin/cos/atan2 -> fdlibm", None, "re:(?m)^import kotlin\\.math\\.(sin|cos|atan2)$", f"import {P}.\\1"),
     ("@Volatile", None, "@Volatile", "@kotlin.concurrent.Volatile"),
     # Charsets / String(bytes) are JVM-only; UTF-8 is the only charset used.
     (".toByteArray(Charsets.UTF_8)", None, ".toByteArray(Charsets.UTF_8)", ".encodeToByteArray()"),
