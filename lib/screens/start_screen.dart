@@ -21,6 +21,7 @@ import '../widgets/chrome.dart';
 import '../widgets/goal_picker.dart';
 import '../widgets/mode_chip.dart';
 import '../widgets/structure_glyph.dart';
+import '../widgets/today_target_line.dart';
 import '../widgets/value_stepper.dart';
 import 'custom_builder_screen.dart';
 import 'follow_route_sheet.dart';
@@ -469,6 +470,17 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     if (r.start && mounted) await _start();
   }
 
+  /// A goal's own pace (its target time over its distance), for Today's
+  /// target; null without a target, which falls back to the recent pace.
+  double? _goalAim(AppSettings s) {
+    final spec = s.goalSpec(kEventNames.parkrun);
+    final live = AppServices.of(context).live;
+    if (spec == null || live == null) return null;
+    final t = live.targetFor(spec.toPigeon(), courseKey: _courseKeyFor(s));
+    final m = t?.liveDistanceM, ms = t?.liveTargetMs;
+    return m == null || ms == null || m <= 0 ? null : ms / m;
+  }
+
   /// PD2: "Target 24:30 (predicted)" under the goal card (A10.10), from
   /// the last prepare (pure, no I/O); nothing without a target. When the
   /// event has a prediction and a fresh PB, tapping swaps between them.
@@ -896,6 +908,16 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                           ),
                         ),
                       ],
+                      if (goal ||
+                          mode == RecordMode.free ||
+                          mode == RecordMode.trail)
+                        TodayTargetLine(
+                          weather: services.weather,
+                          runs: _runs,
+                          units: s.units,
+                          now: services.now,
+                          aimTruePaceSecPerKm: goal ? _goalAim(s) : null,
+                        ),
                       if (_followable(s)) ...[
                         const SizedBox(height: Space.x16),
                         FollowRouteRow(

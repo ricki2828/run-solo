@@ -18,6 +18,7 @@ import 'package:run_solo/state/live_context.dart';
 import 'package:run_solo/state/send_runs.dart';
 import 'package:run_solo/state/sessions.dart';
 import 'package:run_solo/state/settings.dart';
+import 'package:run_solo/state/weather.dart';
 
 /// Fixed test clock so timer interpolation is zero and "3 days ago" is stable.
 final DateTime testNow = DateTime(2026, 9, 24, 10, 0);
@@ -50,6 +51,7 @@ AppServices fakeServices({
   Map<String, String> courseNames = const {},
   List<engine.SavedRoute> routes = const [],
   LiveContextSource? live,
+  WeatherQueue? weather,
   RunStore? history,
   FakePlaceGateway? places,
   List<ExportTarget>? exportTargets,
@@ -57,6 +59,7 @@ AppServices fakeServices({
   places: places,
   exportTargets: exportTargets,
   live: live,
+  weather: weather,
   recorder: recorder ?? FakeRecorderGateway(now: now),
   ble: ble,
   permissions:
