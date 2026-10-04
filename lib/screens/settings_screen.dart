@@ -24,7 +24,8 @@ import 'send_sheet.dart' show kSendPrivacyLine;
 /// Store listing, About, privacy page and onboarding change together.
 const String kPrivacyParagraph =
     'Your recorded route, times and heart rate stay on your phone unless you '
-    'choose to send them. '
+    'choose to send them. A session you send to your Intervals.icu calendar '
+    'goes only when you tap. '
     'Map tiles come from Google, which sees the map area you view and your '
     'IP address. Weather comes from Open-Meteo using '
     'your location rounded to about 10 km. Your phone\'s own geocoder names '

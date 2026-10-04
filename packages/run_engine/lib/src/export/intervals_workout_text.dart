@@ -8,13 +8,19 @@ import 'fit_workout.dart';
 /// prompt, `4:10-4:00/km Pace`, `85-95% HR`.
 ///
 /// Intervals.icu needs a length for every step, so an open step (lap button)
-/// cannot be written: an open warm-up or cool-down is left out, and a workout
-/// with any other open step returns null.
+/// cannot be written. An open warm-up or cool-down gets the length passed in
+/// ([openWarmupSeconds], [openCooldownSeconds]) or, when that is null or 0,
+/// is left out. A workout with any other open step returns null.
 abstract final class IntervalsWorkoutText {
   /// null when the workout has a step this text cannot hold. [maxHr] turns a
   /// heart rate window in bpm into a percent of max HR; without it HR targets
   /// are left out.
-  static String? fromWorkout(FitWorkout w, {int? maxHr}) {
+  static String? fromWorkout(
+    FitWorkout w, {
+    int? maxHr,
+    int? openWarmupSeconds,
+    int? openCooldownSeconds,
+  }) {
     final steps = w.steps;
     // Which steps a repeat step covers: fromIndex .. repeat index - 1.
     final inRepeat = <int, int>{}; // step index -> repeat step index
@@ -49,8 +55,12 @@ abstract final class IntervalsWorkoutText {
         continue;
       }
       if (s.duration == FitDuration.open) {
-        if (s.intensity == FitIntensity.warmup ||
-            s.intensity == FitIntensity.cooldown) {
+        final warm = s.intensity == FitIntensity.warmup;
+        if (warm || s.intensity == FitIntensity.cooldown) {
+          final secs = warm ? openWarmupSeconds : openCooldownSeconds;
+          if (secs != null && secs > 0) {
+            out.writeln('- ${s.name} ${_time(secs)}');
+          }
           i++;
           continue;
         }

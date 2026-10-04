@@ -10,6 +10,7 @@ import 'package:run_solo/screens/watch_sheet.dart';
 import 'package:run_solo/state/intervals_icu.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/state/watch_guide.dart';
+import 'package:run_solo/widgets/value_stepper.dart';
 
 import '../helpers.dart';
 import '../route_fixtures.dart';
@@ -75,7 +76,8 @@ void main() {
     // Garmin is the only workout that lands, and it needs a computer.
     expect(find.textContaining('GARMIN/NewFiles'), findsOneWidget);
     expect(find.textContaining('Needs a computer'), findsOneWidget);
-    expect(find.textContaining('Not supported'), findsNWidgets(4));
+    expect(find.textContaining('Not supported'), findsOneWidget); // COROS
+    expect(find.textContaining('No workout import found'), findsNWidgets(3));
   });
 
   testWidgets('Share workout file hands a valid .fit to the share sheet', (
@@ -154,7 +156,13 @@ void main() {
       expect(e.workout, isNot(contains('—')));
       expect(e.route, isNot(contains('—')));
       expect(e.workoutWorks, e.brand == WatchBrand.garmin);
-      if (!e.workoutWorks) expect(e.workout, startsWith('Not supported'));
+      if (!e.workoutWorks) {
+        expect(
+          e.workout.startsWith('Not supported') ||
+              e.workout.startsWith('No workout import found'),
+          isTrue,
+        );
+      }
     }
   });
 
@@ -197,7 +205,29 @@ void main() {
     expect(event['start_date_local'], '2026-09-24T00:00:00');
     expect(event['external_id'], 'runsupreme-norwegian-4x4-2026-09-24');
     expect(event['description'], contains('3x\n- Work 4m 85-95% HR'));
+    // The 4x4's open warm-up and cool-down get the sheet's defaults.
+    expect(event['description'], startsWith('- Warm-up 10m'));
+    expect(event['description'], endsWith('- Cool-down 5m'));
     expect(find.byKey(const ValueKey('watch-intervals-added')), findsOneWidget);
+  });
+
+  testWidgets('Intervals.icu: warm-up stepper changes the pushed length', (
+    tester,
+  ) async {
+    final http = await openConnected(tester);
+    final plus = find.descendant(
+      of: find.widgetWithText(ValueStepper, 'WARM-UP'),
+      matching: find.byIcon(Icons.add),
+    );
+    await tester.ensureVisible(plus);
+    await tester.tap(plus);
+    await pumpTimes(tester, 2);
+    expect(find.text('15 min'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('watch-intervals-today')));
+    await pumpTimes(tester, 4);
+    final event =
+        (jsonDecode(utf8.decode(http.sent.single.body!)) as List).single as Map;
+    expect(event['description'], startsWith('- Warm-up 15m'));
   });
 
   testWidgets('Intervals.icu: tomorrow uses the next date', (tester) async {

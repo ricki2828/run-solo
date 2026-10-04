@@ -18,6 +18,40 @@ void main() {
     },
   );
 
+  test('open warm-up and cool-down take the defaults when given', () {
+    final w = FitWorkout.fromSession(SessionSpec.norwegian4x4(), maxHr: 190)!;
+    final text = IntervalsWorkoutText.fromWorkout(
+      w,
+      maxHr: 190,
+      openWarmupSeconds: 600,
+      openCooldownSeconds: 300,
+    )!;
+    expect(text, startsWith('- Warm-up 10m\n\n3x'));
+    expect(text, endsWith('- Cool-down 5m'));
+    final none = IntervalsWorkoutText.fromWorkout(
+      w,
+      maxHr: 190,
+      openWarmupSeconds: 0,
+    )!;
+    expect(none, isNot(contains('Warm-up')));
+  });
+
+  test('a fixed warm-up ignores the default', () {
+    const spec = SessionSpec(
+      templateId: 'x',
+      templateVersion: 1,
+      name: 'X',
+      warmupSeconds: 300,
+      steps: [SessionStep.work(60, rep: 1)],
+    );
+    final text = IntervalsWorkoutText.fromWorkout(
+      FitWorkout.fromSession(spec)!,
+      openWarmupSeconds: 900,
+    )!;
+    expect(text, contains('- Warm-up 5m'));
+    expect(text, isNot(contains('15m')));
+  });
+
   test('pace window is written slow-fast per km', () {
     final w = FitWorkout.fromSession(
       SessionSpec.norwegian4x4(reps: 2),

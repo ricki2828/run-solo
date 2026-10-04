@@ -7,6 +7,7 @@ import '../platform/gateway.dart' show Units;
 import '../state/intervals_icu.dart';
 import '../state/watch_guide.dart';
 import '../theme/theme.dart';
+import '../widgets/value_stepper.dart';
 
 /// "Send to watch" for a structured session. This is also the hook for the
 /// 4-week plan: build a [engine.FitWorkout] with `FitWorkout.fromSession`
@@ -63,6 +64,26 @@ class _WatchSheetState extends State<WatchSheet> {
   String? _error;
   String? _added;
 
+  /// Lengths for an open warm-up and cool-down on the Intervals.icu push
+  /// (it needs a length for every step). The .fit keeps them open.
+  int _warmMin = 10;
+  int _coolMin = 5;
+
+  bool _hasOpen(engine.FitIntensity kind) =>
+      widget.workout?.steps.any(
+        (s) => s.duration == engine.FitDuration.open && s.intensity == kind,
+      ) ??
+      false;
+
+  String? _intervalsText() => widget.workout == null
+      ? null
+      : engine.IntervalsWorkoutText.fromWorkout(
+          widget.workout!,
+          maxHr: widget.maxHr,
+          openWarmupSeconds: _warmMin * 60,
+          openCooldownSeconds: _coolMin * 60,
+        );
+
   IntervalsIcuTarget? _intervals() =>
       AppServices.of(context).sender.targets
           .whereType<IntervalsIcuTarget>()
@@ -72,9 +93,7 @@ class _WatchSheetState extends State<WatchSheet> {
   Future<void> _push(DateTime day) async {
     final target = _intervals();
     final w = widget.workout;
-    final text = w == null
-        ? null
-        : engine.IntervalsWorkoutText.fromWorkout(w, maxHr: widget.maxHr);
+    final text = _intervalsText();
     if (target == null || w == null || text == null) return;
     setState(() {
       _busy = true;
@@ -142,10 +161,7 @@ class _WatchSheetState extends State<WatchSheet> {
 
   List<Widget> _intervalsBlock(RunSoloTokens t, engine.FitWorkout w) {
     final target = _intervals();
-    final text = engine.IntervalsWorkoutText.fromWorkout(
-      w,
-      maxHr: widget.maxHr,
-    );
+    final text = _intervalsText();
     final now = AppServices.of(context).now();
     final today = DateTime(now.year, now.month, now.day);
     final canPush = target != null && target.connected && text != null;
@@ -171,11 +187,26 @@ class _WatchSheetState extends State<WatchSheet> {
       const SizedBox(height: Space.x8),
       Text(
         'Adds the session to your Intervals.icu calendar. Intervals.icu then '
-        'sends it to the watch you linked there, up to a week ahead. Open '
-        'warm-up and cool-down are left out, it needs a length for every step.',
+        'sends it to the watch you linked there, up to a week ahead. '
+        'Intervals.icu needs a length for every step, so an open warm-up '
+        'and cool-down become the timed ones set below.',
         key: const ValueKey('watch-intervals-blurb'),
         style: RunSoloType.body15.copyWith(color: t.inkSecondary),
       ),
+      if (_hasOpen(engine.FitIntensity.warmup))
+        ValueStepper(
+          label: 'Warm-up',
+          value: _warmMin == 0 ? 'None' : '$_warmMin min',
+          onMinus: _warmMin > 0 ? () => setState(() => _warmMin -= 5) : null,
+          onPlus: _warmMin < 30 ? () => setState(() => _warmMin += 5) : null,
+        ),
+      if (_hasOpen(engine.FitIntensity.cooldown))
+        ValueStepper(
+          label: 'Cool-down',
+          value: _coolMin == 0 ? 'None' : '$_coolMin min',
+          onMinus: _coolMin > 0 ? () => setState(() => _coolMin -= 5) : null,
+          onPlus: _coolMin < 30 ? () => setState(() => _coolMin += 5) : null,
+        ),
       const SizedBox(height: Space.x12),
       if (text == null)
         Text(
@@ -247,7 +278,8 @@ class _WatchSheetState extends State<WatchSheet> {
               isWorkout
                   ? 'Warm-up, reps, recoveries and cool-down, ready for your '
                         'watch.'
-                  : 'A GPX course file for navigation on your watch.',
+                  : 'A GPX course file for navigation on your watch. It holds '
+                        'the whole route, start and end included.',
               style: RunSoloType.body15.copyWith(color: t.inkSecondary),
             ),
             if (target != null) ...[
