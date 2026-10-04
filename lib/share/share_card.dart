@@ -18,7 +18,7 @@ import '../state/history_store.dart';
 import '../state/home_progress.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
-import '../widgets/chrome.dart' show LapLineMark;
+import '../widgets/chrome.dart' show LapLineFullMark;
 import '../widgets/recent_activity.dart' show runTypeColor;
 
 /// The card's layout size (4:5). The image is captured at 3x: 1080 x 1350.
@@ -41,7 +41,7 @@ class RunCardData extends ShareCardData {
     required this.time,
     this.truePace,
     this.verdict,
-    this.verdictBetter = false,
+    this.verdictHeadline,
     this.route = const [],
   });
 
@@ -60,7 +60,10 @@ class RunCardData extends ShareCardData {
 
   /// "FASTER", "HOLDING"... only where the run has a verdict.
   final String? verdict;
-  final bool verdictBetter;
+
+  /// Picks the verdict's colour: mint faster, vermillion slower, Bone else.
+  /// Cyan is for a PB only, which a card never claims.
+  final engine.VerdictHeadline? verdictHeadline;
 
   /// The run's route, drawn only when the runner turned on "Show map" (the
   /// builder leaves it empty otherwise). Shape only: no tiles, no names.
@@ -77,7 +80,7 @@ class RunCardData extends ShareCardData {
     time: time,
     truePace: truePace,
     verdict: verdict,
-    verdictBetter: verdictBetter,
+    verdictHeadline: verdictHeadline,
     route: points,
   );
 }
@@ -124,7 +127,7 @@ RunCardData runCardData(RunSummary run, Units units) => RunCardData(
       ? null
       : Fmt.paceUnit(run.truePaceSecPerKm, units),
   verdict: run.isFourByFour ? run.verdict?.headline.text : null,
-  verdictBetter: run.verdict?.headline == engine.VerdictHeadline.faster,
+  verdictHeadline: run.isFourByFour ? run.verdict?.headline : null,
 );
 
 /// The four lanes as Home shows them (same norms, same rounding); a lane
@@ -252,7 +255,7 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     crossAxisAlignment: CrossAxisAlignment.center,
     children: [
-      const LapLineMark(height: 34),
+      const LapLineFullMark(height: 34),
       const SizedBox(width: 12),
       Expanded(
         child: Text(
@@ -325,7 +328,11 @@ class _RunBody extends StatelessWidget {
           v,
           key: const ValueKey('share-verdict'),
           style: RunSoloType.display44.copyWith(
-            color: data.verdictBetter ? t.accentArc : t.inkPrimary,
+            color: switch (data.verdictHeadline) {
+              engine.VerdictHeadline.faster => t.semImproving,
+              engine.VerdictHeadline.slower => t.semSlower,
+              _ => t.inkPrimary,
+            },
           ),
         ),
         const SizedBox(height: 8),
