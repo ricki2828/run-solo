@@ -419,12 +419,14 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
 
   /// The picked session as a watch workout, with the heart rate band in bpm
   /// from the runner's max HR. Null for a session with no steps (fartlek).
-  engine.FitWorkout? _watchWorkout() {
+  engine.FitWorkout? _watchWorkout() => engine.FitWorkout.fromSession(
+    AppServices.of(context).pickedSession,
+    maxHr: _maxHr(),
+  );
+
+  int _maxHr() {
     final services = AppServices.of(context);
-    return engine.FitWorkout.fromSession(
-      services.pickedSession,
-      maxHr: MaxHr.resolve(services.settings.settings, services.now()).maxHr,
-    );
+    return MaxHr.resolve(services.settings.settings, services.now()).maxHr;
   }
 
   /// The Intervals sheet (A8). Picking a card selects Intervals too; the
@@ -827,6 +829,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                               : () => showWatchWorkoutSheet(
                                   context,
                                   workout: _watchWorkout()!,
+                                  maxHr: _maxHr(),
                                 ),
                           onSaveAsCustom: () => _build(
                             services.sessions.byTemplateId(s.sessionId) ??

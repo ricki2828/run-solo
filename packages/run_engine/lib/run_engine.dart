@@ -47,6 +47,7 @@ export 'src/engine_version.dart';
 export 'src/export/fit_decoder.dart';
 export 'src/export/fit_workout.dart';
 export 'src/export/fit_writer.dart';
+export 'src/export/intervals_workout_text.dart';
 export 'src/export/gpx_course.dart';
 export 'src/import/gpx_exporter.dart';
 export 'src/import/gpx_importer.dart';

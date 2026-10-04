@@ -4,6 +4,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 import '../app/format.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart' show Units;
+import '../state/intervals_icu.dart';
 import '../state/watch_guide.dart';
 import '../theme/theme.dart';
 
@@ -13,7 +14,8 @@ import '../theme/theme.dart';
 Future<void> showWatchWorkoutSheet(
   BuildContext context, {
   required engine.FitWorkout workout,
-}) => _show(context, WatchSheet.workout(workout: workout));
+  int? maxHr,
+}) => _show(context, WatchSheet.workout(workout: workout, maxHr: maxHr));
 
 /// "Send to watch" for a route: a past run's route or a saved route.
 Future<void> showWatchRouteSheet(
@@ -37,12 +39,19 @@ Future<void> _show(BuildContext context, Widget sheet) {
 }
 
 class WatchSheet extends StatefulWidget {
-  const WatchSheet.workout({super.key, required engine.FitWorkout this.workout})
-    : route = null;
+  const WatchSheet.workout({
+    super.key,
+    required engine.FitWorkout this.workout,
+    this.maxHr,
+  }) : route = null;
   const WatchSheet.route({super.key, required engine.SavedRoute this.route})
-    : workout = null;
+    : workout = null,
+      maxHr = null;
 
   final engine.FitWorkout? workout;
+
+  /// Turns a heart rate window into a percent of max HR for Intervals.icu.
+  final int? maxHr;
   final engine.SavedRoute? route;
 
   @override
@@ -52,6 +61,42 @@ class WatchSheet extends StatefulWidget {
 class _WatchSheetState extends State<WatchSheet> {
   bool _busy = false;
   String? _error;
+  String? _added;
+
+  IntervalsIcuTarget? _intervals() =>
+      AppServices.of(context).sender.targets
+          .whereType<IntervalsIcuTarget>()
+          .firstOrNull;
+
+  /// Put the workout on the Intervals.icu calendar for [day].
+  Future<void> _push(DateTime day) async {
+    final target = _intervals();
+    final w = widget.workout;
+    final text = w == null
+        ? null
+        : engine.IntervalsWorkoutText.fromWorkout(w, maxHr: widget.maxHr);
+    if (target == null || w == null || text == null) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _added = null;
+    });
+    String two(int v) => v.toString().padLeft(2, '0');
+    final date = '${day.year}-${two(day.month)}-${two(day.day)}';
+    final slug = w.name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-');
+    final error = await target.pushWorkout(
+      name: w.name,
+      description: text,
+      dateLocal: day,
+      externalId: 'runsupreme-$slug-$date',
+    );
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _error = error;
+      _added = error == null ? Fmt.dayDate(day) : null;
+    });
+  }
 
   Future<void> _share() async {
     final exporter = AppServices.of(context).watch;
@@ -93,6 +138,79 @@ class _WatchSheetState extends State<WatchSheet> {
           '${units == Units.mi ? 'mi' : 'km'}.';
     }
     return null;
+  }
+
+  List<Widget> _intervalsBlock(RunSoloTokens t, engine.FitWorkout w) {
+    final target = _intervals();
+    final text = engine.IntervalsWorkoutText.fromWorkout(
+      w,
+      maxHr: widget.maxHr,
+    );
+    final now = AppServices.of(context).now();
+    final today = DateTime(now.year, now.month, now.day);
+    final canPush = target != null && target.connected && text != null;
+    Widget button(String key, String label, DateTime day) => OutlinedButton(
+      key: ValueKey(key),
+      onPressed: _busy || !canPush ? null : () => _push(day),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 48),
+        foregroundColor: t.inkPrimary,
+        side: BorderSide(color: t.lineHair),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Radii.button),
+        ),
+      ),
+      child: Text(label, style: RunSoloType.body15),
+    );
+    return [
+      const SizedBox(height: Space.x16),
+      Text(
+        'BEST: VIA INTERVALS.ICU',
+        style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+      ),
+      const SizedBox(height: Space.x8),
+      Text(
+        'Adds the session to your Intervals.icu calendar. Intervals.icu then '
+        'sends it to the watch you linked there, up to a week ahead. Open '
+        'warm-up and cool-down are left out, it needs a length for every step.',
+        key: const ValueKey('watch-intervals-blurb'),
+        style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+      ),
+      const SizedBox(height: Space.x12),
+      if (text == null)
+        Text(
+          'This session has a step Intervals.icu cannot hold. Use the file.',
+          key: const ValueKey('watch-intervals-na'),
+          style: RunSoloType.label13.copyWith(color: t.inkMuted),
+        )
+      else if (target == null || !target.connected)
+        Text(
+          'Connect Intervals.icu in Settings, under Send runs to',
+          key: const ValueKey('watch-intervals-connect'),
+          style: RunSoloType.label13.copyWith(color: t.inkMuted),
+        )
+      else
+        Wrap(
+          spacing: Space.x12,
+          runSpacing: Space.x8,
+          children: [
+            button('watch-intervals-today', 'Add for today', today),
+            button(
+              'watch-intervals-tomorrow',
+              'Add for tomorrow',
+              today.add(const Duration(days: 1)),
+            ),
+          ],
+        ),
+      if (_added != null) ...[
+        const SizedBox(height: Space.x8),
+        Text(
+          'Added to your Intervals.icu calendar for $_added.',
+          key: const ValueKey('watch-intervals-added'),
+          style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+        ),
+      ],
+    ];
   }
 
   @override
@@ -140,7 +258,14 @@ class _WatchSheetState extends State<WatchSheet> {
                 style: RunSoloType.label13.copyWith(color: t.inkSecondary),
               ),
             ],
+            if (isWorkout) ..._intervalsBlock(t, workout),
             const SizedBox(height: Space.x16),
+            if (isWorkout)
+              Text(
+                'OR SHARE A FILE',
+                style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+              ),
+            if (isWorkout) const SizedBox(height: Space.x8),
             OutlinedButton(
               key: const ValueKey('watch-share'),
               onPressed: _busy ? null : _share,
@@ -173,8 +298,13 @@ class _WatchSheetState extends State<WatchSheet> {
             for (final e in WatchGuide.entries)
               _Brand(
                 entry: e,
-                text: isWorkout ? e.workout : e.route,
-                works: isWorkout ? e.workoutWorks : true,
+                lines: isWorkout
+                    ? ['Intervals.icu: ${e.intervals}', 'File: ${e.workout}']
+                    : [e.route],
+                works:
+                    !isWorkout ||
+                    e.workoutWorks ||
+                    !e.intervals.startsWith('Not'),
               ),
           ],
         ),
@@ -184,9 +314,9 @@ class _WatchSheetState extends State<WatchSheet> {
 }
 
 class _Brand extends StatelessWidget {
-  const _Brand({required this.entry, required this.text, required this.works});
+  const _Brand({required this.entry, required this.lines, required this.works});
   final WatchGuideEntry entry;
-  final String text;
+  final List<String> lines;
   final bool works;
 
   @override
@@ -209,12 +339,15 @@ class _Brand extends StatelessWidget {
             ),
           ),
           const SizedBox(height: Space.x4),
-          Text(
-            text,
-            style: RunSoloType.label13.copyWith(
-              color: works ? t.inkSecondary : t.inkMuted,
+          for (final line in lines) ...[
+            Text(
+              line,
+              style: RunSoloType.label13.copyWith(
+                color: works ? t.inkSecondary : t.inkMuted,
+              ),
             ),
-          ),
+            const SizedBox(height: Space.x4),
+          ],
         ],
       ),
     );
