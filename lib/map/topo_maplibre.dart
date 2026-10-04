@@ -269,10 +269,13 @@ class _TopoStaticMapState extends State<_TopoStaticMap> {
             southwest: ml.LatLng(b.south, b.west),
             northeast: ml.LatLng(b.north, b.east),
           ),
+          // The card's route is drawn over the snapshot by RouteShape with
+          // 24 dp all round, so the camera must fit the same way. Detail
+          // leaves room for the switch (top) and the attribution (bottom).
           left: 24,
-          top: 24,
+          top: widget.mapOnly ? 24 : 56,
           right: 24,
-          bottom: 24,
+          bottom: widget.mapOnly ? 24 : 48,
         ),
       );
     } on Object catch (e) {
