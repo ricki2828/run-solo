@@ -99,13 +99,19 @@ jobs:
             xcrun simctl bootstatus "$udid" -b
             xcrun simctl install "$udid" build/ios/iphonesimulator/Runner.app
             xcrun simctl launch --console-pty "$udid" app.runsupreme > build/ios-logs/launch.log 2>&1 &
-            sleep 25
             mkdir -p build/ios-smoke
-            xcrun simctl io "$udid" screenshot build/ios-smoke/home.png
+            for t in 6 14 25; do
+              sleep 8
+              xcrun simctl io "$udid" screenshot build/ios-smoke/home-$t.png
+            done
+            cp build/ios-smoke/home-25.png build/ios-smoke/home.png
+            echo "--- app log"
+            xcrun simctl spawn "$udid" log show --last 3m --style compact --predicate 'process == "Runner"' | tail -60
             data=$(xcrun simctl get_app_container "$udid" app.runsupreme data)
             support="$data/Library/Application Support"
             echo "--- Application Support ($support)"
             ls -la "$support"
+            for f in "$support"/state/*; do echo "--- $f"; head -c 500 "$f"; echo; done
             # journals/ is made by Swift, state/ or runs/ by Dart: both under one root = path_provider dir equals Swift dir.
             [ -d "$support/journals" ] || { echo "SMOKE FAIL: Swift journals/ missing"; exit 1; }
             [ -d "$support/state" ] || [ -d "$support/runs" ] || { echo "SMOKE FAIL: Dart state/ not in the Swift directory"; exit 1; }
