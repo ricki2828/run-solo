@@ -34,6 +34,7 @@ export 'src/engine/metrics.dart';
 export 'src/engine/predictor.dart';
 export 'src/engine/start_target.dart';
 export 'src/engine/today_target.dart';
+export 'src/engine/race_estimates.dart';
 export 'src/engine/rep_detector.dart';
 export 'src/engine/trace.dart';
 export 'src/engine/route_match.dart';

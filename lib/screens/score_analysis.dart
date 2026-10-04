@@ -5,10 +5,12 @@ import '../app/format.dart';
 import '../app/identity_display.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
+import '../state/live_context.dart';
 import '../state/settings.dart';
 import '../share/share_card.dart';
 import '../share/share_card_sheet.dart';
 import '../theme/theme.dart';
+import '../widgets/race_estimates_card.dart';
 
 /// The four earned identities in one place, with the evidence and the
 /// qualified age-group context separate from the app's own display score.
@@ -21,6 +23,7 @@ class ScoreAnalysis extends StatefulWidget {
 
 class _ScoreAnalysisState extends State<ScoreAnalysis> {
   Future<Map<engine.IdentityLane, engine.IdentityScore>>? _scores;
+  Future<engine.RaceEstimates?>? _race;
   AppServices? _services;
 
   @override
@@ -32,21 +35,32 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
       _services = services;
       services.history.derivedChanged.addListener(_reloadScores);
       _scores = null;
+      _race = null;
     }
     final live = services.live;
     _scores ??= live == null
         ? Future.value(<engine.IdentityLane, engine.IdentityScore>{})
         : live.prepare().then((_) => live.identityScores());
+    _race ??= _loadRace(live);
   }
+
+  static Future<engine.RaceEstimates?> _loadRace(LiveContextSource? live) =>
+      live == null
+      ? Future.value(null)
+      : live
+            .prepare()
+            .then<engine.RaceEstimates?>((_) => live.raceEstimates())
+            .catchError((_) => null);
 
   void _reloadScores() {
     if (!mounted) return;
     final live = _services?.live;
-    setState(
-      () => _scores = live == null
+    setState(() {
+      _scores = live == null
           ? Future.value(<engine.IdentityLane, engine.IdentityScore>{})
-          : live.prepare().then((_) => live.identityScores()),
-    );
+          : live.prepare().then((_) => live.identityScores());
+      _race = _loadRace(live);
+    });
   }
 
   @override
@@ -79,6 +93,17 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
               Space.x32,
             ),
             children: [
+              FutureBuilder<engine.RaceEstimates?>(
+                future: _race,
+                builder: (context, snap) {
+                  final race = snap.data;
+                  if (race == null) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: Space.x24),
+                    child: RaceEstimatesCard(estimates: race),
+                  );
+                },
+              ),
               Text(
                 'HOW YOU COMPARE',
                 style: RunSoloType.heading19.copyWith(color: t.inkPrimary),
