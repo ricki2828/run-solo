@@ -103,7 +103,8 @@ void main() {
     final services = fakeServices(plan: planAt(testNow));
     await pumpApp(tester, services, home: PlanScreen(now: now));
     await tester.tap(find.byKey(const ValueKey('plan-row-w1s1')));
-    await pumpTimes(tester, 4);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
     expect(find.textContaining('SWAP'), findsOneWidget);
     await tester.tap(
       find.descendant(
@@ -111,7 +112,8 @@ void main() {
         matching: find.textContaining('Tempo intervals'),
       ),
     );
-    await pumpTimes(tester, 4);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
     expect(services.plans.plan!.sessions.first.presetId, 'tempo');
     expect(services.plans.plan!.sessions.first.swapped, isTrue);
     expect(find.textContaining('You swapped this in.'), findsOneWidget);

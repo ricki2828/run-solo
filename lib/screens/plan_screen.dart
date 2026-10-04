@@ -147,6 +147,7 @@ class _CreateFormState extends State<_CreateForm> {
                 ChoiceChip(
                   key: ValueKey('plan-lane-${l.name}'),
                   label: Text(l.name.toUpperCase()),
+                  showCheckmark: false,
                   selected: l == lane,
                   onSelected: (_) => setState(() => _lane = l),
                 ),
@@ -367,13 +368,17 @@ class _SessionRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${engine.BlockResolver.dayName(state.date)} '
-                  '${Fmt.dayMonth(state.date)} · ${s.name} · ${s.size}',
+                  '${s.name} · ${s.size}',
                   style: RunSoloType.body15.copyWith(
                     color: st == engine.BlockStatus.missed
                         ? t.inkSecondary
                         : t.inkPrimary,
                   ),
+                ),
+                Text(
+                  '${engine.BlockResolver.dayName(state.date)} '
+                  '${Fmt.dayMonth(state.date)}',
+                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
                 Text(
                   state.note ?? s.reason,
