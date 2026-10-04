@@ -26,7 +26,7 @@ import 'pack_models.dart';
 /// rather than shown unenforced.
 typedef WifiProbe = Future<bool> Function();
 
-const int kDefaultStorageCap = 1024 * 1024 * 1024;
+const int kDefaultStorageCap = 1000 * 1000 * 1000;
 
 class PackManager extends ChangeNotifier {
   PackManager({

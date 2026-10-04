@@ -33,7 +33,7 @@ void main() {
     expect(formatPackBytes(512), '512 B');
     expect(formatPackBytes(3122553), '3.1 MB');
     expect(formatPackBytes(79400000), '79 MB');
-    expect(formatPackBytes(1073741824), '1.1 GB');
+    expect(formatPackBytes(1000000000), '1.0 GB');
     expect(formatPackBytes(999000000), '999 MB');
   });
 
