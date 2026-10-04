@@ -52,6 +52,9 @@ RULES = [
     ("Map.putIfAbsent", None, "re:(?m)\\.putIfAbsent\\(([\\w.]+), (.*?)\\)(\\s*(?://.*)?)$", ".getOrPut(\\1) { \\2 }\\3"),
     ("MutableCollection.removeIf", None, ".removeIf {", ".removeAll {"),
     ("String.format %.1f", "LapDispatchTest.kt", '"%.1f".format(d)', "formatDouble(kotlin.math.round(d * 10) / 10)"),
+    # Host-only fixture writers: two top-level main()s in one package clash in one Native module.
+    ("top-level fun main()", "ContractFixtures.kt", "\nfun main() {", "\nfun mainContractFixtures() {"),
+    ("top-level fun main() (trace)", "EventTraceFixture.kt", "\nfun main() {", "\nfun mainEventTraceFixture() {"),
     # Kotlin/Native rejects , ( ) # in names (JVM only rejects : . ; [ ] / < >).
     ("test names , ( ) #", None, "re:(?m)^(\\s*fun `)([^`\\n]*[,()#][^`\\n]*)`", None),
     ("System.currentTimeMillis", None, "System::currentTimeMillis", "::currentTimeMillis"),

@@ -28,13 +28,24 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: false
+      # restore + save (not actions/cache): its post step skips the save when the job fails, so a
+      # red spike never cached ~/.konan and every trip was cold.
       - name: Kotlin/Native toolchain cache
-        uses: actions/cache@v4
+        id: konan
+        uses: actions/cache/restore@v4
         with:
           path: ~/.konan
           key: konan-${{ runner.os }}-${{ runner.arch }}-kotlin-2.4.0
       - name: Spike
-        run: spike/ci_run.sh
+        run: |
+          echo "konan_cache_hit=${{ steps.konan.outputs.cache-hit }}" > spike/cache.txt
+          spike/ci_run.sh
+      - name: Save Kotlin/Native toolchain
+        if: ${{ !cancelled() && steps.konan.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-kotlin-2.4.0
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:

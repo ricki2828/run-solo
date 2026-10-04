@@ -40,6 +40,7 @@ print(ios[-1][1]["udid"] if ios else "")')
   echo "gradle=$(grep -o 'gradle-[0-9.]*-bin' kmp-core/gradle/wrapper/gradle-wrapper.properties)"
   echo "sim=$SIM_NAME"
 } > "$LOGS/versions.txt"
+cat cache.txt >> "$LOGS/versions.txt" 2>/dev/null
 
 G="./gradlew --no-daemon --continue '-Pk0.simDevice=$SIM_NAME'"
 fail=0
