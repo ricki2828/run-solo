@@ -21,6 +21,8 @@ class RecentActivity extends StatefulWidget {
     this.onOpen,
     this.onShowAll,
     this.estimates,
+    this.moreLine,
+    this.onMore,
   });
 
   /// All sessions, newest first; Home shows the first three as map cards.
@@ -30,6 +32,10 @@ class RecentActivity extends StatefulWidget {
   final ValueChanged<RunSummary>? onOpen;
   final VoidCallback? onShowAll;
   final engine.HomeEstimates? estimates;
+
+  /// "Half 1:52:10 · VO2 47": what the table lacks, opening Progress.
+  final String? moreLine;
+  final VoidCallback? onMore;
 
   @override
   State<RecentActivity> createState() => _RecentActivityState();
@@ -84,7 +90,11 @@ class _RecentActivityState extends State<RecentActivity> {
           ),
           if (widget.estimates case final e?) ...[
             const SizedBox(height: Space.x16),
-            _EstimatesTable(estimates: e),
+            _EstimatesTable(
+              estimates: e,
+              moreLine: widget.moreLine,
+              onMore: widget.onMore,
+            ),
           ],
         ] else ...[
           for (var i = 0; i < shown.length; i++) ...[
@@ -102,7 +112,11 @@ class _RecentActivityState extends State<RecentActivity> {
             ),
             const SizedBox(height: Space.x12),
             if (widget.estimates case final e? when i == 0) ...[
-              _EstimatesTable(estimates: e),
+              _EstimatesTable(
+                estimates: e,
+                moreLine: widget.moreLine,
+                onMore: widget.onMore,
+              ),
               const SizedBox(height: Space.x12),
             ],
           ],
@@ -398,8 +412,10 @@ class _ActivityMap extends StatelessWidget {
 }
 
 class _EstimatesTable extends StatefulWidget {
-  const _EstimatesTable({required this.estimates});
+  const _EstimatesTable({required this.estimates, this.moreLine, this.onMore});
   final engine.HomeEstimates estimates;
+  final String? moreLine;
+  final VoidCallback? onMore;
 
   @override
   State<_EstimatesTable> createState() => _EstimatesTableState();
@@ -526,6 +542,23 @@ class _EstimatesTableState extends State<_EstimatesTable> {
                   Text(
                     source,
                     style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                  ),
+                if (widget.moreLine case final more? when widget.onMore != null)
+                  InkWell(
+                    key: const ValueKey('home-race-line'),
+                    onTap: widget.onMore,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 48),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '$more ›',
+                          style: RunSoloType.body15.copyWith(
+                            color: t.inkPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
               ],
             ],

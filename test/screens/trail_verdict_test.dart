@@ -267,6 +267,8 @@ void main() {
       home: const Scaffold(body: ScoreAnalysis()),
     );
     await pumpTimes(tester, 8);
+    // The race-times card sits above the lanes; the list builds lazily.
+    await scrollTo(tester, find.byKey(const ValueKey('analysis-long-trail')));
     expect(find.byKey(const ValueKey('analysis-long-trail')), findsOneWidget);
     expect(find.text('Trail runs count at true pace.'), findsWidgets);
     // A lane no trail run set carries no such line.

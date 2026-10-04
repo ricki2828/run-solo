@@ -45,6 +45,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   Future<List<RunSummary>>? _runs;
   Future<engine.HomeEstimates?>? _estimates;
+  Future<String?>? _raceLine;
   Future<Map<engine.IdentityLane, engine.IdentityScore>?>? _scores;
   Future<_HomeData>? _data;
   PermissionSnapshot? _perms;
@@ -105,6 +106,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _estimates = live.prepare().then(
         (_) => live.homeEstimates(includeEvent: _hasEventCourse(live)),
       );
+      _raceLine = live
+          .prepare()
+          .then<String?>((_) => live.raceEstimates()?.homeLine)
+          .catchError((_) => null);
       // A failed read becomes null here, so no error is left unhandled.
       _scores = live
           .prepare()
@@ -309,14 +314,21 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           FutureBuilder<engine.HomeEstimates?>(
                             future: _estimates,
-                            builder: (context, estimateSnap) => RecentActivity(
-                              runs: runs,
-                              units: settings.units,
-                              now: _now,
-                              onOpen: _openRun,
-                              onShowAll: widget.onShowHistory,
-                              estimates: estimateSnap.data,
-                            ),
+                            builder: (context, estimateSnap) =>
+                                FutureBuilder<String?>(
+                                  future: _raceLine,
+                                  builder: (context, raceSnap) =>
+                                      RecentActivity(
+                                        runs: runs,
+                                        units: settings.units,
+                                        now: _now,
+                                        onOpen: _openRun,
+                                        onShowAll: widget.onShowHistory,
+                                        estimates: estimateSnap.data,
+                                        moreLine: raceSnap.data,
+                                        onMore: _openProgress,
+                                      ),
+                                ),
                           ),
                         ],
                       );

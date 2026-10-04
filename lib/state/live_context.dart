@@ -234,6 +234,12 @@ class LiveContextSource {
           includeEvent: includeEvent,
         );
 
+  /// Race times and VO2 for Progress and the Home line, from the last
+  /// prepare; null when never prepared.
+  engine.RaceEstimates? raceEstimates() => _cachedVersion == null
+      ? null
+      : engine.RaceEstimates.of(_cached, now: now(), names: names);
+
   /// The Start card's target for [spec] (the event or a goal), from the
   /// last prepare; null for other sessions or with nothing to go on.
   engine.StartTarget? targetFor(SessionSpec? spec, {String? courseKey}) =>
