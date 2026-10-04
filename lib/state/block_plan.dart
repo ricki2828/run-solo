@@ -13,6 +13,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 import '../app/format.dart';
 import '../platform/gateway.dart';
 import 'history_store.dart';
+import 'load_guard.dart';
 import 'sessions.dart';
 import 'settings.dart';
 
@@ -176,10 +177,18 @@ abstract final class PlanStart {
 
 /// Runs and scores as the plan sees them; the one place the view is made.
 class PlanContext {
-  PlanContext({required this.runs, required this.scores, required this.now});
+  PlanContext({
+    required this.runs,
+    required this.scores,
+    required this.now,
+    this.maxHr = MaxHrRules.fallback,
+  });
   final List<RunSummary> runs;
   final Map<engine.IdentityLane, engine.IdentityScore> scores;
   final DateTime now;
+
+  /// For the heart-rate weight of a run in the load check.
+  final int maxHr;
 
   late final List<engine.PlanRun> planRuns = PlanInputs.runs(runs);
   late final engine.BlockBaseline baseline = engine.BlockBaselines.of(
@@ -190,9 +199,25 @@ class PlanContext {
 
   double? get vdot => baseline.vdot;
 
+  /// This week against the usual one; what Home and Start warn about.
+  late final engine.LoadCheck loadCheck = LoadInputs.check(
+    runs,
+    now: now,
+    maxHr: maxHr,
+    vdot: vdot,
+  );
+
+  /// The plan as it stands: a hot week eases the next sessions, shown or
+  /// dismissed alike.
   engine.BlockView? view(engine.BlockPlan? plan) => plan == null
       ? null
-      : engine.BlockResolver.resolve(plan, planRuns, now: now, vdot: vdot);
+      : engine.BlockResolver.resolve(
+          plan,
+          planRuns,
+          now: now,
+          vdot: vdot,
+          load: loadCheck.flag,
+        );
 }
 
 /// Every line the plan shows, so the wording lives in one place.

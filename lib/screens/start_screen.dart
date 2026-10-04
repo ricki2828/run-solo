@@ -10,16 +10,19 @@ import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../platform/host_caps.dart';
 import '../platform/session_codec.dart';
+import '../state/block_plan.dart';
 import '../state/courses.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../state/max_hr.dart';
+import '../state/load_guard.dart';
 import '../state/recording_controller.dart';
 import '../state/sessions.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/goal_picker.dart';
+import '../widgets/load_warning.dart';
 import '../widgets/mode_chip.dart';
 import '../widgets/structure_glyph.dart';
 import '../widgets/today_target_line.dart';
@@ -264,7 +267,12 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     _syncProbe();
     if (_runs == null) {
       AppServices.of(context).history.list().then((r) {
-        if (mounted) setState(() => _runs = r);
+        if (mounted) {
+          setState(() {
+            _runs = r;
+            _refreshLoad();
+          });
+        }
       }, onError: (_) {});
     }
     if (_volumeKeyChecked) return;
@@ -276,12 +284,28 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     final live = AppServices.of(context).live;
     if (live != null) {
       live.prepare().then((_) {
-        if (mounted) setState(() {});
+        if (mounted) setState(_refreshLoad);
       }, onError: (_) {});
     }
     AppServices.of(context).permissions.volumeKeyLapsSupported().then((ok) {
       if (mounted && ok != _volumeKeyLaps) setState(() => _volumeKeyLaps = ok);
     });
+  }
+
+  /// This week against the usual one, for the notice above START. Worked out
+  /// once the runs are in, and again when the live scores land.
+  engine.LoadFlag? _loadFlag;
+
+  void _refreshLoad() {
+    final runs = _runs, services = _services;
+    if (runs == null || services == null) return;
+    final ctx = PlanContext(
+      runs: runs,
+      scores: services.live?.identityScores() ?? const {},
+      now: services.now(),
+      maxHr: services.maxHr.maxHr,
+    );
+    _loadFlag = ctx.loadCheck.flag;
   }
 
   /// Free, Trail and Goal runs can follow a route; the timed 5 km, Laps,
@@ -1016,6 +1040,15 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                         style: RunSoloType.label13.copyWith(
                           color: _gpsReady ? t.inkSecondary : t.semWarn,
                         ),
+                      ),
+                    ),
+                  if (_loadFlag != null &&
+                      !LoadDismissal.dismissed(s, _services!.now()))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: Space.x12),
+                      child: LoadWarning(
+                        flag: _loadFlag!,
+                        now: _services!.now(),
                       ),
                     ),
                   if (_error != null)

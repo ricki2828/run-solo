@@ -21,6 +21,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
+import 'zone_histogram.dart';
+
 @immutable
 class RunIndexEntry {
   const RunIndexEntry({
@@ -372,6 +374,8 @@ class IndexRow {
     this.heatFactor,
     this.workTruePaceSecPerKm,
     this.workGradeFactor,
+    this.avgHr,
+    this.hrCoverage,
     this.route,
     this.routeName,
     this.routeOffCount,
@@ -393,7 +397,8 @@ class IndexRow {
   /// 12: True Pace: [truePaceSecPerKm], [gradeFactor], [heatFactor],
   /// [workTruePaceSecPerKm], [workGradeFactor].
   /// 13: [restingHrBpm].
-  static const int currentVersion = 13;
+  /// 14: [avgHr], [hrCoverage] (the load check's heart-rate intensity).
+  static const int currentVersion = 14;
 
   final int version;
   final int lapCount;
@@ -498,6 +503,12 @@ class IndexRow {
   final double? workTruePaceSecPerKm;
   final double? workGradeFactor;
 
+  /// Average heart rate over moving time that had a reading, and the share of
+  /// moving time that had one; null with no strap. The "don't overdo it"
+  /// check weighs a run by these when the strap covered most of it.
+  final double? avgHr;
+  final double? hrCoverage;
+
   /// The whole run's True Pace factors (neutral when none are stored).
   engine.TruePaceFactors get truePaceFactors =>
       engine.TruePaceFactors(grade: gradeFactor ?? 1, heat: heatFactor ?? 1);
@@ -537,6 +548,7 @@ class IndexRow {
       stampedOffsetMin: sidecar?.utcOffsetMin,
     );
     final elev = engine.RunElevation.of(run);
+    final hr = hrSummaryOf(run);
     double dp1(double v) => (v * 10).round() / 10;
     return IndexRow(
       lapCount: run.laps.length,
@@ -585,6 +597,8 @@ class IndexRow {
       workGradeFactor: a?.trueWorkPaceSecPerKm == null
           ? null
           : dp4(a!.workFactors.grade),
+      avgHr: hr == null ? null : dp1(hr.avgHr),
+      hrCoverage: hr == null ? null : dp4(hr.coverage),
       route:
           (sidecar?.runTypeOverride ?? a?.mode ?? run.mode) ==
               engine.RunMode.trail
@@ -631,6 +645,8 @@ class IndexRow {
     'heat_x': ?heatFactor,
     'work_true_s_per_km': ?workTruePaceSecPerKm,
     'work_grade_x': ?workGradeFactor,
+    'avg_hr': ?avgHr,
+    'hr_cov': ?hrCoverage,
     'route': ?route?.toJson(),
     'route_name': ?routeName,
     'route_off_n': ?routeOffCount,
@@ -692,6 +708,8 @@ class IndexRow {
         heatFactor: d('heat_x'),
         workTruePaceSecPerKm: d('work_true_s_per_km'),
         workGradeFactor: d('work_grade_x'),
+        avgHr: d('avg_hr'),
+        hrCoverage: d('hr_cov'),
         route: engine.RouteSignature.fromJson(j['route']),
         routeName: j['route_name'] as String?,
         routeOffCount: j['route_off_n'] as int?,

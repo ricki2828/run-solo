@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../model/session_catalogue.dart';
 import '../model/session_spec.dart';
+import 'load_guard.dart';
 import 'identity_scores.dart';
 import 'race_percentile_norms.dart';
 
@@ -840,6 +841,7 @@ abstract final class BlockResolver {
     List<PlanRun> runs, {
     required DateTime now,
     double? vdot,
+    LoadFlag? load,
   }) {
     final sorted = [...runs.where((r) => !r.start.isBefore(plan.start))]
       ..sort((a, b) => a.start.compareTo(b.start));
@@ -951,25 +953,38 @@ abstract final class BlockResolver {
       }
       out.add(states);
     }
+    // Easing: after a very hard steady run, or while this week runs hot, the
+    // next session or two are easier. Derived from the runs, so nothing is
+    // saved and it never stacks. The week-4 test is left alone.
+    final hard = lastVeryHardRun(sorted, now: now, vdot: vdot);
+    final String? easeWhy = hard != null
+        ? 'Your run on ${_weekday[hard.start.weekday - 1]} was a very hard '
+              'one, so this is easier.'
+        : load?.planReason;
+    var easeLeft = hard != null ? 1 : (load?.easeCount ?? 0);
     // The next session: first still-planned one in the current week, else the
     // first of the week after.
-    for (var w = 1; w <= BlockPlanner.weeks && !nextFound; w++) {
+    for (var w = 1; w <= BlockPlanner.weeks; w++) {
       if (current == null || w < current) continue;
       for (var i = 0; i < out[w - 1].length; i++) {
-        if (out[w - 1][i].status == BlockStatus.planned) {
-          out[w - 1][i] = _soften(
-            out[w - 1][i],
-            BlockStatus.next,
-            sorted,
-            now,
-            vdot,
-          );
-          next = out[w - 1][i];
+        if (out[w - 1][i].status != BlockStatus.planned) continue;
+        final first = !nextFound;
+        var st = out[w - 1][i];
+        if (easeLeft > 0 && easeWhy != null && !st.session.isTest) {
+          st = _soften(st, easeWhy);
+          easeLeft--;
+        }
+        if (first) {
+          st = _with(st, BlockStatus.next);
+          next = st;
           nextIsNextWeek = w != current;
           nextFound = true;
-          break;
         }
+        out[w - 1][i] = st;
+        if (!first && easeLeft == 0) break;
+        if (first && easeLeft == 0) break;
       }
+      if (nextFound && easeLeft == 0) break;
     }
     return BlockView(
       plan: plan,
@@ -981,24 +996,10 @@ abstract final class BlockResolver {
     );
   }
 
-  /// After a very hard steady run, the next session is easier. Derived from
-  /// the runs, so it needs no saving and never stacks.
-  static BlockSessionState _soften(
-    BlockSessionState st,
-    BlockStatus status,
-    List<PlanRun> runs,
-    DateTime now,
-    double? vdot,
-  ) {
-    final hard = lastVeryHardRun(runs, now: now, vdot: vdot);
-    if (hard == null) {
-      return _with(st, status);
-    }
+  /// The same session, made easier, with [why] as its reason.
+  static BlockSessionState _soften(BlockSessionState st, String why) {
     final s = st.session;
-    if (s.isTest) return _with(st, status);
-    final day = _weekday[hard.start.weekday - 1];
-    final why = 'Your run on $day was a very hard one, so this is easier.';
-    BlockSession eased;
+    final BlockSession eased;
     switch (s.kind) {
       case BlockKind.interval:
       case BlockKind.goal:
@@ -1025,7 +1026,7 @@ abstract final class BlockResolver {
     }
     return BlockSessionState(
       session: eased,
-      status: status,
+      status: st.status,
       date: st.date,
       softened: true,
     );

@@ -41,7 +41,12 @@ class _PlanScreenState extends State<PlanScreen> {
         scores = live.identityScores();
       } catch (_) {}
     }
-    return PlanContext(runs: runs, scores: scores, now: _now);
+    return PlanContext(
+      runs: runs,
+      scores: scores,
+      now: _now,
+      maxHr: services.maxHr.maxHr,
+    );
   }
 
   @override

@@ -8,12 +8,14 @@ import '../platform/gateway.dart';
 import '../state/block_plan.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
+import '../state/load_guard.dart';
 import '../state/settings.dart';
 import '../widgets/goal_picker.dart';
 import '../state/home_progress.dart';
 import '../theme/theme.dart';
 import '../widgets/home_scores.dart';
 import '../widgets/readiness_line.dart';
+import '../widgets/load_warning.dart';
 import '../widgets/recent_activity.dart';
 import 'progress_screen.dart';
 
@@ -251,6 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               runs: data.runs,
                               scores: data.scores,
                               now: _now,
+                              maxHr: services.maxHr.maxHr,
                             );
                       final planView = planCtx?.view(services.plans.plan);
                       final next = planView?.finished == false
@@ -293,6 +296,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             const SizedBox(height: Space.x16),
                           ],
                           _GetBetter(
+                            warning:
+                                planCtx?.loadCheck.flag != null &&
+                                    !LoadDismissal.dismissed(settings, _now)
+                                ? LoadWarning(
+                                    flag: planCtx!.loadCheck.flag!,
+                                    now: _now,
+                                  )
+                                : null,
                             summary: next == null || planView == null
                                 ? null
                                 : PlanText.homeLine(planView, _now),
@@ -427,6 +438,7 @@ class _GetBetter extends StatelessWidget {
     this.target,
     this.planLabel,
     this.onPlan,
+    this.warning,
   });
   final String? reason;
 
@@ -442,6 +454,9 @@ class _GetBetter extends StatelessWidget {
   /// The link to the Plan screen (or to build a plan).
   final String? planLabel;
   final VoidCallback? onPlan;
+
+  /// The "don't overdo it" notice, when this week is running hot.
+  final Widget? warning;
 
   @override
   Widget build(BuildContext context) {
@@ -481,6 +496,7 @@ class _GetBetter extends StatelessWidget {
           ),
         ],
         const SizedBox(height: Space.x12),
+        if (warning != null) ...[warning!, const SizedBox(height: Space.x12)],
         Row(
           children: [
             Expanded(
