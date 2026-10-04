@@ -23,6 +23,8 @@ import '../widgets/recent_activity.dart' show runTypeColor;
 import '../widgets/trail_runs_section.dart';
 import '../widgets/weather_chip.dart';
 import '../widgets/where_when_line.dart';
+import '../share/share_card.dart';
+import '../share/share_card_sheet.dart';
 import 'send_sheet.dart';
 import 'settings_screen.dart' show maxHrSourceLine;
 import 'verdict_screen.dart';
@@ -269,6 +271,17 @@ class RunDetailBody extends StatelessWidget {
         ),
         const SizedBox(height: Space.x32),
         _SendRow(detail: d),
+        _Row(
+          label: 'Share card',
+          value: '',
+          onTap: () => showShareCardSheet(
+            context,
+            data: runCardData(d.summary, units),
+            route: d.analysis.indoor
+                ? const []
+                : RouteBuilder.build(d.run).points,
+          ),
+        ),
         if (onFixLaps != null)
           _Row(
             label: 'Fix laps',

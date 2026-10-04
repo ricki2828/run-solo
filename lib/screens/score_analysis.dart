@@ -6,6 +6,8 @@ import '../app/identity_display.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../state/settings.dart';
+import '../share/share_card.dart';
+import '../share/share_card_sheet.dart';
 import '../theme/theme.dart';
 
 /// The four earned identities in one place, with the evidence and the
@@ -114,6 +116,21 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
                 'Kaminsky et al., Mayo Clinic Proceedings 2022;97:285-293, Table 3. doi.org/10.1016/j.mayocp.2021.08.020',
                 style: RunSoloType.label13.copyWith(color: t.inkSecondary),
               ),
+              if (scores.isNotEmpty) ...[
+                const SizedBox(height: Space.x16),
+                OutlinedButton(
+                  key: const ValueKey('share-scores'),
+                  onPressed: () => showShareCardSheet(
+                    context,
+                    data: scoresCardData(
+                      scores,
+                      sex: settings.profileSex,
+                      age: age,
+                    ),
+                  ),
+                  child: const Text('SHARE MY SCORES'),
+                ),
+              ],
             ],
           );
         },
