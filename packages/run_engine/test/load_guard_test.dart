@@ -205,6 +205,38 @@ void main() {
       expect(c.flag!.message, contains('more distance than your usual week'));
     });
 
+    test('15 days of steady running is steady, not a spike', () {
+      final runs = [
+        for (final d in [14, 12, 10, 8, 6, 4, 2, 0]) run(d, pace: easyPace),
+      ];
+      final c = LoadGuard.check(runs, now: now, vdot: vdot);
+      expect(c.state, LoadState.ok);
+      expect(c.loadRatio, inInclusiveRange(0.8, 1.3));
+    });
+
+    test('a normal week back after three weeks off is not flagged', () {
+      final runs = [
+        // One old week, then nothing, then a normal week.
+        for (final d in [27, 25, 23]) run(d, pace: easyPace),
+        for (final d in [6, 4, 2]) run(d, pace: easyPace),
+      ];
+      expect(
+        LoadGuard.check(runs, now: now, vdot: vdot).state,
+        LoadState.notEnoughData,
+      );
+    });
+
+    test('a spike on top of a short history is still caught', () {
+      final runs = [
+        for (final d in [14, 12, 10, 8]) run(d, pace: easyPace),
+        for (final d in [6, 5, 4, 3, 2, 1, 0]) run(d, min: 70, pace: easyPace),
+      ];
+      expect(
+        LoadGuard.check(runs, now: now, vdot: vdot).state,
+        LoadState.flagged,
+      );
+    });
+
     test('a high ratio eases two sessions, a mild one eases one', () {
       const mild = LoadFlag(
         trigger: LoadTrigger.load,

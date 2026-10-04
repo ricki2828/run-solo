@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
+import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/screens/home_screen.dart';
 import 'package:run_solo/screens/plan_screen.dart';
 import 'package:run_solo/state/history_store.dart';
@@ -12,7 +13,7 @@ import '../screens/load_warning_test.dart' show hotWeek;
 
 void main() {
   for (final height in [640, 800]) {
-    for (final state in ['home', 'home_plan', 'plan']) {
+    for (final state in ['home', 'home_plan', 'plan', 'start']) {
       testWidgets('load warning $state 360x$height', (tester) async {
         final plan = engine.BlockPlanner.build(
           lane: engine.IdentityLane.aerobic,
@@ -21,7 +22,10 @@ void main() {
         );
         final runs = <RunSummary>[
           for (final r in hotWeek())
-            if (state == 'home' || r.start.isBefore(testNow)) r,
+            if (state == 'home' ||
+                state == 'start' ||
+                r.start.isBefore(testNow))
+              r,
         ];
         await pumpApp(
           tester,

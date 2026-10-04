@@ -5,6 +5,7 @@ import '../app/format.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/block_plan.dart';
+import '../state/load_guard.dart';
 import '../state/home_progress.dart';
 import '../theme/theme.dart';
 
@@ -65,7 +66,13 @@ class _PlanScreenState extends State<PlanScreen> {
                 return const Center(child: CircularProgressIndicator());
               }
               final plan = services.plans.plan;
-              final view = ctx.view(plan);
+              final view = ctx.view(
+                plan,
+                loadDismissed: LoadDismissal.dismissed(
+                  services.settings.settings,
+                  ctx.now,
+                ),
+              );
               if (plan == null || view == null || _building) {
                 return _CreateForm(
                   ctx: ctx,

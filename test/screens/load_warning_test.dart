@@ -162,6 +162,46 @@ void main() {
     );
   });
 
+  testWidgets('dismissing the warning stops the plan easing this week', (
+    tester,
+  ) async {
+    final plan = engine.BlockPlanner.build(
+      lane: engine.IdentityLane.aerobic,
+      perWeek: 3,
+      start: testNow,
+    );
+    final services = fakeServices(
+      runs: hotWeek().where((r) => r.start.isBefore(testNow)).toList(),
+      plan: plan,
+    );
+    await pumpApp(tester, services, home: HomeScreen(now: now));
+    await pumpTimes(tester, 6);
+    expect(find.text('Start Easy run'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('load-dismiss')));
+    await pumpTimes(tester, 6);
+    expect(find.byKey(const ValueKey('load-warning')), findsNothing);
+    expect(find.text('Start Easy run'), findsNothing);
+    expect(
+      find.textContaining('above your usual, so this one is easy.'),
+      findsNothing,
+    );
+    expect(find.textContaining('Start Norwegian 4x4'), findsOneWidget);
+  });
+
+  testWidgets('Why? and Dismiss are at least 48 dp', (tester) async {
+    await pumpApp(
+      tester,
+      fakeServices(runs: hotWeek()),
+      home: HomeScreen(now: now),
+    );
+    await pumpTimes(tester, 6);
+    for (final k in ['load-why', 'load-dismiss']) {
+      final size = tester.getSize(find.byKey(ValueKey(k)));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+    }
+  });
+
   testWidgets('Plan screen shows the eased session with its reason', (
     tester,
   ) async {

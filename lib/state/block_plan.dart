@@ -207,16 +207,20 @@ class PlanContext {
     vdot: vdot,
   );
 
-  /// The plan as it stands: a hot week eases the next sessions, shown or
-  /// dismissed alike.
-  engine.BlockView? view(engine.BlockPlan? plan) => plan == null
+  /// The plan as it stands: a hot week eases the next sessions while its
+  /// warning is active. [loadDismissed] (the runner said they are fine this
+  /// week) stops the easing too, so the plan never contradicts a dismissal.
+  engine.BlockView? view(
+    engine.BlockPlan? plan, {
+    bool loadDismissed = false,
+  }) => plan == null
       ? null
       : engine.BlockResolver.resolve(
           plan,
           planRuns,
           now: now,
           vdot: vdot,
-          load: loadCheck.flag,
+          load: loadDismissed ? null : loadCheck.flag,
         );
 }
 

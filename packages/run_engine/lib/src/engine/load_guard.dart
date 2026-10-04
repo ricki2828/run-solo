@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'block_plan.dart';
 
 /// "Don't overdo it": a plain check of this week against the runner's usual.
@@ -186,8 +188,22 @@ abstract final class LoadGuard {
     final oldest = inChronic
         .map((r) => r.start)
         .reduce((a, b) => a.isBefore(b) ? a : b);
-    if (today.difference(dateOnly(oldest)).inDays < minHistoryDays) {
+    final oldestDay = dateOnly(oldest);
+    if (today.difference(oldestDay).inDays < minHistoryDays) {
       return const LoadCheck(state: LoadState.notEnoughData);
+    }
+    // A returner has no usual week: if any whole week before this one, inside
+    // the history, had no run at all, the average would be dragged down by the
+    // break and a normal first week back would read as a spike.
+    for (var k = 1; ; k++) {
+      final from = addDays(acuteFrom, -7 * k);
+      if (from.isBefore(oldestDay)) break;
+      final to = addDays(from, 7);
+      if (!inChronic.any(
+        (r) => !r.start.isBefore(from) && r.start.isBefore(to),
+      )) {
+        return const LoadCheck(state: LoadState.notEnoughData);
+      }
     }
     var acute = 0.0, chronic = 0.0, acuteKm = 0.0, chronicKm = 0.0;
     for (final r in inChronic) {
@@ -199,7 +215,10 @@ abstract final class LoadGuard {
         acuteKm += r.distanceM / 1000;
       }
     }
-    final weeks = chronicDays / acuteDays;
+    // The usual week is averaged over the history there is, up to 4 weeks, so
+    // 15 days of steady running reads as steady, not as half a month.
+    final historyDays = today.difference(oldestDay).inDays + 1;
+    final weeks = math.min(chronicDays / acuteDays, historyDays / acuteDays);
     final chronicWeekly = chronic / weeks;
     if (chronicWeekly < minChronicWeekly || chronicKm <= 0) {
       return LoadCheck(

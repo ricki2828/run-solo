@@ -255,7 +255,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               now: _now,
                               maxHr: services.maxHr.maxHr,
                             );
-                      final planView = planCtx?.view(services.plans.plan);
+                      final planView = planCtx?.view(
+                        services.plans.plan,
+                        loadDismissed: LoadDismissal.dismissed(settings, _now),
+                      );
                       final next = planView?.finished == false
                           ? planView!.next
                           : null;

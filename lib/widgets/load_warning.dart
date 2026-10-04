@@ -7,6 +7,9 @@ import '../theme/theme.dart';
 
 /// The "don't overdo it" notice: one plain line, why it is showing, and a
 /// dismiss for the rest of the week. Never blocks anything.
+/// Both buttons are at least 48 dp tall and wide.
+final ButtonStyle _tap = TextButton.styleFrom(minimumSize: const Size(48, 48));
+
 class LoadWarning extends StatelessWidget {
   const LoadWarning({super.key, required this.flag, required this.now});
   final engine.LoadFlag flag;
@@ -44,6 +47,7 @@ class LoadWarning extends StatelessWidget {
             children: [
               TextButton(
                 key: const ValueKey('load-why'),
+                style: _tap,
                 onPressed: () => showDialog<void>(
                   context: context,
                   builder: (ctx) => AlertDialog(
@@ -61,6 +65,7 @@ class LoadWarning extends StatelessWidget {
               ),
               TextButton(
                 key: const ValueKey('load-dismiss'),
+                style: _tap,
                 onPressed: () =>
                     AppServices.of(context).settings
                         .update(LoadDismissal.dismiss(now)),
