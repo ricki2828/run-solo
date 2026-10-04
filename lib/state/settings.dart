@@ -113,6 +113,7 @@ class AppSettings {
     this.goalCustomSeconds = GoalChoice.defaultCustomSeconds,
     this.profileSex = ProfileSex.notSet,
     this.tryNextDismissed,
+    this.loadDismissedWeek,
     this.cues = true,
     this.kmSplits = true,
     this.spokenSummary = true,
@@ -172,6 +173,10 @@ class AppSettings {
 
   /// The run whose Home "try next" card the runner dismissed (A10.4).
   final String? tryNextDismissed;
+
+  /// The week (its Monday, `2026-10-12`) whose "don't overdo it" warning
+  /// the runner dismissed; a new week shows it again.
+  final String? loadDismissedWeek;
 
   /// The event (K1) is the picked goal.
   bool get eventRun => goalRun && goalId == GoalChoice.eventId;
@@ -409,6 +414,7 @@ class AppSettings {
     int? goalCustomSeconds,
     ProfileSex? profileSex,
     String? tryNextDismissed,
+    String? loadDismissedWeek,
     bool? cues,
     bool? kmSplits,
     bool? spokenSummary,
@@ -456,6 +462,7 @@ class AppSettings {
     goalCustomSeconds: goalCustomSeconds ?? this.goalCustomSeconds,
     profileSex: profileSex ?? this.profileSex,
     tryNextDismissed: tryNextDismissed ?? this.tryNextDismissed,
+    loadDismissedWeek: loadDismissedWeek ?? this.loadDismissedWeek,
     cues: cues ?? this.cues,
     kmSplits: kmSplits ?? this.kmSplits,
     spokenSummary: spokenSummary ?? this.spokenSummary,
@@ -505,6 +512,7 @@ class AppSettings {
     'goalCustomSeconds': goalCustomSeconds,
     'profileSex': profileSex.name,
     'tryNextDismissed': tryNextDismissed,
+    'loadDismissedWeek': loadDismissedWeek,
     'cues': cues,
     'kmSplits': kmSplits,
     'spokenSummary': spokenSummary,
@@ -594,6 +602,9 @@ class AppSettings {
           ProfileSex.values.asNameMap()[pick('profileSex', '')] ?? d.profileSex,
       tryNextDismissed: j['tryNextDismissed'] is String
           ? j['tryNextDismissed'] as String
+          : null,
+      loadDismissedWeek: j['loadDismissedWeek'] is String
+          ? j['loadDismissedWeek'] as String
           : null,
       cues: pick('cues', d.cues),
       kmSplits: pick('kmSplits', d.kmSplits),

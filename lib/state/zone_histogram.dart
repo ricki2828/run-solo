@@ -31,6 +31,30 @@ List<double> zoneSecondsOf(engine.RunFile run, engine.HrZones zones) {
   return out;
 }
 
+/// Average heart rate over moving time that has a reading, and the share of
+/// moving time that had one (0 to 1); null with no heart rate at all. The
+/// same sample weighting as [zoneSecondsOf], so the two never disagree.
+({double avgHr, double coverage})? hrSummaryOf(engine.RunFile run) {
+  final samples = run.samples;
+  final pauses = _merged(run.pauses);
+  var withHr = 0.0, moving = 0.0, weighted = 0.0;
+  for (var i = 0; i < samples.length; i++) {
+    final s = samples[i];
+    final dtMs = i + 1 < samples.length
+        ? (samples[i + 1].tMs - s.tMs).clamp(0, 5000)
+        : 1000;
+    final dt = (dtMs - _pausedWithin(pauses, s.tMs, s.tMs + dtMs)) / 1000;
+    if (dt <= 0) continue;
+    moving += dt;
+    final hr = s.hr;
+    if (hr == null) continue;
+    withHr += dt;
+    weighted += hr * dt;
+  }
+  if (withHr <= 0 || moving <= 0) return null;
+  return (avgHr: weighted / withHr, coverage: withHr / moving);
+}
+
 List<engine.Span> _merged(List<engine.Span> spans) {
   final sorted = [...spans]..sort((a, b) => a.t0Ms.compareTo(b.t0Ms));
   final out = <engine.Span>[];
