@@ -157,7 +157,7 @@ class _OfflineMapsScreenState extends State<OfflineMapsScreen> {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final m = AppServices.of(context).topo;
     return Scaffold(
-      appBar: AppBar(title: const Text('OFFLINE MAPS')),
+      appBar: const RunAppBar(title: 'OFFLINE MAPS'),
       body: m == null
           ? const SizedBox.shrink()
           : ListenableBuilder(

@@ -148,6 +148,10 @@ class _TrailVerdictScreenState extends State<TrailVerdictScreen>
         : r.headline;
 
     return Scaffold(
+      appBar: RunAppBar(
+        title: 'TRAIL RUN',
+        showBack: widget.justFinished ? false : null,
+      ),
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -182,30 +186,10 @@ class _TrailVerdictScreenState extends State<TrailVerdictScreen>
                 horizontal: Space.screenGutter,
               ),
               children: [
-                const SizedBox(height: Space.x16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'TRAIL RUN · ${Fmt.dayDate(d.run.start)} · '
-                        '${Fmt.clock(d.summary.durationMs)}',
-                        style: RunSoloType.label13.copyWith(
-                          color: t.inkSecondary,
-                        ),
-                      ),
-                    ),
-                    if (!widget.justFinished)
-                      IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close),
-                        tooltip: 'Close',
-                        iconSize: 24,
-                        constraints: const BoxConstraints(
-                          minWidth: 56,
-                          minHeight: 56,
-                        ),
-                      ),
-                  ],
+                const SizedBox(height: Space.x8),
+                Text(
+                  '${Fmt.dayDate(d.run.start)} · ${Fmt.clock(d.summary.durationMs)}',
+                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
                 const SizedBox(height: Space.x24),
                 FadeTransition(

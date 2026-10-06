@@ -14,6 +14,7 @@ import '../platform/transfer_gateway.dart' show RouteFileTooBig;
 import '../state/history_store.dart';
 import '../state/route_library.dart';
 import '../theme/theme.dart';
+import '../widgets/chrome.dart';
 import 'watch_sheet.dart';
 
 /// Said once under the route on Start and in the sheet: the turn cues are the
@@ -228,9 +229,8 @@ class _FollowRouteSheetState extends State<FollowRouteSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              _pastRuns ? 'RUN A PAST ROUTE' : 'FOLLOW A ROUTE',
-              style: RunSoloType.title28.copyWith(color: t.inkPrimary),
+            RunSheetHeader(
+              title: _pastRuns ? 'RUN A PAST ROUTE' : 'FOLLOW A ROUTE',
             ),
             const SizedBox(height: Space.x8),
             Text(

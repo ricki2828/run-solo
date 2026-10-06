@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/chrome.dart';
 import 'score_analysis.dart';
 
 /// Progress is the dedicated analysis view. Boards and run trends live in
@@ -10,7 +11,7 @@ class ProgressScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('PROGRESS')),
+    appBar: const RunAppBar(title: 'PROGRESS'),
     body: const SafeArea(child: ScoreAnalysis()),
   );
 }

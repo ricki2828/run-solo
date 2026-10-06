@@ -9,6 +9,7 @@ import '../state/boards.dart';
 import '../state/courses.dart';
 import '../state/history_store.dart';
 import '../theme/theme.dart';
+import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/recent_bars_chart.dart';
 import '../widgets/weather_chip.dart';
@@ -117,6 +118,7 @@ class _BoardDetailScreenState extends State<BoardDetailScreen>
     final services = AppServices.of(context);
     return Scaffold(
       backgroundColor: t.bgBase,
+      appBar: const RunAppBar(title: 'BOARD'),
       body: SafeArea(
         child: FutureBuilder<({Boards boards, List<RunSummary> runs})>(
           future: _load,
@@ -413,18 +415,13 @@ class _LanesHeader extends StatelessWidget {
       painter: _LanesPainter(color: t.lineHair),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
-          Space.x8,
+          Space.screenGutter,
           Space.x12,
           Space.screenGutter,
           Space.x16,
         ),
         child: Row(
           children: [
-            IconButton(
-              key: const ValueKey('board-detail-back'),
-              icon: Icon(Icons.arrow_back, color: t.inkSecondary),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
             Expanded(
               child: Text(
                 '$title · $count ${count == 1 ? noun.substring(0, noun.length - 1) : noun}'

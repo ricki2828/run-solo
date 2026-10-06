@@ -373,3 +373,121 @@ class _PinnedFooterLayoutState extends State<PinnedFooterLayout> {
     );
   }
 }
+
+/// The one app bar every pushed and tabbed screen uses: same height, same
+/// title style (display, uppercase), a back arrow when the route can pop,
+/// and at most one trailing action. Arrow and action are 48 dp minimum.
+class RunAppBar extends StatelessWidget implements PreferredSizeWidget {
+  const RunAppBar({
+    super.key,
+    this.title,
+    this.titleWidget,
+    this.trailing,
+    this.showBack,
+  }) : assert(title != null || titleWidget != null);
+
+  final String? title;
+
+  /// Replaces [title] (Home's brand mark); same slot, same height.
+  final Widget? titleWidget;
+  final Widget? trailing;
+
+  /// null = a back arrow when the route can pop.
+  final bool? showBack;
+
+  static const double height = 64;
+  static const double minTarget = 48;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(height);
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final back = showBack ?? (ModalRoute.canPopOf(context) ?? false);
+    return AppBar(
+      toolbarHeight: height,
+      automaticallyImplyLeading: false,
+      leadingWidth: back ? 64 : 0,
+      leading: back
+          ? Align(
+              alignment: Alignment.centerLeft,
+              child: IconButton(
+                tooltip: 'Back',
+                constraints: const BoxConstraints(
+                  minWidth: minTarget,
+                  minHeight: minTarget,
+                ),
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+            )
+          : null,
+      titleSpacing: back ? 0 : Space.screenGutter,
+      centerTitle: false,
+      title:
+          titleWidget ??
+          Text(
+            title!.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: RunSoloType.appBarTitle.copyWith(color: t.inkPrimary),
+          ),
+      actions: [
+        if (trailing != null)
+          Padding(
+            padding: const EdgeInsets.only(right: Space.screenGutter),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                minWidth: minTarget,
+                minHeight: minTarget,
+              ),
+              child: Center(child: trailing),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// The header of a bottom sheet: the app bar's title style and 48 dp back
+/// arrow (when [onBack] is given), minus the bar itself.
+class RunSheetHeader extends StatelessWidget {
+  const RunSheetHeader({
+    super.key,
+    required this.title,
+    this.onBack,
+    this.backTooltip = 'Back',
+  });
+  final String title;
+  final VoidCallback? onBack;
+  final String backTooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: RunAppBar.minTarget),
+      child: Row(
+        children: [
+          if (onBack != null)
+            IconButton(
+              tooltip: backTooltip,
+              constraints: const BoxConstraints(
+                minWidth: RunAppBar.minTarget,
+                minHeight: RunAppBar.minTarget,
+              ),
+              icon: Icon(Icons.arrow_back, color: t.inkPrimary),
+              onPressed: onBack,
+            ),
+          Expanded(
+            child: Text(
+              title.toUpperCase(),
+              style: RunSoloType.appBarTitle.copyWith(color: t.inkPrimary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

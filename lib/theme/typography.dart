@@ -29,6 +29,12 @@ abstract final class RunSoloType {
   static final TextStyle display64 = _display(64, FontWeight.w700);
   static final TextStyle display44 = _display(44, FontWeight.w600);
   static final TextStyle title28 = _display(28, FontWeight.w600);
+
+  /// Page-level headline (Start's question, Home's progress line).
+  static final TextStyle pageHeadline = title28;
+
+  /// The app bar title on every screen.
+  static final TextStyle appBarTitle = heading26;
   static final TextStyle heading26 = _display(26, FontWeight.w600);
   static final TextStyle heading19 = _display(19, FontWeight.w700);
   static final TextStyle timer120 = _display(120, FontWeight.w600);

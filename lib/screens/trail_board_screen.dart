@@ -7,6 +7,7 @@ import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/trails.dart';
 import '../theme/theme.dart';
+import '../widgets/chrome.dart';
 import '../widgets/trail_runs_chart.dart';
 import 'run_detail_screen.dart';
 
@@ -45,7 +46,7 @@ class _TrailBoardScreenState extends State<TrailBoardScreen> {
                   .where((g) => g.key == widget.trailKey)
                   .firstOrNull;
         return Scaffold(
-          appBar: AppBar(title: Text((group?.name ?? 'TRAIL').toUpperCase())),
+          appBar: RunAppBar(title: group?.name ?? 'TRAIL'),
           body: group == null
               ? Padding(
                   padding: const EdgeInsets.all(Space.screenGutter),

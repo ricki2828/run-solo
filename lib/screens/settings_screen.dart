@@ -350,7 +350,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         Future<void> set(AppSettings Function(AppSettings) f) =>
             services.settings.update(f);
         return Scaffold(
-          appBar: AppBar(title: const Text('SETTINGS')),
+          appBar: const RunAppBar(title: 'SETTINGS'),
           body: ListView(
             padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
             children: [
@@ -862,10 +862,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                title,
-                style: RunSoloType.title28.copyWith(color: t.inkPrimary),
-              ),
+              RunSheetHeader(title: title),
               const SizedBox(height: Space.x8),
               Text(
                 hint,
@@ -963,10 +960,9 @@ Future<void> showPendingMaxSheet(BuildContext context) async {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'STRAP SAW $pending BPM',
+            RunSheetHeader(
               key: const ValueKey('pending-max-sheet'),
-              style: RunSoloType.title28.copyWith(color: t.inkPrimary),
+              title: 'STRAP SAW $pending BPM',
             ),
             const SizedBox(height: Space.x12),
             Text(

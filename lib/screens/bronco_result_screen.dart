@@ -10,6 +10,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 import '../app/format.dart';
 import '../state/history_store.dart';
 import '../theme/theme.dart';
+import '../widgets/chrome.dart';
 
 class BroncoResultScreen extends StatelessWidget {
   const BroncoResultScreen({
@@ -46,26 +47,15 @@ class BroncoResultScreen extends StatelessWidget {
         ? 0
         : sets.map((l) => l.durationMs).reduce((a, b) => a < b ? a : b);
     return Scaffold(
+      appBar: RunAppBar(title: 'BRONCO', showBack: justFinished ? false : null),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
           children: [
-            const SizedBox(height: Space.x16),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'BRONCO · ${Fmt.dayDate(d.run.start)}',
-                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                  ),
-                ),
-                if (!justFinished)
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
-                    tooltip: 'Close',
-                  ),
-              ],
+            const SizedBox(height: Space.x8),
+            Text(
+              Fmt.dayDate(d.run.start),
+              style: RunSoloType.label13.copyWith(color: t.inkSecondary),
             ),
             const SizedBox(height: Space.x24),
             Text(

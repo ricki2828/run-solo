@@ -244,6 +244,13 @@ abstract final class PlanText {
     return 'This week: ${v.weekDone} of ${v.weekTotal} done · Next: $when';
   }
 
+  /// The Home app bar's right side: "Week 2 of 4 · 1 of 3".
+  static String barLine(engine.BlockView v) {
+    final w = v.currentWeek;
+    if (v.finished || w == null) return 'Plan done';
+    return 'Week $w of 4 · ${v.weekDone} of ${v.weekTotal}';
+  }
+
   /// How hard to run it, in plain words. With a pace estimate it names the
   /// pace; with none (no scores yet, or a VDOT the pace model cannot place)
   /// it falls back to effort only, so the guidance never just disappears.

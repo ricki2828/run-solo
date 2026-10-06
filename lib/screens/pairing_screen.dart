@@ -4,6 +4,7 @@ import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
+import '../widgets/chrome.dart';
 
 enum _Scan { idle, scanning, found, failed }
 
@@ -101,7 +102,7 @@ class _PairingScreenState extends State<PairingScreen>
     final saved = AppServices.of(context).settings.settings.strap;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('HEART RATE STRAP')),
+      appBar: const RunAppBar(title: 'HEART RATE STRAP'),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),

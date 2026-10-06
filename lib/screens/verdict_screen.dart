@@ -121,7 +121,7 @@ class _VerdictScreenState extends State<VerdictScreen> {
         final (detail, previous, all) = snap.data!;
         if (detail == null) {
           return Scaffold(
-            appBar: AppBar(title: const Text('RUN')),
+            appBar: const RunAppBar(title: 'RUN'),
             body: Padding(
               padding: const EdgeInsets.all(Space.screenGutter),
               child: Text(
@@ -910,10 +910,7 @@ class _SummaryScreen extends StatelessWidget {
     final suggestTrail =
         justFinished && trailSuggested(detail.run, detail.summary.mode);
     return Scaffold(
-      appBar: AppBar(
-        title: Text(title),
-        automaticallyImplyLeading: !justFinished,
-      ),
+      appBar: RunAppBar(title: title, showBack: justFinished ? false : null),
       body: SafeArea(
         child: Column(
           children: [

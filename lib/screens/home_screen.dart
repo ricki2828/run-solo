@@ -10,6 +10,7 @@ import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../state/load_guard.dart';
 import '../state/settings.dart';
+import '../widgets/chrome.dart';
 import '../widgets/goal_picker.dart';
 import '../state/home_progress.dart';
 import '../theme/theme.dart';
@@ -205,6 +206,31 @@ class _HomeScreenState extends State<HomeScreen> {
         final settings = services.settings.settings;
         final perms = _perms;
         return Scaffold(
+          appBar: RunAppBar(
+            title: 'RUN SUPREME',
+            showBack: false,
+            trailing: FutureBuilder<_HomeData>(
+              future: _data,
+              builder: (context, snap) {
+                final data = snap.data;
+                final view = data == null || data.failed
+                    ? null
+                    : PlanContext(
+                        runs: data.runs,
+                        scores: data.scores,
+                        now: _now,
+                        maxHr: services.maxHr.maxHr,
+                      ).view(
+                        services.plans.plan,
+                        loadDismissed: LoadDismissal.dismissed(settings, _now),
+                      );
+                return Text(
+                  view == null ? Fmt.dayDate(_now) : PlanText.barLine(view),
+                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                );
+              },
+            ),
+          ),
           body: SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(
@@ -212,24 +238,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               child: Column(
                 children: [
-                  const SizedBox(height: Space.x24),
-                  Row(
-                    children: [
-                      Text(
-                        'RUN SUPREME',
-                        style: RunSoloType.heading19.copyWith(
-                          color: t.inkPrimary,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        Fmt.dayDate(_now),
-                        style: RunSoloType.label13.copyWith(
-                          color: t.inkSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
+                  const SizedBox(height: Space.x8),
                   const SizedBox(height: Space.x16),
                   FutureBuilder<_HomeData>(
                     future: _data,
@@ -444,10 +453,7 @@ class _ProgressHero extends StatelessWidget {
       children: [
         Text(
           headline.title,
-          style: RunSoloType.display44.copyWith(
-            fontSize: 28,
-            color: t.inkPrimary,
-          ),
+          style: RunSoloType.pageHeadline.copyWith(color: t.inkPrimary),
         ),
         Text(
           headline.line,

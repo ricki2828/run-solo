@@ -121,6 +121,10 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
     final c = d.analysis.cooper;
     final e = c?.estimate;
     return Scaffold(
+      appBar: RunAppBar(
+        title: '12-MIN TEST',
+        showBack: widget.justFinished ? false : null,
+      ),
       body: SafeArea(
         child: FutureBuilder<List<CooperTest>>(
           future: _tests,
@@ -157,28 +161,10 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                 horizontal: Space.screenGutter,
               ),
               children: [
-                const SizedBox(height: Space.x16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '12-MIN TEST · ${Fmt.dayDate(d.run.start)}',
-                        style: RunSoloType.label13.copyWith(
-                          color: t.inkSecondary,
-                        ),
-                      ),
-                    ),
-                    if (!widget.justFinished)
-                      IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close),
-                        tooltip: 'Close',
-                        constraints: const BoxConstraints(
-                          minWidth: 56,
-                          minHeight: 56,
-                        ),
-                      ),
-                  ],
+                const SizedBox(height: Space.x8),
+                Text(
+                  Fmt.dayDate(d.run.start),
+                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
                 const SizedBox(height: Space.x8),
                 Text(

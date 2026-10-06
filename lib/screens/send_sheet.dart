@@ -6,6 +6,7 @@ import '../state/history_store.dart';
 import '../state/intervals_icu.dart';
 import '../state/send_runs.dart';
 import '../theme/theme.dart';
+import '../widgets/chrome.dart';
 import 'watch_sheet.dart';
 
 /// Privacy promise, one line, on every Send surface (founder 2 Oct).
@@ -161,10 +162,7 @@ class _SendSheetState extends State<SendSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'SEND THIS RUN',
-              style: RunSoloType.title28.copyWith(color: t.inkPrimary),
-            ),
+            const RunSheetHeader(title: 'SEND THIS RUN'),
             const SizedBox(height: Space.x8),
             Text(
               kSendPrivacyLine,

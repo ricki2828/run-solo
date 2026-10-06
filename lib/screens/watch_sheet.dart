@@ -7,6 +7,7 @@ import '../platform/gateway.dart' show Units;
 import '../state/intervals_icu.dart';
 import '../state/watch_guide.dart';
 import '../theme/theme.dart';
+import '../widgets/chrome.dart';
 import '../widgets/value_stepper.dart';
 
 /// "Send to watch" for a structured session. This is also the hook for the
@@ -259,10 +260,7 @@ class _WatchSheetState extends State<WatchSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'SEND TO WATCH',
-              style: RunSoloType.title28.copyWith(color: t.inkPrimary),
-            ),
+            const RunSheetHeader(title: 'SEND TO WATCH'),
             const SizedBox(height: Space.x8),
             Text(
               name,

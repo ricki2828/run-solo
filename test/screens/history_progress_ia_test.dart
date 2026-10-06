@@ -81,6 +81,7 @@ void main() {
     expect(find.text("CAN'T COMPARE YET"), findsWidgets);
     expect(find.textContaining('NO PERCENTILE'), findsNothing);
     await tester.ensureVisible(prompt.first);
+    await tester.pump();
     await tester.tap(prompt.first);
     await pumpTimes(tester, 4);
     expect(find.byType(SettingsScreen), findsOneWidget);

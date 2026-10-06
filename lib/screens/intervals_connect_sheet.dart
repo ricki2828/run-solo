@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app/services.dart';
 import '../state/intervals_icu.dart';
 import '../theme/theme.dart';
+import '../widgets/chrome.dart';
 
 /// Connect Intervals.icu: paste the API key and athlete id, test them, save.
 /// Resolves true when a key was saved (or is saved) and false when the
@@ -121,10 +122,7 @@ class _IntervalsConnectSheetState extends State<IntervalsConnectSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'CONNECT INTERVALS.ICU',
-              style: RunSoloType.title28.copyWith(color: t.inkPrimary),
-            ),
+            const RunSheetHeader(title: 'CONNECT INTERVALS.ICU'),
             const SizedBox(height: Space.x8),
             Text(
               kIntervalsKeyHelp,
