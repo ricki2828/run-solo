@@ -485,10 +485,50 @@ void main() {
       home: RunDetailScreen(runId: run.id),
     );
     await pumpTimes(tester, 6);
-    await scrollTo(tester, find.text('KM SPLITS'));
+    await scrollTo(tester, find.byKey(const ValueKey('splits-bars')));
     await settleAnimations(tester);
     await golden(tester, 'detail_int_splits_360x640');
+    final toggle = find.byKey(const ValueKey('all-splits-toggle'));
+    await scrollTo(tester, toggle);
+    await tester.tap(toggle);
+    await pumpTimes(tester, 2);
+    await scrollTo(tester, find.text('KM SPLITS'));
+    await settleAnimations(tester);
+    await golden(tester, 'detail_int_splits_open_360x640');
   });
+
+  // The splits chart leads run detail (O8); each mode at the small size.
+  for (final mode in ['free', 'laps', '4x4']) {
+    testWidgets('run detail: $mode chart at 360x640', (tester) async {
+      tester.view.physicalSize = const Size(360 * 3, 640 * 3);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final r = switch (mode) {
+        'free' => freeRunFile(n: 41, start: d1, seconds: 2884),
+        'laps' => lapsRunFile(n: 42, start: d1),
+        _ => fourByFourFile(n: 43, start: d1),
+      };
+      await pumpApp(
+        tester,
+        fakeServices(files: [r]),
+        home: RunDetailScreen(runId: r.id),
+      );
+      await pumpTimes(tester, 6);
+      await scrollTo(
+        tester,
+        find.byKey(ValueKey(mode == '4x4' ? 'rep-bars-chart' : 'splits-bars')),
+      );
+      await settleAnimations(tester);
+      await golden(tester, 'detail_chart_${mode}_360x640');
+      final toggle = find.byKey(const ValueKey('all-splits-toggle'));
+      await scrollTo(tester, toggle);
+      await tester.tap(toggle);
+      await pumpTimes(tester, 2);
+      await settleAnimations(tester);
+      await golden(tester, 'detail_all_splits_${mode}_360x640');
+    });
+  }
 
   testWidgets('recent activity: long street ellipsizes at 360 wide', (
     tester,
@@ -1036,6 +1076,13 @@ void main() {
     await settleAnimations(tester);
     expect(find.byType(WatchSheet), findsOneWidget);
     await golden(tester, 'watch_sheet_workout');
+    final how = find.byKey(const ValueKey('watch-how-toggle'));
+    await tester.ensureVisible(how);
+    await tester.tap(how);
+    await pumpTimes(tester, 2);
+    await tester.ensureVisible(find.byKey(const ValueKey('watch-garmin')));
+    await settleAnimations(tester);
+    await golden(tester, 'watch_sheet_workout_how');
   });
 
   testWidgets('Send to watch sheet (route)', (tester) async {

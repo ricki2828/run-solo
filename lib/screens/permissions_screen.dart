@@ -132,9 +132,7 @@ class _PermissionsScreenState extends State<PermissionsScreen>
       SetupRow(
         icon: Icons.notifications_none,
         title: 'Notifications',
-        why:
-            'The run lives in a notification: LAP and Pause from the '
-            'lock screen, phase countdown in your pocket.',
+        why: 'LAP and Pause from the lock screen, plus the phase countdown.',
         state: s.notifications ? SetupState.ok : SetupState.blocked,
         detail: s.notifications
             ? null
@@ -151,9 +149,7 @@ class _PermissionsScreenState extends State<PermissionsScreen>
         child: SetupRow(
           icon: Icons.battery_saver_outlined,
           title: 'Battery optimisation off',
-          why:
-              'Some phones kill a recording after a few minutes. '
-              'Tap to let Run Supreme keep recording with the screen off.',
+          why: 'Some phones end a recording once the screen is off.',
           state: s.batteryUnrestricted ? SetupState.ok : SetupState.needed,
           onTap: () async {
             // Phase 2 backlog: in-app exemption prompt (system dialog),
@@ -167,7 +163,7 @@ class _PermissionsScreenState extends State<PermissionsScreen>
         SetupRow(
           icon: Icons.bluetooth,
           title: 'Nearby devices',
-          why: 'Only for a heart-rate strap. Skip it if you run without one.',
+          why: 'Only for a heart-rate strap.',
           detail: _deniedHint(
             PermissionKind.bluetooth,
             'Denied. Allow it under',

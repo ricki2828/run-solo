@@ -232,7 +232,7 @@ class _SendSheetState extends State<SendSheet> {
             if (_watchRoute != null)
               _Block(
                 label: 'Route to your watch',
-                blurb: 'The route of this run as a GPX course',
+                blurb: 'This run as a GPX course.',
                 child: _SheetButton(
                   key: const ValueKey('send-watch-route'),
                   label: 'Send route to watch',

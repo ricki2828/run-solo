@@ -7,9 +7,9 @@ import '../topo/pack_models.dart';
 import '../widgets/chrome.dart';
 
 const String kOfflineMapsIntro =
-    'Download a region to use the Topo map with no signal. Maps only '
-    'download when you tap Download. Packs come from our map host; the '
-    'download reveals only which pack you chose and your IP address.';
+    'Download a region to use the Topo map with no signal. Packs come from '
+    'our map host; the download reveals only which pack you chose and your '
+    'IP address.';
 
 /// "12 MB", "1.2 GB". Decimal units, like the phone's own storage page.
 String formatPackBytes(int bytes) {
@@ -203,6 +203,17 @@ class _OfflineMapsScreenState extends State<OfflineMapsScreen> {
                         onTap: m.refreshing ? null : () => _refresh(m),
                       ),
                     ],
+                    const SizedBox(height: Space.x24),
+                    // The credit once for the screen, not under every region.
+                    for (final (i, text) in {
+                      for (final r in regions)
+                        if (r.mapText.isNotEmpty) r.mapText,
+                    }.indexed)
+                      Text(
+                        text,
+                        key: ValueKey('map-credit-$i'),
+                        style: RunSoloType.micro11.copyWith(color: t.inkMuted),
+                      ),
                     const SizedBox(height: Space.x32),
                   ],
                 );
@@ -487,11 +498,6 @@ class _RegionRow extends StatelessWidget {
                 style: RunSoloType.label13.copyWith(color: t.semWarn),
               ),
             ),
-          const SizedBox(height: Space.x8),
-          Text(
-            region.mapText,
-            style: RunSoloType.micro11.copyWith(color: t.inkMuted),
-          ),
           const SizedBox(height: Space.x8),
           Wrap(
             spacing: Space.x8,

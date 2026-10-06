@@ -133,8 +133,8 @@ class _IntervalsConnectSheetState extends State<IntervalsConnectSheet> {
             ),
             const SizedBox(height: Space.x8),
             Text(
-              'The key stays on this phone, in its secure storage. It is only '
-              'ever sent to Intervals.icu, and only to upload your runs.',
+              'The key stays on this phone and only goes to Intervals.icu, to '
+              'upload your runs.',
               style: RunSoloType.label13.copyWith(color: t.inkSecondary),
             ),
             const SizedBox(height: Space.x16),
