@@ -26,7 +26,8 @@ class PaceDial extends StatelessWidget {
     this.paceStyle,
     this.beside = false,
     this.dialWidth,
-    this.extra,
+    this.trueSecPerKm,
+    this.trueStyle,
   });
 
   final double? currentSecPerKm;
@@ -48,8 +49,23 @@ class PaceDial extends StatelessWidget {
   /// [beside] only: the arc's width (null = half the row).
   final double? dialWidth;
 
-  /// [beside] only: a second figure under the pace.
-  final Widget? extra;
+  /// TRUE PACE (hills and heat taken out), s/km: a cyan marker on the arc at
+  /// its place on the same scale, and "TRUE 4:46" as a smaller second reading
+  /// under the current pace. Null (flat road mode, no estimate) shows neither.
+  final double? trueSecPerKm;
+
+  /// Style of the TRUE line; defaults to the 36 sp figure size.
+  final TextStyle? trueStyle;
+
+  static const ValueKey<String> trueKey = ValueKey('live-true-pace');
+
+  /// Where TRUE PACE sits on the arc, same scale as [position].
+  double? get truePosition {
+    final c = trueSecPerKm;
+    final r = referenceSecPerKm;
+    if (c == null || r == null) return null;
+    return ((r - c) / spanSecPerKm).clamp(-1.0, 1.0);
+  }
 
   /// −1 (slower by the whole span) … 0 (on reference) … +1 (faster).
   double? get position {
@@ -59,11 +75,37 @@ class PaceDial extends StatelessWidget {
     return ((r - c) / spanSecPerKm).clamp(-1.0, 1.0);
   }
 
+  /// "TRUE 4:46": the word in cyan (the marker's colour), the pace in Bone.
+  Widget? _trueLine(RunSoloTokens t) {
+    final v = trueSecPerKm;
+    if (v == null) return null;
+    final style = (trueStyle ?? RunSoloType.display44.copyWith(fontSize: 36));
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: 'TRUE ',
+              style: TextStyle(color: t.accentArc),
+            ),
+            TextSpan(text: Fmt.pace(v, units)),
+          ],
+        ),
+        key: trueKey,
+        softWrap: false,
+        style: style.copyWith(color: t.inkPrimary),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final secondary = onZone ? HrZones.secondaryOnZone : t.inkSecondary;
     final p = position;
+    final trueLine = _trueLine(t);
     return Semantics(
       label:
           '$label ${Fmt.pace(currentSecPerKm, units)}'
@@ -75,7 +117,7 @@ class PaceDial extends StatelessWidget {
               ? ', slower than the reference'
               : ', on the reference'}',
       child: beside
-          ? _besideLayout(secondary, t, p)
+          ? _besideLayout(secondary, t, p, trueLine)
           : Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -92,6 +134,7 @@ class PaceDial extends StatelessWidget {
                     ),
                   ),
                 ),
+                ?trueLine,
                 Text(
                   label,
                   style: RunSoloType.micro11.copyWith(color: secondary),
@@ -109,11 +152,18 @@ class PaceDial extends StatelessWidget {
         ink: t.inkPrimary,
         track: onZone ? HrZones.gaugeEmpty : t.lineHair,
         secondary: secondary,
+        truePosition: truePosition,
+        trueInk: t.accentArc,
       ),
     ),
   );
 
-  Widget _besideLayout(Color secondary, RunSoloTokens t, double? p) {
+  Widget _besideLayout(
+    Color secondary,
+    RunSoloTokens t,
+    double? p,
+    Widget? trueLine,
+  ) {
     final arc = _arc(secondary, t, p);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -144,7 +194,7 @@ class PaceDial extends StatelessWidget {
                   ),
                 ),
               ),
-              ?extra,
+              ?trueLine,
             ],
           ),
         ),
@@ -159,7 +209,11 @@ class _DialPainter extends CustomPainter {
     required this.ink,
     required this.track,
     required this.secondary,
+    this.truePosition,
+    this.trueInk,
   });
+  final double? truePosition;
+  final Color? trueInk;
   final double? position;
   final Color ink;
   final Color track;
@@ -196,6 +250,21 @@ class _DialPainter extends CustomPainter {
           ..strokeWidth = major ? 3 : 2,
       );
     }
+    // TRUE PACE: a cyan tick across the arc, wider than the reference and
+    // quarter ticks so it reads over them.
+    final tp = truePosition;
+    if (tp != null && trueInk != null) {
+      final ta = math.pi + (tp + 1) / 2 * math.pi;
+      final dir = Offset(math.cos(ta), math.sin(ta));
+      canvas.drawLine(
+        c + dir * (r - 14),
+        c + dir * (r + 4),
+        Paint()
+          ..color = trueInk!
+          ..strokeWidth = 5
+          ..strokeCap = StrokeCap.round,
+      );
+    }
     final p = position;
     if (p == null) return;
     // Needle: from the hub to the arc at the position's angle.
@@ -214,5 +283,8 @@ class _DialPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DialPainter old) =>
-      old.position != position || old.ink != ink || old.track != track;
+      old.position != position ||
+      old.truePosition != truePosition ||
+      old.ink != ink ||
+      old.track != track;
 }

@@ -290,10 +290,20 @@ void main() {
     // the large TOTAL stays readable.
     expect(timerText().hitTestable(), findsNothing);
     expect(find.byKey(const ValueKey('vitals-total')), findsOneWidget);
+    // O7: no LAP while paused; the run so far shows big instead.
+    expect(find.byType(LapButton), findsNothing);
+    for (final k in ['paused-distance', 'paused-time', 'paused-pace']) {
+      expect(
+        tester.widget<Text>(find.byKey(ValueKey(k))).style!.fontSize,
+        greaterThanOrEqualTo(36),
+        reason: k,
+      );
+    }
 
     await tester.tap(find.widgetWithText(FilledButton, 'RESUME'));
     await settle(tester);
     expect(find.text('PAUSED'), findsNothing);
+    expect(find.byType(LapButton), findsOneWidget);
     expect(fake.state, RecorderState.recording);
   });
 
@@ -628,7 +638,12 @@ void main() {
           findsOneWidget,
           reason: mode.name,
         );
-        expect(find.text('TRUE PACE'), findsOneWidget, reason: mode.name);
+        expect(find.text('TRUE PACE'), findsNothing, reason: mode.name);
+        expect(
+          find.textContaining('TRUE ', findRichText: true),
+          findsOneWidget,
+          reason: mode.name,
+        );
         expect(find.text('GAP'), findsNothing, reason: mode.name);
         final figure = tester.widget<Text>(
           find.byKey(const ValueKey('live-true-pace')),
