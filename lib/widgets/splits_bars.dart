@@ -228,7 +228,8 @@ class _SplitsPainter extends CustomPainter {
     // The pace above a bar and the number under it; once the bars get too
     // tight for the pace, every second one (the picked bar always).
     final paceW = _tp('00:00', tokens.inkSecondary).width + 4;
-    final paceStep = math.max(1, (paceW / slot).ceil());
+    // Up to 12 bars every one is labelled; past that, every second or so.
+    final paceStep = n <= 12 ? 1 : math.max(1, (paceW / slot).ceil());
     final numStep = math.max(1, (26 / slot).ceil());
     for (var i = 0; i < n; i++) {
       final p = bars[i].paceSecPerKm;
