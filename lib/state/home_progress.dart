@@ -113,8 +113,7 @@ class ProgressHeadline {
       return const ProgressHeadline(
         kind: ProgressKind.none,
         title: 'SET YOUR SCORES',
-        line:
-            'Your first runs set them. The dots show which run unlocks which.',
+        line: 'Your first runs set them. Tap a line to start the run that does it.',
       );
     }
     final since = Fmt.dayMonth(now.subtract(engine.IdentityScores.window));
