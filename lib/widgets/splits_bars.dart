@@ -59,15 +59,15 @@ class SplitsBars extends StatelessWidget {
     final span = math.max(slowest - fastest, minSpanSec);
     final base = fastest + span * 1.15;
     final top = fastest - span * 0.06;
-    // Ties at the pace shown all take the highlight; when every split ties
-    // none does, since nothing stands out.
+    // Cyan means "best", so it needs a standout: the fastest split alone or
+    // tied by two at most. More ties than that (or all level) and none.
     final best = <int>{
       for (var i = 0; i < bars.length; i++)
         if (bars[i].paceSecPerKm != null &&
             bars[i].paceSecPerKm!.round() == fastest.round())
           i,
     };
-    if (best.length == paces.length) best.clear();
+    if (best.length > 2) best.clear();
     return Column(
       key: const ValueKey('splits-bars'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -201,7 +201,7 @@ class _SplitsPainter extends CustomPainter {
     }
     // The pace on top only while a few bars share the highlight; the axis
     // note carries the fastest pace either way.
-    if (best.isNotEmpty && best.length <= 3) {
+    if (best.isNotEmpty) {
       final tp = _tp(
         Fmt.pace(fastest, units),
         tokens.accentArc,

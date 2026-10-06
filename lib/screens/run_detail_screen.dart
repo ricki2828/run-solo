@@ -1626,7 +1626,13 @@ class _RepsChart extends StatelessWidget {
           style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
         ),
         const SizedBox(height: Space.x8),
-        RepBars(reps: data, units: units, showDelta: false, fadeProgress: 0),
+        RepBars(
+          reps: data,
+          units: units,
+          showDelta: false,
+          fadeProgress: 0,
+          minSpanSec: SplitsBars.minSpanSec,
+        ),
         const SizedBox(height: Space.x8),
         Text(
           truePace

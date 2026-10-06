@@ -50,6 +50,7 @@ class RepBars extends StatelessWidget {
     this.deltaProgress = 1,
     this.tone = RepTone.neutral,
     this.showDelta = true,
+    this.minSpanSec = 0,
   });
 
   final List<RepBarDatum> reps;
@@ -59,6 +60,11 @@ class RepBars extends StatelessWidget {
   final double deltaProgress;
   final RepTone tone;
   final bool showDelta;
+
+  /// The narrowest pace range the bar lengths span, s/km. Run detail sets
+  /// 30 so reps within noise of each other read as level; 0 scales to the
+  /// reps' own spread (the verdict).
+  final double minSpanSec;
 
   static const double barHeight = 28;
   static const double rowGap = 8;
@@ -77,8 +83,11 @@ class RepBars extends StatelessWidget {
     final fastest = paces.isEmpty ? 0.0 : paces.reduce((a, b) => a < b ? a : b);
     double frac(double? pace) {
       if (pace == null) return 0.45;
-      if (slowest - fastest < 1) return 1;
-      return 1 - 0.55 * (pace - fastest) / (slowest - fastest);
+      final span = slowest - fastest < minSpanSec
+          ? minSpanSec
+          : slowest - fastest;
+      if (span < 1) return 1;
+      return 1 - 0.55 * (pace - fastest) / span;
     }
 
     final barColor = switch (tone) {
