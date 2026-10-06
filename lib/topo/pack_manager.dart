@@ -22,11 +22,6 @@ import 'package:flutter/foundation.dart';
 import '../app/version.dart';
 import 'pack_models.dart';
 
-/// True when the phone is on Wi-Fi. TODO: no connectivity plugin is in the
-/// app yet, so production passes null and the Wi-Fi-only switch is hidden
-/// rather than shown unenforced.
-typedef WifiProbe = Future<bool> Function();
-
 const int kDefaultStorageCap = 1000 * 1000 * 1000;
 
 class PackManager extends ChangeNotifier {
@@ -34,7 +29,6 @@ class PackManager extends ChangeNotifier {
     required this.root,
     this.baseUrl,
     this.capBytes = kDefaultStorageCap,
-    this.wifi,
     HttpClient Function()? clientFactory,
     this.idleTimeout = const Duration(seconds: 30),
     this.userAgent = 'RunSupreme/$kAppVersion (Android)',
@@ -46,7 +40,6 @@ class PackManager extends ChangeNotifier {
   /// Null until the hosting exists; every network call then refuses.
   final Uri? baseUrl;
   final int capBytes;
-  final WifiProbe? wifi;
   final Duration idleTimeout;
 
   /// Cloudflare refuses some default agents, so we always say who we are.
@@ -58,7 +51,6 @@ class PackManager extends ChangeNotifier {
   final Map<String, int> _diskBytes = {};
   final Map<String, _Job> _jobs = {};
   final Map<String, PackException> _failed = {};
-  bool _wifiOnly = true;
   bool _loaded = false;
   bool _refreshing = false;
   PackException? _refreshError;
@@ -70,12 +62,6 @@ class PackManager extends ChangeNotifier {
   /// Packs on offer, from the last [refreshRegions] (kept on disk).
   List<PackRegion> get regions => _regions;
   List<InstalledPack> get installed => _installed.values.toList();
-
-  bool get wifiOnly => _wifiOnly;
-
-  /// False when there is no way to tell (no probe), so the UI hides the
-  /// switch.
-  bool get canEnforceWifiOnly => wifi != null;
 
   /// Everything the packs take on disk, including half-finished downloads.
   int get usedBytes {
@@ -93,19 +79,10 @@ class PackManager extends ChangeNotifier {
   Directory _dir(String id) => Directory('${root.path}/$id');
 
   File get _regionsFile => File('${root.path}/regions.json');
-  File get _prefsFile => File('${root.path}/prefs.json');
 
   /// Reads prefs, the cached index and what is installed. No network.
   Future<void> load() async {
     await root.create(recursive: true);
-    try {
-      final p = jsonDecode(await _prefsFile.readAsString());
-      if (p is Map && p['wifi_only'] is bool) {
-        _wifiOnly = p['wifi_only'] as bool;
-      }
-    } on Object {
-      // No prefs yet, or unreadable: the defaults stand.
-    }
     try {
       _regions = _parseIndex(await _regionsFile.readAsString());
     } on Object {
@@ -154,12 +131,6 @@ class PackManager extends ChangeNotifier {
     } on Object {
       // No installed.json, or unreadable: not installed.
     }
-  }
-
-  Future<void> setWifiOnly(bool on) async {
-    _wifiOnly = on;
-    notifyListeners();
-    await _writeAtomic(_prefsFile, jsonEncode({'wifi_only': on}));
   }
 
   PackStatus statusOf(String id) {
@@ -349,12 +320,6 @@ class PackManager extends ChangeNotifier {
     _jobs[id] = job;
     notifyListeners();
     try {
-      if (_wifiOnly && wifi != null && !await wifi!()) {
-        throw const PackException(
-          PackErrorKind.wifiRequired,
-          'Connect to Wi-Fi, or turn off Wi-Fi only.',
-        );
-      }
       final dir = _dir(id);
       await dir.create(recursive: true);
       await _dropStaleParts(dir, region);

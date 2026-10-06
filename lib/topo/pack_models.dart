@@ -188,7 +188,6 @@ enum PackErrorKind {
   badIndex,
   checksum,
   storageCap,
-  wifiRequired,
   disk,
   unknownPack,
 }
