@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/routes.dart';
+import '../platform/gateway.dart';
 import '../state/home_progress.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
+import 'home_score_spark.dart';
 
 /// Only earned scores appear. Numeric display matches the product choice;
 /// qualified bounds remain in semantics and Progress evidence.
@@ -15,11 +17,16 @@ class HomeScores extends StatelessWidget {
     required this.profileSex,
     required this.age,
     required this.onOpen,
+    this.onUnlock,
   });
   final Map<engine.IdentityLane, engine.IdentityScore> scores;
   final ProfileSex profileSex;
   final int? age;
   final VoidCallback onOpen;
+
+  /// Opens Start preselected on the format that sets a lane; the empty-state
+  /// rows are inert without it.
+  final void Function(AppSettings Function(AppSettings))? onUnlock;
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +48,7 @@ class HomeScores extends StatelessWidget {
                     ? Icons.check_circle
                     : Icons.circle_outlined,
                 size: 12,
-                color: scores[lane] != null ? t.inkPrimary : t.inkMuted,
+                color: scores[lane] != null ? t.semImproving : t.inkMuted,
               ),
               const SizedBox(width: Space.x4),
               Text(
@@ -56,33 +63,19 @@ class HomeScores extends StatelessWidget {
     );
     if (earned.isEmpty) {
       return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Text(
+            'SET YOUR SCORES',
+            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+          ),
           for (final lane in engine.IdentityLane.values)
-            Padding(
-              padding: const EdgeInsets.only(bottom: Space.x8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 3),
-                    child: Icon(
-                      Icons.circle_outlined,
-                      size: 12,
-                      color: t.inkMuted,
-                    ),
-                  ),
-                  const SizedBox(width: Space.x8),
-                  Expanded(
-                    child: Text(
-                      '${lane.name.toUpperCase()}: ${_unlock(lane)}',
-                      style: RunSoloType.label13.copyWith(
-                        color: t.inkSecondary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            _UnlockRow(
+              lane: lane,
+              set: scores[lane] != null,
+              onTap: onUnlock == null
+                  ? null
+                  : () => onUnlock!(_unlockApply(lane)),
             ),
         ],
       );
@@ -118,6 +111,14 @@ class HomeScores extends StatelessWidget {
             ),
           ),
         ],
+        if (_footnote(earned, profileSex, age) case final note?) ...[
+          const SizedBox(height: Space.x8),
+          Text(
+            note,
+            key: const ValueKey('home-score-norms'),
+            style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+          ),
+        ],
         if (earned.length < engine.IdentityLane.values.length) ...[
           const SizedBox(height: Space.x12),
           dots,
@@ -128,11 +129,94 @@ class HomeScores extends StatelessWidget {
 }
 
 String _unlock(engine.IdentityLane lane) => switch (lane) {
-  engine.IdentityLane.aerobic => 'a hard 5K or 10K, or a 12-minute test',
-  engine.IdentityLane.speed => 'clean reps in an intervals session',
-  engine.IdentityLane.mid => 'a 5K or 10K run',
-  engine.IdentityLane.long => 'a 15K+ run',
+  engine.IdentityLane.aerobic => 'a 12-minute test, or a hard 5K or 10K',
+  engine.IdentityLane.speed => 'clean reps in 8 × 400 m',
+  engine.IdentityLane.mid => 'a 5K or 10K run, try a goal 5K',
+  engine.IdentityLane.long => 'a free run of 15K or more',
 };
+
+/// Start, preselected on the format that sets [lane].
+AppSettings Function(AppSettings) _unlockApply(engine.IdentityLane lane) =>
+    switch (lane) {
+      engine.IdentityLane.aerobic => (s) => s.copyWith(
+        lastMode: RecordMode.cooper,
+        goalRun: false,
+      ),
+      engine.IdentityLane.speed => (s) => s.copyWith(
+        lastMode: RecordMode.intervals,
+        goalRun: false,
+        sessionId: engine.SessionCatalogue.fourHundreds.id,
+      ),
+      engine.IdentityLane.mid => (s) => s.copyWith(
+        goalRun: true,
+        goalId: 'd5000',
+      ),
+      engine.IdentityLane.long => (s) => s.copyWith(
+        lastMode: RecordMode.free,
+        goalRun: false,
+      ),
+    };
+
+/// The one line naming the norms behind the grid; null when the profile is
+/// not enough for any card to compare (the cards say what to add).
+String? _footnote(List<engine.IdentityLane> earned, ProfileSex sex, int? age) {
+  if (sex != ProfileSex.male && sex != ProfileSex.female) return null;
+  final who = sex == ProfileSex.female ? 'women' : 'men';
+  final lab =
+      earned.any(ScoreNorms.isLab) && age != null && age >= 20 && age <= 89
+      ? '$who ${age ~/ 10 * 10}-${age ~/ 10 * 10 + 9} (lab norms)'
+      : null;
+  final race = earned.any((l) => !ScoreNorms.isLab(l))
+      ? 'recreational race finishers ($who, all ages)'
+      : null;
+  final parts = [?lab, ?race];
+  return parts.isEmpty ? null : 'Compared with ${parts.join(' and ')}.';
+}
+
+/// A compact tappable row (48 dp minimum) for a score not yet set.
+class _UnlockRow extends StatelessWidget {
+  const _UnlockRow({required this.lane, required this.set, this.onTap});
+  final engine.IdentityLane lane;
+  final bool set;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final label = '${lane.name.toUpperCase()}: ${_unlock(lane)}';
+    return Semantics(
+      button: onTap != null,
+      label: set ? '${lane.name} set' : '$label. Opens Start.',
+      excludeSemantics: true,
+      child: InkWell(
+        key: ValueKey('home-unlock-${lane.name}'),
+        onTap: set ? null : onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Row(
+            children: [
+              Icon(
+                set ? Icons.check_circle : Icons.circle_outlined,
+                size: 16,
+                color: set ? t.semImproving : t.inkMuted,
+              ),
+              const SizedBox(width: Space.x12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: RunSoloType.label13.copyWith(
+                    color: set ? t.inkPrimary : t.inkSecondary,
+                  ),
+                ),
+              ),
+              if (!set) Icon(Icons.chevron_right, color: t.inkSecondary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _EarnedScore extends StatelessWidget {
   const _EarnedScore({
@@ -152,7 +236,6 @@ class _EarnedScore extends StatelessWidget {
     final lab = ScoreNorms.isLab(score.lane);
     final sexKnown =
         profileSex == ProfileSex.male || profileSex == ProfileSex.female;
-    final female = profileSex == ProfileSex.female;
     final percentile = ScoreNorms.percentile(
       score.lane,
       score.vdot,
@@ -163,6 +246,8 @@ class _EarnedScore extends StatelessWidget {
     final label = percentile?.toString() ?? '--';
     // A card that names what to add opens Settings, not Progress.
     final needsProfile = !sexKnown || (lab && age == null);
+    // Only a card that needs something shows its own line; the norms are named
+    // once under the grid.
     final cohort = !sexKnown
         ? 'Add your sex to compare'
         : lab
@@ -170,8 +255,20 @@ class _EarnedScore extends StatelessWidget {
               ? 'Add your birth year to compare'
               : age! < 20 || age! > 89
               ? 'Ages 20-89 only'
-              : '${female ? 'Women' : 'Men'} ${age! ~/ 10 * 10} to ${age! ~/ 10 * 10 + 9}, lab norms'
-        : '${female ? 'Women' : 'Men'}, recreational race finishers, all ages';
+              : null
+        : null;
+    // The score's history is the six-week-ago reading and today's; absent
+    // when either has no percentile.
+    final then = score.priorVdot == null || percentile == null
+        ? null
+        : ScoreNorms.percentile(
+            score.lane,
+            score.priorVdot!,
+            score.priorSource ?? score.source,
+            sex: profileSex,
+            age: age,
+          );
+    final trend = [?then, ?percentile];
     final change = ScoreNorms.change(score, sex: profileSex, age: age);
     final (changeText, changeColour) = switch (change) {
       null => (null, t.inkSecondary),
@@ -182,7 +279,7 @@ class _EarnedScore extends StatelessWidget {
     return Semantics(
       button: true,
       label:
-          '${score.lane.name}, ${percentile == null ? 'percentile unavailable' : '$percentile${ScoreNorms.ordinalSuffix(percentile)} percentile'}, ${changeText == null ? '' : '$changeText, '}$cohort. ${needsProfile ? 'Open settings.' : 'Open Progress.'}',
+          '${score.lane.name}, ${percentile == null ? 'percentile unavailable' : '$percentile${ScoreNorms.ordinalSuffix(percentile)} percentile'}, ${changeText == null ? '' : '$changeText, '}${cohort ?? (lab ? 'lab norms' : 'recreational race finishers')}. ${needsProfile ? 'Open settings.' : 'Open Progress.'}',
       child: InkWell(
         key: ValueKey('home-score-${score.lane.name}'),
         onTap: needsProfile
@@ -226,6 +323,15 @@ class _EarnedScore extends StatelessWidget {
                   ],
                 ),
               ),
+              if (trend.length >= 2) ...[
+                const SizedBox(height: Space.x8),
+                HomeScoreSpark(
+                  key: ValueKey('home-spark-${score.lane.name}'),
+                  values: trend,
+                  rising: t.semImproving,
+                  mutedColor: t.inkMuted,
+                ),
+              ],
               if (changeText != null) ...[
                 const SizedBox(height: Space.x4),
                 Text(
@@ -233,11 +339,13 @@ class _EarnedScore extends StatelessWidget {
                   style: RunSoloType.label13.copyWith(color: changeColour),
                 ),
               ],
-              const SizedBox(height: Space.x4),
-              Text(
-                cohort,
-                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-              ),
+              if (cohort != null) ...[
+                const SizedBox(height: Space.x4),
+                Text(
+                  cohort,
+                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                ),
+              ],
             ],
           ),
         ),

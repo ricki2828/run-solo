@@ -9,6 +9,7 @@ import 'package:run_solo/state/run_index.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/state/live_context.dart';
+import 'package:run_solo/widgets/home_scores.dart';
 
 import '../helpers.dart';
 
@@ -216,4 +217,37 @@ void main() {
       );
     });
   }
+
+  // The empty "Set your scores" list as tappable rows.
+  testWidgets('unlock rows 360x640', (tester) async {
+    await pumpApp(
+      tester,
+      fakeServices(settings: const AppSettings(onboardingDone: true)),
+      home: Scaffold(
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: HomeScores(
+            scores: const {},
+            profileSex: ProfileSex.male,
+            age: 44,
+            onOpen: () {},
+            onUnlock: (_) {},
+          ),
+        ),
+      ),
+    );
+    tester.view.physicalSize = const Size(1080, 640 * 3);
+    await pumpTimes(tester, 4);
+    expect(tester.takeException(), isNull);
+    const name = 'home_unlock_rows_360x640';
+    expect(
+      File('test/golden/goldens/$name.png').existsSync() ||
+          autoUpdateGoldenFiles,
+      isTrue,
+    );
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/$name.png'),
+    );
+  });
 }

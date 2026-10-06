@@ -169,6 +169,9 @@ class _HomeScreenState extends State<HomeScreen> {
     };
   }
 
+  static AppSettings _easyRun(AppSettings s) =>
+      s.copyWith(lastMode: RecordMode.free, goalRun: false);
+
   void _openProgress() {
     if (widget.onShowProgress != null) {
       widget.onShowProgress!();
@@ -227,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: Space.x32),
+                  const SizedBox(height: Space.x16),
                   FutureBuilder<_HomeData>(
                     future: _data,
                     builder: (context, snap) {
@@ -262,6 +265,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       final next = planView?.finished == false
                           ? planView!.next
                           : null;
+                      final warned =
+                          planCtx?.loadCheck.flag != null &&
+                          !LoadDismissal.dismissed(settings, _now);
                       // Start and Change never wait on the scores: until
                       // they load (or if they fail) Start keeps the last
                       // run type.
@@ -274,8 +280,64 @@ class _HomeScreenState extends State<HomeScreen> {
                         startLabel =
                             'Start ${_lastUsedName(settings, services.pickedSession)}';
                       }
+                      // While the warning says an easy run is the safer
+                      // choice, Start is the easy run; the planned hard
+                      // session stays one tap away. A plan already eases its
+                      // own next session, and a free run is already easy.
+                      final hardPick =
+                          next == null &&
+                          warned &&
+                          (rec == null
+                              ? settings.lastMode != RecordMode.free &&
+                                    settings.lastMode != RecordMode.trail
+                              : rec.lane != engine.IdentityLane.long);
+                      final plannedApply = next == null
+                          ? rec?.apply
+                          : PlanStart.apply(next.session);
+                      final plannedName =
+                          rec?.sessionName ??
+                          _lastUsedName(settings, services.pickedSession);
                       return Column(
                         children: [
+                          _GetBetter(
+                            warning: warned
+                                ? LoadWarning(
+                                    flag: planCtx!.loadCheck.flag!,
+                                    now: _now,
+                                  )
+                                : null,
+                            summary: next == null || planView == null
+                                ? null
+                                : PlanText.homeLine(planView, _now),
+                            reason: next?.session.reason ?? rec?.reason,
+                            target: next == null
+                                ? null
+                                : PlanText.targetLine(
+                                    next.session,
+                                    planCtx?.vdot,
+                                    settings.units,
+                                  ),
+                            startLabel: hardPick
+                                ? 'Start Easy run'
+                                : startLabel,
+                            onStart: () =>
+                                _start(hardPick ? _easyRun : plannedApply),
+                            anywayLabel: hardPick
+                                ? 'Do the $plannedName anyway'
+                                : null,
+                            onAnyway: () => _start(plannedApply),
+                            onChange: () => _start(null),
+                            planLabel: planView == null
+                                ? (data == null || data.failed
+                                      ? null
+                                      : 'Build a 4-week plan around your scores')
+                                : planView.finished
+                                ? 'Plan done: ${planView.doneCount} of '
+                                      '${planView.totalCount}. Build the next 4 weeks'
+                                : 'See the plan',
+                            onPlan: _openPlan,
+                          ),
+                          const SizedBox(height: Space.x16),
                           _ProgressHero(
                             headline: data != null && !data.failed
                                 ? ProgressHeadline.of(
@@ -295,46 +357,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               profileSex: settings.profileSex,
                               age: age,
                               onOpen: _openProgress,
+                              onUnlock: _start,
                             ),
                             const SizedBox(height: Space.x16),
                           ],
-                          _GetBetter(
-                            warning:
-                                planCtx?.loadCheck.flag != null &&
-                                    !LoadDismissal.dismissed(settings, _now)
-                                ? LoadWarning(
-                                    flag: planCtx!.loadCheck.flag!,
-                                    now: _now,
-                                  )
-                                : null,
-                            summary: next == null || planView == null
-                                ? null
-                                : PlanText.homeLine(planView, _now),
-                            reason: next?.session.reason ?? rec?.reason,
-                            target: next == null
-                                ? null
-                                : PlanText.targetLine(
-                                    next.session,
-                                    planCtx?.vdot,
-                                    settings.units,
-                                  ),
-                            startLabel: startLabel,
-                            onStart: () => _start(
-                              next == null
-                                  ? rec?.apply
-                                  : PlanStart.apply(next.session),
-                            ),
-                            onChange: () => _start(null),
-                            planLabel: planView == null
-                                ? (data == null || data.failed
-                                      ? null
-                                      : 'Build a 4-week plan around your scores')
-                                : planView.finished
-                                ? 'Plan done: ${planView.doneCount} of '
-                                      '${planView.totalCount}. Build the next 4 weeks'
-                                : 'See the plan',
-                            onPlan: _openPlan,
-                          ),
                         ],
                       );
                     },
@@ -442,6 +468,8 @@ class _GetBetter extends StatelessWidget {
     this.planLabel,
     this.onPlan,
     this.warning,
+    this.anywayLabel,
+    this.onAnyway,
   });
   final String? reason;
 
@@ -460,6 +488,10 @@ class _GetBetter extends StatelessWidget {
 
   /// The "don't overdo it" notice, when this week is running hot.
   final Widget? warning;
+
+  /// While the warning is up, the planned hard session as a secondary link.
+  final String? anywayLabel;
+  final VoidCallback? onAnyway;
 
   @override
   Widget build(BuildContext context) {
@@ -515,6 +547,16 @@ class _GetBetter extends StatelessWidget {
             OutlinedButton(onPressed: onChange, child: const Text('Change')),
           ],
         ),
+        if (anywayLabel != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const ValueKey('home-do-anyway'),
+              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+              onPressed: onAnyway,
+              child: Text(anywayLabel!),
+            ),
+          ),
         if (planLabel != null)
           Align(
             alignment: Alignment.centerLeft,
