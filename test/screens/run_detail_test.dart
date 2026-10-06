@@ -235,6 +235,73 @@ void main() {
     expect(find.text('8'), findsOneWidget);
   });
 
+  testWidgets('splits chart: every bar has its pace; tap picks one', (
+    tester,
+  ) async {
+    final r = withElevation(freeRunFile(n: 93, start: d1, seconds: 2884));
+    await pumpApp(
+      tester,
+      fakeServices(files: [r]),
+      home: RunDetailScreen(runId: r.id),
+    );
+    await pumpTimes(tester, 6);
+    final area = find.byKey(const ValueKey('splits-chart-area'));
+    await scrollTo(tester, area);
+    expect(find.text('Tap a bar to see its pace'), findsOneWidget);
+    // Third of eight bars.
+    final rect = tester.getRect(area);
+    await tester.tapAt(
+      Offset(rect.left + rect.width * 2.5 / 8, rect.center.dy),
+    );
+    await pumpTimes(tester, 2);
+    final readout = tester
+        .widget<Text>(find.byKey(const ValueKey('splits-readout')))
+        .data!;
+    expect(readout, startsWith('km 3 · '));
+    expect(readout, contains('/km'));
+    expect(readout, contains(' m')); // the climb, from the elevation
+    // Tapping the same bar again clears it.
+    await tester.tapAt(
+      Offset(rect.left + rect.width * 2.5 / 8, rect.center.dy),
+    );
+    await pumpTimes(tester, 2);
+    expect(find.text('Tap a bar to see its pace'), findsOneWidget);
+    // A drag across the bars follows the finger.
+    await tester.dragFrom(
+      Offset(rect.left + 10, rect.center.dy),
+      Offset(rect.width * 0.8, 0),
+    );
+    await pumpTimes(tester, 2);
+    final dragged = tester
+        .widget<Text>(find.byKey(const ValueKey('splits-readout')))
+        .data!;
+    expect(dragged, startsWith('km '));
+    expect(dragged, isNot(startsWith('km 1 ')));
+  });
+
+  testWidgets('rep bars: tap a rep for pace, heart rate, time in band', (
+    tester,
+  ) async {
+    final r = fourByFourFile(n: 94, start: d1);
+    await pumpApp(
+      tester,
+      fakeServices(files: [r]),
+      home: RunDetailScreen(runId: r.id),
+    );
+    await pumpTimes(tester, 6);
+    final area = find.byKey(const ValueKey('rep-chart-area'));
+    await scrollTo(tester, area);
+    final rect = tester.getRect(area);
+    await tester.tapAt(Offset(rect.left + 40, rect.top + 36 * 1.5));
+    await pumpTimes(tester, 2);
+    final readout = tester
+        .widget<Text>(find.byKey(const ValueKey('rep-readout')))
+        .data!;
+    expect(readout, startsWith('Rep 2 · 4:'));
+    expect(readout, contains('bpm'));
+    expect(readout, contains('% in band'));
+  });
+
   testWidgets('a miles run: chart and table both read pace per mile', (
     tester,
   ) async {
@@ -398,6 +465,7 @@ void main() {
         home: RunDetailScreen(runId: r.id),
       );
       await pumpTimes(tester, 6);
+      await scrollTo(tester, find.byKey(const ValueKey('elevation-card')));
       expect(find.byKey(const ValueKey('elevation-card')), findsOneWidget);
       expect(find.text('${e.ascentM.round()} m'), findsWidgets);
       expect(find.textContaining('TRUE PACE (ESTIMATE)'), findsOneWidget);
@@ -438,6 +506,7 @@ void main() {
         home: RunDetailScreen(runId: r.id),
       );
       await pumpTimes(tester, 6);
+      await scrollTo(tester, find.byKey(const ValueKey('elevation-card')));
       expect(find.byKey(const ValueKey('elevation-card')), findsOneWidget);
       await openAllSplits(tester);
       await scrollTo(tester, find.text('CLIMB').last);
