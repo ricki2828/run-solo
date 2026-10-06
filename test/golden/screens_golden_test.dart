@@ -1134,6 +1134,14 @@ void main() {
         final bone70 = Color.alphaBlend(HrZones.secondaryOnZone, bg);
         expect(ratio(bone70, bg), greaterThan(7), reason: 'Bone 70% on Z$z');
         expect(lum(bg), lessThanOrEqualTo(0.034), reason: 'OLED budget Z$z');
+        // O5: the zone band against the ground is a graphic, 3:1 floor.
+        if (z > 0) {
+          expect(
+            ratio(HrZones.band(z), bg),
+            greaterThan(3),
+            reason: 'band Z$z',
+          );
+        }
       }
     },
   );

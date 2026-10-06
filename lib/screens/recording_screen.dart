@@ -393,6 +393,7 @@ class _RecordingScreenState extends State<RecordingScreen>
               !_stopping;
           // In MAP the numbers' leftover space belongs to the map.
           // Free / Trail have no LAP button: their block takes that room.
+          final pausedNow = s.paused && !_finishing;
           final Widget gap = mapOn || freeBlock
               ? const SizedBox.shrink()
               : const Spacer();
@@ -412,6 +413,15 @@ class _RecordingScreenState extends State<RecordingScreen>
                   curve: MotionCurves.standard,
                   color: zoneBg,
                 ),
+                // O5: the zone is a band across the top plus a faint edge
+                // glow, same hues as the time-in-zone chart; no band at
+                // zone 0. The 400 ms crossfade drives the colour.
+                _ZoneBand(
+                  zone: s.zone,
+                  duration: reduced
+                      ? Duration.zero
+                      : MotionDurations.zoneCrossfade,
+                ),
                 SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -420,7 +430,8 @@ class _RecordingScreenState extends State<RecordingScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const SizedBox(height: Space.x12),
+                        // Clears the 14 dp zone band.
+                        const SizedBox(height: Space.x16),
                         _Header(
                           s: s,
                           maxHr: maxHr,
@@ -440,7 +451,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                           _Banner(text: gpsBannerCopy(s), color: t.semWarn)
                         else if (s.notice != null)
                           _Banner(text: s.notice!, color: t.semWarn),
-                        if (mapOn) ...[
+                        if (mapOn && !pausedNow) ...[
                           const SizedBox(height: Space.x8),
                           Expanded(
                             child: LiveMapView(
@@ -473,6 +484,26 @@ class _RecordingScreenState extends State<RecordingScreen>
                                 lost: s.gpsLost,
                               ),
                             ),
+                          ],
+                        ] else if (pausedNow) ...[
+                          // O7: run so far, big, and one big RESUME. No LAP.
+                          Expanded(
+                            child: _PausedPanel(
+                              figures: runSoFarFigures(s, ctl, settings.units),
+                              onResume: ctl.resume,
+                              auto: s.autoPaused,
+                              note: s.isCooper && s.phase == Phase.work
+                                  ? kCooperPausedNote
+                                  : (s.autoPaused ? kAutoPausedNote : null),
+                              compact: compact,
+                              secondary: s.zone > 0
+                                  ? HrZones.secondaryOnZone
+                                  : t.inkSecondary,
+                            ),
+                          ),
+                          if (!s.showEndRep) ...[
+                            const SizedBox(height: Space.x12),
+                            GpsBar(accuracyM: s.gpsAccuracyM, lost: s.gpsLost),
                           ],
                         ] else ...[
                           // The Free / Trail block takes the room itself.
@@ -667,7 +698,9 @@ class _RecordingScreenState extends State<RecordingScreen>
                           ],
                         ],
                         const SizedBox(height: Space.x16),
-                        if ((s.isPreset || s.isCooper) &&
+                        if (pausedNow)
+                          const SizedBox.shrink()
+                        else if ((s.isPreset || s.isCooper) &&
                             s.phase == Phase.warmup &&
                             (s.needsGps || s.isCooper) &&
                             s.gpsLost)
@@ -734,13 +767,17 @@ class _RecordingScreenState extends State<RecordingScreen>
                               MuteTipsButton(onTap: ctl.muteTips),
                               const SizedBox(width: Space.x12),
                             ],
-                            Expanded(
-                              child: _PauseButton(
-                                paused: s.paused,
-                                onTap: s.paused ? ctl.resume : ctl.pause,
+                            // Paused: RESUME is the big button above, so
+                            // the row is STOP alone.
+                            if (!pausedNow) ...[
+                              Expanded(
+                                child: _PauseButton(
+                                  paused: s.paused,
+                                  onTap: s.paused ? ctl.resume : ctl.pause,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: Space.x12),
+                              const SizedBox(width: Space.x12),
+                            ],
                             Expanded(child: _StopButton(onTap: _tapStop)),
                           ],
                         ),
@@ -771,20 +808,6 @@ class _RecordingScreenState extends State<RecordingScreen>
                   anchorBottom: !mapOn && !s.isPreset && s.lapsEnabled,
                   card: card,
                 ),
-                // The PAUSED card leaves the Pause / STOP row live below it,
-                // so STOP from a pause opens the finish screen (#89 review).
-                if (s.paused && !_finishing)
-                  Positioned.fill(
-                    bottom:
-                        MediaQuery.paddingOf(context).bottom + 56 + Space.x16,
-                    child: _PausedOverlay(
-                      onResume: ctl.resume,
-                      auto: s.autoPaused,
-                      note: s.isCooper && s.phase == Phase.work
-                          ? kCooperPausedNote
-                          : (s.autoPaused ? kAutoPausedNote : null),
-                    ),
-                  ),
                 if (_finishing)
                   _FinishScreen(
                     ctl: ctl,
@@ -997,6 +1020,20 @@ TextStyle primaryStyle(bool compact, {bool secondary = false}) => secondary
     ? (compact ? RunSoloType.display64 : RunSoloType.display96)
     : RunSoloType.timer120.copyWith(fontSize: compact ? 128 : 168);
 
+/// O5: the background no longer tints by phase, so the title carries it: rep
+/// (a work step of a structured session) in the Intervals magenta, recovery
+/// in mint; everything else Bone. The words stay too (colour is never the
+/// only cue), and the countdown box keeps its outline.
+Color phaseTitleColor(RecordingSnapshot s, RunSoloTokens t) {
+  if (s.mode != RecordMode.intervals || !s.isPreset) return t.inkPrimary;
+  if (isEventRun(s) || s.isGoal) return t.inkPrimary;
+  return switch (s.phase) {
+    Phase.work => AuroraRunType.intervals,
+    Phase.recovery => t.semImproving,
+    _ => t.inkPrimary,
+  };
+}
+
 /// `repIndex` is 1-based in work / recovery (RecorderCore.kt); the last rep
 /// goes straight to cool-down, so recoveries count to `reps - 1` (brief
 /// §4.4 "Recovery 2 of 3").
@@ -1160,7 +1197,9 @@ class _Header extends StatelessWidget {
                 child: Text(
                   phaseTitle(s),
                   softWrap: false,
-                  style: RunSoloType.title28.copyWith(color: t.inkPrimary),
+                  style: RunSoloType.title28.copyWith(
+                    color: phaseTitleColor(s, t),
+                  ),
                 ),
               ),
             ),
@@ -1387,7 +1426,7 @@ class _Vitals extends StatelessWidget {
                       child: Text(
                         HrZones.label(s.zone, paired: true),
                         key: const ValueKey('vitals-zone'),
-                        style: label,
+                        style: label.copyWith(color: HrZones.band(s.zone)),
                       ),
                     ),
                 ],
@@ -1575,7 +1614,7 @@ class _FreeRunBlock extends StatelessWidget {
         : _figH + (turn.isEmpty ? 0 : Space.x4 + _textH(AuxFigure.style));
     // Founder 3-Oct: the screen reads as clusters, top to bottom: RUN
     // (distance, time, average pace, equal size), PACE (the current-pace
-    // speedo, always shown, with TRUE PACE beside it), CLIMB, ROUTE, then the
+    // speedo, always shown, TRUE PACE folded in), CLIMB, ROUTE, then the
     // compare card's own slot. Priority when height is short: the dial
     // shrinks, the RUN trio steps down a size, then TRUE PACE and grade go,
     // before the card is allowed to cover anything. Never the dial, the trio
@@ -1627,44 +1666,30 @@ class _FreeRunBlock extends StatelessWidget {
             final plan = fit ?? plans.last;
             final size = EqualFigures.sizeFor(width, plan.trioCap);
             final gapOn = showGap && plan.gap;
-            final trueFigure = gapOn
-                ? AuxFigure(
-                    label: 'TRUE PACE',
-                    value: Fmt.pace(
-                      engine.RunTruePace.live(
-                        paceSecPerKm: s.livePaceSecPerKm,
-                        gradePct: s.gradePct,
-                        slowdown: startSlowdown,
-                        distanceM: s.totalDistanceM,
-                      ),
-                      units,
-                    ),
-                    labelColor: secondary,
-                    valueColor: t.inkPrimary,
-                    valueKey: const ValueKey('live-true-pace'),
+            // O6: TRUE PACE rides inside the dial (a cyan marker on the arc and
+            // "TRUE 4:46" under the current pace), not as a block of its own.
+            final trueSec = gapOn
+                ? engine.RunTruePace.live(
+                    paceSecPerKm: s.livePaceSecPerKm,
+                    gradePct: s.gradePct,
+                    slowdown: startSlowdown,
+                    distanceM: s.totalDistanceM,
                   )
                 : null;
-            final bigDial = SizedBox(
-              width: width * 0.6,
-              child: PaceDial(
-                currentSecPerKm: s.livePaceSecPerKm,
-                referenceSecPerKm: runAverage,
-                units: units,
-                onZone: s.zone > 0,
-                paceStyle: AuxFigure.style.copyWith(fontSize: 56),
-              ),
-            );
             final dial = plan.big
-                ? (trueFigure == null
-                      ? Center(child: bigDial)
-                      : Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            bigDial,
-                            const SizedBox(width: Space.x16),
-                            Expanded(child: trueFigure),
-                          ],
-                        ))
+                ? Center(
+                    child: SizedBox(
+                      width: width * 0.6,
+                      child: PaceDial(
+                        currentSecPerKm: s.livePaceSecPerKm,
+                        referenceSecPerKm: runAverage,
+                        units: units,
+                        onZone: s.zone > 0,
+                        paceStyle: AuxFigure.style.copyWith(fontSize: 56),
+                        trueSecPerKm: trueSec,
+                      ),
+                    ),
+                  )
                 : PaceDial(
                     currentSecPerKm: s.livePaceSecPerKm,
                     referenceSecPerKm: runAverage,
@@ -1673,7 +1698,7 @@ class _FreeRunBlock extends StatelessWidget {
                     beside: true,
                     dialWidth: plan.dialWidth == half ? null : plan.dialWidth,
                     paceStyle: AuxFigure.style.copyWith(fontSize: 40),
-                    extra: trueFigure,
+                    trueSecPerKm: trueSec,
                   );
             final clusters = <Widget>[
               EqualFigures(
@@ -1798,12 +1823,13 @@ class _FreeRunBlock extends StatelessWidget {
           w / 2 +
           Space.x4 +
           _textH(AuxFigure.style.copyWith(fontSize: 56)) +
+          (showGap && p.gap ? _textH(AuxFigure.style) : 0) +
           label;
     } else {
       final paceCol =
           label +
           _textH(AuxFigure.style.copyWith(fontSize: 40)) +
-          (showGap && p.gap ? _figH : 0);
+          (showGap && p.gap ? _textH(AuxFigure.style) : 0);
       pace = paceCol > p.dialWidth / 2 ? paceCol : p.dialWidth / 2;
     }
     final parts = <double>[
@@ -2419,11 +2445,43 @@ class _FinishScreen extends StatelessWidget {
   }
 }
 
-class _PausedOverlay extends StatelessWidget {
-  const _PausedOverlay({required this.onResume, this.note, this.auto = false});
-  final Future<void> Function() onResume;
+/// The run so far for the paused screen: distance, time, average pace,
+/// whatever the run type (the hero of a structured run is a phase figure that
+/// means little while stopped).
+List<LiveFigure> runSoFarFigures(
+  RecordingSnapshot s,
+  RecordingController ctl,
+  Units units,
+) {
+  final unit = units == Units.mi ? 'mi' : 'km';
+  return [
+    LiveFigure(label: 'DISTANCE', value: Fmt.distance(s.totalDistanceM, units)),
+    LiveFigure(label: 'TIME', value: Fmt.clock(ctl.displayElapsedMs)),
+    LiveFigure(
+      label: 'AVG PACE /$unit',
+      value: Fmt.pace(runAverageSecPerKm(s, ctl), units),
+    ),
+  ];
+}
 
-  /// The recorder paused itself (Settings → Auto-pause): AUTO-PAUSED, same card.
+/// O7: while paused the LAP button and the live numbers give way to the run
+/// so far (distance, time, average pace) at the free-run size, and one big
+/// RESUME. STOP stays in the control row below.
+class _PausedPanel extends StatelessWidget {
+  const _PausedPanel({
+    required this.figures,
+    required this.onResume,
+    required this.secondary,
+    required this.compact,
+    this.note,
+    this.auto = false,
+  });
+  final List<LiveFigure> figures;
+  final Future<void> Function() onResume;
+  final Color secondary;
+  final bool compact;
+
+  /// The recorder paused itself (Settings → Auto-pause): AUTO-PAUSED.
   final bool auto;
 
   /// One line under PAUSED (a paused 12-minute test gives no estimate).
@@ -2432,43 +2490,122 @@ class _PausedOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return ColoredBox(
-      color: t.bgBase.withValues(alpha: 0.6),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: Space.x32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
+    return LayoutBuilder(
+      builder: (context, c) => Center(
+        // Scales down rather than overflow on a short phone with a note.
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: SizedBox(
+            width: c.maxWidth,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
                   auto ? 'AUTO-PAUSED' : 'PAUSED',
                   key: const ValueKey('paused-title'),
-                  style: RunSoloType.display44.copyWith(color: t.inkSecondary),
+                  style: RunSoloType.title28.copyWith(color: secondary),
                 ),
-              ),
-              if (note != null) ...[
-                const SizedBox(height: Space.x12),
-                Text(
-                  note!,
-                  key: const ValueKey('paused-note'),
-                  textAlign: TextAlign.center,
-                  style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+                if (note != null) ...[
+                  const SizedBox(height: Space.x8),
+                  Text(
+                    note!,
+                    key: const ValueKey('paused-note'),
+                    style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+                  ),
+                ],
+                const SizedBox(height: Space.x16),
+                EqualFigures(
+                  figures: figures,
+                  valueKeys: const [
+                    ValueKey('paused-distance'),
+                    ValueKey('paused-time'),
+                    ValueKey('paused-pace'),
+                  ],
+                  cap: compact ? 52 : 64,
+                  labelColor: secondary,
+                  valueColor: t.inkPrimary,
+                ),
+                const SizedBox(height: Space.x24),
+                FilledButton(
+                  key: const ValueKey('resume'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: Size.fromHeight(compact ? 80 : 96),
+                    textStyle: RunSoloType.display44,
+                  ),
+                  onPressed: onResume,
+                  child: const Text('RESUME'),
                 ),
               ],
-              const SizedBox(height: Space.x24),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(96),
-                  textStyle: RunSoloType.display44,
-                ),
-                onPressed: onResume,
-                child: const Text('RESUME'),
-              ),
-            ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// O5: the zone band (a bold strip just under the status bar, behind the
+/// title row) and a faint edge glow down both sides, in the zone's hue. The
+/// colour tweens with the engine's hysteresis-driven zone; zone 0 paints
+/// nothing visible (the ground colour).
+class _ZoneBand extends StatelessWidget {
+  const _ZoneBand({required this.zone, required this.duration});
+  final int zone;
+  final Duration duration;
+
+  static const double bandHeight = 14;
+  static const double glowWidth = 18;
+  static const double glowAlpha = 0.45;
+
+  @override
+  Widget build(BuildContext context) {
+    final top = MediaQuery.paddingOf(context).top;
+    return IgnorePointer(
+      child: TweenAnimationBuilder<Color?>(
+        tween: ColorTween(end: HrZones.band(zone)),
+        duration: duration,
+        curve: MotionCurves.standard,
+        builder: (context, colour, _) {
+          final c = colour ?? HrZones.band(zone);
+          final glow = c.withValues(alpha: zone > 0 ? glowAlpha : 0);
+          final clear = c.withValues(alpha: 0);
+          Widget edge(Alignment from, Alignment to) => DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: from,
+                end: to,
+                colors: [glow, clear],
+              ),
+            ),
+          );
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: glowWidth,
+                child: edge(Alignment.centerLeft, Alignment.centerRight),
+              ),
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: glowWidth,
+                child: edge(Alignment.centerRight, Alignment.centerLeft),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                top: top,
+                height: bandHeight,
+                child: ColoredBox(key: const ValueKey('zone-band'), color: c),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
