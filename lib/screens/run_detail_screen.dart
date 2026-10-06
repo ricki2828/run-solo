@@ -1463,17 +1463,19 @@ bool _chartUsesTruePace(RecordMode mode, engine.RunAnalysis a) {
 /// the table's cool-day column does it.
 List<SplitBar> splitBarsOf(
   engine.FreeRunSummary free,
-  Units splitUnits, {
+  Units splitUnits,
+  Units displayUnits, {
   engine.RunElevation? elevation,
   engine.HeatAdjustment? heat,
   bool truePace = false,
 }) {
   final unitM = splitUnits == Units.mi ? 1609.344 : 1000.0;
+  final climbs = elevation?.unitClimbs(unitM);
+  final name = splitUnits == Units.mi ? 'mi' : 'km';
   return [
     for (var i = 0; i < free.splitsSecPerUnit.length; i++)
-      SplitBar(
-        label: '${i + 1}',
-        paceSecPerKm: free.splitsSecPerUnit[i] <= 0
+      () {
+        final pace = free.splitsSecPerUnit[i] <= 0
             ? null
             : _trueOr(
                 free.splitsSecPerUnit[i] * 1000 / unitM,
@@ -1481,9 +1483,38 @@ List<SplitBar> splitBarsOf(
                 elevation?.gradeFactorBetweenM(i * unitM, (i + 1) * unitM),
                 heat,
                 (i + 0.5) * unitM,
-              ),
-      ),
+              );
+        return SplitBar(
+          label: '${i + 1}',
+          paceSecPerKm: pace,
+          readout: pace == null
+              ? null
+              : [
+                  '$name ${i + 1}',
+                  Fmt.paceUnit(pace, displayUnits),
+                  if (climbs != null && i < climbs.length)
+                    _climbCell(climbs[i], displayUnits),
+                ].join(' · '),
+          semantics: pace == null
+              ? null
+              : '${splitUnits == Units.mi ? 'Mile' : 'Kilometre'} ${i + 1}, '
+                    '${_paceWords(pace, displayUnits)}'
+                    '${climbs != null && i < climbs.length ? ', ${_climbCell(climbs[i], displayUnits)} climb' : ''}',
+        );
+      }(),
   ];
+}
+
+/// "6 minutes 3 seconds per kilometre", for a screen reader.
+String _paceWords(double secPerKm, Units units) {
+  final parts = Fmt.pace(secPerKm, units).split(':');
+  final m = int.tryParse(parts.first) ?? 0;
+  final sec = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+  final time = [
+    '$m minute${m == 1 ? '' : 's'}',
+    if (sec > 0) '$sec second${sec == 1 ? '' : 's'}',
+  ].join(' ');
+  return '$time per ${units == Units.mi ? 'mile' : 'kilometre'}';
 }
 
 double _trueOr(
@@ -1503,25 +1534,49 @@ double _trueOr(
 
 /// One bar per lap, same rules.
 List<SplitBar> lapBarsOf(
-  engine.LapsSummary view, {
+  engine.LapsSummary view,
+  Units displayUnits, {
+  List<engine.Lap> laps = const [],
   engine.RunElevation? elevation,
   engine.HeatAdjustment? heat,
   bool truePace = false,
-}) => [
-  for (final r in view.laps)
-    SplitBar(
-      label: '${r.number}',
-      paceSecPerKm: !r.scored || r.paceSecPerKm == null
-          ? null
-          : _trueOr(
-              r.paceSecPerKm!,
-              truePace,
-              elevation?.gradeFactorBetweenM(r.lap.d0M, r.lap.d1M),
-              heat,
-              (r.lap.d0M + r.lap.d1M) / 2,
-            ),
-    ),
-];
+}) {
+  final climbs = elevation?.lapClimbs(laps);
+  return [
+    for (final r in view.laps)
+      () {
+        final pace = !r.scored || r.paceSecPerKm == null
+            ? null
+            : _trueOr(
+                r.paceSecPerKm!,
+                truePace,
+                elevation?.gradeFactorBetweenM(r.lap.d0M, r.lap.d1M),
+                heat,
+                (r.lap.d0M + r.lap.d1M) / 2,
+              );
+        final climb = climbs != null && r.number - 1 < climbs.length
+            ? _climbCell(climbs[r.number - 1], displayUnits)
+            : null;
+        final hr = r.meanHr == null ? null : '${r.meanHr!.round()} bpm';
+        return SplitBar(
+          label: '${r.number}',
+          paceSecPerKm: pace,
+          readout: pace == null
+              ? null
+              : [
+                  'Lap ${r.number}',
+                  Fmt.paceUnit(pace, displayUnits),
+                  ?hr,
+                  ?climb,
+                ].join(' · '),
+          semantics: pace == null
+              ? null
+              : 'Lap ${r.number}, ${_paceWords(pace, displayUnits)}'
+                    '${hr == null ? '' : ', $hr'}',
+        );
+      }(),
+  ];
+}
 
 /// What leads run detail after the map: the verdict line (a session), then
 /// the pace chart for the run's mode. Empty when there is nothing to chart.
@@ -1552,6 +1607,8 @@ List<Widget> _splitsChart(
             truePace: truePace,
             bars: lapBarsOf(
               view,
+              units,
+              laps: d.run.laps,
               elevation: elev,
               heat: a.heat,
               truePace: truePace,
@@ -1580,6 +1637,7 @@ Widget _kmChart(
   bars: splitBarsOf(
     d.analysis.freeRun,
     splitUnitsOf(d),
+    units,
     elevation: elev,
     heat: mode == RecordMode.cooper ? null : d.analysis.heat,
     truePace: truePace,
@@ -1587,8 +1645,9 @@ Widget _kmChart(
 );
 
 /// The session's reps as bars, the style the verdict already uses; True Pace
-/// when the work has a hills or heat effect to take out.
-class _RepsChart extends StatelessWidget {
+/// when the work has a hills or heat effect to take out. Tap a row to read
+/// its pace, heart rate and time in band above the bars.
+class _RepsChart extends StatefulWidget {
   const _RepsChart({
     required this.reps,
     required this.units,
@@ -1601,22 +1660,57 @@ class _RepsChart extends StatelessWidget {
   final engine.RunAnalysis a;
 
   @override
+  State<_RepsChart> createState() => _RepsChartState();
+}
+
+class _RepsChartState extends State<_RepsChart> {
+  int? _selected;
+
+  String? _readout(List<RepBarDatum> data, int i) {
+    final m = widget.a.intervals;
+    if (m == null || i >= m.reps.length) return null;
+    final r = m.reps[i];
+    final d = data[i];
+    final pace = d.paceSecPerKm;
+    final String? shown = pace == null
+        ? null
+        : d.repMetres != null
+        ? Fmt.clock((pace * d.repMetres!).round())
+        : Fmt.paceUnit(pace, widget.units);
+    final inBand = r.zoneSeconds == null || r.trimmedSeconds == 0
+        ? null
+        : '${(r.zoneSeconds! / r.trimmedSeconds * 100).clamp(0, 100).round()}% in band';
+    return [
+      d.label,
+      shown ?? (d.reason ?? 'no pace'),
+      if (r.meanHr != null) '${r.meanHr!.round()} bpm',
+      ?inBand,
+    ].join(' · ');
+  }
+
+  @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final truePace = widget.truePace;
     final data = truePace
         ? [
-            for (final r in reps)
+            for (final r in widget.reps)
               RepBarDatum(
                 label: r.label,
                 paceSecPerKm: r.paceSecPerKm == null
                     ? null
-                    : a.workFactors.apply(r.paceSecPerKm!),
+                    : widget.a.workFactors.apply(r.paceSecPerKm!),
                 repMetres: r.repMetres,
                 excluded: r.excluded,
                 reason: r.reason,
               ),
           ]
-        : reps;
+        : widget.reps;
+    const rowH = RepBars.barHeight + RepBars.rowGap;
+    final sel = _selected != null && _selected! < data.length
+        ? _selected
+        : null;
+    final readout = sel == null ? null : _readout(data, sel);
     return Column(
       key: const ValueKey('rep-bars-chart'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1626,12 +1720,50 @@ class _RepsChart extends StatelessWidget {
           style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
         ),
         const SizedBox(height: Space.x8),
-        RepBars(
-          reps: data,
-          units: units,
-          showDelta: false,
-          fadeProgress: 0,
-          minSpanSec: SplitsBars.minSpanSec,
+        SizedBox(
+          height: 22,
+          child: Text(
+            readout ?? 'Tap a rep to see its detail',
+            key: const ValueKey('rep-readout'),
+            style: RunSoloType.label13.copyWith(
+              color: readout == null ? t.inkMuted : t.inkPrimary,
+            ),
+          ),
+        ),
+        GestureDetector(
+          key: const ValueKey('rep-chart-area'),
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (d) {
+            final i = (d.localPosition.dy / rowH).floor().clamp(
+              0,
+              data.length - 1,
+            );
+            setState(() => _selected = _selected == i ? null : i);
+          },
+          child: Stack(
+            children: [
+              if (sel != null)
+                Positioned(
+                  left: -4,
+                  right: -4,
+                  top: sel * rowH - 4,
+                  height: RepBars.barHeight + 8,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: t.inkPrimary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+              RepBars(
+                reps: data,
+                units: widget.units,
+                showDelta: false,
+                fadeProgress: 0,
+                minSpanSec: SplitsBars.minSpanSec,
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: Space.x8),
         Text(

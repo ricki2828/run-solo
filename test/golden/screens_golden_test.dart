@@ -521,6 +521,17 @@ void main() {
       );
       await settleAnimations(tester);
       await golden(tester, 'detail_chart_${mode}_360x640');
+      if (mode != 'laps') {
+        final key = mode == '4x4' ? 'rep-chart-area' : 'splits-chart-area';
+        final rect = tester.getRect(find.byKey(ValueKey(key)));
+        await tester.tapAt(
+          mode == '4x4'
+              ? Offset(rect.left + 40, rect.top + 36 * 1.5)
+              : Offset(rect.left + rect.width * 2.5 / 8, rect.center.dy),
+        );
+        await pumpTimes(tester, 2);
+        await golden(tester, 'detail_chart_${mode}_tapped_360x640');
+      }
       final toggle = find.byKey(const ValueKey('all-splits-toggle'));
       await scrollTo(tester, toggle);
       await tester.tap(toggle);
