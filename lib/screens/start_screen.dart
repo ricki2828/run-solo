@@ -22,8 +22,9 @@ import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/goal_picker.dart';
-import '../widgets/load_warning.dart';
 import '../widgets/mode_chip.dart';
+import '../widgets/start_load_line.dart';
+import '../widgets/start_today_card.dart';
 import '../widgets/structure_glyph.dart';
 import '../widgets/today_target_line.dart';
 import '../widgets/value_stepper.dart';
@@ -311,7 +312,42 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       maxHr: services.maxHr.maxHr,
     );
     _loadFlag = ctx.loadCheck.flag;
+    _planCtx = ctx;
   }
+
+  PlanContext? _planCtx;
+
+  /// The plan's next session (today's, or the next one), or null with no
+  /// plan, a finished one, or History not in yet.
+  engine.BlockSessionState? _plannedNext(AppSettings s) {
+    final ctx = _planCtx, services = _services;
+    if (ctx == null || services == null) return null;
+    final view = ctx.view(
+      services.plans.plan,
+      loadDismissed: LoadDismissal.dismissed(s, services.now()),
+    );
+    return view == null || view.finished ? null : view.next;
+  }
+
+  Widget? _todayCard(AppSettings s) {
+    final next = _plannedNext(s);
+    if (next == null) return null;
+    final session = next.session;
+    final apply = PlanStart.apply(session);
+    final applied = apply(s);
+    final day = PlanText.dayWord(next.date, _services!.now());
+    return StartTodayCard(
+      title:
+          '${day == 'today' ? 'Today' : 'Next'}: ${session.name} · '
+          '${session.size}${day == 'today' ? '' : ' · $day'}',
+      reason: session.reason,
+      selected: _samePick(applied, s) && applied.reps == s.reps,
+      onTap: () => _setSettings(apply).then((_) => _syncProbe()),
+    );
+  }
+
+  Future<void> _setSettings(AppSettings Function(AppSettings) f) =>
+      _services!.settings.update(f);
 
   /// Free, Trail and Goal runs can follow a route; the timed 5 km, Laps,
   /// intervals and tests cannot.
@@ -768,22 +804,27 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const SizedBox(height: Space.x16),
-                      Text(
-                        'WHAT ARE YOU RUNNING?',
-                        style: RunSoloType.display44.copyWith(
-                          color: t.inkPrimary,
+                      const SizedBox(height: Space.x12),
+                      // Shrunk, never wrapped: the grid below must fit above
+                      // START on a 360 x 640 phone.
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'WHAT ARE YOU RUNNING?',
+                          maxLines: 1,
+                          softWrap: false,
+                          style: RunSoloType.display44.copyWith(
+                            fontSize: 28,
+                            color: t.inkPrimary,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: Space.x8),
-                      Text(
-                        'Pick a format. Your run type stays named and easy to '
-                        'recognise.',
-                        style: RunSoloType.body15.copyWith(
-                          color: t.inkSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: Space.x24),
+                      const SizedBox(height: Space.x12),
+                      if (_todayCard(s) case final today?) ...[
+                        today,
+                        const SizedBox(height: Space.x8),
+                      ],
                       ModeChipRow(
                         auroraList: true,
                         selected: mode,
@@ -1051,10 +1092,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                       !LoadDismissal.dismissed(s, _services!.now()))
                     Padding(
                       padding: const EdgeInsets.only(bottom: Space.x12),
-                      child: LoadWarning(
-                        flag: _loadFlag!,
-                        now: _services!.now(),
-                      ),
+                      child: StartLoadLine(flag: _loadFlag!),
                     ),
                   if (_error != null)
                     Padding(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
@@ -200,5 +201,57 @@ void main() {
     expect(rect.bottom, lessThanOrEqualTo(640));
     // Not covered by anything: a tap lands on the button itself.
     expect(button.hitTestable(), findsOneWidget);
+  });
+
+  testWidgets('all six tiles and START are visible at 360 x 640', (
+    tester,
+  ) async {
+    await pumpApp(tester, fakeServices(), pushRoute: Routes.start);
+    tester.view.physicalSize = const Size(1080, 1920);
+    tester.view.devicePixelRatio = 3.0;
+    await pumpTimes(tester, 4);
+    final startTop = tester
+        .getRect(find.widgetWithText(FilledButton, 'START WARM-UP'))
+        .top;
+    for (final k in ['goal-chip', 'tests-chip']) {
+      final r = tester.getRect(find.byKey(ValueKey(k)));
+      expect(r.bottom, lessThanOrEqualTo(startTop), reason: k);
+      expect(r.height, greaterThanOrEqualTo(48));
+    }
+    for (final t in ['FREE', 'TRAIL', 'LAPS', 'INTERVALS']) {
+      final r = tester.getRect(find.text(t));
+      expect(r.bottom, lessThanOrEqualTo(startTop), reason: t);
+    }
+    expect(find.textContaining('Pick a format'), findsNothing);
+  });
+
+  testWidgets('no plan, no Today card', (tester) async {
+    await pumpApp(tester, fakeServices(), pushRoute: Routes.start);
+    await pumpTimes(tester, 4);
+    expect(find.byKey(const ValueKey('start-today')), findsNothing);
+  });
+
+  testWidgets('Today card picks the planned session, one tap', (tester) async {
+    final plan = engine.BlockPlanner.build(
+      lane: engine.IdentityLane.aerobic,
+      perWeek: 3,
+      start: testNow,
+    );
+    final services = fakeServices(
+      plan: plan,
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.laps,
+      ),
+    );
+    await pumpApp(tester, services, pushRoute: Routes.start);
+    await pumpTimes(tester, 6);
+    final card = find.byKey(const ValueKey('start-today'));
+    expect(card, findsOneWidget);
+    expect(tester.getSize(card).height, greaterThanOrEqualTo(48));
+    expect(find.textContaining('Today: '), findsOneWidget);
+    await tester.tap(card);
+    await pumpTimes(tester, 4);
+    expect(services.settings.settings.lastMode, isNot(RecordMode.laps));
   });
 }

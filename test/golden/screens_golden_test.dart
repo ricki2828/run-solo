@@ -710,6 +710,22 @@ void main() {
     await golden(tester, 'start_tests_mode');
   });
 
+  testWidgets('start: Today card from the plan, 360x640', (tester) async {
+    tester.view.physicalSize = const Size(360 * 3, 640 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final plan = engine.BlockPlanner.build(
+      lane: engine.IdentityLane.aerobic,
+      perWeek: 3,
+      start: testNow,
+    );
+    await pumpApp(tester, fakeServices(plan: plan), pushRoute: Routes.start);
+    await pumpTimes(tester, 6);
+    expect(find.byKey(const ValueKey('start-today')), findsOneWidget);
+    await golden(tester, 'start_today_360x640');
+  });
+
   testWidgets('start: TRAIL run type picked, first-run instructions', (
     tester,
   ) async {

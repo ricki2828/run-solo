@@ -125,11 +125,22 @@ class ModeChipRow extends StatelessWidget {
         ),
     ];
     if (auroraList) {
+      // Start's grid: two compact tiles per row, so all six fit above START.
       return Column(
         children: [
-          for (final (i, chip) in chips.indexed) ...[
+          for (var i = 0; i < chips.length; i += 2) ...[
             if (i > 0) const SizedBox(height: Space.x8),
-            SizedBox(width: double.infinity, child: chip),
+            Row(
+              children: [
+                Expanded(child: chips[i]),
+                const SizedBox(width: Space.x8),
+                Expanded(
+                  child: i + 1 < chips.length
+                      ? chips[i + 1]
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
           ],
         ],
       );
