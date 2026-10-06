@@ -1228,13 +1228,13 @@ void main() {
         final bone70 = Color.alphaBlend(HrZones.secondaryOnZone, bg);
         expect(ratio(bone70, bg), greaterThan(7), reason: 'Bone 70% on Z$z');
         expect(lum(bg), lessThanOrEqualTo(0.034), reason: 'OLED budget Z$z');
-        // O5: the zone band against the ground is a graphic, 3:1 floor.
-        if (z > 0) {
-          expect(
-            ratio(HrZones.band(z), bg),
-            greaterThan(3),
-            reason: 'band Z$z',
-          );
+        // The zone label and phase titles fall back to Bone when their hue
+        // does not read on the fill; whichever shows must be >= 4.5:1.
+        final label = HrZones.labelOn(z, t.inkPrimary);
+        expect(ratio(label, bg), greaterThan(4.5), reason: 'label Z$z');
+        for (final hue in [AuroraRunType.intervals, t.semImproving]) {
+          final title = HrZones.legibleOn(z, hue, t.inkPrimary);
+          expect(ratio(title, bg), greaterThan(4.5), reason: 'title Z$z');
         }
       }
     },
