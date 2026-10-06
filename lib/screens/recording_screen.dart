@@ -430,7 +430,8 @@ class _RecordingScreenState extends State<RecordingScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const SizedBox(height: Space.x12),
+                        // Clears the 14 dp zone band.
+                        const SizedBox(height: Space.x16),
                         _Header(
                           s: s,
                           maxHr: maxHr,
@@ -2553,9 +2554,9 @@ class _ZoneBand extends StatelessWidget {
   final int zone;
   final Duration duration;
 
-  static const double bandHeight = 8;
-  static const double glowWidth = 12;
-  static const double glowAlpha = 0.28;
+  static const double bandHeight = 14;
+  static const double glowWidth = 18;
+  static const double glowAlpha = 0.45;
 
   @override
   Widget build(BuildContext context) {

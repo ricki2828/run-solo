@@ -134,11 +134,11 @@ class PaceDial extends StatelessWidget {
                     ),
                   ),
                 ),
-                ?trueLine,
                 Text(
                   label,
                   style: RunSoloType.micro11.copyWith(color: secondary),
                 ),
+                ?trueLine,
               ],
             ),
     );
@@ -178,10 +178,6 @@ class PaceDial extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                label,
-                style: RunSoloType.micro11.copyWith(color: secondary),
-              ),
               FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
@@ -193,6 +189,10 @@ class PaceDial extends StatelessWidget {
                     color: t.inkPrimary,
                   ),
                 ),
+              ),
+              Text(
+                label,
+                style: RunSoloType.micro11.copyWith(color: secondary),
               ),
               ?trueLine,
             ],
