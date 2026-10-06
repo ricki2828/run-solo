@@ -55,6 +55,29 @@ void main() {
     expect(text.data, isNot(contains('—')));
   });
 
+  testWidgets(
+    'while warned, Start is the easy run and the hard one is a link',
+    (tester) async {
+      await pumpApp(
+        tester,
+        fakeServices(runs: hotWeek()),
+        home: HomeScreen(now: now),
+      );
+      await pumpTimes(tester, 6);
+      expect(find.text('Start Easy run'), findsOneWidget);
+      expect(find.textContaining('Start Norwegian 4x4'), findsNothing);
+      final anyway = find.byKey(const ValueKey('home-do-anyway'));
+      expect(anyway, findsOneWidget);
+      expect(tester.getSize(anyway).height, greaterThanOrEqualTo(48));
+      expect(find.textContaining('anyway'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('load-dismiss')));
+      await pumpTimes(tester, 6);
+      expect(find.textContaining('Start Norwegian 4x4'), findsOneWidget);
+      expect(find.text('Start Easy run'), findsNothing);
+      expect(anyway, findsNothing);
+    },
+  );
+
   testWidgets('a usual week shows nothing', (tester) async {
     await pumpApp(
       tester,

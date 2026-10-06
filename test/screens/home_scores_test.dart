@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
+import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/state/settings.dart';
+import 'package:run_solo/theme/theme.dart';
+import 'package:run_solo/widgets/home_score_spark.dart';
 import 'package:run_solo/widgets/home_scores.dart';
 
 import '../helpers.dart';
@@ -37,10 +40,15 @@ void main() {
       ),
     );
     expect(find.text('LOCKED'), findsNothing);
-    expect(find.text('Men 40 to 49, lab norms'), findsNWidgets(2));
+    // The norms are named once under the grid, not on every card.
+    expect(find.text('Men 40 to 49, lab norms'), findsNothing);
+    expect(find.byKey(const ValueKey('home-score-norms')), findsOneWidget);
     expect(
-      find.text('Men, recreational race finishers, all ages'),
-      findsNWidgets(2),
+      find.text(
+        'Compared with men 40-49 (lab norms) and recreational race finishers '
+        '(men, all ages).',
+      ),
+      findsOneWidget,
     );
     expect(find.textContaining('percentile'), findsNWidgets(4));
     await tester.tap(find.byKey(const ValueKey('home-score-aerobic')));
@@ -100,5 +108,95 @@ void main() {
     expect(find.byType(SingleChildScrollView), findsNothing);
     expect(find.text('LONG'), findsOneWidget);
     expect(find.text('AEROBIC'), findsNWidgets(2));
+  });
+
+  testWidgets('a sparkline shows only with two points, mint only when rising', (
+    tester,
+  ) async {
+    engine.IdentityScore score(engine.IdentityLane l, double? prior) =>
+        engine.IdentityScore(
+          lane: l,
+          score: 62,
+          vdot: 40,
+          priorVdot: prior,
+          priorSource: prior == null ? null : '4x4',
+          runId: l.name,
+          date: testNow,
+          source: '4x4',
+          boardKey: null,
+        );
+    await pumpApp(
+      tester,
+      fakeServices(),
+      home: Scaffold(
+        body: HomeScores(
+          scores: {
+            engine.IdentityLane.aerobic: score(engine.IdentityLane.aerobic, 34),
+            engine.IdentityLane.speed: score(engine.IdentityLane.speed, 46),
+            engine.IdentityLane.mid: score(engine.IdentityLane.mid, null),
+          },
+          profileSex: ProfileSex.male,
+          age: 44,
+          onOpen: () {},
+        ),
+      ),
+    );
+    final t = Theme.of(tester.element(find.byType(HomeScores)))
+        .extension<RunSoloTokens>()!;
+    HomeScoreSparkPainter painter(String lane) =>
+        tester
+                .widget<CustomPaint>(
+                  find.descendant(
+                    of: find.byKey(ValueKey('home-spark-$lane')),
+                    matching: find.byType(CustomPaint),
+                  ),
+                )
+                .painter!
+            as HomeScoreSparkPainter;
+    expect(painter('aerobic').color, t.semImproving);
+    expect(painter('speed').color, t.inkMuted);
+    expect(find.byKey(const ValueKey('home-spark-mid')), findsNothing);
+  });
+
+  testWidgets('empty state rows are 48 dp, tappable, and preselect Start', (
+    tester,
+  ) async {
+    final picked = <engine.IdentityLane, AppSettings>{};
+    await pumpApp(
+      tester,
+      fakeServices(),
+      home: Scaffold(
+        body: HomeScores(
+          scores: const {},
+          profileSex: ProfileSex.male,
+          age: 44,
+          onOpen: () {},
+          onUnlock: (apply) {
+            final s = apply(const AppSettings());
+            picked[engine.IdentityLane.values.firstWhere(
+                  (l) => !picked.containsKey(l),
+                )] =
+                s;
+          },
+        ),
+      ),
+    );
+    for (final lane in engine.IdentityLane.values) {
+      final row = find.byKey(ValueKey('home-unlock-${lane.name}'));
+      expect(tester.getSize(row).height, greaterThanOrEqualTo(48));
+      await tester.tap(row);
+    }
+    final a = picked[engine.IdentityLane.aerobic]!;
+    expect(a.lastMode, RecordMode.cooper);
+    expect(a.goalRun, isFalse);
+    final sp = picked[engine.IdentityLane.speed]!;
+    expect(sp.lastMode, RecordMode.intervals);
+    expect(sp.sessionId, engine.SessionCatalogue.fourHundreds.id);
+    final m = picked[engine.IdentityLane.mid]!;
+    expect(m.goalRun, isTrue);
+    expect(m.goalId, 'd5000');
+    final l = picked[engine.IdentityLane.long]!;
+    expect(l.lastMode, RecordMode.free);
+    expect(l.goalRun, isFalse);
   });
 }
