@@ -253,6 +253,7 @@ void main() {
     expect(find.text('LAPS RUN'), findsOneWidget);
     expect(find.byKey(const ValueKey('verdict-word')), findsNothing);
     expect(find.byType(RunDetailBody), findsOneWidget);
+    await scrollTo(tester, find.textContaining('FASTEST LAP'));
     expect(find.textContaining('FASTEST LAP'), findsOneWidget);
     expect(find.text('DONE'), findsOneWidget);
   });
@@ -264,7 +265,14 @@ void main() {
     await openVerdict(tester, [r], r.id, justFinished: true);
     expect(find.text('FREE RUN'), findsOneWidget);
     expect(find.byKey(const ValueKey('verdict-word')), findsNothing);
+    await scrollTo(tester, find.text('AVG PACE'));
     expect(find.text('AVG PACE'), findsOneWidget);
+    // The km table sits behind "All splits", closed.
+    expect(find.text('KM'), findsNothing);
+    final toggle = find.byKey(const ValueKey('all-splits-toggle'));
+    await scrollTo(tester, toggle);
+    await tester.tap(toggle);
+    await pumpTimes(tester, 2);
     expect(find.text('KM'), findsOneWidget);
   });
 
