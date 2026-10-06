@@ -94,7 +94,7 @@ void main() {
     expect(services.settings.settings.pbSeen['be:5000'], isNotNull);
     // Back on the overview the board's NEW tag has cleared (A11.4); the
     // other boards keep theirs until they are opened.
-    await tester.tap(find.byKey(const ValueKey('board-detail-back')));
+    await tester.tap(find.byTooltip('Back'));
     await pumpTimes(tester, 6);
     tester.view.physicalSize = const Size(1080, 3600);
     tester.view.devicePixelRatio = 1.0;
