@@ -413,15 +413,6 @@ class _RecordingScreenState extends State<RecordingScreen>
                   curve: MotionCurves.standard,
                   color: zoneBg,
                 ),
-                // O5: the zone is a band across the top plus a faint edge
-                // glow, same hues as the time-in-zone chart; no band at
-                // zone 0. The 400 ms crossfade drives the colour.
-                _ZoneBand(
-                  zone: s.zone,
-                  duration: reduced
-                      ? Duration.zero
-                      : MotionDurations.zoneCrossfade,
-                ),
                 SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -430,8 +421,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Clears the 14 dp zone band.
-                        const SizedBox(height: Space.x16),
+                        const SizedBox(height: Space.x12),
                         _Header(
                           s: s,
                           maxHr: maxHr,
@@ -1020,18 +1010,21 @@ TextStyle primaryStyle(bool compact, {bool secondary = false}) => secondary
     ? (compact ? RunSoloType.display64 : RunSoloType.display96)
     : RunSoloType.timer120.copyWith(fontSize: compact ? 128 : 168);
 
-/// O5: the background no longer tints by phase, so the title carries it: rep
-/// (a work step of a structured session) in the Intervals magenta, recovery
-/// in mint; everything else Bone. The words stay too (colour is never the
-/// only cue), and the countdown box keeps its outline.
+/// Rep (a work step of a structured session) in the Intervals magenta,
+/// recovery in mint; everything else Bone. The words stay too (colour is never
+/// the only cue), and the countdown box keeps its outline. A hue that does not
+/// read on the current zone fill falls back to Bone.
 Color phaseTitleColor(RecordingSnapshot s, RunSoloTokens t) {
   if (s.mode != RecordMode.intervals || !s.isPreset) return t.inkPrimary;
   if (isEventRun(s) || s.isGoal) return t.inkPrimary;
-  return switch (s.phase) {
+  final hue = switch (s.phase) {
     Phase.work => AuroraRunType.intervals,
     Phase.recovery => t.semImproving,
-    _ => t.inkPrimary,
+    _ => null,
   };
+  return hue == null
+      ? t.inkPrimary
+      : HrZones.legibleOn(s.zone, hue, t.inkPrimary);
 }
 
 /// `repIndex` is 1-based in work / recovery (RecorderCore.kt); the last rep
@@ -1426,7 +1419,9 @@ class _Vitals extends StatelessWidget {
                       child: Text(
                         HrZones.label(s.zone, paired: true),
                         key: const ValueKey('vitals-zone'),
-                        style: label.copyWith(color: HrZones.band(s.zone)),
+                        style: label.copyWith(
+                          color: HrZones.labelOn(s.zone, secondary),
+                        ),
                       ),
                     ),
                 ],
@@ -2540,72 +2535,6 @@ class _PausedPanel extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// O5: the zone band (a bold strip just under the status bar, behind the
-/// title row) and a faint edge glow down both sides, in the zone's hue. The
-/// colour tweens with the engine's hysteresis-driven zone; zone 0 paints
-/// nothing visible (the ground colour).
-class _ZoneBand extends StatelessWidget {
-  const _ZoneBand({required this.zone, required this.duration});
-  final int zone;
-  final Duration duration;
-
-  static const double bandHeight = 14;
-  static const double glowWidth = 18;
-  static const double glowAlpha = 0.45;
-
-  @override
-  Widget build(BuildContext context) {
-    final top = MediaQuery.paddingOf(context).top;
-    return IgnorePointer(
-      child: TweenAnimationBuilder<Color?>(
-        tween: ColorTween(end: HrZones.band(zone)),
-        duration: duration,
-        curve: MotionCurves.standard,
-        builder: (context, colour, _) {
-          final c = colour ?? HrZones.band(zone);
-          final glow = c.withValues(alpha: zone > 0 ? glowAlpha : 0);
-          final clear = c.withValues(alpha: 0);
-          Widget edge(Alignment from, Alignment to) => DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: from,
-                end: to,
-                colors: [glow, clear],
-              ),
-            ),
-          );
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: glowWidth,
-                child: edge(Alignment.centerLeft, Alignment.centerRight),
-              ),
-              Positioned(
-                right: 0,
-                top: 0,
-                bottom: 0,
-                width: glowWidth,
-                child: edge(Alignment.centerRight, Alignment.centerLeft),
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                top: top,
-                height: bandHeight,
-                child: ColoredBox(key: const ValueKey('zone-band'), color: c),
-              ),
-            ],
-          );
-        },
       ),
     );
   }

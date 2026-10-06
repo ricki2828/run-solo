@@ -2,34 +2,26 @@ import 'package:flutter/material.dart';
 
 import 'tokens.dart';
 
-/// HR-zone palette (design addendum A1, plan §18.1; O5 redesign 6-Oct).
-/// Zones are shares of the resolved max HR: Z1 < 60 %, Z2 60–70, Z3 70–80,
-/// Z4 80–90, Z5 ≥ 90; zone 0 = no strap / no signal. The record screen stays
-/// near black (the app background) in every zone, for the best number
-/// contrast in sun; the zone shows as a bold band across the top and a faint
-/// edge glow, painted in the SAME five hues as the post-run time-in-zone
-/// chart ([distributionDark]). The old full-screen fills read muddy (olive,
-/// brown) and brown behind Bone lost contrast outdoors. Colour is still
-/// reinforcement only: the label and gauge stay mandatory.
+/// HR-zone background palette (design addendum A1, plan §18.1). Zones are
+/// shares of the resolved max HR: Z1 < 60 %, Z2 60–70, Z3 70–80, Z4 80–90,
+/// Z5 ≥ 90; zone 0 = no strap / no signal. Every background keeps Bone
+/// ≥ 10.4:1 and sits at ≤ 3.4 % relative luminance (OLED draw near black).
+/// The luminance ramp is deliberately not monotone (Z3 brightest, Z1
+/// darkest) because deuteranopia confuses Z2/Z3/Z4 at these levels, which is
+/// why the label and gauge are mandatory and colour is reinforcement only.
 abstract final class HrZones {
   static const int count = 5;
 
-  /// The record screen's ground, one per zone. All the same near black since
-  /// the O5 redesign (kept as a list so callers index by zone unchanged).
-  /// Before: 0 #0A0B0D, 1 #0E2140, 2 #0C3322, 3 #3F2A05, 4 #4C1D04, 5 #4E0E18.
   static const List<Color> backgrounds = [
-    NightSession.bgBase,
-    NightSession.bgBase,
-    NightSession.bgBase,
-    NightSession.bgBase,
-    NightSession.bgBase,
-    NightSession.bgBase,
+    NightSession.bgBase, // 0: today's base
+    Color(0xFF0E2140), // 1: deep navy
+    Color(0xFF0C3322), // 2: deep green
+    Color(0xFF3F2A05), // 3: amber (30-Sep retune: #403208 read khaki; 2.72 %
+    // luminance, 11.3:1 Bone, still brighter than Z4 so the ramp stays non-monotone)
+    Color(0xFF4C1D04), // 4: burnt orange (30-Sep retune: #4A2208 read brown;
+    // 2.42 % luminance, 11.8:1 Bone)
+    Color(0xFF4E0E18), // 5: deep red
   ];
-
-  /// The zone band / edge glow colour on the record screen: the time-in-zone
-  /// hues. Zone 0 (no HR) has no band, so it is the ground itself.
-  static Color band(int zone) =>
-      zone <= 0 ? NightSession.bgBase : distributionDark[zone.clamp(1, count)];
 
   static const List<String> words = [
     '',
@@ -86,6 +78,24 @@ abstract final class HrZones {
   }
 
   static Color background(int zone) => backgrounds[zone.clamp(0, count)];
+
+  /// WCAG contrast ratio of two opaque colours.
+  static double contrast(Color a, Color b) {
+    final la = a.computeLuminance(), lb = b.computeLuminance();
+    final hi = la > lb ? la : lb, lo = la > lb ? lb : la;
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  /// [colour] as text on the zone's fill when it reads (>= 4.5:1), else
+  /// [fallback] (Bone). Used for the zone label and the rep / recovery phase
+  /// title, which keep their own hue only where the fill lets them.
+  static Color legibleOn(int zone, Color colour, Color fallback) =>
+      contrast(colour, background(zone)) >= 4.5 ? colour : fallback;
+
+  /// The zone's own hue (the time-in-zone chart's) as a label on its fill,
+  /// Bone where that hue does not read on it.
+  static Color labelOn(int zone, Color fallback) =>
+      zone <= 0 ? fallback : legibleOn(zone, distributionDark[zone], fallback);
 
   /// "ZONE 4 · HARD"; zone 0 reads as the strap state instead.
   static String label(int zone, {required bool paired}) {

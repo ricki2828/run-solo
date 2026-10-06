@@ -8,9 +8,7 @@ void main() {
   test('Aurora identities retain a label and never replace the HR zones', () {
     expect(AuroraRunType.laps, NightSession.accentArc);
     expect(AuroraRunType.intervals, isNot(HrZones.background(3)));
-    // O5: near black in every zone; the zone is the band, in the chart's hue.
-    expect(HrZones.background(3), NightSession.bgBase);
-    expect(HrZones.band(3), const Color(0xFFFFBE2E));
+    expect(HrZones.background(3), const Color(0xFF3F2A05));
     expect(HrZones.label(3, paired: true), contains('TEMPO'));
   });
 

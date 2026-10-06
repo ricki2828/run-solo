@@ -43,10 +43,6 @@ Color background(WidgetTester tester) => tester
     .decoration!
     .let((d) => (d as BoxDecoration).color!);
 
-/// O5: the zone shows as a band, not a background fill.
-Color band(WidgetTester tester) =>
-    tester.widget<ColoredBox>(find.byKey(const ValueKey('zone-band'))).color;
-
 extension<T> on T {
   R let<R>(R Function(T) f) => f(this);
 }
@@ -122,7 +118,6 @@ void main() {
       await pumpTimes(tester, 3);
       await tester.pump(const Duration(milliseconds: 700));
       expect(background(tester), HrZones.background(3));
-      expect(band(tester), HrZones.band(3));
       // Header + the vitals copy (founder field test 28-Sep).
       expect(find.text('ZONE 3 · TEMPO'), findsOneWidget);
       // Jump to Z5: needs 2 bpm past 171 and a 5 s dwell.
@@ -133,7 +128,6 @@ void main() {
       }
       await tester.pump(const Duration(milliseconds: 700));
       expect(background(tester), HrZones.background(5));
-      expect(band(tester), HrZones.band(5));
       expect(find.text('ZONE 5 · MAX'), findsOneWidget);
     },
   );
@@ -146,7 +140,6 @@ void main() {
     await pumpTimes(tester, 5);
     await tester.pump(const Duration(milliseconds: 700));
     expect(background(tester), HrZones.background(0));
-    expect(band(tester), HrZones.band(0));
     expect(find.byKey(const ValueKey('zone-label')), findsNothing);
   });
 
@@ -181,7 +174,6 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 400));
       expect(background(tester), HrZones.background(3));
-      expect(band(tester), HrZones.band(3));
       // Null scriptedHr resumes generated HR; the dropout switch sends
       // null readings while the strap remains paired.
       fake.strapDropped = true;
@@ -196,7 +188,6 @@ void main() {
       );
       expect(tester.widget<ZoneGauge>(find.byType(ZoneGauge)).zone, 3);
       expect(background(tester), HrZones.background(3));
-      expect(band(tester), HrZones.band(3));
       for (var i = 0; i < 12; i++) {
         fake.advance(const Duration(milliseconds: 500));
         await tester.pump();
@@ -205,7 +196,6 @@ void main() {
       expect(services.recording.snapshot.zone, 0);
       expect(tester.widget<ZoneGauge>(find.byType(ZoneGauge)).zone, 0);
       expect(background(tester), HrZones.background(0));
-      expect(band(tester), HrZones.band(0));
       expect(find.text('reconnecting'), findsOneWidget);
     },
   );
@@ -225,7 +215,6 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(background(tester), HrZones.background(4));
-    expect(band(tester), HrZones.band(4));
     expect(find.text('ZONE 4 · HARD'), findsOneWidget);
   });
 }
