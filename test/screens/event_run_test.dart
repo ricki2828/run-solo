@@ -203,7 +203,7 @@ void main() {
   });
 
   testWidgets(
-    'Aurora Start choices are full-width in run-type order at 360 dp; '
+    'Aurora Start choices are a two-column grid in run-type order at 360 dp; '
     'no choice text under 13 sp',
     (tester) async {
       await pumpApp(tester, fakeServices(), pushRoute: Routes.start);
@@ -211,21 +211,26 @@ void main() {
       Rect chip(String title) => tester.getRect(
         find.ancestor(of: find.text(title), matching: find.byType(ModeChip)),
       );
-      final choices = [
-        chip('FREE'),
-        chip('LAPS'),
-        chip('GOAL'),
-        chip('INTERVALS'),
-        chip('TESTS'),
+      // Reading order: FREE TRAIL / LAPS GOAL / INTERVALS TESTS.
+      final rows = [
+        [chip('FREE'), chip('TRAIL')],
+        [chip('LAPS'), chip('GOAL')],
+        [chip('INTERVALS'), chip('TESTS')],
       ];
-      for (var i = 1; i < choices.length; i++) {
-        expect(
-          choices[i].top,
-          greaterThan(choices[i - 1].bottom),
-          reason: 'each run type is its own row',
-        );
-        expect(choices[i].left, closeTo(choices[0].left, 1));
-        expect(choices[i].width, closeTo(choices[0].width, 1));
+      for (var i = 0; i < rows.length; i++) {
+        final (l, r) = (rows[i][0], rows[i][1]);
+        expect(r.left, greaterThan(l.right - 1), reason: 'two per row');
+        expect(r.top, closeTo(l.top, 1));
+        expect(l.width, closeTo(r.width, 1));
+        expect(l.height, greaterThanOrEqualTo(48));
+        if (i > 0) {
+          expect(
+            l.top,
+            greaterThan(rows[i - 1][0].bottom),
+            reason: 'rows stack',
+          );
+          expect(l.left, closeTo(rows[0][0].left, 1));
+        }
       }
       for (final text in tester.widgetList<Text>(
         find.descendant(of: find.byType(ModeChip), matching: find.byType(Text)),

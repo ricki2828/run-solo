@@ -22,8 +22,9 @@ import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/goal_picker.dart';
-import '../widgets/load_warning.dart';
 import '../widgets/mode_chip.dart';
+import '../widgets/start_load_line.dart';
+import '../widgets/start_today_card.dart';
 import '../widgets/structure_glyph.dart';
 import '../widgets/today_target_line.dart';
 import '../widgets/value_stepper.dart';
@@ -118,6 +119,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       );
     }
     WidgetsBinding.instance.removeObserver(this);
+    _plans?.removeListener(_onPlanChanged);
     _stopProbe();
     super.dispose();
   }
@@ -127,6 +129,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _syncProbe();
+      _reloadRuns();
     } else {
       _stopProbe();
     }
@@ -255,6 +258,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _services = AppServices.of(context);
+    _plans ??= _services!.plans..addListener(_onPlanChanged);
     final preset = widget.preset;
     if (preset != null && _presetController == null) {
       final c = _presetController = _services!.settings;
@@ -311,7 +315,74 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       maxHr: services.maxHr.maxHr,
     );
     _loadFlag = ctx.loadCheck.flag;
+    _planCtx = ctx;
   }
+
+  PlanContext? _planCtx;
+  BlockPlanController? _plans;
+
+  /// A plan made, swapped or ended while Start is open.
+  void _onPlanChanged() {
+    if (mounted) setState(_refreshLoad);
+  }
+
+  /// Back from the background (maybe on a new day, maybe after a run):
+  /// History, the load check and the plan are read again.
+  void _reloadRuns() {
+    final services = _services;
+    if (services == null) return;
+    services.history.list().then((r) {
+      if (mounted) {
+        setState(() {
+          _runs = r;
+          _refreshLoad();
+        });
+      }
+    }, onError: (_) {});
+  }
+
+  /// Set when the runner taps the Today card; cleared by any other pick
+  /// (the card is selected only while its pick is still the one in force).
+  bool _todayPicked = false;
+
+  /// The plan's next session (today's, or the next one), or null with no
+  /// plan, a finished one, or History not in yet.
+  engine.BlockSessionState? _plannedNext(AppSettings s) {
+    final ctx = _planCtx, services = _services;
+    if (ctx == null || services == null) return null;
+    final view = ctx.view(
+      services.plans.plan,
+      loadDismissed: LoadDismissal.dismissed(s, services.now()),
+    );
+    return view == null || view.finished ? null : view.next;
+  }
+
+  Widget? _todayCard(AppSettings s) {
+    final next = _plannedNext(s);
+    if (next == null) return null;
+    final session = next.session;
+    final apply = PlanStart.apply(session);
+    final applied = apply(s);
+    final now = _services!.now();
+    // "Today" only on the planned day. An earlier or later suggested day is
+    // just the plan's next session; a missed one is never offered.
+    final today = engine.dateOnly(next.date) == engine.dateOnly(now);
+    final later = engine.dateOnly(next.date).isAfter(engine.dateOnly(now));
+    return StartTodayCard(
+      title:
+          '${today ? 'Today' : 'Next'}: ${session.name} · ${session.size}'
+          '${later ? ' · ${engine.BlockResolver.dayName(next.date)}' : ''}',
+      reason: session.reason,
+      selected: _todayPicked && _samePick(applied, s),
+      onTap: () {
+        setState(() => _todayPicked = true);
+        _setSettings(apply).then((_) => _syncProbe());
+      },
+    );
+  }
+
+  Future<void> _setSettings(AppSettings Function(AppSettings) f) =>
+      _services!.settings.update(f);
 
   /// Free, Trail and Goal runs can follow a route; the timed 5 km, Laps,
   /// intervals and tests cannot.
@@ -768,22 +839,27 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const SizedBox(height: Space.x16),
-                      Text(
-                        'WHAT ARE YOU RUNNING?',
-                        style: RunSoloType.display44.copyWith(
-                          color: t.inkPrimary,
+                      const SizedBox(height: Space.x12),
+                      // Shrunk, never wrapped: the grid below must fit above
+                      // START on a 360 x 640 phone.
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'WHAT ARE YOU RUNNING?',
+                          maxLines: 1,
+                          softWrap: false,
+                          style: RunSoloType.display44.copyWith(
+                            fontSize: 28,
+                            color: t.inkPrimary,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: Space.x8),
-                      Text(
-                        'Pick a format. Your run type stays named and easy to '
-                        'recognise.',
-                        style: RunSoloType.body15.copyWith(
-                          color: t.inkSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: Space.x24),
+                      const SizedBox(height: Space.x12),
+                      if (_todayCard(s) case final today?) ...[
+                        today,
+                        const SizedBox(height: Space.x8),
+                      ],
                       ModeChipRow(
                         auroraList: true,
                         selected: mode,
@@ -1051,10 +1127,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                       !LoadDismissal.dismissed(s, _services!.now()))
                     Padding(
                       padding: const EdgeInsets.only(bottom: Space.x12),
-                      child: LoadWarning(
-                        flag: _loadFlag!,
-                        now: _services!.now(),
-                      ),
+                      child: StartLoadLine(flag: _loadFlag!),
                     ),
                   if (_error != null)
                     Padding(

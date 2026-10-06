@@ -38,6 +38,7 @@ import 'package:run_solo/widgets/lap_button.dart';
 import 'package:run_solo/widgets/weather_chip.dart';
 
 import '../helpers.dart';
+import '../screens/load_warning_test.dart' show hotWeek;
 import '../route_fixtures.dart';
 import '../run_fixtures.dart';
 
@@ -709,6 +710,52 @@ void main() {
     await settleAnimations(tester);
     await golden(tester, 'start_tests_mode');
   });
+
+  for (final picked in [false, true]) {
+    testWidgets(
+      'start: Today card ${picked ? 'selected' : 'idle'}, plan + load line, '
+      '360x640',
+      (tester) async {
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final plan = engine.BlockPlanner.build(
+          lane: engine.IdentityLane.aerobic,
+          perWeek: 3,
+          start: testNow,
+        );
+        await pumpApp(
+          tester,
+          fakeServices(
+            plan: plan,
+            runs: [
+              for (final r in hotWeek())
+                if (r.start.isBefore(testNow)) r,
+            ],
+            settings: const AppSettings(
+              onboardingDone: true,
+              lastMode: RecordMode.laps,
+            ),
+          ),
+          pushRoute: Routes.start,
+        );
+        // After pumpApp, which sets its own size.
+        tester.view.physicalSize = const Size(360 * 3, 640 * 3);
+        tester.view.devicePixelRatio = 3;
+        await pumpTimes(tester, 8);
+        expect(find.byKey(const ValueKey('start-today')), findsOneWidget);
+        expect(find.byKey(const ValueKey('load-warning')), findsOneWidget);
+        if (picked) {
+          await tester.tap(find.byKey(const ValueKey('start-today')));
+          await pumpTimes(tester, 4);
+          await settleAnimations(tester);
+        }
+        await golden(
+          tester,
+          'start_today_${picked ? 'selected' : 'idle'}_360x640',
+        );
+      },
+    );
+  }
 
   testWidgets('start: TRAIL run type picked, first-run instructions', (
     tester,

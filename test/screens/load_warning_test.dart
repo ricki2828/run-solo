@@ -129,14 +129,18 @@ void main() {
     expect(find.byKey(const ValueKey('load-warning')), findsOneWidget);
   });
 
-  testWidgets('Start shows the same warning above START, still enabled', (
+  testWidgets('Start shows a one-line warning above START, still enabled', (
     tester,
   ) async {
     final services = fakeServices(runs: hotWeek());
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 6);
     expect(find.byKey(const ValueKey('load-warning')), findsOneWidget);
-    expect(find.textContaining(message), findsOneWidget);
+    expect(find.text('Load is up this week · Why?'), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('load-warning'))).height,
+      greaterThanOrEqualTo(48),
+    );
     final start = find.widgetWithText(FilledButton, 'START WARM-UP');
     expect(tester.widget<FilledButton>(start).onPressed, isNotNull);
   });
