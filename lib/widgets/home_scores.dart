@@ -43,13 +43,7 @@ class HomeScores extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                scores[lane] != null
-                    ? Icons.check_circle
-                    : Icons.circle_outlined,
-                size: 12,
-                color: scores[lane] != null ? t.semImproving : t.inkMuted,
-              ),
+              _LaneMark(lane: lane, set: scores[lane] != null, size: 12),
               const SizedBox(width: Space.x4),
               Text(
                 lane.name.toUpperCase(),
@@ -169,6 +163,37 @@ String? _footnote(List<engine.IdentityLane> earned, ProfileSex sex, int? age) {
   return parts.isEmpty ? null : 'Compared with ${parts.join(' and ')}.';
 }
 
+/// Unset: a small filled dot in the lane's colour. Set: a mint tick.
+class _LaneMark extends StatelessWidget {
+  const _LaneMark({required this.lane, required this.set, required this.size});
+  final engine.IdentityLane lane;
+  final bool set;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    if (set) return Icon(Icons.check, size: size + 2, color: t.semImproving);
+    final colour = switch (lane) {
+      engine.IdentityLane.aerobic => AuroraRunType.tests,
+      engine.IdentityLane.speed => AuroraRunType.intervals,
+      engine.IdentityLane.mid => AuroraRunType.goal,
+      engine.IdentityLane.long => AuroraRunType.free,
+    };
+    return SizedBox(
+      width: size + 2,
+      height: size + 2,
+      child: Center(
+        child: Container(
+          width: size * 0.6,
+          height: size * 0.6,
+          decoration: BoxDecoration(color: colour, shape: BoxShape.circle),
+        ),
+      ),
+    );
+  }
+}
+
 /// A compact tappable row (48 dp minimum) for a score not yet set.
 class _UnlockRow extends StatelessWidget {
   const _UnlockRow({required this.lane, required this.set, this.onTap});
@@ -191,11 +216,7 @@ class _UnlockRow extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 48),
           child: Row(
             children: [
-              Icon(
-                set ? Icons.check_circle : Icons.circle_outlined,
-                size: 16,
-                color: set ? t.semImproving : t.inkMuted,
-              ),
+              _LaneMark(lane: lane, set: set, size: 16),
               const SizedBox(width: Space.x12),
               Expanded(
                 child: Text(

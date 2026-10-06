@@ -444,7 +444,10 @@ class _ProgressHero extends StatelessWidget {
       children: [
         Text(
           headline.title,
-          style: RunSoloType.display44.copyWith(color: t.inkPrimary),
+          style: RunSoloType.display44.copyWith(
+            fontSize: 28,
+            color: t.inkPrimary,
+          ),
         ),
         Text(
           headline.line,
