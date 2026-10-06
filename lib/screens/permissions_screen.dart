@@ -188,9 +188,9 @@ class _PermissionsScreenState extends State<PermissionsScreen>
     final neededLeft = widget.onboarding && !s.batteryUnrestricted ? 1 : 0;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.onboarding ? 'SET UP' : 'CHECKLIST'),
-        automaticallyImplyLeading: !widget.onboarding,
+      appBar: RunAppBar(
+        title: widget.onboarding ? 'SET UP' : 'CHECKLIST',
+        showBack: widget.onboarding ? false : null,
       ),
       body: PinnedFooterLayout(
         content: [

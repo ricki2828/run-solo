@@ -3,6 +3,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../state/sessions.dart';
 import '../theme/theme.dart';
+import '../widgets/chrome.dart';
 import '../widgets/structure_glyph.dart';
 import '../widgets/value_stepper.dart';
 import 'intervals_sheet.dart';
@@ -72,14 +73,7 @@ class _CustomBuilderScreenState extends State<CustomBuilderScreen> {
         time ? SessionText.clock(v) : SessionText.metres(v);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('CUSTOM'),
-        leading: IconButton(
-          tooltip: 'Back',
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
+      appBar: const RunAppBar(title: 'CUSTOM'),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),

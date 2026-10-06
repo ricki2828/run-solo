@@ -77,7 +77,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final text = Theme.of(context).textTheme;
     final units = AppServices.of(context).settings.settings.units;
     return Scaffold(
-      appBar: AppBar(title: const Text('HISTORY')),
+      appBar: const RunAppBar(title: 'HISTORY'),
       body: SafeArea(
         child: Column(
           children: [

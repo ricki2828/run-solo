@@ -7,6 +7,7 @@ import '../app/services.dart';
 import '../state/courses.dart';
 import '../state/history_store.dart';
 import '../theme/theme.dart';
+import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
 import 'run_detail_screen.dart';
 
@@ -349,7 +350,7 @@ class _CourseBoardScreenState extends State<CourseBoardScreen> {
       builder: (context, snap) {
         final runs = snap.data;
         if (runs == null) {
-          return Scaffold(appBar: AppBar(title: const Text('BOARD')));
+          return const Scaffold(appBar: RunAppBar(title: 'BOARD'));
         }
         final board = CourseBoard.fold(
           runs,
@@ -363,11 +364,7 @@ class _CourseBoardScreenState extends State<CourseBoardScreen> {
         final best = board.best;
         final n = board.ranked.length;
         return Scaffold(
-          appBar: AppBar(
-            title: Text(
-              '${label.toUpperCase()} · $n ${n == 1 ? 'RUN' : 'RUNS'}',
-            ),
-          ),
+          appBar: RunAppBar(title: '$label · $n ${n == 1 ? 'RUN' : 'RUNS'}'),
           body: ListView(
             key: const ValueKey('course-board'),
             padding: const EdgeInsets.all(Space.screenGutter),

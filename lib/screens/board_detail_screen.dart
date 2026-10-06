@@ -9,6 +9,7 @@ import '../state/boards.dart';
 import '../state/courses.dart';
 import '../state/history_store.dart';
 import '../theme/theme.dart';
+import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/recent_bars_chart.dart';
 import '../widgets/weather_chip.dart';
@@ -117,6 +118,7 @@ class _BoardDetailScreenState extends State<BoardDetailScreen>
     final services = AppServices.of(context);
     return Scaffold(
       backgroundColor: t.bgBase,
+      appBar: const RunAppBar(title: 'BOARD'),
       body: SafeArea(
         child: FutureBuilder<({Boards boards, List<RunSummary> runs})>(
           future: _load,

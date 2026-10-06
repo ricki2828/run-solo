@@ -8,6 +8,7 @@ import '../state/block_plan.dart';
 import '../state/load_guard.dart';
 import '../state/home_progress.dart';
 import '../theme/theme.dart';
+import '../widgets/chrome.dart';
 
 /// The 4-week block: build one, see every session with its reason, swap a
 /// session or end the plan. Never blocks a run; Home's Start is what runs it.
@@ -54,7 +55,7 @@ class _PlanScreenState extends State<PlanScreen> {
   Widget build(BuildContext context) {
     final services = AppServices.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('PLAN')),
+      appBar: const RunAppBar(title: 'PLAN'),
       body: SafeArea(
         child: ListenableBuilder(
           listenable: Listenable.merge([services.plans, services.settings]),

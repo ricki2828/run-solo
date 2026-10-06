@@ -381,6 +381,18 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// The START label when the Today card is the pick: it names the session
+  /// ("START EASY RUN · 30 MIN", "START NORWEGIAN 4X4"), not the run type.
+  String? _todayStartLabel(AppSettings s) {
+    final next = _plannedNext(s);
+    if (next == null || !_todayPicked) return null;
+    final session = next.session;
+    if (!_samePick(PlanStart.apply(session)(s), s)) return null;
+    final sized = session.kind != engine.BlockKind.interval;
+    return 'START ${session.name}${sized ? ' · ${session.size}' : ''}'
+        .toUpperCase();
+  }
+
   Future<void> _setSettings(AppSettings Function(AppSettings) f) =>
       _services!.settings.update(f);
 
@@ -825,7 +837,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         Future<void> set(AppSettings Function(AppSettings) f) =>
             services.settings.update(f);
         return Scaffold(
-          appBar: AppBar(title: const Text('START')),
+          appBar: const RunAppBar(title: 'START'),
           body: SafeArea(
             child: ListView(
               // Build the longer Aurora choices and the settings below them
@@ -849,8 +861,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                           'WHAT ARE YOU RUNNING?',
                           maxLines: 1,
                           softWrap: false,
-                          style: RunSoloType.display44.copyWith(
-                            fontSize: 28,
+                          style: RunSoloType.pageHeadline.copyWith(
                             color: t.inkPrimary,
                           ),
                         ),
@@ -1147,19 +1158,24 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                             testMode: RecordMode.laps,
                           )
                         : _start,
-                    child: Text(switch (mode) {
-                      _ when s.eventRun => 'START 5 KM',
-                      _ when goal => 'START GOAL',
-                      RecordMode.intervals
-                          when SessionChoice.isFartlek(s.sessionId) =>
-                        'START FARTLEK',
-                      RecordMode.intervals => 'START WARM-UP',
-                      RecordMode.laps => 'START LAPS RUN',
-                      RecordMode.free => 'START FREE RUN',
-                      RecordMode.trail => 'START TRAIL RUN',
-                      RecordMode.cooper =>
-                        _pickedTest == 'bronco' ? 'START BRONCO' : 'START TEST',
-                    }),
+                    child: Text(
+                      _todayStartLabel(s) ??
+                          switch (mode) {
+                            _ when s.eventRun => 'START 5 KM',
+                            _ when goal => 'START GOAL',
+                            RecordMode.intervals
+                                when SessionChoice.isFartlek(s.sessionId) =>
+                              'START FARTLEK',
+                            RecordMode.intervals => 'START WARM-UP',
+                            RecordMode.laps => 'START LAPS RUN',
+                            RecordMode.free => 'START FREE RUN',
+                            RecordMode.trail => 'START TRAIL RUN',
+                            RecordMode.cooper =>
+                              _pickedTest == 'bronco'
+                                  ? 'START BRONCO'
+                                  : 'START TEST',
+                          },
+                    ),
                   ),
                 ],
               ),

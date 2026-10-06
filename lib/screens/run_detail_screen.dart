@@ -63,12 +63,12 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
       future: _load,
       builder: (context, snap) {
         if (!snap.hasData && snap.connectionState != ConnectionState.done) {
-          return Scaffold(appBar: AppBar(title: const Text('RUN')));
+          return const Scaffold(appBar: RunAppBar(title: 'RUN'));
         }
         final d = snap.data;
         if (d == null) {
           return Scaffold(
-            appBar: AppBar(title: const Text('RUN')),
+            appBar: const RunAppBar(title: 'RUN'),
             body: Padding(
               padding: const EdgeInsets.all(Space.screenGutter),
               child: Text(
@@ -79,7 +79,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
           );
         }
         return Scaffold(
-          appBar: AppBar(title: Text(runTitle(d.summary).toUpperCase())),
+          appBar: RunAppBar(title: runTitle(d.summary)),
           body: SafeArea(
             child: RunDetailBody(
               detail: d,

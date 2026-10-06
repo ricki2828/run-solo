@@ -5,6 +5,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 import '../app/services.dart';
 import '../state/sessions.dart';
 import '../theme/theme.dart';
+import '../widgets/chrome.dart';
 import '../widgets/structure_glyph.dart';
 
 /// What the Intervals sheet hands back: a session id to pick, or "build".
@@ -149,23 +150,9 @@ class _IntervalsSheetState extends State<IntervalsSheet> {
               Space.x32,
             ),
             children: [
-              Row(
-                children: [
-                  IconButton(
-                    tooltip: 'Close',
-                    constraints: const BoxConstraints(
-                      minWidth: 56,
-                      minHeight: 56,
-                    ),
-                    icon: Icon(Icons.arrow_back, color: t.inkPrimary),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                  const SizedBox(width: Space.x4),
-                  Text(
-                    'INTERVALS',
-                    style: RunSoloType.title28.copyWith(color: t.inkPrimary),
-                  ),
-                ],
+              RunSheetHeader(
+                title: 'INTERVALS',
+                onBack: () => Navigator.of(context).pop(),
               ),
               eyebrow('LAST USED'),
               card(current, selected: true),

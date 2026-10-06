@@ -86,20 +86,19 @@ class _FixLapsScreenState extends State<FixLapsScreen> {
     final d = _detail;
     final units = AppServices.of(context).settings.settings.units;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('FIX LAPS'),
-        actions: [
-          if (d != null && d.sidecar.lapEdits.isNotEmpty)
-            TextButton(
-              onPressed: _busy
-                  ? null
-                  : () => _apply((s) => s.clearLapEdits(widget.runId)),
-              child: Text(
-                'RESET',
-                style: RunSoloType.label13.copyWith(color: t.inkPrimary),
-              ),
-            ),
-        ],
+      appBar: RunAppBar(
+        title: 'FIX LAPS',
+        trailing: d != null && d.sidecar.lapEdits.isNotEmpty
+            ? TextButton(
+                onPressed: _busy
+                    ? null
+                    : () => _apply((s) => s.clearLapEdits(widget.runId)),
+                child: Text(
+                  'RESET',
+                  style: RunSoloType.label13.copyWith(color: t.inkPrimary),
+                ),
+              )
+            : null,
       ),
       body: d == null
           ? const SizedBox.shrink()
