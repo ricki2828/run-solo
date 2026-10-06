@@ -194,9 +194,13 @@ enum PackErrorKind {
 }
 
 class PackException implements Exception {
-  const PackException(this.kind, this.message, {this.bytes});
+  const PackException(this.kind, this.message, {this.bytes, this.detail});
   final PackErrorKind kind;
   final String message;
+
+  /// The underlying cause (exception type plus a short message), shown small
+  /// under [message] so a failure on a real phone says what actually broke.
+  final String? detail;
 
   /// storageCap: bytes the download needs beyond what is free under the cap.
   final int? bytes;

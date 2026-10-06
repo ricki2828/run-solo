@@ -99,6 +99,32 @@ void main() {
     expect(server.requests, isEmpty);
   });
 
+  test('a failed connection keeps its real cause in detail', () async {
+    final m = PackManager(
+      root: Directory('${dir.path}/topo'),
+      baseUrl: server.base,
+      clientFactory: _ThrowingClient.new,
+    );
+    await m.load();
+    await expectLater(
+      m.refreshRegions(),
+      throwsA(
+        isA<PackException>()
+            .having(
+              (e) => e.message,
+              'message',
+              'Could not reach the map server.',
+            )
+            .having(
+              (e) => e.detail,
+              'detail',
+              'HandshakeException: certificate expired',
+            ),
+      ),
+    );
+    expect(m.refreshError?.detail, contains('HandshakeException'));
+  });
+
   test('a bad index keeps the last good one', () async {
     final m = await withIndex([server.addPack('milos')]);
     server.files['/maps/regions.json'] = Uint8List.fromList(
@@ -483,4 +509,18 @@ void contractTests() {
     expect(r.credits.length, greaterThanOrEqualTo(3));
     expect(r.contains(36.7, 24.4), isTrue);
   });
+}
+
+/// An HttpClient whose connection always fails the way a bad phone network
+/// does.
+class _ThrowingClient implements HttpClient {
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) =>
+      Future.error(const HandshakeException('certificate expired'));
+
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

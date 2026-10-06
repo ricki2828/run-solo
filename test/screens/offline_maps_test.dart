@@ -64,6 +64,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('get-list')));
     await pumpTimes(tester, 2);
     expect(find.text('Could not reach the map server.'), findsOneWidget);
+    expect(find.text('SocketException: Failed host lookup'), findsOneWidget);
     expect(find.text('TRY AGAIN'), findsOneWidget);
   });
 
@@ -325,6 +326,7 @@ class _FailingRefresh extends ScriptedPackManager {
     throw const PackException(
       PackErrorKind.offline,
       'Could not reach the map server.',
+      detail: 'SocketException: Failed host lookup',
     );
   }
 }
