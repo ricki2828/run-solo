@@ -182,6 +182,7 @@ class _OfflineMapsScreenState extends State<OfflineMapsScreen> {
                       _EmptyList(
                         busy: m.refreshing,
                         error: _listError,
+                        errorDetail: _listDetail,
                         onGet: () => _refresh(m),
                       )
                     else ...[
@@ -378,10 +379,12 @@ class _EmptyList extends StatelessWidget {
   const _EmptyList({
     required this.busy,
     required this.error,
+    required this.errorDetail,
     required this.onGet,
   });
   final bool busy;
   final String? error;
+  final String? errorDetail;
   final VoidCallback onGet;
 
   @override
@@ -397,6 +400,12 @@ class _EmptyList extends StatelessWidget {
             color: error == null ? t.inkSecondary : t.semWarn,
           ),
         ),
+        if (error != null && errorDetail != null)
+          Text(
+            errorDetail!,
+            key: const ValueKey('list-error-detail'),
+            style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+          ),
         const SizedBox(height: Space.x16),
         _OutlineAction(
           key: const ValueKey('get-list'),
