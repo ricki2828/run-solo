@@ -176,7 +176,6 @@ class _OfflineMapsScreenState extends State<OfflineMapsScreen> {
                     ),
                     const SizedBox(height: Space.x16),
                     _StorageMeter(manager: m),
-                    if (m.canEnforceWifiOnly) _WifiRow(manager: m),
                     const _Heading('Regions'),
                     if (regions.isEmpty)
                       _EmptyList(
@@ -317,58 +316,6 @@ class _StorageMeter extends StatelessWidget {
                 style: RunSoloType.label13.copyWith(color: t.semWarn),
               ),
             ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WifiRow extends StatelessWidget {
-  const _WifiRow({required this.manager});
-  final PackManager manager;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return Container(
-      margin: const EdgeInsets.only(top: Space.x12),
-      constraints: const BoxConstraints(minHeight: 64),
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: t.lineHair),
-          bottom: BorderSide(color: t.lineHair),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Download on Wi-Fi only',
-                  style: RunSoloType.body17.copyWith(color: t.inkPrimary),
-                ),
-                Text(
-                  'Maps are big. Mobile data stays untouched.',
-                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                ),
-              ],
-            ),
-          ),
-          Semantics(
-            label: 'Download on Wi-Fi only',
-            child: Switch(
-              key: const ValueKey('wifi-only'),
-              value: manager.wifiOnly,
-              onChanged: manager.setWifiOnly,
-              activeThumbColor: t.bgBase,
-              activeTrackColor: t.inkPrimary,
-              inactiveThumbColor: t.inkSecondary,
-              inactiveTrackColor: t.bgRaised,
-            ),
-          ),
         ],
       ),
     );

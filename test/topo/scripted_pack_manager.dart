@@ -32,14 +32,12 @@ class ScriptedPackManager extends PackManager {
     this.scriptedRegions = const [],
     this.statuses = const {},
     this.used = 0,
-    this.wifiProbe = true,
     super.capBytes,
   }) : super(root: Directory.systemTemp);
 
   List<PackRegion> scriptedRegions;
   Map<String, PackStatus> statuses;
   int used;
-  bool wifiProbe;
   bool busy = false;
   final List<String> calls = [];
 
@@ -59,21 +57,6 @@ class ScriptedPackManager extends PackManager {
 
   @override
   bool get refreshing => busy;
-
-  @override
-  bool get canEnforceWifiOnly => wifiProbe;
-
-  bool wifiOn = true;
-
-  @override
-  bool get wifiOnly => wifiOn;
-
-  @override
-  Future<void> setWifiOnly(bool on) async {
-    calls.add('wifi:$on');
-    wifiOn = on;
-    notifyListeners();
-  }
 
   @override
   PackStatus statusOf(String id) =>

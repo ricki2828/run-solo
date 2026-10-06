@@ -22,15 +22,10 @@ void main() {
     dir.deleteSync(recursive: true);
   });
 
-  PackManager manager({
-    int cap = kDefaultStorageCap,
-    WifiProbe? wifi,
-    Uri? base,
-  }) => PackManager(
+  PackManager manager({int cap = kDefaultStorageCap, Uri? base}) => PackManager(
     root: Directory('${dir.path}/topo'),
     baseUrl: base ?? server.base,
     capBytes: cap,
-    wifi: wifi,
     idleTimeout: const Duration(seconds: 5),
   );
 
@@ -388,40 +383,6 @@ void main() {
       expect(await m.download('a'), isTrue);
     });
   });
-
-  test(
-    'wifi only blocks the download before the network when off Wi-Fi',
-    () async {
-      server.setIndex([server.addPack('milos')]);
-      var onWifi = false;
-      final m = PackManager(
-        root: Directory('${dir.path}/topo'),
-        baseUrl: server.base,
-        wifi: () async => onWifi,
-      );
-      await m.load();
-      await m.refreshRegions();
-      server.requests.clear();
-      await expectLater(
-        m.download('milos'),
-        throwsA(
-          isA<PackException>().having(
-            (e) => e.kind,
-            'kind',
-            PackErrorKind.wifiRequired,
-          ),
-        ),
-      );
-      expect(server.requests, isEmpty);
-      await m.setWifiOnly(false);
-      expect(await m.download('milos'), isTrue);
-      // The choice survives a restart.
-      final again = manager();
-      await again.load();
-      expect(again.wifiOnly, isFalse);
-      onWifi = true;
-    },
-  );
 
   test('cancel keeps the partial and returns false', () async {
     final m = await withIndex([server.addPack('milos', bytes: 3000000)]);

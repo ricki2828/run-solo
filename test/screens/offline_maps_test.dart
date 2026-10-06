@@ -86,7 +86,6 @@ void main() {
     expect(find.text('Installed, 3.1 MB'), findsOneWidget);
     expect(find.text('42% of 79 MB'), findsOneWidget);
     expect(find.text('Singapore'), findsOneWidget);
-    expect(find.text('Download on Wi-Fi only'), findsOneWidget);
 
     await tester.ensureVisible(find.byKey(const ValueKey('get-sg')));
     await tester.pump();
@@ -178,18 +177,6 @@ void main() {
     expect(button.onPressed, isNull);
     await tester.tap(find.byKey(const ValueKey('get-umbria')));
     expect(m.calls, isEmpty);
-  });
-
-  testWidgets('wifi-only switch only when it can be enforced', (tester) async {
-    final off = ScriptedPackManager(scriptedRegions: [milos], wifiProbe: false);
-    await open(tester, off);
-    expect(find.byKey(const ValueKey('wifi-only')), findsNothing);
-
-    final on = ScriptedPackManager(scriptedRegions: [milos]);
-    await open(tester, on);
-    await tester.tap(find.byKey(const ValueKey('wifi-only')));
-    await pumpTimes(tester, 2);
-    expect(on.calls, ['wifi:false']);
   });
 
   testWidgets('credits sheet lists licences per pack', (tester) async {
