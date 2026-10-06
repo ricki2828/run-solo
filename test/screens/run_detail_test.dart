@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:flutter_test/flutter_test.dart';
@@ -5,11 +7,20 @@ import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/run_detail_screen.dart';
+import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/widgets/chrome.dart';
 import 'package:run_solo/widgets/hold_button.dart';
 
 import '../helpers.dart';
 import '../run_fixtures.dart';
+
+/// Opens the closed-by-default "All splits" expander.
+Future<void> openAllSplits(WidgetTester tester) async {
+  final toggle = find.byKey(const ValueKey('all-splits-toggle'));
+  await scrollTo(tester, toggle);
+  await tester.tap(toggle);
+  await pumpTimes(tester, 2);
+}
 
 /// Run detail (brief §4.7, addendum A4) against the fake map surface.
 void main() {
@@ -27,6 +38,10 @@ void main() {
     await pumpTimes(tester, 6);
     expect(find.text('NORWEGIAN 4X4'), findsOneWidget);
     expect(find.byKey(const ValueKey('fake-map')), findsOneWidget);
+    // The chart leads; the tables sit behind "All splits".
+    expect(find.byKey(const ValueKey('rep-bars-chart')), findsOneWidget);
+    expect(find.text('Rep 1'), findsNothing);
+    await openAllSplits(tester);
     expect(find.text('Rep 1'), findsOneWidget);
     expect(find.text('Rep 4'), findsOneWidget);
     expect(find.text('Rec 1'), findsNothing);
@@ -91,6 +106,7 @@ void main() {
       expect(text, contains(', heat -'));
       expect(find.text('Hills and heat are estimates.'), findsOneWidget);
       // The elevation card carries the same true pace, as an estimate.
+      await scrollTo(tester, find.textContaining('TRUE PACE (ESTIMATE)'));
       expect(find.textContaining('TRUE PACE (ESTIMATE)'), findsOneWidget);
     });
 
@@ -211,10 +227,39 @@ void main() {
       home: RunDetailScreen(runId: r.id),
     );
     await pumpTimes(tester, 6);
+    expect(find.byKey(const ValueKey('splits-bars')), findsOneWidget);
+    await openAllSplits(tester);
     await scrollTo(tester, find.text('KM SPLITS'));
     expect(find.byKey(const ValueKey('run-distance-splits')), findsOneWidget);
     expect(find.text('KM SPLITS'), findsOneWidget);
     expect(find.text('8'), findsOneWidget);
+  });
+
+  testWidgets('a miles run: chart and table both read pace per mile', (
+    tester,
+  ) async {
+    // 6:00/km is 9:39/mi. The file's splits are per mile; the table used to
+    // show them as if per km (15:32).
+    final km = freeRunFile(n: 92, start: d1, seconds: 2884);
+    final r = engine.RunFile.fromJson(
+      (jsonDecode(jsonEncode(km.toJson())) as Map<String, Object?>)
+        ..['units'] = 'mi',
+    );
+    await pumpApp(
+      tester,
+      fakeServices(
+        files: [r],
+        settings: const AppSettings(onboardingDone: true, units: Units.mi),
+      ),
+      home: RunDetailScreen(runId: r.id),
+    );
+    await pumpTimes(tester, 6);
+    await scrollTo(tester, find.byKey(const ValueKey('splits-bars')));
+    expect(find.text('PACE PER MILE'), findsOneWidget);
+    await openAllSplits(tester);
+    await scrollTo(tester, find.text('MI'));
+    expect(find.text('9:39'), findsWidgets);
+    expect(find.text('15:32'), findsNothing);
   });
 
   testWidgets('indoor: no route box at all, no map', (tester) async {
@@ -356,10 +401,11 @@ void main() {
       expect(find.byKey(const ValueKey('elevation-card')), findsOneWidget);
       expect(find.text('${e.ascentM.round()} m'), findsWidgets);
       expect(find.textContaining('TRUE PACE (ESTIMATE)'), findsOneWidget);
+      await openAllSplits(tester);
       await scrollTo(tester, find.text('CLIMB').last);
       // The splits table gains a Climb column, one cell per full km.
       final km = e.unitClimbs(1000);
-      expect(find.text('CLIMB'), findsNWidgets(2));
+      expect(find.text('CLIMB'), findsWidgets);
       expect(
         find.text(
           km.first.ascentM >= 0.5
@@ -393,11 +439,9 @@ void main() {
       );
       await pumpTimes(tester, 6);
       expect(find.byKey(const ValueKey('elevation-card')), findsOneWidget);
+      await openAllSplits(tester);
       await scrollTo(tester, find.text('CLIMB').last);
-      expect(
-        find.text('CLIMB'),
-        findsNWidgets(2),
-      ); // the card tile and the column
+      expect(find.text('CLIMB'), findsWidgets); // the table column
     });
   });
 }

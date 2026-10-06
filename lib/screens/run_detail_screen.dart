@@ -18,6 +18,7 @@ import '../widgets/elevation_profile.dart';
 import '../widgets/followed_route_line.dart';
 import '../widgets/hold_button.dart';
 import '../widgets/rep_bars.dart';
+import '../widgets/splits_bars.dart';
 import '../widgets/time_in_zone.dart';
 import '../widgets/recent_activity.dart' show runTypeColor;
 import '../widgets/trail_runs_section.dart';
@@ -192,6 +193,7 @@ class RunDetailBody extends StatelessWidget {
           FollowedRouteLine(route: d.run.route!),
           const SizedBox(height: Space.x24),
         ],
+        ..._splitsChart(d, units, elev, onVerdict),
         if (elev != null) ...[
           ElevationProfile(
             elevation: elev,
@@ -206,15 +208,18 @@ class RunDetailBody extends StatelessWidget {
           RecordMode.intervals => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _FourByFourTables(detail: d, units: units, onVerdict: onVerdict),
-              const SizedBox(height: Space.x24),
-              _DistanceSplits(
-                free: free,
-                elevation: elev,
+              _FourByFourTables(
+                detail: d,
                 units: units,
-                color: d.summary.spec?.isGoal == true || d.summary.isParkrun
-                    ? AuroraRunType.goal
-                    : AuroraRunType.intervals,
+                trailing: _DistanceSplits(
+                  free: free,
+                  splitUnits: splitUnitsOf(d),
+                  elevation: elev,
+                  units: units,
+                  color: d.summary.spec?.isGoal == true || d.summary.isParkrun
+                      ? AuroraRunType.goal
+                      : AuroraRunType.intervals,
+                ),
               ),
             ],
           ),
@@ -247,6 +252,7 @@ class RunDetailBody extends StatelessWidget {
           ),
           RecordMode.free || RecordMode.trail || RecordMode.cooper => _Splits(
             free: free,
+            splitUnits: splitUnitsOf(d),
             elevation: elev,
             // The header already says moving time when it differs.
             showMoving:
@@ -827,11 +833,13 @@ class _FourByFourTables extends StatefulWidget {
   const _FourByFourTables({
     required this.detail,
     required this.units,
-    this.onVerdict,
+    this.trailing,
   });
   final RunDetail detail;
   final Units units;
-  final VoidCallback? onVerdict;
+
+  /// The km splits card, kept with the tables under "All splits".
+  final Widget? trailing;
 
   @override
   State<_FourByFourTables> createState() => _FourByFourTablesState();
@@ -846,107 +854,32 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
     final d = widget.detail;
     final a = d.analysis;
     final m = a.intervals;
-    final v = d.summary.verdict;
     final units = widget.units;
     if (m == null) {
-      return Text(
-        a.detection?.inconsistencyDetail ?? 'No reps found in this run.',
-        style: RunSoloType.body17.copyWith(color: t.inkSecondary),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            a.detection?.inconsistencyDetail ?? 'No reps found in this run.',
+            style: RunSoloType.body17.copyWith(color: t.inkSecondary),
+          ),
+          if (widget.trailing != null) ...[
+            const SizedBox(height: Space.x24),
+            widget.trailing!,
+          ],
+        ],
       );
     }
     final repTime =
         m.kind == engine.IntervalMetricKind.repTime &&
         m.nominalRepMetres != null;
     final short = m.kind == engine.IntervalMetricKind.untrimmedPace;
-    final prevReps = <int, double?>{};
     // vs last: the verdict's comparison is run-level; per-rep ghosts come
     // from the previous 4x4 when the caller has it (verdict screen). Here we
     // show pace, avg HR and time in zone per rep.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (v != null)
-          Semantics(
-            button: widget.onVerdict != null,
-            child: InkWell(
-              onTap: widget.onVerdict,
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: Space.x16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        v.headline.text,
-                        style: RunSoloType.display44.copyWith(
-                          color: switch (v.headline) {
-                            engine.VerdictHeadline.faster => t.accentArc,
-                            engine.VerdictHeadline.slower => t.inkPrimary,
-                            engine.VerdictHeadline.noVerdict ||
-                            engine.VerdictHeadline.indoorRun => t.inkSecondary,
-                            _ => t.inkPrimary,
-                          },
-                        ),
-                      ),
-                    ),
-                    if (widget.onVerdict != null)
-                      Icon(Icons.chevron_right, color: t.inkSecondary),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        // I3: rep-time sessions list the time for the rep distance; short
-        // reps (untrimmed) show peak HR, since HR lags a 30 s effort and
-        // there is no time in zone.
-        _TableHeader(
-          cells: [
-            'Rep',
-            repTime ? 'Time' : 'Pace',
-            short ? 'Peak HR' : 'Avg HR',
-            short ? '' : 'In band',
-          ],
-        ),
-        for (final r in m.reps)
-          _TableRow(
-            muted: !r.clean,
-            cells: [
-              'Rep ${r.number}',
-              repTime && r.paceSecPerKm != null
-                  ? Fmt.clock((r.paceSecPerKm! * m.nominalRepMetres!).round())
-                  : Fmt.pace(r.paceSecPerKm, units),
-              short
-                  ? (r.peakHr == null ? '--' : '${r.peakHr}')
-                  : (r.meanHr == null ? '--' : '${r.meanHr!.round()}'),
-              short
-                  ? ''
-                  : r.zoneSeconds == null
-                  ? '--'
-                  : '${(r.zoneSeconds! / (r.trimmedSeconds == 0 ? 1 : r.trimmedSeconds) * 100).clamp(0, 100).round()}%',
-            ],
-            note: r.clean && a.heat?.adjusts == true
-                ? () {
-                    final twin = a.heat!.paceAtDistance(
-                      r.paceSecPerKm!,
-                      (r.lap.d0M + r.lap.d1M) / 2,
-                    );
-                    return twin == null
-                        ? null
-                        : 'Cool-day estimate: '
-                              '${repTime ? Fmt.clock((twin * m.nominalRepMetres!).round()) : Fmt.pace(twin, units)}';
-                  }()
-                : !r.clean
-                ? (r.dropped
-                      ? 'dropped'
-                      : switch (r.interruptReason) {
-                          engine.InterruptReason.gpsDropped => 'GPS dropped',
-                          engine.InterruptReason.paused => 'paused',
-                          engine.InterruptReason.recordingStopped =>
-                            'recording stopped',
-                          null => 'excluded',
-                        })
-                : null,
-          ),
-        const SizedBox(height: Space.x16),
         Wrap(
           spacing: Space.x24,
           runSpacing: Space.x12,
@@ -988,51 +921,114 @@ class _FourByFourTablesState extends State<_FourByFourTables> {
               ),
           ],
         ),
-        const SizedBox(height: Space.x16),
-        RepBars(
-          reps: repBarData(d, null),
-          units: units,
-          showDelta: false,
-          fadeProgress: 1,
-        ),
-        const SizedBox(height: Space.x16),
-        Semantics(
-          button: true,
-          label: _recoveriesOpen ? 'Hide recoveries' : 'Show recoveries',
-          child: InkWell(
-            onTap: () => setState(() => _recoveriesOpen = !_recoveriesOpen),
-            child: SizedBox(
-              height: 56,
-              child: Row(
-                children: [
-                  Text(
-                    'RECOVERIES',
-                    style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-                  ),
-                  const Spacer(),
-                  Icon(
-                    _recoveriesOpen ? Icons.expand_less : Icons.expand_more,
-                    color: t.inkSecondary,
-                  ),
+        const SizedBox(height: Space.x8),
+        _AllSplits(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // I3: rep-time sessions list the time for the rep distance; short
+              // reps (untrimmed) show peak HR, since HR lags a 30 s effort and
+              // there is no time in zone.
+              _TableHeader(
+                cells: [
+                  'Rep',
+                  repTime ? 'Time' : 'Pace',
+                  short ? 'Peak HR' : 'Avg HR',
+                  short ? '' : 'In band',
                 ],
               ),
-            ),
+              for (final r in m.reps)
+                _TableRow(
+                  muted: !r.clean,
+                  cells: [
+                    'Rep ${r.number}',
+                    repTime && r.paceSecPerKm != null
+                        ? Fmt.clock(
+                            (r.paceSecPerKm! * m.nominalRepMetres!).round(),
+                          )
+                        : Fmt.pace(r.paceSecPerKm, units),
+                    short
+                        ? (r.peakHr == null ? '--' : '${r.peakHr}')
+                        : (r.meanHr == null ? '--' : '${r.meanHr!.round()}'),
+                    short
+                        ? ''
+                        : r.zoneSeconds == null
+                        ? '--'
+                        : '${(r.zoneSeconds! / (r.trimmedSeconds == 0 ? 1 : r.trimmedSeconds) * 100).clamp(0, 100).round()}%',
+                  ],
+                  note: r.clean && a.heat?.adjusts == true
+                      ? () {
+                          final twin = a.heat!.paceAtDistance(
+                            r.paceSecPerKm!,
+                            (r.lap.d0M + r.lap.d1M) / 2,
+                          );
+                          return twin == null
+                              ? null
+                              : 'Cool-day estimate: '
+                                    '${repTime ? Fmt.clock((twin * m.nominalRepMetres!).round()) : Fmt.pace(twin, units)}';
+                        }()
+                      : !r.clean
+                      ? (r.dropped
+                            ? 'dropped'
+                            : switch (r.interruptReason) {
+                                engine.InterruptReason.gpsDropped =>
+                                  'GPS dropped',
+                                engine.InterruptReason.paused => 'paused',
+                                engine.InterruptReason.recordingStopped =>
+                                  'recording stopped',
+                                null => 'excluded',
+                              })
+                      : null,
+                ),
+              const SizedBox(height: Space.x16),
+              Semantics(
+                button: true,
+                label: _recoveriesOpen ? 'Hide recoveries' : 'Show recoveries',
+                child: InkWell(
+                  onTap: () =>
+                      setState(() => _recoveriesOpen = !_recoveriesOpen),
+                  child: SizedBox(
+                    height: 56,
+                    child: Row(
+                      children: [
+                        Text(
+                          'RECOVERIES',
+                          style: RunSoloType.micro11.copyWith(
+                            color: t.inkSecondary,
+                          ),
+                        ),
+                        const Spacer(),
+                        Icon(
+                          _recoveriesOpen
+                              ? Icons.expand_less
+                              : Icons.expand_more,
+                          color: t.inkSecondary,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (_recoveriesOpen) ...[
+                _TableHeader(cells: const ['Rec', 'Pace', 'Avg HR', '']),
+                for (final r in m.recoveries)
+                  _TableRow(
+                    muted: r.dropped,
+                    cells: [
+                      'Rec ${r.number}',
+                      Fmt.pace(r.paceSecPerKm, units),
+                      r.meanHr == null ? '--' : '${r.meanHr!.round()}',
+                      '',
+                    ],
+                  ),
+              ],
+              if (widget.trailing != null) ...[
+                const SizedBox(height: Space.x16),
+                widget.trailing!,
+              ],
+            ],
           ),
         ),
-        if (_recoveriesOpen) ...[
-          _TableHeader(cells: const ['Rec', 'Pace', 'Avg HR', '']),
-          for (final r in m.recoveries)
-            _TableRow(
-              muted: r.dropped,
-              cells: [
-                'Rec ${r.number}',
-                Fmt.pace(r.paceSecPerKm, units),
-                r.meanHr == null ? '--' : '${r.meanHr!.round()}',
-                '',
-              ],
-            ),
-        ],
-        if (prevReps.isNotEmpty) const SizedBox.shrink(),
       ],
     );
   }
@@ -1066,33 +1062,6 @@ class _LapsTable extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _TableHeader(
-          cells: [
-            'Lap',
-            'Time',
-            units == Units.mi ? 'Mi' : 'Km',
-            'Pace',
-            'HR',
-            if (lapClimbs != null) 'Climb',
-          ],
-        ),
-        for (final r in view.laps)
-          _TableRow(
-            highlight: r.number == view.fastestLapNumber,
-            muted: !r.scored,
-            cells: [
-              '${r.number}',
-              Fmt.clock((r.movingSeconds * 1000).round()),
-              Fmt.distanceBare(r.distanceM, units),
-              Fmt.pace(r.paceSecPerKm, units),
-              r.meanHr == null ? '--' : '${r.meanHr!.round()}',
-              if (lapClimbs != null)
-                r.number - 1 < lapClimbs.length
-                    ? _climbCell(lapClimbs[r.number - 1], units)
-                    : '--',
-            ],
-          ),
-        const SizedBox(height: Space.x16),
         Wrap(
           spacing: Space.x24,
           runSpacing: Space.x12,
@@ -1124,6 +1093,40 @@ class _LapsTable extends StatelessWidget {
               ),
           ],
         ),
+        const SizedBox(height: Space.x8),
+        _AllSplits(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _TableHeader(
+                cells: [
+                  'Lap',
+                  'Time',
+                  units == Units.mi ? 'Mi' : 'Km',
+                  'Pace',
+                  'HR',
+                  if (lapClimbs != null) 'Climb',
+                ],
+              ),
+              for (final r in view.laps)
+                _TableRow(
+                  highlight: r.number == view.fastestLapNumber,
+                  muted: !r.scored,
+                  cells: [
+                    '${r.number}',
+                    Fmt.clock((r.movingSeconds * 1000).round()),
+                    Fmt.distanceBare(r.distanceM, units),
+                    Fmt.pace(r.paceSecPerKm, units),
+                    r.meanHr == null ? '--' : '${r.meanHr!.round()}',
+                    if (lapClimbs != null)
+                      r.number - 1 < lapClimbs.length
+                          ? _climbCell(lapClimbs[r.number - 1], units)
+                          : '--',
+                  ],
+                ),
+            ],
+          ),
+        ),
         if (view.laps.isEmpty)
           Text(
             'No laps recorded.',
@@ -1144,12 +1147,16 @@ String _climbCell(engine.Climb c, Units units) {
 class _Splits extends StatelessWidget {
   const _Splits({
     required this.free,
+    required this.splitUnits,
     required this.units,
     this.elevation,
     this.heat,
     this.showMoving = true,
   });
   final engine.FreeRunSummary free;
+
+  /// What one split covers (a km or a mile); [units] is only the display.
+  final Units splitUnits;
 
   /// Fills the table's last column with each split's climb.
   final engine.RunElevation? elevation;
@@ -1160,8 +1167,9 @@ class _Splits extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final unit = units == Units.mi ? 'mi' : 'km';
-    final climbs = elevation?.unitClimbs(units == Units.mi ? 1609.344 : 1000);
+    final unit = splitUnits == Units.mi ? 'mi' : 'km';
+    final unitM = splitUnits == Units.mi ? 1609.344 : 1000.0;
+    final climbs = elevation?.unitClimbs(unitM);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1189,35 +1197,40 @@ class _Splits extends StatelessWidget {
             style: RunSoloType.body15.copyWith(color: t.inkSecondary),
           )
         else ...[
-          _TableHeader(
-            cells: [
-              unit.toUpperCase(),
-              'Pace',
-              heat?.adjusts == true ? 'Cool-day est.' : '',
-              climbs == null ? '' : 'Climb',
-            ],
-          ),
-          for (var i = 0; i < free.splitsSecPerUnit.length; i++)
-            _TableRow(
-              cells: [
-                '${i + 1}',
-                Fmt.pace(free.splitsSecPerUnit[i], units),
-                heat?.adjusts == true
-                    ? Fmt.pace(
-                        heat!.paceAtDistance(
-                          free.splitsSecPerUnit[i] *
-                              1000 /
-                              (units == Units.mi ? 1609.344 : 1000),
-                          (i + 0.5) * (units == Units.mi ? 1609.344 : 1000),
-                        ),
-                        units,
-                      )
-                    : '',
-                climbs != null && i < climbs.length
-                    ? _climbCell(climbs[i], units)
-                    : '',
+          _AllSplits(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _TableHeader(
+                  cells: [
+                    unit.toUpperCase(),
+                    'Pace',
+                    heat?.adjusts == true ? 'Cool-day est.' : '',
+                    climbs == null ? '' : 'Climb',
+                  ],
+                ),
+                for (var i = 0; i < free.splitsSecPerUnit.length; i++)
+                  _TableRow(
+                    cells: [
+                      '${i + 1}',
+                      Fmt.pace(free.splitsSecPerUnit[i] * 1000 / unitM, units),
+                      heat?.adjusts == true
+                          ? Fmt.pace(
+                              heat!.paceAtDistance(
+                                free.splitsSecPerUnit[i] * 1000 / unitM,
+                                (i + 0.5) * unitM,
+                              ),
+                              units,
+                            )
+                          : '',
+                      climbs != null && i < climbs.length
+                          ? _climbCell(climbs[i], units)
+                          : '',
+                    ],
+                  ),
               ],
             ),
+          ),
         ],
       ],
     );
@@ -1230,11 +1243,13 @@ class _Splits extends StatelessWidget {
 class _DistanceSplits extends StatelessWidget {
   const _DistanceSplits({
     required this.free,
+    required this.splitUnits,
     required this.units,
     required this.color,
     this.elevation,
   });
   final engine.FreeRunSummary free;
+  final Units splitUnits;
   final engine.RunElevation? elevation;
   final Units units;
   final Color color;
@@ -1242,9 +1257,11 @@ class _DistanceSplits extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final unit = units == Units.mi ? 'MI' : 'KM';
+    final unit = splitUnits == Units.mi ? 'MI' : 'KM';
     final splits = free.splitsSecPerUnit;
-    final climbs = elevation?.unitClimbs(units == Units.mi ? 1609.344 : 1000);
+    final climbs = elevation?.unitClimbs(
+      splitUnits == Units.mi ? 1609.344 : 1000,
+    );
     final quickest = splits.isEmpty
         ? -1
         : splits.indexOf(splits.reduce((a, b) => a < b ? a : b));
@@ -1330,6 +1347,301 @@ class _DistanceSplits extends StatelessWidget {
             ],
         ],
       ),
+    );
+  }
+}
+
+/// The unit a run's splits are per: the file's own unit, chosen at Start.
+/// The display unit can differ if the setting changed since.
+Units splitUnitsOf(RunDetail d) =>
+    d.run.units == engine.Units.mi ? Units.mi : Units.km;
+
+/// The tables stay on run detail, but behind this closed-by-default row so
+/// the chart above leads.
+class _AllSplits extends StatefulWidget {
+  const _AllSplits({required this.child});
+  final Widget child;
+
+  @override
+  State<_AllSplits> createState() => _AllSplitsState();
+}
+
+class _AllSplitsState extends State<_AllSplits> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
+          button: true,
+          label: _open ? 'Hide all splits' : 'Show all splits',
+          child: InkWell(
+            key: const ValueKey('all-splits-toggle'),
+            onTap: () => setState(() => _open = !_open),
+            child: SizedBox(
+              height: 56,
+              child: Row(
+                children: [
+                  Text(
+                    'ALL SPLITS',
+                    style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    _open ? Icons.expand_less : Icons.expand_more,
+                    color: t.inkSecondary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (_open) widget.child,
+      ],
+    );
+  }
+}
+
+/// The verdict headline of a session, above its chart. Taps through to the
+/// verdict screen when the caller has one.
+class _RepVerdict extends StatelessWidget {
+  const _RepVerdict({required this.verdict, this.onVerdict});
+  final engine.Verdict verdict;
+  final VoidCallback? onVerdict;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final v = verdict;
+    return Semantics(
+      button: onVerdict != null,
+      child: InkWell(
+        onTap: onVerdict,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: Space.x16),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  v.headline.text,
+                  style: RunSoloType.display44.copyWith(
+                    color: switch (v.headline) {
+                      engine.VerdictHeadline.faster => t.accentArc,
+                      engine.VerdictHeadline.slower => t.inkPrimary,
+                      engine.VerdictHeadline.noVerdict ||
+                      engine.VerdictHeadline.indoorRun => t.inkSecondary,
+                      _ => t.inkPrimary,
+                    },
+                  ),
+                ),
+              ),
+              if (onVerdict != null)
+                Icon(Icons.chevron_right, color: t.inkSecondary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// True Pace for the chart when the run has a hills or heat effect to take
+/// out; the plain pace otherwise (so a flat, cool run says "pace").
+bool _chartUsesTruePace(RecordMode mode, engine.RunAnalysis a) {
+  if (mode == RecordMode.intervals) {
+    return a.intervals != null && !a.workFactors.neutral;
+  }
+  final tp = a.truePace;
+  return tp != null && !tp.factors.neutral;
+}
+
+/// Per-unit split paces (s/km) for the chart: the clock pace, or True Pace
+/// with each split's own hills and the heat ramped in by distance, the way
+/// the table's cool-day column does it.
+List<SplitBar> splitBarsOf(
+  engine.FreeRunSummary free,
+  Units splitUnits, {
+  engine.RunElevation? elevation,
+  engine.HeatAdjustment? heat,
+  bool truePace = false,
+}) {
+  final unitM = splitUnits == Units.mi ? 1609.344 : 1000.0;
+  return [
+    for (var i = 0; i < free.splitsSecPerUnit.length; i++)
+      SplitBar(
+        label: '${i + 1}',
+        paceSecPerKm: free.splitsSecPerUnit[i] <= 0
+            ? null
+            : _trueOr(
+                free.splitsSecPerUnit[i] * 1000 / unitM,
+                truePace,
+                elevation?.gradeFactorBetweenM(i * unitM, (i + 1) * unitM),
+                heat,
+                (i + 0.5) * unitM,
+              ),
+      ),
+  ];
+}
+
+double _trueOr(
+  double raw,
+  bool truePace,
+  double? grade,
+  engine.HeatAdjustment? heat,
+  double midpointM,
+) => truePace
+    ? engine.TruePace.factors(
+        gradeFactor: grade,
+        slowdown: heat?.fraction,
+        midpointM: midpointM,
+        ramp: engine.HeatModel.distanceRamp,
+      ).apply(raw)
+    : raw;
+
+/// One bar per lap, same rules.
+List<SplitBar> lapBarsOf(
+  engine.LapsSummary view, {
+  engine.RunElevation? elevation,
+  engine.HeatAdjustment? heat,
+  bool truePace = false,
+}) => [
+  for (final r in view.laps)
+    SplitBar(
+      label: '${r.number}',
+      paceSecPerKm: !r.scored || r.paceSecPerKm == null
+          ? null
+          : _trueOr(
+              r.paceSecPerKm!,
+              truePace,
+              elevation?.gradeFactorBetweenM(r.lap.d0M, r.lap.d1M),
+              heat,
+              (r.lap.d0M + r.lap.d1M) / 2,
+            ),
+    ),
+];
+
+/// What leads run detail after the map: the verdict line (a session), then
+/// the pace chart for the run's mode. Empty when there is nothing to chart.
+List<Widget> _splitsChart(
+  RunDetail d,
+  Units units,
+  engine.RunElevation? elev,
+  VoidCallback? onVerdict,
+) {
+  final a = d.analysis;
+  final mode = d.summary.mode;
+  final truePace = _chartUsesTruePace(mode, a);
+  final v = d.summary.verdict;
+  final Widget? chart;
+  if (mode == RecordMode.intervals) {
+    final m = a.intervals;
+    final reps = m == null ? const <RepBarDatum>[] : repBarData(d, null);
+    chart = reps.length >= 2
+        ? _RepsChart(reps: reps, units: units, truePace: truePace, a: a)
+        : _kmChart(d, units, elev, mode, truePace);
+  } else if (mode == RecordMode.laps) {
+    final view = a.laps;
+    chart = view == null
+        ? null
+        : SplitsBars(
+            title: 'PACE PER LAP',
+            units: units,
+            truePace: truePace,
+            bars: lapBarsOf(
+              view,
+              elevation: elev,
+              heat: a.heat,
+              truePace: truePace,
+            ),
+          );
+  } else {
+    chart = _kmChart(d, units, elev, mode, truePace);
+  }
+  return [
+    if (mode == RecordMode.intervals && v != null)
+      _RepVerdict(verdict: v, onVerdict: onVerdict),
+    if (chart != null) ...[chart, const SizedBox(height: Space.x24)],
+  ];
+}
+
+Widget _kmChart(
+  RunDetail d,
+  Units units,
+  engine.RunElevation? elev,
+  RecordMode mode,
+  bool truePace,
+) => SplitsBars(
+  title: splitUnitsOf(d) == Units.mi ? 'PACE PER MILE' : 'PACE PER KM',
+  units: units,
+  truePace: truePace,
+  bars: splitBarsOf(
+    d.analysis.freeRun,
+    splitUnitsOf(d),
+    elevation: elev,
+    heat: mode == RecordMode.cooper ? null : d.analysis.heat,
+    truePace: truePace,
+  ),
+);
+
+/// The session's reps as bars, the style the verdict already uses; True Pace
+/// when the work has a hills or heat effect to take out.
+class _RepsChart extends StatelessWidget {
+  const _RepsChart({
+    required this.reps,
+    required this.units,
+    required this.truePace,
+    required this.a,
+  });
+  final List<RepBarDatum> reps;
+  final Units units;
+  final bool truePace;
+  final engine.RunAnalysis a;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final data = truePace
+        ? [
+            for (final r in reps)
+              RepBarDatum(
+                label: r.label,
+                paceSecPerKm: r.paceSecPerKm == null
+                    ? null
+                    : a.workFactors.apply(r.paceSecPerKm!),
+                repMetres: r.repMetres,
+                excluded: r.excluded,
+                reason: r.reason,
+              ),
+          ]
+        : reps;
+    return Column(
+      key: const ValueKey('rep-bars-chart'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          truePace ? 'WORK PACE PER REP · TRUE PACE' : 'WORK PACE PER REP',
+          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+        ),
+        const SizedBox(height: Space.x8),
+        RepBars(
+          reps: data,
+          units: units,
+          showDelta: false,
+          fadeProgress: 0,
+          minSpanSec: SplitsBars.minSpanSec,
+        ),
+        const SizedBox(height: Space.x8),
+        Text(
+          truePace
+              ? 'Longer is faster. True pace takes hills and heat out. '
+                    'It is an estimate.'
+              : 'Longer is faster.',
+          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+        ),
+      ],
     );
   }
 }

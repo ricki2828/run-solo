@@ -20,8 +20,8 @@ import 'send_runs.dart';
 
 const String kIntervalsHost = 'intervals.icu';
 const String kIntervalsKeyHelp =
-    'In Intervals.icu open Settings, then Developer settings. Copy your API '
-    'key and your athlete id (it looks like i12345) from there.';
+    'In Intervals.icu, open Settings, then Developer settings. Copy your API '
+    'key and athlete id (like i12345).';
 
 /// Where the key and athlete id are kept. One implementation is the Android
 /// Keystore (see [SecureSecretStore]); tests use [MemorySecretStore].

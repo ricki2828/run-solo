@@ -66,10 +66,18 @@ void main() {
     expect(find.text('SEND TO WATCH'), findsOneWidget);
     expect(find.text('Norwegian 4x4'), findsOneWidget);
     expect(
-      find.textContaining('heart rate range of 162 to 181'),
+      find.textContaining('Hard reps: heart rate 162 to 181 bpm'),
       findsOneWidget,
     );
     expect(find.text('Share workout file'), findsOneWidget);
+    // The per-watch notes and the Intervals.icu explanation are behind
+    // "How it works", closed until asked for.
+    expect(find.byKey(const ValueKey('watch-garmin')), findsNothing);
+    expect(find.byKey(const ValueKey('watch-how-intervals')), findsNothing);
+    await tester.ensureVisible(find.byKey(const ValueKey('watch-how-toggle')));
+    await tester.tap(find.byKey(const ValueKey('watch-how-toggle')));
+    await pumpTimes(tester, 2);
+    expect(find.byKey(const ValueKey('watch-how-intervals')), findsOneWidget);
     for (final e in WatchGuide.entries) {
       expect(find.byKey(ValueKey('watch-${e.brand.name}')), findsOneWidget);
     }

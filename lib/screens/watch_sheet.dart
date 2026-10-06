@@ -147,13 +147,12 @@ class _WatchSheetState extends State<WatchSheet> {
       final lo = s.target.low, hi = s.target.high;
       if (s.target.isOpen || lo == null || hi == null) continue;
       if (s.target.typeCode == 1) {
-        return 'Hard reps carry a heart rate range of ${lo - 100} to '
-            '${hi - 100} bpm, worked out from your max heart rate.';
+        return 'Hard reps: heart rate ${lo - 100} to ${hi - 100} bpm.';
       }
       // Speed in mm/s: the low edge is the slow pace.
       final slow = Fmt.pace(1000000 / lo, units);
       final fast = Fmt.pace(1000000 / hi, units);
-      return 'Hard reps carry a pace range of $fast to $slow per '
+      return 'Hard reps: pace $fast to $slow per '
           '${units == Units.mi ? 'mi' : 'km'}.';
     }
     return null;
@@ -186,10 +185,7 @@ class _WatchSheetState extends State<WatchSheet> {
       ),
       const SizedBox(height: Space.x8),
       Text(
-        'Adds the session to your Intervals.icu calendar. Intervals.icu then '
-        'sends it to the watch you linked there, up to a week ahead. '
-        'Intervals.icu needs a length for every step, so an open warm-up '
-        'and cool-down become the timed ones set below.',
+        'Adds it to your Intervals.icu calendar.',
         key: const ValueKey('watch-intervals-blurb'),
         style: RunSoloType.body15.copyWith(color: t.inkSecondary),
       ),
@@ -276,10 +272,8 @@ class _WatchSheetState extends State<WatchSheet> {
             const SizedBox(height: Space.x4),
             Text(
               isWorkout
-                  ? 'Warm-up, reps, recoveries and cool-down, ready for your '
-                        'watch.'
-                  : 'A GPX course file for navigation on your watch. It holds '
-                        'the whole route, start and end included.',
+                  ? 'Warm-up, reps, recoveries and cool-down.'
+                  : 'A GPX course for your watch, start to end.',
               style: RunSoloType.body15.copyWith(color: t.inkSecondary),
             ),
             if (target != null) ...[
@@ -323,27 +317,91 @@ class _WatchSheetState extends State<WatchSheet> {
               ),
             ],
             const SizedBox(height: Space.x16),
-            Text(
-              'WHAT WORKS ON YOUR WATCH',
-              style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+            _HowItWorks(
+              children: [
+                if (isWorkout) ...[
+                  Text(
+                    'Intervals.icu sends the session to the watch you linked '
+                    'there, up to a week ahead. It needs a length for every '
+                    'step, so an open warm-up and cool-down become the timed '
+                    'ones set above. Heart rate ranges come from your max '
+                    'heart rate.',
+                    key: const ValueKey('watch-how-intervals'),
+                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                  ),
+                  const SizedBox(height: Space.x16),
+                ],
+                Text(
+                  'WHAT WORKS ON YOUR WATCH',
+                  style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+                ),
+                for (final e in WatchGuide.entries)
+                  _Brand(
+                    entry: e,
+                    lines: isWorkout
+                        ? [
+                            'Via Intervals.icu: ${e.intervals}',
+                            'File: ${e.workout}',
+                          ]
+                        : [e.route],
+                    works:
+                        !isWorkout ||
+                        e.workoutWorks ||
+                        !e.intervals.startsWith('Not'),
+                  ),
+              ],
             ),
-            for (final e in WatchGuide.entries)
-              _Brand(
-                entry: e,
-                lines: isWorkout
-                    ? [
-                        'Via Intervals.icu: ${e.intervals}',
-                        'File: ${e.workout}',
-                      ]
-                    : [e.route],
-                works:
-                    !isWorkout ||
-                    e.workoutWorks ||
-                    !e.intervals.startsWith('Not'),
-              ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The explanations, closed until asked for.
+class _HowItWorks extends StatefulWidget {
+  const _HowItWorks({required this.children});
+  final List<Widget> children;
+
+  @override
+  State<_HowItWorks> createState() => _HowItWorksState();
+}
+
+class _HowItWorksState extends State<_HowItWorks> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          button: true,
+          label: _open ? 'Hide how it works' : 'Show how it works',
+          child: InkWell(
+            key: const ValueKey('watch-how-toggle'),
+            onTap: () => setState(() => _open = !_open),
+            child: SizedBox(
+              height: 56,
+              child: Row(
+                children: [
+                  Text(
+                    'HOW IT WORKS',
+                    style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    _open ? Icons.expand_less : Icons.expand_more,
+                    color: t.inkSecondary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (_open) ...widget.children,
+      ],
     );
   }
 }
