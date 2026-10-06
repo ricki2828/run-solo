@@ -152,6 +152,7 @@ class _IntervalsSheetState extends State<IntervalsSheet> {
             children: [
               RunSheetHeader(
                 title: 'INTERVALS',
+                backTooltip: 'Close',
                 onBack: () => Navigator.of(context).pop(),
               ),
               eyebrow('LAST USED'),

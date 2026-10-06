@@ -255,10 +255,7 @@ void main() {
     expect(services.settings.settings.lastMode, isNot(RecordMode.laps));
     // START names the session, not the run type.
     expect(find.text('START FREE RUN'), findsNothing);
-    expect(
-      find.textContaining(RegExp(r'^START .+ · \d+ MIN$')),
-      findsOneWidget,
-    );
+    expect(find.text('START NORWEGIAN 4X4'), findsOneWidget);
     // Its own selection: ticked after the tap whatever the plan's reps are.
     expect(
       find.descendant(of: card, matching: find.byIcon(Icons.check)),

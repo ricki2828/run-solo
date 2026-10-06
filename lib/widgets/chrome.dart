@@ -453,9 +453,15 @@ class RunAppBar extends StatelessWidget implements PreferredSizeWidget {
 /// The header of a bottom sheet: the app bar's title style and 48 dp back
 /// arrow (when [onBack] is given), minus the bar itself.
 class RunSheetHeader extends StatelessWidget {
-  const RunSheetHeader({super.key, required this.title, this.onBack});
+  const RunSheetHeader({
+    super.key,
+    required this.title,
+    this.onBack,
+    this.backTooltip = 'Back',
+  });
   final String title;
   final VoidCallback? onBack;
+  final String backTooltip;
 
   @override
   Widget build(BuildContext context) {
@@ -466,7 +472,7 @@ class RunSheetHeader extends StatelessWidget {
         children: [
           if (onBack != null)
             IconButton(
-              tooltip: 'Back',
+              tooltip: backTooltip,
               constraints: const BoxConstraints(
                 minWidth: RunAppBar.minTarget,
                 minHeight: RunAppBar.minTarget,
