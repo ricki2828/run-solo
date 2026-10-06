@@ -65,10 +65,6 @@ class HomeScores extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'SET YOUR SCORES',
-            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-          ),
           for (final lane in engine.IdentityLane.values)
             _UnlockRow(
               lane: lane,
