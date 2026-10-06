@@ -2766,10 +2766,16 @@ class _EventStats extends StatelessWidget {
     final avg = s.totalDistanceM > 20 && activeMs > 0
         ? activeMs / 1000 / (s.totalDistanceM / 1000)
         : null;
+    // Three columns with gaps. The pace units move to the labels ("PACE /km")
+    // because "4:44/km" at the 36 sp floor is as wide as a third of the row,
+    // which ran the three values together.
+    final unit = units == Units.mi ? 'mi' : 'km';
+    const gap = SizedBox(width: Space.x12);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Expanded(
+          flex: 9,
           child: AuxFigure(
             label: 'COVERED',
             value: Fmt.distance(s.totalDistanceM, units),
@@ -2777,18 +2783,22 @@ class _EventStats extends StatelessWidget {
             valueColor: t.inkPrimary,
           ),
         ),
+        gap,
         Expanded(
+          flex: 5,
           child: AuxFigure(
-            label: 'PACE',
-            value: Fmt.paceUnit(s.livePaceSecPerKm, units),
+            label: 'PACE /$unit',
+            value: Fmt.pace(s.livePaceSecPerKm, units),
             labelColor: secondary,
             valueColor: t.inkPrimary,
           ),
         ),
+        gap,
         Expanded(
+          flex: 5,
           child: AuxFigure(
-            label: 'AVERAGE',
-            value: avg == null ? '--' : Fmt.paceUnit(avg, units),
+            label: 'AVG /$unit',
+            value: avg == null ? '--' : Fmt.pace(avg, units),
             labelColor: secondary,
             valueColor: t.inkPrimary,
           ),
