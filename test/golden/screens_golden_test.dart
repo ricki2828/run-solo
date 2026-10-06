@@ -747,6 +747,7 @@ void main() {
         if (picked) {
           await tester.tap(find.byKey(const ValueKey('start-today')));
           await pumpTimes(tester, 4);
+          await settleAnimations(tester);
         }
         await golden(
           tester,
