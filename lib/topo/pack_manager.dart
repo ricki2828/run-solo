@@ -272,7 +272,8 @@ class PackManager extends ChangeNotifier {
         'The map list could not be read (${e.message}).',
       );
       throw _refreshError!;
-    } on Object catch (e) {
+    } on Object catch (e, st) {
+      debugPrint('TOPO refresh failed: $e\n$st');
       _refreshError = _networkError(e);
       throw _refreshError!;
     } finally {
@@ -309,11 +310,30 @@ class PackManager extends ChangeNotifier {
       PackErrorKind.disk,
       'Could not write to the phone. Check it has free storage.',
     ),
-    _ => const PackException(
+    _ => PackException(
       PackErrorKind.offline,
       'Could not reach the map server.',
+      detail: _describe(e),
     ),
   };
+
+  /// "SocketException: Failed host lookup" and the like, one short line.
+  static String _describe(Object e) {
+    var msg = switch (e) {
+      SocketException() => e.message,
+      HandshakeException() => e.message,
+      TlsException() => e.message,
+      HttpException() => e.message,
+      _ => e.toString(),
+    }.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final os = switch (e) {
+      SocketException(:final osError?) => osError.message,
+      _ => '',
+    };
+    if (os.isNotEmpty && !msg.contains(os)) msg = '$msg ($os)';
+    if (msg.length > 120) msg = '${msg.substring(0, 117)}...';
+    return '${e.runtimeType}: $msg';
+  }
 
   /// Installs or updates a pack. Returns true when installed, false when
   /// cancelled (the partial download is kept). Throws [PackException] on
@@ -511,8 +531,9 @@ class PackManager extends ChangeNotifier {
       await out.flush();
     } on PackException {
       rethrow;
-    } on Object catch (e) {
+    } on Object catch (e, st) {
       if (job.cancelled) return;
+      debugPrint('TOPO fetch failed: $e\n$st');
       throw _networkError(e);
     } finally {
       await out?.close();

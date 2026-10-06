@@ -34,13 +34,22 @@ class OfflineMapsScreen extends StatefulWidget {
 class _OfflineMapsScreenState extends State<OfflineMapsScreen> {
   /// Last refresh failure, shown above the list until the next try.
   String? _listError;
+  String? _listDetail;
 
   Future<void> _refresh(PackManager m) async {
-    setState(() => _listError = null);
+    setState(() {
+      _listError = null;
+      _listDetail = null;
+    });
     try {
       await m.refreshRegions();
     } on PackException catch (e) {
-      if (mounted) setState(() => _listError = e.message);
+      if (mounted) {
+        setState(() {
+          _listError = e.message;
+          _listDetail = e.detail;
+        });
+      }
     }
   }
 
@@ -189,12 +198,25 @@ class _OfflineMapsScreenState extends State<OfflineMapsScreen> {
                       if (_listError != null)
                         Padding(
                           padding: const EdgeInsets.only(bottom: Space.x8),
-                          child: Text(
-                            _listError!,
-                            key: const ValueKey('list-error'),
-                            style: RunSoloType.label13.copyWith(
-                              color: t.semWarn,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _listError!,
+                                key: const ValueKey('list-error'),
+                                style: RunSoloType.label13.copyWith(
+                                  color: t.semWarn,
+                                ),
+                              ),
+                              if (_listDetail != null)
+                                Text(
+                                  _listDetail!,
+                                  key: const ValueKey('list-error-detail'),
+                                  style: RunSoloType.label13.copyWith(
+                                    color: t.inkSecondary,
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                       _OutlineAction(
@@ -424,7 +446,10 @@ class _RegionRow extends StatelessWidget {
         t.inkPrimary,
       ),
       PackStatusKind.failed => (
-        status.error?.message ?? 'The download failed.',
+        [
+          status.error?.message ?? 'The download failed.',
+          if (status.error?.detail != null) status.error!.detail!,
+        ].join('\n'),
         t.semWarn,
       ),
       PackStatusKind.notInstalled => (
