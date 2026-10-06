@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +7,7 @@ import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/run_detail_screen.dart';
+import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/widgets/chrome.dart';
 import 'package:run_solo/widgets/hold_button.dart';
 
@@ -230,6 +233,33 @@ void main() {
     expect(find.byKey(const ValueKey('run-distance-splits')), findsOneWidget);
     expect(find.text('KM SPLITS'), findsOneWidget);
     expect(find.text('8'), findsOneWidget);
+  });
+
+  testWidgets('a miles run: chart and table both read pace per mile', (
+    tester,
+  ) async {
+    // 6:00/km is 9:39/mi. The file's splits are per mile; the table used to
+    // show them as if per km (15:32).
+    final km = freeRunFile(n: 92, start: d1, seconds: 2884);
+    final r = engine.RunFile.fromJson(
+      (jsonDecode(jsonEncode(km.toJson())) as Map<String, Object?>)
+        ..['units'] = 'mi',
+    );
+    await pumpApp(
+      tester,
+      fakeServices(
+        files: [r],
+        settings: const AppSettings(onboardingDone: true, units: Units.mi),
+      ),
+      home: RunDetailScreen(runId: r.id),
+    );
+    await pumpTimes(tester, 6);
+    await scrollTo(tester, find.byKey(const ValueKey('splits-bars')));
+    expect(find.text('PACE PER MILE'), findsOneWidget);
+    await openAllSplits(tester);
+    await scrollTo(tester, find.text('MI'));
+    expect(find.text('9:39'), findsWidgets);
+    expect(find.text('15:32'), findsNothing);
   });
 
   testWidgets('indoor: no route box at all, no map', (tester) async {

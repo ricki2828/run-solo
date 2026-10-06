@@ -40,6 +40,9 @@ class SplitsBars extends StatelessWidget {
 
   static const double kHeight = 160;
 
+  /// The narrowest pace range the axis spans, s/km.
+  static const double minSpanSec = 30;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
@@ -51,9 +54,20 @@ class SplitsBars extends StatelessWidget {
     final fastest = paces.reduce(math.min);
     final slowest = paces.reduce(math.max);
     final unit = units == Units.mi ? 'mi' : 'km';
-    final span = math.max(slowest - fastest, 1.0);
-    final base = slowest + span * 0.15;
+    // The axis never spans less than [minSpanSec]: splits within GPS noise
+    // of each other read as level, not as a collapse.
+    final span = math.max(slowest - fastest, minSpanSec);
+    final base = fastest + span * 1.15;
     final top = fastest - span * 0.06;
+    // Ties at the pace shown all take the highlight; when every split ties
+    // none does, since nothing stands out.
+    final best = <int>{
+      for (var i = 0; i < bars.length; i++)
+        if (bars[i].paceSecPerKm != null &&
+            bars[i].paceSecPerKm!.round() == fastest.round())
+          i,
+    };
+    if (best.length == paces.length) best.clear();
     return Column(
       key: const ValueKey('splits-bars'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -74,6 +88,7 @@ class SplitsBars extends StatelessWidget {
               painter: _SplitsPainter(
                 bars: bars,
                 units: units,
+                best: best,
                 fastest: fastest,
                 base: base,
                 top: top,
@@ -84,7 +99,8 @@ class SplitsBars extends StatelessWidget {
         ),
         const SizedBox(height: Space.x8),
         Text(
-          'Faster is taller. Axis starts at ${Fmt.pace(base, units)}/$unit.',
+          'Faster is taller. Fastest ${Fmt.pace(fastest, units)}/$unit. '
+          'Axis starts at ${Fmt.pace(base, units)}/$unit.',
           style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
         ),
         if (truePace) ...[
@@ -103,6 +119,7 @@ class _SplitsPainter extends CustomPainter {
   _SplitsPainter({
     required this.bars,
     required this.units,
+    required this.best,
     required this.fastest,
     required this.base,
     required this.top,
@@ -110,6 +127,7 @@ class _SplitsPainter extends CustomPainter {
   });
   final List<SplitBar> bars;
   final Units units;
+  final Set<int> best;
   final double fastest;
   final double base;
   final double top;
@@ -155,14 +173,12 @@ class _SplitsPainter extends CustomPainter {
         ..color = tokens.inkMuted
         ..strokeWidth = 1,
     );
-    // Label every k-th bar so the numbers never touch; the fastest always.
+    // Label every k-th bar so the numbers never touch; highlighted ones
+    // always.
     final step = math.max(1, (26 / slot).ceil());
-    var best = -1;
     for (var i = 0; i < n; i++) {
       final p = bars[i].paceSecPerKm;
       if (p == null) continue;
-      final isBest = p == fastest && best == -1;
-      if (isBest) best = i;
       final x = i * slot + (slot - barW) / 2;
       canvas.drawRRect(
         RRect.fromRectAndCorners(
@@ -170,38 +186,44 @@ class _SplitsPainter extends CustomPainter {
           topLeft: const Radius.circular(3),
           topRight: const Radius.circular(3),
         ),
-        Paint()..color = isBest ? tokens.accentArc : tokens.inkMuted,
+        Paint()..color = best.contains(i) ? tokens.accentArc : tokens.inkMuted,
       );
     }
     for (var i = 0; i < n; i++) {
-      if (i % step != 0 && i != best) continue;
+      final hi = best.contains(i);
+      if (i % step != 0 && !hi) continue;
       final tp = _tp(
         bars[i].label,
-        i == best ? tokens.accentArc : tokens.inkSecondary,
-        w: i == best ? FontWeight.w700 : FontWeight.w500,
+        hi ? tokens.accentArc : tokens.inkSecondary,
+        w: hi ? FontWeight.w700 : FontWeight.w500,
       );
       tp.paint(canvas, Offset(i * slot + slot / 2 - tp.width / 2, bottom + 5));
     }
-    if (best >= 0) {
+    // The pace on top only while a few bars share the highlight; the axis
+    // note carries the fastest pace either way.
+    if (best.isNotEmpty && best.length <= 3) {
       final tp = _tp(
         Fmt.pace(fastest, units),
         tokens.accentArc,
         w: FontWeight.w700,
       );
-      final cx = best * slot + slot / 2;
-      tp.paint(
-        canvas,
-        Offset(
-          (cx - tp.width / 2).clamp(0.0, size.width - tp.width),
-          y(fastest) - tp.height - 3,
-        ),
-      );
+      for (final i in best) {
+        final cx = i * slot + slot / 2;
+        tp.paint(
+          canvas,
+          Offset(
+            (cx - tp.width / 2).clamp(0.0, size.width - tp.width),
+            y(bars[i].paceSecPerKm!) - tp.height - 3,
+          ),
+        );
+      }
     }
   }
 
   @override
   bool shouldRepaint(_SplitsPainter old) =>
       old.bars != bars ||
+      old.best != best ||
       old.base != base ||
       old.top != top ||
       old.tokens != tokens;

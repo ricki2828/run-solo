@@ -213,6 +213,7 @@ class RunDetailBody extends StatelessWidget {
                 units: units,
                 trailing: _DistanceSplits(
                   free: free,
+                  splitUnits: splitUnitsOf(d),
                   elevation: elev,
                   units: units,
                   color: d.summary.spec?.isGoal == true || d.summary.isParkrun
@@ -251,6 +252,7 @@ class RunDetailBody extends StatelessWidget {
           ),
           RecordMode.free || RecordMode.trail || RecordMode.cooper => _Splits(
             free: free,
+            splitUnits: splitUnitsOf(d),
             elevation: elev,
             // The header already says moving time when it differs.
             showMoving:
@@ -1145,12 +1147,16 @@ String _climbCell(engine.Climb c, Units units) {
 class _Splits extends StatelessWidget {
   const _Splits({
     required this.free,
+    required this.splitUnits,
     required this.units,
     this.elevation,
     this.heat,
     this.showMoving = true,
   });
   final engine.FreeRunSummary free;
+
+  /// What one split covers (a km or a mile); [units] is only the display.
+  final Units splitUnits;
 
   /// Fills the table's last column with each split's climb.
   final engine.RunElevation? elevation;
@@ -1161,8 +1167,9 @@ class _Splits extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final unit = units == Units.mi ? 'mi' : 'km';
-    final climbs = elevation?.unitClimbs(units == Units.mi ? 1609.344 : 1000);
+    final unit = splitUnits == Units.mi ? 'mi' : 'km';
+    final unitM = splitUnits == Units.mi ? 1609.344 : 1000.0;
+    final climbs = elevation?.unitClimbs(unitM);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1206,15 +1213,12 @@ class _Splits extends StatelessWidget {
                   _TableRow(
                     cells: [
                       '${i + 1}',
-                      Fmt.pace(free.splitsSecPerUnit[i], units),
+                      Fmt.pace(free.splitsSecPerUnit[i] * 1000 / unitM, units),
                       heat?.adjusts == true
                           ? Fmt.pace(
                               heat!.paceAtDistance(
-                                free.splitsSecPerUnit[i] *
-                                    1000 /
-                                    (units == Units.mi ? 1609.344 : 1000),
-                                (i + 0.5) *
-                                    (units == Units.mi ? 1609.344 : 1000),
+                                free.splitsSecPerUnit[i] * 1000 / unitM,
+                                (i + 0.5) * unitM,
                               ),
                               units,
                             )
@@ -1239,11 +1243,13 @@ class _Splits extends StatelessWidget {
 class _DistanceSplits extends StatelessWidget {
   const _DistanceSplits({
     required this.free,
+    required this.splitUnits,
     required this.units,
     required this.color,
     this.elevation,
   });
   final engine.FreeRunSummary free;
+  final Units splitUnits;
   final engine.RunElevation? elevation;
   final Units units;
   final Color color;
@@ -1251,9 +1257,11 @@ class _DistanceSplits extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final unit = units == Units.mi ? 'MI' : 'KM';
+    final unit = splitUnits == Units.mi ? 'MI' : 'KM';
     final splits = free.splitsSecPerUnit;
-    final climbs = elevation?.unitClimbs(units == Units.mi ? 1609.344 : 1000);
+    final climbs = elevation?.unitClimbs(
+      splitUnits == Units.mi ? 1609.344 : 1000,
+    );
     final quickest = splits.isEmpty
         ? -1
         : splits.indexOf(splits.reduce((a, b) => a < b ? a : b));
@@ -1342,6 +1350,11 @@ class _DistanceSplits extends StatelessWidget {
     );
   }
 }
+
+/// The unit a run's splits are per: the file's own unit, chosen at Start.
+/// The display unit can differ if the setting changed since.
+Units splitUnitsOf(RunDetail d) =>
+    d.run.units == engine.Units.mi ? Units.mi : Units.km;
 
 /// The tables stay on run detail, but behind this closed-by-default row so
 /// the chart above leads.
@@ -1450,12 +1463,12 @@ bool _chartUsesTruePace(RecordMode mode, engine.RunAnalysis a) {
 /// the table's cool-day column does it.
 List<SplitBar> splitBarsOf(
   engine.FreeRunSummary free,
-  Units units, {
+  Units splitUnits, {
   engine.RunElevation? elevation,
   engine.HeatAdjustment? heat,
   bool truePace = false,
 }) {
-  final unitM = units == Units.mi ? 1609.344 : 1000.0;
+  final unitM = splitUnits == Units.mi ? 1609.344 : 1000.0;
   return [
     for (var i = 0; i < free.splitsSecPerUnit.length; i++)
       SplitBar(
@@ -1528,7 +1541,7 @@ List<Widget> _splitsChart(
     final reps = m == null ? const <RepBarDatum>[] : repBarData(d, null);
     chart = reps.length >= 2
         ? _RepsChart(reps: reps, units: units, truePace: truePace, a: a)
-        : _kmChart(a, units, elev, mode, truePace);
+        : _kmChart(d, units, elev, mode, truePace);
   } else if (mode == RecordMode.laps) {
     final view = a.laps;
     chart = view == null
@@ -1545,7 +1558,7 @@ List<Widget> _splitsChart(
             ),
           );
   } else {
-    chart = _kmChart(a, units, elev, mode, truePace);
+    chart = _kmChart(d, units, elev, mode, truePace);
   }
   return [
     if (mode == RecordMode.intervals && v != null)
@@ -1555,20 +1568,20 @@ List<Widget> _splitsChart(
 }
 
 Widget _kmChart(
-  engine.RunAnalysis a,
+  RunDetail d,
   Units units,
   engine.RunElevation? elev,
   RecordMode mode,
   bool truePace,
 ) => SplitsBars(
-  title: units == Units.mi ? 'PACE PER MILE' : 'PACE PER KM',
+  title: splitUnitsOf(d) == Units.mi ? 'PACE PER MILE' : 'PACE PER KM',
   units: units,
   truePace: truePace,
   bars: splitBarsOf(
-    a.freeRun,
-    units,
+    d.analysis.freeRun,
+    splitUnitsOf(d),
     elevation: elev,
-    heat: mode == RecordMode.cooper ? null : a.heat,
+    heat: mode == RecordMode.cooper ? null : d.analysis.heat,
     truePace: truePace,
   ),
 );
@@ -1613,7 +1626,7 @@ class _RepsChart extends StatelessWidget {
           style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
         ),
         const SizedBox(height: Space.x8),
-        RepBars(reps: data, units: units, showDelta: false, fadeProgress: 1),
+        RepBars(reps: data, units: units, showDelta: false, fadeProgress: 0),
         const SizedBox(height: Space.x8),
         Text(
           truePace
