@@ -253,5 +253,16 @@ void main() {
     await tester.tap(card);
     await pumpTimes(tester, 4);
     expect(services.settings.settings.lastMode, isNot(RecordMode.laps));
+    // Its own selection: ticked after the tap whatever the plan's reps are.
+    expect(
+      find.descendant(of: card, matching: find.byIcon(Icons.check)),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('goal-chip')));
+    await pumpTimes(tester, 4);
+    expect(
+      find.descendant(of: card, matching: find.byIcon(Icons.check)),
+      findsNothing,
+    );
   });
 }

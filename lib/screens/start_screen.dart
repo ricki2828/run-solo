@@ -119,6 +119,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       );
     }
     WidgetsBinding.instance.removeObserver(this);
+    _plans?.removeListener(_onPlanChanged);
     _stopProbe();
     super.dispose();
   }
@@ -128,6 +129,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _syncProbe();
+      _reloadRuns();
     } else {
       _stopProbe();
     }
@@ -256,6 +258,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _services = AppServices.of(context);
+    _plans ??= _services!.plans..addListener(_onPlanChanged);
     final preset = widget.preset;
     if (preset != null && _presetController == null) {
       final c = _presetController = _services!.settings;
@@ -316,6 +319,31 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   }
 
   PlanContext? _planCtx;
+  BlockPlanController? _plans;
+
+  /// A plan made, swapped or ended while Start is open.
+  void _onPlanChanged() {
+    if (mounted) setState(_refreshLoad);
+  }
+
+  /// Back from the background (maybe on a new day, maybe after a run):
+  /// History, the load check and the plan are read again.
+  void _reloadRuns() {
+    final services = _services;
+    if (services == null) return;
+    services.history.list().then((r) {
+      if (mounted) {
+        setState(() {
+          _runs = r;
+          _refreshLoad();
+        });
+      }
+    }, onError: (_) {});
+  }
+
+  /// Set when the runner taps the Today card; cleared by any other pick
+  /// (the card is selected only while its pick is still the one in force).
+  bool _todayPicked = false;
 
   /// The plan's next session (today's, or the next one), or null with no
   /// plan, a finished one, or History not in yet.
@@ -335,14 +363,21 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     final session = next.session;
     final apply = PlanStart.apply(session);
     final applied = apply(s);
-    final day = PlanText.dayWord(next.date, _services!.now());
+    final now = _services!.now();
+    // "Today" only on the planned day. An earlier or later suggested day is
+    // just the plan's next session; a missed one is never offered.
+    final today = engine.dateOnly(next.date) == engine.dateOnly(now);
+    final later = engine.dateOnly(next.date).isAfter(engine.dateOnly(now));
     return StartTodayCard(
       title:
-          '${day == 'today' ? 'Today' : 'Next'}: ${session.name} · '
-          '${session.size}${day == 'today' ? '' : ' · $day'}',
+          '${today ? 'Today' : 'Next'}: ${session.name} · ${session.size}'
+          '${later ? ' · ${engine.BlockResolver.dayName(next.date)}' : ''}',
       reason: session.reason,
-      selected: _samePick(applied, s) && applied.reps == s.reps,
-      onTap: () => _setSettings(apply).then((_) => _syncProbe()),
+      selected: _todayPicked && _samePick(applied, s),
+      onTap: () {
+        setState(() => _todayPicked = true);
+        _setSettings(apply).then((_) => _syncProbe());
+      },
     );
   }
 
