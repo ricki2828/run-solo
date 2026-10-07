@@ -21,7 +21,7 @@ Google Maps, weather from Open-Meteo and place names from the phone's own geocod
 | `android/core-jvm/` | Pure Kotlin/JVM module (journal codec, lap state machine, haversine, HR parse, cue scheduler). Standalone Gradle build, no Android plugin, included into the app via `includeBuild` |
 | `assets/fonts/` | Saira Extra Condensed 500/700/800 + Schibsted Grotesk variable, bundled (SIL OFL 1.1, licences beside them). Nothing is fetched at runtime |
 | `tools/` | `check_16kb_alignment.sh` (16 KB page-size gate), `emulator_*.sh`, `print_cert_sha1.sh` (SHA-1s for the Maps key restriction) |
-| `docs/` | GitHub Pages site (`runsolo.app`): `privacy/` policy page; `play-console.md` (every App content / Data safety / listing answer), `fgs-demo-video.md`, `closed-test-testers.md` |
+| `docs/` | static site published at https://runsupreme.taiaroa.xyz: `privacy/` policy page; `play-console.md` (every App content / Data safety / listing answer), `fgs-demo-video.md`, `closed-test-testers.md` |
 | `.github/workflows/ci.yml` | CI (below) |
 
 ## Building: CI only for Android
@@ -108,15 +108,13 @@ app-signing certificate**, dogfood key, your local debug key); see `docs/play-co
 CI's debug APK is signed by a per-runner debug key, so the emulator smoke always sees the
 "Map failed to load" state.
 
-### GitHub Pages (`runsolo.app`)
+### Public site (https://runsupreme.taiaroa.xyz)
 
-Settings → Pages → Source "Deploy from a branch", branch `main`, folder `/docs`; custom domain
-`runsolo.app` (add the `A`/`AAAA` records GitHub lists plus `www` CNAME, tick Enforce HTTPS).
-The privacy policy is then `https://runsolo.app/privacy/`. The repo is public for now (free
-Actions minutes) and goes private again at launch: GitHub Pages on a private repo needs a paid
-plan, so before that switch move `docs/` to a public host (simplest: a tiny public repo
-`run-solo-site` holding only `index.html` and `privacy/`, Pages on, same custom domain) and keep
-the URL identical, since it is printed on the Play forms.
+The repo is private, so GitHub Pages is not used. `docs/index.html` and `docs/privacy/index.html` are
+served by the Vercel project `run-supreme-site` (personal scope), custom domain
+`runsupreme.taiaroa.xyz` (Cloudflare CNAME to `cname.vercel-dns.com`, DNS only). Privacy policy:
+`https://runsupreme.taiaroa.xyz/privacy/`. To publish an edit, copy those two files into `~/sites/run-supreme/` and run
+`vercel deploy --prod --scope rickis-projects-e03243a5` there.
 
 ## Licences
 
