@@ -1,8 +1,9 @@
 name: ios
 
-# iOS builds on GitHub's macOS runners (iOS plan §6.1, §11). Manual runs and v* tags only:
-# nothing here runs on branch pushes or pull requests, so iOS never slows the Android checks
-# in ci.yml. Verify a branch with:  gh workflow run ios.yml --ref <branch>
+# iOS builds on GitHub's macOS runners (iOS plan §6.1, §11; macOS minutes cost 10x). Runs on
+# manual dispatch, v* tags, pushes to main that touch android/core-jvm, ios or pigeons, and PRs
+# that touch those paths AND carry the `full-ci` label. Never on ordinary Flutter-only PRs.
+# Verify a branch with:  gh workflow run ios.yml --ref <branch>
 #
 # Pins, bump together: Flutter 3.47.5 (same as ci.yml and the dev host), Xcode as selected
 # below (the job summary records the exact Xcode and CocoaPods versions of each run).
@@ -18,10 +19,16 @@ on:
   workflow_dispatch:
   push:
     tags: ['v*']
+    branches: [main]
+    paths: ['android/core-jvm/**', 'ios/**', 'pigeons/**']
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths: ['android/core-jvm/**', 'ios/**', 'pigeons/**']
 
 concurrency:
-  group: ios-${{ github.ref }}
-  cancel-in-progress: true
+  # Label noise gets its own group so an unrelated label cannot cancel a real run.
+  group: ios-${{ github.ref }}-${{ (github.event.action == 'labeled' && github.event.label.name != 'full-ci') && 'label' || 'run' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   FLUTTER_VERSION: '3.47.5'
@@ -30,6 +37,7 @@ env:
 jobs:
   verify:
     name: simulator build (no signing)
+    if: ${{ github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'full-ci') && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci')) }}
     runs-on: macos-15
     timeout-minutes: 45
     steps:
