@@ -108,11 +108,12 @@ class VoiceCoach(private val config: Config) {
         val pace = i.paceSecPerKm ?: return null
         if (i.msToPhaseEnd != null && i.msToPhaseEnd <= NEAR_END_MS) return null
         val due = dueSinceT ?: i.t.also { dueSinceT = it }
-        if (!quiet) {
-            // Could not start in time: the moment has passed, so skip this slot rather than say it late.
-            if (i.t - due > SpeechClock.STALE_MS) skipSlot(i)
+        // Could not start in time: the moment has passed, so skip this slot rather than say it late.
+        if (i.t - due > SpeechClock.STALE_MS) {
+            skipSlot(i)
             return null
         }
+        if (!quiet) return null
         skipSlot(i)
         val delta = pace - target
         val band = config.bandSecPerKm
