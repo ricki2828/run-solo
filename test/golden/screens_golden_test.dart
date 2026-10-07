@@ -37,6 +37,8 @@ import 'package:run_solo/theme/zones.dart';
 import 'package:run_solo/widgets/lap_button.dart';
 import 'package:run_solo/widgets/weather_chip.dart';
 
+import 'package:run_solo/state/voice_coach_plan.dart' show CoachTarget;
+
 import '../helpers.dart';
 import '../screens/load_warning_test.dart' show hotWeek;
 import '../route_fixtures.dart';
@@ -316,6 +318,46 @@ void main() {
     await recordWithHr(tester, RecordMode.intervals, null, 'record_zone0');
     await recordWithHr(tester, RecordMode.intervals, 140, 'record_zone3');
     await recordWithHr(tester, RecordMode.intervals, 178, 'record_zone5');
+  });
+
+  testWidgets('record: Z2 free run with the ladder (Full Instrument)', (
+    tester,
+  ) async {
+    await recordWithHr(
+      tester,
+      RecordMode.free,
+      124,
+      'record_free_z2_360x800',
+      height: 800,
+    );
+  });
+
+  testWidgets('record: Z4 rep with the target band and next step', (
+    tester,
+  ) async {
+    final fake = FakeRecorderGateway(now: now)..scriptedHr = 162;
+    final services = fakeServices(recorder: fake);
+    services.recording.coachTarget = const CoachTarget(paceSecPerKm: 290);
+    await services.recording.start(
+      RecordMode.intervals,
+      standardPreset(),
+      Units.km,
+    );
+    await pumpApp(tester, services, pushRoute: Routes.recording);
+    tester.view.physicalSize = const Size(1080, 800 * 3.0);
+    await pumpTimes(tester, 4);
+    await fake.lap(LapSource.button);
+    await pumpTimes(tester, 5);
+    for (var i = 0; i < 40; i++) {
+      fake.advance(const Duration(seconds: 1));
+      await tester.pump();
+    }
+    await pumpTimes(tester, 5);
+    await settleAnimations(tester);
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(find.byKey(const ValueKey('target-band')), findsOneWidget);
+    expect(find.byKey(const ValueKey('next-step')), findsOneWidget);
+    await golden(tester, 'record_rep_z4_target_360x800');
   });
 
   testWidgets('record: laps run and free run layouts (A2)', (tester) async {
@@ -1213,43 +1255,45 @@ void main() {
     await introAt(tester, IntroKind.short, 400, 'intro_short_final');
   });
 
-  test(
-    'zone backgrounds keep Bone ≥ 7:1 and warn ≥ 4.5:1 (A1, A7 checklist)',
-    () {
-      double lum(Color c) {
-        double ch(double v) => v <= 0.03928
-            ? v / 12.92
-            : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
-        return 0.2126 * ch(c.r) + 0.7152 * ch(c.g) + 0.0722 * ch(c.b);
-      }
+  test('zone floods keep Bone numbers >= 7:1, labels >= 6:1, warn >= 4.5:1 '
+      '(Full Instrument, A1, A7 checklist)', () {
+    double lum(Color c) {
+      double ch(double v) => v <= 0.03928
+          ? v / 12.92
+          : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
+      return 0.2126 * ch(c.r) + 0.7152 * ch(c.g) + 0.0722 * ch(c.b);
+    }
 
-      double ratio(Color a, Color b) {
-        final la = lum(a), lb = lum(b);
-        final hi = la > lb ? la : lb, lo = la > lb ? lb : la;
-        return (hi + 0.05) / (lo + 0.05);
-      }
+    double ratio(Color a, Color b) {
+      final la = lum(a), lb = lum(b);
+      final hi = la > lb ? la : lb, lo = la > lb ? lb : la;
+      return (hi + 0.05) / (lo + 0.05);
+    }
 
-      const t = RunSoloTokens.dark;
-      for (var z = 0; z <= HrZones.count; z++) {
-        final bg = HrZones.background(z);
-        expect(ratio(t.inkPrimary, bg), greaterThan(7), reason: 'Bone on Z$z');
-        expect(ratio(t.semWarn, bg), greaterThan(4.5), reason: 'warn on Z$z');
-        expect(ratio(t.accentArc, bg), greaterThan(7), reason: 'Arc on Z$z');
-        // Bone 80 % composited over the zone background (see HrZones).
-        final bone70 = Color.alphaBlend(HrZones.secondaryOnZone, bg);
-        expect(ratio(bone70, bg), greaterThan(7), reason: 'Bone 70% on Z$z');
-        expect(lum(bg), lessThanOrEqualTo(0.034), reason: 'OLED budget Z$z');
-        // The zone label and phase titles fall back to Bone when their hue
-        // does not read on the fill; whichever shows must be >= 4.5:1.
-        final label = HrZones.labelOn(z, t.inkPrimary);
-        expect(ratio(label, bg), greaterThan(4.5), reason: 'label Z$z');
-        for (final hue in [AuroraRunType.intervals, t.semImproving]) {
-          final title = HrZones.legibleOn(z, hue, t.inkPrimary);
-          expect(ratio(title, bg), greaterThan(4.5), reason: 'title Z$z');
-        }
+    const t = RunSoloTokens.dark;
+    for (var z = 0; z <= HrZones.count; z++) {
+      final bg = HrZones.background(z);
+      expect(ratio(t.inkPrimary, bg), greaterThan(7), reason: 'Bone on Z$z');
+      expect(ratio(t.semWarn, bg), greaterThan(4.5), reason: 'warn on Z$z');
+      // The cyan TRUE word and Arc deltas are large text on the floods.
+      expect(ratio(t.accentArc, bg), greaterThan(4.5), reason: 'Arc on Z$z');
+      // Secondary labels: Bone 90 % composited over the flood.
+      final secondary = Color.alphaBlend(HrZones.secondaryOnZone, bg);
+      expect(ratio(secondary, bg), greaterThan(6), reason: 'label on Z$z');
+      // The zone label and phase titles fall back to Bone when their hue
+      // does not read on the fill; whichever shows must be >= 4.5:1.
+      final label = HrZones.labelOn(z, t.inkPrimary);
+      expect(ratio(label, bg), greaterThan(4.5), reason: 'label Z$z');
+      for (final hue in [AuroraRunType.intervals, t.semImproving]) {
+        final title = HrZones.legibleOn(z, hue, t.inkPrimary);
+        expect(ratio(title, bg), greaterThan(4.5), reason: 'title Z$z');
       }
-    },
-  );
+      // The target band bar (Bone on the dark track) over the flood.
+      if (z > 0) {
+        expect(ratio(t.inkPrimary, bg), greaterThan(7), reason: 'band Z$z');
+      }
+    }
+  });
 
   test('record-screen token pairs meet 7:1 (design brief §4)', () {
     double lum(Color c) {

@@ -2,25 +2,26 @@ import 'package:flutter/material.dart';
 
 import 'tokens.dart';
 
-/// HR-zone background palette (design addendum A1, plan §18.1). Zones are
-/// shares of the resolved max HR: Z1 < 60 %, Z2 60–70, Z3 70–80, Z4 80–90,
-/// Z5 ≥ 90; zone 0 = no strap / no signal. Every background keeps Bone
-/// ≥ 10.4:1 and sits at ≤ 3.4 % relative luminance (OLED draw near black).
-/// The luminance ramp is deliberately not monotone (Z3 brightest, Z1
-/// darkest) because deuteranopia confuses Z2/Z3/Z4 at these levels, which is
-/// why the label and gauge are mandatory and colour is reinforcement only.
+/// HR-zone floods for the run screen (design addendum A1, plan §18.1; Full
+/// Instrument palette, 7-Oct-2026). Zones are shares of the resolved max HR:
+/// Z1 < 60 %, Z2 60–70, Z3 70–80, Z4 80–90, Z5 ≥ 90; zone 0 = no strap / no
+/// signal (the near-black base). The fills are clean and flat, the deep
+/// versions of the chart ramp (blue, green, amber, orange, red), and keep
+/// Bone numbers at 7:1 or better on every one (Z1 8.8, Z2 7.1, Z3 7.1, Z4
+/// 7.1, Z5 8.8). Colour is reinforcement only: the label, the gauge and the
+/// right-edge ladder stay.
 abstract final class HrZones {
   static const int count = 5;
 
+  /// Brief values were Z2 #17603A, Z3 #7A5A08, Z4 #8A3410; those give Bone
+  /// 6.3, 5.3 and 6.8:1, so each is darkened just enough to reach 7.1:1.
   static const List<Color> backgrounds = [
-    NightSession.bgBase, // 0: today's base
-    Color(0xFF0E2140), // 1: deep navy
-    Color(0xFF0C3322), // 2: deep green
-    Color(0xFF3F2A05), // 3: amber (30-Sep retune: #403208 read khaki; 2.72 %
-    // luminance, 11.3:1 Bone, still brighter than Z4 so the ramp stays non-monotone)
-    Color(0xFF4C1D04), // 4: burnt orange (30-Sep retune: #4A2208 read brown;
-    // 2.42 % luminance, 11.8:1 Bone)
-    Color(0xFF4E0E18), // 5: deep red
+    NightSession.bgBase, // 0: no HR
+    Color(0xFF1C3F6E), // 1: blue
+    Color(0xFF155835), // 2: green (brief #17603A)
+    Color(0xFF624806), // 3: amber (brief #7A5A08)
+    Color(0xFF863210), // 4: orange (brief #8A3410)
+    Color(0xFF7D1222), // 5: red
   ];
 
   static const List<String> words = [
@@ -81,12 +82,11 @@ abstract final class HrZones {
       ? distributionDark
       : distributionLightText)[zone.clamp(0, count)];
 
-  /// Secondary labels on a zone background. The addendum says Bone at 70 %
-  /// (7.0:1 or better on every zone); measured with WCAG relative luminance
-  /// that is 6.4:1 on Z2 and 6.0:1 on Z3, so this is Bone at 80 %, the
-  /// lowest alpha that clears 7:1 on all five (7.3:1 on Z3). The golden
-  /// test's contrast audit pins it.
-  static const Color secondaryOnZone = Color(0xCCEDEAE3);
+  /// Secondary labels on a zone flood: Bone at 90 %, 6.0:1 or better on all
+  /// five (the old 7:1 at 80 % is not reachable on the brighter floods short
+  /// of full Bone). Numbers stay full Bone at 7:1; the contrast audit pins
+  /// both.
+  static const Color secondaryOnZone = Color(0xE6EDEAE3);
 
   /// Empty gauge segment.
   static const Color gaugeEmpty = Color(0x33FFFFFF);

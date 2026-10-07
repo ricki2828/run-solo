@@ -64,7 +64,7 @@ class EqualFigures extends StatelessWidget {
   final double rowGap;
 
   static const double _gap = Space.x16;
-  static const double floor = 36;
+  static final double floor = RunSoloType.runSize(36);
 
   static double _width(String text, TextStyle style) {
     final p = TextPainter(
@@ -234,7 +234,7 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
                     ValueKey('map-hero-time'),
                     ValueKey('map-hero-pace'),
                   ],
-                  cap: widget.compact ? 40 : 44,
+                  cap: RunSoloType.runSize(widget.compact ? 40 : 44),
                   labelColor: widget.secondary,
                   valueColor: t.inkPrimary,
                 )
@@ -252,7 +252,9 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
                         style: RunSoloType.display64
                             .copyWith(
                               color: t.inkPrimary,
-                              fontSize: widget.compact ? 52 : 64,
+                              fontSize: RunSoloType.runSize(
+                                widget.compact ? 52 : 64,
+                              ),
                             )
                             .copyWith(fontWeight: FontWeight.w700),
                       ),

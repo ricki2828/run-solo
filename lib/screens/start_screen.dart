@@ -384,14 +384,27 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
 
   /// Voice coaching for this run. A plan session is coached against its own
   /// pace only on the planned day and while the pick is still that session.
-  VoiceCoachConfig _voiceCoach(AppServices services, AppSettings s) {
+  /// Today's plan session when it is the pick; null for any other run.
+  engine.BlockSession? _plannedToday(AppServices services, AppSettings s) {
     final next = _plannedNext(s);
-    engine.BlockSession? planned;
     if (next != null &&
         engine.dateOnly(next.date) == engine.dateOnly(services.now()) &&
         _samePick(PlanStart.apply(next.session)(s), s)) {
-      planned = next.session;
+      return next.session;
     }
+    return null;
+  }
+
+  /// The run screen's target band, shown with voice coaching on or off.
+  CoachTarget? _coachTarget(AppServices services, AppSettings s) =>
+      VoiceCoachPlan.target(
+        planned: _plannedToday(services, s),
+        vdot: _planCtx?.vdot,
+        goalPaceSecPerKm: s.goalRun ? _goalAim(s) : null,
+      );
+
+  VoiceCoachConfig _voiceCoach(AppServices services, AppSettings s) {
+    final planned = _plannedToday(services, s);
     return VoiceCoachPlan.build(
       settings: s,
       zones: services.hrZones,
@@ -449,6 +462,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       await services.recorder.setKmSplits(s.kmSplits);
       await services.recorder.setSpokenSummary(s.spokenSummary);
       await services.recorder.setVoiceCoach(_voiceCoach(services, s));
+      services.recording.coachTarget = _coachTarget(services, s);
       await services.recorder.setAutoPause(s.autoPause);
       if ((testMode ?? s.recordMode) == RecordMode.laps) {
         await services.recorder.setVolumeKeyLaps(

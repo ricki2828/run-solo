@@ -79,7 +79,9 @@ class PaceDial extends StatelessWidget {
   Widget? _trueLine(RunSoloTokens t) {
     final v = trueSecPerKm;
     if (v == null) return null;
-    final style = (trueStyle ?? RunSoloType.display44.copyWith(fontSize: 36));
+    final style =
+        (trueStyle ??
+        RunSoloType.display44.copyWith(fontSize: RunSoloType.runSize(36)));
     return FittedBox(
       fit: BoxFit.scaleDown,
       alignment: Alignment.centerLeft,

@@ -38,8 +38,8 @@ class CompareCard extends StatelessWidget {
 
   static double heightFor({required bool compact}) => compact ? 92 : 104;
 
-  static TextStyle rankStyle({required bool compact}) =>
-      RunSoloType.display44.copyWith(fontSize: compact ? 36 : 44, color: ink);
+  static TextStyle rankStyle({required bool compact}) => RunSoloType.display44
+      .copyWith(fontSize: RunSoloType.runSize(compact ? 36 : 44), color: ink);
 
   @override
   Widget build(BuildContext context) {
