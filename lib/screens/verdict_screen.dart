@@ -18,6 +18,7 @@ import '../widgets/chrome.dart';
 import '../widgets/coaching.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/rep_bars.dart';
+import '../widgets/splits_bars.dart';
 import 'cooper_result_screen.dart';
 import 'course_board_screen.dart';
 import 'board_detail_screen.dart';
@@ -442,7 +443,10 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                       units: units,
                       progress: _bars.value,
                       deltaProgress: _delta.value,
-                      fadeProgress: flagged ? 0 : _delta.value,
+                      // No slope line; the axis never spans under 30 s, as on
+                      // run detail, so a 5 s spread is not dramatic.
+                      fadeProgress: 0,
+                      minSpanSec: SplitsBars.minSpanSec,
                       tone: _delta.value > 0 || _reduced
                           ? tone
                           : RepTone.neutral,
