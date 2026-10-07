@@ -332,33 +332,58 @@ void main() {
     );
   });
 
-  testWidgets('record: Z4 rep with the target band and next step', (
-    tester,
-  ) async {
-    final fake = FakeRecorderGateway(now: now)..scriptedHr = 162;
-    final services = fakeServices(recorder: fake);
-    services.recording.coachTarget = const CoachTarget(paceSecPerKm: 290);
-    await services.recording.start(
-      RecordMode.intervals,
-      standardPreset(),
-      Units.km,
+  for (final h in [800, 640]) {
+    testWidgets(
+      'record: Z4 rep with the target band and next step at 360 x $h',
+      (tester) async {
+        final fake = FakeRecorderGateway(now: now)..scriptedHr = 162;
+        final services = fakeServices(recorder: fake);
+        services.recording.coachTarget = const CoachTarget(paceSecPerKm: 290);
+        await services.recording.start(
+          RecordMode.intervals,
+          standardPreset(),
+          Units.km,
+        );
+        await pumpApp(tester, services, pushRoute: Routes.recording);
+        tester.view.physicalSize = Size(1080, h * 3.0);
+        await pumpTimes(tester, 4);
+        await fake.lap(LapSource.button);
+        await pumpTimes(tester, 5);
+        for (var i = 0; i < 40; i++) {
+          fake.advance(const Duration(seconds: 1));
+          await tester.pump();
+        }
+        await pumpTimes(tester, 5);
+        await settleAnimations(tester);
+        await tester.pump(const Duration(milliseconds: 700));
+        expect(find.byKey(const ValueKey('next-step')), findsOneWidget);
+        await golden(tester, 'record_rep_z4_target_360x$h');
+      },
     );
-    await pumpApp(tester, services, pushRoute: Routes.recording);
-    tester.view.physicalSize = const Size(1080, 800 * 3.0);
-    await pumpTimes(tester, 4);
-    await fake.lap(LapSource.button);
-    await pumpTimes(tester, 5);
-    for (var i = 0; i < 40; i++) {
-      fake.advance(const Duration(seconds: 1));
-      await tester.pump();
-    }
-    await pumpTimes(tester, 5);
-    await settleAnimations(tester);
-    await tester.pump(const Duration(milliseconds: 700));
-    expect(find.byKey(const ValueKey('target-band')), findsOneWidget);
-    expect(find.byKey(const ValueKey('next-step')), findsOneWidget);
-    await golden(tester, 'record_rep_z4_target_360x800');
-  });
+
+    testWidgets('record: Z4 distance rep with the target band at 360 x $h', (
+      tester,
+    ) async {
+      final fake = FakeRecorderGateway(now: now)..scriptedHr = 162;
+      final services = fakeServices(recorder: fake);
+      services.recording.coachTarget = const CoachTarget(paceSecPerKm: 290);
+      await services.recording.start(
+        RecordMode.intervals,
+        presetSpec('400s'),
+        Units.km,
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 4);
+      await stepSeconds(tester, fake, 60);
+      await fake.startReps();
+      await pumpTimes(tester, 5);
+      await stepSeconds(tester, fake, 55);
+      await settleAnimations(tester);
+      expect(find.byKey(const ValueKey('next-step')), findsOneWidget);
+      await golden(tester, 'record_rep_z4_target_dist_360x$h');
+    });
+  }
 
   testWidgets('record: laps run and free run layouts (A2)', (tester) async {
     await recordWithHr(tester, RecordMode.laps, 150, 'record_laps');

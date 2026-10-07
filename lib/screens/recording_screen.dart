@@ -471,7 +471,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const SizedBox(height: Space.x8),
+                        SizedBox(height: compact ? Space.x4 : Space.x8),
                         _Header(
                           s: s,
                           maxHr: maxHr,
@@ -513,7 +513,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                           ),
                           // The GPS bar stays, as in NUMBERS.
                           if (!s.showEndRep) ...[
-                            const SizedBox(height: Space.x8),
+                            SizedBox(height: Space.x8),
                             Visibility(
                               visible: !s.paused,
                               maintainSize: true,
@@ -638,6 +638,12 @@ class _RecordingScreenState extends State<RecordingScreen>
                               child: _TimerBlock(
                                 s: s,
                                 ctl: ctl,
+                                hideCaption:
+                                    compact &&
+                                    coach != null &&
+                                    coach.nextLine != null &&
+                                    (s.phase == Phase.work ||
+                                        s.phase == Phase.recovery),
                                 style: switch (s.phase) {
                                   Phase.work => primaryStyle(
                                     compact,
@@ -724,7 +730,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                           // END REP: the banner already says GPS is lost,
                           // and the short phone needs the bar's height.
                           if (!s.showEndRep) ...[
-                            const SizedBox(height: Space.x8),
+                            SizedBox(height: compact ? Space.x4 : Space.x8),
                             Visibility(
                               visible: !s.paused,
                               maintainSize: true,
@@ -741,7 +747,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                           const SizedBox(height: Space.x8),
                           coach,
                         ],
-                        const SizedBox(height: Space.x8),
+                        SizedBox(height: compact ? Space.x4 : Space.x8),
                         if (pausedNow)
                           const SizedBox.shrink()
                         else if ((s.isPreset || s.isCooper) &&
@@ -857,7 +863,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                       56 +
                       Space.x12,
                   width: ZoneLadder.width + ZoneLadder.pointer,
-                  child: ZoneLadder(zone: s.zone),
+                  child: ZoneLadder(zone: s.hr == null ? 0 : s.zone),
                 ),
                 CompareCardLayer(
                   link: _cardLink,
@@ -1954,12 +1960,21 @@ class _FreePlan {
 }
 
 class _TimerBlock extends StatelessWidget {
-  const _TimerBlock({required this.s, required this.ctl, this.style});
+  const _TimerBlock({
+    required this.s,
+    required this.ctl,
+    this.style,
+    this.hideCaption = false,
+  });
   final RecordingSnapshot s;
   final RecordingController ctl;
 
   /// Digits style; timer120 unless a bigger primary number shares the screen.
   final TextStyle? style;
+
+  /// The next-step line already says "... left" (short phones): the caption
+  /// under the countdown gives its room to the coach layer.
+  final bool hideCaption;
 
   @override
   Widget build(BuildContext context) {
@@ -2021,11 +2036,13 @@ class _TimerBlock extends StatelessWidget {
           )
         else
           digits,
-        const SizedBox(height: Space.x4),
-        Text(
-          s.paused ? '' : timerCaption(s),
-          style: RunSoloType.label13.copyWith(color: secondary),
-        ),
+        if (!hideCaption) ...[
+          const SizedBox(height: Space.x4),
+          Text(
+            s.paused ? '' : timerCaption(s),
+            style: RunSoloType.label13.copyWith(color: secondary),
+          ),
+        ],
       ],
     );
   }
@@ -2114,7 +2131,7 @@ class _SegmentPace extends StatelessWidget {
         // With no fix there is no live pace or distance to show here, and
         // the GPS banner (and END REP) need the room on a short phone.
         if (!s.showEndRep && !s.gpsLost) ...[
-          SizedBox(height: Space.x8),
+          SizedBox(height: compact ? Space.x4 : Space.x8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -2551,7 +2568,8 @@ class _CoachSlot extends StatelessWidget {
     child: LayoutBuilder(
       builder: (context, box) {
         final c = coach;
-        if (c == null || box.maxHeight < c.height) {
+        // Short phones scale it down a little rather than lose it.
+        if (c == null || box.maxHeight < c.height * 0.75) {
           return const SizedBox.shrink();
         }
         return Align(
