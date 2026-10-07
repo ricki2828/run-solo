@@ -31,7 +31,10 @@ class TargetBand extends StatelessWidget {
   /// The bar covers the target ± this many s/km.
   final double spanSecPerKm;
 
-  static const double barHeight = 14;
+  static const double barHeight = 8;
+
+  /// Height of the whole band row.
+  static const double height = barHeight + 4;
 
   @override
   Widget build(BuildContext context) {
@@ -42,30 +45,30 @@ class TargetBand extends StatelessWidget {
           'Target pace ${Fmt.pace(target.paceSecPerKm, units)} per $unit'
           '${paceSecPerKm == null ? '' : ', now ${Fmt.pace(paceSecPerKm, units)}'}',
       excludeSemantics: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+      child: Row(
         children: [
+          Expanded(
+            child: SizedBox(
+              height: barHeight + 6,
+              child: CustomPaint(
+                key: const ValueKey('target-band'),
+                size: Size.infinite,
+                painter: _BandPainter(
+                  target: target,
+                  pace: paceSecPerKm,
+                  span: spanSecPerKm,
+                  ink: t.inkPrimary,
+                  ground: t.bgBase,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: Space.x8),
           Text(
-            'TARGET ${Fmt.pace(target.paceSecPerKm, units)} /$unit'
+            'TARGET ${Fmt.pace(target.paceSecPerKm, units)}'
             '${target.slowerIsFine ? ' OR SLOWER' : ''}',
             key: const ValueKey('target-label'),
             style: RunSoloType.micro11.copyWith(color: labelColor),
-          ),
-          const SizedBox(height: Space.x4),
-          SizedBox(
-            height: barHeight + 8,
-            child: CustomPaint(
-              key: const ValueKey('target-band'),
-              size: Size.infinite,
-              painter: _BandPainter(
-                target: target,
-                pace: paceSecPerKm,
-                span: spanSecPerKm,
-                ink: t.inkPrimary,
-                ground: t.bgBase,
-              ),
-            ),
           ),
         ],
       ),

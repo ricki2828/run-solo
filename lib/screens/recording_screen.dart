@@ -724,7 +724,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                           // END REP: the banner already says GPS is lost,
                           // and the short phone needs the bar's height.
                           if (!s.showEndRep) ...[
-                            const SizedBox(height: Space.x12),
+                            const SizedBox(height: Space.x8),
                             Visibility(
                               visible: !s.paused,
                               maintainSize: true,
@@ -741,7 +741,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                           const SizedBox(height: Space.x8),
                           coach,
                         ],
-                        const SizedBox(height: Space.x12),
+                        const SizedBox(height: Space.x8),
                         if (pausedNow)
                           const SizedBox.shrink()
                         else if ((s.isPreset || s.isCooper) &&
@@ -2013,7 +2013,7 @@ class _TimerBlock extends StatelessWidget {
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(
-                vertical: Space.x4,
+                vertical: 0,
                 horizontal: Space.x24,
               ),
               child: digits,
@@ -2021,7 +2021,7 @@ class _TimerBlock extends StatelessWidget {
           )
         else
           digits,
-        const SizedBox(height: Space.x8),
+        const SizedBox(height: Space.x4),
         Text(
           s.paused ? '' : timerCaption(s),
           style: RunSoloType.label13.copyWith(color: secondary),
@@ -2114,7 +2114,7 @@ class _SegmentPace extends StatelessWidget {
         // With no fix there is no live pace or distance to show here, and
         // the GPS banner (and END REP) need the room on a short phone.
         if (!s.showEndRep && !s.gpsLost) ...[
-          SizedBox(height: compact ? Space.x8 : Space.x16),
+          SizedBox(height: Space.x8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -2551,10 +2551,16 @@ class _CoachSlot extends StatelessWidget {
     child: LayoutBuilder(
       builder: (context, box) {
         final c = coach;
-        if (c == null || box.maxHeight < c.height + Space.x8) {
+        if (c == null || box.maxHeight < c.height) {
           return const SizedBox.shrink();
         }
-        return Align(alignment: Alignment.bottomCenter, child: c);
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: SizedBox(width: box.maxWidth, child: c),
+          ),
+        );
       },
     ),
   );
@@ -2581,9 +2587,9 @@ class _CoachLayer extends StatelessWidget {
 
   /// Room the layer needs, for [_CoachSlot] to decide whether it fits.
   double get height =>
-      (target != null ? 48.0 : 0) +
-      (target != null && nextLine != null ? Space.x8 : 0) +
-      (nextLine != null ? 40.0 : 0);
+      (target != null ? TargetBand.height : 0) +
+      (target != null && nextLine != null ? 2.0 : 0) +
+      (nextLine != null ? 20.0 : 0);
 
   static _CoachLayer? of({
     required RecordingSnapshot s,
@@ -2637,7 +2643,7 @@ class _CoachLayer extends StatelessWidget {
           units: units,
           labelColor: labelColor,
         ),
-      if (target != null && nextLine != null) const SizedBox(height: Space.x8),
+      if (target != null && nextLine != null) const SizedBox(height: 2),
       if (nextLine != null)
         FittedBox(
           fit: BoxFit.scaleDown,
@@ -2646,7 +2652,11 @@ class _CoachLayer extends StatelessWidget {
             nextLine!,
             key: const ValueKey('next-step'),
             softWrap: false,
-            style: RunSoloType.title28.copyWith(color: textColor),
+            style: RunSoloType.title28.copyWith(
+              color: textColor,
+              fontSize: 20,
+              height: 1.0,
+            ),
           ),
         ),
     ],
