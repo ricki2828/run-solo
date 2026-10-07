@@ -11,6 +11,7 @@ import 'package:run_solo/screens/permissions_screen.dart';
 import 'package:run_solo/screens/start_screen.dart';
 import 'package:run_solo/state/live_context.dart';
 import 'package:run_solo/state/settings.dart';
+import 'package:run_solo/theme/lanes.dart';
 import 'package:run_solo/theme/theme.dart';
 import 'package:run_solo/widgets/recent_activity.dart';
 
@@ -348,7 +349,8 @@ void main() {
         return true;
       });
       // The colour is on the session name only, never the time-of-day word.
-      expect(colours[entry.key], entry.value);
+      // (darkened to 4.5:1 for 19 sp text, same hue).
+      expect(colours[entry.key], RunSoloTokens.light.textOn(entry.value));
       expect(colours.length, 2);
     }
   });

@@ -45,6 +45,9 @@ abstract final class RunSoloType {
   );
 
   static final TextStyle display96 = _display(96, FontWeight.w800);
+
+  /// Home's plain-words statement ("7 in 10"), Saira 800 at ~56 sp.
+  static final TextStyle statement56 = _display(54, FontWeight.w800);
   static final TextStyle display64 = _display(64, FontWeight.w800);
   static final TextStyle display44 = _display(44, FontWeight.w700);
   static final TextStyle title28 = _display(28, FontWeight.w700);

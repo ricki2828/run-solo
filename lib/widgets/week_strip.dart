@@ -7,10 +7,12 @@ import '../state/history_store.dart';
 import '../state/history_weeks.dart';
 import '../theme/theme.dart';
 import '../theme/zones.dart';
+import 'recent_activity.dart' show runTypeColor;
 
 /// Home's "your week": Monday to Sunday (the runner's local dates), one bar
 /// per day. A day's bar is as tall as the time run, stacked by time in each
-/// HR zone (Z1 at the bottom); time with no heart rate is grey on top. A day
+/// HR zone (Z1 at the bottom); time with no heart rate is the run-type
+/// colour of that day's longest run, on top. A day
 /// with no run is a light stub. Half an hour is a full-height bar.
 class WeekStrip extends StatelessWidget {
   const WeekStrip({
@@ -57,6 +59,31 @@ class WeekStrip extends StatelessWidget {
     return out;
   }
 
+  /// Per weekday (0 = Monday): the run-type colour of the day's longest run,
+  /// null on a rest day. Fills the time that has no heart rate.
+  static List<Color?> typeColoursOf(
+    List<RunSummary> runs,
+    DateTime now,
+    RunSoloTokens t,
+  ) {
+    final out = List<Color?>.filled(7, null);
+    final longest = List<num>.filled(7, -1);
+    final week = groupByWeek([
+      for (final r in runs)
+        if (!r.missing) r,
+    ], now);
+    if (week.isEmpty) return out;
+    for (final r in week.first.runs) {
+      final d = r.localStart.weekday - 1;
+      final ms = r.row?.movingMs ?? r.durationMs;
+      if (ms > longest[d]) {
+        longest[d] = ms;
+        out[d] = runTypeColor(r, t);
+      }
+    }
+    return out;
+  }
+
   static String _total(List<List<double>> days) {
     final secs = days.fold(0.0, (a, d) => a + d.fold(0.0, (x, y) => x + y));
     final ran = days.where((d) => d.any((s) => s > 0)).length;
@@ -74,6 +101,7 @@ class WeekStrip extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final brightness = Theme.of(context).brightness;
     final days = daysOf(runs, zones, now);
+    final types = typeColoursOf(runs, now, t);
     final today = now.weekday - 1;
     const letters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
     final tallest = days
@@ -117,7 +145,7 @@ class WeekStrip extends StatelessWidget {
                               seconds: days[i],
                               scale: scale,
                               colors: [
-                                t.inkPrimary.withValues(alpha: 0.4),
+                                types[i] ?? t.inkPrimary.withValues(alpha: 0.4),
                                 for (var z = 1; z <= 5; z++)
                                   HrZones.distribution(z, brightness),
                               ],

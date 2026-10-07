@@ -14,6 +14,7 @@ import '../widgets/week_strip.dart';
 import '../widgets/chrome.dart';
 import '../widgets/goal_picker.dart';
 import '../state/home_progress.dart';
+import '../theme/lanes.dart';
 import '../theme/theme.dart';
 import '../widgets/home_scores.dart';
 import '../widgets/readiness_line.dart';
@@ -455,12 +456,57 @@ class _ProgressHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final st = headline.statement;
+    if (st == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            headline.title,
+            style: RunSoloType.pageHeadline.copyWith(color: t.inkPrimary),
+          ),
+          Text(
+            headline.line,
+            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+          ),
+        ],
+      );
+    }
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      key: const ValueKey('home-statement'),
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Huge, in the colour of the score it refers to (>= 3:1, 24 sp+).
+        Text(
+          st.big,
+          key: const ValueKey('home-statement-big'),
+          style: RunSoloType.statement56.copyWith(color: t.laneFill(st.lane)),
+        ),
+        const SizedBox(height: Space.x4),
+        Text(st.tail, style: RunSoloType.body17.copyWith(color: t.inkPrimary)),
+        const SizedBox(height: Space.x8),
+        Container(
+          key: const ValueKey('home-statement-tag'),
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.x8,
+            vertical: Space.x4,
+          ),
+          decoration: BoxDecoration(
+            color: t.inkPrimary,
+            borderRadius: BorderRadius.circular(Radii.chip),
+          ),
+          child: Text(
+            st.tag,
+            style: RunSoloType.micro11.copyWith(color: t.bgBase),
+          ),
+        ),
+        const SizedBox(height: Space.x12),
         Text(
           headline.title,
-          style: RunSoloType.pageHeadline.copyWith(color: t.inkPrimary),
+          style: RunSoloType.micro11.copyWith(
+            color: t.laneText(st.lane),
+            fontWeight: FontWeight.w700,
+          ),
         ),
         Text(
           headline.line,
