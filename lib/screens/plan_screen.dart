@@ -7,6 +7,7 @@ import '../platform/gateway.dart';
 import '../state/block_plan.dart';
 import '../state/load_guard.dart';
 import '../state/home_progress.dart';
+import '../theme/lanes.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 
@@ -253,6 +254,8 @@ class _PlanBody extends StatelessWidget {
     final units = services.settings.settings.units;
     final plan = view.plan;
     final lane = plan.lane.name.toUpperCase();
+    final laneFill = t.laneFill(plan.lane);
+    final laneText = t.laneText(plan.lane);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(Space.screenGutter),
       child: Column(
@@ -260,7 +263,8 @@ class _PlanBody extends StatelessWidget {
         children: [
           Text(
             '$lane BLOCK',
-            style: RunSoloType.display44.copyWith(color: t.inkPrimary),
+            // 44 sp: the bright fill clears 3:1.
+            style: RunSoloType.display44.copyWith(color: laneFill),
           ),
           Text(
             view.finished
@@ -291,11 +295,8 @@ class _PlanBody extends StatelessWidget {
               children: [
                 Text(
                   'WEEK $w',
-                  style: RunSoloType.heading19.copyWith(
-                    color: view.currentWeek == w
-                        ? t.inkPrimary
-                        : t.inkSecondary,
-                  ),
+                  // The block's lane colour, kept at full strength for 4.5:1.
+                  style: RunSoloType.heading19.copyWith(color: laneText),
                 ),
                 if (PlanText.weekTag(plan, w) != null) ...[
                   const SizedBox(width: Space.x8),
@@ -373,8 +374,8 @@ class _SessionRow extends StatelessWidget {
     final open =
         st == engine.BlockStatus.planned || st == engine.BlockStatus.next;
     final (icon, tag, tagColor) = switch (st) {
-      engine.BlockStatus.done => (Icons.check_circle, 'DONE', t.inkPrimary),
-      engine.BlockStatus.next => (Icons.play_circle, 'NEXT', t.accentArc),
+      engine.BlockStatus.done => (Icons.check_circle, 'DONE', t.semImproving),
+      engine.BlockStatus.next => (Icons.play_circle, 'NEXT', t.inkPrimary),
       engine.BlockStatus.missed => (
         Icons.remove_circle_outline,
         'MISSED',

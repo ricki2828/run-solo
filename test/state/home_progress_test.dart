@@ -47,7 +47,90 @@ RunSummary run(String id, int daysAgo, {String? template, double m = 6000}) =>
       spec: template == null ? null : engine.SessionCatalogue.expand(template),
     );
 
+/// A vdot whose percentile for [lane] lands in [lo]..[hi] for a 44-year-old
+/// man, so the test does not hard-code the norm tables.
+double vdotIn(engine.IdentityLane lane, int lo, int hi, String source) {
+  for (var v = 20.0; v < 90; v += 0.5) {
+    final p = ScoreNorms.percentile(
+      lane,
+      v,
+      source,
+      sex: ProfileSex.male,
+      age: 44,
+    );
+    if (p != null && p >= lo && p <= hi) return v;
+  }
+  throw StateError('no vdot for $lo..$hi');
+}
+
 void main() {
+  group('statement', () {
+    test('50th percentile and up: N in 10, rounded down, capped at 9', () {
+      for (final (lo, hi) in [(50, 59), (60, 69), (70, 79), (90, 99)]) {
+        final v = vdotIn(engine.IdentityLane.aerobic, lo, hi, 'Cooper test');
+        final st = ProgressStatement.of(
+          score(engine.IdentityLane.aerobic, vdot: v, source: 'Cooper test'),
+          sex: ProfileSex.male,
+          age: 44,
+        )!;
+        final p = ScoreNorms.percentile(
+          engine.IdentityLane.aerobic,
+          v,
+          'Cooper test',
+          sex: ProfileSex.male,
+          age: 44,
+        )!;
+        expect(st.big, '${(p ~/ 10).clamp(5, 9)} in 10');
+        expect(st.tail, 'men your age are slower than you.');
+        expect(st.tag, 'M40-49');
+        expect(st.lane, engine.IdentityLane.aerobic);
+      }
+    });
+
+    test('below the 50th: building, no ranking', () {
+      final v = vdotIn(engine.IdentityLane.aerobic, 1, 49, 'Cooper test');
+      final st = ProgressStatement.of(
+        score(engine.IdentityLane.aerobic, vdot: v, source: 'Cooper test'),
+        sex: ProfileSex.male,
+        age: 44,
+      )!;
+      expect(st.big, 'AEROBIC');
+      expect(st.tail, 'is building.');
+      expect(st.tail, isNot(contains('slower')));
+    });
+
+    test('no profile, no statement', () {
+      final h = ProgressHeadline.of(
+        all(),
+        now: testNow,
+        sex: ProfileSex.notSet,
+        age: null,
+      );
+      expect(h.statement, isNull);
+    });
+
+    test('keeps the sub-line and names the top mover', () {
+      final s = {
+        engine.IdentityLane.aerobic: score(
+          engine.IdentityLane.aerobic,
+          vdot: 52,
+          prior: 44,
+          source: 'Cooper test',
+        ),
+        engine.IdentityLane.mid: score(
+          engine.IdentityLane.mid,
+          vdot: 44,
+          prior: 44,
+          source: '5K',
+        ),
+      };
+      final h = headline(s);
+      expect(h.kind, ProgressKind.up);
+      expect(h.title, startsWith('AEROBIC UP'));
+      expect(h.statement!.lane, engine.IdentityLane.aerobic);
+    });
+  });
+
   group('headline', () {
     test('none: first runs set the scores', () {
       final h = headline(const {});

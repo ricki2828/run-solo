@@ -7,6 +7,7 @@ import '../map/map_surface.dart' show usesTerrainMap;
 import '../map/route_builder.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
+import '../theme/lanes.dart';
 import '../theme/theme.dart';
 import 'where_when_line.dart';
 
@@ -179,6 +180,8 @@ class _ActivityRow extends StatelessWidget {
     final timeWord = engine.RunIdentity.timeOfDay(run.localStart);
     final title = custom ?? '$timeWord $sessionName';
     final typeColor = runTypeColor(run, t);
+    // Small text needs 4.5:1; the bright fill stays on the map and figures.
+    final typeText = t.textOn(typeColor);
     final (stat, statSmall) = _stat(run, units);
     // An interval run's card shows the pace of the work reps, the figure
     // Home and the verdict use, not the whole-run average (which includes
@@ -187,7 +190,8 @@ class _ActivityRow extends StatelessWidget {
     final verdict = run.isFourByFour ? run.verdict : null;
     final word = verdict?.headline.text;
     final wordColor = switch (verdict?.headline) {
-      engine.VerdictHeadline.faster => t.accentArc,
+      engine.VerdictHeadline.faster => t.semImproving,
+      engine.VerdictHeadline.slower => t.semSlower,
       _ => t.inkPrimary,
     };
     return Semantics(
@@ -225,7 +229,7 @@ class _ActivityRow extends StatelessWidget {
                             // The run-type colour is the session name's
                             // alone; a runner's own title is Bone.
                             style: TextStyle(
-                              color: custom == null ? typeColor : t.inkPrimary,
+                              color: custom == null ? typeText : t.inkPrimary,
                             ),
                           ),
                         ],

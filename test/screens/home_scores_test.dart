@@ -110,7 +110,7 @@ void main() {
     expect(find.text('AEROBIC'), findsNWidgets(2));
   });
 
-  testWidgets('a sparkline shows only with two points, mint only when rising', (
+  testWidgets('a sparkline shows only with two points, in the score colour', (
     tester,
   ) async {
     engine.IdentityScore score(engine.IdentityLane l, double? prior) =>
@@ -153,8 +153,9 @@ void main() {
                 )
                 .painter!
             as HomeScoreSparkPainter;
-    expect(painter('aerobic').color, t.semImproving);
-    expect(painter('speed').color, t.inkMuted);
+    // Each sparkline is its own score's colour, rising or not.
+    expect(painter('aerobic').color, t.typeTests);
+    expect(painter('speed').color, t.typeIntervals);
     expect(find.byKey(const ValueKey('home-spark-mid')), findsNothing);
   });
 

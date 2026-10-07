@@ -79,6 +79,65 @@ abstract final class ScoreNorms {
 
 enum ProgressKind { loading, failed, none, baseline, steady, up, down }
 
+/// The plain-words statement Home leads with: "7 in 10" huge, then who is
+/// slower than you. [lane] picks its colour. Null when no percentile exists.
+class ProgressStatement {
+  const ProgressStatement({
+    required this.lane,
+    required this.big,
+    required this.tail,
+    required this.tag,
+  });
+  final engine.IdentityLane lane;
+  final String big;
+  final String tail;
+
+  /// Sex and age band, e.g. "M40-49"; "M ALL AGES" for race norms.
+  final String tag;
+
+  /// "N in 10" only from the 50th percentile up. It rounds down, so a 65th
+  /// percentile never claims 7 in 10, and it caps at 9: the percentile is
+  /// 1..99. Below 50 nothing is ranked, just that the score is building.
+  static ProgressStatement? of(
+    engine.IdentityScore s, {
+    required ProfileSex sex,
+    required int? age,
+  }) {
+    final p = ScoreNorms.percentile(
+      s.lane,
+      s.vdot,
+      s.source,
+      sex: sex,
+      age: age,
+    );
+    if (p == null) return null;
+    final female = sex == ProfileSex.female;
+    final who = female ? 'women' : 'men';
+    final lab = ScoreNorms.isLab(s.lane);
+    final letter = female ? 'F' : 'M';
+    final tag = lab
+        ? '$letter${age! ~/ 10 * 10}-${age ~/ 10 * 10 + 9}'
+        : '$letter ALL AGES';
+    if (p < 50) {
+      return ProgressStatement(
+        lane: s.lane,
+        big: s.lane.name.toUpperCase(),
+        tail: 'is building.',
+        tag: tag,
+      );
+    }
+    final n = (p ~/ 10).clamp(5, 9);
+    return ProgressStatement(
+      lane: s.lane,
+      big: '$n in 10',
+      tail: lab
+          ? '$who your age are slower than you.'
+          : '$who who race are slower than you.',
+      tag: tag,
+    );
+  }
+}
+
 /// What Home's hero says: the biggest move in the scores over the last six
 /// weeks, or why there is nothing to say yet.
 class ProgressHeadline {
@@ -86,10 +145,12 @@ class ProgressHeadline {
     required this.kind,
     required this.title,
     required this.line,
+    this.statement,
   });
   final ProgressKind kind;
   final String title;
   final String line;
+  final ProgressStatement? statement;
 
   static const loading = ProgressHeadline(
     kind: ProgressKind.loading,
@@ -103,7 +164,61 @@ class ProgressHeadline {
     line: "Couldn't load your scores.",
   );
 
+  /// The sub-line logic below, with the plain-words statement on top: the
+  /// score that moved most, else the highest-ranked one.
   static ProgressHeadline of(
+    Scores scores, {
+    required DateTime now,
+    required ProfileSex sex,
+    required int? age,
+  }) {
+    final h = _of(scores, now: now, sex: sex, age: age);
+    if (scores.isEmpty) return h;
+    final moved =
+        [
+          for (final lane in engine.IdentityLane.values)
+            if (scores[lane] != null &&
+                (ScoreNorms.change(scores[lane]!, sex: sex, age: age) ?? 0) !=
+                    0)
+              scores[lane]!,
+        ]..sort((a, b) {
+          final c = ScoreNorms.change(
+            b,
+            sex: sex,
+            age: age,
+          )!.abs().compareTo(ScoreNorms.change(a, sex: sex, age: age)!.abs());
+          return c != 0 ? c : a.lane.index.compareTo(b.lane.index);
+        });
+    final ranked =
+        [
+          for (final lane in engine.IdentityLane.values)
+            if (scores[lane] != null) scores[lane]!,
+        ]..sort((a, b) {
+          int p(engine.IdentityScore x) =>
+              ScoreNorms.percentile(
+                x.lane,
+                x.vdot,
+                x.source,
+                sex: sex,
+                age: age,
+              ) ??
+              0;
+          final c = p(b).compareTo(p(a));
+          return c != 0 ? c : a.lane.index.compareTo(b.lane.index);
+        });
+    final top = moved.isNotEmpty ? moved.first : ranked.first;
+    final st = ProgressStatement.of(top, sex: sex, age: age);
+    return st == null
+        ? h
+        : ProgressHeadline(
+            kind: h.kind,
+            title: h.title,
+            line: h.line,
+            statement: st,
+          );
+  }
+
+  static ProgressHeadline _of(
     Scores scores, {
     required DateTime now,
     required ProfileSex sex,

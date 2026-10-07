@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_engine/run_engine.dart' as engine;
+import 'package:run_solo/theme/lanes.dart';
 import 'package:run_solo/theme/theme.dart';
 import 'package:run_solo/theme/zones.dart';
 
@@ -72,6 +74,52 @@ void main() {
           greaterThanOrEqualTo(3.0),
           reason: '${c.key} on ${g.key}',
         );
+      }
+    }
+  });
+
+  test(
+    'score colours: text >= 4.5:1, big fills >= 3:1, hues stay distinct',
+    () {
+      for (final lane in engine.IdentityLane.values) {
+        for (final g in grounds.entries) {
+          expect(
+            _ratio(t.laneText(lane), g.value),
+            greaterThanOrEqualTo(4.5),
+            reason: '${lane.name} text on ${g.key}',
+          );
+          expect(
+            _ratio(t.laneFill(lane), g.value),
+            greaterThanOrEqualTo(3.0),
+            reason: '${lane.name} fill on ${g.key}',
+          );
+        }
+      }
+      expect(
+        {for (final l in engine.IdentityLane.values) t.laneFill(l)}.length,
+        engine.IdentityLane.values.length,
+      );
+      // Text keeps the fill's hue: it only gets darker.
+      for (final l in engine.IdentityLane.values) {
+        final f = HSLColor.fromColor(t.laneFill(l));
+        final x = HSLColor.fromColor(t.laneText(l));
+        expect((f.hue - x.hue).abs(), lessThan(3), reason: l.name);
+        expect(x.lightness, lessThanOrEqualTo(f.lightness));
+      }
+    },
+  );
+
+  test('run-type text (history label, activity name) is >= 4.5:1', () {
+    for (final c in [
+      t.typeFree,
+      t.typeLaps,
+      t.typeGoal,
+      t.typeIntervals,
+      t.typeTests,
+      t.typeTrail,
+    ]) {
+      for (final g in grounds.entries) {
+        expect(_ratio(t.textOn(c), g.value), greaterThanOrEqualTo(4.5));
       }
     }
   });

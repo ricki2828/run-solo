@@ -1,36 +1,30 @@
 import 'package:flutter/material.dart';
 
 /// A small trend line for one score card: percentile values oldest to
-/// newest. Mint when rising, muted when flat or falling; nothing at all
-/// with fewer than two points.
+/// newest, in the score's own colour; nothing at all with fewer than two
+/// points.
 class HomeScoreSpark extends StatelessWidget {
   const HomeScoreSpark({
     super.key,
     required this.values,
-    required this.rising,
-    required this.mutedColor,
+    required this.color,
     this.height = 20,
   });
 
   /// Oldest to newest.
   final List<int> values;
-  final Color rising;
-  final Color mutedColor;
+  final Color color;
   final double height;
 
   @override
   Widget build(BuildContext context) {
     if (values.length < 2) return const SizedBox.shrink();
-    final up = values.last > values.first;
     return ExcludeSemantics(
       child: SizedBox(
         height: height,
         width: double.infinity,
         child: CustomPaint(
-          painter: HomeScoreSparkPainter(
-            values: values,
-            color: up ? rising : mutedColor,
-          ),
+          painter: HomeScoreSparkPainter(values: values, color: color),
         ),
       ),
     );
@@ -64,11 +58,11 @@ class HomeScoreSparkPainter extends CustomPainter {
       Paint()
         ..color = color
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
+        ..strokeWidth = 2.5
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round,
     );
-    canvas.drawCircle(at(values.length - 1), 3, Paint()..color = color);
+    canvas.drawCircle(at(values.length - 1), 3.5, Paint()..color = color);
   }
 
   @override

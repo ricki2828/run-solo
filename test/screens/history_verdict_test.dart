@@ -28,7 +28,7 @@ void main() {
   }
 
   testWidgets(
-    'arrows: baseline dot, faster ▲ in Arc; laps and free show none',
+    'arrows: baseline dot, faster ▲ in mint; laps and free show none',
     (tester) async {
       final r1 = fourByFourFile(n: 1, start: d1, workSecPerKm: 284);
       final r2 = fourByFourFile(n: 2, start: d2, workSecPerKm: 260);
@@ -43,7 +43,7 @@ void main() {
         find.byKey(ValueKey('verdict-glyph-${r2.id}')),
       );
       expect(g2.direction, DeltaDirection.up);
-      expect(g2.color, RunSoloTokens.light.semFaster);
+      expect(g2.color, RunSoloTokens.light.semImproving);
       expect(find.byKey(ValueKey('verdict-glyph-${laps.id}')), findsNothing);
       expect(find.byKey(ValueKey('verdict-glyph-${free.id}')), findsNothing);
       expect(find.text('LAPS'), findsWidgets);

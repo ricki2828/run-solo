@@ -8,9 +8,11 @@ import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/history_weeks.dart';
+import '../theme/lanes.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
+import '../widgets/recent_activity.dart' show runTypeColor;
 import '../widgets/where_when_line.dart';
 import '../widgets/zone_strip.dart';
 import 'boards_overview.dart';
@@ -333,14 +335,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 }
 
-/// Verdict arrow + colour for a row (up = faster in Arc, down = slower in
+/// Verdict arrow + colour for a row (up = faster in mint, down = slower in
 /// Vermillion, flat = holding / no real change, a dot for baseline, "!" for
 /// no verdict, nothing for other run types).
 (DeltaDirection?, String, Color) verdictGlyph(
   engine.Verdict? v,
   RunSoloTokens t,
 ) => switch (v?.headline) {
-  engine.VerdictHeadline.faster => (DeltaDirection.up, '', t.semFaster),
+  engine.VerdictHeadline.faster => (DeltaDirection.up, '', t.semImproving),
   engine.VerdictHeadline.slower => (DeltaDirection.down, '', t.semSlower),
   engine.VerdictHeadline.holding => (DeltaDirection.flat, '', t.semHolding),
   engine.VerdictHeadline.noRealChange => (DeltaDirection.flat, '', t.semNoise),
@@ -400,7 +402,10 @@ class HistoryRow extends StatelessWidget {
                       runLabel(run),
                       style: RunSoloType.title28.copyWith(
                         fontSize: 20,
-                        color: muted,
+                        // The run-type label in its own colour.
+                        color: run.missing
+                            ? muted
+                            : t.textOn(runTypeColor(run, t)),
                       ),
                     ),
                   ),

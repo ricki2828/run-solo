@@ -5,6 +5,7 @@ import '../app/routes.dart';
 import '../platform/gateway.dart';
 import '../state/home_progress.dart';
 import '../state/settings.dart';
+import '../theme/lanes.dart';
 import '../theme/theme.dart';
 import 'home_score_spark.dart';
 
@@ -47,9 +48,7 @@ class HomeScores extends StatelessWidget {
               const SizedBox(width: Space.x4),
               Text(
                 lane.name.toUpperCase(),
-                style: RunSoloType.micro11.copyWith(
-                  color: scores[lane] != null ? t.inkPrimary : t.inkSecondary,
-                ),
+                style: RunSoloType.micro11.copyWith(color: t.laneText(lane)),
               ),
             ],
           ),
@@ -173,13 +172,8 @@ class _LaneMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    if (set) return Icon(Icons.check, size: size + 2, color: t.semImproving);
-    final colour = switch (lane) {
-      engine.IdentityLane.aerobic => t.typeTests,
-      engine.IdentityLane.speed => t.typeIntervals,
-      engine.IdentityLane.mid => t.typeGoal,
-      engine.IdentityLane.long => t.typeFree,
-    };
+    final colour = t.laneFill(lane);
+    if (set) return Icon(Icons.check, size: size + 2, color: colour);
     return SizedBox(
       width: size + 2,
       height: size + 2,
@@ -205,6 +199,7 @@ class _UnlockRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final label = '${lane.name.toUpperCase()}: ${_unlock(lane)}';
+    final laneText = t.laneText(lane);
     return Semantics(
       button: onTap != null,
       label: set ? '${lane.name} set' : '$label. Opens Start.',
@@ -219,8 +214,19 @@ class _UnlockRow extends StatelessWidget {
               _LaneMark(lane: lane, set: set, size: 16),
               const SizedBox(width: Space.x12),
               Expanded(
-                child: Text(
-                  label,
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '${lane.name.toUpperCase()}: ',
+                        style: TextStyle(
+                          color: laneText,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      TextSpan(text: _unlock(lane)),
+                    ],
+                  ),
                   style: RunSoloType.label13.copyWith(
                     color: set ? t.inkPrimary : t.inkSecondary,
                   ),
@@ -304,65 +310,85 @@ class _EarnedScore extends StatelessWidget {
             : onOpen,
         borderRadius: BorderRadius.circular(Radii.card),
         child: Container(
-          padding: const EdgeInsets.all(Space.x12),
           decoration: BoxDecoration(
             color: t.bgRaised,
             border: Border.all(color: t.lineHair),
             borderRadius: BorderRadius.circular(Radii.card),
           ),
+          clipBehavior: Clip.antiAlias,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                score.lane.name.toUpperCase(),
-                style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+              // A 4 dp bar in the score's colour.
+              Container(
+                key: ValueKey('home-score-bar-${score.lane.name}'),
+                height: 4,
+                color: t.laneFill(score.lane),
               ),
-              const SizedBox(height: Space.x4),
-              Text.rich(
-                TextSpan(
+              Padding(
+                padding: const EdgeInsets.all(Space.x12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    TextSpan(
-                      text: label,
-                      style: RunSoloType.heading19.copyWith(
-                        fontSize: 30,
-                        color: t.inkPrimary,
+                    Text(
+                      score.lane.name.toUpperCase(),
+                      style: RunSoloType.micro11.copyWith(
+                        color: t.laneText(score.lane),
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    // "60th percentile": the ordinal sits tight on the number.
-                    TextSpan(
-                      text: percentile == null
-                          ? ' percentile'
-                          : '${ScoreNorms.ordinalSuffix(percentile)} percentile',
-                      style: RunSoloType.label13.copyWith(
-                        color: t.inkSecondary,
+                    const SizedBox(height: Space.x4),
+                    Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: label,
+                            style: RunSoloType.heading19.copyWith(
+                              fontSize: 30,
+                              color: t.inkPrimary,
+                            ),
+                          ),
+                          // "60th percentile": the ordinal sits tight on the number.
+                          TextSpan(
+                            text: percentile == null
+                                ? ' percentile'
+                                : '${ScoreNorms.ordinalSuffix(percentile)} percentile',
+                            style: RunSoloType.label13.copyWith(
+                              color: t.inkSecondary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                    if (trend.length >= 2) ...[
+                      const SizedBox(height: Space.x8),
+                      HomeScoreSpark(
+                        key: ValueKey('home-spark-${score.lane.name}'),
+                        values: trend,
+                        color: t.laneFill(score.lane),
+                      ),
+                    ],
+                    if (changeText != null) ...[
+                      const SizedBox(height: Space.x4),
+                      Text(
+                        changeText,
+                        style: RunSoloType.label13.copyWith(
+                          color: changeColour,
+                        ),
+                      ),
+                    ],
+                    if (cohort != null) ...[
+                      const SizedBox(height: Space.x4),
+                      Text(
+                        cohort,
+                        style: RunSoloType.label13.copyWith(
+                          color: t.inkSecondary,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              if (trend.length >= 2) ...[
-                const SizedBox(height: Space.x8),
-                HomeScoreSpark(
-                  key: ValueKey('home-spark-${score.lane.name}'),
-                  values: trend,
-                  rising: t.semImproving,
-                  mutedColor: t.inkMuted,
-                ),
-              ],
-              if (changeText != null) ...[
-                const SizedBox(height: Space.x4),
-                Text(
-                  changeText,
-                  style: RunSoloType.label13.copyWith(color: changeColour),
-                ),
-              ],
-              if (cohort != null) ...[
-                const SizedBox(height: Space.x4),
-                Text(
-                  cohort,
-                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                ),
-              ],
             ],
           ),
         ),
