@@ -618,6 +618,7 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
       - name: AVD cache
         id: avd-cache
+        if: ${{ matrix.api-level == 34 }}
         uses: actions/cache@v4
         with:
           path: |
@@ -625,7 +626,7 @@ jobs:
             ~/.android/adb*
           key: avd-api${{ matrix.api-level }}-x86_64-google_apis-v1
       - name: Create AVD and snapshot (cache miss only)
-        if: steps.avd-cache.outputs.cache-hit != 'true'
+        if: ${{ matrix.api-level == 34 && steps.avd-cache.outputs.cache-hit != 'true' }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
@@ -752,25 +753,6 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
       # The full lifecycle test needs `run-as` (debuggable packages only); the dogfood build is
       # release, so it gets the launch smoke plus a logcat-only replay check.
-      - name: AVD cache
-        id: avd-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-api36-x86_64-google_apis-v1
-      - name: Create AVD and snapshot (cache miss only)
-        if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 36
-          arch: x86_64
-          target: google_apis
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: false
-          script: echo "Generated AVD snapshot for caching."
       - name: Boot, install, launch, replay smoke
         uses: reactivecircus/android-emulator-runner@v2
         with:
