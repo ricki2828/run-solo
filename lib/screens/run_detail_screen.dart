@@ -193,7 +193,7 @@ class RunDetailBody extends StatelessWidget {
           FollowedRouteLine(route: d.run.route!),
           const SizedBox(height: Space.x24),
         ],
-        ..._splitsChart(d, units, elev, onVerdict),
+        ..._splitsChart(d, units, elev, services.hrZones, onVerdict),
         if (elev != null) ...[
           ElevationProfile(
             elevation: elev,
@@ -1465,6 +1465,8 @@ List<SplitBar> splitBarsOf(
   engine.FreeRunSummary free,
   Units splitUnits,
   Units displayUnits, {
+  engine.RunFile? run,
+  engine.HrZones? zones,
   engine.RunElevation? elevation,
   engine.HeatAdjustment? heat,
   bool truePace = false,
@@ -1484,14 +1486,23 @@ List<SplitBar> splitBarsOf(
                 heat,
                 (i + 0.5) * unitM,
               );
+        final zone = pace == null || run == null || zones == null
+            ? null
+            : dominantZoneOf(
+                run,
+                zones,
+                (s) => s.distM >= i * unitM && s.distM < (i + 1) * unitM,
+              );
         return SplitBar(
           label: '${i + 1}',
           paceSecPerKm: pace,
+          zone: zone,
           readout: pace == null
               ? null
               : [
                   '$name ${i + 1}',
                   Fmt.paceUnit(pace, displayUnits),
+                  if (zone != null) 'Z$zone',
                   if (climbs != null && i < climbs.length)
                     _climbCell(climbs[i], displayUnits),
                 ].join(' · '),
@@ -1499,6 +1510,7 @@ List<SplitBar> splitBarsOf(
               ? null
               : '${splitUnits == Units.mi ? 'Mile' : 'Kilometre'} ${i + 1}, '
                     '${_paceWords(pace, displayUnits)}'
+                    '${zone == null ? '' : ', zone $zone'}'
                     '${climbs != null && i < climbs.length ? ', ${_climbCell(climbs[i], displayUnits)} climb' : ''}',
         );
       }(),
@@ -1536,6 +1548,8 @@ double _trueOr(
 List<SplitBar> lapBarsOf(
   engine.LapsSummary view,
   Units displayUnits, {
+  engine.RunFile? run,
+  engine.HrZones? zones,
   List<engine.Lap> laps = const [],
   engine.RunElevation? elevation,
   engine.HeatAdjustment? heat,
@@ -1558,14 +1572,23 @@ List<SplitBar> lapBarsOf(
             ? _climbCell(climbs[r.number - 1], displayUnits)
             : null;
         final hr = r.meanHr == null ? null : '${r.meanHr!.round()} bpm';
+        final zone = pace == null || run == null || zones == null
+            ? null
+            : dominantZoneOf(
+                run,
+                zones,
+                (s) => s.tMs >= r.lap.t0Ms && s.tMs < r.lap.t1Ms,
+              );
         return SplitBar(
           label: '${r.number}',
           paceSecPerKm: pace,
+          zone: zone,
           readout: pace == null
               ? null
               : [
                   'Lap ${r.number}',
                   Fmt.paceUnit(pace, displayUnits),
+                  if (zone != null) 'Z$zone',
                   ?hr,
                   ?climb,
                 ].join(' · '),
@@ -1584,6 +1607,7 @@ List<Widget> _splitsChart(
   RunDetail d,
   Units units,
   engine.RunElevation? elev,
+  engine.HrZones zones,
   VoidCallback? onVerdict,
 ) {
   final a = d.analysis;
@@ -1593,10 +1617,12 @@ List<Widget> _splitsChart(
   final Widget? chart;
   if (mode == RecordMode.intervals) {
     final m = a.intervals;
-    final reps = m == null ? const <RepBarDatum>[] : repBarData(d, null);
+    final reps = m == null
+        ? const <RepBarDatum>[]
+        : repBarData(d, null, zones: zones);
     chart = reps.length >= 2
         ? _RepsChart(reps: reps, units: units, truePace: truePace, a: a)
-        : _kmChart(d, units, elev, mode, truePace);
+        : _kmChart(d, units, elev, zones, mode, truePace);
   } else if (mode == RecordMode.laps) {
     final view = a.laps;
     chart = view == null
@@ -1608,6 +1634,8 @@ List<Widget> _splitsChart(
             bars: lapBarsOf(
               view,
               units,
+              run: d.run,
+              zones: zones,
               laps: d.run.laps,
               elevation: elev,
               heat: a.heat,
@@ -1615,7 +1643,7 @@ List<Widget> _splitsChart(
             ),
           );
   } else {
-    chart = _kmChart(d, units, elev, mode, truePace);
+    chart = _kmChart(d, units, elev, zones, mode, truePace);
   }
   return [
     if (mode == RecordMode.intervals && v != null)
@@ -1628,6 +1656,7 @@ Widget _kmChart(
   RunDetail d,
   Units units,
   engine.RunElevation? elev,
+  engine.HrZones zones,
   RecordMode mode,
   bool truePace,
 ) => SplitsBars(
@@ -1638,6 +1667,8 @@ Widget _kmChart(
     d.analysis.freeRun,
     splitUnitsOf(d),
     units,
+    run: d.run,
+    zones: zones,
     elevation: elev,
     heat: mode == RecordMode.cooper ? null : d.analysis.heat,
     truePace: truePace,
@@ -1683,6 +1714,7 @@ class _RepsChartState extends State<_RepsChart> {
     return [
       d.label,
       shown ?? (d.reason ?? 'no pace'),
+      if (d.zone != null) 'Z${d.zone}',
       if (r.meanHr != null) '${r.meanHr!.round()} bpm',
       ?inBand,
     ].join(' · ');
@@ -1701,6 +1733,7 @@ class _RepsChartState extends State<_RepsChart> {
                     ? null
                     : widget.a.workFactors.apply(r.paceSecPerKm!),
                 repMetres: r.repMetres,
+                zone: r.zone,
                 excluded: r.excluded,
                 reason: r.reason,
               ),

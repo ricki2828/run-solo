@@ -1,6 +1,7 @@
 /// Display helpers for run detail that are not engine metrics.
 library;
 
+import 'package:flutter/foundation.dart' show immutable;
 import 'package:run_engine/run_engine.dart' as engine;
 
 /// Moving seconds spent in each HR zone 0-5 over the run (run detail
@@ -29,6 +30,87 @@ List<double> zoneSecondsOf(engine.RunFile run, engine.HrZones zones) {
     out[z] += dt;
   }
   return out;
+}
+
+/// The zone (1-5) a run mostly ran in over the samples [inWindow] accepts,
+/// weighted by time like [zoneSecondsOf]; null when none of them has a
+/// heart rate. Charts colour a rep, lap or split by this.
+int? dominantZoneOf(
+  engine.RunFile run,
+  engine.HrZones zones,
+  bool Function(engine.Sample s) inWindow,
+) {
+  final samples = run.samples;
+  final secs = List<double>.filled(6, 0);
+  for (var i = 0; i < samples.length; i++) {
+    final s = samples[i];
+    final hr = s.hr;
+    if (hr == null || !inWindow(s)) continue;
+    final dtMs = i + 1 < samples.length
+        ? (samples[i + 1].tMs - s.tMs).clamp(0, 5000)
+        : 1000;
+    secs[zones.zoneOf(hr)] += dtMs / 1000;
+  }
+  var best = 0;
+  for (var z = 1; z <= 5; z++) {
+    if (secs[z] > secs[best]) best = z;
+  }
+  return best == 0 ? null : best;
+}
+
+/// A run's moving heart-rate seconds by bpm, kept in the index so the zone
+/// split can be worked out at view time from the runner's CURRENT zones: a
+/// change of zone method needs no re-index. One entry per bpm from
+/// [minBpm]; seconds are whole.
+@immutable
+class HrHist {
+  const HrHist(this.minBpm, this.secs);
+
+  final int minBpm;
+  final List<int> secs;
+
+  /// Null with no heart rate at all. Same sample weighting as
+  /// [zoneSecondsOf] (pauses count nowhere).
+  static HrHist? of(engine.RunFile run) {
+    final samples = run.samples;
+    final pauses = _merged(run.pauses);
+    final acc = <int, double>{};
+    for (var i = 0; i < samples.length; i++) {
+      final s = samples[i];
+      final hr = s.hr;
+      if (hr == null) continue;
+      final dtMs = i + 1 < samples.length
+          ? (samples[i + 1].tMs - s.tMs).clamp(0, 5000)
+          : 1000;
+      final dt = (dtMs - _pausedWithin(pauses, s.tMs, s.tMs + dtMs)) / 1000;
+      if (dt <= 0) continue;
+      final bpm = hr.round();
+      acc[bpm] = (acc[bpm] ?? 0) + dt;
+    }
+    if (acc.isEmpty) return null;
+    final lo = acc.keys.reduce((a, b) => a < b ? a : b);
+    final hi = acc.keys.reduce((a, b) => a > b ? a : b);
+    return HrHist(lo, [for (var b = lo; b <= hi; b++) (acc[b] ?? 0).round()]);
+  }
+
+  /// Seconds in zones 1-5 under [zones], in [zoneSecondsOf]'s layout (slot 0
+  /// is unused here).
+  List<double> zoneSeconds(engine.HrZones zones) {
+    final out = List<double>.filled(6, 0);
+    for (var i = 0; i < secs.length; i++) {
+      if (secs[i] > 0) out[zones.zoneOf(minBpm + i)] += secs[i];
+    }
+    return out;
+  }
+
+  List<int> toJson() => [minBpm, ...secs];
+
+  static HrHist? fromJson(Object? j) {
+    if (j is! List || j.length < 2) return null;
+    return HrHist((j.first as num).toInt(), [
+      for (final v in j.skip(1)) (v as num).toInt(),
+    ]);
+  }
 }
 
 /// Average heart rate over moving time that has a reading, and the share of

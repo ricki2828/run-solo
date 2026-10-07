@@ -10,6 +10,7 @@ import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../state/load_guard.dart';
 import '../state/settings.dart';
+import '../widgets/week_strip.dart';
 import '../widgets/chrome.dart';
 import '../widgets/goal_picker.dart';
 import '../state/home_progress.dart';
@@ -358,6 +359,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                 : ProgressHeadline.loading,
                           ),
                           const SizedBox(height: Space.x16),
+                          if (data != null) ...[
+                            WeekStrip(
+                              runs: data.runs,
+                              zones: services.hrZones,
+                              now: _now,
+                            ),
+                            const SizedBox(height: Space.x16),
+                          ],
                           if (data != null && !data.failed) ...[
                             HomeScores(
                               scores: data.scores,

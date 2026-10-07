@@ -27,6 +27,7 @@ import '../platform/session_codec.dart';
 import 'boards.dart';
 import 'coaching.dart';
 import 'run_index.dart';
+import 'zone_histogram.dart';
 import 'sidecar_writer.dart';
 
 /// `RunMode` (file / engine) ↔ `RecordMode` (Pigeon / UI). Exhaustive on both
@@ -179,6 +180,7 @@ class RunSummary {
     this.utcOffsetMin,
     this.routeName,
     this.routeOffCount,
+    this.hrHist,
   });
 
   /// From the index (W5b): no file decoded, no analysis.
@@ -207,6 +209,7 @@ class RunSummary {
     utcOffsetMin: e.row!.utcOffsetMin,
     routeName: e.row!.routeName,
     routeOffCount: e.row!.routeOffCount,
+    hrHist: e.row!.hrHist,
   );
 
   final String id;
@@ -263,6 +266,10 @@ class RunSummary {
   /// it; null when it followed none. History's route badge.
   final String? routeName;
   final int? routeOffCount;
+
+  /// Moving seconds per bpm (index row, or the file on the memory store);
+  /// null without a strap. Zone strips and the week bars read it.
+  final HrHist? hrHist;
 
   /// The start as the runner lived it (see [engine.RunIdentity.localStart]).
   DateTime get localStart => engine.RunIdentity.localStart(start, utcOffsetMin);
@@ -675,6 +682,7 @@ RunSummary _summaryOf(
   utcOffsetMin: _zoneOf(run, sidecar)?.offsetMin,
   routeName: run.route?.name,
   routeOffCount: run.route?.offRouteCount,
+  hrHist: HrHist.of(run),
   // Only a 4x4 carries a verdict word (plan §18.2); guard by the effective
   // mode so nothing else ever shows one.
   verdict:

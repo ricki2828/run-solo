@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app/format.dart';
 import '../platform/gateway.dart';
 import '../theme/theme.dart';
+import '../theme/zones.dart';
 import 'delta_glyph.dart';
 
 /// One row of the verdict / detail rep chart (design brief §2.2 data-viz).
@@ -15,8 +16,14 @@ class RepBarDatum {
     this.excluded = false,
     this.reason,
     this.repMetres,
+    this.zone,
   });
   final String label;
+
+  /// The HR zone (1-5) the rep mostly ran in: the bar takes its colour.
+  /// Null without a heart rate (the bar keeps the verdict tone, ink when
+  /// neutral).
+  final int? zone;
 
   /// Rep-time sessions (I3 `IntervalMetricKind.repTime`): the label reads
   /// the time for this distance ("1:31"), not a pace. Bars still scale by
@@ -95,6 +102,9 @@ class RepBars extends StatelessWidget {
       RepTone.slower => t.semSlower,
       RepTone.neutral => t.inkPrimary,
     };
+    final brightness = Theme.of(context).brightness;
+    Color colorOf(RepBarDatum r) =>
+        r.zone != null ? HrZones.distribution(r.zone!, brightness) : barColor;
     return Semantics(
       label:
           'Rep paces: ${reps.map((r) => '${r.label} ${Fmt.pace(r.paceSecPerKm, units)}').join(', ')}',
@@ -162,7 +172,7 @@ class RepBars extends StatelessWidget {
                               width: w,
                               height: barHeight,
                               decoration: BoxDecoration(
-                                color: barColor,
+                                color: colorOf(r),
                                 borderRadius: BorderRadius.circular(2),
                               ),
                             ),

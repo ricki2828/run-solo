@@ -6,6 +6,7 @@ import 'package:flutter/semantics.dart';
 import '../app/format.dart';
 import '../platform/gateway.dart';
 import '../theme/theme.dart';
+import '../theme/zones.dart';
 
 /// One bar on [SplitsBars]: the label under it and its pace (s/km). A null
 /// pace (a lap with no distance) leaves the slot empty. [readout] is the line
@@ -18,16 +19,22 @@ class SplitBar {
     required this.paceSecPerKm,
     this.readout,
     this.semantics,
+    this.zone,
   });
   final String label;
   final double? paceSecPerKm;
+
+  /// The HR zone (1-5) the bar mostly ran in: its fill. Null without a
+  /// heart rate (the bar is grey).
+  final int? zone;
   final String? readout;
   final String? semantics;
 }
 
 /// Run detail's splits chart, in the leaderboard bar style
 /// (`RecentBarsChart`): one vertical bar per km, mile or lap, taller =
-/// faster, the fastest in Arc, the rest Bone. Every bar carries its pace
+/// faster, filled by the HR zone the split mostly ran in (grey without a
+/// heart rate); the fastest is outlined and bold, never a different fill. Every bar carries its pace
 /// above it (every second bar once they get too tight for it). Tap or drag
 /// across the bars to pick one: it is outlined and its readout shows above
 /// the chart. The axis note says which way is better and where the baseline
@@ -144,6 +151,7 @@ class _SplitsBarsState extends State<SplitsBars> {
                   base: base,
                   top: top,
                   tokens: t,
+                  brightness: Theme.of(context).brightness,
                 ),
               ),
             ),
@@ -176,6 +184,7 @@ class _SplitsPainter extends CustomPainter {
     required this.base,
     required this.top,
     required this.tokens,
+    required this.brightness,
   });
   final List<SplitBar> bars;
   final Units units;
@@ -184,6 +193,7 @@ class _SplitsPainter extends CustomPainter {
   final double base;
   final double top;
   final RunSoloTokens tokens;
+  final Brightness brightness;
 
   static const _topPad = 20.0, _bottomPad = 22.0;
 
@@ -249,8 +259,24 @@ class _SplitsPainter extends CustomPainter {
           topLeft: const Radius.circular(3),
           topRight: const Radius.circular(3),
         ),
-        Paint()..color = best.contains(i) ? tokens.accentArc : tokens.inkMuted,
+        Paint()
+          ..color = bars[i].zone == null
+              ? tokens.inkMuted
+              : HrZones.distribution(bars[i].zone!, brightness),
       );
+      if (best.contains(i)) {
+        canvas.drawRRect(
+          RRect.fromRectAndCorners(
+            rect.inflate(1),
+            topLeft: const Radius.circular(4),
+            topRight: const Radius.circular(4),
+          ),
+          Paint()
+            ..color = tokens.inkPrimary
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2,
+        );
+      }
       if (isSel) {
         canvas.drawRRect(
           RRect.fromRectAndCorners(
@@ -268,11 +294,7 @@ class _SplitsPainter extends CustomPainter {
         final hi = best.contains(i);
         final tp = _tp(
           Fmt.pace(p, units),
-          hi
-              ? tokens.accentArc
-              : isSel
-              ? tokens.inkPrimary
-              : tokens.inkSecondary,
+          hi || isSel ? tokens.inkPrimary : tokens.inkSecondary,
           w: hi || isSel ? FontWeight.w700 : FontWeight.w500,
         );
         final lx = (i * slot + slot / 2 - tp.width / 2).clamp(
@@ -287,7 +309,7 @@ class _SplitsPainter extends CustomPainter {
       if (i % numStep != 0 && !hi) continue;
       final tp = _tp(
         bars[i].label,
-        best.contains(i) ? tokens.accentArc : tokens.inkSecondary,
+        hi ? tokens.inkPrimary : tokens.inkSecondary,
         w: hi ? FontWeight.w700 : FontWeight.w500,
       );
       tp.paint(canvas, Offset(i * slot + slot / 2 - tp.width / 2, bottom + 5));
