@@ -288,11 +288,12 @@ jobs:
       MAPS_DEFINE: --dart-define=RUN_SOLO_MAPS_API_KEY=${{ secrets.RUN_SOLO_MAPS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
-      - name: Free runner disk (the Android builds filled the image's disk)
+      - name: Free runner disk (the image's disk filled up; df before and after)
         run: |
-          df -h / | tail -1
+          df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
-          df -h / | tail -1
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          df -h /
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -355,11 +356,12 @@ jobs:
       MAPS_DEFINE: --dart-define=RUN_SOLO_MAPS_API_KEY=${{ secrets.RUN_SOLO_MAPS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
-      - name: Free runner disk (the Android builds filled the image's disk)
+      - name: Free runner disk (the image's disk filled up; df before and after)
         run: |
-          df -h / | tail -1
+          df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
-          df -h / | tail -1
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          df -h /
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -451,11 +453,12 @@ jobs:
       MAPS_DEFINE: --dart-define=RUN_SOLO_MAPS_API_KEY=${{ secrets.RUN_SOLO_MAPS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
-      - name: Free runner disk (the Android builds filled the image's disk)
+      - name: Free runner disk (the image's disk filled up; df before and after)
         run: |
-          df -h / | tail -1
+          df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
-          df -h / | tail -1
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          df -h /
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -594,6 +597,12 @@ jobs:
         api-level: [29, 34, 36]
     steps:
       - uses: actions/checkout@v4
+      - name: Free runner disk (the image's disk filled up; df before and after)
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          df -h /
       - uses: actions/download-artifact@v4
         with:
           name: run-solo-debug-apk
@@ -665,6 +674,12 @@ jobs:
         kind: [4x4, 400s, 30-30s, yasso-800s, 1km-repeats, fartlek, cooper, parkrun, goal-10k, goal-30min, pause-end, auto-pause, t4]
     steps:
       - uses: actions/checkout@v4
+      - name: Free runner disk (the image's disk filled up; df before and after)
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          df -h /
       - uses: actions/download-artifact@v4
         with:
           name: run-solo-debug-apk
@@ -716,6 +731,12 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - name: Free runner disk (the image's disk filled up; df before and after)
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          df -h /
       - uses: actions/download-artifact@v4
         with:
           name: run-solo-dogfood-x64-apk
