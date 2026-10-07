@@ -17,6 +17,11 @@ abstract final class RunSoloType {
 
   static const double _displayScale = 1.05;
 
+  /// An in-run number's explicit size, scaled for Saira the same way: the
+  /// readability rule is that no in-run number gets shorter, and a hand-set
+  /// `fontSize` skips [_display]'s scale. Pass the old Barlow size.
+  static double runSize(double base) => (base * _displayScale).roundToDouble();
+
   /// A display style at the old Barlow size [base], scaled for Saira.
   static TextStyle _display(double base, FontWeight weight) {
     final size = (base * _displayScale).roundToDouble();

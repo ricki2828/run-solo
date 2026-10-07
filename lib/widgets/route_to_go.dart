@@ -24,7 +24,7 @@ String routeTurnText(RouteProgress r, Units units) {
   return '$label in ${(v / 10).round() * 10} ${yd ? 'yd' : 'm'}';
 }
 
-const double _figureSize = 36;
+final double _figureSize = RunSoloType.runSize(36);
 
 TextStyle _figureStyle(Color color) => RunSoloType.display44.copyWith(
   fontSize: _figureSize,

@@ -11,7 +11,10 @@ import '../app/services.dart';
 import '../map/map_surface.dart' show usesTerrainMap;
 import '../platform/gateway.dart';
 import '../state/history_store.dart' show runModeOf;
+import '../state/next_step.dart';
 import '../state/recording_controller.dart';
+import '../state/true_pace_smoother.dart';
+import '../state/voice_coach_plan.dart' show CoachTarget;
 import '../theme/theme.dart';
 import '../theme/zones.dart';
 import '../widgets/compare_card.dart';
@@ -20,7 +23,9 @@ import '../widgets/gps_bar.dart';
 import '../widgets/lap_button.dart';
 import '../widgets/pace_dial.dart';
 import '../widgets/route_to_go.dart';
+import '../widgets/target_band.dart';
 import '../widgets/zone_gauge.dart';
+import '../widgets/zone_ladder.dart';
 import 'live_map_view.dart';
 
 /// Record screen (design brief §4.4, addendum A1/A2): three layouts on one
@@ -158,9 +163,36 @@ class _RecordingScreenState extends State<RecordingScreen>
         .catchError((Object _) {});
   }
 
+  /// The target band's marker: the live True Pace smoothed over ~30 s, reset
+  /// at each rep or segment like the coach's. Only runs with a target.
+  final TruePaceSmoother _smoother = TruePaceSmoother();
+  Object? _segment;
+
+  void _sampleTruePace(RecordingSnapshot s) {
+    final ctl = _ctl!;
+    if (ctl.coachTarget == null) return;
+    final segment = (s.runId, s.phase, s.stepIndex);
+    if (segment != _segment) {
+      _segment = segment;
+      _smoother.reset();
+    }
+    if (!s.recording) return;
+    _smoother.add(
+      ctl.now(),
+      engine.RunTruePace.live(
+        paceSecPerKm: s.livePaceSecPerKm,
+        gradePct: s.gradePct,
+        slowdown: _startSlowdown,
+        distanceM: s.totalDistanceM,
+      ),
+    );
+  }
+
   void _onSnapshot() {
     final s = _ctl!.snapshot;
-    if (s.active && runModeOf(s.mode).showsLiveTruePace) {
+    _sampleTruePace(s);
+    if (s.active &&
+        (runModeOf(s.mode).showsLiveTruePace || _ctl!.coachTarget != null)) {
       _maybeFetchStartHeat(s);
     }
     _applyKeepScreenOn();
@@ -396,6 +428,20 @@ class _RecordingScreenState extends State<RecordingScreen>
           // In MAP the numbers' leftover space belongs to the map.
           // Free / Trail have no LAP button: their block takes that room.
           final pausedNow = s.paused && !_finishing;
+          // The coach layer (sessions with a target): the target band while a
+          // rep or goal is on, and the next-step line, worded like the voice.
+          final coach = pausedNow || _finishing
+              ? null
+              : _CoachLayer.of(
+                  s: s,
+                  ctl: ctl,
+                  smoothed: _smoother.value(ctl.now()),
+                  units: settings.units,
+                  labelColor: s.zone > 0
+                      ? HrZones.secondaryOnZone
+                      : t.inkSecondary,
+                  textColor: t.inkPrimary,
+                );
           final Widget gap = mapOn || freeBlock
               ? const SizedBox.shrink()
               : const Spacer();
@@ -417,13 +463,15 @@ class _RecordingScreenState extends State<RecordingScreen>
                 ),
                 SafeArea(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: Space.recordGutter,
+                    // The right edge belongs to the zone ladder.
+                    padding: const EdgeInsets.only(
+                      left: Space.recordGutter,
+                      right: ZoneLadder.reserve,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const SizedBox(height: Space.x12),
+                        SizedBox(height: compact ? Space.x4 : Space.x8),
                         _Header(
                           s: s,
                           maxHr: maxHr,
@@ -465,7 +513,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                           ),
                           // The GPS bar stays, as in NUMBERS.
                           if (!s.showEndRep) ...[
-                            const SizedBox(height: Space.x8),
+                            SizedBox(height: Space.x8),
                             Visibility(
                               visible: !s.paused,
                               maintainSize: true,
@@ -545,7 +593,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                                   ),
                                 ),
                               ),
-                            const Spacer(),
+                            _CoachSlot(coach),
                           ] else if (s.isGoal && s.phase == Phase.cooldown) ...[
                             // G3: after the goal, the cool-down's time is
                             // primary and the goal's result sits locked below.
@@ -590,6 +638,12 @@ class _RecordingScreenState extends State<RecordingScreen>
                               child: _TimerBlock(
                                 s: s,
                                 ctl: ctl,
+                                hideCaption:
+                                    compact &&
+                                    coach != null &&
+                                    coach.nextLine != null &&
+                                    (s.phase == Phase.work ||
+                                        s.phase == Phase.recovery),
                                 style: switch (s.phase) {
                                   Phase.work => primaryStyle(
                                     compact,
@@ -600,7 +654,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                                 },
                               ),
                             ),
-                            const Spacer(),
+                            _CoachSlot(coach),
                             CompareSlot(
                               link: s.phase == Phase.warmup ? null : _cardLink,
                               child: Visibility(
@@ -646,7 +700,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                               paused: s.paused,
                               child: _TimerBlock(s: s, ctl: ctl),
                             ),
-                            const Spacer(),
+                            _CoachSlot(coach),
                             // The PAUSED card sits here; keep the space, hide
                             // the numbers so nothing peeks out around it.
                             CompareSlot(
@@ -676,7 +730,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                           // END REP: the banner already says GPS is lost,
                           // and the short phone needs the bar's height.
                           if (!s.showEndRep) ...[
-                            const SizedBox(height: Space.x12),
+                            SizedBox(height: compact ? Space.x4 : Space.x8),
                             Visibility(
                               visible: !s.paused,
                               maintainSize: true,
@@ -689,7 +743,11 @@ class _RecordingScreenState extends State<RecordingScreen>
                             ),
                           ],
                         ],
-                        const SizedBox(height: Space.x16),
+                        if (coach != null && (mapOn || freeBlock)) ...[
+                          const SizedBox(height: Space.x8),
+                          coach,
+                        ],
+                        SizedBox(height: compact ? Space.x4 : Space.x8),
                         if (pausedNow)
                           const SizedBox.shrink()
                         else if ((s.isPreset || s.isCooper) &&
@@ -793,10 +851,26 @@ class _RecordingScreenState extends State<RecordingScreen>
                     ),
                   ),
                 ),
+                // Full Instrument: the zone ladder on the right edge, from
+                // under the status bar to above the control row. Hidden with
+                // no HR.
+                Positioned(
+                  right: 0,
+                  top: MediaQuery.paddingOf(context).top + Space.x12,
+                  bottom:
+                      MediaQuery.paddingOf(context).bottom +
+                      Space.x16 +
+                      56 +
+                      Space.x12,
+                  width: ZoneLadder.width + ZoneLadder.pointer,
+                  child: ZoneLadder(zone: s.hr == null ? 0 : s.zone),
+                ),
                 CompareCardLayer(
                   link: _cardLink,
                   width:
-                      MediaQuery.sizeOf(context).width - 2 * Space.recordGutter,
+                      MediaQuery.sizeOf(context).width -
+                      Space.recordGutter -
+                      ZoneLadder.reserve,
                   anchorBottom: !mapOn && !s.isPreset && s.lapsEnabled,
                   card: card,
                 ),
@@ -1010,7 +1084,9 @@ bool compareCardAllowed(RecordingSnapshot s, int remainingMs) {
 /// (< 720 dp) step both down.
 TextStyle primaryStyle(bool compact, {bool secondary = false}) => secondary
     ? (compact ? RunSoloType.display64 : RunSoloType.display96)
-    : RunSoloType.timer120.copyWith(fontSize: compact ? 128 : 168);
+    : RunSoloType.timer120.copyWith(
+        fontSize: RunSoloType.runSize(compact ? 128 : 168),
+      );
 
 /// Rep (a work step of a structured session) in the Intervals magenta,
 /// recovery in mint; everything else Bone. The words stay too (colour is never
@@ -1250,7 +1326,9 @@ class AuxFigure extends StatelessWidget {
   final Color valueColor;
   final Key? valueKey;
 
-  static final TextStyle style = RunSoloType.display44.copyWith(fontSize: 36);
+  static final TextStyle style = RunSoloType.display44.copyWith(
+    fontSize: RunSoloType.runSize(36),
+  );
 
   @override
   Widget build(BuildContext context) => Column(
@@ -1347,7 +1425,7 @@ class _Vitals extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final number = RunSoloType.display44.copyWith(
       color: t.inkPrimary,
-      fontSize: compact ? 36 : 44,
+      fontSize: RunSoloType.runSize(compact ? 36 : 44),
     );
     final label = RunSoloType.micro11.copyWith(color: secondary);
     // Short reps (plan §3.7, A8): HR lags a 30 s effort, so in a rep the
@@ -1636,13 +1714,34 @@ class _FreeRunBlock extends StatelessWidget {
             final half = (width - Space.x16) / 2;
             // Plans from the roomiest to the leanest.
             final plans = <_FreePlan>[
-              _FreePlan(compact ? 52 : 64, half, true, true, big: true),
-              _FreePlan(compact ? 52 : 64, half, true, true),
-              _FreePlan(compact ? 48 : 56, half, true, true),
-              _FreePlan(compact ? 44 : 48, 112, true, true),
-              _FreePlan(44, 112, false, true),
-              _FreePlan(44, 112, false, false),
-              _FreePlan(40, 96, false, false),
+              _FreePlan(
+                RunSoloType.runSize(compact ? 52 : 64),
+                half,
+                true,
+                true,
+                big: true,
+              ),
+              _FreePlan(
+                RunSoloType.runSize(compact ? 52 : 64),
+                half,
+                true,
+                true,
+              ),
+              _FreePlan(
+                RunSoloType.runSize(compact ? 48 : 56),
+                half,
+                true,
+                true,
+              ),
+              _FreePlan(
+                RunSoloType.runSize(compact ? 44 : 48),
+                112,
+                true,
+                true,
+              ),
+              _FreePlan(RunSoloType.runSize(44), 112, false, true),
+              _FreePlan(RunSoloType.runSize(44), 112, false, false),
+              _FreePlan(RunSoloType.runSize(40), 96, false, false),
             ];
             double heightOf(_FreePlan p, {required double slot}) =>
                 _planH(p, width, showGap, showElevation, routeH, minGap) + slot;
@@ -1682,7 +1781,9 @@ class _FreeRunBlock extends StatelessWidget {
                         referenceSecPerKm: runAverage,
                         units: units,
                         onZone: s.zone > 0,
-                        paceStyle: AuxFigure.style.copyWith(fontSize: 56),
+                        paceStyle: AuxFigure.style.copyWith(
+                          fontSize: RunSoloType.runSize(56),
+                        ),
                         trueSecPerKm: trueSec,
                       ),
                     ),
@@ -1694,7 +1795,9 @@ class _FreeRunBlock extends StatelessWidget {
                     onZone: s.zone > 0,
                     beside: true,
                     dialWidth: plan.dialWidth == half ? null : plan.dialWidth,
-                    paceStyle: AuxFigure.style.copyWith(fontSize: 40),
+                    paceStyle: AuxFigure.style.copyWith(
+                      fontSize: RunSoloType.runSize(40),
+                    ),
                     trueSecPerKm: trueSec,
                   );
             final clusters = <Widget>[
@@ -1819,13 +1922,13 @@ class _FreeRunBlock extends StatelessWidget {
       pace =
           w / 2 +
           Space.x4 +
-          _textH(AuxFigure.style.copyWith(fontSize: 56)) +
+          _textH(AuxFigure.style.copyWith(fontSize: RunSoloType.runSize(56))) +
           (showGap && p.gap ? _textH(AuxFigure.style) : 0) +
           label;
     } else {
       final paceCol =
           label +
-          _textH(AuxFigure.style.copyWith(fontSize: 40)) +
+          _textH(AuxFigure.style.copyWith(fontSize: RunSoloType.runSize(40))) +
           (showGap && p.gap ? _textH(AuxFigure.style) : 0);
       pace = paceCol > p.dialWidth / 2 ? paceCol : p.dialWidth / 2;
     }
@@ -1857,12 +1960,21 @@ class _FreePlan {
 }
 
 class _TimerBlock extends StatelessWidget {
-  const _TimerBlock({required this.s, required this.ctl, this.style});
+  const _TimerBlock({
+    required this.s,
+    required this.ctl,
+    this.style,
+    this.hideCaption = false,
+  });
   final RecordingSnapshot s;
   final RecordingController ctl;
 
   /// Digits style; timer120 unless a bigger primary number shares the screen.
   final TextStyle? style;
+
+  /// The next-step line already says "... left" (short phones): the caption
+  /// under the countdown gives its room to the coach layer.
+  final bool hideCaption;
 
   @override
   Widget build(BuildContext context) {
@@ -1916,7 +2028,7 @@ class _TimerBlock extends StatelessWidget {
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(
-                vertical: Space.x12,
+                vertical: 0,
                 horizontal: Space.x24,
               ),
               child: digits,
@@ -1924,11 +2036,13 @@ class _TimerBlock extends StatelessWidget {
           )
         else
           digits,
-        const SizedBox(height: Space.x8),
-        Text(
-          s.paused ? '' : timerCaption(s),
-          style: RunSoloType.label13.copyWith(color: secondary),
-        ),
+        if (!hideCaption) ...[
+          const SizedBox(height: Space.x4),
+          Text(
+            s.paused ? '' : timerCaption(s),
+            style: RunSoloType.label13.copyWith(color: secondary),
+          ),
+        ],
       ],
     );
   }
@@ -2017,7 +2131,7 @@ class _SegmentPace extends StatelessWidget {
         // With no fix there is no live pace or distance to show here, and
         // the GPS banner (and END REP) need the room on a short phone.
         if (!s.showEndRep && !s.gpsLost) ...[
-          SizedBox(height: compact ? Space.x8 : Space.x16),
+          SizedBox(height: compact ? Space.x4 : Space.x8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -2440,6 +2554,131 @@ class _FinishScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The spare room under a hero block: the coach layer sits at its bottom when
+/// it fits, and the room stays empty when it does not (short phones), so it
+/// never pushes the numbers or the controls.
+class _CoachSlot extends StatelessWidget {
+  const _CoachSlot(this.coach);
+  final _CoachLayer? coach;
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: LayoutBuilder(
+      builder: (context, box) {
+        final c = coach;
+        // Short phones scale it down a little rather than lose it.
+        if (c == null || box.maxHeight < c.height * 0.75) {
+          return const SizedBox.shrink();
+        }
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: SizedBox(width: box.maxWidth, child: c),
+          ),
+        );
+      },
+    ),
+  );
+}
+
+/// The coach layer under the numbers (Full Instrument): the target band bar
+/// and the next-step line. Built only for a session with something to say;
+/// Free runs without a target get neither.
+class _CoachLayer extends StatelessWidget {
+  const _CoachLayer({
+    required this.target,
+    required this.smoothed,
+    required this.units,
+    required this.labelColor,
+    required this.textColor,
+    required this.nextLine,
+  });
+  final CoachTarget? target;
+  final double? smoothed;
+  final Units units;
+  final Color labelColor;
+  final Color textColor;
+  final String? nextLine;
+
+  /// Room the layer needs, for [_CoachSlot] to decide whether it fits.
+  double get height =>
+      (target != null ? TargetBand.height : 0) +
+      (target != null && nextLine != null ? 2.0 : 0) +
+      (nextLine != null ? 20.0 : 0);
+
+  static _CoachLayer? of({
+    required RecordingSnapshot s,
+    required RecordingController ctl,
+    required double? smoothed,
+    required Units units,
+    required Color labelColor,
+    required Color textColor,
+  }) {
+    // The band is for the pace-targeted part: a rep or goal's work, or a
+    // plan session run as a Free run. Not warm-up, recovery or cool-down.
+    final target = ctl.coachTarget;
+    final band = target != null && (!s.isPreset || s.phase == Phase.work)
+        ? target
+        : null;
+    final next = s.isPreset ? nextStepText(s.spec, s.phase, s.stepIndex) : null;
+    String? line;
+    if (next != null) {
+      final String? left;
+      if (s.phase != Phase.work && s.phase != Phase.recovery) {
+        left = null;
+      } else if (s.distanceStep) {
+        final m = s.metresToGo;
+        left = m == null ? null : '${m.round()} m left';
+      } else {
+        left = '${Fmt.clock(ctl.displayRemainingMs)} left';
+      }
+      line = left == null ? 'then $next' : '$left · then $next';
+    }
+    if (band == null && line == null) return null;
+    return _CoachLayer(
+      target: band,
+      smoothed: smoothed,
+      units: units,
+      labelColor: labelColor,
+      textColor: textColor,
+      nextLine: line,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    key: const ValueKey('coach-layer'),
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (target != null)
+        TargetBand(
+          target: target!,
+          paceSecPerKm: smoothed,
+          units: units,
+          labelColor: labelColor,
+        ),
+      if (target != null && nextLine != null) const SizedBox(height: 2),
+      if (nextLine != null)
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            nextLine!,
+            key: const ValueKey('next-step'),
+            softWrap: false,
+            style: RunSoloType.title28.copyWith(
+              color: textColor,
+              fontSize: 20,
+              height: 1.0,
+            ),
+          ),
+        ),
+    ],
+  );
 }
 
 /// The run so far for the paused screen: distance, time, average pace,

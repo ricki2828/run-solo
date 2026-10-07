@@ -19,6 +19,7 @@ import '../platform/gateway.dart';
 import '../map/route_builder.dart' show GeoPoint;
 import 'live_route.dart';
 import '../platform/session_codec.dart';
+import 'voice_coach_plan.dart' show CoachTarget;
 import 'zone_memento.dart';
 
 /// One-time note when native reports `FaultKind.volumeKeyUnavailable`.
@@ -376,6 +377,11 @@ class RecordingController extends ChangeNotifier {
 
   RecordingSnapshot _snap = const RecordingSnapshot();
   RecordingSnapshot get snapshot => _snap;
+
+  /// The pace this run aims at (goal pace, or a plan session's True Pace
+  /// estimate), set by Start before every run: the target band on the run
+  /// screen. Null = none (Free runs, and a recovered run's unknown plan).
+  CoachTarget? coachTarget;
 
   /// Bumps on every lap from any source, so the LAP ring (M2) also confirms
   /// notification and volume-key laps.
