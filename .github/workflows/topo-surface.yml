@@ -1,11 +1,20 @@
 name: topo-surface
 # Emulator check for the offline Topo map surface (draft PR): fetches the Milos pack from the live
 # R2 hosting, goes offline, and drives run detail, the live map, a Home card and a no-pack run.
-# Not part of the main CI: it needs the network once and is slow.
+# Slow and needs the network once, so it is a heavy job: pushes to main, manual dispatch, and PRs
+# labelled `full-ci` (not on ordinary PR pushes). Docs-only changes run nothing.
 on:
   push:
-    branches: [offline-topo-surface]
+    branches: [main]
+    paths-ignore: ['docs/**', '**.md']
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths-ignore: ['docs/**', '**.md']
   workflow_dispatch:
+
+concurrency:
+  group: topo-surface-${{ github.ref }}-${{ (github.event.action == 'labeled' && github.event.label.name != 'full-ci') && 'label' || 'run' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   FLUTTER_VERSION: '3.47.5'
@@ -13,10 +22,17 @@ env:
 
 jobs:
   topo-surface:
+    if: ${{ github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'full-ci') && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Free runner disk (the image's disk filled up; df before and after)
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          df -h /
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -38,7 +54,16 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Topo surface on emulator (API 34)
+      - name: AVD cache
+        id: avd-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api34-x86_64-google_apis-v1
+      - name: Create AVD and snapshot (cache miss only)
+        if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -46,6 +71,16 @@ jobs:
           target: google_apis
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+      - name: Topo surface on emulator (API 34)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
           disable-animations: true
           script: tools/emulator_topo_surface.sh build/dist/topo-surface.apk app.runsolo.debug
       - uses: actions/upload-artifact@v4
