@@ -185,6 +185,7 @@ class _DayBar extends StatelessWidget {
         height: h,
         child: Column(
           verticalDirection: VerticalDirection.up,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             for (final z in order)
               if (seconds[z] > 0)
