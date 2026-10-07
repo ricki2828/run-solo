@@ -131,6 +131,13 @@ abstract class RecorderGateway {
   /// Persisted natively.
   Future<void> setSpokenSummary(bool enabled);
 
+  /// Voice → "Voice coaching": target status, next step and zone drift said
+  /// during the run. Set before every start; persisted natively.
+  Future<void> setVoiceCoach(VoiceCoachConfig config);
+
+  /// The run's start heat slowdown for the coach's live True Pace.
+  Future<void> setCoachSlowdown(double? slowdown);
+
   /// The end-of-run line (see the Pigeon `speakRunSummary`); [verdict] is the
   /// result screen's words, null when none is computed yet.
   Future<void> speakRunSummary({

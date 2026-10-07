@@ -3040,6 +3040,89 @@ class HealthWriteResult {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// Voice coaching for the next run (Settings → Voice → "Voice coaching" and
+/// "Coaching detail"), set before start like [RecorderApi.setSpokenSummary]
+/// and read natively by the recorder service, so the lines are said with the
+/// screen off. [enabled] is false when voice cues or voice coaching is off.
+/// [full] false = Minimal: only the next-step line ("Ten seconds, then 200
+/// metres jog"); true adds target status and zone drift.
+///
+/// Target status needs [targetPaceSecPerKm] (a plan session's True Pace
+/// estimate or a goal's pace) and says "On pace", "Ease off, 5 seconds fast"
+/// or "Pick it up, 8 seconds slow" against ±[bandSecPerKm] (null = 5 s/km);
+/// [slowerIsFine] for an easy run, where the pace is a ceiling. Zone drift
+/// needs [plannedMaxZone] (an easy run's top zone) and [zoneBottomsBpm], the
+/// bottoms of zones 2 to 5, and a strap.
+class VoiceCoachConfig {
+  VoiceCoachConfig({
+    required this.enabled,
+    required this.full,
+    required this.slowerIsFine,
+    this.targetPaceSecPerKm,
+    this.bandSecPerKm,
+    this.zoneBottomsBpm,
+    this.plannedMaxZone,
+  });
+
+  bool enabled;
+
+  bool full;
+
+  bool slowerIsFine;
+
+  double? targetPaceSecPerKm;
+
+  double? bandSecPerKm;
+
+  List<double>? zoneBottomsBpm;
+
+  int? plannedMaxZone;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      enabled,
+      full,
+      slowerIsFine,
+      targetPaceSecPerKm,
+      bandSecPerKm,
+      zoneBottomsBpm,
+      plannedMaxZone,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static VoiceCoachConfig decode(Object result) {
+    result as List<Object?>;
+    return VoiceCoachConfig(
+      enabled: result[0]! as bool,
+      full: result[1]! as bool,
+      slowerIsFine: result[2]! as bool,
+      targetPaceSecPerKm: result[3] as double?,
+      bandSecPerKm: result[4] as double?,
+      zoneBottomsBpm: (result[5] as List<Object?>?)?.cast<double>(),
+      plannedMaxZone: result[6] as int?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! VoiceCoachConfig || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(enabled, other.enabled) && _deepEquals(full, other.full) && _deepEquals(slowerIsFine, other.slowerIsFine) && _deepEquals(targetPaceSecPerKm, other.targetPaceSecPerKm) && _deepEquals(bandSecPerKm, other.bandSecPerKm) && _deepEquals(zoneBottomsBpm, other.zoneBottomsBpm) && _deepEquals(plannedMaxZone, other.plannedMaxZone);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
@@ -3222,6 +3305,9 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is HealthWriteResult) {
       buffer.putUint8(186);
       writeValue(buffer, value.encode());
+    }    else if (value is VoiceCoachConfig) {
+      buffer.putUint8(187);
+      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -3363,6 +3449,8 @@ class _PigeonCodec extends StandardMessageCodec {
         return HealthWorkout.decode(readValue(buffer)!);
       case 186:
         return HealthWriteResult.decode(readValue(buffer)!);
+      case 187:
+        return VoiceCoachConfig.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -3745,6 +3833,47 @@ class RecorderApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[enabled]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// Voice coaching for the next run and any run resumed after it: persisted
+  /// natively, never changes a run's journal or a replay.
+  Future<void> setVoiceCoach(VoiceCoachConfig config) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.setVoiceCoach$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[config]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// The run's start heat slowdown (a fraction, null = none), for the live
+  /// True Pace the voice coach judges: the figure the run screen's live TRUE
+  /// pace uses, sent once it is fetched. Applies to the run in progress only.
+  Future<void> setCoachSlowdown(double? slowdown) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.setCoachSlowdown$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[slowdown]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(

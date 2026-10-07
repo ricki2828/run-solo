@@ -1,0 +1,117 @@
+{
+ "_note": "Live True Pace vectors: RunTruePace.live (Dart run_true_pace.dart) and LiveTruePace.apply (Kotlin core-jvm) must agree on every case. Values computed independently (Python) from the Minetti polynomial in Gap.cost, TruePace.clampGrade (deadband 0.005, 0.75..1.15), the heat ramp (3 km to 9 km smoothstep) and TruePace.heatFactor (0.90 floor). Tolerance 1e-4 s/km.",
+ "cases": [
+  {
+   "paceSecPerKm": 300,
+   "gradePct": null,
+   "slowdown": null,
+   "distanceM": 0,
+   "expected": 300.0
+  },
+  {
+   "paceSecPerKm": 300,
+   "gradePct": 0,
+   "slowdown": null,
+   "distanceM": 0,
+   "expected": 300.0
+  },
+  {
+   "paceSecPerKm": 300,
+   "gradePct": 0.3,
+   "slowdown": null,
+   "distanceM": 1000,
+   "expected": 295.169427
+  },
+  {
+   "paceSecPerKm": 300,
+   "gradePct": 5,
+   "slowdown": null,
+   "distanceM": 1000,
+   "expected": 230.513299
+  },
+  {
+   "paceSecPerKm": 300,
+   "gradePct": -5,
+   "slowdown": null,
+   "distanceM": 1000,
+   "expected": 345.0
+  },
+  {
+   "paceSecPerKm": 300,
+   "gradePct": 10,
+   "slowdown": null,
+   "distanceM": 1000,
+   "expected": 225.0
+  },
+  {
+   "paceSecPerKm": 300,
+   "gradePct": -10,
+   "slowdown": null,
+   "distanceM": 1000,
+   "expected": 345.0
+  },
+  {
+   "paceSecPerKm": 300,
+   "gradePct": 30,
+   "slowdown": null,
+   "distanceM": 1000,
+   "expected": 225.0
+  },
+  {
+   "paceSecPerKm": 300,
+   "gradePct": -30,
+   "slowdown": null,
+   "distanceM": 1000,
+   "expected": 345.0
+  },
+  {
+   "paceSecPerKm": 300,
+   "gradePct": 0,
+   "slowdown": 0.06,
+   "distanceM": 9000,
+   "expected": 282.0
+  },
+  {
+   "paceSecPerKm": 300,
+   "gradePct": 0,
+   "slowdown": 0.06,
+   "distanceM": 6000,
+   "expected": 291.0
+  },
+  {
+   "paceSecPerKm": 300,
+   "gradePct": 0,
+   "slowdown": 0.06,
+   "distanceM": 2000,
+   "expected": 300.0
+  },
+  {
+   "paceSecPerKm": 300,
+   "gradePct": 0,
+   "slowdown": 0.2,
+   "distanceM": 12000,
+   "expected": 270.0
+  },
+  {
+   "paceSecPerKm": 280,
+   "gradePct": 3,
+   "slowdown": 0.04,
+   "distanceM": 7500,
+   "expected": 230.501621
+  },
+  {
+   "paceSecPerKm": null,
+   "gradePct": 3,
+   "slowdown": 0.04,
+   "distanceM": 7500,
+   "expected": null
+  },
+  {
+   "paceSecPerKm": 300,
+   "gradePct": 60,
+   "slowdown": null,
+   "distanceM": 100,
+   "expected": 225.0
+  }
+ ]
+}

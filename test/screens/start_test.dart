@@ -86,6 +86,27 @@ void main() {
     expect(find.byType(RecordingScreen), findsOneWidget);
   });
 
+  testWidgets('Start hands the recorder the voice coaching choice', (
+    tester,
+  ) async {
+    final fake = FakeRecorderGateway(now: now);
+    final services = fakeServices(
+      recorder: fake,
+      settings: const AppSettings(
+        onboardingDone: true,
+        coachingDetail: CoachingDetail.minimal,
+      ),
+    );
+    await pumpApp(tester, services, pushRoute: Routes.start);
+    await pumpTimes(tester, 4);
+    await tester.tap(find.text('START WARM-UP'));
+    await pumpTimes(tester, 6);
+    final c = fake.voiceCoach!;
+    expect(c.enabled, isTrue);
+    expect(c.full, isFalse);
+    expect(c.targetPaceSecPerKm, isNull, reason: 'no plan, no goal');
+  });
+
   testWidgets('free run mode starts without a preset', (tester) async {
     final fake = FakeRecorderGateway(now: now);
     final services = fakeServices(

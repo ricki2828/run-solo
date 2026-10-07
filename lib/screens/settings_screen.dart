@@ -470,6 +470,23 @@ class _SettingsScreenState extends State<SettingsScreen>
                     : 'Turn on voice cues first',
               ),
               _Toggle(
+                label: 'Voice coaching',
+                value: s.cues && s.voiceCoaching,
+                onChanged: s.cues
+                    ? (v) => set((x) => x.copyWith(voiceCoaching: v))
+                    : null,
+                reason: s.cues
+                    ? 'Says what is next, and whether you are on pace.'
+                    : 'Turn on voice cues first',
+              ),
+              if (s.cues && s.voiceCoaching)
+                SettingsRow(
+                  key: const ValueKey('coaching-detail'),
+                  label: 'Coaching detail',
+                  value: s.coachingDetail.label,
+                  onTap: () => _pickDetail(context, s.coachingDetail, set),
+                ),
+              _Toggle(
                 label: 'Coaching tips',
                 value: s.tipsSpoken,
                 onChanged: s.cues
@@ -830,6 +847,54 @@ class _SettingsScreenState extends State<SettingsScreen>
       },
     );
     if (picked != null) await set((x) => x.copyWith(profileSex: picked));
+  }
+
+  Future<void> _pickDetail(
+    BuildContext context,
+    CoachingDetail current,
+    Future<void> Function(AppSettings Function(AppSettings)) set,
+  ) async {
+    final picked = await showModalBottomSheet<CoachingDetail>(
+      context: context,
+      builder: (context) {
+        final t = Theme.of(context).extension<RunSoloTokens>()!;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(Space.screenGutter),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('COACHING DETAIL', style: RunSoloType.title28),
+                const SizedBox(height: Space.x8),
+                Text(
+                  'How much the voice says while you run.',
+                  style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                ),
+                const SizedBox(height: Space.x8),
+                RadioGroup<CoachingDetail>(
+                  groupValue: current,
+                  onChanged: (v) => Navigator.of(context).pop(v),
+                  child: Column(
+                    children: [
+                      for (final o in CoachingDetail.values)
+                        RadioListTile<CoachingDetail>(
+                          key: ValueKey('coaching-detail-${o.name}'),
+                          value: o,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(o.label),
+                          subtitle: Text(o.blurb),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (picked != null) await set((x) => x.copyWith(coachingDetail: picked));
   }
 
   Future<void> _editNumber(

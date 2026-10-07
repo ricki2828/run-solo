@@ -117,6 +117,8 @@ class AppSettings {
     this.cues = true,
     this.kmSplits = true,
     this.spokenSummary = true,
+    this.voiceCoaching = true,
+    this.coachingDetail = CoachingDetail.full,
     this.autoPause = true,
     this.coachingTips = true,
     this.showWhileRunning = true,
@@ -243,6 +245,14 @@ class AppSettings {
   /// (trail, 4x4 and free runs say what they are and how they went). Needs
   /// [cues]. Default on.
   final bool spokenSummary;
+
+  /// Voice → "Voice coaching": lines said during a run, from the next step
+  /// to target status and zone drift. Needs [cues]. Default on.
+  final bool voiceCoaching;
+
+  /// Voice → "Coaching detail": [CoachingDetail.minimal] says the next step
+  /// only; [CoachingDetail.full] adds target status and zone drift.
+  final CoachingDetail coachingDetail;
 
   /// Recording → "Auto-pause": the recorder pauses itself when you stop and
   /// resumes when you move. Default on.
@@ -418,6 +428,8 @@ class AppSettings {
     bool? cues,
     bool? kmSplits,
     bool? spokenSummary,
+    bool? voiceCoaching,
+    CoachingDetail? coachingDetail,
     bool? autoPause,
     bool? coachingTips,
     bool? showWhileRunning,
@@ -466,6 +478,8 @@ class AppSettings {
     cues: cues ?? this.cues,
     kmSplits: kmSplits ?? this.kmSplits,
     spokenSummary: spokenSummary ?? this.spokenSummary,
+    voiceCoaching: voiceCoaching ?? this.voiceCoaching,
+    coachingDetail: coachingDetail ?? this.coachingDetail,
     autoPause: autoPause ?? this.autoPause,
     coachingTips: coachingTips ?? this.coachingTips,
     showWhileRunning: showWhileRunning ?? this.showWhileRunning,
@@ -516,6 +530,8 @@ class AppSettings {
     'cues': cues,
     'kmSplits': kmSplits,
     'spokenSummary': spokenSummary,
+    'voiceCoaching': voiceCoaching,
+    'coachingDetail': coachingDetail.name,
     'autoPause': autoPause,
     'coachingTips': coachingTips,
     'showWhileRunning': showWhileRunning,
@@ -609,6 +625,10 @@ class AppSettings {
       cues: pick('cues', d.cues),
       kmSplits: pick('kmSplits', d.kmSplits),
       spokenSummary: pick('spokenSummary', d.spokenSummary),
+      voiceCoaching: pick('voiceCoaching', d.voiceCoaching),
+      coachingDetail:
+          CoachingDetail.values.asNameMap()[pick('coachingDetail', '')] ??
+          d.coachingDetail,
       autoPause: pick('autoPause', d.autoPause),
       coachingTips: pick('coachingTips', d.coachingTips),
       showWhileRunning: pick('showWhileRunning', d.showWhileRunning),
@@ -827,6 +847,16 @@ class GoalChoice {
     }
     return null;
   }
+}
+
+/// Settings → Voice → "Coaching detail".
+enum CoachingDetail {
+  minimal('Minimal', 'Next step only.'),
+  full('Full', 'Next step, target pace and heart rate zone.');
+
+  const CoachingDetail(this.label, this.blurb);
+  final String label;
+  final String blurb;
 }
 
 /// Settings → Profile (A10.7): "Not set" / "Male" / "Female" / "Prefer not
