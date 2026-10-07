@@ -33,13 +33,16 @@ class SectionCard extends StatelessWidget {
             : Color.alphaBlend(a.withValues(alpha: 0.07), t.bgRaised),
         border: Border.all(color: t.lineHair),
         borderRadius: BorderRadius.circular(radius),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0F000000),
-            offset: Offset(0, 1),
-            blurRadius: 3,
-          ),
-        ],
+        // 6% of the ink, light theme only.
+        boxShadow: Theme.of(context).brightness == Brightness.light
+            ? [
+                BoxShadow(
+                  color: t.inkPrimary.withValues(alpha: 0.06),
+                  offset: const Offset(0, 1),
+                  blurRadius: 3,
+                ),
+              ]
+            : null,
       ),
       child: a == null
           ? body

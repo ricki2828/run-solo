@@ -80,6 +80,8 @@ void main() {
       tester.widget<Text>(find.byKey(const ValueKey('readiness-line'))).data,
       'Take it easy: resting HR up 7 bpm',
     );
+    // The cards push the line below the fold of the small test screen.
+    await tester.ensureVisible(find.byKey(const ValueKey('readiness-info')));
     await tester.tap(find.byKey(const ValueKey('readiness-info')));
     await pumpTimes(tester, 2);
     expect(find.textContaining('Research-based'), findsOneWidget);
