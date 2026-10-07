@@ -1,12 +1,11 @@
 name: topo-surface
 # Emulator check for the offline Topo map surface (draft PR): fetches the Milos pack from the live
 # R2 hosting, goes offline, and drives run detail, the live map, a Home card and a no-pack run.
-# Slow and needs the network once, so it is a heavy job: pushes to main, manual dispatch, and PRs
-# labelled `full-ci` (not on ordinary PR pushes). Docs-only changes run nothing.
+# Slow and needs the network once, so it is a nightly job: 02:00 UTC on main (skipped when main
+# has no commit in the last 25 h), manual dispatch, and PRs labelled `full-ci`. Not on pushes.
 on:
-  push:
-    branches: [main]
-    paths-ignore: ['docs/**', '**.md']
+  schedule:
+    - cron: '0 2 * * *'
   pull_request:
     types: [opened, synchronize, reopened, labeled]
     paths-ignore: ['docs/**', '**.md']
@@ -21,8 +20,23 @@ env:
   JAVA_VERSION: '21'
 
 jobs:
+  gate:
+    name: main changed since yesterday
+    if: ${{ github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.age.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: age
+        run: |
+          age=$(( $(date +%s) - $(git log -1 --format=%ct) ))
+          if [ "$age" -lt 90000 ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; else echo "changed=false" >> "$GITHUB_OUTPUT"; echo "main unchanged for $age s: skipped"; fi
+
   topo-surface:
-    if: ${{ github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'full-ci') && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci')) }}
+    needs: gate
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && needs.gate.outputs.changed == 'true') || (contains(github.event.pull_request.labels.*.name, 'full-ci') && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

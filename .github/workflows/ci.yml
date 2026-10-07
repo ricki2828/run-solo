@@ -1,12 +1,17 @@
 name: ci
 
 # CI diet (the repo is private, Actions minutes are metered; macOS costs 10x).
-# Every PR push runs the fast path only: analyze + test, core-jvm, debug APK (+ lint, unit
-# tests, 16 KB check), brand and topo checks. Docs-only and *.md changes run nothing.
-# The heavy jobs (emulator smoke + replay matrix, dogfood build + smoke, Kotlin/Native on macOS)
-# run on pushes to main, v* tags, workflow_dispatch, and PRs labelled `full-ci`. Add the label
-# when a PR needs emulator or macOS evidence. The Kotlin/Native job also needs the shared core
-# (android/core-jvm, ios, pigeons) to have changed.
+# - PR push: analyze + test, core-jvm, debug APK (+ lint, unit tests, 16 KB check), brand + topo
+#   checks. Docs-only and *.md changes run nothing.
+# - Push to main: analyze + test, core-jvm, brand + topo checks, the dogfood APK build and ONE
+#   emulator smoke on it (API 36). The debug APK and the emulator matrix already ran on the PR
+#   or run nightly.
+# - Nightly (02:00 UTC, main only, skipped when main has no commit in the last 25 h), v* tags,
+#   workflow_dispatch and PRs labelled `full-ci`: the full emulator set (smoke 29/34/36, replay
+#   matrix) on the debug APK. Tags and dispatch also run the release AAB; the nightly does too.
+#   topo-surface.yml follows the same schedule.
+# - Kotlin/Native on macOS: only when android/core-jvm, ios or pigeons changed, on main, with
+#   `full-ci`, tags or dispatch. Never on the nightly or on Flutter-only PRs.
 # Adding any label other than `full-ci` re-triggers the workflow; every job skips itself then.
 on:
   push:
@@ -16,6 +21,8 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
     paths-ignore: ['docs/**', '**.md']
+  schedule:
+    - cron: '0 2 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -41,6 +48,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       core: ${{ steps.diff.outputs.core }}
+      nightly: ${{ steps.diff.outputs.nightly }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,7 +72,16 @@ jobs:
           else
             range=""
           fi
-          if [ -z "$range" ] || git diff --name-only "$range" | grep -qE "$core_re"; then
+          # nightly: the 02:00 UTC schedule runs only when the main head commit is under 25 h old.
+          age=$(( $(date +%s) - $(git log -1 --format=%ct) ))
+          if [ "$EVENT" != "schedule" ] || [ "$age" -lt 90000 ]; then
+            echo "nightly=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "nightly=false" >> "$GITHUB_OUTPUT"; echo "main unchanged for $age s: nightly skipped"
+          fi
+          if [ "$EVENT" = "schedule" ]; then
+            echo "core=false" >> "$GITHUB_OUTPUT"; echo "schedule: Kotlin/Native never runs nightly"
+          elif [ -z "$range" ] || git diff --name-only "$range" | grep -qE "$core_re"; then
             echo "core=true" >> "$GITHUB_OUTPUT"; echo "core changed (or not a diffable event): Kotlin/Native job runs"
           else
             echo "core=false" >> "$GITHUB_OUTPUT"; echo "core unchanged: Kotlin/Native job skipped"
@@ -72,7 +89,7 @@ jobs:
 
   flutter:
     name: analyze + test (app, run_engine)
-    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') }}
+    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -154,7 +171,7 @@ jobs:
 
   brand:
     name: brand vectors are current
-    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') }}
+    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -173,7 +190,7 @@ jobs:
 
   topo-style:
     name: topo style is current and valid
-    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') }}
+    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -191,7 +208,7 @@ jobs:
 
   core-jvm:
     name: core-jvm tests (pure Kotlin)
-    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') }}
+    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -233,7 +250,7 @@ jobs:
     # compile of common code accepts JVM-only stdlib calls; only a Native compile catches them.
     name: core on Kotlin/Native (macOS + iOS simulator)
     needs: changes
-    if: ${{ !cancelled() && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && (needs.changes.result != 'success' || needs.changes.outputs.core == 'true') }}
+    if: ${{ !cancelled() && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && github.event_name != 'schedule' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && (needs.changes.result != 'success' || needs.changes.outputs.core == 'true') }}
     runs-on: macos-26
     timeout-minutes: 45
     steps:
@@ -275,7 +292,8 @@ jobs:
 
   build-apk:
     name: build debug APK + 16 KB check
-    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') }}
+    needs: changes
+    if: ${{ !cancelled() && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && !(github.event_name == 'push' && github.ref == 'refs/heads/main') && (github.event_name != 'schedule' || needs.changes.outputs.nightly == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -343,7 +361,7 @@ jobs:
 
   build-dogfood:
     name: build dogfood APK (arm64, R8, signed)
-    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
+    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -440,7 +458,8 @@ jobs:
     # RUN_SOLO_UPLOAD_* secrets (offline copy ~/.secrets/run-solo/); Play App Signing re-signs
     # with the app-signing key. Not on PRs, so it adds nothing to the PR gate.
     name: release AAB (play, upload-key signed)
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'schedule' && needs.changes.outputs.nightly == 'true')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -575,7 +594,7 @@ jobs:
             build/dist-play/release-manifest.json
             build/dist-play/SHA256SUMS
           if-no-files-found: error
-          retention-days: 90
+          retention-days: ${{ github.event_name == 'schedule' && 7 || 90 }}
       - uses: actions/upload-artifact@v4
         with:
           name: run-solo-play-symbols-${{ env.REF }}
@@ -583,12 +602,12 @@ jobs:
             build/dist-play/mapping.txt
             build/symbols-play
           if-no-files-found: error
-          retention-days: 90
+          retention-days: ${{ github.event_name == 'schedule' && 7 || 90 }}
 
   emulator:
     name: emulator smoke (API ${{ matrix.api-level }})
-    needs: build-apk
-    if: ${{ !cancelled() && needs.build-apk.result == 'success' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
+    needs: [build-apk, changes]
+    if: ${{ !cancelled() && needs.build-apk.result == 'success' && ((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))) && (github.event_name != 'schedule' || needs.changes.outputs.nightly == 'true')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -664,8 +683,8 @@ jobs:
     # I5: one replay per session kind through the real service; the run file must match the
     # core-jvm fixture recorded from the same trace (tools/check_replay_run.py).
     name: emulator replay ${{ matrix.kind }} (API 34)
-    needs: build-apk
-    if: ${{ !cancelled() && needs.build-apk.result == 'success' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
+    needs: [build-apk, changes]
+    if: ${{ !cancelled() && needs.build-apk.result == 'success' && ((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))) && (github.event_name != 'schedule' || needs.changes.outputs.nightly == 'true')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -727,7 +746,7 @@ jobs:
   emulator-dogfood:
     name: emulator smoke, dogfood R8 build (API 36)
     needs: build-dogfood
-    if: ${{ !cancelled() && needs.build-dogfood.result == 'success' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
+    if: ${{ !cancelled() && needs.build-dogfood.result == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
