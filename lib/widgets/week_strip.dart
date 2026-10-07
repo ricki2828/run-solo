@@ -11,7 +11,7 @@ import '../theme/zones.dart';
 /// Home's "your week": Monday to Sunday (the runner's local dates), one bar
 /// per day. A day's bar is as tall as the time run, stacked by time in each
 /// HR zone (Z1 at the bottom); time with no heart rate is grey on top. A day
-/// with no run is a light stub. One hour is a full-height bar.
+/// with no run is a light stub. Half an hour is a full-height bar.
 class WeekStrip extends StatelessWidget {
   const WeekStrip({
     super.key,
@@ -27,7 +27,7 @@ class WeekStrip extends StatelessWidget {
   final DateTime now;
 
   static const double barAreaHeight = 56;
-  static const double _fullSeconds = 3600;
+  static const double _fullSeconds = 1800;
 
   /// Per weekday (0 = Monday): seconds in Z1-Z5 (slots 1-5) and slot 0 for
   /// moving time with no heart rate.
@@ -117,7 +117,7 @@ class WeekStrip extends StatelessWidget {
                               seconds: days[i],
                               scale: scale,
                               colors: [
-                                t.inkMuted,
+                                t.inkPrimary.withValues(alpha: 0.4),
                                 for (var z = 1; z <= 5; z++)
                                   HrZones.distribution(z, brightness),
                               ],
