@@ -19,6 +19,7 @@ import '../state/load_guard.dart';
 import '../state/recording_controller.dart';
 import '../state/sessions.dart';
 import '../state/settings.dart';
+import '../state/voice_coach_plan.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/goal_picker.dart';
@@ -381,6 +382,25 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// Voice coaching for this run. A plan session is coached against its own
+  /// pace only on the planned day and while the pick is still that session.
+  VoiceCoachConfig _voiceCoach(AppServices services, AppSettings s) {
+    final next = _plannedNext(s);
+    engine.BlockSession? planned;
+    if (next != null &&
+        engine.dateOnly(next.date) == engine.dateOnly(services.now()) &&
+        _samePick(PlanStart.apply(next.session)(s), s)) {
+      planned = next.session;
+    }
+    return VoiceCoachPlan.build(
+      settings: s,
+      zones: services.hrZones,
+      planned: planned,
+      vdot: _planCtx?.vdot,
+      goalPaceSecPerKm: s.goalRun ? _goalAim(s) : null,
+    );
+  }
+
   /// The START label when the Today card is the pick: it names the session
   /// ("START EASY RUN · 30 MIN", "START NORWEGIAN 4X4"), not the run type.
   String? _todayStartLabel(AppSettings s) {
@@ -424,6 +444,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       await services.recorder.setCues(s.cues);
       await services.recorder.setKmSplits(s.kmSplits);
       await services.recorder.setSpokenSummary(s.spokenSummary);
+      await services.recorder.setVoiceCoach(_voiceCoach(services, s));
       await services.recorder.setAutoPause(s.autoPause);
       if ((testMode ?? s.recordMode) == RecordMode.laps) {
         await services.recorder.setVolumeKeyLaps(

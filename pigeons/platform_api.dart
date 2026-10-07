@@ -737,6 +737,10 @@ abstract class RecorderApi {
   /// whenever voice cues are off.
   void setSpokenSummary(bool enabled);
 
+  /// Voice coaching for the next run and any run resumed after it: persisted
+  /// natively, never changes a run's journal or a replay.
+  void setVoiceCoach(VoiceCoachConfig config);
+
   /// The end-of-run line: distance, time, average pace ([includePace] false
   /// for a 4x4 or Cooper, where a whole-run pace means nothing) and (from
   /// 20 m) the climb in [units], then [verdict] (the result screen's own words, already
@@ -1252,6 +1256,38 @@ class HealthWriteResult {
 
   /// Short reason for `failed`; display text only.
   String? detail;
+}
+
+/// Voice coaching for the next run (Settings → Voice → "Voice coaching" and
+/// "Coaching detail"), set before start like [RecorderApi.setSpokenSummary]
+/// and read natively by the recorder service, so the lines are said with the
+/// screen off. [enabled] is false when voice cues or voice coaching is off.
+/// [full] false = Minimal: only the next-step line ("Ten seconds, then 200
+/// metres jog"); true adds target status and zone drift.
+///
+/// Target status needs [targetPaceSecPerKm] (a plan session's True Pace
+/// estimate or a goal's pace) and says "On pace", "Ease off, 5 seconds fast"
+/// or "Pick it up, 8 seconds slow" against ±[bandSecPerKm] (null = 5 s/km);
+/// [slowerIsFine] for an easy run, where the pace is a ceiling. Zone drift
+/// needs [plannedMaxZone] (an easy run's top zone) and [zoneBottomsBpm], the
+/// bottoms of zones 2 to 5, and a strap.
+class VoiceCoachConfig {
+  VoiceCoachConfig({
+    required this.enabled,
+    required this.full,
+    required this.slowerIsFine,
+    this.targetPaceSecPerKm,
+    this.bandSecPerKm,
+    this.zoneBottomsBpm,
+    this.plannedMaxZone,
+  });
+  bool enabled;
+  bool full;
+  bool slowerIsFine;
+  double? targetPaceSecPerKm;
+  double? bandSecPerKm;
+  List<double>? zoneBottomsBpm;
+  int? plannedMaxZone;
 }
 
 /// The workout write. Android: Health Connect (`androidx.health.connect`).

@@ -1,5 +1,6 @@
 package app.runsolo.platform
 
+import app.runsolo.core.live.VoiceCoach
 import app.runsolo.core.model.LiveContext as CoreLiveContext
 import app.runsolo.core.route.FollowRoute as CoreFollowRoute
 import android.Manifest
@@ -121,6 +122,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         RecordingSession(context, UUID.randomUUID().toString(), mode, spec, units.toCore(), replay, volumeKeyLaps(mode), liveContext, route)
             .also { it.kmSplits = prefs.getBoolean(RecorderService.PREF_KM_SPLITS, true) }
             .also { it.spokenSummary = prefs.getBoolean(RecorderService.PREF_SPOKEN_SUMMARY, true) }
+            .also { it.voiceCoach = voiceCoachFromPrefs() }
             .also { it.autoPause = prefs.getBoolean(RecorderService.PREF_AUTO_PAUSE, true) }
 
     /**
@@ -196,6 +198,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         return RecordingSession(context, runId, h.mode, h.session, h.units, null, volumeKeyLaps(h.mode), replayed.liveContext, replayed.route)
             .also { it.kmSplits = prefs.getBoolean(RecorderService.PREF_KM_SPLITS, true) }
             .also { it.spokenSummary = prefs.getBoolean(RecorderService.PREF_SPOKEN_SUMMARY, true) }
+            .also { it.voiceCoach = voiceCoachFromPrefs() }
             .also { it.autoPause = prefs.getBoolean(RecorderService.PREF_AUTO_PAUSE, true) }
     }
 
@@ -339,6 +342,33 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     override fun setSpokenSummary(enabled: Boolean) {
         // commit(), not apply(): the next start() may come from a new process.
         prefs.edit().putBoolean(RecorderService.PREF_SPOKEN_SUMMARY, enabled).commit()
+    }
+
+    override fun setVoiceCoach(config: VoiceCoachConfig) {
+        // commit(), not apply(): the next start() may come from a new process.
+        prefs.edit()
+            .putBoolean(RecorderService.PREF_VC_ON, config.enabled)
+            .putBoolean(RecorderService.PREF_VC_FULL, config.full)
+            .putBoolean(RecorderService.PREF_VC_SLOWER_OK, config.slowerIsFine)
+            .putString(RecorderService.PREF_VC_PACE, config.targetPaceSecPerKm?.toString())
+            .putString(RecorderService.PREF_VC_BAND, config.bandSecPerKm?.toString())
+            .putString(RecorderService.PREF_VC_BOTTOMS, config.zoneBottomsBpm?.joinToString(","))
+            .putInt(RecorderService.PREF_VC_ZONE, config.plannedMaxZone?.toInt() ?: 0)
+            .commit()
+    }
+
+    /** The coaching the app set before this run started (also read on a resume); null = off or never set. */
+    internal fun voiceCoachFromPrefs(): VoiceCoach.Config? {
+        if (!prefs.getBoolean(RecorderService.PREF_VC_ON, false)) return null
+        val bottoms = prefs.getString(RecorderService.PREF_VC_BOTTOMS, null)?.split(",")?.mapNotNull { it.toDoubleOrNull() }?.takeIf { it.size == 4 }
+        return VoiceCoach.Config(
+            full = prefs.getBoolean(RecorderService.PREF_VC_FULL, true),
+            targetPaceSecPerKm = prefs.getString(RecorderService.PREF_VC_PACE, null)?.toDoubleOrNull(),
+            bandSecPerKm = prefs.getString(RecorderService.PREF_VC_BAND, null)?.toDoubleOrNull() ?: VoiceCoach.DEFAULT_BAND_SEC,
+            slowerIsFine = prefs.getBoolean(RecorderService.PREF_VC_SLOWER_OK, false),
+            zoneBottomsBpm = bottoms,
+            plannedMaxZone = prefs.getInt(RecorderService.PREF_VC_ZONE, 0).takeIf { it in 1..4 && bottoms != null },
+        )
     }
 
     /** The end-of-run line on a player of its own (the run's is gone): words from [SummaryWords], released once said. */

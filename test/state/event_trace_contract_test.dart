@@ -274,6 +274,8 @@ class TraceGateway implements RecorderGateway {
   @override
   Future<void> setSpokenSummary(bool e) => throw UnimplementedError();
   @override
+  Future<void> setVoiceCoach(VoiceCoachConfig c) => throw UnimplementedError();
+  @override
   Future<void> speakRunSummary({
     required double distanceM,
     required int timeMs,

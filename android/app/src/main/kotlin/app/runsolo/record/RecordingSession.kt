@@ -32,6 +32,7 @@ import app.runsolo.core.model.Units
 import app.runsolo.core.live.CooperCurve
 import app.runsolo.core.live.GoalCoach
 import app.runsolo.core.live.LiveCoach
+import app.runsolo.core.live.VoiceCoach
 import app.runsolo.core.record.CueWords
 import app.runsolo.core.record.SummaryWords
 import app.runsolo.core.record.LapDispatch
@@ -509,6 +510,7 @@ class RecordingSession(
             val isMoving = autoDetector.update(last.t, ticker.moveDistanceM, last.speedMps, last.lat, last.lon)
             if (wasMoving && !isMoving) autoPauseNow(t) else if (!wasMoving && isMoving) autoResumeNow(t, speak = true)
         }
+        coachTick(t, if (lost) null else pace, last.hr)
         val step = core.stepIndex
         if (lost && step != null && core.status(t).stepRemainingM != null && gpsWeakStep != step && r == null) {
             // A distance rep does not end on its own without GPS (W3): say so once per rep.
@@ -882,6 +884,19 @@ class RecordingSession(
     @Volatile
     var spokenSummary: Boolean = true
 
+    /**
+     * Voice coaching (Settings → Voice), set before start from the app's `setVoiceCoach` and on a resume
+     * from the same prefs; null = off. Never active in a replay. Read on the recorder thread.
+     */
+    @Volatile
+    var voiceCoach: VoiceCoach.Config? = null
+        set(value) {
+            field = value
+            coachLines = value?.let { VoiceCoach(it) }
+        }
+
+    private var coachLines: VoiceCoach? = null
+
     /** Settings → Voice → "Km splits" (default on): a Free run says each km. Set before start and on change. */
     @Volatile
     var kmSplits: Boolean = true
@@ -935,13 +950,46 @@ class RecordingSession(
     }
 
     /** Replay only (T4): what was said, at trace ms, for the emulator's transcript check. */
+    /**
+     * Target status and zone drift ([VoiceCoach]), on the tick so they speak with the screen off. A
+     * coachable segment is a work step (or the whole run when it has no steps); nothing in a pause,
+     * warm-up, recovery or cool-down. The next-step line is the ten-seconds cue, not said from here.
+     */
+    private fun coachTick(t: Long, pace: Double?, hr: Number?) {
+        val vc = coachLines ?: return
+        if (replay != null || !cues.enabled) return
+        val st = core.status(t)
+        val steps = spec?.steps.orEmpty()
+        val recording = st.state == RecorderState.recording && !core.autoPaused
+        val segment = when {
+            !recording -> null
+            steps.isEmpty() -> 0
+            st.phase == Phase.work -> st.stepIndex
+            else -> null
+        }
+        val line = vc.tick(
+            VoiceCoach.Input(
+                t = t,
+                segment = segment,
+                segmentActiveMs = if (steps.isEmpty()) st.activeMs else st.phaseActiveMs,
+                paceSecPerKm = pace,
+                hr = hr?.toDouble(),
+                msToPhaseEnd = st.stepRemainingMs,
+                busyUntil = if (cues.nudgePending) t + 1 else cues.speechBusyUntil,
+            ),
+        ) ?: return
+        Log.i(TAG, "coach ${line.kind}: ${line.text}")
+        cues.announce(line.text)
+    }
+
     private fun logSaid(text: String) {
         val r = replay ?: return
         Log.i(TAG, "said ${r.traceMs(clock())} $text")
     }
 
+    // Voice coaching names the next step in the ten-seconds cue; a replay's transcript stays pinned.
     private fun cueText(o: RecorderCore.Output.Cue): String? =
-        CueWords.text(o.kind, o.value, spec, core.phase, core.repIndex, core.stepIndex, o.index)
+        CueWords.text(o.kind, o.value, spec, core.phase, core.repIndex, core.stepIndex, o.index, coach = voiceCoach != null && replay == null)
 
     private fun emitState() {
         refreshSnapshot()

@@ -74,6 +74,10 @@ class PigeonRecorderGateway implements RecorderGateway {
   Future<void> setSpokenSummary(bool enabled) => _api.setSpokenSummary(enabled);
 
   @override
+  Future<void> setVoiceCoach(VoiceCoachConfig config) =>
+      _api.setVoiceCoach(config);
+
+  @override
   Future<void> speakRunSummary({
     required double distanceM,
     required int timeMs,

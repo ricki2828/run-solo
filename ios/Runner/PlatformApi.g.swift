@@ -2780,6 +2780,81 @@ struct HealthWriteResult: Hashable {
   }
 }
 
+/// Voice coaching for the next run (Settings → Voice → "Voice coaching" and
+/// "Coaching detail"), set before start like [RecorderApi.setSpokenSummary]
+/// and read natively by the recorder service, so the lines are said with the
+/// screen off. [enabled] is false when voice cues or voice coaching is off.
+/// [full] false = Minimal: only the next-step line ("Ten seconds, then 200
+/// metres jog"); true adds target status and zone drift.
+///
+/// Target status needs [targetPaceSecPerKm] (a plan session's True Pace
+/// estimate or a goal's pace) and says "On pace", "Ease off, 5 seconds fast"
+/// or "Pick it up, 8 seconds slow" against ±[bandSecPerKm] (null = 5 s/km);
+/// [slowerIsFine] for an easy run, where the pace is a ceiling. Zone drift
+/// needs [plannedMaxZone] (an easy run's top zone) and [zoneBottomsBpm], the
+/// bottoms of zones 2 to 5, and a strap.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct VoiceCoachConfig: Hashable {
+  var enabled: Bool
+  var full: Bool
+  var slowerIsFine: Bool
+  var targetPaceSecPerKm: Double? = nil
+  var bandSecPerKm: Double? = nil
+  var zoneBottomsBpm: [Double]? = nil
+  var plannedMaxZone: Int64? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> VoiceCoachConfig? {
+    let enabled = pigeonVar_list[0] as! Bool
+    let full = pigeonVar_list[1] as! Bool
+    let slowerIsFine = pigeonVar_list[2] as! Bool
+    let targetPaceSecPerKm: Double? = nilOrValue(pigeonVar_list[3])
+    let bandSecPerKm: Double? = nilOrValue(pigeonVar_list[4])
+    let zoneBottomsBpm: [Double]? = nilOrValue(pigeonVar_list[5])
+    let plannedMaxZone: Int64? = nilOrValue(pigeonVar_list[6])
+
+    return VoiceCoachConfig(
+      enabled: enabled,
+      full: full,
+      slowerIsFine: slowerIsFine,
+      targetPaceSecPerKm: targetPaceSecPerKm,
+      bandSecPerKm: bandSecPerKm,
+      zoneBottomsBpm: zoneBottomsBpm,
+      plannedMaxZone: plannedMaxZone
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      enabled,
+      full,
+      slowerIsFine,
+      targetPaceSecPerKm,
+      bandSecPerKm,
+      zoneBottomsBpm,
+      plannedMaxZone,
+    ]
+  }
+  static func == (lhs: VoiceCoachConfig, rhs: VoiceCoachConfig) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsPlatformApi(lhs.enabled, rhs.enabled) && deepEqualsPlatformApi(lhs.full, rhs.full) && deepEqualsPlatformApi(lhs.slowerIsFine, rhs.slowerIsFine) && deepEqualsPlatformApi(lhs.targetPaceSecPerKm, rhs.targetPaceSecPerKm) && deepEqualsPlatformApi(lhs.bandSecPerKm, rhs.bandSecPerKm) && deepEqualsPlatformApi(lhs.zoneBottomsBpm, rhs.zoneBottomsBpm) && deepEqualsPlatformApi(lhs.plannedMaxZone, rhs.plannedMaxZone)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("VoiceCoachConfig")
+    deepHashPlatformApi(value: enabled, hasher: &hasher)
+    deepHashPlatformApi(value: full, hasher: &hasher)
+    deepHashPlatformApi(value: slowerIsFine, hasher: &hasher)
+    deepHashPlatformApi(value: targetPaceSecPerKm, hasher: &hasher)
+    deepHashPlatformApi(value: bandSecPerKm, hasher: &hasher)
+    deepHashPlatformApi(value: zoneBottomsBpm, hasher: &hasher)
+    deepHashPlatformApi(value: plannedMaxZone, hasher: &hasher)
+  }
+}
+
 private class PlatformApiPigeonCodecReader: FlutterStandardReader {
   override func readValue(ofType type: UInt8) -> Any? {
     switch type {
@@ -2967,6 +3042,8 @@ private class PlatformApiPigeonCodecReader: FlutterStandardReader {
       return HealthWorkout.fromList(self.readValue() as! [Any?])
     case 186:
       return HealthWriteResult.fromList(self.readValue() as! [Any?])
+    case 187:
+      return VoiceCoachConfig.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
@@ -3149,6 +3226,9 @@ private class PlatformApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? HealthWriteResult {
       super.writeByte(186)
       super.writeValue(value.toList())
+    } else if let value = value as? VoiceCoachConfig {
+      super.writeByte(187)
+      super.writeValue(value.toList())
     } else {
       super.writeValue(value)
     }
@@ -3231,6 +3311,9 @@ protocol RecorderApi {
   /// [speakRunSummary], one when the run is done. Persisted natively; skipped
   /// whenever voice cues are off.
   func setSpokenSummary(enabled: Bool) throws
+  /// Voice coaching for the next run and any run resumed after it: persisted
+  /// natively, never changes a run's journal or a replay.
+  func setVoiceCoach(config: VoiceCoachConfig) throws
   /// The end-of-run line: distance, time, average pace ([includePace] false
   /// for a 4x4 or Cooper, where a whole-run pace means nothing) and (from
   /// 20 m) the climb in [units], then [verdict] (the result screen's own words, already
@@ -3574,6 +3657,23 @@ class RecorderApiSetup {
       }
     } else {
       setSpokenSummaryChannel.setMessageHandler(nil)
+    }
+    /// Voice coaching for the next run and any run resumed after it: persisted
+    /// natively, never changes a run's journal or a replay.
+    let setVoiceCoachChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.setVoiceCoach\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      setVoiceCoachChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let configArg = args[0] as! VoiceCoachConfig
+        do {
+          try api.setVoiceCoach(config: configArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      setVoiceCoachChannel.setMessageHandler(nil)
     }
     /// The end-of-run line: distance, time, average pace ([includePace] false
     /// for a 4x4 or Cooper, where a whole-run pace means nothing) and (from

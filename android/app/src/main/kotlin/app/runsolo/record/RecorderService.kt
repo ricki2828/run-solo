@@ -166,6 +166,15 @@ class RecorderService : Service() {
         const val PREF_SPOKEN_SUMMARY = "spokenSummary"
         const val PREF_AUTO_PAUSE = "autoPause"
 
+        /** Voice coaching (`VoiceCoachConfig`), one pref per field; see [RecorderApiImpl.voiceCoachFromPrefs]. */
+        const val PREF_VC_ON = "voiceCoachOn"
+        const val PREF_VC_FULL = "voiceCoachFull"
+        const val PREF_VC_SLOWER_OK = "voiceCoachSlowerOk"
+        const val PREF_VC_PACE = "voiceCoachPace"
+        const val PREF_VC_BAND = "voiceCoachBand"
+        const val PREF_VC_BOTTOMS = "voiceCoachBottoms"
+        const val PREF_VC_ZONE = "voiceCoachZone"
+
         /** Session handed from the Activity to the service on ACTION_START. Main thread only. */
         @Volatile
         var pending: RecordingSession? = null

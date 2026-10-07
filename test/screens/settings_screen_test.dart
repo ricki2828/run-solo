@@ -521,4 +521,51 @@ void main() {
     expect(back.spokenSummary, isFalse);
     expect(AppSettings.fromJson(const {}).spokenSummary, isTrue);
   });
+
+  testWidgets(
+    'Voice coaching: a Voice switch under the spoken summary, with a detail choice',
+    (tester) async {
+      final services = fakeServices();
+      await pumpApp(tester, services, home: SettingsScreen(now: now));
+      await pumpTimes(tester, 3);
+      tester.view.physicalSize = const Size(1080, 9000);
+      await pumpTimes(tester, 3);
+      Finder switchOf(String label) => find.descendant(
+        of: find
+            .ancestor(of: find.text(label), matching: find.byType(Row))
+            .first,
+        matching: find.byType(Switch),
+      );
+      expect(services.settings.settings.voiceCoaching, isTrue);
+      expect(
+        tester.getTopLeft(find.text('Voice coaching')).dy,
+        greaterThan(tester.getTopLeft(find.text('Spoken summary')).dy),
+      );
+      expect(find.text('Full'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('coaching-detail')));
+      await pumpTimes(tester, 3);
+      expect(
+        find.byKey(const ValueKey('coaching-detail-minimal')),
+        findsOneWidget,
+      );
+      // The test fonts make the sheet taller than the view: pick through the group.
+      tester
+          .widget<RadioGroup<CoachingDetail>>(
+            find.byType(RadioGroup<CoachingDetail>),
+          )
+          .onChanged(CoachingDetail.minimal);
+      await pumpTimes(tester, 3);
+      expect(services.settings.settings.coachingDetail, CoachingDetail.minimal);
+      expect(find.text('Minimal'), findsOneWidget);
+
+      tester.view.physicalSize = const Size(1080, 9000);
+      await pumpTimes(tester, 3);
+
+      await tester.tap(switchOf('Voice coaching'));
+      await pumpTimes(tester, 3);
+      expect(services.settings.settings.voiceCoaching, isFalse);
+      expect(find.byKey(const ValueKey('coaching-detail')), findsNothing);
+    },
+  );
 }

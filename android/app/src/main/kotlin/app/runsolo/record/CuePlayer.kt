@@ -143,6 +143,12 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
         return composed
     }
 
+    /** When the speech queued so far will be done, on the session's clock (voice coaching only speaks when this has passed). */
+    val speechBusyUntil: Long get() = synchronized(this) { speech.busyUntil }
+
+    /** A nudge is waiting to follow its cue; coaching holds off so it is not dropped. */
+    val nudgePending: Boolean get() = synchronized(this) { followUp.pending != null }
+
     /** A pause or Mute tips: a follow-up nudge still waiting is not said. */
     @Synchronized
     fun dropNudge() = followUp.cancel()

@@ -70,6 +70,7 @@ final class RecorderApiStub: RecorderApi {
   func stopGpsProbe() throws {}
   func setKmSplits(enabled: Bool) throws {}
   func setSpokenSummary(enabled: Bool) throws {}
+  func setVoiceCoach(config: VoiceCoachConfig) throws {}
   func speakRunSummary(distanceM: Double, timeMs: Int64, climbM: Double?, verdict: String?, units: Units, includePace: Bool) throws {}
   func setAutoPause(enabled: Bool) throws {}
   func muteTips() throws {}

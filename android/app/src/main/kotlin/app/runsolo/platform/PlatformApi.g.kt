@@ -2958,6 +2958,80 @@ data class HealthWriteResult (
     return result
   }
 }
+
+/**
+ * Voice coaching for the next run (Settings → Voice → "Voice coaching" and
+ * "Coaching detail"), set before start like [RecorderApi.setSpokenSummary]
+ * and read natively by the recorder service, so the lines are said with the
+ * screen off. [enabled] is false when voice cues or voice coaching is off.
+ * [full] false = Minimal: only the next-step line ("Ten seconds, then 200
+ * metres jog"); true adds target status and zone drift.
+ *
+ * Target status needs [targetPaceSecPerKm] (a plan session's True Pace
+ * estimate or a goal's pace) and says "On pace", "Ease off, 5 seconds fast"
+ * or "Pick it up, 8 seconds slow" against ±[bandSecPerKm] (null = 5 s/km);
+ * [slowerIsFine] for an easy run, where the pace is a ceiling. Zone drift
+ * needs [plannedMaxZone] (an easy run's top zone) and [zoneBottomsBpm], the
+ * bottoms of zones 2 to 5, and a strap.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class VoiceCoachConfig (
+  val enabled: Boolean,
+  val full: Boolean,
+  val slowerIsFine: Boolean,
+  val targetPaceSecPerKm: Double? = null,
+  val bandSecPerKm: Double? = null,
+  val zoneBottomsBpm: List<Double>? = null,
+  val plannedMaxZone: Long? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): VoiceCoachConfig {
+      val enabled = pigeonVar_list[0] as Boolean
+      val full = pigeonVar_list[1] as Boolean
+      val slowerIsFine = pigeonVar_list[2] as Boolean
+      val targetPaceSecPerKm = pigeonVar_list[3] as Double?
+      val bandSecPerKm = pigeonVar_list[4] as Double?
+      val zoneBottomsBpm = pigeonVar_list[5] as List<Double>?
+      val plannedMaxZone = pigeonVar_list[6] as Long?
+      return VoiceCoachConfig(enabled, full, slowerIsFine, targetPaceSecPerKm, bandSecPerKm, zoneBottomsBpm, plannedMaxZone)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      enabled,
+      full,
+      slowerIsFine,
+      targetPaceSecPerKm,
+      bandSecPerKm,
+      zoneBottomsBpm,
+      plannedMaxZone,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as VoiceCoachConfig
+    return PlatformApiPigeonUtils.deepEquals(this.enabled, other.enabled) && PlatformApiPigeonUtils.deepEquals(this.full, other.full) && PlatformApiPigeonUtils.deepEquals(this.slowerIsFine, other.slowerIsFine) && PlatformApiPigeonUtils.deepEquals(this.targetPaceSecPerKm, other.targetPaceSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.bandSecPerKm, other.bandSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.zoneBottomsBpm, other.zoneBottomsBpm) && PlatformApiPigeonUtils.deepEquals(this.plannedMaxZone, other.plannedMaxZone)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.enabled)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.full)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.slowerIsFine)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.targetPaceSecPerKm)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.bandSecPerKm)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.zoneBottomsBpm)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.plannedMaxZone)
+    return result
+  }
+}
 private open class PlatformApiPigeonCodec : StandardMessageCodec() {
   override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
     return when (type) {
@@ -3251,6 +3325,11 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
           HealthWriteResult.fromList(it)
         }
       }
+      187.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          VoiceCoachConfig.fromList(it)
+        }
+      }
       else -> super.readValueOfType(type, buffer)
     }
   }
@@ -3488,6 +3567,10 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(186)
         writeValue(stream, value.toList())
       }
+      is VoiceCoachConfig -> {
+        stream.write(187)
+        writeValue(stream, value.toList())
+      }
       else -> super.writeValue(stream, value)
     }
   }
@@ -3573,6 +3656,11 @@ interface RecorderApi {
    * whenever voice cues are off.
    */
   fun setSpokenSummary(enabled: Boolean)
+  /**
+   * Voice coaching for the next run and any run resumed after it: persisted
+   * natively, never changes a run's journal or a replay.
+   */
+  fun setVoiceCoach(config: VoiceCoachConfig)
   /**
    * The end-of-run line: distance, time, average pace ([includePace] false
    * for a 4x4 or Cooper, where a whole-run pace means nothing) and (from
@@ -3930,6 +4018,24 @@ interface RecorderApi {
             val enabledArg = args[0] as Boolean
             val wrapped: List<Any?> = try {
               api.setSpokenSummary(enabledArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.setVoiceCoach$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val configArg = args[0] as VoiceCoachConfig
+            val wrapped: List<Any?> = try {
+              api.setVoiceCoach(configArg)
               listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)

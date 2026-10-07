@@ -31,6 +31,7 @@ object CueWords {
         repIndex: Int,
         stepIndex: Int?,
         index: Int? = null,
+        coach: Boolean = false,
     ): String? {
         val step = stepIndex?.let { spec?.steps?.getOrNull(it) }
         val cooper = spec?.cueProfile == CueProfile.cooper
@@ -57,7 +58,8 @@ object CueWords {
             }
             CueKind.halfway -> "Halfway"
             CueKind.thirtySeconds -> "Thirty seconds"
-            CueKind.tenSeconds -> "Ten seconds"
+            // Voice coaching names what comes next ("Ten seconds, then 200 metres jog"); never in a replay.
+            CueKind.tenSeconds -> (if (coach) nextStep(spec, phase, stepIndex) else null)?.let { "Ten seconds, then $it" } ?: "Ten seconds"
             // The next `start` cue says what comes; only the end of the last part is spoken.
             CueKind.phaseEnd -> when {
                 value == COOLDOWN_OVER -> "Cool-down done"
@@ -75,6 +77,39 @@ object CueWords {
             // Cooper: "5 minutes. Heading for about 2.74km. VO2 about 50." (index = the minute); the
             // rank against past tests is LiveCoach's, at 3, 6 and 9 minutes.
             CueKind.projection -> value?.let { v -> if (cooper && index != null) CooperProjection.cue(index, v) else if (cooper) null else "On pace for ${clock(v)}" }
+        }
+    }
+
+    /**
+     * What follows the current part, for the ten-seconds cue with voice coaching on: "200 metres jog",
+     * "30 seconds walk", "rep 3", "last rep", "cool down". Null when nothing is said (goals, events,
+     * Cooper, Free runs, the last part of a run). A recovery that is zero seconds long is skipped.
+     */
+    fun nextStep(spec: SessionSpec?, phase: Phase, stepIndex: Int?): String? {
+        spec ?: return null
+        if (spec.isGoal || spec.isEvent || spec.cueProfile == CueProfile.cooper) return null
+        val from = when (phase) {
+            Phase.warmup -> 0
+            Phase.work, Phase.recovery -> (stepIndex ?: return null) + 1
+            else -> return null
+        }
+        var i = from
+        while (true) {
+            val next = spec.steps.getOrNull(i) ?: return if (phase == Phase.cooldown || spec.cooldownSeconds == 0) null else "cool down"
+            if (next.kind == StepKind.recovery && next.target == TargetKind.time && next.value == 0) { i++; continue }
+            return when (next.kind) {
+                StepKind.work -> if (spec.reps > 1 && next.rep == spec.reps) "last rep" else if (spec.reps > 1) "rep ${next.rep}" else null
+                StepKind.recovery -> {
+                    val len = when (next.target) {
+                        TargetKind.time -> gap(next.value.toLong())
+                        TargetKind.distance -> metres(next.value.toDouble())
+                        TargetKind.equalToPreviousWork -> spec.steps.getOrNull(i - 1)?.let { w ->
+                            if (w.target == TargetKind.distance) metres(w.value.toDouble()) else gap(w.value.toLong())
+                        } ?: return null
+                    }
+                    "$len ${if (next.style == RecoveryStyle.stand) "stand" else next.style.name}"
+                }
+            }
         }
     }
 
