@@ -19,7 +19,7 @@ abstract final class NightSession {
   static const Color accentArcInk = Color(0xFF06252B);
 
   // Semantic
-  static const Color semFaster = accentArc;
+  static const Color semFaster = semImproving; // faster is mint everywhere
   static const Color semSlower = Color(0xFFFF5C3A); // Vermillion
   static const Color semImproving = Color(0xFF2EE6A8); // mint
   static const Color semHolding = inkPrimary;
@@ -70,7 +70,7 @@ abstract final class NightSessionLight {
   static const Color inkMuted = Color(0xFF6C747E);
   static const Color accentArc = Color(0xFF007E93);
   static const Color accentArcInk = Color(0xFFFFFFFF);
-  static const Color semFaster = accentArc;
+  static const Color semFaster = semImproving; // faster is mint everywhere
   // Brief example #1D8A5A is 4.19:1; this is the same hue at 4.6:1.
   static const Color semImproving = Color(0xFF1C8356); // mint, light ground
   static const Color semSlower = Color(0xFFC8401E); // vermillion

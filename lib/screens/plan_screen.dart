@@ -314,7 +314,7 @@ class _PlanBody extends StatelessWidget {
               style: RunSoloType.label13.copyWith(color: t.inkSecondary),
             ),
             for (final s in view.weeks[w - 1])
-              _SessionRow(state: s, ctx: ctx, units: units, lane: plan.lane),
+              _SessionRow(state: s, ctx: ctx, units: units),
           ],
           const SizedBox(height: Space.x24),
           Text(
@@ -361,9 +361,7 @@ class _SessionRow extends StatelessWidget {
     required this.state,
     required this.ctx,
     required this.units,
-    required this.lane,
   });
-  final engine.IdentityLane lane;
   final engine.BlockSessionState state;
   final PlanContext ctx;
   final Units units;
@@ -377,7 +375,7 @@ class _SessionRow extends StatelessWidget {
         st == engine.BlockStatus.planned || st == engine.BlockStatus.next;
     final (icon, tag, tagColor) = switch (st) {
       engine.BlockStatus.done => (Icons.check_circle, 'DONE', t.semImproving),
-      engine.BlockStatus.next => (Icons.play_circle, 'NEXT', t.laneText(lane)),
+      engine.BlockStatus.next => (Icons.play_circle, 'NEXT', t.inkPrimary),
       engine.BlockStatus.missed => (
         Icons.remove_circle_outline,
         'MISSED',
