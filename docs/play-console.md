@@ -29,35 +29,47 @@ Founder approves the wording (plan §18.9 item 8) before anything is typed into 
 >
 > Run Supreme is where you get better at your runs, with no account and nothing uploaded. It tells you honestly how you are progressing and what to run next, free, on your phone.
 >
-> Your Home screen gives you four scores: AEROBIC, SPEED, MID and LONG. Each is a percentile estimate from your own runs, compared with research-based norms for your age and sex. You see what moved, and over what period. Under that is one suggested session and why it would help, with Start already set to it. Tap Change to pick something else.
+> Your Home screen opens with where you stand, in plain words, against research-based norms for your age and sex. Under that are four scores: AEROBIC, SPEED, MID and LONG, each in its own colour. Each is a percentile estimate from your own runs. You see what moved, and over what period. Then comes one suggested session and why it would help, with Start already set to it. Tap Change to pick something else.
+>
+> 4-week plan
+> Build a 4-week plan around your scores. If a week is well above your usual load, Run Supreme says so and suggests an easy run instead. A missed session is not added on top of next week.
 >
 > Intervals and 4x4
 > Pick a session, warm up as long as you like, then the app runs every rep and recovery with voice and vibration cues. Your phone can stay in your pocket. When you stop you get a plain verdict: faster, holding or slower, with the rep paces and fade that decided it. Differences inside GPS noise are called no real change.
 >
-> Big numbers while you run
-> The number that matters is the biggest one on screen, and it changes with the phase: rep pace in a rep, time to go in a recovery. Switch to a live map if you want one, then switch back.
+> A run screen built for running
+> The number that matters is the biggest one on screen, and it changes with the phase: rep pace in a rep, time to go in a recovery. The screen takes the colour of your heart rate zone, with a zone ladder down the edge, and shows your target band in a rep. Switch to a live map if you want one, then switch back.
+>
+> Voice coaching
+> Turn on voice coaching and your phone tells you the next step, whether you are on pace, and when your heart rate drifts out of the zone. Pick Minimal or Full detail, or keep just the cues. Speech uses your phone's own text-to-speech.
+>
+> Heart rate zones
+> Pair a Bluetooth heart rate strap. Set your zones as a share of max heart rate, with heart rate reserve, or enter your own ranges. Run charts, splits and time in zone use the same colours, so you can see where the effort went.
 >
 > Trail runs
 > Trail runs get their own verdicts. Run the same trail again and you are compared with your last run on that trail, not with a flat road. Elevation comes from your phone's barometer where it has one. Grade-adjusted pace is an estimate of your flat-ground equivalent.
+>
+> Offline Topo maps
+> Download a region in Settings and use the Topo map on Free and Trail runs with no signal. Map data is from OpenStreetMap contributors, Protomaps and Mapterhorn.
 >
 > Follow a route
 > Load a route and follow it, with turn alerts and an off-route warning if you drift.
 >
 > Also
 > - Auto-pause at traffic lights and gates
-> - Pair a Bluetooth heart rate strap for time in zone
 > - Estimated race times from your recent runs
 > - Your bests and recent attempts on a chart, like for like
+> - Send a workout or route to your watch as a FIT or GPX file
 > - Send any run to Health Connect, Intervals.icu, or as a TCX or GPX file (works with Strava)
 >
 > Private by default
-> No account. No feed. No ads. Your routes, times and heart rate stay on your phone unless you choose to send them. Map tiles come from Google, which sees the map area you view and your IP address. Weather comes from Open-Meteo using your location rounded to about 10 km. Your phone's own geocoder names a run's start point and may use Google Play services.
+> No account. No feed. No ads. Your routes, times and heart rate stay on your phone unless you choose to send them. Map tiles for the standard map come from Google, which sees the map area you view and your IP address. An offline map download tells our map host which region you picked and your IP address. Weather comes from Open-Meteo using your location rounded to about 10 km. Your phone's own geocoder names a run's start point and may use Google Play services.
 >
 > Run Supreme is a training tool, not medical advice. Scores and estimates are guides based on research, not measurements of your health.
 
 - **Category**: Health & Fitness. **Tags**: Running, Fitness tracker, Interval training.
 - **Countries**: English-speaking non-EU per plan §10: AU, NZ, US, CA, GB, SG, ZA. (IE is EU, so not in the list.)
-- **Graphics**: icon `store/play/icon-512.png` (Lap Line R), feature graphic `store/play/feature-graphic-1024x500.png` (progress direction, built by `store/play/build_screens.py`; the wordmark version is `feature-graphic-wordmark-1024x500.png` from `assets/brand/build_brand.py`); 8 screenshots 1080x1920 in `store/play/screens/` (also `build_screens.py`; Play wants each side 320-3840 px and the long side at most twice the short one, so 1080x2400 would be rejected). Screenshot 07 (live map) uses a fake-map golden: replace with a real device capture before upload. No Hyrox marks or keywords anywhere.
+- **Graphics**: icon `store/play/icon-512.png` (Lap Line R), feature graphic `store/play/feature-graphic-1024x500.png` (light look, Lap Line R, built by `store/play/build_screens.py`; the wordmark version is `feature-graphic-wordmark-1024x500.png` from `assets/brand/build_brand.py`); 8 screenshots 1080x1920 in `store/play/screens/` (refreshed 7-Oct-2026 for the light look: Home, run screen with zone ladder, verdict, 4-week plan, zone-coloured charts, offline maps, Start, History; also `build_screens.py`; Play wants each side 320-3840 px and the long side at most twice the short one, so 1080x2400 would be rejected). The fake-map shots were dropped; a real device capture of the Topo map or live map would make a stronger shot 6 (optional). No Hyrox marks or keywords anywhere.
 - **Contact details**: email above; website `https://runsupreme.taiaroa.xyz`.
 
 ## 2. Privacy policy
@@ -120,6 +132,14 @@ Data types. "Collected" in Play's sense includes what the Maps SDK sends to Goog
 
 Offline maps (4-Oct): the user taps Download in Settings and the app fetches map files from our Cloudflare R2 bucket. The request carries the region picked and the IP address, plus a User-Agent naming the app and version. No new Play data type: the IP address is already covered by the approximate location row, and nothing is added to Device IDs or App activity. Re-check against the live form when Topo tiles land.
 
+Since 4-Oct (checked 7-Oct-2026 against `AndroidManifest.xml` and the merged PRs): **no new permission** (the manifest is unchanged) and **no new data flow**.
+- **Voice coaching** (#204) speaks through Android's on-device `TextToSpeech`, as the existing cues do; nothing is recorded, no `RECORD_AUDIO`, no new category.
+- **Heart rate zones** (#193: % of max, reserve, custom) are local settings only. The strap's resting-HR readiness line (#189) is computed on the phone.
+- **4-week plan, load guard, zone ladder, zone-coloured charts, splits labels, race times**: all computed on the phone from local runs.
+- **Offline Topo maps** (#178, #181): already covered by the 4-Oct row above; `maplibre_gl` draws from the downloaded file with no Google SDK. The new `crypto` dependency only checks a pack's sha256.
+- Fonts (Saira, Schibsted Grotesk) are bundled; nothing is fetched.
+Re-check before each submit if the manifest or `pubspec.yaml` dependencies change.
+
 Notes the founder should confirm against the live form (plan §18.6 leaves these to him):
 
 1. Open-Meteo is declared as **collected** (the app itself sends the rounded coordinate to a service provider), not as **shared**.
@@ -136,7 +156,7 @@ Play Console → App content → **Foreground service permissions**. Declare the
 >
 > **Why can this task not be completed without a foreground service?** Interval pace needs a continuous GPS sample stream for 30–60 minutes while the screen is off and the phone is in a pocket or armband; without a foreground service the process is suspended and pace and lap times are lost.
 >
-> **Demo video URL:** (unlisted YouTube link recorded per `docs/fgs-demo-video.md`).
+> **Demo video URL:** (unlisted YouTube link recorded per `docs/fgs-demo-video.md`; the 30-second phone version is at the top of that file. An emulator recording was judged unsuitable: it would show a debug package and replay mode, which the reviewer must not see).
 
 Also true of the app and worth having ready if asked: `FOREGROUND_SERVICE_LOCATION` is declared in the manifest, the service is `START_NOT_STICKY`, `stopWithTask=false` only so the notification survives a task swipe while a run is live, and no `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (the setup checklist deep-links to the battery-optimisation settings page instead).
 
