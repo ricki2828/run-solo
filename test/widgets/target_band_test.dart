@@ -27,14 +27,14 @@ void main() {
     await tester.pumpWidget(host(const CoachTarget(paceSecPerKm: 290), 292));
     expect(
       tester.widget<Text>(find.byKey(const ValueKey('target-label'))).data,
-      'TARGET 4:50 /km',
+      'TARGET 4:50',
     );
     await tester.pumpWidget(
       host(const CoachTarget(paceSecPerKm: 330, slowerIsFine: true), null),
     );
     expect(
       tester.widget<Text>(find.byKey(const ValueKey('target-label'))).data,
-      'TARGET 5:30 /km OR SLOWER',
+      'TARGET 5:30 OR SLOWER',
     );
   });
 
