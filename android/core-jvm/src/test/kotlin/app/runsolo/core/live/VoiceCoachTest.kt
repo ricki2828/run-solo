@@ -32,10 +32,10 @@ class VoiceCoachTest {
     private fun VoiceCoach.run(
         fromS: Int,
         toS: Int,
-        pace: (Int) -> Double? = { target },
         hr: Double? = null,
         segment: Int? = 0,
         wide: Boolean = false,
+        pace: (Int) -> Double? = { target },
     ): List<Pair<Int, String>> = (fromS..toS).mapNotNull { s ->
         tick(at(s * 1_000L, pace = pace(s), segment = segment, hr = hr, wide = wide))?.let { s to it.text }
     }
@@ -120,8 +120,8 @@ class VoiceCoachTest {
     fun `wider band on trail or steep ground`() {
         // 7 s/km fast: off the 5 band, inside the 8 band.
         assertEquals(listOf(30 to "Ease off, 7 seconds fast"), status().run(0, 30) { 293.0 })
-        assertEquals(listOf(30 to "On pace"), status().run(0, 30, { 293.0 }, wide = true))
-        assertEquals(listOf(30 to "Ease off, 9 seconds fast"), status().run(0, 30, { 291.0 }, wide = true))
+        assertEquals(listOf(30 to "On pace"), status().run(0, 30, wide = true) { 293.0 })
+        assertEquals(listOf(30 to "Ease off, 9 seconds fast"), status().run(0, 30, wide = true) { 291.0 })
     }
 
     @Test
