@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/screens/home_screen.dart';
 import 'package:run_solo/state/history_store.dart';
+import 'package:run_solo/state/zone_histogram.dart';
 import 'package:run_solo/state/run_index.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/platform/gateway.dart';
@@ -101,6 +102,37 @@ void main() {
             start: testNow.subtract(const Duration(days: 3)),
             durationMs: 1500000,
             distanceM: 5000,
+            laps: 0,
+            // Z2 then Z3 then Z4: the week strip shows stacked zones.
+            hrHist: HrHist(120, [
+              ...List.filled(1, 400),
+              ...List.filled(19, 0),
+              600,
+              ...List.filled(29, 0),
+              500,
+            ]),
+          ),
+          RunSummary(
+            id: 'mid',
+            mode: RecordMode.free,
+            start: testNow.subtract(const Duration(days: 1)),
+            durationMs: 2400000,
+            distanceM: 8000,
+            laps: 0,
+            hrHist: HrHist(110, [
+              ...List.filled(1, 600),
+              ...List.filled(29, 0),
+              1200,
+              ...List.filled(30, 0),
+              400,
+            ]),
+          ),
+          RunSummary(
+            id: 'today',
+            mode: RecordMode.free,
+            start: testNow,
+            durationMs: 1200000,
+            distanceM: 3500,
             laps: 0,
           ),
           RunSummary(

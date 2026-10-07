@@ -381,6 +381,7 @@ class IndexRow {
     this.routeOffCount,
     this.routeOffMs,
     this.restingHrBpm,
+    this.hrHist,
   });
 
   /// Bump when a field is added, so old rows are rebuilt once.
@@ -398,7 +399,8 @@ class IndexRow {
   /// [workTruePaceSecPerKm], [workGradeFactor].
   /// 13: [restingHrBpm].
   /// 14: [avgHr], [hrCoverage] (the load check's heart-rate intensity).
-  static const int currentVersion = 14;
+  /// 15: [hrHist] (moving seconds per bpm: zone charts and strips).
+  static const int currentVersion = 15;
 
   final int version;
   final int lapCount;
@@ -529,6 +531,11 @@ class IndexRow {
   /// start.
   final int? restingHrBpm;
 
+  /// Moving seconds per bpm; the zone split is worked out from it at view
+  /// time, so the runner's zone method can change without a re-index. Null
+  /// without a strap.
+  final HrHist? hrHist;
+
   factory IndexRow.of(
     engine.RunFile run,
     engine.RunAnalysis? a,
@@ -608,6 +615,7 @@ class IndexRow {
       routeOffCount: run.route?.offRouteCount,
       routeOffMs: run.route?.offRouteMs,
       restingHrBpm: engine.RestingHr.of(run),
+      hrHist: HrHist.of(run),
     );
   }
 
@@ -652,6 +660,7 @@ class IndexRow {
     'route_off_n': ?routeOffCount,
     'route_off_ms': ?routeOffMs,
     'rest_hr': ?restingHrBpm,
+    'hr_hist': ?hrHist?.toJson(),
   };
 
   /// null for a missing or unreadable row (the entry is then stale).
@@ -715,6 +724,7 @@ class IndexRow {
         routeOffCount: j['route_off_n'] as int?,
         routeOffMs: j['route_off_ms'] as int?,
         restingHrBpm: j['rest_hr'] as int?,
+        hrHist: HrHist.fromJson(j['hr_hist']),
       );
     } catch (e) {
       debugPrint('index: unreadable row ($e)');

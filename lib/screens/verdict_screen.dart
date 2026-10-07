@@ -11,6 +11,7 @@ import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/max_hr.dart';
 import '../state/spoken_summary.dart';
+import '../state/zone_histogram.dart';
 import '../theme/theme.dart';
 import '../widgets/board_chips.dart';
 import '../widgets/chrome.dart';
@@ -218,7 +219,11 @@ RevealState revealStateOf(engine.Verdict? v) {
 }
 
 /// Rep rows for the bars: this run's reps against the previous run's.
-List<RepBarDatum> repBarData(RunDetail detail, RunSummary? previous) {
+List<RepBarDatum> repBarData(
+  RunDetail detail,
+  RunSummary? previous, {
+  engine.HrZones? zones,
+}) {
   final m = detail.analysis.intervals;
   if (m == null) return const [];
   final ghost = previous?.repPacesSecPerKm;
@@ -233,6 +238,13 @@ List<RepBarDatum> repBarData(RunDetail detail, RunSummary? previous) {
         ghostSecPerKm: ghost != null && r.number - 1 < ghost.length
             ? ghost[r.number - 1]
             : null,
+        zone: zones == null
+            ? null
+            : dominantZoneOf(
+                detail.run,
+                zones,
+                (s) => s.tMs >= r.trimmedT0Ms && s.tMs < r.trimmedT1Ms,
+              ),
         excluded: !r.clean,
         reason: r.dropped
             ? 'dropped'
@@ -353,7 +365,7 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
     final d = widget.detail;
     final v = d.summary.verdict;
     final state = revealStateOf(v);
-    final reps = repBarData(d, widget.previous);
+    final reps = repBarData(d, widget.previous, zones: services.hrZones);
     final tone = switch (state) {
       RevealState.faster => RepTone.faster,
       RevealState.slower => RepTone.slower,

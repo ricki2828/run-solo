@@ -12,6 +12,7 @@ import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/where_when_line.dart';
+import '../widgets/zone_strip.dart';
 import 'boards_overview.dart';
 import 'trend_screen.dart';
 
@@ -370,6 +371,10 @@ class HistoryRow extends StatelessWidget {
     final muted = run.missing ? t.inkMuted : t.inkPrimary;
     final (direction, glyph, glyphColor) = verdictGlyph(run.verdict, t);
     final label = runIdentityTitle(run);
+    // The run's time in zone under its row; none without a strap.
+    final zoneSeconds = run.missing
+        ? null
+        : run.hrHist?.zoneSeconds(AppServices.of(context).hrZones);
     return Semantics(
       button: onTap != null,
       label:
@@ -383,146 +388,167 @@ class HistoryRow extends StatelessWidget {
           decoration: BoxDecoration(
             border: Border(bottom: BorderSide(color: t.lineHair)),
           ),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(
-                width: 44,
-                child: Text(
-                  runLabel(run),
-                  style: RunSoloType.title28.copyWith(
-                    fontSize: 20,
-                    color: muted,
-                  ),
-                ),
-              ),
-              const SizedBox(width: Space.x12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: RunSoloType.body17.copyWith(color: muted),
-                    ),
-                    WhereWhenLine(
-                      place: run.place,
-                      street: run.street,
-                      start: run.start,
-                      utcOffsetMin: run.utcOffsetMin,
-                      style: RunSoloType.label13.copyWith(
-                        color: t.inkSecondary,
+              Row(
+                children: [
+                  SizedBox(
+                    width: 44,
+                    child: Text(
+                      runLabel(run),
+                      style: RunSoloType.title28.copyWith(
+                        fontSize: 20,
+                        color: muted,
                       ),
                     ),
-                    Row(
+                  ),
+                  const SizedBox(width: Space.x12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Follow a route: a small badge on a run that followed one.
-                        if (run.routeName != null)
-                          Padding(
-                            padding: const EdgeInsets.only(right: Space.x4),
-                            child: Icon(
-                              Icons.alt_route,
-                              key: ValueKey('route-badge-${run.id}'),
-                              size: 14,
-                              color: t.inkSecondary,
-                              semanticLabel: 'Followed ${run.routeName}',
-                            ),
+                        Text(
+                          label,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: RunSoloType.body17.copyWith(color: muted),
+                        ),
+                        WhereWhenLine(
+                          place: run.place,
+                          street: run.street,
+                          start: run.start,
+                          utcOffsetMin: run.utcOffsetMin,
+                          style: RunSoloType.label13.copyWith(
+                            color: t.inkSecondary,
                           ),
-                        Flexible(
-                          child: Text(
-                            run.missing
-                                ? 'File missing'
-                                : switch (run.mode) {
-                                    RecordMode.intervals =>
-                                      run.detectedReps != null
-                                          ? '${run.detectedReps} reps · ${Fmt.distance(run.distanceM, units)}'
-                                          : run.spec != null
-                                          ? '${run.spec!.name} · ${Fmt.distance(run.distanceM, units)}'
-                                          : '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',
-                                    RecordMode.laps
-                                        when run.spec?.templateId ==
-                                            engine.SessionSpec.fartlekId =>
-                                      'Fartlek · ${Fmt.distance(run.distanceM, units)}',
-                                    RecordMode.laps =>
-                                      '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',
-                                    RecordMode.free || RecordMode.trail =>
-                                      Fmt.distance(run.distanceM, units),
-                                    // The test's own window (27-Sep field test:
-                                    // total distance counted the cool-down).
-                                    RecordMode.cooper => Fmt.distance(
-                                      run.cooper?.testDistanceM ??
-                                          run.distanceM,
-                                      units,
-                                    ),
-                                  },
-                            style: RunSoloType.label13.copyWith(
-                              color: run.missing ? t.semWarn : t.inkSecondary,
+                        ),
+                        Row(
+                          children: [
+                            // Follow a route: a small badge on a run that followed one.
+                            if (run.routeName != null)
+                              Padding(
+                                padding: const EdgeInsets.only(right: Space.x4),
+                                child: Icon(
+                                  Icons.alt_route,
+                                  key: ValueKey('route-badge-${run.id}'),
+                                  size: 14,
+                                  color: t.inkSecondary,
+                                  semanticLabel: 'Followed ${run.routeName}',
+                                ),
+                              ),
+                            Flexible(
+                              child: Text(
+                                run.missing
+                                    ? 'File missing'
+                                    : switch (run.mode) {
+                                        RecordMode.intervals =>
+                                          run.detectedReps != null
+                                              ? '${run.detectedReps} reps · ${Fmt.distance(run.distanceM, units)}'
+                                              : run.spec != null
+                                              ? '${run.spec!.name} · ${Fmt.distance(run.distanceM, units)}'
+                                              : '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',
+                                        RecordMode.laps
+                                            when run.spec?.templateId ==
+                                                engine.SessionSpec.fartlekId =>
+                                          'Fartlek · ${Fmt.distance(run.distanceM, units)}',
+                                        RecordMode.laps =>
+                                          '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',
+                                        RecordMode.free || RecordMode.trail =>
+                                          Fmt.distance(run.distanceM, units),
+                                        // The test's own window (27-Sep field test:
+                                        // total distance counted the cool-down).
+                                        RecordMode.cooper => Fmt.distance(
+                                          run.cooper?.testDistanceM ??
+                                              run.distanceM,
+                                          units,
+                                        ),
+                                      },
+                                style: RunSoloType.label13.copyWith(
+                                  color: run.missing
+                                      ? t.semWarn
+                                      : t.inkSecondary,
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      if (direction != null)
-                        Padding(
-                          padding: const EdgeInsets.only(right: Space.x8),
-                          child: DeltaGlyph(
-                            key: ValueKey('verdict-glyph-${run.id}'),
-                            direction: direction,
-                            color: glyphColor,
-                            size: 14,
-                          ),
-                        )
-                      else if (glyph.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(right: Space.x8),
-                          child: Text(
-                            glyph,
-                            key: ValueKey('verdict-glyph-${run.id}'),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (direction != null)
+                            Padding(
+                              padding: const EdgeInsets.only(right: Space.x8),
+                              child: DeltaGlyph(
+                                key: ValueKey('verdict-glyph-${run.id}'),
+                                direction: direction,
+                                color: glyphColor,
+                                size: 14,
+                              ),
+                            )
+                          else if (glyph.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(right: Space.x8),
+                              child: Text(
+                                glyph,
+                                key: ValueKey('verdict-glyph-${run.id}'),
+                                style: RunSoloType.title28.copyWith(
+                                  fontSize: 22,
+                                  color: glyphColor,
+                                ),
+                              ),
+                            ),
+                          Text(
+                            run.mode == RecordMode.cooper &&
+                                    run.cooper?.primeVo2 != null
+                                ? '${run.cooper!.primeVo2!.round()}'
+                                : Fmt.paceUnit(run.headlineSecPerKm, units),
                             style: RunSoloType.title28.copyWith(
                               fontSize: 22,
-                              color: glyphColor,
+                              color: muted,
                             ),
                           ),
-                        ),
+                        ],
+                      ),
                       Text(
-                        run.mode == RecordMode.cooper &&
-                                run.cooper?.primeVo2 != null
-                            ? '${run.cooper!.primeVo2!.round()}'
-                            : Fmt.paceUnit(run.headlineSecPerKm, units),
-                        style: RunSoloType.title28.copyWith(
-                          fontSize: 22,
-                          color: muted,
+                        run.mode == RecordMode.cooper
+                            ? (run.cooper?.valid == true
+                                  ? '12:00'
+                                  : Fmt.clock(
+                                      run.durationMs <
+                                              engine
+                                                      .CooperProjection
+                                                      .testSeconds *
+                                                  1000
+                                          ? run.durationMs
+                                          : engine
+                                                    .CooperProjection
+                                                    .testSeconds *
+                                                1000,
+                                    ))
+                            : Fmt.clock(run.durationMs),
+                        style: RunSoloType.label13.copyWith(
+                          color: t.inkSecondary,
                         ),
                       ),
                     ],
                   ),
-                  Text(
-                    run.mode == RecordMode.cooper
-                        ? (run.cooper?.valid == true
-                              ? '12:00'
-                              : Fmt.clock(
-                                  run.durationMs <
-                                          engine.CooperProjection.testSeconds *
-                                              1000
-                                      ? run.durationMs
-                                      : engine.CooperProjection.testSeconds *
-                                            1000,
-                                ))
-                        : Fmt.clock(run.durationMs),
-                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                  ),
                 ],
               ),
+              if (zoneSeconds != null) ...[
+                const SizedBox(height: Space.x8),
+                ZoneStrip(
+                  key: ValueKey('zone-strip-${run.id}'),
+                  seconds: zoneSeconds,
+                ),
+              ],
             ],
           ),
         ),
