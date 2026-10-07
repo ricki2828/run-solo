@@ -689,6 +689,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   Widget? _firstRunIntro({required bool goal, required RecordMode mode}) {
     final runs = _runs;
     if (runs == null) return null;
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
     final isGoalRun = runs.any(
       (r) =>
           r.spec?.isGoal == true ||
@@ -700,7 +701,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
           ? null
           : (
               'FIRST GOAL RUN',
-              AuroraRunType.goal,
+              t.typeGoal,
               const [
                 'Pick a distance or time goal below.',
                 'Tap START. The screen counts down what is left and calls '
@@ -719,7 +720,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
               ? null
               : (
                   'FIRST INTERVALS RUN',
-                  AuroraRunType.intervals,
+                  t.typeIntervals,
                   const [
                     'Warm up, then tap START REPS.',
                     'Run each work rep hard; jog or walk each recovery. '
@@ -737,7 +738,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
               ? null
               : (
                   'FIRST LAPS RUN',
-                  AuroraRunType.laps,
+                  t.typeLaps,
                   const [
                     'Tap START and run.',
                     'Tap LAP each time you finish a lap or interval.',
@@ -757,7 +758,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
               : bronco
               ? (
                   'FIRST BRONCO',
-                  AuroraRunType.tests,
+                  t.typeTests,
                   const [
                     'Five sets of 240 m, as fast as you can hold.',
                     'Tap LAP at the end of every set; the fifth tap ends '
@@ -767,7 +768,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                 )
               : (
                   'FIRST 12-MINUTE TEST',
-                  AuroraRunType.tests,
+                  t.typeTests,
                   const [
                     'Warm up first.',
                     'Tap START TEST and run as far as you can in '
@@ -782,7 +783,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
               ? null
               : (
                   'FIRST TRAIL RUN',
-                  AuroraRunType.trail,
+                  t.typeTrail,
                   const [
                     'Tap START and go. Walking the climbs is fine.',
                     'Auto-pause waits for 10 seconds of standing still, so '
@@ -797,7 +798,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
               ? null
               : (
                   'FIRST FREE RUN',
-                  AuroraRunType.free,
+                  t.typeFree,
                   const [
                     'Tap START and run.',
                     'Time, distance, pace and heart rate stay on screen.',

@@ -19,7 +19,7 @@ Google Maps, weather from Open-Meteo and place names from the phone's own geocod
 | `packages/run_engine/` | Pure-Dart analysis engine (laps, trimming, metrics, staged verdict, plans schedule). The only place verdict logic lives. `dart test` here |
 | `android/app/` | Android shell (Kotlin, package `app.runsolo`). minSdk 29, target/compileSdk 36. Debug builds are `app.runsolo.debug` |
 | `android/core-jvm/` | Pure Kotlin/JVM module (journal codec, lap state machine, haversine, HR parse, cue scheduler). Standalone Gradle build, no Android plugin, included into the app via `includeBuild` |
-| `assets/fonts/` | Barlow Condensed 600/700 + Archivo variable, bundled (SIL OFL 1.1, licences beside them). Nothing is fetched at runtime |
+| `assets/fonts/` | Saira Extra Condensed 500/700/800 + Schibsted Grotesk variable, bundled (SIL OFL 1.1, licences beside them). Nothing is fetched at runtime |
 | `tools/` | `check_16kb_alignment.sh` (16 KB page-size gate), `emulator_*.sh`, `print_cert_sha1.sh` (SHA-1s for the Maps key restriction) |
 | `docs/` | GitHub Pages site (`runsolo.app`): `privacy/` policy page; `play-console.md` (every App content / Data safety / listing answer), `fgs-demo-video.md`, `closed-test-testers.md` |
 | `.github/workflows/ci.yml` | CI (below) |
@@ -120,5 +120,7 @@ the URL identical, since it is printed on the Play forms.
 
 ## Licences
 
-Fonts: Barlow Condensed (© Jeremy Tribby) and Archivo (© Omnibus-Type), both SIL Open Font
-Licence 1.1 (`assets/fonts/OFL-*.txt`). App code: proprietary, all rights reserved.
+Fonts: Saira Extra Condensed (© Saira Project Authors, Omnibus-Type) and Schibsted Grotesk
+(© Schibsted Grotesk Project Authors), both SIL Open Font Licence 1.1
+(`assets/fonts/OFL-*.txt`). `BarlowCondensed-Bold.ttf` stays only as the source the logo was
+outlined from; it is not bundled in the app. App code: proprietary, all rights reserved.

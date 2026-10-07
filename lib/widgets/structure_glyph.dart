@@ -6,15 +6,13 @@ import '../theme/theme.dart';
 
 /// A session's shape in one line (design brief A8): bar width = step time
 /// (distance steps estimated), height = effort. Rep = Bone at full height,
-/// recovery = Concrete at 34 %, open warm-up / cool-down = `#2E3238` at 30 %
+/// recovery = quiet ink at 34 %, open warm-up / cool-down = `structureOpen` at 30 %
 /// and 10 minutes wide. Gap 0.8, corner 0.6. Never Arc.
 class StructureGlyph extends StatelessWidget {
   const StructureGlyph({super.key, required this.spec, this.height = 14});
 
   final engine.SessionSpec spec;
   final double height;
-
-  static const Color openColour = NightSession.structureOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +26,7 @@ class StructureGlyph extends StatelessWidget {
             bars: Glyph.durations(spec),
             rep: t.inkPrimary,
             recovery: t.inkMuted,
-            open: openColour,
+            open: t.structureOpen,
           ),
         ),
       ),

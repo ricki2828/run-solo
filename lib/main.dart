@@ -1,4 +1,7 @@
+import 'package:flutter/foundation.dart'
+    show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import 'app/routes.dart';
 import 'app/services.dart';
@@ -18,8 +21,23 @@ import 'splash/intro_gate.dart';
 import 'splash/intro_host.dart';
 import 'theme/theme.dart';
 
+/// The bundled fonts' OFL texts, on Flutter's licence page.
+void _registerFontLicences() {
+  LicenseRegistry.addLicense(() async* {
+    for (final (name, file) in const [
+      ('Saira Extra Condensed', 'OFL-SairaExtraCondensed.txt'),
+      ('Schibsted Grotesk', 'OFL-SchibstedGrotesk.txt'),
+    ]) {
+      yield LicenseEntryWithLineBreaks([
+        name,
+      ], await rootBundle.loadString('assets/fonts/$file'));
+    }
+  });
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  _registerFontLicences();
   // `--dart-define=RUN_SOLO_FAKE=true` runs every screen on the in-process
   // fake so the APK is usable before the Kotlin RecorderService lands.
   final services = kFakePlatform
@@ -78,7 +96,7 @@ class RunSoloApp extends StatelessWidget {
             debugShowCheckedModeBanner: false,
             theme: runSoloTheme(),
             darkTheme: runSoloTheme(),
-            themeMode: ThemeMode.dark,
+            themeMode: ThemeMode.light,
             builder: (context, child) {
               final app = IntroHost(kind: intro, child: child!);
               return reduced
@@ -106,7 +124,10 @@ class RunSoloApp extends StatelessWidget {
                   onboarding: settings.arguments == true,
                 ),
                 Routes.pairing => const PairingScreen(),
-                Routes.recording => const RecordingScreen(),
+                Routes.recording => Theme(
+                  data: runSoloTheme(brightness: Brightness.dark),
+                  child: const RecordingScreen(),
+                ),
                 Routes.verdict => VerdictScreen(
                   runId: settings.arguments as String,
                 ),

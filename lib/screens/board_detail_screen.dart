@@ -397,7 +397,7 @@ class _DetailBody extends StatelessWidget {
   }
 }
 
-/// "← 5K · 12 RUNS" on lane lines (§2.2), 20 pt Barlow 700 uppercase.
+/// "← 5K · 12 RUNS" on lane lines (§2.2), 20 pt Saira 800 uppercase.
 class _LanesHeader extends StatelessWidget {
   const _LanesHeader({
     required this.title,
@@ -456,7 +456,7 @@ class _LanesPainter extends CustomPainter {
   bool shouldRepaint(_LanesPainter old) => old.color != color;
 }
 
-/// The PB in Barlow 600, 96 - the biggest number on the screen (A8). In
+/// The PB in Saira 700, 101 - the biggest number on the screen (A8). In
 /// the PB moment it rolls over from the old best as the Best line moves.
 class _Hero extends StatelessWidget {
   const _Hero({

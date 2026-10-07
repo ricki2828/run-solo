@@ -67,7 +67,7 @@ void main() {
       expect(word(tester), 'FASTER');
       expect(find.byKey(const ValueKey('verdict-arrow-up')), findsOneWidget);
       final t = tester.widget<Text>(find.byKey(const ValueKey('verdict-word')));
-      expect(t.style?.color, NightSession.semImproving);
+      expect(t.style?.color, RunSoloTokens.light.semImproving);
       expect(find.textContaining('faster than your first 4x4'), findsOneWidget);
     },
   );
@@ -80,7 +80,7 @@ void main() {
     expect(word(tester), 'SLOWER');
     expect(find.byKey(const ValueKey('verdict-arrow-down')), findsOneWidget);
     final t = tester.widget<Text>(find.byKey(const ValueKey('verdict-word')));
-    expect(t.style?.color, RunSoloTokens.dark.semSlower);
+    expect(t.style?.color, RunSoloTokens.light.semSlower);
     expect(tester.widget<RepBars>(find.byType(RepBars)).tone, RepTone.slower);
   });
 
@@ -95,7 +95,7 @@ void main() {
           .widget<Text>(find.byKey(const ValueKey('verdict-word')))
           .style
           ?.color,
-      RunSoloTokens.dark.inkPrimary,
+      RunSoloTokens.light.inkPrimary,
     );
     expect(find.byKey(const ValueKey('verdict-arrow-flat')), findsOneWidget);
     expect(

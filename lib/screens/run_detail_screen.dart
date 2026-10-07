@@ -183,7 +183,7 @@ class RunDetailBody extends StatelessWidget {
               plan: d.run.route == null
                   ? null
                   : followedPlanPoints(d.run.route!),
-              routeColor: runTypeColor(d.summary),
+              routeColor: runTypeColor(d.summary, RunSoloTokens.dark),
             ),
           ),
           SizedBox(height: d.run.route == null ? Space.x24 : Space.x12),
@@ -217,8 +217,8 @@ class RunDetailBody extends StatelessWidget {
                   elevation: elev,
                   units: units,
                   color: d.summary.spec?.isGoal == true || d.summary.isParkrun
-                      ? AuroraRunType.goal
-                      : AuroraRunType.intervals,
+                      ? t.typeGoal
+                      : t.typeIntervals,
                 ),
               ),
             ],
@@ -499,7 +499,7 @@ class _HeaderState extends State<_Header> {
                       text: custom ?? runSessionName(summary),
                       style: TextStyle(
                         color: custom == null
-                            ? runTypeColor(summary)
+                            ? runTypeColor(summary, t)
                             : t.inkPrimary,
                       ),
                     ),

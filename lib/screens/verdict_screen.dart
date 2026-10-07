@@ -381,8 +381,8 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                           center: const Alignment(0, 0.15),
                           radius: 0.2 + 1.2 * p,
                           colors: [
-                            NightSession.semImproving,
-                            NightSession.semImproving.withValues(alpha: 0),
+                            t.semImproving,
+                            t.semImproving.withValues(alpha: 0),
                           ],
                         ),
                       ),
@@ -721,7 +721,7 @@ class VerdictWord extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final color = switch (state) {
-      RevealState.faster => NightSession.semImproving,
+      RevealState.faster => t.semImproving,
       RevealState.slower => t.semSlower,
       RevealState.none => t.inkSecondary,
       _ => t.inkPrimary,
@@ -860,13 +860,19 @@ class VerdictGrain extends StatelessWidget {
   const VerdictGrain({super.key});
 
   @override
-  Widget build(BuildContext context) => CustomPaint(painter: _GrainPainter());
+  Widget build(BuildContext context) => CustomPaint(
+    painter: _GrainPainter(Theme.of(context).extension<RunSoloTokens>()!.grain),
+  );
 }
 
 class _GrainPainter extends CustomPainter {
+  _GrainPainter(this.colour);
+
+  final Color colour;
+
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = NightSession.grain;
+    final p = Paint()..color = colour;
     var seed = 12345;
     for (var i = 0; i < 1200; i++) {
       seed = (seed * 1103515245 + 12345) & 0x7fffffff;
@@ -878,7 +884,7 @@ class _GrainPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_GrainPainter old) => false;
+  bool shouldRepaint(_GrainPainter old) => old.colour != colour;
 }
 
 /// Laps / Free summary after Stop (plan §18.2 post-run column): no verdict

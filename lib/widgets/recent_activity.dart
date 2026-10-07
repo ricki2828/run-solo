@@ -142,16 +142,16 @@ class _RecentActivityState extends State<RecentActivity> {
 
 /// The Aurora run-type colour: only ever on the session name and the
 /// figures, never on the title's time-of-day word.
-Color runTypeColor(RunSummary run) => switch (run.mode) {
-  RecordMode.free => AuroraRunType.free,
+Color runTypeColor(RunSummary run, RunSoloTokens t) => switch (run.mode) {
+  RecordMode.free => t.typeFree,
   RecordMode.laps when run.spec?.templateId == engine.SessionSpec.broncoId =>
-    AuroraRunType.tests,
-  RecordMode.laps => AuroraRunType.laps,
-  RecordMode.cooper => AuroraRunType.tests,
-  RecordMode.trail => AuroraRunType.trail,
+    t.typeTests,
+  RecordMode.laps => t.typeLaps,
+  RecordMode.cooper => t.typeTests,
+  RecordMode.trail => t.typeTrail,
   RecordMode.intervals when run.spec?.isGoal == true || run.isParkrun =>
-    AuroraRunType.goal,
-  RecordMode.intervals => AuroraRunType.intervals,
+    t.typeGoal,
+  RecordMode.intervals => t.typeIntervals,
 };
 
 class _ActivityRow extends StatelessWidget {
@@ -178,7 +178,7 @@ class _ActivityRow extends StatelessWidget {
     final custom = run.customTitle;
     final timeWord = engine.RunIdentity.timeOfDay(run.localStart);
     final title = custom ?? '$timeWord $sessionName';
-    final typeColor = runTypeColor(run);
+    final typeColor = runTypeColor(run, t);
     final (stat, statSmall) = _stat(run, units);
     // An interval run's card shows the pace of the work reps, the figure
     // Home and the verdict use, not the whole-run average (which includes

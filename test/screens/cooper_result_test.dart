@@ -76,6 +76,7 @@ void main() {
       reason: 'against the test before, in July',
     );
     expect(text(tester, 'cooper-change'), endsWith(' since July'));
+    await tester.scrollUntilVisible(find.text('vs your usual'), 200);
     expect(find.text('vs your usual'), findsOneWidget);
     await tester.pump(const Duration(seconds: 1)); // M5 plays out
   });

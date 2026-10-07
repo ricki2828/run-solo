@@ -122,12 +122,10 @@ class _ScoreCard extends StatelessWidget {
         ? t.inkMuted
         : switch (lane) {
             engine.IdentityLane.aerobic =>
-              hero?.sourceLabel == 'Cooper test'
-                  ? AuroraRunType.tests
-                  : AuroraRunType.free,
-            engine.IdentityLane.speed => AuroraRunType.intervals,
-            engine.IdentityLane.mid => AuroraRunType.goal,
-            engine.IdentityLane.long => AuroraRunType.free,
+              hero?.sourceLabel == 'Cooper test' ? t.typeTests : t.typeFree,
+            engine.IdentityLane.speed => t.typeIntervals,
+            engine.IdentityLane.mid => t.typeGoal,
+            engine.IdentityLane.long => t.typeFree,
           };
     final label = lane.name.toUpperCase();
     final unlock = switch (lane) {

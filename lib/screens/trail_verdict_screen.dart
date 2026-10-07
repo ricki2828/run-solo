@@ -170,8 +170,8 @@ class _TrailVerdictScreenState extends State<TrailVerdictScreen>
                           center: const Alignment(0, 0.15),
                           radius: 0.2 + 1.2 * p,
                           colors: [
-                            NightSession.semImproving,
-                            NightSession.semImproving.withValues(alpha: 0),
+                            t.semImproving,
+                            t.semImproving.withValues(alpha: 0),
                           ],
                         ),
                       ),
@@ -319,7 +319,7 @@ class _TrailVerdictScreenState extends State<TrailVerdictScreen>
 }
 
 Color _toneColor(RunSoloTokens t, RevealState state) => switch (state) {
-  RevealState.faster => NightSession.semImproving,
+  RevealState.faster => t.semImproving,
   RevealState.slower => t.semSlower,
   RevealState.none => t.inkSecondary,
   _ => t.inkPrimary,

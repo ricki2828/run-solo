@@ -66,7 +66,7 @@ class ModeChipRow extends StatelessWidget {
     RecordMode.intervals,
   ];
 
-  Widget _mode(RecordMode m) => ModeChip(
+  Widget _mode(RunSoloTokens t, RecordMode m) => ModeChip(
     title: switch (m) {
       RecordMode.intervals => 'INTERVALS',
       RecordMode.laps => 'LAPS',
@@ -84,11 +84,11 @@ class ModeChipRow extends StatelessWidget {
     selected: !goal && selected == m,
     compact: auroraList || compactTiles,
     typeColor: switch (m) {
-      RecordMode.free => AuroraRunType.free,
-      RecordMode.trail => AuroraRunType.trail,
-      RecordMode.laps => AuroraRunType.laps,
-      RecordMode.intervals => AuroraRunType.intervals,
-      RecordMode.cooper => AuroraRunType.tests,
+      RecordMode.free => t.typeFree,
+      RecordMode.trail => t.typeTrail,
+      RecordMode.laps => t.typeLaps,
+      RecordMode.intervals => t.typeIntervals,
+      RecordMode.cooper => t.typeTests,
     },
     glyph: m == RecordMode.intervals && session.steps.isNotEmpty
         ? session
@@ -98,27 +98,28 @@ class ModeChipRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
     final chips = <Widget>[
-      _mode(RecordMode.free),
-      _mode(RecordMode.trail),
-      _mode(RecordMode.laps),
+      _mode(t, RecordMode.free),
+      _mode(t, RecordMode.trail),
+      _mode(t, RecordMode.laps),
       if (onGoal != null)
         ModeChip(
           key: const ValueKey('goal-chip'),
           title: 'GOAL',
           compact: auroraList || compactTiles,
-          typeColor: AuroraRunType.goal,
+          typeColor: t.typeGoal,
           subtitle: goalLabel,
           selected: goal,
           onTap: onGoal!,
         ),
-      _mode(RecordMode.intervals),
+      _mode(t, RecordMode.intervals),
       if (onTests != null)
         ModeChip(
           key: const ValueKey('tests-chip'),
           title: 'TESTS',
           compact: auroraList || compactTiles,
-          typeColor: AuroraRunType.tests,
+          typeColor: t.typeTests,
           subtitle: testsLabel,
           selected: testsSelected,
           onTap: onTests!,

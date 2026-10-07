@@ -80,7 +80,10 @@ class HrZonesSection extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   title: Text(
                     methodName(m),
-                    style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+                    style: RunSoloType.body15.copyWith(
+                      color: t.inkPrimary,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
             ],
@@ -142,6 +145,9 @@ class HrZonesSection extends StatelessWidget {
 Color _zoneColour(BuildContext context, int zone) =>
     HrZones.distribution(zone, Theme.of(context).brightness);
 
+Color _zoneText(BuildContext context, int zone) =>
+    HrZones.text(zone, Theme.of(context).brightness);
+
 /// Read-only bpm ranges per zone, in zone colours.
 class _Ranges extends StatelessWidget {
   const _Ranges({required this.zones, required this.maxHr});
@@ -158,9 +164,7 @@ class _Ranges extends StatelessWidget {
             child: Text(
               _range(zones, z, maxHr),
               key: ValueKey('hr-range-$z'),
-              style: RunSoloType.body17.copyWith(
-                color: _zoneColour(context, z),
-              ),
+              style: RunSoloType.body17.copyWith(color: _zoneText(context, z)),
             ),
           ),
       ],
@@ -358,7 +362,7 @@ class _CustomTableState extends State<_CustomTable> {
                     textAlign: TextAlign.end,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     style: RunSoloType.body17.copyWith(
-                      color: _zoneColour(context, i + 1),
+                      color: _zoneText(context, i + 1),
                     ),
                     decoration: const InputDecoration(
                       isDense: true,

@@ -175,10 +175,10 @@ class _LaneMark extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     if (set) return Icon(Icons.check, size: size + 2, color: t.semImproving);
     final colour = switch (lane) {
-      engine.IdentityLane.aerobic => AuroraRunType.tests,
-      engine.IdentityLane.speed => AuroraRunType.intervals,
-      engine.IdentityLane.mid => AuroraRunType.goal,
-      engine.IdentityLane.long => AuroraRunType.free,
+      engine.IdentityLane.aerobic => t.typeTests,
+      engine.IdentityLane.speed => t.typeIntervals,
+      engine.IdentityLane.mid => t.typeGoal,
+      engine.IdentityLane.long => t.typeFree,
     };
     return SizedBox(
       width: size + 2,

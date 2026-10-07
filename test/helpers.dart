@@ -100,7 +100,7 @@ SessionSpec presetSpec(String id, {int? reps}) =>
 /// named route on first frame, so screens that pop can be tested.
 bool _fontsLoaded = false;
 
-/// Every family in the app's FontManifest (Barlow Condensed, Archivo and
+/// Every family in the app's FontManifest (Saira Extra Condensed, Schibsted Grotesk and
 /// MaterialIcons), so text metrics and icons match the phone; the default
 /// test font is square-glyph and icons render as empty boxes.
 Future<void> loadRunSoloFonts() async {

@@ -1,43 +1,57 @@
 import 'package:flutter/material.dart';
 
-/// Type scale (design brief §2.2 / §5). Barlow Condensed for display, Archivo for UI.
-/// No Inter, no Roboto. Display never below 28 px. Numbers always tabular.
+/// Type scale (design brief §2.2 / §5, brand build 7-Oct-2026). Saira Extra
+/// Condensed for display, Schibsted Grotesk for UI. No Inter, no Roboto.
+/// Display never below 28 px. Numbers always tabular.
+///
+/// Saira Extra Condensed is narrower than the Barlow Condensed it replaced
+/// (digit advance 0.37 em vs 0.42) with a slightly lower cap height (0.688 vs
+/// 0.700), so every display size is scaled by [_displayScale] to land at or
+/// above the old cap height. Nothing got smaller. Saira has no 600, so the
+/// old 600 -> 700 and 700 -> 800.
 abstract final class RunSoloType {
-  static const String display = 'Barlow Condensed';
-  static const String ui = 'Archivo';
+  static const String display = 'Saira Extra Condensed';
+  static const String ui = 'Schibsted Grotesk';
 
   static const List<FontFeature> tabular = [FontFeature.tabularFigures()];
 
-  static TextStyle _display(double size, FontWeight weight) => TextStyle(
-    fontFamily: display,
-    fontSize: size,
-    fontWeight: weight,
-    height: 1.0,
-    letterSpacing: size * 0.01,
-    fontFeatures: tabular,
-  );
+  static const double _displayScale = 1.05;
+
+  /// A display style at the old Barlow size [base], scaled for Saira.
+  static TextStyle _display(double base, FontWeight weight) {
+    final size = (base * _displayScale).roundToDouble();
+    return TextStyle(
+      fontFamily: display,
+      fontSize: size,
+      fontWeight: weight,
+      height: 1.0,
+      letterSpacing: size * 0.01,
+      fontFeatures: tabular,
+    );
+  }
 
   static TextStyle _ui(double size, FontWeight weight) => TextStyle(
     fontFamily: ui,
     fontSize: size,
     fontWeight: weight,
     height: 1.35,
-    fontFeatures: tabular,
+    // No tnum here: Schibsted's tnum also widens , . : and %, which opens a
+    // gap before punctuation in prose. Number columns pass [tabular] explicitly.
   );
 
-  static final TextStyle display96 = _display(96, FontWeight.w700);
-  static final TextStyle display64 = _display(64, FontWeight.w700);
-  static final TextStyle display44 = _display(44, FontWeight.w600);
-  static final TextStyle title28 = _display(28, FontWeight.w600);
+  static final TextStyle display96 = _display(96, FontWeight.w800);
+  static final TextStyle display64 = _display(64, FontWeight.w800);
+  static final TextStyle display44 = _display(44, FontWeight.w700);
+  static final TextStyle title28 = _display(28, FontWeight.w700);
 
   /// Page-level headline (Start's question, Home's progress line).
   static final TextStyle pageHeadline = title28;
 
   /// The app bar title on every screen.
   static final TextStyle appBarTitle = heading26;
-  static final TextStyle heading26 = _display(26, FontWeight.w600);
-  static final TextStyle heading19 = _display(19, FontWeight.w700);
-  static final TextStyle timer120 = _display(120, FontWeight.w600);
+  static final TextStyle heading26 = _display(26, FontWeight.w700);
+  static final TextStyle heading19 = _display(19, FontWeight.w800);
+  static final TextStyle timer120 = _display(120, FontWeight.w700);
   static final TextStyle body17 = _ui(17, FontWeight.w400);
   static final TextStyle body15 = _ui(15, FontWeight.w400);
   static final TextStyle label13 = _ui(13, FontWeight.w500);

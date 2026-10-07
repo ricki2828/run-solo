@@ -116,9 +116,9 @@ void main() {
       }
       for (final bg in [light.bgBase, light.bgRaised, light.bgSunken]) {
         expect(
-          contrast(HrZones.distribution(z, Brightness.light), bg),
+          contrast(HrZones.text(z, Brightness.light), bg),
           greaterThanOrEqualTo(3),
-          reason: 'light Z$z on $bg',
+          reason: 'light Z$z text on $bg',
         );
       }
     }

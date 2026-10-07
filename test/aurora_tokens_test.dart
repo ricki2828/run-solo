@@ -39,6 +39,9 @@ void main() {
       ),
     );
     final decoration = box.decoration! as BoxDecoration;
-    expect((decoration.border! as Border).top.color, NightSession.inkPrimary);
+    expect(
+      (decoration.border! as Border).top.color,
+      NightSessionLight.inkPrimary,
+    );
   });
 }

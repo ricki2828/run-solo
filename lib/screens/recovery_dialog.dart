@@ -135,7 +135,7 @@ class RecoveryDialog extends StatelessWidget {
       child: FilledButton(
         style: FilledButton.styleFrom(
           minimumSize: const Size(120, 56),
-          textStyle: RunSoloType.title28.copyWith(fontSize: 22),
+          textStyle: RunSoloType.title28.copyWith(fontSize: 23),
         ),
         onPressed: () => Navigator.of(context).pop(choice),
         child: Text(label),

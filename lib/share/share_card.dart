@@ -119,7 +119,7 @@ class ScoresCardData extends ShareCardData {
 RunCardData runCardData(RunSummary run, Units units) => RunCardData(
   title: run.customTitle ?? runTitle(run),
   typeName: runTitle(run).toUpperCase(),
-  colour: runTypeColor(run),
+  colour: runTypeColor(run, RunSoloTokens.dark),
   date: Fmt.dayDate(run.localStart),
   distance: Fmt.distance(run.distanceM, units),
   time: Fmt.clock(run.durationMs),
@@ -183,13 +183,13 @@ class ShareCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Theme(
-    data: runSoloTheme(),
+    data: runSoloTheme(brightness: Brightness.dark),
     child: Builder(
       builder: (context) {
         final t = Theme.of(context).extension<RunSoloTokens>()!;
         final glow = switch (data) {
           RunCardData d => d.colour,
-          ScoresCardData() => AuroraRunType.laps,
+          ScoresCardData() => t.typeLaps,
         };
         return SizedBox.fromSize(
           size: kShareCardSize,
