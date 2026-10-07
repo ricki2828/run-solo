@@ -288,6 +288,11 @@ jobs:
       MAPS_DEFINE: --dart-define=RUN_SOLO_MAPS_API_KEY=${{ secrets.RUN_SOLO_MAPS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+      - name: Free runner disk (the Android builds filled the image's disk)
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          df -h / | tail -1
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -350,6 +355,11 @@ jobs:
       MAPS_DEFINE: --dart-define=RUN_SOLO_MAPS_API_KEY=${{ secrets.RUN_SOLO_MAPS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+      - name: Free runner disk (the Android builds filled the image's disk)
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          df -h / | tail -1
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -441,6 +451,11 @@ jobs:
       MAPS_DEFINE: --dart-define=RUN_SOLO_MAPS_API_KEY=${{ secrets.RUN_SOLO_MAPS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+      - name: Free runner disk (the Android builds filled the image's disk)
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          df -h / | tail -1
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
