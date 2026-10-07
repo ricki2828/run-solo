@@ -45,7 +45,7 @@ Release notes (first closed release):
 >
 > **How to report:** reply to this message, or email `<founder email>`. Most useful: your phone model, what you did, what you expected, what happened, and a screenshot. If the app crashed, say roughly when. If a run went missing, do not delete anything: Settings → Data → Export all, and send me the file.
 >
-> Two honest notes: this is an early build, so expect rough edges; and Google's map and weather services see the map area you view and a rounded location, the same as any maps app (full details: https://runsolo.app/privacy).
+> Two honest notes: this is an early build, so expect rough edges; and Google's map and weather services see the map area you view and a rounded location, the same as any maps app (full details: https://runsupreme.taiaroa.xyz/privacy/).
 
 ## Weekly nudge (days 7 and 12)
 

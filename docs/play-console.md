@@ -11,11 +11,11 @@ Founder approves the wording (plan §18.9 item 8) before anything is typed into 
 | Item | Value | Status |
 |---|---|---|
 | Package name | `app.runsolo` (Play build only; `.debug` and `.dogfood` never go to Play) | fixed |
-| Privacy policy URL | `https://runsolo.app/privacy` (served from this repo's `docs/` via GitHub Pages while the repo is public; when it goes private at launch the page moves to a public host with the same URL, see README) | founder: turn Pages on + DNS |
+| Privacy policy URL | `https://runsupreme.taiaroa.xyz/privacy/` (Vercel project `run-supreme-site`, copy at `~/sites/run-supreme`; repo is private so Pages is not used) | done 7-Oct |
 | Play App Signing | Enrol at first upload; Google holds the app-signing key, we upload with `CN=Run Solo upload` | first AAB upload |
 | Upload key SHA-1 | `6D:E0:ED:82:5F:B7:80:73:3A:C5:EC:9D:37:5F:8F:63:1F:6E:D0:57` | for the Maps key restriction |
 | Trademark | "Supreme" is a well-known registered streetwear mark (Supreme / VF Corp). "Run Supreme" for a running app is a different class, but the founder should run the trademark search (plan Phase 0) again for the new name before the listing goes live, and avoid Supreme's red-box logo styling anywhere | founder: open |
-| Domain | `runsolo.app` URLs are kept until the founder decides on a Run Supreme domain; the privacy URL on the Play forms must not change afterwards, so decide before week 4 | founder: open |
+| Domain | `runsupreme.taiaroa.xyz` chosen 7-Oct; the privacy URL on the Play forms must not change afterwards | decided |
 | Contact email in the listing | `privacy@runsolo.app` is used on the privacy page | founder: confirm the mailbox exists or change it |
 
 ## 1. Store listing
@@ -58,11 +58,11 @@ Founder approves the wording (plan §18.9 item 8) before anything is typed into 
 - **Category**: Health & Fitness. **Tags**: Running, Fitness tracker, Interval training.
 - **Countries**: English-speaking non-EU per plan §10: AU, NZ, US, CA, GB, SG, ZA. (IE is EU, so not in the list.)
 - **Graphics**: icon `store/play/icon-512.png` (Lap Line R), feature graphic `store/play/feature-graphic-1024x500.png` (progress direction, built by `store/play/build_screens.py`; the wordmark version is `feature-graphic-wordmark-1024x500.png` from `assets/brand/build_brand.py`); 8 screenshots 1080x1920 in `store/play/screens/` (also `build_screens.py`; Play wants each side 320-3840 px and the long side at most twice the short one, so 1080x2400 would be rejected). Screenshot 07 (live map) uses a fake-map golden: replace with a real device capture before upload. No Hyrox marks or keywords anywhere.
-- **Contact details**: email above; website `https://runsolo.app`.
+- **Contact details**: email above; website `https://runsupreme.taiaroa.xyz`.
 
 ## 2. Privacy policy
 
-URL: `https://runsolo.app/privacy`. Also linked in-app from Settings, About. Content = `docs/privacy/index.html`.
+URL: `https://runsupreme.taiaroa.xyz/privacy/`. Also linked in-app from Settings, About. Content = `docs/privacy/index.html`.
 
 ## 3. App access
 
