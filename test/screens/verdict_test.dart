@@ -172,7 +172,9 @@ void main() {
     final bars = tester.widget<RepBars>(find.byType(RepBars));
     expect(bars.progress, 1);
     expect(bars.deltaProgress, 1);
-    expect(bars.fadeProgress, 1);
+    // No slope line on the verdict, and the axis spans at least 30 s.
+    expect(bars.fadeProgress, 0);
+    expect(bars.minSpanSec, 30);
     expect(bars.tone, RepTone.faster);
     expect(word(tester), 'FASTER');
     final opacity = tester

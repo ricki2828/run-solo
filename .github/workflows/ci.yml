@@ -1,15 +1,28 @@
 name: ci
 
+# CI diet (the repo is private, Actions minutes are metered; macOS costs 10x).
+# Every PR push runs the fast path only: analyze + test, core-jvm, debug APK (+ lint, unit
+# tests, 16 KB check), brand and topo checks. Docs-only and *.md changes run nothing.
+# The heavy jobs (emulator smoke + replay matrix, dogfood build + smoke, Kotlin/Native on macOS)
+# run on pushes to main, v* tags, workflow_dispatch, and PRs labelled `full-ci`. Add the label
+# when a PR needs emulator or macOS evidence. The Kotlin/Native job also needs the shared core
+# (android/core-jvm, ios, pigeons) to have changed.
+# Adding any label other than `full-ci` re-triggers the workflow; every job skips itself then.
 on:
   push:
     branches: [main]
     tags: ['v*']
+    paths-ignore: ['docs/**', '**.md']
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths-ignore: ['docs/**', '**.md']
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Label noise gets its own group so an unrelated label cannot cancel a real run.
+  group: ci-${{ github.ref }}-${{ (github.event.action == 'labeled' && github.event.label.name != 'full-ci') && 'label' || 'run' }}
+  # Pushes to main and tags always finish: every main sha keeps its dogfood APK.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # Pinned to the same stable the dev host runs (~/tools/flutter). Bump both together.
@@ -18,16 +31,15 @@ env:
 
 jobs:
   changes:
-    # CI diet: the emulator jobs (8 replays + 3 smokes + dogfood smoke) saturate the runners.
-    # They run in full on main, tags and manual runs, and on PRs that touch the native side;
-    # other PRs get the API 34 smoke only. Skipped jobs report "skipped", which GitHub counts
-    # as passing for required checks, and cost no runner. If this job fails, the gated jobs run
-    # the full set instead of skipping (their `if` checks needs.changes.result).
+    # Decides whether the Kotlin/Native job (macOS minutes) runs: only when the shared core,
+    # iOS or the Pigeon contract changed (PRs by their diff, main pushes by the pushed range,
+    # anything else always). Only runs at all when the heavy set does. If this job fails, the
+    # native job runs instead of skipping.
     name: which paths changed
+    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      native: ${{ steps.diff.outputs.native }}
       core: ${{ steps.diff.outputs.core }}
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +56,7 @@ jobs:
         run: |
           # core: the Kotlin/Native job (macOS minutes) runs only when the shared core or this
           # workflow changed: PRs by their diff, main pushes by the pushed range, else always.
-          core_re='^(android/core-jvm/|\.github/workflows/ci\.yml$)'
+          core_re='^(android/core-jvm/|ios/|pigeons/)'
           if [ "$EVENT" = "pull_request" ]; then
             range="$BASE...$HEAD"
           elif [ "$EVENT" = "push" ] && [ "$REF" = "refs/heads/main" ] && [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
@@ -57,21 +69,10 @@ jobs:
           else
             echo "core=false" >> "$GITHUB_OUTPUT"; echo "core unchanged: Kotlin/Native job skipped"
           fi
-          if [ "$EVENT" != "pull_request" ]; then
-            echo "native=true" >> "$GITHUB_OUTPUT"; echo "not a PR: full emulator set"; exit 0
-          fi
-          changed=$(git diff --name-only "$BASE...$HEAD")
-          echo "$changed"
-          # android/ includes android/core-jvm. The workflow itself and pubspec (plugins ship
-          # native code) count too, so a CI or plugin change is always tested in full.
-          if echo "$changed" | grep -qE '^(android/|pigeons/|packages/run_engine/test/fixtures/contract|tools/emulator_|tools/check_replay_(run|transcript)\.py|\.github/workflows/|pubspec\.(yaml|lock)$)'; then
-            echo "native=true" >> "$GITHUB_OUTPUT"; echo "native paths changed: full emulator set"
-          else
-            echo "native=false" >> "$GITHUB_OUTPUT"; echo "no native paths: API 34 smoke only"
-          fi
 
   flutter:
     name: analyze + test (app, run_engine)
+    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -153,6 +154,7 @@ jobs:
 
   brand:
     name: brand vectors are current
+    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -171,6 +173,7 @@ jobs:
 
   topo-style:
     name: topo style is current and valid
+    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -188,6 +191,7 @@ jobs:
 
   core-jvm:
     name: core-jvm tests (pure Kotlin)
+    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -229,7 +233,7 @@ jobs:
     # compile of common code accepts JVM-only stdlib calls; only a Native compile catches them.
     name: core on Kotlin/Native (macOS + iOS simulator)
     needs: changes
-    if: ${{ needs.changes.result != 'success' || needs.changes.outputs.core == 'true' }}
+    if: ${{ !cancelled() && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && (needs.changes.result != 'success' || needs.changes.outputs.core == 'true') }}
     runs-on: macos-26
     timeout-minutes: 45
     steps:
@@ -271,6 +275,7 @@ jobs:
 
   build-apk:
     name: build debug APK + 16 KB check
+    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -283,6 +288,12 @@ jobs:
       MAPS_DEFINE: --dart-define=RUN_SOLO_MAPS_API_KEY=${{ secrets.RUN_SOLO_MAPS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+      - name: Free runner disk (the image's disk filled up; df before and after)
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          df -h /
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -314,12 +325,14 @@ jobs:
           [ "$n" -ge 1 ] || { echo "::error::com.google.android.geo.API_KEY meta-data missing from the manifest"; exit 1; }
           if [ -z "$RUN_SOLO_MAPS_API_KEY" ]; then echo "::warning::RUN_SOLO_MAPS_API_KEY secret is not set; this build has an empty Maps key"; fi
       - name: Build release AAB (debug-signed here; the Play-signed one is the release-aab job)
+        if: ${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
         run: flutter build appbundle --release --flavor play --obfuscate --split-debug-info=build/symbols $MAPS_DEFINE
       - name: 16 KB page-size check (debug APK)
         run: |
           ZIPALIGN="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/zipalign"
           tools/check_16kb_alignment.sh build/dist/app-debug.apk "$ZIPALIGN"
       - name: 16 KB page-size check (release AAB, includes libapp.so)
+        if: ${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
         run: tools/check_16kb_alignment.sh build/app/outputs/bundle/playRelease/app-play-release.aab
       - uses: actions/upload-artifact@v4
         with:
@@ -330,6 +343,7 @@ jobs:
 
   build-dogfood:
     name: build dogfood APK (arm64, R8, signed)
+    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -342,6 +356,12 @@ jobs:
       MAPS_DEFINE: --dart-define=RUN_SOLO_MAPS_API_KEY=${{ secrets.RUN_SOLO_MAPS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+      - name: Free runner disk (the image's disk filled up; df before and after)
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          df -h /
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -433,6 +453,12 @@ jobs:
       MAPS_DEFINE: --dart-define=RUN_SOLO_MAPS_API_KEY=${{ secrets.RUN_SOLO_MAPS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+      - name: Free runner disk (the image's disk filled up; df before and after)
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          df -h /
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -561,19 +587,22 @@ jobs:
 
   emulator:
     name: emulator smoke (API ${{ matrix.api-level }})
-    needs: [build-apk, changes]
-    # Fail-safe: if `changes` itself failed, run the full set instead of skipping (a skipped job
-    # reads as passing). always() so a failed `changes` does not skip this job by default.
-    if: ${{ !cancelled() && needs.build-apk.result == 'success' }}
+    needs: build-apk
+    if: ${{ !cancelled() && needs.build-apk.result == 'success' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        # API 34 on every PR; 29 and 36 on main and when native paths change (changes job).
-        api-level: ${{ fromJSON((needs.changes.result != 'success' || needs.changes.outputs.native == 'true') && '[29, 34, 36]' || '[34]') }}
+        api-level: [29, 34, 36]
     steps:
       - uses: actions/checkout@v4
+      - name: Free runner disk (the image's disk filled up; df before and after)
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          df -h /
       - uses: actions/download-artifact@v4
         with:
           name: run-solo-debug-apk
@@ -587,7 +616,17 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-      - name: Boot, install, launch
+      - name: AVD cache
+        id: avd-cache
+        if: ${{ matrix.api-level == 34 }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api${{ matrix.api-level }}-x86_64-google_apis-v1
+      - name: Create AVD and snapshot (cache miss only)
+        if: ${{ matrix.api-level == 34 && steps.avd-cache.outputs.cache-hit != 'true' }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
@@ -595,6 +634,16 @@ jobs:
           target: google_apis
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+      - name: Boot, install, launch
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
           disable-animations: true
           script: |
             tools/emulator_smoke.sh apk/app-debug.apk app.runsolo.debug
@@ -615,9 +664,8 @@ jobs:
     # I5: one replay per session kind through the real service; the run file must match the
     # core-jvm fixture recorded from the same trace (tools/check_replay_run.py).
     name: emulator replay ${{ matrix.kind }} (API 34)
-    needs: [build-apk, changes]
-    # Runs on native changes, and fail-safe when `changes` failed (never skip-as-green).
-    if: ${{ !cancelled() && needs.build-apk.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.native == 'true') }}
+    needs: build-apk
+    if: ${{ !cancelled() && needs.build-apk.result == 'success' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -627,6 +675,12 @@ jobs:
         kind: [4x4, 400s, 30-30s, yasso-800s, 1km-repeats, fartlek, cooper, parkrun, goal-10k, goal-30min, pause-end, auto-pause, t4]
     steps:
       - uses: actions/checkout@v4
+      - name: Free runner disk (the image's disk filled up; df before and after)
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          df -h /
       - uses: actions/download-artifact@v4
         with:
           name: run-solo-debug-apk
@@ -640,7 +694,16 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-      - name: Boot, replay ${{ matrix.kind }}, compare with the fixture
+      - name: AVD cache
+        id: avd-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api34-x86_64-google_apis-v1
+      - name: Create AVD and snapshot (cache miss only)
+        if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -648,18 +711,33 @@ jobs:
           target: google_apis
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+      - name: Boot, replay ${{ matrix.kind }}, compare with the fixture
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
           disable-animations: true
           script: tools/emulator_replay_kind.sh apk/app-debug.apk app.runsolo.debug ${{ matrix.kind }}
 
   emulator-dogfood:
     name: emulator smoke, dogfood R8 build (API 36)
-    needs: [build-dogfood, changes]
-    # Runs on native changes, and fail-safe when `changes` failed (never skip-as-green).
-    if: ${{ !cancelled() && needs.build-dogfood.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.native == 'true') }}
+    needs: build-dogfood
+    if: ${{ !cancelled() && needs.build-dogfood.result == 'success' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - name: Free runner disk (the image's disk filled up; df before and after)
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          df -h /
       - uses: actions/download-artifact@v4
         with:
           name: run-solo-dogfood-x64-apk
@@ -682,7 +760,7 @@ jobs:
           arch: x86_64
           target: google_apis
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
           disable-animations: true
           script: |
             tools/emulator_smoke.sh apk/app-x86_64-dogfood-release.apk app.runsolo.dogfood
