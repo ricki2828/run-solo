@@ -1,0 +1,124 @@
+package app.runsolo.core.record
+
+import app.runsolo.core.ble.HrJoin
+import app.runsolo.core.elevation.PressureJoin
+import app.runsolo.core.elevation.PressureReading
+import app.runsolo.core.gps.PointFilter
+import app.runsolo.core.journal.JournalLine
+import app.runsolo.core.model.HrReading
+import app.runsolo.core.model.LocationFix
+import app.runsolo.core.platform.currentTimeMillis
+
+/**
+ * Owns the 1 Hz sample rule (plan §3/§4): on every tick, every fix that arrived since the last
+ * tick is journaled in fix-time order (raw samples are always journaled, so acceptance is
+ * repeatable); if none arrived, a no-fix tick carrying the current HR is journaled instead.
+ * Either way a sample's `t` is `max(t, lastSampleT + 1)`, so journal order is time order even
+ * when the provider delivers a fix late, after a no-fix tick was already written. Every fix
+ * goes through [filter] (live distance for the tick stream); the finaliser recomputes the
+ * same thing from the journaled raw samples.
+ *
+ * While paused ([onPause]/[onResume]) fixes are still journaled but not measured, and the
+ * filter re-anchors on resume so distance covered during the pause is excluded — the
+ * finaliser applies the same rule from the journal's pause/resume lines.
+ *
+ * An auto-pause ([onAutoPause]/[onAutoResume]) freezes the distance the same way, so a phone
+ * jittering at a traffic light adds nothing, but does NOT re-anchor on resume: the next accepted
+ * fix steps from where the runner stopped, so the ground covered before the recorder noticed they
+ * were moving again still counts. [moveDistanceM] is a second filter that sees every fix whatever
+ * the pause state, for the stop/go detector (which must see the runner move to resume).
+ *
+ * The service calls [onFix] from the location callback, [onHr] from the GATT callback and
+ * [tick] from its 1 s timer (with the replay clock in replay mode).
+ */
+class SampleTicker(
+    val filter: PointFilter = PointFilter(),
+    val hrJoin: HrJoin = HrJoin(),
+    val pressureJoin: PressureJoin = PressureJoin(),
+    private val wall: () -> Long = ::currentTimeMillis,
+) {
+    private val pending = ArrayList<LocationFix>()
+    private var lastSampleT = Long.MIN_VALUE
+
+    /** Cumulative accepted distance (metres) as of the last fix. */
+    val distanceM: Double get() = filter.totalM
+
+    /** Fixes delivered so late that they had to be re-stamped after a no-fix tick. */
+    var restamped: Int = 0
+        private set
+
+    var lastFixT: Long? = null
+        private set
+
+    var paused: Boolean = false
+        private set
+
+    /** Cumulative distance of a filter that ignores pauses (feeds the stop/go detector only). */
+    val moveDistanceM: Double get() = shadow.totalM
+    private val shadow = PointFilter()
+
+    /** Set by a manual pause (and a PAUSE over an auto-pause): the next resume re-anchors. */
+    private var reanchorOnResume = false
+
+    fun onPause() {
+        paused = true
+        reanchorOnResume = true
+    }
+
+    /** The recorder paused itself: distance freezes, resume will not re-anchor. */
+    fun onAutoPause() {
+        if (paused) return
+        paused = true
+        reanchorOnResume = false
+    }
+
+    fun onResume() {
+        if (!paused) return
+        paused = false
+        if (reanchorOnResume) filter.reanchor()
+        reanchorOnResume = false
+    }
+
+    fun onAutoResume() = onResume()
+
+    fun onFix(fix: LocationFix) {
+        pending.add(fix)
+        lastFixT = fix.t
+    }
+
+    fun onHr(reading: HrReading) = hrJoin.offer(reading)
+
+    fun onHrNoContact() = hrJoin.offerNoContact()
+
+    /** A barometer reading (batched, about 1 Hz): joined to the samples it falls within 3 s of. */
+    fun onPressure(reading: PressureReading) = pressureJoin.offer(reading)
+
+    /** The samples for this tick, in time order; never empty (a tick without a fix is still a sample). */
+    fun tick(nowT: Long): List<JournalLine.Sample> {
+        val w = wall()
+        val out = ArrayList<JournalLine.Sample>(1)
+        if (pending.isEmpty()) {
+            val t = if (nowT <= lastSampleT) lastSampleT + 1 else nowT
+            out.add(JournalLine.Sample.noFix(t, w, hrJoin.hrAt(nowT), pressureJoin.hpaAt(nowT)))
+        } else {
+            pending.sortBy { it.t }
+            for (fix in pending) {
+                shadow.offer(fix)
+                if (!paused) filter.offer(fix)
+                var t = fix.t
+                if (t <= lastSampleT) {
+                    t = lastSampleT + 1
+                    restamped++
+                }
+                out.add(JournalLine.Sample(t, w, fix.lat, fix.lon, fix.altM, fix.accuracyM, fix.speedMps, hrJoin.hrAt(fix.t), pressureJoin.hpaAt(fix.t)))
+                lastSampleT = t
+            }
+            pending.clear()
+        }
+        lastSampleT = out.last().t
+        return out
+    }
+
+    /** True when no fix has arrived within [maxAgeMs] of [nowT] (drives `fault{gpsLost}`). */
+    fun gpsLost(nowT: Long, maxAgeMs: Long = 5_000): Boolean = lastFixT?.let { nowT - it > maxAgeMs } ?: true
+}
