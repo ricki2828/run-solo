@@ -471,7 +471,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const SizedBox(height: Space.x12),
+                        const SizedBox(height: Space.x8),
                         _Header(
                           s: s,
                           maxHr: maxHr,
@@ -593,7 +593,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                                   ),
                                 ),
                               ),
-                            const Spacer(),
+                            _CoachSlot(coach),
                           ] else if (s.isGoal && s.phase == Phase.cooldown) ...[
                             // G3: after the goal, the cool-down's time is
                             // primary and the goal's result sits locked below.
@@ -648,7 +648,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                                 },
                               ),
                             ),
-                            const Spacer(),
+                            _CoachSlot(coach),
                             CompareSlot(
                               link: s.phase == Phase.warmup ? null : _cardLink,
                               child: Visibility(
@@ -694,7 +694,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                               paused: s.paused,
                               child: _TimerBlock(s: s, ctl: ctl),
                             ),
-                            const Spacer(),
+                            _CoachSlot(coach),
                             // The PAUSED card sits here; keep the space, hide
                             // the numbers so nothing peeks out around it.
                             CompareSlot(
@@ -737,11 +737,11 @@ class _RecordingScreenState extends State<RecordingScreen>
                             ),
                           ],
                         ],
-                        if (coach != null) ...[
+                        if (coach != null && (mapOn || freeBlock)) ...[
                           const SizedBox(height: Space.x8),
                           coach,
                         ],
-                        const SizedBox(height: Space.x16),
+                        const SizedBox(height: Space.x12),
                         if (pausedNow)
                           const SizedBox.shrink()
                         else if ((s.isPreset || s.isCooper) &&
@@ -2013,7 +2013,7 @@ class _TimerBlock extends StatelessWidget {
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(
-                vertical: Space.x12,
+                vertical: Space.x4,
                 horizontal: Space.x24,
               ),
               child: digits,
@@ -2539,6 +2539,27 @@ class _FinishScreen extends StatelessWidget {
   }
 }
 
+/// The spare room under a hero block: the coach layer sits at its bottom when
+/// it fits, and the room stays empty when it does not (short phones), so it
+/// never pushes the numbers or the controls.
+class _CoachSlot extends StatelessWidget {
+  const _CoachSlot(this.coach);
+  final _CoachLayer? coach;
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: LayoutBuilder(
+      builder: (context, box) {
+        final c = coach;
+        if (c == null || box.maxHeight < c.height + Space.x8) {
+          return const SizedBox.shrink();
+        }
+        return Align(alignment: Alignment.bottomCenter, child: c);
+      },
+    ),
+  );
+}
+
 /// The coach layer under the numbers (Full Instrument): the target band bar
 /// and the next-step line. Built only for a session with something to say;
 /// Free runs without a target get neither.
@@ -2557,6 +2578,12 @@ class _CoachLayer extends StatelessWidget {
   final Color labelColor;
   final Color textColor;
   final String? nextLine;
+
+  /// Room the layer needs, for [_CoachSlot] to decide whether it fits.
+  double get height =>
+      (target != null ? 48.0 : 0) +
+      (target != null && nextLine != null ? Space.x8 : 0) +
+      (nextLine != null ? 40.0 : 0);
 
   static _CoachLayer? of({
     required RecordingSnapshot s,

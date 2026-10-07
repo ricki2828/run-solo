@@ -14,6 +14,7 @@ import 'package:run_solo/theme/theme.dart';
 import 'package:run_solo/theme/zones.dart';
 import 'package:run_solo/widgets/compare_card.dart';
 import 'package:run_solo/widgets/gps_bar.dart';
+import 'package:run_solo/widgets/zone_ladder.dart';
 
 import '../helpers.dart';
 
@@ -97,7 +98,7 @@ void expectClear(WidgetTester tester, Finder primary) {
   final gps = tester.getRect(find.byType(GpsBar));
   expect(c.bottom, lessThanOrEqualTo(gps.top), reason: 'card over GPS bar');
   // Content width: the screen minus the 16 dp gutters.
-  expect(c.width, closeTo(360 - 2 * Space.recordGutter, 0.5));
+  expect(c.width, closeTo(360 - Space.recordGutter - ZoneLadder.reserve, 0.5));
 }
 
 Finder timer() => find.byKey(const ValueKey('timer'));
