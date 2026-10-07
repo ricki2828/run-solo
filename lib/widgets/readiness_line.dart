@@ -3,6 +3,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../state/history_store.dart';
 import '../theme/theme.dart';
+import 'section_card.dart';
 
 /// Home: one plain line from the strap, "Recovered: resting HR normal" or
 /// "Take it easy: resting HR up 6 bpm", against the runner's own 7-day
@@ -26,42 +27,45 @@ class ReadinessLine extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     return Padding(
       padding: const EdgeInsets.only(bottom: Space.x16),
-      child: Row(
-        children: [
-          Icon(Icons.favorite, size: 16, color: t.hrZone),
-          const SizedBox(width: Space.x8),
-          Expanded(
-            child: Text(
-              r.line,
-              key: const ValueKey('readiness-line'),
-              style: RunSoloType.body15.copyWith(
-                color: r.takeItEasy ? t.semWarn : t.inkPrimary,
-              ),
-            ),
-          ),
-          SizedBox(
-            width: 48,
-            height: 48,
-            child: IconButton(
-              key: const ValueKey('readiness-info'),
-              tooltip: 'About this',
-              icon: Icon(Icons.info_outline, size: 20, color: t.inkSecondary),
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) => AlertDialog(
-                  title: const Text('Resting heart rate'),
-                  content: Text(r.detail),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('OK'),
-                    ),
-                  ],
+      child: SectionCard(
+        padding: const EdgeInsets.only(left: Space.x16, right: Space.x4),
+        child: Row(
+          children: [
+            Icon(Icons.favorite, size: 16, color: t.hrZone),
+            const SizedBox(width: Space.x8),
+            Expanded(
+              child: Text(
+                r.line,
+                key: const ValueKey('readiness-line'),
+                style: RunSoloType.body15.copyWith(
+                  color: r.takeItEasy ? t.semWarn : t.inkPrimary,
                 ),
               ),
             ),
-          ),
-        ],
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: IconButton(
+                key: const ValueKey('readiness-info'),
+                tooltip: 'About this',
+                icon: Icon(Icons.info_outline, size: 20, color: t.inkSecondary),
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    title: const Text('Resting heart rate'),
+                    content: Text(r.detail),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('OK'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

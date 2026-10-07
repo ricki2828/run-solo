@@ -8,6 +8,7 @@ import '../state/settings.dart';
 import '../theme/lanes.dart';
 import '../theme/theme.dart';
 import 'home_score_spark.dart';
+import 'section_card.dart';
 
 /// Only earned scores appear. Numeric display matches the product choice;
 /// qualified bounds remain in semantics and Progress evidence.
@@ -55,18 +56,24 @@ class HomeScores extends StatelessWidget {
       ],
     );
     if (earned.isEmpty) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final lane in engine.IdentityLane.values)
-            _UnlockRow(
-              lane: lane,
-              set: scores[lane] != null,
-              onTap: onUnlock == null
-                  ? null
-                  : () => onUnlock!(_unlockApply(lane)),
-            ),
-        ],
+      return SectionCard(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Space.x16,
+          vertical: Space.x4,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final lane in engine.IdentityLane.values)
+              _UnlockRow(
+                lane: lane,
+                set: scores[lane] != null,
+                onTap: onUnlock == null
+                    ? null
+                    : () => onUnlock!(_unlockApply(lane)),
+              ),
+          ],
+        ),
       );
     }
     Widget card(engine.IdentityLane lane) => _EarnedScore(
@@ -75,44 +82,46 @@ class HomeScores extends StatelessWidget {
       age: age,
       onOpen: onOpen,
     );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'YOUR SCORES',
-          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-        ),
-        const SizedBox(height: Space.x8),
-        for (var i = 0; i < earned.length; i += 2) ...[
-          if (i > 0) const SizedBox(height: Space.x8),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: card(earned[i])),
-                const SizedBox(width: Space.x8),
-                Expanded(
-                  child: i + 1 < earned.length
-                      ? card(earned[i + 1])
-                      : const SizedBox.shrink(),
-                ),
-              ],
-            ),
-          ),
-        ],
-        if (_footnote(earned, profileSex, age) case final note?) ...[
-          const SizedBox(height: Space.x8),
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Text(
-            note,
-            key: const ValueKey('home-score-norms'),
-            style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+            'YOUR SCORES',
+            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
           ),
+          const SizedBox(height: Space.x8),
+          for (var i = 0; i < earned.length; i += 2) ...[
+            if (i > 0) const SizedBox(height: Space.x8),
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: card(earned[i])),
+                  const SizedBox(width: Space.x8),
+                  Expanded(
+                    child: i + 1 < earned.length
+                        ? card(earned[i + 1])
+                        : const SizedBox.shrink(),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (_footnote(earned, profileSex, age) case final note?) ...[
+            const SizedBox(height: Space.x8),
+            Text(
+              note,
+              key: const ValueKey('home-score-norms'),
+              style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+            ),
+          ],
+          if (earned.length < engine.IdentityLane.values.length) ...[
+            const SizedBox(height: Space.x12),
+            dots,
+          ],
         ],
-        if (earned.length < engine.IdentityLane.values.length) ...[
-          const SizedBox(height: Space.x12),
-          dots,
-        ],
-      ],
+      ),
     );
   }
 }
@@ -311,7 +320,7 @@ class _EarnedScore extends StatelessWidget {
         borderRadius: BorderRadius.circular(Radii.card),
         child: Container(
           decoration: BoxDecoration(
-            color: t.bgRaised,
+            color: t.bgBase,
             border: Border.all(color: t.lineHair),
             borderRadius: BorderRadius.circular(Radii.card),
           ),

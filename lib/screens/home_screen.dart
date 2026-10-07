@@ -20,6 +20,7 @@ import '../widgets/home_scores.dart';
 import '../widgets/readiness_line.dart';
 import '../widgets/load_warning.dart';
 import '../widgets/recent_activity.dart';
+import '../widgets/section_card.dart';
 import 'progress_screen.dart';
 
 /// Scores-first Home. Start opens setup with the saved session unchanged;
@@ -237,7 +238,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               child: Column(
                 children: [
-                  const SizedBox(height: Space.x8),
                   const SizedBox(height: Space.x16),
                   FutureBuilder<_HomeData>(
                     future: _data,
@@ -361,10 +361,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           const SizedBox(height: Space.x16),
                           if (data != null) ...[
-                            WeekStrip(
-                              runs: data.runs,
-                              zones: services.hrZones,
-                              now: _now,
+                            SectionCard(
+                              child: WeekStrip(
+                                runs: data.runs,
+                                zones: services.hrZones,
+                                now: _now,
+                              ),
                             ),
                             const SizedBox(height: Space.x16),
                           ],
@@ -382,10 +384,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       );
                     },
                   ),
-                  const SizedBox(height: Space.x12),
                   if (perms != null && !perms.canRecord)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: Space.x12),
+                      padding: const EdgeInsets.only(bottom: Space.x16),
                       child: InkWell(
                         onTap: () => _start(null),
                         child: Text(
@@ -430,8 +431,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       );
                     },
                   ),
-                  const SizedBox(height: Space.x24),
-                  const SizedBox(height: Space.x24),
+                  const SizedBox(height: Space.x8),
                 ],
               ),
             ),
@@ -458,61 +458,69 @@ class _ProgressHero extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final st = headline.statement;
     if (st == null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      return SectionCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              headline.title,
+              style: RunSoloType.pageHeadline.copyWith(color: t.inkPrimary),
+            ),
+            Text(
+              headline.line,
+              style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+            ),
+          ],
+        ),
+      );
+    }
+    return SectionCard(
+      accent: t.laneFill(st.lane),
+      child: Column(
+        key: const ValueKey('home-statement'),
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Huge, in the colour of the score it refers to (>= 3:1, 24 sp+).
+          Text(
+            st.big,
+            key: const ValueKey('home-statement-big'),
+            style: RunSoloType.statement56.copyWith(color: t.laneFill(st.lane)),
+          ),
+          const SizedBox(height: Space.x4),
+          Text(
+            st.tail,
+            style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+          ),
+          const SizedBox(height: Space.x8),
+          Container(
+            key: const ValueKey('home-statement-tag'),
+            padding: const EdgeInsets.symmetric(
+              horizontal: Space.x8,
+              vertical: Space.x4,
+            ),
+            decoration: BoxDecoration(
+              color: t.inkPrimary,
+              borderRadius: BorderRadius.circular(Radii.chip),
+            ),
+            child: Text(
+              st.tag,
+              style: RunSoloType.micro11.copyWith(color: t.bgBase),
+            ),
+          ),
+          const SizedBox(height: Space.x12),
           Text(
             headline.title,
-            style: RunSoloType.pageHeadline.copyWith(color: t.inkPrimary),
+            style: RunSoloType.micro11.copyWith(
+              color: t.laneText(st.lane),
+              fontWeight: FontWeight.w700,
+            ),
           ),
           Text(
             headline.line,
             style: RunSoloType.body15.copyWith(color: t.inkSecondary),
           ),
         ],
-      );
-    }
-    return Column(
-      key: const ValueKey('home-statement'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Huge, in the colour of the score it refers to (>= 3:1, 24 sp+).
-        Text(
-          st.big,
-          key: const ValueKey('home-statement-big'),
-          style: RunSoloType.statement56.copyWith(color: t.laneFill(st.lane)),
-        ),
-        const SizedBox(height: Space.x4),
-        Text(st.tail, style: RunSoloType.body17.copyWith(color: t.inkPrimary)),
-        const SizedBox(height: Space.x8),
-        Container(
-          key: const ValueKey('home-statement-tag'),
-          padding: const EdgeInsets.symmetric(
-            horizontal: Space.x8,
-            vertical: Space.x4,
-          ),
-          decoration: BoxDecoration(
-            color: t.inkPrimary,
-            borderRadius: BorderRadius.circular(Radii.chip),
-          ),
-          child: Text(
-            st.tag,
-            style: RunSoloType.micro11.copyWith(color: t.bgBase),
-          ),
-        ),
-        const SizedBox(height: Space.x12),
-        Text(
-          headline.title,
-          style: RunSoloType.micro11.copyWith(
-            color: t.laneText(st.lane),
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        Text(
-          headline.line,
-          style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -558,80 +566,82 @@ class _GetBetter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (reason != null)
-          Text(
-            'HOW TO GET BETTER',
-            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-          ),
-        if (summary != null) ...[
-          const SizedBox(height: Space.x4),
-          Text(
-            summary!,
-            key: const ValueKey('home-plan-line'),
-            style: RunSoloType.body15.copyWith(color: t.inkPrimary),
-          ),
-        ],
-        if (reason != null) ...[
-          const SizedBox(height: Space.x4),
-          Text(
-            reason!,
-            key: const ValueKey('home-recommendation'),
-            style: RunSoloType.body15.copyWith(
-              color: summary == null ? t.inkPrimary : t.inkSecondary,
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (reason != null)
+            Text(
+              'HOW TO GET BETTER',
+              style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
             ),
-          ),
-        ],
-        if (target != null) ...[
-          const SizedBox(height: Space.x4),
-          Text(
-            target!,
-            key: const ValueKey('home-plan-target'),
-            style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-          ),
-        ],
-        const SizedBox(height: Space.x12),
-        if (warning != null) ...[warning!, const SizedBox(height: Space.x12)],
-        Row(
-          children: [
-            Expanded(
-              child: FilledButton(
-                onPressed: onStart,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(startLabel, maxLines: 1),
+          if (summary != null) ...[
+            const SizedBox(height: Space.x4),
+            Text(
+              summary!,
+              key: const ValueKey('home-plan-line'),
+              style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+            ),
+          ],
+          if (reason != null) ...[
+            const SizedBox(height: Space.x4),
+            Text(
+              reason!,
+              key: const ValueKey('home-recommendation'),
+              style: RunSoloType.body15.copyWith(
+                color: summary == null ? t.inkPrimary : t.inkSecondary,
+              ),
+            ),
+          ],
+          if (target != null) ...[
+            const SizedBox(height: Space.x4),
+            Text(
+              target!,
+              key: const ValueKey('home-plan-target'),
+              style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+            ),
+          ],
+          const SizedBox(height: Space.x12),
+          if (warning != null) ...[warning!, const SizedBox(height: Space.x12)],
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: onStart,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(startLabel, maxLines: 1),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: Space.x8),
-            OutlinedButton(onPressed: onChange, child: const Text('Change')),
-          ],
-        ),
-        if (anywayLabel != null)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              key: const ValueKey('home-do-anyway'),
-              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-              onPressed: onAnyway,
-              child: Text(anywayLabel!),
-            ),
+              const SizedBox(width: Space.x8),
+              OutlinedButton(onPressed: onChange, child: const Text('Change')),
+            ],
           ),
-        if (planLabel != null)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              key: const ValueKey('home-plan-link'),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: Space.x12),
+          if (anywayLabel != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: const ValueKey('home-do-anyway'),
+                style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                onPressed: onAnyway,
+                child: Text(anywayLabel!),
               ),
-              onPressed: onPlan,
-              child: Text(planLabel!),
             ),
-          ),
-      ],
+          if (planLabel != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: const ValueKey('home-plan-link'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: Space.x12),
+                ),
+                onPressed: onPlan,
+                child: Text(planLabel!),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
