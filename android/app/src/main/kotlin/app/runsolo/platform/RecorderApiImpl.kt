@@ -357,6 +357,10 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
             .commit()
     }
 
+    override fun setCoachSlowdown(slowdown: Double?) {
+        active()?.coachSlowdown = slowdown
+    }
+
     /** The coaching the app set before this run started (also read on a resume); null = off or never set. */
     internal fun voiceCoachFromPrefs(): VoiceCoach.Config? {
         if (!prefs.getBoolean(RecorderService.PREF_VC_ON, false)) return null

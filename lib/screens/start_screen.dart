@@ -396,6 +396,10 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       settings: s,
       zones: services.hrZones,
       planned: planned,
+      warnedEasy:
+          planned == null &&
+          identical(widget.preset, PlanStart.easyRun) &&
+          _samePick(PlanStart.easyRun(s), s),
       vdot: _planCtx?.vdot,
       goalPaceSecPerKm: s.goalRun ? _goalAim(s) : null,
     );

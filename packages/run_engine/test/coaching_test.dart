@@ -241,6 +241,30 @@ void main() {
     });
   });
 
+  test('shared Dart/Kotlin live True Pace vectors (fixtures/phase4/'
+      'live_true_pace_vectors.json, LiveTruePace.kt)', () {
+    final fx = jsonDecode(
+      File('test/fixtures/phase4/live_true_pace_vectors.json')
+          .readAsStringSync(),
+    ) as Map<String, Object?>;
+    final cases = (fx['cases']! as List).cast<Map<String, Object?>>();
+    expect(cases, hasLength(16));
+    for (final c in cases) {
+      final got = RunTruePace.live(
+        paceSecPerKm: (c['paceSecPerKm'] as num?)?.toDouble(),
+        gradePct: (c['gradePct'] as num?)?.toDouble(),
+        slowdown: (c['slowdown'] as num?)?.toDouble(),
+        distanceM: (c['distanceM']! as num).toDouble(),
+      );
+      final want = (c['expected'] as num?)?.toDouble();
+      if (want == null) {
+        expect(got, isNull, reason: '$c');
+      } else {
+        expect(got, closeTo(want, 1e-4), reason: '$c');
+      }
+    }
+  });
+
   test('shared Dart/Kotlin hrDrift vectors (fixtures/phase4/'
       'hr_drift_vectors.json, from native #62)', () {
     final fx = jsonDecode(

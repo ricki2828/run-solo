@@ -151,6 +151,8 @@ class _RecordingScreenState extends State<RecordingScreen>
         .then((v) {
           if (mounted && _slowdownRun == run) {
             setState(() => _startSlowdown = v);
+            // The voice coach judges the same True Pace the dial shows.
+            unawaited(_services?.recorder.setCoachSlowdown(v));
           }
         })
         .catchError((Object _) {});

@@ -35,8 +35,10 @@ class VoiceCoach(private val config: Config) {
     /**
      * One tick. [segment] identifies the rep or segment being run (a work step's index; 0 for a
      * run with no steps) and is null when nothing is coachable (paused, warm-up, recovery,
-     * cool-down); [segmentActiveMs] is active time into it. [paceSecPerKm] null = no pace now.
-     * [hr] null = no strap or a stale reading. [msToPhaseEnd] null = unknown or open-ended.
+     * cool-down); [segmentActiveMs] is active time into it. [paceSecPerKm] is the live TRUE pace
+     * ([LiveTruePace], the number the run screen shows), null when not moving or no pace yet. [hr]
+     * null = no strap or a stale reading. [msToPhaseEnd] null = unknown or open-ended. [wideBand]:
+     * a trail run or a grade over 3%, where the band widens to [WIDE_BAND_SEC].
      */
     data class Input(
         val t: Long,
@@ -46,6 +48,7 @@ class VoiceCoach(private val config: Config) {
         val hr: Double?,
         val msToPhaseEnd: Long?,
         val busyUntil: Long,
+        val wideBand: Boolean = false,
     )
 
     enum class Kind { drift, status }
@@ -56,6 +59,14 @@ class VoiceCoach(private val config: Config) {
     private var nextEvalMs = FIRST_EVAL_MS
     private var dueSinceT: Long? = null
     private var lastWasOnPace = false
+
+    // Smoothed pace: the last [WINDOW_SAMPLES] moving ticks (about 30 s), checked every [CHECK_EVERY_MS].
+    private val window = ArrayDeque<Double>()
+    private var nextCheckMs = CHECK_EVERY_MS
+    private var checkDir = 0 // -1 fast, 0 on target, +1 slow; only meaningful once checked
+    private var checked = false
+    private var offStreak = 0
+    private var checkDelta = 0.0
     private var aboveSinceT: Long? = null
     private var lastDriftT: Long? = null
 
@@ -66,11 +77,20 @@ class VoiceCoach(private val config: Config) {
             nextEvalMs = FIRST_EVAL_MS
             dueSinceT = null
             lastWasOnPace = false
+            window.clear()
+            nextCheckMs = CHECK_EVERY_MS
+            checked = false
+            offStreak = 0
         }
         if (i.segment == null) {
             aboveSinceT = null
             return null
         }
+        i.paceSecPerKm?.let {
+            window.addLast(it)
+            while (window.size > WINDOW_SAMPLES) window.removeFirst()
+        }
+        check(i)
         val drift = driftAbove(i)
         val quiet = i.busyUntil <= i.t && (i.msToPhaseEnd == null || i.msToPhaseEnd > NEAR_END_MS)
         // Drift first: it outranks status, and a status that comes due while it speaks goes stale.
@@ -102,10 +122,30 @@ class VoiceCoach(private val config: Config) {
         return Drift(zone, maxOf(since + DRIFT_AFTER_MS, coolOff))
     }
 
+    /**
+     * A pace check every [CHECK_EVERY_MS]: the smoothed pace against the target band. Off the band the
+     * same way twice running is what makes a line; one noisy check never does.
+     */
+    private fun check(i: Input) {
+        val target = config.targetPaceSecPerKm ?: return
+        if (i.paceSecPerKm == null || i.segmentActiveMs < nextCheckMs || window.size < MIN_SAMPLES) return
+        nextCheckMs = i.segmentActiveMs + CHECK_EVERY_MS
+        checkDelta = window.average() - target
+        val band = if (i.wideBand) maxOf(config.bandSecPerKm, WIDE_BAND_SEC) else config.bandSecPerKm
+        val dir = when {
+            checkDelta < -band -> -1
+            checkDelta > band && !config.slowerIsFine -> 1
+            else -> 0
+        }
+        offStreak = if (dir != 0 && checked && dir == checkDir) offStreak + 1 else if (dir != 0) 1 else 0
+        checkDir = dir
+        checked = true
+    }
+
     private fun status(i: Input, quiet: Boolean): Line? {
-        val target = config.targetPaceSecPerKm ?: return null
+        if (config.targetPaceSecPerKm == null || !checked || i.paceSecPerKm == null) return null
         if (i.segmentActiveMs < nextEvalMs) return null
-        val pace = i.paceSecPerKm ?: return null
+        if (checkDir != 0 && offStreak < 2) return null // wait for the second check
         if (i.msToPhaseEnd != null && i.msToPhaseEnd <= NEAR_END_MS) return null
         val due = dueSinceT ?: i.t.also { dueSinceT = it }
         // Could not start in time: the moment has passed, so skip this slot rather than say it late.
@@ -115,16 +155,14 @@ class VoiceCoach(private val config: Config) {
         }
         if (!quiet) return null
         skipSlot(i)
-        val delta = pace - target
-        val band = config.bandSecPerKm
-        val secs = maxOf(1L, abs(delta).roundToLong())
+        val secs = maxOf(1L, abs(checkDelta).roundToLong())
         val unit = if (secs == 1L) "second" else "seconds"
-        return when {
-            delta < -band -> {
+        return when (checkDir) {
+            -1 -> {
                 lastWasOnPace = false
                 Line(Kind.status, "Ease off, $secs $unit fast")
             }
-            delta > band && !config.slowerIsFine -> {
+            1 -> {
                 lastWasOnPace = false
                 Line(Kind.status, "Pick it up, $secs $unit slow")
             }
@@ -148,6 +186,18 @@ class VoiceCoach(private val config: Config) {
 
         /** The first status check, into each rep or segment. */
         const val FIRST_EVAL_MS = 30_000L
+
+        /** The pace is smoothed over this many moving ticks (about 30 s at 1 Hz). */
+        const val WINDOW_SAMPLES = 30
+
+        /** Fewer smoothed ticks than this and there is no pace worth judging yet. */
+        const val MIN_SAMPLES = 10
+
+        /** The smoothed pace is checked against the band this often; two off-band checks in a row make a line. */
+        const val CHECK_EVERY_MS = 15_000L
+
+        /** The band on a trail run or above 3% grade. */
+        const val WIDE_BAND_SEC = 8.0
 
         /** Then one check a minute. */
         const val EVERY_MS = 60_000L

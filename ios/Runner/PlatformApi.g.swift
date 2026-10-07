@@ -3314,6 +3314,10 @@ protocol RecorderApi {
   /// Voice coaching for the next run and any run resumed after it: persisted
   /// natively, never changes a run's journal or a replay.
   func setVoiceCoach(config: VoiceCoachConfig) throws
+  /// The run's start heat slowdown (a fraction, null = none), for the live
+  /// True Pace the voice coach judges: the figure the run screen's live TRUE
+  /// pace uses, sent once it is fetched. Applies to the run in progress only.
+  func setCoachSlowdown(slowdown: Double?) throws
   /// The end-of-run line: distance, time, average pace ([includePace] false
   /// for a 4x4 or Cooper, where a whole-run pace means nothing) and (from
   /// 20 m) the climb in [units], then [verdict] (the result screen's own words, already
@@ -3674,6 +3678,24 @@ class RecorderApiSetup {
       }
     } else {
       setVoiceCoachChannel.setMessageHandler(nil)
+    }
+    /// The run's start heat slowdown (a fraction, null = none), for the live
+    /// True Pace the voice coach judges: the figure the run screen's live TRUE
+    /// pace uses, sent once it is fetched. Applies to the run in progress only.
+    let setCoachSlowdownChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.setCoachSlowdown\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      setCoachSlowdownChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let slowdownArg: Double? = nilOrValue(args[0])
+        do {
+          try api.setCoachSlowdown(slowdown: slowdownArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      setCoachSlowdownChannel.setMessageHandler(nil)
     }
     /// The end-of-run line: distance, time, average pace ([includePace] false
     /// for a 4x4 or Cooper, where a whole-run pace means nothing) and (from

@@ -3662,6 +3662,12 @@ interface RecorderApi {
    */
   fun setVoiceCoach(config: VoiceCoachConfig)
   /**
+   * The run's start heat slowdown (a fraction, null = none), for the live
+   * True Pace the voice coach judges: the figure the run screen's live TRUE
+   * pace uses, sent once it is fetched. Applies to the run in progress only.
+   */
+  fun setCoachSlowdown(slowdown: Double?)
+  /**
    * The end-of-run line: distance, time, average pace ([includePace] false
    * for a 4x4 or Cooper, where a whole-run pace means nothing) and (from
    * 20 m) the climb in [units], then [verdict] (the result screen's own words, already
@@ -4036,6 +4042,24 @@ interface RecorderApi {
             val configArg = args[0] as VoiceCoachConfig
             val wrapped: List<Any?> = try {
               api.setVoiceCoach(configArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.setCoachSlowdown$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val slowdownArg = args[0] as Double?
+            val wrapped: List<Any?> = try {
+              api.setCoachSlowdown(slowdownArg)
               listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)

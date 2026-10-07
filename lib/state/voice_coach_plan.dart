@@ -19,11 +19,12 @@ abstract final class VoiceCoachPlan {
   /// Target status: a goal's pace, or a plan session's True Pace estimate
   /// (interval reps, goal, easy, long). Easy and long paces are "or slower",
   /// so slow counts as on target there. Zone drift: plan easy sessions only,
-  /// planned zone 2. Everything else gets the next-step line and nothing else.
+  /// planned zone 2 (and Home's warned "Start Easy run", [warnedEasy]). Everything else gets the next-step line and nothing else.
   static VoiceCoachConfig build({
     required AppSettings settings,
     required engine.HrZones zones,
     engine.BlockSession? planned,
+    bool warnedEasy = false,
     double? vdot,
     double? goalPaceSecPerKm,
   }) {
@@ -37,7 +38,9 @@ abstract final class VoiceCoachPlan {
       pace = engine.BlockPaces.target(planned, vdot);
     }
     if (pace != null && !(pace.isFinite && pace > 0)) pace = null;
-    final easy = kind == engine.BlockKind.easy;
+    // Home's warned "Start Easy run" is an easy run with no plan session:
+    // no pace, but heart rate is held to zone 2 like a plan easy session.
+    final easy = kind == engine.BlockKind.easy || warnedEasy;
     return VoiceCoachConfig(
       enabled: on,
       full: full,

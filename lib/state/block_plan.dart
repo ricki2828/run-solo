@@ -142,6 +142,12 @@ abstract final class PlanInputs {
 
 /// The settings change that presets Start for a planned session.
 abstract final class PlanStart {
+  /// Home's "Start Easy run" while the load warning is up: a plain free run.
+  /// Always passed as this one tear-off, so Start can tell it was this pick
+  /// (voice coaching then watches heart rate against zone 2).
+  static AppSettings easyRun(AppSettings s) =>
+      s.copyWith(lastMode: RecordMode.free, goalRun: false);
+
   static AppSettings Function(AppSettings) apply(engine.BlockSession s) {
     switch (s.kind) {
       case engine.BlockKind.interval:

@@ -32,6 +32,7 @@ import app.runsolo.core.model.Units
 import app.runsolo.core.live.CooperCurve
 import app.runsolo.core.live.GoalCoach
 import app.runsolo.core.live.LiveCoach
+import app.runsolo.core.live.LiveTruePace
 import app.runsolo.core.live.VoiceCoach
 import app.runsolo.core.record.CueWords
 import app.runsolo.core.record.SummaryWords
@@ -61,6 +62,7 @@ import app.runsolo.platform.RouteProgress
 import app.runsolo.platform.StateEvent
 import app.runsolo.platform.TickEvent
 import app.runsolo.platform.toPigeon
+import kotlin.math.abs
 
 /**
  * One run in progress: the core-jvm pieces wired to the device (plan §2 rule 2 — recording
@@ -897,6 +899,13 @@ class RecordingSession(
 
     private var coachLines: VoiceCoach? = null
 
+    /**
+     * The run's start heat slowdown (fraction, null = no weather), from the app's `setCoachSlowdown` once
+     * the first fix has fetched it: the same figure the run screen's live TRUE pace uses.
+     */
+    @Volatile
+    var coachSlowdown: Double? = null
+
     /** Settings → Voice → "Km splits" (default on): a Free run says each km. Set before start and on change. */
     @Volatile
     var kmSplits: Boolean = true
@@ -949,7 +958,6 @@ class RecordingSession(
         emitState()
     }
 
-    /** Replay only (T4): what was said, at trace ms, for the emulator's transcript check. */
     /**
      * Target status and zone drift ([VoiceCoach]), on the tick so they speak with the screen off. A
      * coachable segment is a work step (or the whole run when it has no steps); nothing in a pause,
@@ -967,21 +975,29 @@ class RecordingSession(
             st.phase == Phase.work -> st.stepIndex
             else -> null
         }
+        // Like for like: the live TRUE pace the run screen shows (hills and heat out), against a True Pace target.
+        val grade = liveElev.grade
+        val truePace = LiveTruePace.apply(pace, grade, coachSlowdown, ticker.distanceM)
+        // A distance rep has no time left to read: estimate it from the metres to go at the current pace, and treat the last 100 m as the end.
+        val toEndMs = st.stepRemainingMs ?: st.stepRemainingM?.let { m -> if (m <= COACH_LAST_M) 0L else pace?.let { (m * it).toLong() } }
+        // The sample's HR is null once the strap's last reading is over 2 s old (HrJoin.hrAt), so a dropped strap reaches the coach as null.
         val line = vc.tick(
             VoiceCoach.Input(
                 t = t,
                 segment = segment,
                 segmentActiveMs = if (steps.isEmpty()) st.activeMs else st.phaseActiveMs,
-                paceSecPerKm = pace,
+                paceSecPerKm = truePace,
                 hr = hr?.toDouble(),
-                msToPhaseEnd = st.stepRemainingMs,
+                msToPhaseEnd = toEndMs,
                 busyUntil = if (cues.nudgePending) t + 1 else cues.speechBusyUntil,
+                wideBand = mode == RunMode.trail || (grade != null && abs(grade) > COACH_STEEP_GRADE),
             ),
         ) ?: return
         Log.i(TAG, "coach ${line.kind}: ${line.text}")
         cues.announce(line.text)
     }
 
+    /** Replay only (T4): what was said, at trace ms, for the emulator's transcript check. */
     private fun logSaid(text: String) {
         val r = replay ?: return
         Log.i(TAG, "said ${r.traceMs(clock())} $text")
@@ -1128,6 +1144,10 @@ class RecordingSession(
 
         /** The strip shows the next turn from this far out. */
         private const val TURN_STRIP_M = 300.0
+
+        /** Voice coaching: a distance rep this close to its end counts as ended; a grade over 3% widens the band. */
+        private const val COACH_LAST_M = 100.0
+        private const val COACH_STEEP_GRADE = 0.03
         private const val VOLUME_KEY_UNAVAILABLE_MARKER = "volume-key-unavailable"
     }
 }

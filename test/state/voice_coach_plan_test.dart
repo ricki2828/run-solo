@@ -130,4 +130,25 @@ void main() {
       reason: 'no vdot, no pace estimate',
     );
   });
+
+  test('Home warned Start Easy run: drift against zone 2, no pace', () {
+    final c = VoiceCoachPlan.build(
+      settings: const AppSettings(),
+      zones: zones,
+      warnedEasy: true,
+      vdot: vdot,
+    );
+    expect(c.plannedMaxZone, 2);
+    expect(c.zoneBottomsBpm, [114.0, 133.0, 152.0, 171.0]);
+    expect(c.targetPaceSecPerKm, isNull);
+    expect(
+      VoiceCoachPlan.build(
+        settings: const AppSettings(coachingDetail: CoachingDetail.minimal),
+        zones: zones,
+        warnedEasy: true,
+      ).plannedMaxZone,
+      isNull,
+      reason: 'Minimal is next step only',
+    );
+  });
 }

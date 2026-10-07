@@ -741,6 +741,11 @@ abstract class RecorderApi {
   /// natively, never changes a run's journal or a replay.
   void setVoiceCoach(VoiceCoachConfig config);
 
+  /// The run's start heat slowdown (a fraction, null = none), for the live
+  /// True Pace the voice coach judges: the figure the run screen's live TRUE
+  /// pace uses, sent once it is fetched. Applies to the run in progress only.
+  void setCoachSlowdown(double? slowdown);
+
   /// The end-of-run line: distance, time, average pace ([includePace] false
   /// for a 4x4 or Cooper, where a whole-run pace means nothing) and (from
   /// 20 m) the climb in [units], then [verdict] (the result screen's own words, already

@@ -170,9 +170,6 @@ class _HomeScreenState extends State<HomeScreen> {
     };
   }
 
-  static AppSettings _easyRun(AppSettings s) =>
-      s.copyWith(lastMode: RecordMode.free, goalRun: false);
-
   void _openProgress() {
     if (widget.onShowProgress != null) {
       widget.onShowProgress!();
@@ -329,8 +326,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             startLabel: hardPick
                                 ? 'Start Easy run'
                                 : startLabel,
-                            onStart: () =>
-                                _start(hardPick ? _easyRun : plannedApply),
+                            onStart: () => _start(
+                              hardPick ? PlanStart.easyRun : plannedApply,
+                            ),
                             anywayLabel: hardPick
                                 ? 'Do the $plannedName anyway'
                                 : null,

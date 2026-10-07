@@ -669,6 +669,13 @@ class FakeRecorderGateway implements RecorderGateway {
   Future<void> setVoiceCoach(VoiceCoachConfig config) async =>
       voiceCoach = config;
 
+  /// What `setCoachSlowdown` was last given.
+  double? coachSlowdown;
+
+  @override
+  Future<void> setCoachSlowdown(double? slowdown) async =>
+      coachSlowdown = slowdown;
+
   /// What `speakRunSummary` was last asked to say (null: never called).
   SpokenSummaryCall? lastSpokenSummary;
 
