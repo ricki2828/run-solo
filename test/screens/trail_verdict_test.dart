@@ -103,7 +103,7 @@ void main() {
       final now = trailLoopRun(n: 2, start: d2, secPerKm: 400);
       await show(tester, now, [old]);
       expect(word(tester), 'FASTER');
-      expect(wordColor(tester), NightSession.semImproving);
+      expect(wordColor(tester), RunSoloTokens.light.semImproving);
       expect(
         find.byKey(const ValueKey('trail-verdict-kicker')),
         findsOneWidget,
@@ -127,7 +127,7 @@ void main() {
       final now = trailLoopRun(n: 3, start: d3, secPerKm: 450);
       await show(tester, now, [old]);
       expect(word(tester), 'SLOWER');
-      expect(wordColor(tester), NightSession.semSlower);
+      expect(wordColor(tester), RunSoloTokens.light.semSlower);
       expect(sub(tester), '3:00 slower than 12 Sep, your last run here.');
       expect(find.byKey(const ValueKey('pb-chip')), findsNothing);
       expect(find.textContaining('also your best here'), findsOneWidget);

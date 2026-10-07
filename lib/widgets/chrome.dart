@@ -405,47 +405,53 @@ class RunAppBar extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final back = showBack ?? (ModalRoute.canPopOf(context) ?? false);
-    return AppBar(
-      toolbarHeight: height,
-      automaticallyImplyLeading: false,
-      leadingWidth: back ? 64 : 0,
-      leading: back
-          ? Align(
-              alignment: Alignment.centerLeft,
-              child: IconButton(
-                tooltip: 'Back',
+    // Light bar: ground fill, ink title in the display face, hairline under it.
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: t.lineHair)),
+      ),
+      child: AppBar(
+        toolbarHeight: height,
+        automaticallyImplyLeading: false,
+        leadingWidth: back ? 64 : 0,
+        leading: back
+            ? Align(
+                alignment: Alignment.centerLeft,
+                child: IconButton(
+                  tooltip: 'Back',
+                  constraints: const BoxConstraints(
+                    minWidth: minTarget,
+                    minHeight: minTarget,
+                  ),
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+              )
+            : null,
+        titleSpacing: back ? 0 : Space.screenGutter,
+        centerTitle: false,
+        title:
+            titleWidget ??
+            Text(
+              title!.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: RunSoloType.appBarTitle.copyWith(color: t.inkPrimary),
+            ),
+        actions: [
+          if (trailing != null)
+            Padding(
+              padding: const EdgeInsets.only(right: Space.screenGutter),
+              child: ConstrainedBox(
                 constraints: const BoxConstraints(
                   minWidth: minTarget,
                   minHeight: minTarget,
                 ),
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).maybePop(),
+                child: Center(child: trailing),
               ),
-            )
-          : null,
-      titleSpacing: back ? 0 : Space.screenGutter,
-      centerTitle: false,
-      title:
-          titleWidget ??
-          Text(
-            title!.toUpperCase(),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: RunSoloType.appBarTitle.copyWith(color: t.inkPrimary),
-          ),
-      actions: [
-        if (trailing != null)
-          Padding(
-            padding: const EdgeInsets.only(right: Space.screenGutter),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                minWidth: minTarget,
-                minHeight: minTarget,
-              ),
-              child: Center(child: trailing),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }

@@ -78,7 +78,7 @@ class _TrailSuggestCardState extends State<TrailSuggestCard> {
                 const TextSpan(text: 'Looks like a trail run. Save it as '),
                 TextSpan(
                   text: 'Trail',
-                  style: TextStyle(color: AuroraRunType.trail),
+                  style: TextStyle(color: t.typeTrail),
                 ),
                 const TextSpan(text: '?'),
               ],

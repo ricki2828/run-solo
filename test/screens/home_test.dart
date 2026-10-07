@@ -309,7 +309,7 @@ void main() {
         .toList();
     expect(shapes, hasLength(2));
     for (var i = 0; i < 2; i++) {
-      expect(shapes[i].color, runTypeColor(runs[i]));
+      expect(shapes[i].color, runTypeColor(runs[i], RunSoloTokens.light));
     }
     expect(shapes[0].color, isNot(shapes[1].color));
   });
@@ -334,9 +334,9 @@ void main() {
     );
     await pumpApp(tester, services, home: HomeScreen(now: now));
     final expected = {
-      'Norwegian 4x4': AuroraRunType.intervals,
-      'Free run': AuroraRunType.free,
-      'Laps run': AuroraRunType.laps,
+      'Norwegian 4x4': RunSoloTokens.light.typeIntervals,
+      'Free run': RunSoloTokens.light.typeFree,
+      'Laps run': RunSoloTokens.light.typeLaps,
     };
     for (final entry in expected.entries) {
       final rich = tester.widget<RichText>(cardTitle(entry.key));

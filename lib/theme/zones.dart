@@ -47,7 +47,21 @@ abstract final class HrZones {
     Color(0xFFFF4D5E), // Z5 red
   ];
 
+  /// The brand zone ramp for fills on light screens (bars, swatches). Flat,
+  /// clear colour; fills are not text, so no 4.5:1 rule. Use
+  /// [distributionLightText] for zone-coloured text.
   static const List<Color> distributionLight = [
+    NightSessionLight.semNoise,
+    Color(0xFF2F6DB5),
+    Color(0xFF2E9E5B),
+    Color(0xFFD9A21B),
+    Color(0xFFE86A1C),
+    Color(0xFFD6283B),
+  ];
+
+  /// Darker zone hues for text on the light ground (>= 4.0:1 on every light
+  /// surface).
+  static const List<Color> distributionLightText = [
     NightSessionLight.semNoise,
     Color(0xFF1A63C7),
     Color(0xFF12803F),
@@ -60,6 +74,12 @@ abstract final class HrZones {
       (brightness == Brightness.dark
       ? distributionDark
       : distributionLight)[zone.clamp(0, count)];
+
+  /// [distribution] for zone-coloured text.
+  static Color text(int zone, Brightness brightness) =>
+      (brightness == Brightness.dark
+      ? distributionDark
+      : distributionLightText)[zone.clamp(0, count)];
 
   /// Secondary labels on a zone background. The addendum says Bone at 70 %
   /// (7.0:1 or better on every zone); measured with WCAG relative luminance

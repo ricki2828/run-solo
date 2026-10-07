@@ -52,18 +52,22 @@ flutter:
     - assets/topo/glyphs/
     - assets/topo/glyphs/NotoSans/
     - assets/plans/
+    - assets/fonts/OFL-SairaExtraCondensed.txt
+    - assets/fonts/OFL-SchibstedGrotesk.txt
     # Splash runner photograph (Unsplash license, assets/brand/splash_runner.LICENSE.txt).
     - assets/brand/splash_runner.jpg
 
   # Fonts are bundled (OFL, see assets/fonts/OFL-*.txt). Nothing is fetched at runtime:
   # the app has no network code (plan §2 rule 4).
   fonts:
-    - family: Barlow Condensed
+    - family: Saira Extra Condensed
       fonts:
-        - asset: assets/fonts/BarlowCondensed-SemiBold.ttf
-          weight: 600
-        - asset: assets/fonts/BarlowCondensed-Bold.ttf
+        - asset: assets/fonts/SairaExtraCondensed-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/SairaExtraCondensed-Bold.ttf
           weight: 700
-    - family: Archivo
+        - asset: assets/fonts/SairaExtraCondensed-ExtraBold.ttf
+          weight: 800
+    - family: Schibsted Grotesk
       fonts:
-        - asset: assets/fonts/Archivo-Variable.ttf
+        - asset: assets/fonts/SchibstedGrotesk-Variable.ttf

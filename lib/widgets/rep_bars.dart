@@ -91,7 +91,7 @@ class RepBars extends StatelessWidget {
     }
 
     final barColor = switch (tone) {
-      RepTone.faster => NightSession.semImproving,
+      RepTone.faster => t.semImproving,
       RepTone.slower => t.semSlower,
       RepTone.neutral => t.inkPrimary,
     };
@@ -129,7 +129,7 @@ class RepBars extends StatelessWidget {
             // verdict's tone. NO REAL CHANGE / HOLDING / BASELINE stay in ink
             // even when single reps came in a few seconds faster.
             final deltaColor = switch (tone) {
-              RepTone.faster => NightSession.semImproving,
+              RepTone.faster => t.semImproving,
               RepTone.slower => t.semSlower,
               RepTone.neutral => t.inkSecondary,
             };
@@ -220,7 +220,7 @@ class RepBars extends StatelessWidget {
             if (i < reps.length - 1) rows.add(const SizedBox(height: rowGap));
           }
           final slopeColor = switch (tone) {
-            RepTone.faster => NightSession.semImproving,
+            RepTone.faster => t.semImproving,
             RepTone.slower => t.semSlower,
             RepTone.neutral => t.inkSecondary,
           };

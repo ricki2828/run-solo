@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// ▲ ▼ ▬ drawn on a canvas. The bundled fonts (Barlow Condensed, Archivo)
+/// ▲ ▼ ▬ drawn on a canvas. The bundled fonts (Saira Extra Condensed, Schibsted Grotesk)
 /// carry no geometric-shape glyphs, so a text arrow renders as tofu on
 /// devices without a fallback font and in every golden. Every verdict still
 /// carries the word; this is the arrow beside it (design brief §2.2

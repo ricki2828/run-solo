@@ -43,7 +43,7 @@ void main() {
         find.byKey(ValueKey('verdict-glyph-${r2.id}')),
       );
       expect(g2.direction, DeltaDirection.up);
-      expect(g2.color, RunSoloTokens.dark.semFaster);
+      expect(g2.color, RunSoloTokens.light.semFaster);
       expect(find.byKey(ValueKey('verdict-glyph-${laps.id}')), findsNothing);
       expect(find.byKey(ValueKey('verdict-glyph-${free.id}')), findsNothing);
       expect(find.text('LAPS'), findsWidgets);

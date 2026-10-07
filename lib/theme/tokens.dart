@@ -56,20 +56,24 @@ abstract final class AuroraRunType {
   static const Color trail = Color(0xFFB8C04C);
 }
 
-/// Light variant (design brief §2.2). Not the default; kept so the tokens stay paired.
+/// Light everyday palette (brand build, 7-Oct-2026). Ground #FBFBF9, white
+/// raised surface with a hairline, ink #121417. Contrast on the ground:
+/// ink 17.8, secondary 7.9, quiet 4.6, mint 4.6, vermillion 4.8 (all >= 4.5).
 abstract final class NightSessionLight {
-  static const Color bgBase = Color(0xFFF4F2EE);
+  static const Color bgBase = Color(0xFFFBFBF9);
   static const Color bgRaised = Color(0xFFFFFFFF);
-  static const Color bgSunken = Color(0xFFE9E6E0);
-  static const Color lineHair = Color(0x1A000000);
-  static const Color inkPrimary = Color(0xFF0F1114);
-  static const Color inkSecondary = Color(0xFF4B5058);
-  static const Color inkMuted = Color(0xFF8A8F98);
-  static const Color accentArc = Color(0xFF0098B2);
+  static const Color bgSunken = Color(0xFFF1F2EE);
+  static const Color lineHair = Color(0xFFE3E5E0);
+  static const Color inkPrimary = Color(0xFF121417);
+  static const Color inkSecondary = Color(0xFF4A5058);
+  // Brief asked for #6E7781 (4.39:1 on the ground); nudged to clear 4.5.
+  static const Color inkMuted = Color(0xFF6C747E);
+  static const Color accentArc = Color(0xFF007E93);
   static const Color accentArcInk = Color(0xFFFFFFFF);
   static const Color semFaster = accentArc;
-  static const Color semImproving = Color(0xFF0B7F5B); // mint, light ground
-  static const Color semSlower = Color(0xFFC93A1C);
+  // Brief example #1D8A5A is 4.19:1; this is the same hue at 4.6:1.
+  static const Color semImproving = Color(0xFF1C8356); // mint, light ground
+  static const Color semSlower = Color(0xFFC8401E); // vermillion
   static const Color semHolding = inkPrimary;
   static const Color semNoise = Color(0xFF6B7079);
   static const Color semWarn = Color(0xFF8A5A00);
@@ -77,6 +81,19 @@ abstract final class NightSessionLight {
   static const Color hrZone = Color(
     0xFFC2255A,
   ); // rose, darkened for light ground
+  static const Color structureOpen = Color(0xFFB4B8B1); // open interval glyph
+  static const Color grain = Color(0x08000000); // verdict background grain
+}
+
+/// Run-type identities on the light ground: the same hues as [AuroraRunType],
+/// darkened until each is >= 3:1 (large text, graphics) on #FBFBF9.
+abstract final class AuroraRunTypeLight {
+  static const Color free = Color(0xFF0095CE);
+  static const Color laps = Color(0xFF009AAD);
+  static const Color goal = Color(0xFFA270FF);
+  static const Color intervals = Color(0xFFFF31AF);
+  static const Color tests = Color(0xFF2FA100);
+  static const Color trail = Color(0xFF8B9133);
 }
 
 /// Spacing scale in dp (design brief §5).
@@ -124,6 +141,14 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
     required this.semWarn,
     required this.semDanger,
     required this.hrZone,
+    required this.typeFree,
+    required this.typeLaps,
+    required this.typeGoal,
+    required this.typeIntervals,
+    required this.typeTests,
+    required this.typeTrail,
+    required this.structureOpen,
+    required this.grain,
   });
 
   static const RunSoloTokens dark = RunSoloTokens(
@@ -144,6 +169,14 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
     semWarn: NightSession.semWarn,
     semDanger: NightSession.semDanger,
     hrZone: NightSession.hrZone,
+    typeFree: AuroraRunType.free,
+    typeLaps: AuroraRunType.laps,
+    typeGoal: AuroraRunType.goal,
+    typeIntervals: AuroraRunType.intervals,
+    typeTests: AuroraRunType.tests,
+    typeTrail: AuroraRunType.trail,
+    structureOpen: NightSession.structureOpen,
+    grain: NightSession.grain,
   );
 
   static const RunSoloTokens light = RunSoloTokens(
@@ -164,6 +197,14 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
     semWarn: NightSessionLight.semWarn,
     semDanger: NightSessionLight.semDanger,
     hrZone: NightSessionLight.hrZone,
+    typeFree: AuroraRunTypeLight.free,
+    typeLaps: AuroraRunTypeLight.laps,
+    typeGoal: AuroraRunTypeLight.goal,
+    typeIntervals: AuroraRunTypeLight.intervals,
+    typeTests: AuroraRunTypeLight.tests,
+    typeTrail: AuroraRunTypeLight.trail,
+    structureOpen: NightSessionLight.structureOpen,
+    grain: NightSessionLight.grain,
   );
 
   final Color bgBase;
@@ -186,6 +227,18 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
   final Color semDanger;
   final Color hrZone;
 
+  /// Run-type identities (which run, never how good it was).
+  final Color typeFree;
+  final Color typeLaps;
+  final Color typeGoal;
+  final Color typeIntervals;
+  final Color typeTests;
+  final Color typeTrail;
+
+  /// Open warm-up / cool-down glyph bars and the verdict grain.
+  final Color structureOpen;
+  final Color grain;
+
   @override
   RunSoloTokens copyWith({
     Color? bgBase,
@@ -205,6 +258,14 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
     Color? semWarn,
     Color? semDanger,
     Color? hrZone,
+    Color? typeFree,
+    Color? typeLaps,
+    Color? typeGoal,
+    Color? typeIntervals,
+    Color? typeTests,
+    Color? typeTrail,
+    Color? structureOpen,
+    Color? grain,
   }) {
     return RunSoloTokens(
       bgBase: bgBase ?? this.bgBase,
@@ -224,6 +285,14 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
       semWarn: semWarn ?? this.semWarn,
       semDanger: semDanger ?? this.semDanger,
       hrZone: hrZone ?? this.hrZone,
+      typeFree: typeFree ?? this.typeFree,
+      typeLaps: typeLaps ?? this.typeLaps,
+      typeGoal: typeGoal ?? this.typeGoal,
+      typeIntervals: typeIntervals ?? this.typeIntervals,
+      typeTests: typeTests ?? this.typeTests,
+      typeTrail: typeTrail ?? this.typeTrail,
+      structureOpen: structureOpen ?? this.structureOpen,
+      grain: grain ?? this.grain,
     );
   }
 
@@ -249,6 +318,14 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
       semWarn: l(semWarn, other.semWarn),
       semDanger: l(semDanger, other.semDanger),
       hrZone: l(hrZone, other.hrZone),
+      typeFree: l(typeFree, other.typeFree),
+      typeLaps: l(typeLaps, other.typeLaps),
+      typeGoal: l(typeGoal, other.typeGoal),
+      typeIntervals: l(typeIntervals, other.typeIntervals),
+      typeTests: l(typeTests, other.typeTests),
+      typeTrail: l(typeTrail, other.typeTrail),
+      structureOpen: l(structureOpen, other.structureOpen),
+      grain: l(grain, other.grain),
     );
   }
 }
