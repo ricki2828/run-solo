@@ -56,7 +56,7 @@ jobs:
         run: |
           # core: the Kotlin/Native job (macOS minutes) runs only when the shared core or this
           # workflow changed: PRs by their diff, main pushes by the pushed range, else always.
-          core_re='^(android/core-jvm/|ios/|pigeons/|\.github/workflows/ci\.yml$)'
+          core_re='^(android/core-jvm/|ios/|pigeons/)'
           if [ "$EVENT" = "pull_request" ]; then
             range="$BASE...$HEAD"
           elif [ "$EVENT" = "push" ] && [ "$REF" = "refs/heads/main" ] && [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
