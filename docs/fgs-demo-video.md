@@ -11,6 +11,25 @@ with the Play internal-track build (`app.runsolo`), not the dogfood package. Do 
 first at the desk with **replay mode** on the dogfood build so the shot order is rehearsed and
 the screen recorder settings are right; the replay footage is not what gets uploaded.
 
+## 30-second phone version (what to record, simplest)
+
+Real phone, Play internal-track build, location and notifications already allowed. Quick Settings
+screen record, audio off, Show taps on. Use a Free run: no phases to wait for.
+
+1. Start recording. Phone home screen, tap the Run Supreme icon.
+2. Open Start and pick Free.
+3. Tap START FREE RUN. Wait for the timer and a solid GPS dot (5 s).
+4. Pull down the notification shade: show the Run Supreme notification with Stop. Hold 4 s, close it.
+5. Press Home, open any other app (music works), hold 5 s.
+6. Press the power button, screen off, wait 8 s.
+7. Wake the phone: the lock screen shows the notification with the timer still counting. Hold 3 s.
+8. Tap the notification to open Run Supreme: timer is continuous. Hold 3 s.
+9. Tap Stop and confirm. Show the finished run screen.
+10. Pull down the shade: the notification is gone. Stop recording.
+
+Keep the status bar clock visible throughout, trim to under 60 s, upload Unlisted to YouTube, paste
+the link into the FGS form. The longer 4x4 shot list below is the fuller option.
+
 ## Setup
 
 - Phone: Pixel, Play internal-track build installed, location permission already granted
