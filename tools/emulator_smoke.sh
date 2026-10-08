@@ -41,7 +41,7 @@ if ! adb shell pidof "$PKG" > /dev/null; then
 fi
 echo "$PKG running (pid $(adb shell pidof "$PKG"))"
 
-if timeout 60 adb logcat -d | grep -E "FATAL EXCEPTION|E AndroidRuntime.*$PKG" > /tmp/fatal.log; then
+if timeout 60 adb logcat -d | "$(dirname "$0")/app_fatal.sh" "$PKG" > /tmp/fatal.log; then
   echo "fatal exception in logcat:" >&2
   cat /tmp/fatal.log
   exit 1

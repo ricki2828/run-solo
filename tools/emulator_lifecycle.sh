@@ -32,7 +32,7 @@ TRACE=/tmp/trace.ndjson; : > "$TRACE"
 capture_trace() { adb logcat -d -s RunSolo/trace 2>/dev/null | sed -n 's/^.*RunSolo\/trace: //p' >> "$TRACE"; }
 check_fatal() { # <phase>; call BEFORE every logcat -c
   capture_trace
-  if adb logcat -d | grep -E "FATAL EXCEPTION|E AndroidRuntime.*$PKG" > /tmp/fatal.log; then
+  if adb logcat -d | "$(dirname "$0")/app_fatal.sh" "$PKG" > /tmp/fatal.log; then
     echo "[lifecycle] fatal exception during $1:" >&2; cat /tmp/fatal.log >&2; dump; exit 1
   fi
 }

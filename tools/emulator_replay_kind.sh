@@ -33,7 +33,7 @@ wait_for_log() { # <regex> <timeout-s>
   return 1
 }
 check_fatal() {
-  if adb logcat -d | grep -E "FATAL EXCEPTION|E AndroidRuntime.*$PKG" > /tmp/fatal.log; then
+  if adb logcat -d | "$(dirname "$0")/app_fatal.sh" "$PKG" > /tmp/fatal.log; then
     echo "[replay:$KIND] fatal exception during $1:" >&2; cat /tmp/fatal.log >&2; dump; exit 1
   fi
 }
