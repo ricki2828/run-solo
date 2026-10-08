@@ -3,9 +3,8 @@ name: ci
 # CI diet (the repo is private, Actions minutes are metered; macOS costs 10x).
 # - PR push: analyze + test, core-jvm, debug APK (+ lint, unit tests, 16 KB check), brand + topo
 #   checks. Docs-only and *.md changes run nothing.
-# - Push to main: analyze + test, core-jvm, brand + topo checks, the dogfood APK build and ONE
-#   emulator smoke on it (API 36). The debug APK and the emulator matrix already ran on the PR
-#   or run nightly.
+# - Push to main: analyze + test, core-jvm, brand + topo checks and the dogfood APK build. No
+#   emulator minutes per merge; the dogfood R8 build is smoked on API 36 in the nightly.
 # - Nightly (02:00 UTC, main only, skipped when main has no commit in the last 25 h): the debug APK
 #   plus a rotated slice of the emulator work to fit the GitHub-hosted budget: smoke on API 36
 #   and on 34 or 29 on alternate days, and 4 of the 13 replay kinds by day of year (every kind
@@ -383,7 +382,10 @@ jobs:
 
   build-dogfood:
     name: build dogfood APK (arm64, R8, signed)
-    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))) }}
+    # Every push (main, tags), dispatch, full-ci PRs, and the nightly (artifacts suffixed -nightly so
+    # they never pass for the main-push APK that builders download).
+    needs: changes
+    if: ${{ !cancelled() && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci')) || (github.event_name == 'schedule' && needs.changes.outputs.nightly == 'true')) }}
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 40
     env:
@@ -465,13 +467,13 @@ jobs:
           if [ "$SIZE" -gt $((36 * 1048576)) ]; then echo "dogfood APK exceeds 36 MiB (maplibre_gl added ~12.7 MiB, T0)" >&2; exit 1; fi
       - uses: actions/upload-artifact@v4
         with:
-          name: run-solo-dogfood-apk
+          name: run-solo-dogfood-apk${{ github.event_name == 'schedule' && '-nightly' || '' }}
           path: build/app/outputs/flutter-apk/app-arm64-v8a-dogfood-release.apk
           if-no-files-found: error
           retention-days: 30
       - uses: actions/upload-artifact@v4
         with:
-          name: run-solo-dogfood-x64-apk
+          name: run-solo-dogfood-x64-apk${{ github.event_name == 'schedule' && '-nightly' || '' }}
           path: build/app/outputs/flutter-apk/app-x86_64-dogfood-release.apk
           if-no-files-found: error
           retention-days: 7
@@ -717,15 +719,17 @@ jobs:
 
   emulator-dogfood:
     name: emulator smoke, dogfood R8 build (API 36)
+    # Nightly, tags, dispatch and full-ci only: the per-merge main push builds the dogfood APK but
+    # does not smoke it (zero hosted emulator minutes per merge).
     needs: build-dogfood
-    if: ${{ !cancelled() && needs.build-dogfood.result == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))) }}
+    if: ${{ !cancelled() && needs.build-dogfood.result == 'success' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: run-solo-dogfood-x64-apk
+          name: run-solo-dogfood-x64-apk${{ github.event_name == 'schedule' && '-nightly' || '' }}
           path: apk
       - name: Enable KVM
         run: |
