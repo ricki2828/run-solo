@@ -146,18 +146,28 @@ jobs:
         # The aarch64 dev host cannot render them; this Linux runner is the
         # reference. Never fails the job, and still runs when a golden test
         # failed (that is when the fresh PNG is needed).
-        if: ${{ !cancelled() }}
+        if: ${{ failure() }}
         continue-on-error: true
         run: |
           mkdir -p test/golden/goldens
           flutter test --update-goldens test/golden
+      - name: Collect changed and new goldens only (the full set is ~36 MB; artifact quota is 500 MB)
+        if: ${{ failure() }}
+        run: |
+          mkdir -p golden-changed
+          git ls-files --modified --others --exclude-standard -- test/golden/goldens | while read -r f; do
+            rel="${f#test/golden/goldens/}"
+            mkdir -p "golden-changed/$(dirname "$rel")"
+            cp "$f" "golden-changed/$rel"
+          done
+          du -sh golden-changed
       - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
+        if: ${{ failure() }}
         with:
           name: goldens
-          path: test/golden/goldens
+          path: golden-changed
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 3
       - name: Kotlin→Dart contract fixtures are identical copies
         # core-jvm writes the top-level (schema 3) files from the real recording
         # path; schema1/ and schema2/ are frozen older output (plan §18.7,
@@ -260,6 +270,7 @@ jobs:
         with:
           name: regenerated-fixtures
           path: /tmp/regen
+          retention-days: 3
       - name: Fail on fixture drift
         if: ${{ !cancelled() && env.drift == '1' }}
         run: exit 1
@@ -309,6 +320,7 @@ jobs:
         with:
           name: core-native-test-reports
           path: android/core-jvm/build/reports/tests/
+          retention-days: 3
 
   build-apk:
     name: build debug APK + 16 KB check
@@ -373,12 +385,14 @@ jobs:
       - name: 16 KB page-size check (release AAB, includes libapp.so)
         if: ${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
         run: tools/check_16kb_alignment.sh build/app/outputs/bundle/playRelease/app-play-release.aab
+      # Only the emulator jobs (nightly, tags, dispatch, full-ci) consume it.
       - uses: actions/upload-artifact@v4
+        if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
         with:
           name: run-solo-debug-apk
           path: build/dist/app-debug.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 2
 
   build-dogfood:
     name: build dogfood APK (arm64, R8, signed)
@@ -465,18 +479,22 @@ jobs:
           echo "dogfood arm64 APK: ${MIB} MiB ($SIZE bytes)"
           echo "### Dogfood APK: ${MIB} MiB (app.runsolo.dogfood, arm64-v8a, R8)" >> "$GITHUB_STEP_SUMMARY"
           if [ "$SIZE" -gt $((36 * 1048576)) ]; then echo "dogfood APK exceeds 36 MiB (maplibre_gl added ~12.7 MiB, T0)" >&2; exit 1; fi
+      # The phone build: main, tags, dispatch, full-ci. The nightly only smokes the x64 build.
       - uses: actions/upload-artifact@v4
+        if: ${{ github.event_name != 'schedule' }}
         with:
-          name: run-solo-dogfood-apk${{ github.event_name == 'schedule' && '-nightly' || '' }}
+          name: run-solo-dogfood-apk
           path: build/app/outputs/flutter-apk/app-arm64-v8a-dogfood-release.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 5
+      # Only emulator-dogfood consumes it (nightly, tags, dispatch, full-ci; not main pushes).
       - uses: actions/upload-artifact@v4
+        if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
         with:
           name: run-solo-dogfood-x64-apk${{ github.event_name == 'schedule' && '-nightly' || '' }}
           path: build/app/outputs/flutter-apk/app-x86_64-dogfood-release.apk
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 2
 
   release-aab:
     # Play upload (plan §11): manual run or a v* tag. Signed with the upload key from the
@@ -619,7 +637,7 @@ jobs:
             build/dist-play/release-manifest.json
             build/dist-play/SHA256SUMS
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: run-solo-play-symbols-${{ env.REF }}
@@ -627,7 +645,7 @@ jobs:
             build/dist-play/mapping.txt
             build/symbols-play
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 14
 
   emulator:
     name: emulator smoke (API ${{ matrix.api-level }})
@@ -676,7 +694,7 @@ jobs:
           name: splash-shots-api${{ matrix.api-level }}
           path: splash-shots
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 2
 
   emulator-replay:
     # I5: one replay per session kind through the real service; the run file must match the
@@ -754,3 +772,47 @@ jobs:
           script: |
             tools/emulator_smoke.sh apk/app-x86_64-dogfood-release.apk app.runsolo.dogfood
             tools/emulator_replay_smoke.sh apk/app-x86_64-dogfood-release.apk app.runsolo.dogfood
+
+  artifact-cleanup:
+    # Artifact storage is capped (500 MB on the private free plan). The nightly's APKs are only
+    # for its own emulator jobs, so delete them when the run ends, and keep just the newest 5
+    # dogfood phone APKs (~35 MB each) of the ones main pushes produce.
+    name: trim artifacts
+    needs: [build-apk, build-dogfood, emulator, emulator-replay, emulator-dogfood]
+    if: ${{ always() && !cancelled() && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && (needs.build-apk.result != 'skipped' || needs.build-dogfood.result != 'skipped') }}
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Delete consumed nightly APKs, keep the newest 5 dogfood phone APKs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os, urllib.request
+
+          repo, token, run = os.environ['GITHUB_REPOSITORY'], os.environ['GITHUB_TOKEN'], os.environ['GITHUB_RUN_ID']
+
+          def api(method, path):
+              req = urllib.request.Request(f'https://api.github.com/repos/{repo}/{path}', method=method,
+                                           headers={'Authorization': f'Bearer {token}', 'Accept': 'application/vnd.github+json'})
+              with urllib.request.urlopen(req) as resp:
+                  body = resp.read()
+              return json.loads(body) if body else None
+
+          def delete(artifact):
+              api('DELETE', f"actions/artifacts/{artifact['id']}")
+              print(f"deleted {artifact['name']} ({artifact['size_in_bytes'] // 1048576} MB)")
+
+          if os.environ['EVENT'] == 'schedule':
+              for a in api('GET', f'actions/runs/{run}/artifacts?per_page=100')['artifacts']:
+                  if a['name'].startswith(('run-solo-debug-apk', 'run-solo-dogfood-x64-apk')):
+                      delete(a)
+          phone = [a for a in api('GET', 'actions/artifacts?name=run-solo-dogfood-apk&per_page=100')['artifacts'] if not a['expired']]
+          phone.sort(key=lambda a: a['created_at'], reverse=True)
+          for a in phone[5:]:
+              delete(a)
+          PYCODE
