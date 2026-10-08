@@ -42,7 +42,7 @@ if ! start_replay; then
 fi
 wait_for_log 'RunSolo/session.*lap index=2 source=auto' 90 || fail "auto-laps did not fire"
 log "auto-laps fired"
-if adb logcat -d | grep -E "FATAL EXCEPTION|E AndroidRuntime.*$PKG" > /tmp/fatal.log; then
+if adb logcat -d | "$(dirname "$0")/app_fatal.sh" "$PKG" > /tmp/fatal.log; then
   cat /tmp/fatal.log >&2; fail "fatal exception during replay"
 fi
 adb shell am force-stop "$PKG" || true

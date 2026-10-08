@@ -1,12 +1,18 @@
 name: ci
 
 # CI diet (the repo is private, Actions minutes are metered; macOS costs 10x).
-# Every PR push runs the fast path only: analyze + test, core-jvm, debug APK (+ lint, unit
-# tests, 16 KB check), brand and topo checks. Docs-only and *.md changes run nothing.
-# The heavy jobs (emulator smoke + replay matrix, dogfood build + smoke, Kotlin/Native on macOS)
-# run on pushes to main, v* tags, workflow_dispatch, and PRs labelled `full-ci`. Add the label
-# when a PR needs emulator or macOS evidence. The Kotlin/Native job also needs the shared core
-# (android/core-jvm, ios, pigeons) to have changed.
+# - PR push: analyze + test, core-jvm, debug APK (+ lint, unit tests, 16 KB check), brand + topo
+#   checks. Docs-only and *.md changes run nothing.
+# - Push to main: analyze + test, core-jvm, brand + topo checks and the dogfood APK build. No
+#   emulator minutes per merge; the dogfood R8 build is smoked on API 36 in the nightly.
+# - Nightly (02:00 UTC, main only, skipped when main has no commit in the last 25 h): the debug APK
+#   plus a rotated slice of the emulator work to fit the GitHub-hosted budget: smoke on API 36
+#   and on 34 or 29 on alternate days, and 4 of the 13 replay kinds by day of year (every kind
+#   every 3-4 days). Tags, workflow_dispatch and PRs labelled `full-ci` run the whole set:
+#   smoke 29/34/36 and all 13 replays. The release AAB runs on tags and dispatch only;
+#   topo-surface.yml on tags, dispatch and `full-ci` only.
+# - Kotlin/Native on macOS: only when android/core-jvm, ios or pigeons changed, on main, with
+#   `full-ci`, tags or dispatch. Never on the nightly or on Flutter-only PRs.
 # Adding any label other than `full-ci` re-triggers the workflow; every job skips itself then.
 on:
   push:
@@ -16,6 +22,8 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
     paths-ignore: ['docs/**', '**.md']
+  schedule:
+    - cron: '0 2 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -37,10 +45,13 @@ jobs:
     # native job runs instead of skipping.
     name: which paths changed
     if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     outputs:
       core: ${{ steps.diff.outputs.core }}
+      nightly: ${{ steps.diff.outputs.nightly }}
+      smoke_apis: ${{ steps.diff.outputs.smoke_apis }}
+      replay_kinds: ${{ steps.diff.outputs.replay_kinds }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,7 +75,33 @@ jobs:
           else
             range=""
           fi
-          if [ -z "$range" ] || git diff --name-only "$range" | grep -qE "$core_re"; then
+          # nightly: the 02:00 UTC schedule runs only when the main head commit is under 25 h old.
+          age=$(( $(date +%s) - $(git log -1 --format=%ct) ))
+          if [ "$EVENT" != "schedule" ] || [ "$age" -lt 90000 ]; then
+            echo "nightly=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "nightly=false" >> "$GITHUB_OUTPUT"; echo "main unchanged for $age s: nightly skipped"
+          fi
+          # Emulator matrices. Nightly rotates to fit the GitHub-hosted minute budget: API 36 every
+          # night plus 34 or 29 on alternate days, and 4 of the 13 replay kinds by day of year
+          # (each kind every 3-4 days). Tags, dispatch and full-ci run everything.
+          if [ "$EVENT" = "schedule" ]; then
+            doy=$((10#$(date -u +%j)))
+            if [ $((doy % 2)) -eq 0 ]; then alt=34; else alt=29; fi
+            echo "smoke_apis=[36, $alt]" >> "$GITHUB_OUTPUT"
+            python3 - "$doy" >> "$GITHUB_OUTPUT" <<'PYCODE'
+          import json, sys
+          kinds = ["4x4", "400s", "30-30s", "yasso-800s", "1km-repeats", "fartlek", "cooper", "parkrun", "goal-10k", "goal-30min", "pause-end", "auto-pause", "t4"]
+          start = (int(sys.argv[1]) * 4) % len(kinds)
+          print("replay_kinds=" + json.dumps([kinds[(start + i) % len(kinds)] for i in range(4)]))
+          PYCODE
+          else
+            echo "smoke_apis=[29, 34, 36]" >> "$GITHUB_OUTPUT"
+            echo 'replay_kinds=["4x4", "400s", "30-30s", "yasso-800s", "1km-repeats", "fartlek", "cooper", "parkrun", "goal-10k", "goal-30min", "pause-end", "auto-pause", "t4"]' >> "$GITHUB_OUTPUT"
+          fi
+          if [ "$EVENT" = "schedule" ]; then
+            echo "core=false" >> "$GITHUB_OUTPUT"; echo "schedule: Kotlin/Native never runs nightly"
+          elif [ -z "$range" ] || git diff --name-only "$range" | grep -qE "$core_re"; then
             echo "core=true" >> "$GITHUB_OUTPUT"; echo "core changed (or not a diffable event): Kotlin/Native job runs"
           else
             echo "core=false" >> "$GITHUB_OUTPUT"; echo "core unchanged: Kotlin/Native job skipped"
@@ -72,8 +109,8 @@ jobs:
 
   flutter:
     name: analyze + test (app, run_engine)
-    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') }}
-    runs-on: ubuntu-latest
+    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && github.event_name != 'schedule' }}
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -154,8 +191,8 @@ jobs:
 
   brand:
     name: brand vectors are current
-    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') }}
-    runs-on: ubuntu-latest
+    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && github.event_name != 'schedule' }}
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -173,8 +210,8 @@ jobs:
 
   topo-style:
     name: topo style is current and valid
-    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') }}
-    runs-on: ubuntu-latest
+    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && github.event_name != 'schedule' }}
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -191,8 +228,8 @@ jobs:
 
   core-jvm:
     name: core-jvm tests (pure Kotlin)
-    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') }}
-    runs-on: ubuntu-latest
+    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && github.event_name != 'schedule' }}
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -233,7 +270,7 @@ jobs:
     # compile of common code accepts JVM-only stdlib calls; only a Native compile catches them.
     name: core on Kotlin/Native (macOS + iOS simulator)
     needs: changes
-    if: ${{ !cancelled() && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && (needs.changes.result != 'success' || needs.changes.outputs.core == 'true') }}
+    if: ${{ !cancelled() && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && github.event_name != 'schedule' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && (needs.changes.result != 'success' || needs.changes.outputs.core == 'true') }}
     runs-on: macos-26
     timeout-minutes: 45
     steps:
@@ -275,8 +312,9 @@ jobs:
 
   build-apk:
     name: build debug APK + 16 KB check
-    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') }}
-    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ !cancelled() && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && !(github.event_name == 'push' && github.ref == 'refs/heads/main') && (github.event_name != 'schedule' || needs.changes.outputs.nightly == 'true') }}
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 40
     env:
       # Google Maps key (plan §18.3): manifest placeholder via build.gradle.kts and the same value
@@ -289,6 +327,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Free runner disk (the image's disk filled up; df before and after)
+        if: ${{ runner.environment == 'github-hosted' }}
         run: |
           df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
@@ -343,8 +382,11 @@ jobs:
 
   build-dogfood:
     name: build dogfood APK (arm64, R8, signed)
-    if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
-    runs-on: ubuntu-latest
+    # Every push (main, tags), dispatch, full-ci PRs, and the nightly (artifacts suffixed -nightly so
+    # they never pass for the main-push APK that builders download).
+    needs: changes
+    if: ${{ !cancelled() && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci')) || (github.event_name == 'schedule' && needs.changes.outputs.nightly == 'true')) }}
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 40
     env:
       # Google Maps key (plan §18.3): manifest placeholder via build.gradle.kts and the same value
@@ -357,6 +399,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Free runner disk (the image's disk filled up; df before and after)
+        if: ${{ runner.environment == 'github-hosted' }}
         run: |
           df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
@@ -424,13 +467,13 @@ jobs:
           if [ "$SIZE" -gt $((36 * 1048576)) ]; then echo "dogfood APK exceeds 36 MiB (maplibre_gl added ~12.7 MiB, T0)" >&2; exit 1; fi
       - uses: actions/upload-artifact@v4
         with:
-          name: run-solo-dogfood-apk
+          name: run-solo-dogfood-apk${{ github.event_name == 'schedule' && '-nightly' || '' }}
           path: build/app/outputs/flutter-apk/app-arm64-v8a-dogfood-release.apk
           if-no-files-found: error
           retention-days: 30
       - uses: actions/upload-artifact@v4
         with:
-          name: run-solo-dogfood-x64-apk
+          name: run-solo-dogfood-x64-apk${{ github.event_name == 'schedule' && '-nightly' || '' }}
           path: build/app/outputs/flutter-apk/app-x86_64-dogfood-release.apk
           if-no-files-found: error
           retention-days: 7
@@ -440,8 +483,8 @@ jobs:
     # RUN_SOLO_UPLOAD_* secrets (offline copy ~/.secrets/run-solo/); Play App Signing re-signs
     # with the app-signing key. Not on PRs, so it adds nothing to the PR gate.
     name: release AAB (play, upload-key signed)
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 40
     env:
       # Google Maps key (plan §18.3): manifest placeholder via build.gradle.kts and the same value
@@ -454,6 +497,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Free runner disk (the image's disk filled up; df before and after)
+        if: ${{ runner.environment == 'github-hosted' }}
         run: |
           df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
@@ -587,22 +631,16 @@ jobs:
 
   emulator:
     name: emulator smoke (API ${{ matrix.api-level }})
-    needs: build-apk
-    if: ${{ !cancelled() && needs.build-apk.result == 'success' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
+    needs: [build-apk, changes]
+    if: ${{ !cancelled() && needs.build-apk.result == 'success' && ((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))) && (github.event_name != 'schedule' || needs.changes.outputs.nightly == 'true')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        api-level: [29, 34, 36]
+        api-level: ${{ fromJSON(needs.changes.outputs.smoke_apis || '[29, 34, 36]') }}
     steps:
       - uses: actions/checkout@v4
-      - name: Free runner disk (the image's disk filled up; df before and after)
-        run: |
-          df -h /
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
-          sudo docker image prune --all --force > /dev/null 2>&1 || true
-          df -h /
       - uses: actions/download-artifact@v4
         with:
           name: run-solo-debug-apk
@@ -616,26 +654,6 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-      - name: AVD cache
-        id: avd-cache
-        if: ${{ matrix.api-level == 34 }}
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-api${{ matrix.api-level }}-x86_64-google_apis-v1
-      - name: Create AVD and snapshot (cache miss only)
-        if: ${{ matrix.api-level == 34 && steps.avd-cache.outputs.cache-hit != 'true' }}
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: ${{ matrix.api-level }}
-          arch: x86_64
-          target: google_apis
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: false
-          script: echo "Generated AVD snapshot for caching."
       - name: Boot, install, launch
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -643,7 +661,7 @@ jobs:
           arch: x86_64
           target: google_apis
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
             tools/emulator_smoke.sh apk/app-debug.apk app.runsolo.debug
@@ -664,23 +682,17 @@ jobs:
     # I5: one replay per session kind through the real service; the run file must match the
     # core-jvm fixture recorded from the same trace (tools/check_replay_run.py).
     name: emulator replay ${{ matrix.kind }} (API 34)
-    needs: build-apk
-    if: ${{ !cancelled() && needs.build-apk.result == 'success' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
+    needs: [build-apk, changes]
+    if: ${{ !cancelled() && needs.build-apk.result == 'success' && ((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))) && (github.event_name != 'schedule' || needs.changes.outputs.nightly == 'true')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         # t4: the Phase 4 T4 replays with a LiveContext, one after another, each also checked against its transcript.
-        kind: [4x4, 400s, 30-30s, yasso-800s, 1km-repeats, fartlek, cooper, parkrun, goal-10k, goal-30min, pause-end, auto-pause, t4]
+        kind: ${{ fromJSON(needs.changes.outputs.replay_kinds || '["4x4", "400s", "30-30s", "yasso-800s", "1km-repeats", "fartlek", "cooper", "parkrun", "goal-10k", "goal-30min", "pause-end", "auto-pause", "t4"]') }}
     steps:
       - uses: actions/checkout@v4
-      - name: Free runner disk (the image's disk filled up; df before and after)
-        run: |
-          df -h /
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
-          sudo docker image prune --all --force > /dev/null 2>&1 || true
-          df -h /
       - uses: actions/download-artifact@v4
         with:
           name: run-solo-debug-apk
@@ -694,25 +706,6 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-      - name: AVD cache
-        id: avd-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-api34-x86_64-google_apis-v1
-      - name: Create AVD and snapshot (cache miss only)
-        if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: false
-          script: echo "Generated AVD snapshot for caching."
       - name: Boot, replay ${{ matrix.kind }}, compare with the fixture
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -720,27 +713,23 @@ jobs:
           arch: x86_64
           target: google_apis
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: tools/emulator_replay_kind.sh apk/app-debug.apk app.runsolo.debug ${{ matrix.kind }}
 
   emulator-dogfood:
     name: emulator smoke, dogfood R8 build (API 36)
+    # Nightly, tags, dispatch and full-ci only: the per-merge main push builds the dogfood APK but
+    # does not smoke it (zero hosted emulator minutes per merge).
     needs: build-dogfood
-    if: ${{ !cancelled() && needs.build-dogfood.result == 'success' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
+    if: ${{ !cancelled() && needs.build-dogfood.result == 'success' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - name: Free runner disk (the image's disk filled up; df before and after)
-        run: |
-          df -h /
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
-          sudo docker image prune --all --force > /dev/null 2>&1 || true
-          df -h /
       - uses: actions/download-artifact@v4
         with:
-          name: run-solo-dogfood-x64-apk
+          name: run-solo-dogfood-x64-apk${{ github.event_name == 'schedule' && '-nightly' || '' }}
           path: apk
       - name: Enable KVM
         run: |
@@ -760,7 +749,7 @@ jobs:
           arch: x86_64
           target: google_apis
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
             tools/emulator_smoke.sh apk/app-x86_64-dogfood-release.apk app.runsolo.dogfood
