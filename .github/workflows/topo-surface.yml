@@ -68,4 +68,4 @@ jobs:
         with:
           name: topo-surface
           path: topo-surface
-          retention-days: 14
+          retention-days: 7

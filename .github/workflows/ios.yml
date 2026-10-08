@@ -139,6 +139,7 @@ jobs:
         with:
           name: ios-smoke-screenshot
           path: build/ios-smoke/
+          retention-days: 3
       - name: Error digest
         if: always()
         run: |
@@ -150,6 +151,7 @@ jobs:
         with:
           name: ios-verify-digest
           path: build/ios-logs/digest.txt
+          retention-days: 3
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -157,11 +159,13 @@ jobs:
           path: |
             build/ios-logs/
             ios/Podfile.lock
+          retention-days: 3
       - uses: actions/upload-artifact@v4
         if: success()
         with:
           name: ios-verify-dsyms
           path: build/ios-dsyms/
+          retention-days: 3
       - uses: actions/upload-artifact@v4
         if: success()
         with:
