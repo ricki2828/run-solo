@@ -6,10 +6,12 @@ name: ci
 # - Push to main: analyze + test, core-jvm, brand + topo checks, the dogfood APK build and ONE
 #   emulator smoke on it (API 36). The debug APK and the emulator matrix already ran on the PR
 #   or run nightly.
-# - Nightly (02:00 UTC, main only, skipped when main has no commit in the last 25 h), v* tags,
-#   workflow_dispatch and PRs labelled `full-ci`: the full emulator set (smoke 29/34/36, replay
-#   matrix) on the debug APK. Tags and dispatch also run the release AAB; the nightly does too.
-#   topo-surface.yml follows the same schedule.
+# - Nightly (02:00 UTC, main only, skipped when main has no commit in the last 25 h): the debug APK
+#   plus a rotated slice of the emulator work to fit the GitHub-hosted budget: smoke on API 36
+#   and on 34 or 29 on alternate days, and 4 of the 13 replay kinds by day of year (every kind
+#   every 3-4 days). Tags, workflow_dispatch and PRs labelled `full-ci` run the whole set:
+#   smoke 29/34/36 and all 13 replays. The release AAB runs on tags and dispatch only;
+#   topo-surface.yml on tags, dispatch and `full-ci` only.
 # - Kotlin/Native on macOS: only when android/core-jvm, ios or pigeons changed, on main, with
 #   `full-ci`, tags or dispatch. Never on the nightly or on Flutter-only PRs.
 # Adding any label other than `full-ci` re-triggers the workflow; every job skips itself then.
@@ -49,6 +51,8 @@ jobs:
     outputs:
       core: ${{ steps.diff.outputs.core }}
       nightly: ${{ steps.diff.outputs.nightly }}
+      smoke_apis: ${{ steps.diff.outputs.smoke_apis }}
+      replay_kinds: ${{ steps.diff.outputs.replay_kinds }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,6 +82,23 @@ jobs:
             echo "nightly=true" >> "$GITHUB_OUTPUT"
           else
             echo "nightly=false" >> "$GITHUB_OUTPUT"; echo "main unchanged for $age s: nightly skipped"
+          fi
+          # Emulator matrices. Nightly rotates to fit the GitHub-hosted minute budget: API 36 every
+          # night plus 34 or 29 on alternate days, and 4 of the 13 replay kinds by day of year
+          # (each kind every 3-4 days). Tags, dispatch and full-ci run everything.
+          if [ "$EVENT" = "schedule" ]; then
+            doy=$((10#$(date -u +%j)))
+            if [ $((doy % 2)) -eq 0 ]; then alt=34; else alt=29; fi
+            echo "smoke_apis=[36, $alt]" >> "$GITHUB_OUTPUT"
+            python3 - "$doy" >> "$GITHUB_OUTPUT" <<'PYCODE'
+          import json, sys
+          kinds = ["4x4", "400s", "30-30s", "yasso-800s", "1km-repeats", "fartlek", "cooper", "parkrun", "goal-10k", "goal-30min", "pause-end", "auto-pause", "t4"]
+          start = (int(sys.argv[1]) * 4) % len(kinds)
+          print("replay_kinds=" + json.dumps([kinds[(start + i) % len(kinds)] for i in range(4)]))
+          PYCODE
+          else
+            echo "smoke_apis=[29, 34, 36]" >> "$GITHUB_OUTPUT"
+            echo 'replay_kinds=["4x4", "400s", "30-30s", "yasso-800s", "1km-repeats", "fartlek", "cooper", "parkrun", "goal-10k", "goal-30min", "pause-end", "auto-pause", "t4"]' >> "$GITHUB_OUTPUT"
           fi
           if [ "$EVENT" = "schedule" ]; then
             echo "core=false" >> "$GITHUB_OUTPUT"; echo "schedule: Kotlin/Native never runs nightly"
@@ -460,8 +481,7 @@ jobs:
     # RUN_SOLO_UPLOAD_* secrets (offline copy ~/.secrets/run-solo/); Play App Signing re-signs
     # with the app-signing key. Not on PRs, so it adds nothing to the PR gate.
     name: release AAB (play, upload-key signed)
-    needs: changes
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'schedule' && needs.changes.outputs.nightly == 'true')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 40
     env:
@@ -597,7 +617,7 @@ jobs:
             build/dist-play/release-manifest.json
             build/dist-play/SHA256SUMS
           if-no-files-found: error
-          retention-days: ${{ github.event_name == 'schedule' && 7 || 90 }}
+          retention-days: 90
       - uses: actions/upload-artifact@v4
         with:
           name: run-solo-play-symbols-${{ env.REF }}
@@ -605,7 +625,7 @@ jobs:
             build/dist-play/mapping.txt
             build/symbols-play
           if-no-files-found: error
-          retention-days: ${{ github.event_name == 'schedule' && 7 || 90 }}
+          retention-days: 90
 
   emulator:
     name: emulator smoke (API ${{ matrix.api-level }})
@@ -616,7 +636,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api-level: [29, 34, 36]
+        api-level: ${{ fromJSON(needs.changes.outputs.smoke_apis || '[29, 34, 36]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -668,7 +688,7 @@ jobs:
       fail-fast: false
       matrix:
         # t4: the Phase 4 T4 replays with a LiveContext, one after another, each also checked against its transcript.
-        kind: [4x4, 400s, 30-30s, yasso-800s, 1km-repeats, fartlek, cooper, parkrun, goal-10k, goal-30min, pause-end, auto-pause, t4]
+        kind: ${{ fromJSON(needs.changes.outputs.replay_kinds || '["4x4", "400s", "30-30s", "yasso-800s", "1km-repeats", "fartlek", "cooper", "parkrun", "goal-10k", "goal-30min", "pause-end", "auto-pause", "t4"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
