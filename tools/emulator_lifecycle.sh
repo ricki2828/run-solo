@@ -144,9 +144,17 @@ case "$MODE" in
       for attempt in 1 2 3; do
         after_fresh_notification_lap
         before_keys="$(keys_seen)"
+        before_deb="$(n_log 'lap volumeKey → ignoredDebounce')"
         adb shell input keyevent KEYCODE_VOLUME_UP
         if wait_for_log 'RunSolo/session.*lap volumeKey → accepted' 10; then landed=1; break; fi
         after_keys="$(keys_seen)"
+        # adb latency (slow logcat polls + `input` start-up, seen on API 36) can push the press
+        # past the 1.5 s phase and onto the next notification LAP; the core then debounces it by
+        # design (replay run time only advances per tick). Not a product bug: re-sync and retry.
+        if [ "$(n_log 'lap volumeKey → ignoredDebounce')" -gt "$before_deb" ] && [ "$attempt" -lt 3 ]; then
+          echo "::warning::volume key press $attempt on API $sdk landed right after a LAP and was debounced; retrying"
+          continue
+        fi
         if [ "$after_keys" -gt "$before_keys" ]; then
           adb logcat -d -s RunSolo/lapinput RunSolo/session | tail -n 20 >&2 || true
           fail "volume key press $attempt reached the session (lapinput direction line) but no lap was accepted"
@@ -208,6 +216,10 @@ case "$MODE" in
         keys="$(since 'RunSolo/lapinput: volume key direction=1')"
         acc="$(since 'lap volumeKey → accepted')"
         deb="$(since 'lap volumeKey → ignoredDebounce')"
+        if [ "$keys" -ge 2 ] && [ "$acc" = 0 ] && [ "$attempt" -lt 3 ]; then
+          echo "::warning::double press $attempt on API $sdk landed right after a LAP and was debounced; retrying"
+          continue
+        fi
         if [ "$keys" -ge 2 ]; then
           [ "$acc" = 1 ] || fail "double press: $keys key-downs reached the session and $acc laps were accepted; expected exactly 1"
           log "double press: $keys key-downs, 1 lap ($deb ignored by the core lockout, the rest by the LapInput debounce)"
