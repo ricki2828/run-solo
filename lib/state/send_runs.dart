@@ -24,6 +24,7 @@ import '../app/format.dart';
 import '../platform/health_gateway.dart';
 import '../platform/platform_api.g.dart';
 import '../platform/transfer_gateway.dart';
+import 'companion.dart';
 import 'health_workout.dart';
 import 'history_store.dart';
 import 'intervals_icu.dart';
@@ -48,6 +49,7 @@ class SendRequest {
     required this.title,
     this.format = ExportFormat.tcx,
     this.utcOffsetMin,
+    this.detail,
   });
 
   final engine.RunFile run;
@@ -60,6 +62,11 @@ class SendRequest {
   /// The phone's UTC offset when the run finished (the sidecar's); null on
   /// older runs, which fall back to the offset now.
   final int? utcOffsetMin;
+
+  /// The loaded run (summary, sidecar), for a target that sends figures
+  /// rather than a file (the companion). Null in tests that build requests
+  /// by hand.
+  final RunDetail? detail;
 }
 
 /// Whether a target can take a run right now, and if not why not.
@@ -103,6 +110,10 @@ abstract class ExportTarget {
 
   /// A row shown disabled until its PR lands.
   bool get comingSoon => false;
+
+  /// False for a target with its own Settings screen (the companion): the
+  /// Send sheet and the Settings send list skip it.
+  bool get listed => true;
 
   /// Switched on for automatic sending in Settings.
   bool isEnabled(AppSettings s) =>
@@ -332,6 +343,7 @@ List<ExportTarget> defaultExportTargets(
   DateTime Function()? now,
   SecretStore? secrets,
   IntervalsHttp? intervalsHttp,
+  CompanionTarget? companion,
 }) => [
   ShareFileTarget(transfer: transfer, tempDir: tempDir),
   HealthTarget(gateway: health, now: now),
@@ -339,6 +351,7 @@ List<ExportTarget> defaultExportTargets(
     store: secrets ?? SecureSecretStore(),
     http: intervalsHttp,
   ),
+  ?companion,
 ];
 
 /// What run detail shows for [record] against [target]; null when the run
@@ -509,6 +522,7 @@ class SendCoordinator {
             title: runIdentityTitle(detail.summary),
             format: format,
             utcOffsetMin: detail.sidecar.utcOffsetMin,
+            detail: detail,
           ),
         );
       } catch (e) {

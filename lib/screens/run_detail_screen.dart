@@ -1928,7 +1928,7 @@ class _SendRowState extends State<_SendRow> {
     final services = AppServices.of(context);
     final s = services.settings.settings;
     String value = '';
-    for (final t in services.sender.targets) {
+    for (final t in services.sender.targets.where((t) => t.listed)) {
       final line = sendStateLine(
         t,
         _sidecar.sends[t.id],

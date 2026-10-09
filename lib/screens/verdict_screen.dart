@@ -17,6 +17,7 @@ import '../widgets/board_chips.dart';
 import '../widgets/chrome.dart';
 import '../widgets/coaching.dart';
 import '../widgets/delta_glyph.dart';
+import '../widgets/feel_row.dart';
 import '../widgets/rep_bars.dart';
 import '../widgets/splits_bars.dart';
 import 'cooper_result_screen.dart';
@@ -536,6 +537,8 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                   ],
                 ),
                 const SizedBox(height: Space.x24),
+                FeelRow(runId: d.run.id, initial: d.sidecar.feel),
+                const SizedBox(height: Space.x24),
                 // A10.6: coaching below Details, in the scroll, so the
                 // verdict hero and its goldens do not move.
                 CoachingSection(runId: d.run.id),
@@ -719,6 +722,8 @@ class _GoalResultScreen extends StatelessWidget {
                 ],
               ],
             ),
+            const SizedBox(height: Space.x24),
+            FeelRow(runId: d.run.id, initial: d.sidecar.feel),
             const SizedBox(height: Space.x24),
             CoachingSection(runId: d.run.id),
           ],
@@ -937,6 +942,18 @@ class _SummaryScreen extends StatelessWidget {
         child: Column(
           children: [
             Expanded(child: RunDetailBody(detail: detail, showHeader: true)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Space.screenGutter,
+                Space.x8,
+                Space.screenGutter,
+                0,
+              ),
+              child: FeelRow(
+                runId: detail.run.id,
+                initial: detail.sidecar.feel,
+              ),
+            ),
             if (suggestTrail)
               Padding(
                 padding: const EdgeInsets.fromLTRB(

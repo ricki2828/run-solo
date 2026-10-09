@@ -20,6 +20,7 @@ import '../platform/health_gateway.dart';
 import '../platform/pigeon_gateway.dart';
 import '../platform/transfer_gateway.dart';
 import '../state/block_plan.dart';
+import '../state/companion.dart';
 import '../state/courses.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
@@ -69,6 +70,7 @@ class AppServices {
     this.weather,
     this.live,
     this.topo,
+    this.companion,
     PlaceGateway? placeGateway,
     List<ExportTarget>? exportTargets,
     Future<Directory> Function()? tempDir,
@@ -80,7 +82,22 @@ class AppServices {
          history: history,
          settings: settings,
          targets:
-             exportTargets ?? defaultExportTargets(transfer, health, now: now),
+             exportTargets ??
+             defaultExportTargets(
+               transfer,
+               health,
+               now: now,
+               companion: companion == null
+                   ? null
+                   : CompanionTarget(
+                       controller: companion,
+                       now: now,
+                       zones: () => HrZoneChoice.resolve(
+                         settings.settings,
+                         (now ?? DateTime.now)(),
+                       ),
+                     ),
+             ),
          now: now,
        ),
        watch = WatchExporter(transfer: transfer, tempDir: tempDir, now: now),
@@ -133,6 +150,10 @@ class AppServices {
   /// Offline map packs; null when no hosting is configured (and in most
   /// tests), which hides Settings > Offline maps.
   final PackManager? topo;
+
+  /// The run companion; null unless the build has `COMPANION=1` (dogfood
+  /// only), which hides every companion surface.
+  final CompanionController? companion;
 
   /// The live compare's context at Start (LC1); null in tests and the fake
   /// APK. Only used when `kLiveCompare` is on.
@@ -191,7 +212,15 @@ class AppServices {
       if (t is ShareFileTarget) unawaited(t.sweep());
       if (t is IntervalsIcuTarget) unawaited(t.load());
     }
-    unawaited(_sendPass(sender.reconcile));
+    unawaited(
+      _sendPass(() async {
+        // Token first, or the first open after a restart finds the
+        // companion off and skips it.
+        await companion?.load();
+        await sender.reconcile();
+        if (companion != null) await flushCompanionFeels(history, companion!);
+      }),
+    );
     recording.addListener(() {
       final s = recording.snapshot;
       if (s.state != RecorderState.idle || s.runId == null) return;
@@ -283,6 +312,7 @@ class AppServices {
     RunStore? history,
     PlaceGateway? places,
     List<ExportTarget>? exportTargets,
+    CompanionController? companion,
   }) {
     final rec = recorder ?? FakeRecorderGateway(autoTick: true, now: now);
     final settingsCtl = SettingsController(
@@ -327,6 +357,7 @@ class AppServices {
       live: live,
       weather: weather,
       topo: topo,
+      companion: companion,
       placeGateway: places,
       tempDir: () async => Directory.systemTemp,
       exportTargets:
@@ -337,6 +368,9 @@ class AppServices {
             tempDir: () async => Directory.systemTemp,
             now: now,
             secrets: MemorySecretStore(),
+            companion: companion == null
+                ? null
+                : CompanionTarget(controller: companion, now: now),
           ),
     );
   }
@@ -375,6 +409,17 @@ class AppServices {
       );
       await topo.load();
     }
+    const transfer = ShareSheetTransferGateway();
+    final companion = kCompanion
+        ? CompanionController(
+            store: SecureSecretStore(),
+            transfer: transfer,
+            // Only runs that finish after "Turn on" are sent.
+            onEnrolled: (now) => settings.update(
+              (x) => x.withAutoSend(CompanionTarget.targetId, true, now),
+            ),
+          )
+        : null;
     final services = AppServices(
       recorder: PigeonRecorderGateway(),
       ble: PigeonBleGateway(),
@@ -389,7 +434,8 @@ class AppServices {
               fallback: const GoogleMapSurfaceFactory(),
               engine: MapLibreTopoEngine(TopoFiles(packsRoot: topo.root)),
             ),
-      transfer: const ShareSheetTransferGateway(),
+      transfer: transfer,
+      companion: companion,
       health: PigeonHealthGateway(),
       storage: PigeonStorageGateway(),
       placeGateway: PigeonPlaceGateway(),

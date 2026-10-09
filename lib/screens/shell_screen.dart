@@ -7,6 +7,7 @@ import '../platform/gateway.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
+import 'companion_screen.dart';
 import 'history_screen.dart';
 import 'home_screen.dart';
 import 'permissions_screen.dart';
@@ -112,6 +113,21 @@ class _OnboardingRoute extends StatelessWidget {
           context,
         ).push<void>(MaterialPageRoute(builder: (_) => const _BirthYearStep()));
         if (!context.mounted) return;
+        // Dogfood builds only (COMPANION=1): one consent step, nothing
+        // pre-selected. Skipped once answered.
+        final companion = AppServices.of(context).companion;
+        if (companion != null) {
+          await companion.load();
+          if (!context.mounted) return;
+          if (!companion.asked) {
+            await Navigator.of(context).push<bool>(
+              MaterialPageRoute(
+                builder: (_) => const CompanionScreen(onboarding: true),
+              ),
+            );
+            if (!context.mounted) return;
+          }
+        }
         await Navigator.of(context).push<bool>(
           MaterialPageRoute(
             builder: (_) => const PermissionsScreen(onboarding: true),

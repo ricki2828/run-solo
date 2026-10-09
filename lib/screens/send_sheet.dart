@@ -170,7 +170,9 @@ class _SendSheetState extends State<SendSheet> {
               style: RunSoloType.body15.copyWith(color: t.inkSecondary),
             ),
             const SizedBox(height: Space.x16),
-            for (final target in services.sender.targets) ...[
+            for (final target in services.sender.targets.where(
+              (t) => t.listed,
+            )) ...[
               if (target.id == ShareFileTarget.targetId) ...[
                 _Block(
                   label: target.label,

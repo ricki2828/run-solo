@@ -6,6 +6,22 @@ import 'verdict.dart';
 
 enum LapEditOp { merge, split, keep, drop }
 
+/// How a run felt, one tap after it (Easy, Right, Hard). Display and
+/// companion data only: never an input to a verdict.
+enum RunFeel {
+  easy,
+  right,
+  hard;
+
+  static RunFeel? decode(Object? v) {
+    if (v is! String) return null;
+    for (final f in values) {
+      if (f.name == v) return f;
+    }
+    return null;
+  }
+}
+
 /// A fix-laps edit (plan §5, §6 "Keep it, merge it, or drop it?"), indexed
 /// against `RepDetection.laps` and applied in order before detection:
 /// - `merge`: join lap `index` with the one after it;
@@ -100,6 +116,7 @@ class RunSidecar {
     this.zoneId,
     this.placeTries = 0,
     this.sends = const {},
+    this.feel,
     this.readSchema = schema,
   });
 
@@ -169,6 +186,25 @@ class RunSidecar {
   /// decides whether an automatic send is still due.
   final Map<String, SendRecord> sends;
 
+  /// The runner's feel tap for this run; null until tapped. Display and
+  /// companion data only.
+  final RunFeel? feel;
+
+  /// The [sends] key marking that the feel reached the companion server.
+  static const String feelSendId = 'companion_feel';
+
+  /// Set (or clear) the feel. A changed feel is unsent again: the
+  /// [feelSendId] log entry is dropped so the companion gets the new one.
+  RunSidecar withFeel(RunFeel? next) => next == feel
+      ? this
+      : copyWith(
+          feel: next,
+          sends: {
+            for (final e in sends.entries)
+              if (e.key != feelSendId) e.key: e.value,
+          },
+        );
+
   /// True while an AUTOMATIC send to [targetId] is still due: never tried,
   /// or failed fewer than [SendRecord.maxAutoTries] times. A run that went
   /// through once is never sent again automatically.
@@ -237,6 +273,7 @@ class RunSidecar {
       zoneId == null &&
       placeTries == 0 &&
       sends.isEmpty &&
+      feel == null &&
       parkrun == null;
 
   RunSidecar copyWith({
@@ -257,9 +294,11 @@ class RunSidecar {
     Object? zoneId = _unset,
     int? placeTries,
     Map<String, SendRecord>? sends,
+    Object? feel = _unset,
   }) => RunSidecar(
     runId: runId,
     sends: sends ?? this.sends,
+    feel: identical(feel, _unset) ? this.feel : feel as RunFeel?,
     place: identical(place, _unset) ? this.place : place as String?,
     street: identical(street, _unset) ? this.street : street as String?,
     streetTried: streetTried ?? this.streetTried,
@@ -358,6 +397,7 @@ class RunSidecar {
     if (placeTries > 0) 'place_tries': placeTries,
     if (sends.isNotEmpty)
       'sends': {for (final e in sends.entries) e.key: e.value.toJson()},
+    'feel': ?feel?.name,
   };
 
   /// Newer than this build (W6): the app must treat the run as read-only and
@@ -440,6 +480,7 @@ class RunSidecar {
       zoneId: optString('zone_id'),
       placeTries: json['place_tries'] is int ? json['place_tries'] as int : 0,
       sends: _readSends(json['sends']),
+      feel: RunFeel.decode(json['feel']),
       readSchema: schemaValue,
     );
   }

@@ -20,6 +20,7 @@ import '../topo/pack_models.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/hr_zones_section.dart';
+import 'companion_screen.dart';
 import 'intervals_connect_sheet.dart';
 import 'send_sheet.dart' show kSendPrivacyLine;
 
@@ -590,6 +591,21 @@ class _SettingsScreenState extends State<SettingsScreen>
                   style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
               ),
+              if (services.companion case final companion?) ...[
+                const _Section('Companion'),
+                ListenableBuilder(
+                  listenable: companion,
+                  builder: (context, _) => SettingsRow(
+                    label: 'Run companion',
+                    value: companion.enrolled ? 'On' : 'Off',
+                    onTap: () => Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) => const CompanionScreen(),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               const _Section('Send runs to'),
               Padding(
                 padding: const EdgeInsets.only(bottom: Space.x8),
@@ -599,7 +615,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                   style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
               ),
-              for (final target in services.sender.targets) ...[
+              for (final target in services.sender.targets.where(
+                (t) => t.listed,
+              )) ...[
                 if (target is HealthTarget && !HostCaps.healthExport)
                   const SizedBox.shrink()
                 else if (target is IntervalsIcuTarget)
