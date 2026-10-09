@@ -8,7 +8,7 @@ on:
     tags: ['v*']
   pull_request:
     types: [opened, synchronize, reopened, labeled]
-    paths-ignore: ['docs/**', '**.md']
+    paths-ignore: ['docs/**', '**.md', 'companion-server/**']
   workflow_dispatch:
 
 concurrency:
