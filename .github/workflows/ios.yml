@@ -37,6 +37,8 @@ env:
 jobs:
   verify:
     name: simulator build (no signing)
+    permissions:
+      contents: write
     if: ${{ github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'full-ci') && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci')) }}
     runs-on: macos-15
     timeout-minutes: 45
@@ -135,7 +137,7 @@ jobs:
             echo "SMOKE OK"
           } 2>&1 | tee build/ios-logs/6-smoke.log
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ always() && vars.USE_ARTIFACTS == '1' }}
         with:
           name: ios-smoke-screenshot
           path: build/ios-smoke/
@@ -147,13 +149,13 @@ jobs:
             build/ios-logs/1-pub-get.log build/ios-logs/2-add-targets.log \
             build/ios-logs/3-pod-install.log build/ios-logs/4-build.log build/ios-logs/5-dsym.log build/ios-logs/6-smoke.log
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ always() && vars.USE_ARTIFACTS == '1' }}
         with:
           name: ios-verify-digest
           path: build/ios-logs/digest.txt
           retention-days: 3
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ always() && vars.USE_ARTIFACTS == '1' }}
         with:
           name: ios-verify-logs
           path: |
@@ -161,14 +163,37 @@ jobs:
             ios/Podfile.lock
           retention-days: 3
       - uses: actions/upload-artifact@v4
-        if: success()
+        if: ${{ success() && vars.USE_ARTIFACTS == '1' }}
         with:
           name: ios-verify-dsyms
           path: build/ios-dsyms/
           retention-days: 3
       - uses: actions/upload-artifact@v4
-        if: success()
+        if: ${{ success() && vars.USE_ARTIFACTS == '1' }}
         with:
           name: ios-simulator-app
           path: build/ios/iphonesimulator/Runner.app
           retention-days: 7
+      - name: Publish the iOS evidence to a release (Actions artifact storage is exhausted)
+        if: ${{ always() && vars.USE_ARTIFACTS != '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p ci-out
+          python3 - <<'PYCODE'
+          import os, shutil
+          def pack(name, sources):
+              stage = f'ci-out/{name}'
+              for src in sources:
+                  if os.path.exists(src):
+                      dst = os.path.join(stage, os.path.basename(src.rstrip('/')))
+                      (shutil.copytree if os.path.isdir(src) else shutil.copy)(src, dst)
+              if os.path.isdir(stage):
+                  shutil.make_archive(f'ci-out/{name}', 'zip', stage)
+          pack('ios-verify-logs', ['build/ios-smoke', 'build/ios-logs', 'ios/Podfile.lock'])
+          pack('ios-verify-dsyms', ['build/ios-dsyms'])
+          PYCODE
+          if [ "${{ job.status }}" = "success" ] && [ -d build/ios/iphonesimulator/Runner.app ]; then
+            (cd build/ios/iphonesimulator && zip -qr "$GITHUB_WORKSPACE/ci-out/ios-simulator-app.zip" Runner.app)
+          fi
+          tools/ci_release.sh put "ci-ios-${{ github.run_id }}" "ios ${{ github.run_id }}" "iOS simulator build evidence, run ${{ github.run_id }}, sha ${{ github.sha }}. Deleted after 3 days." ci-out/*.zip

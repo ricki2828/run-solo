@@ -21,6 +21,8 @@ env:
 
 jobs:
   topo-surface:
+    permissions:
+      contents: write
     if: ${{ github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'full-ci') && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -63,8 +65,16 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: tools/emulator_topo_surface.sh build/dist/topo-surface.apk app.runsolo.debug
+      - name: Publish the shots to a release (Actions artifact storage is exhausted)
+        if: ${{ !cancelled() && vars.USE_ARTIFACTS != '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$(ls -A topo-surface 2>/dev/null)" ]; then echo "no shots"; exit 0; fi
+          python3 -c "import shutil; shutil.make_archive('topo-surface', 'zip', 'topo-surface')"
+          tools/ci_release.sh put "ci-topo-${{ github.run_id }}" "topo-surface ${{ github.run_id }}" "Topo surface emulator shots, run ${{ github.run_id }}, sha ${{ github.sha }}. Deleted after 7 days by the ci workflow trim job." topo-surface.zip
       - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && vars.USE_ARTIFACTS == '1' }}
         with:
           name: topo-surface
           path: topo-surface
