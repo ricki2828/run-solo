@@ -111,6 +111,8 @@ jobs:
     name: analyze + test (app, run_engine)
     if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && github.event_name != 'schedule' }}
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    permissions:
+      contents: write
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -161,8 +163,18 @@ jobs:
             cp "$f" "golden-changed/$rel"
           done
           du -sh golden-changed
+      - name: Publish changed goldens to a release (Actions artifact storage is exhausted)
+        if: ${{ failure() && vars.USE_ARTIFACTS != '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -z "$(ls -A golden-changed 2>/dev/null)" ]; then echo "no changed goldens"; exit 0; fi
+          python3 -c "import shutil; shutil.make_archive('goldens', 'zip', 'golden-changed')"
+          if [ -n "$PR" ]; then tag="goldens-pr-$PR"; else tag="goldens-${{ github.run_id }}"; fi
+          tools/ci_release.sh put "$tag" "goldens $tag" "Changed or new goldens from CI run ${{ github.run_id }}, sha ${{ github.sha }}. Unzip into test/golden/goldens. Deleted after 3 days." --replace-assets goldens.zip
       - uses: actions/upload-artifact@v4
-        if: ${{ failure() }}
+        if: ${{ failure() && vars.USE_ARTIFACTS == '1' }}
         with:
           name: goldens
           path: golden-changed
@@ -240,6 +252,8 @@ jobs:
     name: core-jvm tests (pure Kotlin)
     if: ${{ !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && github.event_name != 'schedule' }}
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    permissions:
+      contents: write
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -265,8 +279,15 @@ jobs:
             git status --porcelain -z --untracked-files=all -- android/core-jvm/src/test/fixtures packages/run_engine/test/fixtures | tr '\0' '\n' | cut -c4- | xargs -r -I{} cp --parents {} /tmp/regen/
             echo "drift=1" >> "$GITHUB_ENV"
           fi
+      - name: Publish regenerated fixtures to a release
+        if: ${{ !cancelled() && env.drift == '1' && vars.USE_ARTIFACTS != '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -c "import shutil; shutil.make_archive('regenerated-fixtures', 'zip', '/tmp/regen')"
+          tools/ci_release.sh put "ci-misc-${{ github.run_id }}" "ci misc ${{ github.run_id }}" "Regenerated fixtures, run ${{ github.run_id }}, sha ${{ github.sha }}. Deleted after 3 days." regenerated-fixtures.zip
       - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() && env.drift == '1' }}
+        if: ${{ !cancelled() && env.drift == '1' && vars.USE_ARTIFACTS == '1' }}
         with:
           name: regenerated-fixtures
           path: /tmp/regen
@@ -283,6 +304,8 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && github.event_name != 'schedule' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && (needs.changes.result != 'success' || needs.changes.outputs.core == 'true') }}
     runs-on: macos-26
+    permissions:
+      contents: write
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -315,8 +338,15 @@ jobs:
         with:
           path: ~/.konan
           key: konan-${{ runner.os }}-${{ runner.arch }}-kotlin-2.4.0 # bump with Kotlin in core-jvm/build.gradle.kts
+      - name: Publish Kotlin/Native test reports to a release
+        if: ${{ failure() && vars.USE_ARTIFACTS != '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -c "import shutil; shutil.make_archive('core-native-test-reports', 'zip', 'android/core-jvm/build/reports/tests')"
+          tools/ci_release.sh put "ci-misc-${{ github.run_id }}" "ci misc ${{ github.run_id }}" "Test reports, run ${{ github.run_id }}, sha ${{ github.sha }}. Deleted after 3 days." core-native-test-reports.zip
       - uses: actions/upload-artifact@v4
-        if: ${{ failure() }}
+        if: ${{ failure() && vars.USE_ARTIFACTS == '1' }}
         with:
           name: core-native-test-reports
           path: android/core-jvm/build/reports/tests/
@@ -327,6 +357,8 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && !(github.event_name == 'push' && github.ref == 'refs/heads/main') && (github.event_name != 'schedule' || needs.changes.outputs.nightly == 'true') }}
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    permissions:
+      contents: write
     timeout-minutes: 40
     env:
       # Google Maps key (plan §18.3): manifest placeholder via build.gradle.kts and the same value
@@ -386,8 +418,13 @@ jobs:
         if: ${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
         run: tools/check_16kb_alignment.sh build/app/outputs/bundle/playRelease/app-play-release.aab
       # Only the emulator jobs (nightly, tags, dispatch, full-ci) consume it.
+      - name: Publish the debug APK to a release (read by the emulator jobs of this run)
+        if: ${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && vars.USE_ARTIFACTS != '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/ci_release.sh put "ci-apk-${{ github.run_id }}" "ci apks ${{ github.run_id }}" "Debug APK, run ${{ github.run_id }}, sha ${{ github.sha }}. Deleted after 2 days." build/dist/app-debug.apk
       - uses: actions/upload-artifact@v4
-        if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+        if: ${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && vars.USE_ARTIFACTS == '1' }}
         with:
           name: run-solo-debug-apk
           path: build/dist/app-debug.apk
@@ -401,6 +438,8 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && !(github.event.action == 'labeled' && github.event.label.name != 'full-ci') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci')) || (github.event_name == 'schedule' && needs.changes.outputs.nightly == 'true')) }}
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    permissions:
+      contents: write
     timeout-minutes: 40
     env:
       # Google Maps key (plan §18.3): manifest placeholder via build.gradle.kts and the same value
@@ -480,16 +519,34 @@ jobs:
           echo "### Dogfood APK: ${MIB} MiB (app.runsolo.dogfood, arm64-v8a, R8)" >> "$GITHUB_STEP_SUMMARY"
           if [ "$SIZE" -gt $((36 * 1048576)) ]; then echo "dogfood APK exceeds 36 MiB (maplibre_gl added ~12.7 MiB, T0)" >&2; exit 1; fi
       # The phone build: main, tags, dispatch, full-ci. The nightly only smokes the x64 build.
+      - name: Publish the dogfood phone APK (main to the rolling prerelease dogfood-latest, others to this run release)
+        if: ${{ github.event_name != 'schedule' && vars.USE_ARTIFACTS != '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha7="${GITHUB_SHA::7}"
+          apk="build/app/outputs/flutter-apk/run-solo-dogfood-$sha7-arm64.apk"
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-dogfood-release.apk "$apk"
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            tools/ci_release.sh put dogfood-latest "Dogfood APK $sha7" "Latest dogfood arm64 build from main. sha ${{ github.sha }}, CI run ${{ github.run_id }}. The asset is replaced on every main push." --replace-assets "$apk"
+          else
+            tools/ci_release.sh put "ci-apk-${{ github.run_id }}" "ci apks ${{ github.run_id }}" "Dogfood APKs, run ${{ github.run_id }}, sha ${{ github.sha }}. Deleted after 2 days." "$apk"
+          fi
       - uses: actions/upload-artifact@v4
-        if: ${{ github.event_name != 'schedule' }}
+        if: ${{ github.event_name != 'schedule' && vars.USE_ARTIFACTS == '1' }}
         with:
           name: run-solo-dogfood-apk
           path: build/app/outputs/flutter-apk/app-arm64-v8a-dogfood-release.apk
           if-no-files-found: error
           retention-days: 5
       # Only emulator-dogfood consumes it (nightly, tags, dispatch, full-ci; not main pushes).
+      - name: Publish the dogfood x64 APK to a release (read by emulator-dogfood)
+        if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') && vars.USE_ARTIFACTS != '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/ci_release.sh put "ci-apk-${{ github.run_id }}" "ci apks ${{ github.run_id }}" "Dogfood APKs, run ${{ github.run_id }}, sha ${{ github.sha }}. Deleted after 2 days." build/app/outputs/flutter-apk/app-x86_64-dogfood-release.apk
       - uses: actions/upload-artifact@v4
-        if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+        if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') && vars.USE_ARTIFACTS == '1' }}
         with:
           name: run-solo-dogfood-x64-apk${{ github.event_name == 'schedule' && '-nightly' || '' }}
           path: build/app/outputs/flutter-apk/app-x86_64-dogfood-release.apk
@@ -503,6 +560,8 @@ jobs:
     name: release AAB (play, upload-key signed)
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    permissions:
+      contents: write
     timeout-minutes: 40
     env:
       # Google Maps key (plan §18.3): manifest placeholder via build.gradle.kts and the same value
@@ -629,7 +688,16 @@ jobs:
           print(f"Release: {manifest['version_name']}+{manifest['version_code']} ({manifest['git_sha'][:12]})")
           PYCODE
           echo "Release manifest and SHA256SUMS are packaged alongside the AAB." >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish the AAB, mapping and symbols to a release
+        if: ${{ vars.USE_ARTIFACTS != '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -c "import shutil; shutil.make_archive('build/dist-play/symbols-play', 'zip', 'build/symbols-play')"
+          tools/ci_release.sh put "ci-aab-${{ github.run_id }}" "play AAB ${{ env.REF }} ${{ github.run_id }}" "Play AAB ${{ env.REF }}, run ${{ github.run_id }}, sha ${{ github.sha }}. Deleted after 14 days." \
+            build/dist-play/app-play-release.aab build/dist-play/release-manifest.json build/dist-play/SHA256SUMS build/dist-play/mapping.txt build/dist-play/symbols-play.zip
       - uses: actions/upload-artifact@v4
+        if: ${{ vars.USE_ARTIFACTS == '1' }}
         with:
           name: run-solo-play-aab-${{ env.REF }}
           path: |
@@ -639,6 +707,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
+        if: ${{ vars.USE_ARTIFACTS == '1' }}
         with:
           name: run-solo-play-symbols-${{ env.REF }}
           path: |
@@ -652,6 +721,8 @@ jobs:
     needs: [build-apk, changes]
     if: ${{ !cancelled() && needs.build-apk.result == 'success' && ((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))) && (github.event_name != 'schedule' || needs.changes.outputs.nightly == 'true')) }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     timeout-minutes: 40
     strategy:
       fail-fast: false
@@ -659,7 +730,13 @@ jobs:
         api-level: ${{ fromJSON(needs.changes.outputs.smoke_apis || '[29, 34, 36]') }}
     steps:
       - uses: actions/checkout@v4
+      - name: Download the debug APK from this run's release
+        if: ${{ vars.USE_ARTIFACTS != '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/ci_release.sh get "ci-apk-${{ github.run_id }}" apk app-debug.apk
       - uses: actions/download-artifact@v4
+        if: ${{ vars.USE_ARTIFACTS == '1' }}
         with:
           name: run-solo-debug-apk
           path: apk
@@ -687,8 +764,16 @@ jobs:
             tools/emulator_lifecycle.sh apk/app-debug.apk app.runsolo.debug laps
             tools/emulator_lifecycle.sh apk/app-debug.apk app.runsolo.debug free
             tools/emulator_splash_shots.sh app.runsolo.debug
+      - name: Publish splash hand-off shots to a release (B3 evidence)
+        if: ${{ !cancelled() && vars.USE_ARTIFACTS != '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$(ls -A splash-shots 2>/dev/null)" ]; then echo "no splash shots"; exit 0; fi
+          python3 -c "import shutil; shutil.make_archive('splash-shots-api${{ matrix.api-level }}', 'zip', 'splash-shots')"
+          tools/ci_release.sh put "ci-shots-${{ github.run_id }}" "ci shots ${{ github.run_id }}" "Splash hand-off shots, run ${{ github.run_id }}, sha ${{ github.sha }}. Deleted after 2 days." "splash-shots-api${{ matrix.api-level }}.zip"
       - name: Upload splash hand-off shots (B3 evidence)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && vars.USE_ARTIFACTS == '1' }}
         uses: actions/upload-artifact@v4
         with:
           name: splash-shots-api${{ matrix.api-level }}
@@ -703,6 +788,8 @@ jobs:
     needs: [build-apk, changes]
     if: ${{ !cancelled() && needs.build-apk.result == 'success' && ((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))) && (github.event_name != 'schedule' || needs.changes.outputs.nightly == 'true')) }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -711,7 +798,13 @@ jobs:
         kind: ${{ fromJSON(needs.changes.outputs.replay_kinds || '["4x4", "400s", "30-30s", "yasso-800s", "1km-repeats", "fartlek", "cooper", "parkrun", "goal-10k", "goal-30min", "pause-end", "auto-pause", "t4"]') }}
     steps:
       - uses: actions/checkout@v4
+      - name: Download the debug APK from this run's release
+        if: ${{ vars.USE_ARTIFACTS != '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/ci_release.sh get "ci-apk-${{ github.run_id }}" apk app-debug.apk
       - uses: actions/download-artifact@v4
+        if: ${{ vars.USE_ARTIFACTS == '1' }}
         with:
           name: run-solo-debug-apk
           path: apk
@@ -742,10 +835,18 @@ jobs:
     needs: build-dogfood
     if: ${{ !cancelled() && needs.build-dogfood.result == 'success' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))) }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - name: Download the dogfood x64 APK from this run's release
+        if: ${{ vars.USE_ARTIFACTS != '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/ci_release.sh get "ci-apk-${{ github.run_id }}" apk app-x86_64-dogfood-release.apk
       - uses: actions/download-artifact@v4
+        if: ${{ vars.USE_ARTIFACTS == '1' }}
         with:
           name: run-solo-dogfood-x64-apk${{ github.event_name == 'schedule' && '-nightly' || '' }}
           path: apk
@@ -774,19 +875,34 @@ jobs:
             tools/emulator_replay_smoke.sh apk/app-x86_64-dogfood-release.apk app.runsolo.dogfood
 
   artifact-cleanup:
-    # Artifact storage is capped (500 MB on the private free plan). The nightly's APKs are only
-    # for its own emulator jobs, so delete them when the run ends, and keep just the newest 5
-    # dogfood phone APKs (~35 MB each) of the ones main pushes produce.
-    name: trim artifacts
+    # Releases hold the hand-off files now. Drop the nightly's APKs when its run ends and prune old
+    # ones: goldens/misc 3 days, APKs/shots 2, topo/ios 7/3, AAB 14. dogfood-latest keeps one asset.
+    # With USE_ARTIFACTS=1 the old Actions-artifact trimming runs instead.
+    name: trim releases and artifacts
     needs: [build-apk, build-dogfood, emulator, emulator-replay, emulator-dogfood]
     if: ${{ always() && !cancelled() && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && (needs.build-apk.result != 'skipped' || needs.build-dogfood.result != 'skipped') }}
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     permissions:
       actions: write
-      contents: read
+      contents: write
     steps:
-      - name: Delete consumed nightly APKs, keep the newest 5 dogfood phone APKs
+      - uses: actions/checkout@v4
+      - name: Drop the nightly's APK release, prune old releases
+        if: ${{ vars.USE_ARTIFACTS != '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then tools/ci_release.sh drop "ci-apk-${{ github.run_id }}"; fi
+          tools/ci_release.sh prune goldens- 3
+          tools/ci_release.sh prune ci-misc- 3
+          tools/ci_release.sh prune ci-apk- 2
+          tools/ci_release.sh prune ci-shots- 2
+          tools/ci_release.sh prune ci-ios- 3
+          tools/ci_release.sh prune ci-topo- 7
+          tools/ci_release.sh prune ci-aab- 14
+      - name: Delete consumed nightly APKs, keep the newest 5 dogfood phone APKs (Actions artifacts)
+        if: ${{ vars.USE_ARTIFACTS == '1' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EVENT: ${{ github.event_name }}
