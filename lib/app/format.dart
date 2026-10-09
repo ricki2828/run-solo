@@ -103,6 +103,10 @@ abstract final class Fmt {
   /// "4 Sep".
   static String dayMonth(DateTime d) => '${d.day} ${_months[d.month - 1]}';
 
+  /// "Nov 2026".
+  static String monthShortYear(DateTime d) =>
+      '${_months[d.month - 1]} ${d.year}';
+
   /// "September 2026".
   static String monthYear(DateTime d) {
     const full = [

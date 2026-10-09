@@ -31,6 +31,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
+import '../app/format.dart';
 import '../platform/transfer_gateway.dart';
 import 'history_store.dart';
 import 'intervals_icu.dart' show SecretStore;
@@ -422,6 +423,14 @@ class CompanionMe {
   static String _clock(int m) =>
       '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
 
+  /// "2026-11" as "Nov 2026"; anything else as sent.
+  static String _month(String v) {
+    final m = RegExp(r'^(\d{4})-(\d{2})$').firstMatch(v);
+    final month = m == null ? null : int.parse(m[2]!);
+    if (month == null || month < 1 || month > 12) return v;
+    return Fmt.monthShortYear(DateTime(int.parse(m![1]!), month));
+  }
+
   static String _words(String v) => switch (v) {
     'weekdays' => 'Weekdays',
     'weekends' => 'Weekends',
@@ -439,7 +448,7 @@ class CompanionMe {
       switch (raceMonth) {
         null => 'Not told yet',
         'none' => 'No race planned',
-        final m => m,
+        final m => _month(m),
       },
     ),
     (

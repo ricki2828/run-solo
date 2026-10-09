@@ -297,7 +297,7 @@ void main() {
       expect(text['Connected to'], 'Ricki T');
       expect(text['Runs it has'], '5');
       expect(text['Your goal'], 'first 5k');
-      expect(text['Your race'], '2026-11');
+      expect(text['Your race'], 'Nov 2026');
       expect(text['Days you usually run'], 'Weekdays and weekends');
       expect(text['Niggles'], 'calf');
       expect(text['How runs felt'], '1 easy, 2 right, 1 hard');
