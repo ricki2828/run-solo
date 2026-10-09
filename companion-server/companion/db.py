@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   channel TEXT NOT NULL CHECK (channel IN ('telegram','whatsapp')),
   chat_ref TEXT NOT NULL,
+  chat_name TEXT,
   created_at TEXT NOT NULL,
   consent_version TEXT, consent_at TEXT, consent_msg_id TEXT,
   zone_id TEXT NOT NULL DEFAULT 'UTC',
@@ -35,7 +36,8 @@ CREATE TABLE IF NOT EXISTS enrolments (
   poll_hash TEXT NOT NULL,
   code TEXT,
   attempts INTEGER NOT NULL DEFAULT 0,
-  consent_msg_id TEXT
+  consent_msg_id TEXT,
+  chat_name TEXT
 );
 CREATE TABLE IF NOT EXISTS runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

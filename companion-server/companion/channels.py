@@ -33,6 +33,7 @@ class Inbound:
     button_idx: int | None = None
     callback_id: str | None = None
     callback_message_id: str | None = None
+    name: str = ""  # display name or @username of the sender, never the id
 
 
 def parse_callback(data: str) -> tuple[str, int] | None:
@@ -104,7 +105,13 @@ class TelegramChannel:
         m = update.get("message")
         if not m or (m.get("chat") or {}).get("type") != "private" or "text" not in m:
             return None
-        return Inbound("telegram", str(m["chat"]["id"]), msg_id, text=str(m["text"])[:500])
+        f = m.get("from") or {}
+        name = " ".join(x for x in (f.get("first_name"), f.get("last_name")) if isinstance(x, str)).strip()
+        if not name and isinstance(f.get("username"), str):
+            name = "@" + f["username"]
+        elif name and isinstance(f.get("username"), str):
+            name += " (@" + f["username"] + ")"
+        return Inbound("telegram", str(m["chat"]["id"]), msg_id, text=str(m["text"])[:500], name=name[:64])
 
 
 # --- WhatsApp Cloud API (disabled until Meta config exists) ----------------------------------
@@ -175,13 +182,15 @@ class WhatsAppChannel:
         for entry in items(payload.get("entry")):
             for ch in items(entry.get("changes")):
                 val = ch.get("value")
+                names = {str(c.get("wa_id")): str((c.get("profile") or {}).get("name", ""))[:64]
+                         for c in items(val.get("contacts") if isinstance(val, dict) else None)}
                 for m in items(val.get("messages") if isinstance(val, dict) else None):
                     wa_id, mid = str(m.get("from", "")), str(m.get("id", ""))
                     if not wa_id or not mid:
                         continue
                     t = m.get("type")
                     if t == "text":
-                        out.append(Inbound("whatsapp", wa_id, mid, text=str(m["text"].get("body", ""))[:500]))
+                        out.append(Inbound("whatsapp", wa_id, mid, text=str(m["text"].get("body", ""))[:500], name=names.get(wa_id, "")))
                     elif t == "interactive":
                         it = m["interactive"]
                         rid = (it.get("button_reply") or it.get("list_reply") or {}).get("id", "")

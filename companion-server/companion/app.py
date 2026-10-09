@@ -171,9 +171,9 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
     def enrol_confirm(body: EnrolConfirmIn, request: Request):
         if not confirm_limiter.allow(client_ip(request)):
             raise HTTPException(429, "slow down")
-        result, token = svc.enrol_confirm(body.nonce, body.poll_secret, body.code)
+        result, token, chat_name = svc.enrol_confirm(body.nonce, body.poll_secret, body.code)
         if result == "ok":
-            return {"state": "claimed", "token": token}
+            return {"state": "claimed", "token": token, "chat_name": chat_name}
         if result == "wrong":
             raise HTTPException(403, "wrong code")
         raise HTTPException(410, "enrolment expired")

@@ -158,14 +158,14 @@ class Service:
             return {"state": "expired"}
         return {"state": e["state"]}
 
-    def enrol_confirm(self, nonce: str, poll_secret: str, code: str, now: datetime | None = None) -> tuple[str, str | None]:
-        """-> (result, token). result: ok | wrong | locked | gone. The old token is revoked only here."""
+    def enrol_confirm(self, nonce: str, poll_secret: str, code: str, now: datetime | None = None) -> tuple[str, str | None, str | None]:
+        """-> (result, token, chat_name). result: ok | wrong | locked | gone. The old token is revoked only here."""
         now = now or now_utc()
-        result, token = "gone", None
+        result, token, chat_name = "gone", None, None
         with db.tx(self.s.db_path) as c:
             e = self._enrolment(c, nonce, poll_secret)
             if e is None or e["state"] != "awaiting_code" or parse_iso(e["expires_at"]) <= now:
-                return "gone", None
+                return "gone", None, None
             if not hmac.compare_digest((e["code"] or "").encode(), code.encode()):
                 attempts = e["attempts"] + 1
                 if attempts >= MAX_CODE_ATTEMPTS:
@@ -180,8 +180,9 @@ class Service:
                 c.execute("DELETE FROM devices WHERE user_id=?", (uid,))  # re-enrol rotates, but only now
                 c.execute("INSERT INTO devices (token_hash, user_id, created_at) VALUES (?,?,?)",
                           (self.token_hash(token), uid, iso(now)))
-                c.execute("UPDATE users SET paused=0, consent_version=?, consent_at=?, consent_msg_id=? WHERE id=?",
-                          (self.s.consent_version, iso(now), e["consent_msg_id"], uid))
+                c.execute("UPDATE users SET paused=0, consent_version=?, consent_at=?, consent_msg_id=?, chat_name=? WHERE id=?",
+                          (self.s.consent_version, iso(now), e["consent_msg_id"], e["chat_name"], uid))
+                chat_name = e["chat_name"]
                 c.execute("UPDATE enrolments SET state='claimed', code=NULL WHERE nonce=?", (nonce,))
                 result = "ok"
         if result == "ok":
@@ -191,7 +192,7 @@ class Service:
             ch = self.channels.get(u["channel"]) if u else None
             if ch:
                 self._reply(ch, u["chat_ref"], WELCOME)
-        return result, token
+        return result, token, chat_name
 
     def _bind(self, inb: Inbound, nonce: str, now: datetime) -> str:
         """The user's own message proves the chat. It starts a code check; it issues nothing."""
@@ -211,8 +212,8 @@ class Service:
                 c.execute("INSERT INTO users (id, channel, chat_ref, created_at, last_inbound_at) VALUES (?,?,?,?,?)",
                           (uid, inb.channel, inb.ref, iso(now), iso(now)))
             code = f"{secrets.randbelow(10**6):06d}"
-            c.execute("UPDATE enrolments SET state='awaiting_code', user_id=?, code=?, attempts=0, consent_msg_id=? "
-                      "WHERE nonce=?", (uid, code, self._mac(inb.msg_id), nonce))
+            c.execute("UPDATE enrolments SET state='awaiting_code', user_id=?, code=?, attempts=0, consent_msg_id=?, "
+                      "chat_name=? WHERE nonce=?", (uid, code, self._mac(inb.msg_id), inb.name or None, nonce))
             c.execute("UPDATE inbound_seen SET user_id=? WHERE msg_id=?", (uid, self._mac(inb.msg_id)))
         return CODE_MSG.format(code=code)
 
@@ -347,7 +348,7 @@ class Service:
         ref = u["chat_ref"]
         return {
             "profile": {
-                "channel": u["channel"], "chat_ref_hint": "…" + ref[-3:], "created_at": u["created_at"],
+                "channel": u["channel"], "chat_name": u["chat_name"], "chat_ref_hint": "…" + ref[-3:], "created_at": u["created_at"],
                 "consent_version": u["consent_version"], "consent_at": u["consent_at"], "paused": bool(u["paused"]),
                 "zone_id": u["zone_id"], "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },

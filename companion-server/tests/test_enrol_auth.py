@@ -199,3 +199,23 @@ def test_future_dated_run_is_rejected(client):
     t = enrol(client)
     p = run_payload(start_utc=(datetime.now(timezone.utc) + timedelta(hours=3)).isoformat())
     assert client.post("/v1/runs", json=p, headers=auth(t)).status_code == 422
+
+
+def test_chat_name_is_shown_after_confirm_and_in_me_never_the_chat_id(client):
+    st = start(client)
+    frm = {"id": int(OWNER), "first_name": "Ricki", "last_name": "T", "username": "rickit"}
+    post_tg(client, tg_update(1, f"/start {st['nonce']}", frm=frm))
+    body = confirm(client, st, chat_code(client, st["nonce"])).json()
+    assert body["chat_name"] == "Ricki T (@rickit)" and OWNER not in json.dumps(body)
+    me = client.get("/v1/me", headers=auth(body["token"])).json()
+    assert me["profile"]["chat_name"] == "Ricki T (@rickit)"
+    assert OWNER not in json.dumps(me)
+
+
+def test_chat_name_falls_back_to_username_and_may_be_null(client):
+    st = start(client)
+    post_tg(client, tg_update(1, f"/start {st['nonce']}", frm={"id": int(OWNER), "username": "only_handle"}))
+    assert confirm(client, st, chat_code(client, st["nonce"])).json()["chat_name"] == "@only_handle"
+    st = start(client)
+    post_tg(client, tg_update(2, f"/start {st['nonce']}"))
+    assert confirm(client, st, chat_code(client, st["nonce"])).json()["chat_name"] is None

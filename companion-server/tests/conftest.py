@@ -105,9 +105,10 @@ def client(settings, fakes):
         yield c
 
 
-def tg_update(uid: int, text: str, ref: str = OWNER, chat_type: str = "private"):
+def tg_update(uid: int, text: str, ref: str = OWNER, chat_type: str = "private", frm: dict | None = None):
     return {"update_id": uid, "message": {"message_id": uid, "text": text,
-                                          "chat": {"id": int(ref), "type": chat_type}, "from": {"id": int(ref)}}}
+                                          "chat": {"id": int(ref), "type": chat_type},
+                                          "from": frm if frm is not None else {"id": int(ref)}}}
 
 
 def tg_callback(uid: int, data: str, ref: str = OWNER, mid: int = 5):
