@@ -38,10 +38,20 @@ def test_first_run_no_comparable_uses_base_fact():
     assert "7.0 km" in res.facts[0].text and "5:42/km" in res.facts[0].text
 
 
-def test_verdict_passed_through_word_for_word():
-    v = "4x4 hit: 4 of 4 reps in zone"
-    res = build_facts(run(type="interval", verdict=v), [], {})
-    assert any(f.text == f"Verdict: {v}" for f in res.facts)
+import pytest
+
+
+@pytest.mark.parametrize("wire,text", [
+    ("faster", "faster"), ("holding", "holding"), ("slower", "slower"), ("noRealChange", "no real change"),
+    ("baselineSet", "baseline set"), ("indoorRun", "indoor run")])
+def test_every_app_verdict_has_fixed_wording(wire, text):
+    res = build_facts(run(type="interval", verdict=wire), [], {})
+    assert any(f.text == f"Verdict: {text}" for f in res.facts)
+
+
+def test_no_verdict_and_unknown_say_nothing_about_a_verdict():
+    for v in ("noVerdict", None, "garbage"):
+        assert not any(f.id == "verdict" for f in build_facts(run(verdict=v), [], {}).facts)
 
 
 def test_pb_sets_tone_and_is_worthy():
@@ -97,7 +107,7 @@ def test_load_alert_and_plan_facts():
 
 
 def test_at_most_three_facts_priority_order():
-    res = build_facts(run(verdict="V", pb="5k", load_state="high", plan_kind="easy"),
+    res = build_facts(run(verdict="faster", pb="5k", load_state="high", plan_kind="easy"),
                       [hist(3, true_pace_s_per_km=360.0)], {})
     assert len(res.facts) == 3 and ids(res) == ["verdict", "pb", "delta"]
 

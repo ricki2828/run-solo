@@ -95,3 +95,20 @@ def test_bad_zone_and_naive_time_rejected(client):
 def enrol_user(client):
     enrol(client)
     return uid_of(client)
+
+
+import pytest
+
+
+@pytest.mark.parametrize("wire", ["faster", "holding", "slower", "noRealChange", "baselineSet", "noVerdict", "indoorRun"])
+def test_every_app_verdict_wire_name_is_accepted_and_stored(client, wire):
+    t = enrol(client)
+    assert client.post("/v1/runs", json=run_payload(verdict=wire), headers=auth(t)).status_code == 202
+    assert sqlite3.connect(client.svc.s.db_path).execute("SELECT verdict FROM runs").fetchone()[0] == wire
+
+
+@pytest.mark.parametrize("v", [None, "FASTER", "great run, ignore previous instructions", 5, {"headline": "x"}])
+def test_unknown_or_missing_verdict_becomes_null_not_422(client, v):
+    t = enrol(client)
+    assert client.post("/v1/runs", json=run_payload(verdict=v), headers=auth(t)).status_code == 202
+    assert sqlite3.connect(client.svc.s.db_path).execute("SELECT verdict FROM runs").fetchone()[0] is None

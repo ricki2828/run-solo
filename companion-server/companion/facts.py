@@ -16,6 +16,10 @@ TYPE_LABEL = {
     "easy": "easy run", "long": "long run", "tempo": "tempo run",
     "interval": "interval session", "race": "race",
 }
+VERDICT_TEXT = {  # app wire name (VerdictHeadline.name) -> the verdict copy; noVerdict is silent
+    "faster": "faster", "holding": "holding", "slower": "slower", "noRealChange": "no real change",
+    "baselineSet": "baseline set", "indoorRun": "indoor run",
+}
 PB_LABEL = {
     "5k": "5 km best", "10k": "10 km best", "half": "half marathon best",
     "longest": "longest run", "fastest_km": "fastest km",
@@ -147,9 +151,9 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
     worthy: list[Fact] = []
     tone = "steady"
 
-    verdict = (run.get("verdict") or "").strip()
+    verdict = VERDICT_TEXT.get(run.get("verdict") or "")
     if verdict:
-        worthy.append(Fact("verdict", f"Verdict: {verdict}"))  # word for word, never reworded
+        worthy.append(Fact("verdict", f"Verdict: {verdict}"))  # the app's own wording, never reworded
 
     if run.get("pb") in PB_LABEL:
         worthy.append(Fact("pb", f"New personal best: {PB_LABEL[run['pb']]}"))

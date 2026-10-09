@@ -42,6 +42,10 @@ WELCOME = ("You're connected. Your run recaps will land here. Send STOP to pause
            "erase everything we hold about you.")
 
 
+# Dart VerdictHeadline.name -> the words the facts engine may say. noVerdict says nothing.
+VERDICT_WIRE = ("faster", "holding", "slower", "noRealChange", "baselineSet", "noVerdict", "indoorRun")
+
+
 class RunIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     run_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.:-]+$")
@@ -53,7 +57,7 @@ class RunIn(BaseModel):
     distance_m: int = Field(ge=0, le=300000)
     pace_s_per_km: float | None = Field(default=None, gt=0, lt=3600)
     true_pace_s_per_km: float | None = Field(default=None, gt=0, lt=3600)
-    verdict: str | None = Field(default=None, pattern=r"^(faster|holding|slower|baseline|noise|flagged)$")
+    verdict: str | None = None  # VerdictHeadline.name from the app; unknown values become None
     scores_delta: dict[str, float] = Field(default_factory=dict, max_length=8)
     zone_min: dict[str, float] = Field(default_factory=dict, max_length=8)
     climb_m: int | None = Field(default=None, ge=0, le=10000)
@@ -65,6 +69,12 @@ class RunIn(BaseModel):
     plan_target_m: int | None = Field(default=None, ge=0, le=300000)
     plan_weeks_to_race: int | None = Field(default=None, ge=0, le=104)
     feel: str | None = Field(default=None, pattern=r"^(easy|right|hard)$")
+
+    @field_validator("verdict", mode="before")
+    @classmethod
+    def _verdict(cls, v):
+        """Enum on the wire (never free text). An unrecognised value is dropped, not a 422 for the whole run."""
+        return v if isinstance(v, str) and v in VERDICT_WIRE else None
 
     @field_validator("zone_id")
     @classmethod
