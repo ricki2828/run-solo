@@ -1,0 +1,9 @@
+[Unit]
+Description=Run Supreme companion: nightly encrypted SQLite backup
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.secrets/companion.env
+WorkingDirectory=%h/run-solo/companion-server
+ExecStart=%h/run-solo/companion-server/.venv/bin/python -m companion.backup
+UMask=0077

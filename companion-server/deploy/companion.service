@@ -1,0 +1,18 @@
+[Unit]
+Description=Run Supreme companion server (127.0.0.1:8051)
+After=network.target
+
+[Service]
+EnvironmentFile=%h/.secrets/companion.env
+WorkingDirectory=%h/run-solo/companion-server
+ExecStart=%h/run-solo/companion-server/.venv/bin/python -m uvicorn companion.app:app_from_env --factory --host 127.0.0.1 --port 8051 --workers 1 --no-access-log
+Restart=on-failure
+RestartSec=5
+# The host is swap-constrained (eng-review C1).
+MemoryMax=200M
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target
