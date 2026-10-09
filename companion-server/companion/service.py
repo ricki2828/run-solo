@@ -26,6 +26,7 @@ from .writer import Writer, digest_lines
 log = logging.getLogger("companion")
 
 ENROL_TTL_MIN = 15
+MAX_CODE_ATTEMPTS = 5
 MAX_ATTEMPTS = 4
 RUNS_PER_DAY = 30
 START_RE = re.compile(r"^\s*/?start\s+([A-Za-z0-9_-]{8,64})\s*$", re.I)
@@ -35,6 +36,8 @@ RETENTION_LOG_DAYS = 30
 NOT_OPEN = "Run Supreme's companion isn't open yet. We'll let you know when it is."
 UNKNOWN = ("I only send run recaps. To connect, open Run Supreme, go to Settings > Companion and tap "
            "Turn on. Send STOP to pause or DELETE to erase everything.")
+CODE_MSG = ("Your code is {code}. Type it into Run Supreme to finish connecting. Only ever enter it in the app, "
+            "and never share it. If you didn't start this, ignore this message.")
 WELCOME = ("You're connected. Your run recaps will land here. Send STOP to pause them or DELETE to "
            "erase everything we hold about you.")
 
@@ -50,7 +53,7 @@ class RunIn(BaseModel):
     distance_m: int = Field(ge=0, le=300000)
     pace_s_per_km: float | None = Field(default=None, gt=0, lt=3600)
     true_pace_s_per_km: float | None = Field(default=None, gt=0, lt=3600)
-    verdict: str | None = Field(default=None, max_length=60)
+    verdict: str | None = Field(default=None, pattern=r"^(faster|holding|slower|baseline|noise|flagged)$")
     scores_delta: dict[str, float] = Field(default_factory=dict, max_length=8)
     zone_min: dict[str, float] = Field(default_factory=dict, max_length=8)
     climb_m: int | None = Field(default=None, ge=0, le=10000)
@@ -110,35 +113,78 @@ class Service:
             r = c.execute("SELECT user_id FROM devices WHERE token_hash = ?", (self.token_hash(token),)).fetchone()
         return r["user_id"] if r else None
 
+    def _mac(self, value: str) -> str:
+        return hmac.new(self.s.pepper, value.encode(), hashlib.sha256).hexdigest()
+
     def enrol_start(self, now: datetime | None = None) -> dict:
+        """The nonce travels through chat; the poll secret never does. Only the app holds both."""
         now = now or now_utc()
         nonce = secrets.token_urlsafe(18)
+        poll_secret = secrets.token_urlsafe(24)
         with db.tx(self.s.db_path) as c:
-            c.execute("INSERT INTO enrolments (nonce, created_at, expires_at) VALUES (?,?,?)",
-                      (nonce, iso(now), iso(now + timedelta(minutes=ENROL_TTL_MIN))))
+            c.execute("INSERT INTO enrolments (nonce, created_at, expires_at, poll_hash) VALUES (?,?,?,?)",
+                      (nonce, iso(now), iso(now + timedelta(minutes=ENROL_TTL_MIN)), self._mac(poll_secret)))
         links: dict[str, str] = {}
         if self.s.telegram_bot and "telegram" in self.channels:
             links["telegram"] = f"https://t.me/{self.s.telegram_bot}?start={nonce}"
         if self.s.wa_number and "whatsapp" in self.channels:
             links["whatsapp"] = f"https://wa.me/{self.s.wa_number}?text=START%20{nonce}"
-        return {"nonce": nonce, "expires_in": ENROL_TTL_MIN * 60, "links": links}
+        return {"nonce": nonce, "poll_secret": poll_secret, "expires_in": ENROL_TTL_MIN * 60, "links": links}
 
-    def enrol_status(self, nonce: str, now: datetime | None = None) -> dict:
+    def _enrolment(self, c, nonce: str, poll_secret: str):
+        e = c.execute("SELECT * FROM enrolments WHERE nonce = ?", (nonce,)).fetchone()
+        if not e or not hmac.compare_digest(e["poll_hash"].encode(), self._mac(poll_secret).encode()):
+            return None
+        return e
+
+    def enrol_status(self, nonce: str, poll_secret: str, now: datetime | None = None) -> dict:
+        """Read-only. Never returns a token: the token only comes from enrol_confirm."""
         now = now or now_utc()
+        with db.ro(self.s.db_path) as c:
+            e = self._enrolment(c, nonce, poll_secret)
+        if e is None:
+            return {"state": "unknown"}
+        if e["state"] in ("pending", "awaiting_code") and parse_iso(e["expires_at"]) <= now:
+            return {"state": "expired"}
+        return {"state": e["state"]}
+
+    def enrol_confirm(self, nonce: str, poll_secret: str, code: str, now: datetime | None = None) -> tuple[str, str | None]:
+        """-> (result, token). result: ok | wrong | locked | gone. The old token is revoked only here."""
+        now = now or now_utc()
+        result, token = "gone", None
         with db.tx(self.s.db_path) as c:
-            e = c.execute("SELECT * FROM enrolments WHERE nonce = ?", (nonce,)).fetchone()
-            if not e:
-                return {"state": "unknown"}
-            if e["state"] == "pending" and parse_iso(e["expires_at"]) <= now:
-                c.execute("UPDATE enrolments SET state='expired' WHERE nonce=?", (nonce,))
-                return {"state": "expired"}
-            if e["state"] == "bound" and e["token_once"]:
-                token = e["token_once"]  # handed over exactly once, then erased
-                c.execute("UPDATE enrolments SET state='claimed', token_once=NULL WHERE nonce=?", (nonce,))
-                return {"state": "bound", "token": token}
-            return {"state": "claimed" if e["state"] == "bound" else e["state"]}
+            e = self._enrolment(c, nonce, poll_secret)
+            if e is None or e["state"] != "awaiting_code" or parse_iso(e["expires_at"]) <= now:
+                return "gone", None
+            if not hmac.compare_digest((e["code"] or "").encode(), code.encode()):
+                attempts = e["attempts"] + 1
+                if attempts >= MAX_CODE_ATTEMPTS:
+                    c.execute("UPDATE enrolments SET state='expired', code=NULL, attempts=? WHERE nonce=?", (attempts, nonce))
+                    result = "locked"
+                else:
+                    c.execute("UPDATE enrolments SET attempts=? WHERE nonce=?", (attempts, nonce))
+                    result = "wrong"
+            else:
+                uid = e["user_id"]
+                token = secrets.token_urlsafe(32)  # 256 bits; only the keyed hash is stored, and it is never re-readable
+                c.execute("DELETE FROM devices WHERE user_id=?", (uid,))  # re-enrol rotates, but only now
+                c.execute("INSERT INTO devices (token_hash, user_id, created_at) VALUES (?,?,?)",
+                          (self.token_hash(token), uid, iso(now)))
+                c.execute("UPDATE users SET paused=0, consent_version=?, consent_at=?, consent_msg_id=? WHERE id=?",
+                          (self.s.consent_version, iso(now), e["consent_msg_id"], uid))
+                c.execute("UPDATE enrolments SET state='claimed', code=NULL WHERE nonce=?", (nonce,))
+                result = "ok"
+        if result == "ok":
+            log.info("enrolled user=%s", uid)
+            with db.ro(self.s.db_path) as c:
+                u = c.execute("SELECT channel, chat_ref FROM users WHERE id=?", (uid,)).fetchone()
+            ch = self.channels.get(u["channel"]) if u else None
+            if ch:
+                self._reply(ch, u["chat_ref"], WELCOME)
+        return result, token
 
     def _bind(self, inb: Inbound, nonce: str, now: datetime) -> str:
+        """The user's own message proves the chat. It starts a code check; it issues nothing."""
         ident = f"{inb.channel}:{inb.ref}"
         with db.tx(self.s.db_path) as c:
             e = c.execute("SELECT * FROM enrolments WHERE nonce = ?", (nonce,)).fetchone()
@@ -149,29 +195,23 @@ class Service:
                 return NOT_OPEN
             u = c.execute("SELECT id FROM users WHERE channel=? AND chat_ref=?", (inb.channel, inb.ref)).fetchone()
             if u:
-                uid = u["id"]
-                c.execute("DELETE FROM devices WHERE user_id=?", (uid,))  # re-enrol rotates the token
-                c.execute("UPDATE users SET paused=0, consent_version=?, consent_at=?, consent_msg_id=? WHERE id=?",
-                          (self.s.consent_version, iso(now), inb.msg_id, uid))
+                uid = u["id"]  # existing user: nothing changes until the code is confirmed
             else:
                 uid = _opaque_user_id()
-                c.execute("INSERT INTO users (id, channel, chat_ref, created_at, consent_version, consent_at, "
-                          "consent_msg_id, last_inbound_at) VALUES (?,?,?,?,?,?,?,?)",
-                          (uid, inb.channel, inb.ref, iso(now), self.s.consent_version, iso(now), inb.msg_id, iso(now)))
-            token = secrets.token_urlsafe(32)  # 256 bits; only the keyed hash is stored
-            c.execute("INSERT INTO devices (token_hash, user_id, created_at) VALUES (?,?,?)",
-                      (self.token_hash(token), uid, iso(now)))
-            c.execute("UPDATE enrolments SET state='bound', user_id=?, token_once=? WHERE nonce=?", (uid, token, nonce))
-            c.execute("UPDATE inbound_seen SET user_id=? WHERE msg_id=?", (uid, inb.msg_id))
-        log.info("enrolled user=%s channel=%s", uid, inb.channel)
-        return WELCOME
+                c.execute("INSERT INTO users (id, channel, chat_ref, created_at, last_inbound_at) VALUES (?,?,?,?,?)",
+                          (uid, inb.channel, inb.ref, iso(now), iso(now)))
+            code = f"{secrets.randbelow(10**6):06d}"
+            c.execute("UPDATE enrolments SET state='awaiting_code', user_id=?, code=?, attempts=0, consent_msg_id=? "
+                      "WHERE nonce=?", (uid, code, self._mac(inb.msg_id), nonce))
+            c.execute("UPDATE inbound_seen SET user_id=? WHERE msg_id=?", (uid, self._mac(inb.msg_id)))
+        return CODE_MSG.format(code=code)
 
     # ---------------------------------------------------------------- inbound (webhooks)
     def _seen(self, inb: Inbound, now: datetime) -> bool:
         """True if this message id was already handled."""
         with db.tx(self.s.db_path) as c:
             cur = c.execute("INSERT OR IGNORE INTO inbound_seen (msg_id, user_id, ts) VALUES (?,NULL,?)",
-                            (inb.msg_id, iso(now)))
+                            (self._mac(inb.msg_id), iso(now)))
             return cur.rowcount == 0
 
     def _user_by_ref(self, channel: str, ref: str) -> dict | None:
@@ -190,7 +230,7 @@ class Service:
         if user:
             with db.tx(self.s.db_path) as c:
                 c.execute("UPDATE users SET last_inbound_at=? WHERE id=?", (iso(now), user["id"]))
-                c.execute("UPDATE inbound_seen SET user_id=? WHERE msg_id=?", (user["id"], inb.msg_id))
+                c.execute("UPDATE inbound_seen SET user_id=? WHERE msg_id=?", (user["id"], self._mac(inb.msg_id)))
         if inb.card_id is not None:
             self._handle_button(ch, inb, user, now)
             return
@@ -200,7 +240,7 @@ class Service:
         reply: str
         if m:
             reply = self._bind(inb, m.group(1), now)
-        elif word == "STOP":
+        elif word in ("STOP", "STOP ALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"):
             if user:
                 with db.tx(self.s.db_path) as c:
                     c.execute("UPDATE users SET paused=1 WHERE id=?", (user["id"],))
@@ -321,6 +361,8 @@ class Service:
     # ---------------------------------------------------------------- runs (B6)
     def ingest_run(self, uid: str, run: RunIn, now: datetime | None = None) -> dict:
         now = now or now_utc()
+        if run.start_utc > now + timedelta(minutes=10):
+            raise ValueError("start_utc in the future")
         end = run.start_utc + timedelta(seconds=run.duration_s)
         stale = (now - end) > timedelta(hours=self.s.stale_card_hours)
         with db.tx(self.s.db_path) as c:
@@ -586,6 +628,8 @@ class Service:
         log_cut = iso(now - timedelta(days=RETENTION_LOG_DAYS))
         with db.tx(self.s.db_path) as c:
             c.execute("DELETE FROM enrolments WHERE expires_at < ?", (iso(now - timedelta(days=1)),))
+            c.execute("DELETE FROM users WHERE created_at < ? AND NOT EXISTS (SELECT 1 FROM devices d WHERE d.user_id = users.id)",
+                      (iso(now - timedelta(hours=1)),))  # started enrolling, never confirmed
             c.execute("DELETE FROM msglog WHERE ts < ?", (log_cut,))
             c.execute("DELETE FROM inbound_seen WHERE ts < ?", (log_cut,))
             c.execute("DELETE FROM cards WHERE created_at < ?", (log_cut,))

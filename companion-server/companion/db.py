@@ -32,7 +32,10 @@ CREATE TABLE IF NOT EXISTS enrolments (
   expires_at TEXT NOT NULL,
   state TEXT NOT NULL DEFAULT 'pending',
   user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
-  token_once TEXT
+  poll_hash TEXT NOT NULL,
+  code TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  consent_msg_id TEXT
 );
 CREATE TABLE IF NOT EXISTS runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

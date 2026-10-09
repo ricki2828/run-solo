@@ -3,10 +3,8 @@ import json
 import logging
 import os
 import re
-import shutil
 import sqlite3
 import stat
-import subprocess
 from datetime import timedelta
 
 import pytest
@@ -157,18 +155,29 @@ def test_message_log_and_niggle_expire(client):
     assert c.execute("SELECT key FROM memory").fetchall() == [("goal_type",)]
 
 
-@pytest.mark.skipif(not shutil.which("openssl"), reason="openssl missing")
-def test_backup_is_encrypted_restorable_and_pruned(client, tmp_path):
+def test_backup_is_authenticated_restorable_and_pruned(client, tmp_path):
+    from companion.backup import restore
     enrol(client)
     key = tmp_path / "k.key"
-    key.write_text("backup-key-for-test")
+    key.write_text("backup-key-for-test-0123456789")
     out_dir = tmp_path / "bk"
     old = backup(client.svc.s.db_path, str(out_dir), str(key), now=now_utc().timestamp() - 20 * 86400)
     new = backup(client.svc.s.db_path, str(out_dir), str(key))
     assert not os.path.exists(old) and os.path.exists(new)  # 14 day retention
-    assert b"SQLite format" not in open(new, "rb").read()
+    raw = open(new, "rb").read()
+    assert b"SQLite format" not in raw and raw[:4] == b"RSB1"
+    assert not [n for n in os.listdir(out_dir) if not n.endswith(".db.enc")]  # no plaintext or temp files left behind
     restored = tmp_path / "restored.db"
-    subprocess.run(["openssl", "enc", "-d", "-aes-256-cbc", "-pbkdf2", "-in", new, "-out", str(restored),
-                    "-pass", f"file:{key}"], check=True)
+    restore(new, str(restored), str(key))
     assert sqlite3.connect(restored).execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
     assert stat.S_IMODE(os.stat(new).st_mode) == 0o600
+    # tampering and wrong keys fail loudly
+    bad = bytearray(raw)
+    bad[-1] ^= 1
+    (tmp_path / "bad.enc").write_bytes(bytes(bad))
+    with pytest.raises(ValueError):
+        restore(str(tmp_path / "bad.enc"), str(tmp_path / "x.db"), str(key))
+    other = tmp_path / "other.key"
+    other.write_text("a-different-key-0123456789")
+    with pytest.raises(ValueError):
+        restore(new, str(tmp_path / "y.db"), str(other))

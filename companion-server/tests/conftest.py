@@ -123,13 +123,33 @@ def post_tg(client, update, secret=HOOK_SECRET):
     return client.post("/hooks/telegram", json=update, headers=h)
 
 
+def start(client) -> dict:
+    return client.post("/v1/enrol/start").json()
+
+
+def status(client, st: dict) -> dict:
+    return client.post("/v1/enrol/status", json={"nonce": st["nonce"], "poll_secret": st["poll_secret"]}).json()
+
+
+def chat_code(client, nonce: str) -> str:
+    """The code the bot sent into the chat (read from the DB; one test also checks the message text)."""
+    import sqlite3
+    path = client.app.state.svc.s.db_path
+    return sqlite3.connect(path).execute("SELECT code FROM enrolments WHERE nonce=?", (nonce,)).fetchone()[0]
+
+
+def confirm(client, st: dict, code: str):
+    return client.post("/v1/enrol/confirm", json={"nonce": st["nonce"], "poll_secret": st["poll_secret"], "code": code})
+
+
 def enrol(client, ref: str = OWNER) -> str:
-    """Full B1 flow: app starts, user messages the bot with the nonce, app polls for the token."""
-    nonce = client.post("/v1/enrol/start").json()["nonce"]
-    assert post_tg(client, tg_update(next(_uid), f"/start {nonce}", ref)).status_code == 200
-    st = client.get("/v1/enrol/status", params={"nonce": nonce}).json()
-    assert st["state"] == "bound", st
-    return st["token"]
+    """Full flow: app starts, user messages the bot with the nonce, bot sends a code, app confirms it."""
+    st = start(client)
+    assert post_tg(client, tg_update(next(_uid), f"/start {st['nonce']}", ref)).status_code == 200
+    assert status(client, st)["state"] == "awaiting_code"
+    r = confirm(client, st, chat_code(client, st["nonce"]))
+    assert r.status_code == 200, r.text
+    return r.json()["token"]
 
 
 def auth(token: str) -> dict:
@@ -140,6 +160,6 @@ def run_payload(run_id="r1", minutes_ago=20, **over):
     start = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago + 40)
     p = {"run_id": run_id, "type": "easy", "start_utc": start.isoformat(), "utc_offset_min": 780,
          "zone_id": "Pacific/Auckland", "duration_s": 2400, "distance_m": 7000,
-         "pace_s_per_km": 342.0, "true_pace_s_per_km": 338.0, "verdict": "On target for an easy day"}
+         "pace_s_per_km": 342.0, "true_pace_s_per_km": 338.0, "verdict": "holding"}
     p.update(over)
     return p

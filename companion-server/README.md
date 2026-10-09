@@ -8,6 +8,8 @@ grounding and a template fallback; cards go out over Telegram (WhatsApp adapter 
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt && .venv/bin/python -m pytest
 ```
 
+Dependencies are hash-pinned: `pip install --require-hashes -r requirements-dev.txt`.
+
 | Module | Job |
 |---|---|
 | `facts.py` | pure rules: facts, suggestions, weekly question |
@@ -17,5 +19,5 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt && .venv/
 | `timeutil.py` | all local-time logic: quiet hours, ISO-week caps pinned across zone changes |
 | `db.py` | schema, `hard_delete_user` (walks every table with a `user_id`) |
 
-API: `POST /v1/enrol/start`, `GET /v1/enrol/status`, `POST /v1/runs`, `PATCH /v1/runs/{id}/feel`, `GET|DELETE /v1/me`,
+API: `POST /v1/enrol/start` (returns nonce + poll_secret), `POST /v1/enrol/status`, `POST /v1/enrol/confirm` (chat code, returns the token), `POST /v1/runs`, `PATCH /v1/runs/{id}/feel`, `GET|DELETE /v1/me`,
 `PUT /v1/me/settings`, webhooks `/hooks/telegram` and `/hooks/whatsapp`. See `DEPLOY.md` for deployment.

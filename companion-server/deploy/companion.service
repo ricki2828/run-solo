@@ -11,8 +11,35 @@ RestartSec=5
 # The host is swap-constrained (eng-review C1).
 MemoryMax=200M
 UMask=0077
+
+# Sandbox: a bug in the web stack must not expose ~/.secrets, ~/.ssh or other projects' data.
+# $HOME is replaced by an empty tmpfs; only the app dir (read-only) and the data dir (read-write) are bound back in.
+# The env file is read by systemd itself, outside the sandbox, so it needs no bind.
 NoNewPrivileges=yes
 PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=%h/run-solo/companion-server
+BindPaths=%h/companion-data
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
 
 [Install]
 WantedBy=default.target

@@ -24,6 +24,13 @@ log = logging.getLogger("companion")
 V1_LIMIT = 8 * 1024
 HOOK_LIMIT = 256 * 1024
 ENROLS_PER_HOUR = 5
+STATUS_PER_MIN = 60
+CONFIRMS_PER_HOUR = 20
+
+
+def safe_eq(a: str, b: str) -> bool:
+    """Constant-time compare that never raises on non-ASCII input."""
+    return hmac.compare_digest(a.encode(), b.encode())
 
 
 class BodyLimit:
@@ -70,6 +77,16 @@ class FeelIn(BaseModel):
     feel: Literal["easy", "right", "hard"]
 
 
+class EnrolStatusIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    nonce: str = Field(min_length=8, max_length=64)
+    poll_secret: str = Field(min_length=8, max_length=64)
+
+
+class EnrolConfirmIn(EnrolStatusIn):
+    code: str = Field(pattern=r"^\d{6}$")
+
+
 class SettingsIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     quiet_start_min: int | None = Field(default=None, ge=0, lt=1440)
@@ -99,6 +116,8 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
     http = http or httpx.Client(timeout=10)
     svc = Service(settings, http)
     limiter = IpLimiter(ENROLS_PER_HOUR, 3600)
+    status_limiter = IpLimiter(STATUS_PER_MIN, 60)
+    confirm_limiter = IpLimiter(CONFIRMS_PER_HOUR, 3600)
     stop = threading.Event()
 
     def loop() -> None:
@@ -120,6 +139,9 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
     app.add_middleware(BodyLimit)
     app.state.svc = svc
 
+    def client_ip(request: Request) -> str:
+        return request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "?")
+
     def current_user(authorization: str | None = Header(default=None)) -> str:
         if not authorization or not authorization.lower().startswith("bearer "):
             raise HTTPException(401, "unauthorised")
@@ -135,14 +157,26 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
     # --- enrolment (no token yet) ---
     @app.post("/v1/enrol/start")
     def enrol_start(request: Request):
-        ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "?")
-        if not limiter.allow(ip):
+        if not limiter.allow(client_ip(request)):
             raise HTTPException(429, "slow down")
         return svc.enrol_start()
 
-    @app.get("/v1/enrol/status")
-    def enrol_status(nonce: str = Query(min_length=8, max_length=64)):
-        return svc.enrol_status(nonce)
+    @app.post("/v1/enrol/status")
+    def enrol_status(body: EnrolStatusIn, request: Request):
+        if not status_limiter.allow(client_ip(request)):
+            raise HTTPException(429, "slow down")
+        return svc.enrol_status(body.nonce, body.poll_secret)
+
+    @app.post("/v1/enrol/confirm")
+    def enrol_confirm(body: EnrolConfirmIn, request: Request):
+        if not confirm_limiter.allow(client_ip(request)):
+            raise HTTPException(429, "slow down")
+        result, token = svc.enrol_confirm(body.nonce, body.poll_secret, body.code)
+        if result == "ok":
+            return {"state": "claimed", "token": token}
+        if result == "wrong":
+            raise HTTPException(403, "wrong code")
+        raise HTTPException(410, "enrolment expired")
 
     # --- authenticated ---
     @app.post("/v1/runs")
@@ -151,6 +185,8 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
             out = svc.ingest_run(uid, run)
         except RateLimited:
             raise HTTPException(429, "daily limit")
+        except ValueError:
+            raise HTTPException(422, "start_utc is in the future")
         response.status_code = 200 if out["status"] == "duplicate" else 202
         return out
 
@@ -184,12 +220,16 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
     async def hook_telegram(request: Request):
         want = settings.telegram_webhook_secret or ""
         got = request.headers.get("x-telegram-bot-api-secret-token", "")
-        if not want or not hmac.compare_digest(want, got):
+        if not want or not safe_eq(want, got):
             raise HTTPException(403, "forbidden")
         try:
-            inb = TelegramChannel.parse(await request.json())
+            update = await request.json()
         except ValueError:
             return {"ok": True}
+        try:
+            inb = TelegramChannel.parse(update) if isinstance(update, dict) else None
+        except (AttributeError, TypeError, KeyError, ValueError):
+            inb = None  # odd shapes from a signed sender are ignored, never a 500
         if inb:
             await _run_sync(svc.handle_inbound, inb)
         return {"ok": True}
@@ -197,7 +237,7 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
     @app.get("/hooks/whatsapp")
     def hook_wa_verify(hub_mode: str = Query("", alias="hub.mode"), hub_token: str = Query("", alias="hub.verify_token"),
                        hub_challenge: str = Query("", alias="hub.challenge")):
-        if not settings.wa_ready or hub_mode != "subscribe" or not hmac.compare_digest(settings.wa_verify_token or "", hub_token):
+        if not settings.wa_ready or hub_mode != "subscribe" or not safe_eq(settings.wa_verify_token or "", hub_token):
             raise HTTPException(403, "forbidden")
         return Response(hub_challenge, media_type="text/plain")
 
@@ -212,7 +252,11 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
             payload = await request.json()
         except ValueError:
             return {"ok": True}
-        for inb in WhatsAppChannel.parse(payload):
+        try:
+            msgs = WhatsAppChannel.parse(payload) if isinstance(payload, dict) else []
+        except (AttributeError, TypeError, KeyError, ValueError):
+            msgs = []
+        for inb in msgs:
             await _run_sync(svc.handle_inbound, inb)
         return {"ok": True}
 

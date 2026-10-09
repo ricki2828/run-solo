@@ -114,7 +114,7 @@ def verify_wa_signature(app_secret: str, raw_body: bytes, header: str | None) ->
     if not header or not header.startswith("sha256="):
         return False
     want = hmac.new(app_secret.encode(), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(want, header[len("sha256="):])
+    return hmac.compare_digest(want.encode(), header[len("sha256="):].encode())
 
 
 class WhatsAppChannel:
@@ -169,9 +169,13 @@ class WhatsAppChannel:
     @staticmethod
     def parse(payload: dict) -> list[Inbound]:
         out: list[Inbound] = []
-        for entry in payload.get("entry") or []:
-            for ch in entry.get("changes") or []:
-                for m in (ch.get("value") or {}).get("messages") or []:
+        def items(x):
+            return [i for i in x if isinstance(i, dict)] if isinstance(x, list) else []
+
+        for entry in items(payload.get("entry")):
+            for ch in items(entry.get("changes")):
+                val = ch.get("value")
+                for m in items(val.get("messages") if isinstance(val, dict) else None):
                     wa_id, mid = str(m.get("from", "")), str(m.get("id", ""))
                     if not wa_id or not mid:
                         continue

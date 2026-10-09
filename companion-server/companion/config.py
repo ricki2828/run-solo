@@ -16,23 +16,23 @@ def _flag(v: str | None) -> bool:
 @dataclass(frozen=True)
 class Settings:
     db_path: str
-    pepper: bytes
+    pepper: bytes = field(repr=False)
     # "telegram:<chat id>" / "whatsapp:<number>". Only these may enrol until open_enrolment is on.
     allowed_ids: frozenset[str] = frozenset()
     open_enrolment: bool = False  # flipping this is a recorded release step (eng-review B2)
     consent_version: str = "1"
 
-    telegram_token: str | None = None
+    telegram_token: str | None = field(default=None, repr=False)
     telegram_bot: str | None = None
-    telegram_webhook_secret: str | None = None
+    telegram_webhook_secret: str | None = field(default=None, repr=False)
     telegram_api: str = "https://api.telegram.org"
 
     wa_enabled: bool = False
     wa_number: str | None = None  # business number for the wa.me deep link
     wa_phone_id: str | None = None
-    wa_token: str | None = None
-    wa_app_secret: str | None = None
-    wa_verify_token: str | None = None
+    wa_token: str | None = field(default=None, repr=False)
+    wa_app_secret: str | None = field(default=None, repr=False)
+    wa_verify_token: str | None = field(default=None, repr=False)
     wa_api: str = "https://graph.facebook.com/v21.0"
     wa_template: str = "run_card"
     wa_template_lang: str = "en"

@@ -19,6 +19,27 @@ from .facts import Fact, FactsResult
 from .timeutil import iso, now_utc
 
 NUM_RE = re.compile(r"\d+(?:[:.]\d+)*")
+NUM_WORDS = re.compile(
+    r"\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|"
+    r"seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|"
+    r"dozen|twice|thrice)\b", re.I)
+# Units are compared in canonical form, so "kilometres" == "km" but "miles" != "km".
+UNIT_CANON = {
+    "km": "km", "kms": "km", "kilometre": "km", "kilometres": "km", "kilometer": "km", "kilometers": "km",
+    "mi": "mi", "mile": "mi", "miles": "mi",
+    "m": "m", "metre": "m", "metres": "m", "meter": "m", "meters": "m",
+    "min": "min", "mins": "min", "minute": "min", "minutes": "min",
+    "h": "h", "hr": "h", "hrs": "h", "hour": "h", "hours": "h",
+    "s": "s", "sec": "s", "secs": "s", "second": "s", "seconds": "s",
+    "day": "day", "days": "day", "week": "week", "weeks": "week", "month": "month", "months": "month",
+    "kg": "kg", "lb": "lb", "lbs": "lb", "ft": "ft", "feet": "ft", "foot": "ft", "bpm": "bpm", "%": "%",
+    "kcal": "kcal", "cal": "kcal",
+}
+# Distance and mass words are checked even without a number ("fewer miles"); time words are not
+# ("second half", "in recent days" are ordinary English).
+LONG_UNITS = {"kilometre", "kilometres", "kilometer", "kilometers", "mile", "miles", "metre", "metres", "meter",
+              "meters", "feet", "kcal"}
+UNIT_AFTER_NUM = re.compile(r"\d[\d:.]*\s*(/?[A-Za-z%]+(?:/[A-Za-z]+)?)")
 BANNED = ("great effort", "diagnos", "injur", "doctor", "physio", "medical", "medicat",
           "prescri", "treatment", "http", "www.", ".com")
 PHONE_RE = re.compile(r"\+?\d[\d\s-]{7,}\d")
@@ -67,10 +88,28 @@ def numbers_in(text: str) -> set[str]:
     return set(NUM_RE.findall(text))
 
 
+def units_in(text: str, loose: bool) -> set[str]:
+    """Canonical units used next to a number; with loose=True also unambiguous unit words anywhere."""
+    out: set[str] = set()
+    for m in UNIT_AFTER_NUM.finditer(text):
+        for part in m.group(1).lower().split("/"):
+            if part in UNIT_CANON:
+                out.add(UNIT_CANON[part])
+    if loose:
+        for w in re.findall(r"[A-Za-z]+", text.lower()):
+            if w in LONG_UNITS:
+                out.add(UNIT_CANON[w])
+    return out
+
+
 def grounded(out: CardText, allowed_text: str) -> bool:
-    """Every number in the output must appear (as a whole token) in what we sent."""
-    allowed = numbers_in(allowed_text)
-    return numbers_in(out.headline + " " + out.body) <= allowed
+    """Numbers must appear as whole tokens in the facts; spelled-out numbers and foreign units are rejected."""
+    text = out.headline + " " + out.body
+    if NUM_WORDS.search(text):
+        return False
+    if not numbers_in(text) <= numbers_in(allowed_text):
+        return False
+    return units_in(text, loose=True) <= units_in(allowed_text, loose=False) | units_in(allowed_text, loose=True)
 
 
 def clean(out: CardText) -> str | None:
@@ -133,7 +172,7 @@ class Writer:
             return Written(fallback.headline, fallback.body, "template", "spend_cap")
 
         payload = {"tone": result.tone, "facts": [f.text for f in facts], "memory": memory_digest}
-        allowed_text = " ".join(f.text for f in facts) + " " + json.dumps(memory_digest)
+        allowed_text = " ".join(f.text for f in facts)  # memory numbers do not count as grounded
         body = {
             "model": self.s.model,
             "messages": [
@@ -149,25 +188,41 @@ class Writer:
         data, why = self._post(body)
         if data is None:
             return Written(fallback.headline, fallback.body, "template", why)
-        provider = data.get("provider")
+        try:
+            return self._accept(data, allowed_text, fallback)
+        except Exception as e:  # a card must never fail because of what the model returned
+            self._safe_log("error")
+            return Written(fallback.headline, fallback.body, "template", f"bad_response:{type(e).__name__}")
+
+    def _safe_log(self, outcome: str, provider: str | None = None, cost: float = 0.0) -> None:
+        try:
+            self._log(self.s.model, provider, cost, outcome)
+        except Exception:
+            pass
+
+    def _accept(self, data: Any, allowed_text: str, fallback: Written) -> Written:
+        if not isinstance(data, dict):
+            raise TypeError("shape")
+        provider = data.get("provider") if isinstance(data.get("provider"), str) else None
         cost = self._cost(data)
+
+        def reject(outcome: str, note: str) -> Written:
+            self._log(self.s.model, provider, cost, outcome)
+            return Written(fallback.headline, fallback.body, "template", note)
+
         try:
             out = CardText.model_validate_json(data["choices"][0]["message"]["content"])
         except (ValidationError, KeyError, IndexError, TypeError, ValueError):
-            self._log(self.s.model, provider, cost, "invalid")
-            return Written(fallback.headline, fallback.body, "template", "invalid_output")
+            return reject("invalid", "invalid_output")
         bad = clean(out)
         if bad:
-            self._log(self.s.model, provider, cost, "rejected")
-            return Written(fallback.headline, fallback.body, "template", bad)
+            return reject("rejected", bad)
         if not grounded(out, allowed_text):
-            self._log(self.s.model, provider, cost, "ungrounded")
-            return Written(fallback.headline, fallback.body, "template", "ungrounded_number")
+            return reject("ungrounded", "ungrounded_number")
         if not numbers_in(out.headline + " " + out.body):
-            self._log(self.s.model, provider, cost, "no_number")
-            return Written(fallback.headline, fallback.body, "template", "no_number")
+            return reject("no_number", "no_number")
         self._log(self.s.model, provider, cost, "ok")
-        return Written(out.headline, out.body, "llm", str(provider or ""))
+        return Written(out.headline, out.body, "llm", provider or "")
 
     def _post(self, body: dict) -> tuple[dict | None, str]:
         """8 s timeout, one retry on timeout/429/5xx."""
@@ -185,7 +240,7 @@ class Writer:
                 if r.status_code != 200:
                     self._log(self.s.model, None, 0.0, f"http_{r.status_code}")
                     return None, f"http_{r.status_code}"
-                return r.json(), ""
+                return r.json(), ""  # may be any JSON shape; _accept checks it
             except httpx.TimeoutException:
                 last = "timeout"
             except (httpx.HTTPError, ValueError):
@@ -194,8 +249,13 @@ class Writer:
         return None, last
 
     def _cost(self, data: dict) -> float:
-        u = data.get("usage") or {}
+        u = data.get("usage")
+        if not isinstance(u, dict):
+            return 0.0
+
+        def num(v: Any) -> float:
+            return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
         if isinstance(u.get("cost"), (int, float)):
-            return float(u["cost"])
-        return (u.get("prompt_tokens", 0) * self.s.est_usd_per_mtok_in
-                + u.get("completion_tokens", 0) * self.s.est_usd_per_mtok_out) / 1e6
+            return num(u["cost"])
+        return (num(u.get("prompt_tokens")) * self.s.est_usd_per_mtok_in
+                + num(u.get("completion_tokens")) * self.s.est_usd_per_mtok_out) / 1e6

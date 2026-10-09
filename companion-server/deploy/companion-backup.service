@@ -7,3 +7,17 @@ EnvironmentFile=%h/.secrets/companion.env
 WorkingDirectory=%h/run-solo/companion-server
 ExecStart=%h/run-solo/companion-server/.venv/bin/python -m companion.backup
 UMask=0077
+# Reads the DB and the key, writes only the backup dir. No network.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=%h/run-solo/companion-server %h/.secrets/companion-backup.key
+# companion-data is writable only because SQLite in WAL mode needs the -shm file even to read.
+BindPaths=%h/companion-data %h/backups/companion
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+IPAddressDeny=any

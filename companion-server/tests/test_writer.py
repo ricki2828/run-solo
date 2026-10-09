@@ -108,3 +108,66 @@ def test_suggestion_text_is_part_of_the_grounded_facts(tmp_path, fakes):
     res = result("Easy run: 7.0 km in 40 min", suggestion=Suggestion("quality", "gap", "It has been 8 days since a hard session."))
     w.write(res, {})
     assert "8 days" in str(fakes.llm[0]["messages"][1]["content"])
+
+
+FACTS = "Easy run: 5.2 km in 30 min at 5:46/km. 12 s/km faster than your last similar easy run (5:58/km)"
+
+
+def g(body, allowed=FACTS, headline="h"):
+    return grounded(CardText(headline=headline, body=body), allowed)
+
+
+def test_spelled_out_numbers_are_rejected():
+    assert not g("Five km easy, 30 min")
+    assert not g("Twenty minutes in, you eased off, 5.2 km")
+    assert not g("5.2 km, one of your faster easy days")
+    assert g("5.2 km in 30 min, steady.")
+    assert g("Half marathon pace work, 5.2 km today")  # 'half' is not treated as a number word
+
+
+def test_units_must_match_the_facts():
+    assert not g("5.2 miles in 30 min")
+    assert not g("You covered fewer miles but 5.2 km held")
+    assert g("5.2 kilometres in 30 minutes")         # same units, other spelling
+    assert not g("5.2 km in 30 hours")
+    assert g("5:46/km, 12 s/km faster")
+    assert g("It was a second easy day, 5.2 km")     # ordinary English is fine
+
+
+def test_memory_numbers_are_not_grounding(tmp_path, fakes):
+    w, _ = writer(tmp_path, fakes)
+    fakes.llm_mode = "ungrounded"
+    # a feel count of 3 is in the digest but not in the facts: "3 km" must not pass
+    out = w.write(result("Easy run: 7.0 km in 40 min"), {"recent_feel": {"easy": 3}})
+    assert out.source == "template"
+
+
+def _bad_response(tmp_path, fakes, payload):
+    import httpx as _h
+    s = make_settings(tmp_path)
+    db.init(s.db_path)
+    transport = _h.MockTransport(lambda req: _h.Response(200, json=payload))
+    return Writer(s, _h.Client(transport=transport))
+
+
+def test_any_odd_response_shape_falls_back_to_template(tmp_path):
+    for payload in ([], [1, 2], "str", None, {"usage": "x"}, {"choices": "x"}, {"choices": [None]},
+                    {"usage": {"prompt_tokens": None, "completion_tokens": "a"}, "provider": {"x": 1},
+                     "choices": [{"message": {"content": "{\"headline\": \"h\", \"body\": \"5.0 km\"}"}}]}):
+        w = _bad_response(tmp_path / str(abs(hash(str(payload)))), None, payload)
+        out = w.write(R, {})
+        assert out.headline and out.body, payload      # never raises, always a card
+        assert out.source in ("template", "llm")
+
+
+def test_null_token_counts_do_not_crash_cost_and_card_still_sent(tmp_path):
+    payload = {"usage": {"prompt_tokens": None, "completion_tokens": None}, "provider": 5,
+               "choices": [{"message": {"content": json_ok("Easy run: 7.0 km in 40 min")}}]}
+    w = _bad_response(tmp_path, None, payload)
+    out = w.write(result("Easy run: 7.0 km in 40 min"), {})
+    assert out.source == "llm" and out.note == ""
+
+
+def json_ok(body):
+    import json as _j
+    return _j.dumps({"headline": "Run in the bank", "body": body})

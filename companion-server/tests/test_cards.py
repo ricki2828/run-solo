@@ -12,7 +12,8 @@ from companion.app import create_app
 from companion.channels import WhatsAppChannel, verify_wa_signature
 from companion.service import RunIn
 from companion.timeutil import iso, now_utc
-from conftest import (OWNER, WA_SECRET, auth, enrol, make_settings, post_tg, run_payload, tg_callback, tg_update)
+from conftest import (OWNER, WA_SECRET, auth, chat_code, confirm, enrol, make_settings, post_tg, run_payload, start,
+                      tg_callback, tg_update)
 
 
 def q(client, sql, *a):
@@ -231,11 +232,11 @@ def test_quiet_hours_defer_to_local_morning(tmp_path, fakes):
         night = datetime(2026, 10, 9, 10, 30, tzinfo=timezone.utc)  # 23:30 NZDT
         svc.ingest_run(uid, RunIn.model_validate(run_payload("n", start_utc=(night - timedelta(minutes=60)).isoformat())), night)
         svc.run_outbox(night)
-        assert fakes.tg_texts()[-1].startswith("You're connected")  # nothing new sent
+        assert fakes.tg_texts()[-1].startswith("You're connected")  # welcome only; no card sent in quiet hours
         due = sqlite3.connect(s.db_path).execute("SELECT due_at, state FROM outbox").fetchone()
         assert due[1] == "pending" and due[0] == "2026-10-09T18:00:00Z"  # 07:00 NZDT next morning
         svc.run_outbox(datetime(2026, 10, 9, 18, 1, tzinfo=timezone.utc))
-        assert len(fakes.tg_texts()) == 2
+        assert len(fakes.tg_texts()) == 3   # code, welcome, card
 
 
 def test_evening_suggestion_telegram_only_in_local_window_once_a_day(client, fakes):
@@ -293,10 +294,11 @@ def test_wa_enrol_start_bind_card_and_button_reply(tmp_path, fakes):
     s = make_settings(tmp_path, allowed_ids=frozenset({"whatsapp:61400111222"}))
     app = create_app(s, httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=False)
     with TestClient(app) as c:
-        nonce = c.post("/v1/enrol/start").json()["nonce"]
-        assert wa_post(c, wa_text("wamid.A", "61400111222", f"START {nonce}")).status_code == 200
-        tok = c.get("/v1/enrol/status", params={"nonce": nonce}).json()["token"]
+        st = start(c)
+        assert wa_post(c, wa_text("wamid.A", "61400111222", f"START {st['nonce']}")).status_code == 200
         assert fakes.wa[-1]["type"] == "text" and fakes.wa[-1]["to"] == "61400111222"
+        assert chat_code(c, st["nonce"]) in fakes.wa[-1]["text"]["body"]
+        tok = confirm(c, st, chat_code(c, st["nonce"])).json()["token"]
         c.post("/v1/runs", json=run_payload(), headers=auth(tok))
         app.state.svc.run_outbox(now_utc() + timedelta(seconds=1))
         msg = fakes.wa[-1]
@@ -312,16 +314,18 @@ def test_wa_enrol_start_bind_card_and_button_reply(tmp_path, fakes):
         con = sqlite3.connect(s.db_path)
         assert con.execute("SELECT feel FROM runs").fetchone()[0] == "hard"
         # consent record: explicit opt-in captured with version and message id
-        assert con.execute("SELECT consent_version, consent_msg_id FROM users").fetchone() == ("1", "wamid.A")
+        row = con.execute("SELECT consent_version, consent_msg_id FROM users").fetchone()
+        assert row[0] == "1" and row[1] and "wamid" not in row[1]   # message id stored hashed (WA ids encode the number)
+        assert con.execute("SELECT COUNT(*) FROM inbound_seen WHERE msg_id LIKE 'wamid%'").fetchone()[0] == 0
 
 
 def test_wa_outside_window_uses_template_and_evening_never_goes_to_wa(tmp_path, fakes):
     s = make_settings(tmp_path, allowed_ids=frozenset({"whatsapp:61400111222"}))
     app = create_app(s, httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=False)
     with TestClient(app) as c:
-        nonce = c.post("/v1/enrol/start").json()["nonce"]
-        wa_post(c, wa_text("wamid.A", "61400111222", f"START {nonce}"))
-        tok = c.get("/v1/enrol/status", params={"nonce": nonce}).json()["token"]
+        st = start(c)
+        wa_post(c, wa_text("wamid.A", "61400111222", f"START {st['nonce']}"))
+        tok = confirm(c, st, chat_code(c, st["nonce"])).json()["token"]
         c.post("/v1/runs", json=run_payload(), headers=auth(tok))
         svc = app.state.svc
         svc.run_outbox(now_utc() + timedelta(hours=30))  # 24 h window has closed
