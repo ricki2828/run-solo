@@ -14,6 +14,14 @@ import '../map/route_builder.dart';
 class LiveRouteTrack extends ChangeNotifier {
   final List<GeoPoint> _points = [];
 
+  /// Elevation per point (barometer-smoothed, metres), null where the phone
+  /// had none; same length as [points]. Not part of a catch-up read
+  /// (`routeSince` carries positions only), so a caught-up stretch is null.
+  final List<double?> _elev = [];
+
+  /// Elevations, oldest first, one per [points] entry. Read-only view.
+  List<double?> get elevations => List.unmodifiable(_elev);
+
   /// Points so far (oldest first). Read-only view.
   List<GeoPoint> get points => List.unmodifiable(_points);
 
@@ -27,12 +35,14 @@ class LiveRouteTrack extends ChangeNotifier {
   /// Overlap with what is held is skipped. Returns false when the delta
   /// starts past the end (points were missed): the caller should
   /// [catchUp].
-  bool apply(int fromIndex, List<double> latLon) {
+  bool apply(int fromIndex, List<double> latLon, [List<double?>? elevM]) {
     if (fromIndex > _points.length) return false;
     final skip = _points.length - fromIndex;
     var added = false;
     for (var i = skip * 2; i + 1 < latLon.length; i += 2) {
       _points.add(GeoPoint(latLon[i], latLon[i + 1]));
+      final k = i ~/ 2;
+      _elev.add(elevM != null && k < elevM.length ? elevM[k] : null);
       added = true;
     }
     if (added) notifyListeners();
@@ -47,6 +57,7 @@ class LiveRouteTrack extends ChangeNotifier {
     _epoch++;
     if (_points.isEmpty) return;
     _points.clear();
+    _elev.clear();
     notifyListeners();
   }
 }

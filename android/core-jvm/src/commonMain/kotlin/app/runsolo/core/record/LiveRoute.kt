@@ -13,10 +13,13 @@ class LiveRoute(private val minStepM: Double = 4.0, private val maxAccuracyM: Do
     /** The step widens as the route grows, and the route stops at [MAX_POINTS]: a bounded copy of a very long run. */
     private val flat = ArrayList<Double>()
 
+    /** One entry per point: the elevation then (barometer-smoothed), NaN for none. */
+    private val elev = ArrayList<Double>()
+
     val size: Int get() = flat.size / 2
 
     /** True when the fix became a route point. */
-    fun offer(lat: Double, lon: Double, accuracyM: Double): Boolean {
+    fun offer(lat: Double, lon: Double, accuracyM: Double, elevM: Double? = null): Boolean {
         if (accuracyM > maxAccuracyM || size >= MAX_POINTS) return false
         if (flat.isNotEmpty()) {
             val pLat = flat[flat.size - 2]
@@ -27,6 +30,7 @@ class LiveRoute(private val minStepM: Double = 4.0, private val maxAccuracyM: Do
         }
         flat.add(lat)
         flat.add(lon)
+        elev.add(elevM ?: Double.NaN)
         return true
     }
 
@@ -40,6 +44,15 @@ class LiveRoute(private val minStepM: Double = 4.0, private val maxAccuracyM: Do
     fun since(fromIndex: Int): List<Double> {
         val from = fromIndex.coerceAtLeast(0)
         return if (from >= size) emptyList() else ArrayList(flat.subList(from * 2, flat.size))
+    }
+
+    /** The elevation of each point from [fromIndex] (null for none); null when no point from there has one. */
+    fun elevSince(fromIndex: Int): List<Double?>? {
+        val from = fromIndex.coerceAtLeast(0)
+        if (from >= size) return null
+        val part = elev.subList(from, elev.size)
+        if (part.all { it.isNaN() }) return null
+        return part.map { if (it.isNaN()) null else it }
     }
 
     companion object {

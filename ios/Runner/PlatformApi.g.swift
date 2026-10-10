@@ -1096,6 +1096,20 @@ struct RecorderStatus: Hashable {
   var elevGainM: Double? = nil
   var elevLossM: Double? = nil
   var gradePct: Double? = nil
+  /// Retrace detection (the native `RetraceDetector`, one answer for the run
+  /// screen and the voice check-ins). [retracing] is true while the runner is
+  /// back on their own earlier track (out-and-back); [retraceSame] when they
+  /// are covering it in the same direction instead of heading back. While
+  /// retracing: [backToStartM] is the distance along the recorded track back
+  /// to the start, [climbAheadM]/[descentAheadM] the gain/loss on the old
+  /// stretch still ahead. [heightVsStartM] (+ above the start) is available
+  /// whenever there is an elevation, retracing or not.
+  var retracing: Bool? = nil
+  var retraceSame: Bool? = nil
+  var backToStartM: Double? = nil
+  var climbAheadM: Double? = nil
+  var descentAheadM: Double? = nil
+  var heightVsStartM: Double? = nil
   /// Where the runner is on the followed route; null when the run follows none.
   var route: RouteProgress? = nil
 
@@ -1125,7 +1139,13 @@ struct RecorderStatus: Hashable {
     let elevGainM: Double? = nilOrValue(pigeonVar_list[20])
     let elevLossM: Double? = nilOrValue(pigeonVar_list[21])
     let gradePct: Double? = nilOrValue(pigeonVar_list[22])
-    let route: RouteProgress? = nilOrValue(pigeonVar_list[23])
+    let retracing: Bool? = nilOrValue(pigeonVar_list[23])
+    let retraceSame: Bool? = nilOrValue(pigeonVar_list[24])
+    let backToStartM: Double? = nilOrValue(pigeonVar_list[25])
+    let climbAheadM: Double? = nilOrValue(pigeonVar_list[26])
+    let descentAheadM: Double? = nilOrValue(pigeonVar_list[27])
+    let heightVsStartM: Double? = nilOrValue(pigeonVar_list[28])
+    let route: RouteProgress? = nilOrValue(pigeonVar_list[29])
 
     return RecorderStatus(
       state: state,
@@ -1151,6 +1171,12 @@ struct RecorderStatus: Hashable {
       elevGainM: elevGainM,
       elevLossM: elevLossM,
       gradePct: gradePct,
+      retracing: retracing,
+      retraceSame: retraceSame,
+      backToStartM: backToStartM,
+      climbAheadM: climbAheadM,
+      descentAheadM: descentAheadM,
+      heightVsStartM: heightVsStartM,
       route: route
     )
   }
@@ -1179,6 +1205,12 @@ struct RecorderStatus: Hashable {
       elevGainM,
       elevLossM,
       gradePct,
+      retracing,
+      retraceSame,
+      backToStartM,
+      climbAheadM,
+      descentAheadM,
+      heightVsStartM,
       route,
     ]
   }
@@ -1186,7 +1218,7 @@ struct RecorderStatus: Hashable {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.state, rhs.state) && deepEqualsPlatformApi(lhs.runId, rhs.runId) && deepEqualsPlatformApi(lhs.mode, rhs.mode) && deepEqualsPlatformApi(lhs.laps, rhs.laps) && deepEqualsPlatformApi(lhs.elapsedMs, rhs.elapsedMs) && deepEqualsPlatformApi(lhs.lapIndex, rhs.lapIndex) && deepEqualsPlatformApi(lhs.gpsFix, rhs.gpsFix) && deepEqualsPlatformApi(lhs.hrConnected, rhs.hrConnected) && deepEqualsPlatformApi(lhs.phase, rhs.phase) && deepEqualsPlatformApi(lhs.repIndex, rhs.repIndex) && deepEqualsPlatformApi(lhs.phaseRemainingMs, rhs.phaseRemainingMs) && deepEqualsPlatformApi(lhs.spec, rhs.spec) && deepEqualsPlatformApi(lhs.stepIndex, rhs.stepIndex) && deepEqualsPlatformApi(lhs.stepRemainingMs, rhs.stepRemainingMs) && deepEqualsPlatformApi(lhs.stepRemainingM, rhs.stepRemainingM) && deepEqualsPlatformApi(lhs.journalOk, rhs.journalOk) && deepEqualsPlatformApi(lhs.pausedAtElapsedMs, rhs.pausedAtElapsedMs) && deepEqualsPlatformApi(lhs.finishRequests, rhs.finishRequests) && deepEqualsPlatformApi(lhs.tipsMuted, rhs.tipsMuted) && deepEqualsPlatformApi(lhs.autoPaused, rhs.autoPaused) && deepEqualsPlatformApi(lhs.elevGainM, rhs.elevGainM) && deepEqualsPlatformApi(lhs.elevLossM, rhs.elevLossM) && deepEqualsPlatformApi(lhs.gradePct, rhs.gradePct) && deepEqualsPlatformApi(lhs.route, rhs.route)
+    return deepEqualsPlatformApi(lhs.state, rhs.state) && deepEqualsPlatformApi(lhs.runId, rhs.runId) && deepEqualsPlatformApi(lhs.mode, rhs.mode) && deepEqualsPlatformApi(lhs.laps, rhs.laps) && deepEqualsPlatformApi(lhs.elapsedMs, rhs.elapsedMs) && deepEqualsPlatformApi(lhs.lapIndex, rhs.lapIndex) && deepEqualsPlatformApi(lhs.gpsFix, rhs.gpsFix) && deepEqualsPlatformApi(lhs.hrConnected, rhs.hrConnected) && deepEqualsPlatformApi(lhs.phase, rhs.phase) && deepEqualsPlatformApi(lhs.repIndex, rhs.repIndex) && deepEqualsPlatformApi(lhs.phaseRemainingMs, rhs.phaseRemainingMs) && deepEqualsPlatformApi(lhs.spec, rhs.spec) && deepEqualsPlatformApi(lhs.stepIndex, rhs.stepIndex) && deepEqualsPlatformApi(lhs.stepRemainingMs, rhs.stepRemainingMs) && deepEqualsPlatformApi(lhs.stepRemainingM, rhs.stepRemainingM) && deepEqualsPlatformApi(lhs.journalOk, rhs.journalOk) && deepEqualsPlatformApi(lhs.pausedAtElapsedMs, rhs.pausedAtElapsedMs) && deepEqualsPlatformApi(lhs.finishRequests, rhs.finishRequests) && deepEqualsPlatformApi(lhs.tipsMuted, rhs.tipsMuted) && deepEqualsPlatformApi(lhs.autoPaused, rhs.autoPaused) && deepEqualsPlatformApi(lhs.elevGainM, rhs.elevGainM) && deepEqualsPlatformApi(lhs.elevLossM, rhs.elevLossM) && deepEqualsPlatformApi(lhs.gradePct, rhs.gradePct) && deepEqualsPlatformApi(lhs.retracing, rhs.retracing) && deepEqualsPlatformApi(lhs.retraceSame, rhs.retraceSame) && deepEqualsPlatformApi(lhs.backToStartM, rhs.backToStartM) && deepEqualsPlatformApi(lhs.climbAheadM, rhs.climbAheadM) && deepEqualsPlatformApi(lhs.descentAheadM, rhs.descentAheadM) && deepEqualsPlatformApi(lhs.heightVsStartM, rhs.heightVsStartM) && deepEqualsPlatformApi(lhs.route, rhs.route)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -1214,6 +1246,12 @@ struct RecorderStatus: Hashable {
     deepHashPlatformApi(value: elevGainM, hasher: &hasher)
     deepHashPlatformApi(value: elevLossM, hasher: &hasher)
     deepHashPlatformApi(value: gradePct, hasher: &hasher)
+    deepHashPlatformApi(value: retracing, hasher: &hasher)
+    deepHashPlatformApi(value: retraceSame, hasher: &hasher)
+    deepHashPlatformApi(value: backToStartM, hasher: &hasher)
+    deepHashPlatformApi(value: climbAheadM, hasher: &hasher)
+    deepHashPlatformApi(value: descentAheadM, hasher: &hasher)
+    deepHashPlatformApi(value: heightVsStartM, hasher: &hasher)
     deepHashPlatformApi(value: route, hasher: &hasher)
   }
 }
@@ -1781,6 +1819,20 @@ struct TickEvent: RecorderEvent {
   var elevGainM: Double? = nil
   var elevLossM: Double? = nil
   var gradePct: Double? = nil
+  /// Retrace detection (the native `RetraceDetector`, one answer for the run
+  /// screen and the voice check-ins). [retracing] is true while the runner is
+  /// back on their own earlier track (out-and-back); [retraceSame] when they
+  /// are covering it in the same direction instead of heading back. While
+  /// retracing: [backToStartM] is the distance along the recorded track back
+  /// to the start, [climbAheadM]/[descentAheadM] the gain/loss on the old
+  /// stretch still ahead. [heightVsStartM] (+ above the start) is available
+  /// whenever there is an elevation, retracing or not.
+  var retracing: Bool? = nil
+  var retraceSame: Bool? = nil
+  var backToStartM: Double? = nil
+  var climbAheadM: Double? = nil
+  var descentAheadM: Double? = nil
+  var heightVsStartM: Double? = nil
   /// As `RecorderStatus.route`.
   var route: RouteProgress? = nil
 
@@ -1805,7 +1857,13 @@ struct TickEvent: RecorderEvent {
     let elevGainM: Double? = nilOrValue(pigeonVar_list[15])
     let elevLossM: Double? = nilOrValue(pigeonVar_list[16])
     let gradePct: Double? = nilOrValue(pigeonVar_list[17])
-    let route: RouteProgress? = nilOrValue(pigeonVar_list[18])
+    let retracing: Bool? = nilOrValue(pigeonVar_list[18])
+    let retraceSame: Bool? = nilOrValue(pigeonVar_list[19])
+    let backToStartM: Double? = nilOrValue(pigeonVar_list[20])
+    let climbAheadM: Double? = nilOrValue(pigeonVar_list[21])
+    let descentAheadM: Double? = nilOrValue(pigeonVar_list[22])
+    let heightVsStartM: Double? = nilOrValue(pigeonVar_list[23])
+    let route: RouteProgress? = nilOrValue(pigeonVar_list[24])
 
     return TickEvent(
       elapsedMs: elapsedMs,
@@ -1826,6 +1884,12 @@ struct TickEvent: RecorderEvent {
       elevGainM: elevGainM,
       elevLossM: elevLossM,
       gradePct: gradePct,
+      retracing: retracing,
+      retraceSame: retraceSame,
+      backToStartM: backToStartM,
+      climbAheadM: climbAheadM,
+      descentAheadM: descentAheadM,
+      heightVsStartM: heightVsStartM,
       route: route
     )
   }
@@ -1849,6 +1913,12 @@ struct TickEvent: RecorderEvent {
       elevGainM,
       elevLossM,
       gradePct,
+      retracing,
+      retraceSame,
+      backToStartM,
+      climbAheadM,
+      descentAheadM,
+      heightVsStartM,
       route,
     ]
   }
@@ -1856,7 +1926,7 @@ struct TickEvent: RecorderEvent {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.elapsedMs, rhs.elapsedMs) && deepEqualsPlatformApi(lhs.lapElapsedMs, rhs.lapElapsedMs) && deepEqualsPlatformApi(lhs.lapDistanceM, rhs.lapDistanceM) && deepEqualsPlatformApi(lhs.lapPaceLiveSecPerKm, rhs.lapPaceLiveSecPerKm) && deepEqualsPlatformApi(lhs.totalDistanceM, rhs.totalDistanceM) && deepEqualsPlatformApi(lhs.hr, rhs.hr) && deepEqualsPlatformApi(lhs.gpsAccuracyM, rhs.gpsAccuracyM) && deepEqualsPlatformApi(lhs.state, rhs.state) && deepEqualsPlatformApi(lhs.phase, rhs.phase) && deepEqualsPlatformApi(lhs.repIndex, rhs.repIndex) && deepEqualsPlatformApi(lhs.phaseRemainingMs, rhs.phaseRemainingMs) && deepEqualsPlatformApi(lhs.stepIndex, rhs.stepIndex) && deepEqualsPlatformApi(lhs.stepRemainingMs, rhs.stepRemainingMs) && deepEqualsPlatformApi(lhs.stepRemainingM, rhs.stepRemainingM) && deepEqualsPlatformApi(lhs.autoPaused, rhs.autoPaused) && deepEqualsPlatformApi(lhs.elevGainM, rhs.elevGainM) && deepEqualsPlatformApi(lhs.elevLossM, rhs.elevLossM) && deepEqualsPlatformApi(lhs.gradePct, rhs.gradePct) && deepEqualsPlatformApi(lhs.route, rhs.route)
+    return deepEqualsPlatformApi(lhs.elapsedMs, rhs.elapsedMs) && deepEqualsPlatformApi(lhs.lapElapsedMs, rhs.lapElapsedMs) && deepEqualsPlatformApi(lhs.lapDistanceM, rhs.lapDistanceM) && deepEqualsPlatformApi(lhs.lapPaceLiveSecPerKm, rhs.lapPaceLiveSecPerKm) && deepEqualsPlatformApi(lhs.totalDistanceM, rhs.totalDistanceM) && deepEqualsPlatformApi(lhs.hr, rhs.hr) && deepEqualsPlatformApi(lhs.gpsAccuracyM, rhs.gpsAccuracyM) && deepEqualsPlatformApi(lhs.state, rhs.state) && deepEqualsPlatformApi(lhs.phase, rhs.phase) && deepEqualsPlatformApi(lhs.repIndex, rhs.repIndex) && deepEqualsPlatformApi(lhs.phaseRemainingMs, rhs.phaseRemainingMs) && deepEqualsPlatformApi(lhs.stepIndex, rhs.stepIndex) && deepEqualsPlatformApi(lhs.stepRemainingMs, rhs.stepRemainingMs) && deepEqualsPlatformApi(lhs.stepRemainingM, rhs.stepRemainingM) && deepEqualsPlatformApi(lhs.autoPaused, rhs.autoPaused) && deepEqualsPlatformApi(lhs.elevGainM, rhs.elevGainM) && deepEqualsPlatformApi(lhs.elevLossM, rhs.elevLossM) && deepEqualsPlatformApi(lhs.gradePct, rhs.gradePct) && deepEqualsPlatformApi(lhs.retracing, rhs.retracing) && deepEqualsPlatformApi(lhs.retraceSame, rhs.retraceSame) && deepEqualsPlatformApi(lhs.backToStartM, rhs.backToStartM) && deepEqualsPlatformApi(lhs.climbAheadM, rhs.climbAheadM) && deepEqualsPlatformApi(lhs.descentAheadM, rhs.descentAheadM) && deepEqualsPlatformApi(lhs.heightVsStartM, rhs.heightVsStartM) && deepEqualsPlatformApi(lhs.route, rhs.route)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -1879,6 +1949,12 @@ struct TickEvent: RecorderEvent {
     deepHashPlatformApi(value: elevGainM, hasher: &hasher)
     deepHashPlatformApi(value: elevLossM, hasher: &hasher)
     deepHashPlatformApi(value: gradePct, hasher: &hasher)
+    deepHashPlatformApi(value: retracing, hasher: &hasher)
+    deepHashPlatformApi(value: retraceSame, hasher: &hasher)
+    deepHashPlatformApi(value: backToStartM, hasher: &hasher)
+    deepHashPlatformApi(value: climbAheadM, hasher: &hasher)
+    deepHashPlatformApi(value: descentAheadM, hasher: &hasher)
+    deepHashPlatformApi(value: heightVsStartM, hasher: &hasher)
     deepHashPlatformApi(value: route, hasher: &hasher)
   }
 }
@@ -2118,40 +2194,49 @@ struct GpsProbeEvent: RecorderEvent {
 /// run records. [fromIndex] is the index of the first point in [latLon]
 /// (flat `[lat, lon, ...]`), so Dart can append deltas and spot a gap. Points
 /// come from the samples the recorder already keeps (no extra GPS request).
+/// [elevM], when present, has one entry per point (same order as [latLon]
+/// pairs): the barometer-smoothed elevation in metres when the phone has a
+/// barometer, null per point otherwise. Null (not sent) when the recorder has
+/// no elevation at all.
 ///
 /// Generated class from Pigeon that represents data sent in messages.
 struct RoutePointsEvent: RecorderEvent {
   var fromIndex: Int64
   var latLon: [Double]
+  var elevM: [Double?]? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> RoutePointsEvent? {
     let fromIndex = pigeonVar_list[0] as! Int64
     let latLon = pigeonVar_list[1] as! [Double]
+    let elevM: [Double?]? = nilOrValue(pigeonVar_list[2])
 
     return RoutePointsEvent(
       fromIndex: fromIndex,
-      latLon: latLon
+      latLon: latLon,
+      elevM: elevM
     )
   }
   func toList() -> [Any?] {
     return [
       fromIndex,
       latLon,
+      elevM,
     ]
   }
   static func == (lhs: RoutePointsEvent, rhs: RoutePointsEvent) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.fromIndex, rhs.fromIndex) && deepEqualsPlatformApi(lhs.latLon, rhs.latLon)
+    return deepEqualsPlatformApi(lhs.fromIndex, rhs.fromIndex) && deepEqualsPlatformApi(lhs.latLon, rhs.latLon) && deepEqualsPlatformApi(lhs.elevM, rhs.elevM)
   }
 
   func hash(into hasher: inout Hasher) {
     hasher.combine("RoutePointsEvent")
     deepHashPlatformApi(value: fromIndex, hasher: &hasher)
     deepHashPlatformApi(value: latLon, hasher: &hasher)
+    deepHashPlatformApi(value: elevM, hasher: &hasher)
   }
 }
 

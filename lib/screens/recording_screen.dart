@@ -23,6 +23,7 @@ import '../widgets/gps_bar.dart';
 import '../widgets/lap_button.dart';
 import '../widgets/pace_dial.dart';
 import '../widgets/route_to_go.dart';
+import '../widgets/start_readout.dart';
 import '../widgets/target_band.dart';
 import '../widgets/zone_gauge.dart';
 import '../widgets/zone_ladder.dart';
@@ -430,6 +431,12 @@ class _RecordingScreenState extends State<RecordingScreen>
           final pausedNow = s.paused && !_finishing;
           // The coach layer (sessions with a target): the target band while a
           // rep or goal is on, and the next-step line, worded like the voice.
+          // Metric labels: 17 sp, one step down in a structured session
+          // (its coach layer needs the room), and no step up on a short
+          // phone there (the 4x4 layout has none to spare).
+          final labelSize = s.isPreset
+              ? (compact ? 11.0 : 15.0)
+              : RunLabelScope.defaultSize;
           final coach = pausedNow || _finishing
               ? null
               : _CoachLayer.of(
@@ -441,6 +448,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                       ? HrZones.secondaryOnZone
                       : t.inkSecondary,
                   textColor: t.inkPrimary,
+                  labelSize: labelSize,
                 );
           final Widget gap = mapOn || freeBlock
               ? const SizedBox.shrink()
@@ -509,6 +517,14 @@ class _RecordingScreenState extends State<RecordingScreen>
                               plan: ctl.followedPlan,
                               units: settings.units,
                               terrain: usesTerrainMap(s.mode),
+                              heightVsStartM: runModeOf(s.mode).showsElevation
+                                  ? s.retrace.heightVsStartM
+                                  : null,
+                              backToStartM:
+                                  runModeOf(s.mode).showsElevation &&
+                                      s.retrace.headingBack
+                                  ? s.retrace.backToStartM
+                                  : null,
                             ),
                           ),
                           // The GPS bar stays, as in NUMBERS.
@@ -904,7 +920,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                   ),
               ],
             ),
-          );
+          ).labelScope(labelSize);
         },
       ),
     );
@@ -1335,7 +1351,7 @@ class AuxFigure extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.start,
     mainAxisSize: MainAxisSize.min,
     children: [
-      Text(label, style: RunSoloType.micro11.copyWith(color: labelColor)),
+      Text(label, style: RunLabelScope.style(context, labelColor)),
       FittedBox(
         fit: BoxFit.scaleDown,
         alignment: Alignment.centerLeft,
@@ -1427,7 +1443,7 @@ class _Vitals extends StatelessWidget {
       color: t.inkPrimary,
       fontSize: RunSoloType.runSize(compact ? 36 : 44),
     );
-    final label = RunSoloType.micro11.copyWith(color: secondary);
+    final label = RunLabelScope.style(context, secondary);
     // Short reps (plan §3.7, A8): HR lags a 30 s effort, so in a rep the
     // cell shows the rep's max instead of the live reading.
     final repMax =
@@ -1664,12 +1680,12 @@ class _FreeRunBlock extends StatelessWidget {
 
   /// A label over a 36 sp value (AuxFigure, route figures).
   static final double _figH =
-      _textH(RunSoloType.micro11) + _textH(AuxFigure.style);
+      _textH(RunSoloType.runLabel) + _textH(AuxFigure.style);
 
   /// The RUN trio's height at [size]: distance, then time and pace.
   static double _trioH(double size) =>
       2 *
-          (_textH(RunSoloType.micro11) +
+          (_textH(RunSoloType.runLabel) +
               _textH(RunSoloType.display44.copyWith(fontSize: size))) +
       Space.x4 +
       Space.x8;
@@ -1682,6 +1698,14 @@ class _FreeRunBlock extends StatelessWidget {
     final showElevation =
         runModeOf(s.mode).showsElevation && s.elevGainM != null;
     final showGap = runModeOf(s.mode).showsLiveTruePace;
+    // Trail: height vs the start, and BACK TO START while retracing. The
+    // plate (and its chrome) is budgeted whenever the row shows, so the
+    // layout does not jump when a retrace starts.
+    final retrace = s.retrace;
+    final showStart =
+        runModeOf(s.mode).showsElevation &&
+        (retrace.heightVsStartM != null || retrace.headingBack);
+    final startH = showStart ? _figH + StartReadout.chrome : 0.0;
     final route = s.route;
     final turn = route == null || route.off ? '' : routeTurnText(route, units);
     final routeH = route == null
@@ -1744,7 +1768,16 @@ class _FreeRunBlock extends StatelessWidget {
               _FreePlan(RunSoloType.runSize(40), 96, false, false),
             ];
             double heightOf(_FreePlan p, {required double slot}) =>
-                _planH(p, width, showGap, showElevation, routeH, minGap) + slot;
+                _planH(
+                  p,
+                  width,
+                  showGap,
+                  showElevation,
+                  routeH,
+                  startH,
+                  minGap,
+                ) +
+                slot;
             // The card's own slot when some plan fits with it open; else the
             // card covers the tail while it shows (below).
             final full = minGap + cardH;
@@ -1821,6 +1854,16 @@ class _FreeRunBlock extends StatelessWidget {
                   valueColor: t.inkPrimary,
                   showGrade: plan.grade,
                 ),
+              if (showStart)
+                StartReadout(
+                  heightVsStartM: retrace.heightVsStartM,
+                  backToStartM: retrace.headingBack
+                      ? retrace.backToStartM
+                      : null,
+                  units: units,
+                  labelColor: secondary,
+                  valueColor: t.inkPrimary,
+                ),
               if (route != null)
                 RouteToGoRow(
                   route: route,
@@ -1854,7 +1897,11 @@ class _FreeRunBlock extends StatelessWidget {
                 coverFrom--;
                 h +=
                     (coverFrom == clusters.length - 1 ? 0 : minGap) +
-                    (clusters[coverFrom] is RouteToGoRow ? routeH : _figH);
+                    (clusters[coverFrom] is RouteToGoRow
+                        ? routeH
+                        : clusters[coverFrom] is StartReadout
+                        ? startH
+                        : _figH);
               }
             }
             final covered = <Widget>[];
@@ -1912,10 +1959,11 @@ class _FreeRunBlock extends StatelessWidget {
     bool showGap,
     bool showElevation,
     double routeH,
+    double startH,
     double minGap,
   ) {
     final size = EqualFigures.sizeFor(width, p.trioCap);
-    final label = _textH(RunSoloType.micro11);
+    final label = _textH(RunSoloType.runLabel);
     final double pace;
     if (p.big) {
       final w = width * 0.6;
@@ -1936,6 +1984,7 @@ class _FreeRunBlock extends StatelessWidget {
       _trioH(size) - Space.x8,
       pace,
       if (showElevation) _figH,
+      if (startH > 0) startH,
       if (routeH > 0) routeH,
     ];
     return parts.fold(0.0, (a, b) => a + b) + (parts.length - 1) * minGap;
@@ -2595,8 +2644,10 @@ class _CoachLayer extends StatelessWidget {
     required this.labelColor,
     required this.textColor,
     required this.nextLine,
+    required this.labelSize,
   });
   final CoachTarget? target;
+  final double labelSize;
   final double? smoothed;
   final Units units;
   final Color labelColor;
@@ -2605,7 +2656,7 @@ class _CoachLayer extends StatelessWidget {
 
   /// Room the layer needs, for [_CoachSlot] to decide whether it fits.
   double get height =>
-      (target != null ? TargetBand.height : 0) +
+      (target != null ? TargetBand.heightFor(labelSize) : 0) +
       (target != null && nextLine != null ? 2.0 : 0) +
       (nextLine != null ? 20.0 : 0);
 
@@ -2616,6 +2667,7 @@ class _CoachLayer extends StatelessWidget {
     required Units units,
     required Color labelColor,
     required Color textColor,
+    required double labelSize,
   }) {
     // The band is for the pace-targeted part: a rep or goal's work, or a
     // plan session run as a Free run. Not warm-up, recovery or cool-down.
@@ -2645,6 +2697,7 @@ class _CoachLayer extends StatelessWidget {
       labelColor: labelColor,
       textColor: textColor,
       nextLine: line,
+      labelSize: labelSize,
     );
   }
 

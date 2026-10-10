@@ -139,6 +139,43 @@ void main() {
     }
   }
 
+  // Trail MAP view while heading back over the old track: BACK TO START and
+  // VS START on one strip, the map keeping a usable height.
+  for (final h in [800, 640]) {
+    testWidgets('record: trail map view retracing at 360 x $h', (tester) async {
+      final fake = FakeRecorderGateway(now: now)
+        ..emitRoute = true
+        ..elevGainM = 124
+        ..elevLossM = 87
+        ..heightVsStartM = -18
+        ..retracing = true
+        ..backToStartM = 2400
+        ..climbAheadM = 38
+        ..descentAheadM = 12;
+      final services = fakeServices(
+        recorder: fake,
+        maps: const FakeMapSurfaceFactory(available: true),
+        settings: const AppSettings(
+          onboardingDone: true,
+          liveMapTypes: {'trail'},
+        ),
+      );
+      await services.recording.start(RecordMode.trail, null, Units.km);
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 4);
+      for (var i = 0; i < 95; i++) {
+        fake.advance(const Duration(seconds: 1));
+        await tester.pump();
+      }
+      await pumpTimes(tester, 5);
+      await settleAnimations(tester);
+      expect(find.byKey(const ValueKey('strip-back')), findsOneWidget);
+      expect(find.byKey(const ValueKey('strip-height')), findsOneWidget);
+      await golden(tester, 'record_map_trail_retracing_360x$h');
+    });
+  }
+
   testWidgets('record: goal cool-down map view at 360 x 800', (tester) async {
     final fake = FakeRecorderGateway(now: now)..emitRoute = true;
     final services = fakeServices(

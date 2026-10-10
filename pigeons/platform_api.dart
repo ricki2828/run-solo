@@ -423,6 +423,12 @@ class RecorderStatus {
     this.elevGainM,
     this.elevLossM,
     this.gradePct,
+    this.retracing,
+    this.retraceSame,
+    this.backToStartM,
+    this.climbAheadM,
+    this.descentAheadM,
+    this.heightVsStartM,
     this.route,
   });
   RecorderState state;
@@ -475,6 +481,21 @@ class RecorderStatus {
   double? elevGainM;
   double? elevLossM;
   double? gradePct;
+
+  /// Retrace detection (the native `RetraceDetector`, one answer for the run
+  /// screen and the voice check-ins). [retracing] is true while the runner is
+  /// back on their own earlier track (out-and-back); [retraceSame] when they
+  /// are covering it in the same direction instead of heading back. While
+  /// retracing: [backToStartM] is the distance along the recorded track back
+  /// to the start, [climbAheadM]/[descentAheadM] the gain/loss on the old
+  /// stretch still ahead. [heightVsStartM] (+ above the start) is available
+  /// whenever there is an elevation, retracing or not.
+  bool? retracing;
+  bool? retraceSame;
+  double? backToStartM;
+  double? climbAheadM;
+  double? descentAheadM;
+  double? heightVsStartM;
 
   /// Where the runner is on the followed route; null when the run follows none.
   RouteProgress? route;
@@ -910,6 +931,12 @@ class TickEvent extends RecorderEvent {
     this.elevGainM,
     this.elevLossM,
     this.gradePct,
+    this.retracing,
+    this.retraceSame,
+    this.backToStartM,
+    this.climbAheadM,
+    this.descentAheadM,
+    this.heightVsStartM,
     this.route,
   });
 
@@ -946,6 +973,21 @@ class TickEvent extends RecorderEvent {
   double? elevGainM;
   double? elevLossM;
   double? gradePct;
+
+  /// Retrace detection (the native `RetraceDetector`, one answer for the run
+  /// screen and the voice check-ins). [retracing] is true while the runner is
+  /// back on their own earlier track (out-and-back); [retraceSame] when they
+  /// are covering it in the same direction instead of heading back. While
+  /// retracing: [backToStartM] is the distance along the recorded track back
+  /// to the start, [climbAheadM]/[descentAheadM] the gain/loss on the old
+  /// stretch still ahead. [heightVsStartM] (+ above the start) is available
+  /// whenever there is an elevation, retracing or not.
+  bool? retracing;
+  bool? retraceSame;
+  double? backToStartM;
+  double? climbAheadM;
+  double? descentAheadM;
+  double? heightVsStartM;
 
   /// As `RecorderStatus.route`.
   RouteProgress? route;
@@ -1041,10 +1083,15 @@ class GpsProbeEvent extends RecorderEvent {
 /// run records. [fromIndex] is the index of the first point in [latLon]
 /// (flat `[lat, lon, ...]`), so Dart can append deltas and spot a gap. Points
 /// come from the samples the recorder already keeps (no extra GPS request).
+/// [elevM], when present, has one entry per point (same order as [latLon]
+/// pairs): the barometer-smoothed elevation in metres when the phone has a
+/// barometer, null per point otherwise. Null (not sent) when the recorder has
+/// no elevation at all.
 class RoutePointsEvent extends RecorderEvent {
-  RoutePointsEvent({required this.fromIndex, required this.latLon});
+  RoutePointsEvent({required this.fromIndex, required this.latLon, this.elevM});
   int fromIndex;
   List<double> latLon;
+  List<double?>? elevM;
 }
 
 /// A live "you vs you" compare fired (Phase 4 §3.2, LV1), for the overlay card.

@@ -16,6 +16,7 @@ import '../state/live_route.dart';
 import '../theme/theme.dart';
 import '../widgets/compare_card.dart';
 import '../widgets/route_to_go.dart';
+import '../widgets/start_strip.dart';
 
 /// The biggest number for the phase, as the NUMBERS layout would show it.
 ///
@@ -90,14 +91,11 @@ class EqualFigures extends StatelessWidget {
     return fit.clamp(floor, cap).floorToDouble();
   }
 
-  Widget _one(int i, TextStyle style) => Column(
+  Widget _one(BuildContext context, int i, TextStyle style) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     mainAxisSize: MainAxisSize.min,
     children: [
-      Text(
-        figures[i].label,
-        style: RunSoloType.micro11.copyWith(color: labelColor),
-      ),
+      Text(figures[i].label, style: RunLabelScope.style(context, labelColor)),
       Text(
         figures[i].value,
         key: valueKeys[i],
@@ -121,14 +119,14 @@ class EqualFigures extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          _one(0, style),
+          _one(context, 0, style),
           SizedBox(height: rowGap),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Expanded(child: _one(1, style)),
+              Expanded(child: _one(context, 1, style)),
               const SizedBox(width: _gap),
-              Expanded(child: _one(2, style)),
+              Expanded(child: _one(context, 2, style)),
             ],
           ),
         ],
@@ -152,6 +150,8 @@ class LiveMapView extends StatefulWidget {
     this.plan,
     this.units = Units.km,
     this.terrain = false,
+    this.heightVsStartM,
+    this.backToStartM,
   });
 
   final MapSurfaceFactory maps;
@@ -180,6 +180,12 @@ class LiveMapView extends StatefulWidget {
 
   /// Free and Trail runs: Google's terrain map instead of the night style.
   final bool terrain;
+
+  /// Trail / Free: metres above (+) or below (-) the start, and the distance
+  /// back along the track while heading back over it. A one-line strip under
+  /// the hero shows them; null for both = no strip.
+  final double? heightVsStartM;
+  final double? backToStartM;
 
   @override
   State<LiveMapView> createState() => _LiveMapViewState();
@@ -287,6 +293,22 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
               // The hero stays the brightest number: the strip is the label tone.
               valueColor: widget.secondary,
               warnColor: t.semWarn,
+            ),
+          ),
+        if (widget.heightVsStartM != null || widget.backToStartM != null)
+          Visibility(
+            visible: !widget.paused,
+            maintainSize: true,
+            maintainAnimation: true,
+            maintainState: true,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: Space.x8),
+              child: StartStrip(
+                heightVsStartM: widget.heightVsStartM,
+                backToStartM: widget.backToStartM,
+                units: widget.units,
+                valueColor: t.inkPrimary,
+              ),
             ),
           ),
         Expanded(

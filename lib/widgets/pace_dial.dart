@@ -119,7 +119,7 @@ class PaceDial extends StatelessWidget {
               ? ', slower than the reference'
               : ', on the reference'}',
       child: beside
-          ? _besideLayout(secondary, t, p, trueLine)
+          ? _besideLayout(context, secondary, t, p, trueLine)
           : Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -136,10 +136,7 @@ class PaceDial extends StatelessWidget {
                     ),
                   ),
                 ),
-                Text(
-                  label,
-                  style: RunSoloType.micro11.copyWith(color: secondary),
-                ),
+                Text(label, style: RunLabelScope.style(context, secondary)),
                 ?trueLine,
               ],
             ),
@@ -161,6 +158,7 @@ class PaceDial extends StatelessWidget {
   );
 
   Widget _besideLayout(
+    BuildContext context,
     Color secondary,
     RunSoloTokens t,
     double? p,
@@ -192,9 +190,15 @@ class PaceDial extends StatelessWidget {
                   ),
                 ),
               ),
-              Text(
-                label,
-                style: RunSoloType.micro11.copyWith(color: secondary),
+              // One line: a two-line "CURRENT PACE" cost a row of room.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  label,
+                  softWrap: false,
+                  style: RunLabelScope.style(context, secondary),
+                ),
               ),
               ?trueLine,
             ],
