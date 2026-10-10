@@ -189,11 +189,14 @@ class _HarnessState extends State<_Harness> {
     await _go(_Stage.noPack, 6);
     await _go(_Stage.hill, 9);
     _track.clear();
-    _feed = Timer.periodic(const Duration(milliseconds: 300), (t) {
+    // Up the climb, then back down it: the way back is retraced, and every
+    // point carries its elevation like the recorder's live feed.
+    _feed = Timer.periodic(const Duration(milliseconds: 250), (t) {
       final i = t.tick - 1;
-      if (i < _hillRoute.length) {
-        final p = _hillRoute[i];
-        _track.apply(i, [p.lat + 0.0001, p.lon]);
+      final n = _hillRoute.length;
+      if (i < n + 18) {
+        final p = _hillRoute[i < n ? i : 2 * (n - 1) - i];
+        _track.apply(i, [p.lat + 0.0001, p.lon], [p.ele]);
       }
     });
     await _go(_Stage.hillLive, 16);

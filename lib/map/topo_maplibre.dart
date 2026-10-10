@@ -521,7 +521,16 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
       _retrace.clear();
       _fed = 0;
     }
-    final fresh = track.since(_fed);
+    // Carry each point's elevation (null where the phone had none), so the
+    // line is coloured by gradient and the retrace detector sees heights.
+    final elev = track.elevations;
+    final fresh = [
+      for (final (i, p) in track.since(_fed).indexed)
+        if (_fed + i < elev.length && elev[_fed + i] != null)
+          GeoPoint(p.lat, p.lon, elev[_fed + i])
+        else
+          p,
+    ];
     _retrace.add(fresh);
     _line.addAll(fresh);
     _fed = track.count;

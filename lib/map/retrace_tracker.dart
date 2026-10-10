@@ -50,7 +50,7 @@ class RetraceTracker {
       final prev = _pts.isEmpty ? null : _pts.last;
       _pts.add(p);
       _cum.add(prev == null ? 0 : _cum.last + _metres(prev, p));
-      final s = _detector.add(lat: p.lat, lon: p.lon, elevM: null);
+      final s = _detector.add(lat: p.lat, lon: p.lon, elevM: p.ele);
       if (s.retracing) {
         if (_openFrom == null) {
           var i = _pts.length - 1;

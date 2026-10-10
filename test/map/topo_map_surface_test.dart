@@ -525,6 +525,15 @@ void main() {
       expect(key.right, lessThanOrEqualTo(360));
     });
 
+    testWidgets('shown when the live track itself carries elevation', (
+      tester,
+    ) async {
+      final track = LiveRouteTrack()
+        ..apply(0, [36.7, 24.4, 36.7001, 24.4], [50, 51]);
+      await tester.pumpWidget(host((c) => live(c, track)));
+      expect(legend, findsOneWidget);
+    });
+
     testWidgets('not shown without elevation on the plan', (tester) async {
       final track = LiveRouteTrack()..apply(0, [36.7, 24.4]);
       await tester.pumpWidget(

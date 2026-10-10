@@ -286,7 +286,9 @@ class _LiveChoiceState extends State<_LiveChoice> {
           pack: pack,
           topoWanted: f._topoWanted,
           onToggle: f._setTopo,
-          legend: widget.plan?.any((p) => p.ele != null) ?? false,
+          legend:
+              (widget.plan?.any((p) => p.ele != null) ?? false) ||
+              widget.track.elevations.any((e) => e != null),
           child: pack == null
               ? f.fallback.buildLive(
                   context,
