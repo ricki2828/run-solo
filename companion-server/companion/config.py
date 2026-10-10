@@ -46,7 +46,7 @@ class Settings:
     est_usd_per_mtok_in: float = 1.0
     est_usd_per_mtok_out: float = 5.0
 
-    # Open-Meteo weather for touches and suggestions. Off by default: it sends the runner's suburb name
+    # Open-Meteo weather for touches and suggestions. Off by default: it sends a lat/lon cell rounded to 0.1 degree
     # to a third party, which the privacy page has to say first (see convo/weather.py).
     weather_enabled: bool = False
 

@@ -142,6 +142,8 @@ def template_card(facts: Sequence[Fact], tone: str = "steady") -> Written:
 def digest_lines(memory: dict[str, str], feel_counts: dict[str, int]) -> dict[str, Any]:
     d: dict[str, Any] = {k: memory[k] for k in ("goal_type", "race_month", "usual_days", "niggle_area", "runs_per_week",
                                                  "surface", "time_of_day", "run_why") if k in memory}
+    if d.get("run_why") == "weight":
+        del d["run_why"]  # a health-adjacent answer: stays on the server, never goes to the model
     if feel_counts:
         d["recent_feel"] = feel_counts
     return d

@@ -23,7 +23,7 @@ def populate(client, fakes):
     """Touch every table that can hold user data."""
     t = enrol(client)
     client.post("/v1/runs", json=run_payload("r0", minutes_ago=30), headers=auth(t))   # easy: gets the weekly question
-    client.post("/v1/runs", json=run_payload("r1", type="tempo"), headers=auth(t))    # hard: gets a suggestion
+    client.post("/v1/runs", json=run_payload("r1", type="tempo", area_lat=1.35, area_lon=103.82), headers=auth(t))    # hard: gets a suggestion
     client.svc.run_outbox(now_utc() + timedelta(seconds=1))
     client.svc.run_outbox(now_utc() + timedelta(minutes=35))   # the weekly question follows as its own message
     c = sqlite3.connect(client.svc.s.db_path)
@@ -52,7 +52,8 @@ def test_delete_leaves_zero_rows_in_every_table_with_user_data(client, fakes):
             assert name in db.NO_USER_TABLES, f"new table {name} has no user_id and is not declared user-free"
     populated = {n for n in user_tables if c.execute(
         f"SELECT COUNT(*) FROM {n} WHERE " + ("id" if n == "users" else "user_id") + "=?", (uid,)).fetchone()[0]}
-    assert {"users", "devices", "runs", "memory", "cards", "outbox", "quota", "outcomes", "msglog", "inbound_seen", "enrolments"} <= populated, populated
+    assert {"users", "devices", "runs", "memory", "cards", "outbox", "quota", "outcomes", "msglog", "inbound_seen", "enrolments",
+            "convo_log", "convo_cards", "convo_area"} <= populated, populated
 
     assert client.delete("/v1/me", headers=auth(t)).json() == {"status": "deleted"}
 
@@ -211,6 +212,27 @@ def test_export_covers_every_table_with_a_runner_id(tmp_path, fakes):
         assert any("Open-Meteo" in g for g in me["goes_to"])
 
 
-def test_open_meteo_listed_only_when_weather_is_on(client, fakes):
+def test_open_meteo_listed_only_when_weather_is_on(tmp_path, fakes):
+    import httpx
+    from fastapi.testclient import TestClient
+    from companion.app import create_app
+    from conftest import make_settings
+    s = make_settings(tmp_path, weather_enabled=False)
+    app = create_app(s, httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=False)
+    with TestClient(app) as c:
+        t = enrol(c)
+        assert not any("Open-Meteo" in g for g in c.get("/v1/me", headers=auth(t)).json()["goes_to"])
+
+
+def test_weight_answer_never_reaches_the_model(client, fakes):
+    from companion.writer import digest_lines
+    assert "run_why" not in digest_lines({"run_why": "weight", "goal_type": "half"}, {})
+    assert digest_lines({"run_why": "headspace"}, {})["run_why"] == "headspace"
     t = enrol(client)
-    assert not any("Open-Meteo" in g for g in client.get("/v1/me", headers=auth(t)).json()["goes_to"])
+    c = sqlite3.connect(client.svc.s.db_path)
+    uid = c.execute("SELECT id FROM users").fetchone()[0]
+    c.execute("INSERT INTO memory (user_id, key, value, updated_at) VALUES (?,?,?,?)", (uid, "run_why", "weight", iso(now_utc())))
+    c.commit()
+    client.post("/v1/runs", json=run_payload("w1"), headers=auth(t))
+    client.svc.run_outbox(now_utc() + timedelta(seconds=1))
+    assert fakes.llm and all("weight" not in json.dumps(call).lower() for call in fakes.llm)
