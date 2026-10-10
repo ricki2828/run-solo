@@ -18,14 +18,13 @@ class GradientLegend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
     return Semantics(
       label: 'Route colours: flat, up, steep, down',
       excludeSemantics: true,
       child: DecoratedBox(
         key: const ValueKey('gradient-legend'),
         decoration: BoxDecoration(
-          color: t.bgBase.withValues(alpha: 0.86),
+          color: NightSession.bgBase.withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(Space.x8),
         ),
         child: Padding(
@@ -48,7 +47,9 @@ class GradientLegend extends StatelessWidget {
                 const SizedBox(width: Space.x4),
                 Text(
                   label,
-                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                  style: RunSoloType.label13.copyWith(
+                    color: NightSession.inkPrimary,
+                  ),
                 ),
                 if (c != GradientClass.down) const SizedBox(width: Space.x8),
               ],
