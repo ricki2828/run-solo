@@ -392,3 +392,44 @@ def test_sending_media_stores_no_bytes_and_leaves_the_export_unchanged(tmp_path,
         me = c.get("/v1/me", headers=auth(t)).json()
         assert set(me) == set(before)
         assert set(me["messages_sent_30d"][0]) == {"kind", "headline", "body", "sent_at", "situation", "touch_kind"}
+
+
+# --- real renderers, end to end (Chromium and ffmpeg are required: a missing one fails, never skips) ----------
+
+def test_real_run_card_renders_through_the_service_as_a_1080x1350_png(tmp_path, fakes):
+    import io
+    from PIL import Image
+    s = make_settings(tmp_path, media_enabled=True)
+    app = create_app(s, httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=False)
+    with TestClient(app) as c:
+        t = enrol(c)
+        c.post("/v1/runs", json=run_payload("r1", zone_min={"z2": 30, "z3": 10}, locality="Kallang"), headers=auth(t))
+        app.state.svc.run_outbox(now_utc() + timedelta(seconds=1))
+    photo = [b for m, b in fakes.tg if m == "sendPhoto"][0]["_files"]["photo"][1]
+    im = Image.open(io.BytesIO(photo))
+    assert im.format == "PNG" and im.size == (1080, 1350) and len(photo) < 10 * 1024 * 1024
+
+
+def test_real_weekly_video_is_h264_without_audio_and_telegram_sized(tmp_path, fakes):
+    import shutil
+    import subprocess
+    from pathlib import Path
+    s = make_settings(tmp_path, media_enabled=True)
+    app = create_app(s, httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=False)
+    with TestClient(app) as c:
+        c.svc = app.state.svc
+        week_setup(c)
+        sunday = datetime(2026, 10, 11, 19, 30, tzinfo=timezone.utc)
+        c.svc.plan_recap(sunday)
+        c.svc.run_outbox(sunday + timedelta(seconds=1))
+    vid = [b for m, b in fakes.tg if m == "sendVideo"]
+    assert len(vid) == 1, fakes.tg_methods()
+    data = vid[0]["_files"]["video"][1]
+    assert data[4:8] == b"ftyp" and len(data) < 4 * 1024 * 1024
+    ffprobe = shutil.which("ffprobe") or str(Path(shutil.which("ffmpeg")).with_name("ffprobe"))
+    out = subprocess.run([ffprobe, "-v", "error", "-show_entries", "stream=codec_type,codec_name,width,height,pix_fmt",
+                          "-of", "json", "-i", "pipe:0"], input=data, capture_output=True, check=True).stdout
+    streams = json.loads(out)["streams"]
+    assert [x["codec_type"] for x in streams] == ["video"]
+    assert streams[0]["codec_name"] == "h264" and (streams[0]["width"], streams[0]["height"]) == (1080, 1350)
+    assert streams[0]["pix_fmt"] == "yuv420p"

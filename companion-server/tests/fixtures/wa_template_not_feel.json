@@ -1,0 +1,37 @@
+{
+  "messaging_product": "whatsapp",
+  "template": {
+    "components": [
+      {
+        "parameters": [
+          {
+            "image": {
+              "id": "MEDIA_ID_IMG"
+            },
+            "type": "image"
+          }
+        ],
+        "type": "header"
+      },
+      {
+        "parameters": [
+          {
+            "text": "Easy one",
+            "type": "text"
+          },
+          {
+            "text": "7.0 km at 5:42.",
+            "type": "text"
+          }
+        ],
+        "type": "body"
+      }
+    ],
+    "language": {
+      "code": "en"
+    },
+    "name": "run_card"
+  },
+  "to": "61400111222",
+  "type": "template"
+}
