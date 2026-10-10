@@ -460,6 +460,14 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     try {
       await services.recorder.setCues(s.cues);
       await services.recorder.setKmSplits(s.kmSplits);
+      final checkIn = VoiceCoachPlan.checkIn(
+        settings: s,
+        zones: services.hrZones,
+      );
+      await services.recorder.setCheckIn(
+        checkIn.metrics,
+        checkIn.zoneBottomsBpm,
+      );
       await services.recorder.setSpokenSummary(s.spokenSummary);
       await services.recorder.setVoiceCoach(_voiceCoach(services, s));
       services.recording.coachTarget = _coachTarget(services, s);

@@ -71,6 +71,7 @@ final class RecorderApiStub: RecorderApi {
   func setKmSplits(enabled: Bool) throws {}
   func setSpokenSummary(enabled: Bool) throws {}
   func setVoiceCoach(config: VoiceCoachConfig) throws {}
+  func setCheckIn(metrics: [String], zoneBottomsBpm: [Double]?) throws {}
   func setCoachSlowdown(slowdown: Double?) throws {}
   func speakRunSummary(distanceM: Double, timeMs: Int64, climbM: Double?, verdict: String?, units: Units, includePace: Bool) throws {}
   func setAutoPause(enabled: Bool) throws {}

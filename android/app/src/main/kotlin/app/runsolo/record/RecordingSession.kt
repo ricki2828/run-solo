@@ -9,6 +9,7 @@ import android.util.Log
 import app.runsolo.BuildConfig
 import app.runsolo.ble.BleHolder
 import app.runsolo.ble.BleHrClient
+import app.runsolo.core.elevation.ElevSource
 import app.runsolo.core.elevation.LiveElevation
 import app.runsolo.core.elevation.PressureReading
 import app.runsolo.core.fs.JvmFileSystem
@@ -29,6 +30,9 @@ import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.RecorderState
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.Units
+import app.runsolo.core.live.CheckInPlan
+import app.runsolo.core.live.CheckInSnapshot
+import app.runsolo.core.live.CheckInTracker
 import app.runsolo.core.live.CooperCurve
 import app.runsolo.core.live.GoalCoach
 import app.runsolo.core.live.LiveCoach
@@ -297,6 +301,11 @@ class RecordingSession(
         // unclean.
         coach = LiveCoach(liveContext, mode, spec, replayed.cuesFired).also {
             it.kmSplits = kmSplits
+            // The zone minutes before the kill were not seen: after a restore the check-in says the zone only.
+            // Kept as a field so a tracker built later (or rebuilt by the setter) starts partial too.
+            checkInPartial = true
+            checkInTracker?.partial = true
+            it.checkIn = checkIn
             // A journaled "Mute tips" survives the kill: nothing is spoken again after a restore.
             if (replayed.tipsMuted) it.muted = true
         }
@@ -485,7 +494,9 @@ class RecordingSession(
         handle(core.tick(t, ticker.distanceM, gpsOk = !lost), t)
         dispatch.ticked(t, ticker.distanceM)
         // Free / Laps: a whole km crossed in this tick says its compare, if there is one.
-        coach.onTick(coachPrevT, coachPrevD, t, ticker.distanceM, samples.last().hr) { core.status(it).activeMs }?.let { speakFire(null, it.base, it.fire, t, it.nudge) }
+        checkInTick(t, samples.last().hr)
+        coach.onTick(coachPrevT, coachPrevD, t, ticker.distanceM, samples.last().hr, snap = { checkInSnapshot(t) }) { core.status(it).activeMs }
+            ?.let { speakFire(null, it.base, it.fire, t, it.nudge, it.tail) }
         coachPrevT = t
         coachPrevD = ticker.distanceM
         // A nudge follows its cue as its own line: done (journaled, never offered again) only once said.
@@ -512,6 +523,7 @@ class RecordingSession(
             val isMoving = autoDetector.update(last.t, ticker.moveDistanceM, last.speedMps, last.lat, last.lon)
             if (wasMoving && !isMoving) autoPauseNow(t) else if (!wasMoving && isMoving) autoResumeNow(t, speak = true)
         }
+        checkInFeed(if (lost) null else pace)
         coachTick(t, if (lost) null else pace, last.hr)
         val step = core.stepIndex
         if (lost && step != null && core.status(t).stepRemainingM != null && gpsWeakStep != step && r == null) {
@@ -860,13 +872,13 @@ class RecordingSession(
      * extra); a compare also goes to the journal (`cf`, so a restore never repeats it) and to the
      * app as a [CompareEvent] for the overlay, muted or not. [kind] null = a Free run's km split.
      */
-    private fun speakFire(kind: CueKind?, cueBase: String?, fire: LiveCoach.Fire?, t: Long, nudge: LiveCoach.Nudge? = null) {
+    private fun speakFire(kind: CueKind?, cueBase: String?, fire: LiveCoach.Fire?, t: Long, nudge: LiveCoach.Nudge? = null, tail: String? = null) {
         val extra = fire?.takeIf { it.speak }?.text
         // A spoken goal-km compare replaces "On pace for …" with "3 k." (§G); muted, the cue stays.
         val base = fire?.takeIf { it.speak }?.base ?: cueBase
         // A nudge waits in the player to follow this cue; it is journaled at the tick that says it
         // (the next run's `blocked` list comes from those lines), never when it is dropped.
-        val said = if (kind != null || base != null || extra != null) cues.play(kind, base, extra, nudge) else null
+        val said = if (kind != null || base != null || extra != null) cues.play(kind, base, extra, nudge, tail) else null
         said?.text?.let { logSaid(it) }
         fire ?: return
         val st = core.status(t)
@@ -913,6 +925,51 @@ class RecordingSession(
             field = value
             synchronized(this) { coach.kmSplits = value }
         }
+
+    /**
+     * Settings → Voice → "Check-in": what a Free or Trail km line says besides the split. Set before start and on a
+     * resume from the app's `setCheckIn`; null (a replay, never set) = the plain km split. Read on the recorder thread.
+     */
+    @Volatile
+    var checkIn: CheckInPlan? = null
+        set(value) {
+            field = value
+            checkInTracker = value?.let { p -> CheckInTracker(p.zoneBottomsBpm).also { it.partial = checkInPartial } }
+            synchronized(this) { coach.checkIn = value }
+        }
+
+    private var checkInTracker: CheckInTracker? = null
+
+    /** The run was restored after a kill: its zone minutes are incomplete, whichever tracker is built. */
+    private var checkInPartial = false
+
+    /** Tests: the check-in's tracker says only the zone (restored run). */
+    internal val checkInSaysZoneOnly: Boolean get() = checkInTracker?.partial == true
+    private var checkInPace: Double? = null
+    private var checkInTruePace: Double? = null
+    private var checkInLastT: Long? = null
+
+    /** This tick's pace and True pace (the run screen's number), read by the next tick's [checkInTick]. */
+    private fun checkInFeed(pace: Double?) {
+        checkInPace = pace
+        checkInTruePace = LiveTruePace.apply(pace, liveElev.grade, coachSlowdown, ticker.distanceM)
+    }
+
+    /** Offers a moving, recording tick to the check-in's tracker: pauses and auto-pauses count for nothing. */
+    private fun checkInTick(t: Long, hr: Number?) {
+        val tr = checkInTracker ?: return
+        val dt = checkInLastT?.let { (t - it).coerceIn(0L, 2_000L) } ?: 0L
+        checkInLastT = t
+        if (replay != null || core.state != RecorderState.recording || core.autoPaused) return
+        tr.noteElevation(liveElev.elevationM, baro = liveElev.source == ElevSource.baro)
+        tr.tick(dt, (ticker.distanceM - coachPrevD).coerceAtLeast(0.0), checkInPace, checkInTruePace, hr?.toDouble())
+    }
+
+    /** The extra metrics at a km mark; only called when the km line is said. Barometer-only for height and climb (GPS altitude is too noisy to read out). */
+    private fun checkInSnapshot(t: Long): CheckInSnapshot? {
+        val tr = checkInTracker ?: return null
+        return tr.snapshot(core.status(t).activeMs, ticker.distanceM, liveElev.source == ElevSource.baro, liveElev.elevationM, liveElev.ascentM)
+    }
 
     /** The live coach as restored (tests: the resume path keeps the context and the fired cues). */
     internal val liveCoach: LiveCoach get() = coach

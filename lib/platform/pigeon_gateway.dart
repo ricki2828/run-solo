@@ -78,6 +78,10 @@ class PigeonRecorderGateway implements RecorderGateway {
       _api.setVoiceCoach(config);
 
   @override
+  Future<void> setCheckIn(List<String> metrics, List<double>? zoneBottomsBpm) =>
+      _api.setCheckIn(metrics, zoneBottomsBpm);
+
+  @override
   Future<void> setCoachSlowdown(double? slowdown) =>
       _api.setCoachSlowdown(slowdown);
 

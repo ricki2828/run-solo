@@ -737,6 +737,16 @@ abstract class RecorderApi {
   /// whenever voice cues are off.
   void setSpokenSummary(bool enabled);
 
+  /// Settings → Voice → "Check-in": which metrics the km line of a Free or
+  /// Trail run says besides the split, by [CheckInMetric] key in the order the
+  /// runner ranks them (distance, time, pace, retrace, hrZone, heightVsStart,
+  /// climb, truePace, avgPace). [zoneBottomsBpm] = the bottoms of zones 2 to 5
+  /// by the runner's own HR method; null = no heart-rate line. Persisted
+  /// natively and read when a run starts or resumes: a change applies from the
+  /// next run, not the one in progress. A run never given one (and every
+  /// replay) says the plain km split.
+  void setCheckIn(List<String> metrics, List<double>? zoneBottomsBpm);
+
   /// Voice coaching for the next run and any run resumed after it: persisted
   /// natively, never changes a run's journal or a replay.
   void setVoiceCoach(VoiceCoachConfig config);

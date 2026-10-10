@@ -116,6 +116,7 @@ class AppSettings {
     this.loadDismissedWeek,
     this.cues = true,
     this.kmSplits = true,
+    this.checkInMetrics = CheckInMetric.defaults,
     this.spokenSummary = true,
     this.voiceCoaching = true,
     this.coachingDetail = CoachingDetail.full,
@@ -240,6 +241,11 @@ class AppSettings {
 
   /// Voice → "Km splits": a Free run says each km (Phase 4 LV1). Default on.
   final bool kmSplits;
+
+  /// Voice → "Check-in": what each km line says besides the split, for Free
+  /// and Trail runs. Order is fixed by importance natively; a metric with no
+  /// data (no strap, no barometer, flat run) is skipped when it comes up.
+  final List<CheckInMetric> checkInMetrics;
 
   /// Voice → "Spoken summary": a line as a run starts and one when it ends
   /// (trail, 4x4 and free runs say what they are and how they went). Needs
@@ -427,6 +433,7 @@ class AppSettings {
     String? loadDismissedWeek,
     bool? cues,
     bool? kmSplits,
+    List<CheckInMetric>? checkInMetrics,
     bool? spokenSummary,
     bool? voiceCoaching,
     CoachingDetail? coachingDetail,
@@ -477,6 +484,7 @@ class AppSettings {
     loadDismissedWeek: loadDismissedWeek ?? this.loadDismissedWeek,
     cues: cues ?? this.cues,
     kmSplits: kmSplits ?? this.kmSplits,
+    checkInMetrics: checkInMetrics ?? this.checkInMetrics,
     spokenSummary: spokenSummary ?? this.spokenSummary,
     voiceCoaching: voiceCoaching ?? this.voiceCoaching,
     coachingDetail: coachingDetail ?? this.coachingDetail,
@@ -529,6 +537,7 @@ class AppSettings {
     'loadDismissedWeek': loadDismissedWeek,
     'cues': cues,
     'kmSplits': kmSplits,
+    'checkInMetrics': [for (final m in checkInMetrics) m.name],
     'spokenSummary': spokenSummary,
     'voiceCoaching': voiceCoaching,
     'coachingDetail': coachingDetail.name,
@@ -624,6 +633,12 @@ class AppSettings {
           : null,
       cues: pick('cues', d.cues),
       kmSplits: pick('kmSplits', d.kmSplits),
+      checkInMetrics: j['checkInMetrics'] is List
+          ? [
+              for (final v in j['checkInMetrics'] as List)
+                ?CheckInMetric.values.asNameMap()[v],
+            ]
+          : d.checkInMetrics,
       spokenSummary: pick('spokenSummary', d.spokenSummary),
       voiceCoaching: pick('voiceCoaching', d.voiceCoaching),
       coachingDetail:
@@ -847,6 +862,54 @@ class GoalChoice {
     }
     return null;
   }
+}
+
+/// Settings → Voice → "Check-in": the things a km check-in can say. [key] is
+/// what Kotlin's `CheckInMetric` is told, in importance order (the spoken
+/// order); [label] and [blurb] are the picker's.
+enum CheckInMetric {
+  distance('distance', 'Distance', 'The km you have reached.'),
+  time('time', 'Elapsed time', 'Moving time so far.'),
+  pace('pace', 'Pace', 'The pace of the km you just ran.'),
+  retrace(
+    'retrace',
+    'Way back',
+    'When you are doubling back: distance to the start and the climb ahead.',
+  ),
+  hrZone(
+    'hrZone',
+    'Heart rate zone',
+    'Your zone and how long you have spent in it. Needs a strap.',
+  ),
+  heightVsStart(
+    'heightVsStart',
+    'Height vs start',
+    'Metres above or below where you began. Needs a barometer.',
+  ),
+  climb('climb', 'Climb so far', 'Total climbed. Needs a barometer.'),
+  truePace(
+    'truePace',
+    'True Pace',
+    'Pace with hills and heat out, only when it differs from your pace.',
+  ),
+  avgPace('avgPace', 'Average pace', 'Your average pace for the run so far.');
+
+  const CheckInMetric(this.key, this.label, this.blurb);
+  final String key;
+  final String label;
+  final String blurb;
+
+  /// Everything on: a metric with no data is skipped, and the line is cut to
+  /// a short glance, so more on costs nothing on a flat road run.
+  static const List<CheckInMetric> defaults = CheckInMetric.values;
+
+  /// What the picker offers. "Way back" waits for the stacked retrace PR
+  /// (it needs the native retrace detector); it stays in [values] so the
+  /// stored key and the native phrase are ready.
+  static List<CheckInMetric> get pickable => [
+    for (final m in CheckInMetric.values)
+      if (m != CheckInMetric.retrace) m,
+  ];
 }
 
 /// Settings → Voice → "Coaching detail".

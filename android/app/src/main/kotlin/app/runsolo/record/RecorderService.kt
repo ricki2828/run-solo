@@ -163,6 +163,10 @@ class RecorderService : Service() {
         const val PREF_CUES = "cues"
         const val PREF_VOLUME_KEY_LAPS = "volumeKeyLaps"
         const val PREF_KM_SPLITS = "kmSplits"
+
+        /** The km check-in's metrics (comma-separated `CheckInMetric.key`s) and zone bottoms (zones 2..5), see [RecorderApiImpl.checkInFromPrefs]. */
+        const val PREF_CHECKIN = "checkInMetrics"
+        const val PREF_CHECKIN_ZONES = "checkInZones"
         const val PREF_SPOKEN_SUMMARY = "spokenSummary"
         const val PREF_AUTO_PAUSE = "autoPause"
 

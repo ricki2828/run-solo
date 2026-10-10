@@ -3657,6 +3657,17 @@ interface RecorderApi {
    */
   fun setSpokenSummary(enabled: Boolean)
   /**
+   * Settings → Voice → "Check-in": which metrics the km line of a Free or
+   * Trail run says besides the split, by [CheckInMetric] key in the order the
+   * runner ranks them (distance, time, pace, retrace, hrZone, heightVsStart,
+   * climb, truePace, avgPace). [zoneBottomsBpm] = the bottoms of zones 2 to 5
+   * by the runner's own HR method; null = no heart-rate line. Persisted
+   * natively and read when a run starts or resumes: a change applies from the
+   * next run, not the one in progress. A run never given one (and every
+   * replay) says the plain km split.
+   */
+  fun setCheckIn(metrics: List<String>, zoneBottomsBpm: List<Double>?)
+  /**
    * Voice coaching for the next run and any run resumed after it: persisted
    * natively, never changes a run's journal or a replay.
    */
@@ -4024,6 +4035,25 @@ interface RecorderApi {
             val enabledArg = args[0] as Boolean
             val wrapped: List<Any?> = try {
               api.setSpokenSummary(enabledArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.setCheckIn$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val metricsArg = args[0] as List<String>
+            val zoneBottomsBpmArg = args[1] as List<Double>?
+            val wrapped: List<Any?> = try {
+              api.setCheckIn(metricsArg, zoneBottomsBpmArg)
               listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)

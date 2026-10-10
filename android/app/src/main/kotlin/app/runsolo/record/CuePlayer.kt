@@ -123,9 +123,14 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
      * short vibration. A [nudge] (§3.5) is not appended: it follows as its own line once this cue
      * is done ([NudgeFollowUp], [dueNudge]). Any cue, countdown tones included, drops a follow-up
      * still waiting. Returns what was composed (null when nothing was said).
+     *
+     * A [tail] (the km check-in's extra metrics) is said in the same utterance after the compare, so
+     * nothing can slip between them and it queues once. It sits outside the 16-word budget (the
+     * check-in caps itself) and is dropped, like a compare, when the speech queued ahead would make
+     * it start more than 3 s late; the base km line is still said then.
      */
     @Synchronized
-    fun play(kind: CueKind?, text: String?, extra: String?, nudge: LiveCoach.Nudge? = null): CueComposer.Composed? {
+    fun play(kind: CueKind?, text: String?, extra: String?, nudge: LiveCoach.Nudge? = null, tail: String? = null): CueComposer.Composed? {
         vibrate(kind ?: CueKind.minuteMark)
         if (!enabled) return null
         followUp.cancel()
@@ -136,11 +141,12 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
         val t = now()
         val fresh = speech.freshAt(t)
         val composed = CueComposer.compose(text, extra?.takeIf { fresh })
-        val words = composed.text ?: return null
+        val head = composed.text ?: return null
+        val words = if (tail != null && fresh) "${head.trimEnd()} $tail" else head
         speech.queued(t, CueComposer.words(words))
         say(kind, words)
         nudge?.let { followUp.offer(it, speech.busyUntil) }
-        return composed
+        return if (words === head) composed else composed.copy(text = words)
     }
 
     /** When the speech queued so far will be done, on the session's clock (voice coaching only speaks when this has passed). */

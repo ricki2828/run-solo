@@ -18,14 +18,18 @@ object LiveWords {
      * hour: "12 k, 1 hour 4, pace 5:20." At most 7 words.
      */
     fun kmSplit(km: Int, activeMs: Long, splitMs: Long?): String {
+        val pace = splitMs?.takeIf { it > 0 }?.let { ", pace ${CueWords.clock(it.toDouble())}" } ?: ""
+        return "$km k, ${duration(activeMs)}$pace."
+    }
+
+    /** "15 minutes 20", "1 hour 4", "12 minutes": a run time as said, pauses and gaps out. */
+    fun duration(activeMs: Long): String {
         val s = (activeMs / 1_000.0).roundToLong()
-        val time = when {
+        return when {
             s >= 3_600 -> "${s / 3_600} ${if (s / 3_600 == 1L) "hour" else "hours"} ${(s % 3_600) / 60}"
             s % 60 == 0L -> "${s / 60} ${if (s / 60 == 1L) "minute" else "minutes"}"
             else -> "${s / 60} ${if (s / 60 == 1L) "minute" else "minutes"} ${s % 60}"
         }
-        val pace = splitMs?.takeIf { it > 0 }?.let { ", pace ${CueWords.clock(it.toDouble())}" } ?: ""
-        return "$km k, $time$pace."
     }
 
     /** A distance goal's km, when its compare follows: "3 k." (the compare says the rest). */

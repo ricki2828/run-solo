@@ -662,6 +662,19 @@ class FakeRecorderGateway implements RecorderGateway {
   @override
   Future<void> setSpokenSummary(bool enabled) async => spokenSummary = enabled;
 
+  /// What `setCheckIn` was last given (null: never called).
+  List<String>? checkInMetrics;
+  List<double>? checkInZoneBottoms;
+
+  @override
+  Future<void> setCheckIn(
+    List<String> metrics,
+    List<double>? zoneBottomsBpm,
+  ) async {
+    checkInMetrics = metrics;
+    checkInZoneBottoms = zoneBottomsBpm;
+  }
+
   /// What `setVoiceCoach` was last given (null: never called).
   VoiceCoachConfig? voiceCoach;
 

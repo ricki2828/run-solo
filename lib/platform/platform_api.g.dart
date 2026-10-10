@@ -3843,6 +3843,32 @@ class RecorderApi {
     ;
   }
 
+  /// Settings → Voice → "Check-in": which metrics the km line of a Free or
+  /// Trail run says besides the split, by [CheckInMetric] key in the order the
+  /// runner ranks them (distance, time, pace, retrace, hrZone, heightVsStart,
+  /// climb, truePace, avgPace). [zoneBottomsBpm] = the bottoms of zones 2 to 5
+  /// by the runner's own HR method; null = no heart-rate line. Persisted
+  /// natively and read when a run starts or resumes: a change applies from the
+  /// next run, not the one in progress. A run never given one (and every
+  /// replay) says the plain km split.
+  Future<void> setCheckIn(List<String> metrics, List<double>? zoneBottomsBpm) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.setCheckIn$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[metrics, zoneBottomsBpm]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
   /// Voice coaching for the next run and any run resumed after it: persisted
   /// natively, never changes a run's journal or a replay.
   Future<void> setVoiceCoach(VoiceCoachConfig config) async {
