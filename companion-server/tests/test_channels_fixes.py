@@ -271,3 +271,88 @@ def test_an_existing_database_gets_the_column(tmp_path):
     db.init(path)  # idempotent
     cols = [r[1] for r in sqlite3.connect(path).execute("PRAGMA table_info(users)")]
     assert "tz_set_at" in cols
+
+
+# --- recheck of #227 -------------------------------------------------------------------------------
+
+def test_a_held_back_run_still_advances_last_run_utc(client):
+    """R1: the tz_set_at guard holds back the zone only; evening and recap targeting read last_run_utc."""
+    enrol(client)
+    svc = client.svc
+    uid = q(client, "SELECT id FROM users")[0]["id"]
+    svc.ingest_run(uid, mk("a", T0 - timedelta(days=2), "Asia/Singapore", 480), T0)
+    svc.set_timezone(uid, "Europe/Athens", now=T0)
+    held = T0 - timedelta(hours=1)
+    svc.ingest_run(uid, mk("b", held, "Asia/Singapore", 480), T0 + timedelta(minutes=5))
+    row = q(client, "SELECT zone_id, last_run_utc FROM users")[0]
+    assert row["zone_id"] == "Europe/Athens" and row["last_run_utc"] == iso(held)
+    # and an older delivery never moves last_run_utc backwards
+    svc.ingest_run(uid, mk("c", T0 - timedelta(days=1), "Asia/Singapore", 480), T0 + timedelta(minutes=6))
+    assert q(client, "SELECT last_run_utc FROM users")[0]["last_run_utc"] == iso(held)
+
+
+def test_held_back_run_user_is_still_planned_for_the_recap(client):
+    enrol(client)
+    svc = client.svc
+    uid = q(client, "SELECT id FROM users")[0]["id"]
+    sat = datetime(2026, 10, 10, 6, 0, tzinfo=timezone.utc)
+    svc.ingest_run(uid, mk("a", sat - timedelta(days=3), "UTC", 0), sat)
+    svc.set_timezone(uid, "Europe/Athens", now=sat)
+    svc.ingest_run(uid, mk("b", sat - timedelta(hours=2), "UTC", 0), sat + timedelta(minutes=5))
+    sunday = datetime(2026, 10, 11, 16, 30, tzinfo=timezone.utc)                  # Sunday 19:30 in Athens
+    assert svc.plan_recap(sunday) == 1
+
+
+def test_body_is_sent_once_when_both_follow_ups_would_fire():
+    buttons = [{"label": l, "action": f"feel:{v}", "row": 0} for v, l in (("easy", "Easy"), ("right", "Right"), ("hard", "Hard"))]
+    buttons += [{"label": "10k", "action": "ans:goal_type:10k", "row": 1}]
+    long_card = OutCard("abc123", "Head", "BODY " * 300, buttons, Media(photo=PNG))
+    assert TelegramChannel.followups(long_card) == ["caption"]          # one follow-up, not two
+    short_card = OutCard("abc123", "Head", "BODY", buttons, Media(photo=PNG))
+    assert TelegramChannel.followups(short_card) == ["question"]
+
+
+def test_one_message_carries_the_text_and_every_button_including_the_question(tmp_path, fakes):
+    buttons = [{"label": l, "action": f"feel:{v}", "row": 0} for v, l in (("easy", "Easy"), ("right", "Right"), ("hard", "Hard"))]
+    buttons += [{"label": "10k", "action": "ans:goal_type:10k", "row": 1}]
+    ch = TelegramChannel(make_settings(tmp_path), httpx.Client(transport=httpx.MockTransport(fakes.handler)))
+    card = OutCard("abc123", "Head", "BODY " * 300, buttons, Media(photo=PNG))
+    ch.send_card(OWNER, card)
+    for mode in TelegramChannel.followups(card):
+        ch.send_followup(OWNER, card, mode)
+    texts = [b["text"] for m, b in fakes.tg if m == "sendMessage"]
+    assert len(texts) == 1 and texts[0].count("BODY") == 300
+    assert [x["callback_data"] for r in texts and fakes.tg[-1][1]["reply_markup"]["inline_keyboard"] for x in r] == [
+        "abc123:0", "abc123:1", "abc123:2", "abc123:3"]
+    fakes.tg.clear()
+    short = OutCard("abc123", "Head", "BODY", buttons, Media(photo=PNG))
+    ch.send_followup(OWNER, short, "question")
+    sent_text = fakes.tg[-1][1]
+    assert "BODY" not in sent_text["text"] and sent_text["reply_markup"]["inline_keyboard"] == [
+        [{"text": "10k", "callback_data": "abc123:3"}]]
+
+
+@pytest.mark.parametrize("raw,want", [(None, 3), ("", 3), ("0", 0), ("9", 9), ("10", 3), ("-1", 3), ("x", 3), (" 4 ", 4), ("3.5", 3)])
+def test_wa_url_index_is_clamped_to_the_valid_range(raw, want):
+    from companion.config import Settings
+    env = {"COMPANION_PEPPER": "p" * 20}
+    if raw is not None:
+        env["COMPANION_WA_URL_INDEX"] = raw
+    assert Settings.from_env(env).wa_url_index == want
+
+
+def test_a_stale_follow_up_is_dropped_not_sent_late(tmp_path, fakes):
+    with media_client(tmp_path, fakes) as c:
+        svc, uid, card_id = long_card_ready(c)
+        svc.run_outbox(now_utc() + timedelta(seconds=1))                  # photo goes out, follow-up queued
+        svc.run_outbox(now_utc() + timedelta(hours=7))                    # e.g. after a long kill-switch pause
+        assert long_texts(fakes) == []
+        assert q(c, "SELECT state FROM outbox WHERE kind='followup'")[0]["state"] == "skipped"
+
+
+def test_a_fresh_follow_up_after_a_short_pause_still_goes(tmp_path, fakes):
+    with media_client(tmp_path, fakes) as c:
+        svc, uid, card_id = long_card_ready(c)
+        svc.run_outbox(now_utc() + timedelta(seconds=1))
+        svc.run_outbox(now_utc() + timedelta(hours=2))
+        assert len(long_texts(fakes)) == 1

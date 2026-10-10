@@ -445,9 +445,13 @@ class Service:
             last = urow["last_run_utc"]
             # the newest run decides the zone, unless the app PUT a zone after that run started (an offline queue
             # delivering an old run must not undo a PUT)
-            if (not last or iso(run.start_utc) >= last) and not (urow["tz_set_at"] and iso(run.start_utc) <= urow["tz_set_at"]):
-                c.execute("UPDATE users SET zone_id=?, utc_offset_min=?, last_run_utc=? WHERE id=?",
-                          (run.zone_id, run.utc_offset_min, iso(run.start_utc), uid))
+            if not last or iso(run.start_utc) >= last:
+                held = bool(urow["tz_set_at"] and iso(run.start_utc) <= urow["tz_set_at"])
+                # last_run_utc always advances (evening and recap targeting read it); only the zone is held back
+                c.execute("UPDATE users SET last_run_utc=? WHERE id=?", (iso(run.start_utc), uid))
+                if not held:
+                    c.execute("UPDATE users SET zone_id=?, utc_offset_min=? WHERE id=?",
+                              (run.zone_id, run.utc_offset_min, uid))
             if not stale:
                 c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
                           (uid, "run_card", iso(now), f"card:{uid}:{run.run_id}", run.run_id))
@@ -777,18 +781,24 @@ class Service:
                           (user["id"], "followup", iso(now), f"fu:{card_id}:{mode}", f"{card_id}:{mode}"))
         return True
 
-    def _send_followup(self, user: dict, ref: str) -> None:
+    def _send_followup(self, user: dict, ref: str, now: datetime) -> bool:
+        """False when dropped: unknown card or mode, or older than stale_card_hours since the media went out (a
+        follow-up held back by the kill switch or quiet hours must not arrive long after its card)."""
         card_id, _, mode = ref.partition(":")
         ch = self.channels.get(user["channel"])
         if ch is None or mode not in ("caption", "question"):
-            return
+            return False
         with db.ro(self.s.db_path) as c:
             row = c.execute("SELECT * FROM cards WHERE card_id=? AND user_id=?", (card_id, user["id"])).fetchone()
         if row is None:
-            return
+            return False
         card = dict(row)
+        if not card["sent_at"] or parse_iso(card["sent_at"]) < now - timedelta(hours=self.s.stale_card_hours):
+            log.info("follow-up dropped: stale")
+            return False
         ch.send_followup(user["chat_ref"], OutCard(card_id, card["headline"], card["body"],
                                                    json.loads(card["buttons_json"]), None, self._links(card)), mode)
+        return True
 
     def _links(self, card: dict) -> tuple[tuple[str, str], ...]:
         """Deep-link buttons for a card: the run itself, or the recap's week. Empty without a configured https base."""
@@ -841,8 +851,7 @@ class Service:
         if in_quiet(now, user["zone_id"], qs, qe):
             return "defer", quiet_end_utc(now, user["zone_id"], qe)
         if item["kind"] == "followup":
-            self._send_followup(user, item["ref"])
-            return "done", None
+            return ("done" if self._send_followup(user, item["ref"], now) else "skipped"), None
         if item["kind"] == "run_card":
             card_id = self._build_run_card(user["id"], item["ref"], now)
         elif item["kind"] == "evening":

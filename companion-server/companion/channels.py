@@ -15,6 +15,7 @@ from .config import Settings
 from .media import PHOTO_MAX_BYTES, VIDEO_MAX_BYTES, Media
 
 CAPTION_MAX = 1024        # Telegram caption limit
+QUESTION_LEAD = "Quick question"  # follow-up text for question buttons; the card text already went with the media
 MAX_FEEL_BUTTONS = 3      # per card (the 10-Oct review); questions never ride a media card
 
 
@@ -134,21 +135,21 @@ class TelegramChannel:
     def followups(card: OutCard) -> list[str]:
         """Messages a media card needs after the media itself: "caption" when the text does not fit a caption (the
         buttons ride that text), "question" when question buttons were kept off the media."""
-        out = []
-        if card.media and (card.media.photo or card.media.video):
-            if utf16_len(f"{card.headline}\n{card.body}") > CAPTION_MAX:
-                out.append("caption")
-            if any(b["action"].startswith("ans:") for b in card.buttons):
-                out.append("question")
-        return out
+        if not (card.media and (card.media.photo or card.media.video)):
+            return []
+        if utf16_len(f"{card.headline}\n{card.body}") > CAPTION_MAX:
+            return ["caption"]  # the text goes once, with every button, questions included
+        if any(b["action"].startswith("ans:") for b in card.buttons):
+            return ["question"]  # the body already rode the caption, so this carries only the question buttons
+        return []
 
     def send_followup(self, ref: str, card: OutCard, mode: str) -> str:
         """The text message a media card could not carry. Sent from its own outbox item, so a failure here retries
         only this message and never re-uploads the media."""
         if mode == "caption":
-            text, kb = f"{card.headline}\n{card.body}", self._keyboard(card, media=True)
+            text, kb = f"{card.headline}\n{card.body}", self._keyboard(card, media=False)
         elif mode == "question":
-            text = card.body
+            text = QUESTION_LEAD
             kb = [[{"text": b["label"][:40], "callback_data": f"{card.card_id}:{i}"}]
                   for i, b in enumerate(card.buttons) if b["action"].startswith("ans:")]
         else:
