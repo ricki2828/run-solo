@@ -190,3 +190,12 @@ Enrolment flow (the app drives it; each step is anti-phishing by design):
 
 `systemctl --user disable --now companion.service`, remove the tunnel ingress block, and (if needed)
 `curl "https://api.telegram.org/bot<token>/deleteWebhook"`. Data stays in `~/companion-data` until deleted.
+
+## 9. Coach replay (history through the live bot)
+
+Replays a runner's real history on a virtual clock: `python -m companion.cli replay <facts_dir> --every 300 [--dry-run [--full]] [--from YYYY-MM-DD]`, plus `replay-stop` (finish the current message, save, exit; run `replay` again to resume) and `replay-abort` (release the user to the live coach). The existing `pause` holds it too.
+
+1. Restart `companion.service` on the merged code first. The live worker then records `replay_aware_at`; `replay` refuses to start without it, because an older worker would send the replay's virtual-past items at once.
+2. Facts: `cd packages/run_engine && dart run tool/companion_facts.dart <export_dir> <facts_dir> [--max-hr N] [--age N] [--rest-hr N]` writes one JSON per run, exactly the body the app POSTs, sorted by start. Not derivable (absent, as in the app today): scores_delta, route_id, load_state, pb, plan_*, area_lat/lon. HR zones come from the options (default 190 max HR); locality only if the sidecar has it.
+3. While a replay is not `done`, the live worker skips that user's outbox, planning and retention. Taps are recorded by the live webhook as usual and dated on the card's own virtual clock. A real upload of a replayed run updates it in place (no second card). Media stays off.
+4. Run `--dry-run` first: the whole schedule on a scratch copy of the database (template phrasing, no taps), nothing sent.

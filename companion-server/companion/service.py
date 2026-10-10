@@ -54,6 +54,11 @@ WELCOME = ("You're connected. Your run recaps will land here. Send STOP to pause
 
 
 # Dart VerdictHeadline.name -> the words the facts engine may say. noVerdict says nothing.
+# Users with a coach replay in progress or paused. The replay owns their outbox, planning and retention until it is
+# 'done': the live worker on the real clock would otherwise send virtual-past items at once.
+REPLAY_HOLD = "(SELECT user_id FROM replay_state WHERE status <> 'done')"
+REPLAY_TAP_MAX = timedelta(hours=6)  # a tap counts as made at most this long after its card's virtual time
+
 VERDICT_WIRE = ("faster", "holding", "slower", "noRealChange", "baselineSet", "noVerdict", "indoorRun")
 
 
@@ -122,6 +127,8 @@ EXPORTED_TABLES = {
 NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message content of its own
     "devices": "hashed device tokens", "enrolments": "short-lived sign-up nonces", "outbox": "send queue, ids only",
     "quota": "weekly cap counters", "msglog": "send counts, no content", "inbound_seen": "hashed message ids",
+    "replay_state": "coach replay progress", "replay_runs": "run ids the replay inserted",
+    "replay_items": "replay send times and card ids",
 }
 
 
@@ -326,6 +333,7 @@ class Service:
         if inb.button_idx is None or not 0 <= inb.button_idx < len(buttons):
             ch.ack_callback(inb, "That button has expired.", clear=False)
             return
+        now = self._tap_time(card["card_id"], now)
         action = buttons[inb.button_idx]["action"]
         kind, _, rest = action.partition(":")
         msg = "Thanks."
@@ -349,6 +357,17 @@ class Service:
                         msg = "Okay, nothing more this week."
             c.execute("UPDATE cards SET answered_at=COALESCE(answered_at, ?) WHERE card_id=?", (iso(now), card["card_id"]))
         ch.ack_callback(inb, msg)
+
+    def _tap_time(self, card_id: str, now: datetime) -> datetime:
+        """When a tap happened on the card's own clock. A replayed card lives at a virtual time in the past, so its
+        answers (memory, caps, outcomes) are stamped virtual time + the real time since it was sent, not the real
+        date. Every other card: the real time."""
+        with db.ro(self.s.db_path) as c:
+            r = c.execute("SELECT virtual_at, real_at FROM replay_items WHERE card_id=? ORDER BY id DESC LIMIT 1",
+                          (card_id,)).fetchone()
+        if not r:
+            return now
+        return parse_iso(r["virtual_at"]) + min(max(now - parse_iso(r["real_at"]), timedelta(0)), REPLAY_TAP_MAX)
 
     # ---------------------------------------------------------------- memory
     @staticmethod
@@ -439,6 +458,21 @@ class Service:
         stale = (now - end) > timedelta(hours=self.s.stale_card_hours)
         with db.tx(self.s.db_path) as c:
             if c.execute("SELECT 1 FROM runs WHERE user_id=? AND run_id=?", (uid, run.run_id)).fetchone():
+                if c.execute("UPDATE replay_runs SET inserted=0 WHERE user_id=? AND run_id=? AND inserted=1",
+                             (uid, run.run_id)).rowcount:
+                    # The coach replay inserted this run from an export file; the app's own upload is the same run.
+                    # Update it in place (a feel tapped during the replay is kept) and send no second card.
+                    c.execute(
+                        "UPDATE runs SET start_utc=?, end_utc=?, utc_offset_min=?, zone_id=?, type=?, duration_s=?, "
+                        "distance_m=?, pace_s_per_km=?, true_pace_s_per_km=?, verdict=?, scores_delta=?, zone_min=?, "
+                        "climb_m=?, locality=?, route_id=?, load_state=?, pb=?, plan_kind=?, plan_target_m=?, "
+                        "plan_weeks_to_race=?, feel=COALESCE(feel, ?) WHERE user_id=? AND run_id=?",
+                        (iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, run.type, run.duration_s,
+                         run.distance_m, run.pace_s_per_km, run.true_pace_s_per_km, run.verdict,
+                         json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality,
+                         run.route_id, run.load_state, run.pb, run.plan_kind, run.plan_target_m,
+                         run.plan_weeks_to_race, run.feel, uid, run.run_id))
+                    return {"status": "updated"}
                 return {"status": "duplicate"}
             coach_type, app_type = self._coach_type(c, uid, run)
             n = c.execute("SELECT COUNT(*) FROM runs WHERE user_id=? AND received_at >= ?",
@@ -539,7 +573,11 @@ class Service:
         return b
 
     # ---------------------------------------------------------------- conversation layer (convo/)
-    def _full_history(self, c, uid: str, before: str | None) -> list[dict]:
+    def _full_history(self, c, uid: str, before: str | None, now: datetime | None = None) -> list[dict]:
+        """Every run, newest first. `now` caps it at that moment: a replay's clock is in the past, and a run uploaded
+        for real since must not leak into a card dated before it. Live, nothing starts after now."""
+        if before is None and now is not None:
+            before = iso(now + timedelta(seconds=1))
         return self._history(c, uid, before, limit=2000)
 
     @staticmethod
@@ -669,7 +707,7 @@ class Service:
             ex = c.execute("SELECT card_id FROM cards WHERE user_id=? AND run_id=? AND kind='question'", (uid, ref)).fetchone()
             if ex:
                 return ex["card_id"]
-            hist = self._full_history(c, uid, None)
+            hist = self._full_history(c, uid, None, now)
             mem = self._memory_get(c, uid, now)
         with db.tx(self.s.db_path) as c:
             q = self._question_for(c, uid, hist, mem, now)
@@ -693,7 +731,7 @@ class Service:
                            (uid, f"evening:{local_date}")).fetchone()
             if ex:
                 return ex["card_id"]
-            hist = self._full_history(c, uid, None)
+            hist = self._full_history(c, uid, None, now)
             mem = self._memory_get(c, uid, now)
             feels = self._feel_counts(c, uid, now)
             usage = self._usage(c, uid, now)
@@ -736,7 +774,7 @@ class Service:
                            (uid, f"recap:{week_ref}")).fetchone()
             if ex:
                 return ex["card_id"]
-            runs = self._full_history(c, uid, None)
+            runs = self._full_history(c, uid, None, now)
             usage = self._usage(c, uid, now)
             zone_id = c.execute("SELECT zone_id FROM users WHERE id=?", (uid,)).fetchone()["zone_id"]
             empty_before = c.execute("SELECT COUNT(*) FROM convo_log WHERE user_id=? AND kind='recap_empty' AND ts>?",
@@ -888,12 +926,16 @@ class Service:
             return "skipped", None
         return ("done" if self._send_card(user, card_id, now) else "skipped"), None
 
-    def run_outbox(self, now: datetime | None = None, limit: int = 20) -> int:
+    def run_outbox(self, now: datetime | None = None, limit: int = 20, only_user: str | None = None) -> int:
+        """`only_user` is the coach replay driving one user on its own clock; the live worker (no `only_user`) skips
+        every user a replay still holds."""
         now = now or now_utc()
+        who, args = ((" AND user_id = ?", (only_user,)) if only_user
+                     else (f" AND user_id NOT IN {REPLAY_HOLD}", ()))
         with db.tx(self.s.db_path) as c:
             rows = [dict(r) for r in c.execute(
-                "SELECT * FROM outbox WHERE state IN ('pending','sending') AND due_at <= ? ORDER BY due_at LIMIT ?",
-                (iso(now), limit))]
+                "SELECT * FROM outbox WHERE state IN ('pending','sending') AND due_at <= ?" + who +
+                " ORDER BY due_at LIMIT ?", (iso(now), *args, limit))]
             for r in rows:  # 5 minute lease: a crash mid-send makes the row claimable again
                 c.execute("UPDATE outbox SET state='sending', attempts=attempts+1, due_at=? WHERE id=?",
                           (iso(now + timedelta(minutes=5)), r["id"]))
@@ -920,21 +962,29 @@ class Service:
                               (iso(now + timedelta(minutes=2 ** attempts)), err, r["id"]))
         return len(rows)
 
+    def mark_replay_aware(self) -> None:
+        """The live worker records that it leaves a replayed user alone. `companion.cli replay` refuses to start
+        until this exists, so a service still running older code (which would send the replay's virtual-past
+        items at once) cannot be left running beside it."""
+        with db.tx(self.s.db_path) as c:
+            c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('replay_aware_at', ?)", (iso(now_utc()),))
+
     def overdue_count(self, now: datetime | None = None) -> int:
         now = now or now_utc()
         with db.ro(self.s.db_path) as c:
-            return c.execute("SELECT COUNT(*) FROM outbox WHERE state IN ('pending','sending') AND due_at < ?",
-                             (iso(now - timedelta(hours=1)),)).fetchone()[0]
+            return c.execute("SELECT COUNT(*) FROM outbox WHERE state IN ('pending','sending') AND due_at < ? "
+                             f"AND user_id NOT IN {REPLAY_HOLD}", (iso(now - timedelta(hours=1)),)).fetchone()[0]
 
     # ---------------------------------------------------------------- planning + retention
-    def plan_evening(self, now: datetime | None = None) -> int:
+    def plan_evening(self, now: datetime | None = None, only_user: str | None = None) -> int:
         """Queue the evening-before suggestion (Telegram only) in the user's 20:00-21:00 local window."""
         now = now or now_utc()
         n = 0
+        who, args = ((" AND id = ?", (only_user,)) if only_user else (f" AND id NOT IN {REPLAY_HOLD}", ()))
         with db.tx(self.s.db_path) as c:
             users = [dict(r) for r in c.execute(
-                "SELECT * FROM users WHERE channel='telegram' AND paused=0 AND last_run_utc >= ?",
-                (iso(now - timedelta(days=14)),))]
+                "SELECT * FROM users WHERE channel='telegram' AND paused=0 AND last_run_utc >= ?" + who,
+                (iso(now - timedelta(days=14)), *args))]
             for u in users:
                 loc = to_local(now, u["zone_id"])
                 if not (cv_suggest.EVENING_START_MIN <= loc.hour * 60 + loc.minute < cv_suggest.EVENING_END_MIN):
@@ -956,14 +1006,15 @@ class Service:
                                (u["id"], "evening", iso(now), f"evening:{u['id']}:{d}", d)).rowcount
         return n
 
-    def plan_recap(self, now: datetime | None = None) -> int:
+    def plan_recap(self, now: datetime | None = None, only_user: str | None = None) -> int:
         """Queue the weekly recap for Sunday 19:00-20:00 local, once per local week."""
         now = now or now_utc()
         n = 0
+        who, args = ((" AND id = ?", (only_user,)) if only_user else (f" AND id NOT IN {REPLAY_HOLD}", ()))
         with db.tx(self.s.db_path) as c:
             users = [dict(r) for r in c.execute(
-                "SELECT * FROM users WHERE channel='telegram' AND paused=0 AND last_run_utc >= ?",
-                (iso(now - timedelta(days=cv_recap.QUIET_AFTER_DAYS)),))]
+                "SELECT * FROM users WHERE channel='telegram' AND paused=0 AND last_run_utc >= ?" + who,
+                (iso(now - timedelta(days=cv_recap.QUIET_AFTER_DAYS)), *args))]
             for u in users:
                 loc = to_local(now, u["zone_id"])
                 if loc.weekday() != cv_recap.RECAP_WEEKDAY:
@@ -985,17 +1036,19 @@ class Service:
             c.execute("DELETE FROM enrolments WHERE expires_at < ?", (iso(now - timedelta(days=1)),))
             c.execute("DELETE FROM users WHERE created_at < ? AND NOT EXISTS (SELECT 1 FROM devices d WHERE d.user_id = users.id)",
                       (iso(now - timedelta(hours=1)),))  # started enrolling, never confirmed
-            c.execute("DELETE FROM msglog WHERE ts < ?", (log_cut,))
+            # A replay holds its user: its rows carry virtual (past) dates and are still being used.
+            held = f" AND user_id NOT IN {REPLAY_HOLD}"
+            c.execute("DELETE FROM msglog WHERE ts < ?" + held, (log_cut,))
             c.execute("DELETE FROM inbound_seen WHERE ts < ?", (log_cut,))
-            c.execute("DELETE FROM cards WHERE created_at < ?", (log_cut,))
-            c.execute("DELETE FROM outbox WHERE state IN ('done','skipped','failed') AND due_at < ?", (log_cut,))
-            c.execute("DELETE FROM convo_log WHERE ts < ?", (iso(now - timedelta(days=400)),))
-            c.execute("DELETE FROM quota WHERE created_at < ?", (iso(now - timedelta(days=60)),))
+            c.execute("DELETE FROM cards WHERE created_at < ?" + held, (log_cut,))
+            c.execute("DELETE FROM outbox WHERE state IN ('done','skipped','failed') AND due_at < ?" + held, (log_cut,))
+            c.execute("DELETE FROM convo_log WHERE ts < ?" + held, (iso(now - timedelta(days=400)),))
+            c.execute("DELETE FROM quota WHERE created_at < ?" + held, (iso(now - timedelta(days=60)),))
             c.execute("DELETE FROM llm_calls WHERE ts < ?", (iso(now - timedelta(days=400)),))
-            c.execute("DELETE FROM memory WHERE key='niggle_area' AND updated_at < ?",
+            c.execute("DELETE FROM memory WHERE key='niggle_area' AND updated_at < ?" + held,
                       (iso(now - timedelta(days=NIGGLE_TTL_DAYS)),))
             idle = [r["id"] for r in c.execute(
-                "SELECT id FROM users WHERE COALESCE(last_run_utc, created_at) < ?",
+                f"SELECT id FROM users WHERE COALESCE(last_run_utc, created_at) < ? AND id NOT IN {REPLAY_HOLD}",
                 (iso(now - timedelta(days=RETENTION_INACTIVE_DAYS)),))]
         for uid in idle:  # six months without a run: hard delete
             db.hard_delete_user(self.s.db_path, uid)
