@@ -105,8 +105,10 @@ class RetraceDetector {
   static const double minStepM = 2;
 
   /// Most points kept, like the recorder's live route: a bounded copy of a
-  /// very long run. Past it the track stops growing (the state keeps
-  /// following the elevation).
+  /// very long run. Past it the track stops growing, so the detector can no
+  /// longer follow the runner: it drops any retrace (retracing false, no
+  /// distance back, no climb ahead) rather than show a frozen answer, and
+  /// only [RetraceState.heightVsStartM] keeps following the elevation.
   static const int maxPoints = 20000;
 
   /// The old stretch's climb and descent are recomputed only when the match
@@ -198,7 +200,12 @@ class RetraceDetector {
     final y = (lat - _lat0) * _mPerDeg;
     if (_x.isNotEmpty) {
       final step = _hyp(x - _x.last, y - _y.last);
-      if (step < minStepM || _x.length >= maxPoints) {
+      if (_x.length >= maxPoints) {
+        _hasStreak = false;
+        _dir = null;
+        return _state = RetraceState(heightVsStartM: _height);
+      }
+      if (step < minStepM) {
         return _state = _withHeight(_state);
       }
       if (distM != null) {

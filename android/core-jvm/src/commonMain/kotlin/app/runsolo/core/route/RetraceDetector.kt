@@ -144,7 +144,13 @@ class RetraceDetector(
         val y = (lat - lat0) * M_PER_DEG
         if (xs.size > 0) {
             val step = hyp(x - xs.last(), y - ys.last())
-            if (step < MIN_STEP_M || xs.size >= MAX_POINTS) {
+            if (xs.size >= MAX_POINTS) {
+                hasStreak = false
+                dir = null
+                state = RetraceState(heightVsStartM = height())
+                return state
+            }
+            if (step < MIN_STEP_M) {
                 state = state.copy(heightVsStartM = height())
                 return state
             }
@@ -364,7 +370,10 @@ class RetraceDetector(
     companion object {
         const val MIN_STEP_M = 2.0
 
-        /** Most points kept, like the live route's cap; past it the track stops growing. */
+        /**
+         * Most points kept, like the live route's cap. Past it the track stops growing, so any retrace is
+         * dropped (not frozen); only the height vs start keeps following.
+         */
         const val MAX_POINTS = 20_000
 
         /** The old stretch's climb is recomputed only when the match has moved this far (or the streak is new). */
