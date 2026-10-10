@@ -41,6 +41,7 @@ class TopoStyle {
   static const String planSource = 'rs-plan';
   static const String trackSource = 'rs-track';
   static const String retraceSource = 'rs-retrace';
+  static const String aheadSource = 'rs-ahead';
   static const String marksSource = 'rs-marks';
   static const String meSource = 'rs-me';
 
@@ -70,6 +71,7 @@ class TopoStyle {
       planSource,
       trackSource,
       retraceSource,
+      aheadSource,
       marksSource,
       meSource,
     ]) {
@@ -197,19 +199,15 @@ class TopoStyle {
     _line('rs-plan-casing', planSource, ['get', 'k'], 9, wide: 11),
     _line('rs-plan', planSource, ['get', 'c'], 5, wide: 7),
     _line('rs-track-casing', trackSource, ['get', 'k'], 9, wide: 11),
+    // A retraced stretch: a Bone band with a dark rim around the track's own
+    // colour, so it stands out on any casing and either theme.
+    _line('rs-retrace-rim', retraceSource, ['get', 'k'], 16),
+    _line('rs-retrace-halo', retraceSource, ['get', 'h'], 12),
     _line('rs-track', trackSource, ['get', 'c'], 5, wide: 7),
-    // A retraced stretch: the track's colour stays, stitched with dark dashes.
-    {
-      'id': 'rs-retrace',
-      'type': 'line',
-      'source': retraceSource,
-      'layout': {'line-cap': 'butt', 'line-join': 'round'},
-      'paint': {
-        'line-color': ['get', 'k'],
-        'line-width': 3,
-        'line-dasharray': [1, 1.4],
-      },
-    },
+    // The old track still ahead, coloured by the grade in the runner's
+    // direction, over everything beneath it.
+    _line('rs-ahead-casing', aheadSource, ['get', 'k'], 11),
+    _line('rs-ahead', aheadSource, ['get', 'c'], 7),
     {
       'id': 'rs-marks',
       'type': 'circle',
@@ -324,10 +322,11 @@ class TopoStyle {
     };
   }
 
-  /// The retraced sections as lines (colour `k` is the dash colour).
+  /// The retraced sections as lines: `h` is the Bone band, `k` its rim.
   static Map<String, Object?> retraceLines(
     Iterable<List<GeoPoint>> sections, {
-    required Color dash,
+    required Color rim,
+    required Color halo,
   }) => {
     'type': 'FeatureCollection',
     'features': [
@@ -335,7 +334,7 @@ class TopoStyle {
         if (sec.length > 1)
           {
             'type': 'Feature',
-            'properties': {'k': hex(dash)},
+            'properties': {'k': hex(rim), 'h': hex(halo)},
             'geometry': {
               'type': 'LineString',
               'coordinates': [
@@ -345,6 +344,15 @@ class TopoStyle {
           },
     ],
   };
+
+  /// [points] coloured by gradient in the order given, or nothing when they
+  /// carry no elevation.
+  static Map<String, Object?> aheadLine(
+    List<GeoPoint> points, {
+    required Color casing,
+  }) => gradientRuns(points) == null
+      ? emptyCollection
+      : gradientLine(points, fallback: casing, casing: casing);
 
   /// One dot: [fill] inside a [ring].
   static Map<String, Object?> dots(

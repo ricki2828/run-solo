@@ -594,7 +594,16 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
     await _setSource(
       c,
       TopoStyle.retraceSource,
-      TopoStyle.retraceLines(_retrace.sections, dash: t.bgBase),
+      TopoStyle.retraceLines(
+        _retrace.sections,
+        rim: NightSession.bgBase,
+        halo: NightSession.inkPrimary,
+      ),
+    );
+    await _setSource(
+      c,
+      TopoStyle.aheadSource,
+      TopoStyle.aheadLine(_retrace.ahead(), casing: t.bgBase),
     );
     final last = widget.track.last;
     await _setSource(

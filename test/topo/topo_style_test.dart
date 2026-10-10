@@ -82,6 +82,7 @@ void main() {
         'rs-plan',
         'rs-track',
         'rs-retrace',
+        'rs-ahead',
         'rs-marks',
         'rs-me',
       ]) {
@@ -95,8 +96,11 @@ void main() {
         'rs-plan-casing',
         'rs-plan',
         'rs-track-casing',
+        'rs-retrace-rim',
+        'rs-retrace-halo',
         'rs-track',
-        'rs-retrace',
+        'rs-ahead-casing',
+        'rs-ahead',
         'rs-marks',
         'rs-me',
       ]);

@@ -9,7 +9,8 @@ library;
 
 import 'dart:math' as math;
 
-import 'package:run_engine/run_engine.dart' show RetraceDetector;
+import 'package:run_engine/run_engine.dart'
+    show RetraceDetector, RetraceDirection, RetraceState;
 
 import 'route_builder.dart';
 
@@ -22,6 +23,7 @@ class RetraceTracker {
   final List<double> _cum = [];
   final List<List<GeoPoint>> _closed = [];
   int? _openFrom;
+  RetraceState _state = RetraceState.none;
 
   /// Metres of track kept in memory per section is bounded by the run; the
   /// sections are small next to the track itself.
@@ -41,6 +43,37 @@ class RetraceTracker {
     _cum.clear();
     _closed.clear();
     _openFrom = null;
+    _state = RetraceState.none;
+  }
+
+  /// The stretch of the OLD track still ahead of the runner, in the order
+  /// they will run it, up to [maxM] metres. Colour it with `gradientRuns`
+  /// and the grades come out in the runner's direction: on the way back a
+  /// hill that was run up reads as down, and a descent reads as up. Empty
+  /// when not retracing.
+  List<GeoPoint> ahead({double maxM = 2000}) {
+    final d = _state.distanceToStartM;
+    final from = _openFrom;
+    if (!_state.retracing || d == null || from == null) return const [];
+    // The matched point on the old track: where the recorded distance is d.
+    var k = 0;
+    while (k + 1 < from && _cum[k + 1] <= d) {
+      k++;
+    }
+    final out = <GeoPoint>[_pts[k]];
+    var run = 0.0;
+    if (_state.direction == RetraceDirection.reverse) {
+      for (var i = k - 1; i >= 0 && run < maxM; i--) {
+        run += _cum[i + 1] - _cum[i];
+        out.add(_pts[i]);
+      }
+    } else {
+      for (var i = k + 1; i < from && run < maxM; i++) {
+        run += _cum[i] - _cum[i - 1];
+        out.add(_pts[i]);
+      }
+    }
+    return out.length < 2 ? const [] : out;
   }
 
   /// Feeds new points; returns true when the sections changed.
@@ -50,7 +83,7 @@ class RetraceTracker {
       final prev = _pts.isEmpty ? null : _pts.last;
       _pts.add(p);
       _cum.add(prev == null ? 0 : _cum.last + _metres(prev, p));
-      final s = _detector.add(lat: p.lat, lon: p.lon, elevM: p.ele);
+      final s = _state = _detector.add(lat: p.lat, lon: p.lon, elevM: p.ele);
       if (s.retracing) {
         if (_openFrom == null) {
           var i = _pts.length - 1;
