@@ -119,6 +119,12 @@ CREATE TABLE IF NOT EXISTS convo_cards (
   allowed TEXT NOT NULL,       -- the number sources behind this card's text (eng-review B4 audit)
   touch_kind TEXT
 );
+CREATE TABLE IF NOT EXISTS convo_area (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  run_id TEXT NOT NULL,
+  lat REAL NOT NULL, lon REAL NOT NULL,  -- rounded to 0.1 degree (about 11 km), only when weather is on
+  PRIMARY KEY (user_id, run_id)
+);
 -- Tables below hold no user data (no user_id column).
 CREATE TABLE IF NOT EXISTS llm_calls (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -275,25 +275,29 @@ def test_weekly_question_set():
 
 # --- weather ----------------------------------------------------------------------------------
 
-def test_open_meteo_parsing_and_failure():
+def test_open_meteo_sends_only_a_rounded_cell_and_caches():
     day = "2026-10-21"
     times = [f"{day}T{h:02d}:00" for h in range(24)]
+    seen = []
 
     def handler(req: httpx.Request):
-        if "geocoding" in req.url.host:
-            return httpx.Response(200, json={"results": [{"latitude": 1.3, "longitude": 103.8}]})
+        seen.append(dict(req.url.params))
         return httpx.Response(200, json={"hourly": {"time": times, "temperature_2m": [27.4] * 24,
                                                     "precipitation_probability": [10] * 8 + [65] * 16},
                                          "daily": {"time": [day], "sunrise": [f"{day}T07:02"]}})
     w = OpenMeteo(httpx.Client(transport=httpx.MockTransport(handler)))
-    f = w.tomorrow("Marina Bay", SG, date(2026, 10, 21))
+    f = w.tomorrow(1.3521, 103.8198, SG, date(2026, 10, 21))
     assert f == Forecast(27, 65)
+    assert (seen[0]["latitude"], seen[0]["longitude"]) == ("1.4", "103.8")  # 0.1 degree, no names
+    assert not ({"name", "q", "city"} & set(seen[0]))
+    w.tomorrow(1.3999, 103.8101, SG, date(2026, 10, 21))
+    assert len(seen) == 1  # same cell, same day: cached
     start = datetime(2026, 10, 20, 23, 0, tzinfo=U)  # 07:00 on the 21st in Singapore
-    rw = w.at_run("Marina Bay", SG, start, start + timedelta(hours=1))
+    rw = w.at_run(1.35, 103.82, SG, start, start + timedelta(hours=1))
     assert rw.temp_c == 27 and rw.sunrise_local.hour == 7
     broken = OpenMeteo(httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(500))))
-    assert broken.tomorrow("X", SG, date(2026, 10, 21)) is None
-    assert w.at_run(None, SG, start, start) is None
+    assert broken.tomorrow(1.3, 103.8, SG, date(2026, 10, 21)) is None
+    assert w.at_run(None, None, SG, start, start) is None
 
 
 # --- the simulated month ----------------------------------------------------------------------
@@ -357,3 +361,129 @@ def test_llm_gets_style_exemplars_and_touch_is_appended_by_code(client, fakes):
     assert "6 weeks to race" in body.lower() or "6 weeks" in body  # touch line came from code, not the model
     meta = con.execute("SELECT situation, media_json, touch_kind FROM convo_cards").fetchone()
     assert meta[2] == "race_countdown" and '"video": false' in meta[1]
+
+
+# --- review fixes -----------------------------------------------------------------------------
+
+def test_calendar_days_counts_both_ends():
+    nine = datetime(2026, 11, 9, 6, 30, tzinfo=timezone(timedelta(hours=8))).astimezone(U)
+    twelve = datetime(2026, 11, 12, 6, 30, tzinfo=timezone(timedelta(hours=8))).astimezone(U)
+    assert T.calendar_days(nine, twelve, SG) == 4
+    assert T.calendar_days(nine, nine, SG) == 1
+    # a run that is 23:30 local one day and 00:10 the next is two calendar days, not zero
+    late = datetime(2026, 11, 9, 23, 30, tzinfo=timezone(timedelta(hours=8))).astimezone(U)
+    early = datetime(2026, 11, 10, 0, 10, tzinfo=timezone(timedelta(hours=8))).astimezone(U)
+    assert T.calendar_days(late, early, SG) == 2
+
+
+def test_comeback_says_calendar_days():
+    runs = [run(1, 0), run(2, 1), run(3, 3), run(4, 20)]
+    assert T.comeback(ctx(runs[0], runs[1:])).slots["days_txt"] == "4 days"
+
+
+def test_big_session_is_one_rule():
+    hist = [run(1, 10, typ="long", km=12.0)]
+    assert engine.big_session(run(2, 0, typ="long", km=14.0), hist) == "long_run"      # 14 >= 0.9 x 12
+    assert engine.big_session(run(2, 0, typ="long", km=10.5), hist) is None            # under 90% of the 4-week max
+    assert engine.big_session(run(2, 0, typ="long", km=9.0), []) is None               # under the 10 km floor
+    assert engine.big_session(run(2, 0, typ="interval", zone_min={"z4": 5.0, "z5": 4.0}), []) == "big_session"
+    assert engine.big_session(run(2, 0, typ="tempo", zone_min={"z4": 3.0}), []) is None
+    assert engine.media_for_run(run(2, 0, typ="long", km=14.0), "long", None, hist).video
+
+
+def test_race_pb_leads_with_the_time():
+    r = run(1, 0, pb="5k", km=5.0, pace=306.0)
+    sit, slots = engine.situation_for(r, [], None)
+    assert sit == "pb" and slots["time"] == "25:30"
+    assert engine.fmt_duration(3725) == "1:02:05"
+    for h, b in voice.SITUATIONS["pb"]:
+        assert b.startswith("{time}"), b
+    assert engine.situation_for(run(1, 0, pb="longest"), [], None)[0] == "pb_other"
+
+
+def test_feel_echo_only_for_hard_at_easy_pace_and_once():
+    prev = run(1, 2, feel="hard", zone_min={"z2": 30.0})
+    t = T.feel_echo(ctx(run(2, 0), [prev], prev_situation="slower_heat"))
+    assert t.slots["weekday"] == "Sunday" and t.slots["cause"] == "Heat."
+    assert T.feel_echo(ctx(run(2, 0), [run(1, 2, feel="hard", zone_min={"z4": 20.0, "z2": 10.0})])) is None
+    assert T.feel_echo(ctx(run(2, 0), [run(1, 2, feel="right")])) is None
+    assert T.feel_echo(ctx(run(2, 0), [prev], feel_refs=frozenset({"r1"}))) is None  # already answered
+
+
+def test_evening_suggestion_after_a_hard_tap_names_it():
+    hist = [run(0, 0.5, feel="hard", zone_min={"z2": 30.0}, start_utc=NOW - timedelta(hours=14))] + \
+           [run(i, 1 + 2 * i) for i in range(1, 4)] + [run(9, 6, typ="tempo")]
+    ev = suggest.evening(hist, NOW, None, {}, "s", zone_id=SG, last_situation="slower_heat")
+    assert ev.suggestion.reason == "feel" and "hard" in ev.rendered.body and "Heat." in ev.rendered.body
+
+
+def test_suggestions_always_name_session_and_when():
+    pat = re.compile(r"(easy|tempo|steady|long run) \d+(\.\d)? km")
+    hist = week(load_state="high")
+    ev = suggest.evening(hist, NOW, None, {}, "s", zone_id=SG)
+    assert pat.search(ev.rendered.body)
+    assert suggest.evening([{**h, "type": "tempo"} for h in hist], NOW, Forecast(33, 5), {}, "s", zone_id=SG) is None  # no session to name
+
+
+def test_question_skips_what_is_known_and_waits_four_weeks():
+    from companion.convo import questions as Q
+    hist = [run(i, i + 1) for i in range(12)]
+    known = Q.known_without_asking(hist, 8)
+    assert known == {"race_month", "usual_days", "time_of_day"}
+    assert Q.known_without_asking(hist[:3], None) == set()
+    mem = {"goal_type": "half", "niggle_area": "none", "runs_per_week": "3"}
+    assert next_weekly_question(mem, NOW, known)["key"] == "surface"
+    assert next_weekly_question(mem, NOW, known | {"surface"})["key"] == "run_why"
+
+
+def test_question_is_its_own_message_and_never_on_a_big_moment(client, fakes):
+    import sqlite3
+    from conftest import auth, enrol, run_payload
+    t = enrol(client)
+    client.post("/v1/runs", json=run_payload("pbrun", pb="5k"), headers=auth(t))
+    client.svc.run_outbox(NOW.replace(year=2100))  # far future: everything due
+    con = sqlite3.connect(client.svc.s.db_path)
+    assert con.execute("SELECT COUNT(*) FROM cards WHERE kind='question'").fetchone()[0] == 0
+    assert con.execute("SELECT COUNT(*) FROM outbox WHERE kind='question'").fetchone()[0] == 0
+    client.post("/v1/runs", json=run_payload("plain", minutes_ago=5), headers=auth(t))
+    row = con.execute("SELECT due_at FROM outbox WHERE kind='question'").fetchone()
+    assert row is None  # the run is stale by then: no card, so no question either
+
+
+def test_area_is_stored_rounded_and_only_when_weather_is_on(tmp_path, fakes):
+    import sqlite3
+    from fastapi.testclient import TestClient
+    from companion.app import create_app
+    from conftest import auth, enrol, make_settings, run_payload
+    for on in (False, True):
+        s = make_settings(tmp_path / str(on), weather_enabled=on)
+        app = create_app(s, httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=False)
+        with TestClient(app) as c:
+            t = enrol(c)
+            c.post("/v1/runs", json=run_payload(area_lat=1.3521, area_lon=103.8198), headers=auth(t))
+            rows = sqlite3.connect(s.db_path).execute("SELECT lat, lon FROM convo_area").fetchall()
+            assert rows == ([(1.4, 103.8)] if on else [])
+
+
+def test_checker_catches_the_review_rules(month):
+    import json
+    import sqlite3
+    from companion.convo import sim
+    m = sim.Month(__import__("pathlib").Path(__import__("tempfile").mkdtemp()))
+    m.go()
+    con = sqlite3.connect(m.svc.s.db_path)
+    con.row_factory = sqlite3.Row
+    cards = [dict(r) for r in con.execute("SELECT * FROM cards WHERE sent_at IS NOT NULL ORDER BY sent_at")]
+    meta = {r["card_id"]: dict(r) for r in con.execute("SELECT * FROM convo_cards")}
+    assert sim.check_conversation(cards, meta, con) == []
+    bad = [dict(c) for c in cards]
+    runc = next(c for c in bad if c["kind"] == "run")
+    runc["buttons_json"] = json.dumps([{"label": "x", "action": "ans:goal_type:half", "row": 0}] * 6)
+    ev = next(c for c in bad if c["kind"] == "evening")
+    ev["body"] = "Conditions are right. Perfect for something harder."
+    pb = next(c for c in bad if meta[c["card_id"]]["situation"] == "pb")
+    pb["body"] = "5:06/km. New 5 km best at 25:30."
+    found = " | ".join(sim.check_conversation(bad, meta, con))
+    assert "question on a post-run card" in found and "button soup" in found
+    assert "suggestion without a named session" in found
+    assert "PB does not lead with the time" in found

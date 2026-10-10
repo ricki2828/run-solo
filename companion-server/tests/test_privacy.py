@@ -25,6 +25,7 @@ def populate(client, fakes):
     client.post("/v1/runs", json=run_payload("r0", minutes_ago=30), headers=auth(t))   # easy: gets the weekly question
     client.post("/v1/runs", json=run_payload("r1", type="tempo"), headers=auth(t))    # hard: gets a suggestion
     client.svc.run_outbox(now_utc() + timedelta(seconds=1))
+    client.svc.run_outbox(now_utc() + timedelta(minutes=35))   # the weekly question follows as its own message
     c = sqlite3.connect(client.svc.s.db_path)
     for n, (card_id, buttons) in enumerate(c.execute("SELECT card_id, buttons_json FROM cards").fetchall()):
         for i, b in enumerate(json.loads(buttons)):

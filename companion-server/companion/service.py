@@ -21,8 +21,8 @@ from .convo import engine as cv_engine
 from .convo import recap as cv_recap
 from .convo import suggest as cv_suggest
 from .convo import touches as cv_touches
-from .convo.questions import next_weekly_question
-from .convo.weather import NoWeather, OpenMeteo
+from .convo.questions import REASK_DAYS, known_without_asking, next_weekly_question
+from .convo.weather import NoWeather, OpenMeteo, cell
 from .facts import FactsResult, build_facts, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
 from .timeutil import (in_quiet, iso, now_utc, parse_iso, quiet_end_utc, resolve_cap_week, to_local, UTC,
                        valid_zone, week_key)
@@ -34,6 +34,8 @@ ENROL_TTL_MIN = 15
 MAX_CODE_ATTEMPTS = 5
 MAX_ATTEMPTS = 4
 RUNS_PER_DAY = 30
+QUESTION_DELAY_MIN = 30
+QUESTION_HEADS = ("Quick question", "Help me out", "For your plan", "Tell me this")
 START_RE = re.compile(r"^\s*/?start\s+([A-Za-z0-9_-]{8,64})\s*$", re.I)
 RETENTION_INACTIVE_DAYS = 183
 RETENTION_LOG_DAYS = 30
@@ -74,6 +76,8 @@ class RunIn(BaseModel):
     plan_target_m: int | None = Field(default=None, ge=0, le=300000)
     plan_weeks_to_race: int | None = Field(default=None, ge=0, le=104)
     feel: str | None = Field(default=None, pattern=r"^(easy|right|hard)$")
+    area_lat: float | None = Field(default=None, ge=-90, le=90)  # approximate area for weather; rounded on arrival
+    area_lon: float | None = Field(default=None, ge=-180, le=180)
 
     @field_validator("verdict", mode="before")
     @classmethod
@@ -399,6 +403,10 @@ class Service:
                  json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality, run.route_id,
                  run.load_state, run.pb, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, run.feel,
                  iso(now), int(stale)))
+            if self.s.weather_enabled and run.area_lat is not None and run.area_lon is not None:
+                lat, lon = cell(run.area_lat, run.area_lon)
+                c.execute("INSERT OR IGNORE INTO convo_area (user_id, run_id, lat, lon) VALUES (?,?,?,?)",
+                          (uid, run.run_id, lat, lon))
             last = c.execute("SELECT last_run_utc FROM users WHERE id=?", (uid,)).fetchone()["last_run_utc"]
             if not last or iso(run.start_utc) >= last:  # newest run decides the user's current zone
                 c.execute("UPDATE users SET zone_id=?, utc_offset_min=?, last_run_utc=? WHERE id=?",
@@ -488,7 +496,24 @@ class Service:
             last_touch = r["ts"]
         u.cards_since_touch = c.execute("SELECT COUNT(*) FROM convo_log WHERE user_id=? AND kind='card' AND ts>?",
                                         (uid, last_touch or "")).fetchone()[0] if last_touch else 99
+        u.feel_refs = {r["key"] for r in c.execute(
+            "SELECT key FROM convo_log WHERE user_id=? AND kind='feel_ref'", (uid,))}
         return u
+
+    @staticmethod
+    def _area(c, uid: str, run_id: str | None = None) -> tuple[float | None, float | None]:
+        r = c.execute("SELECT lat, lon FROM convo_area WHERE user_id=? AND run_id=?", (uid, run_id)).fetchone() \
+            if run_id else c.execute("SELECT lat, lon FROM convo_area WHERE user_id=? ORDER BY rowid DESC LIMIT 1",
+                                     (uid,)).fetchone()
+        return (r["lat"], r["lon"]) if r else (None, None)
+
+    @staticmethod
+    def _card_situation(c, uid: str, run_id: str | None) -> str | None:
+        if not run_id:
+            return None
+        r = c.execute("SELECT cc.situation s FROM cards k JOIN convo_cards cc ON cc.card_id=k.card_id "
+                      "WHERE k.user_id=? AND k.run_id=? AND k.kind='run'", (uid, run_id)).fetchone()
+        return r["s"] if r else None
 
     @staticmethod
     def _convo_write(c, uid: str, now: datetime, card_id: str, situation: str, media: cv_engine.MediaPlan,
@@ -524,44 +549,83 @@ class Service:
             usage = self._usage(c, uid, now)
             sunrises = c.execute("SELECT COUNT(*) FROM convo_log WHERE user_id=? AND kind='sunrise' AND key<>?",
                                  (uid, run_id)).fetchone()[0]
-        rw = self.weather.at_run(run["locality"], run["zone_id"], parse_iso(run["start_utc"]), now)
-        v = cv_engine.enrich_run(run, full, mem, now, usage, rw, sunrise_count=sunrises)
+        with db.ro(self.s.db_path) as c:
+            lat, lon = self._area(c, uid, run_id)
+            prev_sit = self._card_situation(c, uid, full[0]["run_id"] if full else None)
+        rw = self.weather.at_run(lat, lon, run["zone_id"], parse_iso(run["start_utc"]), now)
+        v = cv_engine.enrich_run(run, full, mem, now, usage, rw, sunrise_count=sunrises, prev_situation=prev_sit)
+        suggestion = res.suggestion
+        sline = None
+        if v.situation == "back_after_break" or (
+                suggestion and suggestion.kind == "quality" and cv_touches.returning(cv_touches.Ctx(run, full, mem, now))):
+            suggestion = None  # no hard-session nudge while someone is easing back in
+        if suggestion:
+            sline = cv_suggest.after_run(suggestion, run, full, usage.variants, now, run_id)
+            if sline is None:
+                suggestion = None  # no concrete session to name: no suggestion and no buttons
         with db.tx(self.s.db_path) as c:
-            suggestion, question = res.suggestion, None
-            if v.situation == "back_after_break":
-                suggestion = None  # nobody wants a hard-session nudge on the first run back
             if suggestion and not self._claim_suggestion(c, uid, now):
-                suggestion = None
-            if not suggestion:
-                q = next_weekly_question(mem, now)
-                wk = self._cap_week(c, uid, now)
-                if q and self._claim(c, uid, f"question:{wk}", now):
-                    question = q
+                suggestion, sline = None, None
             if rw and cv_touches.is_sunrise_start(to_local(parse_iso(run["start_utc"]), run["zone_id"]), rw.sunrise_local):
                 c.execute("INSERT INTO convo_log (user_id, kind, key, ts) SELECT ?,?,?,? WHERE NOT EXISTS "
                           "(SELECT 1 FROM convo_log WHERE user_id=? AND kind='sunrise' AND key=?)",
                           (uid, "sunrise", run_id, iso(now), uid, run_id))
         res = FactsResult(res.facts, suggestion, res.tone, False, res.reason)
-        sline = cv_suggest.after_run(suggestion, run, full, usage.variants, now, run_id) if suggestion else None
         w = self.writer.write(res, digest_lines(mem, feels), voice=v.rendered, style=v.style,
                               suggestion_line=sline.body if sline else None)
         body = w.body
         if v.touch_line:
             body += f"\n\n{v.touch_line}"
-        if question:
-            body += f"\n\n{question['text']}"
-        buttons = self._buttons(run["feel"], suggestion.kind if suggestion else None, question)
+        buttons = self._buttons(run["feel"], suggestion.kind if suggestion else None, None)
         card_id = secrets.token_hex(16)
         allowed = " ".join([f.text for f in res.facts] + [v.allowed, suggestion.text if suggestion else "",
                                                           sline.allowed if sline else ""])
         used = v.used_variants if w.source == "template" else [x for x in v.used_variants if x.startswith("touch_")]
         if sline and w.source == "template":
             used = used + [sline.variant_id]
+        quiet_card = (v.media.reason in ("pb", "big_session", "long_run") or v.situation == "back_after_break"
+                      or (v.touch is not None and v.touch.kind == "comeback"))
         with db.tx(self.s.db_path) as c:
             c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
                       "VALUES (?,?,?,?,?,?,?,?,?)",
                       (card_id, uid, run_id, "run", w.headline, body, json.dumps(buttons), w.source, iso(now)))
             self._convo_write(c, uid, now, card_id, v.situation, v.media, allowed, used, v.touch)
+            if not quiet_card and self._question_for(c, uid, full, mem, now) is not None:
+                # the weekly question goes as its own short message about 30 minutes later, never on a big moment
+                c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
+                          (uid, "question", iso(now + timedelta(minutes=QUESTION_DELAY_MIN)), f"q:{uid}:{run_id}", run_id))
+        return card_id
+
+    def _question_for(self, c, uid: str, hist: list[dict], mem: dict, now: datetime) -> dict | None:
+        """The next question worth asking: not known, not answered, not asked in the last 28 days."""
+        weeks = cv_suggest.plan_weeks(hist, now)
+        skip = set(known_without_asking(hist, weeks))
+        skip |= {r["key"] for r in c.execute("SELECT key FROM convo_log WHERE user_id=? AND kind='asked' AND ts>?",
+                                             (uid, iso(now - timedelta(days=REASK_DAYS))))}
+        return next_weekly_question(mem, now, skip)
+
+    def _build_question_card(self, uid: str, parent_run_id: str, now: datetime) -> str | None:
+        ref = f"question:{parent_run_id}"
+        with db.ro(self.s.db_path) as c:
+            ex = c.execute("SELECT card_id FROM cards WHERE user_id=? AND run_id=? AND kind='question'", (uid, ref)).fetchone()
+            if ex:
+                return ex["card_id"]
+            hist = self._full_history(c, uid, None)
+            mem = self._memory_get(c, uid, now)
+        with db.tx(self.s.db_path) as c:
+            q = self._question_for(c, uid, hist, mem, now)
+            wk = self._cap_week(c, uid, now)
+            if q is None or not self._claim(c, uid, f"question:{wk}", now):
+                return None  # one a week
+            head = QUESTION_HEADS[sum(map(ord, q["key"])) % len(QUESTION_HEADS)]
+            card_id = secrets.token_hex(16)
+            buttons = self._buttons("set", None, q)
+            c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
+                      "VALUES (?,?,?,?,?,?,?,?,?)",
+                      (card_id, uid, ref, "question", head, q["text"], json.dumps(buttons), "template", iso(now)))
+            media = cv_engine.MediaPlan("none", False, "question")
+            self._convo_write(c, uid, now, card_id, "question", media, "", [], None)
+            c.execute("INSERT INTO convo_log (user_id, kind, key, ts) VALUES (?,?,?,?)", (uid, "asked", q["key"], iso(now)))
         return card_id
 
     def _build_evening_card(self, uid: str, local_date: str, now: datetime) -> str | None:
@@ -578,8 +642,13 @@ class Service:
         fc = None
         if hist:
             tomorrow = to_local(now, zone_id).date() + timedelta(days=1)
-            fc = self.weather.tomorrow(hist[0]["locality"], hist[0]["zone_id"] or zone_id, tomorrow)
-        ev = cv_suggest.evening(hist, now, fc, usage.variants, seed=local_date)
+            with db.ro(self.s.db_path) as c:
+                lat, lon = self._area(c, uid)
+                last_sit = self._card_situation(c, uid, hist[0]["run_id"])
+            fc = self.weather.tomorrow(lat, lon, hist[0]["zone_id"] or zone_id, tomorrow)
+        else:
+            last_sit = None
+        ev = cv_suggest.evening(hist, now, fc, usage.variants, seed=local_date, zone_id=zone_id, last_situation=last_sit)
         if not ev:
             return None
         with db.tx(self.s.db_path) as c:
@@ -597,6 +666,9 @@ class Service:
                       (card_id, uid, f"evening:{local_date}", "evening", w.headline, w.body, json.dumps(buttons),
                        w.source, iso(now)))
             self._convo_write(c, uid, now, card_id, ev.rendered.situation, media, ev.rendered.allowed, used, None)
+            if ev.suggestion.reason == "feel":  # the next post-run card must not repeat it
+                c.execute("INSERT INTO convo_log (user_id, kind, key, ts) VALUES (?,?,?,?)",
+                          (uid, "feel_ref", hist[0]["run_id"], iso(now)))
         return card_id
 
     def _build_recap_card(self, uid: str, week_ref: str, now: datetime) -> str | None:
@@ -663,6 +735,8 @@ class Service:
             if user["channel"] != "telegram":  # WhatsApp would bill an unprompted suggestion as marketing
                 return "skipped", None
             card_id = self._build_evening_card(user["id"], item["ref"], now)
+        elif item["kind"] == "question":
+            card_id = self._build_question_card(user["id"], item["ref"], now)
         elif item["kind"] == "recap":
             if user["channel"] != "telegram":  # Telegram first; WhatsApp would bill it as marketing
                 return "skipped", None

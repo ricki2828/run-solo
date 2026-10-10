@@ -20,9 +20,14 @@ BREAK_DAYS = T.BREAK_DAYS  # a gap this long before today's run makes it a "back
 SLOW_DAY_S = 10         # as in facts.SLOW_DAY_S_PER_KM
 FASTER_S = 3            # as in facts.DELTA_MIN_S_PER_KM
 HILLS_M = 100           # climb that explains a slow day
-LONG_VIDEO_KM = 15.0
-LONG_VIDEO_MIN = 90
-HARD_VIDEO_MIN = 8      # minutes in Z4 and Z5 that make a session worth a video
+# One definition of a "big session" (video-worthy besides a PB and the weekly recap):
+#  - a hard-type session (interval, tempo, race) with at least HARD_VIDEO_MIN minutes in Z4 and Z5, or
+#  - a long run of at least LONG_VIDEO_MIN_KM that is at least LONG_VIDEO_SHARE of the longest run in
+#    the last 28 days (a run that is not your biggest recent one stays a still card).
+HARD_VIDEO_MIN = 8
+LONG_VIDEO_MIN_KM = 10.0
+LONG_VIDEO_SHARE = 0.9
+LONG_WINDOW_DAYS = 28
 FLOOD_SHARE = 0.4       # share of zone time in Z4 and Z5 that makes a run a "hard" card
 
 
@@ -50,6 +55,11 @@ class RunVoice:
     used_variants: list[str]
 
 
+def fmt_duration(seconds: float) -> str:
+    t = int(round(seconds))
+    return f"{t // 3600}:{t % 3600 // 60:02d}:{t % 60:02d}" if t >= 3600 else f"{t // 60}:{t % 60:02d}"
+
+
 def _delta(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]]) -> int | None:
     prev = comparable(run, hist)
     if prev is None:
@@ -67,10 +77,7 @@ def gap_days(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]]) -> int |
     return (_when(run) - _when(hist[0])).days if hist else None
 
 
-def hard_share(run: Mapping[str, Any]) -> float | None:
-    z = T._zone_minutes(run)
-    total = sum(z.values())
-    return (z.get(4, 0) + z.get(5, 0)) / total if total else None
+hard_share = T.hard_share
 
 
 def situation_for(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]],
@@ -95,7 +102,10 @@ def situation_for(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]],
     if run.get("pb"):
         slots["pb"] = {"5k": "5 km best", "10k": "10 km best", "half": "half marathon best",
                        "longest": "longest run", "fastest_km": "fastest km"}[run["pb"]]
-        return "pb", slots
+        if run["pb"] in ("5k", "10k", "half"):
+            slots["time"] = fmt_duration(dur)  # a race PB leads with the time, not the pace
+            return "pb", slots
+        return "pb_other", slots
     if gap is not None and gap >= BREAK_DAYS:
         slots["gap_txt"] = T.plural(gap, "day")
         return "back_after_break", slots
@@ -128,26 +138,38 @@ def situation_for(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]],
     return "steady", slots
 
 
-def media_for_run(run: Mapping[str, Any], situation: str, touch: T.Touch | None) -> MediaPlan:
+def big_session(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]]) -> str | None:
+    """The reason this run is a big session, or None."""
+    if run["type"] in HARD_TYPES and T.hard_minutes(run) >= HARD_VIDEO_MIN:
+        return "big_session"
+    if run["type"] == "long" and run["distance_m"] / 1000 >= LONG_VIDEO_MIN_KM:
+        t0 = _when(run)
+        recent = [h["distance_m"] for h in hist
+                  if h.get("distance_m") and 0 < (t0 - _when(h)).days <= LONG_WINDOW_DAYS]
+        if not recent or run["distance_m"] >= LONG_VIDEO_SHARE * max(recent):
+            return "long_run"
+    return None
+
+
+def media_for_run(run: Mapping[str, Any], situation: str, touch: T.Touch | None,
+                  hist: Sequence[Mapping[str, Any]] = ()) -> MediaPlan:
     share = hard_share(run)
     hard = run["type"] in HARD_TYPES or (share is not None and share >= FLOOD_SHARE)
-    hm = T.hard_minutes(run)
-    dist_km, dur_min = run["distance_m"] / 1000, run["duration_s"] / 60
     extra = ("milestone" if touch and touch.kind.startswith("milestone")
              else "race_countdown" if touch and touch.kind in ("race_countdown", "race_month") else None)
     if run.get("pb"):
         return MediaPlan("pb", True, "pb", extra)
-    if run["type"] in HARD_TYPES and hm >= HARD_VIDEO_MIN:
-        return MediaPlan("flood", True, "big_session", extra)
-    if run["type"] == "long" and (dist_km >= LONG_VIDEO_KM or dur_min >= LONG_VIDEO_MIN):
-        return MediaPlan("flood" if hard else "light", True, "long_run", extra)
+    reason = big_session(run, hist)
+    if reason:
+        return MediaPlan("flood" if hard else "light", True, reason, extra)
     if hard:
         return MediaPlan("flood", False, "hard_run", extra)
     return MediaPlan("light", False, "easy", extra)
 
 
 def enrich_run(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]], memory: Mapping[str, str],
-               now: datetime, usage: T.Usage, rw: RunWeather | None, sunrise_count: int = 0) -> RunVoice:
+               now: datetime, usage: T.Usage, rw: RunWeather | None, sunrise_count: int = 0,
+               prev_situation: str | None = None) -> RunVoice:
     """`hist` is the whole prior record, newest first."""
     seed = str(run.get("run_id") or run.get("start_utc"))
     situation, slots = situation_for(run, hist, rw)
@@ -155,7 +177,7 @@ def enrich_run(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]], memory
     if rendered is None and situation != "steady":
         situation = "steady"
         rendered = voice.render(situation, slots, usage.variants, now, seed)
-    ctx = T.Ctx(run, hist, memory, now, rw.sunrise_local if rw else None, sunrise_count)
+    ctx = T.Ctx(run, hist, memory, now, rw.sunrise_local if rw else None, sunrise_count, prev_situation, frozenset(usage.feel_refs))
     touch = T.choose(ctx, usage)
     t_variant = t_line = None
     allowed = rendered.allowed if rendered else ""
@@ -168,5 +190,5 @@ def enrich_run(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]], memory
             used.append(t_variant)
         else:
             touch = None
-    return RunVoice(situation, rendered, touch, t_variant, t_line, media_for_run(run, situation, touch),
+    return RunVoice(situation, rendered, touch, t_variant, t_line, media_for_run(run, situation, touch, hist),
                     allowed, voice.exemplars(situation, 3, seed), used)

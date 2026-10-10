@@ -116,7 +116,11 @@ class Net:
 
 
 class FakeWeather:
-    """Singapore is warm and showery, with a heatwave; Milos is mild and mostly dry."""
+    """Singapore is warm and showery, with a heatwave; Milos is mild and mostly dry. Located by latitude."""
+
+    @staticmethod
+    def _zone(lat):
+        return SG if lat < 10 else GR
 
     @staticmethod
     def _sunrise(d: date, zone: str) -> datetime:
@@ -128,17 +132,25 @@ class FakeWeather:
             mins -= 60  # the clocks go back
         return datetime(d.year, d.month, d.day, mins // 60, mins % 60, tzinfo=z)
 
-    def at_run(self, locality, zone_id, start_utc, now):
+    def at_run(self, lat, lon, zone_id, start_utc, now):
+        if lat is None:
+            return None
+        zone = self._zone(lat)
         d = to_local(start_utc, zone_id).date()
-        temp = 33 if zone_id == SG and HEATWAVE[0] <= d <= HEATWAVE[1] else 27 if zone_id == SG else 20
+        temp = 33 if zone == SG and HEATWAVE[0] <= d <= HEATWAVE[1] else 27 if zone == SG else 20
         return RunWeather(temp, self._sunrise(d, zone_id))
 
-    def tomorrow(self, locality, zone_id, tomorrow):
-        if zone_id == SG:
+    def tomorrow(self, lat, lon, zone_id, tomorrow):
+        if lat is None:
+            return None
+        if self._zone(lat) == SG:
             if HEATWAVE[0] <= tomorrow <= HEATWAVE[1]:
                 return Forecast(33, 5)
             return Forecast(27, [10, 45, 30, 20, 75, 30, 15, 35, 20][tomorrow.toordinal() % 9])
         return Forecast(19, 70 if tomorrow == date(2026, 10, 27) else 10)
+
+
+AREA = {SG: (1.3, 103.8), GR: (36.7, 24.4)}
 
 
 # --- history --------------------------------------------------------------------------------
@@ -165,7 +177,8 @@ def seed_history(svc: Service, uid: str, rng: random.Random, n: int = 141) -> in
             "run_id": f"h{i:04d}", "type": typ, "start_utc": start.astimezone(UTC).isoformat(),
             "utc_offset_min": 480, "zone_id": SG, "duration_s": round(km * pace), "distance_m": round(km * 1000),
             "pace_s_per_km": round(pace, 1), "true_pace_s_per_km": round(pace - 2, 1),
-            "zone_min": ZONES[typ], "locality": LOCALITY[typ]})
+            "zone_min": ZONES[typ], "locality": LOCALITY[typ],
+            "area_lat": AREA[SG][0], "area_lon": AREA[SG][1]})
         svc.ingest_run(uid, run, start.astimezone(UTC) + timedelta(seconds=run.duration_s + 60))
     with db.tx(svc.s.db_path) as c:
         c.execute("DELETE FROM outbox")
@@ -209,6 +222,7 @@ def _run_in(p: Plan, idx: int, svc: Service, uid: str) -> RunIn:
         "utc_offset_min": int(start.utcoffset().total_seconds() // 60), "zone_id": p.zone,
         "duration_s": round(p.km * pace), "distance_m": round(p.km * 1000), "pace_s_per_km": float(pace),
         "zone_min": ZONES[p.type], "locality": p.locality or LOCALITY[p.type], "pb": p.pb,
+        "area_lat": AREA[p.zone][0], "area_lon": AREA[p.zone][1],
         "load_state": p.load, "climb_m": p.climb, "plan_weeks_to_race": weeks,
         "plan_kind": "long" if p.type == "long" else "easy" if p.type == "easy" else "quality"}
     if p.true_pace:
@@ -237,7 +251,7 @@ class Month:
         self.net = Net()
         s = Settings(db_path=str(workdir / "sim.db"), pepper=b"s" * 32, allowed_ids=frozenset({f"telegram:{CHAT}"}),
                      telegram_token="1:FAKE", telegram_bot="RSBot", telegram_webhook_secret="x" * 16,
-                     openrouter_key=None, default_quiet=QUIET)
+                     openrouter_key=None, default_quiet=QUIET, weather_enabled=True)
         self.svc = Service(s, httpx.Client(transport=httpx.MockTransport(self.net.handler)))
         self.svc.weather = FakeWeather()
         now = datetime(2025, 9, 1, tzinfo=UTC)
@@ -312,6 +326,7 @@ class Month:
             start = _local_hm(p.day, p.at, p.zone)
             end = start + timedelta(seconds=round(p.km * (p.pace or PACE[p.type])))
             events.append(((end + timedelta(minutes=2)).astimezone(UTC), "run", (i, p)))
+            events.append(((end + timedelta(minutes=37)).astimezone(UTC), "tick", None))  # the question follow-up
         for at, zid in TRAVEL:
             events.append((at.astimezone(UTC), "zone", zid))
         events.sort(key=lambda e: (e[0], e[1] == "tick"))
@@ -349,10 +364,8 @@ def check(cards: list[dict], zone_of: Any, db_path: str) -> list[str]:
         last[r["key"]] = t
     texts: set[str] = set()
     for c in cards:
-        if c["kind"] == "recap" and "missed" in meta[c["card_id"]]["situation"]:
-            pass
         t = c["headline"] + "\n" + c["body"].split("\n\n")[0]
-        if t in texts:
+        if t in texts and c["kind"] != "question":  # an unanswered question may come round after 28 days
             v.append(f"identical message twice: {c['headline']!r}")
         texts.add(t)
     seen_touch_text: set[str] = set()
@@ -437,6 +450,101 @@ def check(cards: list[dict], zone_of: Any, db_path: str) -> list[str]:
         if kind in last_kind and (ts - last_kind[kind]) < timedelta(days=cd):
             v.append(f"touch {kind} inside its {cd} day cool-down")
         last_kind[kind] = ts
+
+    v += check_conversation(cards, meta, con)
+    return v
+
+
+SESSION = re.compile(r"\b(easy|tempo|steady|long run)\b[^.]{0,12}\d+(\.\d)? km", re.I)
+WHEN = re.compile(r"(around \d{1,2}:\d{2}|this week|tomorrow)", re.I)
+
+
+def check_conversation(cards: list[dict], meta: dict, con: sqlite3.Connection) -> list[str]:
+    """The review rules: no asking what we know, no button soup, named sessions, feel taps matter,
+    one definition of a video, calendar-day spans, PB leads with the time."""
+    from ..facts import comparable  # noqa: F401
+    from .engine import big_session, fmt_duration
+    v: list[str] = []
+    by_id = {c["card_id"]: c for c in cards}
+    runs = {r["run_id"]: dict(r) for r in con.execute("SELECT * FROM runs ORDER BY start_utc")}
+    order = sorted(runs.values(), key=lambda r: r["start_utc"])
+    asked = [dict(r) for r in con.execute("SELECT key, ts FROM convo_log WHERE kind='asked' ORDER BY ts")]
+    last_ask: dict[str, datetime] = {}
+    for a in asked:  # 1. a question is not asked again inside 28 days
+        t = parse_iso(a["ts"])
+        if a["key"] in last_ask and t - last_ask[a["key"]] < timedelta(days=28):
+            v.append(f"question {a['key']} asked twice inside 28 days")
+        last_ask[a["key"]] = t
+    run_cards = {c["run_id"]: c for c in cards if c["kind"] == "run"}
+    for c in cards:
+        acts = [b["action"] for b in json.loads(c["buttons_json"])]
+        if c["kind"] == "run" and any(a.startswith("ans:") for a in acts):
+            v.append(f"question on a post-run card: {c['headline']!r}")           # 2. its own message
+        if c["kind"] == "run" and len(acts) > 5:
+            v.append(f"button soup ({len(acts)}) on {c['headline']!r}")
+        if c["kind"] == "question":
+            keys = {a.split(":")[1] for a in acts if a.startswith("ans:")}
+            if keys & {"race_month", "usual_days", "time_of_day"}:
+                v.append(f"asked what we already know: {sorted(keys)}")           # 1. known
+            parent = run_cards.get(c["run_id"].split(":", 1)[1])
+            pm = meta.get(parent["card_id"]) if parent else None
+            if not parent:
+                v.append("question without a parent run card")
+            else:
+                mj = json.loads(pm["media_json"])
+                if mj["reason"] in ("pb", "big_session", "long_run") or pm["situation"] == "back_after_break" \
+                        or pm["touch_kind"] == "comeback":
+                    v.append(f"question after a big moment ({mj['reason']}/{pm['situation']})")
+                gap = parse_iso(c["sent_at"]) - parse_iso(parent["sent_at"])
+                if not timedelta(minutes=25) <= gap <= timedelta(hours=14):
+                    v.append(f"question follow-up timing off: {gap}")
+            if len(acts) > 7:
+                v.append("question with more than 7 options")
+        # 3/4. every suggestion names its session and when; no orphan buttons
+        text = c["body"]
+        if c["kind"] == "evening" or any(a.startswith("sugg:") for a in acts):
+            if not SESSION.search(text) or not WHEN.search(text):
+                v.append(f"suggestion without a named session and time: {text[:70]!r}")
+        if any(a.startswith("sugg:") for a in acts) and c["kind"] == "run":
+            if not SESSION.search(text):
+                v.append(f"orphan suggestion buttons on {c['headline']!r}")
+        # 6. day spans are calendar days
+        for n, d in re.findall(r"(\d+) runs in (\d+) days?", text):
+            if c["kind"] != "run":
+                continue
+            r = runs[c["run_id"]]
+            idx = order.index(r)
+            first = order[idx - int(n) + 1]
+            z = r["zone_id"]
+            span = (to_local(parse_iso(r["start_utc"]), z).date() - to_local(parse_iso(first["start_utc"]), z).date()).days + 1
+            if span != int(d):
+                v.append(f"day span wrong: says {d}, calendar span is {span}")
+        # 7. one definition of a video
+        m = meta.get(c["card_id"])
+        if c["kind"] == "run" and m:
+            mj = json.loads(m["media_json"])
+            r = runs[c["run_id"]]
+            hist = [h for h in order if h["start_utc"] < r["start_utc"]][::-1]
+            expect = "pb" if r["pb"] else big_session(r, hist)
+            if mj["video"] != bool(expect) or (expect and mj["reason"] != expect):
+                v.append(f"video rule inconsistent for {c['run_id']}: {mj} vs {expect}")
+            # 8. a race PB leads with the time
+            if m["situation"] == "pb":
+                if not text.startswith(fmt_duration(r["duration_s"])):
+                    v.append(f"PB does not lead with the time: {text[:40]!r}")
+    # 5. a Hard tap on an easy, low-zone run shows up on one of the next two cards
+    sent = sorted(cards, key=lambda c: c["sent_at"])
+    for r in order:
+        if r["feel"] == "hard" and r["type"] == "easy" and run_cards.get(r["run_id"]):
+            share = T.hard_share(r)
+            if share is not None and share >= 0.15:
+                continue
+            i = sent.index(run_cards[r["run_id"]])
+            nxt = [c for c in sent[i + 1:] if c["kind"] in ("run", "evening")][:2]
+            if not nxt:
+                continue  # nothing was sent afterwards
+            if not any(re.search(r"(called|rated|tapped)|felt hard|hard (at|on|for) an easy", c["body"]) for c in nxt):
+                v.append(f"feel tap on {r['run_id']} never referenced")
     return v
 
 
@@ -476,7 +584,7 @@ def transcript(m: Month, cards: list[dict], violations: list[str]) -> str:
         c = e.card
         mt = meta.get(c["card_id"], {})
         media = json.loads(mt.get("media_json", "{}"))
-        kind = {"run": "post-run card", "evening": "evening-before suggestion", "recap": "Sunday recap"}[c["kind"]]
+        kind = {"run": "post-run card", "evening": "evening-before suggestion", "recap": "Sunday recap", "question": "weekly question (follow-up)"}[c["kind"]]
         out.append(f"**{loc:%H:%M} · {kind}** · situation `{mt.get('situation')}` · source `{c['source']}`")
         out.append("")
         out.append(f"**{c['headline']}**  ")

@@ -1,8 +1,8 @@
 """Open-Meteo lookups (no API key). Off unless COMPANION_WEATHER is set.
 
-Privacy: the only thing sent is the runner's suburb or place name (the `locality` the app already
-sends us), to Open-Meteo's geocoder. No phone number, id or GPS leaves the server. Every failure
-returns None and the card is written without weather.
+Privacy: the only thing sent is a latitude and longitude rounded to 0.1 degree (about 11 km), taken
+from the approximate area the app attaches to a run. No name, id or phone number, and no GPS track.
+Every failure returns None and the card is written without weather.
 """
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ import httpx
 from ..timeutil import UTC
 
 log = logging.getLogger("companion.weather")
-GEOCODE = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST = "https://api.open-meteo.com/v1/forecast"
 HEAT_C = 28  # a run this warm counts as a heat slowdown
 MAX_PAST_DAYS = 90
@@ -35,9 +34,18 @@ class Forecast:
     rain_pct: int  # peak chance of rain between 06:00 and 10:00 local
 
 
+CELL = 1  # decimal places kept: 0.1 degree is about 11 km
+
+
+def cell(lat: float, lon: float) -> tuple[float, float]:
+    """Round to 0.1 degree. The only location this module ever sends or stores."""
+    return round(float(lat), CELL), round(float(lon), CELL)
+
+
 class Weather(Protocol):
-    def at_run(self, locality: str | None, zone_id: str, start_utc: datetime, now: datetime) -> RunWeather | None: ...
-    def tomorrow(self, locality: str | None, zone_id: str, tomorrow: date) -> Forecast | None: ...
+    def at_run(self, lat: float | None, lon: float | None, zone_id: str, start_utc: datetime,
+               now: datetime) -> RunWeather | None: ...
+    def tomorrow(self, lat: float | None, lon: float | None, zone_id: str, tomorrow: date) -> Forecast | None: ...
 
 
 class NoWeather:
@@ -49,38 +57,32 @@ class NoWeather:
 
 
 class OpenMeteo:
-    def __init__(self, http: httpx.Client, geocode: str = GEOCODE, forecast: str = FORECAST):
-        self.http, self.geocode, self.forecast = http, geocode, forecast
-        self._places: dict[str, tuple[float, float] | None] = {}
+    """Only a 0.1 degree cell goes out (never a name), cached per cell per kind of request per day."""
 
-    def _latlon(self, locality: str) -> tuple[float, float] | None:
-        key = locality.strip().lower()
-        if key in self._places:
-            return self._places[key]
-        try:
-            r = self.http.get(self.geocode, params={"name": locality, "count": 1, "format": "json"}, timeout=6)
-            res = (r.json().get("results") or [None])[0] if r.status_code == 200 else None
-            val = (round(float(res["latitude"]), 2), round(float(res["longitude"]), 2)) if res else None
-        except (httpx.HTTPError, ValueError, KeyError, TypeError):
-            return None  # not cached: try again next time
-        self._places[key] = val
-        return val
+    def __init__(self, http: httpx.Client, forecast: str = FORECAST):
+        self.http, self.forecast = http, forecast
+        self._cache: dict[tuple, dict | None] = {}
 
-    def _get(self, ll: tuple[float, float], zone_id: str, past: int, ahead: int) -> dict | None:
+    def _get(self, ll: tuple[float, float], zone_id: str, past: int, ahead: int, day_key: str) -> dict | None:
+        key = (ll, zone_id, past, ahead, day_key)
+        if key in self._cache:
+            return self._cache[key]
         try:
             r = self.http.get(self.forecast, timeout=8, params={
                 "latitude": ll[0], "longitude": ll[1], "timezone": zone_id,
                 "hourly": "temperature_2m,precipitation_probability", "daily": "sunrise",
                 "past_days": past, "forecast_days": ahead})
-            return r.json() if r.status_code == 200 else None
+            d = r.json() if r.status_code == 200 else None
         except (httpx.HTTPError, ValueError):
-            return None
+            return None  # not cached: try again next time
+        self._cache[key] = d
+        return d
 
-    def at_run(self, locality, zone_id, start_utc, now):
-        if not locality or (now - start_utc) > timedelta(days=MAX_PAST_DAYS):
+    def at_run(self, lat, lon, zone_id, start_utc, now):
+        if lat is None or lon is None or (now - start_utc) > timedelta(days=MAX_PAST_DAYS):
             return None
-        ll = self._latlon(locality)
-        d = self._get(ll, zone_id, min(MAX_PAST_DAYS, max(1, (now - start_utc).days + 1)), 1) if ll else None
+        d = self._get(cell(lat, lon), zone_id, min(MAX_PAST_DAYS, max(1, (now - start_utc).days + 1)), 1,
+                      now.date().isoformat())
         if not d:
             return None
         try:
@@ -97,11 +99,10 @@ class OpenMeteo:
         except (KeyError, ValueError, TypeError, IndexError):
             return None
 
-    def tomorrow(self, locality, zone_id, tomorrow):
-        if not locality:
+    def tomorrow(self, lat, lon, zone_id, tomorrow):
+        if lat is None or lon is None:
             return None
-        ll = self._latlon(locality)
-        d = self._get(ll, zone_id, 0, 3) if ll else None
+        d = self._get(cell(lat, lon), zone_id, 0, 3, tomorrow.isoformat())
         if not d:
             return None
         try:

@@ -7,7 +7,7 @@ keep the original order and wording so existing memory keeps working.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Mapping
+from typing import Any, Collection, Mapping, Sequence
 
 GOAL_OPTIONS = [("5k", "5 km"), ("10k", "10 km"), ("half", "Half marathon"),
                 ("marathon", "Marathon"), ("fitness", "Fitness"), ("other", "Something else")]
@@ -46,10 +46,25 @@ def race_month_options(now: datetime) -> list[tuple[str, str]]:
     return out
 
 
-def next_weekly_question(memory: Mapping[str, str], now: datetime) -> dict[str, Any] | None:
-    """First unanswered question in ORDER, or None when the set is complete."""
+REASK_DAYS = 28        # a question nobody answered waits this long before it comes round again
+INFER_MIN_RUNS = 10    # with this many runs on record, usual days and time of day are known, not asked
+
+
+def known_without_asking(history: Sequence[Mapping[str, Any]], plan_weeks: int | None) -> set[str]:
+    """Questions the server can already answer from what it holds."""
+    known: set[str] = set()
+    if plan_weeks is not None:
+        known.add("race_month")  # the plan countdown already says when the race is
+    if len(history) >= INFER_MIN_RUNS:
+        known |= {"usual_days", "time_of_day"}
+    return known
+
+
+def next_weekly_question(memory: Mapping[str, str], now: datetime,
+                         skip: Collection[str] = ()) -> dict[str, Any] | None:
+    """First question in ORDER that is unanswered and not in `skip` (known, or asked in the last 28 days)."""
     for key in ORDER:
-        if key in memory:
+        if key in memory or key in skip:
             continue
         if key == "goal_type":
             return {"key": key, "text": "What are you training for?", "options": GOAL_OPTIONS}

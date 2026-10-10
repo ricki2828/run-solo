@@ -26,17 +26,17 @@ PLACE_AT = (3, 4, 5, 25, 75)  # plus every 10th: a regular spot is not news ever
 
 # Days before the same kind may appear again. 0 = no kind cool-down.
 KIND_COOLDOWN = {
-    "milestone_runs": 0, "milestone_km": 0, "new_place": 0, "comeback": 0,
+    "milestone_runs": 0, "milestone_km": 0, "new_place": 0, "comeback": 0, "feel_echo": 0,
     "race_countdown": 6, "race_month": 13, "last_year": 27, "place": 4, "streak": 9,
     "best_month": 13, "year_best": 20, "sunrise": 13, "zone2_week": 6,
 }
 # Kinds whose key may fire only once, ever. Others: the key repeats after KEY_COOLDOWN_DAYS.
-ONCE_PER_KEY = {"milestone_runs", "milestone_km", "new_place", "comeback", "streak", "best_month"}
+ONCE_PER_KEY = {"milestone_runs", "milestone_km", "new_place", "comeback", "streak", "best_month", "feel_echo"}
 KEY_COOLDOWN_DAYS = {"place": 14, "year_best": 40, "last_year": 27}
 # These matter enough to skip the "not two cards in a row" gap.
-BYPASS_GAP = {"milestone_runs", "milestone_km", "new_place", "comeback"}
+BYPASS_GAP = {"milestone_runs", "milestone_km", "new_place", "comeback", "feel_echo"}
 # Tried in this order; the first one that passes the policy wins.
-PRIORITY = ("milestone_runs", "milestone_km", "new_place", "comeback", "best_month", "year_best",
+PRIORITY = ("milestone_runs", "milestone_km", "new_place", "comeback", "feel_echo", "best_month", "year_best",
             "last_year", "race_countdown", "race_month", "place", "streak", "sunrise", "zone2_week")
 ROTATE_AVOID = 2  # do not reuse either of the last two touch kinds while another candidate exists
 
@@ -54,6 +54,7 @@ class Usage:
     variants: dict[str, datetime] = field(default_factory=dict)        # variant_id -> last used
     touches: list[tuple[datetime, str, str]] = field(default_factory=list)  # (ts, kind, key), oldest first
     cards_since_touch: int = 99
+    feel_refs: set = field(default_factory=set)  # runs whose Hard tap an evening suggestion already answered
 
 
 @dataclass
@@ -64,6 +65,8 @@ class Ctx:
     now: datetime
     sunrise_local: datetime | None = None  # sunrise at the run's place on the run's day, if known
     sunrise_count: int = 0                 # sunrise runs already logged (excluding this one)
+    prev_situation: str | None = None      # the situation of the previous run's card, if it had one
+    feel_refs: frozenset = frozenset()     # runs whose feel tap has already been answered
 
     @property
     def zone(self) -> str:
@@ -75,6 +78,9 @@ class Ctx:
 
     def local(self, r: Mapping[str, Any]) -> datetime:
         return to_local(self.when(r), r.get("zone_id") or self.zone)
+
+
+WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
 def ordinal(n: int) -> str:
@@ -111,6 +117,17 @@ def _zone_minutes(r: Mapping[str, Any]) -> dict[int, float]:
     return out
 
 
+def hard_share(r: Mapping[str, Any]) -> float | None:
+    z = _zone_minutes(r)
+    total = sum(z.values())
+    return (z.get(4, 0) + z.get(5, 0)) / total if total else None
+
+
+def calendar_days(first: datetime, last: datetime, zone_id: str | None) -> int:
+    """Calendar days from the first run's local date to the last one's, both counted: 9 Nov to 12 Nov is 4."""
+    return (to_local(last, zone_id).date() - to_local(first, zone_id).date()).days + 1
+
+
 def hard_minutes(r: Mapping[str, Any]) -> int:
     z = _zone_minutes(r)
     return round(z.get(4, 0) + z.get(5, 0))
@@ -142,6 +159,15 @@ def new_place(c: Ctx) -> Touch | None:
     return Touch("new_place", f"place:{loc}", {"place": loc})
 
 
+def returning(c: Ctx) -> bool:
+    """True while the runner is inside the first 14 days back from a break (10+ days without a run)."""
+    runs = [c.run, *c.history]
+    for i in range(len(runs) - 1):
+        if (c.when(runs[i]) - c.when(runs[i + 1])).days >= BREAK_DAYS:
+            return (c.when(c.run) - c.when(runs[i])).days <= 14
+    return False
+
+
 def comeback(c: Ctx) -> Touch | None:
     """The third run back after a break (10+ days), inside 14 days of coming back."""
     runs = [c.run, *c.history]  # newest first
@@ -151,12 +177,27 @@ def comeback(c: Ctx) -> Touch | None:
             n = i + 1  # runs since (and including) the first one back
             if n != 3:
                 return None
-            days = (c.when(c.run) - c.when(runs[i])).days
+            days = calendar_days(c.when(runs[i]), c.when(c.run), c.zone)
             if days > 14:
                 return None
             return Touch("comeback", f"comeback:{c.local(runs[i]).date().isoformat()}",
-                         {"n": str(n), "days_txt": plural(max(days, 1), "day")})
+                         {"n": str(n), "days_txt": plural(days, "day")})
     return None
+
+
+def feel_echo(c: Ctx) -> Touch | None:
+    """The runner tapped Hard on an easy run at an easy effort. Say so on the next card."""
+    if not c.history:
+        return None
+    prev = c.history[0]
+    if prev["run_id"] in c.feel_refs or prev.get("feel") != "hard" or prev["type"] != "easy" or (c.when(c.run) - c.when(prev)).days > 4:
+        return None
+    share = hard_share(prev)
+    if share is not None and share >= 0.15:
+        return None  # it really was hard
+    cause = {"slower_heat": "Heat.", "slower_load": "Load is high.", "slower_hills": "Hills."}.get(
+        c.prev_situation or "", "Worth watching.")
+    return Touch("feel_echo", f"feel:{prev['run_id']}", {"weekday": WEEKDAYS[c.local(prev).weekday()], "cause": cause})
 
 
 def best_month(c: Ctx) -> Touch | None:
@@ -295,7 +336,7 @@ def zone2_week(c: Ctx) -> Touch | None:
 
 COMPUTE: dict[str, Callable[[Ctx], Touch | None]] = {
     "milestone_runs": milestone_runs, "milestone_km": milestone_km, "new_place": new_place,
-    "comeback": comeback, "best_month": best_month, "year_best": year_best, "last_year": last_year,
+    "comeback": comeback, "feel_echo": feel_echo, "best_month": best_month, "year_best": year_best, "last_year": last_year,
     "race_countdown": race, "race_month": race, "place": place, "streak": streak, "sunrise": sunrise,
     "zone2_week": zone2_week,
 }

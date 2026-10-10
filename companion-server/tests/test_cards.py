@@ -27,6 +27,16 @@ def card_buttons(client, n=-1):
     return row["card_id"], json.loads(row["buttons_json"])
 
 
+def later(client, minutes=35):
+    """Run the outbox a little later: the weekly question follows its run card by about 30 minutes."""
+    client.svc.run_outbox(now_utc() + timedelta(minutes=minutes))
+
+
+def seed_easy(client, token):
+    """A stale easy run on record, so a suggestion can name a concrete session (no card for it)."""
+    client.post("/v1/runs", json=run_payload("seed", minutes_ago=3000), headers=auth(token))
+
+
 def send_run(client, token, run_id="r1", **kw):
     r = client.post("/v1/runs", json=run_payload(run_id, **kw), headers=auth(token))
     assert r.status_code in (200, 202), r.text
@@ -55,11 +65,12 @@ def test_post_does_not_wait_for_the_model(client, fakes):
 def test_outbox_is_idempotent_and_card_sent_once(client, fakes):
     t = enrol(client)
     send_run(client, t)
+    later(client, 31)
     n = len(fakes.tg_texts())
     client.svc.run_outbox(now_utc() + timedelta(minutes=30))
     client.post("/v1/runs", json=run_payload(), headers=auth(t))
     client.svc.run_outbox(now_utc() + timedelta(minutes=60))
-    assert len(fakes.tg_texts()) == n and q(client, "SELECT COUNT(*) n FROM cards")[0]["n"] == 1
+    assert len(fakes.tg_texts()) == n and q(client, "SELECT COUNT(*) n FROM cards WHERE kind='run'")[0]["n"] == 1
 
 
 def test_template_card_when_model_down(client, fakes):
@@ -129,6 +140,8 @@ def test_replayed_update_id_is_deduped(client, fakes):
 def test_weekly_question_attached_to_card_once_per_week_and_answer_stored(client, fakes):
     t = enrol(client)
     send_run(client, t, "a", minutes_ago=5)
+    assert not any(b["action"].startswith("ans:") for b in card_buttons(client)[1])  # not on the run card
+    later(client)
     card_id, buttons = card_buttons(client)
     assert any(b["action"] == "ans:goal_type:10k" for b in buttons)
     assert "What are you training for?" in fakes.tg_texts()[-1]
@@ -137,13 +150,14 @@ def test_weekly_question_attached_to_card_once_per_week_and_answer_stored(client
     assert q(client, "SELECT value FROM memory WHERE key='goal_type'")[0]["value"] == "10k"
     # a second run the same week must not ask another question
     send_run(client, t, "b", pb="5k")
-    _, b2 = card_buttons(client)
-    assert not any(b["action"].startswith("ans:") for b in b2)
+    later(client, 70)
+    assert q(client, "SELECT COUNT(*) n FROM cards WHERE kind='question'")[0]["n"] == 1
 
 
 def test_question_answers_are_validated_against_enums(client, fakes):
     t = enrol(client)
     send_run(client, t)
+    later(client)
     card_id, buttons = card_buttons(client)
     # tamper: a stored action cannot be changed by the sender, and bad values are never written
     svc = client.svc
@@ -158,17 +172,19 @@ def test_question_answers_are_validated_against_enums(client, fakes):
 
 def test_suggestion_rides_on_card_cap_two_per_week_and_not_this_week(client, fakes):
     t = enrol(client)
+    seed_easy(client, t)
     # two hard sessions -> each earns a "recover" suggestion; the third in the same week must not
     for i in range(3):
         send_run(client, t, f"h{i}", type="tempo", minutes_ago=5 + i)
     kinds = []
-    for row in q(client, "SELECT buttons_json FROM cards ORDER BY rowid"):
+    for row in q(client, "SELECT buttons_json FROM cards WHERE kind='run' ORDER BY rowid"):
         kinds.append(any(b["action"].startswith("sugg:yes") for b in json.loads(row["buttons_json"])))
     assert kinds == [True, True, False]
 
 
 def test_not_this_week_spends_the_rest_of_the_cap(client, fakes):
     t = enrol(client)
+    seed_easy(client, t)
     send_run(client, t, "h0", type="tempo")
     card_id, buttons = card_buttons(client)
     skip = next(i for i, b in enumerate(buttons) if b["action"].startswith("sugg:skip"))
@@ -303,10 +319,10 @@ def test_wa_enrol_start_bind_card_and_button_reply(tmp_path, fakes):
         app.state.svc.run_outbox(now_utc() + timedelta(seconds=1))
         msg = fakes.wa[-1]
         assert msg["type"] == "interactive"  # inside the 24 h window after the user's START
-        # feel (3) + the weekly question (6) is more than 3 buttons, so it goes out as a list message
-        assert msg["interactive"]["type"] == "list"
-        ids = [r["id"] for r in msg["interactive"]["action"]["sections"][0]["rows"]]
-        assert len(ids) == 9
+        # the run card carries only the feel row (3 buttons): the weekly question is its own later message
+        assert msg["interactive"]["type"] == "button"
+        ids = [b["reply"]["id"] for b in msg["interactive"]["action"]["buttons"]]
+        assert len(ids) == 3
         reply = {"entry": [{"changes": [{"value": {"messages": [{"id": "wamid.B", "from": "61400111222", "type": "interactive",
                  "interactive": {"button_reply": {"id": ids[2], "title": "Hard"}}}]}}]}]}
         wa_post(c, reply)
