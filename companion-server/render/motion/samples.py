@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 
+from ._common import fmt_dur
 from .run_video import RunVideoSpec, Split, Verdict
 
 
@@ -16,13 +17,31 @@ def sample_route(n: int = 260, lat0: float = -41.29, lon0: float = 174.78):
     return pts
 
 
+def _splits(paces, zones, distance_km, duration_s):
+    """Whole-km splits plus a partial last one, scaled so they add up to the run exactly."""
+    n = len(paces)
+    dists = [1.0] * n
+    last = distance_km - (n - 1)
+    dists[-1] = round(last, 3)
+    scale = duration_s / sum(d * p for d, p in zip(dists, paces))
+    out = []
+    for i, (p, z, d) in enumerate(zip(paces, zones, dists)):
+        label = str(i + 1) if d >= 0.995 else f"{distance_km:.1f}"
+        out.append(Split(label, round(p * scale, 1), z, d))
+    return out
+
+
 def easy_run() -> RunVideoSpec:
-    paces = [318, 311, 308, 305, 303, 301, 302, 299, 296, 292]
-    zones = [2, 2, 2, 2, 2, 3, 2, 3, 3, 3]
+    paces = [318, 311, 308, 305, 303, 301, 302, 299, 296, 292, 290]
+    zones = [2, 2, 2, 2, 2, 3, 2, 3, 3, 3, 3]
+    dist, dur = 10.12, 3032
+    new_pace = dur / dist
+    old_pace = 312
     return RunVideoSpec(
-        kind_label="EASY RUN", date_label="SAT 10 OCT", route=sample_route(), distance_km=10.12, duration_s=3032,
-        splits=[Split(str(i + 1), p, z) for i, (p, z) in enumerate(zip(paces, zones))],
-        verdict=Verdict("faster", 12, 0, "S/KM", context="VS YOUR LAST 10K", caption="Per km. The legs turned up."),
+        kind_label="EASY RUN", date_label="SAT 10 OCT", route=sample_route(), distance_km=dist, duration_s=dur,
+        splits=_splits(paces, zones, dist, dur),
+        verdict=Verdict("faster", abs(round(old_pace) - round(new_pace)), 0, "S/KM", context="VS YOUR LAST 10K",
+                        caption="Per km. The legs turned up.", old=old_pace, new=new_pace),
         run_type="AEROBIC", signoff="Back tomorrow. Easy does it.",
     )
 
@@ -30,21 +49,27 @@ def easy_run() -> RunVideoSpec:
 def hard_run() -> RunVideoSpec:
     paces = [285, 268, 262, 259, 266, 258, 261, 255, 252, 240]
     zones = [3, 4, 4, 4, 4, 4, 5, 4, 5, 5]
+    dist, dur, old_best = 10.0, 2640, 2712  # 44:00 now, 45:12 before: 72 s off
     return RunVideoSpec(
-        kind_label="TEMPO 10K", date_label="WED 7 OCT", route=sample_route(lon0=174.80), distance_km=10.0,
-        duration_s=2640, splits=[Split(str(i + 1), p, z) for i, (p, z) in enumerate(zip(paces, zones))],
-        verdict=Verdict("pb", 41, 0, "SEC", context="10K PERSONAL BEST", caption="Off your old best of 45:12."),
+        kind_label="TEMPO 10K", date_label="WED 7 OCT", route=sample_route(lon0=174.80), distance_km=dist,
+        duration_s=dur, splits=_splits(paces, zones, dist, dur),
+        verdict=Verdict("pb", old_best - dur, 0, "SEC", context="10K PERSONAL BEST",
+                        caption=f"Off your old best of {fmt_dur(old_best)}.", old=old_best, new=dur),
         run_type="SPEED", flood_zone=4, signoff="Put the feet up.",
     )
 
 
 def slower_run() -> RunVideoSpec:
-    paces = [330, 328, 331, 335, 333, 338]
-    zones = [2, 2, 2, 3, 2, 3]
+    paces = [330, 328, 331, 335, 333, 338, 340]
+    zones = [2, 2, 2, 3, 2, 3, 3]
+    dist, dur = 6.1, 2030
+    new_pace = dur / dist
+    old_pace = 324
     return RunVideoSpec(
-        kind_label="LONG RUN", date_label="SUN 4 OCT", route=sample_route(lon0=174.76), distance_km=6.1,
-        duration_s=2030, splits=[Split(str(i + 1), p, z) for i, (p, z) in enumerate(zip(paces, zones))],
-        verdict=Verdict("slower", 9, 0, "S/KM", context="VS YOUR LAST 6K", caption="Heat and a headwind. It happens."),
+        kind_label="LONG RUN", date_label="SUN 4 OCT", route=sample_route(lon0=174.76), distance_km=dist,
+        duration_s=dur, splits=_splits(paces[:7], zones[:7], dist, dur),
+        verdict=Verdict("slower", abs(round(old_pace) - round(new_pace)), 0, "S/KM", context="VS YOUR LAST 6K",
+                        caption="Heat and a headwind. It happens.", old=old_pace, new=new_pace),
         run_type="LONG", signoff="Tomorrow is another run.",
     )
 

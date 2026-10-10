@@ -100,3 +100,39 @@ def test_run_goldens_flood(t):
 @pytest.mark.parametrize("t", [3.0, 7.0, 10.0])
 def test_weekly_goldens(t):
     _check(f"weekly_{t}", WeeklyVideo(samples.weekly()).frame(t))
+
+
+@pytest.mark.parametrize("fn", [samples.easy_run, samples.hard_run, samples.slower_run])
+def test_hero_is_old_minus_new(fn):
+    spec = fn()
+    v = spec.verdict
+    assert v.hero == abs(round(v.old) - round(v.new))
+    if v.kind == "pb":
+        assert v.new == spec.duration_s and v.hero == 72  # 45:12 -> 44:00
+    # the splits cover every km and add up to the run
+    assert len(spec.splits) == -(-spec.distance_km // 1)
+    assert abs(sum(s.dist_km * s.pace_s for s in spec.splits) - spec.duration_s) < 0.015 * spec.duration_s
+
+
+def test_wrong_hero_rejected():
+    spec = samples.hard_run()
+    spec.verdict.hero = 41
+    with pytest.raises(ValueError, match="hero"):
+        spec.validate()
+
+
+def test_missing_km_rejected():
+    spec = samples.hard_run()
+    spec.splits = spec.splits[:6]
+    with pytest.raises(ValueError):
+        spec.validate()
+
+
+def test_distance_lands_exactly():
+    v = RunVideo(samples.easy_run())
+    from render.motion.run_video import ROUTE
+
+    # the count-up has finished (and holds the exact value) before the route head arrives
+    f = v.frame(ROUTE[1] - 0.2)
+    g = v.frame(ROUTE[1] + 0.2)
+    assert f.crop((0, 880, 700, 1150)).tobytes() == g.crop((0, 880, 700, 1150)).tobytes()

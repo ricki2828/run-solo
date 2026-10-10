@@ -29,6 +29,7 @@ class Split:
     label: str
     pace_s: float  # seconds per km
     zone: int | None = None  # 1..5, None when there is no HR
+    dist_km: float = 1.0  # the last split is usually a partial km
 
 
 @dataclass
@@ -40,6 +41,9 @@ class Verdict:
     context: str = ""  # small caps line above the word, e.g. "VS YOUR LAST 10K"
     caption: str = ""  # one dry sentence under the number
     word: str | None = None
+    # the facts the hero is derived from: pace (s/km) for faster/slower/holding, total seconds for pb
+    old: float | None = None
+    new: float | None = None
 
 
 @dataclass
@@ -56,6 +60,35 @@ class RunVideoSpec:
     signoff: str = "Same time next run."
     latlon: bool = True
 
+    def __post_init__(self):
+        self.validate()
+
+    def validate(self):
+        """One facts object: every number on screen must agree with the others."""
+        v = self.verdict
+        if v.kind not in WORDS:
+            raise ValueError(f"unknown verdict kind {v.kind}")
+        if not self.splits:
+            raise ValueError("no splits")
+        if len(self.splits) != math.ceil(self.distance_km - 0.02):
+            raise ValueError(f"{len(self.splits)} splits for {self.distance_km} km: show every km")
+        d = sum(x.dist_km for x in self.splits)
+        if abs(d - self.distance_km) > 0.05:
+            raise ValueError(f"splits cover {d:.2f} km, run is {self.distance_km} km")
+        t = sum(x.dist_km * x.pace_s for x in self.splits)
+        if abs(t - self.duration_s) > 0.015 * self.duration_s:
+            raise ValueError(f"splits sum to {t:.0f}s, run is {self.duration_s:.0f}s")
+        if v.old is not None or v.new is not None:
+            if v.old is None or v.new is None:
+                raise ValueError("verdict needs both old and new")
+            want = self.duration_s if v.kind == "pb" else self.duration_s / self.distance_km
+            if abs(v.new - want) > 0.6:
+                raise ValueError(f"verdict new={v.new} does not match the run ({want:.1f})")
+            if round(abs(round(v.old) - round(v.new)), v.decimals) != round(v.hero, v.decimals):
+                raise ValueError(f"hero {v.hero} != |old {v.old} - new {v.new}|")
+        elif v.kind in ("faster", "slower", "pb"):
+            raise ValueError("verdict needs old and new so the hero can be checked")
+
 
 WORDS = {"faster": "FASTER", "slower": "SLOWER", "holding": "HOLDING", "pb": "NEW PB"}
 
@@ -71,6 +104,7 @@ def _star(cx, cy, r):
 
 class RunVideo:
     def __init__(self, spec: RunVideoSpec):
+        spec.validate()
         self.s = spec
         self.th = Theme(spec.flood_zone)
         th = self.th
@@ -80,8 +114,6 @@ class RunVideo:
         self.accent = th.scores[spec.run_type]
         self.line_col = T.BONE if th.flood else self.accent
         v = spec.verdict
-        if v.kind not in WORDS:
-            raise ValueError(f"unknown verdict kind {v.kind}")
         self.word = v.word or WORDS[v.kind]
         self.vcol = {"faster": th.mint, "slower": th.verm, "holding": th.ink,
                      "pb": th.ink}[v.kind]
@@ -161,15 +193,15 @@ class RunVideo:
         # scene 1 big distance, counting with the route
         a_big = a * (1 - in_out_cubic(seg(t, SHRINK[0], SHRINK[0] + 0.45)))
         if a_big > 0:
-            dist = s.distance_km * p
+            dist = s.distance_km * in_out_cubic(seg(t, ROUTE[0], ROUTE[1] - 0.3))
             f = saira(330 * 2 // 2)
             fk = th.fade(th.ink, a_big * clamp(seg(t, 0.2, 0.6)))
             cv.text((M, 1135 + (1 - a_big) * 24), "", f, fk)
             w = cv.digits((M, 1135 + (1 - a_big) * 24), f"{dist:.2f}", f, fk, anchor="l")
             cv.text((M + w + 22, 1135 + (1 - a_big) * 24), "KM", saira(120), th.fade(th.quiet, a_big), anchor="ls")
             q = seg(t, 2.9, 3.4)
-            self._stat(cv, M, 1235, fmt_dur(s.duration_s), "TIME", a_big * q, 84)
-            self._stat(cv, 430, 1235, fmt_pace(self.avg_pace), "AVG PACE /KM", a_big * q, 84)
+            self._stat(cv, M, 1225, fmt_dur(s.duration_s), "TIME", a_big * q, 84)
+            self._stat(cv, 430, 1225, fmt_pace(self.avg_pace), "AVG PACE /KM", a_big * q, 84)
         # scene 2 stats right of the thumbnail
         a_s2 = a * in_out_cubic(seg(t, SHRINK[0] + 0.35, SHRINK[1] + 0.25))
         if a_s2 > 0:
@@ -177,47 +209,47 @@ class RunVideo:
             f = saira(190)
             w = cv.digits((430, 365 + off), f"{s.distance_km:.2f}", f, th.fade(th.ink, a_s2))
             cv.text((430 + w + 16, 365 + off), "KM", saira(70), th.fade(th.quiet, a_s2))
-            self._stat(cv, 430, 450 + off, fmt_dur(s.duration_s), "TIME", a_s2, 64)
-            self._stat(cv, 700, 450 + off, fmt_pace(self.avg_pace), "AVG PACE /KM", a_s2, 64)
+            self._stat(cv, 430, 430 + off, fmt_dur(s.duration_s), "TIME", a_s2, 64)
+            self._stat(cv, 690, 430 + off, fmt_pace(self.avg_pace), "AVG PACE /KM", a_s2, 64)
 
     def _tag(self, cv, pt, centre, text, t0, t, a, k, rot):
         th = self.th
         q = out_cubic(seg(t, t0, t0 + 0.3)) * a * (1 - k)
         if q <= 0.02:
             return
-        f = grot(22, 700)
-        w = cv.text_width(text, f, 3) + 26
+        f = grot(30, 700)
+        w = cv.text_width(text, f, 3) + 30
         ox, oy = pt[0] - centre[0], pt[1] - centre[1]
         ang = math.atan2(oy, ox) + rot
         cx = clamp(pt[0] + math.cos(ang) * 74, M + w / 2, RIGHT - w / 2)
         cy = max(pt[1] + math.sin(ang) * 74, 225)
-        cv.rect(cx - w / 2, cy - 17, cx + w / 2, cy + 17, th.fade(th.ink, q), r=17)
-        cv.text((cx, cy + 8), text, f, th.fade(th.ground, q), anchor="ms", tracking=3)
+        cv.rect(cx - w / 2, cy - 24, cx + w / 2, cy + 24, th.fade(th.ink, q), r=24)
+        cv.text((cx, cy + 11), text, f, th.fade(th.ground, q), anchor="ms", tracking=3)
 
     def _stat(self, cv, x, y, value, label, a, size):
         if a <= 0:
             return
         th = self.th
         cv.text((x, y), value, saira(size), th.fade(th.ink, a))
-        cv.text((x, y + 38 if size > 70 else y + 32), label, grot(24, 600), th.fade(th.quiet, a), tracking=3)
+        cv.text((x, y + 44), label, grot(34, 600), th.fade(th.quiet, a), tracking=3)
 
     # ---- scene 2: splits ----
     def _bars(self, cv: Canvas, t: float, a: float):
         th, s = self.th, self.s
         n = len(s.splits)
-        base, top = 1130, 655
+        base, top = 1110, 660
         span = RIGHT - M
         bw = min(96, span / (n * 1.2 - 0.2))
-        gap = (span - bw * n) / max(n - 1, 1) if n > 1 else 0
-        if n == 1:
-            gap = 0
+        gap = (span - bw * n) / (n - 1) if n > 1 else 0
         lo, hi = min(self.speeds), max(self.speeds)
         fastest = self.speeds.index(hi)
         cv.rect(M, base, RIGHT, base + 3, th.fade(th.hair, a))
-        stagger = min(0.2, 2.1 / max(n, 1))
-        every = 1 if bw >= 56 else math.ceil(56 / (bw + gap))
-        lab_f = saira(int(clamp(bw * 0.62, 34, 50)))
+        stagger = min(0.2, 2.1 / n)
+        every = 1 if n <= 12 else math.ceil(68 / (bw + gap))
+        lab_f = saira(int(clamp(bw * 0.62, 40, 56)))
+        cum = 0.0
         for i, sp in enumerate(s.splits):
+            cum += sp.dist_km
             u = (self.speeds[i] - lo) / (hi - lo) if hi > lo else 0.65
             full = (base - top) * (0.34 + 0.66 * u)
             q = seg(t, BARS0 + i * stagger, BARS0 + i * stagger + 0.6)
@@ -229,21 +261,22 @@ class RunVideo:
             if hgt > 1:
                 cv.rect(x, base - hgt, x + bw, base, th.fade(col, a), r=min(14, bw * 0.22), top_only=True)
             la = out_cubic(seg(q, 0.55, 1.0)) * a
-            if la > 0 and (i % every == 0 or i == fastest):
-                is_f = i == fastest
+            show = i % every == 0 or i == fastest or i == n - 1 and every == 1
+            if la > 0 and show:
                 cv.text((x + bw / 2, base - hgt - 16), fmt_pace(sp.pace_s), lab_f,
-                        th.fade(th.ink if is_f else th.quiet if th.flood else th.ink, la), anchor="ms")
-            if q > 0.2 and (i % every == 0):
-                cv.text((x + bw / 2, base + 46), sp.label, grot(26, 600), th.fade(th.quiet, a * clamp(q * 2)), anchor="ms")
+                        th.fade(th.ink, la), anchor="ms")
+            if q > 0.2 and (i % every == 0 or i == n - 1):
+                lab = sp.label
+                cv.text((x + bw / 2, base + 48), lab, grot(34, 600), th.fade(th.quiet, a * clamp(q * 2)), anchor="ms")
         lg = a * out_cubic(seg(t, BARS_END - 1.2, BARS_END - 0.6))
         if lg > 0:
-            cv.text((M, 1262), "TALLER = FASTER", grot(22, 600), th.fade(th.quiet, lg), tracking=3)
+            cv.text((M, 1262), "TALLER = FASTER", grot(34, 600), th.fade(th.quiet, lg), tracking=2)
             if any(x.zone for x in s.splits):
-                x = RIGHT - 5 * 92 - 4
+                x = RIGHT - 5 * 104
                 for z in range(5):
-                    cv.rect(x, 1244, x + 20, 1264, th.fade(T.ZONES[z], lg), r=4)
-                    cv.text((x + 30, 1264), f"Z{z + 1}", grot(24, 600), th.fade(th.quiet, lg))
-                    x += 92
+                    cv.rect(x, 1236, x + 26, 1262, th.fade(T.ZONES[z], lg), r=5)
+                    cv.text((x + 34, 1262), f"Z{z + 1}", grot(34, 600), th.fade(th.quiet, lg))
+                    x += 104
 
     # ---- scene 3: verdict ----
     def _verdict(self, cv: Canvas, t: float, a: float):
@@ -252,12 +285,18 @@ class RunVideo:
         e = out_back(q, 1.7)
         al = clamp(q * 2.2) * a
         if v.context:
-            cv.text((M, 335), v.context, grot(34, 700), th.fade(th.quiet, al), tracking=5)
-        # icon + word
+            cv.text((M, 290), v.context, grot(40, 700), th.fade(th.quiet, al), tracking=5)
+        # icon + word, sized to fit the width
         size = lerp(0.82, 1.0, clamp(e, 0, 1.15))
-        wf = saira(int(270 * size))
-        isz = 150 * size
-        ix, iy = M + isz / 2, 600 - 105
+        icon_w = 190
+        wpx = 340
+        while cv.text_width(self.word, saira(wpx)) > RIGHT - M - icon_w and wpx > 120:
+            wpx -= 10
+        wf = saira(int(wpx * size))
+        cap = wpx * 0.70  # Saira cap height ~0.70 em
+        isz = cap * 0.62 * size
+        wbase = 290 + 56 + cap
+        ix, iy = M + 66, wbase - cap / 2
         ic = th.fade(self.vrule if v.kind == "pb" else self.vcol, al)
         if v.kind == "faster":
             cv.poly([(ix - isz / 2, iy + isz * 0.42), (ix + isz / 2, iy + isz * 0.42), (ix, iy - isz * 0.42)], ic)
@@ -268,20 +307,33 @@ class RunVideo:
                 cv.rect(ix - isz / 2, iy + dy - isz * 0.09, ix + isz / 2, iy + dy + isz * 0.09, ic, r=6)
         else:
             cv.poly(_star(ix, iy, isz * 0.62), ic)
-        cv.text((M + 190, 600 + (1 - clamp(e, 0, 1)) * 30), self.word, wf, th.fade(self.vcol, al), anchor="ls")
+        cv.text((M + icon_w, wbase + (1 - clamp(e, 0, 1)) * 30), self.word, wf, th.fade(self.vcol, al), anchor="ls")
         # rule wipes across as the word lands
         rw = out_cubic(seg(t, WORD_T + 0.1, WORD_T + 0.75))
-        cv.rect(M, 650, M + (RIGHT - M) * rw, 664, th.fade(self.vrule, a), r=7)
-        # hero number counting up
+        ry = wbase + 34
+        cv.rect(M, ry, M + (RIGHT - M) * rw, ry + 16, th.fade(self.vrule, a), r=8)
+        # hero number counting up, sized to the widest value so it never changes size mid-count
+        txt_max = f"{v.hero:.{v.decimals}f}"
+        hpx = 660
+        unit_f = lambda px: saira(int(px * 0.26))  # noqa: E731
+
+        def width(px):
+            hf = saira(px)
+            pitch = max(hf.getlength(c) for c in "0123456789") / 2
+            return sum(pitch if c.isdigit() else hf.getlength(c) / 2 for c in txt_max) + 28 + cv.text_width(v.unit, unit_f(px))
+
+        while width(hpx) > RIGHT - M + 6 and hpx > 200:
+            hpx -= 10
         hp = out_quart(seg(t, *HERO))
-        val = v.hero * hp
-        txt = f"{val:.{v.decimals}f}"
+        txt = f"{v.hero * hp:.{v.decimals}f}"
         ha = a * clamp(seg(t, HERO[0] - 0.15, HERO[0] + 0.25))
-        hf = saira(540)
-        w = cv.digits((M - 6, 1115), txt, hf, th.fade(self.vcol if v.kind != "pb" else th.ink, ha))
-        cv.text((M + w + 24, 1115), v.unit, saira(130), th.fade(th.quiet, ha))
+        hbase = ry + 16 + 70 + hpx * 0.70
+        hf = saira(hpx)
+        w = cv.digits((M - 6, hbase), txt, hf, th.fade(self.vcol if v.kind != "pb" else th.ink, ha))
+        cv.text((M + w + 28, hbase), v.unit, unit_f(hpx), th.fade(th.quiet, ha))
         if v.caption:
-            cv.text((M, 1205), v.caption, grot(44, 500), th.fade(th.ink, a * clamp(seg(t, HERO[1] - 0.6, HERO[1] - 0.1))))
+            cv.text((M, hbase + 78), v.caption, grot(46, 500),
+                    th.fade(th.ink, a * clamp(seg(t, HERO[1] - 0.6, HERO[1] - 0.1))))
 
     def frames(self):
         for i in range(N_FRAMES):

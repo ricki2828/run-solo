@@ -57,8 +57,8 @@ def fmt_pace(sec_per_km: float) -> str:
 def header(cv: Canvas, th: Theme, label: str, sub: str, a: float = 1.0):
     if a <= 0:
         return
-    cv.text((M, 122), label, grot(36, 700), th.fade(th.ink, a), tracking=5)
-    cv.text((M, 168), sub, grot(30, 500), th.fade(th.quiet, a), tracking=3)
+    cv.text((M, 128), label, grot(44, 700), th.fade(th.ink, a), tracking=5)
+    cv.text((M, 180), sub, grot(36, 500), th.fade(th.quiet, a), tracking=3)
     cv.vector(th.mark, RIGHT - 49, 82, 58, alpha=a)
 
 
@@ -75,4 +75,4 @@ def signoff(cv: Canvas, th: Theme, t: float, t0: float, line: str):
     wh = 74
     ww = wh * 5762 / 756
     cv.vector(th.wordmark, (W - ww) / 2, 850 + (1 - p_word) * 24, wh, alpha=p_word)
-    cv.text((W / 2, 1010), line, grot(42, 500), th.fade(th.quiet, p_text), anchor="ms")
+    cv.text((W / 2, 1010), line, grot(44, 500), th.fade(th.quiet, p_text), anchor="ms")

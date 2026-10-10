@@ -93,7 +93,7 @@ class WeeklyVideo:
         cv.text((M + w + 18, base_y), "KM", saira(int(size * 0.36)), th.fade(th.quiet, ha))
         h, m = divmod(int(round(s.total_min)), 60)
         sub = f"{s.runs} RUN{'S' if s.runs != 1 else ''}  /  {h}H {m:02d}M"
-        cv.text((M, base_y + (58 if k < 0.5 else 52)), sub, grot(30, 600), th.fade(th.quiet, ha * clamp(seg(t, 1.0, 1.5))),
+        cv.text((M, base_y + (66 if k < 0.5 else 56)), sub, grot(36, 600), th.fade(th.quiet, ha * clamp(seg(t, 1.0, 1.5))),
                 tracking=4)
         # bars
         base = lerp(1080, 650, k)
@@ -125,15 +125,15 @@ class WeeklyVideo:
                 if la > 0 and k < 0.5:
                     cv.text((x + bw / 2, y - 14), f"{int(round(tot))}", saira(44), th.fade(th.ink, la * (1 - k * 2)),
                             anchor="ms")
-            cv.text((x + bw / 2, base + 46), d.label, grot(28, 600), th.fade(th.quiet, a * clamp(q * 2)), anchor="ms")
+            cv.text((x + bw / 2, base + 46), d.label, grot(34, 600), th.fade(th.quiet, a * clamp(q * 2)), anchor="ms")
         lg = a * out_cubic(seg(t, 3.2, 3.8)) * (1 - k)
         if lg > 0:
-            cv.text((M, 1262), "MINUTES BY HEART RATE ZONE", grot(22, 600), th.fade(th.quiet, lg), tracking=3)
-            x = RIGHT - 5 * 92 - 4
+            cv.text((M, 1262), "MINUTES BY ZONE", grot(34, 600), th.fade(th.quiet, lg), tracking=2)
+            x = RIGHT - 5 * 104
             for z in range(5):
-                cv.rect(x, 1244, x + 20, 1264, th.fade(T.ZONES[z], lg), r=4)
-                cv.text((x + 30, 1264), f"Z{z + 1}", grot(24, 600), th.fade(th.quiet, lg))
-                x += 92
+                cv.rect(x, 1236, x + 26, 1262, th.fade(T.ZONES[z], lg), r=5)
+                cv.text((x + 34, 1262), f"Z{z + 1}", grot(34, 600), th.fade(th.quiet, lg))
+                x += 104
 
     def _scores(self, cv: Canvas, t: float, a: float):
         th, s = self.th, self.s
@@ -148,7 +148,7 @@ class WeeklyVideo:
             al = a * q
             cv.rect(M, base - 112, RIGHT, base - 109, th.fade(th.hair, al))
             cv.rect(M, base - 90, M + 12, base - 8, th.fade(col, al), r=4)
-            cv.text((M + 34, base - 30 + off), sc.name, grot(34, 700), th.fade(th.ink, al), tracking=4)
+            cv.text((M + 34, base - 28 + off), sc.name, grot(36, 700), th.fade(th.ink, al), tracking=4)
             val = sc.old + (sc.new - sc.old) * out_quart(seg(t, t0 + 0.3, t0 + 1.5))
             cv.digits((690, base - 4 + off), f"{int(round(val))}", saira(128), th.fade(col, al), anchor="r")
             d = sc.new - sc.old
@@ -170,13 +170,13 @@ class WeeklyVideo:
         q = seg(t, BEST_T, BEST_T + 0.55)
         e = out_back(q, 1.6)
         al = clamp(q * 2.2) * a
-        cv.text((M, 540), b.label, grot(36, 700), th.fade(th.quiet, al), tracking=6)
+        cv.text((M, 540), b.label, grot(40, 700), th.fade(th.quiet, al), tracking=6)
         size = int(lerp(0.8, 1.0, clamp(e, 0, 1.12)) * 330)
         cv.text((M - 6, 840 + (1 - clamp(e, 0, 1)) * 40), b.headline, saira(size), th.fade(th.ink, al))
         rw = out_cubic(seg(t, BEST_T + 0.15, BEST_T + 0.85))
         rule = T.PB_CYAN if b.pb else th.scores["AEROBIC"]
         cv.rect(M, 895, M + (RIGHT - M) * rw, 911, th.fade(rule, a), r=8)
-        cv.text((M, 990), b.detail, grot(48, 500), th.fade(th.ink, a * clamp(seg(t, BEST_T + 0.7, BEST_T + 1.2))))
+        cv.text((M, 990), b.detail, grot(50, 500), th.fade(th.ink, a * clamp(seg(t, BEST_T + 0.7, BEST_T + 1.2))))
 
     def frames(self):
         for i in range(N_FRAMES):
