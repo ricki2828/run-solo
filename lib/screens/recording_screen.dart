@@ -517,6 +517,14 @@ class _RecordingScreenState extends State<RecordingScreen>
                               plan: ctl.followedPlan,
                               units: settings.units,
                               terrain: usesTerrainMap(s.mode),
+                              heightVsStartM: runModeOf(s.mode).showsElevation
+                                  ? s.retrace.heightVsStartM
+                                  : null,
+                              backToStartM:
+                                  runModeOf(s.mode).showsElevation &&
+                                      s.retrace.headingBack
+                                  ? s.retrace.backToStartM
+                                  : null,
                             ),
                           ),
                           // The GPS bar stays, as in NUMBERS.
