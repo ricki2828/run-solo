@@ -59,12 +59,12 @@ abstract final class AuroraRunType {
 /// Route-line gradient classes (10-Oct trail run). Kept clear of the zone
 /// ramp, the semantic mint / vermillion / cyan and the run-type identities
 /// (a test measures the distance), so a colour on the map never doubles as
-/// an HR zone or a verdict. Bone-white flat, cream up, peach steep (also drawn wider), grey-teal
+/// an HR zone or a verdict. Bone-white flat, lemon up, peach steep (also drawn wider), grey-teal
 /// down. The saturated warm and cool space is taken by the zones and
 /// semantics, so these are pale tints, at least 90 away from every one.
 abstract final class AuroraGradient {
   static const Color flat = Color(0xFFE4E2DC);
-  static const Color up = Color(0xFFFFEB99);
+  static const Color up = Color(0xFFFFFF66);
   static const Color steep = Color(0xFFFFB78F);
   static const Color down = Color(0xFF85A5AD);
 }

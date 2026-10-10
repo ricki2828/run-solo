@@ -128,6 +128,19 @@ void main() {
     );
   });
 
+  test('the four gradient classes are at least 60 apart from each other', () {
+    const all = GradientClass.values;
+    for (var i = 0; i < all.length; i++) {
+      for (var j = i + 1; j < all.length; j++) {
+        expect(
+          _dist(GradientColours.of(all[i]), GradientColours.of(all[j])),
+          greaterThanOrEqualTo(60),
+          reason: '${all[i]} vs ${all[j]}',
+        );
+      }
+    }
+  });
+
   test('gradient colours avoid the zone ramp and semantic colours', () {
     const forbidden = [
       AuroraRunType.free,
