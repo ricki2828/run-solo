@@ -13,6 +13,15 @@ def _flag(v: str | None) -> bool:
     return (v or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _url_index(v: str | None) -> int:
+    """Meta allows at most 10 buttons, so a template's URL button sits at 0..9. Anything else falls back to 3."""
+    try:
+        n = int((v or "3").strip())
+    except ValueError:
+        return 3
+    return n if 0 <= n <= 9 else 3
+
+
 def _https_base(v: str | None) -> str | None:
     v = (v or "").strip().rstrip("/")
     return v if v.startswith("https://") and len(v) > 8 and not any(c in v for c in " ?#") else None
@@ -41,6 +50,7 @@ class Settings:
     wa_api: str = "https://graph.facebook.com/v21.0"
     wa_template: str = "run_card"
     wa_template_lang: str = "en"
+    wa_url_index: int = 3  # the template's fixed button slot for the dynamic-URL button (after 3 quick replies)
 
     openrouter_key: str | None = field(default=None, repr=False)
     openrouter_url: str = "https://openrouter.ai/api/v1"
@@ -100,6 +110,7 @@ class Settings:
             wa_app_secret=e.get("COMPANION_WA_APP_SECRET"),
             wa_verify_token=e.get("COMPANION_WA_VERIFY_TOKEN"),
             wa_template=e.get("COMPANION_WA_TEMPLATE", "run_card"),
+            wa_url_index=_url_index(e.get("COMPANION_WA_URL_INDEX")),
             openrouter_key=key,
             model=e.get("COMPANION_MODEL", "anthropic/claude-haiku-4.5"),
             monthly_cap_usd=float(e.get("COMPANION_MONTHLY_CAP_USD", "5")),

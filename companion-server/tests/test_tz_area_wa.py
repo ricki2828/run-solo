@@ -200,12 +200,14 @@ def test_template_shape_limits():
         wa_template_payload("1", "run_card", "en", feel_card(), media_id="m", media_kind="document")
 
 
-def test_url_button_index_follows_the_quick_replies():
+def test_url_button_index_is_the_templates_fixed_slot():
     p = wa_template_payload("1", "run_card", "en", other_card(), url_suffix="run/r1")
     btns = [c for c in p["template"]["components"] if c["type"] == "button"]
-    assert len(btns) == 1 and btns[0]["sub_type"] == "url" and btns[0]["index"] == "0"
+    assert len(btns) == 1 and btns[0]["sub_type"] == "url" and btns[0]["index"] == "3"  # the template's fixed slot
     p2 = wa_template_payload("1", "run_card", "en", feel_card(), url_suffix="run/r1")
     assert [b["index"] for b in p2["template"]["components"] if b["type"] == "button"] == ["0", "1", "2", "3"]
+    p3 = wa_template_payload("1", "run_card", "en", feel_card(), url_suffix="run/r1", url_index=4)
+    assert [b["index"] for b in p3["template"]["components"] if b["type"] == "button"][-1] == "4"
 
 
 def test_media_upload_spec_is_built_not_sent(fakes):

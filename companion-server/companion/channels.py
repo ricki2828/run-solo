@@ -9,12 +9,30 @@ from typing import Any
 import httpx
 
 import json
+import re
 
 from .config import Settings
 from .media import PHOTO_MAX_BYTES, VIDEO_MAX_BYTES, Media
 
 CAPTION_MAX = 1024        # Telegram caption limit
+QUESTION_LEAD = "Quick question"  # follow-up text for question buttons; the card text already went with the media
 MAX_FEEL_BUTTONS = 3      # per card (the 10-Oct review); questions never ride a media card
+
+
+_MEDIA_WORDS = re.compile(r"photo|video|file|image|media|dimension|too big|too large", re.I)
+
+
+def _media_rejected(status: int, description: Any) -> bool:
+    """True only when Telegram refused the upload itself (413, or a 400 whose description is about the file).
+    Any other 400 (chat not found, bad markup) is not a media problem and must not trigger a text fallback."""
+    if status == 413:
+        return True
+    return status == 400 and isinstance(description, str) and bool(_MEDIA_WORDS.search(description))
+
+
+def utf16_len(text: str) -> int:
+    """Telegram counts caption length in UTF-16 code units."""
+    return len(text.encode("utf-16-le")) // 2
 
 
 class ChannelError(Exception):
@@ -73,7 +91,8 @@ class TelegramChannel:
         except (httpx.HTTPError, ValueError) as e:
             raise ChannelError(f"telegram transport: {type(e).__name__}") from None
         if r.status_code != 200 or not data.get("ok"):
-            raise ChannelError(f"telegram {method}: http {r.status_code}", permanent=r.status_code in (400, 413))
+            raise ChannelError(f"telegram {method}: http {r.status_code}",
+                               permanent=_media_rejected(r.status_code, data.get("description")))
         return data
 
     def send_text(self, ref: str, text: str) -> str:
@@ -112,13 +131,42 @@ class TelegramChannel:
             payload["reply_markup"] = {"inline_keyboard": kb}
         return str(self._call("sendMessage", payload)["result"]["message_id"])
 
+    @staticmethod
+    def followups(card: OutCard) -> list[str]:
+        """Messages a media card needs after the media itself: "caption" when the text does not fit a caption (the
+        buttons ride that text), "question" when question buttons were kept off the media."""
+        if not (card.media and (card.media.photo or card.media.video)):
+            return []
+        if utf16_len(f"{card.headline}\n{card.body}") > CAPTION_MAX:
+            return ["caption"]  # the text goes once, with every button, questions included
+        if any(b["action"].startswith("ans:") for b in card.buttons):
+            return ["question"]  # the body already rode the caption, so this carries only the question buttons
+        return []
+
+    def send_followup(self, ref: str, card: OutCard, mode: str) -> str:
+        """The text message a media card could not carry. Sent from its own outbox item, so a failure here retries
+        only this message and never re-uploads the media."""
+        if mode == "caption":
+            text, kb = f"{card.headline}\n{card.body}", self._keyboard(card, media=False)
+        elif mode == "question":
+            text = QUESTION_LEAD
+            kb = [[{"text": b["label"][:40], "callback_data": f"{card.card_id}:{i}"}]
+                  for i, b in enumerate(card.buttons) if b["action"].startswith("ans:")]
+        else:
+            raise ValueError("unknown follow-up")
+        payload: dict[str, Any] = {"chat_id": int(ref), "text": text}
+        if kb:
+            payload["reply_markup"] = {"inline_keyboard": kb}
+        return str(self._call("sendMessage", payload)["result"]["message_id"])
+
     def _send_media(self, ref: str, card: OutCard, text: str) -> str:
-        """sendVideo for a moment (falls back to its still), else sendPhoto. A caption over 1024 chars goes as a
-        follow-up text message carrying the buttons. Raises ChannelError(permanent=True) when every upload is refused."""
+        """sendVideo for a moment (falls back to its still), else sendPhoto, and nothing else: one call that delivers.
+        A caption over 1024 chars goes without caption or buttons, and `followups` says what must follow. Raises
+        ChannelError(permanent=True) when every upload is refused as media."""
         m = card.media
         assert m is not None
         kb = self._keyboard(card, media=True)
-        fits = len(text) <= CAPTION_MAX
+        fits = utf16_len(text) <= CAPTION_MAX
         fields: dict[str, Any] = {"chat_id": int(ref)}
         if fits:
             fields["caption"] = text
@@ -136,18 +184,11 @@ class TelegramChannel:
         last: ChannelError | None = None
         for method, payload, files in attempts:
             try:
-                mid = str(self._call(method, payload, files)["result"]["message_id"])
+                return str(self._call(method, payload, files)["result"]["message_id"])
             except ChannelError as e:
                 if not e.permanent:
                     raise
                 last = e
-                continue
-            if fits:
-                return mid
-            follow: dict[str, Any] = {"chat_id": int(ref), "text": text}
-            if kb:
-                follow["reply_markup"] = {"inline_keyboard": kb}
-            return str(self._call("sendMessage", follow)["result"]["message_id"])
         assert last is not None
         raise last
 
@@ -213,7 +254,7 @@ def feel_template_eligible(card: OutCard) -> bool:
 
 
 def wa_template_payload(to: str, name: str, lang: str, card: OutCard, *, media_id: str | None = None,
-                        media_kind: str = "image", url_suffix: str | None = None) -> dict:
+                        media_kind: str = "image", url_suffix: str | None = None, url_index: int = 3) -> dict:
     """Media-header template message: header (image or video by id), two body variables, quick replies, an optional
     dynamic-URL button for the deep link. Pure: builds the payload, sends nothing."""
     if media_kind not in WA_MEDIA_MIME:
@@ -223,14 +264,12 @@ def wa_template_payload(to: str, name: str, lang: str, card: OutCard, *, media_i
         components.append({"type": "header", "parameters": [{"type": media_kind, media_kind: {"id": media_id}}]})
     components.append({"type": "body", "parameters": [
         {"type": "text", "text": card.headline[:60]}, {"type": "text", "text": " ".join(card.body.split())[:1000]}]})
-    quick = 0
     if feel_template_eligible(card):
         for i in range(WA_QUICK_REPLIES):
             components.append({"type": "button", "sub_type": "quick_reply", "index": str(i),
                                "parameters": [{"type": "payload", "payload": f"{card.card_id}:{i}"}]})
-        quick = WA_QUICK_REPLIES
     if url_suffix:
-        components.append({"type": "button", "sub_type": "url", "index": str(quick),
+        components.append({"type": "button", "sub_type": "url", "index": str(url_index),
                            "parameters": [{"type": "text", "text": url_suffix[:200]}]})
     return {"messaging_product": "whatsapp", "to": to, "type": "template", "template": {
         "name": name, "language": {"code": lang}, "components": components}}
@@ -292,7 +331,7 @@ class WhatsAppChannel:
             return self._post({**base, "type": "interactive", "interactive": interactive})
         return self._post(wa_template_payload(
             ref, self.s.wa_template, self.s.wa_template_lang, card, media_id=media_id, media_kind=media_kind,
-            url_suffix=url_suffix))
+            url_suffix=url_suffix, url_index=self.s.wa_url_index))
 
     def ack_callback(self, inb: Inbound, text: str, clear: bool = True) -> None:
         return None  # WhatsApp has no callback ack

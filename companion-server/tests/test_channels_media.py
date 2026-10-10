@@ -102,7 +102,10 @@ def test_at_most_three_feel_buttons_and_no_question_on_a_media_card(tmp_path, fa
 def test_long_caption_goes_as_follow_up_text_with_the_buttons(tmp_path, fakes):
     ch = adapter(tmp_path, fakes)
     body = "x" * (CAPTION_MAX + 5)
-    ch.send_card(OWNER, OutCard("abc123", "Head", body, feel_buttons(), Media(photo=PNG)))
+    card = OutCard("abc123", "Head", body, feel_buttons(), Media(photo=PNG))
+    ch.send_card(OWNER, card)
+    assert fakes.tg_methods() == ["sendPhoto"] and ch.followups(card) == ["caption"]
+    ch.send_followup(OWNER, card, "caption")
     assert fakes.tg_methods() == ["sendPhoto", "sendMessage"]
     photo, text = fakes.tg[0][1], fakes.tg[1][1]
     assert "caption" not in photo and "reply_markup" not in photo
@@ -129,7 +132,7 @@ def test_video_refused_by_telegram_falls_back_to_the_still(tmp_path, fakes):
     def handler(req):
         calls.append(req.url.path.rsplit("/", 1)[-1])
         if calls[-1] == "sendVideo":
-            return httpx.Response(400, json={"ok": False})
+            return httpx.Response(400, json={"ok": False, "description": "Bad Request: IMAGE_PROCESS_FAILED"})
         return httpx.Response(200, json={"ok": True, "result": {"message_id": 9}})
     ch = TelegramChannel(make_settings(tmp_path), httpx.Client(transport=httpx.MockTransport(handler)))
     assert ch.send_card(OWNER, OutCard("abc123", "h", "b", [], Media(photo=PNG, video=MP4))) == "9"
@@ -211,7 +214,7 @@ def test_telegram_refusing_the_photo_falls_back_to_text_once(tmp_path, fakes):
         m = req.url.path.rsplit("/", 1)[-1]
         seen.append(m)
         if m == "sendPhoto":
-            return httpx.Response(400, json={"ok": False})
+            return httpx.Response(400, json={"ok": False, "description": "Bad Request: IMAGE_PROCESS_FAILED"})
         return fakes.handler(req)
     s = make_settings(tmp_path, media_enabled=True)
     app = create_app(s, httpx.Client(transport=httpx.MockTransport(handler)), run_worker=False)
