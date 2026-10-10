@@ -319,7 +319,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
               Text(
                 widget.lastRun!,
                 key: const ValueKey('ready-last-run'),
-                style: RunSoloType.body17.copyWith(color: _ink),
+                style: RunSoloType.body15.copyWith(color: _ink),
               ),
             const Spacer(),
             Row(
