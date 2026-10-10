@@ -13,6 +13,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'map/gradient_legend.dart';
 import 'map/map_surface.dart';
 import 'map/route_builder.dart';
 import 'map/topo_map_surface.dart';
@@ -32,7 +33,7 @@ void main() {
   runApp(MaterialApp(theme: runSoloTheme(), home: const _Harness()));
 }
 
-enum _Stage { setup, detail, live, card, noPack, done }
+enum _Stage { setup, detail, live, card, noPack, hill, hillLive, done }
 
 // A wiggle across the Milos box (24.30-24.55 E, 36.64-36.76 N), about 1.5 km.
 final List<GeoPoint> _milosRoute = [
@@ -40,6 +41,65 @@ final List<GeoPoint> _milosRoute = [
     GeoPoint(
       36.7240 + 0.0045 * (i / 30) + 0.0012 * ((i % 6) / 6),
       24.4430 + 0.0140 * (i / 30),
+      // Flat, a steep climb, then the way down: every gradient class shows.
+      i < 8 ? 40.0 : (i < 18 ? 40.0 + (i - 8) * 4 : 80.0 - (i - 18) * 3),
+    ),
+];
+
+// A real climb on Milos: from near Plaka up the east face of Profitis Ilias
+// (36.6905N 24.4060E to 36.6815N 24.3730E), elevations from a public DEM.
+// Steep terrain with index contours, so the tinted hillshade, the banded
+// contours and the gradient colours can be judged on something real.
+const List<double> _hillEle = [
+  103,
+  95,
+  116,
+  135,
+  143,
+  166,
+  160,
+  157,
+  184,
+  181,
+  178,
+  188,
+  220,
+  248,
+  258,
+  261,
+  297,
+  283,
+  304,
+  304,
+  299,
+  278,
+  288,
+  309,
+  349,
+  379,
+  390,
+  394,
+  393,
+  390,
+  381,
+  377,
+  425,
+  424,
+  442,
+  466,
+  486,
+  501,
+  512,
+  568,
+  622,
+];
+
+final List<GeoPoint> _hillRoute = [
+  for (var i = 0; i < _hillEle.length; i++)
+    GeoPoint(
+      36.6905 - 0.0090 * (i / 40) + 0.0008 * ((i % 8) / 8),
+      24.4060 - 0.0330 * (i / 40),
+      _hillEle[i],
     ),
 ];
 
@@ -127,6 +187,17 @@ class _HarnessState extends State<_Harness> {
     _feed?.cancel();
     await _go(_Stage.card, 16);
     await _go(_Stage.noPack, 6);
+    await _go(_Stage.hill, 9);
+    _track.clear();
+    _feed = Timer.periodic(const Duration(milliseconds: 300), (t) {
+      final i = t.tick - 1;
+      if (i < _hillRoute.length) {
+        final p = _hillRoute[i];
+        _track.apply(i, [p.lat + 0.0001, p.lon]);
+      }
+    });
+    await _go(_Stage.hillLive, 16);
+    _feed?.cancel();
     await _go(_Stage.done, 1);
     log('DONE');
   }
@@ -146,7 +217,8 @@ class _HarnessState extends State<_Harness> {
               _geometry(_milosRoute),
               terrain: true,
               plan: [
-                for (final p in _milosRoute) GeoPoint(p.lat + 0.0008, p.lon),
+                for (final p in _milosRoute)
+                  GeoPoint(p.lat + 0.0008, p.lon, p.ele),
               ],
               routeColor: AuroraRunType.free,
             ),
@@ -155,6 +227,10 @@ class _HarnessState extends State<_Harness> {
             context,
             track: _track,
             color: AuroraRunType.free,
+            plan: [
+              for (final p in _milosRoute)
+                GeoPoint(p.lat + 0.0008, p.lon, p.ele),
+            ],
             terrain: true,
           ),
           _Stage.card => Padding(
@@ -169,6 +245,29 @@ class _HarnessState extends State<_Harness> {
                 terrain: true,
               ),
             ),
+          ),
+          _Stage.hill => AspectRatio(
+            aspectRatio: 4 / 3,
+            child: f!.build(
+              context,
+              _geometry(_hillRoute),
+              terrain: true,
+              routeColor: AuroraRunType.free,
+            ),
+          ),
+          _Stage.hillLive => Stack(
+            children: [
+              Positioned.fill(
+                child: f!.buildLive(
+                  context,
+                  track: _track,
+                  color: AuroraRunType.free,
+                  plan: _hillRoute,
+                  terrain: true,
+                ),
+              ),
+              const Positioned(left: 8, bottom: 48, child: GradientLegend()),
+            ],
           ),
           _Stage.noPack => AspectRatio(
             aspectRatio: 4 / 3,

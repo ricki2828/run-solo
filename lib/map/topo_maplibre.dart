@@ -95,12 +95,6 @@ class MapLibreTopoEngine implements TopoEngine {
 
 ml.LatLng _ll(GeoPoint p) => ml.LatLng(p.lat, p.lon);
 
-Iterable<(double, double)> _pairs(Iterable<GeoPoint> pts) sync* {
-  for (final p in pts) {
-    yield (p.lat, p.lon);
-  }
-}
-
 Iterable<(double, double, Color, Color)> _markDots(
   RouteGeometry route,
   RunSoloTokens t,
@@ -234,9 +228,9 @@ class _TopoStaticMapState extends State<_TopoStaticMap> {
       key: '${routeFingerprint(widget.route)}-${identityHashCode(this)}',
       pixelScale: _dpr,
       data: {
-        TopoStyle.trackSource: TopoStyle.line(
-          _pairs(widget.route.points),
-          colour: widget.routeColor ?? t.inkPrimary,
+        TopoStyle.trackSource: TopoStyle.gradientLine(
+          widget.route.points,
+          fallback: widget.routeColor ?? t.inkPrimary,
           casing: t.bgBase,
         ),
         TopoStyle.marksSource: TopoStyle.dots(_markDots(widget.route, t)),
@@ -295,9 +289,9 @@ class _TopoStaticMapState extends State<_TopoStaticMap> {
           await _setSource(
             c,
             TopoStyle.planSource,
-            TopoStyle.line(
-              _pairs(plan),
-              colour: t.inkSecondary,
+            TopoStyle.gradientLine(
+              plan,
+              fallback: t.inkSecondary,
               casing: t.bgBase,
             ),
           );
@@ -305,9 +299,9 @@ class _TopoStaticMapState extends State<_TopoStaticMap> {
         await _setSource(
           c,
           TopoStyle.trackSource,
-          TopoStyle.line(
-            _pairs(widget.route.points),
-            colour: colour,
+          TopoStyle.gradientLine(
+            widget.route.points,
+            fallback: colour,
             casing: t.bgBase,
           ),
         );
@@ -581,7 +575,7 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
     await _setSource(
       c,
       TopoStyle.trackSource,
-      TopoStyle.line(_pairs(_line), colour: widget.color, casing: t.bgBase),
+      TopoStyle.gradientLine(_line, fallback: widget.color, casing: t.bgBase),
     );
     final last = widget.track.last;
     await _setSource(
@@ -604,7 +598,11 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
       await _setSource(
         c,
         TopoStyle.planSource,
-        TopoStyle.line(_pairs(plan), colour: t.inkSecondary, casing: t.bgBase),
+        TopoStyle.gradientLine(
+          plan,
+          fallback: t.inkSecondary,
+          casing: t.bgBase,
+        ),
       );
     }
     _syncLine();
