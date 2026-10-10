@@ -61,7 +61,7 @@ class CheckInTest {
     }
 
     @Test
-    fun `a long line drops the least important metrics, never the first`() {
+    fun `a long line drops the least important metrics and never the first`() {
         val snap = CheckInSnapshot(
             avgPaceSecPerKm = 560.0, kmTrueFactor = 0.8, hrZone = 3, hrZoneMs = 90 * 60_000L, climbM = 400.0, heightVsStartM = -120.0,
             backToStartKm = 12.5, climbAheadM = 300.0,

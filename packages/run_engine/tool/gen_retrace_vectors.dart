@@ -146,6 +146,25 @@ List<List<double?>> _oval3Laps() {
   return pts;
 }
 
+/// A GPS teleport: 300 m north, a 500 km jump, 200 m more, a 500 km jump
+/// back to the original line, then 250 m back south along it. The jumps are
+/// breaks (never indexed, no distance, no streak across them), and the way
+/// back over the original line is still recognised.
+List<List<double?>> _gpsJump() {
+  final pts = <List<double?>>[];
+  for (var m = 0.0; m <= 300; m += 3) {
+    pts.add([m / _mPerDeg, 0.0, m * 0.05]);
+  }
+  const far = 4.5; // degrees of latitude, about 500 km
+  for (var m = 0.0; m <= 200; m += 3) {
+    pts.add([far + m / _mPerDeg, 0.0, 15.0]);
+  }
+  for (var m = 300.0; m >= 50; m -= 3) {
+    pts.add([m / _mPerDeg, 4 / _mPerDeg, m * 0.05]);
+  }
+  return pts;
+}
+
 Map<String, Object?> _vector(String name, List<List<double?>> pts) {
   final d = RetraceDetector();
   final states = <List<Object?>>[];
@@ -183,6 +202,7 @@ void main() {
       _vector('same_direction_loop', _sameLoop()),
       _vector('figure_eight', _figureEight()),
       _vector('oval_three_laps', _oval3Laps()),
+      _vector('gps_jump_500km', _gpsJump()),
     ],
   };
   final f = File('test/fixtures/retrace/vectors.json')

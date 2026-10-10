@@ -257,4 +257,39 @@ void main() {
     expect(d.length, 0);
     expect(d.state.heightVsStartM, isNull);
   });
+
+  test(
+    'a 500 km GPS jump is a break: no giant index, no retrace across it',
+    () {
+      final d = RetraceDetector();
+      RetraceState s = RetraceState.none;
+      for (var m = 0.0; m <= 300; m += 3) {
+        s = _feed(d, m, 0, 0);
+      }
+      final before = d.indexedCellCount;
+      // Teleport 500 km north (this used to list one segment in millions of
+      // cells and run out of memory).
+      s = d.add(lat: 4.5, lon: 0, elevM: 0);
+      expect(
+        d.indexedCellCount,
+        before,
+        reason: 'the jump segment is not indexed',
+      );
+      expect(s.retracing, isFalse);
+      // The along-track distance did not grow by 500 km.
+      expect(d.trackLengthM, lessThan(400));
+      for (var m = 3.0; m <= 200; m += 3) {
+        s = d.add(lat: 4.5 + m / 111320, lon: 0, elevM: 0);
+      }
+      expect(d.indexedCellCount, lessThan(before + 40));
+      expect(s.retracing, isFalse);
+      // Jump back onto the original line and run it in reverse: recognised.
+      for (var m = 300.0; m >= 100; m -= 3) {
+        s = _feed(d, m, 4, 0);
+      }
+      expect(s.retracing, isTrue);
+      expect(s.direction, RetraceDirection.reverse);
+      expect(d.trackLengthM, lessThan(1000));
+    },
+  );
 }

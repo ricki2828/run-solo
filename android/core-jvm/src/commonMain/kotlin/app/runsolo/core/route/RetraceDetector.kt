@@ -48,6 +48,7 @@ private class DoubleList {
 private class IntList {
     var a = IntArray(8)
     var size = 0
+    fun clear() { size = 0 }
     fun add(v: Int) {
         if (size == a.size) a = a.copyOf(size * 2)
         a[size++] = v
@@ -65,7 +66,7 @@ private class IntList {
  * differences are used). A tick costs a lookup in a 50 m cell index, not a scan of the track, and
  * allocates nothing but the state it returns.
  */
-class RetraceDetector(
+open class RetraceDetector(
     val matchRadiusM: Double = 25.0,
     val sustainM: Double = 100.0,
     val gapToleranceM: Double = 30.0,
@@ -84,6 +85,9 @@ class RetraceDetector(
     /** Elevation per point, NaN for none. */
     private val es = DoubleList()
     private val segHead = DoubleList()
+
+    /** Index of the first point of the contiguous chunk each point is in; a break (a GPS jump) starts a new one. */
+    private val chunk = IntList()
 
     /** Cell -> the segments whose box, grown by the match radius, touches it (in track order). */
     private val grid = HashMap<Long, IntList>()
@@ -116,10 +120,13 @@ class RetraceDetector(
         private set
 
     val length: Int get() = xs.size
+
+    /** Cells in the spatial index (for tests: a jump must not grow it). */
+    val indexedCellCount: Int get() = grid.size
     val trackLengthM: Double get() = if (ss.size == 0) 0.0 else ss.last()
 
     fun reset() {
-        xs.clear(); ys.clear(); ss.clear(); es.clear(); segHead.clear(); grid.clear()
+        xs.clear(); ys.clear(); ss.clear(); es.clear(); chunk.clear(); segHead.clear(); grid.clear()
         firstElev = null; lastElev = null; dist0 = null
         hasStreak = false; dir = null; streakId = 0; aheadStreak = -1
         state = RetraceState.NONE
@@ -130,7 +137,7 @@ class RetraceDetector(
      * when given, along-track distances use it instead of summing raw fix-to-fix steps, which GPS
      * noise inflates (only differences are used).
      */
-    fun add(lat: Double, lon: Double, elevM: Double? = null, distM: Double? = null): RetraceState {
+    open fun add(lat: Double, lon: Double, elevM: Double? = null, distM: Double? = null): RetraceState {
         if (elevM != null) {
             if (firstElev == null) firstElev = elevM
             lastElev = elevM
@@ -154,18 +161,26 @@ class RetraceDetector(
                 state = state.copy(heightVsStartM = height())
                 return state
             }
+            val jump = step > MAX_SEGMENT_M
             if (distM != null) {
                 val d0 = dist0 ?: distM.also { dist0 = it }
                 ss.add(max(ss.last(), distM - d0))
             } else {
-                ss.add(ss.last() + step)
+                ss.add(ss.last() + (if (jump) 0.0 else step))
+            }
+            chunk.add(if (jump) xs.size else chunk.a[chunk.size - 1])
+            if (jump) {
+                hasStreak = false
+                dir = null
             }
         } else {
             dist0 = distM
             ss.add(0.0)
+            chunk.add(0)
         }
         xs.add(x); ys.add(y); es.add(elevM ?: Double.NaN)
-        if (xs.size >= 2) indexSegment(xs.size - 2)
+        val here = xs.size - 1
+        if (here >= 1 && chunk.a[here] == chunk.a[here - 1]) indexSegment(here - 1)
         update()
         return state
     }
@@ -184,11 +199,14 @@ class RetraceDetector(
         val x1 = max(xs[k], xs[k + 1]) + r
         val y0 = min(ys[k], ys[k + 1]) - r
         val y1 = max(ys[k], ys[k + 1]) + r
+        val cx0 = floor(x0 / CELL_M).toLong()
+        val cy0 = floor(y0 / CELL_M).toLong()
         val cx1 = floor(x1 / CELL_M).toLong()
         val cy1 = floor(y1 / CELL_M).toLong()
-        var cx = floor(x0 / CELL_M).toLong()
+        if ((cx1 - cx0 + 1) * (cy1 - cy0 + 1) > MAX_CELLS_PER_SEGMENT) return
+        var cx = cx0
         while (cx <= cx1) {
-            var cy = floor(y0 / CELL_M).toLong()
+            var cy = cy0
             while (cy <= cy1) {
                 grid.getOrPut(cellKey(cx, cy)) { IntList() }.add(k)
                 cy++
@@ -201,10 +219,12 @@ class RetraceDetector(
     private fun matureHeadings(sNow: Double) {
         while (segHead.size + 1 < xs.size - 1 && ss[segHead.size + 1] <= sNow - reverseMinGapM) {
             val j = segHead.size
+            val c0 = chunk.a[j]
+            val c1 = chunk.a[j + 1]
             var a = j
-            while (a > 0 && dist(j, a) < SEG_HALF_WINDOW_M) a--
+            while (a > c0 && dist(j, a) < SEG_HALF_WINDOW_M) a--
             var b = j + 1
-            while (b < xs.size - 1 && dist(j + 1, b) < SEG_HALF_WINDOW_M) b++
+            while (b < xs.size - 1 && chunk.a[b + 1] == c1 && dist(j + 1, b) < SEG_HALF_WINDOW_M) b++
             segHead.add(bearing(xs[a], ys[a], xs[b], ys[b]))
         }
     }
@@ -334,9 +354,10 @@ class RetraceDetector(
 
     /** Bearing (degrees from north) of the runner's last [OWN_BASELINE_M], straight-line. */
     private fun ownHeading(here: Int): Double? {
-        if (here < 1) return null
+        if (here < 1 || chunk.a[here] == here) return null
+        val c = chunk.a[here]
         var k = here - 1
-        while (k > 0 && dist(here, k) < OWN_BASELINE_M) k--
+        while (k > c && dist(here, k) < OWN_BASELINE_M) k--
         if (dist(here, k) < OWN_BASELINE_M / 2) return null
         return bearing(xs[k], ys[k], xs[here], ys[here])
     }
@@ -369,6 +390,16 @@ class RetraceDetector(
 
     companion object {
         const val MIN_STEP_M = 2.0
+
+        /**
+         * A step longer than this between two accepted fixes is a GPS jump or gap, not trail: a break. It
+         * is never indexed or matched, adds nothing to the along-track distance, ends any streak, and no
+         * heading is taken across it. (A 500 km glitch used to list one segment in millions of cells.)
+         */
+        const val MAX_SEGMENT_M = 150.0
+
+        /** Backstop: a segment whose box would touch more cells than this is not indexed. */
+        const val MAX_CELLS_PER_SEGMENT = 64
 
         /**
          * Most points kept, like the live route's cap. Past it the track stops growing, so any retrace is
