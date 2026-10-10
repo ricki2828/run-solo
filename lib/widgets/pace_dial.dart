@@ -138,7 +138,7 @@ class PaceDial extends StatelessWidget {
                 ),
                 Text(
                   label,
-                  style: RunSoloType.micro11.copyWith(color: secondary),
+                  style: RunSoloType.runLabel.copyWith(color: secondary),
                 ),
                 ?trueLine,
               ],
@@ -194,7 +194,7 @@ class PaceDial extends StatelessWidget {
               ),
               Text(
                 label,
-                style: RunSoloType.micro11.copyWith(color: secondary),
+                style: RunSoloType.runLabel.copyWith(color: secondary),
               ),
               ?trueLine,
             ],

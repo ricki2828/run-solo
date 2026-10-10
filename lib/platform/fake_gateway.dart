@@ -143,6 +143,14 @@ class FakeRecorderGateway implements RecorderGateway {
   double? elevLossM;
   double? gradePct;
 
+  /// Retrace state the fake reports (the native detector's fields).
+  bool? retracing;
+  bool? retraceSame;
+  double? backToStartM;
+  double? climbAheadM;
+  double? descentAheadM;
+  double? heightVsStartM;
+
   /// Scripted route figures (Follow a route). Null = follow what `start`
   /// was given: the route's length less the distance run, never off route.
   RouteProgress? routeProgress;
@@ -555,6 +563,12 @@ class FakeRecorderGateway implements RecorderGateway {
     elevGainM: elevGainM,
     elevLossM: elevLossM,
     gradePct: gradePct,
+    retracing: retracing,
+    retraceSame: retraceSame,
+    backToStartM: backToStartM,
+    climbAheadM: climbAheadM,
+    descentAheadM: descentAheadM,
+    heightVsStartM: heightVsStartM,
     route: _state == RecorderState.idle ? null : _route,
     mode: _state == RecorderState.idle ? RecordMode.free : _mode,
     laps: List.of(_laps),
@@ -975,6 +989,12 @@ class FakeRecorderGateway implements RecorderGateway {
         elevGainM: elevGainM,
         elevLossM: elevLossM,
         gradePct: gradePct,
+        retracing: retracing,
+        retraceSame: retraceSame,
+        backToStartM: backToStartM,
+        climbAheadM: climbAheadM,
+        descentAheadM: descentAheadM,
+        heightVsStartM: heightVsStartM,
         route: _route,
       ),
     );

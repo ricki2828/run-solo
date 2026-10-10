@@ -57,7 +57,7 @@ class GpsBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: Space.x12),
-          Text(label, style: RunSoloType.micro11.copyWith(color: color)),
+          Text(label, style: RunSoloType.runLabel.copyWith(color: color)),
           const SizedBox(width: Space.x8),
           Container(
             width: 8,

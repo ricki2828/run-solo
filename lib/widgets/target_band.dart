@@ -68,7 +68,7 @@ class TargetBand extends StatelessWidget {
             'TARGET ${Fmt.pace(target.paceSecPerKm, units)}'
             '${target.slowerIsFine ? ' OR SLOWER' : ''}',
             key: const ValueKey('target-label'),
-            style: RunSoloType.micro11.copyWith(color: labelColor),
+            style: RunSoloType.runLabel.copyWith(color: labelColor),
           ),
         ],
       ),

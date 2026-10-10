@@ -109,6 +109,7 @@ class RetraceDetector {
   final List<double> _x = [], _y = [], _s = [];
   final List<double?> _e = [];
   double? _firstElev, _lastElev;
+  double? _dist0;
 
   // The current streak of matching.
   bool _hasStreak = false;
@@ -134,12 +135,23 @@ class RetraceDetector {
     _e.clear();
     _segHead.clear();
     _firstElev = _lastElev = null;
+    _dist0 = null;
     _hasStreak = false;
     _dir = null;
     _state = RetraceState.none;
   }
 
-  RetraceState add({required double lat, required double lon, double? elevM}) {
+  /// Feeds one accepted fix. [distM] is the caller's own distance run (the
+  /// recorder's filtered, pause-frozen total); when given, the along-track
+  /// distances use it instead of summing raw fix-to-fix steps, which GPS
+  /// noise inflates. Only differences are used. Without it the detector
+  /// sums the steps itself.
+  RetraceState add({
+    required double lat,
+    required double lon,
+    double? elevM,
+    double? distM,
+  }) {
     if (elevM != null) {
       _firstElev ??= elevM;
       _lastElev = elevM;
@@ -152,14 +164,17 @@ class RetraceDetector {
     final x = (lon - _lon0) * _mPerDeg * _cosLat;
     final y = (lat - _lat0) * _mPerDeg;
     if (_x.isNotEmpty) {
-      final step = math.sqrt(
-        math.pow(x - _x.last, 2) + math.pow(y - _y.last, 2),
-      );
+      final step = _hyp(x - _x.last, y - _y.last);
       if (step < minStepM) {
         return _state = _withHeight(_state);
       }
-      _s.add(_s.last + step);
+      if (distM != null) {
+        _s.add(math.max(_s.last, distM - (_dist0 ??= distM)));
+      } else {
+        _s.add(_s.last + step);
+      }
     } else {
+      _dist0 = distM;
       _s.add(0);
     }
     _x.add(x);
@@ -242,10 +257,7 @@ class RetraceDetector {
     var retracing = false;
     if (_hasStreak) {
       final run = _lastMatchOwnS - _streakStartS;
-      final disp = math.sqrt(
-        math.pow(_x[here] - _streakStartX, 2) +
-            math.pow(_y[here] - _streakStartY, 2),
-      );
+      final disp = _hyp(_x[here] - _streakStartX, _y[here] - _streakStartY);
       // Net progress as well as path length: GPS wander around one spot
       // piles up path length without going anywhere.
       retracing = run >= sustainM && disp >= sustainM * 0.5;
@@ -298,8 +310,7 @@ class RetraceDetector {
   static const double _ownBaselineM = 30;
   static const double _segHalfWindowM = 25;
 
-  double _dist(int i, int j) =>
-      math.sqrt(math.pow(_x[i] - _x[j], 2) + math.pow(_y[i] - _y[j], 2));
+  double _dist(int i, int j) => _hyp(_x[i] - _x[j], _y[i] - _y[j]);
 
   /// Bearing (degrees from north) of the runner's last [_ownBaselineM].
   double? _ownHeading(int here) {
@@ -342,8 +353,11 @@ class RetraceDetector {
         ? 0.0
         : (((px - ax) * dx + (py - ay) * dy) / len2).clamp(0.0, 1.0);
     final cx = ax + t * dx, cy = ay + t * dy;
-    return _Proj(math.sqrt(math.pow(px - cx, 2) + math.pow(py - cy, 2)), t);
+    return _Proj(_hyp(px - cx, py - cy), t);
   }
+
+  /// sqrt(dx^2 + dy^2), written out so the Kotlin twin rounds the same way.
+  static double _hyp(double dx, double dy) => math.sqrt(dx * dx + dy * dy);
 
   static double _bearing(double x0, double y0, double x1, double y1) {
     final b = math.atan2(x1 - x0, y1 - y0) * 180 / math.pi;

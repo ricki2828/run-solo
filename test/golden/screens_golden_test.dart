@@ -431,6 +431,52 @@ void main() {
     });
   }
 
+  // Trail run (founder, 10-Oct trail run): height vs the start (up and down)
+  // and BACK TO START while retracing. The zone flood stays; the plate is a
+  // Bone outline, not a colour.
+  for (final h in [800, 640]) {
+    for (final c in [
+      (
+        'height_up',
+        (FakeRecorderGateway s) => s
+          ..heightVsStartM = 42
+          ..retracing = false,
+      ),
+      (
+        'height_down',
+        (FakeRecorderGateway s) => s
+          ..heightVsStartM = -18
+          ..retracing = false,
+      ),
+      (
+        'retracing',
+        (FakeRecorderGateway s) => s
+          ..heightVsStartM = -18
+          ..retracing = true
+          ..backToStartM = 2400
+          ..climbAheadM = 38
+          ..descentAheadM = 12,
+      ),
+    ]) {
+      testWidgets('record: trail ${c.$1} at 360 x $h', (tester) async {
+        await recordWithHr(
+          tester,
+          RecordMode.trail,
+          138,
+          'record_trail_${c.$1}_360x$h',
+          height: h,
+          script: (fake) {
+            fake
+              ..elevGainM = 124
+              ..elevLossM = 87
+              ..gradePct = 3.2;
+            c.$2(fake);
+          },
+        );
+      });
+    }
+  }
+
   final d1 = DateTime.utc(2026, 9, 10, 6);
   final d2 = DateTime.utc(2026, 9, 14, 6);
 

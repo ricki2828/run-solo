@@ -1096,6 +1096,12 @@ class RecorderStatus {
     this.elevGainM,
     this.elevLossM,
     this.gradePct,
+    this.retracing,
+    this.retraceSame,
+    this.backToStartM,
+    this.climbAheadM,
+    this.descentAheadM,
+    this.heightVsStartM,
     this.route,
   });
 
@@ -1164,6 +1170,26 @@ class RecorderStatus {
 
   double? gradePct;
 
+  /// Retrace detection (the native `RetraceDetector`, one answer for the run
+  /// screen and the voice check-ins). [retracing] is true while the runner is
+  /// back on their own earlier track (out-and-back); [retraceSame] when they
+  /// are covering it in the same direction instead of heading back. While
+  /// retracing: [backToStartM] is the distance along the recorded track back
+  /// to the start, [climbAheadM]/[descentAheadM] the gain/loss on the old
+  /// stretch still ahead. [heightVsStartM] (+ above the start) is available
+  /// whenever there is an elevation, retracing or not.
+  bool? retracing;
+
+  bool? retraceSame;
+
+  double? backToStartM;
+
+  double? climbAheadM;
+
+  double? descentAheadM;
+
+  double? heightVsStartM;
+
   /// Where the runner is on the followed route; null when the run follows none.
   RouteProgress? route;
 
@@ -1192,6 +1218,12 @@ class RecorderStatus {
       elevGainM,
       elevLossM,
       gradePct,
+      retracing,
+      retraceSame,
+      backToStartM,
+      climbAheadM,
+      descentAheadM,
+      heightVsStartM,
       route,
     ];
   }
@@ -1225,7 +1257,13 @@ class RecorderStatus {
       elevGainM: result[20] as double?,
       elevLossM: result[21] as double?,
       gradePct: result[22] as double?,
-      route: result[23] as RouteProgress?,
+      retracing: result[23] as bool?,
+      retraceSame: result[24] as bool?,
+      backToStartM: result[25] as double?,
+      climbAheadM: result[26] as double?,
+      descentAheadM: result[27] as double?,
+      heightVsStartM: result[28] as double?,
+      route: result[29] as RouteProgress?,
     );
   }
 
@@ -1238,7 +1276,7 @@ class RecorderStatus {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct) && _deepEquals(route, other.route);
+    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct) && _deepEquals(retracing, other.retracing) && _deepEquals(retraceSame, other.retraceSame) && _deepEquals(backToStartM, other.backToStartM) && _deepEquals(climbAheadM, other.climbAheadM) && _deepEquals(descentAheadM, other.descentAheadM) && _deepEquals(heightVsStartM, other.heightVsStartM) && _deepEquals(route, other.route);
   }
 
   @override
@@ -1879,6 +1917,12 @@ class TickEvent extends RecorderEvent {
     this.elevGainM,
     this.elevLossM,
     this.gradePct,
+    this.retracing,
+    this.retraceSame,
+    this.backToStartM,
+    this.climbAheadM,
+    this.descentAheadM,
+    this.heightVsStartM,
     this.route,
   });
 
@@ -1927,6 +1971,26 @@ class TickEvent extends RecorderEvent {
 
   double? gradePct;
 
+  /// Retrace detection (the native `RetraceDetector`, one answer for the run
+  /// screen and the voice check-ins). [retracing] is true while the runner is
+  /// back on their own earlier track (out-and-back); [retraceSame] when they
+  /// are covering it in the same direction instead of heading back. While
+  /// retracing: [backToStartM] is the distance along the recorded track back
+  /// to the start, [climbAheadM]/[descentAheadM] the gain/loss on the old
+  /// stretch still ahead. [heightVsStartM] (+ above the start) is available
+  /// whenever there is an elevation, retracing or not.
+  bool? retracing;
+
+  bool? retraceSame;
+
+  double? backToStartM;
+
+  double? climbAheadM;
+
+  double? descentAheadM;
+
+  double? heightVsStartM;
+
   /// As `RecorderStatus.route`.
   RouteProgress? route;
 
@@ -1950,6 +2014,12 @@ class TickEvent extends RecorderEvent {
       elevGainM,
       elevLossM,
       gradePct,
+      retracing,
+      retraceSame,
+      backToStartM,
+      climbAheadM,
+      descentAheadM,
+      heightVsStartM,
       route,
     ];
   }
@@ -1978,7 +2048,13 @@ class TickEvent extends RecorderEvent {
       elevGainM: result[15] as double?,
       elevLossM: result[16] as double?,
       gradePct: result[17] as double?,
-      route: result[18] as RouteProgress?,
+      retracing: result[18] as bool?,
+      retraceSame: result[19] as bool?,
+      backToStartM: result[20] as double?,
+      climbAheadM: result[21] as double?,
+      descentAheadM: result[22] as double?,
+      heightVsStartM: result[23] as double?,
+      route: result[24] as RouteProgress?,
     );
   }
 
@@ -1991,7 +2067,7 @@ class TickEvent extends RecorderEvent {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapElapsedMs, other.lapElapsedMs) && _deepEquals(lapDistanceM, other.lapDistanceM) && _deepEquals(lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && _deepEquals(totalDistanceM, other.totalDistanceM) && _deepEquals(hr, other.hr) && _deepEquals(gpsAccuracyM, other.gpsAccuracyM) && _deepEquals(state, other.state) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct) && _deepEquals(route, other.route);
+    return _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapElapsedMs, other.lapElapsedMs) && _deepEquals(lapDistanceM, other.lapDistanceM) && _deepEquals(lapPaceLiveSecPerKm, other.lapPaceLiveSecPerKm) && _deepEquals(totalDistanceM, other.totalDistanceM) && _deepEquals(hr, other.hr) && _deepEquals(gpsAccuracyM, other.gpsAccuracyM) && _deepEquals(state, other.state) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct) && _deepEquals(retracing, other.retracing) && _deepEquals(retraceSame, other.retraceSame) && _deepEquals(backToStartM, other.backToStartM) && _deepEquals(climbAheadM, other.climbAheadM) && _deepEquals(descentAheadM, other.descentAheadM) && _deepEquals(heightVsStartM, other.heightVsStartM) && _deepEquals(route, other.route);
   }
 
   @override

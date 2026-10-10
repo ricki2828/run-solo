@@ -122,7 +122,7 @@ class _Figure extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.start,
     mainAxisSize: MainAxisSize.min,
     children: [
-      Text(label, style: RunSoloType.micro11.copyWith(color: labelColor)),
+      Text(label, style: RunSoloType.runLabel.copyWith(color: labelColor)),
       FittedBox(
         fit: BoxFit.scaleDown,
         alignment: Alignment.centerLeft,

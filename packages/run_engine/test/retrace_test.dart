@@ -14,12 +14,7 @@ const _mPerDegLat = 111320.0;
 double _profile(double alongM) =>
     alongM <= 500 ? alongM * 0.08 : 40 - (alongM - 500) * 0.06;
 
-RetraceState _feed(
-  RetraceDetector d,
-  double north,
-  double east,
-  double? elev,
-) {
+RetraceState _feed(RetraceDetector d, double north, double east, double? elev) {
   final (lat, lon) = _ll(north, east);
   return d.add(lat: lat, lon: lon, elevM: elev);
 }

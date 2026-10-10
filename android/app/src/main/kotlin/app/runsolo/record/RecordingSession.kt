@@ -42,6 +42,9 @@ import app.runsolo.core.record.CueWords
 import app.runsolo.core.record.SummaryWords
 import app.runsolo.core.record.LapDispatch
 import app.runsolo.core.record.LiveRoute
+import app.runsolo.core.route.RetraceDetector
+import app.runsolo.core.route.RetraceDirection
+import app.runsolo.core.route.RetraceState
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
 import app.runsolo.core.replay.ReplayScenarios
@@ -106,6 +109,9 @@ class RecordingSession(
 
     /** Climb so far and the current grade (barometer + GPS fused, see ElevationFuser). */
     private val liveElev = LiveElevation()
+    /** Retrace detection (out-and-back): fed with accepted fixes on this thread, so the screen and the voice read one answer. */
+    private val retrace = RetraceDetector()
+    private var lastElevRel: Double? = null
     private val moving = MovingDetector()
 
     /** Stop/go for auto-pause only; [moving] keeps its own settings for the moving-time summary. */
@@ -278,7 +284,8 @@ class RecordingSession(
                     if (e.hasFix && !paused) ticker.filter.offer(LocationFix(e.t, e.lat!!, e.lon!!, e.altM, e.accuracyM!!, e.speedMps))
                     // Progress along the followed route, rebuilt quietly: nothing is said for what already happened.
                     if (e.hasFix && !paused) follower?.offer(e.t, e.lat!!, e.lon!!, e.accuracyM!!, quiet = true)
-                    liveElev.offer(e.t, e.hpa, e.altM, e.accuracyM, ticker.filter.totalM, paused)
+                    liveElev.offer(e.t, e.hpa, e.altM, e.accuracyM, ticker.filter.totalM, paused)?.let { lastElevRel = it }
+                    if (e.hasFix && !paused && e.accuracyM!! <= RETRACE_MAX_ACCURACY_M) retrace.add(e.lat!!, e.lon!!, lastElevRel, ticker.filter.totalM)
                 }
                 is RunEvent.Pause -> { paused = true; reanchor = true }
                 is RunEvent.Resume -> { paused = false; ticker.filter.reanchor(); reanchor = false }
@@ -487,7 +494,7 @@ class RecordingSession(
         val samples = ticker.tick(t)
         for (s in samples) {
             writer.append(s)
-            liveElev.offer(s.t, s.hpa, s.altM, s.accuracyM, ticker.distanceM, ticker.paused)
+            liveElev.offer(s.t, s.hpa, s.altM, s.accuracyM, ticker.distanceM, ticker.paused)?.let { lastElevRel = it }
         }
         val lost = ticker.gpsLost(t)
         dispatch.flush(t, ticker.distanceM)
@@ -507,7 +514,10 @@ class RecordingSession(
             Log.i(TAG, "nudge ${n.rule}#${n.index}")
         }
         if (core.state == RecorderState.recording) {
-            for (s in samples) if (s.hasFix) liveRoute.offer(s.lat!!, s.lon!!, s.accuracyM!!)
+            for (s in samples) if (s.hasFix) {
+                liveRoute.offer(s.lat!!, s.lon!!, s.accuracyM!!)
+                if (s.accuracyM!! <= RETRACE_MAX_ACCURACY_M) retrace.add(s.lat!!, s.lon!!, lastElevRel, ticker.distanceM)
+            }
         }
         val last = samples.last()
         // Follow a route: progress, off-route and turn cues, on this thread so the screen can be off.
@@ -568,6 +578,12 @@ class RecordingSession(
                     elevGainM = liveElev.ascentM,
                     elevLossM = liveElev.descentM,
                     gradePct = liveElev.grade?.let { it * 100 },
+                    retracing = retrace.state.retracing,
+                    retraceSame = retrace.state.direction == RetraceDirection.same,
+                    backToStartM = retrace.state.distanceToStartM,
+                    climbAheadM = retrace.state.climbAheadM,
+                    descentAheadM = retrace.state.descentAheadM,
+                    heightVsStartM = retrace.state.heightVsStartM,
                     route = routeProgress(),
                 ),
             )
@@ -585,6 +601,9 @@ class RecordingSession(
             onReplayFinished?.invoke()
         }
     }
+
+    /** The retrace state now (back on our own track, distance back to the start, the old climb ahead); for voice check-ins. */
+    fun retraceState(): RetraceState = retrace.state
 
     /** The route this run follows (null: none), for the map to draw under the runner's track. */
     fun followedRoute(): FollowRoute? = followRoute
@@ -1129,6 +1148,12 @@ class RecordingSession(
             elevGainM = liveElev.ascentM,
             elevLossM = liveElev.descentM,
             gradePct = liveElev.grade?.let { it * 100 },
+            retracing = retrace.state.retracing,
+            retraceSame = retrace.state.direction == RetraceDirection.same,
+            backToStartM = retrace.state.distanceToStartM,
+            climbAheadM = retrace.state.climbAheadM,
+            descentAheadM = retrace.state.descentAheadM,
+            heightVsStartM = retrace.state.heightVsStartM,
             route = routeProgress(),
         )
     }
@@ -1201,6 +1226,9 @@ class RecordingSession(
 
         /** The strip shows the next turn from this far out. */
         private const val TURN_STRIP_M = 300.0
+
+        /** Same accuracy cut as the live map route: a poorer fix is not a place on the track. */
+        private const val RETRACE_MAX_ACCURACY_M = 25.0
 
         /** Voice coaching: a distance rep this close to its end counts as ended; a grade over 3% widens the band. */
         private const val COACH_LAST_M = 100.0

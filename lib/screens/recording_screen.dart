@@ -23,6 +23,7 @@ import '../widgets/gps_bar.dart';
 import '../widgets/lap_button.dart';
 import '../widgets/pace_dial.dart';
 import '../widgets/route_to_go.dart';
+import '../widgets/start_readout.dart';
 import '../widgets/target_band.dart';
 import '../widgets/zone_gauge.dart';
 import '../widgets/zone_ladder.dart';
@@ -1335,7 +1336,7 @@ class AuxFigure extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.start,
     mainAxisSize: MainAxisSize.min,
     children: [
-      Text(label, style: RunSoloType.micro11.copyWith(color: labelColor)),
+      Text(label, style: RunSoloType.runLabel.copyWith(color: labelColor)),
       FittedBox(
         fit: BoxFit.scaleDown,
         alignment: Alignment.centerLeft,
@@ -1427,7 +1428,7 @@ class _Vitals extends StatelessWidget {
       color: t.inkPrimary,
       fontSize: RunSoloType.runSize(compact ? 36 : 44),
     );
-    final label = RunSoloType.micro11.copyWith(color: secondary);
+    final label = RunSoloType.runLabel.copyWith(color: secondary);
     // Short reps (plan §3.7, A8): HR lags a 30 s effort, so in a rep the
     // cell shows the rep's max instead of the live reading.
     final repMax =
@@ -1664,12 +1665,12 @@ class _FreeRunBlock extends StatelessWidget {
 
   /// A label over a 36 sp value (AuxFigure, route figures).
   static final double _figH =
-      _textH(RunSoloType.micro11) + _textH(AuxFigure.style);
+      _textH(RunSoloType.runLabel) + _textH(AuxFigure.style);
 
   /// The RUN trio's height at [size]: distance, then time and pace.
   static double _trioH(double size) =>
       2 *
-          (_textH(RunSoloType.micro11) +
+          (_textH(RunSoloType.runLabel) +
               _textH(RunSoloType.display44.copyWith(fontSize: size))) +
       Space.x4 +
       Space.x8;
@@ -1682,6 +1683,14 @@ class _FreeRunBlock extends StatelessWidget {
     final showElevation =
         runModeOf(s.mode).showsElevation && s.elevGainM != null;
     final showGap = runModeOf(s.mode).showsLiveTruePace;
+    // Trail: height vs the start, and BACK TO START while retracing. The
+    // plate (and its chrome) is budgeted whenever the row shows, so the
+    // layout does not jump when a retrace starts.
+    final retrace = s.retrace;
+    final showStart =
+        runModeOf(s.mode).showsElevation &&
+        (retrace.heightVsStartM != null || retrace.headingBack);
+    final startH = showStart ? _figH + StartReadout.chrome : 0.0;
     final route = s.route;
     final turn = route == null || route.off ? '' : routeTurnText(route, units);
     final routeH = route == null
@@ -1744,7 +1753,16 @@ class _FreeRunBlock extends StatelessWidget {
               _FreePlan(RunSoloType.runSize(40), 96, false, false),
             ];
             double heightOf(_FreePlan p, {required double slot}) =>
-                _planH(p, width, showGap, showElevation, routeH, minGap) + slot;
+                _planH(
+                  p,
+                  width,
+                  showGap,
+                  showElevation,
+                  routeH,
+                  startH,
+                  minGap,
+                ) +
+                slot;
             // The card's own slot when some plan fits with it open; else the
             // card covers the tail while it shows (below).
             final full = minGap + cardH;
@@ -1821,6 +1839,16 @@ class _FreeRunBlock extends StatelessWidget {
                   valueColor: t.inkPrimary,
                   showGrade: plan.grade,
                 ),
+              if (showStart)
+                StartReadout(
+                  heightVsStartM: retrace.heightVsStartM,
+                  backToStartM: retrace.headingBack
+                      ? retrace.backToStartM
+                      : null,
+                  units: units,
+                  labelColor: secondary,
+                  valueColor: t.inkPrimary,
+                ),
               if (route != null)
                 RouteToGoRow(
                   route: route,
@@ -1854,7 +1882,11 @@ class _FreeRunBlock extends StatelessWidget {
                 coverFrom--;
                 h +=
                     (coverFrom == clusters.length - 1 ? 0 : minGap) +
-                    (clusters[coverFrom] is RouteToGoRow ? routeH : _figH);
+                    (clusters[coverFrom] is RouteToGoRow
+                        ? routeH
+                        : clusters[coverFrom] is StartReadout
+                        ? startH
+                        : _figH);
               }
             }
             final covered = <Widget>[];
@@ -1912,10 +1944,11 @@ class _FreeRunBlock extends StatelessWidget {
     bool showGap,
     bool showElevation,
     double routeH,
+    double startH,
     double minGap,
   ) {
     final size = EqualFigures.sizeFor(width, p.trioCap);
-    final label = _textH(RunSoloType.micro11);
+    final label = _textH(RunSoloType.runLabel);
     final double pace;
     if (p.big) {
       final w = width * 0.6;
@@ -1936,6 +1969,7 @@ class _FreeRunBlock extends StatelessWidget {
       _trioH(size) - Space.x8,
       pace,
       if (showElevation) _figH,
+      if (startH > 0) startH,
       if (routeH > 0) routeH,
     ];
     return parts.fold(0.0, (a, b) => a + b) + (parts.length - 1) * minGap;

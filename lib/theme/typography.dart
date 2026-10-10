@@ -71,6 +71,17 @@ abstract final class RunSoloType {
     height: 1.2,
   );
 
+  /// A metric label on the run screen (CLIMB, HEART RATE, TARGET...): read at
+  /// arm's length mid-run (founder, 10-Oct trail run), so well above
+  /// [micro11]. Still far smaller than the 36 sp numbers it sits over.
+  static final TextStyle runLabel = TextStyle(
+    fontFamily: ui,
+    fontSize: 17,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 17 * 0.05,
+    height: 1.15,
+  );
+
   static TextTheme textTheme(Color ink, Color inkSecondary) => TextTheme(
     displayLarge: display96.copyWith(color: ink),
     displayMedium: display64.copyWith(color: ink),

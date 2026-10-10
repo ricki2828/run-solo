@@ -47,6 +47,14 @@ abstract final class Fmt {
     return '${v.toStringAsFixed(2)} ${engine.PaceFormat.unitLabel(_u(units))}';
   }
 
+  /// "2.4 km" / "1.5 mi": one decimal, for a figure read at a glance.
+  static String distance1(double metres, Units units) {
+    final v = units == Units.mi
+        ? metres / engine.PaceFormat.metresPerMile
+        : metres / 1000;
+    return '${v.toStringAsFixed(1)} ${engine.PaceFormat.unitLabel(_u(units))}';
+  }
+
   /// "5 s"; the arrow beside it is a `DeltaGlyph` (the bundled fonts carry
   /// no ▲▼▬ glyphs), direction from live minus last.
   static String deltaVsLast(double live, double last, Units units) {
@@ -69,6 +77,10 @@ abstract final class Fmt {
         ? '${(metres * _feetPerMetre).round()} ft'
         : '${metres.round()} m';
   }
+
+  /// Height against the start without the sign: "42 m" / "138 ft".
+  static String elevationAbs(double metres, Units units) =>
+      elevation(metres.abs(), units);
 
   static const double _feetPerMetre = 3.28084;
 

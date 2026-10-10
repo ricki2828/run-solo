@@ -423,6 +423,12 @@ class RecorderStatus {
     this.elevGainM,
     this.elevLossM,
     this.gradePct,
+    this.retracing,
+    this.retraceSame,
+    this.backToStartM,
+    this.climbAheadM,
+    this.descentAheadM,
+    this.heightVsStartM,
     this.route,
   });
   RecorderState state;
@@ -475,6 +481,21 @@ class RecorderStatus {
   double? elevGainM;
   double? elevLossM;
   double? gradePct;
+
+  /// Retrace detection (the native `RetraceDetector`, one answer for the run
+  /// screen and the voice check-ins). [retracing] is true while the runner is
+  /// back on their own earlier track (out-and-back); [retraceSame] when they
+  /// are covering it in the same direction instead of heading back. While
+  /// retracing: [backToStartM] is the distance along the recorded track back
+  /// to the start, [climbAheadM]/[descentAheadM] the gain/loss on the old
+  /// stretch still ahead. [heightVsStartM] (+ above the start) is available
+  /// whenever there is an elevation, retracing or not.
+  bool? retracing;
+  bool? retraceSame;
+  double? backToStartM;
+  double? climbAheadM;
+  double? descentAheadM;
+  double? heightVsStartM;
 
   /// Where the runner is on the followed route; null when the run follows none.
   RouteProgress? route;
@@ -910,6 +931,12 @@ class TickEvent extends RecorderEvent {
     this.elevGainM,
     this.elevLossM,
     this.gradePct,
+    this.retracing,
+    this.retraceSame,
+    this.backToStartM,
+    this.climbAheadM,
+    this.descentAheadM,
+    this.heightVsStartM,
     this.route,
   });
 
@@ -946,6 +973,21 @@ class TickEvent extends RecorderEvent {
   double? elevGainM;
   double? elevLossM;
   double? gradePct;
+
+  /// Retrace detection (the native `RetraceDetector`, one answer for the run
+  /// screen and the voice check-ins). [retracing] is true while the runner is
+  /// back on their own earlier track (out-and-back); [retraceSame] when they
+  /// are covering it in the same direction instead of heading back. While
+  /// retracing: [backToStartM] is the distance along the recorded track back
+  /// to the start, [climbAheadM]/[descentAheadM] the gain/loss on the old
+  /// stretch still ahead. [heightVsStartM] (+ above the start) is available
+  /// whenever there is an elevation, retracing or not.
+  bool? retracing;
+  bool? retraceSame;
+  double? backToStartM;
+  double? climbAheadM;
+  double? descentAheadM;
+  double? heightVsStartM;
 
   /// As `RecorderStatus.route`.
   RouteProgress? route;

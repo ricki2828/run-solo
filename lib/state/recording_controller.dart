@@ -30,6 +30,39 @@ const String kVolumeKeyUnavailableNote =
 const String kVolumeKeyToggleReason =
     'Off on Android 14. Use the lock-screen LAP.';
 
+/// The recorder's retrace state (native `RetraceDetector`, mirrored by
+/// `RetraceDetector` in run_engine): whether the runner is back on their own
+/// earlier track, how far back to the start along it, the climb and descent
+/// still ahead on that stretch, and the height against the start (always
+/// there once there is an elevation).
+class LiveRetrace {
+  const LiveRetrace({
+    this.retracing = false,
+    this.same = false,
+    this.backToStartM,
+    this.climbAheadM,
+    this.descentAheadM,
+    this.heightVsStartM,
+  });
+
+  static const LiveRetrace none = LiveRetrace();
+
+  final bool retracing;
+
+  /// Covering the old track in the same direction, not heading back.
+  final bool same;
+  final double? backToStartM;
+  final double? climbAheadM;
+  final double? descentAheadM;
+
+  /// Metres above (+) or below (-) the start.
+  final double? heightVsStartM;
+
+  /// Heading back along the old track towards the start: the "BACK TO START"
+  /// state.
+  bool get headingBack => retracing && !same && backToStartM != null;
+}
+
 @immutable
 class RecordingSnapshot {
   const RecordingSnapshot({
@@ -68,6 +101,7 @@ class RecordingSnapshot {
     this.elevGainM,
     this.elevLossM,
     this.gradePct,
+    this.retrace = LiveRetrace.none,
     this.route,
   });
 
@@ -164,6 +198,10 @@ class RecordingSnapshot {
   final double? elevGainM;
   final double? elevLossM;
   final double? gradePct;
+
+  /// Retrace detection and height vs start, from the recorder
+  /// ([LiveRetrace]). Native computes it, so the screen and the voice agree.
+  final LiveRetrace retrace;
 
   /// Where the runner is on the route they are following (Follow a route):
   /// distance and climb to go, off-route, the next turn. Null when the run
@@ -304,6 +342,7 @@ class RecordingSnapshot {
     double? elevLossM,
     double? gradePct,
     bool clearGrade = false,
+    LiveRetrace? retrace,
     RouteProgress? route,
     bool clearRoute = false,
   }) => RecordingSnapshot(
@@ -346,6 +385,7 @@ class RecordingSnapshot {
     elevGainM: elevGainM ?? this.elevGainM,
     elevLossM: elevLossM ?? this.elevLossM,
     gradePct: clearGrade ? null : (gradePct ?? this.gradePct),
+    retrace: retrace ?? this.retrace,
     route: clearRoute ? null : (route ?? this.route),
   );
 }
@@ -544,6 +584,14 @@ class RecordingController extends ChangeNotifier {
       elevLossM: s.elevLossM,
       gradePct: s.gradePct,
       clearGrade: s.gradePct == null,
+      retrace: LiveRetrace(
+        retracing: s.retracing ?? false,
+        same: s.retraceSame ?? false,
+        backToStartM: s.backToStartM,
+        climbAheadM: s.climbAheadM,
+        descentAheadM: s.descentAheadM,
+        heightVsStartM: s.heightVsStartM,
+      ),
       route: s.route,
       clearRoute: s.route == null,
       hrPaired: s.hrConnected || _snap.hrPaired,
@@ -823,6 +871,14 @@ class RecordingController extends ChangeNotifier {
       elevLossM: t.elevLossM,
       gradePct: t.gradePct,
       clearGrade: t.gradePct == null,
+      retrace: LiveRetrace(
+        retracing: t.retracing ?? false,
+        same: t.retraceSame ?? false,
+        backToStartM: t.backToStartM,
+        climbAheadM: t.climbAheadM,
+        descentAheadM: t.descentAheadM,
+        heightVsStartM: t.heightVsStartM,
+      ),
       route: t.route,
       clearRoute: t.route == null,
     );
