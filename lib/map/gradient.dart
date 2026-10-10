@@ -9,19 +9,18 @@ library;
 import 'dart:math' as math;
 import 'dart:ui' show Color;
 
+import '../theme/tokens.dart';
 import 'route_builder.dart';
 
 enum GradientClass { flat, up, steep, down }
 
-/// Line colours. Deliberately outside the zone ramp (#2F6DB5 #2E9E5B #D9A21B
-/// #E86A1C #D6283B) and the semantic mint, vermillion and cyan; a test keeps
-/// that true. Bright mid-tones with the map's dark casing, so they read on
-/// the tinted hillshade in light and dark themes.
+/// Line colours, from [AuroraGradient] (outside the zone ramp, the semantic
+/// colours and the run-type identities; a test keeps that true).
 abstract final class GradientColours {
-  static const Color flat = Color(0xFFD7DAE3);
-  static const Color up = Color(0xFFA98BFF);
-  static const Color steep = Color(0xFFFF3EC0);
-  static const Color down = Color(0xFF8FA6FF);
+  static const Color flat = AuroraGradient.flat;
+  static const Color up = AuroraGradient.up;
+  static const Color steep = AuroraGradient.steep;
+  static const Color down = AuroraGradient.down;
 
   static Color of(GradientClass c) => switch (c) {
     GradientClass.flat => flat,

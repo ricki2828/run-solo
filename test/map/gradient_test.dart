@@ -4,6 +4,7 @@ import 'dart:ui' show Color;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/map/gradient.dart';
 import 'package:run_solo/map/route_builder.dart';
+import 'package:run_solo/theme/tokens.dart';
 import 'package:run_solo/topo/topo_style.dart';
 
 /// Points 10 m apart heading north, at the given elevations.
@@ -63,6 +64,12 @@ void main() {
 
   test('gradient colours avoid the zone ramp and semantic colours', () {
     const forbidden = [
+      AuroraRunType.free,
+      AuroraRunType.laps,
+      AuroraRunType.goal,
+      AuroraRunType.intervals,
+      AuroraRunType.tests,
+      AuroraRunType.trail,
       Color(0xFF2F6DB5),
       Color(0xFF2E9E5B),
       Color(0xFFD9A21B),
@@ -76,7 +83,7 @@ void main() {
       for (final f in forbidden) {
         expect(
           _dist(GradientColours.of(c), f),
-          greaterThan(60),
+          greaterThan(70),
           reason: '$c too close to $f',
         );
       }

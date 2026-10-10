@@ -56,6 +56,18 @@ abstract final class AuroraRunType {
   static const Color trail = Color(0xFFB8C04C);
 }
 
+/// Route-line gradient classes (10-Oct trail run). Kept clear of the zone
+/// ramp, the semantic mint / vermillion / cyan and the run-type identities
+/// (a test measures the distance), so a colour on the map never doubles as
+/// an HR zone or a verdict. Bone-white flat, butter up, rose steep, slate
+/// blue down.
+abstract final class AuroraGradient {
+  static const Color flat = Color(0xFFE4E2DC);
+  static const Color up = Color(0xFFF2E6A0);
+  static const Color steep = Color(0xFFE0507A);
+  static const Color down = Color(0xFF6C86E0);
+}
+
 /// Light everyday palette (brand build, 7-Oct-2026). Ground #FBFBF9, white
 /// raised surface with a hairline, ink #121417. Contrast on the ground:
 /// ink 17.8, secondary 7.9, quiet 4.6, mint 4.6, vermillion 4.8 (all >= 4.5).
