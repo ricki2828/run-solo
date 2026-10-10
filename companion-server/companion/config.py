@@ -13,6 +13,11 @@ def _flag(v: str | None) -> bool:
     return (v or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _https_base(v: str | None) -> str | None:
+    v = (v or "").strip().rstrip("/")
+    return v if v.startswith("https://") and len(v) > 8 and not any(c in v for c in " ?#") else None
+
+
 @dataclass(frozen=True)
 class Settings:
     db_path: str
@@ -49,6 +54,11 @@ class Settings:
     # Open-Meteo weather for touches and suggestions. Off by default: it sends a lat/lon cell rounded to 0.1 degree
     # to a third party, which the privacy page has to say first (see convo/weather.py).
     weather_enabled: bool = False
+
+    # Cards and videos as Telegram photos/videos. Off by default: it needs Chromium (and ffmpeg for video) on the host.
+    media_enabled: bool = False
+    # https base the deep-link buttons point at (`<base>/run/<id>`, `<base>/week/<iso-week>`); no base, no link buttons.
+    deeplink_base: str | None = None
 
     sends_paused: bool = False
     stale_card_hours: float = 6.0
@@ -94,5 +104,7 @@ class Settings:
             model=e.get("COMPANION_MODEL", "anthropic/claude-haiku-4.5"),
             monthly_cap_usd=float(e.get("COMPANION_MONTHLY_CAP_USD", "5")),
             weather_enabled=_flag(e.get("COMPANION_WEATHER")),
+            media_enabled=_flag(e.get("COMPANION_MEDIA")),
+            deeplink_base=_https_base(e.get("COMPANION_DEEPLINK_BASE")),
             sends_paused=_flag(e.get("COMPANION_SENDS_PAUSED")),
         )

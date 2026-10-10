@@ -18,6 +18,26 @@ WA_SECRET = "wa-app-secret"
 OWNER = "111222333"
 
 
+def parse_request_body(req: httpx.Request) -> dict:
+    """JSON bodies as-is. Multipart uploads become {field: text, "_files": {name: (filename, bytes, content type)}}."""
+    if not req.content:
+        return {}
+    ct = req.headers.get("content-type", "")
+    if ct.startswith("multipart/form-data"):
+        from email.parser import BytesParser
+        from email.policy import default
+        msg = BytesParser(policy=default).parsebytes(b"Content-Type: " + ct.encode() + b"\r\n\r\n" + req.content)
+        out: dict = {"_files": {}}
+        for part in msg.iter_parts():
+            name = part.get_param("name", header="content-disposition")
+            if part.get_filename():
+                out["_files"][name] = (part.get_filename(), part.get_payload(decode=True), part.get_content_type())
+            else:
+                out[name] = part.get_content()
+        return out
+    return json.loads(req.content)
+
+
 class Fakes:
     """Stand-ins for Telegram, OpenRouter and the WhatsApp Graph API, behind httpx.MockTransport."""
 
@@ -30,7 +50,7 @@ class Fakes:
 
     def handler(self, req: httpx.Request) -> httpx.Response:
         host, path = req.url.host, req.url.path
-        body = json.loads(req.content) if req.content else {}
+        body = parse_request_body(req)
         if host == "api.telegram.org":
             method = path.rsplit("/", 1)[-1]
             self.tg.append((method, body))
@@ -67,6 +87,9 @@ class Fakes:
         return httpx.Response(200, json={
             "provider": "FakeProvider", "usage": {"cost": 0.0004},
             "choices": [{"message": {"content": json.dumps(text)}}]})
+
+    def tg_methods(self):
+        return [m for m, _ in self.tg]
 
     def tg_texts(self):
         return [b["text"] for m, b in self.tg if m == "sendMessage"]
