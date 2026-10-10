@@ -198,6 +198,8 @@ class _HarnessState extends State<_Harness> {
     await _go(_Stage.noPack, 6);
     await _go(_Stage.hill, 9);
     await _hillRun(_Stage.hillLive);
+    // A beat with no map, so the first live map is disposed before the next.
+    await _go(_Stage.gap, 2);
     await _hillRun(_Stage.hillLiveDark);
     await _go(_Stage.done, 1);
     log('DONE');
@@ -228,7 +230,9 @@ class _HarnessState extends State<_Harness> {
     return Scaffold(
       body: SafeArea(
         child: switch (_stage) {
-          _Stage.setup || _Stage.done => Center(child: Text(_stage.name)),
+          _Stage.setup ||
+          _Stage.gap ||
+          _Stage.done => Center(child: Text(_stage.name)),
           _Stage.detail => AspectRatio(
             aspectRatio: 4 / 3,
             child: f!.build(

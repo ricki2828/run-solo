@@ -591,6 +591,7 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
       TopoStyle.trackSource,
       TopoStyle.gradientLine(_line, fallback: widget.color, casing: t.bgBase),
     );
+    if (!mounted) return; // disposed mid-paint: the map is gone
     await _setSource(
       c,
       TopoStyle.retraceSource,
@@ -600,11 +601,13 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
         halo: NightSession.inkPrimary,
       ),
     );
+    if (!mounted) return;
     await _setSource(
       c,
       TopoStyle.aheadSource,
       TopoStyle.aheadLine(_retrace.ahead(), casing: t.bgBase),
     );
+    if (!mounted) return;
     final last = widget.track.last;
     await _setSource(
       c,
