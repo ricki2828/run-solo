@@ -135,6 +135,10 @@ abstract class RecorderGateway {
   /// during the run. Set before every start; persisted natively.
   Future<void> setVoiceCoach(VoiceCoachConfig config);
 
+  /// Settings → Voice → "Check-in": the metric keys the km line says, and the
+  /// zone 2..5 bottoms for the heart-rate line (null = no zones).
+  Future<void> setCheckIn(List<String> metrics, List<double>? zoneBottomsBpm);
+
   /// The run's start heat slowdown for the coach's live True Pace.
   Future<void> setCoachSlowdown(double? slowdown);
 

@@ -453,13 +453,22 @@ class _SettingsScreenState extends State<SettingsScreen>
                 onChanged: (v) => set((x) => x.copyWith(cues: v)),
               ),
               _Toggle(
-                label: 'Km splits (Free run)',
+                label: 'Km check-in (Free and Trail)',
                 value: s.cues && s.kmSplits,
                 onChanged: s.cues
                     ? (v) => set((x) => x.copyWith(kmSplits: v))
                     : null,
                 reason: s.cues ? null : 'Turn on voice cues first',
               ),
+              if (s.cues && s.kmSplits)
+                SettingsRow(
+                  key: const ValueKey('check-in-metrics'),
+                  label: 'Check-in says',
+                  value:
+                      '${s.checkInMetrics.length} of '
+                      '${CheckInMetric.values.length}',
+                  onTap: () => _pickCheckIn(context, s.checkInMetrics, set),
+                ),
               _Toggle(
                 label: 'Spoken summary',
                 value: s.cues && s.spokenSummary,
@@ -913,6 +922,66 @@ class _SettingsScreenState extends State<SettingsScreen>
       },
     );
     if (picked != null) await set((x) => x.copyWith(coachingDetail: picked));
+  }
+
+  /// Which metrics the km check-in says. Importance order is fixed (the
+  /// list order); a metric with no data is skipped when it comes up.
+  Future<void> _pickCheckIn(
+    BuildContext context,
+    List<CheckInMetric> current,
+    Future<void> Function(AppSettings Function(AppSettings)) set,
+  ) async {
+    final picked = await showModalBottomSheet<List<CheckInMetric>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        final t = Theme.of(context).extension<RunSoloTokens>()!;
+        final chosen = {...current};
+        return StatefulBuilder(
+          builder: (context, setSheet) => SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(Space.screenGutter),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('CHECK-IN SAYS', style: RunSoloType.title28),
+                  const SizedBox(height: Space.x8),
+                  Text(
+                    'Said at each km, most important first. Anything with no '
+                    'data is skipped, and the line stays short.',
+                    style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                  ),
+                  const SizedBox(height: Space.x8),
+                  for (final m in CheckInMetric.values)
+                    CheckboxListTile(
+                      key: ValueKey('check-in-${m.name}'),
+                      value: chosen.contains(m),
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: Text(m.label),
+                      subtitle: Text(m.blurb),
+                      onChanged: (v) => setSheet(
+                        () => v == true ? chosen.add(m) : chosen.remove(m),
+                      ),
+                    ),
+                  const SizedBox(height: Space.x8),
+                  FilledButton(
+                    key: const ValueKey('check-in-done'),
+                    onPressed: () => Navigator.of(context).pop([
+                      for (final m in CheckInMetric.values)
+                        if (chosen.contains(m)) m,
+                    ]),
+                    child: const Text('Done'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    if (picked != null) await set((x) => x.copyWith(checkInMetrics: picked));
   }
 
   Future<void> _editNumber(

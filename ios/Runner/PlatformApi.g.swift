@@ -3311,6 +3311,14 @@ protocol RecorderApi {
   /// [speakRunSummary], one when the run is done. Persisted natively; skipped
   /// whenever voice cues are off.
   func setSpokenSummary(enabled: Bool) throws
+  /// Settings → Voice → "Check-in": which metrics the km line of a Free or
+  /// Trail run says besides the split, by [CheckInMetric] key in the order the
+  /// runner ranks them (distance, time, pace, retrace, hrZone, heightVsStart,
+  /// climb, truePace, avgPace). [zoneBottomsBpm] = the bottoms of zones 2 to 5
+  /// by the runner's own HR method; null = no heart-rate line. Persisted
+  /// natively; applies to a run in progress too. A run never given one (and
+  /// every replay) says the plain km split.
+  func setCheckIn(metrics: [String], zoneBottomsBpm: [Double]?) throws
   /// Voice coaching for the next run and any run resumed after it: persisted
   /// natively, never changes a run's journal or a replay.
   func setVoiceCoach(config: VoiceCoachConfig) throws
@@ -3661,6 +3669,29 @@ class RecorderApiSetup {
       }
     } else {
       setSpokenSummaryChannel.setMessageHandler(nil)
+    }
+    /// Settings → Voice → "Check-in": which metrics the km line of a Free or
+    /// Trail run says besides the split, by [CheckInMetric] key in the order the
+    /// runner ranks them (distance, time, pace, retrace, hrZone, heightVsStart,
+    /// climb, truePace, avgPace). [zoneBottomsBpm] = the bottoms of zones 2 to 5
+    /// by the runner's own HR method; null = no heart-rate line. Persisted
+    /// natively; applies to a run in progress too. A run never given one (and
+    /// every replay) says the plain km split.
+    let setCheckInChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.setCheckIn\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      setCheckInChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let metricsArg = args[0] as! [String]
+        let zoneBottomsBpmArg: [Double]? = nilOrValue(args[1])
+        do {
+          try api.setCheckIn(metrics: metricsArg, zoneBottomsBpm: zoneBottomsBpmArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      setCheckInChannel.setMessageHandler(nil)
     }
     /// Voice coaching for the next run and any run resumed after it: persisted
     /// natively, never changes a run's journal or a replay.

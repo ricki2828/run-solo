@@ -47,6 +47,19 @@ abstract final class VoiceCoachPlan {
     );
   }
 
+  /// What the km check-in is told: the runner's chosen metric keys and the zone
+  /// 2 to 5 bottoms by their own HR method (the same zones the run screen and
+  /// the drift line use). Not tied to the plan: a check-in only exists on Free
+  /// and Trail runs, which have no target pace, so its pace is the raw km pace
+  /// and True Pace is its own metric.
+  static ({List<String> metrics, List<double> zoneBottomsBpm}) checkIn({
+    required AppSettings settings,
+    required engine.HrZones zones,
+  }) => (
+    metrics: [for (final m in settings.checkInMetrics) m.key],
+    zoneBottomsBpm: [for (var z = 2; z <= 5; z++) zones.bottom(z).toDouble()],
+  );
+
   /// The run screen's target band: the same pace the voice judges, but shown
   /// whether or not voice coaching is on. Null = no target (Free runs and
   /// plan sessions without a pace show no band).

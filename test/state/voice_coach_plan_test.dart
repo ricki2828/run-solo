@@ -18,6 +18,26 @@ void main() {
   final zones = engine.HrZones.percentMax(190);
   const vdot = 45.0;
 
+  test('check-in metrics persist, default to all, and pass zones + keys', () {
+    expect(const AppSettings().checkInMetrics, CheckInMetric.values);
+    expect(AppSettings.fromJson(const {}).checkInMetrics, CheckInMetric.values);
+    final back = AppSettings.fromJson(
+      const AppSettings(
+        checkInMetrics: [CheckInMetric.time, CheckInMetric.climb],
+      ).toJson(),
+    );
+    expect(back.checkInMetrics, [CheckInMetric.time, CheckInMetric.climb]);
+    expect(
+      AppSettings.fromJson({
+        'checkInMetrics': ['time', 'nonsense'],
+      }).checkInMetrics,
+      [CheckInMetric.time],
+    );
+    final c = VoiceCoachPlan.checkIn(settings: back, zones: zones);
+    expect(c.metrics, ['time', 'climb']);
+    expect(c.zoneBottomsBpm, [for (var z = 2; z <= 5; z++) zones.bottom(z)]);
+  });
+
   test('settings persist, and an old file has coaching on at full detail', () {
     final back = AppSettings.fromJson(
       const AppSettings(

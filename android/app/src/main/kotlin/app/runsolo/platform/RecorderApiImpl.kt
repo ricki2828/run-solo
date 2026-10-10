@@ -1,5 +1,7 @@
 package app.runsolo.platform
 
+import app.runsolo.core.live.CheckInMetric
+import app.runsolo.core.live.CheckInPlan
 import app.runsolo.core.live.VoiceCoach
 import app.runsolo.core.model.LiveContext as CoreLiveContext
 import app.runsolo.core.route.FollowRoute as CoreFollowRoute
@@ -123,6 +125,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
             .also { it.kmSplits = prefs.getBoolean(RecorderService.PREF_KM_SPLITS, true) }
             .also { it.spokenSummary = prefs.getBoolean(RecorderService.PREF_SPOKEN_SUMMARY, true) }
             .also { it.voiceCoach = voiceCoachFromPrefs() }
+            .also { if (replay == null) it.checkIn = checkInFromPrefs() }
             .also { it.autoPause = prefs.getBoolean(RecorderService.PREF_AUTO_PAUSE, true) }
 
     /**
@@ -199,6 +202,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
             .also { it.kmSplits = prefs.getBoolean(RecorderService.PREF_KM_SPLITS, true) }
             .also { it.spokenSummary = prefs.getBoolean(RecorderService.PREF_SPOKEN_SUMMARY, true) }
             .also { it.voiceCoach = voiceCoachFromPrefs() }
+            .also { it.checkIn = checkInFromPrefs() }
             .also { it.autoPause = prefs.getBoolean(RecorderService.PREF_AUTO_PAUSE, true) }
     }
 
@@ -337,6 +341,22 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         // commit(), not apply(): the next start() may come from a new process.
         prefs.edit().putBoolean(RecorderService.PREF_KM_SPLITS, enabled).commit()
         active()?.kmSplits = enabled
+    }
+
+    override fun setCheckIn(metrics: List<String>, zoneBottomsBpm: List<Double>?) {
+        // commit(), not apply(): the next start() may come from a new process.
+        prefs.edit()
+            .putString(RecorderService.PREF_CHECKIN, metrics.joinToString(","))
+            .putString(RecorderService.PREF_CHECKIN_ZONES, zoneBottomsBpm?.joinToString(","))
+            .commit()
+        active()?.checkIn = checkInFromPrefs()
+    }
+
+    /** The km check-in the app set (also read on a resume); null = never set, so the plain km split. An empty choice says no km line. */
+    internal fun checkInFromPrefs(): CheckInPlan? {
+        val raw = prefs.getString(RecorderService.PREF_CHECKIN, null) ?: return null
+        val zones = prefs.getString(RecorderService.PREF_CHECKIN_ZONES, null)?.split(",")?.mapNotNull { it.toDoubleOrNull() }?.takeIf { it.size == 4 }
+        return CheckInPlan(CheckInMetric.parse(raw.split(",").filter { it.isNotEmpty() }), zones)
     }
 
     override fun setSpokenSummary(enabled: Boolean) {
