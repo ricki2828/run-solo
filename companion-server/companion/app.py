@@ -11,13 +11,13 @@ from typing import Literal
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from . import logs
 from .channels import TelegramChannel, WhatsAppChannel, verify_wa_signature
 from .config import Settings
 from .service import NotFound, RateLimited, RunIn, Service
-from .timeutil import now_utc
+from .timeutil import now_utc, valid_zone
 
 log = logging.getLogger("companion")
 
@@ -87,11 +87,29 @@ class EnrolConfirmIn(EnrolStatusIn):
     code: str = Field(pattern=r"^\d{6}$")
 
 
+ZONE_RE = r"^[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}$"
+
+
+def _check_zone(v: str | None) -> str | None:
+    if v is not None and not valid_zone(v):
+        raise ValueError("unknown time zone")
+    return v
+
+
+class TimezoneIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    zone_id: str = Field(max_length=64, pattern=ZONE_RE)  # IANA name, e.g. Europe/Athens
+
+    _zone = field_validator("zone_id")(_check_zone)
+
+
 class SettingsIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     quiet_start_min: int | None = Field(default=None, ge=0, lt=1440)
     quiet_end_min: int | None = Field(default=None, ge=0, lt=1440)
-    zone_id: str | None = Field(default=None, max_length=64)
+    zone_id: str | None = Field(default=None, max_length=64, pattern=ZONE_RE)
+
+    _zone = field_validator("zone_id")(_check_zone)
 
 
 class IpLimiter:
@@ -214,6 +232,15 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
     def put_settings(body: SettingsIn, uid: str = Depends(current_user)):
         svc.set_settings(uid, body.quiet_start_min, body.quiet_end_min, body.zone_id)
         return {"status": "ok"}
+
+    @app.put("/v1/me/timezone")
+    def put_timezone(body: TimezoneIn, uid: str = Depends(current_user)):
+        """The app calls this when the phone's zone changes (travel). The 8 pm suggestion and the 7 pm Sunday
+        recap follow the new zone from the next planning tick."""
+        try:
+            return svc.set_timezone(uid, body.zone_id)
+        except NotFound:
+            raise HTTPException(404, "gone")
 
     # --- webhooks ---
     @app.post("/hooks/telegram")

@@ -17,6 +17,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from . import db
 from .channels import ChannelError, Inbound, OutCard, TelegramChannel, WhatsAppChannel
 from .config import Settings
+from .deeplink import run_link, web_twin, week_link
+from .media import Media, MediaError, MediaRenderer
 from .convo import engine as cv_engine
 from .convo import recap as cv_recap
 from .convo import suggest as cv_suggest
@@ -135,6 +137,7 @@ class Service:
         if settings.wa_ready:
             self.channels["whatsapp"] = WhatsAppChannel(settings, http)
         self.weather = OpenMeteo(http) if settings.weather_enabled else NoWeather()
+        self.media = MediaRenderer()  # lazy: Chromium and ffmpeg are only touched when media_enabled is on
         db.init(settings.db_path)
 
     # ---------------------------------------------------------------- tokens / enrolment (B1)
@@ -396,6 +399,18 @@ class Service:
                 c.execute("UPDATE users SET quiet_start=?, quiet_end=? WHERE id=?", (quiet_start, quiet_end, uid))
             if zone_id and valid_zone(zone_id):
                 c.execute("UPDATE users SET zone_id=? WHERE id=?", (zone_id, uid))
+
+    def set_timezone(self, uid: str, zone_id: str, now: datetime | None = None) -> dict:
+        """Move the user to `zone_id` (already validated). Scheduling reads users.zone_id; weekly caps stay pinned
+        to the week they started in (resolve_cap_week), so travelling does not hand out a second weekly allowance."""
+        now = now or now_utc()
+        if not valid_zone(zone_id):
+            raise ValueError("unknown time zone")
+        offset = int(to_local(now, zone_id).utcoffset().total_seconds() // 60)
+        with db.tx(self.s.db_path) as c:
+            if not c.execute("UPDATE users SET zone_id=?, utc_offset_min=? WHERE id=?", (zone_id, offset, uid)).rowcount:
+                raise NotFound()
+        return {"status": "ok", "zone_id": zone_id, "utc_offset_min": offset}
 
     # ---------------------------------------------------------------- runs (B6)
     def ingest_run(self, uid: str, run: RunIn, now: datetime | None = None) -> dict:
@@ -724,13 +739,61 @@ class Service:
             card = dict(c.execute("SELECT * FROM cards WHERE card_id=?", (card_id,)).fetchone())
         if card["sent_at"]:
             return
-        out = OutCard(card_id, card["headline"], card["body"], json.loads(card["buttons_json"]))
+        buttons = json.loads(card["buttons_json"])
+        telegram = user["channel"] == "telegram"
+        links = self._links(card) if telegram else ()
         in_window = bool(user["last_inbound_at"] and parse_iso(user["last_inbound_at"]) > now - timedelta(hours=24))
-        ch.send_card(user["chat_ref"], out, in_window=in_window)
+        media = self._render_media(user, card, now) if telegram and self.s.media_enabled else None
+        if media is not None:
+            try:
+                ch.send_card(user["chat_ref"], OutCard(card_id, card["headline"], card["body"], buttons, media, links))
+            except ChannelError as e:
+                if not e.permanent:
+                    raise
+                log.warning("media refused, sending text: %s", e)
+                media = None
+        if media is None:
+            ch.send_card(user["chat_ref"], OutCard(card_id, card["headline"], card["body"], buttons, None, links),
+                         in_window=in_window)
         with db.tx(self.s.db_path) as c:
             c.execute("UPDATE cards SET sent_at=? WHERE card_id=?", (iso(now), card_id))
             c.execute("INSERT INTO msglog (user_id, ts, direction, kind) VALUES (?,?,?,?)",
                       (user["id"], iso(now), "out", card["kind"]))
+
+    def _links(self, card: dict) -> tuple[tuple[str, str], ...]:
+        """Deep-link buttons for a card: the run itself, or the recap's week. Empty without a configured https base."""
+        ref = card.get("run_id") or ""
+        if card["kind"] == "run":
+            uri = run_link(ref)
+        elif card["kind"] == "recap" and ref.startswith("recap:"):
+            uri = week_link(ref[len("recap:"):])
+        else:
+            return ()
+        url = web_twin(self.s.deeplink_base, uri)
+        return (("Open in app", url),) if url else ()
+
+    def _render_media(self, user: dict, card: dict, now: datetime) -> Media | None:
+        """The card's planned photo or video, or None (no media planned, or any render failure: the text goes out)."""
+        with db.ro(self.s.db_path) as c:
+            cc = c.execute("SELECT media_json FROM convo_cards WHERE card_id=?", (card["card_id"],)).fetchone()
+            if not cc:
+                return None
+            plan = json.loads(cc["media_json"])
+            if plan.get("card") in (None, "none"):
+                return None
+            if card["kind"] == "recap":
+                runs = [dict(r) for r in c.execute("SELECT * FROM runs WHERE user_id=? AND start_utc>=?",
+                                                    (user["id"], iso(now - timedelta(days=21))))]
+            else:
+                runs = [dict(r) for r in c.execute("SELECT * FROM runs WHERE user_id=? AND run_id=?",
+                                                    (user["id"], card.get("run_id")))]
+        try:
+            return self.media.render(plan, card, runs)
+        except MediaError as e:
+            log.warning("render failed, sending text: %s", e)
+        except Exception as e:  # renderer missing or crashed: the text card is still the product
+            log.warning("render crashed, sending text: %s", type(e).__name__)
+        return None
 
     # ---------------------------------------------------------------- outbox worker (C5)
     def _process(self, item: dict, now: datetime) -> tuple[str, datetime | None]:

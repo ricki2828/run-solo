@@ -1,0 +1,81 @@
+{
+  "messaging_product": "whatsapp",
+  "template": {
+    "components": [
+      {
+        "parameters": [
+          {
+            "image": {
+              "id": "MEDIA_ID_IMG"
+            },
+            "type": "image"
+          }
+        ],
+        "type": "header"
+      },
+      {
+        "parameters": [
+          {
+            "text": "Easy one",
+            "type": "text"
+          },
+          {
+            "text": "7.0 km at 5:42. Steady.",
+            "type": "text"
+          }
+        ],
+        "type": "body"
+      },
+      {
+        "index": "0",
+        "parameters": [
+          {
+            "payload": "abc123:0",
+            "type": "payload"
+          }
+        ],
+        "sub_type": "quick_reply",
+        "type": "button"
+      },
+      {
+        "index": "1",
+        "parameters": [
+          {
+            "payload": "abc123:1",
+            "type": "payload"
+          }
+        ],
+        "sub_type": "quick_reply",
+        "type": "button"
+      },
+      {
+        "index": "2",
+        "parameters": [
+          {
+            "payload": "abc123:2",
+            "type": "payload"
+          }
+        ],
+        "sub_type": "quick_reply",
+        "type": "button"
+      },
+      {
+        "index": "3",
+        "parameters": [
+          {
+            "text": "run/r1",
+            "type": "text"
+          }
+        ],
+        "sub_type": "url",
+        "type": "button"
+      }
+    ],
+    "language": {
+      "code": "en"
+    },
+    "name": "run_card"
+  },
+  "to": "61400111222",
+  "type": "template"
+}
