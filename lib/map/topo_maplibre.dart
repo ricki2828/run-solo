@@ -25,6 +25,7 @@ import '../topo/topo_files.dart';
 import '../topo/topo_style.dart';
 import 'blank_snapshot.dart';
 import 'map_surface.dart';
+import 'retrace_tracker.dart';
 import 'route_builder.dart';
 import 'snapshot_cache.dart';
 import 'topo_map_surface.dart';
@@ -484,6 +485,7 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
   /// The drawn track, thinned past [_maxDisplayPoints]; the recorder keeps
   /// the full route. [_epoch] restarts it when the route is cleared.
   final List<GeoPoint> _line = [];
+  final RetraceTracker _retrace = RetraceTracker();
   int _fed = 0;
   int _epoch = 0;
 
@@ -516,9 +518,12 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
     if (track.epoch != _epoch || track.count < _fed) {
       _epoch = track.epoch;
       _line.clear();
+      _retrace.clear();
       _fed = 0;
     }
-    _line.addAll(track.since(_fed));
+    final fresh = track.since(_fed);
+    _retrace.add(fresh);
+    _line.addAll(fresh);
     _fed = track.count;
     if (_line.length > _maxDisplayPoints) {
       final thin = simplifyForDisplay(List.of(_line), _maxDisplayPoints ~/ 2);
@@ -576,6 +581,11 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
       c,
       TopoStyle.trackSource,
       TopoStyle.gradientLine(_line, fallback: widget.color, casing: t.bgBase),
+    );
+    await _setSource(
+      c,
+      TopoStyle.retraceSource,
+      TopoStyle.retraceLines(_retrace.sections, dash: t.bgBase),
     );
     final last = widget.track.last;
     await _setSource(

@@ -40,6 +40,7 @@ class TopoStyle {
   // Source and layer ids of the route layers.
   static const String planSource = 'rs-plan';
   static const String trackSource = 'rs-track';
+  static const String retraceSource = 'rs-retrace';
   static const String marksSource = 'rs-marks';
   static const String meSource = 'rs-me';
 
@@ -65,7 +66,13 @@ class TopoStyle {
         .cast<String, Object?>();
     _swapFonts(style['layers']);
     final sources = (style['sources'] as Map).cast<String, Object?>();
-    for (final id in const [planSource, trackSource, marksSource, meSource]) {
+    for (final id in const [
+      planSource,
+      trackSource,
+      retraceSource,
+      marksSource,
+      meSource,
+    ]) {
       sources[id] = {
         'type': 'geojson',
         'data': routeData[id] ?? emptyCollection,
@@ -191,6 +198,18 @@ class TopoStyle {
     _line('rs-plan', planSource, ['get', 'c'], 5, wide: 7),
     _line('rs-track-casing', trackSource, ['get', 'k'], 9, wide: 11),
     _line('rs-track', trackSource, ['get', 'c'], 5, wide: 7),
+    // A retraced stretch: the track's colour stays, stitched with dark dashes.
+    {
+      'id': 'rs-retrace',
+      'type': 'line',
+      'source': retraceSource,
+      'layout': {'line-cap': 'butt', 'line-join': 'round'},
+      'paint': {
+        'line-color': ['get', 'k'],
+        'line-width': 3,
+        'line-dasharray': [1, 1.4],
+      },
+    },
     {
       'id': 'rs-marks',
       'type': 'circle',
@@ -304,6 +323,28 @@ class TopoStyle {
       ],
     };
   }
+
+  /// The retraced sections as lines (colour `k` is the dash colour).
+  static Map<String, Object?> retraceLines(
+    Iterable<List<GeoPoint>> sections, {
+    required Color dash,
+  }) => {
+    'type': 'FeatureCollection',
+    'features': [
+      for (final sec in sections)
+        if (sec.length > 1)
+          {
+            'type': 'Feature',
+            'properties': {'k': hex(dash)},
+            'geometry': {
+              'type': 'LineString',
+              'coordinates': [
+                for (final p in sec) <double>[p.lon, p.lat],
+              ],
+            },
+          },
+    ],
+  };
 
   /// One dot: [fill] inside a [ring].
   static Map<String, Object?> dots(
