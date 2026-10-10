@@ -90,9 +90,12 @@ android {
 
     flavorDimensions += "dist"
     productFlavors {
-        // Play track: applicationId app.runsolo (reserved for Play-signed builds).
+        // Play track: applicationId app.runsupreme (Run Supreme brand, reserved for Play-signed builds).
+        // Only this flavour moves: dogfood keeps app.runsolo.dogfood so the founder's sideloaded data survives.
+        // Kotlin namespace/packages stay app.runsolo (namespace and applicationId are independent).
         create("play") {
             dimension = "dist"
+            applicationId = "app.runsupreme"
             buildConfigField("boolean", "REPLAY_ENABLED", "false")
             // Upload key when RUN_SOLO_UPLOAD_KEYSTORE is set (release-aab job), debug key otherwise.
             // The debug build type keeps its own debug signing (build type wins over flavour).
