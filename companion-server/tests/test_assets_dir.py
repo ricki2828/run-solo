@@ -15,11 +15,15 @@ def test_assets_dir_env_override(tmp_path, monkeypatch):
         assert b.BRAND_SVG_DIR == tmp_path / "brand" / "svg"
         assert (b.FONT_DIR / "SairaExtraCondensed-ExtraBold.ttf").is_file()
     finally:
-        monkeypatch.delenv("COMPANION_ASSETS_DIR")
+        monkeypatch.undo()  # restore the caller's environment before reloading, so later tests see it
         importlib.reload(brand)
 
 
 def test_assets_dir_defaults_to_repo(monkeypatch):
     monkeypatch.delenv("COMPANION_ASSETS_DIR", raising=False)
-    b = importlib.reload(brand)
-    assert b.ASSETS_DIR == b.REPO / "assets"
+    try:
+        b = importlib.reload(brand)
+        assert b.ASSETS_DIR == b.REPO / "assets"
+    finally:
+        monkeypatch.undo()
+        importlib.reload(brand)
