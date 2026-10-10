@@ -44,6 +44,7 @@ class Verdict:
     # the facts the hero is derived from: pace (s/km) for faster/slower/holding, total seconds for pb
     old: float | None = None
     new: float | None = None
+    fmt: str = "num"  # "num", or "mss" when the hero is a duration in seconds shown as m:ss
 
 
 @dataclass
@@ -86,8 +87,56 @@ class RunVideoSpec:
                 raise ValueError(f"verdict new={v.new} does not match the run ({want:.1f})")
             if round(abs(round(v.old) - round(v.new)), v.decimals) != round(v.hero, v.decimals):
                 raise ValueError(f"hero {v.hero} != |old {v.old} - new {v.new}|")
-        elif v.kind in ("faster", "slower", "pb"):
-            raise ValueError("verdict needs old and new so the hero can be checked")
+        elif v.kind == "pb":
+            raise ValueError("a PB verdict needs old and new so the hero can be checked")
+
+
+def fmt_hero(v, val: float) -> str:
+    if v.fmt == "mss":
+        s = int(round(val))
+        return f"{s // 60}:{s % 60:02d}"
+    return f"{val:.{v.decimals}f}"
+
+
+RUN_TYPE = {"easy": "AEROBIC", "long": "LONG", "tempo": "MID", "interval": "SPEED", "race": "SPEED"}
+
+
+def spec_from_facts(f: dict, signoff: str = "Same time next run.") -> "RunVideoSpec":
+    """Build the spec from the shared run-facts dict (same schema as the cards: distance_km, duration_s,
+    pace_s_per_km, zone_s, route, verdict, headline, hero, pb_detail) plus `splits`."""
+    from datetime import datetime
+
+    dist, dur = float(f["distance_km"]), float(f["duration_s"])
+    if "pace_s_per_km" in f and abs(f["pace_s_per_km"] - dur / dist) > 2:
+        raise ValueError(f"pace {f['pace_s_per_km']} s/km does not match {dur}s over {dist} km")
+    if not f.get("splits"):
+        raise ValueError("run facts need splits (km, pace_s, zone) to draw the bars")
+    zs = list(f.get("zone_s") or [])
+    hard = bool(f.get("pb")) or f.get("type") in ("interval", "race") or (
+        sum(zs) > 0 and (zs[3] + zs[4]) / sum(zs) >= 0.4)
+    flood = None
+    if hard:
+        flood = 5 if (len(zs) == 5 and zs[4] > zs[3]) else 4
+    when = datetime.fromisoformat(f["start_local"])
+    splits = [Split(str(x["km"]), float(x["pace_s"]), x.get("zone"), float(x.get("dist_km", 1.0))) for x in f["splits"]]
+    if f.get("pb"):
+        pbd = f["pb_detail"]
+        v = Verdict("pb", abs(pbd["delta_s"]), 0, "SEC", context=str(pbd["label"]).upper(),
+                    caption=f.get("headline", ""), old=pbd["previous_s"], new=dur)
+    else:
+        h = f.get("hero")
+        if h:
+            val = h["value"]
+            secs = (int(val.split(":")[0]) * 60 + int(val.split(":")[1])) if isinstance(val, str) and ":" in val else float(val)
+            v = Verdict(f["verdict"], secs, 0, str(h.get("unit", "")), fmt="mss" if isinstance(val, str) and ":" in val else "num",
+                        context=str(f.get("place_note", "")).upper(), caption=f.get("headline", ""))
+        else:
+            v = Verdict(f["verdict"], dur / dist, 0, "/KM AVG", fmt="mss", context="AVERAGE PACE",
+                        caption=f.get("headline", ""))
+    return RunVideoSpec(
+        kind_label=f["title"].upper(), date_label=when.strftime("%a %-d %b").upper(), route=f["route"],
+        distance_km=dist, duration_s=dur, splits=splits, verdict=v, run_type=RUN_TYPE.get(f.get("type"), "AEROBIC"),
+        flood_zone=flood, signoff=signoff)
 
 
 WORDS = {"faster": "FASTER", "slower": "SLOWER", "holding": "HOLDING", "pb": "NEW PB"}
@@ -313,7 +362,7 @@ class RunVideo:
         ry = wbase + 34
         cv.rect(M, ry, M + (RIGHT - M) * rw, ry + 16, th.fade(self.vrule, a), r=8)
         # hero number counting up, sized to the widest value so it never changes size mid-count
-        txt_max = f"{v.hero:.{v.decimals}f}"
+        txt_max = fmt_hero(v, v.hero)
         hpx = 660
         unit_f = lambda px: saira(int(px * 0.26))  # noqa: E731
 
@@ -325,7 +374,7 @@ class RunVideo:
         while width(hpx) > RIGHT - M + 6 and hpx > 200:
             hpx -= 10
         hp = out_quart(seg(t, *HERO))
-        txt = f"{v.hero * hp:.{v.decimals}f}"
+        txt = fmt_hero(v, v.hero * hp)
         ha = a * clamp(seg(t, HERO[0] - 0.15, HERO[0] + 0.25))
         hbase = ry + 16 + 70 + hpx * 0.70
         hf = saira(hpx)

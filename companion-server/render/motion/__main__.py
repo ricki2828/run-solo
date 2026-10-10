@@ -1,4 +1,4 @@
-"""python -m render.motion <easy|hard|slower|weekly> out.mp4  (sample data; prints render time)"""
+"""python -m render.motion <milos|intervals|slow|pb|weekly> out.mp4  (sample facts; prints render time)"""
 import sys
 import time
 
@@ -14,7 +14,7 @@ def main(argv):
 
         render_weekly_video(samples.weekly(), out)
     else:
-        render_run_video({"easy": samples.easy_run, "hard": samples.hard_run, "slower": samples.slower_run}[which](), out)
+        render_run_video(samples.run_spec(which), out)
     print(f"{out}: {time.time() - t0:.1f}s")
 
 

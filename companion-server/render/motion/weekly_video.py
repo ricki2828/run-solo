@@ -29,21 +29,19 @@ class Day:
 @dataclass
 class ScoreChange:
     name: str  # AEROBIC | SPEED | MID | LONG
-    old: int
-    new: int
+    delta: int  # the week's move; the facts carry moves, not absolute scores
 
 
 @dataclass
 class Best:
     label: str = "BEST MOMENT"
-    headline: str = ""  # "5K PB"
-    detail: str = ""  # "22:41 on Tuesday"
+    text: str = ""  # one sentence, wrapped big
     pb: bool = False  # cyan rule when it is a PB
 
 
 @dataclass
 class WeeklySpec:
-    week_label: str  # "WEEK 6 TO 12 OCT"
+    week_label: str  # "WEEK 41"
     total_km: float
     runs: int
     total_min: float
@@ -54,11 +52,36 @@ class WeeklySpec:
     flood_zone: int | None = None
     title: str = "YOUR WEEK"
 
+    def __post_init__(self):
+        if len(self.days) != 7:
+            raise ValueError("a week has 7 days")
+        mins = sum(sum(d.zone_min) for d in self.days)
+        if abs(mins - self.total_min) > 0.02 * self.total_min:
+            raise ValueError(f"days add up to {mins:.0f} min, week says {self.total_min:.0f}")
+        ran = sum(1 for d in self.days if sum(d.zone_min) > 0)
+        if ran != self.runs:
+            raise ValueError(f"{ran} days with running but runs={self.runs}")
+
+
+SCORE_KEYS = ("aerobic", "speed", "mid", "long")
+DAY_LABELS = "MTWTFSS"
+
+
+def weekly_from_facts(f: dict, signoff: str = "See you next Sunday.") -> WeeklySpec:
+    """Same schema as the weekly card: week_label, distance_km, runs, duration_s, days[{zone_s}],
+    score_moves{aerobic..long}, best_moment{text}. duration_s must equal the days' zone time."""
+    days = [Day(DAY_LABELS[i], [x / 60 for x in (d.get("zone_s") or [0] * 5)]) for i, d in enumerate(f["days"])]
+    moves = f.get("score_moves") or {}
+    best = f.get("best_moment") or {}
+    return WeeklySpec(
+        week_label=str(f["week_label"]).upper(), total_km=float(f["distance_km"]), runs=int(f["runs"]),
+        total_min=f["duration_s"] / 60, days=days,
+        scores=[ScoreChange(k.upper(), int(round(moves[k]))) for k in SCORE_KEYS if k in moves],
+        best=Best(text=best.get("text", ""), pb=bool(best.get("pb"))), signoff=signoff)
+
 
 class WeeklyVideo:
     def __init__(self, spec: WeeklySpec):
-        if len(spec.days) != 7:
-            raise ValueError("a week has 7 days")
         self.s = spec
         self.th = Theme(spec.flood_zone)
         self.max_min = max(sum(d.zone_min) for d in spec.days) or 1
@@ -149,34 +172,57 @@ class WeeklyVideo:
             cv.rect(M, base - 112, RIGHT, base - 109, th.fade(th.hair, al))
             cv.rect(M, base - 90, M + 12, base - 8, th.fade(col, al), r=4)
             cv.text((M + 34, base - 28 + off), sc.name, grot(36, 700), th.fade(th.ink, al), tracking=4)
-            val = sc.old + (sc.new - sc.old) * out_quart(seg(t, t0 + 0.3, t0 + 1.5))
-            cv.digits((690, base - 4 + off), f"{int(round(val))}", saira(128), th.fade(col, al), anchor="r")
-            d = sc.new - sc.old
-            ds = seg(t, t0 + 0.9, t0 + 1.4)
-            da = al * ds
+            d = sc.delta
+            val = d * out_quart(seg(t, t0 + 0.3, t0 + 1.5))
+            txt = f"{'+' if d > 0 else ''}{int(round(val))}" if d else "0"
+            cv.digits((700, base - 4 + off), txt, saira(128), th.fade(col, al), anchor="r")
+            da = al * seg(t, t0 + 0.9, t0 + 1.4)
             if da > 0:
-                cx, cy, r = 760, base - 52, 22
+                cx, cy, r = 780, base - 52, 24
                 if d > 0:
                     cv.poly([(cx - r, cy + r * 0.8), (cx + r, cy + r * 0.8), (cx, cy - r * 0.9)], th.fade(col, da))
                 elif d < 0:
                     cv.poly([(cx - r, cy - r * 0.8), (cx + r, cy - r * 0.8), (cx, cy + r * 0.9)], th.fade(col, da))
                 else:
                     cv.rect(cx - r, cy - 4, cx + r, cy + 4, th.fade(col, da), r=3)
-                cv.text((cx + 40, base - 28), f"{'+' if d > 0 else ''}{d}" if d else "HOLD", saira(80),
-                        th.fade(col, da))
+                    cv.text((cx + 44, base - 28), "HOLD", saira(80), th.fade(col, da))
+
+    def _wrap(self, text, max_lines=6):
+        """Largest Saira size whose wrapped lines fit the width and max_lines."""
+        words = text.upper().split()
+        width = RIGHT - M
+        for px in range(320, 90, -6):
+            f = saira(px)
+            lines, cur = [], ""
+            for w in words:
+                trial = (cur + " " + w).strip()
+                if f.getlength(trial) / 2 <= width:
+                    cur = trial
+                else:
+                    lines.append(cur)
+                    cur = w
+            lines.append(cur)
+            if len(lines) <= max_lines and len(lines) * px * 0.76 <= 760 and all(f.getlength(x) / 2 <= width for x in lines):
+                return px, lines
+        return 90, lines
 
     def _best(self, cv: Canvas, t: float, a: float):
         th, b = self.th, self.s.best
         q = seg(t, BEST_T, BEST_T + 0.55)
         e = out_back(q, 1.6)
         al = clamp(q * 2.2) * a
-        cv.text((M, 540), b.label, grot(40, 700), th.fade(th.quiet, al), tracking=6)
-        size = int(lerp(0.8, 1.0, clamp(e, 0, 1.12)) * 330)
-        cv.text((M - 6, 840 + (1 - clamp(e, 0, 1)) * 40), b.headline, saira(size), th.fade(th.ink, al))
-        rw = out_cubic(seg(t, BEST_T + 0.15, BEST_T + 0.85))
+        px, lines = self._wrap(b.text)
+        lh = px * 0.76
+        block = len(lines) * lh
+        top = 700 - block / 2  # centred in the free area under the header
+        cv.text((M, top - 70), b.label, grot(40, 700), th.fade(th.quiet, al), tracking=6)
+        for i, ln in enumerate(lines):
+            la = clamp(seg(t, BEST_T + 0.12 * i, BEST_T + 0.12 * i + 0.45)) * a
+            cv.text((M - 6, top + (i + 1) * lh - (1 - out_cubic(clamp(seg(t, BEST_T + 0.12 * i, BEST_T + 0.12 * i + 0.45)))) * 30),
+                    ln, saira(px), th.fade(th.ink, la))
+        rw = out_cubic(seg(t, BEST_T + 0.15 + 0.12 * len(lines), BEST_T + 0.85 + 0.12 * len(lines)))
         rule = T.PB_CYAN if b.pb else th.scores["AEROBIC"]
-        cv.rect(M, 895, M + (RIGHT - M) * rw, 911, th.fade(rule, a), r=8)
-        cv.text((M, 990), b.detail, grot(50, 500), th.fade(th.ink, a * clamp(seg(t, BEST_T + 0.7, BEST_T + 1.2))))
+        cv.rect(M, top + block + 40, M + (RIGHT - M) * rw, top + block + 56, th.fade(rule, a), r=8)
 
     def frames(self):
         for i in range(N_FRAMES):

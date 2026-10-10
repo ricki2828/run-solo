@@ -34,7 +34,8 @@ PB_CYAN = "#19E6FF"
 
 # Zone chart ramp Z1..Z5 and the matching floods
 ZONES = ["#2F6DB5", "#2E9E5B", "#D9A21B", "#E86A1C", "#D6283B"]
-FLOODS = ["#1C3F6E", "#17603A", "#7A5A08", "#8A3410", "#7D1222"]
+# Z2/Z3/Z4 darkened to 7:1 Bone contrast, same values as render/brand.py ZONE_FLOOD (rs-cards, #221)
+FLOODS = ["#1C3F6E", "#155835", "#634907", "#863210", "#7D1222"]
 
 MARK_INK = "#0F1114"
 ARC_LIGHT = "#0098B2"

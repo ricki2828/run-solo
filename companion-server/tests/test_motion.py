@@ -35,7 +35,7 @@ def _frames(path):
 
 @pytest.fixture(scope="module")
 def run_mp4(tmp_path_factory):
-    return render_run_video(samples.hard_run(), tmp_path_factory.mktemp("m") / "run.mp4")
+    return render_run_video(samples.run_spec("pb"), tmp_path_factory.mktemp("m") / "run.mp4")
 
 
 @pytest.fixture(scope="module")
@@ -66,7 +66,7 @@ def test_route_prep_handles_closed_loop():
 
 
 def test_unknown_verdict_rejected():
-    spec = samples.easy_run()
+    spec = samples.run_spec("slow")
     spec.verdict.kind = "sideways"
     with pytest.raises(ValueError):
         RunVideo(spec)
@@ -89,12 +89,12 @@ def _check(name, img):
 
 @pytest.mark.parametrize("t", KEY_T)
 def test_run_goldens_light(t):
-    _check(f"run_easy_{t}", RunVideo(samples.easy_run()).frame(t))
+    _check(f"run_light_{t}", RunVideo(samples.run_spec("milos")).frame(t))
 
 
 @pytest.mark.parametrize("t", [3.7, 9.0])
 def test_run_goldens_flood(t):
-    _check(f"run_flood_{t}", RunVideo(samples.hard_run()).frame(t))
+    _check(f"run_flood_{t}", RunVideo(samples.run_spec("pb")).frame(t))
 
 
 @pytest.mark.parametrize("t", [3.0, 7.0, 10.0])
@@ -102,37 +102,56 @@ def test_weekly_goldens(t):
     _check(f"weekly_{t}", WeeklyVideo(samples.weekly()).frame(t))
 
 
-@pytest.mark.parametrize("fn", [samples.easy_run, samples.hard_run, samples.slower_run])
-def test_hero_is_old_minus_new(fn):
-    spec = fn()
+@pytest.mark.parametrize("which", ["milos", "intervals", "slow", "pb"])
+def test_facts_agree(which):
+    spec = samples.run_spec(which)
     v = spec.verdict
-    assert v.hero == abs(round(v.old) - round(v.new))
     if v.kind == "pb":
-        assert v.new == spec.duration_s and v.hero == 72  # 45:12 -> 44:00
+        assert v.new == spec.duration_s and v.hero == v.old - v.new == 48  # 22:29 -> 21:41
+    elif v.fmt == "mss" and v.unit == "/KM AVG":
+        assert abs(v.hero - spec.duration_s / spec.distance_km) < 1e-6  # hero is the avg pace shown in the stats
     # the splits cover every km and add up to the run
     assert len(spec.splits) == -(-spec.distance_km // 1)
     assert abs(sum(s.dist_km * s.pace_s for s in spec.splits) - spec.duration_s) < 0.015 * spec.duration_s
 
 
 def test_wrong_hero_rejected():
-    spec = samples.hard_run()
+    spec = samples.run_spec("pb")
     spec.verdict.hero = 41
     with pytest.raises(ValueError, match="hero"):
         spec.validate()
 
 
 def test_missing_km_rejected():
-    spec = samples.hard_run()
-    spec.splits = spec.splits[:6]
+    spec = samples.run_spec("pb")
+    spec.splits = spec.splits[:3]
     with pytest.raises(ValueError):
         spec.validate()
 
 
 def test_distance_lands_exactly():
-    v = RunVideo(samples.easy_run())
+    v = RunVideo(samples.run_spec("milos"))
     from render.motion.run_video import ROUTE
 
     # the count-up has finished (and holds the exact value) before the route head arrives
     f = v.frame(ROUTE[1] - 0.2)
     g = v.frame(ROUTE[1] + 0.2)
     assert f.crop((0, 880, 700, 1150)).tobytes() == g.crop((0, 880, 700, 1150)).tobytes()
+
+
+def test_weekly_facts_must_add_up():
+    f = samples.weekly_facts()
+    f["duration_s"] += 3600
+    from render.motion.weekly_video import weekly_from_facts
+
+    with pytest.raises(ValueError, match="add up"):
+        weekly_from_facts(f)
+
+
+def test_weekly_runs_must_match_days():
+    f = samples.weekly_facts()
+    f["runs"] = 4
+    from render.motion.weekly_video import weekly_from_facts
+
+    with pytest.raises(ValueError, match="runs"):
+        weekly_from_facts(f)
