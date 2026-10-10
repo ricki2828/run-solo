@@ -1,8 +1,10 @@
-/// The MAP view's one-line version of `StartReadout`: arrow and height vs the
-/// start, and while heading back over the old track a u-turn and the distance
-/// back, on the same outlined plate (a Bone outline on a dimmed ground, never
-/// a colour). Icons stand in for the labels so the figures keep the 36 sp
-/// floor on one short line and the map keeps its room.
+/// The MAP view's readouts relative to the start, with words (founder,
+/// 10-Oct): [HeightFigure] ("VS START", arrow, signed metres) rides in the
+/// free half of the DISTANCE row so it costs the map no height, and
+/// [StartStrip] ("BACK TO START", u-turn, km) is the one extra line, shown
+/// only while heading back over the old track, on a Bone-outlined, dimmed
+/// plate (never a colour). Labels use the run-label size, numbers stay the
+/// 36 sp floor and the loudest thing on the line.
 library;
 
 import 'package:flutter/material.dart';
@@ -14,21 +16,85 @@ import 'start_readout.dart';
 
 final double _figureSize = RunSoloType.runSize(36);
 
-class StartStrip extends StatelessWidget {
-  const StartStrip({
+/// "VS START" over an arrow and the height against the start.
+class HeightFigure extends StatelessWidget {
+  const HeightFigure({
     super.key,
     required this.heightVsStartM,
-    required this.backToStartM,
     required this.units,
+    required this.labelColor,
     required this.valueColor,
   });
 
-  final double? heightVsStartM;
-  final double? backToStartM;
+  final double heightVsStartM;
   final Units units;
+  final Color labelColor;
   final Color valueColor;
 
-  bool get retracing => backToStartM != null;
+  @override
+  Widget build(BuildContext context) {
+    final h = heightVsStartM;
+    final level = StartReadout.isLevel(h);
+    return Semantics(
+      label: 'Height against the start',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'VS START',
+            maxLines: 1,
+            softWrap: false,
+            style: RunLabelScope.style(context, labelColor),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!level) ...[
+                Icon(
+                  h > 0 ? Icons.arrow_upward : Icons.arrow_downward,
+                  key: ValueKey(
+                    h > 0 ? 'strip-height-up' : 'strip-height-down',
+                  ),
+                  size: _figureSize * 0.8,
+                  color: valueColor,
+                ),
+                const SizedBox(width: Space.x4),
+              ],
+              Text(
+                level
+                    ? 'LEVEL'
+                    : '${h > 0 ? '+' : '−'}'
+                          '${Fmt.elevationAbs(h, units)}',
+                key: const ValueKey('strip-height'),
+                softWrap: false,
+                style: RunSoloType.display44.copyWith(
+                  fontSize: _figureSize,
+                  color: valueColor,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "BACK TO START" with a u-turn and the distance back, on one plate line.
+class StartStrip extends StatelessWidget {
+  const StartStrip({
+    super.key,
+    required this.backToStartM,
+    required this.units,
+    required this.labelColor,
+    required this.valueColor,
+  });
+
+  final double backToStartM;
+  final Units units;
+  final Color labelColor;
+  final Color valueColor;
 
   static const double _outline = 2;
 
@@ -38,86 +104,50 @@ class StartStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final h = heightVsStartM;
-    final back = backToStartM;
-    final style = RunSoloType.display44.copyWith(
-      fontSize: _figureSize,
-      color: valueColor,
-    );
-    final iconSize = _figureSize * 0.8;
-    final cells = <Widget>[
-      if (h != null)
-        Semantics(
-          label: 'Height against the start',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!StartReadout.isLevel(h)) ...[
-                Icon(
-                  h > 0 ? Icons.arrow_upward : Icons.arrow_downward,
-                  key: ValueKey(
-                    h > 0 ? 'strip-height-up' : 'strip-height-down',
-                  ),
-                  size: iconSize,
-                  color: valueColor,
-                ),
-                const SizedBox(width: Space.x4),
-              ],
-              Text(
-                StartReadout.isLevel(h)
-                    ? 'LEVEL'
-                    : '${h > 0 ? '+' : '−'}'
-                          '${Fmt.elevationAbs(h, units)}',
-                key: const ValueKey('strip-height'),
-                softWrap: false,
-                style: style,
-              ),
-            ],
-          ),
-        ),
-      if (back != null)
-        Semantics(
-          label: 'Back to start',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.u_turn_left, size: iconSize, color: valueColor),
-              const SizedBox(width: Space.x4),
-              Text(
-                Fmt.distance1(back, units),
-                key: const ValueKey('strip-back'),
-                softWrap: false,
-                style: style,
-              ),
-            ],
-          ),
-        ),
-    ];
     return Container(
-      key: ValueKey(retracing ? 'start-strip-retrace' : 'start-strip'),
+      key: const ValueKey('start-strip-retrace'),
       padding: const EdgeInsets.symmetric(
         vertical: Space.x4,
         horizontal: Space.x8,
       ),
       decoration: BoxDecoration(
-        color: retracing ? NightSession.overlayGround : null,
+        color: NightSession.overlayGround,
         borderRadius: BorderRadius.circular(Space.x8),
-        border: Border.all(
-          color: retracing ? valueColor : Colors.transparent,
-          width: _outline,
-        ),
+        border: Border.all(color: valueColor, width: _outline),
       ),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerLeft,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var i = 0; i < cells.length; i++) ...[
-              if (i > 0) const SizedBox(width: Space.x24),
-              cells[i],
+      child: Semantics(
+        label: 'Back to start',
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                'BACK TO START',
+                softWrap: false,
+                style: RunLabelScope.style(context, labelColor),
+              ),
+              const SizedBox(width: Space.x8),
+              Icon(
+                Icons.u_turn_left,
+                size: _figureSize * 0.8,
+                color: valueColor,
+              ),
+              const SizedBox(width: Space.x4),
+              Text(
+                Fmt.distance1(backToStartM, units),
+                key: const ValueKey('strip-back'),
+                softWrap: false,
+                style: RunSoloType.display44.copyWith(
+                  fontSize: _figureSize,
+                  color: valueColor,
+                ),
+              ),
             ],
-          ],
+          ),
         ),
       ),
     );
