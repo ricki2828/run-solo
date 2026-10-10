@@ -14,8 +14,9 @@ void main() {
       File('test/fixtures/retrace/vectors.json').readAsStringSync(),
     ) as Map<String, dynamic>;
     final vectors = doc['vectors'] as List;
-    expect(vectors.length, greaterThanOrEqualTo(4));
+    expect(vectors.length, greaterThanOrEqualTo(7));
     var retracing = 0;
+    final byName = <String, Set<String?>>{};
     for (final v in vectors.cast<Map<String, dynamic>>()) {
       final name = v['name'] as String;
       final points = v['points'] as List;
@@ -51,9 +52,22 @@ void main() {
         near('climbAheadM', e[3], s.climbAheadM);
         near('descentAheadM', e[4], s.descentAheadM);
         near('heightVsStartM', e[5], s.heightVsStartM);
-        if (s.retracing) retracing++;
+        if (s.retracing) {
+          retracing++;
+          (byName[name] ??= {}).add(s.direction?.name);
+        }
       }
     }
     expect(retracing, greaterThan(100));
+    // What the new vectors are for.
+    expect(byName['same_direction_loop'], {'same'});
+    expect(byName['oval_three_laps'], {'same'});
+    expect(byName['out_and_back'], {'reverse'});
+    expect(
+      byName.containsKey('figure_eight'),
+      isFalse,
+      reason: 'a crossing is not a retrace',
+    );
+    expect(byName.containsKey('loop'), isFalse);
   });
 }

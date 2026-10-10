@@ -75,6 +75,77 @@ List<List<double?>> _lShape() {
   return pts;
 }
 
+/// A circle run 1.3 times round: the second pass re-covers the first in the
+/// SAME direction, so it must read as RetraceDirection.same once past the
+/// same-direction gap.
+List<List<double?>> _sameLoop() {
+  final pts = <List<double?>>[];
+  const r = 120.0;
+  const circ = 2 * math.pi * r;
+  for (var s = 0.0; s <= circ * 1.3; s += 3) {
+    final a = s / r;
+    pts.add([
+      r * math.sin(a) / _mPerDeg,
+      r * (1 - math.cos(a)) / _mPerDeg,
+      8.0 * math.sin(a),
+      s,
+    ]);
+  }
+  return pts;
+}
+
+/// A figure-8: the two strands cross at about 90 degrees, so the crossing is
+/// never a retrace.
+List<List<double?>> _figureEight() {
+  final pts = <List<double?>>[];
+  const a = 120.0;
+  // Gerono lemniscate, about 3 m between points.
+  var s = 0.0;
+  double? px, py;
+  for (var i = 0; i <= 1000; i++) {
+    final th = i / 1000 * 2 * math.pi;
+    final x = a * math.sin(th);
+    final y = a * math.sin(th) * math.cos(th);
+    if (px != null) s += math.sqrt(math.pow(x - px, 2) + math.pow(y - py!, 2));
+    px = x;
+    py = y;
+    if (i % 3 == 0) {
+      pts.add([y / _mPerDeg, x / _mPerDeg, 0.0, s]);
+    }
+  }
+  return pts;
+}
+
+/// A 400 m stadium oval (two 84.4 m straights, two 36.5 m radius ends) run
+/// three laps: lap 2 and 3 re-cover lap 1 in the same direction.
+List<List<double?>> _oval3Laps() {
+  const straight = 84.39;
+  const r = 36.5;
+  const lap = 2 * straight + 2 * math.pi * r;
+  final pts = <List<double?>>[];
+  for (var s = 0.0; s <= lap * 3; s += 3) {
+    final u = s % lap;
+    double x, y;
+    if (u < straight) {
+      x = u;
+      y = 0;
+    } else if (u < straight + math.pi * r) {
+      final a = (u - straight) / r;
+      x = straight + r * math.sin(a);
+      y = r - r * math.cos(a);
+    } else if (u < 2 * straight + math.pi * r) {
+      x = straight - (u - straight - math.pi * r);
+      y = 2 * r;
+    } else {
+      final a = (u - 2 * straight - math.pi * r) / r;
+      x = -r * math.sin(a);
+      y = 2 * r - (r - r * math.cos(a));
+    }
+    pts.add([y / _mPerDeg, x / _mPerDeg, 0.0, s]);
+  }
+  return pts;
+}
+
 Map<String, Object?> _vector(String name, List<List<double?>> pts) {
   final d = RetraceDetector();
   final states = <List<Object?>>[];
@@ -109,6 +180,9 @@ void main() {
       _vector('loop', _loop()),
       _vector('jitter_out_and_back', _jitter()),
       _vector('l_shape_out_and_back', _lShape()),
+      _vector('same_direction_loop', _sameLoop()),
+      _vector('figure_eight', _figureEight()),
+      _vector('oval_three_laps', _oval3Laps()),
     ],
   };
   final f = File('test/fixtures/retrace/vectors.json')

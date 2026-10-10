@@ -34,8 +34,9 @@ class RetraceParityTest {
         assertTrue(file.exists(), "missing ${file.path}")
         @Suppress("UNCHECKED_CAST")
         val vectors = Json.parseObject(file.readText())["vectors"] as List<Map<String, Any?>>
-        assertTrue(vectors.size >= 4)
+        assertTrue(vectors.size >= 7)
         var retracingSeen = 0
+        val directions = HashMap<String, MutableSet<String?>>()
         for (v in vectors) {
             val name = v["name"] as String
             @Suppress("UNCHECKED_CAST")
@@ -60,9 +61,17 @@ class RetraceParityTest {
                 near("$at climbAheadM", e[3], s.climbAheadM)
                 near("$at descentAheadM", e[4], s.descentAheadM)
                 near("$at heightVsStartM", e[5], s.heightVsStartM)
-                if (s.retracing) retracingSeen++
+                if (s.retracing) {
+                    retracingSeen++
+                    directions.getOrPut(name) { HashSet() }.add(s.direction?.name)
+                }
             }
         }
+        assertEquals(setOf<String?>("same"), directions["same_direction_loop"])
+        assertEquals(setOf<String?>("same"), directions["oval_three_laps"])
+        assertEquals(setOf<String?>("reverse"), directions["out_and_back"])
+        assertTrue(!directions.containsKey("figure_eight"), "a crossing is not a retrace")
+        assertTrue(!directions.containsKey("loop"), "a loop is not a retrace")
         assertTrue(retracingSeen > 100, "the vectors must exercise a retrace, saw $retracingSeen states")
     }
 }

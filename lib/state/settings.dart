@@ -903,13 +903,10 @@ enum CheckInMetric {
   /// a short glance, so more on costs nothing on a flat road run.
   static const List<CheckInMetric> defaults = CheckInMetric.values;
 
-  /// What the picker offers. "Way back" waits for the stacked retrace PR
-  /// (it needs the native retrace detector); it stays in [values] so the
-  /// stored key and the native phrase are ready.
-  static List<CheckInMetric> get pickable => [
-    for (final m in CheckInMetric.values)
-      if (m != CheckInMetric.retrace) m,
-  ];
+  /// What the picker offers: every metric, "Way back" included. The recorder
+  /// feeds it from the native retrace detector, so the runner can turn it off
+  /// like the others.
+  static List<CheckInMetric> get pickable => CheckInMetric.values;
 }
 
 /// Settings → Voice → "Coaching detail".

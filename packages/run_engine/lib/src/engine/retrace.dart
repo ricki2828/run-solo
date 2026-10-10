@@ -104,12 +104,33 @@ class RetraceDetector {
   /// elevation.
   static const double minStepM = 2;
 
+  /// Most points kept, like the recorder's live route: a bounded copy of a
+  /// very long run. Past it the track stops growing (the state keeps
+  /// following the elevation).
+  static const int maxPoints = 20000;
+
+  /// The old stretch's climb and descent are recomputed only when the match
+  /// has moved this far along the old track (or the streak is new): the
+  /// answer moves slowly and the scan is O(track).
+  static const double aheadRefreshM = 10;
+
+  // Spatial index: 50 m cells; a segment is listed in every cell its box,
+  // grown by the match radius, touches, so a point finds every segment
+  // within the radius in ONE cell.
+  static const double _cellM = 50;
+  static const int _cellStride = 1048576;
+
   // Local metres, x east / y north, about the first point.
   double _lat0 = 0, _lon0 = 0, _cosLat = 1;
   final List<double> _x = [], _y = [], _s = [];
   final List<double?> _e = [];
+  final Map<int, List<int>> _grid = {};
   double? _firstElev, _lastElev;
   double? _dist0;
+
+  // Smoothed heading of old segment k, filled as segments become old enough
+  // (see _matureHeadings).
+  final List<double> _segHead = [];
 
   // The current streak of matching.
   bool _hasStreak = false;
@@ -118,6 +139,15 @@ class RetraceDetector {
   double _lastMatchOwnS = 0, _matchS = 0;
   int _matchSeg = 0;
   double _matchT = 0;
+  int _streakId = 0;
+
+  // Cached climb/descent ahead.
+  int _aheadStreak = -1;
+  double _aheadAtS = 0;
+  double? _aheadClimb, _aheadDescent;
+
+  // The best candidate of one search (fields, so a search allocates nothing).
+  double _projDist = 0, _projT = 0;
 
   RetraceState _state = RetraceState.none;
   RetraceState get state => _state;
@@ -134,10 +164,13 @@ class RetraceDetector {
     _s.clear();
     _e.clear();
     _segHead.clear();
+    _grid.clear();
     _firstElev = _lastElev = null;
     _dist0 = null;
     _hasStreak = false;
     _dir = null;
+    _streakId = 0;
+    _aheadStreak = -1;
     _state = RetraceState.none;
   }
 
@@ -165,7 +198,7 @@ class RetraceDetector {
     final y = (lat - _lat0) * _mPerDeg;
     if (_x.isNotEmpty) {
       final step = _hyp(x - _x.last, y - _y.last);
-      if (step < minStepM) {
+      if (step < minStepM || _x.length >= maxPoints) {
         return _state = _withHeight(_state);
       }
       if (distM != null) {
@@ -180,6 +213,7 @@ class RetraceDetector {
     _x.add(x);
     _y.add(y);
     _e.add(elevM);
+    if (_x.length >= 2) _indexSegment(_x.length - 2);
     _update();
     return _state;
   }
@@ -197,58 +231,108 @@ class RetraceDetector {
       ? null
       : _lastElev! - _firstElev!;
 
+  static int _cellKey(int cx, int cy) => cx * _cellStride + cy;
+
+  void _indexSegment(int k) {
+    final r = matchRadiusM;
+    final x0 = math.min(_x[k], _x[k + 1]) - r;
+    final x1 = math.max(_x[k], _x[k + 1]) + r;
+    final y0 = math.min(_y[k], _y[k + 1]) - r;
+    final y1 = math.max(_y[k], _y[k + 1]) + r;
+    final cx1 = (x1 / _cellM).floor();
+    final cy1 = (y1 / _cellM).floor();
+    for (var cx = (x0 / _cellM).floor(); cx <= cx1; cx++) {
+      for (var cy = (y0 / _cellM).floor(); cy <= cy1; cy++) {
+        (_grid[_cellKey(cx, cy)] ??= <int>[]).add(k);
+      }
+    }
+  }
+
+  /// Computes the heading of every segment that is now old enough to be
+  /// asked about (at least [reverseMinGapM] behind the runner along the
+  /// track), once, in order.
+  void _matureHeadings(double sNow) {
+    while (_segHead.length + 1 < _x.length - 1 &&
+        _s[_segHead.length + 1] <= sNow - reverseMinGapM) {
+      final j = _segHead.length;
+      var a = j;
+      while (a > 0 && _dist(j, a) < _segHalfWindowM) {
+        a--;
+      }
+      var b = j + 1;
+      while (b < _x.length - 1 && _dist(j + 1, b) < _segHalfWindowM) {
+        b++;
+      }
+      _segHead.add(_bearing(_x[a], _y[a], _x[b], _y[b]));
+    }
+  }
+
   void _update() {
     final here = _x.length - 1;
     final sNow = _s[here];
+    _matureHeadings(sNow);
     final head = _ownHeading(here);
-    _Match? best;
+    var found = false;
+    var bestDist = 0.0, bestS = 0.0, bestT = 0.0;
+    var bestSeg = 0;
+    var bestDir = RetraceDirection.reverse;
     if (head != null && here >= 2) {
-      for (var k = 0; k + 1 < here; k++) {
-        // Segments are in track order, so once one is too recent for the
-        // shortest gap, all later ones are.
-        if (_s[k + 1] > sNow - reverseMinGapM) break;
-        final m = _project(k, _x[here], _y[here]);
-        if (m.distM > matchRadiusM) continue;
-        final diff = _angleDiff(head, _segHeading(k));
-        RetraceDirection? dir;
-        if (diff >= 180 - maxHeadingDiffDeg) {
-          dir = RetraceDirection.reverse;
-        } else if (diff <= maxHeadingDiffDeg &&
-            _s[k + 1] <= sNow - sameMinGapM) {
-          dir = RetraceDirection.same;
-        }
-        if (dir == null) continue;
-        if (best == null || m.distM < best.distM) {
-          best = _Match(
-            m.distM,
-            _s[k] + m.t * (_s[k + 1] - _s[k]),
-            k,
-            m.t,
-            dir,
-          );
+      final cell =
+          _grid[_cellKey(
+            (_x[here] / _cellM).floor(),
+            (_y[here] / _cellM).floor(),
+          )];
+      if (cell != null) {
+        for (var i = 0; i < cell.length; i++) {
+          final k = cell[i];
+          // Segments are listed in track order, so once one is too recent
+          // for the shortest gap, all later ones are.
+          if (k + 1 >= here || _s[k + 1] > sNow - reverseMinGapM) break;
+          _project(k, _x[here], _y[here]);
+          final d = _projDist;
+          if (d > matchRadiusM) continue;
+          final diff = _angleDiff(head, _segHead[k]);
+          RetraceDirection? dir;
+          if (diff >= 180 - maxHeadingDiffDeg) {
+            dir = RetraceDirection.reverse;
+          } else if (diff <= maxHeadingDiffDeg &&
+              _s[k + 1] <= sNow - sameMinGapM) {
+            dir = RetraceDirection.same;
+          }
+          if (dir == null) continue;
+          // Nearest wins; a tie goes to the earlier segment.
+          if (!found || d < bestDist || (d == bestDist && k < bestSeg)) {
+            found = true;
+            bestDist = d;
+            bestT = _projT;
+            bestSeg = k;
+            bestS = _s[k] + bestT * (_s[k + 1] - _s[k]);
+            bestDir = dir;
+          }
         }
       }
     }
-    if (best != null) {
+    if (found) {
       // The match must move along the old track the way the runner moves
       // along the new one, otherwise it is a fresh streak.
       final consistent =
           _hasStreak &&
-          _dir == best.dir &&
-          (best.dir == RetraceDirection.reverse
-              ? best.s <= _matchS + 40
-              : best.s >= _matchS - 40);
+          _dir == bestDir &&
+          (bestDir == RetraceDirection.reverse
+              ? bestS <= _matchS + 40
+              : bestS >= _matchS - 40);
       if (!consistent) {
         _hasStreak = true;
-        _dir = best.dir;
+        _dir = bestDir;
+        _streakId++;
         _streakStartS = sNow;
         _streakStartX = _x[here];
         _streakStartY = _y[here];
       }
       _lastMatchOwnS = sNow;
-      _matchS = best.s;
-      _matchSeg = best.seg;
-      _matchT = best.t;
+      _matchS = bestS;
+      _matchSeg = bestSeg;
+      _matchT = bestT;
     } else if (_hasStreak && sNow - _lastMatchOwnS > gapToleranceM) {
       _hasStreak = false;
       _dir = null;
@@ -267,41 +351,53 @@ class RetraceDetector {
       return;
     }
     final dir = _dir!;
-    final (climb, descent) = _ahead(dir, here);
+    if (_aheadStreak != _streakId ||
+        (_matchS - _aheadAtS).abs() >= aheadRefreshM) {
+      _computeAhead(dir, here);
+      _aheadStreak = _streakId;
+      _aheadAtS = _matchS;
+    }
     _state = RetraceState(
       retracing: true,
       direction: dir,
       distanceToStartM: _matchS,
-      climbAheadM: climb,
-      descentAheadM: descent,
+      climbAheadM: _aheadClimb,
+      descentAheadM: _aheadDescent,
       heightVsStartM: _height,
     );
   }
 
-  /// Elevation gain and loss on the old stretch still ahead.
-  (double?, double?) _ahead(RetraceDirection dir, int here) {
-    final series = <double>[];
+  /// Elevation gain and loss on the old stretch still ahead (into the
+  /// cache).
+  void _computeAhead(RetraceDirection dir, int here) {
+    final t = ClimbTracker(ClimbTracker.baroThresholdM);
+    var n = 0;
+    void feed(double e) {
+      t.offer(e);
+      n++;
+    }
+
     final seg = _matchSeg;
     final eA = _e[seg], eB = _e[seg + 1];
-    if (eA != null && eB != null) series.add(eA + (eB - eA) * _matchT);
+    if (eA != null && eB != null) feed(eA + (eB - eA) * _matchT);
     if (dir == RetraceDirection.reverse) {
       for (var i = seg; i >= 0; i--) {
         final e = _e[i];
-        if (e != null) series.add(e);
+        if (e != null) feed(e);
       }
     } else {
       // On to where the repeat began, never past the runner's own position.
       for (var i = seg + 1; i < here && _s[i] < _streakStartS; i++) {
         final e = _e[i];
-        if (e != null) series.add(e);
+        if (e != null) feed(e);
       }
     }
-    if (series.length < 2) return (null, null);
-    final t = ClimbTracker(ClimbTracker.baroThresholdM);
-    for (final e in series) {
-      t.offer(e);
+    if (n < 2) {
+      _aheadClimb = _aheadDescent = null;
+    } else {
+      _aheadClimb = t.ascentM;
+      _aheadDescent = t.descentM;
     }
-    return (t.ascentM, t.descentM);
   }
 
   /// Heading baselines, straight-line: a few metres of GPS noise must not
@@ -323,29 +419,9 @@ class RetraceDetector {
     return _bearing(_x[k], _y[k], _x[here], _y[here]);
   }
 
-  // Smoothed heading of old segment k, computed once. Only asked for
-  // segments at least [reverseMinGapM] behind the runner along the track;
-  // the points after it are normally there by then, and the value is only
-  // a heading, so a slightly short window is harmless.
-  final List<double> _segHead = [];
-
-  double _segHeading(int k) {
-    while (_segHead.length <= k) {
-      final j = _segHead.length;
-      var a = j;
-      while (a > 0 && _dist(j, a) < _segHalfWindowM) {
-        a--;
-      }
-      var b = j + 1;
-      while (b < _x.length - 1 && _dist(j + 1, b) < _segHalfWindowM) {
-        b++;
-      }
-      _segHead.add(_bearing(_x[a], _y[a], _x[b], _y[b]));
-    }
-    return _segHead[k];
-  }
-
-  _Proj _project(int k, double px, double py) {
+  /// Distance from (px, py) to segment [k] into [_projDist], and where along
+  /// it (0..1) into [_projT].
+  void _project(int k, double px, double py) {
     final ax = _x[k], ay = _y[k];
     final dx = _x[k + 1] - ax, dy = _y[k + 1] - ay;
     final len2 = dx * dx + dy * dy;
@@ -353,7 +429,8 @@ class RetraceDetector {
         ? 0.0
         : (((px - ax) * dx + (py - ay) * dy) / len2).clamp(0.0, 1.0);
     final cx = ax + t * dx, cy = ay + t * dy;
-    return _Proj(_hyp(px - cx, py - cy), t);
+    _projDist = _hyp(px - cx, py - cy);
+    _projT = t;
   }
 
   /// sqrt(dx^2 + dy^2), written out so the Kotlin twin rounds the same way.
@@ -370,19 +447,4 @@ class RetraceDetector {
   }
 
   static const double _mPerDeg = 111320;
-}
-
-class _Proj {
-  _Proj(this.distM, this.t);
-  final double distM;
-  final double t;
-}
-
-class _Match {
-  _Match(this.distM, this.s, this.seg, this.t, this.dir);
-  final double distM;
-  final double s;
-  final int seg;
-  final double t;
-  final RetraceDirection dir;
 }

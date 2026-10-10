@@ -43,6 +43,7 @@ import app.runsolo.core.record.SummaryWords
 import app.runsolo.core.record.LapDispatch
 import app.runsolo.core.record.LiveRoute
 import app.runsolo.core.route.RetraceDetector
+import app.runsolo.core.route.RetraceFeed
 import app.runsolo.core.route.RetraceDirection
 import app.runsolo.core.route.RetraceState
 import app.runsolo.core.record.RecorderCore
@@ -110,7 +111,8 @@ class RecordingSession(
     /** Climb so far and the current grade (barometer + GPS fused, see ElevationFuser). */
     private val liveElev = LiveElevation()
     /** Retrace detection (out-and-back): fed with accepted fixes on this thread, so the screen and the voice read one answer. */
-    private val retrace = RetraceDetector()
+    private val retraceFeed = RetraceFeed()
+    private val retrace: RetraceDetector get() = retraceFeed.detector
     private var lastElevRel: Double? = null
     private val moving = MovingDetector()
 
@@ -285,7 +287,8 @@ class RecordingSession(
                     // Progress along the followed route, rebuilt quietly: nothing is said for what already happened.
                     if (e.hasFix && !paused) follower?.offer(e.t, e.lat!!, e.lon!!, e.accuracyM!!, quiet = true)
                     liveElev.offer(e.t, e.hpa, e.altM, e.accuracyM, ticker.filter.totalM, paused)?.let { lastElevRel = it }
-                    if (e.hasFix && !paused && e.accuracyM!! <= RETRACE_MAX_ACCURACY_M) retrace.add(e.lat!!, e.lon!!, lastElevRel, ticker.filter.totalM)
+                    // The same rule as live (RetraceFeed), so a restore rebuilds the track the live path built.
+                    if (e.hasFix) retraceFeed.offer(e.lat!!, e.lon!!, e.accuracyM!!, lastElevRel, liveElev.source == ElevSource.baro, ticker.distanceM, active = !paused)
                 }
                 is RunEvent.Pause -> { paused = true; reanchor = true }
                 is RunEvent.Resume -> { paused = false; ticker.filter.reanchor(); reanchor = false }
@@ -516,7 +519,7 @@ class RecordingSession(
         if (core.state == RecorderState.recording) {
             for (s in samples) if (s.hasFix) {
                 liveRoute.offer(s.lat!!, s.lon!!, s.accuracyM!!, routeElevation())
-                if (s.accuracyM!! <= RETRACE_MAX_ACCURACY_M) retrace.add(s.lat!!, s.lon!!, lastElevRel, ticker.distanceM)
+                retraceFeed.offer(s.lat!!, s.lon!!, s.accuracyM!!, lastElevRel, liveElev.source == ElevSource.baro, ticker.distanceM, active = !core.autoPaused)
             }
         }
         val last = samples.last()
@@ -1237,8 +1240,6 @@ class RecordingSession(
         /** The strip shows the next turn from this far out. */
         private const val TURN_STRIP_M = 300.0
 
-        /** Same accuracy cut as the live map route: a poorer fix is not a place on the track. */
-        private const val RETRACE_MAX_ACCURACY_M = 25.0
 
         /** Voice coaching: a distance rep this close to its end counts as ended; a grade over 3% widens the band. */
         private const val COACH_LAST_M = 100.0
