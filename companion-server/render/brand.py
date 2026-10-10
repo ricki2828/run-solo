@@ -6,11 +6,14 @@ from __future__ import annotations
 
 import base64
 import functools
+import os
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-FONT_DIR = REPO / "assets" / "fonts"
-BRAND_SVG_DIR = REPO / "assets" / "brand" / "svg"
+# A deployed copy has no repo around it: COMPANION_ASSETS_DIR points at its own copy of assets/ (fonts + brand).
+ASSETS_DIR = Path(os.environ.get("COMPANION_ASSETS_DIR") or REPO / "assets")
+FONT_DIR = ASSETS_DIR / "fonts"
+BRAND_SVG_DIR = ASSETS_DIR / "brand" / "svg"
 
 # Ground and text
 GROUND = "#FBFBF9"

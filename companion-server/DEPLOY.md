@@ -104,6 +104,7 @@ Enrolment flow (the app drives it; each step is anti-phishing by design):
 
 ## 7. Operations
 
+- Assets: the card and video renderer reads fonts and the brand mark from the repo's `assets/`. A deployed copy outside the repo must ship `assets/fonts` and `assets/brand/svg` inside the app dir (the unit only binds that dir) and set `COMPANION_ASSETS_DIR=<app dir>/assets`. Without it the render tests fail and media sends fall back to text.
 - Media (off by default): `COMPANION_MEDIA=1` sends run and recap cards as Telegram photos, and the weekly recap as a video. It needs Chromium (`playwright install chromium`, or `RS_CHROMIUM_PATH`) and, for video, `ffmpeg` on PATH or `FFMPEG=/path`. Any render failure sends the text card instead. `COMPANION_DEEPLINK_BASE=https://<host>/l` adds an "Open in app" button (`<base>/run/<id>`, `<base>/week/<iso-week>`); Telegram and WhatsApp reject custom schemes, so that host must redirect to `runsupreme://run/<id>` or open as an Android App Link. No base, no button.
 - Kill switch: `python -m companion.cli pause` (sends defer, nothing is dropped) / `resume`. `COMPANION_SENDS_PAUSED=1` does the same via env.
 - Sentinel: alert when `curl -s localhost:8051/healthz` shows `overdue_outbox` above 0 for more than an hour. Add to the
