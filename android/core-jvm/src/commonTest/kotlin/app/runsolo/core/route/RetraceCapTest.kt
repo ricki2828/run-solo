@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 
 class RetraceCapTest {
     @Test
-    fun `past the point cap a retrace is cleared, not frozen`() {
+    fun `past the point cap a retrace is cleared and not frozen`() {
         val d = RetraceDetector()
         val mPerDeg = 111_320.0
         var s = RetraceState.NONE
