@@ -161,8 +161,10 @@ def weekly_recap() -> dict[str, Any]:
 
 
 def race_countdown() -> dict[str, Any]:
-    return {"race_name": "Sydney Half", "days_to_race": 23, "plan_weeks": 12, "weeks_done": 9,
-            "race_line": "Sunday 1 Nov. Long run this weekend: 16 km."}
+    # Same race as the month simulator (companion/convo/sim.py RACE_DAY, a half marathon on Sunday 6 Dec 2026),
+    # on its 6 Oct card: 61 days to go, "8 weeks to go" of a 12 week plan. tests/test_render_cards.py keeps them equal.
+    return {"race_name": "Half Marathon", "days_to_race": 61, "plan_weeks": 12, "weeks_done": 4,
+            "race_line": "Sunday 6 Dec. Long run this weekend: 14 km."}
 
 
 def monthly_poster() -> dict[str, Any]:
@@ -175,6 +177,22 @@ def monthly_poster() -> dict[str, Any]:
         runs.append({"type": k, "route": route})
     return {"month_label": "September", "distance_km": 186.4, "run_count": 18, "duration_s": 62300, "climb_m": 1240,
             "runs": runs, "best_run": {"text": "Kastro loop on Sunday 27 Sep: 12.4 km, 234 m up."}}
+
+
+def monthly_poster_noroute() -> dict[str, Any]:
+    """What the server really stores per run: date, distance, duration, type, zone_s. No routes."""
+    plan = [(1, "easy", 6.0), (2, "easy", 5.0), (4, "interval", 7.5), (6, "long", 14.0), (8, "easy", 6.0), (9, "tempo", 8.0),
+            (11, "easy", 5.5), (13, "long", 15.5), (15, "interval", 7.0), (16, "easy", 6.0), (18, "easy", 5.0),
+            (20, "tempo", 9.0), (20, "easy", 3.0), (22, "easy", 6.0), (23, "interval", 8.0), (25, "easy", 6.5),
+            (27, "long", 12.4), (29, "race", 5.0)]
+    zones = {"easy": [300, 1800, 400, 0, 0], "long": [240, 3200, 1200, 300, 0], "tempo": [240, 600, 900, 1200, 100],
+             "interval": [300, 500, 400, 900, 500], "race": [200, 100, 300, 700, 400]}
+    pace = {"easy": 365, "long": 372, "tempo": 325, "interval": 340, "race": 305}
+    runs = [{"date": f"2026-09-{d:02d}", "type": t, "distance_km": km, "duration_s": round(km * pace[t]), "zone_s": zones[t]}
+            for d, t, km in plan]
+    return {"month_label": "September", "month_start": "2026-09-01", "runs": runs, "run_count": len(runs),
+            "distance_km": round(sum(r["distance_km"] for r in runs), 1), "duration_s": sum(r["duration_s"] for r in runs),
+            "climb_m": 1240, "best_run": {"text": "Sunday 27 Sep: 12.4 km long run, 234 m up."}}
 
 
 def share_private() -> dict[str, Any]:

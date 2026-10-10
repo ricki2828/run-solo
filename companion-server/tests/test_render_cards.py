@@ -202,10 +202,11 @@ GOLDENS = {
     "weekly_recap": ("render_weekly_recap", F.weekly_recap),
     "race_countdown": ("render_race_countdown", F.race_countdown),
     "monthly_poster": ("render_monthly_poster", F.monthly_poster),
+    "monthly_poster_noroute": ("render_monthly_poster", F.monthly_poster_noroute),
     "share_private": ("render_share_card", F.share_private),
     "share_opted_in": ("render_share_card", F.share_opted_in),
 }
-SIZES = {"monthly_poster": (1080, 1920)}
+SIZES = {"monthly_poster": (1080, 1920), "monthly_poster_noroute": (1080, 1920)}
 
 
 # RS_REQUIRE_RENDER=1 (set in CI) turns every "cannot render here" skip into a failure.
@@ -289,3 +290,34 @@ def test_zone_bar_has_the_same_margins_on_every_minimal_card():
         xs = [x for x in range(im.width) if sum(abs(a - b) for a, b in zip(im.getpixel((x, y)), bg)) > 60]
         spans.append((min(xs), max(xs)))
     assert all(abs(s[0] - spans[0][0]) <= 2 and abs(s[1] - spans[0][1]) <= 2 for s in spans), spans
+
+
+def test_route_less_poster_draws_one_bar_per_stored_run():
+    import re
+
+    from render.cards import monthly
+    facts = F.monthly_poster_noroute()
+    assert not any("route" in r for r in facts["runs"]) and not monthly.has_routes(facts)
+    html = monthly.build_monthly_calendar_html(facts, MEMORY)
+    assert html.count('class="abs run"') == len(facts["runs"]) == facts["run_count"]
+    grid = html[html.index('class="abs grid"'):html.index('class="abs legend"')]
+    assert "<svg" not in grid                                        # no route shapes, only bars from stored numbers
+    for r in facts["runs"]:                                          # each bar carries its run's type and distance
+        assert f'data-type="{r["type"]}" data-km="{r["distance_km"]:.1f}"' in html
+    for t in ("EASY", "LONG", "TEMPO", "INTERVAL / RACE"):           # legend lists the types present
+        assert t in html.upper()
+    # bar height follows distance: the 15.5 km long run is taller than the 3 km easy run
+    h = {m[0]: float(m[1]) for m in re.findall(r'data-km="([\d.]+)" style="[^"]*?height:([\d.]+)px', html)}
+    assert h["15.5"] > h["3.0"] > 0
+    assert monthly.has_routes(F.monthly_poster())                   # the route layout is still used when routes are supplied
+
+
+def test_countdown_fixture_matches_the_simulated_race():
+    from datetime import date
+
+    from companion.convo.sim import RACE_DAY
+    f = F.race_countdown()
+    assert RACE_DAY.strftime("%A") == "Sunday"
+    assert f["race_line"].startswith(f"Sunday {RACE_DAY.day} {RACE_DAY:%b}.")
+    assert (RACE_DAY - date(2026, 10, 6)).days == f["days_to_race"] and f["race_name"] == "Half Marathon"
+    assert f["days_to_race"] // 7 == 8      # the 6 Oct card says "8 weeks to go"

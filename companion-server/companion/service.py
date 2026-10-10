@@ -640,7 +640,7 @@ class Service:
     def _question_for(self, c, uid: str, hist: list[dict], mem: dict, now: datetime) -> dict | None:
         """The next question worth asking: not known, not answered, not asked in the last 28 days."""
         weeks = cv_suggest.plan_weeks(hist, now)
-        skip = set(known_without_asking(hist, weeks))
+        skip = set(known_without_asking(hist, weeks, mem))
         skip |= {r["key"] for r in c.execute("SELECT key FROM convo_log WHERE user_id=? AND kind='asked' AND ts>?",
                                              (uid, iso(now - timedelta(days=REASK_DAYS))))}
         return next_weekly_question(mem, now, skip)

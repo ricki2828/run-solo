@@ -455,6 +455,28 @@ def check(cards: list[dict], zone_of: Any, db_path: str) -> list[str]:
     return v
 
 
+RACE_TOUCHES = ("race_countdown", "race_month")
+INFERRED_AFTER_RUNS = 10  # mirrors questions.INFER_MIN_RUNS
+
+
+def _implied_by_history(q: dict, keys: set[str], cards: list[dict], meta: dict, order: list[dict]) -> list[str]:
+    """A question is also a violation when an earlier message already implied its answer: a race
+    countdown touch answers 'what are you training for', and ten runs answer days, time and runs a week."""
+    out: list[str] = []
+    sent = parse_iso(q["sent_at"])
+    if keys & {"goal_type", "race_month"}:
+        for c in cards:
+            m = meta.get(c["card_id"])
+            if m and m["touch_kind"] in RACE_TOUCHES and parse_iso(c["sent_at"]) <= sent:
+                out.append(f"asked {sorted(keys)} after a {m['touch_kind']} touch at {c['sent_at']}")
+                break
+    if keys & {"usual_days", "time_of_day", "runs_per_week"}:
+        before = [r for r in order if parse_iso(r["start_utc"]) <= sent]
+        if len(before) >= INFERRED_AFTER_RUNS:
+            out.append(f"asked {sorted(keys)} with {len(before)} runs on record")
+    return out
+
+
 SESSION = re.compile(r"\b(easy|tempo|steady|long run)\b[^.]{0,12}\d+ km", re.I)  # whole km only
 WHEN = re.compile(r"(around \d{1,2}:\d{2}|this week|tomorrow)", re.I)
 
@@ -486,6 +508,7 @@ def check_conversation(cards: list[dict], meta: dict, con: sqlite3.Connection) -
             keys = {a.split(":")[1] for a in acts if a.startswith("ans:")}
             if keys & {"race_month", "usual_days", "time_of_day"}:
                 v.append(f"asked what we already know: {sorted(keys)}")           # 1. known
+            v += _implied_by_history(c, keys, cards, meta, order)                # 1b. implied by touches / runs
             parent = run_cards.get(c["run_id"].split(":", 1)[1])
             pm = meta.get(parent["card_id"]) if parent else None
             if not parent:
