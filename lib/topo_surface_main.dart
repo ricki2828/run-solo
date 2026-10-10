@@ -220,7 +220,7 @@ class _HarnessState extends State<_Harness> {
     _feed = Timer.periodic(const Duration(milliseconds: 200), (t) {
       final i = t.tick - 1;
       final n = _hillRoute.length;
-      if (i < n + 60) {
+      if (i < 2 * n - 1) {
         final p = _hillRoute[i < n ? i : 2 * (n - 1) - i];
         _track.apply(i, [p.lat + 0.0001, p.lon], [p.ele]);
         // Native flips to retracing a little way into the way back.
