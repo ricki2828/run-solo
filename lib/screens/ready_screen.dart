@@ -3,12 +3,15 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 
+import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../platform/host_caps.dart';
 import '../state/settings.dart';
 import '../theme/theme.dart';
+import '../widgets/structure_glyph.dart';
 
 /// The Ready screen: the start line. The one place a run says START.
 ///
@@ -34,6 +37,9 @@ class ReadyScreen extends StatefulWidget {
     required this.probe,
     required this.onGo,
     this.target,
+    this.structure,
+    this.structureLine,
+    this.lastRun,
     this.requiresGps = false,
     this.onChange,
   });
@@ -49,6 +55,18 @@ class ReadyScreen extends StatefulWidget {
 
   /// A second, smaller line: today's target, when there is one.
   final String? target;
+
+  /// An intervals session: its shape drawn big, with [structureLine] under it
+  /// ("4 x 4:00 / 3:00 jog").
+  final engine.SessionSpec? structure;
+  final String? structureLine;
+
+  /// Free and Trail: the last run of this type, "Last free run: 7.2 km ...".
+  final String? lastRun;
+
+  /// Text colour on every run type's ground: Night ink, 4.5:1 or better on
+  /// each (tested).
+  static const Color ink = NightSession.bgBase;
 
   /// The pre-start GPS probe the Start screen keeps running while this
   /// screen is up (the warm-up: a fix is ready by GO).
@@ -87,7 +105,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
   Timer? _bleTimer;
   BleStatus? _ble;
 
-  static const Color _ink = NightSession.bgBase;
+  static const Color _ink = ReadyScreen.ink;
   static const Color _chipInk = NightSession.inkPrimary;
 
   @override
@@ -195,7 +213,14 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final services = AppServices.of(context);
-    final s = services.settings.settings;
+    // Settings (opened from the chips below) change what the chips say.
+    return ListenableBuilder(
+      listenable: services.settings,
+      builder: (context, _) => _scaffold(services.settings.settings),
+    );
+  }
+
+  Widget _scaffold(AppSettings s) {
     final reduced = s.reducedMotion || MediaQuery.of(context).disableAnimations;
     return PopScope(
       canPop: !_counting || _going,
@@ -288,7 +313,38 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
                 style: RunSoloType.body15.copyWith(color: _ink),
               ),
             ],
+            const SizedBox(height: Space.x12),
+            if (widget.structure != null) _structureBlock(),
+            if (widget.lastRun != null)
+              Text(
+                widget.lastRun!,
+                key: const ValueKey('ready-last-run'),
+                style: RunSoloType.body17.copyWith(color: _ink),
+              ),
             const Spacer(),
+            Row(
+              children: [
+                _OnChip(
+                  key: const ValueKey('ready-on-voice'),
+                  label: 'VOICE CUES ${s.cues ? 'ON' : 'OFF'}',
+                  onTap: _openSettings,
+                ),
+                const SizedBox(width: Space.x8),
+                _OnChip(
+                  key: const ValueKey('ready-on-countdown'),
+                  label:
+                      'COUNTDOWN ${s.countdownSeconds == 0 ? 'OFF' : '${s.countdownSeconds} S'}',
+                  onTap: _openSettings,
+                ),
+                const SizedBox(width: Space.x8),
+                _OnChip(
+                  key: const ValueKey('ready-on-autopause'),
+                  label: 'AUTO-PAUSE ${s.autoPause ? 'ON' : 'OFF'}',
+                  onTap: _openSettings,
+                ),
+              ],
+            ),
+            const SizedBox(height: Space.x12),
             ValueListenableBuilder<GpsProbeEvent?>(
               valueListenable: widget.probe,
               builder: (context, probe, _) {
@@ -341,7 +397,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
                         disabledForegroundColor: _chipInk.withValues(
                           alpha: 0.6,
                         ),
-                        minimumSize: const Size.fromHeight(128),
+                        minimumSize: const Size.fromHeight(104),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(Radii.card),
                         ),
@@ -359,6 +415,35 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
     );
   }
 
+  void _openSettings() => Navigator.of(context).pushNamed(Routes.settings);
+
+  /// The session's shape as big blocks, and its words under it.
+  Widget _structureBlock() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Container(
+        padding: const EdgeInsets.all(Space.x12),
+        decoration: BoxDecoration(
+          color: NightSession.bgBase.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(Radii.card),
+        ),
+        child: StructureGlyph(
+          key: const ValueKey('ready-structure'),
+          spec: widget.structure!,
+          height: 48,
+        ),
+      ),
+      if (widget.structureLine != null) ...[
+        const SizedBox(height: Space.x8),
+        Text(
+          widget.structureLine!,
+          key: const ValueKey('ready-structure-line'),
+          style: RunSoloType.heading26.copyWith(color: _ink),
+        ),
+      ],
+    ],
+  );
+
   Widget _strapChip(AppSettings s) {
     final saved = s.strap;
     final connected = saved != null && (_ble?.connected ?? false);
@@ -369,7 +454,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
       value: saved == null
           ? 'NONE'
           : connected
-          ? (hr == null ? 'CONNECTED' : 'CONNECTED $hr')
+          ? (hr == null ? 'CONNECTED' : 'CONNECTED · $hr BPM')
           : 'CONNECTING',
       dot: saved == null
           ? NightSession.inkMuted
@@ -470,7 +555,7 @@ class _Chip extends StatelessWidget {
       label: '$label $value',
       excludeSemantics: true,
       child: Container(
-        height: 60,
+        height: 52,
         padding: const EdgeInsets.symmetric(horizontal: Space.x16),
         decoration: BoxDecoration(
           color: NightSession.bgBase,
@@ -505,6 +590,49 @@ class _Chip extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One thing that is on for this run; tap to change it in Settings.
+class _OnChip extends StatelessWidget {
+  const _OnChip({super.key, required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Semantics(
+        button: true,
+        label: '$label. Opens Settings.',
+        excludeSemantics: true,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(Radii.pill),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 44),
+            padding: const EdgeInsets.symmetric(horizontal: Space.x8),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              border: Border.all(color: ReadyScreen.ink, width: 2),
+              borderRadius: BorderRadius.circular(Radii.pill),
+            ),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                style: RunSoloType.label13.copyWith(
+                  color: ReadyScreen.ink,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

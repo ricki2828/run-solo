@@ -85,6 +85,29 @@ void main() {
     await golden(tester, 'ready_intervals_360x640');
   });
 
+  testWidgets('ready: free run with a last run', (tester) async {
+    await openReady(
+      tester,
+      fakeServices(
+        settings: const AppSettings(
+          onboardingDone: true,
+          lastMode: RecordMode.free,
+        ),
+        runs: [
+          summary(
+            id: 'f1',
+            start: testNow.subtract(const Duration(days: 3)),
+            fourByFour: false,
+            durationMs: 37 * 60 * 1000,
+            distanceM: 7200,
+          ),
+        ],
+      ),
+    );
+    await pumpTimes(tester, 4);
+    await golden(tester, 'ready_free_last_run_360x640');
+  });
+
   testWidgets('countdown at 3', (tester) async {
     final services = fakeServices(
       settings: const AppSettings(

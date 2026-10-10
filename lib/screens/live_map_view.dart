@@ -2,7 +2,7 @@
 /// run, toggleable"). NUMBERS stays the default and the first-class screen;
 /// MAP swaps the middle of it for the follow-the-runner map under a compact
 /// hero strip. The header (phase, heart rate and zone, total), the LAP /
-/// START REPS button and Pause / Stop are the record screen's own and do not
+/// BEGIN REPS button and Pause / Stop are the record screen's own and do not
 /// move. The map exists only while this widget is built and the app is in
 /// the foreground; with the screen off nothing renders and no map is alive.
 library;
@@ -367,7 +367,7 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
 }
 
 /// The small NUMBERS / MAP switch in the header row: a 48 dp target that
-/// never takes space from the LAP / START REPS button.
+/// never takes space from the LAP / BEGIN REPS button.
 class LiveViewToggle extends StatelessWidget {
   const LiveViewToggle({
     super.key,

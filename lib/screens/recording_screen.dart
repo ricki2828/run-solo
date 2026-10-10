@@ -778,17 +778,17 @@ class _RecordingScreenState extends State<RecordingScreen>
                           // W3: distance reps cannot end without GPS, so
                           // the start waits for a fix. The wait keeps the
                           // session's own label (field test 27-Sep): the
-                          // test's said START REPS.
+                          // test's said BEGIN REPS.
                           _WaitingForGps(
                             height: lapHeight,
-                            label: s.isCooper ? 'START TEST' : 'START REPS',
+                            label: s.isCooper ? 'BEGIN TEST' : 'BEGIN REPS',
                           )
                         else if (s.isCooper && s.phase == Phase.warmup)
                           // A5: the LAP button's slot; its own action,
                           // not a lap.
                           LapButton(
                             key: const ValueKey('start-test'),
-                            label: 'START TEST',
+                            label: 'BEGIN TEST',
                             onLap: ctl.startReps,
                             pulse: ctl.lapPulse,
                             haptics: settings.haptics,
@@ -801,7 +801,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                         else if (s.isPreset && s.phase == Phase.warmup)
                           LapButton(
                             key: const ValueKey('start-reps'),
-                            label: 'START REPS',
+                            label: 'BEGIN REPS',
                             onLap: ctl.startReps,
                             pulse: ctl.lapPulse,
                             haptics: settings.haptics,
@@ -989,7 +989,7 @@ double? runAverageSecPerKm(RecordingSnapshot s, RecordingController ctl) {
     switch (s.phase) {
       Phase.work => (ctl.displayRemainingMs, 'left in the test'),
       Phase.cooldown => (ctl.displayLapElapsedMs, kCooperCooldownCaption),
-      _ => (ctl.displayElapsedMs, 'warm up, then tap START TEST'),
+      _ => (ctl.displayElapsedMs, 'warm up, then tap BEGIN TEST'),
     };
 
 /// The event / goal "to go" figure (distance, or time for a time goal).
@@ -1246,7 +1246,7 @@ String timerCaption(RecordingSnapshot s) {
   if (!s.isPreset) return 'this lap';
   return switch (s.phase) {
     Phase.warmup when s.spec?.warmupSeconds != null => 'warm-up left',
-    Phase.warmup => 'warm up, then tap START REPS',
+    Phase.warmup => 'warm up, then tap BEGIN REPS',
     Phase.work when s.distanceStep => 'to go',
     Phase.work => 'left in rep',
     Phase.recovery => 'to rep ${s.repIndex + 1}',
@@ -2876,13 +2876,13 @@ class _RecoveryRingPainter extends CustomPainter {
   bool shouldRepaint(_RecoveryRingPainter old) => old.progress != progress;
 }
 
-/// Warm-up of a distance session without a fix (W3): START REPS stays off
+/// Warm-up of a distance session without a fix (W3): BEGIN REPS stays off
 /// until GPS is back, and says why.
 class _WaitingForGps extends StatelessWidget {
   const _WaitingForGps({required this.height, required this.label});
   final double height;
 
-  /// The session's own start label: START REPS for a preset, START TEST
+  /// The session's own start label: BEGIN REPS for a preset, BEGIN TEST
   /// for the 12-minute test (field test 27-Sep).
   final String label;
 

@@ -254,7 +254,7 @@ class _CustomBuilderScreenState extends State<CustomBuilderScreen> {
               key: const ValueKey('builder-warmup'),
               label: 'Warm-up',
               seconds: _s.warmupSeconds,
-              openNote: 'Open: tap START REPS when ready.',
+              openNote: 'Open: tap BEGIN REPS when ready.',
               onChanged: (v) => _set(
                 (x) => v == null
                     ? x.copyWith(openWarmup: true)

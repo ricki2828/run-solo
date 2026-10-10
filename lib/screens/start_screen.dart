@@ -12,6 +12,7 @@ import '../platform/host_caps.dart';
 import '../platform/session_codec.dart';
 import '../state/block_plan.dart';
 import '../state/courses.dart';
+import '../app/format.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../state/max_hr.dart';
@@ -638,6 +639,15 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     if (_readyOpen || !mounted) return;
     final services = AppServices.of(context);
     final s = services.settings.settings;
+    // From Home the History read may still be in flight; Ready's last-run
+    // line needs it.
+    if (_runs == null) {
+      try {
+        final r = await services.history.list();
+        if (mounted) _runs ??= r;
+      } catch (_) {}
+      if (!mounted) return;
+    }
     final summary = _readySummary(s, testMode: testMode);
     _readyOpen = true;
     _syncProbe(); // the GPS warm-up, so the fix is ready by GO
@@ -648,6 +658,11 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
           ground: summary.ground,
           plan: summary.plan,
           target: summary.target,
+          structure: summary.structure,
+          structureLine: summary.structure == null
+              ? null
+              : SessionText.structure(summary.structure!),
+          lastRun: summary.lastRun,
           probe: _probeLive,
           requiresGps: s.goalRun,
           // Only from Home: the picker is one step back otherwise.
@@ -674,12 +689,34 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// "Last free run: 7.2 km · 5:10/km · 3 days ago" from History's newest
+  /// run of that type; null when there is none or History is not in yet.
+  String? _lastRunLine(AppSettings s, RecordMode mode, String word) {
+    final runs = _runs;
+    if (runs == null) return null;
+    RunSummary? last;
+    for (final r in runs) {
+      if (r.mode != mode || r.distanceM < 100 || r.durationMs <= 0) continue;
+      if (last == null || r.start.isAfter(last.start)) last = r;
+    }
+    if (last == null) return null;
+    final pace = last.durationMs / 1000 / (last.distanceM / 1000);
+    return 'Last $word run: ${Fmt.distance(last.distanceM, s.units)}'
+        ' · ${Fmt.paceUnit(pace, s.units)}'
+        ' · ${Fmt.ago(last.start, _services!.now())}';
+  }
+
   /// What the Ready screen says: the run type, the plan in one line and
   /// today's target, from the same picks the label on the picker used.
-  ({String runType, Color ground, String plan, String? target}) _readySummary(
-    AppSettings s, {
-    RecordMode? testMode,
-  }) {
+  ({
+    String runType,
+    Color ground,
+    String plan,
+    String? target,
+    engine.SessionSpec? structure,
+    String? lastRun,
+  })
+  _readySummary(AppSettings s, {RecordMode? testMode}) {
     final services = AppServices.of(context);
     final mode = testMode ?? s.lastMode;
     final next = _plannedNext(s);
@@ -702,6 +739,8 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         ground: AuroraRunType.goal,
         plan: 'Timed from the start line',
         target: null,
+        structure: null,
+        lastRun: null,
       );
     }
     if (s.goalRun) {
@@ -710,6 +749,8 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         ground: AuroraRunType.goal,
         plan: goalLabel(s),
         target: null,
+        structure: null,
+        lastRun: null,
       );
     }
     return switch (mode) {
@@ -718,24 +759,32 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         ground: AuroraRunType.intervals,
         plan: todayPlan ?? services.pickedSession.name,
         target: todayTarget,
+        structure: services.pickedSession,
+        lastRun: null,
       ),
       RecordMode.laps => (
         runType: 'LAPS RUN',
         ground: AuroraRunType.laps,
         plan: todayPlan ?? 'Tap LAP at the end of each lap',
         target: todayTarget,
+        structure: null,
+        lastRun: null,
       ),
       RecordMode.free => (
         runType: 'FREE RUN',
         ground: AuroraRunType.free,
         plan: todayPlan ?? 'Just run',
         target: todayTarget,
+        structure: null,
+        lastRun: _lastRunLine(s, RecordMode.free, 'free'),
       ),
       RecordMode.trail => (
         runType: 'TRAIL RUN',
         ground: AuroraRunType.trail,
         plan: todayPlan ?? 'Just run. Walking the climbs is fine.',
         target: todayTarget,
+        structure: null,
+        lastRun: _lastRunLine(s, RecordMode.trail, 'trail'),
       ),
       RecordMode.cooper => (
         runType: _pickedTest == 'bronco' ? 'BRONCO' : '12-MIN TEST',
@@ -744,6 +793,8 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
             ? 'Five sets of 240 m, as fast as you can hold'
             : 'As far as you can in 12 minutes',
         target: null,
+        structure: null,
+        lastRun: null,
       ),
     };
   }
@@ -916,7 +967,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                   'FIRST INTERVALS RUN',
                   t.typeIntervals,
                   const [
-                    'Warm up, then tap START REPS.',
+                    'Warm up, then tap BEGIN REPS.',
                     'Run each work rep hard; jog or walk each recovery. '
                         'The screen and voice count you through.',
                     'After the last rep, cool down and hold STOP.',
@@ -965,7 +1016,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                   t.typeTests,
                   const [
                     'Warm up first.',
-                    'Tap START TEST and run as far as you can in '
+                    'Tap BEGIN TEST and run as far as you can in '
                         '12 minutes.',
                     'Walk to cool down - your VO2 estimate comes from the '
                         '12-minute distance.',
@@ -1588,7 +1639,7 @@ class _SessionCard extends StatelessWidget {
             ? 'Press LAP at the start and end of each surge. You get a '
                   'surge summary, not a verdict.'
             : spec.warmupSeconds == null
-            ? 'Warm-up: open. Tap START REPS when you are ready.'
+            ? 'Warm-up: open. Tap BEGIN REPS when you are ready.'
             : spec.warmupSeconds == 0
             ? 'No warm-up. The clock starts when you tap Start.'
             : 'Warm-up: ${SessionText.clock(spec.warmupSeconds!)}, then the '
@@ -1601,7 +1652,7 @@ class _SessionCard extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(top: Space.x8),
           child: Text(
-            'Distance reps need GPS. START REPS waits for a fix.',
+            'Distance reps need GPS. BEGIN REPS waits for a fix.',
             key: const ValueKey('session-gps-note'),
             style: RunSoloType.label13.copyWith(color: t.semWarn),
           ),

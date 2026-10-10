@@ -234,7 +234,7 @@ void main() {
           seconds: 300,
         );
         tester.view.physicalSize = Size(1080, h * 3.0);
-        // C1b: warm up, then START TEST; minute 6 of the test.
+        // C1b: warm up, then BEGIN TEST; minute 6 of the test.
         await fake.startReps();
         await step(tester, fake, 360);
         await show(tester, fake, km3(kind: 'cooper'));

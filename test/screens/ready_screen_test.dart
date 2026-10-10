@@ -1,11 +1,15 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/app/services.dart';
+import 'package:run_solo/theme/theme.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/ready_screen.dart';
+import 'package:run_solo/screens/settings_screen.dart';
 import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/screens/start_screen.dart';
 import 'package:run_solo/state/settings.dart';
@@ -73,7 +77,7 @@ void main() {
     await pumpTimes(tester, 3);
     expect(find.text('GOOD'), findsOneWidget);
     expect(find.text('Starting without a good GPS fix'), findsNothing);
-    expect(find.text('CONNECTED 61'), findsOneWidget);
+    expect(find.text('CONNECTED · 61 BPM'), findsOneWidget);
   });
 
   testWidgets('a weak fix says WEAK and still warns', (tester) async {
@@ -261,5 +265,118 @@ void main() {
     await settleAnimations(tester);
     expect(find.byType(ReadyScreen), findsNothing);
     expect(find.byKey(const ValueKey('start-ready-up')), findsOneWidget);
+  });
+
+  testWidgets('intervals: the session shape and its words fill the middle', (
+    tester,
+  ) async {
+    final services = fakeServices(
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.intervals,
+      ),
+    );
+    await openReady(tester, services);
+    expect(find.byKey(const ValueKey('ready-structure')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ready-structure-line')), findsOneWidget);
+  });
+
+  testWidgets('free: the last free run, when there is one', (tester) async {
+    final services = fakeServices(
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.free,
+      ),
+      runs: [
+        summary(
+          id: 'f1',
+          start: testNow.subtract(const Duration(days: 3)),
+          fourByFour: false,
+          durationMs: 37 * 60 * 1000,
+          distanceM: 7200,
+        ),
+      ],
+    );
+    await openReady(tester, services);
+    await pumpTimes(tester, 4);
+    final line = tester.widget<Text>(
+      find.byKey(const ValueKey('ready-last-run')),
+    );
+    expect(line.data, startsWith('Last free run: 7.20 km'));
+    expect(line.data, endsWith('3 days ago'));
+  });
+
+  testWidgets('free with no history shows no last-run line', (tester) async {
+    final services = fakeServices(
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.free,
+      ),
+    );
+    await openReady(tester, services);
+    expect(find.byKey(const ValueKey('ready-last-run')), findsNothing);
+  });
+
+  testWidgets('what is on: chips say so and open Settings', (tester) async {
+    final services = fakeServices(
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.free,
+        autoPause: false,
+      ),
+    );
+    await openReady(tester, services);
+    expect(find.text('VOICE CUES ON'), findsOneWidget);
+    expect(find.text('COUNTDOWN 3 S'), findsOneWidget);
+    expect(find.text('AUTO-PAUSE OFF'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('ready-on-countdown')));
+    await pumpTimes(tester, 3);
+    await settleAnimations(tester);
+    expect(find.byType(SettingsScreen), findsOneWidget);
+  });
+
+  test('Ready text keeps 4.5:1 on every run type colour', () {
+    double lum(Color c) {
+      double ch(double v) => v <= 0.03928
+          ? v / 12.92
+          : math.pow((v + 0.055) / 1.055, 2.4) as double;
+      return 0.2126 * ch(c.r) + 0.7152 * ch(c.g) + 0.0722 * ch(c.b);
+    }
+
+    double ratio(Color a, Color b) {
+      final la = lum(a), lb = lum(b);
+      return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
+    }
+
+    final grounds = {
+      'free': AuroraRunType.free,
+      'trail': AuroraRunType.trail,
+      'laps': AuroraRunType.laps,
+      'goal': AuroraRunType.goal,
+      'intervals': AuroraRunType.intervals,
+      'tests': AuroraRunType.tests,
+    };
+    for (final e in grounds.entries) {
+      expect(
+        ratio(ReadyScreen.ink, e.value),
+        greaterThanOrEqualTo(4.5),
+        reason: '${e.key}: ink on ground',
+      );
+      // The READY? label is ink at 70 % over the ground.
+      final soft = Color.alphaBlend(
+        ReadyScreen.ink.withValues(alpha: 0.7),
+        e.value,
+      );
+      expect(
+        ratio(soft, e.value),
+        greaterThanOrEqualTo(4.5),
+        reason: '${e.key}: READY? label',
+      );
+    }
+    // The chips and START: Bone on Night ink.
+    expect(
+      ratio(NightSession.inkPrimary, ReadyScreen.ink),
+      greaterThanOrEqualTo(4.5),
+    );
   });
 }

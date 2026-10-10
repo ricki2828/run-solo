@@ -248,7 +248,7 @@ class RecordingSnapshot {
   /// step's max HR (plan §3.7, A8).
   bool get shortReps => spec?.cueProfile == CueProfile.short;
 
-  /// The session has distance steps: START REPS waits for a GPS fix (W3).
+  /// The session has distance steps: BEGIN REPS waits for a GPS fix (W3).
   bool get needsGps =>
       spec?.steps.any((s) => s.target == TargetKind.distance) ?? false;
 
@@ -273,7 +273,7 @@ class RecordingSnapshot {
   /// Timed interval phases (warm-up, reps, recoveries, cool-down).
   bool get isPreset => mode == RecordMode.intervals && spec != null;
 
-  /// A 12-minute test (C1, A5): warm-up, START TEST, 12:00, cool-down.
+  /// A 12-minute test (C1, A5): warm-up, BEGIN TEST, 12:00, cool-down.
   bool get isCooper => mode == RecordMode.cooper && spec != null;
   int get reps => isPreset ? spec!.repCount : 0;
 
@@ -682,7 +682,7 @@ class RecordingController extends ChangeNotifier {
   Future<void> lap() =>
       _snap.lapsEnabled ? _gateway.lap(LapSource.button) : Future.value();
 
-  /// START REPS (START TEST for a 12-minute test) in warm-up; nothing
+  /// BEGIN REPS (BEGIN TEST for a 12-minute test) in warm-up; nothing
   /// otherwise. A session with distance steps waits for a GPS fix (plan
   /// §3.6 W3), so the first rep can end; so does the test, whose result is
   /// its distance.

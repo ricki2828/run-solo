@@ -192,7 +192,7 @@ class FakeRecorderGateway implements RecorderGateway {
   SessionSpec? _spec;
 
   /// Phases run for an intervals spec and, since I2, for the Cooper test
-  /// (warm-up, START TEST, one 12:00 work step, cool-down); fartlek is Laps.
+  /// (warm-up, BEGIN TEST, one 12:00 work step, cool-down); fartlek is Laps.
   SessionSpec? get _timed =>
       _mode == RecordMode.intervals || _mode == RecordMode.cooper
       ? _spec
@@ -478,7 +478,7 @@ class FakeRecorderGateway implements RecorderGateway {
     // press (debug builds log `lapIgnored`), nothing is recorded.
     switch (_mode) {
       // Plan §18.2 / A5: no lap input in a Free run or a 12-minute test
-      // (RunMode.lapInput); START TEST is startReps, never a lap.
+      // (RunMode.lapInput); BEGIN TEST is startReps, never a lap.
       case RecordMode.free:
       case RecordMode.trail:
       case RecordMode.cooper:

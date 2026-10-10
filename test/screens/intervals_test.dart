@@ -256,7 +256,7 @@ void main() {
       return fake;
     }
 
-    testWidgets('START REPS waits for a GPS fix (W3)', (tester) async {
+    testWidgets('BEGIN REPS waits for a GPS fix (W3)', (tester) async {
       final fake = await startFourHundreds(tester, gpsLost: true);
       expect(find.byKey(const ValueKey('start-reps-waiting')), findsOneWidget);
       expect(
