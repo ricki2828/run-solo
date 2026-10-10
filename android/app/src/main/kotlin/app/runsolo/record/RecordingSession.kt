@@ -515,7 +515,7 @@ class RecordingSession(
         }
         if (core.state == RecorderState.recording) {
             for (s in samples) if (s.hasFix) {
-                liveRoute.offer(s.lat!!, s.lon!!, s.accuracyM!!)
+                liveRoute.offer(s.lat!!, s.lon!!, s.accuracyM!!, routeElevation())
                 if (s.accuracyM!! <= RETRACE_MAX_ACCURACY_M) retrace.add(s.lat!!, s.lon!!, lastElevRel, ticker.distanceM)
             }
         }
@@ -591,7 +591,7 @@ class RecordingSession(
         val routeWall = SystemClock.elapsedRealtime()
         if (liveRoute.size > routeSentCount && routeWall - lastRouteEventWall >= 900) {
             lastRouteEventWall = routeWall
-            RecorderEventBus.emit(RoutePointsEvent(fromIndex = routeSentCount.toLong(), latLon = liveRoute.since(routeSentCount)))
+            RecorderEventBus.emit(RoutePointsEvent(fromIndex = routeSentCount.toLong(), latLon = liveRoute.since(routeSentCount), elevM = liveRoute.elevSince(routeSentCount)))
             routeSentCount = liveRoute.size
         }
         refreshSnapshot()
@@ -601,6 +601,9 @@ class RecordingSession(
             onReplayFinished?.invoke()
         }
     }
+
+    /** Barometer-smoothed elevation for a route point; null without a barometer or before GPS has set the level. */
+    private fun routeElevation(): Double? = if (liveElev.source == ElevSource.baro) liveElev.elevationM else null
 
     /** The retrace state now (back on our own track, distance back to the start, the old climb ahead); for voice check-ins. */
     fun retraceState(): RetraceState = retrace.state

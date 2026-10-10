@@ -2344,20 +2344,28 @@ class GpsProbeEvent extends RecorderEvent {
 /// run records. [fromIndex] is the index of the first point in [latLon]
 /// (flat `[lat, lon, ...]`), so Dart can append deltas and spot a gap. Points
 /// come from the samples the recorder already keeps (no extra GPS request).
+/// [elevM], when present, has one entry per point (same order as [latLon]
+/// pairs): the barometer-smoothed elevation in metres when the phone has a
+/// barometer, null per point otherwise. Null (not sent) when the recorder has
+/// no elevation at all.
 class RoutePointsEvent extends RecorderEvent {
   RoutePointsEvent({
     required this.fromIndex,
     required this.latLon,
+    this.elevM,
   });
 
   int fromIndex;
 
   List<double> latLon;
 
+  List<double?>? elevM;
+
   List<Object?> _toList() {
     return <Object?>[
       fromIndex,
       latLon,
+      elevM,
     ];
   }
 
@@ -2369,6 +2377,7 @@ class RoutePointsEvent extends RecorderEvent {
     return RoutePointsEvent(
       fromIndex: result[0]! as int,
       latLon: (result[1]! as List<Object?>).cast<double>(),
+      elevM: (result[2] as List<Object?>?)?.cast<double?>(),
     );
   }
 
@@ -2381,7 +2390,7 @@ class RoutePointsEvent extends RecorderEvent {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(fromIndex, other.fromIndex) && _deepEquals(latLon, other.latLon);
+    return _deepEquals(fromIndex, other.fromIndex) && _deepEquals(latLon, other.latLon) && _deepEquals(elevM, other.elevM);
   }
 
   @override

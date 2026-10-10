@@ -2194,40 +2194,49 @@ struct GpsProbeEvent: RecorderEvent {
 /// run records. [fromIndex] is the index of the first point in [latLon]
 /// (flat `[lat, lon, ...]`), so Dart can append deltas and spot a gap. Points
 /// come from the samples the recorder already keeps (no extra GPS request).
+/// [elevM], when present, has one entry per point (same order as [latLon]
+/// pairs): the barometer-smoothed elevation in metres when the phone has a
+/// barometer, null per point otherwise. Null (not sent) when the recorder has
+/// no elevation at all.
 ///
 /// Generated class from Pigeon that represents data sent in messages.
 struct RoutePointsEvent: RecorderEvent {
   var fromIndex: Int64
   var latLon: [Double]
+  var elevM: [Double?]? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> RoutePointsEvent? {
     let fromIndex = pigeonVar_list[0] as! Int64
     let latLon = pigeonVar_list[1] as! [Double]
+    let elevM: [Double?]? = nilOrValue(pigeonVar_list[2])
 
     return RoutePointsEvent(
       fromIndex: fromIndex,
-      latLon: latLon
+      latLon: latLon,
+      elevM: elevM
     )
   }
   func toList() -> [Any?] {
     return [
       fromIndex,
       latLon,
+      elevM,
     ]
   }
   static func == (lhs: RoutePointsEvent, rhs: RoutePointsEvent) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.fromIndex, rhs.fromIndex) && deepEqualsPlatformApi(lhs.latLon, rhs.latLon)
+    return deepEqualsPlatformApi(lhs.fromIndex, rhs.fromIndex) && deepEqualsPlatformApi(lhs.latLon, rhs.latLon) && deepEqualsPlatformApi(lhs.elevM, rhs.elevM)
   }
 
   func hash(into hasher: inout Hasher) {
     hasher.combine("RoutePointsEvent")
     deepHashPlatformApi(value: fromIndex, hasher: &hasher)
     deepHashPlatformApi(value: latLon, hasher: &hasher)
+    deepHashPlatformApi(value: elevM, hasher: &hasher)
   }
 }
 

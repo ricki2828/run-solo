@@ -5,6 +5,7 @@ import 'tokens.dart';
 import 'typography.dart';
 
 export 'motion.dart';
+export 'run_label.dart';
 export 'tokens.dart';
 export 'typography.dart';
 

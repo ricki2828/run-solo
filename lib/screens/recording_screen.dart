@@ -431,6 +431,12 @@ class _RecordingScreenState extends State<RecordingScreen>
           final pausedNow = s.paused && !_finishing;
           // The coach layer (sessions with a target): the target band while a
           // rep or goal is on, and the next-step line, worded like the voice.
+          // Metric labels: 17 sp, one step down in a structured session
+          // (its coach layer needs the room), and no step up on a short
+          // phone there (the 4x4 layout has none to spare).
+          final labelSize = s.isPreset
+              ? (compact ? 11.0 : 15.0)
+              : RunLabelScope.defaultSize;
           final coach = pausedNow || _finishing
               ? null
               : _CoachLayer.of(
@@ -442,6 +448,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                       ? HrZones.secondaryOnZone
                       : t.inkSecondary,
                   textColor: t.inkPrimary,
+                  labelSize: labelSize,
                 );
           final Widget gap = mapOn || freeBlock
               ? const SizedBox.shrink()
@@ -639,8 +646,11 @@ class _RecordingScreenState extends State<RecordingScreen>
                               child: _TimerBlock(
                                 s: s,
                                 ctl: ctl,
+                                // The next-step line under it already says
+                                // "2:47 left", so the caption goes whenever
+                                // that line shows: the bigger labels need
+                                // the room (founder, 10-Oct).
                                 hideCaption:
-                                    compact &&
                                     coach != null &&
                                     coach.nextLine != null &&
                                     (s.phase == Phase.work ||
@@ -905,7 +915,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                   ),
               ],
             ),
-          );
+          ).labelScope(labelSize);
         },
       ),
     );
@@ -1336,7 +1346,7 @@ class AuxFigure extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.start,
     mainAxisSize: MainAxisSize.min,
     children: [
-      Text(label, style: RunSoloType.runLabel.copyWith(color: labelColor)),
+      Text(label, style: RunLabelScope.style(context, labelColor)),
       FittedBox(
         fit: BoxFit.scaleDown,
         alignment: Alignment.centerLeft,
@@ -1428,7 +1438,7 @@ class _Vitals extends StatelessWidget {
       color: t.inkPrimary,
       fontSize: RunSoloType.runSize(compact ? 36 : 44),
     );
-    final label = RunSoloType.runLabel.copyWith(color: secondary);
+    final label = RunLabelScope.style(context, secondary);
     // Short reps (plan §3.7, A8): HR lags a 30 s effort, so in a rep the
     // cell shows the rep's max instead of the live reading.
     final repMax =
@@ -2629,8 +2639,10 @@ class _CoachLayer extends StatelessWidget {
     required this.labelColor,
     required this.textColor,
     required this.nextLine,
+    required this.labelSize,
   });
   final CoachTarget? target;
+  final double labelSize;
   final double? smoothed;
   final Units units;
   final Color labelColor;
@@ -2639,7 +2651,7 @@ class _CoachLayer extends StatelessWidget {
 
   /// Room the layer needs, for [_CoachSlot] to decide whether it fits.
   double get height =>
-      (target != null ? TargetBand.height : 0) +
+      (target != null ? TargetBand.heightFor(labelSize) : 0) +
       (target != null && nextLine != null ? 2.0 : 0) +
       (nextLine != null ? 20.0 : 0);
 
@@ -2650,6 +2662,7 @@ class _CoachLayer extends StatelessWidget {
     required Units units,
     required Color labelColor,
     required Color textColor,
+    required double labelSize,
   }) {
     // The band is for the pace-targeted part: a rep or goal's work, or a
     // plan session run as a Free run. Not warm-up, recovery or cool-down.
@@ -2679,6 +2692,7 @@ class _CoachLayer extends StatelessWidget {
       labelColor: labelColor,
       textColor: textColor,
       nextLine: line,
+      labelSize: labelSize,
     );
   }
 

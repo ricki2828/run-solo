@@ -805,7 +805,9 @@ class RecordingController extends ChangeNotifier {
       case GpsProbeEvent():
         break; // the Start screen's (pre-start readiness), not the run's
       case RoutePointsEvent():
-        if (!liveRoute.apply(e.fromIndex, e.latLon)) unawaited(syncRoute());
+        if (!liveRoute.apply(e.fromIndex, e.latLon, e.elevM)) {
+          unawaited(syncRoute());
+        }
     }
     notifyListeners();
   }

@@ -2357,25 +2357,32 @@ data class GpsProbeEvent (
  * run records. [fromIndex] is the index of the first point in [latLon]
  * (flat `[lat, lon, ...]`), so Dart can append deltas and spot a gap. Points
  * come from the samples the recorder already keeps (no extra GPS request).
+ * [elevM], when present, has one entry per point (same order as [latLon]
+ * pairs): the barometer-smoothed elevation in metres when the phone has a
+ * barometer, null per point otherwise. Null (not sent) when the recorder has
+ * no elevation at all.
  *
  * Generated class from Pigeon that represents data sent in messages.
  */
 data class RoutePointsEvent (
   val fromIndex: Long,
-  val latLon: List<Double>
+  val latLon: List<Double>,
+  val elevM: List<Double?>? = null
 ) : RecorderEvent()
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): RoutePointsEvent {
       val fromIndex = pigeonVar_list[0] as Long
       val latLon = pigeonVar_list[1] as List<Double>
-      return RoutePointsEvent(fromIndex, latLon)
+      val elevM = pigeonVar_list[2] as List<Double?>?
+      return RoutePointsEvent(fromIndex, latLon, elevM)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       fromIndex,
       latLon,
+      elevM,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -2386,13 +2393,14 @@ data class RoutePointsEvent (
       return true
     }
     val other = other as RoutePointsEvent
-    return PlatformApiPigeonUtils.deepEquals(this.fromIndex, other.fromIndex) && PlatformApiPigeonUtils.deepEquals(this.latLon, other.latLon)
+    return PlatformApiPigeonUtils.deepEquals(this.fromIndex, other.fromIndex) && PlatformApiPigeonUtils.deepEquals(this.latLon, other.latLon) && PlatformApiPigeonUtils.deepEquals(this.elevM, other.elevM)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.fromIndex)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.latLon)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.elevM)
     return result
   }
 }

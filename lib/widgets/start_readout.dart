@@ -56,7 +56,7 @@ class StartReadout extends StatelessWidget {
       fontSize: _figureSize,
       color: valueColor,
     );
-    final label = RunSoloType.runLabel.copyWith(color: labelColor);
+    final label = RunLabelScope.style(context, labelColor);
     final cells = <Widget>[
       if (back != null)
         Expanded(

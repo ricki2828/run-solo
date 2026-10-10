@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../app/format.dart';
@@ -33,8 +35,9 @@ class TargetBand extends StatelessWidget {
 
   static const double barHeight = 8;
 
-  /// Height of the whole band row: the label (17 sp) is the taller part.
-  static const double height = 24;
+  /// Height of the whole band row: the label is the taller part.
+  static double heightFor(double labelSize) =>
+      math.max(barHeight + 4, labelSize * 1.1);
 
   @override
   Widget build(BuildContext context) {
@@ -76,7 +79,7 @@ class TargetBand extends StatelessWidget {
                   '${target.slowerIsFine ? ' OR SLOWER' : ''}',
                   key: const ValueKey('target-label'),
                   softWrap: false,
-                  style: RunSoloType.runLabel.copyWith(color: labelColor),
+                  style: RunLabelScope.style(context, labelColor),
                 ),
               ),
             ),
