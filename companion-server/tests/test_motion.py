@@ -155,3 +155,38 @@ def test_weekly_runs_must_match_days():
 
     with pytest.raises(ValueError, match="runs"):
         weekly_from_facts(f)
+
+
+def test_each_fixture_has_its_own_route():
+    from render.motion._geom import fit, prepare_route
+
+    shapes = {}
+    for w in ("milos", "intervals", "slow", "pb"):
+        r = prepare_route(samples.run_spec(w).route)
+        shapes[w] = fit(r, (0, 0, 100, 100))
+    names = list(shapes)
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            d = sum(abs(p[0] - q[0]) + abs(p[1] - q[1]) for p, q in zip(shapes[a], shapes[b])) / len(shapes[a])
+            assert d > 3, f"{a} and {b} draw the same route"
+
+
+def test_interval_session_shows_rep_bars():
+    spec = samples.run_spec("intervals")
+    v = RunVideo(spec)
+    assert [b.pace_s for b in v.bars] == [86, 85, 84, 84, 83, 81, 84, 85]
+    assert v.bars is spec.reps and len(v.bars) == 8
+    assert min(v.bars, key=lambda b: b.pace_s).label == "6"  # rep 6, 1:21: same fact the weekly best moment quotes
+    assert all(b.zone for b in v.bars)
+
+
+def test_rep_facts_must_agree():
+    f = samples.singapore_intervals()
+    f["reps"]["best_s"] = 79
+    with pytest.raises(ValueError, match="reps"):
+        samples.spec_from_facts(f)
+
+
+@pytest.mark.parametrize("t", [6.8])
+def test_run_goldens_intervals(t):
+    _check(f"run_intervals_{t}", RunVideo(samples.run_spec("intervals")).frame(t))

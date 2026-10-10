@@ -60,6 +60,7 @@ class RunVideoSpec:
     flood_zone: int | None = None  # 1..5 for hard runs: the full zone flood
     signoff: str = "Same time next run."
     latlon: bool = True
+    reps: list[Split] | None = None  # interval sessions: one bar per rep (pace_s = rep time) instead of per km
 
     def __post_init__(self):
         self.validate()
@@ -69,6 +70,10 @@ class RunVideoSpec:
         v = self.verdict
         if v.kind not in WORDS:
             raise ValueError(f"unknown verdict kind {v.kind}")
+        if self.reps:
+            if not self.splits:
+                self.splits = []
+            return self._validate_verdict(v)
         if not self.splits:
             raise ValueError("no splits")
         if len(self.splits) != math.ceil(self.distance_km - 0.02):
@@ -79,6 +84,9 @@ class RunVideoSpec:
         t = sum(x.dist_km * x.pace_s for x in self.splits)
         if abs(t - self.duration_s) > 0.015 * self.duration_s:
             raise ValueError(f"splits sum to {t:.0f}s, run is {self.duration_s:.0f}s")
+        self._validate_verdict(v)
+
+    def _validate_verdict(self, v):
         if v.old is not None or v.new is not None:
             if v.old is None or v.new is None:
                 raise ValueError("verdict needs both old and new")
@@ -118,6 +126,19 @@ def spec_from_facts(f: dict, signoff: str = "Same time next run.") -> "RunVideoS
     if hard:
         flood = 5 if (len(zs) == 5 and zs[4] > zs[3]) else 4
     when = datetime.fromisoformat(f["start_local"])
+    reps = None
+    rp = f.get("reps") or {}
+    if f.get("type") == "interval" and rp.get("times_s"):
+        times = rp["times_s"]
+        if len(times) != rp.get("count", len(times)) or min(times) != rp.get("best_s", min(times)):
+            raise ValueError("reps: count or best_s disagree with times_s")
+        h = f.get("hero")
+        if h and isinstance(h.get("value"), str) and ":" in h["value"]:
+            m, s_ = h["value"].split(":")
+            if abs(int(m) * 60 + int(s_) - sum(times) / len(times)) > 1:
+                raise ValueError("hero rep average disagrees with times_s")
+        zones = rp.get("zones") or [None] * len(times)
+        reps = [Split(str(i + 1), float(t), z, 0.4) for i, (t, z) in enumerate(zip(times, zones))]
     splits = [Split(str(x["km"]), float(x["pace_s"]), x.get("zone"), float(x.get("dist_km", 1.0))) for x in f["splits"]]
     if f.get("pb"):
         pbd = f["pb_detail"]
@@ -136,7 +157,7 @@ def spec_from_facts(f: dict, signoff: str = "Same time next run.") -> "RunVideoS
     return RunVideoSpec(
         kind_label=f["title"].upper(), date_label=when.strftime("%a %-d %b").upper(), route=f["route"],
         distance_km=dist, duration_s=dur, splits=splits, verdict=v, run_type=RUN_TYPE.get(f.get("type"), "AEROBIC"),
-        flood_zone=flood, signoff=signoff)
+        flood_zone=flood, signoff=signoff, reps=reps)
 
 
 WORDS = {"faster": "FASTER", "slower": "SLOWER", "holding": "HOLDING", "pb": "NEW PB"}
@@ -168,6 +189,8 @@ class RunVideo:
                      "pb": th.ink}[v.kind]
         self.vrule = T.PB_CYAN if v.kind == "pb" else self.vcol
         sp = [x.pace_s for x in spec.splits]
+        self.bars = spec.reps or spec.splits
+        sp = [x.pace_s for x in self.bars]
         self.speeds = [1000 / p for p in sp]
         self.avg_pace = spec.duration_s / spec.distance_km
 
@@ -285,7 +308,8 @@ class RunVideo:
     # ---- scene 2: splits ----
     def _bars(self, cv: Canvas, t: float, a: float):
         th, s = self.th, self.s
-        n = len(s.splits)
+        bars = self.bars
+        n = len(bars)
         base, top = 1110, 660
         span = RIGHT - M
         bw = min(96, span / (n * 1.2 - 0.2))
@@ -297,7 +321,7 @@ class RunVideo:
         every = 1 if n <= 12 else math.ceil(68 / (bw + gap))
         lab_f = saira(int(clamp(bw * 0.62, 40, 56)))
         cum = 0.0
-        for i, sp in enumerate(s.splits):
+        for i, sp in enumerate(bars):
             cum += sp.dist_km
             u = (self.speeds[i] - lo) / (hi - lo) if hi > lo else 0.65
             full = (base - top) * (0.34 + 0.66 * u)
@@ -311,16 +335,24 @@ class RunVideo:
                 cv.rect(x, base - hgt, x + bw, base, th.fade(col, a), r=min(14, bw * 0.22), top_only=True)
             la = out_cubic(seg(q, 0.55, 1.0)) * a
             show = i % every == 0 or i == fastest or i == n - 1 and every == 1
+            best = bool(s.reps) and i == fastest
+            if best and hgt > 1:  # the best rep is outlined and tagged
+                cv.rect(x - 6, base - hgt - 6, x + bw + 6, base, th.fade(T.PB_CYAN if th.flood else th.ink, a * q),
+                        r=min(18, bw * 0.26), top_only=True)
+                cv.rect(x, base - hgt, x + bw, base, th.fade(col, a), r=min(14, bw * 0.22), top_only=True)
             if la > 0 and show:
-                cv.text((x + bw / 2, base - hgt - 16), fmt_pace(sp.pace_s), lab_f,
-                        th.fade(th.ink, la), anchor="ms")
+                cv.text((x + bw / 2, base - hgt - (62 if best else 16)), fmt_pace(sp.pace_s), lab_f,
+                        th.fade(T.PB_CYAN if (best and th.flood) else th.ink, la), anchor="ms")
+                if best:
+                    cv.text((x + bw / 2, base - hgt - 22), "BEST", grot(30, 700),
+                            th.fade(T.PB_CYAN if th.flood else th.ink, la), anchor="ms", tracking=3)
             if q > 0.2 and (i % every == 0 or i == n - 1):
-                lab = sp.label
+                lab = ("R" + sp.label) if s.reps else sp.label
                 cv.text((x + bw / 2, base + 48), lab, grot(34, 600), th.fade(th.quiet, a * clamp(q * 2)), anchor="ms")
         lg = a * out_cubic(seg(t, BARS_END - 1.2, BARS_END - 0.6))
         if lg > 0:
             cv.text((M, 1262), "TALLER = FASTER", grot(34, 600), th.fade(th.quiet, lg), tracking=2)
-            if any(x.zone for x in s.splits):
+            if any(x.zone for x in bars):
                 x = RIGHT - 5 * 104
                 for z in range(5):
                     cv.rect(x, 1236, x + 26, 1262, th.fade(T.ZONES[z], lg), r=5)

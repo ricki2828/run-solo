@@ -84,7 +84,14 @@ def prepare_route(points, n: int = 600, latlon: bool = True):
     simp = _dp(xy, diag * 0.004)
     if len(simp) > 2:
         simp = _catmull(simp)
-    return _resample(simp, n)
+    out = _resample(simp, n)
+    for _ in range(3):  # GPS jitter: light moving average, endpoints pinned
+        k = 6
+        out = [out[0]] + [
+            (sum(q[0] for q in out[max(0, i - k):i + k + 1]) / len(out[max(0, i - k):i + k + 1]),
+             sum(q[1] for q in out[max(0, i - k):i + k + 1]) / len(out[max(0, i - k):i + k + 1]))
+            for i in range(1, len(out) - 1)] + [out[-1]]
+    return out
 
 
 def fit(pts, box):
