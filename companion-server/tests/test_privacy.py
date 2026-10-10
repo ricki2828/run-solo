@@ -182,3 +182,35 @@ def test_backup_is_authenticated_restorable_and_pruned(client, tmp_path):
     other.write_text("a-different-key-0123456789")
     with pytest.raises(ValueError):
         restore(new, str(tmp_path / "y.db"), str(other))
+
+
+def test_export_covers_every_table_with_a_runner_id(tmp_path, fakes):
+    import httpx
+    from fastapi.testclient import TestClient
+    from companion.app import create_app
+    from companion.service import EXPORTED_TABLES, NOT_EXPORTED_TABLES
+    from conftest import make_settings
+    s = make_settings(tmp_path, weather_enabled=True)
+    app = create_app(s, httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=False)
+    with TestClient(app) as c:
+        t = enrol(c)
+        c.post("/v1/runs", json=run_payload("r0", minutes_ago=30, area_lat=1.3521, area_lon=103.8198), headers=auth(t))
+        c.app.state.svc.run_outbox(now_utc() + timedelta(seconds=1))
+        me = c.get("/v1/me", headers=auth(t)).json()
+        con = sqlite3.connect(s.db_path)
+        for (name,) in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
+            cols = [r[1] for r in con.execute(f"PRAGMA table_info({name})")]
+            if "user_id" in cols or name == "users":
+                assert name in EXPORTED_TABLES or name in NOT_EXPORTED_TABLES, f"{name} has a runner id: export it or say why not"
+        assert not set(EXPORTED_TABLES) & set(NOT_EXPORTED_TABLES)
+        for key in set(EXPORTED_TABLES.values()):
+            assert key in me, key
+        assert me["areas"] == [{"run_id": "r0", "lat": 1.4, "lon": 103.8}]
+        assert any(r["kind"] == "card" for r in me["conversation_log"])
+        assert me["messages_sent_30d"] and "situation" in me["messages_sent_30d"][0]
+        assert any("Open-Meteo" in g for g in me["goes_to"])
+
+
+def test_open_meteo_listed_only_when_weather_is_on(client, fakes):
+    t = enrol(client)
+    assert not any("Open-Meteo" in g for g in client.get("/v1/me", headers=auth(t)).json()["goes_to"])

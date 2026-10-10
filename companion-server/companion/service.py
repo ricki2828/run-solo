@@ -100,6 +100,19 @@ class RunIn(BaseModel):
         return v.astimezone(UTC)
 
 
+# Export coverage (/v1/me). Every table with a user_id column must be in one of these two maps; a test walks
+# the live schema, so a new user table cannot be added without deciding whether the runner sees it.
+EXPORTED_TABLES = {
+    "users": "profile", "runs": "runs_received", "memory": "memory", "cards": "messages_sent_30d",
+    "outcomes": "suggestion_outcomes", "convo_cards": "messages_sent_30d", "convo_log": "conversation_log",
+    "convo_area": "areas",
+}
+NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message content of its own
+    "devices": "hashed device tokens", "enrolments": "short-lived sign-up nonces", "outbox": "send queue, ids only",
+    "quota": "weekly cap counters", "msglog": "send counts, no content", "inbound_seen": "hashed message ids",
+}
+
+
 class RateLimited(Exception):
     pass
 
@@ -351,8 +364,11 @@ class Service:
                 "verdict, locality, feel, received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
             cutoff = iso(now - timedelta(days=RETENTION_LOG_DAYS))
             msgs = [dict(r) for r in c.execute(
-                "SELECT kind, headline, body, sent_at FROM cards WHERE user_id=? AND sent_at >= ? ORDER BY sent_at DESC",
-                (uid, cutoff))]
+                "SELECT k.kind, k.headline, k.body, k.sent_at, cc.situation, cc.touch_kind FROM cards k "
+                "LEFT JOIN convo_cards cc ON cc.card_id = k.card_id WHERE k.user_id=? AND k.sent_at >= ? "
+                "ORDER BY k.sent_at DESC", (uid, cutoff))]
+            areas = [dict(r) for r in c.execute("SELECT run_id, lat, lon FROM convo_area WHERE user_id=? ORDER BY rowid", (uid,))]
+            convo = [dict(r) for r in c.execute("SELECT kind, key, ts FROM convo_log WHERE user_id=? ORDER BY id", (uid,))]
             memory = self._memory_get(c, uid, now)
             outcomes = [dict(r) for r in c.execute("SELECT kind, outcome, ts FROM outcomes WHERE user_id=?", (uid,))]
         ref = u["chat_ref"]
@@ -363,9 +379,11 @@ class Service:
                 "zone_id": u["zone_id"], "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },
             "runs_received": runs, "memory": memory, "suggestion_outcomes": outcomes,
-            "messages_sent_30d": msgs,
+            "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo,
             "goes_to": ["OpenRouter and the model provider (facts and enumerated memory only, no phone number or chat id)",
-                        "Telegram" if u["channel"] == "telegram" else "Meta (WhatsApp Cloud API, keeps messages up to 30 days)"],
+                        "Telegram" if u["channel"] == "telegram" else "Meta (WhatsApp Cloud API, keeps messages up to 30 days)",
+                        *(["Open-Meteo (a location rounded to about 11 km and a timezone, no identifier)"]
+                          if self.s.weather_enabled else [])],
         }
 
     def delete_me(self, uid: str) -> None:
