@@ -94,6 +94,7 @@ void main() {
     );
     await openReady(tester, services);
     await tester.tap(find.byKey(const ValueKey('ready-start')));
+    await tester.pump(); // starts the numeral's animation
     await tester.pump(const Duration(milliseconds: 500));
     await golden(tester, 'countdown_3_360x640');
     // Leave the screen tidy: cancel so no timer is pending.
