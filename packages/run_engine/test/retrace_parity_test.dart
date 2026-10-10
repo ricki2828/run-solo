@@ -14,7 +14,7 @@ void main() {
       File('test/fixtures/retrace/vectors.json').readAsStringSync(),
     ) as Map<String, dynamic>;
     final vectors = doc['vectors'] as List;
-    expect(vectors.length, greaterThanOrEqualTo(7));
+    expect(vectors.length, greaterThanOrEqualTo(8));
     var retracing = 0;
     final byName = <String, Set<String?>>{};
     for (final v in vectors.cast<Map<String, dynamic>>()) {
@@ -63,6 +63,7 @@ void main() {
     expect(byName['same_direction_loop'], {'same'});
     expect(byName['oval_three_laps'], {'same'});
     expect(byName['out_and_back'], {'reverse'});
+    expect(byName['gps_jump_500km'], {'reverse'});
     expect(
       byName.containsKey('figure_eight'),
       isFalse,

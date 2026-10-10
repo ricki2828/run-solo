@@ -111,7 +111,7 @@ class RecordingSession(
     /** Climb so far and the current grade (barometer + GPS fused, see ElevationFuser). */
     private val liveElev = LiveElevation()
     /** Retrace detection (out-and-back): fed with accepted fixes on this thread, so the screen and the voice read one answer. */
-    private val retraceFeed = RetraceFeed()
+    private val retraceFeed = RetraceFeed(onFailure = { Log.e(TAG, "retrace disabled for this run", it) })
     private val retrace: RetraceDetector get() = retraceFeed.detector
     private var lastElevRel: Double? = null
     private val moving = MovingDetector()

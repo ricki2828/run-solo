@@ -10,9 +10,20 @@ package app.runsolo.core.route
  *    the same rule the check-in's height vs start follows;
  *  - [distM] is the recorder's own filtered distance after this fix (the same value live and on
  *    restore).
+ *
+ * Retrace is a convenience, never a reason to lose a run: if the detector throws (or runs out of
+ * memory), the feed disables retrace for the rest of the run, drops the detector's memory, calls
+ * [onFailure] once, and every later [offer] is a no-op. The recording carries on.
  */
-class RetraceFeed(val detector: RetraceDetector = RetraceDetector()) {
-    /** Returns the state after the fix, or null when the fix was not used. */
+class RetraceFeed(
+    val detector: RetraceDetector = RetraceDetector(),
+    private val onFailure: ((Throwable) -> Unit)? = null,
+) {
+    /** The failure that disabled retrace for this run, or null while it works. */
+    var failure: Throwable? = null
+        private set
+
+    /** Returns the state after the fix, or null when the fix was not used (or retrace is disabled). */
     fun offer(
         lat: Double,
         lon: Double,
@@ -22,11 +33,19 @@ class RetraceFeed(val detector: RetraceDetector = RetraceDetector()) {
         distM: Double,
         active: Boolean,
     ): RetraceState? {
-        if (!active || accuracyM > MAX_ACCURACY_M) return null
-        return detector.add(lat, lon, if (baro) elevM else null, distM)
+        if (failure != null || !active || accuracyM > MAX_ACCURACY_M) return null
+        return try {
+            detector.add(lat, lon, if (baro) elevM else null, distM)
+        } catch (t: Throwable) {
+            failure = t
+            try { detector.reset() } catch (ignored: Throwable) { }
+            try { onFailure?.invoke(t) } catch (ignored: Throwable) { }
+            null
+        }
     }
 
-    val state: RetraceState get() = detector.state
+    /** NONE once disabled. */
+    val state: RetraceState get() = if (failure != null) RetraceState.NONE else detector.state
 
     companion object {
         /** Same accuracy cut as the live map route: a poorer fix is not a place on the track. */
