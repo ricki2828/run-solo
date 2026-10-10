@@ -97,6 +97,24 @@ def test_cards_render_from_the_minimal_facts_the_server_stores():
     assert "Z1" not in _body(build_post_run_html(bare, MEMORY))
 
 
+def test_minimal_headline_numbers_come_from_the_stored_facts():
+    import re
+    spelled = re.compile(r"\b(one|two|three|four|five|six|seven|eight|nine|ten|first|second|third|fourth|fifth|twice|double|triple)\b", re.I)
+    for make in (F.singapore_intervals, F.milos_trail, F.slow_hot_day, F.pb_5k):
+        facts = _minimal(make())
+        allowed = {f"{facts['distance_km']:.1f}", str(round(facts["duration_s"] / 60)), str(round(facts["distance_km"]))}
+        for key in ("climb_m",):
+            if facts.get(key):
+                allowed.add(str(round(facts[key])))
+        if facts.get("pace_s_per_km"):
+            allowed.add(f"{int(facts['pace_s_per_km']) // 60}:{int(facts['pace_s_per_km']) % 60:02d}")
+        allowed |= {str(round(s / 60)) for s in facts.get("zone_s", [])}
+        for num in re.findall(r"\d+(?::\d+|\.\d+)?", facts["headline"]):
+            assert num in allowed, (make.__name__, num)
+        assert not spelled.search(facts["headline"]), facts["headline"]
+        assert "reps" not in facts["headline"].lower()
+
+
 def test_out_and_back_is_drawn_once():
     out = F._out_and_back(1.3, 103.86, 1250, seed=3)
     assert len(P.collapse_out_and_back(out)) == len(out) // 2 + 1
@@ -153,8 +171,14 @@ SERVER_KEYS = ("type", "start_local", "distance_km", "duration_s", "headline", "
                "place_note", "verdict", "pb")
 
 
+# The headline of a minimal card can only use what the stored facts hold: no reps, no place counts ("third time").
+MINIMAL_HEADLINES = {"interval": "Hard session, 9.6 km done.", "long": "12.4 km and 234 m of climb.",
+                     "race": "A new best.", "easy": "Slow, and fair enough."}
+
+
 def _minimal(facts):
     out = {k: facts[k] for k in SERVER_KEYS if k in facts}
+    out["headline"] = MINIMAL_HEADLINES[facts["type"]]
     if facts.get("pb"):
         out["pb_detail"] = {"label": facts["pb_detail"]["label"]}
     return out
@@ -254,3 +278,14 @@ def test_poster_size(cards):
     for fn, make in ((cards.render_milestone, F.milestone_1000km), (cards.render_pb, F.pb_5k), (cards.render_share_card, F.share_private)):
         assert Image.open(BytesIO(fn(make(), MEMORY))).size == (1080, 1350)
     assert Image.open(BytesIO(cards.render_race_countdown(F.race_countdown(), MEMORY))).size == (1080, 1350)
+
+
+def test_zone_bar_has_the_same_margins_on_every_minimal_card():
+    PIL = pytest.importorskip("PIL.Image")
+    spans = []
+    for name, y in (("post_run_light_minimal", 900), ("post_run_flood_minimal", 900), ("pb_minimal", 960)):
+        im = PIL.open(GOLDEN_DIR / f"{name}.png").convert("RGB")
+        bg = im.getpixel((5, y))
+        xs = [x for x in range(im.width) if sum(abs(a - b) for a, b in zip(im.getpixel((x, y)), bg)) > 60]
+        spans.append((min(xs), max(xs)))
+    assert all(abs(s[0] - spans[0][0]) <= 2 and abs(s[1] - spans[0][1]) <= 2 for s in spans), spans
