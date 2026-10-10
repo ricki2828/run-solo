@@ -990,7 +990,14 @@ class RecordingSession(
     /** The extra metrics at a km mark; only called when the km line is said. Barometer-only for height and climb (GPS altitude is too noisy to read out). */
     private fun checkInSnapshot(t: Long): CheckInSnapshot? {
         val tr = checkInTracker ?: return null
-        return tr.snapshot(core.status(t).activeMs, ticker.distanceM, liveElev.source == ElevSource.baro, liveElev.elevationM, liveElev.ascentM)
+        val snap = tr.snapshot(core.status(t).activeMs, ticker.distanceM, liveElev.source == ElevSource.baro, liveElev.elevationM, liveElev.ascentM)
+        // Retrace (the same detector the run screen reads): only while heading back over our own track.
+        val r = retrace.state
+        val back = r.takeIf { it.retracing && it.direction == RetraceDirection.reverse }
+        return snap.copy(
+            backToStartKm = back?.distanceToStartM?.let { it / 1000.0 },
+            climbAheadM = back?.climbAheadM,
+        )
     }
 
     /** The live coach as restored (tests: the resume path keeps the context and the fired cues). */
