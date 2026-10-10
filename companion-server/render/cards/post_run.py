@@ -61,18 +61,23 @@ def build_post_run_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | No
         f'<span class="cap" style="font-size:22px;color:{quiet}">{P.esc(l)}</span></div>' for v, l in stats)
     route = P.route_svg(facts.get("route") or [], 936, 420, accent if not flood else brand.BONE, 12,
                         bg, pad=26, end_dot=True)
-    has_route = bool(route)
-    bars = "" if has_route else P.split_bars(P.bar_items(facts), 936, 230, quiet)
     strip = P.zone_strip(z, 936, 26, gap=4, radius=4 if not flood else 0, stroke=bg if flood else None)
+    has_route = bool(route)
+    items = P.bar_items(facts)
+    bars = "" if has_route else P.split_bars(items, 936, 230, quiet)
+    zblock = "" if (has_route or items) else P.zone_block(z, 936, fg, quiet, bg, flood)
+    if zblock:  # the server stores no route or splits: the zone bar is the visual, so the small strip goes
+        bars, strip = zblock, ""
     who = P.esc(memory.get("name", ""), 20).upper()
     when = P.date_label(facts.get("start_local"))
     top_right = " / ".join(x for x in (who, when) if x)
+    lone = not has_route and not bars  # nothing to draw under the hero: let it take the space
     css = P.base_css(bg, fg) + f"""
 .tag{{left:{P.PAD}px;top:176px;font-size:30px;color:{accent}}}
 .head{{left:{P.PAD}px;top:218px;width:936px;font-size:118px;line-height:.9;color:{fg};text-wrap:balance}}
 .route{{left:{P.PAD}px;top:430px}}
-.hero{{left:{P.PAD - 8}px;top:{850 if has_route else 440}px;display:flex;align-items:baseline;gap:20px}}
-.hero .n{{font-size:{360 if has_route else 520}px;line-height:.78}}
+.hero{{left:{P.PAD - 8}px;top:{850 if has_route else (560 if lone else 440)}px;display:flex;align-items:baseline;gap:20px}}
+.hero .n{{font-size:{360 if has_route else (580 if lone else 520)}px;line-height:.78}}
 .bars{{left:{P.PAD}px;top:880px}}
 .hero .u{{font-size:64px;color:{accent}}}
 .strip{{left:{P.PAD}px;top:1168px}}

@@ -280,3 +280,19 @@ def bar_items(facts: Mapping[str, Any]) -> list[tuple[float, int, str]]:
     if reps:
         return [(float(r["time_s"]), int(r.get("zone", 4)), str(i + 1)) for i, r in enumerate(reps)]
     return [(float(s["pace_s"]), int(s.get("zone", 3)), str(i + 1)) for i, s in enumerate(facts.get("splits") or [])]
+
+
+def zone_block(z: Sequence[float], width: int, fg: str, quiet: str, bg: str, flood: bool) -> str:
+    """The zone bar as the card's main visual: a tall proportional bar and a minutes figure under each zone."""
+    if not sum(z):
+        return ""
+    bar = zone_strip(z, width, 130, gap=4, radius=0 if flood else 6, stroke=bg if flood else None)
+    col_w = width / 5
+    cols = "".join(
+        f'<div style="width:{col_w:.0f}px"><div style="display:flex;align-items:center;gap:10px">'
+        f'<span style="width:18px;height:18px;border-radius:3px;background:{brand.ZONE_RAMP[i]};display:inline-block"></span>'
+        f'<span class="cap" style="font-size:22px;color:{quiet}">Z{i + 1}</span></div>'
+        f'<div class="saira" style="font-size:64px;line-height:1.05;color:{fg}">{round(v / 60)}'
+        f'<span class="cap" style="font-size:22px;margin-left:8px;color:{quiet}">MIN</span></div></div>'
+        for i, v in enumerate(z))
+    return f'{bar}<div style="display:flex;margin-top:28px">{cols}</div>'

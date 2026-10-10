@@ -85,6 +85,18 @@ def test_routeless_cards_reflow_with_no_placeholder():
         assert 'class="abs route"' in _body(build(facts, MEMORY))
 
 
+def test_cards_render_from_the_minimal_facts_the_server_stores():
+    from render.cards.pb import build_pb_html
+    for build, make in ((build_post_run_html, F.milos_trail), (build_post_run_html, F.singapore_intervals), (build_pb_html, F.pb_5k)):
+        facts = _minimal(make())
+        assert "route" not in facts and "splits" not in facts and "reps" not in facts
+        html = _body(build(facts, MEMORY))
+        assert 'class="abs route"' not in html and ">MIN<" in html.replace("MIN</span>", ">MIN<") and "Z5" in html
+    # no HR at all: no zone_s either. It must still render, with the hero taking the space.
+    bare = {k: v for k, v in _minimal(F.slow_hot_day()).items() if k != "zone_s"}
+    assert "Z1" not in _body(build_post_run_html(bare, MEMORY))
+
+
 def test_out_and_back_is_drawn_once():
     out = F._out_and_back(1.3, 103.86, 1250, seed=3)
     assert len(P.collapse_out_and_back(out)) == len(out) // 2 + 1
@@ -136,12 +148,27 @@ def _noroute(facts):
     return {k: v for k, v in facts.items() if k != "route"}
 
 
+# What the server stores (companion/media.py run_facts): no route, splits or reps, and pb_detail is only a label.
+SERVER_KEYS = ("type", "start_local", "distance_km", "duration_s", "headline", "pace_s_per_km", "zone_s", "climb_m",
+               "place_note", "verdict", "pb")
+
+
+def _minimal(facts):
+    out = {k: facts[k] for k in SERVER_KEYS if k in facts}
+    if facts.get("pb"):
+        out["pb_detail"] = {"label": facts["pb_detail"]["label"]}
+    return out
+
+
 GOLDENS = {
     "post_run_singapore_intervals": ("render_post_run", F.singapore_intervals),
     "post_run_milos_trail": ("render_post_run", F.milos_trail),
     "post_run_light_noroute": ("render_post_run", lambda: _noroute(F.milos_trail())),
     "post_run_flood_noroute": ("render_post_run", lambda: _noroute(F.singapore_intervals())),
     "pb_noroute": ("render_pb", lambda: _noroute(F.pb_5k())),
+    "post_run_light_minimal": ("render_post_run", lambda: _minimal(F.milos_trail())),
+    "post_run_flood_minimal": ("render_post_run", lambda: _minimal(F.singapore_intervals())),
+    "pb_minimal": ("render_pb", lambda: _minimal(F.pb_5k())),
     "post_run_slow_hot_day": ("render_post_run", F.slow_hot_day),
     "pb_5k": ("render_pb", F.pb_5k),
     "milestone_1000km": ("render_milestone", F.milestone_1000km),
