@@ -23,6 +23,11 @@ def build_pb_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = N
         gain = f"{n} seconds {word} than before"
     prev = P.fmt_dur(float(d["previous_s"])) if d.get("previous_s") else ""
     route = P.route_svg(facts.get("route") or [], 936, 330, bone, 8, bg, pad=22, end_dot=True)
+    has_route = bool(route)
+    items = P.bar_items(facts)
+    bars = "" if has_route else P.split_bars(items, 936, 230, bone)
+    if not has_route and not items:
+        bars = P.zone_block(P.zone_seconds(facts), 936, bone, bone, bg, True)
     stats = [(P.fmt_pace(float(facts["pace_s_per_km"])), "/KM")] if facts.get("pace_s_per_km") else []
     if prev:
         stats.insert(0, (prev, "OLD BEST"))
@@ -37,6 +42,7 @@ def build_pb_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = N
 .hero{{left:{P.PAD - 10}px;top:392px;font-size:560px;line-height:.8;color:{arc};white-space:nowrap}}
 .gain{{left:{P.PAD}px;top:850px;font-size:44px;font-weight:600}}
 .route{{left:{P.PAD}px;top:905px}}
+.bars{{left:{P.PAD}px;top:925px}}
 .stats{{left:{P.PAD}px;top:1236px;width:936px;display:flex;justify-content:space-between;align-items:baseline}}
 .line{{left:0;top:1190px;width:{P.W}px;height:6px;background:{arc}}}
 """
@@ -45,7 +51,7 @@ def build_pb_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = N
 <div class="abs saira label">{label}</div>
 <div class="abs saira hero">{hero}</div>
 <div class="abs gain">{P.esc(gain, 60)}</div>
-<div class="abs route">{route}</div>
+{f'<div class="abs route">{route}</div>' if has_route else f'<div class="abs bars">{bars}</div>'}
 <div class="abs stats">{stat_html}</div>"""
     return P.doc(css, body)
 
