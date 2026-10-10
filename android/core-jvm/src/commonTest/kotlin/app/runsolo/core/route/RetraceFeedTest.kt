@@ -57,7 +57,7 @@ class RetraceFeedTest {
     }
 
     @Test
-    fun `no barometer means no height and no climb, whatever GPS altitude says`() {
+    fun `no barometer means no height and no climb whatever GPS altitude says`() {
         val f = RetraceFeed()
         feed(f, outAndBack().map { Fix(it.lat, it.lon, it.acc, it.elev, false, it.dist, it.active) })
         val s = f.state

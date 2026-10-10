@@ -111,6 +111,21 @@ class RetraceDetector {
   /// only [RetraceState.heightVsStartM] keeps following the elevation.
   static const int maxPoints = 20000;
 
+  /// A step longer than this between two accepted fixes is a GPS jump or a
+  /// gap (a teleport, a first fix far away), not trail: it is a BREAK. It
+  /// is never indexed or matched, adds nothing to the along-track distance,
+  /// ends any streak, and no heading is taken across it. Without this a
+  /// glitch to the other side of the planet would list a segment in
+  /// millions of cells.
+  static const double maxSegmentM = 150;
+
+  /// Backstop: a segment whose box would touch more cells than this is not
+  /// indexed (a real one, at most [maxSegmentM] long, touches under 40).
+  static const int maxCellsPerSegment = 64;
+
+  /// Cells in the spatial index (for tests: a jump must not grow it).
+  int get indexedCellCount => _grid.length;
+
   /// The old stretch's climb and descent are recomputed only when the match
   /// has moved this far along the old track (or the streak is new): the
   /// answer moves slowly and the scan is O(track).
@@ -126,6 +141,9 @@ class RetraceDetector {
   double _lat0 = 0, _lon0 = 0, _cosLat = 1;
   final List<double> _x = [], _y = [], _s = [];
   final List<double?> _e = [];
+  // Index of the first point of the contiguous chunk each point is in; a
+  // break (see [maxSegmentM]) starts a new chunk.
+  final List<int> _chunk = [];
   final Map<int, List<int>> _grid = {};
   double? _firstElev, _lastElev;
   double? _dist0;
@@ -165,6 +183,7 @@ class RetraceDetector {
     _y.clear();
     _s.clear();
     _e.clear();
+    _chunk.clear();
     _segHead.clear();
     _grid.clear();
     _firstElev = _lastElev = null;
@@ -208,19 +227,27 @@ class RetraceDetector {
       if (step < minStepM) {
         return _state = _withHeight(_state);
       }
+      final jump = step > maxSegmentM;
       if (distM != null) {
         _s.add(math.max(_s.last, distM - (_dist0 ??= distM)));
       } else {
-        _s.add(_s.last + step);
+        _s.add(_s.last + (jump ? 0 : step));
+      }
+      _chunk.add(jump ? _x.length : _chunk.last);
+      if (jump) {
+        _hasStreak = false;
+        _dir = null;
       }
     } else {
       _dist0 = distM;
       _s.add(0);
+      _chunk.add(0);
     }
     _x.add(x);
     _y.add(y);
     _e.add(elevM);
-    if (_x.length >= 2) _indexSegment(_x.length - 2);
+    final here = _x.length - 1;
+    if (here >= 1 && _chunk[here] == _chunk[here - 1]) _indexSegment(here - 1);
     _update();
     return _state;
   }
@@ -246,10 +273,12 @@ class RetraceDetector {
     final x1 = math.max(_x[k], _x[k + 1]) + r;
     final y0 = math.min(_y[k], _y[k + 1]) - r;
     final y1 = math.max(_y[k], _y[k + 1]) + r;
+    final cx0 = (x0 / _cellM).floor(), cy0 = (y0 / _cellM).floor();
     final cx1 = (x1 / _cellM).floor();
     final cy1 = (y1 / _cellM).floor();
-    for (var cx = (x0 / _cellM).floor(); cx <= cx1; cx++) {
-      for (var cy = (y0 / _cellM).floor(); cy <= cy1; cy++) {
+    if ((cx1 - cx0 + 1) * (cy1 - cy0 + 1) > maxCellsPerSegment) return;
+    for (var cx = cx0; cx <= cx1; cx++) {
+      for (var cy = cy0; cy <= cy1; cy++) {
         (_grid[_cellKey(cx, cy)] ??= <int>[]).add(k);
       }
     }
@@ -262,12 +291,15 @@ class RetraceDetector {
     while (_segHead.length + 1 < _x.length - 1 &&
         _s[_segHead.length + 1] <= sNow - reverseMinGapM) {
       final j = _segHead.length;
+      final c0 = _chunk[j], c1 = _chunk[j + 1];
       var a = j;
-      while (a > 0 && _dist(j, a) < _segHalfWindowM) {
+      while (a > c0 && _dist(j, a) < _segHalfWindowM) {
         a--;
       }
       var b = j + 1;
-      while (b < _x.length - 1 && _dist(j + 1, b) < _segHalfWindowM) {
+      while (b < _x.length - 1 &&
+          _chunk[b + 1] == c1 &&
+          _dist(j + 1, b) < _segHalfWindowM) {
         b++;
       }
       _segHead.add(_bearing(_x[a], _y[a], _x[b], _y[b]));
@@ -417,9 +449,10 @@ class RetraceDetector {
 
   /// Bearing (degrees from north) of the runner's last [_ownBaselineM].
   double? _ownHeading(int here) {
-    if (here < 1) return null;
+    if (here < 1 || _chunk[here] == here) return null;
+    final c = _chunk[here];
     var k = here - 1;
-    while (k > 0 && _dist(here, k) < _ownBaselineM) {
+    while (k > c && _dist(here, k) < _ownBaselineM) {
       k--;
     }
     if (_dist(here, k) < _ownBaselineM / 2) return null;
