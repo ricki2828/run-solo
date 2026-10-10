@@ -86,6 +86,7 @@ def make_settings(tmp_path, **over) -> Settings:
         wa_app_secret=WA_SECRET, wa_verify_token="verifyme",
         openrouter_key="or-test-key", monthly_cap_usd=5.0,
         default_quiet=(0, 0),  # never quiet unless a test says so
+        weather_enabled=True,  # fake Open-Meteo answers 404, so weather simply stays absent
     )
     base.update(over)
     return Settings(**base)
