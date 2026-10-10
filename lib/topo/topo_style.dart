@@ -13,6 +13,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/painting.dart' show Color;
 
+import '../map/gradient.dart';
+import '../map/route_builder.dart';
+
 /// The glyph ranges bundled under `assets/topo/glyphs/NotoSans/`. Latin,
 /// Greek, Cyrillic and general punctuation: a range a tile asks for that is
 /// missing kills that tile's labels (and made the T0 snapshot fail), so a
@@ -240,6 +243,42 @@ class TopoStyle {
           'properties': {'c': hex(colour), 'k': hex(casing)},
           'geometry': {'type': 'LineString', 'coordinates': coords},
         },
+      ],
+    };
+  }
+
+  /// The line coloured by gradient class when [points] carry elevation, else
+  /// the plain [fallback] line. One feature per run of one class.
+  static Map<String, Object?> gradientLine(
+    List<GeoPoint> points, {
+    required Color fallback,
+    required Color casing,
+  }) {
+    final runs = gradientRuns(points);
+    if (runs == null) {
+      return line(
+        [for (final p in points) (p.lat, p.lon)],
+        colour: fallback,
+        casing: casing,
+      );
+    }
+    return {
+      'type': 'FeatureCollection',
+      'features': [
+        for (final r in runs)
+          {
+            'type': 'Feature',
+            'properties': {
+              'c': hex(GradientColours.of(r.cls)),
+              'k': hex(casing),
+            },
+            'geometry': {
+              'type': 'LineString',
+              'coordinates': [
+                for (final p in r.points) <double>[p.lon, p.lat],
+              ],
+            },
+          },
       ],
     };
   }

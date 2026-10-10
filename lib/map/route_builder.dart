@@ -11,16 +11,23 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 @immutable
 class GeoPoint {
-  const GeoPoint(this.lat, this.lon);
+  const GeoPoint(this.lat, this.lon, [this.ele]);
   final double lat;
   final double lon;
 
-  @override
-  bool operator ==(Object other) =>
-      other is GeoPoint && other.lat == lat && other.lon == lon;
+  /// Metres above sea level when known (recorded fused elevation, a course
+  /// file). Null for the live track, which carries lat/lon only.
+  final double? ele;
 
   @override
-  int get hashCode => Object.hash(lat, lon);
+  bool operator ==(Object other) =>
+      other is GeoPoint &&
+      other.lat == lat &&
+      other.lon == lon &&
+      other.ele == ele;
+
+  @override
+  int get hashCode => Object.hash(lat, lon, ele);
 
   @override
   String toString() => 'GeoPoint($lat, $lon)';
@@ -90,7 +97,7 @@ abstract final class RouteBuilder {
     final fixed = run.samples
         .where((s) => s.hasFix && (s.accM == null || s.accM! <= maxAccuracyM))
         .toList();
-    final points = [for (final s in fixed) GeoPoint(s.lat!, s.lon!)];
+    final points = [for (final s in fixed) GeoPoint(s.lat!, s.lon!, s.elevM)];
     if (points.length < 2) {
       return const RouteGeometry(points: [], markers: [], bounds: null);
     }
@@ -111,7 +118,7 @@ abstract final class RouteBuilder {
       if (lap == laps.last && detection == null) break; // finish dot covers it
       final s = _nearest(fixed, lap.t1Ms);
       if (s == null) continue;
-      final p = GeoPoint(s.lat!, s.lon!);
+      final p = GeoPoint(s.lat!, s.lon!, s.elevM);
       if (detection != null) {
         final rep = workEnds[lap.index];
         if (rep != null) {

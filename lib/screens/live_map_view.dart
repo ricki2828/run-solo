@@ -9,6 +9,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../map/gradient_legend.dart';
 import '../map/map_surface.dart';
 import '../map/route_builder.dart';
 import '../platform/gateway.dart';
@@ -291,12 +292,24 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
           ),
         Expanded(
           child: _foreground
-              ? widget.maps.buildLive(
-                  context,
-                  track: widget.track,
-                  color: widget.typeColor,
-                  plan: widget.plan,
-                  terrain: widget.terrain,
+              ? Stack(
+                  children: [
+                    Positioned.fill(
+                      child: widget.maps.buildLive(
+                        context,
+                        track: widget.track,
+                        color: widget.typeColor,
+                        plan: widget.plan,
+                        terrain: widget.terrain,
+                      ),
+                    ),
+                    if (widget.plan?.any((p) => p.ele != null) ?? false)
+                      const Positioned(
+                        left: Space.x8,
+                        top: Space.x8,
+                        child: GradientLegend(),
+                      ),
+                  ],
                 )
               : const SizedBox.shrink(key: ValueKey('map-off')),
         ),

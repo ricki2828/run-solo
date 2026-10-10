@@ -40,6 +40,8 @@ final List<GeoPoint> _milosRoute = [
     GeoPoint(
       36.7240 + 0.0045 * (i / 30) + 0.0012 * ((i % 6) / 6),
       24.4430 + 0.0140 * (i / 30),
+      // Flat, a steep climb, then the way down: every gradient class shows.
+      i < 8 ? 40.0 : (i < 18 ? 40.0 + (i - 8) * 4 : 80.0 - (i - 18) * 3),
     ),
 ];
 
@@ -146,7 +148,8 @@ class _HarnessState extends State<_Harness> {
               _geometry(_milosRoute),
               terrain: true,
               plan: [
-                for (final p in _milosRoute) GeoPoint(p.lat + 0.0008, p.lon),
+                for (final p in _milosRoute)
+                  GeoPoint(p.lat + 0.0008, p.lon, p.ele),
               ],
               routeColor: AuroraRunType.free,
             ),
@@ -155,6 +158,10 @@ class _HarnessState extends State<_Harness> {
             context,
             track: _track,
             color: AuroraRunType.free,
+            plan: [
+              for (final p in _milosRoute)
+                GeoPoint(p.lat + 0.0008, p.lon, p.ele),
+            ],
             terrain: true,
           ),
           _Stage.card => Padding(

@@ -109,9 +109,9 @@ def palette(tokens: dict) -> dict[str, Rgb]:
         "path": mix(base, ink2, 0.45),
         "contour": mix(land, muted, 1.15),
         "contour_index": mix(muted, ink2, 0.55),
-        "hill_shadow": sunken,
+        "hill_shadow": mix(sunken, (40, 36, 60), 0.5),
         "hill_highlight": mix(land, ink2, 0.40),
-        "hill_accent": mix(land, sunken, 0.5),
+        "hill_accent": mix(land, (120, 90, 140), 0.35),
         "label_place": mix(muted, ink2, 0.45),
         "label_minor": muted,
         "label_contour": mix(muted, ink2, 0.35),
@@ -119,6 +119,25 @@ def palette(tokens: dict) -> dict[str, Rgb]:
         "halo": base,
     }
     return p
+
+
+# Elevation bands for the contour tint (metres, hue). Earth tones, nothing near the zone ramp
+# (#2F6DB5 #2E9E5B #D9A21B #E86A1C #D6283B) or mint / vermillion / cyan: the hue is only mixed into
+# the neutral contour grey, never used raw.
+BAND_STOPS = [(0, (96, 150, 160)), (150, (150, 160, 120)), (400, (190, 150, 110)), (800, (200, 120, 130)), (1400, (215, 200, 215))]
+BAND_MIX = 0.42
+
+
+def band_colours(base: Rgb) -> list[tuple[int, Rgb]]:
+    return [(m, mix(base, hue, BAND_MIX)) for m, hue in BAND_STOPS]
+
+
+def by_elevation(base: Rgb) -> list:
+    """A MapLibre colour expression: the contour's colour follows its elevation."""
+    out: list = ["interpolate", ["linear"], ["get", "ele"]]
+    for m, c in band_colours(base):
+        out += [m, hexs(c)]
+    return out
 
 
 def run_type_colours(tokens: dict) -> dict[str, Rgb]:
@@ -132,7 +151,9 @@ def w(*stops: tuple[float, float]) -> list:
 
 
 def build(tokens: dict) -> dict:
-    p = {k: hexs(v) for k, v in palette(tokens).items()}
+    raw = palette(tokens)
+    p = {k: hexs(v) for k, v in raw.items()}
+    banded = {"contour": by_elevation(raw["contour"]), "contour_index": by_elevation(raw["contour_index"])}
     ele = ["get", "ele"]
     ele_mod = lambda n: ["==", ["%", ele, n], 0]  # noqa: E731
     not_index = ["!=", ["%", ele, 100], 0]
@@ -183,7 +204,7 @@ def build(tokens: dict) -> dict:
             "type": "hillshade",
             "source": "terrain",
             "paint": {
-                "hillshade-exaggeration": 0.6,
+                "hillshade-exaggeration": 0.8,
                 "hillshade-shadow-color": p["hill_shadow"],
                 "hillshade-highlight-color": p["hill_highlight"],
                 "hillshade-accent-color": p["hill_accent"],
@@ -227,7 +248,7 @@ def build(tokens: dict) -> dict:
             "maxzoom": 13,
             "filter": ["all", ele_mod(50), not_index],
             "layout": {"line-join": "round"},
-            "paint": {"line-color": p["contour"], "line-width": w((11, 0.5), (13, 0.8)), "line-opacity": 0.9},
+            "paint": {"line-color": banded["contour"], "line-width": w((11, 0.5), (13, 0.8)), "line-opacity": 0.9},
         },
         {
             "id": "contour-20",
@@ -237,7 +258,7 @@ def build(tokens: dict) -> dict:
             "minzoom": 13,
             "filter": ["all", ele_mod(20), not_index],
             "layout": {"line-join": "round"},
-            "paint": {"line-color": p["contour"], "line-width": w((13, 0.8), (16, 1.3)), "line-opacity": 1.0},
+            "paint": {"line-color": banded["contour"], "line-width": w((13, 0.8), (16, 1.3)), "line-opacity": 1.0},
         },
         {
             "id": "contour-index",
@@ -247,7 +268,7 @@ def build(tokens: dict) -> dict:
             "minzoom": 9,
             "filter": ele_mod(100),
             "layout": {"line-join": "round"},
-            "paint": {"line-color": p["contour_index"], "line-width": w((9, 0.8), (13, 1.4), (16, 2.0))},
+            "paint": {"line-color": banded["contour_index"], "line-width": w((9, 1.0), (13, 1.8), (16, 2.6))},
         },
         # --- roads ---
         {
@@ -485,6 +506,12 @@ def legibility_report(tokens: dict) -> tuple[list[str], bool]:
         good = c >= floor
         ok &= good
         lines.append(f"{k:14s} {hexs(pal[k])}  {c:4.2f}:1 vs land (need >= {floor:.1f}) {'ok' if good else 'FAIL'}")
+    for key, floor in (("contour", 3.0), ("contour_index", 4.5)):
+        for m, c in band_colours(pal[key]):
+            r = contrast(c, land)
+            good = r >= floor
+            ok &= good
+            lines.append(f"{key:14s} band {m:>4d} m {hexs(c)}  {r:4.2f}:1 vs land (need >= {floor:.1f}) {'ok' if good else 'FAIL'}")
     for k in ("track", "path"):
         c = contrast(pal[k], land)
         good = c > brightest_road + 0.3

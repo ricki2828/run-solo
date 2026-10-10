@@ -147,10 +147,10 @@
       "type": "hillshade",
       "source": "terrain",
       "paint": {
-        "hillshade-exaggeration": 0.6,
-        "hillshade-shadow-color": "#050506",
+        "hillshade-exaggeration": 0.8,
+        "hillshade-shadow-color": "#161421",
         "hillshade-highlight-color": "#4A4D51",
-        "hillshade-accent-color": "#090A0C",
+        "hillshade-accent-color": "#33293C",
         "hillshade-illumination-direction": 315
       }
     },
@@ -258,7 +258,26 @@
         "line-join": "round"
       },
       "paint": {
-        "line-color": "#6B717B",
+        "line-color": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "get",
+            "ele"
+          ],
+          0,
+          "#67808A",
+          150,
+          "#7D857A",
+          400,
+          "#8E8075",
+          800,
+          "#92747E",
+          1400,
+          "#9895A2"
+        ],
         "line-width": [
           "interpolate",
           [
@@ -312,7 +331,26 @@
         "line-join": "round"
       },
       "paint": {
-        "line-color": "#6B717B",
+        "line-color": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "get",
+            "ele"
+          ],
+          0,
+          "#67808A",
+          150,
+          "#7D857A",
+          400,
+          "#8E8075",
+          800,
+          "#92747E",
+          1400,
+          "#9895A2"
+        ],
         "line-width": [
           "interpolate",
           [
@@ -351,7 +389,26 @@
         "line-join": "round"
       },
       "paint": {
-        "line-color": "#868A92",
+        "line-color": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "get",
+            "ele"
+          ],
+          0,
+          "#768F98",
+          150,
+          "#8C9387",
+          400,
+          "#9D8F83",
+          800,
+          "#A1828C",
+          1400,
+          "#A8A4AF"
+        ],
         "line-width": [
           "interpolate",
           [
@@ -361,11 +418,11 @@
             "zoom"
           ],
           9,
-          0.8,
+          1.0,
           13,
-          1.4,
+          1.8,
           16,
-          2.0
+          2.6
         ]
       }
     },
