@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +12,7 @@ import '../platform/host_caps.dart';
 import '../state/max_hr.dart';
 import '../state/intervals_icu.dart';
 import '../state/recording_controller.dart';
+import '../state/run_transfer.dart';
 import '../state/send_runs.dart' show ExportTarget, HealthTarget, TargetSetup;
 import '../state/settings.dart';
 import '../topo/pack_manager.dart';
@@ -231,29 +231,18 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  /// Plan §4 export: one `RunBundle` JSON per run (file + sidecar) through
-  /// the share sheet, so the dogfood build's runs reach the Play build.
+  /// "Move all runs (one file)": every run, edits and verdict in ONE
+  /// gzipped file through the share sheet (logic in run_transfer.dart).
   Future<void> _moveRuns(BuildContext context) async {
     final services = AppServices.of(context);
     setState(() => _busy = true);
     try {
-      final bundles = await services.history.exportBundles();
-      if (bundles.isEmpty) {
-        _toast('No runs to move yet.');
-        return;
-      }
-      final dir = await Directory.systemTemp.createTemp('runsolo-export-');
-      final paths = <String>[];
-      for (final b in bundles) {
-        final f = File('${dir.path}/run-${b.run.id}.runsupreme.json');
-        await f.writeAsString(engine.RunBundleCodec.encode(b), flush: true);
-        paths.add(f.path);
-      }
-      await services.transfer.shareFiles(
-        paths,
-        subject:
-            'Run Supreme: ${bundles.length} run${bundles.length == 1 ? '' : 's'}',
-      );
+      final out = await RunTransfer(
+        history: services.history,
+        transfer: services.transfer,
+        now: services.now,
+      ).exportAll();
+      if (out == null) _toast('No runs to move yet.');
     } catch (e) {
       _toast('Could not move runs. $e');
     } finally {
@@ -261,40 +250,23 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  /// Plan §4 import: SAF pick, decode each document (export or bare run
-  /// file, v1 or v2), uuid dedupe, write run + sidecar.
+  /// Import runs: the one-file export or the old per-run files, uuid dedupe.
   Future<void> _importRuns(BuildContext context) async {
     final services = AppServices.of(context);
     setState(() => _busy = true);
     try {
-      final picked = await services.transfer.pickFiles();
+      final picked = await services.transfer.pickRunSources();
       if (picked.isEmpty) return;
-      final bundles = <engine.RunBundle>[];
-      var unreadable = 0;
-      for (final f in picked) {
-        try {
-          bundles.add(engine.RunBundleCodec.decode(f.text));
-        } on engine.RunFileNewerVersionException {
-          unreadable += 1;
-        } on engine.RunFileFormatException {
-          unreadable += 1;
-        }
-      }
-      final result = await services.history.importBundles(bundles);
+      final result = await RunTransfer(
+        history: services.history,
+        transfer: services.transfer,
+      ).importPicked(picked);
       // Plan §4: imported runs count against the backup budget too.
       final archived = await services.storage.enforceBackupBudget().catchError(
         (_) => <String>[],
       );
-      final parts = <String>[
-        'Imported ${result.imported}',
-        if (result.alreadyOnDeviceIds.isNotEmpty)
-          '${result.alreadyOnDeviceIds.length} already here (edits not merged)',
-        if (result.duplicateIds.isNotEmpty)
-          '${result.duplicateIds.length} repeated in the files',
-        if (unreadable > 0) '$unreadable not Run Supreme files',
-      ];
       _toast(
-        '${parts.join(', ')}.'
+        '${result.summary}.'
         '${archived.isEmpty ? '' : ' ${archived.length} older runs are past '
                   'the backup budget: move runs to another Run Supreme to keep them safe.'}',
       );
@@ -583,7 +555,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ),
                 ),
               SettingsRow(
-                label: 'Move runs to another Run Supreme',
+                label: 'Move all runs (one file)',
                 value: _busy ? 'Working' : '',
                 onTap: _busy ? null : () => _moveRuns(context),
               ),
@@ -595,8 +567,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: Space.x12),
                 child: Text(
-                  'Each run travels as one file with its edits and verdict. '
-                  'Runs already on the receiving phone are skipped.',
+                  'Save the file to Drive or Files, then open Import runs in '
+                  'the other Run Supreme (runs already there are skipped).',
                   style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
               ),
