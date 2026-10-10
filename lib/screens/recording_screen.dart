@@ -646,11 +646,8 @@ class _RecordingScreenState extends State<RecordingScreen>
                               child: _TimerBlock(
                                 s: s,
                                 ctl: ctl,
-                                // The next-step line under it already says
-                                // "2:47 left", so the caption goes whenever
-                                // that line shows: the bigger labels need
-                                // the room (founder, 10-Oct).
                                 hideCaption:
+                                    compact &&
                                     coach != null &&
                                     coach.nextLine != null &&
                                     (s.phase == Phase.work ||
