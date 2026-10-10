@@ -8,6 +8,7 @@ import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/home_screen.dart';
 import 'package:run_solo/screens/permissions_screen.dart';
+import 'package:run_solo/screens/ready_screen.dart';
 import 'package:run_solo/screens/start_screen.dart';
 import 'package:run_solo/state/live_context.dart';
 import 'package:run_solo/state/settings.dart';
@@ -40,7 +41,7 @@ void main() {
     expect(find.text('BEAT 4:22'), findsNothing);
     expect(find.text('LOCKED'), findsNothing);
     expect(find.text('NEW RUN'), findsNothing);
-    expect(find.text('Start Norwegian 4x4'), findsOneWidget);
+    expect(find.text('Norwegian 4x4 ›'), findsOneWidget);
     expect(find.byType(FilledButton), findsOneWidget);
   });
 
@@ -60,7 +61,7 @@ void main() {
       await pumpApp(tester, services, home: HomeScreen(now: now));
       await tester.tap(find.byType(FilledButton));
       await pumpTimes(tester, 4);
-      expect(find.byType(StartScreen), findsOneWidget);
+      expect(find.byType(ReadyScreen), findsOneWidget);
       // No scores yet: the first 4x4 is what sets AEROBIC.
       expect(services.settings.settings.lastMode, RecordMode.intervals);
       expect(
@@ -84,8 +85,11 @@ void main() {
     await tester.tap(find.byType(FilledButton));
     await pumpTimes(tester, 4);
     expect(services.settings.settings.lastMode, RecordMode.intervals);
-    Navigator.of(tester.element(find.byType(StartScreen))).pop();
+    Navigator.of(tester.element(find.byType(ReadyScreen))).pop();
     await pumpTimes(tester, 4);
+    await settleAnimations(tester);
+    await pumpTimes(tester, 4);
+    expect(find.byType(StartScreen), findsNothing, reason: 'back to Home');
     expect(services.settings.settings.lastMode, RecordMode.free);
   });
 
@@ -101,7 +105,8 @@ void main() {
     await pumpApp(tester, services, home: HomeScreen(now: now));
     await tester.tap(find.byType(FilledButton));
     await pumpTimes(tester, 4);
-    await tester.tap(find.text('START WARM-UP'));
+    await settleAnimations(tester);
+    await goFromReady(tester);
     await pumpTimes(tester, 6);
     expect(services.settings.settings.lastMode, RecordMode.intervals);
   });
@@ -119,10 +124,10 @@ void main() {
     );
     await pumpApp(tester, services, home: HomeScreen(now: now));
     expect(find.text('Your scores are loading.'), findsOneWidget);
-    expect(find.text('Start free run'), findsOneWidget);
+    expect(find.text('Free run ›'), findsOneWidget);
     await tester.tap(find.byType(FilledButton));
     await pumpTimes(tester, 4);
-    expect(find.byType(StartScreen), findsOneWidget);
+    expect(find.byType(ReadyScreen), findsOneWidget);
     expect(services.settings.settings.lastMode, RecordMode.free);
   });
 
@@ -136,10 +141,10 @@ void main() {
     );
     await pumpApp(tester, services, home: HomeScreen(now: now));
     expect(find.text("Couldn't load your scores."), findsOneWidget);
-    expect(find.text('Start laps run'), findsOneWidget);
+    expect(find.text('Laps run ›'), findsOneWidget);
     await tester.tap(find.byType(FilledButton));
     await pumpTimes(tester, 4);
-    expect(find.byType(StartScreen), findsOneWidget);
+    expect(find.byType(ReadyScreen), findsOneWidget);
   });
 
   testWidgets('Start from a goal run presets the recommendation', (
@@ -152,7 +157,7 @@ void main() {
     await tester.tap(find.byType(FilledButton));
     await pumpTimes(tester, 4);
     expect(services.settings.settings.goalRun, isFalse);
-    expect(find.byType(StartScreen), findsOneWidget);
+    expect(find.byType(ReadyScreen), findsOneWidget);
   });
 
   testWidgets('a running plan sets the line, the reason and Start', (
@@ -170,10 +175,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey('home-recommendation')), findsOneWidget);
-    expect(find.text('Start Norwegian 4x4'), findsOneWidget);
+    expect(find.text('Norwegian 4x4 ›'), findsOneWidget);
     await tester.tap(find.byType(FilledButton));
     await pumpTimes(tester, 4);
-    expect(find.byType(StartScreen), findsOneWidget);
+    expect(find.byType(ReadyScreen), findsOneWidget);
     expect(services.settings.settings.reps, 3);
   });
 
@@ -371,6 +376,7 @@ void main() {
     await pumpTimes(tester, 4);
     expect(services.settings.settings.lastMode, RecordMode.free);
     expect(find.byType(StartScreen), findsOneWidget);
+    expect(find.byType(ReadyScreen), findsNothing);
   });
 
   testWidgets('location not granted: choice opens the checklist first', (

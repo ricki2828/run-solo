@@ -165,7 +165,7 @@ void main() {
     await pumpTimes(tester, 2);
     expect(line('Target 25:00 (predicted)'), findsOneWidget);
 
-    await tester.tap(find.text('START 5 KM'));
+    await readyAndGo(tester);
     await pumpTimes(tester, 6);
     final target = fake.startCalls.single.liveContext!.target!;
     expect(target.targetMs, 1500000, reason: 'the shown (swapped) target');

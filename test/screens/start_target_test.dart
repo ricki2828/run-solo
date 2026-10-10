@@ -93,7 +93,7 @@ void main() {
     expect(find.textContaining('24:30'), findsWidgets);
     fake.emitGpsProbe(GpsProbeEvent(fix: true, accuracyM: 5));
     await pumpTimes(tester, 2);
-    await tester.tap(find.text('START GOAL'));
+    await readyAndGo(tester);
     await pumpTimes(tester, 6);
     final target = fake.startCalls.single.liveContext!.target!;
     expect(target.targetMs, 1470000);

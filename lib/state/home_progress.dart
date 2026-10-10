@@ -324,7 +324,7 @@ class Recommendation {
   /// Presets the Start screen's picked run type.
   final AppSettings Function(AppSettings) apply;
 
-  String get startLabel => 'Start $sessionName';
+  String get startLabel => '$sessionName ›';
 
   /// How long a lane's best can sit before Home calls it stalled.
   static const stalledDays = 14;

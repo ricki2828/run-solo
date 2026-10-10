@@ -93,8 +93,7 @@ void main() {
       expect(find.text('1:30'), findsOneWidget);
       expect(services.settings.settings.presetEdits['400s']!.reps, 9);
 
-      await tester.ensureVisible(find.text('START WARM-UP'));
-      await tester.tap(find.text('START WARM-UP'));
+      await readyAndGo(tester);
       await pumpTimes(tester, 6);
       final sent = fake.startCalls.single;
       expect(sent.mode, RecordMode.intervals);
@@ -120,7 +119,7 @@ void main() {
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
     expect(find.byType(ValueStepper), findsNothing);
-    await tester.tap(find.text('START FARTLEK'));
+    await readyAndGo(tester);
     await pumpTimes(tester, 6);
     final sent = fake.startCalls.single;
     expect(sent.mode, RecordMode.laps);

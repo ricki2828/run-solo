@@ -48,8 +48,7 @@ void main() {
     expect(find.text('Estimate. Not a medical measurement.'), findsOneWidget);
     expect(fake.startCalls, isEmpty, reason: 'the chip alone never starts');
 
-    await tester.tap(find.text('START TEST'));
-    await pumpTimes(tester, 6);
+    await readyAndGo(tester);
     await tester.pump(const Duration(milliseconds: 400));
     expect(fake.startCalls.single.mode, RecordMode.cooper);
     expect(

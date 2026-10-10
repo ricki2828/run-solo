@@ -10,6 +10,7 @@ import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../state/load_guard.dart';
 import '../state/settings.dart';
+import 'start_screen.dart' show StartArgs;
 import '../widgets/week_strip.dart';
 import '../widgets/chrome.dart';
 import '../widgets/goal_picker.dart';
@@ -141,7 +142,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Start and Change both open setup; with a session to preset, setup opens
   /// preset to it (setup keeps it only if a run starts).
-  Future<void> _start(AppSettings Function(AppSettings)? apply) async {
+  Future<void> _start(
+    AppSettings Function(AppSettings)? apply, {
+    bool ready = false,
+  }) async {
     final perms = _perms;
     if (perms != null && !perms.canRecord) {
       final ok = await Navigator.of(context).pushNamed(Routes.permissions);
@@ -151,9 +155,17 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
     if (!mounted) return;
-    await Navigator.of(context).pushNamed(Routes.start, arguments: apply);
+    // The session button goes to Ready (the one START); Change and the
+    // score tiles open the picker.
+    await Navigator.of(context).pushNamed(
+      Routes.start,
+      arguments: ready ? StartArgs(preset: apply, readyFirst: true) : apply,
+    );
     if (mounted) setState(_refresh);
   }
+
+  static String _capitalised(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
   /// What Start would run from the saved choice, before any recommendation.
   static String _lastUsedName(AppSettings s, engine.SessionSpec picked) {
@@ -281,12 +293,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       // run type.
                       final String startLabel;
                       if (next != null) {
-                        startLabel = 'Start ${next.session.name}';
+                        startLabel = '${next.session.name} ›';
                       } else if (rec != null) {
                         startLabel = rec.startLabel;
                       } else {
                         startLabel =
-                            'Start ${_lastUsedName(settings, services.pickedSession)}';
+                            '${_capitalised(_lastUsedName(settings, services.pickedSession))} ›';
                       }
                       // While the warning says an easy run is the safer
                       // choice, Start is the easy run; the planned hard
@@ -325,16 +337,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                     planCtx?.vdot,
                                     settings.units,
                                   ),
-                            startLabel: hardPick
-                                ? 'Start Easy run'
-                                : startLabel,
+                            startLabel: hardPick ? 'Easy run ›' : startLabel,
                             onStart: () => _start(
                               hardPick ? PlanStart.easyRun : plannedApply,
+                              ready: true,
                             ),
                             anywayLabel: hardPick
                                 ? 'Do the $plannedName anyway'
                                 : null,
-                            onAnyway: () => _start(plannedApply),
+                            onAnyway: () => _start(plannedApply, ready: true),
                             onChange: () => _start(null),
                             planLabel: planView == null
                                 ? (data == null || data.failed

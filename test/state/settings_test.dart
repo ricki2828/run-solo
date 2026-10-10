@@ -4,6 +4,24 @@ import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_solo/state/settings.dart';
 
 void main() {
+  test(
+    'countdown: default 3 s, remembered, a value off the list falls back',
+    () {
+      expect(const AppSettings().countdownSeconds, 3);
+      for (final c in AppSettings.countdownChoices) {
+        final back = AppSettings.fromJson(
+          AppSettings(countdownSeconds: c).toJson(),
+        );
+        expect(back.countdownSeconds, c);
+      }
+      final bad = AppSettings.fromJson({
+        ...const AppSettings().toJson(),
+        'countdownSeconds': 7,
+      });
+      expect(bad.countdownSeconds, 3);
+    },
+  );
+
   test('round-trips through JSON', () {
     final s = AppSettings(
       units: Units.mi,

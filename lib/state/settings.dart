@@ -121,6 +121,7 @@ class AppSettings {
     this.voiceCoaching = true,
     this.coachingDetail = CoachingDetail.full,
     this.autoPause = true,
+    this.countdownSeconds = defaultCountdownSeconds,
     this.coachingTips = true,
     this.showWhileRunning = true,
     this.haptics = true,
@@ -263,6 +264,13 @@ class AppSettings {
   /// Recording → "Auto-pause": the recorder pauses itself when you stop and
   /// resumes when you move. Default on.
   final bool autoPause;
+
+  /// Recording -> "Countdown": the 3-2-1-GO between tapping START on the
+  /// Ready screen and the recorder starting. One of [countdownChoices];
+  /// 0 = off (recording starts on the tap). Default 3 s.
+  final int countdownSeconds;
+  static const int defaultCountdownSeconds = 3;
+  static const List<int> countdownChoices = [0, 3, 5, 10];
 
   /// Voice → "Coaching tips" (LV2, A10.7): where you stand and short tips,
   /// spoken at your splits. Off = no compare speech and no nudges. Needs
@@ -438,6 +446,7 @@ class AppSettings {
     bool? voiceCoaching,
     CoachingDetail? coachingDetail,
     bool? autoPause,
+    int? countdownSeconds,
     bool? coachingTips,
     bool? showWhileRunning,
     bool? haptics,
@@ -489,6 +498,7 @@ class AppSettings {
     voiceCoaching: voiceCoaching ?? this.voiceCoaching,
     coachingDetail: coachingDetail ?? this.coachingDetail,
     autoPause: autoPause ?? this.autoPause,
+    countdownSeconds: countdownSeconds ?? this.countdownSeconds,
     coachingTips: coachingTips ?? this.coachingTips,
     showWhileRunning: showWhileRunning ?? this.showWhileRunning,
     haptics: haptics ?? this.haptics,
@@ -542,6 +552,7 @@ class AppSettings {
     'voiceCoaching': voiceCoaching,
     'coachingDetail': coachingDetail.name,
     'autoPause': autoPause,
+    'countdownSeconds': countdownSeconds,
     'coachingTips': coachingTips,
     'showWhileRunning': showWhileRunning,
     'haptics': haptics,
@@ -645,6 +656,12 @@ class AppSettings {
           CoachingDetail.values.asNameMap()[pick('coachingDetail', '')] ??
           d.coachingDetail,
       autoPause: pick('autoPause', d.autoPause),
+      countdownSeconds:
+          countdownChoices.contains(
+            pick('countdownSeconds', d.countdownSeconds),
+          )
+          ? pick('countdownSeconds', d.countdownSeconds)
+          : d.countdownSeconds,
       coachingTips: pick('coachingTips', d.coachingTips),
       showWhileRunning: pick('showWhileRunning', d.showWhileRunning),
       haptics: pick('haptics', d.haptics),

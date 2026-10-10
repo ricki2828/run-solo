@@ -39,7 +39,7 @@ void main() {
       find.textContaining('Tap LAP at the end of each set'),
       findsOneWidget,
     );
-    await tester.tap(find.text('START BRONCO'));
+    await readyAndGo(tester);
     await pumpTimes(tester, 6);
     final sent = fake.startCalls.single;
     expect(sent.mode, RecordMode.laps);
