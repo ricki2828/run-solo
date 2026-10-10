@@ -201,8 +201,11 @@ class TopoStyle {
     _line('rs-track-casing', trackSource, ['get', 'k'], 9, wide: 11),
     // A retraced stretch: a Bone band with a dark rim around the track's own
     // colour, so it stands out on any casing and either theme.
-    _line('rs-retrace-rim', retraceSource, ['get', 'k'], 16),
-    _line('rs-retrace-halo', retraceSource, ['get', 'h'], 12),
+    _line('rs-retrace-rim', retraceSource, ['get', 'k'], 17),
+    _line('rs-retrace-halo', retraceSource, ['get', 'h'], 13),
+    // A dark channel inside the band, so a flat (bone) stretch still reads
+    // as a coloured line inside it, not as more band.
+    _line('rs-retrace-core', retraceSource, ['get', 'k'], 9),
     _line('rs-track', trackSource, ['get', 'c'], 5, wide: 7),
     // The old track still ahead, coloured by the grade in the runner's
     // direction, over everything beneath it.

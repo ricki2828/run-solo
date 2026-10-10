@@ -98,6 +98,7 @@ void main() {
         'rs-track-casing',
         'rs-retrace-rim',
         'rs-retrace-halo',
+        'rs-retrace-core',
         'rs-track',
         'rs-ahead-casing',
         'rs-ahead',
