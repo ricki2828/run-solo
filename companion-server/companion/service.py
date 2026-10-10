@@ -17,10 +17,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from . import db
 from .channels import ChannelError, Inbound, OutCard, TelegramChannel, WhatsAppChannel
 from .config import Settings
-from .facts import (FactsResult, build_facts, next_question, suggest_evening, tomorrow_is_usual_day,
-                    valid_answer, NIGGLE_TTL_DAYS)
+from .convo import engine as cv_engine
+from .convo import recap as cv_recap
+from .convo import suggest as cv_suggest
+from .convo import touches as cv_touches
+from .convo.questions import next_weekly_question
+from .convo.weather import NoWeather, OpenMeteo
+from .facts import FactsResult, build_facts, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
 from .timeutil import (in_quiet, iso, now_utc, parse_iso, quiet_end_utc, resolve_cap_week, to_local, UTC,
-                       valid_zone)
+                       valid_zone, week_key)
 from .writer import Writer, digest_lines
 
 log = logging.getLogger("companion")
@@ -112,6 +117,7 @@ class Service:
             self.channels["telegram"] = TelegramChannel(settings, http)
         if settings.wa_ready:
             self.channels["whatsapp"] = WhatsAppChannel(settings, http)
+        self.weather = OpenMeteo(http) if settings.weather_enabled else NoWeather()
         db.init(settings.db_path)
 
     # ---------------------------------------------------------------- tokens / enrolment (B1)
@@ -465,6 +471,36 @@ class Service:
                 b.append({"label": l, "action": f"ans:{question['key']}:{v}", "row": 2 + i // 3})
         return b
 
+    # ---------------------------------------------------------------- conversation layer (convo/)
+    def _full_history(self, c, uid: str, before: str | None) -> list[dict]:
+        return self._history(c, uid, before, limit=2000)
+
+    @staticmethod
+    def _usage(c, uid: str, now: datetime) -> cv_touches.Usage:
+        u = cv_touches.Usage()
+        for r in c.execute("SELECT key, MAX(ts) ts FROM convo_log WHERE user_id=? AND kind='variant' AND ts>=? "
+                           "GROUP BY key", (uid, iso(now - timedelta(days=45)))):
+            u.variants[r["key"]] = parse_iso(r["ts"])
+        last_touch = None
+        for r in c.execute("SELECT key, ts FROM convo_log WHERE user_id=? AND kind='touch' ORDER BY ts, id", (uid,)):
+            kind, _, key = r["key"].partition("|")
+            u.touches.append((parse_iso(r["ts"]), kind, key))
+            last_touch = r["ts"]
+        u.cards_since_touch = c.execute("SELECT COUNT(*) FROM convo_log WHERE user_id=? AND kind='card' AND ts>?",
+                                        (uid, last_touch or "")).fetchone()[0] if last_touch else 99
+        return u
+
+    @staticmethod
+    def _convo_write(c, uid: str, now: datetime, card_id: str, situation: str, media: cv_engine.MediaPlan,
+                     allowed: str, variants: list[str], touch: cv_touches.Touch | None) -> None:
+        c.execute("INSERT INTO convo_cards (card_id, user_id, situation, media_json, allowed, touch_kind) VALUES (?,?,?,?,?,?)",
+                  (card_id, uid, situation, media.to_json(), allowed, touch.kind if touch else None))
+        rows = [("variant", v) for v in variants] + [("card", card_id)]
+        if touch:
+            rows.append(("touch", f"{touch.kind}|{touch.key}"))
+        for kind, key in rows:
+            c.execute("INSERT INTO convo_log (user_id, kind, key, ts) VALUES (?,?,?,?)", (uid, kind, key, iso(now)))
+
     def _build_run_card(self, uid: str, run_id: str, now: datetime) -> str | None:
         """Returns card_id, or None when the engine decides to say nothing. Idempotent per (user, run)."""
         with db.ro(self.s.db_path) as c:
@@ -483,24 +519,42 @@ class Service:
         res = build_facts(run, hist, mem, last_card_age_h=age_h)
         if res.say_nothing:
             return None
+        with db.ro(self.s.db_path) as c:
+            full = self._full_history(c, uid, run["start_utc"])
+            usage = self._usage(c, uid, now)
+            sunrises = c.execute("SELECT COUNT(*) FROM convo_log WHERE user_id=? AND kind='sunrise' AND key<>?",
+                                 (uid, run_id)).fetchone()[0]
+        rw = self.weather.at_run(run["locality"], run["zone_id"], parse_iso(run["start_utc"]), now)
         with db.tx(self.s.db_path) as c:
             suggestion, question = res.suggestion, None
             if suggestion and not self._claim_suggestion(c, uid, now):
                 suggestion = None
             if not suggestion:
-                q = next_question(mem, now)
+                q = next_weekly_question(mem, now)
                 wk = self._cap_week(c, uid, now)
                 if q and self._claim(c, uid, f"question:{wk}", now):
                     question = q
+            if rw and cv_touches.is_sunrise_start(to_local(parse_iso(run["start_utc"]), run["zone_id"]), rw.sunrise_local):
+                c.execute("INSERT INTO convo_log (user_id, kind, key, ts) SELECT ?,?,?,? WHERE NOT EXISTS "
+                          "(SELECT 1 FROM convo_log WHERE user_id=? AND kind='sunrise' AND key=?)",
+                          (uid, "sunrise", run_id, iso(now), uid, run_id))
         res = FactsResult(res.facts, suggestion, res.tone, False, res.reason)
-        w = self.writer.write(res, digest_lines(mem, feels))
-        body = w.body + (f"\n\n{question['text']}" if question else "")
+        v = cv_engine.enrich_run(run, full, mem, now, usage, rw, sunrise_count=sunrises)
+        w = self.writer.write(res, digest_lines(mem, feels), voice=v.rendered, style=v.style)
+        body = w.body
+        if v.touch_line:
+            body += f"\n\n{v.touch_line}"
+        if question:
+            body += f"\n\n{question['text']}"
         buttons = self._buttons(run["feel"], suggestion.kind if suggestion else None, question)
         card_id = secrets.token_hex(16)
+        allowed = " ".join([f.text for f in res.facts] + [v.allowed, suggestion.text if suggestion else ""])
+        used = v.used_variants if w.source == "template" else [x for x in v.used_variants if x.startswith("touch_")]
         with db.tx(self.s.db_path) as c:
             c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
                       "VALUES (?,?,?,?,?,?,?,?,?)",
                       (card_id, uid, run_id, "run", w.headline, body, json.dumps(buttons), w.source, iso(now)))
+            self._convo_write(c, uid, now, card_id, v.situation, v.media, allowed, used, v.touch)
         return card_id
 
     def _build_evening_card(self, uid: str, local_date: str, now: datetime) -> str | None:
@@ -509,23 +563,60 @@ class Service:
                            (uid, f"evening:{local_date}")).fetchone()
             if ex:
                 return ex["card_id"]
-            hist = self._history(c, uid, None)
+            hist = self._full_history(c, uid, None)
             mem = self._memory_get(c, uid, now)
             feels = self._feel_counts(c, uid, now)
-        sug = suggest_evening(hist, now)
-        if not sug:
+            usage = self._usage(c, uid, now)
+            zone_id = c.execute("SELECT zone_id FROM users WHERE id=?", (uid,)).fetchone()["zone_id"]
+        fc = None
+        if hist:
+            tomorrow = to_local(now, zone_id).date() + timedelta(days=1)
+            fc = self.weather.tomorrow(hist[0]["locality"], hist[0]["zone_id"] or zone_id, tomorrow)
+        ev = cv_suggest.evening(hist, now, fc, usage.variants, seed=local_date)
+        if not ev:
             return None
         with db.tx(self.s.db_path) as c:
             if not self._claim_suggestion(c, uid, now):
                 return None
-        w = self.writer.write(FactsResult((), sug, "steady", False, "ok"), digest_lines(mem, feels))
-        buttons = self._buttons("set", sug.kind, None)
+        w = self.writer.write(FactsResult((), ev.suggestion, "steady", False, "ok"), digest_lines(mem, feels),
+                              voice=ev.rendered, style=ev.style)
+        buttons = self._buttons("set", ev.suggestion.kind, None)
         card_id = secrets.token_hex(16)
+        media = cv_engine.MediaPlan("suggestion", False, ev.suggestion.reason)
+        used = [ev.rendered.variant_id] if w.source == "template" else []
         with db.tx(self.s.db_path) as c:
             c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
                       "VALUES (?,?,?,?,?,?,?,?,?)",
                       (card_id, uid, f"evening:{local_date}", "evening", w.headline, w.body, json.dumps(buttons),
                        w.source, iso(now)))
+            self._convo_write(c, uid, now, card_id, ev.rendered.situation, media, ev.rendered.allowed, used, None)
+        return card_id
+
+    def _build_recap_card(self, uid: str, week_ref: str, now: datetime) -> str | None:
+        with db.ro(self.s.db_path) as c:
+            ex = c.execute("SELECT card_id FROM cards WHERE user_id=? AND run_id=? AND kind='recap'",
+                           (uid, f"recap:{week_ref}")).fetchone()
+            if ex:
+                return ex["card_id"]
+            runs = self._full_history(c, uid, None)
+            usage = self._usage(c, uid, now)
+            zone_id = c.execute("SELECT zone_id FROM users WHERE id=?", (uid,)).fetchone()["zone_id"]
+            empty_before = c.execute("SELECT COUNT(*) FROM convo_log WHERE user_id=? AND kind='recap_empty' AND ts>?",
+                                     (uid, iso(now - timedelta(days=9)))).fetchone()[0]
+        rc = cv_recap.build(runs, now, zone_id, usage.variants, seed=week_ref)
+        if rc is None or (rc.empty and empty_before):  # one gentle nudge after a missed week, never two in a row
+            return None
+        card_id = secrets.token_hex(16)
+        with db.tx(self.s.db_path) as c:
+            c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
+                      "VALUES (?,?,?,?,?,?,?,?,?)",
+                      (card_id, uid, f"recap:{week_ref}", "recap", rc.rendered.headline, rc.rendered.body, "[]",
+                       "template", iso(now)))
+            self._convo_write(c, uid, now, card_id, rc.rendered.situation, rc.media, rc.rendered.allowed,
+                              [rc.rendered.variant_id], None)
+            if rc.empty:
+                c.execute("INSERT INTO convo_log (user_id, kind, key, ts) VALUES (?,?,?,?)",
+                          (uid, "recap_empty", week_ref, iso(now)))
         return card_id
 
     def _send_card(self, user: dict, card_id: str, now: datetime) -> None:
@@ -565,6 +656,10 @@ class Service:
             if user["channel"] != "telegram":  # WhatsApp would bill an unprompted suggestion as marketing
                 return "skipped", None
             card_id = self._build_evening_card(user["id"], item["ref"], now)
+        elif item["kind"] == "recap":
+            if user["channel"] != "telegram":  # Telegram first; WhatsApp would bill it as marketing
+                return "skipped", None
+            card_id = self._build_recap_card(user["id"], item["ref"], now)
         else:
             return "skipped", None
         if card_id is None:
@@ -612,7 +707,7 @@ class Service:
 
     # ---------------------------------------------------------------- planning + retention
     def plan_evening(self, now: datetime | None = None) -> int:
-        """Queue the evening-before suggestion (Telegram only) in the user's 18:00-19:30 local window."""
+        """Queue the evening-before suggestion (Telegram only) in the user's 20:00-21:00 local window."""
         now = now or now_utc()
         n = 0
         with db.tx(self.s.db_path) as c:
@@ -621,8 +716,10 @@ class Service:
                 (iso(now - timedelta(days=14)),))]
             for u in users:
                 loc = to_local(now, u["zone_id"])
-                if not (18 * 60 <= loc.hour * 60 + loc.minute < 19 * 60 + 30):
+                if not (cv_suggest.EVENING_START_MIN <= loc.hour * 60 + loc.minute < cv_suggest.EVENING_END_MIN):
                     continue
+                if loc.weekday() == cv_recap.RECAP_WEEKDAY:
+                    continue  # Sunday evening belongs to the weekly recap
                 qs, qe = self._quiet(u)
                 if in_quiet(now, u["zone_id"], qs, qe):
                     continue
@@ -632,6 +729,28 @@ class Service:
                 d = loc.date().isoformat()
                 n += c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
                                (u["id"], "evening", iso(now), f"evening:{u['id']}:{d}", d)).rowcount
+        return n
+
+    def plan_recap(self, now: datetime | None = None) -> int:
+        """Queue the weekly recap for Sunday 19:00-20:00 local, once per local week."""
+        now = now or now_utc()
+        n = 0
+        with db.tx(self.s.db_path) as c:
+            users = [dict(r) for r in c.execute(
+                "SELECT * FROM users WHERE channel='telegram' AND paused=0 AND last_run_utc >= ?",
+                (iso(now - timedelta(days=cv_recap.QUIET_AFTER_DAYS)),))]
+            for u in users:
+                loc = to_local(now, u["zone_id"])
+                if loc.weekday() != cv_recap.RECAP_WEEKDAY:
+                    continue
+                if not (cv_recap.RECAP_START_MIN <= loc.hour * 60 + loc.minute < cv_recap.RECAP_END_MIN):
+                    continue
+                qs, qe = self._quiet(u)
+                if in_quiet(now, u["zone_id"], qs, qe):
+                    continue
+                wk = week_key(now, u["zone_id"])
+                n += c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
+                               (u["id"], "recap", iso(now), f"recap:{u['id']}:{wk}", wk)).rowcount
         return n
 
     def purge(self, now: datetime | None = None) -> None:
@@ -645,6 +764,7 @@ class Service:
             c.execute("DELETE FROM inbound_seen WHERE ts < ?", (log_cut,))
             c.execute("DELETE FROM cards WHERE created_at < ?", (log_cut,))
             c.execute("DELETE FROM outbox WHERE state IN ('done','skipped','failed') AND due_at < ?", (log_cut,))
+            c.execute("DELETE FROM convo_log WHERE ts < ?", (iso(now - timedelta(days=400)),))
             c.execute("DELETE FROM quota WHERE created_at < ?", (iso(now - timedelta(days=60)),))
             c.execute("DELETE FROM llm_calls WHERE ts < ?", (iso(now - timedelta(days=400)),))
             c.execute("DELETE FROM memory WHERE key='niggle_area' AND updated_at < ?",
@@ -659,6 +779,7 @@ class Service:
     def tick(self, now: datetime | None = None) -> None:
         now = now or now_utc()
         self.plan_evening(now)
+        self.plan_recap(now)
         self.run_outbox(now)
         with db.tx(self.s.db_path) as c:
             r = c.execute("SELECT value FROM settings WHERE key='last_purge'").fetchone()

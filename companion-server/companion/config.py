@@ -46,6 +46,10 @@ class Settings:
     est_usd_per_mtok_in: float = 1.0
     est_usd_per_mtok_out: float = 5.0
 
+    # Open-Meteo weather for touches and suggestions. Off by default: it sends the runner's suburb name
+    # to a third party, which the privacy page has to say first (see convo/weather.py).
+    weather_enabled: bool = False
+
     sends_paused: bool = False
     stale_card_hours: float = 6.0
     default_quiet: tuple[int, int] = (21 * 60 + 30, 7 * 60)  # minutes after local midnight
@@ -89,5 +93,6 @@ class Settings:
             openrouter_key=key,
             model=e.get("COMPANION_MODEL", "anthropic/claude-haiku-4.5"),
             monthly_cap_usd=float(e.get("COMPANION_MONTHLY_CAP_USD", "5")),
+            weather_enabled=_flag(e.get("COMPANION_WEATHER")),
             sends_paused=_flag(e.get("COMPANION_SENDS_PAUSED")),
         )

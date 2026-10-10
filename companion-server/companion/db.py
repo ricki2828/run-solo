@@ -105,6 +105,20 @@ CREATE TABLE IF NOT EXISTS inbound_seen (
   user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
   ts TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS convo_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,  -- variant | touch | card | sunrise | recap_empty
+  key TEXT NOT NULL, ts TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS convo_log_user ON convo_log (user_id, kind, ts);
+CREATE TABLE IF NOT EXISTS convo_cards (
+  card_id TEXT PRIMARY KEY REFERENCES cards(card_id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  situation TEXT NOT NULL, media_json TEXT NOT NULL,
+  allowed TEXT NOT NULL,       -- the number sources behind this card's text (eng-review B4 audit)
+  touch_kind TEXT
+);
 -- Tables below hold no user data (no user_id column).
 CREATE TABLE IF NOT EXISTS llm_calls (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

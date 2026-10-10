@@ -253,7 +253,7 @@ def test_evening_suggestion_telegram_only_in_local_window_once_a_day(client, fak
     con.commit()
     noon = now.replace(hour=12, minute=0)
     assert svc.plan_evening(noon) == 0
-    six_thirty = now.replace(hour=18, minute=30)
+    six_thirty = now.replace(hour=20, minute=30)
     assert svc.plan_evening(six_thirty) == 1 and svc.plan_evening(six_thirty + timedelta(minutes=10)) == 0
     svc.run_outbox(six_thirty + timedelta(minutes=1))
     row = q(client, "SELECT kind, buttons_json FROM cards WHERE kind='evening'")[0]
@@ -333,7 +333,7 @@ def test_wa_outside_window_uses_template_and_evening_never_goes_to_wa(tmp_path, 
         assert msg["type"] == "template" and msg["template"]["name"] == "run_card"
         body = msg["template"]["components"][0]["parameters"]
         assert "\n" not in body[1]["text"]
-        assert svc.plan_evening(now_utc().replace(hour=18, minute=30)) == 0
+        assert svc.plan_evening(now_utc().replace(hour=20, minute=30)) == 0
 
 
 def test_wa_parser_handles_template_quick_reply_and_statuses():

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Mapping, Sequence
 
+from .convo.questions import ENUMS as _EXTENDED_ENUMS
 from .timeutil import UTC, parse_iso
 
 HARD_TYPES = frozenset({"tempo", "interval", "race"})
@@ -209,6 +210,7 @@ MEMORY_ENUMS = {
     "goal_type": {v for v, _ in GOAL_OPTIONS},
     "usual_days": {v for v, _ in DAYS_OPTIONS},
     "niggle_area": {v for v, _ in NIGGLE_OPTIONS},
+    **_EXTENDED_ENUMS,  # the rest of the weekly question set (convo/questions.py)
 }
 
 
