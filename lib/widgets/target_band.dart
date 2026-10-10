@@ -33,8 +33,8 @@ class TargetBand extends StatelessWidget {
 
   static const double barHeight = 8;
 
-  /// Height of the whole band row.
-  static const double height = barHeight + 4;
+  /// Height of the whole band row: the label (17 sp) is the taller part.
+  static const double height = 24;
 
   @override
   Widget build(BuildContext context) {
@@ -45,32 +45,43 @@ class TargetBand extends StatelessWidget {
           'Target pace ${Fmt.pace(target.paceSecPerKm, units)} per $unit'
           '${paceSecPerKm == null ? '' : ', now ${Fmt.pace(paceSecPerKm, units)}'}',
       excludeSemantics: true,
-      child: Row(
-        children: [
-          Expanded(
-            child: SizedBox(
-              height: barHeight + 6,
-              child: CustomPaint(
-                key: const ValueKey('target-band'),
-                size: Size.infinite,
-                painter: _BandPainter(
-                  target: target,
-                  pace: paceSecPerKm,
-                  span: spanSecPerKm,
-                  ink: t.inkPrimary,
-                  ground: t.bgBase,
+      child: LayoutBuilder(
+        builder: (context, c) => Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: barHeight + 6,
+                child: CustomPaint(
+                  key: const ValueKey('target-band'),
+                  size: Size.infinite,
+                  painter: _BandPainter(
+                    target: target,
+                    pace: paceSecPerKm,
+                    span: spanSecPerKm,
+                    ink: t.inkPrimary,
+                    ground: t.bgBase,
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: Space.x8),
-          Text(
-            'TARGET ${Fmt.pace(target.paceSecPerKm, units)}'
-            '${target.slowerIsFine ? ' OR SLOWER' : ''}',
-            key: const ValueKey('target-label'),
-            style: RunSoloType.runLabel.copyWith(color: labelColor),
-          ),
-        ],
+            const SizedBox(width: Space.x8),
+            // A long label ("OR SLOWER") shrinks a little rather than pushing
+            // the bar out of the row.
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: c.maxWidth * 0.65),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  'TARGET ${Fmt.pace(target.paceSecPerKm, units)}'
+                  '${target.slowerIsFine ? ' OR SLOWER' : ''}',
+                  key: const ValueKey('target-label'),
+                  softWrap: false,
+                  style: RunSoloType.runLabel.copyWith(color: labelColor),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

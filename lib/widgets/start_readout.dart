@@ -141,10 +141,10 @@ class StartReadout extends StatelessWidget {
       key: ValueKey(retracing ? 'start-readout-retrace' : 'start-readout'),
       padding: const EdgeInsets.symmetric(vertical: Space.x8),
       decoration: BoxDecoration(
-        color: retracing ? const Color(0x8C000000) : null,
+        color: retracing ? NightSession.overlayGround : null,
         borderRadius: BorderRadius.circular(Space.x8),
         border: Border.all(
-          color: retracing ? valueColor : const Color(0x00000000),
+          color: retracing ? valueColor : Colors.transparent,
           width: _outline,
         ),
       ),

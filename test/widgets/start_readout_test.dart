@@ -60,7 +60,7 @@ void main() {
   testWidgets('retracing without an elevation still says BACK TO START', (
     tester,
   ) async {
-    await tester.pumpWidget(_wrap(back: 850));
+    await tester.pumpWidget(_wrap(back: 860));
     expect(_text(tester, 'back-to-start'), '0.9 km');
     expect(find.byKey(const ValueKey('height-vs-start')), findsNothing);
   });
