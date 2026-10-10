@@ -123,8 +123,8 @@ Data types. "Collected" in Play's sense includes what the Maps SDK sends to Goog
 | App activity | **App interactions** | Yes | No | No | Required | App functionality, **Analytics** | Google lists "map interaction events (panning, zooming)" as its own collected item; Play's matching type is App interactions. Plan §18.6 did not cover this category; declared to over- rather than under-declare |
 | App info and performance | **Crash logs** | Yes | No | No | Required | App functionality | Maps SDK crash reporting (Google's disclosure) |
 | App info and performance | **Diagnostics** | Yes | No | No | Required | App functionality, **Analytics** | Maps SDK request metadata / performance data, used by Google "to understand SDK usage" |
-| Health and fitness | Health info / Fitness info | **No** | No | | | | Heart rate, pace, route files stay on the device; we never transmit them. **User-initiated sharing:** the runner can tap Send on a run to hand a TCX or GPX file to an app they pick in the Android share sheet (or to Strava's website by hand). Nothing leaves the phone unless they do that, so this is not declared as data we collect or share (check the wording against Play's Data safety guidance on user-initiated transfers before each submit). **Health Connect (write only, runner-enabled):** if the runner switches it on or taps Send to Health Connect, the run goes into the on-device Health Connect store, which is Android's own store on the same phone, not a transfer to us or a third-party server. Run Supreme reads nothing from it. Declare nothing as collected or shared for it; the Health apps declaration (section 9) covers it. **Send to watch (4 Oct):** from a session or a route the runner can tap Send to watch. A workout (.fit) or a GPX course (the whole route, not trimmed) goes to the Android share sheet and an app the runner picks; nothing leaves the phone otherwise. If the runner has connected Intervals.icu, they can also tap Add for today or tomorrow, which sends a planned workout to their Intervals.icu calendar: the session name, its steps (lengths, heart rate or pace ranges, repeats), the chosen date and an id so a second send replaces the first. No run, route or heart rate history is in it. Same user-initiated, opt-in basis as below; Intervals.icu then passes it to the watch brand the runner linked there. **Intervals.icu (shipped 2 Oct, off by default):** data is shared with Intervals.icu only when the runner connects their own account (API key + athlete id) and then sends a run (button) or switches automatic sending on. What goes: the run's TCX (route minus first/last 200 m, laps, heart rate), the run title and the run id. The key sits in Keystore-backed secure storage, is excluded from Auto Backup, is never logged and is deleted on Disconnect. This is a user-initiated, opt-in transfer to a service the user chose; decide with the founder whether to declare Health and fitness / Location as **shared, optional, user-initiated** before submit (Play's wording on user-initiated transfers is unverified here). Auto Backup is a system feature under the user's Google account and Play's guidance excludes it. |
-| Personal info | any | No | | | | | No account, no name, no email |
+| Health and fitness | Health info / Fitness info | **Base release: No.** Companion release: Yes, see section 13. The text below describes the base release. | No | | | | Heart rate, pace, route files stay on the device; we never transmit them. **User-initiated sharing:** the runner can tap Send on a run to hand a TCX or GPX file to an app they pick in the Android share sheet (or to Strava's website by hand). Nothing leaves the phone unless they do that, so this is not declared as data we collect or share (check the wording against Play's Data safety guidance on user-initiated transfers before each submit). **Health Connect (write only, runner-enabled):** if the runner switches it on or taps Send to Health Connect, the run goes into the on-device Health Connect store, which is Android's own store on the same phone, not a transfer to us or a third-party server. Run Supreme reads nothing from it. Declare nothing as collected or shared for it; the Health apps declaration (section 9) covers it. **Send to watch (4 Oct):** from a session or a route the runner can tap Send to watch. A workout (.fit) or a GPX course (the whole route, not trimmed) goes to the Android share sheet and an app the runner picks; nothing leaves the phone otherwise. If the runner has connected Intervals.icu, they can also tap Add for today or tomorrow, which sends a planned workout to their Intervals.icu calendar: the session name, its steps (lengths, heart rate or pace ranges, repeats), the chosen date and an id so a second send replaces the first. No run, route or heart rate history is in it. Same user-initiated, opt-in basis as below; Intervals.icu then passes it to the watch brand the runner linked there. **Intervals.icu (shipped 2 Oct, off by default):** data is shared with Intervals.icu only when the runner connects their own account (API key + athlete id) and then sends a run (button) or switches automatic sending on. What goes: the run's TCX (route minus first/last 200 m, laps, heart rate), the run title and the run id. The key sits in Keystore-backed secure storage, is excluded from Auto Backup, is never logged and is deleted on Disconnect. This is a user-initiated, opt-in transfer to a service the user chose; decide with the founder whether to declare Health and fitness / Location as **shared, optional, user-initiated** before submit (Play's wording on user-initiated transfers is unverified here). Auto Backup is a system feature under the user's Google account and Play's guidance excludes it. |
+| Personal info | any | **Base release: No.** Companion release: see section 13 | | | | | No account, no name, no email in the base release. The optional Run companion adds rows, listed in section 13. |
 | Financial info | any | No | | | | | |
 | Messages / Photos / Audio / Files / Calendar / Contacts / Web browsing / Search history | any | No | | | | | TTS cues are generated on-device; nothing recorded |
 | Files and docs | **Files and docs** | **No** | No | | | | **Follow a route (3 Oct):** the runner may pick one GPX/TCX file with the system file picker (Storage Access Framework, no storage permission). It is read on the phone and only a simplified copy of the route (points, optional elevation) is kept in the app's own `files/state/routes.json`, which Auto Backup includes like the rest of `state/`. Nothing is uploaded; the "Off route" alert and turn hints are computed on the phone and spoken by on-device TTS. No new Data safety declaration. The terrain map is the same Maps SDK, so the Location rows above already cover it. |
@@ -194,3 +194,54 @@ All **No**.
    API restriction: **Maps SDK for Android** only.
 3. Add it as repo secret `RUN_SOLO_MAPS_API_KEY` (`gh secret set RUN_SOLO_MAPS_API_KEY -R ricki2828/run-solo`). Builds pass without it; with it, `build-apk` stops warning.
 4. Locally: `runsolo.mapsApiKey=...` in `android/local.properties` (gitignored) for `flutter run`.
+
+## 13. Play submission: companion release
+
+Applies to the first release where the Run companion can be switched on by anyone other than the founder. Plan: `~/ai/plans/run-supreme-companion.md` (B2). Do not ship it until every item below is done in the same release: the Data safety rows, the web deletion link, the store copy and the privacy page. Facts below were checked against `companion-server/companion/{db,service,writer,backup}.py` and `lib/state/companion.dart` on 10-Oct-2026.
+
+### 13.1 Data safety: companion rows
+
+Overview answers that change: "Is all user data encrypted in transit?" stays **Yes** (companion API, Telegram and Meta are HTTPS). "Do you provide a way to request deletion?" stays **Yes**, now with two paths: in the app (Settings, Companion, Delete everything) and the web link below. Enter the deletion URL as `https://runsupreme.taiaroa.xyz/delete/`. Play requires a link that works without the app, and `docs/delete/index.html` is that page.
+
+Every row below: **Collected: Yes. Optional: yes** (off unless the user turns it on; "Not now" is equal weight). **Purpose: App functionality** only (no Analytics, no advertising). **Encrypted in transit: Yes.** **Deletable: Yes** (in-app, DELETE keyword in the chat, web link). **Ephemeral: No.**
+
+| Category | Data type | What the companion holds | Shared? |
+|---|---|---|---|
+| Health and fitness | **Fitness info** | Per-run summary: type, start time, duration, distance, pace, True Pace, verdict, zone minutes, climb, and the Easy/Right/Hard tap. Never the GPS route or heart rate trace. | No (see note 1) |
+| Location | **Approximate location** | The run's locality (suburb name, never the street), plus the time zone. | No |
+| Personal info | **Phone number** | Only when WhatsApp is switched on: the user's WhatsApp number, which WhatsApp supplies when they message first. Not typed into the app. | No (Meta delivers the user's own chat) |
+| App activity | **App interactions** | Feel taps, button answers (goal, race month, usual days, niggle area), and whether a suggestion was taken or skipped. | No |
+
+Rows the founder did not list, added to over-declare (confirm on the live form):
+- **Personal info, User IDs** and **Name**: the Telegram chat id and chat name the server stores for a Telegram user (the dogfood channel). Optional, App functionality.
+- **Health and fitness, Health info**: the niggle answer (none, calf, knee, hip, foot, other). It expires after 8 weeks. Optional, App functionality.
+
+Notes:
+1. Shared with a processor, not "shared" in Play's sense, same basis as Open-Meteo above: OpenRouter and the model provider receive the run facts as sentences and the answers as fixed options, never the phone number, chat id or any typed text, with `data_collection: deny` and zero-retention routing. Founder to confirm on the live form that service-provider processing is not declared as sharing.
+2. The base-release rows (Maps SDK) are unchanged.
+3. Retention to state if Play asks: run summaries and answers until deleted or six months without a run; message log 30 days; backups 14 days (encrypted); Meta keeps WhatsApp messages up to 30 days.
+4. The app's Health Connect and user-initiated Send rows are unchanged.
+
+### 13.2 Store copy that must change
+
+The base copy says "No account. Nothing uploaded." and "Your routes, times and heart rate stay on your phone unless you choose to send them." That stays true for the base app but is no longer true once the companion exists. Change before the release, in the listing and in `docs/closed-test-testers.md`.
+
+- **Short description (72)**, replacing the one in section 1:
+  `Run scores, honest verdicts and trail runs. See what is improving. Free.`
+  (drops "No account". The app has no account to create, but the companion links to a chat, so the claim reads as too strong.)
+- **Long description, first paragraph**, replacing "with no account and nothing uploaded":
+  > Run Supreme is where you get better at your runs. It tells you honestly how you are progressing and what to run next, free, on your phone. There is no account to create.
+- **Long description, "Private by default" paragraph**, replacing the first sentence:
+  > No feed. No ads. Your routes, times and heart rate stay on your phone unless you choose to send them. The optional Run companion is off until you turn it on. If you do, a short summary of each run (no GPS route, no heart rate trace) goes to our server and the notes reach you in Telegram. You can delete it all in the app or from the web at runsupreme.taiaroa.xyz/delete.
+- **Closed-test message** in `docs/closed-test-testers.md`: replace "No account, no ads, your runs stay on your phone." with "No account to create, no ads. Your runs stay on your phone unless you turn on the optional Run companion."
+- **Screenshots and graphic**: re-check any frame that says "Nothing uploaded".
+- **Health apps declaration (section 9)**: add that health data leaves the device only if the runner turns on the companion or sends a file, and then goes to our server in Germany.
+
+### 13.3 Submission checklist
+
+1. Privacy page section 2b and `/delete/` are live at runsupreme.taiaroa.xyz. Deletion email address on `/delete/` is filled in (it ships with a TODO).
+2. Data safety form updated per 13.1, and the deletion URL entered.
+3. Store copy per 13.2 pasted into the listing.
+4. The server enrol allowlist and the dogfood compile flag are off only when the above are done (plan B2).
+5. WhatsApp stays off until Meta business verification, the approved templates and the written AI-policy check exist (`~/Files/RunSupreme/whatsapp/PROMPTS.md`). The first release can ship Telegram only; the phone number row is then not collected, and the form can omit it until WhatsApp ships. Data safety changes later need the form updated before the release that uses them.
+6. CI ignores `docs/**`, so none of the above is checked by a pipeline. Check by hand.

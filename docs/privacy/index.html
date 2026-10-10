@@ -30,14 +30,16 @@
   <p class="meta">Applies to the Run Supreme Android app. Last updated 10 October 2026.</p>
 
   <p>Run Supreme is a running app with no account, no ads and no analytics of our own. This page says
-  plainly what stays on your phone, what two outside services receive so the app can work, and
-  what you can turn off.</p>
+  plainly what stays on your phone, what outside services receive so the app can work, and
+  what you can turn off. There is one optional feature, the Run companion (section 2b), that sends
+  run summaries to our server. It is off unless you turn it on.</p>
 
   <h2>1. Your runs stay on your phone unless you choose to send them</h2>
   <p>Everything Run Supreme records is stored on your device: your recorded route (GPS points),
   lap and rep times, pace, heart rate from a paired strap, the verdicts and trends the app
-  computes from them, your settings, and any plan you follow. We do not run a server, we do not
-  have an account for you, and we never see any of this.</p>
+  computes from them, your settings, and any plan you follow. We do not have an account for you, and we
+  never see any of this. The one exception is the optional Run companion (sections 2b and 2c): if you turn it on,
+  a short summary of each run is sent to our server.</p>
   <p>Android's automatic backup may copy your run files to your Google account as part of your
   device backup, under Google's backup terms and your device settings. You can turn device backup
   off in Android settings. Files you export (JSON, TCX or GPX) go wherever you choose to send them.</p>
@@ -133,6 +135,79 @@
   <p>Map data: &copy; OpenStreetMap contributors (ODbL), basemap tiles by Protomaps, terrain by Mapterhorn, with
   Copernicus DEM data. The map shows this credit on screen and Settings, About lists it in full.</p>
 
+  <h2>2b. Run companion (optional)</h2>
+  <p>The Run companion sends a short note to your Telegram after a run, with the numbers that matter. It
+  may ask how a run felt and suggest up to two sessions a week. WhatsApp is planned for later. <strong>It is off
+  unless you turn it on.</strong> The setup screen and Settings, Companion have two equal buttons, Turn on
+  and Not now, and neither is pre-selected. Until you turn it on, nothing in this section applies and
+  nothing is sent.</p>
+
+  <h3>What is sent, and when</h3>
+  <p>After each run, once the companion is on, the app sends a summary of that run:</p>
+  <ul>
+    <li>the run type, date and start time, and your time zone;</li>
+    <li>duration, distance, pace and True Pace;</li>
+    <li>the verdict, minutes in each heart rate zone, and climb;</li>
+    <li>the name of the area where you started (the suburb, never the street);</li>
+    <li>how the run felt (Easy, Right or Hard), if you tapped it.</li>
+  </ul>
+  <p>It never sends your GPS route, the street, or your heart rate trace. Runs recorded before you turned the
+  companion on are not sent. If the phone is offline the summary is queued and sent later.</p>
+  <p>The companion also keeps your answers to its questions. It asks at most one a week, and only
+  inside a run note. The questions are what you are training for, the month of your race, when you usually
+  run, and whether you have a niggle (none, calf, knee, hip, foot or other). You answer with buttons, never typed text.
+  It records whether you take or skip a suggestion.</p>
+
+  <h3>Your phone number or Telegram chat</h3>
+  <p>The companion has no account. It knows you by your chat. To connect, the app opens Telegram, you tap Start,
+  and the app asks you to type back a 6-digit code the chat sends you. The server then holds your Telegram chat id
+  and chat name. For WhatsApp, once it is available, the server will hold your phone number, which WhatsApp gives us
+  when you send your first message. You do not type your phone number into the app. The app keeps a connection key
+  in your phone's secure storage, and the server keeps only a scrambled copy of it.</p>
+
+  <h3>Where it goes</h3>
+  <ul>
+    <li><strong>Our server</strong>, hosted by Hetzner in Germany. It stores your run summaries, your answers, the notes it
+    sent you, and your chat details, in a database that only the companion service can read.</li>
+    <li><strong>OpenRouter</strong>, and the AI provider it routes to, which write the words of each note. They receive only
+    the facts of the run as short sentences, and your answers as fixed options. They never receive your
+    phone number, Telegram chat, name or any typed text. We ask for providers that do not keep or train on what they receive
+    (zero retention), and the request is refused if none is available. If the writing service fails, the note is written from a
+    template on our server instead.</li>
+    <li><strong>Telegram</strong>, which delivers the notes and sees them like any message in a chat. Telegram's own privacy
+    policy applies to the chat.</li>
+    <li><strong>Meta (WhatsApp)</strong>, only once WhatsApp is switched on and you choose it. Meta delivers the messages and
+    keeps WhatsApp messages for up to 30 days. Meta's own privacy policy applies to the chat.</li>
+  </ul>
+  <p>We do not sell this data, use it for advertising, or share it with anyone else.</p>
+
+  <h3>How long we keep it</h3>
+  <ul>
+    <li>Run summaries, answers and your chat details are kept until you delete them, or until six months pass with no run,
+    when your companion data is deleted automatically.</li>
+    <li>The record of notes we sent is kept for 30 days.</li>
+    <li>A niggle answer expires after 8 weeks.</li>
+    <li>An unfinished connection (you never entered the code) is deleted after an hour.</li>
+    <li>Backups: the server database is backed up each night, encrypted, and each backup is deleted after 14 days. Data you
+    delete is gone from the live server at once and from the backups within 14 days.</li>
+    <li>Server logs hide phone numbers, chat ids and keys.</li>
+  </ul>
+  <p>Notes already in your Telegram or WhatsApp chat stay there until you delete them yourself.</p>
+
+  <h3>How to delete it</h3>
+  <ul>
+    <li><strong>In the app</strong>: Settings, Companion, Delete everything. Settings, Companion also shows what the
+    companion holds about you. <strong>Turn off does the same as Delete everything</strong>: it deletes everything the
+    server holds about you and disconnects the app. To pause the notes without deleting anything, send STOP in the
+    chat instead.</li>
+    <li><strong>In the chat</strong>: send DELETE to the companion. It erases everything held about you and confirms.
+    STOP pauses the messages, and RESUME turns them back on.</li>
+    <li><strong>Without the app</strong>: use the steps at <a href="/delete/">runsupreme.taiaroa.xyz/delete</a>, which work
+    even if the app is uninstalled.</li>
+  </ul>
+  <p>Deleting removes every row we hold about you from the live database. Meta may keep delivery records for up to 30 days,
+  and backups age out within 14 days, as above. In the app, Turn off and Delete everything both delete your data;
+  only STOP in the chat pauses the notes and keeps it.</p>
   <h2>2c. Run companion: images and videos</h2>
   <p>This applies only if you turned the optional Run companion on and it has been set to send pictures. Its notes
   can then arrive in your Telegram chat as an image or a short video instead of plain text. The picture shows more
@@ -144,7 +219,7 @@
   and none of your account details; it receives only those figures, returns the image, and keeps nothing. The finished
   image is then sent to your Telegram chat, so Telegram stores it under its own policy, and it stays in your chat
   until you delete it there. Our server does not keep the image. If you do not want pictures, turn the
-  companion off or send DELETE in the chat.</p>
+  companion off (which deletes your data) or send STOP in the chat to pause it.</p>
 
   <h2>3. Weather from Open-Meteo</h2>
   <p>To adjust for heat and humidity, Run Supreme can fetch the weather for each run from
@@ -177,25 +252,26 @@
     <tr><td>Nearby devices (Bluetooth)</td><td>To pair a heart-rate strap. Bluetooth is not used to work out where you are.</td></tr>
     <tr><td>Notifications</td><td>The recording notification with its LAP and Stop buttons, and cues while your screen is off.</td></tr>
     <tr><td>Health Connect (write only)</td><td>Only if you switch on Health Connect in Settings, Send runs to, or tap Send to Health Connect on a run. Health Connect asks you for four write permissions: exercise, exercise route, heart rate and distance. Run Supreme writes the finished run (its laps and pauses, route, heart rate and distance) and reads nothing back from Health Connect. You can turn it off in Settings, or withdraw the permissions in Health Connect, at any time.</td></tr>
-    <tr><td>Internet</td><td>Map tiles from Google, offline map downloads from our own hosting (only when you tap Download), and weather from Open-Meteo, as described above. Place names come from your phone's own geocoder, as described above. If you connect Intervals.icu, the runs you send to it. Nothing else.</td></tr>
+    <tr><td>Internet</td><td>Map tiles from Google, offline map downloads from our own hosting (only when you tap Download), and weather from Open-Meteo, as described above. Place names come from your phone's own geocoder, as described above. If you connect Intervals.icu, the runs you send to it. If you turn on the Run companion, the run summaries described in section 2b. Nothing else.</td></tr>
   </table>
 
   <h2>5. What we do not do</h2>
   <ul>
-    <li>No accounts, sign-in or profiles.</li>
+    <li>No accounts, sign-in or profiles. The optional Run companion identifies you only by your Telegram chat (or, later, your WhatsApp number).</li>
     <li>No advertising, no ad SDKs.</li>
     <li>No analytics or tracking of our own. The only analytics-type signal is the Maps SDK identifier
     described in section 2, which belongs to Google's SDK, not to us.</li>
-    <li>We do not sell or share your data. We could not: we never hold it.</li>
+    <li>We do not sell or share your data. Unless you turn on the Run companion, our servers hold none of it. If you do, sections 2b and 2c say what we hold and for how long.</li>
     <li>Run Supreme is not directed at children and has no features aimed at them.</li>
   </ul>
 
   <h2>6. Your controls</h2>
   <ul>
-    <li><strong>Delete everything</strong>: Settings, Data, "Delete all" removes every run and setting from the phone. Uninstalling the app does the same. What Google's Maps SDK already received (section 2) is held by Google, not us; your Google account's privacy controls apply to it.</li>
+    <li><strong>Delete everything</strong>: Settings, Data, "Delete all" removes every run and setting from the phone. Uninstalling the app does the same. Run companion data on our server is deleted separately, as in section 2b. What Google's Maps SDK already received (section 2) is held by Google, not us; your Google account's privacy controls apply to it.</li>
     <li><strong>Weather</strong>: Settings, Recording, "Weather for each run".</li>
     <li><strong>Map</strong>: maps appear on a run's detail screen, behind your recent runs on Home (no setting turns that off), and on the record screen while you have MAP selected (NUMBERS is the default and each run type remembers your choice); do not use these if you would rather Google did not receive that map area.</li>
     <li><strong>Routes</strong>: Start, Follow a route lists the routes saved on your phone; the bin beside each one deletes it. Uninstalling the app removes them too.</li>
+    <li><strong>Run companion</strong>: Settings, Companion. Turn off, or Delete everything to erase what the server holds. Details in section 2b.</li>
     <li><strong>Intervals.icu</strong>: Settings, Send runs to, Intervals.icu. Switch it off to stop automatic sending, or Disconnect to delete the key.</li>
     <li><strong>Backup</strong>: Android settings, Google, Backup.</li>
     <li><strong>Export</strong>: Settings, Data, "Export all" gives you your data as JSON or TCX.</li>
