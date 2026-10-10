@@ -495,6 +495,10 @@ abstract class RunStore implements HistoryStore {
   /// Count a place lookup that found no name (the app stops after three).
   Future<void> addPlaceTry(String id);
 
+  /// The runner's feel tap (Easy, Right, Hard); null clears it. Display and
+  /// companion data only: no re-analysis.
+  Future<void> setFeel(String id, engine.RunFeel? feel);
+
   /// Send runs: log one attempt to [targetId] in the run's sidecar and
   /// return the sidecar now on disk (null when the run is gone). Display and
   /// retry bookkeeping only: no verdict is touched.
@@ -906,6 +910,12 @@ class MemoryRunStore implements RunStore {
   Future<void> addPlaceTry(String id) async {
     final s = sidecars[id] ?? engine.RunSidecar(runId: id);
     sidecars[id] = s.copyWith(placeTries: s.placeTries + 1);
+  }
+
+  @override
+  Future<void> setFeel(String id, engine.RunFeel? feel) async {
+    final s = sidecars[id] ?? engine.RunSidecar(runId: id);
+    sidecars[id] = s.withFeel(feel);
   }
 
   @override
@@ -1664,6 +1674,10 @@ class FileRunStore implements RunStore {
     if (d == null) return;
     await _writeIdentity(id, (current) => _withLocalTime(d.$1, current));
   }
+
+  @override
+  Future<void> setFeel(String id, engine.RunFeel? feel) =>
+      _writeIdentity(id, (current) => current.withFeel(feel));
 
   @override
   Future<void> addPlaceTry(String id) => _writeIdentity(

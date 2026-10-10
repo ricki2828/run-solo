@@ -8,6 +8,7 @@ import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/trails.dart';
 import '../theme/theme.dart';
+import '../widgets/feel_row.dart';
 import '../widgets/chrome.dart';
 import '../widgets/rank_chip.dart';
 import 'run_detail_screen.dart';
@@ -307,6 +308,8 @@ class _TrailVerdictScreenState extends State<TrailVerdictScreen>
                     ],
                   ],
                 ),
+                const SizedBox(height: Space.x24),
+                FeelRow(runId: d.run.id, initial: d.sidecar.feel),
                 const SizedBox(height: Space.x24),
               ],
             ),

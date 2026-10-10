@@ -13,6 +13,7 @@ import 'package:run_solo/platform/health_gateway.dart';
 import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_solo/platform/transfer_gateway.dart';
 import 'package:run_solo/splash/intro_gate.dart';
+import 'package:run_solo/state/companion.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/live_context.dart';
 import 'package:run_solo/state/send_runs.dart';
@@ -58,7 +59,9 @@ AppServices fakeServices({
   RunStore? history,
   FakePlaceGateway? places,
   List<ExportTarget>? exportTargets,
+  CompanionController? companion,
 }) => AppServices.fake(
+  companion: companion,
   places: places,
   exportTargets: exportTargets,
   live: live,
