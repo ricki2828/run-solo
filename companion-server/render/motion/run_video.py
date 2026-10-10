@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from . import _tokens as T
+from .. import brand
 from ._common import M, RIGHT, Theme, fmt_dur, fmt_pace, header, signoff
 from ._draw import (FPS, H, W, Canvas, clamp, grot, in_out_cubic, lerp, mix, out_back, out_cubic, out_quart, saira,
                     seg)
@@ -118,28 +118,29 @@ def spec_from_facts(f: dict, signoff: str = "Same time next run.") -> "RunVideoS
     if "pace_s_per_km" in f and abs(f["pace_s_per_km"] - dur / dist) > 2:
         raise ValueError(f"pace {f['pace_s_per_km']} s/km does not match {dur}s over {dist} km")
     if not f.get("splits"):
-        raise ValueError("run facts need splits (km, pace_s, zone) to draw the bars")
+        raise ValueError("run facts need splits ({km, pace_s, zone}) to draw the bars")
     zs = list(f.get("zone_s") or [])
     hard = bool(f.get("pb")) or f.get("type") in ("interval", "race") or (
         sum(zs) > 0 and (zs[3] + zs[4]) / sum(zs) >= 0.4)
     flood = None
     if hard:
         flood = 5 if (len(zs) == 5 and zs[4] > zs[3]) else 4
-    when = datetime.fromisoformat(f["start_local"])
     reps = None
-    rp = f.get("reps") or {}
-    if f.get("type") == "interval" and rp.get("times_s"):
-        times = rp["times_s"]
-        if len(times) != rp.get("count", len(times)) or min(times) != rp.get("best_s", min(times)):
-            raise ValueError("reps: count or best_s disagree with times_s")
+    if f.get("type") == "interval" and f.get("reps"):
+        rp = f["reps"]  # [{time_s, zone}, ...]
+        times = [r["time_s"] for r in rp]
         h = f.get("hero")
         if h and isinstance(h.get("value"), str) and ":" in h["value"]:
             m, s_ = h["value"].split(":")
             if abs(int(m) * 60 + int(s_) - sum(times) / len(times)) > 1:
-                raise ValueError("hero rep average disagrees with times_s")
-        zones = rp.get("zones") or [None] * len(times)
-        reps = [Split(str(i + 1), float(t), z, 0.4) for i, (t, z) in enumerate(zip(times, zones))]
-    splits = [Split(str(x["km"]), float(x["pace_s"]), x.get("zone"), float(x.get("dist_km", 1.0))) for x in f["splits"]]
+                raise ValueError("hero rep average disagrees with the rep times")
+        reps = [Split(str(i + 1), float(r["time_s"]), r.get("zone"), 0.4) for i, r in enumerate(rp)]
+    # facts splits are {km: length of the split, pace_s, zone}; the last one is usually a partial km
+    splits = []
+    for i, x in enumerate(f["splits"]):
+        km = float(x["km"])
+        splits.append(Split(str(i + 1) if km >= 0.995 else f"{dist:.1f}", float(x["pace_s"]), x.get("zone"), km))
+    when = datetime.fromisoformat(f["start_local"])
     if f.get("pb"):
         pbd = f["pb_detail"]
         v = Verdict("pb", abs(pbd["delta_s"]), 0, "SEC", context=str(pbd["label"]).upper(),
@@ -182,12 +183,12 @@ class RunVideo:
         self.big = fit(route, (M + 20, 255, RIGHT - 20, 835))
         self.mini = fit(route, (M + 6, 245, 372, 450))
         self.accent = th.scores[spec.run_type]
-        self.line_col = T.BONE if th.flood else self.accent
+        self.line_col = brand.BONE if th.flood else self.accent
         v = spec.verdict
         self.word = v.word or WORDS[v.kind]
         self.vcol = {"faster": th.mint, "slower": th.verm, "holding": th.ink,
                      "pb": th.ink}[v.kind]
-        self.vrule = T.PB_CYAN if v.kind == "pb" else self.vcol
+        self.vrule = brand.ARC if v.kind == "pb" else self.vcol
         sp = [x.pace_s for x in spec.splits]
         self.bars = spec.reps or spec.splits
         sp = [x.pace_s for x in self.bars]
@@ -224,7 +225,7 @@ class RunVideo:
         wid = lerp(15, 9, k)
         h = head(pts, p)
         col = th.fade(self.line_col, a)
-        gcol = self.accent if not th.flood else (T.PB_CYAN if s.verdict.kind == "pb" else self.accent)
+        gcol = self.accent if not th.flood else (brand.ARC if s.verdict.kind == "pb" else self.accent)
         cv.halo_line(h, wid * 1.3)
         cv.add_glow(gcol, 0.30 * a, 2.5)
         cv.add_glow(gcol, 0.30 * a, 7.0)
@@ -336,24 +337,24 @@ class RunVideo:
             q = seg(t, BARS0 + i * stagger, BARS0 + i * stagger + 0.6)
             hgt = full * clamp(out_back(q, 1.1), 0, 1.06)
             x = M + i * (bw + gap)
-            col = T.ZONES[sp.zone - 1] if sp.zone else self.accent
+            col = brand.ZONE_RAMP[sp.zone - 1] if sp.zone else self.accent
             if th.flood and not sp.zone:
-                col = T.BONE
+                col = brand.BONE
             if hgt > 1:
                 cv.rect(x, base - hgt, x + bw, base, th.fade(col, a), r=min(14, bw * 0.22), top_only=True)
             la = out_cubic(seg(q, 0.55, 1.0)) * a
             show = i % every == 0 or i == fastest or i == n - 1 and every == 1
             best = bool(s.reps) and i == fastest
             if best and hgt > 1:  # the best rep is outlined and tagged
-                cv.rect(x - 6, base - hgt - 6, x + bw + 6, base, th.fade(T.PB_CYAN if th.flood else th.ink, a * q),
+                cv.rect(x - 6, base - hgt - 6, x + bw + 6, base, th.fade(brand.ARC if th.flood else th.ink, a * q),
                         r=min(18, bw * 0.26), top_only=True)
                 cv.rect(x, base - hgt, x + bw, base, th.fade(col, a), r=min(14, bw * 0.22), top_only=True)
             if la > 0 and show:
                 cv.text((x + bw / 2, base - hgt - (62 if best else 16)), fmt_pace(sp.pace_s), lab_f,
-                        th.fade(T.PB_CYAN if (best and th.flood) else th.ink, la), anchor="ms")
+                        th.fade(brand.ARC if (best and th.flood) else th.ink, la), anchor="ms")
                 if best:
                     cv.text((x + bw / 2, base - hgt - 22), "BEST", grot(30, 700),
-                            th.fade(T.PB_CYAN if th.flood else th.ink, la), anchor="ms", tracking=3)
+                            th.fade(brand.ARC if th.flood else th.ink, la), anchor="ms", tracking=3)
             if q > 0.2 and (i % every == 0 or i == n - 1):
                 lab = ("R" + sp.label) if s.reps else sp.label
                 cv.text((x + bw / 2, base + 48), lab, grot(34, 600), th.fade(th.quiet, a * clamp(q * 2)), anchor="ms")
@@ -363,7 +364,7 @@ class RunVideo:
             if any(x.zone for x in bars):
                 x = RIGHT - 5 * 104
                 for z in range(5):
-                    cv.rect(x, 1236, x + 26, 1262, th.fade(T.ZONES[z], lg), r=5)
+                    cv.rect(x, 1236, x + 26, 1262, th.fade(brand.ZONE_RAMP[z], lg), r=5)
                     cv.text((x + 34, 1262), f"Z{z + 1}", grot(34, 600), th.fade(th.quiet, lg))
                     x += 104
 

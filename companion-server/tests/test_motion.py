@@ -67,7 +67,7 @@ def test_video_contract(fx, request):
 
 
 def test_route_prep_handles_closed_loop():
-    r = prepare_route(samples.sample_route())
+    r = prepare_route(samples.run_spec("milos").route)
     xs = {round(p[0], 6) for p in r}
     assert len(r) == 600 and len(xs) > 100
 
@@ -181,16 +181,16 @@ def test_each_fixture_has_its_own_route():
 def test_interval_session_shows_rep_bars():
     spec = samples.run_spec("intervals")
     v = RunVideo(spec)
-    assert [b.pace_s for b in v.bars] == [86, 85, 84, 84, 83, 81, 84, 85]
+    assert [b.pace_s for b in v.bars] == [86, 85, 84, 84, 82, 81, 85, 85]
     assert v.bars is spec.reps and len(v.bars) == 8
     assert min(v.bars, key=lambda b: b.pace_s).label == "6"  # rep 6, 1:21: same fact the weekly best moment quotes
     assert all(b.zone for b in v.bars)
 
 
 def test_rep_facts_must_agree():
-    f = samples.singapore_intervals()
-    f["reps"]["best_s"] = 79
-    with pytest.raises(ValueError, match="reps"):
+    f = samples.facts("intervals")
+    f["hero"] = {"value": "1:30", "unit": "/400 M AVG"}
+    with pytest.raises(ValueError, match="rep"):
         samples.spec_from_facts(f)
 
 
