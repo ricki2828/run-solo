@@ -525,8 +525,11 @@ class Service:
             sunrises = c.execute("SELECT COUNT(*) FROM convo_log WHERE user_id=? AND kind='sunrise' AND key<>?",
                                  (uid, run_id)).fetchone()[0]
         rw = self.weather.at_run(run["locality"], run["zone_id"], parse_iso(run["start_utc"]), now)
+        v = cv_engine.enrich_run(run, full, mem, now, usage, rw, sunrise_count=sunrises)
         with db.tx(self.s.db_path) as c:
             suggestion, question = res.suggestion, None
+            if v.situation == "back_after_break":
+                suggestion = None  # nobody wants a hard-session nudge on the first run back
             if suggestion and not self._claim_suggestion(c, uid, now):
                 suggestion = None
             if not suggestion:
@@ -539,8 +542,9 @@ class Service:
                           "(SELECT 1 FROM convo_log WHERE user_id=? AND kind='sunrise' AND key=?)",
                           (uid, "sunrise", run_id, iso(now), uid, run_id))
         res = FactsResult(res.facts, suggestion, res.tone, False, res.reason)
-        v = cv_engine.enrich_run(run, full, mem, now, usage, rw, sunrise_count=sunrises)
-        w = self.writer.write(res, digest_lines(mem, feels), voice=v.rendered, style=v.style)
+        sline = cv_suggest.after_run(suggestion, run, full, usage.variants, now, run_id) if suggestion else None
+        w = self.writer.write(res, digest_lines(mem, feels), voice=v.rendered, style=v.style,
+                              suggestion_line=sline.body if sline else None)
         body = w.body
         if v.touch_line:
             body += f"\n\n{v.touch_line}"
@@ -548,8 +552,11 @@ class Service:
             body += f"\n\n{question['text']}"
         buttons = self._buttons(run["feel"], suggestion.kind if suggestion else None, question)
         card_id = secrets.token_hex(16)
-        allowed = " ".join([f.text for f in res.facts] + [v.allowed, suggestion.text if suggestion else ""])
+        allowed = " ".join([f.text for f in res.facts] + [v.allowed, suggestion.text if suggestion else "",
+                                                          sline.allowed if sline else ""])
         used = v.used_variants if w.source == "template" else [x for x in v.used_variants if x.startswith("touch_")]
+        if sline and w.source == "template":
+            used = used + [sline.variant_id]
         with db.tx(self.s.db_path) as c:
             c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
                       "VALUES (?,?,?,?,?,?,?,?,?)",
@@ -726,6 +733,10 @@ class Service:
                 mem = self._memory_get(c, u["id"], now)
                 if not tomorrow_is_usual_day(mem.get("usual_days"), (loc + timedelta(days=1)).weekday()):
                     continue
+                recent = c.execute("SELECT 1 FROM cards WHERE user_id=? AND kind='evening' AND created_at>?",
+                                   (u["id"], iso(now - timedelta(hours=cv_suggest.EVENING_MIN_GAP_H)))).fetchone()
+                if recent:
+                    continue  # no suggestion two evenings running
                 d = loc.date().isoformat()
                 n += c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
                                (u["id"], "evening", iso(now), f"evening:{u['id']}:{d}", d)).rowcount

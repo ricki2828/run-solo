@@ -21,6 +21,8 @@ MILESTONE_RUNS = (10, 25, 50, 100, 150, 200, 250, 300, 400, 500, 750, 1000)
 MILESTONE_KM = (100, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000)
 STREAK_AT = (3, 4, 6, 8, 10, 12, 16, 20, 26, 52)
 DEFAULT_WEEKLY_TARGET = 2
+BREAK_DAYS = 10  # a gap this long is a break; the third run back after one is a comeback
+PLACE_AT = (3, 4, 5, 25, 75)  # plus every 10th: a regular spot is not news every time
 
 # Days before the same kind may appear again. 0 = no kind cool-down.
 KIND_COOLDOWN = {
@@ -141,11 +143,11 @@ def new_place(c: Ctx) -> Touch | None:
 
 
 def comeback(c: Ctx) -> Touch | None:
-    """The third run back after a break of 14+ days, inside 14 days of coming back."""
+    """The third run back after a break (10+ days), inside 14 days of coming back."""
     runs = [c.run, *c.history]  # newest first
     for i in range(len(runs) - 1):
         gap = (c.when(runs[i]) - c.when(runs[i + 1])).days
-        if gap >= 14:
+        if gap >= BREAK_DAYS:
             n = i + 1  # runs since (and including) the first one back
             if n != 3:
                 return None
@@ -196,7 +198,7 @@ def last_year(c: Ctx) -> Touch | None:
     best = None
     for h in c.history:
         gap = abs((t0 - c.when(h)).days - 365)
-        if gap <= 3 and h.get("distance_m") and 0.7 <= h["distance_m"] / d <= 1.4 and _pace(h) is not None:
+        if gap <= 3 and h["type"] == c.run["type"] and h.get("distance_m") and 0.7 <= h["distance_m"] / d <= 1.4 and _pace(h) is not None:
             if best is None or gap < best[0]:
                 best = (gap, h)
     if best is None:
@@ -229,7 +231,7 @@ def place(c: Ctx) -> Touch | None:
         return None
     prior = [h for h in c.history if h.get("locality") == loc]
     n = len(prior) + 1
-    if n < 3:
+    if n not in PLACE_AT and n % 10:
         return None
     slots = {"ord": ordinal(n), "place": loc}
     paces = [_pace(h) for h in prior if _pace(h) is not None]

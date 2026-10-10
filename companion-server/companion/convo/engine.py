@@ -16,7 +16,7 @@ from . import touches as T
 from . import voice
 from .weather import HEAT_C, RunWeather
 
-BREAK_DAYS = 10         # a gap this long before today's run makes it a "back after a break" run
+BREAK_DAYS = T.BREAK_DAYS  # a gap this long before today's run makes it a "back after a break" run
 SLOW_DAY_S = 10         # as in facts.SLOW_DAY_S_PER_KM
 FASTER_S = 3            # as in facts.DELTA_MIN_S_PER_KM
 HILLS_M = 100           # climb that explains a slow day
@@ -28,9 +28,10 @@ FLOOD_SHARE = 0.4       # share of zone time in Z4 and Z5 that makes a run a "ha
 
 @dataclass(frozen=True)
 class MediaPlan:
-    card: str   # light | flood | pb | milestone | race_countdown | suggestion | weekly_recap | none
+    card: str   # light | flood | pb | suggestion | weekly_recap | none
     video: bool
     reason: str
+    touch_card: str | None = None  # milestone | race_countdown: a second card the channel may add
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), sort_keys=True)
@@ -132,19 +133,17 @@ def media_for_run(run: Mapping[str, Any], situation: str, touch: T.Touch | None)
     hard = run["type"] in HARD_TYPES or (share is not None and share >= FLOOD_SHARE)
     hm = T.hard_minutes(run)
     dist_km, dur_min = run["distance_m"] / 1000, run["duration_s"] / 60
+    extra = ("milestone" if touch and touch.kind.startswith("milestone")
+             else "race_countdown" if touch and touch.kind in ("race_countdown", "race_month") else None)
     if run.get("pb"):
-        return MediaPlan("pb", True, "pb")
+        return MediaPlan("pb", True, "pb", extra)
     if run["type"] in HARD_TYPES and hm >= HARD_VIDEO_MIN:
-        return MediaPlan("flood", True, "big_session")
+        return MediaPlan("flood", True, "big_session", extra)
     if run["type"] == "long" and (dist_km >= LONG_VIDEO_KM or dur_min >= LONG_VIDEO_MIN):
-        return MediaPlan("flood" if hard else "light", True, "long_run")
+        return MediaPlan("flood" if hard else "light", True, "long_run", extra)
     if hard:
-        return MediaPlan("flood", False, "hard_run")
-    if touch and touch.kind.startswith("milestone"):
-        return MediaPlan("milestone", False, "milestone")
-    if touch and touch.kind in ("race_countdown", "race_month"):
-        return MediaPlan("race_countdown", False, "race_countdown")
-    return MediaPlan("light", False, "easy")
+        return MediaPlan("flood", False, "hard_run", extra)
+    return MediaPlan("light", False, "easy", extra)
 
 
 def enrich_run(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]], memory: Mapping[str, str],

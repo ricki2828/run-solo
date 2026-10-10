@@ -164,14 +164,14 @@ class Writer:
 
     # -- main ----------------------------------------------------------------------------
     def write(self, result: FactsResult, memory_digest: dict[str, Any], voice: Any = None,
-              style: Sequence[str] | None = None) -> Written:
+              style: Sequence[str] | None = None, suggestion_line: str | None = None) -> Written:
         """`voice` (convo.voice.Rendered) is the template fallback in the house voice; `style` are exemplars."""
         facts = list(result.facts)
         if result.suggestion:
             facts.append(Fact("suggestion", result.suggestion.text))
         fallback = template_card(facts, result.tone)
         if voice is not None:
-            extra = f"\n{result.suggestion.text}" if result.suggestion and result.facts else ""
+            extra = f"\n{suggestion_line or result.suggestion.text}" if result.suggestion and result.facts else ""
             fallback = Written(voice.headline, voice.body + extra, "template")
         if not self.s.openrouter_key:
             return Written(fallback.headline, fallback.body, "template", "no_key")

@@ -26,6 +26,8 @@ PLAN_WEEKS_MAX = 16
 LONG_GAP_DAYS = 9
 GAP_DAYS = 5
 MIN_RUNS_14D = 3
+ACTIVE_WITHIN_DAYS = 5
+EVENING_MIN_GAP_H = 44  # a suggestion never lands two evenings running
 
 
 @dataclass(frozen=True)
@@ -68,6 +70,8 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
         return None
     last = history[0]
     since_last = now - _when(last)
+    if since_last > timedelta(days=ACTIVE_WITHIN_DAYS):
+        return None  # someone who has stopped running gets the recap, not a nudge
     easy_km = typical_easy_km(history)
     slots: dict[str, str] = {}
     if easy_km:
@@ -112,3 +116,21 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
     sk = {"easy_load": "easy_next", "recover": "recover", "heat": "heat", "wet": "wet", "plan_long": "long_run",
           "good": "quality", "gap": "quality"}[kind]
     return Evening(Suggestion(sk, _kind_reason(kind), r.body), r, voice.exemplars(situation, 3, seed))
+
+
+def after_run(sug: Suggestion, run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
+              used: Mapping[str, datetime], now: datetime, seed: str) -> voice.Rendered | None:
+    """The suggestion that rides on a post-run card, in the house voice (same rules as the facts layer)."""
+    slots: dict[str, str] = {}
+    easy = typical_easy_km(history)
+    if easy:
+        slots["km"] = easy
+    situation = {"easy_next": "sugg_easy_load", "recover": "sugg_after_hard", "quality": "sugg_gap_week"}.get(sug.kind)
+    if situation is None:
+        return None
+    if situation == "sugg_gap_week":
+        gap = days_since_hard(history, _when(run))
+        if gap is None:
+            return None
+        slots["gap_txt"] = plural(gap, "day")
+    return voice.render(situation, slots, used, now, seed)

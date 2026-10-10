@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, Mapping, Sequence
 
 from ..facts import fmt_km, fmt_pace
-from ..timeutil import parse_iso, to_local
+from ..timeutil import UTC, parse_iso, to_local, zone
 from . import touches as T
 from . import voice
 from .engine import MediaPlan
@@ -42,6 +42,10 @@ def _week_runs(runs: Sequence[Mapping[str, Any]], zone_id: str, monday: datetime
         if lo <= loc < hi:
             out.append(r)
     return out
+
+
+def _to_utc(naive_local: datetime, zone_id: str) -> datetime:
+    return naive_local.replace(tzinfo=zone(zone_id)).astimezone(UTC)
 
 
 def best_moment(week: Sequence[Mapping[str, Any]], zone_id: str) -> str:
@@ -88,7 +92,7 @@ def build(runs: Sequence[Mapping[str, Any]], now: datetime, zone_id: str, used: 
     moment = best_moment(week, zone_id)
     slots = {"runs_txt": T.plural(len(week), "run"), "km": f"{km:.1f}", "min": str(minutes), "moment": moment}
     if not prev:
-        situation = "recap_first"
+        situation = "recap_return" if any(_when(r) < _to_utc(monday, zone_id) for r in runs) else "recap_first"
     else:
         diff = km - prev_km
         slots["delta_km"] = f"{abs(diff):.1f}"
