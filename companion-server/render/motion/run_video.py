@@ -151,7 +151,7 @@ def spec_from_facts(f: dict, signoff: str = "Same time next run.") -> "RunVideoS
             val = h["value"]
             secs = (int(val.split(":")[0]) * 60 + int(val.split(":")[1])) if isinstance(val, str) and ":" in val else float(val)
             v = Verdict(f["verdict"], secs, 0, str(h.get("unit", "")), fmt="mss" if isinstance(val, str) and ":" in val else "num",
-                        context=str(f.get("place_note", "")).upper(), caption=f.get("headline", ""))
+                        context="AVERAGE REP" if reps else "AVERAGE PACE", caption=f.get("headline", ""))
         else:
             v = Verdict(f["verdict"], dur / dist, 0, "/KM AVG", fmt="mss", context="AVERAGE PACE",
                         caption=f.get("headline", ""))

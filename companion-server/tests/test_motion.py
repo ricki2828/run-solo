@@ -202,3 +202,12 @@ def test_run_goldens_intervals(t):
 def test_interval_stats_are_reps_and_best():
     assert RunVideo(samples.run_spec("intervals"))._extra_stats() == [("8", "REPS"), ("1:21", "BEST")]
     assert RunVideo(samples.run_spec("pb"))._extra_stats()[0][1].startswith("AVG PACE")
+
+
+@pytest.mark.parametrize("which,want", [("milos", "AVERAGE PACE"), ("intervals", "AVERAGE REP"),
+                                        ("slow", "AVERAGE PACE"), ("pb", "5 KM BEST")])
+def test_verdict_label_never_comes_from_place_note(which, want):
+    f = samples.facts(which)
+    spec = samples.spec_from_facts(f)
+    assert spec.verdict.context == want
+    assert f["place_note"].upper() not in spec.verdict.context
