@@ -190,3 +190,8 @@ def test_rep_facts_must_agree():
 @pytest.mark.parametrize("t", [6.8])
 def test_run_goldens_intervals(t):
     _check(f"run_intervals_{t}", RunVideo(samples.run_spec("intervals")).frame(t))
+
+
+def test_interval_stats_are_reps_and_best():
+    assert RunVideo(samples.run_spec("intervals"))._extra_stats() == [("8", "REPS"), ("1:21", "BEST")]
+    assert RunVideo(samples.run_spec("pb"))._extra_stats()[0][1].startswith("AVG PACE")

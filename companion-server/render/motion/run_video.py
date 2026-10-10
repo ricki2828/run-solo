@@ -273,7 +273,8 @@ class RunVideo:
             cv.text((M + w + 22, 1135 + (1 - a_big) * 24), "KM", saira(120), th.fade(th.quiet, a_big), anchor="ls")
             q = seg(t, 2.9, 3.4)
             self._stat(cv, M, 1225, fmt_dur(s.duration_s), "TIME", a_big * q, 84)
-            self._stat(cv, 430, 1225, fmt_pace(self.avg_pace), "AVG PACE /KM", a_big * q, 84)
+            for x, (val, lab) in zip((380, 700), self._extra_stats()):
+                self._stat(cv, x, 1225, val, lab, a_big * q, 84)
         # scene 2 stats right of the thumbnail
         a_s2 = a * in_out_cubic(seg(t, SHRINK[0] + 0.35, SHRINK[1] + 0.25))
         if a_s2 > 0:
@@ -282,7 +283,14 @@ class RunVideo:
             w = cv.digits((430, 365 + off), f"{s.distance_km:.2f}", f, th.fade(th.ink, a_s2))
             cv.text((430 + w + 16, 365 + off), "KM", saira(70), th.fade(th.quiet, a_s2))
             self._stat(cv, 430, 430 + off, fmt_dur(s.duration_s), "TIME", a_s2, 64)
-            self._stat(cv, 690, 430 + off, fmt_pace(self.avg_pace), "AVG PACE /KM", a_s2, 64)
+            for x, (val, lab) in zip((640, 850) if s.reps else (690,), self._extra_stats()):
+                self._stat(cv, x, 430 + off, val, lab, a_s2, 64)
+
+    def _extra_stats(self):
+        """Stats after TIME: avg pace for km runs, rep count and best rep for interval sessions."""
+        if self.s.reps:
+            return [(str(len(self.s.reps)), "REPS"), (fmt_pace(min(r.pace_s for r in self.s.reps)), "BEST")]
+        return [(fmt_pace(self.avg_pace), "AVG PACE /KM")]
 
     def _tag(self, cv, pt, centre, text, t0, t, a, k, rot):
         th = self.th
