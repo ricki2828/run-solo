@@ -266,7 +266,7 @@ class _HarnessState extends State<_Harness> {
                   terrain: true,
                 ),
               ),
-              const Positioned(left: 8, top: 8, child: GradientLegend()),
+              const Positioned(left: 8, bottom: 48, child: GradientLegend()),
             ],
           ),
           _Stage.noPack => AspectRatio(

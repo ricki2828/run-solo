@@ -78,6 +78,12 @@ void main() {
       Color(0xFF1C8356),
       Color(0xFFC8401E),
       Color(0xFF19E6FF),
+      // Light-theme score colours: speed magenta, aerobic lime, mid violet,
+      // long ice.
+      Color(0xFFD81B7A),
+      Color(0xFF3E9B1E),
+      Color(0xFF8A5CF0),
+      Color(0xFF1F8FD6),
     ];
     for (final c in GradientClass.values) {
       for (final f in forbidden) {

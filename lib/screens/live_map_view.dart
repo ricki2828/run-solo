@@ -306,7 +306,7 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
                     if (widget.plan?.any((p) => p.ele != null) ?? false)
                       const Positioned(
                         left: Space.x8,
-                        top: Space.x8,
+                        bottom: Space.x48,
                         child: GradientLegend(),
                       ),
                   ],
