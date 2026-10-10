@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TEXT NOT NULL,
   consent_version TEXT, consent_at TEXT, consent_msg_id TEXT,
   zone_id TEXT NOT NULL DEFAULT 'UTC',
+  tz_set_at TEXT,  -- when the app last PUT a zone; a run that started before it cannot move the zone
   utc_offset_min INTEGER NOT NULL DEFAULT 0,
   quiet_start INTEGER, quiet_end INTEGER,
   paused INTEGER NOT NULL DEFAULT 0,
@@ -157,6 +158,13 @@ def init(path: str) -> None:
     c = connect(path)
     try:
         c.executescript(SCHEMA)
+        cols = [r["name"] for r in c.execute("PRAGMA table_info(users)")]
+        if "tz_set_at" not in cols:  # databases created before this column
+            try:
+                c.execute("ALTER TABLE users ADD COLUMN tz_set_at TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e):
+                    raise
         c.commit()
     finally:
         c.close()

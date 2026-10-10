@@ -41,6 +41,7 @@ class Settings:
     wa_api: str = "https://graph.facebook.com/v21.0"
     wa_template: str = "run_card"
     wa_template_lang: str = "en"
+    wa_url_index: int = 3  # the template's fixed button slot for the dynamic-URL button (after 3 quick replies)
 
     openrouter_key: str | None = field(default=None, repr=False)
     openrouter_url: str = "https://openrouter.ai/api/v1"
@@ -100,6 +101,7 @@ class Settings:
             wa_app_secret=e.get("COMPANION_WA_APP_SECRET"),
             wa_verify_token=e.get("COMPANION_WA_VERIFY_TOKEN"),
             wa_template=e.get("COMPANION_WA_TEMPLATE", "run_card"),
+            wa_url_index=int(e.get("COMPANION_WA_URL_INDEX", "3")),
             openrouter_key=key,
             model=e.get("COMPANION_MODEL", "anthropic/claude-haiku-4.5"),
             monthly_cap_usd=float(e.get("COMPANION_MONTHLY_CAP_USD", "5")),

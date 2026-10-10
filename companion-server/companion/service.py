@@ -15,7 +15,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from . import db
-from .channels import ChannelError, Inbound, OutCard, TelegramChannel, WhatsAppChannel
+from .channels import ChannelError, Inbound, OutCard, TelegramChannel, WhatsAppChannel, feel_template_eligible
 from .config import Settings
 from .deeplink import run_link, web_twin, week_link
 from .media import Media, MediaError, MediaRenderer
@@ -379,7 +379,7 @@ class Service:
             "profile": {
                 "channel": u["channel"], "chat_name": u["chat_name"], "chat_ref_hint": "…" + ref[-3:], "created_at": u["created_at"],
                 "consent_version": u["consent_version"], "consent_at": u["consent_at"], "paused": bool(u["paused"]),
-                "zone_id": u["zone_id"], "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
+                "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },
             "runs_received": runs, "memory": memory, "suggestion_outcomes": outcomes,
             "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo,
@@ -408,7 +408,8 @@ class Service:
             raise ValueError("unknown time zone")
         offset = int(to_local(now, zone_id).utcoffset().total_seconds() // 60)
         with db.tx(self.s.db_path) as c:
-            if not c.execute("UPDATE users SET zone_id=?, utc_offset_min=? WHERE id=?", (zone_id, offset, uid)).rowcount:
+            if not c.execute("UPDATE users SET zone_id=?, utc_offset_min=?, tz_set_at=? WHERE id=?",
+                             (zone_id, offset, iso(now), uid)).rowcount:
                 raise NotFound()
         return {"status": "ok", "zone_id": zone_id, "utc_offset_min": offset}
 
@@ -440,8 +441,11 @@ class Service:
                 lat, lon = cell(run.area_lat, run.area_lon)
                 c.execute("INSERT OR IGNORE INTO convo_area (user_id, run_id, lat, lon) VALUES (?,?,?,?)",
                           (uid, run.run_id, lat, lon))
-            last = c.execute("SELECT last_run_utc FROM users WHERE id=?", (uid,)).fetchone()["last_run_utc"]
-            if not last or iso(run.start_utc) >= last:  # newest run decides the user's current zone
+            urow = c.execute("SELECT last_run_utc, tz_set_at FROM users WHERE id=?", (uid,)).fetchone()
+            last = urow["last_run_utc"]
+            # the newest run decides the zone, unless the app PUT a zone after that run started (an offline queue
+            # delivering an old run must not undo a PUT)
+            if (not last or iso(run.start_utc) >= last) and not (urow["tz_set_at"] and iso(run.start_utc) <= urow["tz_set_at"]):
                 c.execute("UPDATE users SET zone_id=?, utc_offset_min=?, last_run_utc=? WHERE id=?",
                           (run.zone_id, run.utc_offset_min, iso(run.start_utc), uid))
             if not stale:
@@ -731,22 +735,31 @@ class Service:
                           (uid, "recap_empty", week_ref, iso(now)))
         return card_id
 
-    def _send_card(self, user: dict, card_id: str, now: datetime) -> None:
+    def _send_card(self, user: dict, card_id: str, now: datetime) -> bool:
+        """True when the card went out. False when it was deliberately not sent (WhatsApp, outside the 24 h window,
+        on a card the fixed Easy/Right/Hard template cannot honestly carry)."""
         ch = self.channels.get(user["channel"])
         if ch is None:
             raise ChannelError("channel not configured")
         with db.ro(self.s.db_path) as c:
             card = dict(c.execute("SELECT * FROM cards WHERE card_id=?", (card_id,)).fetchone())
         if card["sent_at"]:
-            return
+            return True
         buttons = json.loads(card["buttons_json"])
         telegram = user["channel"] == "telegram"
         links = self._links(card) if telegram else ()
         in_window = bool(user["last_inbound_at"] and parse_iso(user["last_inbound_at"]) > now - timedelta(hours=24))
+        if user["channel"] == "whatsapp" and not in_window and not feel_template_eligible(
+                OutCard(card_id, card["headline"], card["body"], buttons)):
+            log.info("whatsapp card not sent outside the window: no template fits it")
+            return False
         media = self._render_media(user, card, now) if telegram and self.s.media_enabled else None
+        followups: list[str] = []
         if media is not None:
+            out = OutCard(card_id, card["headline"], card["body"], buttons, media, links)
             try:
-                ch.send_card(user["chat_ref"], OutCard(card_id, card["headline"], card["body"], buttons, media, links))
+                ch.send_card(user["chat_ref"], out)
+                followups = ch.followups(out)  # the media is delivered: from here only text may be retried
             except ChannelError as e:
                 if not e.permanent:
                     raise
@@ -759,6 +772,23 @@ class Service:
             c.execute("UPDATE cards SET sent_at=? WHERE card_id=?", (iso(now), card_id))
             c.execute("INSERT INTO msglog (user_id, ts, direction, kind) VALUES (?,?,?,?)",
                       (user["id"], iso(now), "out", card["kind"]))
+            for mode in followups:  # its own outbox item each: a failure retries the text, never the upload
+                c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
+                          (user["id"], "followup", iso(now), f"fu:{card_id}:{mode}", f"{card_id}:{mode}"))
+        return True
+
+    def _send_followup(self, user: dict, ref: str) -> None:
+        card_id, _, mode = ref.partition(":")
+        ch = self.channels.get(user["channel"])
+        if ch is None or mode not in ("caption", "question"):
+            return
+        with db.ro(self.s.db_path) as c:
+            row = c.execute("SELECT * FROM cards WHERE card_id=? AND user_id=?", (card_id, user["id"])).fetchone()
+        if row is None:
+            return
+        card = dict(row)
+        ch.send_followup(user["chat_ref"], OutCard(card_id, card["headline"], card["body"],
+                                                   json.loads(card["buttons_json"]), None, self._links(card)), mode)
 
     def _links(self, card: dict) -> tuple[tuple[str, str], ...]:
         """Deep-link buttons for a card: the run itself, or the recap's week. Empty without a configured https base."""
@@ -810,6 +840,9 @@ class Service:
         qs, qe = self._quiet(user)
         if in_quiet(now, user["zone_id"], qs, qe):
             return "defer", quiet_end_utc(now, user["zone_id"], qe)
+        if item["kind"] == "followup":
+            self._send_followup(user, item["ref"])
+            return "done", None
         if item["kind"] == "run_card":
             card_id = self._build_run_card(user["id"], item["ref"], now)
         elif item["kind"] == "evening":
@@ -826,8 +859,7 @@ class Service:
             return "skipped", None
         if card_id is None:
             return "skipped", None
-        self._send_card(user, card_id, now)
-        return "done", None
+        return ("done" if self._send_card(user, card_id, now) else "skipped"), None
 
     def run_outbox(self, now: datetime | None = None, limit: int = 20) -> int:
         now = now or now_utc()

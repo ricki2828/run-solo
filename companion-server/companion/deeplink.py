@@ -14,8 +14,13 @@ WEEK_RE = re.compile(r"^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$")
 _LINK_RE = re.compile(rf"^{SCHEME}://(run|week)/([^/?#]+)$")
 
 
+def _run_ok(run_id: str) -> bool:
+    """The RunIn.run_id alphabet, minus ids made only of dots: `..` would climb out of /run/ in the https twin."""
+    return bool(RUN_ID_RE.match(run_id or "")) and run_id.strip(".") != ""
+
+
 def run_link(run_id: str) -> str | None:
-    return f"{SCHEME}://run/{quote(run_id, safe='')}" if RUN_ID_RE.match(run_id or "") else None
+    return f"{SCHEME}://run/{quote(run_id, safe='')}" if _run_ok(run_id) else None
 
 
 def week_link(iso_week: str) -> str | None:
@@ -28,7 +33,7 @@ def parse(uri: str) -> tuple[str, str] | None:
     if not m:
         return None
     kind, val = m.group(1), unquote(m.group(2))
-    ok = RUN_ID_RE.match(val) if kind == "run" else WEEK_RE.match(val)
+    ok = _run_ok(val) if kind == "run" else WEEK_RE.match(val)
     return (kind, val) if ok else None
 
 
