@@ -13,8 +13,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
-import 'map/gradient_legend.dart';
 import 'map/map_surface.dart';
+import 'map/retrace_tracker.dart';
 import 'map/route_builder.dart';
 import 'map/topo_map_surface.dart';
 import 'map/topo_maplibre.dart';
@@ -33,7 +33,18 @@ void main() {
   runApp(MaterialApp(theme: runSoloTheme(), home: const _Harness()));
 }
 
-enum _Stage { setup, detail, live, card, noPack, hill, hillLive, done }
+enum _Stage {
+  setup,
+  detail,
+  live,
+  card,
+  noPack,
+  hill,
+  hillLive,
+  hillLiveDark,
+  gap,
+  done,
+}
 
 // A wiggle across the Milos box (24.30-24.55 E, 36.64-36.76 N), about 1.5 km.
 final List<GeoPoint> _milosRoute = [
@@ -125,6 +136,9 @@ class _HarnessState extends State<_Harness> {
   final LiveRouteTrack _track = LiveRouteTrack();
   Timer? _feed;
 
+  /// The recorder's retrace state, as the native detector would report it.
+  RetraceInput _retrace = RetraceInput.none;
+
   @override
   void initState() {
     super.initState();
@@ -188,18 +202,36 @@ class _HarnessState extends State<_Harness> {
     await _go(_Stage.card, 16);
     await _go(_Stage.noPack, 6);
     await _go(_Stage.hill, 9);
-    _track.clear();
-    _feed = Timer.periodic(const Duration(milliseconds: 300), (t) {
-      final i = t.tick - 1;
-      if (i < _hillRoute.length) {
-        final p = _hillRoute[i];
-        _track.apply(i, [p.lat + 0.0001, p.lon]);
-      }
-    });
-    await _go(_Stage.hillLive, 16);
-    _feed?.cancel();
+    await _hillRun(_Stage.hillLive);
+    // A beat with no map, so the first live map is disposed before the next.
+    await _go(_Stage.gap, 2);
+    await _hillRun(_Stage.hillLiveDark);
     await _go(_Stage.done, 1);
     log('DONE');
+  }
+
+  /// Up the climb, then back down it: the way back is retraced, and every
+  /// point carries its elevation like the recorder's live feed. The old
+  /// track ahead is coloured in the direction being run.
+  Future<void> _hillRun(_Stage stage) async {
+    _feed?.cancel();
+    _track.clear();
+    _retrace = RetraceInput.none;
+    _feed = Timer.periodic(const Duration(milliseconds: 200), (t) {
+      final i = t.tick - 1;
+      final n = _hillRoute.length;
+      if (i < 2 * n - 1) {
+        final p = _hillRoute[i < n ? i : 2 * (n - 1) - i];
+        _track.apply(i, [p.lat + 0.0001, p.lon], [p.ele]);
+        // Native flips to retracing a little way into the way back.
+        if (i == n + 6 && mounted) {
+          setState(() => _retrace = const RetraceInput(retracing: true));
+        }
+      }
+    });
+    // The way back is the point, so give it room: a few frames land on it.
+    await _go(stage, 28);
+    _feed?.cancel();
   }
 
   @override
@@ -209,7 +241,9 @@ class _HarnessState extends State<_Harness> {
     return Scaffold(
       body: SafeArea(
         child: switch (_stage) {
-          _Stage.setup || _Stage.done => Center(child: Text(_stage.name)),
+          _Stage.setup ||
+          _Stage.gap ||
+          _Stage.done => Center(child: Text(_stage.name)),
           _Stage.detail => AspectRatio(
             aspectRatio: 4 / 3,
             child: f!.build(
@@ -255,19 +289,19 @@ class _HarnessState extends State<_Harness> {
               routeColor: AuroraRunType.free,
             ),
           ),
-          _Stage.hillLive => Stack(
-            children: [
-              Positioned.fill(
-                child: f!.buildLive(
-                  context,
-                  track: _track,
-                  color: AuroraRunType.free,
-                  plan: _hillRoute,
-                  terrain: true,
-                ),
-              ),
-              const Positioned(left: 8, bottom: 48, child: GradientLegend()),
-            ],
+          _Stage.hillLive || _Stage.hillLiveDark => Theme(
+            data: runSoloTheme(
+              brightness: _stage == _Stage.hillLiveDark
+                  ? Brightness.dark
+                  : Brightness.light,
+            ),
+            child: f!.buildLive(
+              context,
+              track: _track,
+              color: AuroraRunType.free,
+              terrain: true,
+              retrace: _retrace,
+            ),
           ),
           _Stage.noPack => AspectRatio(
             aspectRatio: 4 / 3,

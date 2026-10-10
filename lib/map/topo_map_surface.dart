@@ -21,6 +21,7 @@ import '../topo/pack_manager.dart';
 import '../topo/pack_models.dart';
 import 'gradient_legend.dart';
 import 'map_surface.dart';
+import 'retrace_tracker.dart';
 import 'route_builder.dart';
 import 'snapshot_cache.dart';
 import 'cached_map_card.dart';
@@ -44,6 +45,7 @@ abstract class TopoEngine {
     required LiveRouteTrack track,
     required Color color,
     List<GeoPoint>? plan,
+    RetraceInput? retrace,
   });
 
   /// The one-shot map behind a Home card: must call [onSnapshot] with a
@@ -148,6 +150,7 @@ class TopoMapSurfaceFactory implements MapSurfaceFactory {
     required Color color,
     List<GeoPoint>? plan,
     bool terrain = false,
+    RetraceInput? retrace,
   }) {
     Widget google() => fallback.buildLive(
       context,
@@ -155,9 +158,16 @@ class TopoMapSurfaceFactory implements MapSurfaceFactory {
       color: color,
       plan: plan,
       terrain: terrain,
+      retrace: retrace,
     );
     if (!terrain) return google();
-    return _LiveChoice(factory: this, track: track, color: color, plan: plan);
+    return _LiveChoice(
+      factory: this,
+      track: track,
+      color: color,
+      plan: plan,
+      retrace: retrace,
+    );
   }
 
   @override
@@ -243,11 +253,13 @@ class _LiveChoice extends StatefulWidget {
     required this.track,
     required this.color,
     this.plan,
+    this.retrace,
   });
   final TopoMapSurfaceFactory factory;
   final LiveRouteTrack track;
   final Color color;
   final List<GeoPoint>? plan;
+  final RetraceInput? retrace;
 
   @override
   State<_LiveChoice> createState() => _LiveChoiceState();
@@ -286,7 +298,9 @@ class _LiveChoiceState extends State<_LiveChoice> {
           pack: pack,
           topoWanted: f._topoWanted,
           onToggle: f._setTopo,
-          legend: widget.plan?.any((p) => p.ele != null) ?? false,
+          legend:
+              (widget.plan?.any((p) => p.ele != null) ?? false) ||
+              widget.track.elevations.any((e) => e != null),
           child: pack == null
               ? f.fallback.buildLive(
                   context,
@@ -294,12 +308,14 @@ class _LiveChoiceState extends State<_LiveChoice> {
                   color: widget.color,
                   plan: widget.plan,
                   terrain: true,
+                  retrace: widget.retrace,
                 )
               : f.engine.live(
                   pack,
                   track: widget.track,
                   color: widget.color,
                   plan: widget.plan,
+                  retrace: widget.retrace,
                 ),
         );
       },

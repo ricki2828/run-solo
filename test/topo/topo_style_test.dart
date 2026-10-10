@@ -78,7 +78,14 @@ void main() {
 
     test('route sources and layers sit on top of the map', () {
       final sources = style['sources'] as Map<String, dynamic>;
-      for (final id in const ['rs-plan', 'rs-track', 'rs-marks', 'rs-me']) {
+      for (final id in const [
+        'rs-plan',
+        'rs-track',
+        'rs-retrace',
+        'rs-ahead',
+        'rs-marks',
+        'rs-me',
+      ]) {
         expect(sources[id]['type'], 'geojson');
         expect(sources[id]['data']['features'], isEmpty);
       }
@@ -89,7 +96,12 @@ void main() {
         'rs-plan-casing',
         'rs-plan',
         'rs-track-casing',
+        'rs-retrace-rim',
+        'rs-retrace-halo',
+        'rs-retrace-core',
         'rs-track',
+        'rs-ahead-casing',
+        'rs-ahead',
         'rs-marks',
         'rs-me',
       ]);

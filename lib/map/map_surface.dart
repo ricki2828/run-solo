@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import '../platform/gateway.dart' show RecordMode;
 import '../state/live_route.dart';
 import '../theme/theme.dart';
+import 'retrace_tracker.dart';
 import 'route_builder.dart';
 
 /// Present at build time when the release job injects the Maps key
@@ -52,12 +53,16 @@ abstract class MapSurfaceFactory {
   /// track in a muted Bone, the track stays the run type's colour on top.
   /// [terrain] asks for Google's terrain map (contours) instead of the
   /// Night Session style (Free and Trail runs).
+  ///
+  /// [retrace] is the recorder's own retrace state (native, shared with the
+  /// run screen and the voice); null when the run has none.
   Widget buildLive(
     BuildContext context, {
     required LiveRouteTrack track,
     required Color color,
     List<GeoPoint>? plan,
     bool terrain = false,
+    RetraceInput? retrace,
   });
 
   /// Home's recent-run card background (non-interactive). Shows a cached
@@ -125,6 +130,7 @@ class FakeMapSurfaceFactory implements MapSurfaceFactory {
     required Color color,
     List<GeoPoint>? plan,
     bool terrain = false,
+    RetraceInput? retrace,
   }) => ListenableBuilder(
     listenable: track,
     builder: (context, _) {

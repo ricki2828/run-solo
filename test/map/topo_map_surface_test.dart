@@ -12,6 +12,7 @@ import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/map/route_builder.dart';
 import 'package:run_solo/map/snapshot_cache.dart';
 import 'package:run_solo/map/render_queue.dart';
+import 'package:run_solo/map/retrace_tracker.dart';
 import 'package:run_solo/map/topo_map_surface.dart';
 import 'package:run_solo/state/live_route.dart';
 import 'package:run_solo/state/settings.dart';
@@ -86,6 +87,7 @@ class _FakeEngine implements TopoEngine {
     required LiveRouteTrack track,
     required Color color,
     List<GeoPoint>? plan,
+    RetraceInput? retrace,
   }) {
     built.add('live:${pack.id}');
     return SizedBox.expand(key: ValueKey('topo-live-${pack.id}'));
@@ -523,6 +525,15 @@ void main() {
       expect(key.overlaps(credit), isFalse);
       expect(key.left, greaterThanOrEqualTo(0));
       expect(key.right, lessThanOrEqualTo(360));
+    });
+
+    testWidgets('shown when the live track itself carries elevation', (
+      tester,
+    ) async {
+      final track = LiveRouteTrack()
+        ..apply(0, [36.7, 24.4, 36.7001, 24.4], [50, 51]);
+      await tester.pumpWidget(host((c) => live(c, track)));
+      expect(legend, findsOneWidget);
     });
 
     testWidgets('not shown without elevation on the plan', (tester) async {

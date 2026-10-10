@@ -25,6 +25,7 @@ import '../topo/topo_files.dart';
 import '../topo/topo_style.dart';
 import 'blank_snapshot.dart';
 import 'map_surface.dart';
+import 'retrace_tracker.dart';
 import 'route_builder.dart';
 import 'snapshot_cache.dart';
 import 'topo_map_surface.dart';
@@ -66,6 +67,7 @@ class MapLibreTopoEngine implements TopoEngine {
     required LiveRouteTrack track,
     required Color color,
     List<GeoPoint>? plan,
+    RetraceInput? retrace,
   }) => _TopoLiveMap(
     key: ValueKey('topo-live-${pack.id}'),
     pack: pack,
@@ -73,6 +75,7 @@ class MapLibreTopoEngine implements TopoEngine {
     track: track,
     color: color,
     plan: plan,
+    retrace: retrace,
   );
 
   @override
@@ -456,12 +459,16 @@ class _TopoLiveMap extends StatefulWidget {
     required this.track,
     required this.color,
     this.plan,
+    this.retrace,
   });
   final InstalledPack pack;
   final TopoFiles files;
   final LiveRouteTrack track;
   final Color color;
   final List<GeoPoint>? plan;
+
+  /// The recorder's retrace state (native). The map only draws it.
+  final RetraceInput? retrace;
 
   @override
   State<_TopoLiveMap> createState() => _TopoLiveMapState();
@@ -484,6 +491,7 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
   /// The drawn track, thinned past [_maxDisplayPoints]; the recorder keeps
   /// the full route. [_epoch] restarts it when the route is cleared.
   final List<GeoPoint> _line = [];
+  final RetraceTracker _retrace = RetraceTracker();
   int _fed = 0;
   int _epoch = 0;
 
@@ -491,6 +499,7 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
   void initState() {
     super.initState();
     widget.track.addListener(_onTrack);
+    _retrace.update(widget.retrace ?? RetraceInput.none);
     _watch = Timer(_loadTimeout, () {
       if (!mounted || _loaded) return;
       recordMapVerdict(
@@ -511,14 +520,35 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant _TopoLiveMap old) {
+    super.didUpdateWidget(old);
+    // The recorder's retrace state moved: draw it. This map never decides.
+    if (_retrace.update(widget.retrace ?? RetraceInput.none) && _loaded) {
+      _schedulePaint();
+    }
+  }
+
   void _syncLine() {
     final track = widget.track;
     if (track.epoch != _epoch || track.count < _fed) {
       _epoch = track.epoch;
       _line.clear();
+      _retrace.clear();
       _fed = 0;
     }
-    _line.addAll(track.since(_fed));
+    // Carry each point's elevation (null where the phone had none), so the
+    // line is coloured by gradient and the retrace detector sees heights.
+    final elev = track.elevations;
+    final fresh = [
+      for (final (i, p) in track.since(_fed).indexed)
+        if (_fed + i < elev.length && elev[_fed + i] != null)
+          GeoPoint(p.lat, p.lon, elev[_fed + i])
+        else
+          p,
+    ];
+    _retrace.add(fresh);
+    _line.addAll(fresh);
     _fed = track.count;
     if (_line.length > _maxDisplayPoints) {
       final thin = simplifyForDisplay(List.of(_line), _maxDisplayPoints ~/ 2);
@@ -577,6 +607,23 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
       TopoStyle.trackSource,
       TopoStyle.gradientLine(_line, fallback: widget.color, casing: t.bgBase),
     );
+    if (!mounted) return; // disposed mid-paint: the map is gone
+    await _setSource(
+      c,
+      TopoStyle.retraceSource,
+      TopoStyle.retraceLines(
+        _retrace.sections,
+        rim: t.retraceRim,
+        halo: t.retraceHalo,
+      ),
+    );
+    if (!mounted) return;
+    await _setSource(
+      c,
+      TopoStyle.aheadSource,
+      TopoStyle.aheadLine(_retrace.ahead(), casing: t.bgBase),
+    );
+    if (!mounted) return;
     final last = widget.track.last;
     await _setSource(
       c,
