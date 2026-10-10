@@ -249,3 +249,34 @@ def wordmark_svg(variant: str, height: int) -> str:
     m = re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', s)
     ratio = float(m.group(1)) / float(m.group(2)) if m else 4.0
     return re.sub(r'width="[\d.]+" height="[\d.]+"', f'width="{round(height * ratio)}" height="{height}"', s, count=1)
+
+
+def split_bars(items: Sequence[tuple[float, int, str]], width: int, height: int, label_colour: str) -> str:
+    """Bars for splits or reps: (pace or time in s, zone 1..5, label). Faster is taller; colour is the zone."""
+    if not items:
+        return ""
+    vals = [v for v, _, _ in items]
+    lo, hi = min(vals), max(vals)
+    n = len(items)
+    gap = 10 if n <= 12 else 5
+    bw = (width - gap * (n - 1)) / n
+    label_h = 34 if n <= 16 else 0
+    plot = height - label_h
+    out = []
+    for i, (v, zone, label) in enumerate(items):
+        frac = 0.55 if hi == lo else 0.30 + 0.70 * (hi - v) / (hi - lo)
+        h = plot * frac
+        x = i * (bw + gap)
+        out.append(f'<rect x="{x:.1f}" y="{plot - h:.1f}" width="{bw:.1f}" height="{h:.1f}" fill="{brand.ZONE_RAMP[max(1, min(5, zone)) - 1]}"/>')
+        if label_h:
+            out.append(f'<text x="{x + bw / 2:.1f}" y="{height - 6}" text-anchor="middle" font-family="{brand.SCHIBSTED}" '
+                       f'font-weight="600" font-size="22" fill="{label_colour}">{esc(label, 4)}</text>')
+    return f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}">{"".join(out)}</svg>'
+
+
+def bar_items(facts: Mapping[str, Any]) -> list[tuple[float, int, str]]:
+    """Reps when the run has them, otherwise per-km splits."""
+    reps = facts.get("reps")
+    if reps:
+        return [(float(r["time_s"]), int(r.get("zone", 4)), str(i + 1)) for i, r in enumerate(reps)]
+    return [(float(s["pace_s"]), int(s.get("zone", 3)), str(i + 1)) for i, s in enumerate(facts.get("splits") or [])]

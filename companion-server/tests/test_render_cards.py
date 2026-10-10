@@ -76,6 +76,15 @@ def test_singapore_reps_match_the_story():
     assert len(reps) == 8 and sum(times) / 8 == 84 and times.index(min(times)) == 5 and min(times) == 81
 
 
+def test_routeless_cards_reflow_with_no_placeholder():
+    from render.cards.pb import build_pb_html
+    for build, facts in ((build_post_run_html, F.milos_trail()), (build_post_run_html, F.singapore_intervals()), (build_pb_html, F.pb_5k())):
+        html = _body(build(_noroute(facts), MEMORY))
+        assert 'class="abs route"' not in html and "<path d=\"M" not in html.split('class="abs bars"')[0].split("</style>")[-1]
+        assert 'class="abs bars"' in html and "<rect" in html
+        assert 'class="abs route"' in _body(build(facts, MEMORY))
+
+
 def test_out_and_back_is_drawn_once():
     out = F._out_and_back(1.3, 103.86, 1250, seed=3)
     assert len(P.collapse_out_and_back(out)) == len(out) // 2 + 1
@@ -123,9 +132,16 @@ def test_share_card_shows_only_what_was_opted_in():
 
 # --- goldens ---------------------------------------------------------------------------
 
+def _noroute(facts):
+    return {k: v for k, v in facts.items() if k != "route"}
+
+
 GOLDENS = {
     "post_run_singapore_intervals": ("render_post_run", F.singapore_intervals),
     "post_run_milos_trail": ("render_post_run", F.milos_trail),
+    "post_run_light_noroute": ("render_post_run", lambda: _noroute(F.milos_trail())),
+    "post_run_flood_noroute": ("render_post_run", lambda: _noroute(F.singapore_intervals())),
+    "pb_noroute": ("render_pb", lambda: _noroute(F.pb_5k())),
     "post_run_slow_hot_day": ("render_post_run", F.slow_hot_day),
     "pb_5k": ("render_pb", F.pb_5k),
     "milestone_1000km": ("render_milestone", F.milestone_1000km),

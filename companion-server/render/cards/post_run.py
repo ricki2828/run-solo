@@ -61,6 +61,8 @@ def build_post_run_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | No
         f'<span class="cap" style="font-size:22px;color:{quiet}">{P.esc(l)}</span></div>' for v, l in stats)
     route = P.route_svg(facts.get("route") or [], 936, 420, accent if not flood else brand.BONE, 12,
                         bg, pad=26, end_dot=True)
+    has_route = bool(route)
+    bars = "" if has_route else P.split_bars(P.bar_items(facts), 936, 230, quiet)
     strip = P.zone_strip(z, 936, 26, gap=4, radius=4 if not flood else 0, stroke=bg if flood else None)
     who = P.esc(memory.get("name", ""), 20).upper()
     when = P.date_label(facts.get("start_local"))
@@ -69,8 +71,9 @@ def build_post_run_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | No
 .tag{{left:{P.PAD}px;top:176px;font-size:30px;color:{accent}}}
 .head{{left:{P.PAD}px;top:218px;width:936px;font-size:118px;line-height:.9;color:{fg};text-wrap:balance}}
 .route{{left:{P.PAD}px;top:430px}}
-.hero{{left:{P.PAD - 8}px;top:850px;display:flex;align-items:baseline;gap:20px}}
-.hero .n{{font-size:360px;line-height:.78}}
+.hero{{left:{P.PAD - 8}px;top:{850 if has_route else 440}px;display:flex;align-items:baseline;gap:20px}}
+.hero .n{{font-size:{360 if has_route else 520}px;line-height:.78}}
+.bars{{left:{P.PAD}px;top:880px}}
 .hero .u{{font-size:64px;color:{accent}}}
 .strip{{left:{P.PAD}px;top:1168px}}
 .stats{{left:{P.PAD}px;top:1214px;width:936px;display:flex;justify-content:space-between;align-items:baseline}}
@@ -79,7 +82,7 @@ def build_post_run_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | No
 {P.header(flood, top_right, quiet)}
 <div class="abs cap tag">{tag}</div>
 <div class="abs saira head">{_headline(facts)}</div>
-<div class="abs route">{route}</div>
+{f'<div class="abs route">{route}</div>' if has_route else f'<div class="abs bars">{bars}</div>'}
 <div class="abs hero"><span class="saira n">{hero_v}</span><span class="saira u">{hero_u}</span></div>
 <div class="abs strip">{strip}</div>
 <div class="abs stats">{stat_html}</div>"""
