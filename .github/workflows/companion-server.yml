@@ -31,4 +31,6 @@ jobs:
           cache: pip
           cache-dependency-path: companion-server/requirements-dev.txt
       - run: pip install --require-hashes -r requirements-dev.txt
-      - run: python -m pytest
+      - name: ffmpeg (motion renders need it; fail the job if it cannot be had)
+        run: command -v ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg); ffmpeg -version | head -1
+      - run: python -m pytest -rs
