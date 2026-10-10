@@ -1,3 +1,4 @@
 -c requirements.txt
 -r requirements.in
 pytest
+playwright==1.58.0
