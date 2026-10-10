@@ -41,6 +41,7 @@ enum _Stage {
   hill,
   hillLive,
   hillLiveDark,
+  gap,
   done,
 }
 
