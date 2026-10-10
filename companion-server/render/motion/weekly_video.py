@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from . import _tokens as T
+from .. import brand
 from ._common import M, RIGHT, Theme, header, signoff
 from ._draw import FPS, W, Canvas, clamp, grot, in_out_cubic, lerp, out_back, out_cubic, out_quart, saira, seg
 
@@ -141,7 +141,7 @@ class WeeklyVideo:
                     top = y - sh
                     last = z == max(j for j, mm in enumerate(d.zone_min) if mm > 0)
                     if sh > 0.8:
-                        cv.rect(x, top, x + bw, y + (1 if not last else 0), th.fade(T.ZONES[z], a),
+                        cv.rect(x, top, x + bw, y + (1 if not last else 0), th.fade(brand.ZONE_RAMP[z], a),
                                 r=14 if last else 0, top_only=True)
                     y = top
                 la = a * out_cubic(seg(q, 0.6, 1.0))
@@ -154,7 +154,7 @@ class WeeklyVideo:
             cv.text((M, 1262), "MINUTES BY ZONE", grot(34, 600), th.fade(th.quiet, lg), tracking=2)
             x = RIGHT - 5 * 104
             for z in range(5):
-                cv.rect(x, 1236, x + 26, 1262, th.fade(T.ZONES[z], lg), r=5)
+                cv.rect(x, 1236, x + 26, 1262, th.fade(brand.ZONE_RAMP[z], lg), r=5)
                 cv.text((x + 34, 1262), f"Z{z + 1}", grot(34, 600), th.fade(th.quiet, lg))
                 x += 104
 
@@ -221,7 +221,7 @@ class WeeklyVideo:
             cv.text((M - 6, top + (i + 1) * lh - (1 - out_cubic(clamp(seg(t, BEST_T + 0.12 * i, BEST_T + 0.12 * i + 0.45)))) * 30),
                     ln, saira(px), th.fade(th.ink, la))
         rw = out_cubic(seg(t, BEST_T + 0.15 + 0.12 * len(lines), BEST_T + 0.85 + 0.12 * len(lines)))
-        rule = T.PB_CYAN if b.pb else th.scores["AEROBIC"]
+        rule = brand.ARC if b.pb else th.scores["AEROBIC"]
         cv.rect(M, top + block + 40, M + (RIGHT - M) * rw, top + block + 56, th.fade(rule, a), r=8)
 
     def frames(self):

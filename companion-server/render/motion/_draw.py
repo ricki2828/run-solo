@@ -13,9 +13,10 @@ W, H = 1080, 1350
 FPS = 30
 SS = 2  # supersample factor; downsampled with a box filter
 
-_ROOT = Path(__file__).resolve().parents[3]
-FONT_DIR = Path(os.environ.get("RS_FONT_DIR", _ROOT / "assets" / "fonts"))
-SVG_DIR = Path(os.environ.get("RS_BRAND_DIR", _ROOT / "assets" / "brand" / "svg"))
+from .. import brand  # noqa: E402
+
+FONT_DIR = Path(os.environ.get("RS_FONT_DIR", brand.FONT_DIR))
+SVG_DIR = Path(os.environ.get("RS_BRAND_DIR", brand.BRAND_SVG_DIR))
 
 
 # ---- easing -----------------------------------------------------------------------------------
