@@ -69,6 +69,15 @@ abstract final class AuroraGradient {
   static const Color down = Color(0xFF85A5AD);
 }
 
+/// The retraced-stretch band on the map: a Bone halo inside a dark rim. The
+/// topo map is a dark map in both themes, so both themes use the same pair;
+/// they are tokens so a test measures them against the map and the gradient
+/// colours in each theme.
+abstract final class AuroraRetrace {
+  static const Color halo = Color(0xFFEDEAE3); // Bone
+  static const Color rim = Color(0xFF0A0B0D);
+}
+
 /// Light everyday palette (brand build, 7-Oct-2026). Ground #FBFBF9, white
 /// raised surface with a hairline, ink #121417. Contrast on the ground:
 /// ink 17.8, secondary 7.9, quiet 4.6, mint 4.6, vermillion 4.8 (all >= 4.5).
@@ -162,6 +171,8 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
     required this.typeTrail,
     required this.structureOpen,
     required this.grain,
+    required this.retraceHalo,
+    required this.retraceRim,
   });
 
   static const RunSoloTokens dark = RunSoloTokens(
@@ -190,6 +201,8 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
     typeTrail: AuroraRunType.trail,
     structureOpen: NightSession.structureOpen,
     grain: NightSession.grain,
+    retraceHalo: AuroraRetrace.halo,
+    retraceRim: AuroraRetrace.rim,
   );
 
   static const RunSoloTokens light = RunSoloTokens(
@@ -218,6 +231,8 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
     typeTrail: AuroraRunTypeLight.trail,
     structureOpen: NightSessionLight.structureOpen,
     grain: NightSessionLight.grain,
+    retraceHalo: AuroraRetrace.halo,
+    retraceRim: AuroraRetrace.rim,
   );
 
   final Color bgBase;
@@ -252,6 +267,10 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
   final Color structureOpen;
   final Color grain;
 
+  /// Retraced stretch on the (always dark) topo map.
+  final Color retraceHalo;
+  final Color retraceRim;
+
   @override
   RunSoloTokens copyWith({
     Color? bgBase,
@@ -279,6 +298,8 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
     Color? typeTrail,
     Color? structureOpen,
     Color? grain,
+    Color? retraceHalo,
+    Color? retraceRim,
   }) {
     return RunSoloTokens(
       bgBase: bgBase ?? this.bgBase,
@@ -306,6 +327,8 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
       typeTrail: typeTrail ?? this.typeTrail,
       structureOpen: structureOpen ?? this.structureOpen,
       grain: grain ?? this.grain,
+      retraceHalo: retraceHalo ?? this.retraceHalo,
+      retraceRim: retraceRim ?? this.retraceRim,
     );
   }
 
@@ -339,6 +362,8 @@ class RunSoloTokens extends ThemeExtension<RunSoloTokens> {
       typeTrail: l(typeTrail, other.typeTrail),
       structureOpen: l(structureOpen, other.structureOpen),
       grain: l(grain, other.grain),
+      retraceHalo: l(retraceHalo, other.retraceHalo),
+      retraceRim: l(retraceRim, other.retraceRim),
     );
   }
 }

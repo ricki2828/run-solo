@@ -10,23 +10,46 @@ import 'package:run_solo/topo/topo_style.dart';
 GeoPoint _at(int i, [double? ele]) =>
     GeoPoint(1.0 + i * 10 / 111320, 103.0, ele);
 
+const _on = RetraceInput(retracing: true);
+
+/// An out-and-back as the recorder would report it: out 0..59, back down to
+/// [turn]; the native state flips to retracing 12 points into the way back.
+RetraceTracker _outAndBack(
+  double Function(int i) ele, {
+  int turn = 25,
+  bool flip = true,
+}) {
+  final t = RetraceTracker();
+  t.add([for (var i = 0; i < 60; i++) _at(i, ele(i))]);
+  final back = [for (var i = 58; i >= turn; i--) _at(i, ele(i))];
+  t.add(back.take(12));
+  if (flip) t.update(_on);
+  t.add(back.skip(12));
+  return t;
+}
+
 void main() {
   test('a one-way run has no retraced section', () {
     final t = RetraceTracker();
     t.add([for (var i = 0; i < 80; i++) _at(i)]);
     expect(t.retracing, isFalse);
     expect(t.sections, isEmpty);
+    expect(t.ahead(), isEmpty);
   });
 
-  test('out and back opens a retraced section that starts before the flip', () {
-    final t = RetraceTracker();
-    t.add([for (var i = 0; i < 60; i++) _at(i)]);
-    t.add([for (var i = 58; i >= 20; i--) _at(i)]);
+  test('the map never decides: no native retrace, no section', () {
+    final t = _outAndBack((i) => 100.0, flip: false);
+    expect(t.retracing, isFalse);
+    expect(t.sections, isEmpty);
+  });
+
+  test('a native retrace opens a section, backdated, ending at the runner', () {
+    final t = _outAndBack((i) => 100.0);
     expect(t.retracing, isTrue);
     final s = t.sections.single;
-    expect(s.length, greaterThan(10));
-    // The tail of the section is where the runner is now.
-    expect(s.last, _at(20));
+    // Backdated about 100 m (10 points) before the flip.
+    expect(s.length, greaterThan(10 + 20));
+    expect(s.last.lat, _at(25).lat);
   });
 
   test('retraceLines drops one-point sections', () {
@@ -41,6 +64,68 @@ void main() {
     expect((f['features'] as List).length, 1);
   });
 
+  group('jitter at a turnaround', () {
+    test('off and on again within the gap is ONE section', () {
+      final t = _outAndBack((i) => 100.0, turn: 40);
+      t.update(RetraceInput.none); // native wobbles off
+      t.add([_at(39), _at(38)]); // 20 m, under the 30 m gap
+      t.update(_on); // and back on
+      t.add([_at(37), _at(36)]);
+      expect(t.sections.length, 1);
+      expect(t.retracing, isTrue);
+    });
+
+    test('rapid toggling never produces a flurry of sections', () {
+      final t = _outAndBack((i) => 100.0, turn: 45);
+      var at = 44;
+      for (var k = 0; k < 10; k++) {
+        t.update(RetraceInput.none);
+        t.add([_at(at--)]);
+        t.update(_on);
+        t.add([_at(at--)]);
+      }
+      expect(t.sections.length, 1);
+    });
+
+    test('off for longer than the gap closes the section and keeps it', () {
+      final t = _outAndBack((i) => 100.0, turn: 40);
+      t.update(RetraceInput.none);
+      t.add([for (var i = 39; i >= 30; i--) _at(i)]); // 90 m
+      expect(t.retracing, isFalse);
+      expect(t.sections.length, 1); // closed, still drawn
+      expect(t.ahead(), isEmpty);
+      // A later retrace is a second section.
+      t.update(_on);
+      t.add([for (var i = 29; i >= 15; i--) _at(i)]);
+      expect(t.sections.length, 2);
+    });
+  });
+
+  test(
+    'the recorder clearing its retrace (20k cap, #232) ends the stretch',
+    () {
+      final t = _outAndBack((i) => 100.0 + i);
+      expect(t.ahead(), isNotEmpty);
+      t.update(RetraceInput.none); // native clears retrace at the cap
+      t.add([for (var i = 24; i >= 10; i--) _at(i, 100.0 + i)]);
+      expect(t.retracing, isFalse);
+      expect(t.ahead(), isEmpty);
+    },
+  );
+
+  test('a long run stays bounded and keeps working', () {
+    final t = RetraceTracker(maxPoints: 500);
+    t.add([for (var i = 0; i < 5000; i++) _at(i, 100.0 + (i % 50))]);
+    expect(t.length, lessThanOrEqualTo(500));
+    // Back along the end of the route.
+    t.add([for (var i = 4998; i >= 4900; i--) _at(i, 100.0 + (i % 50))]);
+    t.update(_on);
+    t.add([for (var i = 4899; i >= 4880; i--) _at(i, 100.0 + (i % 50))]);
+    expect(t.length, lessThanOrEqualTo(500));
+    expect(t.retracing, isTrue);
+    expect(t.ahead(), isNotEmpty);
+  });
+
   group('colours follow the direction you run', () {
     Set<GradientClass> classesAhead(RetraceTracker t) => {
       for (final r in gradientRuns(t.ahead())!) r.cls,
@@ -49,17 +134,13 @@ void main() {
     test(
       'a hill run up on the way out reads as DOWN ahead on the way back',
       () {
-        final t = RetraceTracker();
-        // Out: +1 m per 10 m (10 %, steep) for 60 points.
-        t.add([for (var i = 0; i < 60; i++) _at(i, 100.0 + i)]);
-        // Back: down to the 25th point.
-        t.add([for (var i = 58; i >= 25; i--) _at(i, 100.0 + i)]);
+        final t = _outAndBack((i) => 100.0 + i);
         expect(t.retracing, isTrue);
         final ahead = t.ahead();
         expect(ahead, isNotEmpty);
-        // Ahead is the old track toward the start, in running order: it
-        // begins near the runner and ends toward point 0.
-        expect(ahead.first.lat, closeTo(_at(25).lat, 3e-4));
+        // Ahead is the old track toward the start, in running order, from the
+        // point nearest the runner.
+        expect(ahead.first.lat, closeTo(_at(25).lat, 3e-5));
         expect(ahead.last.lat, lessThan(ahead.first.lat));
         final cls = classesAhead(t);
         expect(cls, contains(GradientClass.down));
@@ -71,9 +152,7 @@ void main() {
     test(
       'a descent run on the way out reads as a CLIMB ahead on the way back',
       () {
-        final t = RetraceTracker();
-        t.add([for (var i = 0; i < 60; i++) _at(i, 300.0 - i)]);
-        t.add([for (var i = 58; i >= 25; i--) _at(i, 300.0 - i)]);
+        final t = _outAndBack((i) => 300.0 - i);
         expect(t.retracing, isTrue);
         final cls = classesAhead(t);
         expect(cls, contains(GradientClass.steep));
@@ -81,16 +160,27 @@ void main() {
       },
     );
 
-    test('ahead is empty when not retracing, and capped in length', () {
+    test('a lap in the same direction shows the old track as recorded', () {
       final t = RetraceTracker();
-      t.add([for (var i = 0; i < 40; i++) _at(i, 100.0 + i)]);
-      expect(t.ahead(), isEmpty);
-      final long = RetraceTracker();
-      long.add([for (var i = 0; i < 400; i++) _at(i, 100.0)]);
-      long.add([for (var i = 398; i >= 100; i--) _at(i, 100.0)]);
-      final ahead = long.ahead(maxM: 500);
-      // 500 m is about 50 points at 10 m.
-      expect(ahead.length, lessThan(60));
+      t.add([for (var i = 0; i < 60; i++) _at(i, 100.0 + i)]);
+      // Same direction: the runner starts again from the start.
+      t.add([for (var i = 0; i < 15; i++) _at(i, 100.0 + i)]);
+      t.update(const RetraceInput(retracing: true, same: true));
+      t.add([for (var i = 15; i < 25; i++) _at(i, 100.0 + i)]);
+      final ahead = t.ahead();
+      expect(ahead, isNotEmpty);
+      expect(ahead.last.lat, greaterThan(ahead.first.lat));
+      final cls = {for (final r in gradientRuns(ahead)!) r.cls};
+      expect(cls, contains(GradientClass.steep));
+    });
+
+    test('ahead is capped in length', () {
+      final t = RetraceTracker();
+      t.add([for (var i = 0; i < 400; i++) _at(i, 100.0)]);
+      t.add([for (var i = 398; i >= 350; i--) _at(i, 100.0)]);
+      t.update(_on);
+      t.add([for (var i = 349; i >= 340; i--) _at(i, 100.0)]);
+      expect(t.ahead(maxM: 500).length, lessThan(60));
     });
   });
 }

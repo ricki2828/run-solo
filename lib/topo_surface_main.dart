@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'map/map_surface.dart';
+import 'map/retrace_tracker.dart';
 import 'map/route_builder.dart';
 import 'map/topo_map_surface.dart';
 import 'map/topo_maplibre.dart';
@@ -135,6 +136,9 @@ class _HarnessState extends State<_Harness> {
   final LiveRouteTrack _track = LiveRouteTrack();
   Timer? _feed;
 
+  /// The recorder's retrace state, as the native detector would report it.
+  RetraceInput _retrace = RetraceInput.none;
+
   @override
   void initState() {
     super.initState();
@@ -212,12 +216,17 @@ class _HarnessState extends State<_Harness> {
   Future<void> _hillRun(_Stage stage) async {
     _feed?.cancel();
     _track.clear();
+    _retrace = RetraceInput.none;
     _feed = Timer.periodic(const Duration(milliseconds: 200), (t) {
       final i = t.tick - 1;
       final n = _hillRoute.length;
       if (i < n + 38) {
         final p = _hillRoute[i < n ? i : 2 * (n - 1) - i];
         _track.apply(i, [p.lat + 0.0001, p.lon], [p.ele]);
+        // Native flips to retracing a little way into the way back.
+        if (i == n + 6 && mounted) {
+          setState(() => _retrace = const RetraceInput(retracing: true));
+        }
       }
     });
     await _go(stage, 20);
@@ -290,6 +299,7 @@ class _HarnessState extends State<_Harness> {
               track: _track,
               color: AuroraRunType.free,
               terrain: true,
+              retrace: _retrace,
             ),
           ),
           _Stage.noPack => AspectRatio(

@@ -10,6 +10,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../map/map_surface.dart';
+import '../map/retrace_tracker.dart' show RetraceInput;
 import '../map/route_builder.dart';
 import '../platform/gateway.dart';
 import '../state/live_route.dart';
@@ -176,6 +177,7 @@ class LiveMapView extends StatefulWidget {
     this.terrain = false,
     this.heightVsStartM,
     this.backToStartM,
+    this.retrace,
   });
 
   final MapSurfaceFactory maps;
@@ -211,6 +213,9 @@ class LiveMapView extends StatefulWidget {
   /// while heading back.
   final double? heightVsStartM;
   final double? backToStartM;
+
+  /// The recorder's retrace state, for the map to draw (null: none).
+  final RetraceInput? retrace;
 
   @override
   State<LiveMapView> createState() => _LiveMapViewState();
@@ -352,6 +357,7 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
                   color: widget.typeColor,
                   plan: widget.plan,
                   terrain: widget.terrain,
+                  retrace: widget.retrace,
                 )
               : const SizedBox.shrink(key: ValueKey('map-off')),
         ),

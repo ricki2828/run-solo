@@ -67,6 +67,7 @@ class MapLibreTopoEngine implements TopoEngine {
     required LiveRouteTrack track,
     required Color color,
     List<GeoPoint>? plan,
+    RetraceInput? retrace,
   }) => _TopoLiveMap(
     key: ValueKey('topo-live-${pack.id}'),
     pack: pack,
@@ -74,6 +75,7 @@ class MapLibreTopoEngine implements TopoEngine {
     track: track,
     color: color,
     plan: plan,
+    retrace: retrace,
   );
 
   @override
@@ -457,12 +459,16 @@ class _TopoLiveMap extends StatefulWidget {
     required this.track,
     required this.color,
     this.plan,
+    this.retrace,
   });
   final InstalledPack pack;
   final TopoFiles files;
   final LiveRouteTrack track;
   final Color color;
   final List<GeoPoint>? plan;
+
+  /// The recorder's retrace state (native). The map only draws it.
+  final RetraceInput? retrace;
 
   @override
   State<_TopoLiveMap> createState() => _TopoLiveMapState();
@@ -493,6 +499,7 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
   void initState() {
     super.initState();
     widget.track.addListener(_onTrack);
+    _retrace.update(widget.retrace ?? RetraceInput.none);
     _watch = Timer(_loadTimeout, () {
       if (!mounted || _loaded) return;
       recordMapVerdict(
@@ -511,6 +518,15 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
     _recentre?.cancel();
     _paintTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TopoLiveMap old) {
+    super.didUpdateWidget(old);
+    // The recorder's retrace state moved: draw it. This map never decides.
+    if (_retrace.update(widget.retrace ?? RetraceInput.none) && _loaded) {
+      _schedulePaint();
+    }
   }
 
   void _syncLine() {
@@ -597,8 +613,8 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
       TopoStyle.retraceSource,
       TopoStyle.retraceLines(
         _retrace.sections,
-        rim: NightSession.bgBase,
-        halo: NightSession.inkPrimary,
+        rim: t.retraceRim,
+        halo: t.retraceHalo,
       ),
     );
     if (!mounted) return;

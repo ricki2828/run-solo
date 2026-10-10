@@ -19,6 +19,7 @@ import 'live_google_map.dart';
 import 'cached_map_card.dart';
 import 'map_surface.dart';
 import 'render_queue.dart';
+import 'retrace_tracker.dart';
 import 'route_builder.dart';
 import 'snapshot_cache.dart';
 
@@ -62,6 +63,7 @@ class GoogleMapSurfaceFactory implements MapSurfaceFactory {
     required Color color,
     List<GeoPoint>? plan,
     bool terrain = false,
+    RetraceInput? retrace,
   }) {
     if (!available) {
       return ListenableBuilder(

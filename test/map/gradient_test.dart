@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' show Color;
 
@@ -19,7 +21,52 @@ double _dist(Color a, Color b) {
   return math.sqrt(dr * dr + dg * dg + db * db);
 }
 
+double _contrast(Color a, Color b) {
+  final la = a.computeLuminance(), lb = b.computeLuminance();
+  final hi = math.max(la, lb), lo = math.min(la, lb);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
 void main() {
+  test(
+    'retrace band colours read on the map and clear of the forbidden set',
+    () {
+      // The topo map's land colour comes from the generated style.
+      final style = jsonDecode(
+        File('assets/maps/aurora_topo.json').readAsStringSync(),
+      ) as Map<String, dynamic>;
+      final bg = (style['layers'] as List).firstWhere(
+        (l) => (l as Map)['id'] == 'background',
+      ) as Map;
+      final hex = (bg['paint'] as Map)['background-color'] as String;
+      final land = Color(0xFF000000 | int.parse(hex.substring(1), radix: 16));
+      const forbidden = [
+        Color(0xFF2F6DB5),
+        Color(0xFF2E9E5B),
+        Color(0xFFD9A21B),
+        Color(0xFFE86A1C),
+        Color(0xFFD6283B),
+        Color(0xFF1C8356),
+        Color(0xFFC8401E),
+        Color(0xFF19E6FF),
+        NightSession.semSlower,
+        NightSession.semImproving,
+        NightSession.semDanger,
+      ];
+      for (final t in [RunSoloTokens.dark, RunSoloTokens.light]) {
+        // The band reads against the map, and the rim against the band.
+        expect(_contrast(t.retraceHalo, land), greaterThanOrEqualTo(4.5));
+        expect(
+          _contrast(t.retraceHalo, t.retraceRim),
+          greaterThanOrEqualTo(4.5),
+        );
+        for (final f in forbidden) {
+          expect(_dist(t.retraceHalo, f), greaterThan(90), reason: '$f');
+        }
+      }
+    },
+  );
+
   test('a short blip near a route end is not steep', () {
     // 10 points (90 m): the window is cut short at both ends.
     final ele = <double?>[100, 100, 100, 103, 100, 100, 100, 100, 100, 100];

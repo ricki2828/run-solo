@@ -9,6 +9,7 @@ import '../app/format.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../map/map_surface.dart' show usesTerrainMap;
+import '../map/retrace_tracker.dart' show RetraceInput;
 import '../platform/gateway.dart';
 import '../state/history_store.dart' show runModeOf;
 import '../state/next_step.dart';
@@ -525,6 +526,10 @@ class _RecordingScreenState extends State<RecordingScreen>
                                       s.retrace.headingBack
                                   ? s.retrace.backToStartM
                                   : null,
+                              retrace: RetraceInput(
+                                retracing: s.retrace.retracing,
+                                same: s.retrace.same,
+                              ),
                             ),
                           ),
                           // The GPS bar stays, as in NUMBERS.

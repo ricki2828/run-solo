@@ -12,6 +12,7 @@ import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/map/route_builder.dart';
 import 'package:run_solo/map/snapshot_cache.dart';
 import 'package:run_solo/map/render_queue.dart';
+import 'package:run_solo/map/retrace_tracker.dart';
 import 'package:run_solo/map/topo_map_surface.dart';
 import 'package:run_solo/state/live_route.dart';
 import 'package:run_solo/state/settings.dart';
@@ -86,6 +87,7 @@ class _FakeEngine implements TopoEngine {
     required LiveRouteTrack track,
     required Color color,
     List<GeoPoint>? plan,
+    RetraceInput? retrace,
   }) {
     built.add('live:${pack.id}');
     return SizedBox.expand(key: ValueKey('topo-live-${pack.id}'));
