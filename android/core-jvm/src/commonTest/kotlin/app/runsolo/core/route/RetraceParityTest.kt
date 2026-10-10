@@ -67,9 +67,9 @@ class RetraceParityTest {
                 }
             }
         }
-        assertEquals(setOf<String?>("same"), directions["same_direction_loop"])
-        assertEquals(setOf<String?>("same"), directions["oval_three_laps"])
-        assertEquals(setOf<String?>("reverse"), directions["out_and_back"])
+        assertEquals<Set<String?>?>(setOf("same"), directions["same_direction_loop"])
+        assertEquals<Set<String?>?>(setOf("same"), directions["oval_three_laps"])
+        assertEquals<Set<String?>?>(setOf("reverse"), directions["out_and_back"])
         assertTrue(!directions.containsKey("figure_eight"), "a crossing is not a retrace")
         assertTrue(!directions.containsKey("loop"), "a loop is not a retrace")
         assertTrue(retracingSeen > 100, "the vectors must exercise a retrace, saw $retracingSeen states")
