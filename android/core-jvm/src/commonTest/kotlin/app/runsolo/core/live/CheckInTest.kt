@@ -104,8 +104,8 @@ class CheckInTest {
     fun `tracker height reads against the first height`() {
         val t = CheckInTracker(null)
         assertNull(t.heightVsStart(100.0))
-        t.noteElevation(100.0)
-        t.noteElevation(130.0)
+        t.noteElevation(100.0, baro = true)
+        t.noteElevation(130.0, baro = true)
         assertEquals(30.0, t.heightVsStart(130.0)!!, 1e-9)
     }
 
@@ -121,5 +121,46 @@ class CheckInTest {
         val b = planned.onTick(0, 0.0, 1_000, 1_000.0, snap = { snap }) { it }
         assertNotNull(b)
         assertEquals("Zone 2 for 5 minutes.", b.tail)
+    }
+
+    @Test
+    fun `a GPS first reading never becomes the start height`() {
+        val t = CheckInTracker(null)
+        t.noteElevation(100.0, baro = false) // GPS only so far
+        assertNull(t.heightVsStart(100.0))
+        t.noteElevation(140.0, baro = true) // the barometer lands: the baseline
+        t.noteElevation(150.0, baro = true)
+        assertEquals(20.0, t.heightVsStart(160.0)!!, 1e-9)
+    }
+
+    @Test
+    fun `height and climb are skipped without the barometer`() {
+        val t = CheckInTracker(null)
+        t.noteElevation(100.0, baro = true)
+        val gps = t.snapshot(600_000, 2_000.0, baro = false, elevationM = 160.0, ascentM = 80.0)
+        assertNull(gps.climbM)
+        assertNull(gps.heightVsStartM)
+        val baro = t.snapshot(600_000, 2_000.0, baro = true, elevationM = 160.0, ascentM = 80.0)
+        assertEquals(80.0, baro.climbM!!, 1e-9)
+        assertEquals(60.0, baro.heightVsStartM!!, 1e-9)
+    }
+
+    @Test
+    fun `a restored tracker says Zone 3 with no minutes`() {
+        val t = CheckInTracker(zones)
+        t.partial = true
+        repeat(120) { t.tick(1_000, 3.0, 300.0, 300.0, 150.0) }
+        val snap = t.snapshot(600_000, 2_000.0, baro = false, elevationM = null, ascentM = null)
+        assertEquals(3, snap.hrZone)
+        assertNull(snap.hrZoneMs)
+        assertEquals("Zone 3.", CheckInWords.build(CheckInPlan(setOf(CheckInMetric.hrZone), zones), 2, 600_000, 300_000, snap).base)
+    }
+
+    @Test
+    fun `an unrestored tracker says the minutes`() {
+        val t = CheckInTracker(zones)
+        repeat(120) { t.tick(1_000, 3.0, 300.0, 300.0, 150.0) }
+        val snap = t.snapshot(600_000, 2_000.0, baro = false, elevationM = null, ascentM = null)
+        assertEquals("Zone 3 for 2 minutes.", CheckInWords.build(CheckInPlan(setOf(CheckInMetric.hrZone), zones), 2, 600_000, 300_000, snap).base)
     }
 }

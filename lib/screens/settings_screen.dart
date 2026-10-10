@@ -465,8 +465,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                   key: const ValueKey('check-in-metrics'),
                   label: 'Check-in says',
                   value:
-                      '${s.checkInMetrics.length} of '
-                      '${CheckInMetric.values.length}',
+                      '${s.checkInMetrics.where(CheckInMetric.pickable.contains).length} of '
+                      '${CheckInMetric.pickable.length}',
                   onTap: () => _pickCheckIn(context, s.checkInMetrics, set),
                 ),
               _Toggle(
@@ -949,11 +949,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                   const SizedBox(height: Space.x8),
                   Text(
                     'Said at each km, most important first. Anything with no '
-                    'data is skipped, and the line stays short.',
+                    'data is skipped, and the line stays short. Changes '
+                    'apply from your next run.',
                     style: RunSoloType.body15.copyWith(color: t.inkSecondary),
                   ),
                   const SizedBox(height: Space.x8),
-                  for (final m in CheckInMetric.values)
+                  for (final m in CheckInMetric.pickable)
                     CheckboxListTile(
                       key: ValueKey('check-in-${m.name}'),
                       value: chosen.contains(m),

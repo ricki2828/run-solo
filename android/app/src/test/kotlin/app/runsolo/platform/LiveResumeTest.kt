@@ -126,4 +126,30 @@ class LiveResumeTest {
         assertNull(session.status().tipsMuted)
         session.abortStart()
     }
+
+    @Test
+    fun `a restored run's check-in says the zone only, even when the plan is set later`() {
+        writeOrphan("live-5")
+        val replayed = JournalReplay.read(fs.readBytes(RunPaths.journal("live-5")))
+        val api = RecorderApiImpl(context)
+        api.setCheckIn(listOf("distance", "time", "pace", "hrZone"), listOf(120.0, 140.0, 160.0, 175.0))
+        val session = api.resumeSession("live-5", replayed)
+        session.startResumed(replayed)
+        assertTrue("partial after the restore", session.checkInSaysZoneOnly)
+        // A plan assigned after the restore builds a new tracker: it must start partial too.
+        session.checkIn = api.checkInFromPrefs()
+        assertTrue("still partial after the setter rebuilt the tracker", session.checkInSaysZoneOnly)
+        session.abortStart()
+    }
+
+    @Test
+    fun `a fresh run's check-in is not partial`() {
+        val api = RecorderApiImpl(context)
+        api.setCheckIn(listOf("hrZone"), listOf(120.0, 140.0, 160.0, 175.0))
+        val session = app.runsolo.record.RecordingSession(
+            context, "live-6", RunMode.free, null, Units.km, null, volumeKeyLaps = false, liveContext = null,
+        )
+        session.checkIn = api.checkInFromPrefs()
+        assertEquals(false, session.checkInSaysZoneOnly)
+    }
 }

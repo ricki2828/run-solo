@@ -902,6 +902,14 @@ enum CheckInMetric {
   /// Everything on: a metric with no data is skipped, and the line is cut to
   /// a short glance, so more on costs nothing on a flat road run.
   static const List<CheckInMetric> defaults = CheckInMetric.values;
+
+  /// What the picker offers. "Way back" waits for the stacked retrace PR
+  /// (it needs the native retrace detector); it stays in [values] so the
+  /// stored key and the native phrase are ready.
+  static List<CheckInMetric> get pickable => [
+    for (final m in CheckInMetric.values)
+      if (m != CheckInMetric.retrace) m,
+  ];
 }
 
 /// Settings → Voice → "Coaching detail".

@@ -90,9 +90,30 @@ class CheckInTracker(private val zoneBottomsBpm: List<Double>?) {
         smoothedZone()?.let { zoneMs[it] += dtMs }
     }
 
-    /** The first absolute height seen while recording; later heights are read against it. */
-    fun noteElevation(m: Double?) {
-        if (m != null && startElevationM == null) startElevationM = m
+    /**
+     * The first absolute height seen while recording on the barometer; later heights are read against it.
+     * A GPS reading never becomes the start (GPS altitude can be off by tens of metres, and the barometer
+     * may only arrive later), so a run that starts on GPS takes its baseline when the barometer lands.
+     */
+    fun noteElevation(m: Double?, baro: Boolean) {
+        if (baro && m != null && startElevationM == null) startElevationM = m
+    }
+
+    /**
+     * The extra metrics at a km mark: [activeMs] / [distM] = the run so far, [baro] = the run's elevation source is the
+     * barometer (height and climb are skipped otherwise), [elevationM] / [ascentM] = the live elevation. Closes the km's
+     * True-pace factor, so call it once per km.
+     */
+    fun snapshot(activeMs: Long, distM: Double, baro: Boolean, elevationM: Double?, ascentM: Double?): CheckInSnapshot {
+        val zone = smoothedZone()
+        return CheckInSnapshot(
+            avgPaceSecPerKm = if (distM >= 100 && activeMs > 0) activeMs / 1_000.0 / (distM / 1_000.0) else null,
+            kmTrueFactor = closeKmFactor(),
+            hrZone = zone,
+            hrZoneMs = zone?.let { z -> zoneMsOf(z).takeIf { !partial } },
+            climbM = if (baro) ascentM else null,
+            heightVsStartM = if (baro) heightVsStart(elevationM) else null,
+        )
     }
 
     fun heightVsStart(m: Double?): Double? = m?.let { e -> startElevationM?.let { e - it } }

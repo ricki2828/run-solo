@@ -349,7 +349,6 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
             .putString(RecorderService.PREF_CHECKIN, metrics.joinToString(","))
             .putString(RecorderService.PREF_CHECKIN_ZONES, zoneBottomsBpm?.joinToString(","))
             .commit()
-        active()?.checkIn = checkInFromPrefs()
     }
 
     /** The km check-in the app set (also read on a resume); null = never set, so the plain km split. An empty choice says no km line. */

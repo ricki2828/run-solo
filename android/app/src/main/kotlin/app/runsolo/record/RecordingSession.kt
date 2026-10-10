@@ -302,8 +302,10 @@ class RecordingSession(
         coach = LiveCoach(liveContext, mode, spec, replayed.cuesFired).also {
             it.kmSplits = kmSplits
             // The zone minutes before the kill were not seen: after a restore the check-in says the zone only.
-            it.checkIn = checkIn
+            // Kept as a field so a tracker built later (or rebuilt by the setter) starts partial too.
+            checkInPartial = true
             checkInTracker?.partial = true
+            it.checkIn = checkIn
             // A journaled "Mute tips" survives the kill: nothing is spoken again after a restore.
             if (replayed.tipsMuted) it.muted = true
         }
@@ -932,11 +934,17 @@ class RecordingSession(
     var checkIn: CheckInPlan? = null
         set(value) {
             field = value
-            checkInTracker = value?.let { CheckInTracker(it.zoneBottomsBpm) }
+            checkInTracker = value?.let { p -> CheckInTracker(p.zoneBottomsBpm).also { it.partial = checkInPartial } }
             synchronized(this) { coach.checkIn = value }
         }
 
     private var checkInTracker: CheckInTracker? = null
+
+    /** The run was restored after a kill: its zone minutes are incomplete, whichever tracker is built. */
+    private var checkInPartial = false
+
+    /** Tests: the check-in's tracker says only the zone (restored run). */
+    internal val checkInSaysZoneOnly: Boolean get() = checkInTracker?.partial == true
     private var checkInPace: Double? = null
     private var checkInTruePace: Double? = null
     private var checkInLastT: Long? = null
@@ -953,25 +961,14 @@ class RecordingSession(
         val dt = checkInLastT?.let { (t - it).coerceIn(0L, 2_000L) } ?: 0L
         checkInLastT = t
         if (replay != null || core.state != RecorderState.recording || core.autoPaused) return
-        tr.noteElevation(liveElev.elevationM)
+        tr.noteElevation(liveElev.elevationM, baro = liveElev.source == ElevSource.baro)
         tr.tick(dt, (ticker.distanceM - coachPrevD).coerceAtLeast(0.0), checkInPace, checkInTruePace, hr?.toDouble())
     }
 
     /** The extra metrics at a km mark; only called when the km line is said. Barometer-only for height and climb (GPS altitude is too noisy to read out). */
     private fun checkInSnapshot(t: Long): CheckInSnapshot? {
         val tr = checkInTracker ?: return null
-        val d = ticker.distanceM
-        val active = core.status(t).activeMs
-        val baro = liveElev.source == ElevSource.baro
-        val zone = tr.smoothedZone()
-        return CheckInSnapshot(
-            avgPaceSecPerKm = if (d >= 100 && active > 0) active / 1_000.0 / (d / 1_000.0) else null,
-            kmTrueFactor = tr.closeKmFactor(),
-            hrZone = zone,
-            hrZoneMs = zone?.let { z -> tr.zoneMsOf(z).takeIf { !tr.partial } },
-            climbM = if (baro) liveElev.ascentM else null,
-            heightVsStartM = if (baro) tr.heightVsStart(liveElev.elevationM) else null,
-        )
+        return tr.snapshot(core.status(t).activeMs, ticker.distanceM, liveElev.source == ElevSource.baro, liveElev.elevationM, liveElev.ascentM)
     }
 
     /** The live coach as restored (tests: the resume path keeps the context and the fired cues). */
