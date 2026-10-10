@@ -50,13 +50,17 @@ REASK_DAYS = 28        # a question nobody answered waits this long before it co
 INFER_MIN_RUNS = 10    # with this many runs on record, usual days and time of day are known, not asked
 
 
-def known_without_asking(history: Sequence[Mapping[str, Any]], plan_weeks: int | None) -> set[str]:
-    """Questions the server can already answer from what it holds."""
+def known_without_asking(history: Sequence[Mapping[str, Any]], plan_weeks: int | None,
+                         memory: Mapping[str, str] | None = None) -> set[str]:
+    """Questions the server can already answer from what it holds or from the touches it sends."""
     known: set[str] = set()
+    race_date = (memory or {}).get("race_month") not in (None, "none")
     if plan_weeks is not None:
-        known.add("race_month")  # the plan countdown already says when the race is
+        known |= {"race_month", "goal_type"}  # a plan countdown ("8 weeks to go") says there is a race, and when
+    if race_date:
+        known.add("goal_type")                # a race month on file is the answer to "what are you training for"
     if len(history) >= INFER_MIN_RUNS:
-        known |= {"usual_days", "time_of_day"}
+        known |= {"usual_days", "time_of_day", "runs_per_week"}  # days, time and weekly count are visible in the runs
     return known
 
 

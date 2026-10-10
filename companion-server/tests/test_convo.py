@@ -429,11 +429,40 @@ def test_question_skips_what_is_known_and_waits_four_weeks():
     from companion.convo import questions as Q
     hist = [run(i, i + 1) for i in range(12)]
     known = Q.known_without_asking(hist, 8)
-    assert known == {"race_month", "usual_days", "time_of_day"}
+    assert known == {"race_month", "goal_type", "usual_days", "time_of_day", "runs_per_week"}
     assert Q.known_without_asking(hist[:3], None) == set()
     mem = {"goal_type": "half", "niggle_area": "none", "runs_per_week": "3"}
     assert next_weekly_question(mem, NOW, known)["key"] == "surface"
     assert next_weekly_question(mem, NOW, known | {"surface"})["key"] == "run_why"
+
+
+def test_known_race_suppresses_what_are_you_training_for():
+    from companion.convo import questions as Q
+    # a plan countdown touch implies the race and its date
+    assert {"goal_type", "race_month"} <= Q.known_without_asking([], 8, {})
+    # a race month on file implies the goal; "no date yet" does not
+    assert "goal_type" in Q.known_without_asking([], None, {"race_month": "2026-12"})
+    assert "goal_type" not in Q.known_without_asking([], None, {"race_month": "none"})
+    assert "goal_type" not in Q.known_without_asking([], None, {})
+    # ten runs answer days, time of day and runs a week
+    assert {"usual_days", "time_of_day", "runs_per_week"} <= Q.known_without_asking([run(i, i + 1) for i in range(10)], None, {})
+    q = next_weekly_question({}, NOW, Q.known_without_asking([], 8, {}))
+    assert q["key"] not in ("goal_type", "race_month") and q["text"] != "What are you training for?"
+
+
+def test_sim_flags_a_question_a_touch_already_answered(month):
+    from companion.convo.sim import _implied_by_history
+    cards = [{"card_id": "a", "sent_at": "2026-10-06T07:13:00+08:00"}]
+    meta = {"a": {"touch_kind": "race_countdown"}}
+    q = {"sent_at": "2026-10-06T07:48:00+08:00"}
+    assert any("race_countdown" in x for x in _implied_by_history(q, {"goal_type"}, cards, meta, []))
+    assert _implied_by_history(q, {"niggle_area"}, cards, meta, []) == []
+    assert _implied_by_history(q, {"goal_type"}, [], {}, []) == []
+    many = [{"start_utc": f"2026-09-{d:02d}T00:00:00+00:00"} for d in range(1, 12)]
+    assert any("runs on record" in x for x in _implied_by_history(q, {"runs_per_week"}, [], {}, many))
+    # and the real month never asks it after the 6 October countdown
+    asked = [c for c in month.cards if c["kind"] == "question"]
+    assert not any("What are you training for?" in c["body"] or "training for" in c["headline"] for c in asked)
 
 
 def test_question_is_its_own_message_and_never_on_a_big_moment(client, fakes):
