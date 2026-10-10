@@ -56,6 +56,7 @@ class EqualFigures extends StatelessWidget {
     required this.labelColor,
     required this.valueColor,
     this.rowGap = Space.x4,
+    this.distanceTrailing,
   }) : assert(figures.length == 3 && valueKeys.length == 3);
   final List<LiveFigure> figures;
   final List<Key> valueKeys;
@@ -63,6 +64,10 @@ class EqualFigures extends StatelessWidget {
   final Color labelColor;
   final Color valueColor;
   final double rowGap;
+
+  /// Sits in the free right half of the DISTANCE row (the map view's VS
+  /// START), so it costs no height.
+  final Widget? distanceTrailing;
 
   static const double _gap = Space.x16;
   static final double floor = RunSoloType.runSize(36);
@@ -119,7 +124,26 @@ class EqualFigures extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          _one(context, 0, style),
+          if (distanceTrailing == null)
+            _one(context, 0, style)
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Flexible(child: _one(context, 0, style)),
+                const SizedBox(width: _gap),
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: distanceTrailing,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           SizedBox(height: rowGap),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -182,8 +206,9 @@ class LiveMapView extends StatefulWidget {
   final bool terrain;
 
   /// Trail / Free: metres above (+) or below (-) the start, and the distance
-  /// back along the track while heading back over it. A one-line strip under
-  /// the hero shows them; null for both = no strip.
+  /// back along the track while heading back over it. VS START rides in the
+  /// DISTANCE row; BACK TO START is one plate line under the hero, only
+  /// while heading back.
   final double? heightVsStartM;
   final double? backToStartM;
 
@@ -243,6 +268,14 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
                   cap: RunSoloType.runSize(widget.compact ? 40 : 44),
                   labelColor: widget.secondary,
                   valueColor: t.inkPrimary,
+                  distanceTrailing: widget.heightVsStartM == null
+                      ? null
+                      : HeightFigure(
+                          heightVsStartM: widget.heightVsStartM!,
+                          units: widget.units,
+                          labelColor: widget.secondary,
+                          valueColor: t.inkPrimary,
+                        ),
                 )
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -295,7 +328,7 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
               warnColor: t.semWarn,
             ),
           ),
-        if (widget.heightVsStartM != null || widget.backToStartM != null)
+        if (widget.backToStartM != null)
           Visibility(
             visible: !widget.paused,
             maintainSize: true,
@@ -304,9 +337,9 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
             child: Padding(
               padding: const EdgeInsets.only(bottom: Space.x8),
               child: StartStrip(
-                heightVsStartM: widget.heightVsStartM,
-                backToStartM: widget.backToStartM,
+                backToStartM: widget.backToStartM!,
                 units: widget.units,
+                labelColor: widget.secondary,
                 valueColor: t.inkPrimary,
               ),
             ),
