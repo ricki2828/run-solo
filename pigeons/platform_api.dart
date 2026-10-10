@@ -1088,11 +1088,7 @@ class GpsProbeEvent extends RecorderEvent {
 /// barometer, null per point otherwise. Null (not sent) when the recorder has
 /// no elevation at all.
 class RoutePointsEvent extends RecorderEvent {
-  RoutePointsEvent({
-    required this.fromIndex,
-    required this.latLon,
-    this.elevM,
-  });
+  RoutePointsEvent({required this.fromIndex, required this.latLon, this.elevM});
   int fromIndex;
   List<double> latLon;
   List<double?>? elevM;
