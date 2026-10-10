@@ -45,9 +45,9 @@ def _when(r: Mapping[str, Any]) -> datetime:
 
 
 def typical_km(history: Sequence[Mapping[str, Any]], typ: str) -> str | None:
-    """Median distance of the last five runs of this type (facts only), e.g. '7.0'."""
+    """Median distance of the last five runs of this type in whole km, e.g. '7'."""
     ds = [h["distance_m"] for h in history[:80] if h["type"] == typ and h.get("distance_m")][:5]
-    return fmt_km(median(ds)) if ds else None
+    return str(max(1, round(median(ds) / 1000))) if ds else None  # whole km
 
 
 def typical_easy_km(history):  # kept for callers that predate typed sessions
@@ -74,9 +74,42 @@ def plan_weeks(history: Sequence[Mapping[str, Any]], now: datetime) -> int | Non
     return None
 
 
-def session_for(kind: str, history: Sequence[Mapping[str, Any]]) -> str | None:
+LONG_STEP_KM = 1.5       # build by 1 to 2 km on the last long run ...
+LONG_CAP_OVER_MAX = 1.10  # ... but never more than about 10% over the longest run of the last 28 days
+LONG_PEAK_KM = 20        # peak for a half marathon
+LONG_DROP = 0.8          # after a break or a missed week, step back to this share of the last long run
+TAPER_WEEKS = 2          # no long-run build in the last two weeks before the race
+MISSED_WEEK_DAYS = 7
+
+
+def missed_week_recently(history: Sequence[Mapping[str, Any]], now: datetime) -> bool:
+    """A gap of 7+ days between runs, with the run after it inside the last 14 days."""
+    for newer, older in zip(history, history[1:]):
+        if (now - _when(newer)).days > 14:
+            return False
+        if (_when(newer) - _when(older)).days >= MISSED_WEEK_DAYS:
+            return True
+    return False
+
+
+def long_run_km(history: Sequence[Mapping[str, Any]], now: datetime) -> int | None:
+    """Next long run in whole km: last long run + 1.5 km, capped 10% over the 4-week max and at the peak.
+    Only stepped back after a break or a missed week."""
+    last = next((h["distance_m"] / 1000 for h in history if h["type"] == "long" and h.get("distance_m")), None)
+    if last is None:
+        return None
+    if missed_week_recently(history, now):
+        return max(1, round(last * LONG_DROP))
+    recent = [h["distance_m"] / 1000 for h in history if h.get("distance_m") and (now - _when(h)).days <= 28]
+    cap = min(LONG_CAP_OVER_MAX * max(recent + [last]), LONG_PEAK_KM)
+    target = min(last + LONG_STEP_KM, cap)
+    return max(round(last), min(round(target), int(cap)))
+
+
+def session_for(kind: str, history: Sequence[Mapping[str, Any]], now: datetime | None = None) -> str | None:
     """The named session for a kind of suggestion, built from the runner's own distances."""
-    easy, tempo, long_ = typical_km(history, "easy"), typical_km(history, "tempo"), typical_km(history, "long")
+    easy, tempo = typical_km(history, "easy"), typical_km(history, "tempo")
+    long_ = long_run_km(history, now or _when(history[0])) if history else None
     if kind in ("easy_load", "recover", "heat", "wet", "feel"):
         return f"easy {easy} km" if easy else None
     if kind in ("gap", "good"):
@@ -138,7 +171,7 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
     elif forecast and forecast.rain_pct >= WET_PCT:
         kind = "wet"
         slots["rain"] = str(forecast.rain_pct)
-    elif weeks is not None and weeks <= PLAN_WEEKS_MAX and long_gap is not None and long_gap >= LONG_GAP_DAYS:
+    elif weeks is not None and TAPER_WEEKS < weeks <= PLAN_WEEKS_MAX and long_gap is not None and long_gap >= LONG_GAP_DAYS:
         kind = "plan_long"
         slots.update(weeks_txt=plural(weeks, "week"), gap_txt=plural(long_gap, "day"))
     elif gap is not None and gap >= GAP_DAYS:
@@ -150,7 +183,7 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
             kind = "gap"
     if kind is None:
         return None
-    session = session_for(kind, history)
+    session = session_for(kind, history, now)
     if session is None:
         return None  # no concrete session to name: say nothing rather than something vague
     slots["session"] = session

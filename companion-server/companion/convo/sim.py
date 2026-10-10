@@ -455,7 +455,7 @@ def check(cards: list[dict], zone_of: Any, db_path: str) -> list[str]:
     return v
 
 
-SESSION = re.compile(r"\b(easy|tempo|steady|long run)\b[^.]{0,12}\d+(\.\d)? km", re.I)
+SESSION = re.compile(r"\b(easy|tempo|steady|long run)\b[^.]{0,12}\d+ km", re.I)  # whole km only
 WHEN = re.compile(r"(around \d{1,2}:\d{2}|this week|tomorrow)", re.I)
 
 
@@ -532,6 +532,24 @@ def check_conversation(cards: list[dict], meta: dict, con: sqlite3.Connection) -
             if m["situation"] == "pb":
                 if not text.startswith(fmt_duration(r["duration_s"])):
                     v.append(f"PB does not lead with the time: {text[:40]!r}")
+    # 9. a long-run suggestion builds on the last long run, within the cap, unless a break or missed week
+    from .suggest import LONG_CAP_OVER_MAX, LONG_PEAK_KM, missed_week_recently
+    for c in cards:
+        mm = re.search(r"long run (\d+) km", c["body"])
+        if c["kind"] != "evening" or not mm:
+            continue
+        now = parse_iso(c["sent_at"])
+        hist = [h for h in order if parse_iso(h["start_utc"]) < now][::-1]
+        longs = [h["distance_m"] / 1000 for h in hist if h["type"] == "long"]
+        if not longs:
+            v.append("long run suggested with no long run on record")
+            continue
+        n, last = int(mm.group(1)), longs[0]
+        recent = [h["distance_m"] / 1000 for h in hist if (now - parse_iso(h["start_utc"])).days <= 28]
+        if n > LONG_PEAK_KM or n > LONG_CAP_OVER_MAX * max(recent + [last]) + 0.5:
+            v.append(f"long run {n} km is over the cap (last {last:.1f}, 4-week max {max(recent + [last]):.1f})")
+        if n < round(last) and not missed_week_recently(hist, now):
+            v.append(f"long run {n} km goes backwards from {last:.1f} km with no missed week")
     # 5. a Hard tap on an easy, low-zone run shows up on one of the next two cards
     sent = sorted(cards, key=lambda c: c["sent_at"])
     for r in order:

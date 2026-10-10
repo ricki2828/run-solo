@@ -487,3 +487,40 @@ def test_checker_catches_the_review_rules(month):
     assert "question on a post-run card" in found and "button soup" in found
     assert "suggestion without a named session" in found
     assert "PB does not lead with the time" in found
+
+
+# --- polish: whole km and a long run that builds -----------------------------------------------
+
+def long_hist(last_km, extra=()):
+    return [run(1, 10, typ="long", km=last_km), *extra]
+
+
+def test_suggested_distances_are_whole_km():
+    h = [run(i, 1 + i, km=5.8) for i in range(5)]
+    assert suggest.typical_km(h, "easy") == "6"
+    assert suggest.session_for("easy_load", h, NOW) == "easy 6 km"
+
+
+def test_long_run_builds_toward_the_race():
+    assert suggest.long_run_km(long_hist(16.0), NOW) == 17            # +1.5 capped at 10% over the 4-week max
+    assert suggest.long_run_km(long_hist(12.0), NOW) == 13            # +1.5 hits the 10% cap (13.2)
+    assert suggest.long_run_km(long_hist(19.0), NOW) == 20            # peak cap
+    assert suggest.long_run_km(long_hist(20.0), NOW) == 20
+    assert suggest.long_run_km([], NOW) is None
+
+
+def test_long_run_steps_back_only_after_a_missed_week():
+    gap = [run(2, 3), run(3, 14)]  # a 11 day gap right before the last run
+    h = [run(1, 1), *gap[:1], run(4, 12, typ="long", km=16.0)]
+    h[1] = run(2, 2)
+    assert suggest.missed_week_recently(h, NOW)
+    assert suggest.long_run_km(h, NOW) == 13                          # 80% of 16, rounded
+    steady = [run(i, 1 + 2 * i) for i in range(1, 4)] + [run(9, 6, typ="long", km=16.0)]
+    assert not suggest.missed_week_recently(steady, NOW)
+    assert suggest.long_run_km(steady, NOW) >= 16
+
+
+def test_no_long_run_build_in_the_taper():
+    hist = [run(i, 1 + 2 * i, plan_weeks_to_race=2) for i in range(4)] + [run(8, 12, typ="long", km=18.0, plan_weeks_to_race=2)]
+    ev = suggest.evening(hist, NOW, None, {}, "s", zone_id=SG)
+    assert ev is None or ev.suggestion.kind != "long_run"
