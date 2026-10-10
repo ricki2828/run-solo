@@ -19,6 +19,7 @@ import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../topo/pack_manager.dart';
 import '../topo/pack_models.dart';
+import 'gradient_legend.dart';
 import 'map_surface.dart';
 import 'route_builder.dart';
 import 'snapshot_cache.dart';
@@ -285,6 +286,7 @@ class _LiveChoiceState extends State<_LiveChoice> {
           pack: pack,
           topoWanted: f._topoWanted,
           onToggle: f._setTopo,
+          legend: widget.plan?.any((p) => p.ele != null) ?? false,
           child: pack == null
               ? f.fallback.buildLive(
                   context,
@@ -313,7 +315,11 @@ class _Choice extends StatelessWidget {
     required this.topoWanted,
     required this.onToggle,
     required this.child,
+    this.legend = false,
   });
+
+  /// Show the gradient key: only while Topo is the map drawing the gradient.
+  final bool legend;
   final InstalledPack? pack;
   final bool topoWanted;
   final Future<void> Function(bool) onToggle;
@@ -336,6 +342,12 @@ class _Choice extends StatelessWidget {
           right: Space.x8,
           child: MapStyleToggle(topo: topoWanted, onChanged: onToggle),
         ),
+        if (showing != null && legend)
+          const Positioned(
+            left: Space.x8,
+            bottom: Space.x48,
+            child: GradientLegend(),
+          ),
         if (showing != null && showing.region.mapText.isNotEmpty)
           Positioned(
             left: Space.x8,

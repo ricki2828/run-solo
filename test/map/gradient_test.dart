@@ -4,6 +4,7 @@ import 'dart:ui' show Color;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/map/gradient.dart';
 import 'package:run_solo/map/route_builder.dart';
+import 'package:run_solo/map/snapshot_cache.dart';
 import 'package:run_solo/theme/tokens.dart';
 import 'package:run_solo/topo/topo_style.dart';
 
@@ -19,6 +20,65 @@ double _dist(Color a, Color b) {
 }
 
 void main() {
+  test('a short blip near a route end is not steep', () {
+    // 10 points (90 m): the window is cut short at both ends.
+    final ele = <double?>[100, 100, 100, 103, 100, 100, 100, 100, 100, 100];
+    final runs = gradientRuns(_climb(ele))!;
+    expect(runs.any((r) => r.cls == GradientClass.steep), isFalse);
+    // And a real climb at the start of a long route still shows.
+    final real = <double?>[for (var i = 0; i < 40; i++) 100.0 + i];
+    expect(
+      gradientRuns(_climb(real))!.any((r) => r.cls == GradientClass.steep),
+      isTrue,
+    );
+  });
+
+  test('card fingerprint changes when elevation appears', () {
+    RouteGeometry g(List<GeoPoint> pts) => RouteGeometry(
+      points: pts,
+      markers: const [],
+      bounds: RouteBuilder.boundsOf(pts),
+    );
+    final bare = [for (var i = 0; i < 5; i++) GeoPoint(1 + i * 1e-4, 103)];
+    final withEle = [
+      for (var i = 0; i < 5; i++) GeoPoint(1 + i * 1e-4, 103, 10.0 + i),
+    ];
+    expect(routeFingerprint(g(bare)), isNot(routeFingerprint(g(withEle))));
+  });
+
+  test('steep stretches are drawn wider, and scaled with the pixel ratio', () {
+    final layers = <Object?>[
+      <String, Object?>{
+        'id': 'rs-track',
+        'type': 'line',
+        'paint': <String, Object?>{
+          'line-width': [
+            'case',
+            [
+              '==',
+              ['get', 'w'],
+              1,
+            ],
+            7,
+            5,
+          ],
+        },
+      },
+    ];
+    TopoStyle.scaleForPixelRatio(layers, 2);
+    final w = (((layers.first! as Map)['paint']! as Map)['line-width']) as List;
+    expect(w, [
+      'case',
+      [
+        '==',
+        ['get', 'w'],
+        1,
+      ],
+      14,
+      10,
+    ]);
+  });
+
   test('classOfGrade thresholds', () {
     expect(classOfGrade(0.0), GradientClass.flat);
     expect(classOfGrade(0.029), GradientClass.flat);
@@ -59,7 +119,13 @@ void main() {
   test('descent is down', () {
     final ele = <double?>[for (var i = 0; i < 30; i++) 200 - i.toDouble()];
     final runs = gradientRuns(_climb(ele))!;
-    expect(runs.single.cls, GradientClass.down);
+    expect(runs.any((r) => r.cls == GradientClass.down), isTrue);
+    expect(
+      runs.every(
+        (r) => r.cls == GradientClass.down || r.cls == GradientClass.flat,
+      ),
+      isTrue,
+    );
   });
 
   test('gradient colours avoid the zone ramp and semantic colours', () {
@@ -84,12 +150,19 @@ void main() {
       Color(0xFF3E9B1E),
       Color(0xFF8A5CF0),
       Color(0xFF1F8FD6),
+      // Dark-theme semantics, from the tokens.
+      NightSession.semSlower,
+      NightSession.semImproving,
+      NightSession.accentArc,
+      NightSession.semWarn,
+      NightSession.semDanger,
+      NightSession.pulseRose,
     ];
     for (final c in GradientClass.values) {
       for (final f in forbidden) {
         expect(
           _dist(GradientColours.of(c), f),
-          greaterThan(70),
+          greaterThan(90),
           reason: '$c too close to $f',
         );
       }
@@ -108,7 +181,10 @@ void main() {
       fallback: const Color(0xFFFFFFFF),
       casing: const Color(0xFF000000),
     );
-    final props = ((g['features'] as List).first as Map)['properties'] as Map;
-    expect(props['c'], TopoStyle.hex(GradientColours.steep));
+    final colours = [
+      for (final f in g['features'] as List)
+        ((f as Map)['properties'] as Map)['c'],
+    ];
+    expect(colours, contains(TopoStyle.hex(GradientColours.steep)));
   });
 }

@@ -136,6 +136,10 @@ class TopoStyle {
         ],
       ];
     }
+    if (v[0] == 'case' && v.length == 4) {
+      // ['case', condition, whenTrue, otherwise]: only the sizes scale.
+      return [v[0], v[1], _scale(v[2], k, s), _scale(v[3], k, s)];
+    }
     if (v[0] == 'step' && v.length >= 3 && _zoomInput(v[1])) {
       return [
         v[0],
@@ -183,10 +187,10 @@ class TopoStyle {
   /// Colours come from each feature (`c` fill or line, `k` casing or ring),
   /// so one style serves every run type and theme.
   static final List<Map<String, Object?>> _routeLayers = [
-    _line('rs-plan-casing', planSource, ['get', 'k'], 9),
-    _line('rs-plan', planSource, ['get', 'c'], 5),
-    _line('rs-track-casing', trackSource, ['get', 'k'], 9),
-    _line('rs-track', trackSource, ['get', 'c'], 5),
+    _line('rs-plan-casing', planSource, ['get', 'k'], 9, wide: 11),
+    _line('rs-plan', planSource, ['get', 'c'], 5, wide: 7),
+    _line('rs-track-casing', trackSource, ['get', 'k'], 9, wide: 11),
+    _line('rs-track', trackSource, ['get', 'c'], 5, wide: 7),
     {
       'id': 'rs-marks',
       'type': 'circle',
@@ -215,13 +219,30 @@ class TopoStyle {
     String id,
     String source,
     Object colour,
-    double width,
-  ) => {
+    double width, {
+    double? wide,
+  }) => {
     'id': id,
     'type': 'line',
     'source': source,
     'layout': {'line-cap': 'round', 'line-join': 'round'},
-    'paint': {'line-color': colour, 'line-width': width},
+    'paint': {
+      'line-color': colour,
+      // A steep stretch is drawn wider (feature property `w`), so it does not
+      // rest on colour alone.
+      'line-width': wide == null
+          ? width
+          : [
+              'case',
+              [
+                '==',
+                ['get', 'w'],
+                1,
+              ],
+              wide,
+              width,
+            ],
+    },
   };
 
   /// A GeoJSON line for [points] given as (lat, lon) pairs; fewer than two
@@ -271,6 +292,7 @@ class TopoStyle {
             'properties': {
               'c': hex(GradientColours.of(r.cls)),
               'k': hex(casing),
+              'w': r.cls == GradientClass.steep ? 1 : 0,
             },
             'geometry': {
               'type': 'LineString',

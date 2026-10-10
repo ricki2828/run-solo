@@ -99,7 +99,9 @@ List<GradientRun>? gradientRuns(List<GeoPoint> points, {double windowM = 50}) {
     final a = lo.clamp(0, i);
     final b = hi.clamp(i + 1, points.length - 1);
     final run = cum[b] - cum[a];
-    final grade = run < 1 ? 0.0 : (ele[b]! - ele[a]!) / run;
+    // Near a route end the window is cut short: under most of a window a few
+    // metres of noise read as a climb, so call it flat.
+    final grade = run < windowM * 0.8 ? 0.0 : (ele[b]! - ele[a]!) / run;
     classes.add(classOfGrade(grade));
   }
   final out = <GradientRun>[];

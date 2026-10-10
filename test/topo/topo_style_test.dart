@@ -194,7 +194,16 @@ void main() {
       final route = (three['layers'] as List).firstWhere(
         (l) => l['id'] == 'rs-track',
       );
-      expect(route['paint']['line-width'], 15);
+      expect(route['paint']['line-width'], [
+        'case',
+        [
+          '==',
+          ['get', 'w'],
+          1,
+        ],
+        21,
+        15,
+      ]);
     });
   });
 

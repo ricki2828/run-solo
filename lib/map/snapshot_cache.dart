@@ -52,6 +52,8 @@ String routeFingerprint(RouteGeometry route) {
   void point(GeoPoint p) {
     mix((p.lat * 1e5).round());
     mix((p.lon * 1e5).round());
+    // A route that gains elevation re-renders: the card draws its gradient.
+    mix(p.ele == null ? 0 : 1);
   }
 
   route.points.forEach(point);

@@ -491,4 +491,70 @@ void main() {
       expect(line(1), '©');
     });
   });
+
+  group('gradient legend', () {
+    final climb = [
+      for (var i = 0; i < 12; i++) GeoPoint(36.7 + i * 1e-4, 24.4, 50.0 + i),
+    ];
+    final legend = find.byKey(const ValueKey('gradient-legend'));
+
+    Widget live(BuildContext c, LiveRouteTrack t, {List<GeoPoint>? plan}) =>
+        factory.buildLive(
+          c,
+          track: t,
+          color: Colors.orange,
+          plan: plan,
+          terrain: true,
+        );
+
+    testWidgets('shown with Topo on a plan that has elevation, clear of the '
+        'toggle and the credit line', (tester) async {
+      final track = LiveRouteTrack()..apply(0, [36.7, 24.4]);
+      await tester.pumpWidget(host((c) => live(c, track, plan: climb)));
+      expect(legend, findsOneWidget);
+      final key = tester.getRect(legend);
+      final toggle = tester.getRect(
+        find.byKey(const ValueKey('map-style-toggle')),
+      );
+      final credit = tester.getRect(
+        find.byKey(const ValueKey('topo-attribution')),
+      );
+      expect(key.overlaps(toggle), isFalse);
+      expect(key.overlaps(credit), isFalse);
+      expect(key.left, greaterThanOrEqualTo(0));
+      expect(key.right, lessThanOrEqualTo(360));
+    });
+
+    testWidgets('not shown without elevation on the plan', (tester) async {
+      final track = LiveRouteTrack()..apply(0, [36.7, 24.4]);
+      await tester.pumpWidget(
+        host(
+          (c) => live(
+            c,
+            track,
+            plan: [for (final p in climb) GeoPoint(p.lat, p.lon)],
+          ),
+        ),
+      );
+      expect(legend, findsNothing);
+    });
+
+    testWidgets(
+      'not shown on the Google fallback, where no gradient is drawn',
+      (tester) async {
+        final track = LiveRouteTrack()..apply(0, [36.7, 24.4]);
+        await tester.pumpWidget(host((c) => live(c, track, plan: climb)));
+        await tester.tap(find.byKey(const ValueKey('map-style-google')));
+        await tester.pump();
+        expect(legend, findsNothing);
+      },
+    );
+
+    testWidgets('not shown when no pack covers the run', (tester) async {
+      packs.set([]);
+      final track = LiveRouteTrack()..apply(0, [36.7, 24.4]);
+      await tester.pumpWidget(host((c) => live(c, track, plan: climb)));
+      expect(legend, findsNothing);
+    });
+  });
 }
