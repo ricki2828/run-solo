@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-pytest.importorskip("PIL")
 from PIL import Image, ImageChops, ImageStat  # noqa: E402
 
 from render.motion import samples  # noqa: E402
@@ -20,6 +19,14 @@ from render.motion.weekly_video import WeeklyVideo, render_weekly_video  # noqa:
 
 GOLD = Path(__file__).parent / "golden_motion"
 KEY_T = [1.5, 3.7, 6.0, 9.0, 12.5]
+
+
+def test_ffmpeg_is_on_path():
+    """A missing ffmpeg must fail the suite, not skip it."""
+    import shutil
+
+    assert shutil.which("ffmpeg"), "ffmpeg not on PATH (CI installs it; locally put it on PATH or set FFMPEG)"
+    assert ffmpeg_bin()
 
 
 def _info(path):

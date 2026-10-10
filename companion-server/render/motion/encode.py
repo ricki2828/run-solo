@@ -10,10 +10,10 @@ from ._draw import FPS, H, W
 
 
 def ffmpeg_bin() -> str:
-    for c in (os.environ.get("FFMPEG"), shutil.which("ffmpeg"), str(Path.home() / "bin" / "ffmpeg")):
-        if c and Path(c).exists():
-            return c
-    raise RuntimeError("ffmpeg not found (set FFMPEG)")
+    c = os.environ.get("FFMPEG") or shutil.which("ffmpeg")
+    if not c:
+        raise RuntimeError("ffmpeg not found: put it on PATH or set FFMPEG")
+    return c
 
 
 def encode(frames, out_path, max_kbps: int = 2200):
