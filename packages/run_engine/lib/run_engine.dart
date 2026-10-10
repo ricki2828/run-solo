@@ -40,6 +40,7 @@ export 'src/engine/today_target.dart';
 export 'src/engine/race_estimates.dart';
 export 'src/engine/readiness.dart';
 export 'src/engine/rep_detector.dart';
+export 'src/engine/retrace.dart';
 export 'src/engine/trace.dart';
 export 'src/engine/route_match.dart';
 export 'src/engine/trail_run.dart';
