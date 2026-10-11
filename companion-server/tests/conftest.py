@@ -188,3 +188,17 @@ def run_payload(run_id="r1", minutes_ago=20, **over):
          "pace_s_per_km": 342.0, "true_pace_s_per_km": 338.0, "verdict": "holding"}
     p.update(over)
     return p
+
+
+@pytest.fixture
+def render_socket():
+    """A real render worker (render/worker.py) serving a unix socket in a thread; renders run in real child processes."""
+    import tempfile
+    import threading
+    from render.worker import Worker
+    d = tempfile.mkdtemp(prefix="rsw-")  # short: unix socket paths top out near 108 bytes
+    w = Worker(os.path.join(d, "render.sock"))
+    srv = w.bind()
+    threading.Thread(target=w.serve_forever, args=(srv,), daemon=True).start()
+    yield w.sock_path
+    srv.close()
