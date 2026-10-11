@@ -698,29 +698,21 @@ class Service:
             prev_sit = self._card_situation(c, uid, full[0]["run_id"] if full else None)
         rw = self.weather.at_run(lat, lon, run["zone_id"], parse_iso(run["start_utc"]), now)
         v = cv_engine.enrich_run(run, full, mem, now, usage, rw, sunrise_count=sunrises, prev_situation=prev_sit)
-        suggestion = res.suggestion
-        sline = None
-        if v.situation == "back_after_break" or (
-                suggestion and suggestion.kind == "quality" and cv_touches.returning(cv_touches.Ctx(run, full, mem, now))):
-            suggestion = None  # no hard-session nudge while someone is easing back in
-        if suggestion:
-            sline = cv_suggest.after_run(suggestion, run, full, usage.variants, now, run_id)
-            if sline is None:
-                suggestion = None  # no concrete session to name: no suggestion and no buttons
+        # A run card carries the feel row only. A post-run suggestion is deferred to the evening-before slot
+        # (under its own weekly cap and spacing), never piggybacked as buttons or text on the run card.
+        suggestion, sline = None, None
         with db.tx(self.s.db_path) as c:
-            if suggestion and not self._claim_suggestion(c, uid, now):
-                suggestion, sline = None, None
             if rw and cv_touches.is_sunrise_start(to_local(parse_iso(run["start_utc"]), run["zone_id"]), rw.sunrise_local):
                 c.execute("INSERT INTO convo_log (user_id, kind, key, ts) SELECT ?,?,?,? WHERE NOT EXISTS "
                           "(SELECT 1 FROM convo_log WHERE user_id=? AND kind='sunrise' AND key=?)",
                           (uid, "sunrise", run_id, iso(now), uid, run_id))
-        res = FactsResult(res.facts, suggestion, res.tone, False, res.reason)
+        res = FactsResult(res.facts, None, res.tone, False, res.reason)
         w = self.writer.write(res, digest_lines(mem, feels), voice=v.rendered, style=v.style,
                               suggestion_line=sline.body if sline else None)
         body = w.body
         if v.touch_line:
             body += f"\n\n{v.touch_line}"
-        buttons = self._buttons(run["feel"], suggestion.kind if suggestion else None, None)
+        buttons = self._buttons(run["feel"], None, None)
         card_id = secrets.token_hex(16)
         allowed = " ".join([f.text for f in res.facts] + [v.allowed, suggestion.text if suggestion else "",
                                                           sline.allowed if sline else ""])

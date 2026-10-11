@@ -23,11 +23,15 @@ def populate(client, fakes):
     """Touch every table that can hold user data."""
     t = enrol(client)
     weather_on(client, t)
+    client.post("/v1/runs", json=run_payload("seed", minutes_ago=3000), headers=auth(t))   # stale easy run: a suggestion can name a session
     client.post("/v1/runs", json=run_payload("r0", minutes_ago=30), headers=auth(t))   # easy: gets the weekly question
     client.post("/v1/runs", json=run_payload("r1", type="tempo", area_lat=1.35, area_lon=103.82), headers=auth(t))    # hard: gets a suggestion
     client.svc.run_outbox(now_utc() + timedelta(seconds=1))
     client.svc.run_outbox(now_utc() + timedelta(minutes=35))   # the weekly question follows as its own message
+    # the suggestion buttons ride the evening card, not the run card
     c = sqlite3.connect(client.svc.s.db_path)
+    uid = c.execute("SELECT id FROM users").fetchone()[0]
+    client.svc._build_evening_card(uid, "2099-01-01", now_utc())
     for n, (card_id, buttons) in enumerate(c.execute("SELECT card_id, buttons_json FROM cards").fetchall()):
         for i, b in enumerate(json.loads(buttons)):
             if b["action"] in ("ans:goal_type:10k", "sugg:yes:recover", "feel:easy"):

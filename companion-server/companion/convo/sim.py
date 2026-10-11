@@ -504,6 +504,8 @@ def check_conversation(cards: list[dict], meta: dict, con: sqlite3.Connection) -
             v.append(f"question on a post-run card: {c['headline']!r}")           # 2. its own message
         if c["kind"] == "run" and len(acts) > 5:
             v.append(f"button soup ({len(acts)}) on {c['headline']!r}")
+        if c["kind"] == "run" and (len(acts) > 3 or any(not a.startswith("feel:") for a in acts)):
+            v.append(f"run card carries more than the feel row ({len(acts)} buttons) on {c['headline']!r}")
         if c["kind"] == "question":
             keys = {a.split(":")[1] for a in acts if a.startswith("ans:")}
             if keys & {"race_month", "usual_days", "time_of_day"}:
