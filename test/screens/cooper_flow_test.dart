@@ -48,8 +48,7 @@ void main() {
     expect(find.text('Estimate. Not a medical measurement.'), findsOneWidget);
     expect(fake.startCalls, isEmpty, reason: 'the chip alone never starts');
 
-    await tester.tap(find.text('START TEST'));
-    await pumpTimes(tester, 6);
+    await readyAndGo(tester);
     await tester.pump(const Duration(milliseconds: 400));
     expect(fake.startCalls.single.mode, RecordMode.cooper);
     expect(
@@ -60,13 +59,13 @@ void main() {
     expect(find.byType(RecordingScreen), findsOneWidget);
   });
 
-  testWidgets('warm-up, START TEST, 12:00 with no LAP, then cool-down', (
+  testWidgets('warm-up, BEGIN TEST, 12:00 with no LAP, then cool-down', (
     tester,
   ) async {
     final (fake, services) = await recordTest(tester);
     final ctl = services.recording;
     expect(find.text('WARM-UP'), findsOneWidget);
-    expect(find.text('warm up, then tap START TEST'), findsOneWidget);
+    expect(find.text('warm up, then tap BEGIN TEST'), findsOneWidget);
     expect(find.byKey(const ValueKey('start-test')), findsOneWidget);
     expect(
       find.byWidgetPredicate((w) => w is LapButton && w.label == 'LAP'),
@@ -98,7 +97,7 @@ void main() {
     expect(find.text('Pausing ends the test'), findsNothing);
   });
 
-  testWidgets('no GPS in the warm-up: START TEST waits for a fix', (
+  testWidgets('no GPS in the warm-up: BEGIN TEST waits for a fix', (
     tester,
   ) async {
     final (fake, services) = await recordTest(tester);
@@ -113,8 +112,8 @@ void main() {
     // Field test 27-Sep: the wait keeps the test's own label, not the
     // distance-reps one.
     expect(find.byKey(const ValueKey('start-reps-waiting')), findsOneWidget);
-    expect(find.text('START TEST'), findsOneWidget);
-    expect(find.text('START REPS'), findsNothing);
+    expect(find.text('BEGIN TEST'), findsOneWidget);
+    expect(find.text('BEGIN REPS'), findsNothing);
     await services.recording.startReps();
     expect(services.recording.snapshot.phase, Phase.warmup);
   });

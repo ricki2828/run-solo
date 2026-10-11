@@ -253,3 +253,25 @@ Future<void> pumpTimes(WidgetTester tester, [int n = 3]) async {
     await tester.pump();
   }
 }
+
+/// Ready screen to GO: taps its START, runs the 3 s countdown (the default)
+/// and lets the GO hold finish, so the recorder has started and the
+/// recording screen is up.
+Future<void> goFromReady(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('ready-start')));
+  await tester.pump(const Duration(milliseconds: 100));
+  await tester.pump(const Duration(seconds: 3));
+  await tester.pump(const Duration(seconds: 1));
+  await pumpTimes(tester, 4);
+  await settleAnimations(tester);
+}
+
+/// The picker's READY UP, then [goFromReady].
+Future<void> readyAndGo(WidgetTester tester) async {
+  final up = find.byKey(const ValueKey('start-ready-up'));
+  await tester.ensureVisible(up);
+  await tester.tap(up);
+  await pumpTimes(tester, 3);
+  await settleAnimations(tester);
+  await goFromReady(tester);
+}

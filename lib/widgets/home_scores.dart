@@ -211,7 +211,7 @@ class _UnlockRow extends StatelessWidget {
     final laneText = t.laneText(lane);
     return Semantics(
       button: onTap != null,
-      label: set ? '${lane.name} set' : '$label. Opens Start.',
+      label: set ? '${lane.name} set' : '$label. Opens set up.',
       excludeSemantics: true,
       child: InkWell(
         key: ValueKey('home-unlock-${lane.name}'),

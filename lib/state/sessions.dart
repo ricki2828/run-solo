@@ -85,7 +85,7 @@ class CustomSession {
   /// Walk and stand recoveries are timed only (plan §3.3).
   final engine.RecoveryStyle recoveryStyle;
 
-  /// null = open ("tap START REPS when ready" / "stop when done").
+  /// null = open ("tap BEGIN REPS when ready" / "stop when done").
   final int? warmupSeconds;
   final int? cooldownSeconds;
   final DateTime? createdAt;

@@ -486,6 +486,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                 reason: kShowWhileRunningLine,
               ),
               const _Section('Recording'),
+              SettingsRow(
+                key: const ValueKey('countdown-row'),
+                label: 'Countdown',
+                value: _countdownLabel(s.countdownSeconds),
+                onTap: () => _pickCountdown(context, s.countdownSeconds, set),
+              ),
               _Toggle(
                 label: 'Auto-pause',
                 value: s.autoPause,
@@ -897,6 +903,58 @@ class _SettingsScreenState extends State<SettingsScreen>
       },
     );
     if (picked != null) await set((x) => x.copyWith(coachingDetail: picked));
+  }
+
+  static String _countdownLabel(int seconds) =>
+      seconds == 0 ? 'Off' : '$seconds s';
+
+  /// Recording -> Countdown: the 3-2-1-GO after START on the Ready screen.
+  Future<void> _pickCountdown(
+    BuildContext context,
+    int current,
+    Future<void> Function(AppSettings Function(AppSettings)) set,
+  ) async {
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      builder: (context) {
+        final t = Theme.of(context).extension<RunSoloTokens>()!;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(Space.screenGutter),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('COUNTDOWN', style: RunSoloType.title28),
+                const SizedBox(height: Space.x8),
+                Text(
+                  'A 3-2-1-GO after you tap START. Recording starts at GO. '
+                  'Tap the screen to cancel.',
+                  style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                ),
+                const SizedBox(height: Space.x8),
+                RadioGroup<int>(
+                  groupValue: current,
+                  onChanged: (v) => Navigator.of(context).pop(v),
+                  child: Column(
+                    children: [
+                      for (final o in AppSettings.countdownChoices)
+                        RadioListTile<int>(
+                          key: ValueKey('countdown-$o'),
+                          value: o,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(_countdownLabel(o)),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (picked != null) await set((x) => x.copyWith(countdownSeconds: picked));
   }
 
   /// Which metrics the km check-in says. Importance order is fixed (the

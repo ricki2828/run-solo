@@ -251,7 +251,7 @@ void main() {
       final r = rec(s);
       expect(r.lane, engine.IdentityLane.speed);
       expect(r.reason, "SPEED hasn't moved in 3 weeks. Try 8 × 400 m.");
-      expect(r.startLabel, 'Start 8 × 400 m');
+      expect(r.startLabel, '8 × 400 m ›');
     });
 
     test('missing lane comes first and says what unlocks it', () {

@@ -83,7 +83,7 @@ void main() {
     await golden(tester, 'record_rep');
   });
 
-  testWidgets('record: 4x4 warm-up with the big START REPS', (tester) async {
+  testWidgets('record: 4x4 warm-up with the big BEGIN REPS', (tester) async {
     final fake = FakeRecorderGateway(now: now);
     final services = fakeServices(recorder: fake);
     await services.recording.start(
@@ -96,7 +96,7 @@ void main() {
     fake.advance(const Duration(seconds: 95));
     await pumpTimes(tester, 5);
     await settleAnimations(tester);
-    expect(find.text('START REPS'), findsOneWidget);
+    expect(find.text('BEGIN REPS'), findsOneWidget);
     await golden(tester, 'record_warmup');
   });
 
@@ -2047,7 +2047,7 @@ void main() {
         engine.SessionSpec.cooper.toPigeon(),
         seconds: 300,
         then: (f) async {
-          // C1b: START TEST after the warm-up, then minute 6.
+          // C1b: BEGIN TEST after the warm-up, then minute 6.
           await f.startReps();
           for (var i = 0; i < 360; i++) {
             f.advance(const Duration(seconds: 1));

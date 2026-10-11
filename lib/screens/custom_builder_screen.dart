@@ -14,7 +14,7 @@ typedef BuilderResult = ({CustomSession session, bool start});
 /// Custom builder (plan §3.4, design brief A8): Reps · Rep (Time |
 /// Distance) · Recovery (Time | Distance | None, Jog / Walk / Stand) ·
 /// Warm-up (Open | Fixed) · Cool-down (Open | Fixed), with a live glyph and
-/// total on top. SAVE and SAVE & START. The caller stores the result.
+/// total on top. SAVE and SAVE & READY UP. The caller stores the result.
 class CustomBuilderScreen extends StatefulWidget {
   const CustomBuilderScreen({super.key, required this.initial});
 
@@ -254,7 +254,7 @@ class _CustomBuilderScreenState extends State<CustomBuilderScreen> {
               key: const ValueKey('builder-warmup'),
               label: 'Warm-up',
               seconds: _s.warmupSeconds,
-              openNote: 'Open: tap START REPS when ready.',
+              openNote: 'Open: tap BEGIN REPS when ready.',
               onChanged: (v) => _set(
                 (x) => v == null
                     ? x.copyWith(openWarmup: true)
@@ -325,7 +325,7 @@ class _CustomBuilderScreenState extends State<CustomBuilderScreen> {
                             Navigator.of(context)
                                 .pop<BuilderResult>((session: _s, start: true))
                       : null,
-                  child: const Text('SAVE & START'),
+                  child: const Text('SAVE & READY UP'),
                 ),
               ),
             ],

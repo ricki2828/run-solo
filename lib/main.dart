@@ -116,10 +116,16 @@ class RunSoloApp extends StatelessWidget {
                 ),
             onGenerateRoute: (settings) {
               final page = switch (settings.name) {
-                Routes.start => StartScreen(
-                  preset:
-                      settings.arguments as AppSettings Function(AppSettings)?,
-                ),
+                Routes.start => switch (settings.arguments) {
+                  // Home's session button: Ready first, on that session.
+                  StartArgs(:final preset, :final readyFirst) => StartScreen(
+                    preset: preset,
+                    readyFirst: readyFirst,
+                  ),
+                  final AppSettings Function(AppSettings)? preset =>
+                    StartScreen(preset: preset),
+                  _ => const StartScreen(),
+                },
                 Routes.permissions => PermissionsScreen(
                   onboarding: settings.arguments == true,
                 ),

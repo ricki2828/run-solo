@@ -12,6 +12,7 @@ import '../platform/host_caps.dart';
 import '../platform/session_codec.dart';
 import '../state/block_plan.dart';
 import '../state/courses.dart';
+import '../app/format.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../state/max_hr.dart';
@@ -31,6 +32,7 @@ import '../widgets/today_target_line.dart';
 import '../widgets/value_stepper.dart';
 import 'custom_builder_screen.dart';
 import 'follow_route_sheet.dart';
+import 'ready_screen.dart';
 import 'intervals_sheet.dart';
 import 'watch_sheet.dart';
 
@@ -39,13 +41,26 @@ import 'watch_sheet.dart';
 @visibleForTesting
 bool debugLiveCompareAtStart = kLiveCompare;
 
+/// Arguments for [Routes.start] when Home sends the runner straight to the
+/// Ready screen ([readyFirst]) on a preset session.
+class StartArgs {
+  const StartArgs({this.preset, this.readyFirst = false});
+  final AppSettings Function(AppSettings)? preset;
+  final bool readyFirst;
+}
+
 /// Start (plan §3.2, design brief A8): INTERVALS / LAPS / FREE. Tapping
 /// INTERVALS opens the sheet; the picked session shows as the session card
 /// (reps and recovery steppers only, D2; anything else is Save as custom).
 /// Cue toggles, strap status, START. Typed start errors map to copy here;
 /// permission errors route to the checklist.
 class StartScreen extends StatefulWidget {
-  const StartScreen({super.key, this.preset});
+  const StartScreen({super.key, this.preset, this.readyFirst = false});
+
+  /// Home's session button: open the Ready screen at once, on the preset.
+  /// Backing out of Ready goes back to Home; its CHANGE link opens this
+  /// picker instead.
+  final bool readyFirst;
 
   /// Home's recommendation: setup opens on it. It is kept only if a run
   /// starts or the runner picks something else here; backing out puts the
@@ -75,12 +90,39 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   bool _probing = false;
   GpsProbeEvent? _probe;
 
+  /// What the Ready screen shows of the probe. The picker owns the probe so
+  /// the course and the goal gate keep working when Ready is closed.
+  final ValueNotifier<GpsProbeEvent?> _probeLive = ValueNotifier(null);
+
+  /// The Ready screen is up: the GPS warm-up runs for every run type, so
+  /// the fix is ready by GO.
+  bool _readyOpen = false;
+
+  /// [StartScreen.readyFirst] until Ready has opened, so the picker never
+  /// flashes behind it.
+  late bool _readyPending = widget.readyFirst;
+
+  /// The runner tapped CHANGE on Ready: stay on the picker.
+  bool _wantPicker = false;
+
+  /// The recorder started: the route swap to the recording screen is under
+  /// way, so nothing here pops or sets state any more.
+  bool _runStarted = false;
+
   bool get _gpsReady {
     final p = _probe;
     return p != null &&
         p.fix &&
         p.accuracyM != null &&
         p.accuracyM! <= gpsReadyAccuracyM;
+  }
+
+  bool _autoReadyDone = false;
+
+  void _autoReady() {
+    if (!widget.readyFirst || _autoReadyDone || !mounted) return;
+    _autoReadyDone = true;
+    unawaited(_openReady());
   }
 
   SettingsController? _presetController;
@@ -122,6 +164,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _plans?.removeListener(_onPlanChanged);
     _stopProbe();
+    _probeLive.dispose();
     super.dispose();
   }
 
@@ -140,12 +183,16 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     // The probe runs for every goal: each starts at the Start press and
     // counts distance from the first fix (plan §G, Q1).
-    final want = AppServices.of(context).settings.settings.goalRun;
+    final want =
+        AppServices.of(context).settings.settings.goalRun || _readyOpen;
     if (want && !_probing) {
       final rec = AppServices.of(context).recorder;
       _probing = true;
       _probeSub = rec.events.listen((e) {
-        if (e is GpsProbeEvent && mounted) setState(() => _probe = e);
+        if (e is GpsProbeEvent && mounted) {
+          setState(() => _probe = e);
+          _probeLive.value = e;
+        }
       });
       unawaited(rec.startGpsProbe().catchError((_) {}));
     } else if (!want && _probing) {
@@ -159,6 +206,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     _probeSub?.cancel();
     _probeSub = null;
     _probe = null;
+    _probeLive.value = null;
     final services = _services;
     if (services != null) {
       unawaited(services.recorder.stopGpsProbe().catchError((_) {}));
@@ -266,8 +314,14 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       _presetBefore = c.settings;
       // After this build: the update notifies listeners.
       scheduleMicrotask(
-        () => c.update(preset).then((_) => _presetApplied = c.settings),
+        () => c.update(preset).then((_) {
+          _presetApplied = c.settings;
+          _autoReady();
+        }),
       );
+    } else if (preset == null) {
+      // Home with nothing to preset: Ready on the saved run.
+      scheduleMicrotask(_autoReady);
     }
     _syncProbe();
     if (_runs == null) {
@@ -418,18 +472,6 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// The START label when the Today card is the pick: it names the session
-  /// ("START EASY RUN · 30 MIN", "START NORWEGIAN 4X4"), not the run type.
-  String? _todayStartLabel(AppSettings s) {
-    final next = _plannedNext(s);
-    if (next == null || !_todayPicked) return null;
-    final session = next.session;
-    if (!_samePick(PlanStart.apply(session)(s), s)) return null;
-    final sized = session.kind != engine.BlockKind.interval;
-    return 'START ${session.name}${sized ? ' · ${session.size}' : ''}'
-        .toUpperCase();
-  }
-
   Future<void> _setSettings(AppSettings Function(AppSettings) f) =>
       _services!.settings.update(f);
 
@@ -446,9 +488,12 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     if (picked != null && mounted) setState(() => _route = picked);
   }
 
-  Future<void> _start({
+  /// Starts the recorder and swaps to the recording screen. True when the
+  /// run started. [hold] keeps the Ready screen's GO up for a beat first.
+  Future<bool> _start({
     engine.SessionSpec? testSpec,
     RecordMode? testMode,
+    Future<void>? hold,
   }) async {
     final services = AppServices.of(context);
     final s = services.settings.settings;
@@ -531,22 +576,29 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
           _error = 'Could not start recording. Try again.';
         });
       }
-      return;
+      return false;
     }
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() => _starting = false);
     final err = result.error;
     if (err == null || err == StartError.alreadyRunning) {
       _presetKept = true;
-      await Navigator.of(context).pushReplacementNamed(Routes.recording);
-      return;
+      _runStarted = true;
+      await hold;
+      if (!mounted) return true;
+      // Ready sits above this screen: both go, Home stays underneath.
+      await Navigator.of(context)
+          .pushNamedAndRemoveUntil(Routes.recording, (r) => r.isFirst);
+      return true;
     }
     switch (err) {
       case StartError.noFinePermission:
       case StartError.approximateOnly:
       case StartError.notificationsDenied:
         final ok = await Navigator.of(context).pushNamed(Routes.permissions);
-        if (ok == true && mounted) await _start();
+        if (ok == true && mounted) {
+          return _start(testSpec: testSpec, testMode: testMode, hold: hold);
+        }
       case StartError.locationOff:
         setState(
           () =>
@@ -574,6 +626,177 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       case StartError.alreadyRunning:
         break;
     }
+    return false;
+  }
+
+  /// The Ready screen for the picked run: the one START. It runs the
+  /// countdown and calls [_start] at GO; the screen it sits on stays put
+  /// when the runner backs out.
+  Future<void> _openReady({
+    engine.SessionSpec? testSpec,
+    RecordMode? testMode,
+  }) async {
+    if (_readyOpen || !mounted) return;
+    final services = AppServices.of(context);
+    final s = services.settings.settings;
+    // From Home the History read may still be in flight; Ready's last-run
+    // line needs it.
+    if (_runs == null) {
+      try {
+        final r = await services.history.list();
+        if (mounted) _runs ??= r;
+      } catch (_) {}
+      if (!mounted) return;
+    }
+    final summary = _readySummary(s, testMode: testMode);
+    _readyOpen = true;
+    _syncProbe(); // the GPS warm-up, so the fix is ready by GO
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => ReadyScreen(
+          runType: summary.runType,
+          ground: summary.ground,
+          plan: summary.plan,
+          target: summary.target,
+          structure: summary.structure,
+          structureLine: summary.structure == null
+              ? null
+              : SessionText.structure(summary.structure!),
+          lastRun: summary.lastRun,
+          probe: _probeLive,
+          requiresGps: s.goalRun,
+          // Only from Home: the picker is one step back otherwise.
+          onChange: widget.readyFirst
+              ? () {
+                  _wantPicker = true;
+                  Navigator.of(context).pop();
+                }
+              : null,
+          onGo: (hold) =>
+              _start(testSpec: testSpec, testMode: testMode, hold: hold),
+        ),
+      ),
+    );
+    _readyOpen = false;
+    if (!mounted || _runStarted) return;
+    _syncProbe();
+    if (_readyPending) {
+      // Came from Home: backing out of Ready goes back to Home.
+      setState(() => _readyPending = false);
+      if (!_wantPicker && _error == null && mounted) {
+        Navigator.of(context).maybePop();
+      }
+    }
+  }
+
+  /// "Last free run: 7.2 km · 5:10/km · 3 days ago" from History's newest
+  /// run of that type; null when there is none or History is not in yet.
+  String? _lastRunLine(AppSettings s, RecordMode mode, String word) {
+    final runs = _runs;
+    if (runs == null) return null;
+    RunSummary? last;
+    for (final r in runs) {
+      if (r.mode != mode || r.distanceM < 100 || r.durationMs <= 0) continue;
+      if (last == null || r.start.isAfter(last.start)) last = r;
+    }
+    if (last == null) return null;
+    final pace = last.durationMs / 1000 / (last.distanceM / 1000);
+    return 'Last $word run: ${Fmt.distance(last.distanceM, s.units)}'
+        ' · ${Fmt.paceUnit(pace, s.units)}'
+        ' · ${Fmt.ago(last.start, _services!.now())}';
+  }
+
+  /// What the Ready screen says: the run type, the plan in one line and
+  /// today's target, from the same picks the label on the picker used.
+  ({
+    String runType,
+    Color ground,
+    String plan,
+    String? target,
+    engine.SessionSpec? structure,
+    String? lastRun,
+  })
+  _readySummary(AppSettings s, {RecordMode? testMode}) {
+    final services = AppServices.of(context);
+    final mode = testMode ?? s.lastMode;
+    final next = _plannedNext(s);
+    final today =
+        next != null &&
+            _samePick(PlanStart.apply(next.session)(s), s) &&
+            !s.goalRun
+        ? next.session
+        : null;
+    final todayPlan = today == null
+        ? null
+        : '${today.name}'
+              '${today.kind != engine.BlockKind.interval ? ' · ${today.size}' : ''}';
+    final todayTarget = today == null
+        ? null
+        : PlanText.targetLine(today, _planCtx?.vdot, s.units);
+    if (s.eventRun) {
+      return (
+        runType: '5 KM',
+        ground: AuroraRunType.goal,
+        plan: 'Timed from the start line',
+        target: null,
+        structure: null,
+        lastRun: null,
+      );
+    }
+    if (s.goalRun) {
+      return (
+        runType: 'GOAL RUN',
+        ground: AuroraRunType.goal,
+        plan: goalLabel(s),
+        target: null,
+        structure: null,
+        lastRun: null,
+      );
+    }
+    return switch (mode) {
+      RecordMode.intervals => (
+        runType: SessionChoice.isFartlek(s.sessionId) ? 'FARTLEK' : 'INTERVALS',
+        ground: AuroraRunType.intervals,
+        plan: todayPlan ?? services.pickedSession.name,
+        target: todayTarget,
+        structure: services.pickedSession,
+        lastRun: null,
+      ),
+      RecordMode.laps => (
+        runType: 'LAPS RUN',
+        ground: AuroraRunType.laps,
+        plan: todayPlan ?? 'Tap LAP at the end of each lap',
+        target: todayTarget,
+        structure: null,
+        lastRun: null,
+      ),
+      RecordMode.free => (
+        runType: 'FREE RUN',
+        ground: AuroraRunType.free,
+        plan: todayPlan ?? 'Just run',
+        target: todayTarget,
+        structure: null,
+        lastRun: _lastRunLine(s, RecordMode.free, 'free'),
+      ),
+      RecordMode.trail => (
+        runType: 'TRAIL RUN',
+        ground: AuroraRunType.trail,
+        plan: todayPlan ?? 'Just run. Walking the climbs is fine.',
+        target: todayTarget,
+        structure: null,
+        lastRun: _lastRunLine(s, RecordMode.trail, 'trail'),
+      ),
+      RecordMode.cooper => (
+        runType: _pickedTest == 'bronco' ? 'BRONCO' : '12-MIN TEST',
+        ground: AuroraRunType.tests,
+        plan: _pickedTest == 'bronco'
+            ? 'Five sets of 240 m, as fast as you can hold'
+            : 'As far as you can in 12 minutes',
+        target: null,
+        structure: null,
+        lastRun: null,
+      ),
+    };
   }
 
   /// The picked session as a watch workout, with the heart rate band in bpm
@@ -612,7 +835,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   }
 
   /// Custom builder: a new template, or one pre-filled ("Save as custom").
-  /// Saved templates are picked; SAVE & START starts the warm-up.
+  /// Saved templates are picked; SAVE & READY UP opens Ready.
   Future<void> _build(CustomSession? initial, {bool editing = false}) async {
     final services = AppServices.of(context);
     if (services.sessions.full && !editing) {
@@ -640,7 +863,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         goalRun: false,
       ),
     );
-    if (r.start && mounted) await _start();
+    if (r.start && mounted) await _openReady();
   }
 
   /// A goal's own pace (its target time over its distance), for Today's
@@ -744,7 +967,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                   'FIRST INTERVALS RUN',
                   t.typeIntervals,
                   const [
-                    'Warm up, then tap START REPS.',
+                    'Warm up, then tap BEGIN REPS.',
                     'Run each work rep hard; jog or walk each recovery. '
                         'The screen and voice count you through.',
                     'After the last rep, cool down and hold STOP.',
@@ -793,7 +1016,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                   t.typeTests,
                   const [
                     'Warm up first.',
-                    'Tap START TEST and run as far as you can in '
+                    'Tap BEGIN TEST and run as far as you can in '
                         '12 minutes.',
                     'Walk to cool down - your VO2 estimate comes from the '
                         '12-minute distance.',
@@ -878,6 +1101,8 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     return ListenableBuilder(
       listenable: Listenable.merge([services.settings, services.sessions]),
       builder: (context, _) {
+        // From Home: Ready opens at once; never show the picker behind it.
+        if (_readyPending) return const Scaffold(body: SizedBox.shrink());
         final s = services.settings.settings;
         final mode = s.lastMode;
         final goal = s.goalRun;
@@ -885,7 +1110,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         Future<void> set(AppSettings Function(AppSettings) f) =>
             services.settings.update(f);
         return Scaffold(
-          appBar: const RunAppBar(title: 'START'),
+          appBar: const RunAppBar(title: 'SET UP'),
           body: SafeArea(
             child: ListView(
               // Build the longer Aurora choices and the settings below them
@@ -1172,10 +1397,9 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                         _gpsReady
                             ? 'GPS ready · ${_probe!.accuracyM!.round()} m'
                             : s.eventRun
-                            ? 'Waiting for GPS. The 5 km needs a fix at the '
+                            ? 'Waiting for GPS. START waits for a fix at the '
                                   'start line.'
-                            : 'Waiting for GPS. The goal needs a fix before '
-                                  'you start.',
+                            : 'Waiting for GPS. START waits for a fix.',
                         key: const ValueKey('event-gps'),
                         style: RunSoloType.label13.copyWith(
                           color: _gpsReady ? t.inkSecondary : t.semWarn,
@@ -1197,33 +1421,20 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                       ),
                     ),
                   FilledButton(
+                    key: const ValueKey('start-ready-up'),
                     // The test always goes through its health note first.
-                    onPressed: _starting || (goal && !_gpsReady)
+                    // Only Ready gates on GPS (goal and event runs); this
+                    // button is always on.
+                    onPressed: _starting
                         ? null
                         : mode == RecordMode.cooper && _pickedTest == 'bronco'
-                        ? () => _start(
+                        ? () => _openReady(
                             testSpec: engine.SessionSpec.bronco,
                             testMode: RecordMode.laps,
                           )
-                        : _start,
-                    child: Text(
-                      _todayStartLabel(s) ??
-                          switch (mode) {
-                            _ when s.eventRun => 'START 5 KM',
-                            _ when goal => 'START GOAL',
-                            RecordMode.intervals
-                                when SessionChoice.isFartlek(s.sessionId) =>
-                              'START FARTLEK',
-                            RecordMode.intervals => 'START WARM-UP',
-                            RecordMode.laps => 'START LAPS RUN',
-                            RecordMode.free => 'START FREE RUN',
-                            RecordMode.trail => 'START TRAIL RUN',
-                            RecordMode.cooper =>
-                              _pickedTest == 'bronco'
-                                  ? 'START BRONCO'
-                                  : 'START TEST',
-                          },
-                    ),
+                        : _openReady,
+                    // The only START is on the Ready screen (Ricki, 10-Oct).
+                    child: const Text('READY UP ›'),
                   ),
                 ],
               ),
@@ -1429,7 +1640,7 @@ class _SessionCard extends StatelessWidget {
             ? 'Press LAP at the start and end of each surge. You get a '
                   'surge summary, not a verdict.'
             : spec.warmupSeconds == null
-            ? 'Warm-up: open. Tap START REPS when you are ready.'
+            ? 'Warm-up: open. Tap BEGIN REPS when you are ready.'
             : spec.warmupSeconds == 0
             ? 'No warm-up. The clock starts when you tap Start.'
             : 'Warm-up: ${SessionText.clock(spec.warmupSeconds!)}, then the '
@@ -1442,7 +1653,7 @@ class _SessionCard extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(top: Space.x8),
           child: Text(
-            'Distance reps need GPS. START REPS waits for a fix.',
+            'Distance reps need GPS. BEGIN REPS waits for a fix.',
             key: const ValueKey('session-gps-note'),
             style: RunSoloType.label13.copyWith(color: t.semWarn),
           ),

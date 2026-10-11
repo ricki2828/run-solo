@@ -54,15 +54,15 @@ Future<void> tapStopThenSave(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('4x4: warm-up counts up, START REPS begins rep 1, no big LAP', (
+  testWidgets('4x4: warm-up counts up, BEGIN REPS begins rep 1, no big LAP', (
     tester,
   ) async {
     final (fake, _) = await openRecording(tester);
     expect(find.text('WARM-UP'), findsOneWidget);
-    expect(find.text('warm up, then tap START REPS'), findsOneWidget);
+    expect(find.text('warm up, then tap BEGIN REPS'), findsOneWidget);
     expect(find.text('warm-up pace'), findsOneWidget);
     expect(find.byKey(const ValueKey('start-reps')), findsOneWidget);
-    expect(find.text('START REPS'), findsOneWidget);
+    expect(find.text('BEGIN REPS'), findsOneWidget);
 
     fake.advance(const Duration(seconds: 65));
     await settle(tester);

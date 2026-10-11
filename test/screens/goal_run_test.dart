@@ -55,7 +55,7 @@ void main() {
         settings: AppSettings(onboardingDone: true, goalRun: true, goalId: id),
       );
       await ready(tester, fake);
-      await tester.tap(find.text('START GOAL'));
+      await readyAndGo(tester);
       await pumpTimes(tester, 6);
       final spec = fake.startCalls.single.spec!;
       expect(spec.templateId, engine.SessionSpec.goalId, reason: id);
@@ -97,7 +97,7 @@ void main() {
     expect(find.text('Custom'), findsNothing);
     expect(find.text('12.3 km'), findsNWidgets(2), reason: 'chip + GOAL');
     await ready(tester, fake);
-    await tester.tap(find.text('START GOAL'));
+    await readyAndGo(tester);
     await pumpTimes(tester, 6);
     final spec = fake.startCalls.single.spec!;
     expect(spec.steps.single.value, 12300);
@@ -127,7 +127,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('7.5 mi'), findsNWidgets(2), reason: 'chip + GOAL');
     await ready(tester, fake);
-    await tester.tap(find.text('START GOAL'));
+    await readyAndGo(tester);
     await pumpTimes(tester, 6);
     final spec = fake.startCalls.single.spec!;
     expect(spec.steps.single.value, 12070);
@@ -165,7 +165,7 @@ void main() {
     await pumpTimes(tester, 4);
     await tester.pump(const Duration(milliseconds: 400));
     await ready(tester, fake);
-    await tester.tap(find.text('START GOAL'));
+    await readyAndGo(tester);
     await pumpTimes(tester, 6);
     final spec = fake.startCalls.single.spec!;
     expect(spec.steps.single.value, 4500);
@@ -182,8 +182,8 @@ void main() {
     await pumpTimes(tester, 4);
     final gps = find.byKey(const ValueKey('event-gps'));
     expect(gps.hitTestable(), findsOneWidget);
-    final button = find.widgetWithText(FilledButton, 'START 5 KM');
-    expect(tester.widget<FilledButton>(button).onPressed, isNull);
+    final button = find.widgetWithText(FilledButton, 'READY UP ›');
+    expect(tester.widget<FilledButton>(button).onPressed, isNotNull);
     final gpsBox = tester.getRect(gps);
     final btnBox = tester.getRect(button);
     expect(gpsBox.bottom, lessThanOrEqualTo(btnBox.top));

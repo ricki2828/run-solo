@@ -119,7 +119,7 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.tap(find.text('START FREE RUN'));
+      await readyAndGo(tester);
       await settleAnimations(tester);
       final sent = fake.startCalls.single.route!;
       expect(sent.name, 'Hill loop');
@@ -184,7 +184,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('follow-route-clear')));
       await settleAnimations(tester);
       expect(find.text('Follow a route'), findsOneWidget);
-      await tester.tap(find.text('START FREE RUN'));
+      await readyAndGo(tester);
       await settleAnimations(tester);
       expect(fake.startCalls.single.route, isNull);
     });
@@ -202,7 +202,7 @@ void main() {
       );
       await settleAnimations(tester);
       expect(find.byKey(_row), findsNothing);
-      await tester.tap(find.text('START LAPS RUN'));
+      await readyAndGo(tester);
       await settleAnimations(tester);
       expect(fake.startCalls.single.route, isNull);
     });
@@ -238,7 +238,7 @@ void main() {
       await settleAnimations(tester);
       expect(services.routes.routes.single.id, 'run-${run.id}');
       expect(services.routes.routes.single.source, engine.RouteSource.run);
-      await tester.tap(find.text('START FREE RUN'));
+      await readyAndGo(tester);
       await settleAnimations(tester);
       expect(fake.startCalls.single.route!.id, 'run-${run.id}');
     });

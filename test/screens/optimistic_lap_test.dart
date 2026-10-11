@@ -113,7 +113,7 @@ void main() {
   // #40 review (rebase on #28): the optimistic phase must drop native's
   // step fields, or the new title shows with the previous step's caption
   // and metres-to-go until the next tick.
-  testWidgets('8x400: START REPS and a LAP-ended rep show the new step at '
+  testWidgets('8x400: BEGIN REPS and a LAP-ended rep show the new step at '
       'once, never the old step\'s metres', (tester) async {
     final fake = FakeRecorderGateway(now: now)..deferManualLaps = true;
     final services = fakeServices(recorder: fake);

@@ -41,18 +41,18 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.byKey(const ValueKey('event-card')), findsOneWidget);
-    expect(find.text('START 5 KM'), findsOneWidget);
+    expect(find.text('READY UP ›'), findsOneWidget);
 
     // A10.10 / #54: START waits for a pre-start fix at 20 m or better.
     expect(fake.gpsProbeRunning, isTrue);
     FilledButton start() => tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'START 5 KM'),
+      find.widgetWithText(FilledButton, 'READY UP ›'),
     );
-    expect(start().onPressed, isNull);
+    expect(start().onPressed, isNotNull, reason: 'only Ready gates on GPS');
     expect(find.textContaining('Waiting for GPS'), findsOneWidget);
     fake.emitGpsProbe(GpsProbeEvent(fix: true, accuracyM: 35));
     await pumpTimes(tester, 2);
-    expect(start().onPressed, isNull, reason: '35 m is not ready');
+    expect(start().onPressed, isNotNull);
     fake.emitGpsProbe(
       GpsProbeEvent(fix: true, lat: -37.8, lon: 144.9, accuracyM: 6),
     );
@@ -61,20 +61,16 @@ void main() {
     expect(start().onPressed, isNotNull);
     fake.emitGpsProbe(GpsProbeEvent(fix: false));
     await pumpTimes(tester, 2);
-    expect(start().onPressed, isNull, reason: 'the fix went stale');
+    expect(start().onPressed, isNotNull);
     fake.emitGpsProbe(GpsProbeEvent(fix: true, accuracyM: 8));
     await pumpTimes(tester, 2);
-    await tester.tap(find.text('START 5 KM'));
+    await readyAndGo(tester);
     await pumpTimes(tester, 6);
     final call = fake.startCalls.single;
     expect(call.mode, RecordMode.intervals);
     expect(call.spec?.templateId, engine.SessionSpec.parkrunId);
     expect(call.spec?.name, name);
     expect(call.spec?.autoStop, isTrue);
-
-    // Another chip clears the event.
-    await tester.pageBack();
-    await pumpTimes(tester, 4);
   });
 
   testWidgets('picking LAPS after the event clears it', (tester) async {
@@ -188,9 +184,9 @@ void main() {
     await pumpTimes(tester, 4);
     expect(services.settings.settings.goalId, 'd10000');
     FilledButton start() => tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'START GOAL'),
+      find.widgetWithText(FilledButton, 'READY UP ›'),
     );
-    expect(start().onPressed, isNull, reason: 'waits for GPS');
+    expect(start().onPressed, isNotNull, reason: 'waits for GPS');
     fake.emitGpsProbe(GpsProbeEvent(fix: true, accuracyM: 5));
     await pumpTimes(tester, 2);
     expect(start().onPressed, isNotNull, reason: 'G1 specs are in (#63)');

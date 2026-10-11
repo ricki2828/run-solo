@@ -53,7 +53,7 @@ void main() {
     expect(services.settings.settings.recoverySeconds, 120);
   });
 
-  testWidgets('START WARM-UP hands the 4x4 session to the recorder', (
+  testWidgets('READY UP then START hands the 4x4 session to the recorder', (
     tester,
   ) async {
     final fake = FakeRecorderGateway(now: now);
@@ -69,7 +69,7 @@ void main() {
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
 
-    await tester.tap(find.text('START WARM-UP'));
+    await readyAndGo(tester);
     await pumpTimes(tester, 6);
 
     final status = await fake.status();
@@ -99,7 +99,7 @@ void main() {
     );
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
-    await tester.tap(find.text('START WARM-UP'));
+    await readyAndGo(tester);
     await pumpTimes(tester, 6);
     final c = fake.voiceCoach!;
     expect(c.enabled, isTrue);
@@ -119,7 +119,7 @@ void main() {
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
     expect(find.byType(ValueStepper), findsNothing);
-    await tester.tap(find.text('START FREE RUN'));
+    await readyAndGo(tester);
     await pumpTimes(tester, 6);
     expect((await fake.status()).spec, isNull);
     expect(fake.startCalls.single.spec, isNull);
@@ -136,7 +136,7 @@ void main() {
     final services = fakeServices(recorder: fake);
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
-    await tester.tap(find.text('START WARM-UP'));
+    await readyAndGo(tester);
     await pumpTimes(tester, 6);
     expect(find.byType(PermissionsScreen), findsOneWidget);
     expect(find.byType(RecordingScreen), findsNothing);
@@ -150,7 +150,7 @@ void main() {
     final services = fakeServices(recorder: fake);
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
-    await tester.tap(find.text('START WARM-UP'));
+    await readyAndGo(tester);
     await pumpTimes(tester, 6);
     expect(find.textContaining('Not enough storage'), findsOneWidget);
   });
@@ -188,7 +188,7 @@ void main() {
     );
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
-    await tester.tap(find.text('START LAPS RUN'));
+    await readyAndGo(tester);
     await pumpTimes(tester, 4);
     expect(fake.volumeKeyLaps, isFalse);
     expect(services.recording.snapshot.recording, isTrue);
@@ -202,12 +202,12 @@ void main() {
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
     expect(find.text('Volume-key lap'), findsNothing);
-    await tester.tap(find.text('START WARM-UP'));
+    await readyAndGo(tester);
     await pumpTimes(tester, 4);
     expect(fake.volumeKeyLaps, isNull);
   });
 
-  testWidgets('START WARM-UP is pinned on screen, even at 360 x 640', (
+  testWidgets('READY UP is pinned on screen, even at 360 x 640', (
     tester,
   ) async {
     final services = fakeServices();
@@ -216,7 +216,7 @@ void main() {
     tester.view.physicalSize = const Size(1080, 1920);
     tester.view.devicePixelRatio = 3.0;
     await pumpTimes(tester, 4);
-    final button = find.widgetWithText(FilledButton, 'START WARM-UP');
+    final button = find.widgetWithText(FilledButton, 'READY UP ›');
     final rect = tester.getRect(button);
     expect(rect.top, greaterThanOrEqualTo(0));
     expect(rect.bottom, lessThanOrEqualTo(640));
@@ -232,7 +232,7 @@ void main() {
     tester.view.devicePixelRatio = 3.0;
     await pumpTimes(tester, 4);
     final startTop = tester
-        .getRect(find.widgetWithText(FilledButton, 'START WARM-UP'))
+        .getRect(find.widgetWithText(FilledButton, 'READY UP ›'))
         .top;
     for (final k in ['goal-chip', 'tests-chip']) {
       final r = tester.getRect(find.byKey(ValueKey(k)));
@@ -274,9 +274,21 @@ void main() {
     await tester.tap(card);
     await pumpTimes(tester, 4);
     expect(services.settings.settings.lastMode, isNot(RecordMode.laps));
-    // START names the session, not the run type.
-    expect(find.text('START FREE RUN'), findsNothing);
-    expect(find.text('START NORWEGIAN 4X4'), findsOneWidget);
+    // READY UP opens the Ready screen, which names the session.
+    final up = find.byKey(const ValueKey('start-ready-up'));
+    await tester.ensureVisible(up);
+    await tester.tap(up);
+    await pumpTimes(tester, 3);
+    await settleAnimations(tester);
+    expect(find.byKey(const ValueKey('ready-run-type')), findsOneWidget);
+    expect(find.text('FREE RUN'), findsNothing);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('ready-plan'))).data,
+      startsWith('Norwegian 4x4'),
+    );
+    await tester.tap(find.byKey(const ValueKey('ready-back')));
+    await pumpTimes(tester, 3);
+    await settleAnimations(tester);
     // Its own selection: ticked after the tap whatever the plan's reps are.
     expect(
       find.descendant(of: card, matching: find.byIcon(Icons.check)),

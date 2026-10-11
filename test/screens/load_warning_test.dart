@@ -64,16 +64,16 @@ void main() {
         home: HomeScreen(now: now),
       );
       await pumpTimes(tester, 6);
-      expect(find.text('Start Easy run'), findsOneWidget);
-      expect(find.textContaining('Start Norwegian 4x4'), findsNothing);
+      expect(find.text('Easy run ›'), findsOneWidget);
+      expect(find.text('Norwegian 4x4 ›'), findsNothing);
       final anyway = find.byKey(const ValueKey('home-do-anyway'));
       expect(anyway, findsOneWidget);
       expect(tester.getSize(anyway).height, greaterThanOrEqualTo(48));
       expect(find.textContaining('anyway'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('load-dismiss')));
       await pumpTimes(tester, 6);
-      expect(find.textContaining('Start Norwegian 4x4'), findsOneWidget);
-      expect(find.text('Start Easy run'), findsNothing);
+      expect(find.text('Norwegian 4x4 ›'), findsOneWidget);
+      expect(find.text('Easy run ›'), findsNothing);
       expect(anyway, findsNothing);
     },
   );
@@ -164,7 +164,7 @@ void main() {
       tester.getSize(find.byKey(const ValueKey('load-warning'))).height,
       greaterThanOrEqualTo(48),
     );
-    final start = find.widgetWithText(FilledButton, 'START WARM-UP');
+    final start = find.widgetWithText(FilledButton, 'READY UP ›');
     expect(tester.widget<FilledButton>(start).onPressed, isNotNull);
   });
 
@@ -182,7 +182,7 @@ void main() {
     );
     await pumpApp(tester, services, home: HomeScreen(now: now));
     await pumpTimes(tester, 6);
-    expect(find.text('Start Easy run'), findsOneWidget);
+    expect(find.text('Easy run ›'), findsOneWidget);
     expect(
       find.textContaining('above your usual, so this one is easy.'),
       findsOneWidget,
@@ -203,16 +203,16 @@ void main() {
     );
     await pumpApp(tester, services, home: HomeScreen(now: now));
     await pumpTimes(tester, 6);
-    expect(find.text('Start Easy run'), findsOneWidget);
+    expect(find.text('Easy run ›'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('load-dismiss')));
     await pumpTimes(tester, 6);
     expect(find.byKey(const ValueKey('load-warning')), findsNothing);
-    expect(find.text('Start Easy run'), findsNothing);
+    expect(find.text('Easy run ›'), findsNothing);
     expect(
       find.textContaining('above your usual, so this one is easy.'),
       findsNothing,
     );
-    expect(find.textContaining('Start Norwegian 4x4'), findsOneWidget);
+    expect(find.text('Norwegian 4x4 ›'), findsOneWidget);
   });
 
   testWidgets('Why? and Dismiss are at least 48 dp', (tester) async {
