@@ -9,7 +9,8 @@ from ._engine import render_html
 
 VERDICT_WORDS = {"faster": "Faster.", "holding": "Holding.", "slower": "Slower.", "noRealChange": "No real change.",
                  "baselineSet": "Baseline set.", "indoorRun": "Indoor run."}
-TYPE_WORDS = {"easy": "Easy run", "long": "Long run", "tempo": "Tempo", "interval": "Intervals", "race": "Race"}
+TYPE_WORDS = {"easy": "Easy run", "long": "Long run", "tempo": "Tempo", "interval": "Intervals", "race": "Race",
+              "cooper": "Cooper test", "trail": "Trail run"}
 
 
 def _hero(facts: Mapping[str, Any]) -> tuple[str, str]:

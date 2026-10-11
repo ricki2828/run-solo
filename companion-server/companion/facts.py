@@ -54,6 +54,7 @@ TYPE_LABEL = {
     "easy": "easy run", "long": "long run", "tempo": "tempo run",
     "interval": "interval session", "race": "race",
 }
+APP_TYPE_LABEL = {"trail": "trail run", "cooper": "Cooper test"}  # app types whose own name beats the coach type
 VERDICT_TEXT = {  # app wire name (VerdictHeadline.name) -> the verdict copy; noVerdict is silent
     "faster": "faster", "holding": "holding", "slower": "slower", "noRealChange": "no real change",
     "baselineSet": "baseline set", "indoorRun": "indoor run",
@@ -179,7 +180,7 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
     if dur < MIN_DURATION_S or dist < MIN_DISTANCE_M:
         return FactsResult((), None, "steady", True, "junk")
 
-    label = "trail run" if run.get("app_type") == "trail" else TYPE_LABEL.get(run["type"], "run")
+    label = APP_TYPE_LABEL.get(run.get("app_type") or "") or TYPE_LABEL.get(run["type"], "run")
     pace = run.get("pace_s_per_km")
     base_txt = f"{label.capitalize()}: {fmt_km(dist)} km in {round(dur / 60)} min"
     if pace:

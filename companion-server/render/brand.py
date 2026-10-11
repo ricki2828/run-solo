@@ -39,7 +39,7 @@ ZONE_FLOOD = ("#1C3F6E", "#155835", "#634907", "#863210", "#7D1222")
 
 RUN_TYPE_COLOUR = {
     "easy": SCORE["aerobic"], "long": SCORE["long"], "tempo": SCORE["mid"],
-    "interval": SCORE["speed"], "race": SCORE["speed"],
+    "interval": SCORE["speed"], "race": SCORE["speed"], "cooper": SCORE["speed"], "trail": SCORE["long"],
 }
 
 SAIRA = "Saira Extra Condensed"

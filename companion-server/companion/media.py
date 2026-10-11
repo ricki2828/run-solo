@@ -54,7 +54,8 @@ def _zone_s(row: Mapping[str, Any]) -> list[float]:
 def run_facts(run: Mapping[str, Any], headline: str) -> dict[str, Any]:
     """Image facts for one run, from its stored row only."""
     facts: dict[str, Any] = {
-        "type": run["type"],
+        # the app's own name wins for test and trail runs: a Cooper test is not a "Race"
+        "type": run["app_type"] if run.get("app_type") in ("cooper", "trail") else run["type"],
         "start_local": to_local(parse_iso(run["start_utc"]), run["zone_id"]).strftime("%Y-%m-%dT%H:%M"),
         "distance_km": run["distance_m"] / 1000,
         "duration_s": run["duration_s"],

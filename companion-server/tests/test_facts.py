@@ -169,3 +169,19 @@ def test_usual_day_gate():
     assert tomorrow_is_usual_day("weekdays", 2) and not tomorrow_is_usual_day("weekdays", 5)
     assert tomorrow_is_usual_day("weekends", 6) and not tomorrow_is_usual_day("weekends", 0)
     assert tomorrow_is_usual_day(None, 5)
+
+
+def test_cooper_is_named_a_cooper_test_not_a_race():
+    run = {"type": "race", "app_type": "cooper", "distance_m": 2776.3, "duration_s": 751, "pace_s_per_km": 270.6,
+           "start_utc": "2026-09-27T00:20:12Z", "utc_offset_min": 480}
+    base = build_facts(run, [], {}).facts[0].text
+    assert base.startswith("Cooper test: 2.8 km in 13 min")
+
+
+def test_picture_card_names_a_cooper_test():
+    from companion.media import run_facts
+    row = {"type": "race", "app_type": "cooper", "start_utc": "2026-09-27T00:20:12Z", "zone_id": "Asia/Singapore",
+           "distance_m": 2776.3, "duration_s": 751}
+    assert run_facts(row, "x")["type"] == "cooper"
+    from render.cards.post_run import TYPE_WORDS
+    assert TYPE_WORDS["cooper"] == "Cooper test"
