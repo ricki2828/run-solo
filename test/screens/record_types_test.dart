@@ -222,4 +222,42 @@ void main() {
     expect(background(tester), HrZones.background(4));
     expect(find.text('ZONE 4 · HARD'), findsOneWidget);
   });
+
+  testWidgets('every frame of a zone change keeps the foreground >= 4.5:1', (
+    tester,
+  ) async {
+    final (fake, services) = await open(tester, mode: RecordMode.free, hr: 124);
+    Color floodNow() => tester
+        .widget<DecoratedBox>(
+          find.descendant(
+            of: find.byKey(const ValueKey('zone-background')),
+            matching: find.byType(DecoratedBox),
+          ),
+        )
+        .let((d) => (d.decoration as BoxDecoration).color!);
+    var frames = 0;
+    void sample(String when) {
+      final t = Theme.of(
+        tester.element(find.byKey(const ValueKey('vitals-hr'))),
+      ).extension<RunSoloTokens>()!;
+      final ratio = HrZones.contrast(t.inkPrimary, floodNow());
+      expect(ratio, greaterThanOrEqualTo(4.5), reason: when);
+      frames++;
+    }
+
+    // Z2 -> Z3 (Bone to ink), Z3 -> Z4, Z4 -> Z5 (ink to Bone), and back.
+    for (final hr in [140, 162, 178, 162, 140, 124]) {
+      fake.scriptedHr = hr;
+      for (var i = 0; i < 16; i++) {
+        fake.advance(const Duration(milliseconds: 500));
+        await tester.pump();
+        for (var k = 0; k < 30; k++) {
+          await tester.pump(const Duration(milliseconds: 16));
+          sample('HR $hr frame $k');
+        }
+      }
+    }
+    expect(services.recording.snapshot.zone, 2);
+    expect(frames, greaterThan(1000));
+  });
 }
