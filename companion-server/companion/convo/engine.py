@@ -171,7 +171,7 @@ def media_for_run(run: Mapping[str, Any], situation: str, touch: T.Touch | None,
 
 def enrich_run(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]], memory: Mapping[str, str],
                now: datetime, usage: T.Usage, rw: RunWeather | None, sunrise_count: int = 0,
-               prev_situation: str | None = None) -> RunVoice:
+               prev_situation: str | None = None, soften: bool = False) -> RunVoice:
     """`hist` is the whole prior record, newest first."""
     seed = str(run.get("run_id") or run.get("start_utc"))
     situation, slots = situation_for(run, hist, rw)
@@ -179,7 +179,7 @@ def enrich_run(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]], memory
     if rendered is None and situation != "steady":
         situation = "steady"
         rendered = voice.render(situation, slots, usage.variants, now, seed)
-    ctx = T.Ctx(run, hist, memory, now, rw.sunrise_local if rw else None, sunrise_count, prev_situation, frozenset(usage.feel_refs))
+    ctx = T.Ctx(run, hist, memory, now, rw.sunrise_local if rw else None, sunrise_count, prev_situation, frozenset(usage.feel_refs), soften)
     touch = T.choose(ctx, usage)
     t_variant = t_line = None
     allowed = rendered.allowed if rendered else ""

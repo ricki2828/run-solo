@@ -21,6 +21,7 @@ from .channels import ChannelError, Inbound, OutCard, TelegramChannel, WhatsAppC
 from .config import Settings
 from .deeplink import run_link, web_twin, week_link
 from .media import Media, MediaError, from_settings
+from . import notes as cv_notes
 from .convo import engine as cv_engine
 from .convo import recap as cv_recap
 from .convo import suggest as cv_suggest
@@ -49,8 +50,14 @@ RETENTION_AREA_DAYS = 30
 AREA_USABLE_DAYS = 7  # a forecast is never asked for a place older than this
 
 NOT_OPEN = "Run Supreme's companion isn't open yet. We'll let you know when it is."
+NOTE_ACTION = "note:add"
 UNKNOWN = ("I only send run recaps. To connect, open Run Supreme, go to Settings > Companion and tap "
            "Turn on. Send STOP to pause or DELETE to erase everything.")
+NOTE_PROMPT = "Go on, type your note. Up to 500 characters. I'll keep it with this run."
+NOTE_SAVED = "Noted. I'll keep it in mind."
+NOTE_TOO_LONG = "That's over 500 characters. Trim it and send it again."
+NOTE_EXPIRED = "That note window closed after 10 minutes. Tap Add a note on the run card to start again."
+NOTE_PAUSED = "You're paused. Send RESUME first, then tap Add a note again."
 CODE_MSG = ("Your code is {code}. Type it into Run Supreme to finish connecting. Only ever enter it in the app, "
             "and never share it. If you didn't start this, ignore this message.")
 WELCOME = ("You're connected. Your run recaps will land here. Send STOP to pause them or DELETE to "
@@ -139,13 +146,14 @@ class RunIn(BaseModel):
 EXPORTED_TABLES = {
     "users": "profile", "runs": "runs_received", "memory": "memory", "cards": "messages_sent_30d",
     "outcomes": "suggestion_outcomes", "convo_cards": "messages_sent_30d", "convo_log": "conversation_log",
-    "convo_area": "areas",
+    "convo_area": "areas", "run_notes": "run_notes",
 }
 NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message content of its own
     "devices": "hashed device tokens", "enrolments": "short-lived sign-up nonces", "outbox": "send queue, ids only",
     "quota": "weekly cap counters", "msglog": "send counts, no content", "inbound_seen": "hashed message ids",
     "replay_state": "coach replay progress", "replay_runs": "run ids the replay inserted",
     "replay_items": "replay send times and card ids",
+    "note_mode": "10-minute 'Add a note' waiting state: a run id and an expiry, no text",
 }
 
 
@@ -325,6 +333,7 @@ class Service:
             if user:
                 with db.tx(self.s.db_path) as c:
                     c.execute("UPDATE users SET paused=0 WHERE id=?", (user["id"],))
+                    c.execute("DELETE FROM note_mode WHERE user_id=?", (user["id"],))
             reply = "Back on. Your next run recap will land here." if user else UNKNOWN
         elif word == "DELETE":
             if user:
@@ -334,8 +343,38 @@ class Service:
             else:
                 reply = "We hold nothing for this chat."
         else:
-            reply = UNKNOWN  # fixed canned reply; unrecognised free text never reaches a model
+            # Free text is only ever a note, after "Add a note". Everything else gets the fixed canned reply, and no
+            # free text ever reaches a model.
+            reply = self._note_reply(user, inb.text, now) or UNKNOWN
         self._reply(ch, inb.ref, reply)
+
+    def _note_reply(self, user: dict | None, raw: str, now: datetime) -> str | None:
+        """The reply when this free text is (or was meant to be) a note; None when the user is not in note mode."""
+        if not user:
+            return None
+        with db.ro(self.s.db_path) as c:
+            mode = c.execute("SELECT run_id, expires_at FROM note_mode WHERE user_id=?", (user["id"],)).fetchone()
+        if mode is None:
+            return None
+        if parse_iso(mode["expires_at"]) <= now:
+            with db.tx(self.s.db_path) as c:
+                c.execute("DELETE FROM note_mode WHERE user_id=?", (user["id"],))
+            return NOTE_EXPIRED
+        if user["paused"]:
+            return NOTE_PAUSED  # nothing is stored for a paused chat
+        text = cv_notes.clean(raw)
+        if not text:
+            return None
+        if len(text) > cv_notes.NOTE_MAX_CHARS:
+            return NOTE_TOO_LONG  # still in note mode: the runner can send a shorter one
+        with db.tx(self.s.db_path) as c:
+            c.execute("DELETE FROM note_mode WHERE user_id=?", (user["id"],))
+            if not c.execute("SELECT 1 FROM runs WHERE user_id=? AND run_id=?", (user["id"], mode["run_id"])).fetchone():
+                return NOTE_EXPIRED
+            c.execute("INSERT INTO run_notes (user_id, run_id, note, created_at) VALUES (?,?,?,?) "
+                      "ON CONFLICT(user_id, run_id) DO UPDATE SET note=excluded.note, created_at=excluded.created_at",
+                      (user["id"], mode["run_id"], text, iso(now)))
+        return NOTE_SAVED
 
     def _reply(self, ch: Any, ref: str, text: str) -> None:
         try:
@@ -354,13 +393,34 @@ class Service:
         if inb.button_idx is None or not 0 <= inb.button_idx < len(buttons):
             ch.ack_callback(inb, "That button has expired.", clear=False)
             return
+        real_now = now  # note mode runs on the real clock, even for a replayed card
         now = self._tap_time(card["card_id"], now)
         action = buttons[inb.button_idx]["action"]
         kind, _, rest = action.partition(":")
         msg = "Thanks."
+        keep: list[tuple[str, int]] = []
+        note_tapped = False
+        after: str | None = None  # a chat message to send once the transaction is closed
         with db.tx(self.s.db_path) as c:
             if kind == "feel" and card["run_id"] and rest in ("easy", "right", "hard"):
                 c.execute("UPDATE runs SET feel=? WHERE user_id=? AND run_id=?", (rest, user["id"], card["run_id"]))
+                # the feel row goes after a tap; "Add a note" stays so a note can still follow
+                keep = [(b["label"], i) for i, b in enumerate(buttons) if b["action"] == NOTE_ACTION]
+            elif kind == "note":
+                # The card must be a run card whose run still exists. A tap on another run's card moves note mode to
+                # that card: the note goes where the runner last pointed.
+                if card["kind"] != "run" or not card["run_id"] or not c.execute(
+                        "SELECT 1 FROM runs WHERE user_id=? AND run_id=?", (user["id"], card["run_id"])).fetchone():
+                    msg = "That button has expired."
+                elif user["paused"]:
+                    msg, after = "You're paused.", NOTE_PAUSED
+                else:
+                    c.execute("INSERT INTO note_mode (user_id, run_id, card_id, expires_at) VALUES (?,?,?,?) "
+                              "ON CONFLICT(user_id) DO UPDATE SET run_id=excluded.run_id, card_id=excluded.card_id, "
+                              "expires_at=excluded.expires_at",
+                              (user["id"], card["run_id"], card["card_id"],
+                               iso(real_now + timedelta(minutes=cv_notes.NOTE_MODE_MIN))))
+                    msg, note_tapped = "Type your note.", True
             elif kind == "ans":
                 key, _, val = rest.partition(":")
                 if valid_answer(key, val):
@@ -377,7 +437,17 @@ class Service:
                                       (user["id"], f"sugg:{wk}:{n}", iso(now)))
                         msg = "Okay, nothing more this week."
             c.execute("UPDATE cards SET answered_at=COALESCE(answered_at, ?) WHERE card_id=?", (iso(now), card["card_id"]))
-        ch.ack_callback(inb, msg)
+        if note_tapped:
+            ch.ack_callback(inb, msg, clear=False)  # the card keeps its buttons
+            self._reply(ch, inb.ref, NOTE_PROMPT)
+        elif kind == "note":
+            ch.ack_callback(inb, msg, clear=False)
+            if after:
+                self._reply(ch, inb.ref, after)
+        elif keep:
+            ch.ack_callback(inb, msg, keep=keep)
+        else:
+            ch.ack_callback(inb, msg)
 
     def _tap_time(self, card_id: str, now: datetime) -> datetime:
         """When a tap happened on the card's own clock. A replayed card lives at a virtual time in the past, so its
@@ -426,6 +496,8 @@ class Service:
             memory = self._memory_get(c, uid, now)
             optin = bool(u["weather_optin"])
             outcomes = [dict(r) for r in c.execute("SELECT kind, outcome, ts FROM outcomes WHERE user_id=?", (uid,))]
+            run_notes = [dict(r) for r in c.execute(
+                "SELECT run_id, note, created_at FROM run_notes WHERE user_id=? ORDER BY created_at", (uid,))]
         ref = u["chat_ref"]
         return {
             "profile": {
@@ -433,7 +505,7 @@ class Service:
                 "consent_version": u["consent_version"], "consent_at": u["consent_at"], "paused": bool(u["paused"]),
                 "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },
-            "runs_received": runs, "memory": memory, "suggestion_outcomes": outcomes,
+            "runs_received": runs, "run_notes": run_notes, "memory": memory, "suggestion_outcomes": outcomes,
             "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo,
             "goes_to": ["OpenRouter and the model provider (facts and enumerated memory only, no phone number or chat id)",
                         "Telegram" if u["channel"] == "telegram" else "Meta (WhatsApp Cloud API, keeps messages up to 30 days)",
@@ -597,7 +669,8 @@ class Service:
         return out
 
     @staticmethod
-    def _buttons(run_feel: str | None, suggestion_kind: str | None, question: dict | None) -> list[dict]:
+    def _buttons(run_feel: str | None, suggestion_kind: str | None, question: dict | None,
+                 note: bool = False) -> list[dict]:
         b: list[dict] = []
         if run_feel is None:
             b += [{"label": l, "action": f"feel:{v}", "row": 0} for v, l in (("easy", "Easy"), ("right", "Right"), ("hard", "Hard"))]
@@ -607,7 +680,18 @@ class Service:
         if question:
             for i, (v, l) in enumerate(question["options"]):
                 b.append({"label": l, "action": f"ans:{question['key']}:{v}", "row": 2 + i // 3})
+        if note:  # its own row under the feel row, so the feel row stays at three
+            b.append({"label": "Add a note", "action": NOTE_ACTION, "row": 1})
         return b
+
+    @staticmethod
+    def _soften(c, uid: str, now: datetime) -> bool:
+        """A recent note carries a niggle/sore/injury/tired/sick word. Reads the note text here and returns only a
+        boolean: the text itself goes nowhere."""
+        rows = [(r["note"], parse_iso(r["created_at"])) for r in c.execute(
+            "SELECT note, created_at FROM run_notes WHERE user_id=? AND created_at>=? AND created_at<=?",
+            (uid, iso(now - timedelta(days=cv_notes.SOFTEN_DAYS)), iso(now)))]
+        return cv_notes.soften(rows, now)
 
     # ---------------------------------------------------------------- conversation layer (convo/)
     def _full_history(self, c, uid: str, before: str | None, now: datetime | None = None) -> list[dict]:
@@ -696,8 +780,10 @@ class Service:
         with db.ro(self.s.db_path) as c:
             lat, lon = self._area(c, uid, run_id)
             prev_sit = self._card_situation(c, uid, full[0]["run_id"] if full else None)
+            soft = self._soften(c, uid, now)
         rw = self.weather.at_run(lat, lon, run["zone_id"], parse_iso(run["start_utc"]), now)
-        v = cv_engine.enrich_run(run, full, mem, now, usage, rw, sunrise_count=sunrises, prev_situation=prev_sit)
+        v = cv_engine.enrich_run(run, full, mem, now, usage, rw, sunrise_count=sunrises, prev_situation=prev_sit,
+                                 soften=soft)
         # A run card carries the feel row only. A post-run suggestion is deferred to the evening-before slot
         # (under its own weekly cap and spacing), never piggybacked as buttons or text on the run card.
         suggestion, sline = None, None
@@ -712,7 +798,7 @@ class Service:
         body = w.body
         if v.touch_line:
             body += f"\n\n{v.touch_line}"
-        buttons = self._buttons(run["feel"], None, None)
+        buttons = self._buttons(run["feel"], None, None, note=True)
         card_id = secrets.token_hex(16)
         allowed = " ".join([f.text for f in res.facts] + [v.allowed, suggestion.text if suggestion else "",
                                                           sline.allowed if sline else ""])
@@ -775,6 +861,7 @@ class Service:
             feels = self._feel_counts(c, uid, now)
             usage = self._usage(c, uid, now)
             zone_id = c.execute("SELECT zone_id FROM users WHERE id=?", (uid,)).fetchone()["zone_id"]
+            soft = self._soften(c, uid, now)
         fc = None
         if hist:
             tomorrow = to_local(now, zone_id).date() + timedelta(days=1)
@@ -784,7 +871,8 @@ class Service:
             fc = self.weather.tomorrow(lat, lon, hist[0]["zone_id"] or zone_id, tomorrow)
         else:
             last_sit = None
-        ev = cv_suggest.evening(hist, now, fc, usage.variants, seed=local_date, zone_id=zone_id, last_situation=last_sit)
+        ev = cv_suggest.evening(hist, now, fc, usage.variants, seed=local_date, zone_id=zone_id, last_situation=last_sit,
+                                soften=soft)
         if not ev:
             return None
         with db.tx(self.s.db_path) as c:
@@ -821,11 +909,18 @@ class Service:
         rc = cv_recap.build(runs, now, zone_id, usage.variants, seed=week_ref)
         if rc is None or (rc.empty and empty_before):  # one gentle nudge after a missed week, never two in a row
             return None
+        body = rc.rendered.body
+        with db.ro(self.s.db_path) as c:  # the newest note from this week, quoted back as written (never to a model)
+            for rid in rc.week_run_ids:
+                n = c.execute("SELECT note FROM run_notes WHERE user_id=? AND run_id=?", (uid, rid)).fetchone()
+                if n:
+                    body += f"\n\n{cv_notes.quote(n['note'])}"
+                    break
         card_id = secrets.token_hex(16)
         with db.tx(self.s.db_path) as c:
             c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
                       "VALUES (?,?,?,?,?,?,?,?,?)",
-                      (card_id, uid, f"recap:{week_ref}", "recap", rc.rendered.headline, rc.rendered.body, "[]",
+                      (card_id, uid, f"recap:{week_ref}", "recap", rc.rendered.headline, body, "[]",
                        "template", iso(now)))
             self._convo_write(c, uid, now, card_id, rc.rendered.situation, rc.media, rc.rendered.allowed,
                               [rc.rendered.variant_id], None)
@@ -1104,6 +1199,9 @@ class Service:
             c.execute("DELETE FROM cards WHERE created_at < ?" + held, (log_cut,))
             c.execute("DELETE FROM outbox WHERE state IN ('done','skipped','failed') AND due_at < ?" + held, (log_cut,))
             c.execute("DELETE FROM convo_log WHERE ts < ?" + held, (iso(now - timedelta(days=400)),))
+            c.execute("DELETE FROM note_mode WHERE expires_at < ?", (iso(now - timedelta(hours=1)),))
+            c.execute("DELETE FROM run_notes WHERE NOT EXISTS (SELECT 1 FROM runs r WHERE r.user_id=run_notes.user_id "
+                      "AND r.run_id=run_notes.run_id)")  # belt and braces: a note never outlives its run
             c.execute("DELETE FROM quota WHERE created_at < ?" + held, (iso(now - timedelta(days=60)),))
             c.execute("DELETE FROM replay_items WHERE real_at < ?" + held, (log_cut,))
             c.execute("DELETE FROM replay_runs WHERE user_id IN (SELECT user_id FROM replay_state WHERE status = 'done' "

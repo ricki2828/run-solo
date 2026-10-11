@@ -38,6 +38,7 @@ BYPASS_GAP = {"milestone_runs", "milestone_km", "new_place", "comeback", "feel_e
 # Tried in this order; the first one that passes the policy wins.
 PRIORITY = ("milestone_runs", "milestone_km", "new_place", "comeback", "feel_echo", "best_month", "year_best",
             "last_year", "race_countdown", "race_month", "place", "streak", "sunrise", "zone2_week")
+PUSHY = frozenset({"streak", "race_countdown", "race_month"})  # dropped while softening
 ROTATE_AVOID = 2  # do not reuse either of the last two touch kinds while another candidate exists
 
 
@@ -67,6 +68,7 @@ class Ctx:
     sunrise_count: int = 0                 # sunrise runs already logged (excluding this one)
     prev_situation: str | None = None      # the situation of the previous run's card, if it had one
     feel_refs: frozenset = frozenset()     # runs whose feel tap has already been answered
+    soften: bool = False                   # a recent run note was flagged (companion.notes): no push-style touches
 
     @property
     def zone(self) -> str:
@@ -345,6 +347,8 @@ COMPUTE: dict[str, Callable[[Ctx], Touch | None]] = {
 def candidates(c: Ctx) -> list[Touch]:
     out, seen = [], set()
     for kind in PRIORITY:
+        if c.soften and kind in PUSHY:
+            continue
         t = COMPUTE[kind](c)
         if t and t.kind == kind and (t.kind, t.key) not in seen:
             seen.add((t.kind, t.key))

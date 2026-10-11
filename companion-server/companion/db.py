@@ -122,6 +122,24 @@ CREATE TABLE IF NOT EXISTS convo_cards (
   allowed TEXT NOT NULL,       -- the number sources behind this card's text (eng-review B4 audit)
   touch_kind TEXT
 );
+-- A note the runner typed for one run ("Add a note"). Kept apart from `runs` so no SELECT * over runs can carry it into
+-- a prompt or a render. Read only by the deterministic recap quote and keyword softening; never sent to a model.
+-- It lives and dies with its run (cascade), and with the user (hard delete).
+CREATE TABLE IF NOT EXISTS run_notes (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  run_id TEXT NOT NULL,
+  note TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, run_id),
+  FOREIGN KEY (user_id, run_id) REFERENCES runs (user_id, run_id) ON DELETE CASCADE
+);
+-- "Add a note" was tapped: the next free-text message is that run's note, until expires_at. One row per user.
+CREATE TABLE IF NOT EXISTS note_mode (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  run_id TEXT NOT NULL,
+  card_id TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS convo_area (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   run_id TEXT NOT NULL,

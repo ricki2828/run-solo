@@ -176,14 +176,17 @@ def evening(client, day):
     return client.svc._build_evening_card(uid, day, now_utc())
 
 
-def test_run_cards_carry_only_the_feel_row(client, fakes):
+def test_run_cards_carry_the_feel_row_and_a_note_row(client, fakes):
     t = enrol(client)
     seed_easy(client, t)
     for i in range(3):
         send_run(client, t, f"h{i}", type="tempo", minutes_ago=5 + i)
     for row in q(client, "SELECT buttons_json FROM cards WHERE kind='run' ORDER BY rowid"):
-        acts = [b["action"] for b in json.loads(row["buttons_json"])]
-        assert len(acts) <= 3 and all(a.startswith("feel:") for a in acts)
+        buttons = json.loads(row["buttons_json"])
+        feel = [x for x in buttons if x["action"].startswith("feel:")]
+        rest = [x for x in buttons if not x["action"].startswith("feel:")]
+        assert len(feel) <= 3 and {x["row"] for x in feel} <= {0}   # the feel row stays at three
+        assert [(x["action"], x["row"]) for x in rest] == [("note:add", 1)]   # "Add a note" is a second row, alone
 
 
 def test_suggestion_buttons_live_on_the_evening_card_cap_two_per_week(client, fakes):
