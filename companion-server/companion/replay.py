@@ -508,6 +508,7 @@ class FreshPlan:
     real: list[str]         # runs that stay: real uploads
     counts: dict[str, int]  # rows that go, by table
     cut: str | None         # set only for a database with no row tags (older than the tagging): rows before this go
+    everything: bool = False  # an old database with no real upload at all: every history row of the user goes
 
     PLAIN = (("runs", "replayed runs"), ("cards", "cards"), ("outbox", "queued messages"),
              ("run_notes", "notes"), ("memory", "tapped answers"), ("outcomes", "suggestion replies"),
@@ -519,7 +520,8 @@ class FreshPlan:
         got = [f"{self.counts[k]} {w}" for k, w in self.PLAIN if self.counts.get(k)]
         kept = f"{len(self.real)} real upload{'s' if len(self.real) != 1 else ''} kept"
         legacy = f" (this database predates row tagging: its history rows before {self.cut} are treated as the replay's)" \
-            if self.cut else ""
+            if self.cut else (" (this database predates row tagging and holds no real upload: EVERYTHING in this user's "
+                              "conversation history, answers and caps goes)" if self.everything else "")
         return (", ".join(got) or "nothing") + "; " + kept + legacy
 
 
@@ -565,9 +567,12 @@ def _fresh(c: sqlite3.Connection, s: Settings, uid: str, runs: list[RunIn], appl
     live-worker rows are never tagged. A database from before the tagging has none, and only then are history rows
     taken by the time before the first real upload."""
     created, real = _classify(c, s, uid, runs)
-    tagged = {t: {x["rid"] for x in c.execute("SELECT rid FROM replay_rows WHERE user_id=? AND tbl=?", (uid, t))}
+    tagged = {t: {str(x["rid"]) for x in c.execute("SELECT rid FROM replay_rows WHERE user_id=? AND tbl=?", (uid, t))}
               for t in db.TAGGED}
-    legacy = not any(tagged.values())
+    # "Legacy" means the database holds rows from before tagging existed (a run with no real_upload mark) and nothing
+    # is tagged. A database that has tagging and no tags (they were purged after a replay) has nothing replay-made.
+    legacy = not any(tagged.values()) and bool(
+        c.execute("SELECT 1 FROM runs WHERE user_id=? AND real_upload IS NULL", (uid,)).fetchone())
     cut = None
     if legacy and real:  # no tags and real uploads exist: the first real upload bounds what could be the replay's
         cut = min(x["received_at"] for x in c.execute("SELECT received_at FROM runs WHERE user_id=? AND real_upload IS NOT 0",
@@ -576,8 +581,9 @@ def _fresh(c: sqlite3.Connection, s: Settings, uid: str, runs: list[RunIn], appl
 
     def mine(table: str, ts_col: str | None) -> list[int]:
         out = []
-        for x in c.execute(f"SELECT rowid AS id{', ' + ts_col + ' AS ts' if ts_col else ''} FROM {table} WHERE user_id=?", (uid,)):
-            if x["id"] in tagged[table] or legacy_all or (cut and ts_col and x["ts"] < cut):
+        for x in c.execute(f"SELECT rowid AS id, {db.IDENT[table]} AS ident{', ' + ts_col + ' AS ts' if ts_col else ''} "
+                           f"FROM {table} WHERE user_id=?", (uid,)):
+            if str(x["ident"]) in tagged[table] or legacy_all or (cut and ts_col and x["ts"] < cut):
                 out.append(x["id"])
         return out
 
@@ -585,7 +591,7 @@ def _fresh(c: sqlite3.Connection, s: Settings, uid: str, runs: list[RunIn], appl
     cards: set[str] = {x["card_id"] for x in c.execute("SELECT card_id FROM replay_items WHERE user_id=? AND card_id IS NOT NULL", (uid,))}
     card_runs: dict[str, str] = {}
     for x in c.execute("SELECT rowid AS id, card_id, run_id, kind, COALESCE(sent_at, created_at) t FROM cards WHERE user_id=?", (uid,)):
-        replayed = (x["run_id"] in created or x["run_id"] in qs or x["id"] in tagged["cards"] or legacy_all or
+        replayed = (x["run_id"] in created or x["run_id"] in qs or x["card_id"] in tagged["cards"] or legacy_all or
                     (cut and x["kind"] in ("evening", "recap") and x["t"] < cut))
         if replayed:
             cards.add(x["card_id"])
@@ -634,7 +640,7 @@ def _fresh(c: sqlite3.Connection, s: Settings, uid: str, runs: list[RunIn], appl
         c.execute("DELETE FROM replay_state WHERE user_id=?", (uid,))
         last = c.execute("SELECT MAX(start_utc) FROM runs WHERE user_id=?", (uid,)).fetchone()[0]
         c.execute("UPDATE users SET last_run_utc=?, cap_zone=NULL, cap_week=NULL WHERE id=?", (last, uid))
-    return FreshPlan(created, real, counts, cut)
+    return FreshPlan(created, real, counts, cut, legacy_all)
 
 
 def fresh_check(s: Settings, uid: str) -> None:

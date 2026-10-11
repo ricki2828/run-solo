@@ -537,7 +537,10 @@ class Service:
         c.execute("INSERT INTO memory (user_id, key, value, updated_at) VALUES (?,?,?,?) "
                   "ON CONFLICT(user_id, key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
                   (uid, key, value, iso(now)))
-        db.tag_row(c, uid, "memory", "key=?", (key,))  # an upsert of an existing key is a change, not a new row
+        # An upsert of an existing key is a change, not a new row: a replay answer is tagged, and a live answer to the
+        # same key takes the row over, so it is no longer the replay's to delete.
+        db.tag_row(c, uid, "memory", "key=?", (key,))
+        db.untag(c, uid, "memory", key)
 
     @staticmethod
     def _memory_get(c, uid: str, now: datetime) -> dict[str, str]:
@@ -1420,6 +1423,9 @@ class Service:
                       "AND updated_at < ?)", (log_cut,))
             c.execute("DELETE FROM replay_rows WHERE user_id IN (SELECT user_id FROM replay_state WHERE status = 'done' "
                       "AND updated_at < ?)", (log_cut,))
+            for tbl, ident in db.IDENT.items():  # a tag for a row that is gone must not outlive it (a new row could reuse the name)
+                c.execute("DELETE FROM replay_rows WHERE tbl=? AND NOT EXISTS (SELECT 1 FROM " + tbl + " t WHERE "
+                          "t.user_id = replay_rows.user_id AND " + ident + " = replay_rows.rid)", (tbl,))
             c.execute("DELETE FROM replay_state WHERE status = 'done' AND updated_at < ?", (log_cut,))
             c.execute("DELETE FROM llm_calls WHERE ts < ?", (iso(now - timedelta(days=400)),))
             # the area's own age: 30 days after the run it came from (or its run is gone), or the switch is off

@@ -146,6 +146,76 @@ def test_only_rows_the_replay_wrote_are_removed_not_the_live_workers(env):
     assert rows(env, "SELECT 1 FROM cards WHERE run_id=?", real.run_id)
 
 
+def replay_with_a_tapped_answer(env):
+    taps: list[str] = []
+
+    def on_item(item):
+        if item.kind == "question" and not taps:
+            taps.append(item.card_id)
+            assert env.tap(item.card_id, "ans:")
+
+    env.replayer(on_item=on_item).run()
+    key = rows(env, "SELECT key FROM memory")[0][0]
+    assert rows(env, "SELECT 1 FROM replay_rows WHERE tbl='memory' AND rid=?", key)
+    return key
+
+
+def test_a_live_answer_to_a_key_the_replay_answered_is_no_longer_the_replays(env):
+    key = replay_with_a_tapped_answer(env)
+    live = Service(env.s, httpx.Client(transport=httpx.MockTransport(env.fakes.handler)))
+    with db.tx(env.s.db_path) as c:                      # Ricki answers the same question on a live card
+        live._memory_set(c, UID, key, "live-answer", REAL_NOW)
+    assert not rows(env, "SELECT 1 FROM replay_rows WHERE tbl='memory' AND rid=?", key)
+    plan = fresh_apply(env.s, UID, load_facts(env.folder))
+    assert plan.counts["memory"] == 0
+    assert [tuple(x) for x in rows(env, "SELECT key, value FROM memory")] == [(key, "live-answer")]
+
+
+def test_a_live_row_that_reuses_a_purged_rowid_does_not_inherit_the_tag(env):
+    replay_with_a_tapped_answer(env)
+    top = rows(env, "SELECT MAX(rowid) FROM quota")[0][0]
+    with db.tx(env.s.db_path) as c:                      # the purge took the newest replay quota row ...
+        c.execute("DELETE FROM quota WHERE rowid=?", (top,))
+        c.execute("INSERT INTO quota (user_id, key, created_at) VALUES (?,?,?)", (UID, "live:key", iso(REAL_NOW)))
+    assert rows(env, "SELECT rowid FROM quota WHERE key='live:key'")[0][0] == top   # ... and a live row took its rowid
+    fresh_apply(env.s, UID, load_facts(env.folder))
+    assert [x[0] for x in rows(env, "SELECT key FROM quota")] == ["live:key"]
+
+
+def test_purge_drops_the_tags_of_rows_that_are_gone(env):
+    key = replay_with_a_tapped_answer(env)
+    with db.tx(env.s.db_path) as c:
+        c.execute("DELETE FROM memory WHERE key=?", (key,))      # e.g. the 8-week niggle expiry
+    env.svc.purge(REAL_NOW + timedelta(hours=1))
+    assert not rows(env, "SELECT 1 FROM replay_rows WHERE tbl='memory'")
+    live = Service(env.s, httpx.Client(transport=httpx.MockTransport(env.fakes.handler)))
+    with db.tx(env.s.db_path) as c:
+        live._memory_set(c, UID, key, "later", REAL_NOW)
+    fresh_apply(env.s, UID, load_facts(env.folder))
+    assert rows(env, "SELECT value FROM memory WHERE key=?", key)[0][0] == "later"
+
+
+def test_no_tags_after_the_tags_were_purged_means_nothing_replay_made_not_an_old_database(env):
+    env.replayer().run()
+    with db.tx(env.s.db_path) as c:
+        c.execute("INSERT INTO memory (user_id, key, value, updated_at) VALUES (?,?,?,?)", (UID, "x", "live", iso(REAL_NOW)))
+    env.svc.purge(REAL_NOW + timedelta(days=31))           # the replay is done and a month old: its tags go
+    assert not rows(env, "SELECT 1 FROM replay_rows")
+    plan = fresh_apply(env.s, UID, load_facts(env.folder))
+    assert "EVERYTHING" not in plan.summary() and not plan.everything
+    assert rows(env, "SELECT value FROM memory WHERE key='x'")[0][0] == "live"
+
+
+def test_an_old_database_with_no_real_upload_says_everything_goes(env):
+    env.replayer().run()
+    with db.tx(env.s.db_path) as c:
+        c.execute("UPDATE runs SET real_upload=NULL")
+        c.execute("DELETE FROM replay_rows")
+    plan = fresh_apply(env.s, UID, load_facts(env.folder))
+    assert plan.everything and "EVERYTHING" in plan.summary()
+    assert not rows(env, "SELECT 1 FROM convo_log")
+
+
 def test_a_done_queue_row_whose_card_was_purged_is_not_queued_again(env):
     live = Service(env.s, httpx.Client(transport=httpx.MockTransport(env.fakes.handler)))
     live.ingest_run(UID, RunIn.model_validate(HISTORY[4]), REAL_NOW)         # t05: stale on upload, real, no queue row

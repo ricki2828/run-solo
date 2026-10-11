@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS replay_runs (  -- runs the replay has reached. insert
 );
 CREATE TABLE IF NOT EXISTS replay_rows (  -- rows the replay driver created (tbl + rowid), tagged as they are written
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  tbl TEXT NOT NULL, rid INTEGER NOT NULL,
+  tbl TEXT NOT NULL, rid TEXT NOT NULL,  -- the row's identity (see IDENT), not its rowid: rowids get reused
   PRIMARY KEY (user_id, tbl, rid)
 );
 CREATE TABLE IF NOT EXISTS replay_items (  -- every message the replay sent: virtual time, real time, card
@@ -251,6 +251,10 @@ _origin = threading.local()
 # Tables whose new rows are tagged (in replay_rows) when written under origin("replay"): the coach replay's own
 # writes, and the taps on a replayed card. Every table here is a rowid table with a user_id column.
 TAGGED = ("cards", "outbox", "convo_log", "quota", "outcomes", "msglog", "memory")
+# A tagged row is named by a stable identity: SQLite reuses the rowid of a deleted row in tables without
+# AUTOINCREMENT, and a live row must never inherit a replay tag that way. (Those with AUTOINCREMENT never reuse.)
+IDENT = {"cards": "card_id", "quota": "key", "memory": "key", "outcomes": "card_id",
+         "outbox": "CAST(id AS TEXT)", "convo_log": "CAST(id AS TEXT)", "msglog": "CAST(id AS TEXT)"}
 
 
 @contextmanager
@@ -272,8 +276,14 @@ def origin_active() -> bool:
 def tag_row(c: sqlite3.Connection, uid: str, tbl: str, where: str, args: tuple) -> None:
     """Tag an existing row the replay changed in place (an upsert), e.g. a memory answer."""
     if origin_active():
-        c.execute(f"INSERT OR IGNORE INTO replay_rows (user_id, tbl, rid) SELECT user_id, ?, rowid FROM {tbl} "
+        c.execute(f"INSERT OR IGNORE INTO replay_rows (user_id, tbl, rid) SELECT user_id, ?, {IDENT[tbl]} FROM {tbl} "
                   f"WHERE user_id=? AND {where}", (tbl, uid, *args))
+
+
+def untag(c: sqlite3.Connection, uid: str, tbl: str, ident: str) -> None:
+    """A write outside the replay made this row live (e.g. a memory answer overwritten from a live card)."""
+    if not origin_active():
+        c.execute("DELETE FROM replay_rows WHERE user_id=? AND tbl=? AND rid=?", (uid, tbl, ident))
 
 
 @contextmanager
@@ -286,7 +296,7 @@ def tx(path: str) -> Iterator[sqlite3.Connection]:
         yield c
         if before is not None:
             for t, last in before.items():
-                c.execute(f"INSERT OR IGNORE INTO replay_rows (user_id, tbl, rid) SELECT user_id, ?, rowid FROM {t} "
+                c.execute(f"INSERT OR IGNORE INTO replay_rows (user_id, tbl, rid) SELECT user_id, ?, {IDENT[t]} FROM {t} "
                           "WHERE rowid > ?", (t, last))
         c.commit()
     except BaseException:
