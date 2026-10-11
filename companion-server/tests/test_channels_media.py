@@ -399,10 +399,10 @@ def test_sending_media_stores_no_bytes_and_leaves_the_export_unchanged(tmp_path,
 
 # --- real renderers, end to end (Chromium and ffmpeg are required: a missing one fails, never skips) ----------
 
-def test_real_run_card_renders_through_the_service_as_a_1080x1350_png(tmp_path, fakes):
+def test_real_run_card_renders_through_the_service_as_a_1080x1350_png(tmp_path, fakes, render_socket):
     import io
     from PIL import Image
-    s = make_settings(tmp_path, media_enabled=True)
+    s = make_settings(tmp_path, media_enabled=True, render_socket=render_socket)
     app = create_app(s, httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=False)
     with TestClient(app) as c:
         t = enrol(c)
@@ -413,11 +413,11 @@ def test_real_run_card_renders_through_the_service_as_a_1080x1350_png(tmp_path, 
     assert im.format == "PNG" and im.size == (1080, 1350) and len(photo) < 10 * 1024 * 1024
 
 
-def test_real_weekly_video_is_h264_without_audio_and_telegram_sized(tmp_path, fakes):
+def test_real_weekly_video_is_h264_without_audio_and_telegram_sized(tmp_path, fakes, render_socket):
     import shutil
     import subprocess
     from pathlib import Path
-    s = make_settings(tmp_path, media_enabled=True)
+    s = make_settings(tmp_path, media_enabled=True, render_socket=render_socket)
     app = create_app(s, httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=False)
     with TestClient(app) as c:
         c.svc = app.state.svc

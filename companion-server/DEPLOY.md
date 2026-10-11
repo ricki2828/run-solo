@@ -63,6 +63,73 @@ posture. For real users, create `companion` (system user, no shell, no login), k
 `/etc/systemd/system/` with `User=companion`, `StateDirectory=companion`, and keep the same sandbox lines.
 Then no other process on the host, including every agent running as ricki28, can read the database.
 
+## 3b. Render worker (only for `COMPANION_MEDIA=1`)
+
+Cards and videos are rendered by a separate unit, `companion-render.service` (sec-review-225 F2). Chromium and ffmpeg
+cannot run inside `companion.service` (`MemoryMax=200M`, `MemoryDenyWriteExecute`, `ProtectHome=tmpfs`), and that unit
+holds the bot token, the WhatsApp secret and the DB, so its hardening is **not** loosened: `companion.service` is
+unchanged. It already reaches the worker's socket because `~/companion-data` is bound into it.
+
+How it fits together:
+- The companion sends `{op, kind, facts}` as JSON over the unix socket `~/companion-data/render/render.sock` and gets PNG or MP4
+  bytes back, or a short error code (`bad_request`, `timeout`, `too_big`, `render_failed`). Protocol: `render/protocol.py`.
+- `facts` is exactly what the card shows (zone time, place name, distance, pace, headline, score moves). Keys outside
+  `protocol.ALLOWED_FACT_KEYS` are refused by both sides, so no run id, user id, chat id or token can reach the worker.
+- The worker has no DB, no env file, no network. It runs one render at a time, each in a child process that is killed at
+  30 s (card) or 120 s (video). Output caps: 10 MB photo, 50 MB video (Telegram's limits).
+- On any worker error, timeout or missing socket the companion sends the text card, as before. After a timeout it skips the
+  worker for 60 s so a hung renderer cannot stall every send.
+
+Sandbox of `companion-render.service` (tested on this host with a transient unit using the same properties): no network
+(`IPAddressDeny=any`, `PrivateNetwork`, only `AF_UNIX`), `$HOME` is an empty tmpfs, `NoNewPrivileges`, empty capability set,
+`ProtectSystem=strict`, private `/tmp`. Read-only binds: the app dir, `assets/fonts`, `assets/brand`, the Playwright
+Chromium dir, the Chromium shared libs and `~/bin/ffmpeg`. The only writable path is `~/companion-data/render/`.
+It cannot see `~/.secrets`, `~/companion-data/companion.db`, `~/.ssh` or other projects (checked from inside the sandbox).
+
+Why this unit differs from `companion.service`:
+- **No `MemoryDenyWriteExecute`.** Playwright's node driver aborts at start-up under it (tested), and Chromium runs the same
+  V8 JIT. The exposure is limited to this unit, which has no network and no secrets.
+- **Syscall filter**: `@system-service @sandbox`, minus `@privileged`, plus `capget capset setpriority`. Chromium installs its
+  own seccomp filter and uses those three; with `~@resources` in place it crashed (SIGSYS) or failed about 1 render in 5.
+- **`MemoryMax=900M`.** Measured on this host (aarch64, Playwright Chromium 1208 headless shell): peak summed RSS 533 MiB for a
+  card (9 processes) and 544 MiB for a weekly video (worker, render child, ffmpeg); cgroup `MemoryPeak` 590-830 MiB
+  including page cache. It runs one render at a time and only while a card is being sent.
+
+Install (the venv is separate from the companion's, and never installed into it):
+
+```bash
+# The unit runs the LIVE tree (~/services/run-supreme-companion, a deployed copy), never the ~/run-solo checkout that
+# agents switch branches in. Deploy the reviewed commit there first: the companion imports render.protocol and
+# companion.render_client, and the worker needs render/worker.py, requirements-render.txt and deploy/.
+cd ~/services/run-supreme-companion
+python3 -m venv .venv-render && .venv-render/bin/pip install --require-hashes -r requirements-render.txt
+mkdir -m700 ~/companion-data/render   # must exist before the unit starts: BindPaths fails without it
+# the unit's Environment= lines name this host's Chromium, its libs and ffmpeg; edit them and the Bind lines together if they differ:
+#   RS_CHROMIUM_PATH  ~/.cache/ms-playwright/chromium_headless_shell-1208/chrome-linux/headless_shell   (python -m playwright install chromium)
+#   LD_LIBRARY_PATH   ~/.local/chromium-libs/usr/lib/aarch64-linux-gnu   (libatk/libasound/libXdamage; there is no root to apt install them here)
+#   FFMPEG            ~/bin/ffmpeg
+#   COMPANION_ASSETS_DIR  ~/services/run-supreme-companion/assets   (fonts + brand/svg)
+cp deploy/companion-render.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now companion-render.service
+systemctl --user status companion-render.service     # active; the socket appears in ~/companion-data/render/
+journalctl --user -u companion-render -n 20           # "render worker listening"
+```
+
+Smoke test with the live companion's venv (run from `~/services/run-supreme-companion`) (writes nothing, sends nothing):
+
+```bash
+.venv/bin/python - <<'PY'
+from companion.render_client import RenderClient
+png = RenderClient("/home/ricki28/companion-data/render/render.sock").card("light", {"type": "easy", "start_local": "2026-10-10T06:00", "distance_km": 7.0, "duration_s": 2400, "headline": "Steady one"})
+print(len(png), png[:4])
+PY
+```
+
+Turn media on: add `COMPANION_MEDIA=1` to `~/.secrets/run-supreme-companion.env` (and `COMPANION_RENDER_SOCKET` only if the socket is elsewhere),
+then `systemctl --user restart companion.service`. Turn it off by removing the line; with the flag off the companion never
+touches the socket. Gate: sec-review-225 F1 (fixed), F2 (this unit), F5 (privacy copy live: redeploy the site first).
+
 ## 4. Public exposure (Cloudflare tunnel, same pattern as the other services)
 
 Add to `~/.cloudflared/config.yml` **above** the final `http_status:404` rule. Only `/v1/*` and `/hooks/*` are routed:
@@ -104,8 +171,8 @@ Enrolment flow (the app drives it; each step is anti-phishing by design):
 
 ## 7. Operations
 
-- Assets: the card and video renderer reads fonts and the brand mark from the repo's `assets/`. A deployed copy outside the repo must ship `assets/fonts` and `assets/brand/svg` inside the app dir (the unit only binds that dir) and set `COMPANION_ASSETS_DIR=<app dir>/assets`. Without it the render tests fail and media sends fall back to text.
-- Media (off by default): `COMPANION_MEDIA=1` sends run and recap cards as Telegram photos, and the weekly recap as a video. It needs Chromium (`playwright install chromium`, or `RS_CHROMIUM_PATH`) and, for video, `ffmpeg` on PATH or `FFMPEG=/path`. Any render failure sends the text card instead. `COMPANION_DEEPLINK_BASE=https://<host>/l` adds an "Open in app" button (`<base>/run/<id>`, `<base>/week/<iso-week>`); Telegram and WhatsApp reject custom schemes, so that host must redirect to `runsupreme://run/<id>` or open as an Android App Link. No base, no button.
+- Assets: the card and video renderer reads fonts and the brand mark from the repo's `assets/`. The render unit binds the live tree (`~/services/run-supreme-companion`, including its `assets/`) read-only and sets `COMPANION_ASSETS_DIR=~/services/run-supreme-companion/assets`; a copy elsewhere must change both. Without them media sends fall back to text.
+- Media (off by default): `COMPANION_MEDIA=1` sends run and recap cards as Telegram photos, and the weekly recap as a video, rendered by the separate worker unit in section 3b (`COMPANION_RENDER_SOCKET`, default `~/companion-data/render/render.sock`). Chromium and ffmpeg never run in `companion.service`. Any worker error, timeout or missing socket sends the text card instead. `COMPANION_DEEPLINK_BASE=https://<host>/l` adds an "Open in app" button (`<base>/run/<id>`, `<base>/week/<iso-week>`); Telegram and WhatsApp reject custom schemes, so that host must redirect to `runsupreme://run/<id>` or open as an App Link. No base, no button.
 - Kill switch: `python -m companion.cli pause` (sends defer, nothing is dropped) / `resume`. `COMPANION_SENDS_PAUSED=1` does the same via env.
 - Sentinel: alert when `curl -s localhost:8051/healthz` shows `overdue_outbox` above 0 for more than an hour. Add to the
   cron sentinel / daily ops check.

@@ -67,6 +67,9 @@ class Settings:
 
     # Cards and videos as Telegram photos/videos. Off by default: it needs Chromium (and ffmpeg for video) on the host.
     media_enabled: bool = False
+    # Unix socket of the render worker (deploy/companion-render.service). COMPANION_MEDIA=1 means "use this socket";
+    # Chromium and ffmpeg never run in the companion process.
+    render_socket: str = "~/companion-data/render/render.sock"
     # https base the deep-link buttons point at (`<base>/run/<id>`, `<base>/week/<iso-week>`); no base, no link buttons.
     deeplink_base: str | None = None
 
@@ -116,6 +119,7 @@ class Settings:
             monthly_cap_usd=float(e.get("COMPANION_MONTHLY_CAP_USD", "5")),
             weather_enabled=_flag(e.get("COMPANION_WEATHER")),
             media_enabled=_flag(e.get("COMPANION_MEDIA")),
+            render_socket=os.path.expanduser(e.get("COMPANION_RENDER_SOCKET", "~/companion-data/render/render.sock")),
             deeplink_base=_https_base(e.get("COMPANION_DEEPLINK_BASE")),
             sends_paused=_flag(e.get("COMPANION_SENDS_PAUSED")),
         )

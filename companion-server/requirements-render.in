@@ -1,0 +1,3 @@
+# see requirements-render.txt
+playwright==1.58.0
+pillow

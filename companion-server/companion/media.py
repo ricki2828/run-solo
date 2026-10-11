@@ -17,12 +17,15 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from .convo.touches import _zone_minutes
+from render import protocol as P
+
+from .render_client import RenderClient
 from .timeutil import parse_iso, to_local
 
 log = logging.getLogger("companion")
 
-PHOTO_MAX_BYTES = 10 * 1024 * 1024    # Telegram sendPhoto
-VIDEO_MAX_BYTES = 50 * 1024 * 1024    # Telegram bot upload ceiling
+PHOTO_MAX_BYTES = P.PHOTO_MAX_BYTES    # Telegram sendPhoto; the worker protocol enforces the same caps
+VIDEO_MAX_BYTES = P.VIDEO_MAX_BYTES    # Telegram bot upload ceiling
 WIDTH, HEIGHT = 1080, 1350
 SCORE_KEYS = ("aerobic", "speed", "mid", "long")
 PB_LABEL = {"5k": "5 KM BEST", "10k": "10 KM BEST", "half": "HALF MARATHON BEST", "longest": "LONGEST RUN",
@@ -115,41 +118,51 @@ def week_facts(week_ref: str, runs: Sequence[Mapping[str, Any]]) -> dict[str, An
     return facts
 
 
-def _default_card_fns() -> dict[str, Callable[..., bytes]]:
-    from render.cards import render_pb, render_post_run, render_weekly_recap
-    return {"light": render_post_run, "flood": render_post_run, "pb": render_pb, "weekly_recap": render_weekly_recap}
+def _default_card_fns(client: RenderClient) -> dict[str, Callable[..., bytes]]:
+    """Cards come from the render worker. `memory` is never sent: nothing the worker draws needs a name."""
+    def make(kind: str) -> Callable[..., bytes]:
+        return lambda facts, memory=None: client.card(kind, facts)
+    return {k: make(k) for k in ("light", "flood", "pb", "weekly_recap")}
 
 
-def _default_video_fns() -> dict[str, Callable[..., Any]]:
-    from render.motion import render_run_video
-    from render.motion.run_video import spec_from_facts
-    from render.motion.weekly_video import render_weekly_video, weekly_from_facts
-
+def _default_video_fns(client: RenderClient | None = None) -> dict[str, Callable[..., Any]]:
     def run(facts: dict, out: Path) -> Any:
-        return render_run_video(spec_from_facts(facts), out)
+        if not facts.get("splits"):  # the server holds no per-km splits: decide here, without a worker round trip
+            raise MediaError("run video needs splits")
+        out.write_bytes(_client(client).video("run", facts))
 
     def weekly(facts: dict, out: Path) -> Any:
-        return render_weekly_video(weekly_from_facts(facts), out)
+        out.write_bytes(_client(client).video("weekly", facts))
     return {"run": run, "weekly": weekly}
 
 
+def _client(client: RenderClient | None) -> RenderClient:
+    return client or RenderClient(default_socket_path())
+
+
+def default_socket_path() -> str:
+    return os.environ.get("COMPANION_RENDER_SOCKET") or os.path.expanduser("~/companion-data/render/render.sock")
+
+
 class MediaRenderer:
-    """Real renderers by default (Chromium for cards, ffmpeg for video); tests inject fakes."""
+    """Renders through the worker socket by default (Chromium and ffmpeg live in the worker unit, never here);
+    tests inject fakes."""
 
     def __init__(self, card_fns: Mapping[str, Callable[..., bytes]] | None = None,
-                 video_fns: Mapping[str, Callable[..., Any]] | None = None):
+                 video_fns: Mapping[str, Callable[..., Any]] | None = None, client: RenderClient | None = None):
         self._cards, self._videos = card_fns, video_fns
+        self._client = client or RenderClient(default_socket_path())
 
     @property
     def cards(self) -> Mapping[str, Callable[..., bytes]]:
         if self._cards is None:
-            self._cards = _default_card_fns()
+            self._cards = _default_card_fns(self._client)
         return self._cards
 
     @property
     def videos(self) -> Mapping[str, Callable[..., Any]]:
         if self._videos is None:
-            self._videos = _default_video_fns()
+            self._videos = _default_video_fns(self._client)
         return self._videos
 
     def _video(self, kind: str, facts: dict) -> bytes | None:
@@ -192,5 +205,5 @@ class MediaRenderer:
         return Media(photo=photo, video=video, duration_s=13 if video else 0)
 
 
-def from_env(env: Mapping[str, str] | None = None) -> MediaRenderer:
-    return MediaRenderer()
+def from_settings(socket_path: str) -> MediaRenderer:
+    return MediaRenderer(client=RenderClient(socket_path))

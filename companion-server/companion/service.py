@@ -20,7 +20,7 @@ from . import db
 from .channels import ChannelError, Inbound, OutCard, TelegramChannel, WhatsAppChannel, feel_template_eligible
 from .config import Settings
 from .deeplink import run_link, web_twin, week_link
-from .media import Media, MediaError, MediaRenderer
+from .media import Media, MediaError, from_settings
 from .convo import engine as cv_engine
 from .convo import recap as cv_recap
 from .convo import suggest as cv_suggest
@@ -147,7 +147,7 @@ class Service:
         if settings.wa_ready:
             self.channels["whatsapp"] = WhatsAppChannel(settings, http)
         self.weather = OpenMeteo(http) if settings.weather_enabled else NoWeather()
-        self.media = MediaRenderer()  # lazy: Chromium and ffmpeg are only touched when media_enabled is on
+        self.media = from_settings(settings.render_socket)  # a socket client only; nothing connects unless media_enabled is on
         db.init(settings.db_path)
 
     # ---------------------------------------------------------------- tokens / enrolment (B1)
