@@ -50,13 +50,17 @@ class StartReadout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The retrace plate is its own dark ground (black 85 %): Bone on every
+    // flood, ink-flooded ones included (D1). Otherwise the flood's colours.
+    final fg = retracing ? NightSession.inkPrimary : valueColor;
+    final lbl = retracing ? NightSession.overlayInk : labelColor;
     final h = heightVsStartM;
     final back = backToStartM;
     final style = RunSoloType.display44.copyWith(
       fontSize: _figureSize,
-      color: valueColor,
+      color: fg,
     );
-    final label = RunLabelScope.style(context, labelColor);
+    final label = RunLabelScope.style(context, lbl);
     final cells = <Widget>[
       if (back != null)
         Expanded(
@@ -68,7 +72,7 @@ class StartReadout extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.u_turn_left, size: 18, color: labelColor),
+                  Icon(Icons.u_turn_left, size: 18, color: lbl),
                   const SizedBox(width: Space.x4),
                   Flexible(
                     child: Text(
@@ -112,7 +116,7 @@ class StartReadout extends StatelessWidget {
                       h > 0 ? Icons.arrow_upward : Icons.arrow_downward,
                       key: ValueKey(h > 0 ? 'height-up' : 'height-down'),
                       size: _figureSize * 0.8,
-                      color: valueColor,
+                      color: fg,
                     ),
                     const SizedBox(width: Space.x4),
                   ],
@@ -144,7 +148,7 @@ class StartReadout extends StatelessWidget {
         color: retracing ? NightSession.overlayGround : null,
         borderRadius: BorderRadius.circular(Space.x8),
         border: Border.all(
-          color: retracing ? valueColor : Colors.transparent,
+          color: retracing ? fg : Colors.transparent,
           width: _outline,
         ),
       ),

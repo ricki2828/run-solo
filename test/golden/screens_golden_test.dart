@@ -211,6 +211,8 @@ void main() {
     fake.strapDropped = true;
     fake.advance(const Duration(seconds: 1));
     await pumpTimes(tester, 5);
+    // Let the flood finish its 400 ms crossfade (the foreground flips at once).
+    await tester.pump(const Duration(milliseconds: 500));
     await golden(tester, 'record_faults');
     await fake.pause();
     await pumpTimes(tester, 5);
