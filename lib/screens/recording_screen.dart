@@ -3019,7 +3019,6 @@ class _EventStats extends StatelessWidget {
     // Three columns with gaps. The pace units move to the labels ("PACE /km")
     // because "4:44/km" at the 36 sp floor is as wide as a third of the row,
     // which ran the three values together.
-    final unit = units == Units.mi ? 'mi' : 'km';
     const gap = SizedBox(width: Space.x12);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -3037,7 +3036,7 @@ class _EventStats extends StatelessWidget {
         Expanded(
           flex: 5,
           child: AuxFigure(
-            label: 'PACE /$unit',
+            label: 'PACE',
             value: Fmt.pace(s.livePaceSecPerKm, units),
             labelColor: secondary,
             valueColor: t.inkPrimary,
@@ -3047,7 +3046,7 @@ class _EventStats extends StatelessWidget {
         Expanded(
           flex: 5,
           child: AuxFigure(
-            label: 'AVG /$unit',
+            label: 'AVG',
             value: avg == null ? '--' : Fmt.pace(avg, units),
             labelColor: secondary,
             valueColor: t.inkPrimary,
