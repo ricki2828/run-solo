@@ -149,10 +149,15 @@
     <li>duration, distance, pace and True Pace;</li>
     <li>the verdict, minutes in each heart rate zone, and climb;</li>
     <li>the name of the area where you started (the suburb, never the street);</li>
-    <li>how the run felt (Easy, Right or Hard), if you tapped it.</li>
+    <li>how the run felt (Easy, Right or Hard), if you tapped it;</li>
+    <li><strong>only if you turn on "Weather in suggestions"</strong> (Settings, Companion, off until you turn it on): the area
+    where the run started, rounded on your phone to about 11 km (0.1 degree), with no place name.</li>
   </ul>
   <p>It never sends your GPS route, the street, or your heart rate trace. Runs recorded before you turned the
   companion on are not sent. If the phone is offline the summary is queued and sent later.</p>
+  <p>Turning on "Weather in suggestions" first shows a sheet with what is sent, to whom and why. With the switch off, no area
+  leaves your phone for the companion. Runs sent after you turn it on carry the area; runs sent before do not.
+  The weather part is described under "Where it goes" and "How long we keep it" below.</p>
   <p>The companion also keeps your answers to its questions. It asks at most one a week, and only
   inside a run note. The questions are what you are training for, the month of your race, when you usually
   run, and whether you have a niggle (none, calf, knee, hip, foot or other). You answer with buttons, never typed text.
@@ -168,7 +173,11 @@
   <h3>Where it goes</h3>
   <ul>
     <li><strong>Our server</strong>, hosted by Hetzner in Germany. It stores your run summaries, your answers, the notes it
-    sent you, and your chat details, in a database that only the companion service can read.</li>
+    sent you, and your chat details, in a database that only the companion service can read. With "Weather in suggestions" on,
+    it also holds one rounded area, from your latest run that had one.</li>
+    <li><strong>Open-Meteo</strong>, a weather service, only if you turn on "Weather in suggestions". Our server sends it that
+    rounded area (about 11 km) and your time zone, to ask for the forecast there. No name, account or device ID goes with it.
+    Open-Meteo sees our server's IP address, not yours. See section 3 for the weather request the app itself makes.</li>
     <li><strong>OpenRouter</strong>, and the AI provider it routes to, which write the words of each note. They receive only
     the facts of the run as short sentences, and your answers as fixed options. They never receive your
     phone number, Telegram chat, name or any typed text. We ask for providers that do not keep or train on what they receive
@@ -186,6 +195,9 @@
     <li>Run summaries, answers and your chat details are kept until you delete them, or until six months pass with no run,
     when your companion data is deleted automatically.</li>
     <li>The record of notes we sent is kept for 30 days.</li>
+    <li>The rounded weather area: only the latest one is kept. It is deleted 30 days after the run it came from, when you turn
+    "Weather in suggestions" off (as soon as your phone can reach our server, or the next time the app connects if you were
+    offline), when you re-connect the companion, and when you delete your data. Backups can keep it for up to 14 days.</li>
     <li>A niggle answer expires after 8 weeks.</li>
     <li>An unfinished connection (you never entered the code) is deleted after an hour.</li>
     <li>Backups: the server database is backed up each night, encrypted, and each backup is deleted after 14 days. Data you
@@ -207,7 +219,8 @@
   </ul>
   <p>Deleting removes every row we hold about you from the live database. Meta may keep delivery records for up to 30 days,
   and backups age out within 14 days, as above. In the app, Turn off and Delete everything both delete your data;
-  only STOP in the chat pauses the notes and keeps it.</p>
+  only STOP in the chat pauses the notes and keeps it. Turning "Weather in suggestions" off deletes just the stored weather area.</p>
+
   <h2>2c. Run companion: images and videos</h2>
   <p>This applies only if you turned the optional Run companion on and it has been set to send pictures. Its notes
   can then arrive in your Telegram chat as an image or a short video instead of plain text. The picture shows more
@@ -229,7 +242,8 @@
   from, as any web request does. Weather data is provided by Open-Meteo.com under the
   <a href="https://creativecommons.org/licenses/by/4.0/" rel="noopener">CC BY 4.0</a> licence.</p>
   <p>You can turn this off in Settings, under Recording, with the "Weather for each run"
-  switch. With it off, nothing is sent to Open-Meteo.</p>
+  switch. With it off, the app itself sends nothing to Open-Meteo. The Run companion has its own separate switch,
+  "Weather in suggestions", off until you turn it on, described in section 2b.</p>
 
   <h3>Place names</h3>
   <p>Each run shows where it started, for example "Lakeside Dr, Albert Park". Run Supreme asks Android's
@@ -280,7 +294,7 @@
   <h2>7. Changes and contact</h2>
   <p>If the app starts sending anything new off your phone, this page and the app's Settings,
   About screen change first and the Play listing's data safety section is updated. Questions:
-  <a href="mailto:privacy@runsolo.app">privacy@runsolo.app</a>.</p>
+  <a href="mailto:privacy@taiaroa.xyz">privacy@taiaroa.xyz</a>.</p>
 
   <hr>
   <p class="small">The same wording lives in the app under Settings, About. Weather data by

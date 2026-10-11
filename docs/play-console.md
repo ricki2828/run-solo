@@ -16,7 +16,7 @@ Founder approves the wording (plan §18.9 item 8) before anything is typed into 
 | Upload key SHA-1 | `6D:E0:ED:82:5F:B7:80:73:3A:C5:EC:9D:37:5F:8F:63:1F:6E:D0:57` | for the Maps key restriction |
 | Trademark | "Supreme" is a well-known registered streetwear mark (Supreme / VF Corp). "Run Supreme" for a running app is a different class, but the founder should run the trademark search (plan Phase 0) again for the new name before the listing goes live, and avoid Supreme's red-box logo styling anywhere | founder: open |
 | Domain | `runsupreme.taiaroa.xyz` chosen 7-Oct; the privacy URL on the Play forms must not change afterwards | decided |
-| Contact email in the listing | `privacy@runsolo.app` is used on the privacy page | founder: confirm the mailbox exists or change it |
+| Contact email in the listing | `privacy@taiaroa.xyz` (chosen by Ricki 11-Oct) is used on the privacy and delete pages | founder: confirm the mailbox receives mail |
 
 ## 1. Store listing
 
@@ -239,7 +239,7 @@ The base copy says "No account. Nothing uploaded." and "Your routes, times and h
 
 ### 13.3 Submission checklist
 
-1. Privacy page section 2b and `/delete/` are live at runsupreme.taiaroa.xyz. Deletion email address on `/delete/` is filled in (it ships with a TODO).
+1. Privacy page section 2b and `/delete/` are live at runsupreme.taiaroa.xyz. Deletion email address on `/delete/` is privacy@taiaroa.xyz.
 2. Data safety form updated per 13.1, and the deletion URL entered.
 3. Store copy per 13.2 pasted into the listing.
 4. The server enrol allowlist and the dogfood compile flag are off only when the above are done (plan B2).
