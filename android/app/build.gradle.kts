@@ -90,9 +90,12 @@ android {
 
     flavorDimensions += "dist"
     productFlavors {
-        // Play track: applicationId app.runsolo (reserved for Play-signed builds).
+        // Play track: applicationId app.runsupreme (Run Supreme brand, reserved for Play-signed builds).
+        // Only this flavour moves: dogfood keeps app.runsolo.dogfood so the founder's sideloaded data survives.
+        // Kotlin namespace/packages stay app.runsolo (namespace and applicationId are independent).
         create("play") {
             dimension = "dist"
+            applicationId = "app.runsupreme"
             buildConfigField("boolean", "REPLAY_ENABLED", "false")
             // Upload key when RUN_SOLO_UPLOAD_KEYSTORE is set (release-aab job), debug key otherwise.
             // The debug build type keeps its own debug signing (build type wins over flavour).
@@ -121,8 +124,8 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Native debug symbols (libapp.so, libflutter.so) packed into the AAB so Play vitals
-            // symbolicates native traces (plan §11) without a separate upload.
+            // Native debug symbols (libapp.so, libflutter.so): FULL so the release-aab job can lift them out
+            // into native-debug-symbols.zip (tools/split_native_symbols.py) and keep them out of the bundle (~109 MiB).
             ndk { debugSymbolLevel = "FULL" }
         }
     }

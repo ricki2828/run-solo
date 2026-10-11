@@ -64,7 +64,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: tools/emulator_topo_surface.sh build/dist/topo-surface.apk app.runsolo.debug
+          script: tools/emulator_topo_surface.sh build/dist/topo-surface.apk app.runsupreme.debug
       - name: Publish the shots to a release (Actions artifact storage is exhausted)
         if: ${{ !cancelled() && vars.USE_ARTIFACTS != '1' }}
         env:

@@ -3,7 +3,7 @@ description: "Run Supreme: 4x4 Interval Run. Local-only Android running app with
 publish_to: 'none'
 
 # versionCode comes from the +N suffix (plan §11 release train).
-version: 0.1.0+1
+version: 0.1.0+3
 
 environment:
   sdk: ^3.13.4

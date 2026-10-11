@@ -395,7 +395,7 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
-      - name: Build debug APK (play flavour, app.runsolo.debug)
+      - name: Build debug APK (play flavour, app.runsupreme.debug)
         run: |
           # Live compare ON (founder 28-Sep): LV2's in-app "Mute tips" shipped in #77,
           # the gate live_context.dart waits for. Emulator runs have no history, so
@@ -646,6 +646,16 @@ jobs:
         run: |
           flutter build appbundle --release --flavor play --obfuscate --split-debug-info=build/symbols-play $MAPS_DEFINE
           ls -la build/app/outputs/bundle/playRelease/
+      - name: Split native debug symbols out of the AAB (bundle 155 -> ~41 MiB) and re-sign
+        env:
+          RUN_SOLO_UPLOAD_STORE_PASSWORD: ${{ secrets.RUN_SOLO_UPLOAD_STORE_PASSWORD }}
+          RUN_SOLO_UPLOAD_KEY_ALIAS: upload
+          RUN_SOLO_UPLOAD_KEY_PASSWORD: ${{ secrets.RUN_SOLO_UPLOAD_KEY_PASSWORD }}
+        run: |
+          # ndk.debugSymbolLevel FULL embeds ~109 MiB of .dbg files; Play never ships them to devices.
+          # They go to a separate zip for the Console (App bundle explorer > Downloads > native debug symbols).
+          mkdir -p build/dist-play
+          python3 tools/split_native_symbols.py build/app/outputs/bundle/playRelease/app-play-release.aab build/dist-play/native-debug-symbols.zip
       - name: Verify signer (upload key), 16 KB alignment, Maps meta-data present
         run: |
           AAB=build/app/outputs/bundle/playRelease/app-play-release.aab
@@ -657,15 +667,16 @@ jobs:
           unzip -p "$AAB" base/manifest/AndroidManifest.xml | grep -aq 'com.google.android.geo.API_KEY' || { echo "Maps meta-data missing from the bundle manifest" >&2; exit 1; }
           if [ -z "$RUN_SOLO_MAPS_API_KEY" ]; then echo "::warning::RUN_SOLO_MAPS_API_KEY secret is not set; the Play build will show 'Map failed to load'"; fi
           SIZE=$(stat -c %s "$AAB"); MIB=$(awk "BEGIN{printf \"%.1f\", $SIZE/1048576}")
-          echo "### Play AAB: ${MIB} MiB (app.runsolo, upload-key signed, ${GITHUB_REF_NAME})" >> "$GITHUB_STEP_SUMMARY"
-      - name: Collect the AAB and R8 mapping (native symbols travel inside the AAB via ndk.debugSymbolLevel FULL)
+          echo "### Play AAB: ${MIB} MiB (app.runsupreme, upload-key signed, ${GITHUB_REF_NAME})" >> "$GITHUB_STEP_SUMMARY"
+      - name: Collect the AAB and R8 mapping (native symbols are split into native-debug-symbols.zip)
         run: |
           # Artifact names cannot contain "/", and a branch dispatch has one (release/phase2).
           echo "REF=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_ENV"
           mkdir -p build/dist-play
           cp build/app/outputs/bundle/playRelease/app-play-release.aab build/dist-play/
           cp build/app/outputs/mapping/playRelease/mapping.txt build/dist-play/mapping.txt
-          unzip -l build/dist-play/app-play-release.aab | grep -q "BUNDLE-METADATA/com.android.tools.build.debugsymbols" || { echo "native debug symbols missing from the AAB" >&2; exit 1; }
+          unzip -l build/dist-play/native-debug-symbols.zip | grep -q "arm64-v8a/libflutter.so.dbg" || { echo "native debug symbols zip is missing libflutter.so.dbg" >&2; exit 1; }
+          if unzip -l build/dist-play/app-play-release.aab | grep -q "com.android.tools.build.debugsymbols"; then echo "native symbols still inside the AAB" >&2; exit 1; fi
           ls -la build/dist-play
       - name: Release manifest and checksums
         run: |
@@ -674,14 +685,14 @@ jobs:
           from pathlib import Path
 
           dist = Path('build/dist-play')
-          files = (dist / 'app-play-release.aab', dist / 'mapping.txt')
+          files = (dist / 'app-play-release.aab', dist / 'mapping.txt', dist / 'native-debug-symbols.zip')
           checksums = []
           for path in files:
               digest = hashlib.sha256(path.read_bytes()).hexdigest()
               checksums.append(f'{digest}  {path.name}')
           manifest = {
               'app': 'Run Supreme',
-              'package': 'app.runsolo',
+              'package': 'app.runsupreme',
               'version_name': os.environ['RELEASE_VERSION'],
               'version_code': int(os.environ['RELEASE_BUILD']),
               'git_ref': os.environ['GITHUB_REF'],
@@ -702,7 +713,7 @@ jobs:
         run: |
           python3 -c "import shutil; shutil.make_archive('build/dist-play/symbols-play', 'zip', 'build/symbols-play')"
           tools/ci_release.sh put "ci-aab-${{ github.run_id }}" "play AAB ${{ env.REF }} ${{ github.run_id }}" "Play AAB ${{ env.REF }}, run ${{ github.run_id }}, sha ${{ github.sha }}. Deleted after 14 days." \
-            build/dist-play/app-play-release.aab build/dist-play/release-manifest.json build/dist-play/SHA256SUMS build/dist-play/mapping.txt build/dist-play/symbols-play.zip
+            build/dist-play/app-play-release.aab build/dist-play/release-manifest.json build/dist-play/SHA256SUMS build/dist-play/mapping.txt build/dist-play/symbols-play.zip build/dist-play/native-debug-symbols.zip
       - uses: actions/upload-artifact@v4
         if: ${{ vars.USE_ARTIFACTS == '1' }}
         with:
@@ -719,6 +730,7 @@ jobs:
           name: run-solo-play-symbols-${{ env.REF }}
           path: |
             build/dist-play/mapping.txt
+            build/dist-play/native-debug-symbols.zip
             build/symbols-play
           if-no-files-found: error
           retention-days: 14
@@ -766,11 +778,11 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
-            tools/emulator_smoke.sh apk/app-debug.apk app.runsolo.debug
-            tools/emulator_lifecycle.sh apk/app-debug.apk app.runsolo.debug intervals
-            tools/emulator_lifecycle.sh apk/app-debug.apk app.runsolo.debug laps
-            tools/emulator_lifecycle.sh apk/app-debug.apk app.runsolo.debug free
-            tools/emulator_splash_shots.sh app.runsolo.debug
+            tools/emulator_smoke.sh apk/app-debug.apk app.runsupreme.debug
+            tools/emulator_lifecycle.sh apk/app-debug.apk app.runsupreme.debug intervals
+            tools/emulator_lifecycle.sh apk/app-debug.apk app.runsupreme.debug laps
+            tools/emulator_lifecycle.sh apk/app-debug.apk app.runsupreme.debug free
+            tools/emulator_splash_shots.sh app.runsupreme.debug
       - name: Publish splash hand-off shots to a release (B3 evidence)
         if: ${{ !cancelled() && vars.USE_ARTIFACTS != '1' }}
         env:
@@ -833,7 +845,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: tools/emulator_replay_kind.sh apk/app-debug.apk app.runsolo.debug ${{ matrix.kind }}
+          script: tools/emulator_replay_kind.sh apk/app-debug.apk app.runsupreme.debug ${{ matrix.kind }}
 
   emulator-dogfood:
     name: emulator smoke, dogfood R8 build (API 36)

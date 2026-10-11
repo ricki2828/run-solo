@@ -40,9 +40,11 @@ SHOTS = [
     ("03-verdict", "verdict_faster", "AN HONEST VERDICT", "Faster, holding or slower, and why", MID),
     ("04-plan", "plan_plan_360x800", "A 4-WEEK PLAN", "Built around your scores, week by week", LONG),
     ("05-zone-charts", "detail_chart_4x4_360x640", "WHERE THE EFFORT WENT", "Reps, splits and time in zone, by colour", AEROBIC),
-    ("06-offline-maps", "offline_maps_list", "TOPO MAPS, NO SIGNAL", "Download a region, run with no data", SPEED),
+    ("06-trail-run", "record_trail_retracing_360x640", "RUN THE TRAILS", "Climb, grade, height vs start, back to start", SPEED),
     ("07-start", "start_session_400s_360x800", "PICK YOUR SESSION", "Free, trail, intervals, laps, goals, tests", MID),
     ("08-history", "history_weeks_360x800", "SEE EVERY RUN", "By week, with pace and zone colours", LONG),
+    # Spare, not uploaded (the Play listing takes 01-08): the old Topo shot, which is only the pack manager.
+    ("09-spare-offline-maps", "offline_maps_list", "TOPO MAPS, NO SIGNAL", "Download a region, run with no data", SPEED),
 ]
 
 
