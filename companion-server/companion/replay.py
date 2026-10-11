@@ -287,7 +287,7 @@ class Replayer:
                     c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
                               (self.uid, "run_card", at, dedupe, r.run_id))
                     c.execute("UPDATE outbox SET due_at=?, state='pending', attempts=0 WHERE dedupe_key=? "
-                              "AND state IN ('pending','skipped')", (at, dedupe))
+                              "AND state IN ('pending','skipped','done')", (at, dedupe))  # 'done' with no card: it was removed
         if exists:
             return
         stale_now = r.start_utc + timedelta(seconds=r.duration_s) + timedelta(hours=self.s.stale_card_hours + 1)
@@ -496,6 +496,106 @@ def reset(s: Settings) -> tuple[int, str]:
     return 0, "replay forgotten; run replay again to start fresh"
 
 
+# ---------------------------------------------------------------------------------------- fresh start
+
+@dataclass
+class FreshPlan:
+    created: list[str]      # runs the replay made (removed with their cards, notes and the rest)
+    real: list[str]         # facts runs that are in the database but are real uploads (kept)
+    counts: dict[str, int]  # rows that go, by table
+    cut: str | None         # replay-dated rows are those before this; None = no real upload exists
+
+    def summary(self) -> str:
+        n = ", ".join(f"{v} {k}" for k, v in self.counts.items() if v)
+        return (f"{len(self.created)} replayed runs, {n or 'nothing else'}; "
+                f"{len(self.real)} real uploads kept" + (f" (replay-dated rows are those before {self.cut})" if self.cut else ""))
+
+
+def _marks(n: int) -> str:
+    return ",".join("?" * n)
+
+
+def _fresh(c: sqlite3.Connection, s: Settings, uid: str, runs: list[RunIn], apply: bool) -> FreshPlan:
+    """What a replay created for this user, told apart from real uploads, and (apply) removed in this transaction.
+
+    A facts run is the replay's if its row says so (`replay_runs.inserted=1`), or if it was stored at one of the
+    replay's own virtual times (received_at = end + the upload delay, or end + the stale window for runs before
+    --from) unless a real upload has since taken it over (`inserted=2`). Everything else is a real upload and is
+    never touched. Refuses when it cannot find a single replayed run among runs that are there."""
+    present = {r.run_id: r for r in runs if c.execute("SELECT 1 FROM runs WHERE user_id=? AND run_id=?", (uid, r.run_id)).fetchone()}
+    tag = {x["run_id"]: x["inserted"] for x in c.execute("SELECT run_id, inserted FROM replay_runs WHERE user_id=?", (uid,))}
+    created, real = [], []
+    for rid, r in present.items():
+        got = c.execute("SELECT received_at FROM runs WHERE user_id=? AND run_id=?", (uid, rid)).fetchone()[0]
+        end = r.start_utc + timedelta(seconds=r.duration_s)
+        sig = got in (iso(upload_time(r)), iso(end + timedelta(hours=s.stale_card_hours + 1)))
+        (created if tag.get(rid) == 1 or (tag.get(rid) != 2 and sig) else real).append(rid)
+    if present and not created:
+        raise ReplayError("cannot tell the replay's runs from real uploads (none carries the replay's mark or its "
+                          "timestamps); nothing was removed")
+    kept = [(x["run_id"], x["received_at"]) for x in c.execute("SELECT run_id, received_at FROM runs WHERE user_id=?", (uid,))
+            if x["run_id"] not in created]
+    real = [k[0] for k in kept]  # every run that stays: real uploads, in the facts folder or not
+    # The first real upload: nothing the live worker made can be older. A replayed run a real upload took over
+    # (inserted=2) still has its virtual received_at, so it says nothing about when real use began.
+    cut = min((k[1] for k in kept if tag.get(k[0]) != 2), default=None)
+    when = (lambda col: (f"{col} < ?", (cut,))) if cut else (lambda col: ("1=1", ()))
+    qs = {f"question:{x}" for x in created}
+    cards = {x["card_id"] for x in c.execute("SELECT card_id FROM replay_items WHERE user_id=? AND card_id IS NOT NULL", (uid,))}
+    for x in c.execute("SELECT card_id, run_id, kind, COALESCE(sent_at, created_at) t FROM cards WHERE user_id=?", (uid,)):
+        if x["run_id"] in created or x["run_id"] in qs or (x["kind"] in ("evening", "recap") and (cut is None or x["t"] < cut)):
+            cards.add(x["card_id"])
+    card_list = sorted(cards)
+    counts: dict[str, int] = {}
+
+    def go(table: str, where: str, args: tuple, delete: bool = True) -> None:
+        counts[table] = c.execute(f"SELECT COUNT(*) FROM {table} WHERE user_id=? AND {where}", (uid, *args)).fetchone()[0]
+        if apply and delete and counts[table]:
+            c.execute(f"DELETE FROM {table} WHERE user_id=? AND {where}", (uid, *args))
+
+    in_runs = (f"run_id IN ({_marks(len(created))})", tuple(created)) if created else ("0", ())
+    in_cards = (f"card_id IN ({_marks(len(card_list))})", tuple(card_list)) if card_list else ("0", ())
+    refs = [*created, *card_list, *[f"{k}:{m}" for k in card_list for m in ("caption", "question")]]
+    go("cards", *in_cards)  # their convo_cards go with them (cascade)
+    ow, oa = when("due_at")
+    go("outbox", f"(ref IN ({_marks(len(refs))}) OR (kind IN ('evening','recap') AND {ow}))" if refs
+       else f"(kind IN ('evening','recap') AND {ow})", (*refs, *oa))
+    for table, col in (("convo_log", "ts"), ("memory", "updated_at"), ("quota", "created_at"), ("outcomes", "ts"),
+                       ("msglog", "ts")):
+        go(table, *when(col))  # all replay-dated: the replay's clock is in the past, real use is not
+    go("replay_items", "1=1", ())
+    go("convo_area", *in_runs)
+    go("run_notes", *in_runs, delete=False)  # removed with their runs (cascade); counted here
+    go("replay_runs", "1=1", ())
+    go("runs", *in_runs)
+    counts["replay_state"] = c.execute("SELECT COUNT(*) FROM replay_state WHERE user_id=?", (uid,)).fetchone()[0]
+    if apply:
+        c.execute("DELETE FROM replay_state WHERE user_id=?", (uid,))
+        last = c.execute("SELECT MAX(start_utc) FROM runs WHERE user_id=?", (uid,)).fetchone()[0]
+        c.execute("UPDATE users SET last_run_utc=?, cap_zone=NULL, cap_week=NULL WHERE id=?", (last, uid))
+    return FreshPlan(created, real, counts, cut)
+
+
+def fresh_check(s: Settings, uid: str) -> None:
+    r = _row(s)
+    if r is not None and r["status"] in ("running", "stopping") and _alive(r, now_utc()):
+        raise ReplayError("a replay is running (fresh heartbeat); replay-stop it first")
+
+
+def fresh_apply(s: Settings, uid: str, runs: list[RunIn]) -> FreshPlan:
+    fresh_check(s, uid)
+    with db.tx(s.db_path) as c:
+        return _fresh(c, s, uid, runs, apply=True)
+
+
+def fresh_preview(s: Settings, uid: str, runs: list[RunIn]) -> FreshPlan:
+    fresh_check(s, uid)
+    with db.tx(s.db_path) as c:
+        plan = _fresh(c, s, uid, runs, apply=False)
+        c.rollback()
+    return plan
+
+
 # ---------------------------------------------------------------------------------------- entry points
 
 def find_user(settings: Settings) -> str:
@@ -525,7 +625,7 @@ def from_datetime(text: str | None, zone_id: str) -> datetime | None:
     return datetime(d.year, d.month, d.day, tzinfo=zone(zone_id)).astimezone(UTC)
 
 
-def dry_run(settings: Settings, facts_dir: str, every_s: int, from_text: str | None, full: bool = False,
+def dry_run(settings: Settings, facts_dir: str, every_s: int, from_text: str | None, full: bool = False, fresh: bool = False,
             out: Callable[[str], None] = print) -> int:
     """The whole schedule on a scratch copy of the database, nothing sent. Taps are not simulated, so the real run
     diverges from this wherever a button press would have changed what comes next."""
@@ -547,6 +647,9 @@ def dry_run(settings: Settings, facts_dir: str, every_s: int, from_text: str | N
         with db.tx(path) as c:  # carry on from wherever a real replay got to, but as a fresh, idle process
             c.execute("UPDATE replay_state SET status='stopped', heartbeat_at=NULL WHERE user_id=?", (uid,))
             c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('sends_paused', '0')")
+        if fresh:  # what --fresh would remove from the real database; the schedule below runs on a copy that has it gone
+            out("Fresh start would remove: " + fresh_preview(settings, uid, runs).summary())
+            fresh_apply(s2, uid, runs)
         rec = Recorder()
         r = Replayer(svc, uid, runs, 0, facts_dir=facts_dir, from_dt=from_datetime(from_text, runs[0].zone_id),
                      channel=rec, out=lambda _l: None)

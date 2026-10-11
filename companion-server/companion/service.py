@@ -645,7 +645,7 @@ class Service:
         with db.tx(self.s.db_path) as c:
             coach_type, app_type = self._coach_type(c, uid, run)
             if c.execute("SELECT 1 FROM runs WHERE user_id=? AND run_id=?", (uid, run.run_id)).fetchone():
-                if c.execute("UPDATE replay_runs SET inserted=0 WHERE user_id=? AND run_id=? AND inserted=1",
+                if c.execute("UPDATE replay_runs SET inserted=2 WHERE user_id=? AND run_id=? AND inserted=1",
                              (uid, run.run_id)).rowcount:
                     # The coach replay inserted this run from an export file; the app's own upload is the same run.
                     # Update it in place (a feel tapped during the replay is kept) and send no second card.
@@ -854,7 +854,8 @@ class Service:
             run = dict(run_r)
             hist = self._history(c, uid, run["start_utc"])
             mem = self._memory_get(c, uid, now)
-            last = c.execute("SELECT MAX(sent_at) m FROM cards WHERE user_id=?", (uid,)).fetchone()["m"]
+            last = c.execute("SELECT MAX(sent_at) m FROM cards WHERE user_id=? AND sent_at<=?",
+                             (uid, iso(now))).fetchone()["m"]  # as of now: a card sent later (real, during a replay) is not "the last"
             feels = self._feel_counts(c, uid, now)
         age_h = (now - parse_iso(last)).total_seconds() / 3600 if last else None
         res = build_facts(run, hist, mem, last_card_age_h=age_h)

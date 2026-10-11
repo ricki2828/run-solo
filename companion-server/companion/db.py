@@ -161,7 +161,7 @@ CREATE TABLE IF NOT EXISTS replay_state (
   heartbeat_at TEXT, started_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS replay_runs (  -- runs the replay has reached. inserted=1: it created the row, so the app's
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,  -- own later upload updates it in place (then 0)
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,  -- own later upload updates it in place (then 2); 0 = a run that was already there
   run_id TEXT NOT NULL,
   inserted INTEGER NOT NULL DEFAULT 1,
   PRIMARY KEY (user_id, run_id)
