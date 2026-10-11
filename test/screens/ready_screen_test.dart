@@ -77,7 +77,8 @@ void main() {
     await pumpTimes(tester, 3);
     expect(find.text('GOOD'), findsOneWidget);
     expect(find.text('Starting without a good GPS fix'), findsNothing);
-    expect(find.text('CONNECTED · 61 BPM'), findsOneWidget);
+    expect(find.text('61 BPM'), findsOneWidget);
+    expect(find.text('STRAP CONNECTED'), findsOneWidget);
   });
 
   testWidgets('a weak fix says WEAK and still warns', (tester) async {
@@ -244,6 +245,47 @@ void main() {
     await settleAnimations(tester);
     expect(find.byType(ReadyScreen), findsOneWidget);
     expect(find.text('GOOD'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const ValueKey('ready-start')))
+          .onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets('a goal run: READY UP is always on, Ready START waits for GPS', (
+    tester,
+  ) async {
+    final services = fakeServices(
+      settings: const AppSettings(onboardingDone: true, goalRun: true),
+    );
+    await pumpApp(tester, services, pushRoute: Routes.start);
+    await pumpTimes(tester, 4);
+    final up = find.byKey(const ValueKey('start-ready-up'));
+    expect(tester.widget<FilledButton>(up).onPressed, isNotNull);
+    await tester.tap(up);
+    await pumpTimes(tester, 3);
+    await settleAnimations(tester);
+    FilledButton start() =>
+        tester.widget<FilledButton>(find.byKey(const ValueKey('ready-start')));
+    expect(find.text('WAITING'), findsOneWidget);
+    expect(start().onPressed, isNull);
+    (services.recorder as FakeRecorderGateway).emitGpsProbe(
+      GpsProbeEvent(fix: true, lat: -41.3, lon: 174.8, accuracyM: 8),
+    );
+    await pumpTimes(tester, 3);
+    expect(start().onPressed, isNotNull);
+  });
+
+  testWidgets('a free run never waits: warning only', (tester) async {
+    final services = fakeServices(
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.free,
+      ),
+    );
+    await openReady(tester, services);
+    expect(find.text('SEARCHING'), findsOneWidget);
     expect(
       tester
           .widget<FilledButton>(find.byKey(const ValueKey('ready-start')))

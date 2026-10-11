@@ -48,11 +48,11 @@ void main() {
     FilledButton start() => tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'READY UP ›'),
     );
-    expect(start().onPressed, isNull);
+    expect(start().onPressed, isNotNull, reason: 'only Ready gates on GPS');
     expect(find.textContaining('Waiting for GPS'), findsOneWidget);
     fake.emitGpsProbe(GpsProbeEvent(fix: true, accuracyM: 35));
     await pumpTimes(tester, 2);
-    expect(start().onPressed, isNull, reason: '35 m is not ready');
+    expect(start().onPressed, isNotNull);
     fake.emitGpsProbe(
       GpsProbeEvent(fix: true, lat: -37.8, lon: 144.9, accuracyM: 6),
     );
@@ -61,7 +61,7 @@ void main() {
     expect(start().onPressed, isNotNull);
     fake.emitGpsProbe(GpsProbeEvent(fix: false));
     await pumpTimes(tester, 2);
-    expect(start().onPressed, isNull, reason: 'the fix went stale');
+    expect(start().onPressed, isNotNull);
     fake.emitGpsProbe(GpsProbeEvent(fix: true, accuracyM: 8));
     await pumpTimes(tester, 2);
     await readyAndGo(tester);
@@ -186,7 +186,7 @@ void main() {
     FilledButton start() => tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'READY UP ›'),
     );
-    expect(start().onPressed, isNull, reason: 'waits for GPS');
+    expect(start().onPressed, isNotNull, reason: 'waits for GPS');
     fake.emitGpsProbe(GpsProbeEvent(fix: true, accuracyM: 5));
     await pumpTimes(tester, 2);
     expect(start().onPressed, isNotNull, reason: 'G1 specs are in (#63)');

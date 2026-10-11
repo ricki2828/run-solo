@@ -1397,10 +1397,9 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                         _gpsReady
                             ? 'GPS ready · ${_probe!.accuracyM!.round()} m'
                             : s.eventRun
-                            ? 'Waiting for GPS. The 5 km needs a fix at the '
+                            ? 'Waiting for GPS. START waits for a fix at the '
                                   'start line.'
-                            : 'Waiting for GPS. The goal needs a fix before '
-                                  'you start.',
+                            : 'Waiting for GPS. START waits for a fix.',
                         key: const ValueKey('event-gps'),
                         style: RunSoloType.label13.copyWith(
                           color: _gpsReady ? t.inkSecondary : t.semWarn,
@@ -1424,7 +1423,9 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                   FilledButton(
                     key: const ValueKey('start-ready-up'),
                     // The test always goes through its health note first.
-                    onPressed: _starting || (goal && !_gpsReady)
+                    // Only Ready gates on GPS (goal and event runs); this
+                    // button is always on.
+                    onPressed: _starting
                         ? null
                         : mode == RecordMode.cooper && _pickedTest == 'bronco'
                         ? () => _openReady(

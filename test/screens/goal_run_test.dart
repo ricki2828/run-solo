@@ -183,7 +183,7 @@ void main() {
     final gps = find.byKey(const ValueKey('event-gps'));
     expect(gps.hitTestable(), findsOneWidget);
     final button = find.widgetWithText(FilledButton, 'READY UP ›');
-    expect(tester.widget<FilledButton>(button).onPressed, isNull);
+    expect(tester.widget<FilledButton>(button).onPressed, isNotNull);
     final gpsBox = tester.getRect(gps);
     final btnBox = tester.getRect(button);
     expect(gpsBox.bottom, lessThanOrEqualTo(btnBox.top));

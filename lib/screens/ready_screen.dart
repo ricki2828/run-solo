@@ -322,21 +322,21 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
                 style: RunSoloType.body15.copyWith(color: _ink),
               ),
             const Spacer(),
-            Row(
+            Wrap(
+              spacing: Space.x8,
+              runSpacing: Space.x8,
               children: [
                 _OnChip(
                   key: const ValueKey('ready-on-voice'),
                   label: 'VOICE CUES ${s.cues ? 'ON' : 'OFF'}',
                   onTap: _openSettings,
                 ),
-                const SizedBox(width: Space.x8),
                 _OnChip(
                   key: const ValueKey('ready-on-countdown'),
                   label:
                       'COUNTDOWN ${s.countdownSeconds == 0 ? 'OFF' : '${s.countdownSeconds} S'}',
                   onTap: _openSettings,
                 ),
-                const SizedBox(width: Space.x8),
                 _OnChip(
                   key: const ValueKey('ready-on-autopause'),
                   label: 'AUTO-PAUSE ${s.autoPause ? 'ON' : 'OFF'}',
@@ -356,7 +356,8 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
                       key: const ValueKey('ready-gps'),
                       label: 'GPS',
                       value: switch (gps) {
-                        _Gps.searching => 'SEARCHING',
+                        _Gps.searching =>
+                          widget.requiresGps ? 'WAITING' : 'SEARCHING',
                         _Gps.good => 'GOOD',
                         _Gps.weak => 'WEAK',
                       },
@@ -450,11 +451,12 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
     final hr = _ble?.lastHr;
     return _Chip(
       key: const ValueKey('ready-strap'),
-      label: 'HR STRAP',
+      label: connected ? 'STRAP CONNECTED' : 'HR STRAP',
+      // The reading is as big as GPS's GOOD.
       value: saved == null
           ? 'NONE'
           : connected
-          ? (hr == null ? 'CONNECTED' : 'CONNECTED · $hr BPM')
+          ? (hr == null ? 'NO READING' : '$hr BPM')
           : 'CONNECTING',
       dot: saved == null
           ? NightSession.inkMuted
@@ -605,32 +607,30 @@ class _OnChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Semantics(
-        button: true,
-        label: '$label. Opens Settings.',
-        excludeSemantics: true,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(Radii.pill),
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 44),
-            padding: const EdgeInsets.symmetric(horizontal: Space.x8),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              border: Border.all(color: ReadyScreen.ink, width: 2),
-              borderRadius: BorderRadius.circular(Radii.pill),
-            ),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                label,
-                maxLines: 1,
-                style: RunSoloType.label13.copyWith(
-                  color: ReadyScreen.ink,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+    return Semantics(
+      button: true,
+      label: '$label. Opens Settings.',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Radii.pill),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 44),
+          padding: const EdgeInsets.symmetric(horizontal: Space.x12),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            border: Border.all(color: ReadyScreen.ink, width: 2),
+            borderRadius: BorderRadius.circular(Radii.pill),
+          ),
+          // 12 sp at least, never scaled down: a chip that does not fit
+          // wraps to a second row instead.
+          child: Text(
+            label,
+            maxLines: 1,
+            style: RunSoloType.label13.copyWith(
+              fontSize: 13,
+              color: ReadyScreen.ink,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ),
