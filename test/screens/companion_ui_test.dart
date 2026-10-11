@@ -41,9 +41,9 @@ void main() {
     );
     await pumpTimes(tester, 4);
     expect(find.text('RUN COMPANION'), findsOneWidget);
-    expect(find.text(kCompanionSent), findsOneWidget);
-    expect(find.text(kCompanionWhere), findsOneWidget);
-    expect(find.textContaining('30 days'), findsOneWidget);
+    expect(find.text(kCompanionSent, skipOffstage: false), findsOneWidget);
+    expect(find.text(kCompanionWhere, skipOffstage: false), findsOneWidget);
+    expect(find.textContaining('30 days', skipOffstage: false), findsOneWidget);
     await scrollTo(tester, find.text('Read the privacy page'));
     expect(find.text('Read the privacy page'), findsOneWidget);
     // No switch, tick box or radio that could start ticked.
@@ -147,6 +147,61 @@ void main() {
     expect(http.to('DELETE', '/v1/me'), hasLength(1));
     expect(await secrets.read(CompanionController.tokenName), isNull);
     expect(find.text('RUN COMPANION'), findsOneWidget);
+  });
+
+  group('show route shape on cards', () {
+    Future<void> openKnows(WidgetTester tester) async {
+      await tester.runAsync(() => enrolNow(ctl));
+      await pumpApp(
+        tester,
+        fakeServices(companion: ctl, transfer: transfer),
+        home: const CompanionScreen(),
+      );
+      await pumpTimes(tester, 6);
+      await scrollTo(
+        tester,
+        find.byKey(const ValueKey('companion-route-switch')),
+      );
+    }
+
+    Switch sw(WidgetTester tester) => tester.widget<Switch>(
+      find.byKey(const ValueKey('companion-route-switch')),
+    );
+
+    testWidgets('starts on, with one line saying what is sent', (tester) async {
+      await openKnows(tester);
+      expect(sw(tester).value, isTrue);
+      expect(find.text('Show route shape on cards'), findsOneWidget);
+      expect(find.text(kCompanionRouteBlurb), findsOneWidget);
+      expect(kCompanionRouteBlurb, isNot(contains('—')));
+      expect(http.to('PUT', '/v1/me/settings'), isEmpty);
+    });
+
+    testWidgets('turning it off tells the server and stops the shape', (
+      tester,
+    ) async {
+      await openKnows(tester);
+      await tester.tap(find.byKey(const ValueKey('companion-route-switch')));
+      await tester.runAsync(() async {
+        for (var i = 0; i < 50 && ctl.routeShapeOn; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      await pumpTimes(tester, 4);
+      expect(sw(tester).value, isFalse);
+      expect(ctl.routeShapeOn, isFalse);
+      expect(http.bodyOf(http.to('PUT', '/v1/me/settings').last), {
+        'route_shape': false,
+      });
+    });
+
+    testWidgets('the consent copy names the shape and the splits', (
+      tester,
+    ) async {
+      expect(kCompanionSent, contains('could still be recognised'));
+      expect(kCompanionSent, contains('pace for each km'));
+      expect(kCompanionSent, isNot(contains('—')));
+    });
   });
 
   group('weather in suggestions', () {

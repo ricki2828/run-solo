@@ -24,14 +24,18 @@ OP_KINDS = {
     "card": frozenset({"light", "flood", "pb", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly"}),
     "video": frozenset({"run", "weekly"}),
 }
+ROUTE_GRID, ROUTE_MAX_POINTS, SPLITS_MAX, REPS_MAX, TITLE_MAX = 255, 120, 100, 60, 24
 ERROR_CODES = frozenset({"bad_request", "timeout", "too_big", "render_failed"})
 
 # Everything the companion may send. These are exactly the keys media.run_facts / week_facts build, i.e. what the
 # card or video shows. No run id, user id, chat id, token or coordinates: a key outside this set is refused by both
-# sides, so adding one is a deliberate change to this list and to the privacy page.
+# sides, so adding one is a deliberate change to this list and to the privacy page. `route_xy` is the app's route
+# SHAPE (whole numbers on a 0..255 unit-box grid, no latitude, longitude, scale or north); `route` (lat/lon) is
+# deliberately not here. `splits` and `reps` are per-km paces and rep times, each with an HR zone.
 ALLOWED_FACT_KEYS = frozenset({
     "type", "start_local", "distance_km", "duration_s", "headline", "pace_s_per_km", "zone_s", "climb_m",
     "place_note", "verdict", "pb", "pb_detail",
+    "title", "route_xy", "splits", "reps",
     "week_label", "runs", "days", "score_moves", "best_moment",
     # suggestion / milestone / race_countdown / monthly cards (persisted in convo_cards.media_json when the coach
     # decides to send them; each one is something the card's own text already says, see KIND_FACT_KEYS)
@@ -45,7 +49,8 @@ ALLOWED_FACT_KEYS = frozenset({
 # milestone no pace, and a run card no suggestion reason, however wide the shared list grows. The older kinds' lists are
 # exactly what media.run_facts / week_facts build.
 RUN_KEYS = frozenset({"type", "start_local", "distance_km", "duration_s", "headline", "pace_s_per_km", "zone_s",
-                      "climb_m", "place_note", "verdict", "pb", "pb_detail"})
+                      "climb_m", "place_note", "verdict", "pb", "pb_detail",
+                      "title", "route_xy", "splits", "reps"})   # the shape facts: run cards and run videos only
 WEEK_KEYS = frozenset({"week_label", "distance_km", "runs", "duration_s", "days", "score_moves", "best_moment"})
 NEW_KINDS = frozenset({"suggestion", "milestone", "race_countdown", "monthly"})   # these also get value-shape checks
 KIND_FACT_KEYS = {
@@ -76,12 +81,43 @@ def check_request(req: Any) -> tuple[str, str, dict]:
     op, kind, facts = req.get("op"), req.get("kind"), req.get("facts")
     if op not in OP_KINDS or kind not in OP_KINDS[op] or not isinstance(facts, dict):
         raise ProtocolError("bad_request")
-    if not set(facts) <= ALLOWED_FACT_KEYS:
+    if not set(facts) <= ALLOWED_FACT_KEYS or not _shapes_ok(facts):
         raise ProtocolError("bad_request")
     if kind in KIND_FACT_KEYS:
         if not set(facts) <= KIND_FACT_KEYS[kind] or (kind in NEW_KINDS and not _kind_values_ok(kind, facts)):
             raise ProtocolError("bad_request")
     return op, kind, facts
+
+
+def _int_in(v: Any, lo: int, hi: int) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi
+
+
+def _shapes_ok(facts: dict) -> bool:
+    """The worker is the last stop before pixels, so it checks the shape facts itself: a route is only a short list of
+    whole-number grid points (a latitude or longitude, being a float, cannot pass), and splits and reps are bounded."""
+    t = facts.get("title")
+    if t is not None and not (isinstance(t, str) and 1 <= len(t) <= TITLE_MAX):
+        return False
+    r = facts.get("route_xy")
+    if r is not None and not (isinstance(r, list) and 2 <= len(r) <= ROUTE_MAX_POINTS and all(
+            isinstance(p, list) and len(p) == 2 and all(_int_in(c, 0, ROUTE_GRID) for c in p) for p in r)):
+        return False
+    bounds = {"km": (0.0, 1.0, False), "pace_s": (60.0, 3600.0, True), "time_s": (0.0, 3600.0, False)}
+
+    def num_ok(x: Any, f: str) -> bool:
+        lo, hi, closed_lo = bounds[f]
+        return (isinstance(x, (int, float)) and not isinstance(x, bool) and x == x and (x >= lo if closed_lo else x > lo)
+                and x <= hi)
+    for key, cap, fields in (("splits", SPLITS_MAX, ("km", "pace_s")), ("reps", REPS_MAX, ("time_s",))):
+        v = facts.get(key)
+        if v is None:
+            continue
+        if not (isinstance(v, list) and 1 <= len(v) <= cap and all(
+                isinstance(x, dict) and set(x) <= {*fields, "zone"} and all(num_ok(x.get(f), f) for f in fields)
+                and (x.get("zone") is None or _int_in(x["zone"], 1, 5)) for x in v)):
+            return False
+    return True
 
 
 def _num(v: Any) -> bool:

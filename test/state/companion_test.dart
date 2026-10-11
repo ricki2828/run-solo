@@ -77,6 +77,15 @@ const extraForbidden =
 /// A 422 that is the run's own fault (a start time in the future).
 const futureStart = '{"detail":"start_utc is in the future"}';
 
+/// A store that refuses to keep the privacy zones.
+class _ZoneWriteFails extends MemorySecretStore {
+  @override
+  Future<void> write(String name, String value) async {
+    if (name == CompanionController.zonesName) throw StateError('disk full');
+    return super.write(name, value);
+  }
+}
+
 /// Turn on, then type the code the bot sent.
 Future<void> enrolNow(CompanionController c, [String code = '123456']) async {
   await c.turnOn();
@@ -374,6 +383,8 @@ void main() {
         'climb_m',
         'locality',
         'feel',
+        'splits',
+        'reps',
       };
       expect(j.keys.toSet().difference(allowed), isEmpty);
     });
@@ -672,6 +683,273 @@ void main() {
       expect(areaCell(-36.8485), -36.8);
       expect(areaCell(-0.04), 0.0);
       expect(areaCell(-0.04).isNegative, isFalse);
+    });
+  });
+
+  group('route shape, splits and reps in the summary', () {
+    Future<Map<String, Object?>> summary({bool withRoute = false}) async {
+      await store.setUtcOffset(run.id, 480);
+      final d = (await store.load(run.id))!;
+      return companionSummary(
+        d,
+        zones: engine.HrZones.percentMax(190),
+        withRoute: withRoute,
+      )!;
+    }
+
+    test('no route unless asked for; splits and reps always come', () async {
+      final j = await summary();
+      expect(j.containsKey('route'), isFalse);
+      final splits = (j['splits']! as List).cast<Map<String, Object?>>();
+      expect(splits, isNotEmpty);
+      for (final x in splits) {
+        expect(x.keys.toSet().difference({'km', 'pace_s', 'zone'}), isEmpty);
+        expect(x['km'] as double, inInclusiveRange(0.001, 1.0));
+        expect(x['pace_s'] as double, inInclusiveRange(60, 3600));
+        expect(x['zone'], anyOf(isNull, inInclusiveRange(1, 5)));
+      }
+      // A 4x4 has four work reps, each with its time and zone.
+      final reps = (j['reps']! as List).cast<Map<String, Object?>>();
+      expect(reps, hasLength(4));
+      expect(reps.first.keys.toSet().difference({'time_s', 'zone'}), isEmpty);
+    });
+
+    test(
+      'the route is a shape: whole numbers in a unit box, nothing absolute',
+      () async {
+        final j = await summary(withRoute: true);
+        final route = (j['route']! as List).cast<List<Object?>>();
+        expect(route.length, inInclusiveRange(2, engine.kRouteMaxPoints));
+        for (final p in route) {
+          expect(p, hasLength(2));
+          for (final c in p) {
+            expect(c, isA<int>());
+            expect(c as int, inInclusiveRange(0, engine.kRouteGrid));
+          }
+        }
+        expect(
+          route.map((p) => p[0]! as int).reduce((a, b) => a < b ? a : b),
+          0,
+        );
+        expect(
+          route.map((p) => p[1]! as int).reduce((a, b) => a < b ? a : b),
+          0,
+        );
+        // The run starts at -33.9, 151.2: none of that is on the wire.
+        final wire = jsonEncode(j['route']);
+        expect(wire, isNot(contains('.')));
+        expect(wire, isNot(contains('151')));
+        expect(wire, isNot(contains('33')));
+        expect(jsonEncode(j), isNot(contains('"lat"')));
+      },
+    );
+
+    test(
+      'the whole summary stays small enough for the server (8 KB)',
+      () async {
+        expect(
+          utf8.encode(jsonEncode(await summary(withRoute: true))).length,
+          lessThan(8 * 1024),
+        );
+      },
+    );
+  });
+
+  group('route shape switch', () {
+    late SendCoordinator coordinator;
+    var clock = DateTime.utc(2026, 9, 24, 6, 40);
+
+    Future<void> enrolAndWire() async {
+      await enrolNow(ctl);
+      final s = AppSettings(
+        autoSend: const {CompanionTarget.targetId},
+        autoSendSince: {CompanionTarget.targetId: DateTime.utc(2026, 1, 1)},
+      );
+      coordinator = SendCoordinator(
+        history: store,
+        settings: SettingsController(MemorySettingsStore(s), s),
+        targets: [CompanionTarget(controller: ctl, now: () => clock)],
+        now: () => clock,
+      );
+    }
+
+    Future<Map<String, Object?>> sentSummary() async {
+      await coordinator.sendAuto(run.id);
+      return http.bodyOf(http.to('POST', '/v1/runs').last);
+    }
+
+    setUp(() {
+      clock = run.end.add(const Duration(minutes: 5));
+      return store.setUtcOffset(run.id, 480);
+    });
+
+    test(
+      'is on by default after enrolling, and says nothing to the server',
+      () async {
+        await enrolAndWire();
+        expect(ctl.routeShapeOn, isTrue);
+        expect(http.to('PUT', '/v1/me/settings'), isEmpty);
+        expect((await sentSummary()).containsKey('route'), isTrue);
+      },
+    );
+
+    test('the first send makes a secret zone; it is in no request', () async {
+      await enrolAndWire();
+      await sentSummary();
+      final zones =
+          jsonDecode(secrets.values[CompanionController.zonesName]!) as List;
+      expect(zones, isNotEmpty); // where the run starts and where it finishes
+      for (final r in http.requests) {
+        final text =
+            '${r.uri} ${r.headers} ${r.body == null ? '' : utf8.decode(r.body!)}';
+        for (final z in zones.cast<Map>()) {
+          for (final secret in ['${z['lat']}', '${z['lon']}', '${z['r']}']) {
+            expect(text, isNot(contains(secret)), reason: secret);
+          }
+        }
+      }
+    });
+
+    test(
+      'the same zone serves later runs and survives Delete everything',
+      () async {
+        await enrolAndWire();
+        await sentSummary();
+        final first = secrets.values[CompanionController.zonesName];
+        final again = await ctl.privacyZonesFor(run);
+        expect(again, hasLength(2));
+        expect(secrets.values[CompanionController.zonesName], first);
+        expect(await ctl.deleteEverything(), isTrue);
+        expect(secrets.values[CompanionController.zonesName], first);
+      },
+    );
+
+    test(
+      'a zone that cannot be saved means no route this time, not a weaker one',
+      () async {
+        final failing = _ZoneWriteFails();
+        ctl = CompanionController(
+          store: failing,
+          transfer: transfer,
+          client: CompanionClient(baseUrl: 'https://c.test', http: http),
+          pollEvery: Duration.zero,
+          waitFor: const Duration(seconds: 5),
+        );
+        await enrolAndWire();
+        final j = await sentSummary();
+        expect(j.containsKey('route'), isFalse);
+        expect(j.containsKey('splits'), isTrue);
+      },
+    );
+
+    test('is off before enrolling (nothing is sent anyway)', () async {
+      expect(ctl.routeShapeOn, isFalse);
+    });
+
+    test(
+      'off: the next summary has no route, and the server is told to forget',
+      () async {
+        await enrolAndWire();
+        expect(await ctl.setRouteShape(false), isTrue);
+        expect(ctl.routeShapeOn, isFalse);
+        expect(http.bodyOf(http.to('PUT', '/v1/me/settings').last), {
+          'route_shape': false,
+        });
+        final j = await sentSummary();
+        expect(j.containsKey('route'), isFalse);
+        expect(j.containsKey('splits'), isTrue);
+        expect(await secrets.read(CompanionController.routeForgetName), isNull);
+      },
+    );
+
+    test(
+      'off while offline: the phone stops now, the forget is retried',
+      () async {
+        await enrolAndWire();
+        http.offline = true;
+        expect(await ctl.setRouteShape(false), isTrue);
+        expect(ctl.routeShapeOn, isFalse);
+        expect(await secrets.read(CompanionController.routeForgetName), '1');
+        expect(ctl.problem, contains('told when you are back online'));
+        http.offline = false;
+        final next = controller();
+        await next.load();
+        expect(http.bodyOf(http.to('PUT', '/v1/me/settings').last), {
+          'route_shape': false,
+        });
+        expect(await secrets.read(CompanionController.routeForgetName), isNull);
+        expect(next.routeShapeOn, isFalse);
+      },
+    );
+
+    test('on again: the server is told first, then the route goes', () async {
+      await enrolAndWire();
+      await ctl.setRouteShape(false);
+      expect(await ctl.setRouteShape(true), isTrue);
+      expect(http.bodyOf(http.to('PUT', '/v1/me/settings').last), {
+        'route_shape': true,
+      });
+      expect((await sentSummary()).containsKey('route'), isTrue);
+    });
+
+    test('a failed PUT on the way back on leaves it off', () async {
+      await enrolAndWire();
+      await ctl.setRouteShape(false);
+      http.handler = (r) =>
+          r.method == 'PUT' ? const CompanionReply(503) : http.defaultReply(r);
+      expect(await ctl.setRouteShape(true), isFalse);
+      expect(ctl.routeShapeOn, isFalse);
+      expect(ctl.problem, isNotNull);
+      expect((await sentSummary()).containsKey('route'), isFalse);
+    });
+
+    test('the choice survives a restart', () async {
+      await enrolAndWire();
+      await ctl.setRouteShape(false);
+      final next = controller();
+      await next.load();
+      expect(next.routeShapeOn, isFalse);
+    });
+
+    test(
+      'Delete everything keeps the runner\'s route choice (off stays off)',
+      () async {
+        await enrolAndWire();
+        await ctl.setRouteShape(false);
+        expect(await ctl.deleteEverything(), isTrue);
+        expect(await secrets.read(CompanionController.routeOffName), '1');
+        // The new server record is told on the next enrolment, and no route goes before that.
+        final next = controller();
+        await next.load();
+        expect(next.routeShapeOn, isFalse);
+        await enrolNow(next);
+        expect(next.routeShapeOn, isFalse);
+        await next.syncRouteShape();
+        expect(http.bodyOf(http.to('PUT', '/v1/me/settings').last), {
+          'route_shape': false,
+        });
+      },
+    );
+
+    test('a 401 then a re-enrol does not turn the route back on', () async {
+      await enrolAndWire();
+      await ctl.setRouteShape(false);
+      http.handler = (_) => const CompanionReply(401);
+      await ctl.fetchMe();
+      expect(ctl.phase, CompanionPhase.off);
+      http.handler = null;
+      await enrolNow(ctl);
+      expect(ctl.routeShapeOn, isFalse);
+    });
+
+    test('a 401 on the PUT means the key is dead: wipe it', () async {
+      await enrolAndWire();
+      await ctl.setRouteShape(false);
+      await ctl.setRouteShape(true);
+      http.handler = (_) => const CompanionReply(401);
+      await ctl.setRouteShape(false);
+      await ctl.syncRouteShape();
+      expect(ctl.phase, CompanionPhase.off);
     });
   });
 

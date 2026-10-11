@@ -1,8 +1,9 @@
 """Turns a stored card (convo_cards.media_json) into bytes a channel can upload.
 
 Numbers come only from the stored run rows (B4): the card text is already validated, and the image facts are
-read straight from the same rows, never from the LLM. The server holds no GPS track and no per-km splits, so a
-run video (which needs both) is not rendered from server data; those moments get the still card instead. A
+read straight from the same rows, never from the LLM. The server holds no GPS track. It holds the route SHAPE the app
+sends (a unit-box outline, no coordinates) and per-km splits and rep times, in the run_shape table. With a shape and
+splits a run video (route, then splits, then the verdict) is rendered; a run without them gets the still card. A
 weekly recap video only needs per-day zone time, which the rows have.
 """
 from __future__ import annotations
@@ -51,8 +52,13 @@ def _zone_s(row: Mapping[str, Any]) -> list[float]:
     return [round(z.get(i, 0.0) * 60, 1) for i in range(1, 6)]
 
 
+TITLE = {"easy": "Easy run", "long": "Long run", "tempo": "Tempo", "interval": "Intervals", "race": "Race"}
+VIDEO_VERDICT = {"faster": "faster", "holding": "holding", "slower": "slower", "noRealChange": "holding"}
+
+
 def run_facts(run: Mapping[str, Any], headline: str) -> dict[str, Any]:
-    """Image facts for one run, from its stored row only."""
+    """Image facts for one run, from its stored row only. The run_shape row, when the caller joined it as `_shape`,
+    adds `route_xy` (the unit-box outline), `splits` and, for an interval run, `reps`."""
     facts: dict[str, Any] = {
         "type": run["type"],
         "start_local": to_local(parse_iso(run["start_utc"]), run["zone_id"]).strftime("%Y-%m-%dT%H:%M"),
@@ -74,7 +80,26 @@ def run_facts(run: Mapping[str, Any], headline: str) -> dict[str, Any]:
     if run.get("pb") in PB_LABEL:
         facts["pb"] = run["pb"]
         facts["pb_detail"] = {"label": PB_LABEL[run["pb"]]}
+    shape = run.get("_shape") or {}
+    if shape.get("route"):
+        facts["route_xy"] = shape["route"]
+    if shape.get("splits"):
+        facts["splits"] = shape["splits"]
+    if shape.get("reps") and run["type"] == "interval":
+        facts["reps"] = shape["reps"]
     return facts
+
+
+def video_facts(facts: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Facts for the route -> splits -> verdict video, or None when this run cannot have one (no shape, no splits, or a
+    verdict the video has no word for). A PB run uses its ordinary verdict: the server never holds the old best time
+    that the PB layout needs, so it is not drawn."""
+    verdict = VIDEO_VERDICT.get(str(facts.get("verdict")))
+    if not facts.get("route_xy") or not facts.get("splits") or verdict is None:
+        return None
+    out = {k: v for k, v in facts.items() if k not in ("pb", "pb_detail")}
+    out["verdict"], out["title"] = verdict, TITLE.get(str(facts.get("type")), "Run")
+    return out
 
 
 def week_bounds(week_ref: str) -> tuple[date, date]:
@@ -155,8 +180,8 @@ def _default_card_fns(client: RenderClient) -> dict[str, Callable[..., bytes]]:
 
 def _default_video_fns(client: RenderClient | None = None) -> dict[str, Callable[..., Any]]:
     def run(facts: dict, out: Path) -> Any:
-        if not facts.get("splits"):  # the server holds no per-km splits: decide here, without a worker round trip
-            raise MediaError("run video needs splits")
+        if not facts.get("splits") or not facts.get("route_xy"):  # decide here, without a worker round trip
+            raise MediaError("run video needs a route shape and splits")
         out.write_bytes(_client(client).video("run", facts))
 
     def weekly(facts: dict, out: Path) -> Any:
@@ -235,13 +260,13 @@ class MediaRenderer:
             else:
                 run = next(r for r in runs if r["run_id"] == card["run_id"])
                 facts = run_facts(run, card["headline"])
-                vkind, vfacts = "run", facts
+                vkind, vfacts = "run", video_facts(facts)
             photo = self.cards[kind](facts, memory or {})
         except Exception as e:
             raise MediaError(f"{kind}: {type(e).__name__}") from None
         if not photo or len(photo) > PHOTO_MAX_BYTES:
             raise MediaError(f"{kind}: photo size {len(photo or b'')}")
-        video = self._video(vkind, vfacts) if plan.get("video") else None
+        video = self._video(vkind, vfacts) if plan.get("video") and vfacts is not None else None
         return Media(photo=photo, video=video, duration_s=13 if video else 0)
 
 

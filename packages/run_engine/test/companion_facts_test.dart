@@ -10,7 +10,7 @@ void main() {
   const allowed = {
     'run_id', 'type', 'start_utc', 'utc_offset_min', 'zone_id', 'duration_s',
     'distance_m', 'pace_s_per_km', 'true_pace_s_per_km', 'verdict', 'zone_min',
-    'climb_m', 'locality', 'feel', //
+    'climb_m', 'locality', 'feel', 'route', 'splits', 'reps', //
   };
   final fourByFour = fixture('four_by_four_manual_clean_hr').run;
   final lapsRun = fixture('laps_run_manual_clean_hr').run;
@@ -79,6 +79,80 @@ void main() {
     expect(VerdictHeadline.values.map((v) => v.name), contains(p['verdict']));
     final z = p['zone_min']! as Map<String, double>;
     expect(z.keys, ['z1', 'z2', 'z3', 'z4', 'z5']);
+  });
+
+  test(
+    'route shape, splits and rep times ride along, inside the server bounds',
+    () {
+      RunBundle b(RunFile r) => RunBundle(
+        run: r,
+        sidecar: RunSidecar(
+          runId: r.id,
+          zoneId: 'Asia/Singapore',
+          utcOffsetMin: 480,
+        ),
+      );
+      final p = companionFactsFor([
+        b(fourByFour),
+      ], options: const CompanionFactsOptions(maxHr: 190)).single!;
+      final reps = (p['reps']! as List).cast<Map<String, Object?>>();
+      expect(reps, isNotEmpty);
+      expect(reps.length, lessThanOrEqualTo(kMaxReps));
+      for (final r in reps) {
+        expect(r['time_s'], inInclusiveRange(1, 3600));
+        expect(r['zone'], anyOf(isNull, inInclusiveRange(1, 5)));
+      }
+      final splits = (p['splits']! as List).cast<Map<String, Object?>>();
+      var km = 0.0, secs = 0.0;
+      for (final s in splits) {
+        expect(s['km'] as double, inInclusiveRange(0.001, 1.0));
+        expect(s['pace_s'] as double, inInclusiveRange(60, 3600));
+        km += s['km']! as double;
+        secs += (s['km']! as double) * (s['pace_s']! as double);
+      }
+      expect(km, closeTo((p['distance_m']! as double) / 1000, 0.05));
+      expect(
+        secs,
+        closeTo(p['duration_s']! as int, 0.015 * (p['duration_s']! as int)),
+      );
+      final route = p['route'] as List?;
+      if (route != null) {
+        expect(route.length, inInclusiveRange(2, kRouteMaxPoints));
+      }
+      final off = companionFactsFor(
+        [b(fourByFour)],
+        options: const CompanionFactsOptions(maxHr: 190, withRoute: false),
+      ).single!;
+      expect(off.containsKey('route'), isFalse);
+      expect(off['splits'], p['splits']);
+    },
+  );
+
+  test('a second replay reuses the same secret zones (no new circle for the same door)', () {
+    RunBundle b(RunFile r) => RunBundle(
+      run: r,
+      sidecar: RunSidecar(
+        runId: r.id,
+        zoneId: 'Asia/Singapore',
+        utcOffsetMin: 480,
+      ),
+    );
+    var kept = <PrivacyZone>[];
+    companionFactsFor([
+      b(fourByFour),
+      b(lapsRun),
+    ], options: CompanionFactsOptions(maxHr: 190, onZones: (z) => kept = z));
+    final first = [...kept];
+    var again = <PrivacyZone>[];
+    companionFactsFor(
+      [b(fourByFour), b(lapsRun)],
+      options: CompanionFactsOptions(
+        maxHr: 190,
+        privacyZones: first,
+        onZones: (z) => again = z,
+      ),
+    );
+    expect(again.map((z) => z.toJson()), first.map((z) => z.toJson()));
   });
 
   test(

@@ -22,7 +22,7 @@ def build_pb_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = N
         word = "faster" if d["delta_s"] < 0 else "slower"
         gain = f"{n} seconds {word} than before"
     prev = P.fmt_dur(float(d["previous_s"])) if d.get("previous_s") else ""
-    route = P.route_svg(facts.get("route") or [], 936, 330, bone, 8, bg, pad=22, end_dot=True)
+    route = P.facts_route_svg(facts, 936, 330, bone, 8, bg, pad=22, end_dot=True)
     has_route = bool(route)
     items = P.bar_items(facts)
     bars = "" if has_route else P.split_bars(items, 936, 230, bone)

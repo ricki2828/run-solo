@@ -16,6 +16,8 @@
 ///   state is not in a bundle, so a profile max HR is an option as well.
 library;
 
+import 'dart:math' as math;
+
 import 'package:run_engine/run_engine.dart';
 
 class CompanionFactsOptions {
@@ -24,7 +26,28 @@ class CompanionFactsOptions {
     this.age,
     this.restingHr,
     this.names = EventNames.generic,
+    this.withRoute = true,
+    this.random,
+    this.privacyZones = const [],
+    this.onZones,
   });
+
+  /// The secret zones already known for this runner (the replay's own file,
+  /// see `tool/companion_facts.dart`). New ones are added as runs need them
+  /// and handed to [onZones] when the call is done, so the next replay uses
+  /// the same circles (two replays with different circles would narrow home to
+  /// their overlap).
+  final List<PrivacyZone> privacyZones;
+  final void Function(List<PrivacyZone> zones)? onZones;
+
+  /// Picks the secret privacy-zone centres for the replay (a secure one by
+  /// default). The replay keeps its zones for the one call, like a phone does
+  /// across runs, and never writes them anywhere.
+  final math.Random? random;
+
+  /// The app's "Show route shape on cards" switch (default on): the summary
+  /// carries the normalised route shape. Splits and reps always ride along.
+  final bool withRoute;
 
   /// Typed max HR (Settings). Null: the app's fallback of 190.
   final int? maxHr;
@@ -137,6 +160,7 @@ List<Map<String, Object?>?> companionFactsFor(
   final priors = <PriorRun>[];
   final out = <Map<String, Object?>?>[];
   final zones = options.zones;
+  var privacyZones = [...options.privacyZones];
   for (final b in ordered) {
     final run = b.run;
     final sidecar = b.sidecar ?? RunSidecar(runId: run.id);
@@ -153,6 +177,13 @@ List<Map<String, Object?>?> companionFactsFor(
       if (p != null) priors.add(p);
     } catch (_) {
       a = null; // the app skips a failed analysis too: no verdict, no true pace
+    }
+    if (options.withRoute) {
+      privacyZones = ensureZonesForRun(
+        privacyZones,
+        run.samples,
+        random: options.random,
+      );
     }
     final mode = sidecar.runTypeOverride ?? a?.mode ?? run.mode;
     final local = RunZone.resolve(
@@ -197,7 +228,15 @@ List<Map<String, Object?>?> companionFactsFor(
       'climb_m': ?(climb == null ? null : _r1(climb)),
       'locality': ?sidecar.place,
       'feel': ?feel?.name,
+      ...companionShapeFields(
+        run,
+        zones: zones,
+        intervals: mode == RunMode.intervals ? a?.intervals : null,
+        withRoute: options.withRoute,
+        privacyZones: privacyZones,
+      ),
     });
   }
+  options.onZones?.call(privacyZones);
   return out;
 }

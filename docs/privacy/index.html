@@ -150,6 +150,10 @@
     <li>the verdict, minutes in each heart rate zone, and climb;</li>
     <li>the name of the area where you started (the suburb, never the street);</li>
     <li>how the run felt (Easy, Right or Hard), if you tapped it;</li>
+    <li>your pace for each kilometre, with the heart rate zone you mostly ran it in, and, for a structured session such as
+    intervals, the time and zone of each rep;</li>
+    <li><strong>unless you turn off "Show route shape on cards"</strong> (Settings, Companion, on by default): an outline of
+    your route with the first and last stretch cut off. See "The route outline" below.</li>
     <li><strong>only if you follow a 4-week plan in the app</strong>: which planned session the run was (easy, long or
     quality), which week of the plan it fell in (for example week 3 of 4), the distance the plan asked for when it names
     one, and the next planned session: its type, its planned day (a date), its week, and its minutes or distance when the
@@ -162,8 +166,27 @@
   suggestion follow the session your plan already has for the next day. If you have no plan in the app, none of this is sent
   and suggestions work as before. They are in the data the server returns about you (the data export); the app's "What the
   companion knows" screen does not show them. Delete everything removes them with the run they came from.</p>
-  <p>It never sends your GPS route, the street, or your heart rate trace. Runs recorded before you turned the
-  companion on are not sent. If the phone is offline the summary is queued and sent later.</p>
+  <p>It never sends your GPS points, your position, a map, the street, or your heart rate trace. Runs recorded before you
+  turned the companion on are not sent. If the phone is offline the summary is queued and sent later.</p>
+
+  <h3>The route outline</h3>
+  <p>With "Show route shape on cards" on, the app sends an outline of each run's route so the companion can draw it on the
+  picture or video of that run. On your phone, before anything is sent: a hidden circle around the places you start or finish
+  is cut off each end of the route first, and then a random 150 to 300 metres more (a new length each time, for each end), so the outline does not
+  show exactly where you started or finished. We clip a hidden zone around places you start or finish. The zone is kept only on your phone: it is
+  never sent to us, and it stays the same from run to run, so many runs from the same door do not add up to the door; the rest is thinned
+  to at most 120 points; it is turned so its longest direction runs left to right; it is moved to the corner of a square and
+  scaled so its longer side is exactly 255 steps; and each point is rounded to a whole number from 0 to 255. What is sent is that
+  list of whole numbers. It has no coordinates (no latitude or longitude) and no compass direction. Our server refuses anything
+  that is not in that form.</p>
+  <p>What this does not do. It is still the real shape of the middle of your route. Our server also holds the suburb name and
+  the distance of the run, so it can work out roughly how big the outline is and the area it is in. A distinctive outline could
+  therefore still be recognised, or matched to streets, by someone who knows the route or who gets hold of our data. The cut ends
+  protect exactly where you start and finish, not the route in between. If that matters to you, turn the switch off: your cards then show
+  your splits and zone bar instead, and the app sends no outline. Turning it off deletes the outlines the server already holds
+  (as soon as your phone can reach it; backups can keep them for up to 14 days), and the app stops sending them. Outlines
+  already drawn into pictures in your Telegram chat stay there until you delete them. Your per-kilometre paces and rep times are
+  separate from the outline and stay with the rest of the run summary.</p>
   <p>Turning on "Weather in suggestions" first shows a sheet with what is sent, to whom and why. With the switch off, no area
   leaves your phone for the companion. Runs sent after you turn it on carry the area; runs sent before do not.
   The weather part is described under "Where it goes" and "How long we keep it" below.</p>
@@ -188,14 +211,16 @@
   <h3>Where it goes</h3>
   <ul>
     <li><strong>Our server</strong>, hosted by Hetzner in Germany. It stores your run summaries, your answers, the notes it
-    sent you, and your chat details, in a database that only the companion service can read. With "Weather in suggestions" on,
+    sent you, and your chat details, in a database that only the companion service can read. That includes each run's per-kilometre
+    paces and rep times and, unless you turned it off, its route outline. With "Weather in suggestions" on,
     it also holds one rounded area, from your latest run that had one.</li>
     <li><strong>Open-Meteo</strong>, a weather service, only if you turn on "Weather in suggestions". Our server sends it that
     rounded area (about 11 km) and your time zone, to ask for the forecast there. No name, account or device ID goes with it.
     Open-Meteo sees our server's IP address, not yours. See section 3 for the weather request the app itself makes.</li>
     <li><strong>OpenRouter</strong>, and the AI provider it routes to, which write the words of each note. They receive only
     the facts of the run as short sentences, and your answers as fixed options. They never receive your
-    phone number, Telegram chat, name or any note you type. We ask for providers that do not keep or train on what they receive
+    phone number, Telegram chat, name, any note you type, or the route outline, per-kilometre paces or rep times, which are
+    used only to draw the picture. We ask for providers that do not keep or train on what they receive
     (zero retention), and the request is refused if none is available. If the writing service fails, the note is written from a
     template on our server instead.</li>
     <li><strong>Telegram</strong>, which delivers the notes and sees them like any message in a chat. Telegram's own privacy
@@ -214,6 +239,10 @@
     run. They are included in the data the server returns about you, but the app does not show them. Delete everything
     removes them. A Sunday recap that quotes a note carries that quote only in your chat: our server does not keep a copy
     of it, so replacing or deleting the note stops it being quoted.</li>
+    <li>Per-kilometre paces and rep times are kept with the run they belong to, so until you delete your data or six months pass
+    with no run. The route outline is kept for 30 days after its run, then deleted. All of them are in the data the server returns
+    about you (the app does not show them). Turning "Show route shape on cards" off deletes the outlines at once, as soon as your phone can reach our server, or the next
+    time the app connects if you were offline.</li>
     <li>The rounded weather area: only the latest one is kept. It is deleted 30 days after the run it came from, when you turn
     "Weather in suggestions" off (as soon as your phone can reach our server, or the next time the app connects if you were
     offline), when you re-connect the companion, and when you delete your data. Backups can keep it for up to 14 days.</li>
@@ -238,15 +267,18 @@
   </ul>
   <p>Deleting removes every row we hold about you from the live database. Meta may keep delivery records for up to 30 days,
   and backups age out within 14 days, as above. In the app, Turn off and Delete everything both delete your data;
-  only STOP in the chat pauses the notes and keeps it. Turning "Weather in suggestions" off deletes just the stored weather area.</p>
+  only STOP in the chat pauses the notes and keeps it. Turning "Weather in suggestions" off deletes just the stored weather area. Turning "Show route shape on cards" off deletes just
+  the stored route outlines.</p>
 
   <h2>2c. Run companion: images and videos</h2>
   <p>This applies only if you turned the optional Run companion on and it has been set to send pictures. Its notes
   can then arrive in your Telegram chat as an image or a short video instead of plain text. The picture shows more
   than the text does. Most of it comes from the run summaries you already sent the companion: the date and
   start time, the type of run, distance, duration and pace, any climb, your time in each heart rate zone, the name of the suburb or town of the
-  run (never the street), any personal best, and, on the weekly recap, how your scores moved, plus the coach's one-line note for that run. It never contains
-  your route, a map, heart rate readings, your name or a phone number.</p>
+  run (never the street), any personal best, and, on the weekly recap, how your scores moved, plus the coach's one-line note for that run.
+  Unless you turned off "Show route shape on cards", a run picture or video can also draw an outline of your route with its ends cut off (section 2b):
+  no coordinates and no street, but a distinctive route could still be recognised by someone who knows it. It never contains a map, heart rate
+  readings, your name or a phone number. The per-kilometre paces or rep times can be drawn as bars.</p>
   <p>Three more kinds of picture show a little beyond the run summary itself:</p>
   <ul>
     <li><strong>Tomorrow's suggestion.</strong> The date, the session (for example "Tempo, 8 km") and a one-line reason. When the
@@ -262,7 +294,7 @@
   including messages built but not yet sent) and are removed when you delete your data. The monthly poster keeps nothing extra:
   it is drawn again from the runs you already sent.</p>
   <p>The picture is drawn on the companion's server by a separate process that has no internet access, no database
-  and none of your account details; it receives only those figures, returns the image, and keeps nothing. The finished
+  and none of your account details; it receives only those figures and the route outline, returns the image, and keeps nothing. The finished
   image is then sent to your Telegram chat, so Telegram stores it under its own policy, and it stays in your chat
   until you delete it there. Our server does not keep the image. If you do not want pictures, turn the
   companion off (which deletes your data) or send STOP in the chat to pause it.</p>

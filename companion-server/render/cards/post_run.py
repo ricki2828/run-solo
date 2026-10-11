@@ -59,14 +59,13 @@ def build_post_run_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | No
     stat_html = "".join(
         f'<div style="display:flex;align-items:baseline;gap:12px"><span class="saira" style="font-size:62px">{P.esc(v)}</span>'
         f'<span class="cap" style="font-size:22px;color:{quiet}">{P.esc(l)}</span></div>' for v, l in stats)
-    route = P.route_svg(facts.get("route") or [], 936, 420, accent if not flood else brand.BONE, 12,
-                        bg, pad=26, end_dot=True)
+    route = P.facts_route_svg(facts, 936, 420, accent if not flood else brand.BONE, 12, bg, pad=26, end_dot=True)
     strip = P.zone_strip(z, 936, 26, gap=4, radius=4 if not flood else 0, stroke=bg if flood else None)
     has_route = bool(route)
     items = P.bar_items(facts)
     bars = "" if has_route else P.split_bars(items, 936, 230, quiet)
     zblock = "" if (has_route or items) else P.zone_block(z, 936, fg, quiet, bg, flood)
-    if zblock:  # the server stores no route or splits: the zone bar is the visual, so the small strip goes
+    if zblock:  # no route and no splits: the zone bar is the visual, so the small strip goes
         bars, strip = zblock, ""
     who = P.esc(memory.get("name", ""), 20).upper()
     when = P.date_label(facts.get("start_local"))

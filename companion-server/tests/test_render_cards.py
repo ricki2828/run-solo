@@ -185,6 +185,14 @@ def _minimal(facts):
     return out
 
 
+def _with_shape(facts):
+    """What the server holds for a run whose app sent a route shape, splits and (for intervals) rep times."""
+    out = _minimal(facts) | {"route_xy": F.shape_xy(facts["route"]), "splits": facts["splits"]}
+    if facts.get("reps"):
+        out["reps"] = facts["reps"]
+    return out
+
+
 GOLDENS = {
     "post_run_singapore_intervals": ("render_post_run", F.singapore_intervals),
     "post_run_milos_trail": ("render_post_run", F.milos_trail),
@@ -194,6 +202,9 @@ GOLDENS = {
     "post_run_light_minimal": ("render_post_run", lambda: _minimal(F.milos_trail())),
     "post_run_flood_minimal": ("render_post_run", lambda: _minimal(F.singapore_intervals())),
     "pb_minimal": ("render_pb", lambda: _minimal(F.pb_5k())),
+    "post_run_light_shape": ("render_post_run", lambda: _with_shape(F.milos_trail())),
+    "post_run_flood_shape": ("render_post_run", lambda: _with_shape(F.singapore_intervals())),
+    "pb_shape": ("render_pb", lambda: _with_shape(F.pb_5k())),
     "post_run_slow_hot_day": ("render_post_run", F.slow_hot_day),
     "pb_5k": ("render_pb", F.pb_5k),
     "milestone_1000km": ("render_milestone", F.milestone_1000km),
@@ -258,6 +269,9 @@ def test_card_matches_golden(cards, name):
     png = getattr(cards, fn_name)(make(), MEMORY)
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
     path = GOLDEN_DIR / f"{name}.png"
+    if ACTUAL_DIR:  # CI publishes these so goldens can be regenerated from CI output (also when a golden is missing)
+        Path(ACTUAL_DIR).mkdir(parents=True, exist_ok=True)
+        (Path(ACTUAL_DIR) / f"{name}.png").write_bytes(png)
     if REQUIRE and not path.exists():
         pytest.fail(f"no golden for {name}")
     if os.environ.get("RS_UPDATE_GOLDENS") == "1" or not path.exists():
@@ -265,9 +279,6 @@ def test_card_matches_golden(cards, name):
         path.write_bytes(png)
         pytest.skip(f"golden written: {path.name}")
     mean, over = _diff(png, path.read_bytes())
-    if ACTUAL_DIR:  # CI publishes these so goldens can be regenerated from CI output
-        Path(ACTUAL_DIR).mkdir(parents=True, exist_ok=True)
-        (Path(ACTUAL_DIR) / f"{name}.png").write_bytes(png)
     # anti-aliasing and font hinting differ a little between hosts; layout or colour changes do not hide in this
     assert mean < 0.6 and over < 0.004, f"{name}: mean {mean:.3f}, over {over:.4f}"
 

@@ -246,8 +246,9 @@ def test_no_deeplink_base_means_no_link_button(tmp_path, fakes):
         assert all("url" not in b for row in kb for b in row)
 
 
-def test_pb_moment_gets_the_pb_card_and_a_still_when_the_server_has_no_splits(tmp_path, fakes):
-    """A PB is a video moment, but a run video needs the route and per-km splits, which the server never holds."""
+def test_pb_moment_gets_the_pb_card_and_a_still_when_the_app_sent_no_route_shape_or_splits(tmp_path, fakes):
+    """A PB is a video moment, but a run video needs the route shape and per-km splits (test_route_shape.py covers
+    the run that has them)."""
     called = []
 
     def pb(f, m):

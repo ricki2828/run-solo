@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
   last_run_utc TEXT, last_inbound_at TEXT,
   cap_zone TEXT, cap_week TEXT,
   weather_optin INTEGER NOT NULL DEFAULT 0,  -- the app's "Weather in suggestions" switch; area is stored only while 1
+  route_optin INTEGER NOT NULL DEFAULT 1,    -- the app's "Show route shape on cards" switch (default on); a shape is stored only while 1
   UNIQUE (channel, chat_ref)
 );
 CREATE TABLE IF NOT EXISTS devices (
@@ -138,6 +139,17 @@ CREATE TABLE IF NOT EXISTS run_notes (
   PRIMARY KEY (user_id, run_id),
   FOREIGN KEY (user_id, run_id) REFERENCES runs (user_id, run_id) ON DELETE CASCADE
 );
+-- The simplified route shape, per-km splits and rep times the app sends for the cards and videos. Kept apart from `runs`
+-- so no SELECT * over runs can carry it into a prompt; read only by the media renderer and the /v1/me export. The route
+-- is a shape only: integers 0..255 in a unit box, no latitude, longitude, scale or north. It lives and dies with its
+-- run (cascade), and with the user (hard delete). Switching "Show route shape" off clears route_json at once.
+CREATE TABLE IF NOT EXISTS run_shape (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  run_id TEXT NOT NULL,
+  route_json TEXT, splits_json TEXT, reps_json TEXT,
+  PRIMARY KEY (user_id, run_id),
+  FOREIGN KEY (user_id, run_id) REFERENCES runs (user_id, run_id) ON DELETE CASCADE
+);
 -- "Add a note" was tapped: the next free-text message is that run's note, until expires_at. One row per user.
 CREATE TABLE IF NOT EXISTS note_mode (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -222,6 +234,12 @@ def init(path: str) -> None:
         if "weather_optin" not in cols:  # databases created before the weather switch
             try:
                 c.execute("ALTER TABLE users ADD COLUMN weather_optin INTEGER NOT NULL DEFAULT 0")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e):
+                    raise
+        if "route_optin" not in cols:  # databases created before the route-shape switch (default on, like the app)
+            try:
+                c.execute("ALTER TABLE users ADD COLUMN route_optin INTEGER NOT NULL DEFAULT 1")
             except sqlite3.OperationalError as e:
                 if "duplicate column" not in str(e):
                     raise
@@ -325,14 +343,30 @@ def user_tables(c: sqlite3.Connection) -> list[str]:
     return out
 
 
+def checkpoint_truncate(path: str, tries: int = 5, wait_s: float = 0.2) -> bool:
+    """Fold the WAL into the main file and truncate it, so deleted pages are not left in it. SQLite reports `busy` in
+    the first column of the result when a reader stopped it, so retry a few times and say so when it never cleared."""
+    import logging
+    import time
+    for i in range(tries):
+        c = connect(path)
+        try:
+            c.execute("PRAGMA busy_timeout=0")
+            busy = c.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()[0]
+        finally:
+            c.close()
+        if not busy:
+            return True
+        if i + 1 < tries:
+            time.sleep(wait_s)
+    logging.getLogger("companion").warning("wal checkpoint stayed busy; deleted pages remain in the WAL until the next one")
+    return False
+
+
 def hard_delete_user(path: str, user_id: str) -> None:
     """Delete every row keyed by the user in one transaction, then scrub and truncate the WAL."""
     with tx(path) as c:
         for t in user_tables(c):
             c.execute(f"DELETE FROM {t} WHERE user_id = ?", (user_id,))
         c.execute("DELETE FROM users WHERE id = ?", (user_id,))
-    c = connect(path)
-    try:
-        c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    finally:
-        c.close()
+    checkpoint_truncate(path)

@@ -16,8 +16,12 @@ const String kCompanionIntro =
 const String kCompanionSent =
     'Each run\'s summary: type, date and start time, time zone, duration, '
     'distance, pace, True Pace, verdict, minutes in each heart rate zone, '
-    'climb, and the name of the area where you started. Plus how a run felt '
-    'when you tap Easy, Right or Hard. Never your GPS route, never the street, '
+    'climb, and the name of the area where you started. Plus your pace for '
+    'each km, the time of each rep in a structured session, and an outline '
+    'of your route with the first and last stretch cut off. It has no '
+    'coordinates, but a distinctive route could still be recognised by '
+    'someone who knows it. You can switch it off in Settings, Companion. Plus how a run felt when '
+    'you tap Easy, Right or Hard. Never your GPS points, never the street, '
     'never your heart rate trace.';
 
 const String kCompanionWhere =
@@ -30,6 +34,12 @@ const String kCompanionDelete =
     'Settings, Companion, Delete everything wipes your data from our server. '
     'You can also send DELETE to the companion in Telegram. Notes already in '
     'your chat stay there until you delete them.';
+
+/// "Show route shape on cards" (on until the runner turns it off). One line
+/// under the switch; same words as privacy section 2b.
+const String kCompanionRouteBlurb =
+    'Draws your route on the card as an outline with the ends cut off. No '
+    'coordinates are sent, but a distinctive route could be recognised.';
 
 /// "Weather in suggestions" (off until the runner turns it on). The blurb
 /// sits under the switch; the sheet is the disclosure shown before it turns
@@ -370,6 +380,14 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
     setState(() => _problem = ctl.problem);
   }
 
+  Future<void> _setRouteShape(bool on) async {
+    final ctl = AppServices.of(context).companion!;
+    setState(() => _problem = null);
+    await ctl.setRouteShape(on);
+    if (!mounted) return;
+    setState(() => _problem = ctl.problem);
+  }
+
   Future<void> _remove() async {
     final ctl = AppServices.of(context).companion!;
     setState(() {
@@ -463,10 +481,24 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
               child: const Text('Try again'),
             ),
           ),
+        const _Heading('Cards'),
+        ListenableBuilder(
+          listenable: services.companion!,
+          builder: (context, _) => _SwitchRow(
+            title: 'Show route shape on cards',
+            blurb: kCompanionRouteBlurb,
+            switchKey: const ValueKey('companion-route-switch'),
+            on: services.companion!.routeShapeOn,
+            onChanged: _busy ? null : _setRouteShape,
+          ),
+        ),
         const _Heading('Weather'),
         ListenableBuilder(
           listenable: services.companion!,
-          builder: (context, _) => _WeatherRow(
+          builder: (context, _) => _SwitchRow(
+            title: 'Weather in suggestions',
+            blurb: kCompanionWeatherBlurb,
+            switchKey: const ValueKey('companion-weather-switch'),
             on: services.companion!.weatherOn,
             onChanged: _busy ? null : _setWeather,
           ),
@@ -504,9 +536,18 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
   }
 }
 
-/// The switch row: label, one line of why, and a Switch that starts off.
-class _WeatherRow extends StatelessWidget {
-  const _WeatherRow({required this.on, required this.onChanged});
+/// A switch row: label, one line of why, and a Switch.
+class _SwitchRow extends StatelessWidget {
+  const _SwitchRow({
+    required this.title,
+    required this.blurb,
+    required this.switchKey,
+    required this.on,
+    required this.onChanged,
+  });
+  final String title;
+  final String blurb;
+  final Key switchKey;
   final bool on;
   final ValueChanged<bool>? onChanged;
 
@@ -526,22 +567,18 @@ class _WeatherRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Weather in suggestions',
+                  title,
                   style: RunSoloType.body17.copyWith(color: t.inkPrimary),
                 ),
                 Text(
-                  kCompanionWeatherBlurb,
+                  blurb,
                   style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
               ],
             ),
           ),
           const SizedBox(width: Space.x12),
-          Switch(
-            key: const ValueKey('companion-weather-switch'),
-            value: on,
-            onChanged: onChanged,
-          ),
+          Switch(key: switchKey, value: on, onChanged: onChanged),
         ],
       ),
     );
