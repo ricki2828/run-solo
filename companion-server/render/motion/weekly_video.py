@@ -23,7 +23,8 @@ SIGN_T = 11.45
 @dataclass
 class Day:
     label: str  # "M"
-    zone_min: list[float]  # minutes in Z1..Z5; all zero = rest day
+    zone_min: list[float]  # minutes in Z1..Z5; they only split the bar by share of time
+    km: float = 0.0  # the day's distance: the bar height; 0 = rest day
 
 
 @dataclass
@@ -58,9 +59,12 @@ class WeeklySpec:
         mins = sum(sum(d.zone_min) for d in self.days)
         if abs(mins - self.total_min) > 0.02 * self.total_min:
             raise ValueError(f"days add up to {mins:.0f} min, week says {self.total_min:.0f}")
-        ran = sum(1 for d in self.days if sum(d.zone_min) > 0)
-        if ran != self.runs:
+        ran = sum(1 for d in self.days if d.km > 0 or sum(d.zone_min) > 0)
+        if ran > self.runs:  # two runs on one day make runs > days with running
             raise ValueError(f"{ran} days with running but runs={self.runs}")
+        kms = sum(d.km for d in self.days)
+        if abs(kms - self.total_km) > 0.02 * self.total_km + 0.05:
+            raise ValueError(f"days add up to {kms:.1f} km, week says {self.total_km:.1f}")
 
 
 SCORE_KEYS = ("aerobic", "speed", "mid", "long")
@@ -68,9 +72,9 @@ DAY_LABELS = "MTWTFSS"
 
 
 def weekly_from_facts(f: dict, signoff: str = "See you next Sunday.") -> WeeklySpec:
-    """Same schema as the weekly card: week_label, distance_km, runs, duration_s, days[{zone_s}],
+    """Same schema as the weekly card: week_label, distance_km, runs, duration_s, days[{distance_km, zone_s}],
     score_moves{aerobic..long}, best_moment{text}. duration_s must equal the days' zone time."""
-    days = [Day(DAY_LABELS[i], [x / 60 for x in (d.get("zone_s") or [0] * 5)]) for i, d in enumerate(f["days"])]
+    days = [Day(DAY_LABELS[i], [x / 60 for x in (d.get("zone_s") or [0] * 5)], float(d["distance_km"])) for i, d in enumerate(f["days"])]
     moves = f.get("score_moves") or {}
     best = f.get("best_moment") or {}
     return WeeklySpec(
@@ -84,7 +88,7 @@ class WeeklyVideo:
     def __init__(self, spec: WeeklySpec):
         self.s = spec
         self.th = Theme(spec.flood_zone)
-        self.max_min = max(sum(d.zone_min) for d in spec.days) or 1
+        self.max_km = max(d.km for d in spec.days) or 1
 
     def _a_hdr(self, t):
         return 1 - in_out_cubic(seg(t, *EXIT2))
@@ -126,18 +130,22 @@ class WeeklyVideo:
         cv.rect(M, base, RIGHT, base + 3, th.fade(th.hair, a))
         for i, d in enumerate(s.days):
             tot = sum(d.zone_min)
+            ran = d.km > 0
             q = seg(t, BARS0 + i * 0.22, BARS0 + i * 0.22 + 0.8)
             e = out_back(q, 1.05)
             x = M + i * (bw + gap)
-            if tot <= 0:
+            if not ran:
                 cv.rect(x + bw * 0.3, base - 8, x + bw * 0.7, base - 2, th.fade(th.quiet, a * clamp(q * 2)), r=3)
             else:
-                full = maxh * tot / self.max_min * clamp(e, 0, 1.05)
+                full = maxh * d.km / self.max_km * clamp(e, 0, 1.05)
                 y = base
+                if tot <= 0:  # a run with no heart-rate zones: a neutral km bar
+                    cv.rect(x, base - full, x + bw, base, th.fade(th.quiet, a), r=14, top_only=True)
+                    y = base - full
                 for z, mins in enumerate(d.zone_min):
                     if mins <= 0:
                         continue
-                    sh = full * mins / tot
+                    sh = full * mins / tot  # share of the day's moving time
                     top = y - sh
                     last = z == max(j for j, mm in enumerate(d.zone_min) if mm > 0)
                     if sh > 0.8:
@@ -146,12 +154,12 @@ class WeeklyVideo:
                     y = top
                 la = a * out_cubic(seg(q, 0.6, 1.0))
                 if la > 0 and k < 0.5:
-                    cv.text((x + bw / 2, y - 14), f"{int(round(tot))}", saira(44), th.fade(th.ink, la * (1 - k * 2)),
+                    cv.text((x + bw / 2, y - 14), f"{d.km:.1f}", saira(44), th.fade(th.ink, la * (1 - k * 2)),
                             anchor="ms")
             cv.text((x + bw / 2, base + 46), d.label, grot(34, 600), th.fade(th.quiet, a * clamp(q * 2)), anchor="ms")
         lg = a * out_cubic(seg(t, 3.2, 3.8)) * (1 - k)
         if lg > 0:
-            cv.text((M, 1262), "MINUTES BY ZONE", grot(34, 600), th.fade(th.quiet, lg), tracking=2)
+            cv.text((M, 1262), "ZONE SHARE OF TIME", grot(34, 600), th.fade(th.quiet, lg), tracking=2)
             x = RIGHT - 5 * 104
             for z in range(5):
                 cv.rect(x, 1236, x + 26, 1262, th.fade(brand.ZONE_RAMP[z], lg), r=5)

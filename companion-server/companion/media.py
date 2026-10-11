@@ -86,7 +86,7 @@ def week_bounds(week_ref: str) -> tuple[date, date]:
 def week_facts(week_ref: str, runs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Weekly recap facts from the week's rows. `runs` may hold other weeks; only this ISO week is used."""
     monday, _ = week_bounds(week_ref)
-    days = [{"date": (monday + timedelta(days=i)).isoformat(), "zone_s": [0.0] * 5} for i in range(7)]
+    days = [{"date": (monday + timedelta(days=i)).isoformat(), "distance_km": 0.0, "zone_s": [0.0] * 5} for i in range(7)]
     mine, moves = [], {k: 0.0 for k in SCORE_KEYS}
     seen_move = False
     for r in runs:
@@ -95,6 +95,7 @@ def week_facts(week_ref: str, runs: Sequence[Mapping[str, Any]]) -> dict[str, An
             continue
         mine.append(r)
         d = days[(loc.date() - monday).days]
+        d["distance_km"] += r["distance_m"] / 1000
         d["zone_s"] = [a + b for a, b in zip(d["zone_s"], _zone_s(r))]
         sd = r.get("scores_delta")
         sd = json.loads(sd) if isinstance(sd, str) else (sd or {})
