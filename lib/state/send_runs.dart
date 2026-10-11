@@ -86,13 +86,18 @@ class TargetSetup {
 
 @immutable
 class SendResult {
-  const SendResult.ok() : ok = true, error = null;
+  const SendResult.ok() : ok = true, error = null, retryLater = false;
 
-  /// [error] is short and fit to show on run detail.
-  const SendResult.failed(String this.error) : ok = false;
+  /// [error] is short and fit to show on run detail. [retryLater] is a
+  /// failure that is not the run's and not the phone's (a server that is not
+  /// ready): it is not logged, so it spends no automatic try, and the next
+  /// app open or run tries again.
+  const SendResult.failed(String this.error, {this.retryLater = false})
+    : ok = false;
 
   final bool ok;
   final String? error;
+  final bool retryLater;
 }
 
 abstract class ExportTarget {
@@ -529,6 +534,7 @@ class SendCoordinator {
         debugPrint('send: ${t.id} threw ($e)');
         result = const SendResult.failed('Could not send');
       }
+      if (!result.ok && result.retryLater) return result;
       await history.recordSend(
         detail.run.id,
         t.id,

@@ -128,7 +128,7 @@ class AppServices {
 
   /// The plan's facts for a run's companion summary: the stored block, judged
   /// against History's index rows exactly as Home shows it. Empty with no plan.
-  Future<Map<String, Object?>> planFactsFor(String runId) async {
+  Future<Map<String, Object?>> planFactsFor(RunDetail d) async {
     final plan = plans.plan;
     if (plan == null) return const {};
     var scores = const <engine.IdentityLane, engine.IdentityScore>{};
@@ -147,7 +147,8 @@ class AppServices {
         plan,
         loadDismissed: LoadDismissal.dismissed(settings.settings, at),
       ),
-      runId,
+      d.run.id,
+      runStart: PlanInputs.wallClock(d.summary),
     );
   }
 

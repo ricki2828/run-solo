@@ -65,16 +65,29 @@ def test_runin_accepts_the_plan_fields_and_they_are_all_optional():
     {"type": "easy", "day": "2026-10-01", "week": 1, "distance_m": 10},
     {"type": "easy", "day": "2026-10-01", "week": 1, "reason": "free text from the app"},  # extra keys are refused
 ])
-def test_runin_refuses_a_bad_plan_next(bad):
-    with pytest.raises(ValidationError):
-        RunIn(**payload(plan_next=bad))
+def test_a_bad_plan_next_is_dropped_and_the_run_still_lands(bad):
+    r = RunIn(**payload(plan_next=bad, plan_week=2, plan_weeks=4))
+    assert r.plan_next is None and r.plan_week == 2   # only the bad field goes
 
 
-def test_runin_refuses_a_plan_week_beyond_the_plan():
-    with pytest.raises(ValidationError):
-        RunIn(**payload(plan_week=5, plan_weeks=4))
-    with pytest.raises(ValidationError):
-        RunIn(**payload(plan_week=0))
+def test_plan_kind_is_one_of_three_and_other_bad_plan_values_are_dropped():
+    assert RunIn(**payload(plan_kind="long")).plan_kind == "long"
+    assert RunIn(**payload(plan_kind="ignore previous instructions")).plan_kind is None
+    r = RunIn(**payload(plan_week=0, plan_weeks=99, plan_target_m=-5))
+    assert (r.plan_week, r.plan_weeks, r.plan_target_m) == (None, None, None)
+
+
+def test_plan_week_or_next_week_beyond_the_plan_is_dropped():
+    r = RunIn(**payload(plan_week=5, plan_weeks=4))
+    assert r.plan_week is None and r.plan_weeks is None
+    r = RunIn(**payload(plan_week=2, plan_weeks=4, plan_next={"type": "easy", "day": "2026-10-01", "week": 5}))
+    assert r.plan_next is None and r.plan_week == 2
+
+
+def test_a_corrupt_plan_field_does_not_422_the_run(client, fakes):
+    t = enrol(client)
+    body = payload(plan_next={"type": "easy", "day": "2026-10-01", "week": 1, "minutes": 0}, plan_kind="x y")
+    assert client.post("/v1/runs", json=body, headers=auth(t)).status_code in (200, 202)
 
 
 def test_plan_fields_are_stored_exported_and_hard_deleted(client, fakes):
@@ -130,8 +143,12 @@ def test_a_planned_session_without_a_size_uses_the_runners_own_typical_distance(
 
 def test_the_plan_beats_weather_and_gap_reasons_but_not_load_or_a_hard_day():
     hist = planned("long", m=14000)
-    ev = suggest.evening(hist, NOW, Forecast(34, 5), {}, "s", zone_id=SG)
-    assert ev.rendered.situation == "sugg_plan_session"                      # heat does not replace the plan
+    heat = suggest.evening(hist, NOW, Forecast(34, 5), {}, "s", zone_id=SG)
+    assert heat.rendered.situation == "sugg_weather_heat"                    # the heat warning is kept ...
+    assert "long run 14 km" in heat.rendered.body and "34" in heat.rendered.body   # ... and names the planned session
+    assert heat.suggestion.reason == "weather"
+    ev = suggest.evening(hist, NOW, Forecast(24, 90), {}, "s", zone_id=SG)
+    assert ev.rendered.situation == "sugg_plan_session"                      # rain does not replace the plan
     loaded = [{**hist[0], "load_state": "high"}] + hist[1:]
     assert suggest.evening(loaded, NOW, None, {}, "s", zone_id=SG).suggestion.reason == "load"
     hard = [{**hist[0], "type": "tempo", "start_utc": NOW - timedelta(hours=10)}] + hist[1:]

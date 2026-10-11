@@ -219,8 +219,11 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
         kind = "feel"
         slots.update(weekday=WEEKDAYS[to_local(_when(last), last.get("zone_id") or zone_id).weekday()],
                      cause=feel_cause(last_situation))
+    elif planned_text is not None and forecast and forecast.morning_temp_c >= HEAT_MORNING_C:
+        kind = "heat"  # the heat warning is a safety line: it keeps its place, and names the planned session
+        slots.update(temp=str(forecast.morning_temp_c), fc_at="7 am")
     elif planned_text is not None:
-        kind = "plan_session"  # tomorrow is a planned session: follow the plan, ahead of weather and gap reasons
+        kind = "plan_session"  # tomorrow is a planned session: follow the plan, ahead of rain and gap reasons
         slots.update(why=planned_text[1])
     elif forecast and forecast.morning_temp_c >= HEAT_MORNING_C:
         kind = "heat"
@@ -244,7 +247,7 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
                    or (kind == "plan_session" and planned["plan_next_type"] != "easy")):
         kind = "soft"  # a planned push turns into the gentle line too
         slots.pop("why", None)
-    session = planned_text[0] if kind == "plan_session" else session_for(kind, history, now)
+    session = planned_text[0] if planned_text and kind in ("plan_session", "heat") else session_for(kind, history, now)
     if session is None:
         return None  # no concrete session to name: say nothing rather than something vague
     slots["session"] = session

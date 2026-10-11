@@ -415,33 +415,52 @@ void main() {
       'plan_next',
     };
 
+    // Tuesday 6 Oct 07:00, the wall clock where the run was done.
+    final at = DateTime(2026, 10, 6, 7);
+
     test('no plan sends nothing', () {
-      expect(companionPlanFacts(null, 'x'), isEmpty);
+      expect(companionPlanFacts(null, 'x', runStart: at), isEmpty);
     });
 
     test('the run done as a planned session, and what is next', () {
-      final f = companionPlanFacts(view(plan(), runs: [planRun('x')]), 'x');
+      final f = companionPlanFacts(
+        view(plan(), runs: [planRun('x')]),
+        'x',
+        runStart: at,
+      );
       expect(f['plan_kind'], 'long'); // w1s3 took the run
       expect(f['plan_week'], 1);
       expect(f['plan_weeks'], 4);
-      expect(
-        f.containsKey('plan_target_m'),
-        isFalse,
-      ); // no distance in the plan
+      expect(f.containsKey('plan_target_m'), isFalse); // no distance planned
       expect(f.containsKey('plan_weeks_to_race'), isFalse); // no race date
+      // Monday's overdue intervals are skipped; Wednesday's easy run is next.
       expect(f['plan_next'], {
-        'type': 'quality',
-        'day': '2026-10-05',
+        'type': 'easy',
+        'day': '2026-10-07',
         'week': 1,
+        'minutes': 30,
       });
       expect(f.keys.toSet().difference(wire), isEmpty);
     });
 
-    test('a run outside the plan still carries the week, not a kind', () {
-      final f = companionPlanFacts(view(plan()), 'not-in-the-plan');
+    test('a run in the plan period outside any session carries the week', () {
+      final f = companionPlanFacts(
+        view(plan()),
+        'not-in-the-plan',
+        runStart: at,
+      );
       expect(f.containsKey('plan_kind'), isFalse);
       expect(f['plan_week'], 1);
       expect(f['plan_weeks'], 4);
+    });
+
+    test('an old run from before the plan gets no week and no next', () {
+      final f = companionPlanFacts(
+        view(plan()),
+        'old',
+        runStart: DateTime(2026, 6, 1, 7),
+      );
+      expect(f, isEmpty);
     });
 
     test('a size only where the plan holds one', () {
@@ -450,10 +469,12 @@ void main() {
       final f = companionPlanFacts(
         view(p.withSession(test15), runs: [planRun('x', km: 16)]),
         'x',
+        runStart: at,
       );
       expect(f['plan_target_m'], 15000);
-      // The next easy session carries its minutes, nothing else.
-      final next = companionPlanFacts(view(plan()), 'y')['plan_next']! as Map;
+      final next =
+          companionPlanFacts(view(plan()), 'y', runStart: at)['plan_next']!
+              as Map;
       expect(
         next.keys.toSet().difference({
           'type',
@@ -464,33 +485,46 @@ void main() {
         }),
         isEmpty,
       );
-      final easyFirst = plan().withSession(
-        plan().sessions[0].copyWith(kind: engine.BlockKind.easy, minutes: 35),
+    });
+
+    test('a corrupt stored number is left out, not sent to fail the run', () {
+      final p = plan();
+      final bad = p.withSession(p.sessions[1].copyWith(minutes: 0));
+      final next =
+          companionPlanFacts(view(bad), 'y', runStart: at)['plan_next']! as Map;
+      expect(next.containsKey('minutes'), isFalse);
+      expect(next['type'], 'easy');
+      final far = p.withSession(p.sessions[2].copyWith(minDistanceM: 900000));
+      final f = companionPlanFacts(
+        view(far, runs: [planRun('x', km: 950)]),
+        'x',
+        runStart: at,
       );
-      final n2 = companionPlanFacts(view(easyFirst), 'y')['plan_next']! as Map;
-      expect(n2, {
-        'type': 'easy',
-        'day': '2026-10-05',
-        'week': 1,
-        'minutes': 35,
-      });
+      expect(f.containsKey('plan_target_m'), isFalse);
     });
 
     test('a finished plan sends no next session', () {
-      final p = plan();
       final after = engine.BlockResolver.resolve(
-        p,
+        plan(),
         const [],
         now: DateTime(2026, 12, 20),
       );
-      final f = companionPlanFacts(after, 'x');
+      final f = companionPlanFacts(
+        after,
+        'x',
+        runStart: DateTime(2026, 12, 19),
+      );
       expect(f.containsKey('plan_next'), isFalse);
     });
 
     test('the summary carries the plan facts and no other new field', () async {
       await store.setUtcOffset(run.id, 480);
       final d = (await store.load(run.id))!;
-      final f = companionPlanFacts(view(plan(), runs: [planRun('x')]), 'x');
+      final f = companionPlanFacts(
+        view(plan(), runs: [planRun('x')]),
+        'x',
+        runStart: at,
+      );
       final j = companionSummary(d, plan: f)!;
       expect(j['plan_week'], 1);
       expect(j['plan_next'], isA<Map>());
@@ -762,6 +796,58 @@ void main() {
         expect(sent.containsKey('plan_week'), isFalse);
       },
     );
+
+    test(
+      'a 422 means the server is older: no try spent, retried after 6 h',
+      () async {
+        await enrol();
+        http.handler = (_) => const CompanionReply(422, '{"detail":"x"}');
+        await coordinator.sendAuto(run.id);
+        expect(http.to('POST', '/v1/runs'), hasLength(1));
+        final d = (await store.load(run.id))!;
+        expect(
+          d.sidecar.sends[CompanionTarget.targetId],
+          isNull,
+        ); // nothing logged
+        expect(d.sidecar.autoSendDue(CompanionTarget.targetId), isTrue);
+        // Every later open inside the wait makes no request at all.
+        for (var i = 0; i < 4; i++) {
+          await coordinator.reconcile();
+        }
+        expect(http.to('POST', '/v1/runs'), hasLength(1));
+        // After 6 hours, with the server upgraded, the run goes.
+        http.handler = null;
+        clock = clock.add(const Duration(hours: 6, minutes: 1));
+        await coordinator.reconcile();
+        expect(http.to('POST', '/v1/runs'), hasLength(2));
+        expect(
+          (await store.load(run.id))!
+              .sidecar
+              .sends[CompanionTarget.targetId]!
+              .ok,
+          isTrue,
+        );
+      },
+    );
+
+    test('a new app start retries at once (the wait is in memory)', () async {
+      await enrol();
+      http.handler = (_) => const CompanionReply(422, '{}');
+      await coordinator.sendAuto(run.id);
+      http.handler = null;
+      target = CompanionTarget(controller: ctl, now: () => clock);
+      coordinator = SendCoordinator(
+        history: store,
+        settings: settings,
+        targets: [target],
+        now: () => clock,
+      );
+      await coordinator.reconcile();
+      expect(
+        (await store.load(run.id))!.sidecar.sends[CompanionTarget.targetId]!.ok,
+        isTrue,
+      );
+    });
   });
 
   group('feel persistence', () {

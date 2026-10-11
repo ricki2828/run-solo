@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from . import db
 from .channels import ChannelError, Inbound, OutCard, TelegramChannel, WhatsAppChannel, feel_template_eligible
@@ -126,7 +126,7 @@ class RunIn(BaseModel):
     route_id: str | None = Field(default=None, max_length=64)
     load_state: str | None = Field(default=None, pattern=r"^(low|steady|high|very_high)$")
     pb: str | None = Field(default=None, pattern=r"^(5k|10k|half|longest|fastest_km)$")
-    plan_kind: str | None = Field(default=None, pattern=r"^[a-z_]{1,24}$")
+    plan_kind: str | None = Field(default=None, pattern=r"^(easy|long|quality)$")
     plan_target_m: int | None = Field(default=None, ge=0, le=300000)
     plan_weeks_to_race: int | None = Field(default=None, ge=0, le=104)
     plan_week: int | None = Field(default=None, ge=1, le=52)   # this run's week of the app's plan
@@ -136,10 +136,21 @@ class RunIn(BaseModel):
     area_lat: float | None = Field(default=None, ge=-90, le=90)  # approximate area for weather; the phone rounds to 0.1 degree and the server rounds again
     area_lon: float | None = Field(default=None, ge=-180, le=180)
 
+    @field_validator("plan_kind", "plan_target_m", "plan_week", "plan_weeks", "plan_next", mode="wrap")
+    @classmethod
+    def _plan_field_is_optional_extra(cls, v, handler):
+        """A bad plan value drops that one field (stored as none), never the run: the plan only adds colour to a card."""
+        try:
+            return handler(v)
+        except ValidationError:
+            return None
+
     @model_validator(mode="after")
     def _plan_consistent(self):
         if self.plan_week is not None and self.plan_weeks is not None and self.plan_week > self.plan_weeks:
-            raise ValueError("plan_week beyond plan_weeks")
+            self.plan_week = self.plan_weeks = None
+        if self.plan_next is not None and self.plan_weeks is not None and self.plan_next.week > self.plan_weeks:
+            self.plan_next = None
         return self
 
     @field_validator("distance_m", "climb_m", "plan_target_m", mode="before")
