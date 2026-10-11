@@ -287,15 +287,16 @@ class _FourByFourTrend extends StatelessWidget {
           style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
         ),
         const SizedBox(height: Space.x8),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.end,
+          spacing: Space.x16,
+          runSpacing: Space.x4,
           children: [
             Text(
               Fmt.paceUnit(current, units),
               key: const ValueKey('trend-hero'),
               style: RunSoloType.display64.copyWith(color: t.inkPrimary),
             ),
-            const SizedBox(width: Space.x16),
             if (delta != null)
               Padding(
                 // Sit the glyph on the number's x-height, not the cap line.
@@ -311,7 +312,10 @@ class _FourByFourTrend extends StatelessWidget {
                     ),
                     const SizedBox(width: Space.x4),
                     Text(
-                      _deltaText(delta, units),
+                      delta.abs() <= floor
+                          ? 'no real change'
+                          : '${_deltaText(delta, units)} ${delta < 0 ? 'faster' : 'slower'}',
+                      key: const ValueKey('trend-delta'),
                       style: RunSoloType.title28.copyWith(color: deltaColor),
                     ),
                   ],

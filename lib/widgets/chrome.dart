@@ -1,9 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../brand/lap_line_paths.dart';
+import '../theme/lanes.dart' show contrastRatio;
 import '../theme/theme.dart';
 
 enum PillTone { ok, warn, danger, muted }
+
+/// White or near-black, whichever reads better on [fill] (never red on red).
+Color _readableOn(Color fill) {
+  const dark = Color(0xFF0B0B0C);
+  return contrastRatio(Colors.white, fill) >= contrastRatio(dark, fill)
+      ? Colors.white
+      : dark;
+}
 
 /// Status pill: warn / ok / danger (design brief §5).
 class StatusPill extends StatelessWidget {
@@ -17,7 +26,7 @@ class StatusPill extends StatelessWidget {
     final (Color fg, Color bg) = switch (tone) {
       PillTone.ok => (t.inkPrimary, t.bgRaised),
       PillTone.warn => (t.bgBase, t.semWarn),
-      PillTone.danger => (t.inkPrimary, t.semDanger),
+      PillTone.danger => (_readableOn(t.semDanger), t.semDanger),
       PillTone.muted => (t.inkMuted, t.bgRaised),
     };
     return Container(

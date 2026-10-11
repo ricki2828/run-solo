@@ -76,8 +76,8 @@ void main() {
       ).toJson(),
     );
     final breakdown = RegExp(
-      r'^True pace \d+:\d\d/km = actual \d+:\d\d(, hills [-+]\d+:\d\d)?'
-      r'(, heat [-+]\d+:\d\d)?$',
+      r'^True pace \d+:\d\d/km = actual \d+:\d\d(, (hills|downhill) (\d+ s|\d+:\d\d) (faster|slower))?'
+      r'(, heat (\d+ s|\d+:\d\d) (faster|slower))?$',
     );
 
     Text line(WidgetTester tester) => tester.widget<Text>(
@@ -102,8 +102,8 @@ void main() {
       expect(find.byKey(const ValueKey('true-pace-breakdown')), findsOneWidget);
       final text = line(tester).data!;
       expect(text, matches(breakdown));
-      expect(text, contains(', hills -'));
-      expect(text, contains(', heat -'));
+      expect(text, contains(', hills '));
+      expect(text, contains(', heat '));
       expect(find.text('Hills and heat are estimates.'), findsOneWidget);
       // The elevation card carries the same true pace, as an estimate.
       await scrollTo(tester, find.textContaining('TRUE PACE (ESTIMATE)'));
@@ -120,7 +120,7 @@ void main() {
       await pumpTimes(tester, 6);
       final text = line(tester).data!;
       expect(text, matches(breakdown));
-      expect(text, contains(', heat -'));
+      expect(text, contains(', heat '));
       expect(text, isNot(contains('hills')));
     });
 
@@ -147,7 +147,7 @@ void main() {
       );
       await pumpTimes(tester, 6);
       expect(line(tester).data, startsWith('True work pace '));
-      expect(line(tester).data, contains(', heat -'));
+      expect(line(tester).data, contains(', heat '));
     });
   });
 

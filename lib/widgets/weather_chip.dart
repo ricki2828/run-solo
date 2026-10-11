@@ -37,7 +37,7 @@ class WeatherChipView {
   final String? conditions;
   final String? rawLabel;
 
-  /// "4:41 /km" (or "2.85 km" for a Cooper test).
+  /// "4:41/km" (or "2.85 km" for a Cooper test).
   final String? raw;
   final String? adjustedLabel;
   final String? adjusted;
@@ -106,7 +106,6 @@ WeatherChipView? weatherChipView({
         : null;
   }
   final cooper = analysis.mode == engine.RunMode.cooper;
-  final unit = units == Units.mi ? '/mi' : '/km';
   final rawPace = cooper
       ? null
       : analysis.intervals?.avgWorkPaceSecPerKm ??
@@ -116,7 +115,7 @@ WeatherChipView? weatherChipView({
       ? Fmt.distance(metres, units)
       : rawPace == null
       ? null
-      : '${Fmt.pace(rawPace, units)} $unit';
+      : Fmt.paceUnit(rawPace, units);
   switch (w.status) {
     case engine.WeatherStatus.skipped:
       return null;
@@ -180,7 +179,7 @@ WeatherChipView? weatherChipView({
   }
   final adjusted = cooper
       ? Fmt.distance(metres / (1 - fraction), units)
-      : '${Fmt.pace(rawPace! * (1 - fraction), units)} $unit';
+      : Fmt.paceUnit(rawPace! * (1 - fraction), units);
   return WeatherChipView(
     state: WeatherChipState.adjusted,
     conditions: conditions,

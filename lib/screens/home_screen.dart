@@ -460,6 +460,13 @@ class _HomeData {
   final Map<engine.IdentityLane, engine.IdentityScore> scores;
 }
 
+/// Always names the lane: "MID · SCORES SET". Up/down titles already lead
+/// with it ("AEROBIC DOWN 20").
+String _eyebrow(String title, engine.IdentityLane lane) {
+  final name = lane.name.toUpperCase();
+  return title.startsWith(name) ? title : '$name · $title';
+}
+
 class _ProgressHero extends StatelessWidget {
   const _ProgressHero({required this.headline});
   final ProgressHeadline headline;
@@ -520,7 +527,8 @@ class _ProgressHero extends StatelessWidget {
           ),
           const SizedBox(height: Space.x12),
           Text(
-            headline.title,
+            _eyebrow(headline.title, st.lane),
+            key: const ValueKey('home-statement-eyebrow'),
             style: RunSoloType.micro11.copyWith(
               color: t.laneText(st.lane),
               fontWeight: FontWeight.w700,

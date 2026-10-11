@@ -152,7 +152,14 @@ abstract final class TruePaceText {
     return '$truePace true $noun ($raw actual$why)';
   }
 
-  /// "True pace 4:58/km = actual 5:21, hills -0:18, heat -0:05"; the parts
+  /// "13 s faster" / "1:05 slower": a signed pace change in words.
+  static String _gap(int sec) {
+    final a = sec.abs();
+    final amount = a < 60 ? '$a s' : PaceFormat.mmss(a.toDouble());
+    return '$amount ${sec < 0 ? 'faster' : 'slower'}';
+  }
+
+  /// "True pace 4:58/km = actual 5:21, hills 18 s faster, heat 5 s faster"; the parts
   /// add up exactly on the rounded seconds shown. Null when the factors
   /// change nothing (a flat, cool run needs no breakdown).
   static String? breakdown(
@@ -167,7 +174,7 @@ abstract final class TruePaceText {
     final truePace = PaceFormat.toUnit(f.apply(rawSecPerKm), units);
     final r = raw.round(), h = afterHills.round(), t = truePace.round();
     String part(String label, int sec) =>
-        '$label ${sec < 0 ? '-' : '+'}${PaceFormat.mmss(sec.abs().toDouble())}';
+        '$label ${_gap(sec)}';
     final parts = [
       if (f.grade != 1 && h != r)
         part(f.grade > 1 ? 'downhill' : 'hills', h - r),

@@ -50,7 +50,6 @@ void main() {
           unit: 'nd percentile',
           change: 'Up 2 in 6 weeks',
         ),
-        ScoreLaneData(label: 'SPEED', value: '--', unit: ''),
         ScoreLaneData(
           label: 'MID',
           value: '71',

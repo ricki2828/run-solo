@@ -49,6 +49,7 @@ class SplitsBars extends StatefulWidget {
     required this.units,
     required this.title,
     this.truePace = false,
+    this.noHrColor,
   });
 
   final List<SplitBar> bars;
@@ -57,6 +58,10 @@ class SplitsBars extends StatefulWidget {
   /// "KM SPLITS", "LAPS": the small caps line above the chart.
   final String title;
   final bool truePace;
+
+  /// Bar colour for splits with no heart-rate zone: the run-type colour (Free =
+  /// ice), never grey. Falls back to the muted ink when the caller has none.
+  final Color Function(RunSoloTokens)? noHrColor;
 
   static const double kHeight = 160;
 
@@ -152,6 +157,7 @@ class _SplitsBarsState extends State<SplitsBars> {
                   top: top,
                   tokens: t,
                   brightness: Theme.of(context).brightness,
+                  noHrColor: widget.noHrColor?.call(t),
                 ),
               ),
             ),
@@ -185,6 +191,7 @@ class _SplitsPainter extends CustomPainter {
     required this.top,
     required this.tokens,
     required this.brightness,
+    this.noHrColor,
   });
   final List<SplitBar> bars;
   final Units units;
@@ -194,6 +201,7 @@ class _SplitsPainter extends CustomPainter {
   final double top;
   final RunSoloTokens tokens;
   final Brightness brightness;
+  final Color? noHrColor;
 
   static const _topPad = 20.0, _bottomPad = 22.0;
 
@@ -261,7 +269,7 @@ class _SplitsPainter extends CustomPainter {
         ),
         Paint()
           ..color = bars[i].zone == null
-              ? tokens.inkMuted
+              ? (noHrColor ?? tokens.inkMuted)
               : HrZones.distribution(bars[i].zone!, brightness),
       );
       if (best.contains(i)) {
