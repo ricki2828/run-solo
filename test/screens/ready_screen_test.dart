@@ -31,6 +31,20 @@ Future<void> openReady(
   await settleAnimations(tester);
 }
 
+/// A recorder whose countdown voice always fails (TTS missing or broken).
+class _ThrowingVoiceGateway extends FakeRecorderGateway {
+  _ThrowingVoiceGateway({super.now});
+
+  @override
+  Future<void> prepareCountdownVoice() async => throw StateError('no tts');
+
+  @override
+  Future<void> speakCountdownBeat(int beat) async => throw StateError('no tts');
+
+  @override
+  Future<void> stopCountdownVoice() async => throw StateError('no tts');
+}
+
 void main() {
   testWidgets('Ready names the run, the plan and the checks', (tester) async {
     final services = fakeServices(
@@ -169,6 +183,116 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     expect(fake.startCalls, isEmpty);
     expect(find.byType(ReadyScreen), findsOneWidget);
+  });
+
+  testWidgets('voice cues on: speaks 3 2 1 go, go with the recorder start', (
+    tester,
+  ) async {
+    final fake = FakeRecorderGateway(now: now);
+    final services = fakeServices(
+      recorder: fake,
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.free,
+        cues: true,
+      ),
+    );
+    await openReady(tester, services);
+    // Warmed up when Ready opens, before any tap.
+    expect(fake.countdownVoiceCalls, ['prepare']);
+    await tester.tap(find.byKey(const ValueKey('ready-start')));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(fake.countdownVoiceCalls.last, 'beat:3');
+    await tester.pump(const Duration(seconds: 1));
+    expect(fake.countdownVoiceCalls.last, 'beat:2');
+    await tester.pump(const Duration(seconds: 1));
+    expect(fake.countdownVoiceCalls.last, 'beat:1');
+    expect(fake.startCalls, isEmpty);
+    await tester.pump(const Duration(seconds: 1));
+    expect(fake.countdownVoiceCalls.last, 'beat:0');
+    expect(
+      fake.startCalls,
+      hasLength(1),
+      reason: 'go and the start are one tick',
+    );
+    expect(
+      fake.countdownVoiceCalls.where((c) => c.startsWith('beat')).toList(),
+      ['beat:3', 'beat:2', 'beat:1', 'beat:0'],
+    );
+    expect(fake.countdownVoiceCalls, isNot(contains('stop')));
+    await tester.pump(const Duration(seconds: 1));
+    await pumpTimes(tester, 4);
+  });
+
+  testWidgets('cancelling the countdown stops the speech, no go', (
+    tester,
+  ) async {
+    final fake = FakeRecorderGateway(now: now);
+    final services = fakeServices(
+      recorder: fake,
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.free,
+        cues: true,
+      ),
+    );
+    await openReady(tester, services);
+    await tester.tap(find.byKey(const ValueKey('ready-start')));
+    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.tap(find.byKey(const ValueKey('countdown')));
+    await pumpTimes(tester, 3);
+    expect(fake.countdownVoiceCalls.last, 'stop');
+    final before = fake.countdownVoiceCalls.length;
+    await tester.pump(const Duration(seconds: 5));
+    expect(fake.countdownVoiceCalls, hasLength(before));
+    expect(fake.countdownVoiceCalls, isNot(contains('beat:0')));
+    expect(fake.startCalls, isEmpty);
+  });
+
+  testWidgets('voice cues off: haptics only, the voice is never called', (
+    tester,
+  ) async {
+    final fake = FakeRecorderGateway(now: now);
+    final services = fakeServices(
+      recorder: fake,
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.free,
+        cues: false,
+      ),
+    );
+    await openReady(tester, services);
+    await tester.tap(find.byKey(const ValueKey('ready-start')));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(seconds: 3));
+    await pumpTimes(tester, 4);
+    expect(fake.startCalls, hasLength(1));
+    expect(fake.countdownVoiceCalls, isEmpty);
+    await tester.pump(const Duration(seconds: 1));
+    await pumpTimes(tester, 4);
+  });
+
+  testWidgets('a failing voice call is swallowed: countdown still runs', (
+    tester,
+  ) async {
+    final fake = _ThrowingVoiceGateway(now: now);
+    final services = fakeServices(
+      recorder: fake,
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.free,
+        cues: true,
+      ),
+    );
+    await openReady(tester, services);
+    await tester.tap(find.byKey(const ValueKey('ready-start')));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(seconds: 3));
+    await pumpTimes(tester, 4);
+    expect(fake.startCalls, hasLength(1));
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 1));
+    await pumpTimes(tester, 4);
   });
 
   testWidgets('countdown Off starts on the tap', (tester) async {

@@ -22,9 +22,11 @@ import '../widgets/structure_glyph.dart';
 /// a haptic on each beat, and the recorder starts exactly at GO. Tapping the
 /// countdown cancels back here.
 ///
-/// Voice ("3, 2, 1, go") is not done: the recorder's speech engine only runs
-/// once a recording is on, and there is no speak call before `start`. The
-/// countdown is haptics and numerals only.
+/// With voice cues on the countdown also says "3, 2, 1, go" through a
+/// speech player of its own (no recording session exists yet): it is warmed
+/// up when this screen opens, "go" is spoken at the same moment the recorder
+/// starts, and cancelling stops it. With voice cues off, or if the speech
+/// engine is not ready, it stays haptics and numerals with no error.
 ///
 /// The screen owns no recorder logic: [onGo] is the Start screen's start
 /// call (settings pushed to the recorder, live compare, `recording.start`).
@@ -116,18 +118,26 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
 
   bool _bleStarted = false;
 
+  /// Held for [dispose], where the context can no longer be asked.
+  RecorderGateway? _rec;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _rec = AppServices.of(context).recorder;
     if (_bleStarted) return;
     _bleStarted = true;
     _readBle();
+    _warmVoice();
     _bleTimer = Timer.periodic(const Duration(seconds: 3), (_) => _readBle());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // Leaving Ready for any reason but GO lets go of the speech player (GO
+    // releases it itself once "go" is said).
+    if (!_going) _voice(stop: true);
     _timer?.cancel();
     _bleTimer?.cancel();
     super.dispose();
@@ -155,8 +165,33 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
 
   bool get _counting => _count != null;
 
+  /// Countdown voice calls never throw: a failure is the same as no voice.
+  void _voice({int? beat, bool stop = false, bool prepare = false}) {
+    final rec = _rec;
+    if (rec == null) return;
+    try {
+      final Future<void> call = stop
+          ? rec.stopCountdownVoice()
+          : prepare
+          ? rec.prepareCountdownVoice()
+          : rec.speakCountdownBeat(beat!);
+      call.catchError((Object _) {});
+    } catch (_) {
+      // No voice is fine: haptics and numerals carry the countdown.
+    }
+  }
+
+  bool _voiceOn(AppSettings s) => s.cues && s.countdownSeconds > 0;
+
+  void _warmVoice() {
+    if (_voiceOn(AppServices.of(context).settings.settings)) {
+      _voice(prepare: true);
+    }
+  }
+
   void _beat(int n) {
     final s = AppServices.of(context).settings.settings;
+    if (_voiceOn(s)) _voice(beat: n);
     if (!s.haptics) return;
     if (n == 0) {
       HapticFeedback.heavyImpact();
@@ -172,6 +207,8 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
       _go();
       return;
     }
+    // Voice cues may have been switched on in Settings since Ready opened.
+    _warmVoice();
     setState(() => _count = secs);
     _beat(secs);
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -192,6 +229,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
     if (_going || !_counting) return;
     _timer?.cancel();
     _timer = null;
+    _voice(stop: true);
     if (mounted) setState(() => _count = null);
   }
 

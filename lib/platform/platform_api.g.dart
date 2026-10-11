@@ -4019,6 +4019,69 @@ class RecorderApi {
     ;
   }
 
+  /// Ready screen countdown voice (no recording session): warms up a speech
+  /// player of its own so the first beat is not lost to TTS start-up. Dart
+  /// calls it only when voice cues are on. Idempotent; starts no recorder
+  /// state.
+  Future<void> prepareCountdownVoice() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.prepareCountdownVoice$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// Says one countdown beat: 3, 2, 1, or 0 for "Go". Says nothing (no tone
+  /// either) when the speech engine is not ready. After the "Go" the player
+  /// releases itself once idle.
+  Future<void> speakCountdownBeat(int beat) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.speakCountdownBeat$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[beat]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// The countdown was cancelled or the screen closed: stops speech, drops
+  /// audio focus and releases the player.
+  Future<void> stopCountdownVoice() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.stopCountdownVoice$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
   /// Settings -> Run -> "Auto-pause" (default on): the recorder pauses itself
   /// when the runner stops and resumes when they move again, in Free, Laps
   /// and Goal runs (and the warm-up/cool-down of other sessions; never in a

@@ -59,6 +59,9 @@ class RecorderApiStub : RecorderApi {
     override fun setCheckIn(metrics: List<String>, zoneBottomsBpm: List<Double>?) = Unit
     override fun setCoachSlowdown(slowdown: Double?) = Unit
     override fun speakRunSummary(distanceM: Double, timeMs: Long, climbM: Double?, verdict: String?, units: Units, includePace: Boolean) = Unit
+    override fun prepareCountdownVoice() = Unit
+    override fun speakCountdownBeat(beat: Long) = Unit
+    override fun stopCountdownVoice() = Unit
     override fun setAutoPause(enabled: Boolean) = Unit
     override fun discardRun() = false
     override fun muteTips() = Unit

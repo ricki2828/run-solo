@@ -74,6 +74,9 @@ final class RecorderApiStub: RecorderApi {
   func setCheckIn(metrics: [String], zoneBottomsBpm: [Double]?) throws {}
   func setCoachSlowdown(slowdown: Double?) throws {}
   func speakRunSummary(distanceM: Double, timeMs: Int64, climbM: Double?, verdict: String?, units: Units, includePace: Bool) throws {}
+  func prepareCountdownVoice() throws {}
+  func speakCountdownBeat(beat: Int64) throws {}
+  func stopCountdownVoice() throws {}
   func setAutoPause(enabled: Bool) throws {}
   func muteTips() throws {}
   func setVolumeKeyLaps(enabled: Bool) throws {}

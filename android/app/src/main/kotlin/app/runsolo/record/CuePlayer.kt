@@ -233,6 +233,26 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
         say(null, text)
     }
 
+    /**
+     * One short line for a screen with no recording (the Ready countdown): spoken only when TTS is
+     * ready, interrupting any earlier beat, with no tone fallback and no vibration. Returns whether
+     * it was handed to the engine; false means it was dropped and nothing sounded.
+     */
+    @Synchronized
+    fun speakIfReady(text: String): Boolean {
+        val engine = tts
+        if (!enabled || !ttsReady || engine == null) return false
+        requestFocus()
+        inFlight++
+        val spoke = try {
+            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "cue-${System.nanoTime()}") == TextToSpeech.SUCCESS
+        } catch (_: Exception) {
+            false
+        }
+        if (!spoke) done()
+        return spoke
+    }
+
     private fun countdown() {
         requestFocus()
         for (i in 0..2) {
