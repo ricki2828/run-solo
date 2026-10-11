@@ -37,7 +37,6 @@ class ChoiceChips extends StatelessWidget {
                 duration: MotionDurations.quick,
                 height: 48,
                 padding: const EdgeInsets.symmetric(horizontal: Space.x16),
-                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: t.bgRaised,
                   borderRadius: BorderRadius.circular(Radii.chip),
@@ -46,10 +45,13 @@ class ChoiceChips extends StatelessWidget {
                     width: 2,
                   ),
                 ),
-                child: Text(
-                  labels[i],
-                  style: RunSoloType.label13.copyWith(
-                    color: i == selected ? t.inkPrimary : t.inkSecondary,
+                child: Center(
+                  widthFactor: 1,
+                  child: Text(
+                    labels[i],
+                    style: RunSoloType.label13.copyWith(
+                      color: i == selected ? t.inkPrimary : t.inkSecondary,
+                    ),
                   ),
                 ),
               ),

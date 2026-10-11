@@ -122,6 +122,11 @@ void main() {
         final rect = tester.getRect(find.text(chip));
         expect(rect.right, lessThanOrEqualTo(360), reason: chip);
       }
+      // Chips sit side by side (a wrap), not one full-width chip per row.
+      expect(
+        tester.getRect(find.text('All')).top,
+        tester.getRect(find.text('Intervals')).top,
+      );
       for (final label in ['LEADERBOARD', 'CHRONOLOGICAL', 'TRENDS']) {
         final text = tester.widget<Text>(find.text(label));
         expect(text.style!.fontSize, greaterThanOrEqualTo(13), reason: label);
