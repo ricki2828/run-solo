@@ -31,10 +31,12 @@ def _replay(s: Settings, argv: list[str]) -> int:
     ap.add_argument("--dry-run", action="store_true", help="print the whole schedule, send and change nothing")
     ap.add_argument("--from", dest="from_date", help="YYYY-MM-DD: earlier runs are context only, no cards")
     ap.add_argument("--full", action="store_true", help="with --dry-run: print every message in full")
+    ap.add_argument("--fresh", action="store_true",
+                    help="first remove what an earlier replay created for this user (never real uploads), then start at item 1")
     a = ap.parse_args(argv)
     try:
         if a.dry_run:
-            return replay.dry_run(s, a.facts_dir, a.every, a.from_date, a.full)
+            return replay.dry_run(s, a.facts_dir, a.every, a.from_date, a.full, a.fresh)
         with db.ro(s.db_path) as c:
             aware = c.execute("SELECT value FROM settings WHERE key='replay_aware_at'").fetchone()
         # the live worker refreshes this every tick; stale means it is not running this code (never restarted, or rolled back)
@@ -45,6 +47,9 @@ def _replay(s: Settings, argv: list[str]) -> int:
         s = replay.replay_settings(s)
         runs = replay.load_facts(a.facts_dir)
         uid = replay.find_user(s)
+        if a.fresh:
+            plan = replay.fresh_apply(s, uid, runs)
+            print("fresh start, removed: " + plan.summary())
         svc = Service(s, httpx.Client(timeout=10))
         r = replay.Replayer(svc, uid, runs, a.every, facts_dir=a.facts_dir,
                             from_dt=replay.from_datetime(a.from_date, runs[0].zone_id))

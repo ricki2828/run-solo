@@ -28,7 +28,17 @@ class CompanionFactsOptions {
     this.names = EventNames.generic,
     this.withRoute = true,
     this.random,
+    this.privacyZones = const [],
+    this.onZones,
   });
+
+  /// The secret zones already known for this runner (the replay's own file,
+  /// see `tool/companion_facts.dart`). New ones are added as runs need them
+  /// and handed to [onZones] when the call is done, so the next replay uses
+  /// the same circles (two replays with different circles would narrow home to
+  /// their overlap).
+  final List<PrivacyZone> privacyZones;
+  final void Function(List<PrivacyZone> zones)? onZones;
 
   /// Picks the secret privacy-zone centres for the replay (a secure one by
   /// default). The replay keeps its zones for the one call, like a phone does
@@ -150,7 +160,7 @@ List<Map<String, Object?>?> companionFactsFor(
   final priors = <PriorRun>[];
   final out = <Map<String, Object?>?>[];
   final zones = options.zones;
-  var privacyZones = <PrivacyZone>[];
+  var privacyZones = [...options.privacyZones];
   for (final b in ordered) {
     final run = b.run;
     final sidecar = b.sidecar ?? RunSidecar(runId: run.id);
@@ -168,12 +178,10 @@ List<Map<String, Object?>?> companionFactsFor(
     } catch (_) {
       a = null; // the app skips a failed analysis too: no verdict, no true pace
     }
-    final start = startFix(run.samples);
-    if (start != null && options.withRoute) {
-      privacyZones = ensureZoneFor(
+    if (options.withRoute) {
+      privacyZones = ensureZonesForRun(
         privacyZones,
-        start.$1,
-        start.$2,
+        run.samples,
         random: options.random,
       );
     }
@@ -229,5 +237,6 @@ List<Map<String, Object?>?> companionFactsFor(
       ),
     });
   }
+  options.onZones?.call(privacyZones);
   return out;
 }

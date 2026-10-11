@@ -128,6 +128,33 @@ void main() {
     },
   );
 
+  test('a second replay reuses the same secret zones (no new circle for the same door)', () {
+    RunBundle b(RunFile r) => RunBundle(
+      run: r,
+      sidecar: RunSidecar(
+        runId: r.id,
+        zoneId: 'Asia/Singapore',
+        utcOffsetMin: 480,
+      ),
+    );
+    var kept = <PrivacyZone>[];
+    companionFactsFor([
+      b(fourByFour),
+      b(lapsRun),
+    ], options: CompanionFactsOptions(maxHr: 190, onZones: (z) => kept = z));
+    final first = [...kept];
+    var again = <PrivacyZone>[];
+    companionFactsFor(
+      [b(fourByFour), b(lapsRun)],
+      options: CompanionFactsOptions(
+        maxHr: 190,
+        privacyZones: first,
+        onZones: (z) => again = z,
+      ),
+    );
+    expect(again.map((z) => z.toJson()), first.map((z) => z.toJson()));
+  });
+
   test(
     'sorted oldest first, and later runs are compared with earlier ones',
     () {

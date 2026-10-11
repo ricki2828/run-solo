@@ -328,7 +328,7 @@ void main() {
       );
       final short = gps([for (var i = 0; i < 100; i++) (i * 4.0, 0.0)]);
       expect(
-        routeShape(short),
+        routeShape(short, trimMinM: 250, trimMaxM: 250),
         isNull,
       ); // 400 m: two cuts of at least 150 m leave under 100 m
     });
@@ -420,13 +420,89 @@ void main() {
       expect(two, hasLength(2));
     });
 
-    test('at most three zones; a fourth place gets the random trim only', () {
+    test('no cap and no eviction: a later place still gets a zone, the first one stays', () {
       final rng = math.Random(4);
       var zs = <PrivacyZone>[];
-      for (var i = 0; i < 5; i++) {
+      for (var i = 0; i < 12; i++) {
         zs = ensureZoneFor(zs, homeLat + i * 0.05, homeLon, random: rng);
       }
-      expect(zs, hasLength(kMaxZones));
+      expect(zs, hasLength(12));
+      final first = zs.first;
+      final again = ensureZoneFor(
+        zs,
+        homeLat + 12 * 0.05,
+        homeLon,
+        random: rng,
+      );
+      expect(again, hasLength(13));
+      expect(again.first, same(first));
+      // Back at the first place: its own zone, not a new one.
+      expect(ensureZoneFor(again, homeLat, homeLon, random: rng), same(again));
+    });
+
+    test(
+      'the centre is uniform over the disc, not piled up near the place',
+      () {
+        final rng = math.Random(21);
+        final ratios = <double>[];
+        for (var i = 0; i < 4000; i++) {
+          final z = ensureZoneFor(
+            const [],
+            homeLat,
+            homeLon,
+            random: rng,
+          ).single;
+          ratios.add(z.distanceM(homeLat, homeLon) / z.radiusM);
+        }
+        ratios.sort();
+        // Area-uniform over a disc of radius R/2: median 0.5 * sqrt(0.5) * R, about 0.354 R.
+        expect(ratios[ratios.length ~/ 2], closeTo(0.354, 0.02));
+        expect(ratios.last, lessThanOrEqualTo(0.5001));
+      },
+    );
+
+    test('a zone for where the run finishes too (work, the gym)', () {
+      final rng = math.Random(8);
+      final track = gps([
+        for (var i = 0; i <= 500; i++) (i * 6.0, 30 * math.sin(i / 25)),
+      ]);
+      final zs = ensureZonesForRun(const [], track, random: rng);
+      expect(zs, hasLength(2));
+      final end = endFix(track)!;
+      expect(zs.any((z) => z.distanceM(end.$1, end.$2) <= z.radiusM), isTrue);
+      expect(ensureZonesForRun(zs, track, random: rng), same(zs));
+    });
+
+    test('20 runs to the same office: no outline ends nearer than half the zone radius', () {
+      final rng = math.Random(15);
+      var zones = <PrivacyZone>[];
+      for (var k = 0; k < 20; k++) {
+        // Each run finishes at the same office door (within a few tens of metres), 3 km on.
+        final jitter = rng.nextDouble() * 0.0004;
+        final pts = <(double, double)>[
+          for (var i = 0; i <= 600; i++)
+            (
+              i * 5.0 + rng.nextDouble() * 3,
+              25 * math.sin(i / 40) + rng.nextDouble() * 3,
+            ),
+        ];
+        final base = gps(pts, lat: homeLat + jitter, lon: homeLon);
+        final samples = base;
+        zones = ensureZonesForRun(zones, samples, random: rng);
+        final t = prepareTrack(samples, zones: zones, random: rng)!;
+        final end = endFix(samples)!;
+        final ex = (end.$2 - t.lon0) * t.kx, ey = -(end.$1 - t.lat0) * 110540.0;
+        final last = t.pts.last;
+        final z = zones.firstWhere(
+          (z) => z.distanceM(end.$1, end.$2) <= z.radiusM,
+        );
+        expect(
+          math.sqrt(math.pow(last.$1 - ex, 2) + math.pow(last.$2 - ey, 2)),
+          greaterThan(z.radiusM / 2),
+          reason: 'run $k',
+        );
+      }
+      expect(zones.length, lessThanOrEqualTo(3));
     });
 
     test(

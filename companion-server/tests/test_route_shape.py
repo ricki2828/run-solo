@@ -188,7 +188,7 @@ def test_a_late_upload_from_the_app_adds_its_shape_to_a_replayed_run(client):
     t = enrol(client)
     uid = tables(client, "SELECT id FROM users")[0]["id"]
     body = run_payload("rep1")
-    client.svc.ingest_run(uid, RunIn.model_validate(body))
+    client.svc.ingest_run(uid, RunIn.model_validate(body), replay=True)
     with db.tx(client.svc.s.db_path) as c:
         c.execute("INSERT INTO replay_runs (user_id, run_id, inserted) VALUES (?,?,1)", (uid, "rep1"))
     r = client.post("/v1/runs", json={**body, **shape_payload()}, headers=auth(t))

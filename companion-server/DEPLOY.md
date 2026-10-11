@@ -205,6 +205,7 @@ Replays a runner's real history on a virtual clock: `python -m companion.cli rep
 Controls:
 - `replay-stop`: a running replay finishes its current message, saves and stops. Run the same `replay` command to resume.
 - `replay-abort`: asks a running process to stop and waits for it. If it does not stop, nothing is released; stop the unit (`systemctl --user stop companion-replay`) and run it again. Then the user goes back to the live coach and the replay's queued past items are dropped.
+- `replay <dir> --fresh [--dry-run]`: first removes only what a replay created for the user (replayed runs, their cards, queued items, convo rows, notes, replay-dated memory and caps), told apart from real uploads by the replay's own marks or its virtual timestamps, then starts at item 1. A real upload (including a replayed run the app has since uploaded) is never touched; it refuses if it cannot tell them apart or a replay is running. `--dry-run` prints what would be removed.
 - `replay-reset`: forget a finished or aborted replay so a new one can start (cards already sent stay sent).
 - The existing `pause` holds the replay without losing items.
 

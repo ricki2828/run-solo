@@ -129,7 +129,7 @@ List<Pt> simplifyTo(List<Pt> pts, int maxPoints, {double? startEpsilon}) {
   return out;
 }
 
-/// A secret circle around a place the runner often starts from, kept on the
+/// A secret circle around a place the runner starts or finishes at, kept on the
 /// phone only (never sent, never in any payload). Fixes inside it are clipped
 /// from the start and the end of every route. The centre is offset from the
 /// real start by up to half the radius, and the radius is random in
@@ -162,13 +162,15 @@ class PrivacyZone {
 const double kZoneMinRadiusM = 250;
 const double kZoneMaxRadiusM = 400;
 
-/// At most this many zones are kept.
-const int kMaxZones = 3;
+/// A safety bound only: zones are never evicted (a place met again would get a
+/// second, different circle, which is the leak a zone exists to stop), so this
+/// is far above what anyone reaches.
+const int kMaxZones = 200;
 
-/// The zones to use for a run that starts at ([lat], [lon]): [zones], plus a
-/// new one if the start is outside every zone and there is room. A new zone is
-/// centred up to half its radius away from the start, in a random direction,
-/// so the start is always inside it and the centre is not the start.
+/// The zones to use for a run that starts or ends at ([lat], [lon]): [zones],
+/// plus a new one if the place is outside every zone. A new zone is centred up
+/// to half its radius away, in a random direction and uniformly over that
+/// disc, so the place is always inside it and the centre is not the place.
 List<PrivacyZone> ensureZoneFor(
   List<PrivacyZone> zones,
   double lat,
@@ -180,7 +182,11 @@ List<PrivacyZone> ensureZoneFor(
   final rng = random ?? math.Random.secure();
   final r =
       kZoneMinRadiusM + rng.nextDouble() * (kZoneMaxRadiusM - kZoneMinRadiusM);
-  final d = rng.nextDouble() * r / 2;
+  final d =
+      (r / 2) *
+      math.sqrt(
+        rng.nextDouble(),
+      ); // uniform over the disc, not over the distance
   final a = rng.nextDouble() * 2 * math.pi;
   final zlat = lat + d * math.sin(a) / 110540.0;
   final zlon =
@@ -198,6 +204,34 @@ List<PrivacyZone> ensureZoneFor(
     }
   }
   return null;
+}
+
+/// The last usable fix of [samples], or null.
+(double, double)? endFix(Iterable<Sample> samples) {
+  (double, double)? last;
+  for (final s in samples) {
+    if (s.lat != null &&
+        s.lon != null &&
+        (s.accM == null || s.accM! <= kRouteMaxAccuracyM)) {
+      last = (s.lat!, s.lon!);
+    }
+  }
+  return last;
+}
+
+/// [zones] with a zone for where [samples] start and where they finish (home,
+/// work, the gym: any place the runner starts or ends), each created once and
+/// then reused for every later run.
+List<PrivacyZone> ensureZonesForRun(
+  List<PrivacyZone> zones,
+  Iterable<Sample> samples, {
+  math.Random? random,
+}) {
+  var out = zones;
+  for (final f in [startFix(samples), endFix(samples)]) {
+    if (f != null) out = ensureZoneFor(out, f.$1, f.$2, random: random);
+  }
+  return out;
 }
 
 /// Drops the points at the start, and at the end, that lie inside any of

@@ -798,13 +798,14 @@ void main() {
       await sentSummary();
       final zones =
           jsonDecode(secrets.values[CompanionController.zonesName]!) as List;
-      expect(zones, hasLength(1));
-      final z = zones.single as Map;
+      expect(zones, isNotEmpty); // where the run starts and where it finishes
       for (final r in http.requests) {
         final text =
             '${r.uri} ${r.headers} ${r.body == null ? '' : utf8.decode(r.body!)}';
-        for (final secret in ['${z['lat']}', '${z['lon']}', '${z['r']}']) {
-          expect(text, isNot(contains(secret)), reason: secret);
+        for (final z in zones.cast<Map>()) {
+          for (final secret in ['${z['lat']}', '${z['lon']}', '${z['r']}']) {
+            expect(text, isNot(contains(secret)), reason: secret);
+          }
         }
       }
     });
@@ -816,7 +817,7 @@ void main() {
         await sentSummary();
         final first = secrets.values[CompanionController.zonesName];
         final again = await ctl.privacyZonesFor(run);
-        expect(again, hasLength(1));
+        expect(again, hasLength(2));
         expect(secrets.values[CompanionController.zonesName], first);
         expect(await ctl.deleteEverything(), isTrue);
         expect(secrets.values[CompanionController.zonesName], first);

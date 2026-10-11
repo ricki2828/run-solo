@@ -673,9 +673,9 @@ class CompanionController extends ChangeNotifier {
       companionLog('could not read the privacy zones (${e.runtimeType})');
       return null;
     }
-    final start = engine.startFix(run.samples);
-    if (start == null) return zones;
-    final next = engine.ensureZoneFor(zones, start.$1, start.$2);
+    // A zone for where the run starts and where it finishes (home, work, the
+    // gym), made once and reused for every later run.
+    final next = engine.ensureZonesForRun(zones, run.samples);
     if (!identical(next, zones)) {
       try {
         await store.write(

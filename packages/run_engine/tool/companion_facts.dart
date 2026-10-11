@@ -1,6 +1,6 @@
 // Convert RunBundle exports into the JSON the app uploads to the companion.
 //
-//   dart run tool/companion_facts.dart <export_dir> <out_dir> [--max-hr N] [--age N] [--rest-hr N] [--no-route]
+//   dart run tool/companion_facts.dart <export_dir> <out_dir> [--max-hr N] [--age N] [--rest-hr N] [--no-route] [--zones FILE]
 //
 // Reads every `*.json` in <export_dir> (`run-<id>.runsupreme.json`), writes
 // `<out_dir>/NNNN-<run id>.json` sorted by start time. See
@@ -21,6 +21,44 @@ int? _opt(List<String> args, String name) {
   return int.tryParse(args[i + 1]);
 }
 
+String? _str(List<String> args, String name) {
+  final i = args.indexOf(name);
+  return i < 0 || i + 1 >= args.length ? null : args[i + 1];
+}
+
+/// `--zones FILE`, else one stable file per facts folder under
+/// `~/.config/run-supreme/privacy-zones/`.
+String _zonesPath(List<String> args, String outDir) {
+  final given = _str(args, '--zones');
+  if (given != null) return given;
+  final home = Platform.environment['HOME'] ?? '.';
+  final abs = Directory(outDir).absolute.path;
+  return '$home/.config/run-supreme/privacy-zones/${Uri.encodeComponent(abs)}.json';
+}
+
+List<PrivacyZone> _readZones(String path) {
+  final f = File(path);
+  if (!f.existsSync()) return const [];
+  try {
+    final j = jsonDecode(f.readAsStringSync());
+    if (j is! List) return const [];
+    return [for (final z in j) ?PrivacyZone.fromJson(z)];
+  } on FormatException {
+    return const [];
+  }
+}
+
+void _writeZones(String path, List<PrivacyZone> zones) {
+  final f = File(path);
+  f.parent.createSync(recursive: true);
+  if (!Platform.isWindows) Process.runSync('chmod', ['700', f.parent.path]);
+  f.writeAsStringSync(jsonEncode([for (final z in zones) z.toJson()]));
+  if (!Platform.isWindows) Process.runSync('chmod', ['600', path]);
+  stdout.writeln(
+    'privacy zones kept in $path (secret: do not share or commit)',
+  );
+}
+
 Future<void> main(List<String> args) async {
   final pos = <String>[];
   for (var i = 0; i < args.length; i++) {
@@ -32,7 +70,7 @@ Future<void> main(List<String> args) async {
   }
   if (pos.length != 2) {
     stderr.writeln(
-      'usage: companion_facts.dart <export_dir> <out_dir> [--max-hr N] [--age N] [--rest-hr N] [--no-route]',
+      'usage: companion_facts.dart <export_dir> <out_dir> [--max-hr N] [--age N] [--rest-hr N] [--no-route] [--zones FILE]',
     );
     exit(64);
   }
@@ -59,13 +97,23 @@ Future<void> main(List<String> args) async {
       byId[b.id] = b;
     }
   }
+  // The secret privacy zones are kept in one file per facts folder, outside the
+  // repo and the facts folder (the server reads every .json in that one), mode
+  // 600, and reused by every replay: two replays with different circles around
+  // the same door would narrow it to their overlap.
+  final zonesPath = _zonesPath(args, pos[1]);
+  final known = _readZones(zonesPath);
+  var latest = known;
   final opts = CompanionFactsOptions(
     maxHr: _opt(args, '--max-hr'),
     age: _opt(args, '--age'),
     restingHr: _opt(args, '--rest-hr'),
     withRoute: !args.contains('--no-route'),
+    privacyZones: known,
+    onZones: (z) => latest = z,
   );
   final facts = companionFactsFor(byId.values.toList(), options: opts);
+  if (latest.length != known.length) _writeZones(zonesPath, latest);
   Directory(pos[1]).createSync(recursive: true);
   var n = 0;
   var held = 0;
