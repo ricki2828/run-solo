@@ -260,6 +260,8 @@ def test_evening_suggestion_telegram_only_in_local_window_once_a_day(client, fak
     svc = client.svc
     uid = q(client, "SELECT id FROM users")[0]["id"]
     now = now_utc()
+    if now.weekday() == 6:  # Sunday evening belongs to the weekly recap, so the suggestion is skipped by design
+        now -= timedelta(days=1)
     for i, (d, typ) in enumerate([(1, "easy"), (3, "easy"), (5, "easy"), (9, "tempo")]):
         start = now - timedelta(days=d, hours=1)
         svc.ingest_run(uid, RunIn.model_validate(run_payload(f"e{i}", type=typ, start_utc=start.isoformat(), zone_id="UTC", utc_offset_min=0)), start + timedelta(hours=2))

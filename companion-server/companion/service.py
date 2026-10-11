@@ -1,6 +1,8 @@
 """Core behaviour: enrolment, run ingest, cards, memory, outbox, inbound commands."""
 from __future__ import annotations
 
+import math
+
 import hashlib
 import hmac
 import json
@@ -80,6 +82,14 @@ class RunIn(BaseModel):
     feel: str | None = Field(default=None, pattern=r"^(easy|right|hard)$")
     area_lat: float | None = Field(default=None, ge=-90, le=90)  # approximate area for weather; rounded on arrival
     area_lon: float | None = Field(default=None, ge=-180, le=180)
+
+    @field_validator("distance_m", "climb_m", mode="before")
+    @classmethod
+    def _whole_metres(cls, v):
+        """The app sends metres with one decimal (r1); store whole metres. Only finite numbers; strings, NaN and inf still fail."""
+        if isinstance(v, float) and math.isfinite(v):
+            return round(v)
+        return v
 
     @field_validator("verdict", mode="before")
     @classmethod
