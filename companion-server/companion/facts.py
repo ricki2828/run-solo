@@ -220,6 +220,8 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
             txt += f", {fmt_km(run['plan_target_m'])} km planned, {fmt_km(dist)} km run"
         if run.get("plan_weeks_to_race") is not None:
             txt += f", {run['plan_weeks_to_race']} weeks to race"
+        if run.get("plan_week") and run.get("plan_weeks") and run["plan_week"] <= run["plan_weeks"]:
+            txt += f", week {run['plan_week']} of {run['plan_weeks']} of the plan"
         worthy.append(Fact("plan", txt))
 
     if not worthy and last_card_age_h is not None and last_card_age_h < QUIET_CARD_GAP_H:

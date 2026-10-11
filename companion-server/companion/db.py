@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS runs (
   climb_m INTEGER, locality TEXT, route_id TEXT,
   load_state TEXT, pb TEXT,
   plan_kind TEXT, plan_target_m INTEGER, plan_weeks_to_race INTEGER,
+  plan_week INTEGER, plan_weeks INTEGER,  -- the app's 4-week block: this run's week, of how many
+  plan_next_type TEXT, plan_next_day TEXT, plan_next_week INTEGER, plan_next_min INTEGER, plan_next_m INTEGER,  -- the next planned session
   feel TEXT,
   received_at TEXT NOT NULL,
   stale INTEGER NOT NULL DEFAULT 0,
@@ -222,6 +224,16 @@ def init(path: str) -> None:
             except sqlite3.OperationalError as e:
                 if "duplicate column" not in str(e):
                     raise
+        run_cols = {r["name"] for r in c.execute("PRAGMA table_info(runs)")}
+        for col, typ in (("plan_week", "INTEGER"), ("plan_weeks", "INTEGER"), ("plan_next_type", "TEXT"),
+                         ("plan_next_day", "TEXT"), ("plan_next_week", "INTEGER"), ("plan_next_min", "INTEGER"),
+                         ("plan_next_m", "INTEGER")):
+            if col not in run_cols:  # databases created before plan-aware coaching
+                try:
+                    c.execute(f"ALTER TABLE runs ADD COLUMN {col} {typ}")
+                except sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e):
+                        raise
         if "quote_run_id" not in [r["name"] for r in c.execute("PRAGMA table_info(cards)")]:
             try:
                 c.execute("ALTER TABLE cards ADD COLUMN quote_run_id TEXT")

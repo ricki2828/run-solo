@@ -30,6 +30,7 @@ import '../state/places.dart';
 import '../state/route_library.dart';
 import '../state/recording_controller.dart';
 import '../state/intervals_icu.dart';
+import '../state/load_guard.dart';
 import '../state/send_runs.dart';
 import '../state/watch_export.dart';
 import '../state/sessions.dart';
@@ -117,7 +118,38 @@ class AppServices {
                settings.settings,
                (now ?? DateTime.now)(),
              ),
-           );
+           ) {
+    // The companion reads the stored plan through this object, which the
+    // initializer list cannot reach.
+    for (final t in sender.targets) {
+      if (t is CompanionTarget) t.planFacts ??= planFactsFor;
+    }
+  }
+
+  /// The plan's facts for a run's companion summary: the stored block, judged
+  /// against History's index rows exactly as Home shows it. Empty with no plan.
+  Future<Map<String, Object?>> planFactsFor(String runId) async {
+    final plan = plans.plan;
+    if (plan == null) return const {};
+    var scores = const <engine.IdentityLane, engine.IdentityScore>{};
+    try {
+      scores = live?.identityScores() ?? scores;
+    } catch (_) {}
+    final at = now();
+    final ctx = PlanContext(
+      runs: await history.list(),
+      scores: scores,
+      now: at,
+      maxHr: maxHr.maxHr,
+    );
+    return companionPlanFacts(
+      ctx.view(
+        plan,
+        loadDismissed: LoadDismissal.dismissed(settings.settings, at),
+      ),
+      runId,
+    );
+  }
 
   final RecorderGateway recorder;
   final BleGateway ble;

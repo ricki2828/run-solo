@@ -916,6 +916,56 @@ double areaCell(double v) {
   return r == 0 ? 0.0 : r;
 }
 
+/// The coach's word for a planned session: easy, long or quality (intervals
+/// and goal runs). The server accepts nothing else.
+String companionPlanType(engine.BlockKind k) => switch (k) {
+  engine.BlockKind.easy => 'easy',
+  engine.BlockKind.long => 'long',
+  engine.BlockKind.interval || engine.BlockKind.goal => 'quality',
+};
+
+String _planDay(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-'
+    '${d.month.toString().padLeft(2, '0')}-'
+    '${d.day.toString().padLeft(2, '0')}';
+
+/// What the stored 4-week plan says about [runId] and what comes next. Only
+/// what the plan already holds, and only when there is a plan: the session
+/// type, the week numbers, the planned local day, and a size where the plan
+/// has one (minutes, or a minimum distance on the long test). No reason text,
+/// no preset, no heart rate. Empty with no plan.
+///
+/// - `plan_kind`, `plan_target_m`: the planned session this run was done as.
+/// - `plan_week`, `plan_weeks`: that session's week (else the current week)
+///   of the plan's [engine.BlockPlanner.weeks].
+/// - `plan_next`: the next session still to do, with its planned day.
+///   `plan_weeks_to_race` is never sent: the app has no race date.
+Map<String, Object?> companionPlanFacts(engine.BlockView? view, String runId) {
+  if (view == null) return const {};
+  engine.BlockSessionState? own;
+  for (final st in view.all) {
+    if (st.runId == runId) own = st;
+  }
+  final week = own?.session.week ?? view.currentWeek;
+  final next = view.next;
+  final target = own?.session.minDistanceM;
+  return {
+    if (own != null) 'plan_kind': companionPlanType(own.session.kind),
+    'plan_target_m': ?target?.round(),
+    'plan_week': ?week,
+    if (week != null) 'plan_weeks': engine.BlockPlanner.weeks,
+    if (next != null && next.status != engine.BlockStatus.done)
+      'plan_next': {
+        'type': companionPlanType(next.session.kind),
+        'day': _planDay(next.date),
+        'week': next.session.week,
+        if (next.session.minutes != null) 'minutes': next.session.minutes,
+        if (next.session.minDistanceM != null)
+          'distance_m': next.session.minDistanceM!.round(),
+      },
+  };
+}
+
 /// The compact run summary the companion gets (B6, C4, C6): fields only, no
 /// route points, no street, no heart-rate trace. Null when the run has no
 /// time zone yet. The server decides staleness (more than 6 h after the run
@@ -925,6 +975,7 @@ Map<String, Object?>? companionSummary(
   engine.HrZones? zones,
   engine.RunFeel? feel,
   bool withArea = false,
+  Map<String, Object?> plan = const {},
 }) {
   final s = d.summary;
   final run = d.run;
@@ -960,6 +1011,8 @@ Map<String, Object?>? companionSummary(
     // The area name only (locality), never the street.
     'locality': ?s.place,
     'feel': ?(feel ?? d.sidecar.feel)?.name,
+    // The 4-week plan's facts (companionPlanFacts), when there is a plan.
+    ...plan,
     // Only with "Weather in suggestions" on: the start point rounded to 0.1
     // degree (about 11 km) here on the phone, so the server never gets more.
     if (withArea && s.startPoint != null) ...{
@@ -989,6 +1042,10 @@ class CompanionTarget extends ExportTarget {
 
   final CompanionController controller;
   final engine.HrZones Function()? zones;
+
+  /// The plan's facts for a run (companionPlanFacts over the stored plan),
+  /// wired by AppServices; null sends no plan fields.
+  Future<Map<String, Object?>> Function(String runId)? planFacts;
   @override
   String get id => targetId;
   @override
@@ -1004,6 +1061,16 @@ class CompanionTarget extends ExportTarget {
   @override
   bool isEnabled(AppSettings s) => controller.enrolled;
 
+  /// A plan read that fails sends the run without plan fields, never fails it.
+  Future<Map<String, Object?>> _plan(String runId) async {
+    try {
+      return await planFacts?.call(runId) ?? const {};
+    } catch (e) {
+      companionLog('plan read failed (${e.runtimeType})');
+      return const {};
+    }
+  }
+
   @override
   Future<SendResult> send(SendRequest req) async {
     final d = req.detail;
@@ -1016,6 +1083,7 @@ class CompanionTarget extends ExportTarget {
         d,
         zones: zones?.call(),
         withArea: controller.weatherOn,
+        plan: await _plan(d.run.id),
       );
       if (summary == null) {
         return const SendResult.failed('Run has no time zone yet');

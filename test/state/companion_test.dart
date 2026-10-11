@@ -385,6 +385,120 @@ void main() {
     });
   });
 
+  group('plan facts', () {
+    // Monday 5 Oct 2026, 3 a week: w1s1 intervals (Mon), w1s2 easy 30 min
+    // (Wed), w1s3 long 45 min (Fri), and so on to week 4.
+    engine.BlockPlan plan() => engine.BlockPlanner.build(
+      lane: engine.IdentityLane.speed,
+      perWeek: 3,
+      start: DateTime(2026, 10, 5),
+    );
+
+    engine.BlockView view(
+      engine.BlockPlan p, {
+      List<engine.PlanRun> runs = const [],
+    }) => engine.BlockResolver.resolve(p, runs, now: DateTime(2026, 10, 7, 12));
+
+    engine.PlanRun planRun(String id, {double km = 7}) => engine.PlanRun(
+      id: id,
+      start: DateTime(2026, 10, 6, 7),
+      movingMs: 40 * 60000,
+      distanceM: km * 1000,
+      kind: engine.PlanRunKind.other,
+    );
+
+    const wire = {
+      'plan_kind',
+      'plan_target_m',
+      'plan_week',
+      'plan_weeks',
+      'plan_next',
+    };
+
+    test('no plan sends nothing', () {
+      expect(companionPlanFacts(null, 'x'), isEmpty);
+    });
+
+    test('the run done as a planned session, and what is next', () {
+      final f = companionPlanFacts(view(plan(), runs: [planRun('x')]), 'x');
+      expect(f['plan_kind'], 'long'); // w1s3 took the run
+      expect(f['plan_week'], 1);
+      expect(f['plan_weeks'], 4);
+      expect(
+        f.containsKey('plan_target_m'),
+        isFalse,
+      ); // no distance in the plan
+      expect(f.containsKey('plan_weeks_to_race'), isFalse); // no race date
+      expect(f['plan_next'], {
+        'type': 'quality',
+        'day': '2026-10-05',
+        'week': 1,
+      });
+      expect(f.keys.toSet().difference(wire), isEmpty);
+    });
+
+    test('a run outside the plan still carries the week, not a kind', () {
+      final f = companionPlanFacts(view(plan()), 'not-in-the-plan');
+      expect(f.containsKey('plan_kind'), isFalse);
+      expect(f['plan_week'], 1);
+      expect(f['plan_weeks'], 4);
+    });
+
+    test('a size only where the plan holds one', () {
+      final p = plan();
+      final test15 = p.sessions[2].copyWith(minDistanceM: 15000);
+      final f = companionPlanFacts(
+        view(p.withSession(test15), runs: [planRun('x', km: 16)]),
+        'x',
+      );
+      expect(f['plan_target_m'], 15000);
+      // The next easy session carries its minutes, nothing else.
+      final next = companionPlanFacts(view(plan()), 'y')['plan_next']! as Map;
+      expect(
+        next.keys.toSet().difference({
+          'type',
+          'day',
+          'week',
+          'minutes',
+          'distance_m',
+        }),
+        isEmpty,
+      );
+      final easyFirst = plan().withSession(
+        plan().sessions[0].copyWith(kind: engine.BlockKind.easy, minutes: 35),
+      );
+      final n2 = companionPlanFacts(view(easyFirst), 'y')['plan_next']! as Map;
+      expect(n2, {
+        'type': 'easy',
+        'day': '2026-10-05',
+        'week': 1,
+        'minutes': 35,
+      });
+    });
+
+    test('a finished plan sends no next session', () {
+      final p = plan();
+      final after = engine.BlockResolver.resolve(
+        p,
+        const [],
+        now: DateTime(2026, 12, 20),
+      );
+      final f = companionPlanFacts(after, 'x');
+      expect(f.containsKey('plan_next'), isFalse);
+    });
+
+    test('the summary carries the plan facts and no other new field', () async {
+      await store.setUtcOffset(run.id, 480);
+      final d = (await store.load(run.id))!;
+      final f = companionPlanFacts(view(plan(), runs: [planRun('x')]), 'x');
+      final j = companionSummary(d, plan: f)!;
+      expect(j['plan_week'], 1);
+      expect(j['plan_next'], isA<Map>());
+      expect(companionSummary(d)!.keys.toSet().intersection(wire), isEmpty);
+      expect(jsonEncode(j), isNot(contains('reason'))); // no free text
+    });
+  });
+
   group('weather switch', () {
     late SendCoordinator coordinator;
     var clock = DateTime.utc(2026, 9, 24, 6, 40);
@@ -622,6 +736,30 @@ void main() {
             .sends[CompanionTarget.targetId]!;
         expect(rec.ok, isFalse);
         expect(rec.error, 'Companion key not accepted');
+      },
+    );
+
+    test(
+      'the plan facts ride on the run; a failing plan read never fails it',
+      () async {
+        await enrol();
+        target.planFacts = (_) async => {'plan_week': 2, 'plan_weeks': 4};
+        await coordinator.sendAuto(run.id);
+        final sent = http.bodyOf(http.to('POST', '/v1/runs').single);
+        expect(sent['plan_week'], 2);
+        expect(sent['plan_weeks'], 4);
+      },
+    );
+
+    test(
+      'a plan read that throws still sends the run, without plan fields',
+      () async {
+        await enrol();
+        target.planFacts = (_) async => throw StateError('boom');
+        await coordinator.sendAuto(run.id);
+        final sent = http.bodyOf(http.to('POST', '/v1/runs').single);
+        expect(sent['run_id'], run.id);
+        expect(sent.containsKey('plan_week'), isFalse);
       },
     );
   });
