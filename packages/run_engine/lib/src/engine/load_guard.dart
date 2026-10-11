@@ -59,21 +59,38 @@ class LoadFlag {
 
   int get easeCount => high ? 2 : 1;
 
+  /// The ratio of the number that tripped the flag.
+  double get ratio => trigger == LoadTrigger.load ? loadRatio : distanceRatio;
+
   /// Whole percent above usual for the number that tripped the flag.
-  int get percent =>
-      (((trigger == LoadTrigger.load ? loadRatio : distanceRatio) - 1) * 100)
-          .round();
+  int get percent => ((ratio - 1) * 100).round();
+
+  /// "15% more than usual", or for a ratio of 1.9 or more a multiple ("about
+  /// double your usual", "about 2.5 times your usual"). "115% above" read as
+  /// either 2.15x or 1.15x (design review S13). [usual] ends the percent
+  /// form, [your] the multiple form.
+  String _phrase(String usual, String your) {
+    final r = ratio;
+    if (r < 1.9) return '$percent% more than $usual';
+    if (r < 2.25) return 'about double $your';
+    final half = (r * 2).round() / 2;
+    final n = half == half.roundToDouble()
+        ? '${half.round()}'
+        : half.toStringAsFixed(1);
+    return 'about $n times $your';
+  }
 
   String get message => trigger == LoadTrigger.load
-      ? 'This week is $percent% above your usual. '
+      ? 'This week is ${_phrase('usual', 'your usual')}. '
             'An easy run today is the safer choice.'
-      : 'You are running $percent% more distance than your usual week. '
-            'An easy run today is the safer choice.';
+      : 'You are running ${_phrase('your usual week', 'your usual week')} '
+            'in distance. An easy run today is the safer choice.';
 
   /// A short reason for a session the plan eased.
   String get planReason => trigger == LoadTrigger.load
-      ? 'This week is $percent% above your usual, so this one is easy.'
-      : 'Your distance is $percent% above your usual week, so this one is easy.';
+      ? 'This week is ${_phrase('usual', 'your usual')}, so this one is easy.'
+      : 'Your distance is ${_phrase('your usual week', 'your usual week')}, '
+            'so this one is easy.';
 }
 
 enum LoadState { notEnoughData, ok, flagged }

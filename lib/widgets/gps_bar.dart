@@ -29,13 +29,18 @@ class GpsBar extends StatelessWidget {
     // A8: no number under 36 sp on the record screen, so the on-screen
     // label is a status word; the accuracy stays in the bar's fill and in
     // the screen-reader label.
-    final label = noFix
+    // The "GPS dropped" words live in the banner only (S7): the bar shows
+    // an empty warn-coloured fill under a plain "GPS". A first fix still
+    // being awaited has no banner, so it keeps its own words.
+    final label = lost
+        ? 'GPS'
+        : noFix
         ? 'GPS dropped'
         : weak
         ? 'GPS weak'
         : 'GPS';
     return Semantics(
-      label: noFix ? label : 'GPS ${acc.round()} m',
+      label: lost ? 'GPS dropped' : (noFix ? label : 'GPS ${acc.round()} m'),
       excludeSemantics: true,
       child: Row(
         children: [

@@ -49,7 +49,11 @@ void main() {
     );
     expect(
       text.data,
-      matches(RegExp(r'^This week is \d+% above your usual\. ')),
+      matches(
+        RegExp(
+          r'^This week is (\d+% more than usual|about [\d.]+ times your usual|about double your usual)\. ',
+        ),
+      ),
     );
     expect(text.data, endsWith(message));
     expect(text.data, isNot(contains('—')));
@@ -183,10 +187,7 @@ void main() {
     await pumpApp(tester, services, home: HomeScreen(now: now));
     await pumpTimes(tester, 6);
     expect(find.text('Easy run ›'), findsOneWidget);
-    expect(
-      find.textContaining('above your usual, so this one is easy.'),
-      findsOneWidget,
-    );
+    expect(find.textContaining(', so this one is easy.'), findsOneWidget);
   });
 
   testWidgets('dismissing the warning stops the plan easing this week', (
@@ -208,10 +209,7 @@ void main() {
     await pumpTimes(tester, 6);
     expect(find.byKey(const ValueKey('load-warning')), findsNothing);
     expect(find.text('Easy run ›'), findsNothing);
-    expect(
-      find.textContaining('above your usual, so this one is easy.'),
-      findsNothing,
-    );
+    expect(find.textContaining(', so this one is easy.'), findsNothing);
     expect(find.text('Norwegian 4x4 ›'), findsOneWidget);
   });
 
@@ -244,7 +242,7 @@ void main() {
     await pumpApp(tester, services, home: PlanScreen(now: now));
     await pumpTimes(tester, 6);
     expect(
-      find.textContaining('above your usual, so this one is easy.'),
+      find.textContaining(', so this one is easy.'),
       findsNWidgets(2), // a ratio this high eases two sessions
     );
   });

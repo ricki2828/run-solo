@@ -13,6 +13,7 @@ import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_engine/testing.dart' as synth;
 import 'package:run_solo/screens/board_detail_screen.dart';
+import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/screens/course_board_screen.dart';
 import 'package:run_solo/screens/custom_builder_screen.dart';
 import 'package:run_solo/screens/verdict_screen.dart';
@@ -35,6 +36,7 @@ import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/theme/theme.dart';
 import 'package:run_solo/theme/zones.dart';
 import 'package:run_solo/widgets/lap_button.dart';
+import 'package:run_solo/widgets/zone_ladder.dart';
 import 'package:run_solo/widgets/weather_chip.dart';
 
 import 'package:run_solo/state/voice_coach_plan.dart' show CoachTarget;
@@ -51,6 +53,7 @@ import '../run_fixtures.dart';
 /// A missing PNG fails: CI renders every golden into the `goldens` artifact
 /// on the same run, so the fix is to commit that artifact, never to skip.
 Future<void> golden(WidgetTester tester, String name) async {
+  if (name.startsWith('record_')) expectLabelFloor(tester, name);
   final file = File('test/golden/goldens/$name.png');
   expect(
     file.existsSync() || autoUpdateGoldenFiles,
@@ -61,6 +64,36 @@ Future<void> golden(WidgetTester tester, String name) async {
     find.byType(MaterialApp),
     matchesGoldenFile('goldens/$name.png'),
   );
+}
+
+/// S1 (design review 11-Oct): every record screen golden also asserts the
+/// label floor. No text under the record screen is smaller than 16 sp
+/// (numbers are 36 sp or more, titles bigger), so a label can never step down
+/// to a size that cannot be read at arm's length.
+void expectLabelFloor(WidgetTester tester, String golden) {
+  final scope = find.byType(RecordingScreen);
+  if (scope.evaluate().isEmpty) return;
+  final small = <String>{};
+  for (final e
+      in find.descendant(of: scope, matching: find.byType(Text)).evaluate()) {
+    if (find
+        .ancestor(
+          of: find.byWidget(e.widget),
+          matching: find.byType(ZoneLadder),
+        )
+        .evaluate()
+        .isNotEmpty) {
+      continue;
+    }
+    final w = e.widget as Text;
+    final text = w.data ?? w.textSpan?.toPlainText() ?? '';
+    if (text.trim().isEmpty) {
+      continue;
+    }
+    final size = w.style?.fontSize ?? DefaultTextStyle.of(e).style.fontSize;
+    if (size != null && size < 16) small.add('"$text" at $size sp');
+  }
+  expect(small, isEmpty, reason: '$golden: labels under the 16 sp floor');
 }
 
 void main() {
@@ -1358,6 +1391,11 @@ void main() {
       for (final hue in [AuroraRunType.intervals, t.semImproving]) {
         final title = HrZones.legibleOn(z, hue, t.inkPrimary);
         expect(ratio(title, bg), greaterThan(4.5), reason: 'title Z$z');
+      }
+      // S2: Z3-Z5 carry the zone label in Bone (>= 7:1), never the hue.
+      if (z >= HrZones.boneLabelsFrom) {
+        expect(label, t.inkPrimary, reason: 'zone label is Bone on Z$z');
+        expect(ratio(label, bg), greaterThan(7), reason: 'zone label Z$z');
       }
       // The target band bar (Bone on the dark track) over the flood.
       if (z > 0) {

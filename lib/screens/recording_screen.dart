@@ -436,7 +436,7 @@ class _RecordingScreenState extends State<RecordingScreen>
           // (its coach layer needs the room), and no step up on a short
           // phone there (the 4x4 layout has none to spare).
           final labelSize = s.isPreset
-              ? (compact ? 11.0 : 15.0)
+              ? RunLabelScope.floor
               : RunLabelScope.defaultSize;
           final coach = pausedNow || _finishing
               ? null
@@ -860,7 +860,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                               kCooperPauseWarning,
                               key: const ValueKey('cooper-pause-warning'),
                               textAlign: TextAlign.center,
-                              style: RunSoloType.label13.copyWith(
+                              style: RunSoloType.runCaption.copyWith(
                                 color: s.zone > 0
                                     ? HrZones.secondaryOnZone
                                     : t.inkSecondary,
@@ -1005,7 +1005,7 @@ String eventToGoText(
   return Fmt.clock(ctl.displayRemainingMs + 999);
 }
 
-/// The event / goal "on pace for" figure (finish time, or distance for a
+/// The event / goal "projected" figure (finish time, or distance for a
 /// time goal).
 String eventFinishText(
   RecordingSnapshot s,
@@ -1020,6 +1020,13 @@ String eventFinishText(
   return projected == null ? '--' : goalDistanceText(projected, units);
 }
 
+/// What the projected figure is called: a distance step projects a finish
+/// time, a time goal a distance. "On pace for" read backwards (S7).
+String eventFinishLabel(RecordingSnapshot s) =>
+    s.distanceStep || s.metresToGo != null
+    ? 'projected finish'
+    : 'projected distance';
+
 /// The MAP view's hero: the dominant figure of the NUMBERS layout for this
 /// phase, from the same helpers those blocks draw. Branch order mirrors the
 /// record screen's layout chain, so every mode and phase agrees.
@@ -1028,7 +1035,10 @@ LiveHero liveHero(RecordingSnapshot s, RecordingController ctl, Units units) {
   if ((isEventRun(s) || s.isGoal) && s.phase == Phase.work) {
     // To go leads; on the last stretch the projected finish does.
     return eventLastStretch(s)
-        ? LiveHero(text: eventFinishText(s, ctl, units), label: 'on pace for')
+        ? LiveHero(
+            text: eventFinishText(s, ctl, units),
+            label: eventFinishLabel(s),
+          )
         : LiveHero(text: eventToGoText(s, ctl, units), label: 'to go');
   }
   if (s.isGoal && s.phase == Phase.cooldown) {
@@ -1121,9 +1131,13 @@ Color phaseTitleColor(RecordingSnapshot s, RunSoloTokens t) {
     Phase.recovery => t.semImproving,
     _ => null,
   };
-  return hue == null
-      ? t.inkPrimary
-      : HrZones.legibleOn(s.zone, hue, t.inkPrimary);
+  // The mint recovery title stays on Z1/Z2 (and no zone); on Z3-Z5 it is
+  // Bone like the zone label (S2).
+  if (hue == null) return t.inkPrimary;
+  if (s.phase == Phase.recovery && s.zone >= HrZones.boneLabelsFrom) {
+    return t.inkPrimary;
+  }
+  return HrZones.legibleOn(s.zone, hue, t.inkPrimary);
 }
 
 /// `repIndex` is 1-based in work / recovery (RecorderCore.kt); the last rep
@@ -1509,7 +1523,7 @@ class _Vitals extends StatelessWidget {
                           softWrap: false,
                           overflow: TextOverflow.fade,
                           style: hr == null
-                              ? RunSoloType.body15.copyWith(color: t.semWarn)
+                              ? RunSoloType.runNote.copyWith(color: t.semWarn)
                               : AuxFigure.style.copyWith(color: secondary),
                         ),
                       ),
@@ -1596,7 +1610,7 @@ class _CooperBlock extends StatelessWidget {
         Text(
           caption,
           key: const ValueKey('cooper-caption'),
-          style: RunSoloType.body15.copyWith(color: secondary),
+          style: RunSoloType.runNote.copyWith(color: secondary),
         ),
         SizedBox(height: compact ? Space.x8 : Space.x16),
         CompareSlot(
@@ -2094,7 +2108,7 @@ class _TimerBlock extends StatelessWidget {
           const SizedBox(height: Space.x4),
           Text(
             s.paused ? '' : timerCaption(s),
-            style: RunSoloType.label13.copyWith(color: secondary),
+            style: RunSoloType.runCaption.copyWith(color: secondary),
           ),
         ],
       ],
@@ -2177,7 +2191,7 @@ class _SegmentPace extends StatelessWidget {
               ),
               Text(
                 '$title /${units == Units.mi ? 'mi' : 'km'}',
-                style: RunSoloType.label13.copyWith(color: secondary),
+                style: RunSoloType.runCaption.copyWith(color: secondary),
               ),
             ],
           ),
@@ -2220,6 +2234,8 @@ class _SegmentPace extends StatelessWidget {
                   referenceSecPerKm: reference,
                   units: units,
                   onZone: onZone,
+                  // 16 sp "CURRENT PACE" wraps in the 112 dp dial column.
+                  label: compact ? 'PACE' : 'CURRENT PACE',
                   paceStyle: RunSoloType.display44,
                 ),
               ),
@@ -2270,20 +2286,25 @@ class _Stats extends StatelessWidget {
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.bottomLeft,
-                child: Text(
-                  Fmt.pace(live, units),
+                // m:ss/km with no space: one run of text, the unit a small
+                // caption on the same baseline.
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(text: Fmt.pace(live, units)),
+                      if (live != null)
+                        TextSpan(
+                          text: '/${units == Units.mi ? 'mi' : 'km'}',
+                          style: RunSoloType.runCaption.copyWith(
+                            color: onZone
+                                ? HrZones.secondaryOnZone
+                                : t.inkSecondary,
+                          ),
+                        ),
+                    ],
+                  ),
                   softWrap: false,
                   style: RunSoloType.display44.copyWith(color: t.inkPrimary),
-                ),
-              ),
-            ),
-            const SizedBox(width: Space.x4),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text(
-                '/${units == Units.mi ? 'mi' : 'km'}',
-                style: RunSoloType.label13.copyWith(
-                  color: onZone ? HrZones.secondaryOnZone : t.inkSecondary,
                 ),
               ),
             ),
@@ -2305,7 +2326,7 @@ class _Stats extends StatelessWidget {
         if (!showGhost)
           Text(
             s.isPreset ? 'warm-up pace' : 'first lap',
-            style: RunSoloType.body15.copyWith(color: deltaColor),
+            style: RunSoloType.runNote.copyWith(color: deltaColor),
           )
         else
           // A8: no number on the record screen under 36 sp.
@@ -2315,7 +2336,7 @@ class _Stats extends StatelessWidget {
             children: [
               Text(
                 s.isPreset ? 'last rep ' : 'last lap ',
-                style: RunSoloType.body15.copyWith(color: deltaColor),
+                style: RunSoloType.runNote.copyWith(color: deltaColor),
               ),
               Text(
                 Fmt.pace(last, units),
@@ -2381,7 +2402,7 @@ class _Banner extends StatelessWidget {
       ),
       child: Text(
         text,
-        style: RunSoloType.label13.copyWith(color: t.inkPrimary),
+        style: RunSoloType.runCaption.copyWith(color: t.inkPrimary),
       ),
     );
   }
@@ -2423,10 +2444,7 @@ class _PauseButton extends StatelessWidget {
                   child: Text(
                     paused ? 'RESUME' : 'PAUSE',
                     softWrap: false,
-                    style: RunSoloType.label13.copyWith(
-                      color: t.inkPrimary,
-                      fontSize: 15,
-                    ),
+                    style: RunSoloType.runCaption.copyWith(color: t.inkPrimary),
                   ),
                 ),
               ),
@@ -2488,10 +2506,7 @@ class _StopButton extends StatelessWidget {
               const SizedBox(width: Space.x8),
               Text(
                 'STOP',
-                style: RunSoloType.label13.copyWith(
-                  color: t.inkPrimary,
-                  fontSize: 15,
-                ),
+                style: RunSoloType.runCaption.copyWith(color: t.inkPrimary),
               ),
             ],
           ),
@@ -2565,7 +2580,7 @@ class _FinishScreen extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: Space.x12),
                   child: Text(
                     error!,
-                    style: RunSoloType.body15.copyWith(color: t.semDanger),
+                    style: RunSoloType.runNote.copyWith(color: t.semDanger),
                   ),
                 ),
               FilledButton(
@@ -2599,7 +2614,7 @@ class _FinishScreen extends StatelessWidget {
                 onPressed: onDiscard,
                 child: Text(
                   'Discard run',
-                  style: RunSoloType.body15.copyWith(color: t.semDanger),
+                  style: RunSoloType.runNote.copyWith(color: t.semDanger),
                 ),
               ),
             ],
@@ -2618,7 +2633,10 @@ class _CoachSlot extends StatelessWidget {
   final _CoachLayer? coach;
 
   @override
+  // Flex 3 against the lone Spacer above the numbers: the coach layer gets
+  // the room first, so the 16 sp label floor never costs the next-step line.
   Widget build(BuildContext context) => Expanded(
+    flex: 3,
     child: LayoutBuilder(
       builder: (context, box) {
         final c = coach;
@@ -2688,7 +2706,11 @@ class _CoachLayer extends StatelessWidget {
         left = null;
       } else if (s.distanceStep) {
         final m = s.metresToGo;
-        left = m == null ? null : '${m.round()} m left';
+        // The same rounding as the countdown pill (metresText), and "--"
+        // while GPS is lost, so the two never disagree (S7).
+        left = m == null
+            ? null
+            : '${s.gpsLost || s.showEndRep ? '--' : metresText(m)} left';
       } else {
         left = '${Fmt.clock(ctl.displayRemainingMs)} left';
       }
@@ -2805,7 +2827,7 @@ class _PausedPanel extends StatelessWidget {
                   Text(
                     note!,
                     key: const ValueKey('paused-note'),
-                    style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+                    style: RunSoloType.runNote.copyWith(color: t.inkPrimary),
                   ),
                 ],
                 const SizedBox(height: Space.x16),
@@ -2911,7 +2933,7 @@ class _WaitingForGps extends StatelessWidget {
             ),
             Text(
               'waiting for GPS',
-              style: RunSoloType.body15.copyWith(color: t.semWarn),
+              style: RunSoloType.runNote.copyWith(color: t.semWarn),
             ),
           ],
         ),
@@ -2997,7 +3019,6 @@ class _EventStats extends StatelessWidget {
     // Three columns with gaps. The pace units move to the labels ("PACE /km")
     // because "4:44/km" at the 36 sp floor is as wide as a third of the row,
     // which ran the three values together.
-    final unit = units == Units.mi ? 'mi' : 'km';
     const gap = SizedBox(width: Space.x12);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -3015,7 +3036,7 @@ class _EventStats extends StatelessWidget {
         Expanded(
           flex: 5,
           child: AuxFigure(
-            label: 'PACE /$unit',
+            label: 'PACE',
             value: Fmt.pace(s.livePaceSecPerKm, units),
             labelColor: secondary,
             valueColor: t.inkPrimary,
@@ -3025,7 +3046,7 @@ class _EventStats extends StatelessWidget {
         Expanded(
           flex: 5,
           child: AuxFigure(
-            label: 'AVG /$unit',
+            label: 'AVG',
             value: avg == null ? '--' : Fmt.pace(avg, units),
             labelColor: secondary,
             valueColor: t.inkPrimary,
@@ -3080,7 +3101,7 @@ class EventBlock extends StatelessWidget {
               ).copyWith(color: big && !dashed ? t.inkPrimary : muted),
             ),
           ),
-          Text(label, style: RunSoloType.label13.copyWith(color: muted)),
+          Text(label, style: RunSoloType.runCaption.copyWith(color: muted)),
         ],
       );
     }
@@ -3090,7 +3111,12 @@ class EventBlock extends StatelessWidget {
       link: last ? null : card,
       child: SizedBox(
         width: double.infinity,
-        child: number('event-finish', finishText, 'on pace for', big: last),
+        child: number(
+          'event-finish',
+          finishText,
+          eventFinishLabel(s),
+          big: last,
+        ),
       ),
     );
     return AnimatedSwitcher(
@@ -3145,7 +3171,7 @@ class GoalDoneBlock extends StatelessWidget {
             style: primaryStyle(compact).copyWith(color: t.inkPrimary),
           ),
         ),
-        Text('cool-down', style: RunSoloType.label13.copyWith(color: muted)),
+        Text('cool-down', style: RunSoloType.runCaption.copyWith(color: muted)),
         SizedBox(height: compact ? Space.x8 : Space.x16),
         Container(
           key: const ValueKey('goal-lock'),
@@ -3162,7 +3188,7 @@ class GoalDoneBlock extends StatelessWidget {
             children: [
               Text(
                 'GOAL · ${(s.spec?.name ?? '').toUpperCase()}',
-                style: RunSoloType.label13.copyWith(color: muted),
+                style: RunSoloType.runCaption.copyWith(color: muted),
               ),
               FittedBox(
                 fit: BoxFit.scaleDown,

@@ -49,7 +49,7 @@ class PaceDial extends StatelessWidget {
   /// [beside] only: the arc's width (null = half the row).
   final double? dialWidth;
 
-  /// TRUE PACE (hills and heat taken out), s/km: a cyan marker on the arc at
+  /// TRUE PACE (hills and heat taken out), s/km: a Bone marker on the arc at
   /// its place on the same scale, and "TRUE 4:46" as a smaller second reading
   /// under the current pace. Null (flat road mode, no estimate) shows neither.
   final double? trueSecPerKm;
@@ -75,7 +75,7 @@ class PaceDial extends StatelessWidget {
     return ((r - c) / spanSecPerKm).clamp(-1.0, 1.0);
   }
 
-  /// "TRUE 4:46": the word in cyan (the marker's colour), the pace in Bone.
+  /// "TRUE 4:46": a small 16 sp "TRUE" tag and the pace, both Bone-toned.
   Widget? _trueLine(RunSoloTokens t) {
     final v = trueSecPerKm;
     if (v == null) return null;
@@ -88,9 +88,12 @@ class PaceDial extends StatelessWidget {
       child: Text.rich(
         TextSpan(
           children: [
+            // A small Bone tag, not cyan: cyan means PB everywhere (S6).
             TextSpan(
               text: 'TRUE ',
-              style: TextStyle(color: t.accentArc),
+              style: RunSoloType.runCaption.copyWith(
+                color: onZone ? HrZones.secondaryOnZone : t.inkSecondary,
+              ),
             ),
             TextSpan(text: Fmt.pace(v, units)),
           ],
@@ -152,7 +155,7 @@ class PaceDial extends StatelessWidget {
         track: onZone ? HrZones.gaugeEmpty : t.lineHair,
         secondary: secondary,
         truePosition: truePosition,
-        trueInk: t.accentArc,
+        trueInk: t.inkPrimary,
       ),
     ),
   );
@@ -256,15 +259,15 @@ class _DialPainter extends CustomPainter {
           ..strokeWidth = major ? 3 : 2,
       );
     }
-    // TRUE PACE: a cyan tick across the arc, wider than the reference and
-    // quarter ticks so it reads over them.
+    // TRUE PACE: a Bone tick across the arc (cyan is for PBs only), longer and
+    // wider than the reference and quarter ticks so it reads over them.
     final tp = truePosition;
     if (tp != null && trueInk != null) {
       final ta = math.pi + (tp + 1) / 2 * math.pi;
       final dir = Offset(math.cos(ta), math.sin(ta));
       canvas.drawLine(
-        c + dir * (r - 14),
-        c + dir * (r + 4),
+        c + dir * (r - 18),
+        c + dir * (r + 6),
         Paint()
           ..color = trueInk!
           ..strokeWidth = 5
