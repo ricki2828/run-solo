@@ -15,6 +15,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
 import '../state/live_route.dart';
 import '../theme/theme.dart';
 import 'blank_snapshot.dart';
+import 'card_framing.dart';
 import 'live_google_map.dart';
 import 'cached_map_card.dart';
 import 'map_surface.dart';
@@ -112,6 +113,7 @@ class GoogleMapSurfaceFactory implements MapSurfaceFactory {
         width: size.width,
         height: size.height,
         pixelRatio: dpr,
+        engine: kCardFramingKey,
       ),
       cache: MapSnapshotCache.shared,
       queue: RenderQueue.shared,
@@ -400,6 +402,9 @@ class _GoogleRouteMapState extends State<_GoogleRouteMap> {
         target: gm.LatLng(b.centre.lat, b.centre.lon),
         zoom: 15,
       ),
+      minMaxZoomPreference: widget.mapOnly
+          ? const gm.MinMaxZoomPreference(null, kCardMaxZoom)
+          : gm.MinMaxZoomPreference.unbounded,
       mapType: widget.terrain ? gm.MapType.terrain : gm.MapType.normal,
       style: widget.terrain
           ? null
@@ -473,7 +478,11 @@ class _GoogleRouteMapState extends State<_GoogleRouteMap> {
       onMapCreated: (c) {
         _controller = c;
         // Fit with 24 dp padding (A4). Lite mode has no animation.
-        unawaited(c.moveCamera(gm.CameraUpdate.newLatLngBounds(bounds, 24)));
+        // Cards get 22% of their short side, and a zoom ceiling (below).
+        final pad = widget.mapOnly
+            ? cardPadding((context.findRenderObject() as RenderBox?)?.size)
+            : 24.0;
+        unawaited(c.moveCamera(gm.CameraUpdate.newLatLngBounds(bounds, pad)));
       },
       onCameraIdle: _checkBlank,
     );
