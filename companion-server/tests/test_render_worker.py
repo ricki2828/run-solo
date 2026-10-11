@@ -292,3 +292,20 @@ def test_media_off_never_touches_the_socket(tmp_path, fakes):
         c.post("/v1/runs", json=run_payload("r1"), headers=auth(t))
         app.state.svc.run_outbox(now_utc() + timedelta(seconds=1))
     assert rec.sent == [] and "sendPhoto" not in fakes.tg_methods()
+
+
+def test_kill_tree_reaches_a_descendant_in_its_own_process_group():
+    """Playwright starts Chromium in a process group of its own; the timeout kill must still reach it."""
+    import subprocess
+    from render.worker import kill_tree
+    # sh -> setsid sleep: the sleep is a new session and group leader, like a detached browser
+    p = subprocess.Popen(["sh", "-c", "setsid sleep 60 & wait"], start_new_session=True)
+    time.sleep(0.5)
+    from render.worker import _descendants
+    kids = _descendants(p.pid)
+    assert kids, "expected the setsid sleep below the shell"
+    kill_tree(p.pid)
+    p.wait(timeout=5)
+    time.sleep(0.3)
+    for k in kids:
+        assert not os.path.exists(f"/proc/{k}") or open(f"/proc/{k}/stat").read().rsplit(")", 1)[1].split()[0] == "Z"

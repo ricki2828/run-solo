@@ -1,6 +1,6 @@
 [Unit]
 Description=Run Supreme companion: render worker (cards and videos; no network, no DB, no secrets)
-Documentation=file://%h/run-solo/companion-server/DEPLOY.md
+Documentation=file://%h/services/run-supreme-companion/DEPLOY.md
 
 [Service]
 # Facts JSON in, PNG or MP4 out, over a unix socket in ~/companion-data/render/. Chromium and ffmpeg cannot run inside
@@ -8,12 +8,12 @@ Documentation=file://%h/run-solo/companion-server/DEPLOY.md
 # bot token, the WhatsApp secret and the DB, so it must not be loosened. This unit holds none of those.
 # Needs the venv from requirements-render.txt (.venv-render), Chromium, ffmpeg and the system libs Chromium links to;
 # the paths below are this host's. Edit RS_CHROMIUM_PATH / LD_LIBRARY_PATH / FFMPEG and the Bind lines together.
-WorkingDirectory=%h/run-solo/companion-server
-ExecStart=%h/run-solo/companion-server/.venv-render/bin/python -m render.worker --socket %h/companion-data/render/render.sock
+WorkingDirectory=%h/services/run-supreme-companion
+ExecStart=%h/services/run-supreme-companion/.venv-render/bin/python -m render.worker --socket %h/companion-data/render/render.sock
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=HOME=/tmp
 Environment=PYTHONDONTWRITEBYTECODE=1
-Environment=COMPANION_ASSETS_DIR=%h/run-solo/assets
+Environment=COMPANION_ASSETS_DIR=%h/services/run-supreme-companion/assets
 Environment=RS_CHROMIUM_PATH=%h/.cache/ms-playwright/chromium_headless_shell-1208/chrome-linux/headless_shell
 Environment=LD_LIBRARY_PATH=%h/.local/chromium-libs/usr/lib/aarch64-linux-gnu
 Environment=FFMPEG=%h/bin/ffmpeg
@@ -32,7 +32,7 @@ PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=tmpfs
-BindReadOnlyPaths=%h/run-solo/companion-server %h/run-solo/assets/fonts %h/run-solo/assets/brand %h/.cache/ms-playwright %h/.local/chromium-libs %h/bin/ffmpeg
+BindReadOnlyPaths=%h/services/run-supreme-companion %h/.cache/ms-playwright %h/.local/chromium-libs %h/bin/ffmpeg
 BindPaths=%h/companion-data/render
 # No network at all: no IP traffic, and no socket family but AF_UNIX (the worker's socket and Chromium's own pipes).
 IPAddressDeny=any

@@ -98,14 +98,17 @@ Why this unit differs from `companion.service`:
 Install (the venv is separate from the companion's, and never installed into it):
 
 ```bash
-cd ~/run-solo/companion-server
+# The unit runs the LIVE tree (~/services/run-supreme-companion, a deployed copy), never the ~/run-solo checkout that
+# agents switch branches in. Deploy the reviewed commit there first: the companion imports render.protocol and
+# companion.render_client, and the worker needs render/worker.py, requirements-render.txt and deploy/.
+cd ~/services/run-supreme-companion
 python3 -m venv .venv-render && .venv-render/bin/pip install --require-hashes -r requirements-render.txt
-mkdir -p ~/companion-data/render && chmod 700 ~/companion-data/render
+mkdir -m700 ~/companion-data/render   # must exist before the unit starts: BindPaths fails without it
 # the unit's Environment= lines name this host's Chromium, its libs and ffmpeg; edit them and the Bind lines together if they differ:
 #   RS_CHROMIUM_PATH  ~/.cache/ms-playwright/chromium_headless_shell-1208/chrome-linux/headless_shell   (python -m playwright install chromium)
 #   LD_LIBRARY_PATH   ~/.local/chromium-libs/usr/lib/aarch64-linux-gnu   (libatk/libasound/libXdamage; there is no root to apt install them here)
 #   FFMPEG            ~/bin/ffmpeg
-#   COMPANION_ASSETS_DIR  ~/run-solo/assets   (fonts + brand/svg)
+#   COMPANION_ASSETS_DIR  ~/services/run-supreme-companion/assets   (fonts + brand/svg)
 cp deploy/companion-render.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now companion-render.service
@@ -113,7 +116,7 @@ systemctl --user status companion-render.service     # active; the socket appear
 journalctl --user -u companion-render -n 20           # "render worker listening"
 ```
 
-Smoke test with the companion's `.venv` (writes nothing, sends nothing):
+Smoke test with the live companion's venv (run from `~/services/run-supreme-companion`) (writes nothing, sends nothing):
 
 ```bash
 .venv/bin/python - <<'PY'
@@ -123,7 +126,7 @@ print(len(png), png[:4])
 PY
 ```
 
-Turn media on: add `COMPANION_MEDIA=1` to `~/.secrets/companion.env` (and `COMPANION_RENDER_SOCKET` only if the socket is elsewhere),
+Turn media on: add `COMPANION_MEDIA=1` to `~/.secrets/run-supreme-companion.env` (and `COMPANION_RENDER_SOCKET` only if the socket is elsewhere),
 then `systemctl --user restart companion.service`. Turn it off by removing the line; with the flag off the companion never
 touches the socket. Gate: sec-review-225 F1 (fixed), F2 (this unit), F5 (privacy copy live: redeploy the site first).
 
@@ -168,7 +171,7 @@ Enrolment flow (the app drives it; each step is anti-phishing by design):
 
 ## 7. Operations
 
-- Assets: the card and video renderer reads fonts and the brand mark from the repo's `assets/`. The render unit binds `~/run-solo/assets/fonts` and `assets/brand` read-only and sets `COMPANION_ASSETS_DIR=~/run-solo/assets`; a deployed copy elsewhere must change both. Without them media sends fall back to text.
+- Assets: the card and video renderer reads fonts and the brand mark from the repo's `assets/`. The render unit binds the live tree (`~/services/run-supreme-companion`, including its `assets/`) read-only and sets `COMPANION_ASSETS_DIR=~/services/run-supreme-companion/assets`; a copy elsewhere must change both. Without them media sends fall back to text.
 - Media (off by default): `COMPANION_MEDIA=1` sends run and recap cards as Telegram photos, and the weekly recap as a video, rendered by the separate worker unit in section 3b (`COMPANION_RENDER_SOCKET`, default `~/companion-data/render/render.sock`). Chromium and ffmpeg never run in `companion.service`. Any worker error, timeout or missing socket sends the text card instead. `COMPANION_DEEPLINK_BASE=https://<host>/l` adds an "Open in app" button (`<base>/run/<id>`, `<base>/week/<iso-week>`); Telegram and WhatsApp reject custom schemes, so that host must redirect to `runsupreme://run/<id>` or open as an App Link. No base, no button.
 - Kill switch: `python -m companion.cli pause` (sends defer, nothing is dropped) / `resume`. `COMPANION_SENDS_PAUSED=1` does the same via env.
 - Sentinel: alert when `curl -s localhost:8051/healthz` shows `overdue_outbox` above 0 for more than an hour. Add to the

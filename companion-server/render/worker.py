@@ -53,9 +53,44 @@ def child_main(out_path: str) -> int:
         op, kind, facts = check_request(json.load(sys.stdin))
         _render_one(op, kind, facts, Path(out_path))
     except Exception as e:  # the parent only learns "render_failed"; the type name is enough for the journal
-        print(f"render failed: {type(e).__name__}: {str(e)[:600]}", file=sys.stderr)  # journal only; never sent to the client
+        print(f"render failed: {type(e).__name__}", file=sys.stderr)  # type only: exception text can carry fact values
         return 1
     return 0
+
+
+def _descendants(root: int) -> list[int]:
+    """Every process below `root`, whatever its process group: Playwright starts Chromium in a group of its own, so
+    killpg on the render child alone would leave the browser behind."""
+    kids: dict[int, list[int]] = {}
+    for d in os.listdir("/proc"):
+        if not d.isdigit():
+            continue
+        try:
+            stat = Path(f"/proc/{d}/stat").read_text()
+            ppid = int(stat.rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            continue
+        kids.setdefault(ppid, []).append(int(d))
+    out, todo = [], [root]
+    while todo:
+        for c in kids.get(todo.pop(), []):
+            out.append(c)
+            todo.append(c)
+    return out
+
+
+def kill_tree(pid: int) -> None:
+    """SIGKILL `pid`, its process group and all its descendants."""
+    victims = _descendants(pid)  # collect first: killing the parent reparents the rest
+    for v in [pid, *victims]:
+        try:
+            os.kill(v, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
 
 
 class Worker:
@@ -91,17 +126,11 @@ class Worker:
                 p.communicate(json.dumps({"v": 1, "op": op, "kind": kind, "facts": facts}).encode(),
                               timeout=self.timeouts[op])
             except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(p.pid, signal.SIGKILL)  # the browser and ffmpeg are in the child's group
-                except ProcessLookupError:
-                    pass
+                kill_tree(p.pid)  # the browser has its own process group, ffmpeg is in the child's
                 p.wait()
                 raise ProtocolError("timeout") from None
             finally:
-                try:
-                    os.killpg(p.pid, signal.SIGKILL)  # stragglers (a browser that outlived its parent)
-                except (ProcessLookupError, PermissionError):
-                    pass
+                kill_tree(p.pid)  # stragglers (a browser that outlived its parent)
             if p.returncode != 0 or not out.is_file():
                 raise ProtocolError("render_failed")
             size = out.stat().st_size
