@@ -330,8 +330,11 @@ def test_share_card_shows_pace_by_default_and_the_runner_can_turn_it_off():
         html = _body(share_mod.build_share_html({**facts, "share": share}, MEMORY))
         assert ("/KM" in html) is shown, share
     # intervals: the reps replace the session's average pace, whatever the option says
+    # (the work pace, labelled /KM WORK, sits beside the reps when the app sent it)
     iv = F.singapore_intervals()
-    assert "/KM" not in _body(share_mod.build_share_html({**iv, "share": {"reps": True}}, MEMORY))
+    old = {k: v for k, v in iv.items() if k != "work_pace_s_per_km"}
+    assert "/KM WORK" in _body(share_mod.build_share_html({**iv, "share": {"reps": True}}, MEMORY))
+    assert "/KM" not in _body(share_mod.build_share_html({**old, "share": {"reps": True}}, MEMORY))
     assert "/KM" not in _body(share_mod.build_share_html({**iv, "share": {"pace": True}}, MEMORY))
 
 
