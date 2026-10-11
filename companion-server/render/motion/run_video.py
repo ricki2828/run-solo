@@ -51,7 +51,7 @@ class Verdict:
 class RunVideoSpec:
     kind_label: str  # "EASY RUN"
     date_label: str  # "SAT 10 OCT"
-    route: list  # [(lat, lon), ...] or x/y when latlon=False
+    route: list  # [(lat, lon), ...] or x/y when latlon=False (the app's shape grid, y down)
     distance_km: float
     duration_s: float
     splits: list[Split]
@@ -156,7 +156,8 @@ def spec_from_facts(f: dict, signoff: str = "Same time next run.") -> "RunVideoS
             v = Verdict(f["verdict"], dur / dist, 0, "/KM AVG", fmt="mss", context="AVERAGE PACE",
                         caption=f.get("headline", ""))
     return RunVideoSpec(
-        kind_label=f["title"].upper(), date_label=when.strftime("%a %-d %b").upper(), route=f["route"],
+        kind_label=f["title"].upper(), date_label=when.strftime("%a %-d %b").upper(),
+        route=f["route_xy"] if f.get("route_xy") else f["route"], latlon=not f.get("route_xy"),
         distance_km=dist, duration_s=dur, splits=splits, verdict=v, run_type=RUN_TYPE.get(f.get("type"), "AEROBIC"),
         flood_zone=flood, signoff=signoff, reps=reps)
 

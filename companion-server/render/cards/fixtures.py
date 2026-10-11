@@ -58,6 +58,18 @@ def _out_and_back(lat0: float, lon0: float, length_m: float, seed: int) -> list[
     return [[lat0 + y * mlat, lon0 + x * mlon] for x, y in out + back]
 
 
+def shape_xy(route: list[list[float]], max_points: int = 100, grid: int = 255) -> list[list[int]]:
+    """A lat/lon fixture route as the app sends it: x,y whole numbers on a 0..255 grid, y down, longer side the full
+    grid, no coordinates left. (Fixture-only: it skips the phone's rotation and Douglas-Peucker, it only thins.)"""
+    k = math.cos(math.radians(sum(p[0] for p in route) / len(route)))
+    pts = [(lon * k, -lat) for lat, lon in route]
+    step = max(1, math.ceil(len(pts) / max_points))
+    pts = pts[::step] + ([pts[-1]] if (len(pts) - 1) % step else [])
+    x0, y0 = min(p[0] for p in pts), min(p[1] for p in pts)
+    span = max(max(p[0] for p in pts) - x0, max(p[1] for p in pts) - y0)
+    return [[round((x - x0) / span * grid), round((y - y0) / span * grid)] for x, y in pts]
+
+
 def _splits(distance_km: float, duration_s: float, zones: list[int], seed: int) -> list[dict[str, Any]]:
     """Per-km splits whose lengths sum to distance_km and whose times sum to duration_s."""
     rnd = random.Random(seed)

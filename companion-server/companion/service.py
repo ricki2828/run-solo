@@ -11,10 +11,10 @@ import re
 import secrets
 import string
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from . import db
 from .channels import ChannelError, Inbound, OutCard, TelegramChannel, WhatsAppChannel, feel_template_eligible
@@ -88,7 +88,30 @@ def replay_hold(now: datetime) -> str:
             f"(status IN ('running','stopping') AND heartbeat_at > '{iso(now - REPLAY_RUN_STALE)}') OR "
             f"(status = 'stopped' AND updated_at > '{iso(now - REPLAY_STOPPED_MAX)}'))")
 
+# The route shape the app sends (see docs/privacy 2b): at most 120 points, whole numbers on a 0..255 grid in a unit
+# box. No latitude, longitude, scale or north: the phone normalises it before it leaves.
+ROUTE_GRID = 255
+MAX_ROUTE_POINTS = 120
+MAX_SPLITS = 100
+MAX_REPS = 60
+GridInt = Annotated[int, Field(strict=True, ge=0, le=ROUTE_GRID)]  # a float, even 12.0, is refused
+
 VERDICT_WIRE = ("faster", "holding", "slower", "noRealChange", "baselineSet", "noVerdict", "indoorRun")
+
+
+class SplitIn(BaseModel):
+    """One piece of the run: `km` long (1.0 except the last), at `pace_s` s/km, mostly in HR zone `zone` (none without HR)."""
+    model_config = ConfigDict(extra="forbid")
+    km: float = Field(gt=0, le=1.0)
+    pace_s: float = Field(ge=60, le=3600)
+    zone: int | None = Field(default=None, ge=1, le=5)
+
+
+class RepIn(BaseModel):
+    """One rep of a structured run: how long it took and the HR zone it mostly ran in."""
+    model_config = ConfigDict(extra="forbid")
+    time_s: float = Field(gt=0, le=3600)
+    zone: int | None = Field(default=None, ge=1, le=5)
 
 
 class RunIn(BaseModel):
@@ -116,6 +139,22 @@ class RunIn(BaseModel):
     feel: str | None = Field(default=None, pattern=r"^(easy|right|hard)$")
     area_lat: float | None = Field(default=None, ge=-90, le=90)  # approximate area for weather; the phone rounds to 0.1 degree and the server rounds again
     area_lon: float | None = Field(default=None, ge=-180, le=180)
+    route: list[tuple[GridInt, GridInt]] | None = Field(default=None, min_length=2, max_length=MAX_ROUTE_POINTS)
+    splits: list[SplitIn] | None = Field(default=None, min_length=1, max_length=MAX_SPLITS)
+    reps: list[RepIn] | None = Field(default=None, min_length=1, max_length=MAX_REPS)
+
+    @model_validator(mode="after")
+    def _shape(self):
+        """Only the canonical shape is accepted: it touches x=0 and y=0 and its longer side is the full grid, which is
+        exactly what the phone's normaliser produces. A shape that is not (a translated or unscaled path) is refused,
+        so nothing but a unit-box outline can be stored."""
+        if self.route is not None:
+            xs, ys = [p[0] for p in self.route], [p[1] for p in self.route]
+            if min(xs) != 0 or min(ys) != 0 or max(max(xs), max(ys)) != ROUTE_GRID:
+                raise ValueError("route is not a normalised shape")
+        if self.splits is not None and sum(x.km for x in self.splits) > self.distance_m / 1000 + 0.5:
+            raise ValueError("splits are longer than the run")
+        return self
 
     @field_validator("distance_m", "climb_m", mode="before")
     @classmethod
@@ -151,7 +190,7 @@ class RunIn(BaseModel):
 EXPORTED_TABLES = {
     "users": "profile", "runs": "runs_received", "memory": "memory", "cards": "messages_sent_30d",
     "outcomes": "suggestion_outcomes", "convo_cards": "messages_sent_30d", "convo_log": "conversation_log",
-    "convo_area": "areas", "run_notes": "run_notes",
+    "convo_area": "areas", "run_notes": "run_notes", "run_shape": "run_shapes",
 }
 NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message content of its own
     "devices": "hashed device tokens", "enrolments": "short-lived sign-up nonces", "outbox": "send queue, ids only",
@@ -522,14 +561,19 @@ class Service:
             outcomes = [dict(r) for r in c.execute("SELECT kind, outcome, ts FROM outcomes WHERE user_id=?", (uid,))]
             run_notes = [dict(r) for r in c.execute(
                 "SELECT run_id, note, created_at FROM run_notes WHERE user_id=? ORDER BY created_at", (uid,))]
+            shapes = [{"run_id": r["run_id"], "route": json.loads(r["route_json"]) if r["route_json"] else None,
+                       "splits": json.loads(r["splits_json"]) if r["splits_json"] else None,
+                       "reps": json.loads(r["reps_json"]) if r["reps_json"] else None}
+                      for r in c.execute("SELECT run_id, route_json, splits_json, reps_json FROM run_shape WHERE user_id=? "
+                                         "ORDER BY rowid", (uid,))]
         ref = u["chat_ref"]
         return {
             "profile": {
                 "channel": u["channel"], "chat_name": u["chat_name"], "chat_ref_hint": "…" + ref[-3:], "created_at": u["created_at"],
                 "consent_version": u["consent_version"], "consent_at": u["consent_at"], "paused": bool(u["paused"]),
-                "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
+                "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "route_shape_on_cards": bool(u["route_optin"]), "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },
-            "runs_received": runs, "run_notes": run_notes, "memory": memory, "suggestion_outcomes": outcomes,
+            "runs_received": runs, "run_shapes": shapes, "run_notes": run_notes, "memory": memory, "suggestion_outcomes": outcomes,
             "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo,
             "goes_to": ["OpenRouter and the model provider (facts and enumerated memory only, no phone number or chat id)",
                         "Telegram" if u["channel"] == "telegram" else "Meta (WhatsApp Cloud API, keeps messages up to 30 days)",
@@ -542,8 +586,13 @@ class Service:
         log.info("deleted user=%s via api", uid)
 
     def set_settings(self, uid: str, quiet_start: int | None, quiet_end: int | None, zone_id: str | None,
-                     weather: bool | None = None) -> None:
+                     weather: bool | None = None, route_shape: bool | None = None) -> None:
         with db.tx(self.s.db_path) as c:
+            if route_shape is not None:  # "Show route shape on cards"; off forgets every stored shape, now
+                c.execute("UPDATE users SET route_optin=? WHERE id=?", (int(route_shape), uid))
+                if not route_shape:
+                    c.execute("UPDATE run_shape SET route_json=NULL WHERE user_id=?", (uid,))
+                    c.execute("DELETE FROM run_shape WHERE user_id=? AND splits_json IS NULL AND reps_json IS NULL", (uid,))
             if weather is not None:  # the app's "Weather in suggestions" switch; off forgets every stored area
                 c.execute("UPDATE users SET weather_optin=? WHERE id=?", (int(weather), uid))
                 if not weather:
@@ -597,6 +646,7 @@ class Service:
                          json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality,
                          run.route_id, run.load_state, run.pb, run.plan_kind, run.plan_target_m,
                          run.plan_weeks_to_race, run.feel, uid, run.run_id))
+                    self._keep_shape(c, uid, run)
                     return {"status": "updated"}
                 return {"status": "duplicate"}
             n = c.execute("SELECT COUNT(*) FROM runs WHERE user_id=? AND received_at >= ?",
@@ -613,6 +663,7 @@ class Service:
                  json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality, run.route_id,
                  run.load_state, run.pb, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, run.feel,
                  iso(now), int(stale)))
+            self._keep_shape(c, uid, run)
             if self.s.weather_enabled and run.area_lat is not None and run.area_lon is not None \
                     and c.execute("SELECT weather_optin FROM users WHERE id=?", (uid,)).fetchone()["weather_optin"]:
                 self._keep_latest_area(c, uid, run.run_id, run.start_utc, cell(run.area_lat, run.area_lon))
@@ -631,6 +682,19 @@ class Service:
                 c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
                           (uid, "run_card", iso(now), f"card:{uid}:{run.run_id}", run.run_id))
         return {"status": "stored" if stale else "accepted"}
+
+    @staticmethod
+    def _keep_shape(c, uid: str, run: RunIn) -> None:
+        """Store the run's route shape, splits and reps (already validated and capped by RunIn). The route is kept only
+        while the runner's "Show route shape on cards" switch is on; splits and reps ride with the companion itself."""
+        route = run.route if c.execute("SELECT route_optin FROM users WHERE id=?", (uid,)).fetchone()["route_optin"] else None
+        splits = [x.model_dump(exclude_none=True) for x in run.splits] if run.splits else None
+        reps = [x.model_dump(exclude_none=True) for x in run.reps] if run.reps else None
+        if route is None and splits is None and reps is None:
+            return
+        dump = lambda v: None if v is None else json.dumps(v, separators=(",", ":"))  # noqa: E731
+        c.execute("INSERT OR REPLACE INTO run_shape (user_id, run_id, route_json, splits_json, reps_json) VALUES (?,?,?,?,?)",
+                  (uid, run.run_id, dump([list(p) for p in route]) if route else None, dump(splits), dump(reps)))
 
     @staticmethod
     def _keep_latest_area(c, uid: str, run_id: str, start: datetime, at: tuple[float, float]) -> None:
@@ -1049,6 +1113,13 @@ class Service:
             else:
                 runs = [dict(r) for r in c.execute("SELECT * FROM runs WHERE user_id=? AND run_id=?",
                                                     (user["id"], card.get("run_id")))]
+                for r in runs:  # the shape rides beside the row, for the renderer only (never into a prompt)
+                    sh = c.execute("SELECT route_json, splits_json, reps_json FROM run_shape WHERE user_id=? AND run_id=?",
+                                   (user["id"], r["run_id"])).fetchone()
+                    if sh:
+                        r["_shape"] = {"route": json.loads(sh["route_json"]) if sh["route_json"] else None,
+                                       "splits": json.loads(sh["splits_json"]) if sh["splits_json"] else None,
+                                       "reps": json.loads(sh["reps_json"]) if sh["reps_json"] else None}
         try:
             # the renderer gets the two fields it uses, never the whole card (whose body may quote a note)
             return self.media.render(plan, {"run_id": card.get("run_id"), "headline": card["headline"]}, runs)

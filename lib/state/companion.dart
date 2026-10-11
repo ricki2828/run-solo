@@ -22,7 +22,12 @@
 ///   `{status: duplicate}`; 401 bad token, 429 daily cap
 /// - `PATCH /v1/runs/{run_id}/feel` (Bearer) `{feel}`
 /// - `GET /v1/me`, `DELETE /v1/me` (Bearer)
-/// - `PUT /v1/me/settings` `{weather: bool}` (Bearer): the weather switch
+/// - `PUT /v1/me/settings` `{weather: bool}` or `{route_shape: bool}`
+///   (Bearer): the weather switch and the "Show route shape on cards" switch
+///
+/// A run summary carries, besides its totals, `splits` (per km), `reps` (a
+/// structured run) and, while "Show route shape on cards" is on, `route`: a
+/// shape only (see `companion_shape.dart` in run_engine), never a coordinate.
 library;
 
 import 'dart:async';
@@ -336,6 +341,17 @@ class CompanionClient {
     ),
   );
 
+  /// `PUT /v1/me/settings {route_shape}`: the "Show route shape on cards"
+  /// switch. Off also makes the server delete every route shape it holds.
+  Future<CompanionReply> putRouteShape(String token, bool on) => http.send(
+    CompanionRequest(
+      method: 'PUT',
+      uri: _uri(['v1', 'me', 'settings']),
+      headers: _headers(token, json: true),
+      body: utf8.encode(jsonEncode({'route_shape': on})),
+    ),
+  );
+
   Future<CompanionReply> deleteMe(String token) => http.send(
     CompanionRequest(
       method: 'DELETE',
@@ -527,6 +543,12 @@ class CompanionController extends ChangeNotifier {
   /// on open and before the next send, so a switch-off made offline lands.
   static const String weatherForgetName = 'companion_weather_forget';
 
+  /// "Show route shape on cards" is ON unless this holds '1'.
+  static const String routeOffName = 'companion_route_off';
+
+  /// Set while the server has not yet confirmed "forget my route shapes".
+  static const String routeForgetName = 'companion_route_forget';
+
   final SecretStore store;
   final TransferGateway transfer;
   final CompanionClient client;
@@ -543,10 +565,16 @@ class CompanionController extends ChangeNotifier {
 
   bool _asked = false;
   bool _weather = false;
+  bool _routeShape = true;
 
   /// "Weather in suggestions" (off until the runner turns it on). The run
   /// summary carries a rounded area only while this is true.
   bool get weatherOn => _weather && enrolled;
+
+  /// "Show route shape on cards" (on until the runner turns it off). The run
+  /// summary carries the route SHAPE only while this is true: an outline with
+  /// no place, scale or direction in it.
+  bool get routeShapeOn => _routeShape && enrolled;
 
   /// The runner has answered the setup step ("Turn on" or "Not now"), so
   /// onboarding does not ask again.
@@ -584,9 +612,104 @@ class CompanionController extends ChangeNotifier {
       } catch (e) {
         companionLog('could not read the weather switch (${e.runtimeType})');
       }
+      try {
+        _routeShape = await store.read(routeOffName) != '1';
+      } catch (e) {
+        companionLog('could not read the route switch (${e.runtimeType})');
+      }
     }
     notifyListeners();
-    if (_phase == CompanionPhase.on) await syncWeather();
+    if (_phase == CompanionPhase.on) {
+      await syncWeather();
+      await syncRouteShape();
+    }
+  }
+
+  /// "Show route shape on cards". Off: the phone stops sending a shape at
+  /// once, then the server is told to forget the shapes it holds (retried
+  /// until it has). On: the server is told first and only then does the phone
+  /// start sending a shape again. True when the switch now reads as asked.
+  Future<bool> setRouteShape(bool on) async {
+    final t = await token();
+    if (t == null) return false;
+    if (on == _routeShape) return true;
+    if (on) {
+      try {
+        final r = await client.putRouteShape(t, true);
+        if (r.status == 401 || r.status == 403) {
+          await _wipe();
+          return false;
+        }
+        if (!r.ok) {
+          problem =
+              'The companion is busy. The route shape is still off. Try again.';
+          notifyListeners();
+          return false;
+        }
+      } on CompanionNetworkError {
+        problem = 'No network. The route shape is still off. Try again.';
+        notifyListeners();
+        return false;
+      }
+      problem = null;
+      await _saveRouteShape(true);
+      return true;
+    }
+    await _saveRouteShape(false);
+    await syncRouteShape();
+    return true;
+  }
+
+  /// Tells the server to forget the route shapes if a switch-off has not
+  /// landed yet.
+  Future<void> syncRouteShape() async {
+    String? pending;
+    try {
+      pending = await store.read(routeForgetName);
+    } catch (_) {
+      return;
+    }
+    if (pending != '1') return;
+    final t = await token();
+    if (t == null) return;
+    try {
+      final r = await client.putRouteShape(t, false);
+      if (r.status == 401 || r.status == 403) {
+        await _wipe();
+        return;
+      }
+      if (r.ok) {
+        await store.delete(routeForgetName);
+        problem = null;
+      } else {
+        problem = _routePending;
+      }
+    } on CompanionNetworkError {
+      problem = _routePending;
+    } catch (e) {
+      companionLog('route switch sync failed (${e.runtimeType})');
+    }
+    notifyListeners();
+  }
+
+  static const String _routePending =
+      'The route shape is off on your phone. The server will be told when '
+      'you are back online.';
+
+  Future<void> _saveRouteShape(bool on) async {
+    _routeShape = on;
+    try {
+      if (on) {
+        await store.delete(routeOffName);
+        await store.delete(routeForgetName);
+      } else {
+        await store.write(routeOffName, '1');
+        await store.write(routeForgetName, '1');
+      }
+    } catch (e) {
+      companionLog('could not save the route switch (${e.runtimeType})');
+    }
+    notifyListeners();
   }
 
   /// "Weather in suggestions". On: the server is told first and only then
@@ -879,11 +1002,14 @@ class CompanionController extends ChangeNotifier {
       await store.delete(consentName);
       await store.delete(weatherName);
       await store.delete(weatherForgetName);
+      await store.delete(routeOffName);
+      await store.delete(routeForgetName);
     } catch (e) {
       companionLog('could not remove the token (${e.runtimeType})');
     }
     _phase = CompanionPhase.off;
     _weather = false;
+    _routeShape = true;
     problem = null;
     notifyListeners();
   }
@@ -917,14 +1043,18 @@ double areaCell(double v) {
 }
 
 /// The compact run summary the companion gets (B6, C4, C6): fields only, no
-/// route points, no street, no heart-rate trace. Null when the run has no
-/// time zone yet. The server decides staleness (more than 6 h after the run
+/// GPS points, no street, no heart-rate trace. Besides the totals it carries
+/// `splits` (per km: length, pace, HR zone), `reps` (a structured run's rep
+/// times) and, with [withRoute], `route`: the run's SHAPE, at most 120 whole
+/// number points in a unit box with no position, scale or north (made by
+/// `routeShape` in run_engine). Null when the run has no time zone yet. The server decides staleness (more than 6 h after the run
 /// ended: kept, no card) from `start_utc` and `duration_s`.
 Map<String, Object?>? companionSummary(
   RunDetail d, {
   engine.HrZones? zones,
   engine.RunFeel? feel,
   bool withArea = false,
+  bool withRoute = false,
 }) {
   final s = d.summary;
   final run = d.run;
@@ -966,6 +1096,16 @@ Map<String, Object?>? companionSummary(
       'area_lat': areaCell(s.startPoint!.lat),
       'area_lon': areaCell(s.startPoint!.lon),
     },
+    // route (only with the switch), splits, reps: built in run_engine so the
+    // history replay sends exactly the same.
+    ...engine.companionShapeFields(
+      run,
+      zones: zones,
+      intervals: d.analysis.mode == engine.RunMode.intervals
+          ? d.analysis.intervals
+          : null,
+      withRoute: withRoute,
+    ),
   };
 }
 
@@ -1012,10 +1152,12 @@ class CompanionTarget extends ExportTarget {
     if (token == null) return const SendResult.failed('Companion is off');
     try {
       await controller.syncWeather();
+      await controller.syncRouteShape();
       final summary = companionSummary(
         d,
         zones: zones?.call(),
         withArea: controller.weatherOn,
+        withRoute: controller.routeShapeOn,
       );
       if (summary == null) {
         return const SendResult.failed('Run has no time zone yet');

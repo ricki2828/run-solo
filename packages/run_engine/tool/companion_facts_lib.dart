@@ -24,7 +24,12 @@ class CompanionFactsOptions {
     this.age,
     this.restingHr,
     this.names = EventNames.generic,
+    this.withRoute = true,
   });
+
+  /// The app's "Show route shape on cards" switch (default on): the summary
+  /// carries the normalised route shape. Splits and reps always ride along.
+  final bool withRoute;
 
   /// Typed max HR (Settings). Null: the app's fallback of 190.
   final int? maxHr;
@@ -192,6 +197,12 @@ List<Map<String, Object?>?> companionFactsFor(
       'climb_m': ?(climb == null ? null : _r1(climb)),
       'locality': ?sidecar.place,
       'feel': ?feel?.name,
+      ...companionShapeFields(
+        run,
+        zones: zones,
+        intervals: mode == RunMode.intervals ? a?.intervals : null,
+        withRoute: options.withRoute,
+      ),
     });
   }
   return out;

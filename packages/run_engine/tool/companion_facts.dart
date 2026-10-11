@@ -1,6 +1,6 @@
 // Convert RunBundle exports into the JSON the app uploads to the companion.
 //
-//   dart run tool/companion_facts.dart <export_dir> <out_dir> [--max-hr N] [--age N] [--rest-hr N]
+//   dart run tool/companion_facts.dart <export_dir> <out_dir> [--max-hr N] [--age N] [--rest-hr N] [--no-route]
 //
 // Reads every `*.json` in <export_dir> (`run-<id>.runsupreme.json`), writes
 // `<out_dir>/NNNN-<run id>.json` sorted by start time. See
@@ -25,14 +25,14 @@ Future<void> main(List<String> args) async {
   final pos = <String>[];
   for (var i = 0; i < args.length; i++) {
     if (args[i].startsWith('--')) {
-      if (args[i] != '--generic-names') i++;
+      if (args[i] != '--generic-names' && args[i] != '--no-route') i++;
     } else {
       pos.add(args[i]);
     }
   }
   if (pos.length != 2) {
     stderr.writeln(
-      'usage: companion_facts.dart <export_dir> <out_dir> [--max-hr N] [--age N] [--rest-hr N]',
+      'usage: companion_facts.dart <export_dir> <out_dir> [--max-hr N] [--age N] [--rest-hr N] [--no-route]',
     );
     exit(64);
   }
@@ -63,6 +63,7 @@ Future<void> main(List<String> args) async {
     maxHr: _opt(args, '--max-hr'),
     age: _opt(args, '--age'),
     restingHr: _opt(args, '--rest-hr'),
+    withRoute: !args.contains('--no-route'),
   );
   final facts = companionFactsFor(byId.values.toList(), options: opts);
   Directory(pos[1]).createSync(recursive: true);

@@ -117,18 +117,22 @@ def _dp(points: list[tuple[float, float]], eps: float) -> list[tuple[float, floa
 
 
 def project_route(route: Sequence[Sequence[float]], width: float, height: float, pad: float = 0.0,
-                  max_points: int = 140) -> list[tuple[float, float]]:
-    """[lat, lon] pairs -> simplified x,y fitted into the box, aspect preserved, north up."""
+                  max_points: int = 140, planar: bool = False) -> list[tuple[float, float]]:
+    """[lat, lon] pairs -> simplified x,y fitted into the box, aspect preserved, north up. With `planar` the points
+    are already x,y on a shape grid (the app's normalised route, y down): no projection, nothing flipped."""
     pts = [(float(p[0]), float(p[1])) for p in route if len(p) >= 2]
     if len(pts) < 2:
         return []
-    lat0 = sum(p[0] for p in pts) / len(pts)
-    k = math.cos(math.radians(lat0))
-    xy = [(lon * k, -lat) for lat, lon in pts]
+    if planar:
+        xy = pts
+    else:
+        lat0 = sum(p[0] for p in pts) / len(pts)
+        k = math.cos(math.radians(lat0))
+        xy = [(lon * k, -lat) for lat, lon in pts]
     minx, maxx = min(p[0] for p in xy), max(p[0] for p in xy)
     miny, maxy = min(p[1] for p in xy), max(p[1] for p in xy)
     span = max(maxx - minx, maxy - miny, 1e-9)
-    eps = max(8 / 110540.0, span * 0.012)  # about 8 m, or 1.2% of the span for a long route
+    eps = span * 0.012 if planar else max(8 / 110540.0, span * 0.012)  # about 8 m, or 1.2% of the span for a long route
     simp = _dp(xy, eps)
     while len(simp) > max_points:
         eps *= 1.4
@@ -160,14 +164,17 @@ def _chaikin(pts: list[tuple[float, float]], rounds: int = 3) -> list[tuple[floa
     return pts
 
 
-def collapse_out_and_back(route: Sequence[Sequence[float]]) -> Sequence[Sequence[float]]:
+def collapse_out_and_back(route: Sequence[Sequence[float]], planar: bool = False) -> Sequence[Sequence[float]]:
     """If the way back retraces the way out (within ~6% of the route's span), keep the way out only."""
     n = len(route)
     if n < 8:
         return route
-    lat0 = sum(p[0] for p in route) / n
-    k = math.cos(math.radians(lat0))
-    xy = [(p[1] * k, p[0]) for p in route]
+    if planar:
+        xy = [(p[0], p[1]) for p in route]
+    else:
+        lat0 = sum(p[0] for p in route) / n
+        k = math.cos(math.radians(lat0))
+        xy = [(p[1] * k, p[0]) for p in route]
     span = max(max(x for x, _ in xy) - min(x for x, _ in xy), max(y for _, y in xy) - min(y for _, y in xy), 1e-9)
     half = n // 2
     mean = sum(math.hypot(xy[i][0] - xy[n - 1 - i][0], xy[i][1] - xy[n - 1 - i][1]) for i in range(half)) / half
@@ -175,8 +182,9 @@ def collapse_out_and_back(route: Sequence[Sequence[float]]) -> Sequence[Sequence
 
 
 def route_svg(route: Sequence[Sequence[float]], width: int, height: int, colour: str, stroke: float,
-              dot_ring: str, pad: float = 24, start_dot: bool = True, end_dot: bool = False) -> str:
-    pts = project_route(collapse_out_and_back(route), width, height, pad)
+              dot_ring: str, pad: float = 24, start_dot: bool = True, end_dot: bool = False,
+              planar: bool = False) -> str:
+    pts = project_route(collapse_out_and_back(route, planar), width, height, pad, planar=planar)
     if not pts:
         return ""
     if len(pts) > 2:
@@ -190,6 +198,15 @@ def route_svg(route: Sequence[Sequence[float]], width: int, height: int, colour:
         dots += f'<circle cx="{pts[-1][0]:.1f}" cy="{pts[-1][1]:.1f}" r="{r:.1f}" fill="{dot_ring}" stroke="{colour}" stroke-width="{stroke * .6:.1f}"/>'
     return (f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" fill="none">'
             f'<path d="{d}" stroke="{colour}" stroke-width="{stroke}" stroke-linecap="round" stroke-linejoin="round"/>{dots}</svg>')
+
+
+def facts_route_svg(facts: Mapping[str, Any], width: int, height: int, colour: str, stroke: float, dot_ring: str,
+                    pad: float = 24, start_dot: bool = True, end_dot: bool = False) -> str:
+    """The run's route for a card: the app's shape (`route_xy`, a unit-box outline) when the facts carry it, else
+    `route` (lat/lon, local fixtures and previews only: the worker's protocol never lets coordinates in)."""
+    if facts.get("route_xy"):
+        return route_svg(facts["route_xy"], width, height, colour, stroke, dot_ring, pad, start_dot, end_dot, planar=True)
+    return route_svg(facts.get("route") or [], width, height, colour, stroke, dot_ring, pad, start_dot, end_dot)
 
 
 def date_label(iso: str | None) -> str:

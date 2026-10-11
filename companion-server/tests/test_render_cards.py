@@ -184,6 +184,14 @@ def _minimal(facts):
     return out
 
 
+def _with_shape(facts):
+    """What the server holds for a run whose app sent a route shape, splits and (for intervals) rep times."""
+    out = _minimal(facts) | {"route_xy": F.shape_xy(facts["route"]), "splits": facts["splits"]}
+    if facts.get("reps"):
+        out["reps"] = facts["reps"]
+    return out
+
+
 GOLDENS = {
     "post_run_singapore_intervals": ("render_post_run", F.singapore_intervals),
     "post_run_milos_trail": ("render_post_run", F.milos_trail),
@@ -193,6 +201,9 @@ GOLDENS = {
     "post_run_light_minimal": ("render_post_run", lambda: _minimal(F.milos_trail())),
     "post_run_flood_minimal": ("render_post_run", lambda: _minimal(F.singapore_intervals())),
     "pb_minimal": ("render_pb", lambda: _minimal(F.pb_5k())),
+    "post_run_light_shape": ("render_post_run", lambda: _with_shape(F.milos_trail())),
+    "post_run_flood_shape": ("render_post_run", lambda: _with_shape(F.singapore_intervals())),
+    "pb_shape": ("render_pb", lambda: _with_shape(F.pb_5k())),
     "post_run_slow_hot_day": ("render_post_run", F.slow_hot_day),
     "pb_5k": ("render_pb", F.pb_5k),
     "milestone_1000km": ("render_milestone", F.milestone_1000km),

@@ -209,3 +209,26 @@ def render_socket():
     threading.Thread(target=w.serve_forever, args=(srv,), daemon=True).start()
     yield w.sock_path
     srv.close()
+
+
+def shape_route(n: int = 60) -> list[list[int]]:
+    """A canonical route shape, like the phone's normaliser makes: whole numbers on a 0..255 grid, a unit box that
+    touches x=0 and y=0 with its longer side the full grid."""
+    import math
+    pts = [(math.cos(2 * math.pi * i / n), 0.6 * math.sin(2 * math.pi * i / n)) for i in range(n)]
+    x0, y0 = min(p[0] for p in pts), min(p[1] for p in pts)
+    span = max(max(p[0] for p in pts) - x0, max(p[1] for p in pts) - y0)
+    return [[round((x - x0) / span * 255), round((y - y0) / span * 255)] for x, y in pts]
+
+
+def shape_payload(distance_m: int = 7000, duration_s: int = 2400, reps: bool = False, **over):
+    """The route, splits (and reps) fields of a run, consistent with `distance_m` and `duration_s`."""
+    full, rest = divmod(distance_m, 1000)
+    kms = [1.0] * full + ([round(rest / 1000, 3)] if rest >= 20 else [])
+    pace = round(duration_s / (distance_m / 1000), 1)
+    p = {"route": shape_route(),
+         "splits": [{"km": km, "pace_s": pace, "zone": 2 + (i % 2)} for i, km in enumerate(kms)]}
+    if reps:
+        p["reps"] = [{"time_s": 84.0 - i, "zone": 5} for i in range(6)]
+    p.update(over)
+    return p

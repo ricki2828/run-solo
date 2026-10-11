@@ -14,7 +14,7 @@ from companion.backup import backup
 from companion.config import Settings
 from companion.logs import redact
 from companion.timeutil import iso, now_utc
-from conftest import OWNER, TG_TOKEN, auth, enrol, post_tg, run_payload, tg_callback, tg_update, weather_on
+from conftest import OWNER, TG_TOKEN, auth, enrol, post_tg, run_payload, shape_payload, tg_callback, tg_update, weather_on
 
 E164 = re.compile(r"\+?\d{9,15}")
 
@@ -25,7 +25,7 @@ def populate(client, fakes):
     weather_on(client, t)
     client.post("/v1/runs", json=run_payload("seed", minutes_ago=3000), headers=auth(t))   # stale easy run: a suggestion can name a session
     client.post("/v1/runs", json=run_payload("r0", minutes_ago=30), headers=auth(t))   # easy: gets the weekly question
-    client.post("/v1/runs", json=run_payload("r1", type="tempo", area_lat=1.35, area_lon=103.82), headers=auth(t))    # hard: gets a suggestion
+    client.post("/v1/runs", json=run_payload("r1", type="tempo", area_lat=1.35, area_lon=103.82, **shape_payload(reps=True)), headers=auth(t))    # hard: gets a suggestion
     client.svc.run_outbox(now_utc() + timedelta(seconds=1))
     client.svc.run_outbox(now_utc() + timedelta(minutes=35))   # the weekly question follows as its own message
     # the suggestion buttons ride the evening card, not the run card
@@ -66,7 +66,7 @@ def test_delete_leaves_zero_rows_in_every_table_with_user_data(client, fakes):
     populated = {n for n in user_tables if c.execute(
         f"SELECT COUNT(*) FROM {n} WHERE " + ("id" if n == "users" else "user_id") + "=?", (uid,)).fetchone()[0]}
     assert {"users", "devices", "runs", "memory", "cards", "outbox", "quota", "outcomes", "msglog", "inbound_seen", "enrolments",
-            "convo_log", "convo_cards", "convo_area", "run_notes", "note_mode"} <= populated, populated
+            "convo_log", "convo_cards", "convo_area", "run_notes", "note_mode", "run_shape"} <= populated, populated
 
     assert client.delete("/v1/me", headers=auth(t)).json() == {"status": "deleted"}
 

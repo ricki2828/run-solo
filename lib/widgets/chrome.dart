@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../brand/lap_line_paths.dart';
 import '../theme/lanes.dart' show readableOn;
@@ -320,7 +321,17 @@ class _PinnedFooterLayoutState extends State<PinnedFooterLayout> {
 
   bool _onMetrics(ScrollMetrics m) {
     final more = m.extentAfter > 0.5;
-    if (more != _moreBelow) setState(() => _moreBelow = more);
+    if (more == _moreBelow) return false;
+    // The first metrics of a list that overflows arrive during layout, where
+    // setState is an error ("Build scheduled during frame"): wait one frame.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted && more != _moreBelow) setState(() => _moreBelow = more);
+      });
+    } else {
+      setState(() => _moreBelow = more);
+    }
     return false;
   }
 
