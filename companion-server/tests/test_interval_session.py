@@ -60,10 +60,10 @@ def test_built_in_sessions_map_to_a_purpose(name, purpose):
 
 
 def test_custom_or_unknown_session_is_an_interval_session_and_its_name_never_leaves():
-    res = build_facts(run(**{**SESSION, "session_name": "Ricki's secret hill thing"}), [], {})
+    res = build_facts(run(**{**SESSION, "session_name": "custom:0123456789abcdef"}), [], {})
     assert res.facts[0].text.startswith("Interval session: 4 reps at 4:17/km work pace")
     assert res.session == {"purpose": "interval session"}
-    assert "secret" not in str(res)
+    assert "custom:" not in str(res)
 
 
 def test_no_name_sent_is_still_an_interval_session():
@@ -204,7 +204,7 @@ def test_old_app_payload_without_the_fields_is_accepted(client):
 
 def test_a_bad_session_field_is_dropped_not_a_422():
     base = run_payload("b1", type="intervals")
-    m = RunIn.model_validate({**base, "session_name": "x" * 41, "work_pace_s_per_km": -3, "reps_done": 0,
+    m = RunIn.model_validate({**base, "session_name": "Sarah's hills", "work_pace_s_per_km": -3, "reps_done": 0,
                               "rep_spread_s": "fast", "recovery_pace_s_per_km": 9999})
     assert (m.session_name, m.work_pace_s_per_km, m.reps_done, m.rep_spread_s, m.recovery_pace_s_per_km) == (None,) * 5
     # unknown keys stay a loud 422
@@ -232,3 +232,43 @@ def test_voice_templates_for_sessions_have_no_digits():
     for sit in ("interval_baseline", "interval_work"):
         for h, b in voice.SITUATIONS[sit]:
             assert not re.search(r"\d", re.sub(r"\{[^}]*\}", "", h + b))
+
+
+@pytest.mark.parametrize("name,kept", [
+    ("Norwegian 4x4", True), ("8 × 400 m", True), ("custom:0123456789abcdef", True),
+    ("Sarah's hill reps", False), ("custom:0123456789abcdeg", False), ("custom:0123456789abcde", False),
+    ("Norwegian 4x4\u202e", False), ("Norwegian 4x4\n", True), ("Tempo\nintervals", False), ("x" * 41, False),
+])
+def test_only_a_built_in_or_coded_custom_name_is_kept(name, kept):
+    m = RunIn.model_validate({**run_payload("n1", type="intervals"), "session_name": name})
+    assert (m.session_name is not None) == kept
+    assert m.session_name in (None, name.strip())
+
+
+def test_a_typed_session_name_never_reaches_the_model_card_render_facts_or_logs(client, fakes, caplog):
+    """The app sends a typed name only as a code; if an old or odd client sent the words, they are dropped on arrival."""
+    import logging
+    from companion.media import run_facts
+    caplog.set_level(logging.DEBUG)
+    t = enrol(client)
+    secret = "Sarah's hill reps"
+    r = client.post("/v1/runs", json=run_payload("leak1", type="intervals", verdict="baselineSet",
+                                                 **{**SESSION, "session_name": secret}), headers=auth(t))
+    assert r.status_code == 202
+    c = sqlite3.connect(client.svc.s.db_path)
+    c.row_factory = sqlite3.Row
+    assert c.execute("SELECT session_name FROM runs").fetchone()[0] is None
+    uid = c.execute("SELECT id FROM users").fetchone()[0]
+    card_id = client.svc._build_run_card(uid, "leak1", datetime.now(timezone.utc))
+    assert card_id and fakes.llm, "the model was called, so its body was checked"
+    row = dict(c.execute("SELECT * FROM runs WHERE run_id='leak1'").fetchone())
+    body = c.execute("SELECT headline, body FROM cards WHERE card_id=?", (card_id,)).fetchone()
+    blobs = [str(fakes.llm), " ".join(body), str(run_facts(row, "Headline")), caplog.text,
+             str(client.get("/v1/me", headers=auth(t)).json())]
+    for blob in blobs:
+        assert "Sarah" not in blob and "hill reps" not in blob
+    # the coded custom name is stored and compared, but never spoken
+    r = client.post("/v1/runs", json=run_payload("leak2", type="intervals", minutes_ago=300,
+                                                 **{**SESSION, "session_name": "custom:0123456789abcdef"}), headers=auth(t))
+    assert r.status_code == 202
+    assert c.execute("SELECT session_name FROM runs WHERE run_id='leak2'").fetchone()[0] == "custom:0123456789abcdef"

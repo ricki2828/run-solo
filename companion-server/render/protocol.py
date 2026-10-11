@@ -119,6 +119,9 @@ def _shapes_ok(facts: dict) -> bool:
                 isinstance(x, dict) and set(x) <= {*fields, "zone"} and all(num_ok(x.get(f), f) for f in fields)
                 and (x.get("zone") is None or _int_in(x["zone"], 1, 5)) for x in v)):
             return False
+    wp = facts.get("work_pace_s_per_km")
+    if wp is not None and not (isinstance(wp, (int, float)) and not isinstance(wp, bool) and 60 <= wp <= 3600):
+        return False
     return True
 
 

@@ -30,7 +30,7 @@ from .convo import suggest as cv_suggest
 from .convo import touches as cv_touches
 from .convo.questions import REASK_DAYS, known_without_asking, next_weekly_question
 from .convo.weather import NoWeather, OpenMeteo, cell
-from .facts import APP_TYPES, FactsResult, build_facts, infer_coach_type, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
+from .facts import APP_TYPES, FactsResult, build_facts, known_session, infer_coach_type, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
 from .timeutil import (in_quiet, iso, now_utc, parse_iso, quiet_end_utc, resolve_cap_week, to_local, UTC,
                        valid_zone, week_key)
 from .writer import Writer, digest_lines
@@ -141,6 +141,9 @@ class PlanNextIn(BaseModel):
         return v
 
 
+CUSTOM_SESSION_RE = re.compile(r"^custom:[0-9a-f]{16}$")
+
+
 class RunIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     run_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.:-]+$")
@@ -201,7 +204,12 @@ class RunIn(BaseModel):
             out = handler(v)
         except ValidationError:
             return None
-        return out.strip() or None if isinstance(out, str) else out
+        if isinstance(out, str):
+            # Only a built-in session name or the app's unreadable code for a custom one is kept: no typed text is
+            # ever stored. Anything else (including control or format characters) drops the field.
+            out = out.strip()
+            return out if known_session(out) or CUSTOM_SESSION_RE.match(out) else None
+        return out
 
     @field_validator("plan_kind", "plan_target_m", "plan_week", "plan_weeks", "plan_next", mode="wrap")
     @classmethod

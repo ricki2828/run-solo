@@ -396,3 +396,11 @@ def test_countdown_fixture_matches_the_simulated_race():
     assert f["race_line"].startswith(f"Sunday {RACE_DAY.day} {RACE_DAY:%b}.")
     assert (RACE_DAY - date(2026, 10, 6)).days == f["days_to_race"] and f["race_name"] == "Half Marathon"
     assert f["days_to_race"] // 7 == 8      # the 6 Oct card says "8 weeks to go"
+
+
+def test_work_pace_fact_is_range_checked_by_the_worker():
+    from render import protocol as PR
+    base = {"type": "interval", "distance_km": 9.6, "duration_s": 3170}
+    assert PR._shapes_ok({**base, "work_pace_s_per_km": 257.1})
+    for bad in ("fast", True, 10, 99999, float("nan")):
+        assert not PR._shapes_ok({**base, "work_pace_s_per_km": bad})

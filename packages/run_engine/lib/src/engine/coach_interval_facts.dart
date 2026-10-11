@@ -10,6 +10,27 @@
 /// tool (which holds a fresh [IntervalMetrics]) build the same payload keys.
 library;
 
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
+
+import '../model/session_catalogue.dart';
+
+final RegExp _repsOf400 = RegExp(r'^\d{1,2} × 400 m$');
+
+/// A built-in session name goes as is; any other name (one the runner typed)
+/// goes only as `custom:` plus 16 hex of its SHA-256, so the server can tell
+/// "the same session again" without ever holding the words.
+String coachSessionName(String name) {
+  final n = name.trim();
+  final builtIn =
+      SessionCatalogue.presets.any((p) => p.name == n) ||
+      _repsOf400.hasMatch(n);
+  if (builtIn) return n;
+  final hex = sha256.convert(utf8.encode(n)).toString();
+  return 'custom:${hex.substring(0, 16)}';
+}
+
 /// Keys for the upload, all optional. Empty when there is no work pace.
 Map<String, Object?> coachIntervalFacts({
   required String? sessionName,
@@ -27,13 +48,11 @@ Map<String, Object?> coachIntervalFacts({
         paces.reduce((a, b) => a > b ? a : b) -
         paces.reduce((a, b) => a < b ? a : b);
   }
-  var name = sessionName?.trim();
-  if (name != null && name.length > 40) {
-    name = name.substring(0, 40).trimRight();
-  }
+  final raw = sessionName?.trim();
+  final name = raw == null || raw.isEmpty ? null : coachSessionName(raw);
   final recovery = recoveryPaceSecPerKm;
   return {
-    if (name != null && name.isNotEmpty) 'session_name': name,
+    'session_name': ?name,
     'work_pace_s_per_km': r1(workPaceSecPerKm),
     'reps_done': ?repsDone,
     'rep_spread_s': ?(spread == null ? null : r1(spread)),

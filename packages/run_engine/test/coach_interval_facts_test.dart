@@ -35,7 +35,7 @@ void main() {
       });
     });
 
-    test('no work pace sends nothing; a long name is cut to 40', () {
+    test('no work pace sends nothing', () {
       expect(
         coachIntervalFacts(
           sessionName: 'x',
@@ -46,16 +46,35 @@ void main() {
         ),
         isEmpty,
       );
-      final m = coachIntervalFacts(
-        sessionName: 'n' * 60,
-        workPaceSecPerKm: 300,
-        repsDone: null,
-        cleanRepPacesSecPerKm: const [300],
-        recoveryPaceSecPerKm: null,
-      );
-      expect((m['session_name']! as String).length, 40);
-      expect(m.keys, ['session_name', 'work_pace_s_per_km']);
     });
+
+    test(
+      'built-in names go as is, a typed name only as an unreadable code',
+      () {
+        for (final n in [
+          for (final p in SessionCatalogue.presets) p.name,
+          '8 \u00d7 400 m',
+          '12 \u00d7 400 m',
+        ]) {
+          expect(coachSessionName(n), n);
+        }
+        final c = coachSessionName("Sarah's hill reps \u{1F3C3}");
+        expect(c, matches(RegExp(r'^custom:[0-9a-f]{16}$')));
+        expect(c, isNot(contains('Sarah')));
+        // stable, so the same session can be recognised again
+        expect(coachSessionName("Sarah's hill reps \u{1F3C3}"), c);
+        expect(coachSessionName('Other session'), isNot(c));
+        final m = coachIntervalFacts(
+          sessionName: 'n' * 60,
+          workPaceSecPerKm: 300,
+          repsDone: null,
+          cleanRepPacesSecPerKm: const [300],
+          recoveryPaceSecPerKm: null,
+        );
+        expect(m['session_name'], matches(RegExp(r'^custom:[0-9a-f]{16}$')));
+        expect(m.keys, ['session_name', 'work_pace_s_per_km']);
+      },
+    );
   });
 
   test('a 4x4 export carries the interval fields, a laps export none', () {
