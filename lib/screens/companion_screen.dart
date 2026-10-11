@@ -20,7 +20,9 @@ const String kCompanionSent =
     'each km, the time of each rep in a structured session, and an outline '
     'of your route with the first and last stretch cut off. It has no '
     'coordinates, but a distinctive route could still be recognised by '
-    'someone who knows it. You can switch it off in Settings, Companion. Plus how a run felt when '
+    'someone who knows it. You can switch it off in Settings, Companion. For an '
+    'interval session it also sends its name, reps done, work pace, how far '
+    'apart the reps were and recovery pace. Plus how a run felt when '
     'you tap Easy, Right or Hard. Never your GPS points, never the street, '
     'never your heart rate trace.';
 

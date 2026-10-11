@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, Mapping, Sequence
 
-from ..facts import HARD_TYPES, comparable, fmt_km, fmt_pace, _metric
+from ..facts import (HARD_TYPES, comparable, fmt_km, fmt_pace, is_session_run, pace_pair, session_label)
 from ..timeutil import parse_iso
 from . import touches as T
 from . import voice
@@ -74,8 +74,8 @@ def _delta(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]]) -> int | N
     prev = comparable(run, hist)
     if prev is None:
         return None
-    use_true = _metric(prev, True) is not None and _metric(run, True) is not None
-    return round(_metric(run, use_true) - _metric(prev, use_true))
+    now_p, prev_p = pace_pair(run, prev)
+    return round(now_p - prev_p)
 
 
 def _when(r: Mapping[str, Any]) -> datetime:
@@ -108,6 +108,18 @@ def situation_for(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]],
         slots["temp"] = str(rw.temp_c)
     gap = gap_days(run, hist)
     typ = run["type"]
+    session = is_session_run(run)
+    if session:
+        # An interval session speaks in its own terms: the session, its work pace and its reps, never the whole-run pace.
+        slots["session_line"] = session_label(run)
+        slots["work_pace"] = fmt_pace(run["work_pace_s_per_km"])
+        if run.get("reps_done"):
+            slots["reps"] = str(run["reps_done"])
+        slots.pop("pace", None)
+        if delta is not None and abs(delta) >= FASTER_S:
+            slots["cmp_dir"] = "faster" if delta < 0 else "slower"
+        else:
+            slots.pop("delta", None)
 
     if run.get("pb"):
         slots["pb"] = {"5k": "5 km best", "10k": "10 km best", "half": "half marathon best",
@@ -120,7 +132,11 @@ def situation_for(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]],
         slots["gap_txt"] = T.plural(gap, "day")
         return "back_after_break", slots
     if run.get("verdict") == "baselineSet":
+        if session and "reps" in slots:
+            return "interval_baseline", slots
         return "baseline", slots
+    if session and typ == "interval" and "reps" in slots:
+        return "interval_work", slots
     slower = delta is not None and (delta >= SLOW_DAY_S or (run.get("verdict") == "slower" and delta >= FASTER_S))
     if slower and typ != "interval":
         if rw and rw.temp_c is not None and rw.temp_c >= HEAT_C:
@@ -226,6 +242,9 @@ def enrich_run(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]], memory
     seed = str(run.get("run_id") or run.get("start_utc"))
     situation, slots = situation_for(run, hist, rw)
     rendered = voice.render(situation, slots, usage.variants, now, seed)
+    if rendered is None and situation in ("interval_baseline", "interval_work"):
+        situation = "intervals"
+        rendered = voice.render(situation, slots, usage.variants, now, seed)
     if rendered is None and situation != "steady":
         situation = "steady"
         rendered = voice.render(situation, slots, usage.variants, now, seed)

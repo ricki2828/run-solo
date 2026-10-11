@@ -222,7 +222,7 @@ def best_month(c: Ctx) -> Touch | None:
 
 def year_best(c: Ctx) -> Touch | None:
     d, p = c.run.get("distance_m") or 0, _pace(c.run)
-    if not d or p is None or c.run.get("pb"):
+    if not d or p is None or c.run.get("pb") or c.run.get("work_pace_s_per_km"):  # an interval run's whole-run pace is no yardstick
         return None
     year = c.local(c.run).year
     same = [h for h in c.history
@@ -235,7 +235,7 @@ def year_best(c: Ctx) -> Touch | None:
 
 def last_year(c: Ctx) -> Touch | None:
     d, p = c.run.get("distance_m") or 0, _pace(c.run)
-    if not d or p is None:
+    if not d or p is None or c.run.get("work_pace_s_per_km"):
         return None
     t0 = c.when(c.run)
     best = None
@@ -286,8 +286,8 @@ def place(c: Ctx) -> Touch | None:
     if n not in PLACE_AT and n % 10:
         return None
     slots = {"ord": ordinal(n), "place": loc}
-    paces = [_pace(h) for h in prior if _pace(h) is not None]
-    if len(paces) >= 2:
+    paces = [_pace(h) for h in prior if _pace(h) is not None and not h.get("work_pace_s_per_km")]
+    if len(paces) >= 2 and not c.run.get("work_pace_s_per_km"):
         slots["place_pace"] = fmt_pace(sum(paces) / len(paces))
     return Touch("place", f"place:{loc}", slots)
 

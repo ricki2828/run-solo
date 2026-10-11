@@ -5,6 +5,7 @@ fact texts below, which is what the writer's grounding check enforces.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Mapping, Sequence
@@ -50,6 +51,60 @@ def infer_coach_type(app_type: str, *, distance_m: float, duration_s: float, zon
     if total > 0 and (zm.get("z3", 0) + zm.get("z4", 0)) / total > 0.5 and TEMPO_MIN_S <= duration_s <= TEMPO_MAX_S:
         return "tempo"
     return "easy"
+
+# The app's built-in interval sessions (SessionCatalogue names) -> what the session trains. Only these names ever go
+# into a fact or the model prompt: a name the runner typed for their own session is free text, so it is stored (to
+# compare like with like) but the coach speaks of an "interval session".
+SESSION_PURPOSE = {
+    "Norwegian 4x4": "VO2 max",
+    "30/30s": "speed",
+    "1-minute reps": "speed",
+    "Pyramid": "VO2 max",
+    "Tempo intervals": "threshold",
+    "Yasso 800s": "marathon prep",
+    "1 km repeats": "5k to 10k pace",
+}
+_REPS_400_RE = re.compile(r"^\d{1,2} × 400 m$")  # "8 × 400 m": the 400s session names its rep count
+GENERIC_SESSION = "interval session"
+REP_BAND_S = 10  # the app's rep band: reps this close count as "within"
+
+
+def known_session(name: str | None) -> tuple[str, str] | None:
+    """(name, purpose) for a built-in session name, else None."""
+    if not name:
+        return None
+    if name in SESSION_PURPOSE:
+        return name, SESSION_PURPOSE[name]
+    if _REPS_400_RE.match(name):
+        return name, "speed"
+    return None
+
+
+def session_label(run: Mapping[str, Any]) -> str:
+    """"Norwegian 4x4 (VO2 max session)", or "Interval session" for an unknown or custom name."""
+    k = known_session(run.get("session_name"))
+    return f"{k[0]} ({k[1]} session)" if k else GENERIC_SESSION.capitalize()
+
+
+def session_noun(run: Mapping[str, Any]) -> str:
+    """How an earlier run of the same session is named in a comparison."""
+    k = known_session(run.get("session_name"))
+    return k[0] if k else f"similar {GENERIC_SESSION}"
+
+
+def is_session_run(run: Mapping[str, Any]) -> bool:
+    """An interval run whose app sent the work pace: it is judged on that, never on the whole-run average."""
+    return run.get("type") == "interval" and bool(run.get("work_pace_s_per_km"))
+
+
+def spread_text(run: Mapping[str, Any]) -> str:
+    sp = run.get("rep_spread_s")
+    if sp is None or (run.get("reps_done") or 0) < 2:
+        return ""
+    sp = round(sp)
+    return f", within {sp} s" if sp <= REP_BAND_S else f", spread {sp} s"
+
+
 TYPE_LABEL = {
     "easy": "easy run", "long": "long run", "tempo": "tempo run",
     "interval": "interval session", "race": "race",
@@ -91,6 +146,7 @@ class FactsResult:
     tone: str  # pb | slow | steady
     say_nothing: bool
     reason: str
+    session: Mapping[str, str] | None = None  # name + purpose of an interval session, for the model prompt
 
 
 def fmt_pace(s: float) -> str:
@@ -114,10 +170,20 @@ def _metric(r: Mapping[str, Any], use_true: bool) -> float | None:
 
 
 def comparable(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]]) -> Mapping[str, Any] | None:
-    """Most recent prior run of the same type, 0.8x-1.25x the distance, within 60 days, with a pace."""
+    """Most recent prior run of the same type, 0.8x-1.25x the distance, within 60 days, with a pace. An interval run
+    with a work pace is matched on the same session name and work pace instead."""
     if not run.get("distance_m"):
         return None
     t0 = _when(run)
+    if is_session_run(run):
+        # An interval session is compared on its work pace, against the same session only (whatever the total
+        # distance); a run with no work pace on record is not a comparison, and never the whole-run average.
+        name = run.get("session_name")
+        for h in history:
+            if h["type"] == run["type"] and name and h.get("session_name") == name and h.get("work_pace_s_per_km") \
+                    and timedelta(0) < t0 - _when(h) <= timedelta(days=60):
+                return h
+        return None
     for h in history:  # newest first
         if h["type"] != run["type"] or not h.get("distance_m"):
             continue
@@ -131,6 +197,15 @@ def comparable(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]]) -> 
         if _metric(h, False) is not None and _metric(run, False) is not None:
             return h
     return None
+
+
+def pace_pair(run: Mapping[str, Any], prev: Mapping[str, Any]) -> tuple[float, float]:
+    """(this run's pace, the earlier run's) on the basis `comparable` matched on: work pace for an interval session,
+    else True Pace when both have it, else pace."""
+    if is_session_run(run):
+        return run["work_pace_s_per_km"], prev["work_pace_s_per_km"]
+    use_true = _metric(prev, True) is not None and _metric(run, True) is not None
+    return _metric(run, use_true), _metric(prev, use_true)
 
 
 def days_since_hard(history: Sequence[Mapping[str, Any]], now: datetime) -> int | None:
@@ -182,9 +257,16 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
 
     label = APP_TYPE_LABEL.get(run.get("app_type") or "") or TYPE_LABEL.get(run["type"], "run")
     pace = run.get("pace_s_per_km")
-    base_txt = f"{label.capitalize()}: {fmt_km(dist)} km in {round(dur / 60)} min"
-    if pace:
-        base_txt += f" at {fmt_pace(pace)}/km"
+    session_run = is_session_run(run)
+    if session_run:
+        # Name the session and its purpose and give its work pace; the whole-run pace (recoveries included) is left out.
+        reps = run.get("reps_done")
+        base_txt = f"{session_label(run)}: " + (f"{reps} reps at " if reps else "") + \
+            f"{fmt_pace(run['work_pace_s_per_km'])}/km work pace{spread_text(run)}"
+    else:
+        base_txt = f"{label.capitalize()}: {fmt_km(dist)} km in {round(dur / 60)} min"
+        if pace:
+            base_txt += f" at {fmt_pace(pace)}/km"
     base = Fact("base", base_txt)
 
     worthy: list[Fact] = []
@@ -200,16 +282,19 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
 
     prev = comparable(run, history)
     if prev is not None:
-        use_true = _metric(prev, True) is not None and _metric(run, True) is not None
-        now_p, prev_p = _metric(run, use_true), _metric(prev, use_true)
+        now_p, prev_p = pace_pair(run, prev)
         delta = round(now_p - prev_p)
+        if session_run:
+            what, unit = f"your last {session_noun(run)}", f"{fmt_pace(prev_p)}/km work pace"
+        else:
+            what, unit = f"your last similar {label}", f"{fmt_pace(prev_p)}/km"
         if abs(delta) >= DELTA_MIN_S_PER_KM:
             word = "slower" if delta > 0 else "faster"
-            worthy.append(Fact("delta", f"{abs(delta)} s/km {word} than your last similar {label} ({fmt_pace(prev_p)}/km)"))
+            worthy.append(Fact("delta", f"{abs(delta)} s/km {word} than {what} ({unit})"))
             if delta >= SLOW_DAY_S_PER_KM and tone != "pb":
                 tone = "slow"
         else:
-            worthy.append(Fact("delta", f"Level with your last similar {label} ({fmt_pace(prev_p)}/km)"))
+            worthy.append(Fact("delta", f"Level with {what} ({unit})"))
 
     if run.get("load_state") in LOAD_ALERT:
         worthy.append(Fact("load", f"Training load is {run['load_state'].replace('_', ' ')}"))
@@ -229,12 +314,20 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
         return FactsResult((), None, tone, True, "nothing_new")
 
     picked = worthy[:3]
-    if len(picked) < 2:
+    if session_run:
+        picked = [base, *worthy[:2]]  # the model must always be told which session this was
+        if run.get("recovery_pace_s_per_km") and len(picked) < 3:
+            picked.append(Fact("recovery", f"Recovery pace {fmt_pace(run['recovery_pace_s_per_km'])}/km"))
+    elif len(picked) < 2:
         picked = [base, *picked]
     if run.get("feel") and len(picked) < 3:
         picked.append(Fact("feel", f"You rated it {run['feel']}"))
 
-    return FactsResult(tuple(picked), suggest_after_run(run, history), tone, False, "ok")
+    session = None
+    if session_run:
+        k = known_session(run.get("session_name"))
+        session = {"name": k[0], "purpose": k[1]} if k else {"purpose": GENERIC_SESSION}
+    return FactsResult(tuple(picked), suggest_after_run(run, history), tone, False, "ok", session)
 
 
 # --- the weekly learning question -------------------------------------------------------
