@@ -697,14 +697,35 @@ void main() {
       expect(next.routeShapeOn, isFalse);
     });
 
-    test('Delete everything puts the switch back to its default', () async {
+    test(
+      'Delete everything keeps the runner\'s route choice (off stays off)',
+      () async {
+        await enrolAndWire();
+        await ctl.setRouteShape(false);
+        expect(await ctl.deleteEverything(), isTrue);
+        expect(await secrets.read(CompanionController.routeOffName), '1');
+        // The new server record is told on the next enrolment, and no route goes before that.
+        final next = controller();
+        await next.load();
+        expect(next.routeShapeOn, isFalse);
+        await enrolNow(next);
+        expect(next.routeShapeOn, isFalse);
+        await next.syncRouteShape();
+        expect(http.bodyOf(http.to('PUT', '/v1/me/settings').last), {
+          'route_shape': false,
+        });
+      },
+    );
+
+    test('a 401 then a re-enrol does not turn the route back on', () async {
       await enrolAndWire();
       await ctl.setRouteShape(false);
-      expect(await ctl.deleteEverything(), isTrue);
-      expect(await secrets.read(CompanionController.routeOffName), isNull);
-      expect(await secrets.read(CompanionController.routeForgetName), isNull);
+      http.handler = (_) => const CompanionReply(401);
+      await ctl.fetchMe();
+      expect(ctl.phase, CompanionPhase.off);
+      http.handler = null;
       await enrolNow(ctl);
-      expect(ctl.routeShapeOn, isTrue);
+      expect(ctl.routeShapeOn, isFalse);
     });
 
     test('a 401 on the PUT means the key is dead: wipe it', () async {

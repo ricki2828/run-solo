@@ -24,7 +24,7 @@ OP_KINDS = {
     "card": frozenset({"light", "flood", "pb", "weekly_recap"}),
     "video": frozenset({"run", "weekly"}),
 }
-ROUTE_GRID, ROUTE_MAX_POINTS, SPLITS_MAX, REPS_MAX = 255, 120, 100, 60
+ROUTE_GRID, ROUTE_MAX_POINTS, SPLITS_MAX, REPS_MAX, TITLE_MAX = 255, 120, 100, 60, 24
 ERROR_CODES = frozenset({"bad_request", "timeout", "too_big", "render_failed"})
 
 # Everything the companion may send. These are exactly the keys media.run_facts / week_facts build, i.e. what the
@@ -67,17 +67,25 @@ def _int_in(v: Any, lo: int, hi: int) -> bool:
 def _shapes_ok(facts: dict) -> bool:
     """The worker is the last stop before pixels, so it checks the shape facts itself: a route is only a short list of
     whole-number grid points (a latitude or longitude, being a float, cannot pass), and splits and reps are bounded."""
+    t = facts.get("title")
+    if t is not None and not (isinstance(t, str) and 1 <= len(t) <= TITLE_MAX):
+        return False
     r = facts.get("route_xy")
     if r is not None and not (isinstance(r, list) and 2 <= len(r) <= ROUTE_MAX_POINTS and all(
             isinstance(p, list) and len(p) == 2 and all(_int_in(c, 0, ROUTE_GRID) for c in p) for p in r)):
         return False
+    bounds = {"km": (0.0, 1.0, False), "pace_s": (60.0, 3600.0, True), "time_s": (0.0, 3600.0, False)}
+
+    def num_ok(x: Any, f: str) -> bool:
+        lo, hi, closed_lo = bounds[f]
+        return (isinstance(x, (int, float)) and not isinstance(x, bool) and x == x and (x >= lo if closed_lo else x > lo)
+                and x <= hi)
     for key, cap, fields in (("splits", SPLITS_MAX, ("km", "pace_s")), ("reps", REPS_MAX, ("time_s",))):
         v = facts.get(key)
         if v is None:
             continue
         if not (isinstance(v, list) and 1 <= len(v) <= cap and all(
-                isinstance(x, dict) and set(x) <= {*fields, "zone"} and all(
-                    isinstance(x.get(f), (int, float)) and not isinstance(x.get(f), bool) for f in fields)
+                isinstance(x, dict) and set(x) <= {*fields, "zone"} and all(num_ok(x.get(f), f) for f in fields)
                 and (x.get("zone") is None or _int_in(x["zone"], 1, 5)) for x in v)):
             return False
     return True

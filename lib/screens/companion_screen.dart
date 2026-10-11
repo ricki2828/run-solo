@@ -17,9 +17,10 @@ const String kCompanionSent =
     'Each run\'s summary: type, date and start time, time zone, duration, '
     'distance, pace, True Pace, verdict, minutes in each heart rate zone, '
     'climb, and the name of the area where you started. Plus your pace for '
-    'each km, the time of each rep in a structured session, and the outline '
-    'of your route: a shape only, with no map, place, size or direction, and '
-    'you can switch it off in Settings, Companion. Plus how a run felt when '
+    'each km, the time of each rep in a structured session, and an outline '
+    'of your route with the first and last stretch cut off. It has no '
+    'coordinates, but a distinctive route could still be recognised by '
+    'someone who knows it. You can switch it off in Settings, Companion. Plus how a run felt when '
     'you tap Easy, Right or Hard. Never your GPS points, never the street, '
     'never your heart rate trace.';
 
@@ -37,8 +38,8 @@ const String kCompanionDelete =
 /// "Show route shape on cards" (on until the runner turns it off). One line
 /// under the switch; same words as privacy section 2b.
 const String kCompanionRouteBlurb =
-    'Draws your route on the card as an outline. Only the shape is sent: no '
-    'map, place, size or direction.';
+    'Draws your route on the card as an outline with the ends cut off. No '
+    'coordinates are sent, but a distinctive route could be recognised.';
 
 /// "Weather in suggestions" (off until the runner turns it on). The blurb
 /// sits under the switch; the sheet is the disclosure shown before it turns

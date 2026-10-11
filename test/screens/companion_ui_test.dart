@@ -198,7 +198,7 @@ void main() {
     testWidgets('the consent copy names the shape and the splits', (
       tester,
     ) async {
-      expect(kCompanionSent, contains('shape only'));
+      expect(kCompanionSent, contains('could still be recognised'));
       expect(kCompanionSent, contains('pace for each km'));
       expect(kCompanionSent, isNot(contains('—')));
     });

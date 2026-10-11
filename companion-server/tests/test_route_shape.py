@@ -504,3 +504,54 @@ def test_media_renderer_hands_the_worker_only_allow_listed_facts():
     m = r.render({"card": "flood", "video": True}, {"run_id": "r", "headline": "h"}, [run])
     assert isinstance(m, Media) and m.video == MP4
     assert set(seen[0]) <= P.ALLOWED_FACT_KEYS
+
+
+# --- review of PR 259: retention, switch-off scrubbing, worker bounds -------------------------
+
+def test_purge_drops_a_route_after_30_days_and_keeps_its_splits(client):
+    t = enrol(client)
+    uid = tables(client, "SELECT id FROM users")[0]["id"]
+    for rid, days in (("old", 40), ("new", 5)):
+        start = now_utc() - timedelta(days=days)
+        client.svc.ingest_run(uid, RunIn.model_validate(
+            run_payload(rid, start_utc=start.isoformat(), **shape_payload(reps=True))), start + timedelta(hours=2))
+    client.svc.purge(now_utc())
+    rows = {r["run_id"]: r for r in tables(client, "SELECT * FROM run_shape")}
+    assert rows["old"]["route_json"] is None and rows["old"]["splits_json"] and rows["old"]["reps_json"]
+    assert rows["new"]["route_json"]
+    me = client.get("/v1/me", headers=auth(t)).json()
+    assert {s["run_id"]: s["route"] is None for s in me["run_shapes"]} == {"old": True, "new": False}
+
+
+def test_purge_removes_an_orphaned_shape_row(client):
+    t = enrol(client)
+    uid = tables(client, "SELECT id FROM users")[0]["id"]
+    post(client, t, route=shape_route())
+    c = sqlite3.connect(client.svc.s.db_path)
+    c.execute("PRAGMA foreign_keys=OFF")
+    c.execute("INSERT INTO run_shape (user_id, run_id, route_json) VALUES (?, 'ghost', '[[0,0],[255,1]]')", (uid,))
+    c.commit()
+    c.close()
+    client.svc.purge(now_utc())
+    assert [r["run_id"] for r in tables(client, "SELECT run_id FROM run_shape")] == ["r1"]
+
+
+def test_switching_the_route_off_leaves_the_outline_nowhere_in_the_files(client):
+    t = enrol(client)
+    marker = [[0, 0], [255, 1], [254, 99], [13, 77], [200, 201]]
+    post(client, t, route=marker)
+    path = client.svc.s.db_path
+    put(client, t, route_shape=False)
+    raw = b"".join(open(p, "rb").read() for p in (path, path + "-wal") if os.path.exists(p))
+    assert b"[[0,0],[255,1],[254,99]" not in raw
+
+
+def test_the_worker_checks_the_title_and_bounds_the_numbers():
+    for bad in (dict(title=5), dict(title=""), dict(title="x" * 25), dict(title=["Run"]),
+                dict(splits=[{"km": 1.0, "pace_s": 5}]), dict(splits=[{"km": 1.0, "pace_s": 99999}]),
+                dict(splits=[{"km": 2.0, "pace_s": 300}]), dict(splits=[{"km": 0, "pace_s": 300}]),
+                dict(splits=[{"km": float("nan"), "pace_s": 300}]), dict(reps=[{"time_s": 0}]),
+                dict(reps=[{"time_s": 7200}])):
+        with pytest.raises(P.ProtocolError):
+            P.check_request(req(**bad))
+    P.check_request(req(title="Intervals", splits=[{"km": 0.4, "pace_s": 300.5}], reps=[{"time_s": 3600}]))

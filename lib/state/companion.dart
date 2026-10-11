@@ -27,7 +27,7 @@
 ///
 /// A run summary carries, besides its totals, `splits` (per km), `reps` (a
 /// structured run) and, while "Show route shape on cards" is on, `route`: a
-/// shape only (see `companion_shape.dart` in run_engine), never a coordinate.
+/// outline with the ends cut off (see `companion_shape.dart` in run_engine), never a coordinate.
 library;
 
 import 'dart:async';
@@ -612,11 +612,12 @@ class CompanionController extends ChangeNotifier {
       } catch (e) {
         companionLog('could not read the weather switch (${e.runtimeType})');
       }
-      try {
-        _routeShape = await store.read(routeOffName) != '1';
-      } catch (e) {
-        companionLog('could not read the route switch (${e.runtimeType})');
-      }
+    }
+    // The route choice outlives a wipe, so it is read with or without a token.
+    try {
+      _routeShape = await store.read(routeOffName) != '1';
+    } catch (e) {
+      companionLog('could not read the route switch (${e.runtimeType})');
     }
     notifyListeners();
     if (_phase == CompanionPhase.on) {
@@ -1002,14 +1003,15 @@ class CompanionController extends ChangeNotifier {
       await store.delete(consentName);
       await store.delete(weatherName);
       await store.delete(weatherForgetName);
-      await store.delete(routeOffName);
-      await store.delete(routeForgetName);
+      // The route choice is the runner's and survives a wipe (a 401, a
+      // re-enrol): an OFF stays off, and the new server record is told so as
+      // soon as there is a token again.
+      if (!_routeShape) await store.write(routeForgetName, '1');
     } catch (e) {
       companionLog('could not remove the token (${e.runtimeType})');
     }
     _phase = CompanionPhase.off;
     _weather = false;
-    _routeShape = true;
     problem = null;
     notifyListeners();
   }
@@ -1045,8 +1047,8 @@ double areaCell(double v) {
 /// The compact run summary the companion gets (B6, C4, C6): fields only, no
 /// GPS points, no street, no heart-rate trace. Besides the totals it carries
 /// `splits` (per km: length, pace, HR zone), `reps` (a structured run's rep
-/// times) and, with [withRoute], `route`: the run's SHAPE, at most 120 whole
-/// number points in a unit box with no position, scale or north (made by
+/// times) and, with [withRoute], `route`: an outline of the run, ends cut off, at most 120 whole
+/// number points in a unit box with no coordinates or compass direction (made by
 /// `routeShape` in run_engine). Null when the run has no time zone yet. The server decides staleness (more than 6 h after the run
 /// ended: kept, no card) from `start_utc` and `duration_s`.
 Map<String, Object?>? companionSummary(

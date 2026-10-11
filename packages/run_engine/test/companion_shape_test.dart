@@ -41,6 +41,10 @@ List<Sample> gps(
   ];
 }
 
+/// routeShape with the end trim off, for tests of the normalisation alone.
+List<List<int>>? shapeNoTrim(Iterable<Sample> s) =>
+    routeShape(s, trimMinM: 0, trimMaxM: 0);
+
 int longestSide(List<List<int>> r) {
   final xs = r.map((p) => p[0]), ys = r.map((p) => p[1]);
   return math.max(
@@ -161,7 +165,7 @@ void main() {
   });
 
   group('routeShape', () {
-    final route = routeShape(gps(loopMetres()))!;
+    final route = shapeNoTrim(gps(loopMetres()))!;
 
     test(
       'at most 120 points, whole numbers on the grid, touching the corner',
@@ -186,7 +190,7 @@ void main() {
         for (final p in loopMetres(n: 7000))
           (p.$1 + rnd.nextDouble() * 6, p.$2 + rnd.nextDouble() * 6),
       ];
-      final r = routeShape(gps(busy))!;
+      final r = shapeNoTrim(gps(busy))!;
       expect(r.length, lessThanOrEqualTo(kRouteMaxPoints));
       expect(longestSide(r), kRouteGrid);
     });
@@ -194,8 +198,8 @@ void main() {
     // The shape is all that leaves the phone: where it was, how big it was and
     // which way it faced do not.
     test('the same run in another city gives the same shape', () {
-      final akl = routeShape(gps(loopMetres(), lat: -36.85, lon: 174.76))!;
-      final nyc = routeShape(gps(loopMetres(), lat: 40.71, lon: -74.0))!;
+      final akl = shapeNoTrim(gps(loopMetres(), lat: -36.85, lon: 174.76))!;
+      final nyc = shapeNoTrim(gps(loopMetres(), lat: 40.71, lon: -74.0))!;
       expect(akl.length, route.length);
       expect(nyc.length, route.length);
       for (var i = 0; i < route.length; i++) {
@@ -207,7 +211,7 @@ void main() {
     });
 
     test('the same loop at three times the size gives the same shape', () {
-      final big = routeShape(gps(loopMetres(scale: 3)))!;
+      final big = shapeNoTrim(gps(loopMetres(scale: 3)))!;
       expect(big.length, route.length);
       for (var i = 0; i < route.length; i++) {
         for (var k = 0; k < 2; k++) {
@@ -220,7 +224,7 @@ void main() {
       'north is not in it: the loop run facing any way gives the same shape',
       () {
         for (final turn in [math.pi / 2, math.pi, 2.1, -0.7]) {
-          final r = routeShape(gps(loopMetres(), turn: turn))!;
+          final r = shapeNoTrim(gps(loopMetres(), turn: turn))!;
           expect(r.length, route.length, reason: 'turn $turn');
           for (var i = 0; i < route.length; i++) {
             for (var k = 0; k < 2; k++) {
@@ -283,13 +287,92 @@ void main() {
                 )
               : mixed[i],
       ];
-      final r = routeShape(spoiled)!;
+      final r = shapeNoTrim(spoiled)!;
       expect(longestSide(r), kRouteGrid);
       // The spoiled fixes would have stretched the shape a long way; left out,
       // it is the same loop (same height, give or take the thinned points).
       int high(List<List<int>> x) => x.map((p) => p[1]).reduce(math.max);
       expect((high(r) - high(route)).abs(), lessThan(8));
     });
+  });
+
+  group('the ends are cut off (home privacy zone)', () {
+    double along(List<Pt> pts, int upTo) {
+      var d = 0.0;
+      for (var i = 1; i <= upTo; i++) {
+        d += math.sqrt(
+          math.pow(pts[i].$1 - pts[i - 1].$1, 2) +
+              math.pow(pts[i].$2 - pts[i - 1].$2, 2),
+        );
+      }
+      return d;
+    }
+
+    test('trimEnds: first and last kept points are at least the trim away along the track', () {
+      final track = loopMetres();
+      final total = along(track, track.length - 1);
+      for (final (a, b) in [(150.0, 150.0), (300.0, 160.0), (210.5, 299.9)]) {
+        final out = trimEnds(track, a, b);
+        final i0 = track.indexOf(out.first);
+        final i1 = track.indexOf(out.last);
+        expect(along(track, i0), greaterThanOrEqualTo(a));
+        expect(total - along(track, i1), greaterThanOrEqualTo(b));
+        expect(out.length, lessThan(track.length));
+      }
+    });
+
+    test('a track shorter than both trims has no shape', () {
+      expect(
+        trimEnds([for (var i = 0; i < 50; i++) (i * 5.0, 0.0)], 150, 150),
+        isEmpty,
+      );
+      final short = gps([for (var i = 0; i < 100; i++) (i * 4.0, 0.0)]);
+      expect(
+        routeShape(short),
+        isNull,
+      ); // 400 m: two cuts of at least 150 m leave under 100 m
+    });
+
+    test('the cut is random per run and per end, always inside 150-300 m', () {
+      final track = loopMetres(n: 2000);
+      final total = along(track, track.length - 1);
+      final starts = <double>{}, ends = <double>{};
+      for (var seed = 0; seed < 40; seed++) {
+        final rng = math.Random(seed);
+        final a =
+            kRouteTrimMinM +
+            rng.nextDouble() * (kRouteTrimMaxM - kRouteTrimMinM);
+        final b =
+            kRouteTrimMinM +
+            rng.nextDouble() * (kRouteTrimMaxM - kRouteTrimMinM);
+        final out = trimEnds(track, a, b);
+        final g0 = along(track, track.indexOf(out.first));
+        final g1 = total - along(track, track.indexOf(out.last));
+        expect(g0, inInclusiveRange(150, 300 + 4));
+        expect(g1, inInclusiveRange(150, 300 + 4));
+        starts.add(g0.roundToDouble());
+        ends.add(g1.roundToDouble());
+      }
+      expect(starts.length, greaterThan(10));
+      expect(ends.length, greaterThan(10));
+    });
+
+    test(
+      'routeShape: with the default trim the outline is not the whole loop',
+      () {
+        // A straight 3 km out-and-forward track: the true start is at x = 0.
+        // Trimmed, the shape is shorter than the untrimmed one, and it differs by run.
+        final line = gps([
+          for (var i = 0; i < 1000; i++) (i * 3.0, 20 * math.sin(i / 40)),
+        ]);
+        final full = shapeNoTrim(line)!;
+        final a = routeShape(line, random: math.Random(1))!;
+        final b = routeShape(line, random: math.Random(2))!;
+        expect(longestSide(a), kRouteGrid);
+        expect(a, isNot(full));
+        expect(a, isNot(b));
+      },
+    );
   });
 
   group('per-km splits', () {

@@ -6,12 +6,15 @@
 ///
 /// 1. Fixes are projected to flat metres around the run's own centre. Those
 ///    metres exist only inside [routeShape].
-/// 2. The path is turned so its longest direction is horizontal, so north is
+/// 2. A random 150-300 m is cut off EACH end (a fresh length per run per end),
+///    so the outline never shows where the run began or finished: for most
+///    runs that is home.
+/// 3. The path is turned so its longest direction is horizontal, so north is
 ///    not a hint.
-/// 3. Douglas-Peucker thins it to at most [kRouteMaxPoints] points, and it is
+/// 4. Douglas-Peucker thins it to at most [kRouteMaxPoints] points, and it is
 ///    turned half a turn if needed so it starts on the left (a rule about the
 ///    direction of travel, never about the compass).
-/// 4. It is moved to the corner and scaled so its longer side is exactly
+/// 5. It is moved to the corner and scaled so its longer side is exactly
 ///    [kRouteGrid], then rounded to whole numbers. Scale, position and
 ///    orientation are gone; only the outline is left.
 ///
@@ -33,6 +36,11 @@ const int kRouteGrid = 255;
 /// A run whose fixes span less than this (metres, corner to corner) is a
 /// treadmill or GPS drift, not a route.
 const double kRouteMinSpanM = 60;
+
+/// Each end of the route is cut by a random length in this range (metres of
+/// path), fresh per run per end, so no fixed radius can be read back.
+const double kRouteTrimMinM = 150;
+const double kRouteTrimMaxM = 300;
 
 /// Fixes less accurate than this (metres) are left out.
 const double kRouteMaxAccuracyM = 50;
@@ -117,6 +125,25 @@ List<Pt> simplifyTo(List<Pt> pts, int maxPoints, {double? startEpsilon}) {
   return out;
 }
 
+/// Cuts [startM] of path off the start and [endM] off the end of [pts]. The
+/// first kept point is at least [startM] along the track from the true start,
+/// the last at least [endM] from the true end. Empty when less than two points
+/// are left.
+List<Pt> trimEnds(List<Pt> pts, double startM, double endM) {
+  if (pts.length < 2) return const [];
+  final cum = List<double>.filled(pts.length, 0);
+  for (var i = 1; i < pts.length; i++) {
+    final dx = pts[i].$1 - pts[i - 1].$1, dy = pts[i].$2 - pts[i - 1].$2;
+    cum[i] = cum[i - 1] + math.sqrt(dx * dx + dy * dy);
+  }
+  final total = cum.last;
+  final out = <Pt>[
+    for (var i = 0; i < pts.length; i++)
+      if (cum[i] >= startM && cum[i] <= total - endM) pts[i],
+  ];
+  return out.length < 2 ? const [] : out;
+}
+
 /// Rotates [pts] about their centre so the longest direction (principal axis)
 /// is horizontal. The compass is gone; the path may still run either way along
 /// that axis, which [startOnLeft] settles.
@@ -187,9 +214,15 @@ List<List<int>>? normaliseToGrid(List<Pt> pts, {int grid = kRouteGrid}) {
 /// [kRouteGrid] grid, longer side exactly the grid, touching x = 0 and y = 0,
 /// no coordinates, no scale, no north. Null for an indoor run, a run with
 /// fewer than two good fixes, or one under [kRouteMinSpanM].
+///
+/// [random] picks the trim lengths (a secure one by default); [trimMinM] and
+/// [trimMaxM] are the range, for tests.
 List<List<int>>? routeShape(
   Iterable<Sample> samples, {
   int maxPoints = kRouteMaxPoints,
+  math.Random? random,
+  double trimMinM = kRouteTrimMinM,
+  double trimMaxM = kRouteTrimMaxM,
 }) {
   final fixes = <(double, double)>[
     for (final s in samples)
@@ -220,8 +253,12 @@ List<List<int>>? routeShape(
   final flat = <Pt>[
     for (final f in thin) ((f.$2 - lon0) * kx, -(f.$1 - lat0) * 110540.0),
   ];
-  var minX = flat.first.$1, maxX = minX, minY = flat.first.$2, maxY = minY;
-  for (final p in flat) {
+  final rng = random ?? math.Random.secure();
+  double pick() => trimMinM + rng.nextDouble() * (trimMaxM - trimMinM);
+  final cut = trimEnds(flat, pick(), pick());
+  if (cut.length < 2) return null;
+  var minX = cut.first.$1, maxX = minX, minY = cut.first.$2, maxY = minY;
+  for (final p in cut) {
     minX = math.min(minX, p.$1);
     maxX = math.max(maxX, p.$1);
     minY = math.min(minY, p.$2);
@@ -231,7 +268,7 @@ List<List<int>>? routeShape(
     (maxX - minX) * (maxX - minX) + (maxY - minY) * (maxY - minY),
   );
   if (diag < kRouteMinSpanM) return null;
-  final thinned = simplifyTo(alignToLongestAxis(flat), maxPoints);
+  final thinned = simplifyTo(alignToLongestAxis(cut), maxPoints);
   return normaliseToGrid(startOnLeft(thinned));
 }
 

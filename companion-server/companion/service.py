@@ -47,6 +47,9 @@ RETENTION_LOG_DAYS = 30
 # The stored weather area goes 30 days after the run it came from (its own age, so indoor runs cannot keep a stale
 # cell alive). Lookups ignore an area older than AREA_USABLE_DAYS.
 RETENTION_AREA_DAYS = 30
+# The route outline is only needed to draw the card or video minutes after the run: it is dropped 30 days after the
+# run it came from. Splits and reps stay with the run.
+RETENTION_ROUTE_DAYS = 30
 AREA_USABLE_DAYS = 7  # a forecast is never asked for a place older than this
 
 NOT_OPEN = "Run Supreme's companion isn't open yet. We'll let you know when it is."
@@ -587,12 +590,14 @@ class Service:
 
     def set_settings(self, uid: str, quiet_start: int | None, quiet_end: int | None, zone_id: str | None,
                      weather: bool | None = None, route_shape: bool | None = None) -> None:
+        wipe_wal = False
         with db.tx(self.s.db_path) as c:
             if route_shape is not None:  # "Show route shape on cards"; off forgets every stored shape, now
                 c.execute("UPDATE users SET route_optin=? WHERE id=?", (int(route_shape), uid))
                 if not route_shape:
                     c.execute("UPDATE run_shape SET route_json=NULL WHERE user_id=?", (uid,))
                     c.execute("DELETE FROM run_shape WHERE user_id=? AND splits_json IS NULL AND reps_json IS NULL", (uid,))
+                    wipe_wal = True
             if weather is not None:  # the app's "Weather in suggestions" switch; off forgets every stored area
                 c.execute("UPDATE users SET weather_optin=? WHERE id=?", (int(weather), uid))
                 if not weather:
@@ -601,6 +606,12 @@ class Service:
                 c.execute("UPDATE users SET quiet_start=?, quiet_end=? WHERE id=?", (quiet_start, quiet_end, uid))
             if zone_id and valid_zone(zone_id):
                 c.execute("UPDATE users SET zone_id=? WHERE id=?", (zone_id, uid))
+        if wipe_wal:  # old page images of the deleted outlines must not wait in the WAL
+            c = db.connect(self.s.db_path)
+            try:
+                c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            finally:
+                c.close()
 
     def set_timezone(self, uid: str, zone_id: str, now: datetime | None = None) -> dict:
         """Move the user to `zone_id` (already validated). Scheduling reads users.zone_id; weekly caps stay pinned
@@ -1316,6 +1327,12 @@ class Service:
             c.execute("DELETE FROM convo_area WHERE NOT EXISTS (SELECT 1 FROM runs r WHERE r.user_id=convo_area.user_id "
                       "AND r.run_id=convo_area.run_id AND r.start_utc >= ?)" + held, (iso(now - timedelta(days=RETENTION_AREA_DAYS)),))
             c.execute("DELETE FROM convo_area WHERE user_id IN (SELECT id FROM users WHERE weather_optin=0)" + held)
+            c.execute("UPDATE run_shape SET route_json=NULL WHERE route_json IS NOT NULL AND EXISTS (SELECT 1 FROM runs r "
+                      "WHERE r.user_id=run_shape.user_id AND r.run_id=run_shape.run_id AND r.start_utc < ?)" + held,
+                      (iso(now - timedelta(days=RETENTION_ROUTE_DAYS)),))
+            c.execute("DELETE FROM run_shape WHERE route_json IS NULL AND splits_json IS NULL AND reps_json IS NULL")
+            c.execute("DELETE FROM run_shape WHERE NOT EXISTS (SELECT 1 FROM runs r WHERE r.user_id=run_shape.user_id "
+                      "AND r.run_id=run_shape.run_id)")  # belt and braces: a shape never outlives its run
             c.execute("DELETE FROM memory WHERE key='niggle_area' AND updated_at < ?" + held,
                       (iso(now - timedelta(days=NIGGLE_TTL_DAYS)),))
             idle = [r["id"] for r in c.execute(
