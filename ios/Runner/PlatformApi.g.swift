@@ -3419,6 +3419,18 @@ protocol RecorderApi {
   /// or the spoken summary are off. Fire and forget; the audio outlives the
   /// call.
   func speakRunSummary(distanceM: Double, timeMs: Int64, climbM: Double?, verdict: String?, units: Units, includePace: Bool) throws
+  /// Ready screen countdown voice (no recording session): warms up a speech
+  /// player of its own so the first beat is not lost to TTS start-up. Dart
+  /// calls it only when voice cues are on. Idempotent; starts no recorder
+  /// state.
+  func prepareCountdownVoice() throws
+  /// Says one countdown beat: 3, 2, 1, or 0 for "Go". Says nothing (no tone
+  /// either) when the speech engine is not ready. After the "Go" the player
+  /// releases itself once idle.
+  func speakCountdownBeat(beat: Int64) throws
+  /// The countdown was cancelled or the screen closed: stops speech, drops
+  /// audio focus and releases the player.
+  func stopCountdownVoice() throws
   /// Settings -> Run -> "Auto-pause" (default on): the recorder pauses itself
   /// when the runner stops and resumes when they move again, in Free, Laps
   /// and Goal runs (and the warm-up/cool-down of other sessions; never in a
@@ -3840,6 +3852,56 @@ class RecorderApiSetup {
       }
     } else {
       speakRunSummaryChannel.setMessageHandler(nil)
+    }
+    /// Ready screen countdown voice (no recording session): warms up a speech
+    /// player of its own so the first beat is not lost to TTS start-up. Dart
+    /// calls it only when voice cues are on. Idempotent; starts no recorder
+    /// state.
+    let prepareCountdownVoiceChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.prepareCountdownVoice\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      prepareCountdownVoiceChannel.setMessageHandler { _, reply in
+        do {
+          try api.prepareCountdownVoice()
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      prepareCountdownVoiceChannel.setMessageHandler(nil)
+    }
+    /// Says one countdown beat: 3, 2, 1, or 0 for "Go". Says nothing (no tone
+    /// either) when the speech engine is not ready. After the "Go" the player
+    /// releases itself once idle.
+    let speakCountdownBeatChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.speakCountdownBeat\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      speakCountdownBeatChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let beatArg = args[0] as! Int64
+        do {
+          try api.speakCountdownBeat(beat: beatArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      speakCountdownBeatChannel.setMessageHandler(nil)
+    }
+    /// The countdown was cancelled or the screen closed: stops speech, drops
+    /// audio focus and releases the player.
+    let stopCountdownVoiceChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.stopCountdownVoice\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      stopCountdownVoiceChannel.setMessageHandler { _, reply in
+        do {
+          try api.stopCountdownVoice()
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      stopCountdownVoiceChannel.setMessageHandler(nil)
     }
     /// Settings -> Run -> "Auto-pause" (default on): the recorder pauses itself
     /// when the runner stops and resumes when they move again, in Free, Laps

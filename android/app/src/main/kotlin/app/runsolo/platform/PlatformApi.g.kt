@@ -3764,6 +3764,24 @@ interface RecorderApi {
    */
   fun speakRunSummary(distanceM: Double, timeMs: Long, climbM: Double?, verdict: String?, units: Units, includePace: Boolean)
   /**
+   * Ready screen countdown voice (no recording session): warms up a speech
+   * player of its own so the first beat is not lost to TTS start-up. Dart
+   * calls it only when voice cues are on. Idempotent; starts no recorder
+   * state.
+   */
+  fun prepareCountdownVoice()
+  /**
+   * Says one countdown beat: 3, 2, 1, or 0 for "Go". Says nothing (no tone
+   * either) when the speech engine is not ready. After the "Go" the player
+   * releases itself once idle.
+   */
+  fun speakCountdownBeat(beat: Long)
+  /**
+   * The countdown was cancelled or the screen closed: stops speech, drops
+   * audio focus and releases the player.
+   */
+  fun stopCountdownVoice()
+  /**
    * Settings -> Run -> "Auto-pause" (default on): the recorder pauses itself
    * when the runner stops and resumes when they move again, in Free, Laps
    * and Goal runs (and the warm-up/cool-down of other sessions; never in a
@@ -4189,6 +4207,56 @@ interface RecorderApi {
             val includePaceArg = args[5] as Boolean
             val wrapped: List<Any?> = try {
               api.speakRunSummary(distanceMArg, timeMsArg, climbMArg, verdictArg, unitsArg, includePaceArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.prepareCountdownVoice$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.prepareCountdownVoice()
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.speakCountdownBeat$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val beatArg = args[0] as Long
+            val wrapped: List<Any?> = try {
+              api.speakCountdownBeat(beatArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.stopCountdownVoice$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.stopCountdownVoice()
               listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)

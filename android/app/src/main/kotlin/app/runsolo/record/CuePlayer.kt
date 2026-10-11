@@ -52,6 +52,7 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
     /** A summary line asked for before TTS finished starting; said once it is ready (or toned if it never is). */
     private var pendingLine: String? = null
     private var releaseWhenIdle = false
+    private var pendingQuiet: String? = null
 
     fun init() {
         try {
@@ -219,6 +220,10 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
 
     @Synchronized
     private fun flushPending() {
+        pendingQuiet?.let {
+            pendingQuiet = null
+            if (ttsReady) speakIfReady(it)
+        }
         val line = pendingLine ?: return
         pendingLine = null
         say(null, line)
@@ -231,6 +236,32 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
         followUp.cancel()
         speech.queued(now(), CueComposer.words(text))
         say(null, text)
+    }
+
+    /**
+     * One short line for a screen with no recording (the Ready countdown): spoken only when TTS is
+     * ready, interrupting any earlier beat, with no tone fallback and no vibration. Returns whether
+     * it was handed to the engine; false means it was dropped and nothing sounded.
+     */
+    @Synchronized
+    fun speakIfReady(text: String): Boolean {
+        val engine = tts
+        if (enabled && !ttsReady && engine != null) {
+            // TTS is still starting: keep the line for up to 300 ms, then it is stale.
+            pendingQuiet = text
+            main.postDelayed({ synchronized(this) { if (pendingQuiet == text) pendingQuiet = null } }, QUIET_WAIT_MS)
+            return false
+        }
+        if (!enabled || !ttsReady || engine == null) return false
+        requestFocus()
+        inFlight++
+        val spoke = try {
+            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "cue-${System.nanoTime()}") == TextToSpeech.SUCCESS
+        } catch (_: Exception) {
+            false
+        }
+        if (!spoke) done()
+        return spoke
     }
 
     private fun countdown() {
@@ -247,6 +278,13 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
     private fun say(kind: CueKind?, text: String) {
         requestFocus()
         inFlight++
+        // The Ready countdown's "Go" is still being said by its own engine: wait it out.
+        val wait = holdSpeechUntil - SystemClock.elapsedRealtime()
+        if (wait > 0) main.postDelayed({ sayNow(kind, text) }, wait) else sayNow(kind, text)
+    }
+
+    @Synchronized
+    private fun sayNow(kind: CueKind?, text: String) {
         val engine = tts
         val spoke = ttsReady && engine != null &&
             engine.speak(text, TextToSpeech.QUEUE_ADD, null, "cue-${System.nanoTime()}") == TextToSpeech.SUCCESS
@@ -309,6 +347,16 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
 
     companion object {
         private const val TAG = "RunSolo/cues"
+
+        /** How long a Ready countdown beat waits for TTS to finish starting. */
+        private const val QUIET_WAIT_MS = 300L
+
+        /** How long a run's own speech waits after the countdown's "Go" (its engine is separate; completion is not observable here). */
+        const val GO_HOLD_MS = 1_200L
+
+        /** [SystemClock.elapsedRealtime] before which a run's cues are held back; 0 = no hold. */
+        @Volatile
+        var holdSpeechUntil = 0L
 
         /** A one-shot player is released this long after its line was asked for, whatever TTS did. */
         /** The longest a finished run's last cue may keep the player alive. */

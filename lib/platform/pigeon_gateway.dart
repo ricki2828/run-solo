@@ -103,6 +103,15 @@ class PigeonRecorderGateway implements RecorderGateway {
   );
 
   @override
+  Future<void> prepareCountdownVoice() => _api.prepareCountdownVoice();
+
+  @override
+  Future<void> speakCountdownBeat(int beat) => _api.speakCountdownBeat(beat);
+
+  @override
+  Future<void> stopCountdownVoice() => _api.stopCountdownVoice();
+
+  @override
   Future<void> setAutoPause(bool enabled) => _api.setAutoPause(enabled);
 
   @override

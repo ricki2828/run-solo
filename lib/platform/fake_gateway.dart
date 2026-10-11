@@ -723,6 +723,20 @@ class FakeRecorderGateway implements RecorderGateway {
     includePace: includePace,
   );
 
+  /// Countdown voice calls the fake saw, in order: "prepare", "beat:N", "stop".
+  final List<String> countdownVoiceCalls = [];
+
+  @override
+  Future<void> prepareCountdownVoice() async =>
+      countdownVoiceCalls.add('prepare');
+
+  @override
+  Future<void> speakCountdownBeat(int beat) async =>
+      countdownVoiceCalls.add('beat:$beat');
+
+  @override
+  Future<void> stopCountdownVoice() async => countdownVoiceCalls.add('stop');
+
   bool autoPause = true;
 
   @override

@@ -22,6 +22,15 @@ object CueWords {
     /** [RecorderCore.Output.Cue.value] of the `phaseEnd` that closes a fixed cool-down. */
     const val COOLDOWN_OVER = 1.0
 
+    /** The Ready screen's spoken countdown: 3, 2, 1, then 0 = "Go" (null for any other number). */
+    fun countdownBeat(beat: Int): String? = when (beat) {
+        3 -> "Three"
+        2 -> "Two"
+        1 -> "One"
+        0 -> "Go"
+        else -> null
+    }
+
     fun text(
         kind: CueKind,
         value: Double?,

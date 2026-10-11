@@ -153,6 +153,15 @@ abstract class RecorderGateway {
     bool includePace = true,
   });
 
+  /// Ready-screen countdown voice (see the Pigeon `prepareCountdownVoice`).
+  Future<void> prepareCountdownVoice();
+
+  /// One beat: 3, 2, 1, or 0 for "Go". Silent when TTS is not ready.
+  Future<void> speakCountdownBeat(int beat);
+
+  /// Cancel or leave: stop speech and release the player.
+  Future<void> stopCountdownVoice();
+
   /// Settings → Recording → "Auto-pause": the recorder pauses itself when the
   /// runner stops and resumes when they move. Persisted natively; read at
   /// start and live.

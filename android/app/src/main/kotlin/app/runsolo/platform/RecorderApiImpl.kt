@@ -7,6 +7,7 @@ import app.runsolo.core.model.LiveContext as CoreLiveContext
 import app.runsolo.core.route.FollowRoute as CoreFollowRoute
 import android.Manifest
 import android.content.Context
+import android.os.SystemClock
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.LocationManager
@@ -20,6 +21,7 @@ import app.runsolo.core.journal.JournalReplay
 import app.runsolo.core.journal.Replay
 import app.runsolo.core.model.SessionSpec as CoreSpec
 import app.runsolo.core.record.RecorderCore
+import app.runsolo.core.record.CueWords
 import app.runsolo.core.record.SummaryWords
 import app.runsolo.core.reconcile.Reconciler
 import app.runsolo.core.run.Finaliser
@@ -404,6 +406,35 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
             init()
             announceSummary(text, thenRelease = true)
         }
+    }
+
+    /** The Ready countdown's speech: a player of its own, no recording session, no recorder state. */
+    private var countdownCues: CuePlayer? = null
+
+    override fun prepareCountdownVoice() {
+        if (countdownCues != null) return
+        countdownCues = CuePlayer(context).apply {
+            enabled = true
+            init()
+        }
+    }
+
+    override fun speakCountdownBeat(beat: Long) {
+        val word = CueWords.countdownBeat(beat.toInt()) ?: return
+        val cues = countdownCues ?: return
+        val spoke = cues.speakIfReady(word)
+        // The recorder's start line (its own engine) waits for the "Go" to finish.
+        if (beat <= 0L && spoke) CuePlayer.holdSpeechUntil = SystemClock.elapsedRealtime() + CuePlayer.GO_HOLD_MS
+        // The "Go" is the last line: let it finish, then let go of the engine.
+        if (beat <= 0L) {
+            countdownCues = null
+            cues.releaseWhenIdle()
+        }
+    }
+
+    override fun stopCountdownVoice() {
+        countdownCues?.release()
+        countdownCues = null
     }
 
     override fun routeSince(fromIndex: Long): List<Double> =
