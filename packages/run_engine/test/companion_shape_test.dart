@@ -375,6 +375,188 @@ void main() {
     );
   });
 
+  group('privacy zones (hidden circle around places you start from)', () {
+    const homeLat = 1.3521, homeLon = 103.8198;
+
+    /// A run from home: out along [heading] for 1.2 km, round a loop, back.
+    List<(double, double)> runFromHome(double heading, math.Random rnd) {
+      final c = math.cos(heading), s = math.sin(heading);
+      final pts = <(double, double)>[];
+      for (var i = 0; i <= 400; i++) {
+        pts.add((
+          c * i * 3.0 + rnd.nextDouble() * 4,
+          s * i * 3.0 + rnd.nextDouble() * 4,
+        ));
+      }
+      final end = pts.last;
+      for (var i = 1; i <= 300; i++) {
+        final t = 2 * math.pi * i / 300;
+        pts.add((end.$1 + 150 * math.sin(t), end.$2 + 150 * (1 - math.cos(t))));
+      }
+      for (var i = 400; i >= 0; i--) {
+        pts.add((
+          c * i * 3.0 + rnd.nextDouble() * 4,
+          s * i * 3.0 + rnd.nextDouble() * 4,
+        ));
+      }
+      return pts;
+    }
+
+    test('ensureZoneFor: a start inside a zone adds none; outside adds one around it', () {
+      final rng = math.Random(3);
+      final one = ensureZoneFor(const [], homeLat, homeLon, random: rng);
+      expect(one, hasLength(1));
+      final z = one.single;
+      expect(z.radiusM, inInclusiveRange(kZoneMinRadiusM, kZoneMaxRadiusM));
+      // The start is inside, the centre is not the start, and not further than half the radius.
+      final d = z.distanceM(homeLat, homeLon);
+      expect(d, lessThanOrEqualTo(z.radiusM / 2 + 0.01));
+      expect(d, greaterThan(0));
+      expect(
+        ensureZoneFor(one, homeLat + 0.001, homeLon, random: rng),
+        same(one),
+      );
+      final two = ensureZoneFor(one, homeLat + 0.05, homeLon, random: rng);
+      expect(two, hasLength(2));
+    });
+
+    test('at most three zones; a fourth place gets the random trim only', () {
+      final rng = math.Random(4);
+      var zs = <PrivacyZone>[];
+      for (var i = 0; i < 5; i++) {
+        zs = ensureZoneFor(zs, homeLat + i * 0.05, homeLon, random: rng);
+      }
+      expect(zs, hasLength(kMaxZones));
+    });
+
+    test(
+      'only the ends are clipped: a pass through the zone mid-route stays',
+      () {
+        final c = [(0.0, 0.0, 100.0)];
+        final track = <Pt>[
+          for (var i = 0; i < 50; i++) (i * 2.0, 0.0), // starts in the zone
+          for (var i = 50; i < 100; i++) (250.0 + i, 300.0), // away
+          for (var i = 0; i < 20; i++)
+            (i * 2.0, 10.0), // through the zone mid-route
+          for (var i = 20; i < 60; i++) (300.0 + i, 200.0), // away again
+          for (var i = 0; i < 30; i++) (i * 3.0, 5.0), // ends in the zone
+        ];
+        final out = clipZoneEnds(track, c);
+        expect(out.first.$2, 300.0);
+        expect(out.last.$1, 359.0);
+        expect(out.any((p) => p.$2 == 10.0), isTrue);
+      },
+    );
+
+    test('a zone is read back from json, and a bad one is refused', () {
+      const z = PrivacyZone(1.3, 103.8, 321);
+      final back = PrivacyZone.fromJson(z.toJson())!;
+      expect([back.lat, back.lon, back.radiusM], [1.3, 103.8, 321]);
+      expect(PrivacyZone.fromJson({'lat': 'x', 'lon': 1, 'r': 300}), isNull);
+      expect(PrivacyZone.fromJson({'lat': 1, 'lon': 1, 'r': 5}), isNull);
+      expect(PrivacyZone.fromJson(null), isNull);
+    });
+
+    test('20 runs from the same door: no outline ever starts or ends nearer than half the zone radius, and never inside the zone', () {
+      for (var seed = 0; seed < 5; seed++) {
+        final rng = math.Random(seed);
+        final zones = ensureZoneFor(const [], homeLat, homeLon, random: rng);
+        final z = zones.single;
+        var nearest = double.infinity;
+        for (var k = 0; k < 20; k++) {
+          final heading = [0.0, 1.9, 4.4][k % 3] + rng.nextDouble() * 0.1;
+          final samples = gps(
+            runFromHome(heading, rng),
+            lat: homeLat,
+            lon: homeLon,
+          );
+          final t = prepareTrack(samples, zones: zones, random: rng)!;
+          final hx = (homeLon - t.lon0) * t.kx;
+          final hy = -(homeLat - t.lat0) * 110540.0;
+          final cx = (z.lon - t.lon0) * t.kx;
+          final cy = -(z.lat - t.lat0) * 110540.0;
+          for (final p in [t.pts.first, t.pts.last]) {
+            final fromHome = math.sqrt(
+              math.pow(p.$1 - hx, 2) + math.pow(p.$2 - hy, 2),
+            );
+            final fromCentre = math.sqrt(
+              math.pow(p.$1 - cx, 2) + math.pow(p.$2 - cy, 2),
+            );
+            expect(
+              fromCentre,
+              greaterThan(z.radiusM),
+              reason: 'seed $seed run $k',
+            );
+            expect(
+              fromHome,
+              greaterThan(z.radiusM / 2),
+              reason: 'seed $seed run $k',
+            );
+            nearest = math.min(nearest, fromHome);
+          }
+        }
+        // Twenty runs do not close in on the door: the best any of them did is still outside half the radius.
+        expect(nearest, greaterThan(z.radiusM / 2), reason: 'seed $seed');
+      }
+    });
+
+    test('without a zone the random trim alone can come close, which is why the zone exists', () {
+      final rng = math.Random(11);
+      var nearest = double.infinity;
+      for (var k = 0; k < 40; k++) {
+        final samples = gps(runFromHome(0.3, rng), lat: homeLat, lon: homeLon);
+        final t = prepareTrack(samples, random: rng)!;
+        final hx = (homeLon - t.lon0) * t.kx,
+            hy = -(homeLat - t.lat0) * 110540.0;
+        nearest = math.min(
+          nearest,
+          math.sqrt(
+            math.pow(t.pts.first.$1 - hx, 2) + math.pow(t.pts.first.$2 - hy, 2),
+          ),
+        );
+      }
+      expect(nearest, lessThan(170));
+    });
+
+    test(
+      'the zone secret is in no payload: not its centre, not its radius',
+      () {
+        final rng = math.Random(9);
+        final zones = ensureZoneFor(const [], homeLat, homeLon, random: rng);
+        final z = zones.single;
+        final run = RunFile(
+          id: 'zone-secret',
+          device: 'test',
+          app: 'test',
+          start: DateTime.utc(2026, 10, 2),
+          end: DateTime.utc(2026, 10, 2, 0, 30),
+          tz: 'UTC',
+          mode: RunMode.free,
+          units: Units.km,
+          laps: const [],
+          samples: gps(runFromHome(0.7, rng), lat: homeLat, lon: homeLon),
+        );
+        final wire = jsonEncode(companionShapeFields(run, privacyZones: zones));
+        expect(wire, contains('"route"'));
+        for (final secret in [
+          z.lat.toString(),
+          z.lon.toString(),
+          z.radiusM.toString(),
+          z.radiusM.round().toString().padLeft(3, '0') == '' ? 'x' : '"r"',
+          'zone',
+          'privacy',
+        ]) {
+          expect(wire, isNot(contains(secret)), reason: secret);
+        }
+        // And the route is whole numbers on the grid, as ever.
+        expect(
+          jsonEncode(companionShapeFields(run, privacyZones: zones)['route']),
+          isNot(contains('.')),
+        );
+      },
+    );
+  });
+
   group('per-km splits', () {
     RunFile runOf(List<Sample> samples) => RunFile(
       id: 'split-test',

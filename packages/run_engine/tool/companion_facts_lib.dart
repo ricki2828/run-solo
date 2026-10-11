@@ -16,6 +16,8 @@
 ///   state is not in a bundle, so a profile max HR is an option as well.
 library;
 
+import 'dart:math' as math;
+
 import 'package:run_engine/run_engine.dart';
 
 class CompanionFactsOptions {
@@ -25,7 +27,13 @@ class CompanionFactsOptions {
     this.restingHr,
     this.names = EventNames.generic,
     this.withRoute = true,
+    this.random,
   });
+
+  /// Picks the secret privacy-zone centres for the replay (a secure one by
+  /// default). The replay keeps its zones for the one call, like a phone does
+  /// across runs, and never writes them anywhere.
+  final math.Random? random;
 
   /// The app's "Show route shape on cards" switch (default on): the summary
   /// carries the normalised route shape. Splits and reps always ride along.
@@ -142,6 +150,7 @@ List<Map<String, Object?>?> companionFactsFor(
   final priors = <PriorRun>[];
   final out = <Map<String, Object?>?>[];
   final zones = options.zones;
+  var privacyZones = <PrivacyZone>[];
   for (final b in ordered) {
     final run = b.run;
     final sidecar = b.sidecar ?? RunSidecar(runId: run.id);
@@ -158,6 +167,15 @@ List<Map<String, Object?>?> companionFactsFor(
       if (p != null) priors.add(p);
     } catch (_) {
       a = null; // the app skips a failed analysis too: no verdict, no true pace
+    }
+    final start = startFix(run.samples);
+    if (start != null && options.withRoute) {
+      privacyZones = ensureZoneFor(
+        privacyZones,
+        start.$1,
+        start.$2,
+        random: options.random,
+      );
     }
     final mode = sidecar.runTypeOverride ?? a?.mode ?? run.mode;
     final local = RunZone.resolve(
@@ -207,6 +225,7 @@ List<Map<String, Object?>?> companionFactsFor(
         zones: zones,
         intervals: mode == RunMode.intervals ? a?.intervals : null,
         withRoute: options.withRoute,
+        privacyZones: privacyZones,
       ),
     });
   }

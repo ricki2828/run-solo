@@ -666,11 +666,7 @@ class Service:
             if zone_id and valid_zone(zone_id):
                 c.execute("UPDATE users SET zone_id=? WHERE id=?", (zone_id, uid))
         if wipe_wal:  # old page images of the deleted outlines must not wait in the WAL
-            c = db.connect(self.s.db_path)
-            try:
-                c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            finally:
-                c.close()
+            db.checkpoint_truncate(self.s.db_path)
 
     def set_timezone(self, uid: str, zone_id: str, now: datetime | None = None) -> dict:
         """Move the user to `zone_id` (already validated). Scheduling reads users.zone_id; weekly caps stay pinned

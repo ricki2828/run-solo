@@ -77,6 +77,15 @@ const extraForbidden =
 /// A 422 that is the run's own fault (a start time in the future).
 const futureStart = '{"detail":"start_utc is in the future"}';
 
+/// A store that refuses to keep the privacy zones.
+class _ZoneWriteFails extends MemorySecretStore {
+  @override
+  Future<void> write(String name, String value) async {
+    if (name == CompanionController.zonesName) throw StateError('disk full');
+    return super.write(name, value);
+  }
+}
+
 /// Turn on, then type the code the bot sent.
 Future<void> enrolNow(CompanionController c, [String code = '123456']) async {
   await c.turnOn();
@@ -781,6 +790,54 @@ void main() {
         expect(ctl.routeShapeOn, isTrue);
         expect(http.to('PUT', '/v1/me/settings'), isEmpty);
         expect((await sentSummary()).containsKey('route'), isTrue);
+      },
+    );
+
+    test('the first send makes a secret zone; it is in no request', () async {
+      await enrolAndWire();
+      await sentSummary();
+      final zones =
+          jsonDecode(secrets.values[CompanionController.zonesName]!) as List;
+      expect(zones, hasLength(1));
+      final z = zones.single as Map;
+      for (final r in http.requests) {
+        final text =
+            '${r.uri} ${r.headers} ${r.body == null ? '' : utf8.decode(r.body!)}';
+        for (final secret in ['${z['lat']}', '${z['lon']}', '${z['r']}']) {
+          expect(text, isNot(contains(secret)), reason: secret);
+        }
+      }
+    });
+
+    test(
+      'the same zone serves later runs and survives Delete everything',
+      () async {
+        await enrolAndWire();
+        await sentSummary();
+        final first = secrets.values[CompanionController.zonesName];
+        final again = await ctl.privacyZonesFor(run);
+        expect(again, hasLength(1));
+        expect(secrets.values[CompanionController.zonesName], first);
+        expect(await ctl.deleteEverything(), isTrue);
+        expect(secrets.values[CompanionController.zonesName], first);
+      },
+    );
+
+    test(
+      'a zone that cannot be saved means no route this time, not a weaker one',
+      () async {
+        final failing = _ZoneWriteFails();
+        ctl = CompanionController(
+          store: failing,
+          transfer: transfer,
+          client: CompanionClient(baseUrl: 'https://c.test', http: http),
+          pollEvery: Duration.zero,
+          waitFor: const Duration(seconds: 5),
+        );
+        await enrolAndWire();
+        final j = await sentSummary();
+        expect(j.containsKey('route'), isFalse);
+        expect(j.containsKey('splits'), isTrue);
       },
     );
 

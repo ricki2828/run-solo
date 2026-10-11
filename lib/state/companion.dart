@@ -570,6 +570,13 @@ class CompanionController extends ChangeNotifier {
   /// Set while the server has not yet confirmed "forget my route shapes".
   static const String routeForgetName = 'companion_route_forget';
 
+  /// The secret privacy zones (see `PrivacyZone` in run_engine): circles
+  /// around places the runner starts from, clipped from every route. They live
+  /// only here, in secure storage excluded from backups. They are never sent,
+  /// never put in a payload or a log, and they survive a wipe (a new server
+  /// record must not get a different zone for the same door).
+  static const String zonesName = 'companion_privacy_zones';
+
   final SecretStore store;
   final TransferGateway transfer;
   final CompanionClient client;
@@ -645,6 +652,42 @@ class CompanionController extends ChangeNotifier {
       await syncWeather();
       await syncRouteShape();
     }
+  }
+
+  /// The privacy zones to clip [run]'s route with: the stored ones, plus a new
+  /// secret one when the run starts outside all of them (saved here at once).
+  /// Null when the zones cannot be read or saved: the caller then sends no
+  /// route at all, because a fresh zone invented for the same door every run
+  /// would leak more than none.
+  Future<List<engine.PrivacyZone>?> privacyZonesFor(engine.RunFile run) async {
+    var zones = <engine.PrivacyZone>[];
+    try {
+      final raw = await store.read(zonesName);
+      if (raw != null && raw.isNotEmpty) {
+        final j = jsonDecode(raw);
+        if (j is List) {
+          zones = [for (final z in j) ?engine.PrivacyZone.fromJson(z)];
+        }
+      }
+    } catch (e) {
+      companionLog('could not read the privacy zones (${e.runtimeType})');
+      return null;
+    }
+    final start = engine.startFix(run.samples);
+    if (start == null) return zones;
+    final next = engine.ensureZoneFor(zones, start.$1, start.$2);
+    if (!identical(next, zones)) {
+      try {
+        await store.write(
+          zonesName,
+          jsonEncode([for (final z in next) z.toJson()]),
+        );
+      } catch (e) {
+        companionLog('could not save the privacy zones (${e.runtimeType})');
+        return null;
+      }
+    }
+    return next;
   }
 
   /// "Show route shape on cards". Off: the phone stops sending a shape at
@@ -1159,6 +1202,7 @@ Map<String, Object?>? companionSummary(
   engine.RunFeel? feel,
   bool withArea = false,
   bool withRoute = false,
+  List<engine.PrivacyZone> privacyZones = const [],
   Map<String, Object?> plan = const {},
 }) {
   final s = d.summary;
@@ -1212,6 +1256,7 @@ Map<String, Object?>? companionSummary(
           ? d.analysis.intervals
           : null,
       withRoute: withRoute,
+      privacyZones: privacyZones,
     ),
   };
 }
@@ -1289,11 +1334,16 @@ class CompanionTarget extends ExportTarget {
     try {
       await controller.syncWeather();
       await controller.syncRouteShape();
+      final hide = controller.routeShapeOn
+          ? await controller.privacyZonesFor(d.run)
+          : const <engine.PrivacyZone>[];
+      final routeOk = controller.routeShapeOn && hide != null;
       final summary = companionSummary(
         d,
         zones: zones?.call(),
         withArea: controller.weatherOn,
-        withRoute: controller.routeShapeOn,
+        withRoute: routeOk,
+        privacyZones: hide ?? const [],
         plan: await _plan(d),
       );
       if (summary == null) {

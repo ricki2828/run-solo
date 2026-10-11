@@ -555,3 +555,23 @@ def test_the_worker_checks_the_title_and_bounds_the_numbers():
         with pytest.raises(P.ProtocolError):
             P.check_request(req(**bad))
     P.check_request(req(title="Intervals", splits=[{"km": 0.4, "pace_s": 300.5}], reps=[{"time_s": 3600}]))
+
+
+def test_the_wal_checkpoint_reports_busy_and_retries(client):
+    t = enrol(client)
+    post(client, t, route=shape_route())
+    path = client.svc.s.db_path
+    assert db.checkpoint_truncate(path) is True
+    # a reader that is still open can stop the truncate: say so, do not pretend
+    reader = sqlite3.connect(path)
+    reader.execute("BEGIN")
+    reader.execute("SELECT COUNT(*) FROM runs").fetchone()
+    writer = sqlite3.connect(path)
+    writer.execute("INSERT INTO settings (key, value) VALUES ('k', 'v')")
+    writer.commit()
+    writer.close()
+    try:
+        assert db.checkpoint_truncate(path, tries=2, wait_s=0.01) is False
+    finally:
+        reader.close()
+    assert db.checkpoint_truncate(path) is True

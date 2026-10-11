@@ -6,9 +6,13 @@
 ///
 /// 1. Fixes are projected to flat metres around the run's own centre. Those
 ///    metres exist only inside [routeShape].
-/// 2. A random 150-300 m is cut off EACH end (a fresh length per run per end),
-///    so the outline never shows where the run began or finished: for most
-///    runs that is home.
+/// 2. The ends are cut off, so the outline does not show exactly where the run
+///    began or finished (for most runs that is home): first every fix inside
+///    a secret per-install privacy zone is clipped at each end ([PrivacyZone]),
+///    then a random 150-300 m more (a fresh length per run per end). The zone
+///    is what stops many runs from the same door being intersected down to
+///    the door: its edge is the same every time, and its centre is a secret
+///    offset from home that never leaves the phone.
 /// 3. The path is turned so its longest direction is horizontal, so north is
 ///    not a hint.
 /// 4. Douglas-Peucker thins it to at most [kRouteMaxPoints] points, and it is
@@ -125,6 +129,95 @@ List<Pt> simplifyTo(List<Pt> pts, int maxPoints, {double? startEpsilon}) {
   return out;
 }
 
+/// A secret circle around a place the runner often starts from, kept on the
+/// phone only (never sent, never in any payload). Fixes inside it are clipped
+/// from the start and the end of every route. The centre is offset from the
+/// real start by up to half the radius, and the radius is random in
+/// [kZoneMinRadiusM]..[kZoneMaxRadiusM], so what the server can learn from
+/// many runs is the zone, never the door.
+class PrivacyZone {
+  const PrivacyZone(this.lat, this.lon, this.radiusM);
+  final double lat;
+  final double lon;
+  final double radiusM;
+
+  Map<String, Object?> toJson() => {'lat': lat, 'lon': lon, 'r': radiusM};
+
+  static PrivacyZone? fromJson(Object? j) {
+    if (j is! Map) return null;
+    final lat = j['lat'], lon = j['lon'], r = j['r'];
+    if (lat is! num || lon is! num || r is! num) return null;
+    if (lat.abs() > 90 || lon.abs() > 180 || r < 50 || r > 2000) return null;
+    return PrivacyZone(lat.toDouble(), lon.toDouble(), r.toDouble());
+  }
+
+  /// Metres from the zone's centre to ([lat], [lon]), flat-earth.
+  double distanceM(double lat, double lon) {
+    final dy = (lat - this.lat) * 110540.0;
+    final dx = (lon - this.lon) * 111320.0 * math.cos(this.lat * math.pi / 180);
+    return math.sqrt(dx * dx + dy * dy);
+  }
+}
+
+const double kZoneMinRadiusM = 250;
+const double kZoneMaxRadiusM = 400;
+
+/// At most this many zones are kept.
+const int kMaxZones = 3;
+
+/// The zones to use for a run that starts at ([lat], [lon]): [zones], plus a
+/// new one if the start is outside every zone and there is room. A new zone is
+/// centred up to half its radius away from the start, in a random direction,
+/// so the start is always inside it and the centre is not the start.
+List<PrivacyZone> ensureZoneFor(
+  List<PrivacyZone> zones,
+  double lat,
+  double lon, {
+  math.Random? random,
+}) {
+  if (zones.any((z) => z.distanceM(lat, lon) <= z.radiusM)) return zones;
+  if (zones.length >= kMaxZones) return zones;
+  final rng = random ?? math.Random.secure();
+  final r =
+      kZoneMinRadiusM + rng.nextDouble() * (kZoneMaxRadiusM - kZoneMinRadiusM);
+  final d = rng.nextDouble() * r / 2;
+  final a = rng.nextDouble() * 2 * math.pi;
+  final zlat = lat + d * math.sin(a) / 110540.0;
+  final zlon =
+      lon + d * math.cos(a) / (111320.0 * math.cos(lat * math.pi / 180));
+  return [...zones, PrivacyZone(zlat, zlon, r)];
+}
+
+/// The first usable fix of [samples], or null.
+(double, double)? startFix(Iterable<Sample> samples) {
+  for (final s in samples) {
+    if (s.lat != null &&
+        s.lon != null &&
+        (s.accM == null || s.accM! <= kRouteMaxAccuracyM)) {
+      return (s.lat!, s.lon!);
+    }
+  }
+  return null;
+}
+
+/// Drops the points at the start, and at the end, that lie inside any of
+/// [circles] (x, y, radius in the same flat metres as [pts]). Only the ends:
+/// a pass through the zone mid-route is left alone.
+List<Pt> clipZoneEnds(List<Pt> pts, List<(double, double, double)> circles) {
+  bool inside(Pt p) => circles.any((c) {
+    final dx = p.$1 - c.$1, dy = p.$2 - c.$2;
+    return dx * dx + dy * dy <= c.$3 * c.$3;
+  });
+  var a = 0, b = pts.length;
+  while (a < b && inside(pts[a])) {
+    a++;
+  }
+  while (b > a && inside(pts[b - 1])) {
+    b--;
+  }
+  return pts.sublist(a, b);
+}
+
 /// Cuts [startM] of path off the start and [endM] off the end of [pts]. The
 /// first kept point is at least [startM] along the track from the true start,
 /// the last at least [endM] from the true end. Empty when less than two points
@@ -210,16 +303,13 @@ List<List<int>>? normaliseToGrid(List<Pt> pts, {int grid = kRouteGrid}) {
   return out.length < 2 ? null : out;
 }
 
-/// The route shape for [samples]: at most [maxPoints] whole-number points on a
-/// [kRouteGrid] grid, longer side exactly the grid, touching x = 0 and y = 0,
-/// no coordinates, no scale, no north. Null for an indoor run, a run with
-/// fewer than two good fixes, or one under [kRouteMinSpanM].
-///
-/// [random] picks the trim lengths (a secure one by default); [trimMinM] and
-/// [trimMaxM] are the range, for tests.
-List<List<int>>? routeShape(
+/// The track routeShape draws, before it is turned and scaled: flat metres
+/// (y down) around the run's own centre with the privacy zones and the random
+/// end trim already cut off. [lat0], [lon0] and [kx] are the frame, so a test
+/// can put a place into it. Null when there is nothing to draw.
+({List<Pt> pts, double lat0, double lon0, double kx})? prepareTrack(
   Iterable<Sample> samples, {
-  int maxPoints = kRouteMaxPoints,
+  List<PrivacyZone> zones = const [],
   math.Random? random,
   double trimMinM = kRouteTrimMinM,
   double trimMaxM = kRouteTrimMaxM,
@@ -253,10 +343,44 @@ List<List<int>>? routeShape(
   final flat = <Pt>[
     for (final f in thin) ((f.$2 - lon0) * kx, -(f.$1 - lat0) * 110540.0),
   ];
+  // 1. The secret zones, in the same frame.
+  final clipped = clipZoneEnds(flat, [
+    for (final z in zones)
+      ((z.lon - lon0) * kx, -(z.lat - lat0) * 110540.0, z.radiusM),
+  ]);
+  // 2. A random trim on top, measured from the zone's edge.
   final rng = random ?? math.Random.secure();
   double pick() => trimMinM + rng.nextDouble() * (trimMaxM - trimMinM);
-  final cut = trimEnds(flat, pick(), pick());
+  final cut = trimEnds(clipped, pick(), pick());
   if (cut.length < 2) return null;
+  return (pts: cut, lat0: lat0, lon0: lon0, kx: kx);
+}
+
+/// The route shape for [samples]: at most [maxPoints] whole-number points on a
+/// [kRouteGrid] grid, longer side exactly the grid, touching x = 0 and y = 0,
+/// no coordinates, no scale, no north. Null for an indoor run, a run with
+/// fewer than two good fixes, or one under [kRouteMinSpanM].
+///
+/// The ends are cut: first by the privacy [zones], then by a random trim
+/// ([random] picks the lengths, a secure one by default; [trimMinM] and
+/// [trimMaxM] are the range, for tests).
+List<List<int>>? routeShape(
+  Iterable<Sample> samples, {
+  int maxPoints = kRouteMaxPoints,
+  List<PrivacyZone> zones = const [],
+  math.Random? random,
+  double trimMinM = kRouteTrimMinM,
+  double trimMaxM = kRouteTrimMaxM,
+}) {
+  final t = prepareTrack(
+    samples,
+    zones: zones,
+    random: random,
+    trimMinM: trimMinM,
+    trimMaxM: trimMaxM,
+  );
+  if (t == null) return null;
+  final cut = t.pts;
   var minX = cut.first.$1, maxX = minX, minY = cut.first.$2, maxY = minY;
   for (final p in cut) {
     minX = math.min(minX, p.$1);
@@ -361,10 +485,11 @@ Map<String, Object?> companionShapeFields(
   HrZones? zones,
   IntervalMetrics? intervals,
   bool withRoute = true,
+  List<PrivacyZone> privacyZones = const [],
 }) {
   final out = <String, Object?>{};
   if (withRoute) {
-    final r = routeShape(run.samples);
+    final r = routeShape(run.samples, zones: privacyZones);
     if (r != null) out['route'] = r;
   }
   final windows = kmSplitWindows(run);

@@ -296,14 +296,30 @@ def user_tables(c: sqlite3.Connection) -> list[str]:
     return out
 
 
+def checkpoint_truncate(path: str, tries: int = 5, wait_s: float = 0.2) -> bool:
+    """Fold the WAL into the main file and truncate it, so deleted pages are not left in it. SQLite reports `busy` in
+    the first column of the result when a reader stopped it, so retry a few times and say so when it never cleared."""
+    import logging
+    import time
+    for i in range(tries):
+        c = connect(path)
+        try:
+            c.execute("PRAGMA busy_timeout=0")
+            busy = c.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()[0]
+        finally:
+            c.close()
+        if not busy:
+            return True
+        if i + 1 < tries:
+            time.sleep(wait_s)
+    logging.getLogger("companion").warning("wal checkpoint stayed busy; deleted pages remain in the WAL until the next one")
+    return False
+
+
 def hard_delete_user(path: str, user_id: str) -> None:
     """Delete every row keyed by the user in one transaction, then scrub and truncate the WAL."""
     with tx(path) as c:
         for t in user_tables(c):
             c.execute(f"DELETE FROM {t} WHERE user_id = ?", (user_id,))
         c.execute("DELETE FROM users WHERE id = ?", (user_id,))
-    c = connect(path)
-    try:
-        c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    finally:
-        c.close()
+    checkpoint_truncate(path)
