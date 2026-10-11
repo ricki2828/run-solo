@@ -41,8 +41,10 @@ def populate(client, fakes):
     note_i = [b["action"] for b in json.loads(row[1])].index("note:add")
     post_tg(client, tg_callback(8200, f"{row[0]}:{note_i}"))
     post_tg(client, tg_update(8201, "calf niggle, privacy sentinel"))
-    post_tg(client, tg_callback(8202, f"{row[0]}:{note_i}"))
-    post_tg(client, tg_update(8100, "STOP"))
+    post_tg(client, tg_update(8100, "STOP"))   # STOP closes note mode, so leave a waiting row for the deletion walk
+    with db.tx(client.svc.s.db_path) as w:
+        w.execute("INSERT INTO note_mode (user_id, run_id, expires_at) SELECT user_id, run_id, ? FROM run_notes",
+                  (iso(now_utc() + timedelta(minutes=5)),))
     return t
 
 

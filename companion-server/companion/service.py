@@ -51,6 +51,11 @@ AREA_USABLE_DAYS = 7  # a forecast is never asked for a place older than this
 
 NOT_OPEN = "Run Supreme's companion isn't open yet. We'll let you know when it is."
 NOTE_ACTION = "note:add"
+NOTE_STOP_WORDS = frozenset({"STOP", "STOP ALL", "UNSUBSCRIBE"})
+NOTE_CANCEL_WORDS = frozenset({"CANCEL", "END", "QUIT"})
+NOTE_BARE_WORDS = NOTE_STOP_WORDS | NOTE_CANCEL_WORDS | {"DELETE"}
+NOTE_DELETE_FIRST = "Not saved as a note. Send DELETE again to erase everything."
+NOTE_CANCELLED = "Note cancelled."
 UNKNOWN = ("I only send run recaps. To connect, open Run Supreme, go to Settings > Companion and tap "
            "Turn on. Send STOP to pause or DELETE to erase everything.")
 NOTE_PROMPT = "Go on, type your note. Up to 500 characters. I'll keep it with this run."
@@ -321,6 +326,18 @@ class Service:
         word = text.lstrip("/").upper()
         m = START_RE.match(text)
         reply: str
+        if user and word in NOTE_BARE_WORDS and self._note_mode_open(user["id"], now):
+            # Right after "type your note" a bare keyword is far more likely an answer than a command: DELETE must not
+            # erase the account on one word, and CANCEL/END/QUIT just leave note mode. STOP still pauses (opt-out always
+            # works) and closes note mode.
+            with db.tx(self.s.db_path) as c:
+                c.execute("DELETE FROM note_mode WHERE user_id=?", (user["id"],))
+            if word == "DELETE":
+                self._reply(ch, inb.ref, NOTE_DELETE_FIRST)
+                return
+            if word in NOTE_CANCEL_WORDS:
+                self._reply(ch, inb.ref, NOTE_CANCELLED)
+                return
         if m:
             reply = self._bind(inb, m.group(1), now)
         elif word in ("STOP", "STOP ALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"):
@@ -348,6 +365,11 @@ class Service:
             reply = self._note_reply(user, inb.text, now) or UNKNOWN
         self._reply(ch, inb.ref, reply)
 
+    def _note_mode_open(self, uid: str, now: datetime) -> bool:
+        with db.ro(self.s.db_path) as c:
+            r = c.execute("SELECT expires_at FROM note_mode WHERE user_id=?", (uid,)).fetchone()
+        return r is not None and parse_iso(r["expires_at"]) > now
+
     def _note_reply(self, user: dict | None, raw: str, now: datetime) -> str | None:
         """The reply when this free text is (or was meant to be) a note; None when the user is not in note mode."""
         if not user:
@@ -368,8 +390,11 @@ class Service:
         if len(text) > cv_notes.NOTE_MAX_CHARS:
             return NOTE_TOO_LONG  # still in note mode: the runner can send a shorter one
         with db.tx(self.s.db_path) as c:
+            # re-read under the write lock: a tap on another card since the read above decides where the note goes
+            mode = c.execute("SELECT run_id, expires_at FROM note_mode WHERE user_id=?", (user["id"],)).fetchone()
             c.execute("DELETE FROM note_mode WHERE user_id=?", (user["id"],))
-            if not c.execute("SELECT 1 FROM runs WHERE user_id=? AND run_id=?", (user["id"], mode["run_id"])).fetchone():
+            if mode is None or parse_iso(mode["expires_at"]) <= now or not c.execute(
+                    "SELECT 1 FROM runs WHERE user_id=? AND run_id=?", (user["id"], mode["run_id"])).fetchone():
                 return NOTE_EXPIRED
             c.execute("INSERT INTO run_notes (user_id, run_id, note, created_at) VALUES (?,?,?,?) "
                       "ON CONFLICT(user_id, run_id) DO UPDATE SET note=excluded.note, created_at=excluded.created_at",
@@ -415,10 +440,9 @@ class Service:
                 elif user["paused"]:
                     msg, after = "You're paused.", NOTE_PAUSED
                 else:
-                    c.execute("INSERT INTO note_mode (user_id, run_id, card_id, expires_at) VALUES (?,?,?,?) "
-                              "ON CONFLICT(user_id) DO UPDATE SET run_id=excluded.run_id, card_id=excluded.card_id, "
-                              "expires_at=excluded.expires_at",
-                              (user["id"], card["run_id"], card["card_id"],
+                    c.execute("INSERT INTO note_mode (user_id, run_id, expires_at) VALUES (?,?,?) "
+                              "ON CONFLICT(user_id) DO UPDATE SET run_id=excluded.run_id, expires_at=excluded.expires_at",
+                              (user["id"], card["run_id"],
                                iso(real_now + timedelta(minutes=cv_notes.NOTE_MODE_MIN))))
                     msg, note_tapped = "Type your note.", True
             elif kind == "ans":
@@ -909,19 +933,15 @@ class Service:
         rc = cv_recap.build(runs, now, zone_id, usage.variants, seed=week_ref)
         if rc is None or (rc.empty and empty_before):  # one gentle nudge after a missed week, never two in a row
             return None
-        body = rc.rendered.body
-        with db.ro(self.s.db_path) as c:  # the newest note from this week, quoted back as written (never to a model)
-            for rid in rc.week_run_ids:
-                n = c.execute("SELECT note FROM run_notes WHERE user_id=? AND run_id=?", (uid, rid)).fetchone()
-                if n:
-                    body += f"\n\n{cv_notes.quote(n['note'])}"
-                    break
+        with db.ro(self.s.db_path) as c:  # the newest run this week with a note: it is quoted at send time, not stored
+            quote_rid = next((rid for rid in rc.week_run_ids if c.execute(
+                "SELECT 1 FROM run_notes WHERE user_id=? AND run_id=?", (uid, rid)).fetchone()), None)
         card_id = secrets.token_hex(16)
         with db.tx(self.s.db_path) as c:
-            c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
-                      "VALUES (?,?,?,?,?,?,?,?,?)",
-                      (card_id, uid, f"recap:{week_ref}", "recap", rc.rendered.headline, body, "[]",
-                       "template", iso(now)))
+            c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at, "
+                      "quote_run_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                      (card_id, uid, f"recap:{week_ref}", "recap", rc.rendered.headline, rc.rendered.body, "[]",
+                       "template", iso(now), quote_rid))
             self._convo_write(c, uid, now, card_id, rc.rendered.situation, rc.media, rc.rendered.allowed,
                               [rc.rendered.variant_id], None)
             if rc.empty:
@@ -936,7 +956,7 @@ class Service:
         if ch is None:
             raise ChannelError("channel not configured")
         with db.ro(self.s.db_path) as c:
-            card = dict(c.execute("SELECT * FROM cards WHERE card_id=?", (card_id,)).fetchone())
+            card = self._quoted(c, dict(c.execute("SELECT * FROM cards WHERE card_id=?", (card_id,)).fetchone()))
         if card["sent_at"]:
             return True
         buttons = json.loads(card["buttons_json"])
@@ -971,6 +991,17 @@ class Service:
                           (user["id"], "followup", iso(now), f"fu:{card_id}:{mode}", f"{card_id}:{mode}"))
         return True
 
+    @staticmethod
+    def _quoted(c, card: dict) -> dict:
+        """A recap that quotes a note gets the quote added now, from the note as it is now: a replaced or deleted note
+        is never quoted, and the quote is not kept in the card."""
+        rid = card.get("quote_run_id")
+        if rid:
+            n = c.execute("SELECT note FROM run_notes WHERE user_id=? AND run_id=?", (card["user_id"], rid)).fetchone()
+            if n:
+                card = {**card, "body": f"{card['body']}\n\n{cv_notes.quote(n['note'])}"}
+        return card
+
     def _send_followup(self, user: dict, ref: str, now: datetime) -> bool:
         """False when dropped: unknown card or mode, or older than stale_card_hours since the media went out (a
         follow-up held back by the kill switch or quiet hours must not arrive long after its card)."""
@@ -982,7 +1013,8 @@ class Service:
             row = c.execute("SELECT * FROM cards WHERE card_id=? AND user_id=?", (card_id, user["id"])).fetchone()
         if row is None:
             return False
-        card = dict(row)
+        with db.ro(self.s.db_path) as c:
+            card = self._quoted(c, dict(row))
         if not card["sent_at"] or parse_iso(card["sent_at"]) < now - timedelta(hours=self.s.stale_card_hours):
             log.info("follow-up dropped: stale")
             return False
@@ -1018,7 +1050,8 @@ class Service:
                 runs = [dict(r) for r in c.execute("SELECT * FROM runs WHERE user_id=? AND run_id=?",
                                                     (user["id"], card.get("run_id")))]
         try:
-            return self.media.render(plan, card, runs)
+            # the renderer gets the two fields it uses, never the whole card (whose body may quote a note)
+            return self.media.render(plan, {"run_id": card.get("run_id"), "headline": card["headline"]}, runs)
         except MediaError as e:
             log.warning("render failed, sending text: %s", e)
         except Exception as e:  # renderer missing or crashed: the text card is still the product

@@ -17,7 +17,7 @@ from companion.channels import Inbound, OutCard, WhatsAppChannel
 from companion.convo import suggest
 from companion.convo import touches as T
 from companion.convo.weather import Forecast
-from companion.service import (NOTE_EXPIRED, NOTE_PAUSED, NOTE_PROMPT, NOTE_SAVED, NOTE_TOO_LONG, UNKNOWN, RunIn)
+from companion.service import (NOTE_CANCELLED, NOTE_DELETE_FIRST, NOTE_EXPIRED, NOTE_PAUSED, NOTE_PROMPT, NOTE_SAVED, NOTE_TOO_LONG, UNKNOWN, RunIn)
 from companion.timeutil import iso, now_utc
 from conftest import OWNER, auth, enrol, make_settings, post_tg, run_payload, tg_callback, tg_update
 from test_convo import NOW, ctx, run
@@ -186,13 +186,62 @@ def test_nothing_is_stored_while_paused(client, fakes):
     assert last_text(fakes) == NOTE_PAUSED and not mode_rows(client)
     say(client, "RESUME")
     tap_note(client)
-    say(client, "STOP")                                    # pausing during note mode
+    say(client, "STOP")                                    # STOP pauses and closes note mode
+    assert q(client, "SELECT paused FROM users")[0]["paused"] == 1 and not mode_rows(client)
     say(client, "an unwanted note")
-    assert last_text(fakes) == NOTE_PAUSED and not notes_rows(client)
-    say(client, "RESUME")                                  # resuming also closes note mode
-    assert not mode_rows(client)
-    say(client, "late note")
     assert last_text(fakes) == UNKNOWN and not notes_rows(client)
+
+
+def _users(client):
+    return q(client, "SELECT COUNT(*) n FROM users")[0]["n"], q(client, "SELECT COUNT(*) n FROM runs")[0]["n"]
+
+
+def test_a_bare_delete_in_note_mode_does_not_erase_anything_the_second_one_does(client, fakes):
+    t = enrol(client)
+    send_run(client, t)
+    tap_note(client)
+    say(client, "delete")
+    assert last_text(fakes) == NOTE_DELETE_FIRST and _users(client) == (1, 1)
+    assert not mode_rows(client) and not notes_rows(client)     # never stored as a note
+    say(client, "DELETE")                                       # note mode is gone: today's behaviour
+    assert _users(client) == (0, 0) and "Everything we held about you is deleted" in last_text(fakes)
+
+
+def test_delete_outside_note_mode_still_erases_at_once(client, fakes):
+    t = enrol(client)
+    send_run(client, t)
+    say(client, "DELETE")
+    assert _users(client) == (0, 0)
+
+
+def test_delete_after_note_mode_lapsed_still_erases(client, fakes):
+    t = enrol(client)
+    send_run(client, t)
+    tap_note(client)
+    client.svc.handle_inbound(Inbound("telegram", OWNER, "lapsed", text="/delete"), now=now_utc() + timedelta(minutes=11))
+    assert _users(client) == (0, 0)
+
+
+def test_cancel_end_quit_just_leave_note_mode(client, fakes):
+    t = enrol(client)
+    send_run(client, t)
+    for word in ("cancel", "End", "/quit"):
+        tap_note(client)
+        say(client, word)
+        assert last_text(fakes) == NOTE_CANCELLED and not mode_rows(client) and not notes_rows(client)
+        assert q(client, "SELECT paused FROM users")[0]["paused"] == 0
+    say(client, "cancel")                                       # outside note mode: today's behaviour, it pauses
+    assert q(client, "SELECT paused FROM users")[0]["paused"] == 1
+
+
+def test_stop_and_unsubscribe_in_note_mode_pause_and_close_it(client, fakes):
+    t = enrol(client)
+    send_run(client, t)
+    for word in ("STOP", "unsubscribe"):
+        say(client, "RESUME")
+        tap_note(client)
+        say(client, word)
+        assert q(client, "SELECT paused FROM users")[0]["paused"] == 1 and not mode_rows(client) and not notes_rows(client)
 
 
 def test_a_second_note_on_the_same_run_replaces_the_first(client, fakes):
@@ -309,6 +358,32 @@ def test_the_recap_quotes_the_weeks_newest_note(client, fakes):
     assert "You said: “felt strong on the hill”" in text and "older note" not in text
 
 
+def test_the_recap_quote_is_never_stored_and_follows_the_note(client, fakes):
+    t = enrol(client)
+    uid = _week(client)
+    c = sqlite3.connect(client.svc.s.db_path)
+    c.execute("INSERT INTO run_notes (user_id, run_id, note, created_at) VALUES (?,?,?,?)", (uid, "w3", f"{SENTINEL} first", "2026-10-10T08:00:00Z"))
+    c.commit()
+    sunday = datetime(2026, 10, 11, 19, 30, tzinfo=timezone.utc)
+    card_id = client.svc._build_recap_card(uid, "2026-W41", sunday)
+    # the card row holds no note text anywhere, so a replaced or deleted note leaves no copy behind
+    assert SENTINEL not in json.dumps([dict(r) for r in q(client, "SELECT * FROM cards")])
+    assert SENTINEL not in json.dumps(client.get("/v1/me", headers=auth(t)).json()["messages_sent_30d"])
+    c.execute("UPDATE run_notes SET note=? WHERE run_id='w3'", ("second thought",))   # the note is replaced before the send
+    c.commit()
+    user = dict(q(client, "SELECT * FROM users")[0])
+    client.svc._send_card(user, card_id, sunday + timedelta(seconds=1))
+    sent = fakes.tg_texts()[-1]
+    assert "second thought" in sent and "first" not in sent and SENTINEL not in sent
+    # a card still waiting when the note goes: nothing is quoted
+    c.execute("UPDATE cards SET sent_at=NULL WHERE card_id=?", (card_id,))
+    c.execute("DELETE FROM run_notes")
+    c.commit()
+    n = len(fakes.tg_texts())
+    client.svc._send_card(user, card_id, sunday + timedelta(minutes=2))
+    assert "You said" not in fakes.tg_texts()[n]
+
+
 def test_a_long_note_is_clipped_in_the_recap_quote():
     long = "a" * 300
     out = notes.quote(long)
@@ -346,7 +421,7 @@ def test_purge_removes_orphaned_notes_and_old_note_mode(client, fakes):
     send_run(client, t)
     uid = q(client, "SELECT id FROM users")[0]["id"]
     c = sqlite3.connect(client.svc.s.db_path)
-    c.execute("INSERT INTO note_mode (user_id, run_id, card_id, expires_at) VALUES (?,?,?,?)", (uid, "r1", "x", iso(now_utc() - timedelta(hours=3))))
+    c.execute("INSERT INTO note_mode (user_id, run_id, expires_at) VALUES (?,?,?)", (uid, "r1", iso(now_utc() - timedelta(hours=3))))
     c.commit()
     client.svc.purge(now_utc())
     assert not mode_rows(client)
@@ -384,6 +459,36 @@ def test_a_note_is_never_sent_to_a_model(client, fakes):
     assert SENTINEL not in blob and "calf" not in blob.lower()
     for call in fakes.llm:
         assert "note" not in json.dumps(call["messages"][1]).lower()
+
+
+def test_the_recap_quote_path_sends_nothing_to_the_writer_or_the_renderer(tmp_path, fakes):
+    seen = []
+
+    class Recorder:
+        def render(self, plan, card, runs, memory=None):
+            seen.append(json.dumps({"plan": plan, "card": card, "runs": runs}, default=str))
+            return None
+
+    s = make_settings(tmp_path, media_enabled=True)
+    app = create_app(s, httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=False)
+    with TestClient(app) as c:
+        c.svc = app.state.svc
+        c.svc.media = Recorder()
+        enrol(c)
+        uid = _week(c)
+        db_ = sqlite3.connect(s.db_path)
+        db_.execute("INSERT INTO run_notes (user_id, run_id, note, created_at) VALUES (?,?,?,?)",
+                    (uid, "w3", f"{SENTINEL} sore calf", "2026-10-10T08:00:00Z"))
+        db_.commit()
+        sunday = datetime(2026, 10, 11, 19, 30, tzinfo=timezone.utc)
+        assert c.svc.plan_recap(sunday) == 1
+        c.svc.run_outbox(sunday + timedelta(seconds=1))
+        assert any(SENTINEL in t for t in fakes.tg_texts()), "the quote path must have run"
+        assert seen, "the renderer must have been called, or this proves nothing"
+        assert not any(SENTINEL in x or "calf" in x for x in seen)
+        assert not any(SENTINEL in json.dumps(call) for call in fakes.llm)
+        card = json.loads(seen[0])["card"]
+        assert set(card) == {"run_id", "headline"}                  # only the two fields the renderer uses
 
 
 def test_nothing_that_talks_to_a_model_or_a_renderer_reads_the_notes_table():

@@ -122,7 +122,7 @@ def session_for(kind: str, history: Sequence[Mapping[str, Any]], now: datetime |
 
 def _kind_reason(kind: str) -> str:
     return {"easy_load": "load", "recover": "hard_recent", "heat": "weather", "wet": "weather", "feel": "feel",
-            "plan_long": "plan", "good": "weather", "gap": "gap", "soft": "recent_note"}[kind]
+            "plan_long": "plan", "good": "weather", "gap": "gap", "soft": "rest"}[kind]
 
 
 def feel_cause(prev_situation: str | None) -> str:

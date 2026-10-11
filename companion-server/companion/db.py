@@ -73,7 +73,8 @@ CREATE TABLE IF NOT EXISTS cards (
   headline TEXT NOT NULL, body TEXT NOT NULL,
   buttons_json TEXT NOT NULL,
   source TEXT NOT NULL,
-  created_at TEXT NOT NULL, sent_at TEXT, answered_at TEXT
+  created_at TEXT NOT NULL, sent_at TEXT, answered_at TEXT,
+  quote_run_id TEXT  -- a recap that quotes this run's note: the quote is looked up at send time, never stored in body
 );
 CREATE UNIQUE INDEX IF NOT EXISTS cards_once ON cards (user_id, run_id, kind) WHERE run_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS outbox (
@@ -137,7 +138,6 @@ CREATE TABLE IF NOT EXISTS run_notes (
 CREATE TABLE IF NOT EXISTS note_mode (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   run_id TEXT NOT NULL,
-  card_id TEXT NOT NULL,
   expires_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS convo_area (
@@ -219,6 +219,12 @@ def init(path: str) -> None:
         if "app_type" not in [r["name"] for r in c.execute("PRAGMA table_info(runs)")]:
             try:
                 c.execute("ALTER TABLE runs ADD COLUMN app_type TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e):
+                    raise
+        if "quote_run_id" not in [r["name"] for r in c.execute("PRAGMA table_info(cards)")]:
+            try:
+                c.execute("ALTER TABLE cards ADD COLUMN quote_run_id TEXT")
             except sqlite3.OperationalError as e:
                 if "duplicate column" not in str(e):
                     raise
