@@ -5,6 +5,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart' as fs;
@@ -27,6 +28,10 @@ abstract class TransferGateway {
   /// Empty when cancelled.
   Future<List<PickedFile>> pickFiles();
 
+  /// Like [pickFiles], but hands back streams so a big export is read in
+  /// chunks, never as one string. Empty when cancelled.
+  Future<List<PickedSource>> pickRunSources();
+
   /// Let the user pick one GPX or TCX route file (Follow a route); its text,
   /// or null when cancelled. The file is read here and never copied or sent.
   Future<PickedFile?> pickRouteFile();
@@ -47,6 +52,19 @@ class PickedFile {
   const PickedFile({required this.name, required this.text});
   final String name;
   final String text;
+}
+
+/// A picked document that is opened (and read) only when asked.
+class PickedSource {
+  const PickedSource({required this.name, required this.open});
+  PickedSource.fromText(String name, String text)
+    : this(name: name, open: () => Stream.value(utf8.encode(text)));
+  PickedSource.fromBytes(String name, List<int> bytes)
+    : this(name: name, open: () => Stream.value(bytes));
+  final String name;
+
+  /// A fresh byte stream each call (the reader peeks, then reads).
+  final Stream<List<int>> Function() open;
 }
 
 class ShareSheetTransferGateway implements TransferGateway {
@@ -86,6 +104,19 @@ class ShareSheetTransferGateway implements TransferGateway {
   }
 
   @override
+  Future<List<PickedSource>> pickRunSources() async {
+    const group = fs.XTypeGroup(
+      label: 'Run Supreme exports',
+      extensions: ['runsupreme', 'json'],
+      mimeTypes: ['application/json', 'application/octet-stream'],
+    );
+    final files = await fs.openFiles(acceptedTypeGroups: const [group]);
+    return [
+      for (final f in files) PickedSource(name: f.name, open: f.openRead),
+    ];
+  }
+
+  @override
   Future<PickedFile?> pickRouteFile() async {
     // GPX and TCX have no registered Android type of their own: the extension
     // narrows the picker where it can, the XML types where it cannot.
@@ -121,6 +152,9 @@ class FakeTransferGateway implements TransferGateway {
   /// What the next [pickFiles] returns.
   final List<PickedFile> toPick;
 
+  /// Extra picks for [pickRunSources] (e.g. gzipped bytes), after [toPick].
+  final List<PickedSource> toPickSources = [];
+
   final List<Completer<List<String>>> _waiting = [];
 
   /// Completes with the paths of the next [shareFiles] call, once its files
@@ -131,6 +165,10 @@ class FakeTransferGateway implements TransferGateway {
     _waiting.add(c);
     return c.future;
   }
+
+  /// Bytes of the first file of each [shareFiles] call, read at share time
+  /// (callers delete the temp file afterwards).
+  final List<List<int>> sharedBytes = [];
 
   /// Mime type of each [shareFiles] call, parallel to [shared].
   final List<String> sharedMimeTypes = [];
@@ -159,6 +197,9 @@ class FakeTransferGateway implements TransferGateway {
       if (!await File(p).exists()) throw StateError('shared file missing: $p');
     }
     shared.add(List.of(paths));
+    sharedBytes.add(
+      paths.isEmpty ? <int>[] : await File(paths.first).readAsBytes(),
+    );
     sharedMimeTypes.add(mimeType);
     for (final c in _waiting) {
       c.complete(List.of(paths));
@@ -168,6 +209,12 @@ class FakeTransferGateway implements TransferGateway {
 
   @override
   Future<List<PickedFile>> pickFiles() async => List.of(toPick);
+
+  @override
+  Future<List<PickedSource>> pickRunSources() async => [
+    for (final f in toPick) PickedSource.fromText(f.name, f.text),
+    ...toPickSources,
+  ];
 
   @override
   Future<PickedFile?> pickRouteFile() async {

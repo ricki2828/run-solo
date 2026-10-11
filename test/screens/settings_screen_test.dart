@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -346,7 +347,7 @@ void main() {
     expect(find.text('© Mapterhorn'), findsOneWidget);
   });
 
-  testWidgets('Move runs shares one bundle file per run', (tester) async {
+  testWidgets('Move all runs shares ONE gzipped file', (tester) async {
     final r1 = fourByFourFile(n: 1, start: DateTime.utc(2026, 9, 10, 6));
     final r2 = freeRunFile(n: 2, start: DateTime.utc(2026, 9, 12, 6));
     final transfer = FakeTransferGateway();
@@ -356,22 +357,23 @@ void main() {
       home: SettingsScreen(now: now),
     );
     await pumpTimes(tester, 3);
-    await scrollTo(tester, find.text('Move runs to another Run Supreme'));
+    await scrollTo(tester, find.text('Move all runs (one file)'));
     // Real file I/O (temp dir) needs real async time. Wait for the share
-    // itself, not a fixed delay: 300 ms flaked once on CI (#30, 2ca64d0:
-    // "Expected: an object with length of <1>, Actual: []").
+    // itself, not a fixed delay: 300 ms flaked once on CI (#30, 2ca64d0).
     await tester.runAsync(() async {
       final shared = transfer.nextShare();
-      await tester.tap(find.text('Move runs to another Run Supreme'));
+      await tester.tap(find.text('Move all runs (one file)'));
       await shared.timeout(const Duration(seconds: 20));
     });
     await pumpTimes(tester, 3);
     expect(transfer.shared, hasLength(1));
-    expect(transfer.shared.single, hasLength(2));
-    final ids = {
-      for (final p in transfer.shared.single)
-        engine.RunBundleCodec.decode(File(p).readAsStringSync()).run.id,
-    };
+    expect(transfer.shared.single, hasLength(1));
+    final path = transfer.shared.single.single;
+    expect(File(path).existsSync(), isFalse, reason: 'temp copy removed');
+    expect(path, endsWith('-2runs.runsupreme'));
+    expect(path.split('/').last, startsWith('run-supreme-runs-'));
+    final text = utf8.decode(gzip.decode(transfer.sharedBytes.single));
+    final ids = {for (final b in engine.RunExportCodec.decode(text)) b.run.id};
     expect(ids, {r1.id, r2.id});
   });
 
@@ -405,7 +407,7 @@ void main() {
     expect(storage.enforceCalls, 1, reason: 'budget enforced after import');
     expect(
       find.text(
-        'Imported 1, 1 already here (edits not merged), 1 not Run Supreme files. '
+        'Imported 1 · 1 already here (edits not merged) · 1 not Run Supreme files. '
         '2 older runs are past the backup budget: move runs to another Run '
         'Supreme to keep them safe.',
       ),

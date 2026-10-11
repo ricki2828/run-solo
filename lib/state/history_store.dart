@@ -450,6 +450,13 @@ abstract class RunStore implements HistoryStore {
   /// Solo" (plan §4 export; the receiving app dedupes by uuid).
   Future<List<engine.RunBundle>> exportBundles();
 
+  /// The same runs one at a time, so "Move all runs (one file)" never holds
+  /// them all in memory. One bundle per uuid; order is not promised.
+  ///
+  /// [onSkipped] is called once per run file that could not be read
+  /// (damaged, or made by a newer app), so the export can say so.
+  Stream<engine.RunBundle> exportBundleStream({void Function()? onSkipped});
+
   /// Write bundles that are not already here (run file + sidecar). Returns
   /// how many landed and which uuids were skipped as duplicates.
   Future<ImportResult> importBundles(List<engine.RunBundle> bundles);
@@ -945,6 +952,15 @@ class MemoryRunStore implements RunStore {
     for (final f in files.where((f) => !_deleted.contains(f.id)))
       engine.RunBundle(run: f, sidecar: sidecars[f.id]),
   ];
+
+  @override
+  Stream<engine.RunBundle> exportBundleStream({
+    void Function()? onSkipped,
+  }) async* {
+    for (final b in await exportBundles()) {
+      yield b;
+    }
+  }
 
   @override
   Future<ImportResult> importBundles(List<engine.RunBundle> bundles) async {
@@ -1725,6 +1741,38 @@ class FileRunStore implements RunStore {
     ];
     out.sort((a, b) => a.run.start.compareTo(b.run.start));
     return out;
+  }
+
+  /// One run at a time straight off disk (same rules as [_scan]: a damaged
+  /// or newer file is skipped, [runsDir] wins over the archive for a uuid).
+  @override
+  Stream<engine.RunBundle> exportBundleStream({
+    void Function()? onSkipped,
+  }) async* {
+    final seen = <String>{};
+    for (final dir in [runsDir, archiveDir]) {
+      if (!await dir.exists()) continue;
+      await for (final entity in dir.list()) {
+        if (entity is! File) continue;
+        final base = entity.uri.pathSegments.last;
+        if (_name.firstMatch(base) == null) continue;
+        engine.RunBundle bundle;
+        try {
+          final text = utf8.decode(gzip.decode(await entity.readAsBytes()));
+          final run = engine.RunFileCodec.decode(text);
+          if (!seen.add(run.id)) continue;
+          bundle = engine.RunBundle(
+            run: run,
+            sidecar: await _readSidecar(_sidecarFor(entity)),
+          );
+        } catch (e) {
+          debugPrint('export: skipped $base ($e)');
+          onSkipped?.call();
+          continue;
+        }
+        yield bundle;
+      }
+    }
   }
 
   /// Sidecar first, then the run file (plan §4 dual-write order), each via
