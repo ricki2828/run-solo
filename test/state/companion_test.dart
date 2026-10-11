@@ -69,6 +69,14 @@ class FakeCompanionHttp implements CompanionHttp {
   }
 }
 
+/// What FastAPI answers when the body has a field the server does not know.
+const extraForbidden =
+    '{"detail":[{"type":"extra_forbidden","loc":["body","plan_next"],'
+    '"msg":"Extra inputs are not permitted"}]}';
+
+/// A 422 that is the run's own fault (a start time in the future).
+const futureStart = '{"detail":"start_utc is in the future"}';
+
 /// Turn on, then type the code the bot sent.
 Future<void> enrolNow(CompanionController c, [String code = '123456']) async {
   await c.turnOn();
@@ -385,6 +393,154 @@ void main() {
     });
   });
 
+  group('plan facts', () {
+    // Monday 5 Oct 2026, 3 a week: w1s1 intervals (Mon), w1s2 easy 30 min
+    // (Wed), w1s3 long 45 min (Fri), and so on to week 4.
+    engine.BlockPlan plan() => engine.BlockPlanner.build(
+      lane: engine.IdentityLane.speed,
+      perWeek: 3,
+      start: DateTime(2026, 10, 5),
+    );
+
+    engine.BlockView view(
+      engine.BlockPlan p, {
+      List<engine.PlanRun> runs = const [],
+    }) => engine.BlockResolver.resolve(p, runs, now: DateTime(2026, 10, 7, 12));
+
+    engine.PlanRun planRun(String id, {double km = 7}) => engine.PlanRun(
+      id: id,
+      start: DateTime(2026, 10, 6, 7),
+      movingMs: 40 * 60000,
+      distanceM: km * 1000,
+      kind: engine.PlanRunKind.other,
+    );
+
+    const wire = {
+      'plan_kind',
+      'plan_target_m',
+      'plan_week',
+      'plan_weeks',
+      'plan_next',
+    };
+
+    // Tuesday 6 Oct 07:00, the wall clock where the run was done.
+    final at = DateTime(2026, 10, 6, 7);
+
+    test('no plan sends nothing', () {
+      expect(companionPlanFacts(null, 'x', runStart: at), isEmpty);
+    });
+
+    test('the run done as a planned session, and what is next', () {
+      final f = companionPlanFacts(
+        view(plan(), runs: [planRun('x')]),
+        'x',
+        runStart: at,
+      );
+      expect(f['plan_kind'], 'long'); // w1s3 took the run
+      expect(f['plan_week'], 1);
+      expect(f['plan_weeks'], 4);
+      expect(f.containsKey('plan_target_m'), isFalse); // no distance planned
+      expect(f.containsKey('plan_weeks_to_race'), isFalse); // no race date
+      // Monday's overdue intervals are skipped; Wednesday's easy run is next.
+      expect(f['plan_next'], {
+        'type': 'easy',
+        'day': '2026-10-07',
+        'week': 1,
+        'minutes': 30,
+      });
+      expect(f.keys.toSet().difference(wire), isEmpty);
+    });
+
+    test('a run in the plan period outside any session carries the week', () {
+      final f = companionPlanFacts(
+        view(plan()),
+        'not-in-the-plan',
+        runStart: at,
+      );
+      expect(f.containsKey('plan_kind'), isFalse);
+      expect(f['plan_week'], 1);
+      expect(f['plan_weeks'], 4);
+    });
+
+    test('an old run from before the plan gets no week and no next', () {
+      final f = companionPlanFacts(
+        view(plan()),
+        'old',
+        runStart: DateTime(2026, 6, 1, 7),
+      );
+      expect(f, isEmpty);
+    });
+
+    test('a size only where the plan holds one', () {
+      final p = plan();
+      final test15 = p.sessions[2].copyWith(minDistanceM: 15000);
+      final f = companionPlanFacts(
+        view(p.withSession(test15), runs: [planRun('x', km: 16)]),
+        'x',
+        runStart: at,
+      );
+      expect(f['plan_target_m'], 15000);
+      final next =
+          companionPlanFacts(view(plan()), 'y', runStart: at)['plan_next']!
+              as Map;
+      expect(
+        next.keys.toSet().difference({
+          'type',
+          'day',
+          'week',
+          'minutes',
+          'distance_m',
+        }),
+        isEmpty,
+      );
+    });
+
+    test('a corrupt stored number is left out, not sent to fail the run', () {
+      final p = plan();
+      final bad = p.withSession(p.sessions[1].copyWith(minutes: 0));
+      final next =
+          companionPlanFacts(view(bad), 'y', runStart: at)['plan_next']! as Map;
+      expect(next.containsKey('minutes'), isFalse);
+      expect(next['type'], 'easy');
+      final far = p.withSession(p.sessions[2].copyWith(minDistanceM: 900000));
+      final f = companionPlanFacts(
+        view(far, runs: [planRun('x', km: 950)]),
+        'x',
+        runStart: at,
+      );
+      expect(f.containsKey('plan_target_m'), isFalse);
+    });
+
+    test('a finished plan sends no next session', () {
+      final after = engine.BlockResolver.resolve(
+        plan(),
+        const [],
+        now: DateTime(2026, 12, 20),
+      );
+      final f = companionPlanFacts(
+        after,
+        'x',
+        runStart: DateTime(2026, 12, 19),
+      );
+      expect(f.containsKey('plan_next'), isFalse);
+    });
+
+    test('the summary carries the plan facts and no other new field', () async {
+      await store.setUtcOffset(run.id, 480);
+      final d = (await store.load(run.id))!;
+      final f = companionPlanFacts(
+        view(plan(), runs: [planRun('x')]),
+        'x',
+        runStart: at,
+      );
+      final j = companionSummary(d, plan: f)!;
+      expect(j['plan_week'], 1);
+      expect(j['plan_next'], isA<Map>());
+      expect(companionSummary(d)!.keys.toSet().intersection(wire), isEmpty);
+      expect(jsonEncode(j), isNot(contains('reason'))); // no free text
+    });
+  });
+
   group('weather switch', () {
     late SendCoordinator coordinator;
     var clock = DateTime.utc(2026, 9, 24, 6, 40);
@@ -624,6 +780,117 @@ void main() {
         expect(rec.error, 'Companion key not accepted');
       },
     );
+
+    test(
+      'the plan facts ride on the run; a failing plan read never fails it',
+      () async {
+        await enrol();
+        target.planFacts = (_) async => {'plan_week': 2, 'plan_weeks': 4};
+        await coordinator.sendAuto(run.id);
+        final sent = http.bodyOf(http.to('POST', '/v1/runs').single);
+        expect(sent['plan_week'], 2);
+        expect(sent['plan_weeks'], 4);
+      },
+    );
+
+    test(
+      'a plan read that throws still sends the run, without plan fields',
+      () async {
+        await enrol();
+        target.planFacts = (_) async => throw StateError('boom');
+        await coordinator.sendAuto(run.id);
+        final sent = http.bodyOf(http.to('POST', '/v1/runs').single);
+        expect(sent['run_id'], run.id);
+        expect(sent.containsKey('plan_week'), isFalse);
+      },
+    );
+
+    test(
+      'a 422 means the server is older: no try spent, retried after 6 h',
+      () async {
+        await enrol();
+        http.handler = (_) => const CompanionReply(422, extraForbidden);
+        await coordinator.sendAuto(run.id);
+        expect(http.to('POST', '/v1/runs'), hasLength(1));
+        final d = (await store.load(run.id))!;
+        expect(
+          d.sidecar.sends[CompanionTarget.targetId],
+          isNull,
+        ); // nothing logged
+        expect(d.sidecar.autoSendDue(CompanionTarget.targetId), isTrue);
+        // Every later open inside the wait makes no request at all.
+        for (var i = 0; i < 4; i++) {
+          await coordinator.reconcile();
+        }
+        expect(http.to('POST', '/v1/runs'), hasLength(1));
+        // After 6 hours, with the server upgraded, the run goes.
+        http.handler = null;
+        clock = clock.add(const Duration(hours: 6, minutes: 1));
+        await coordinator.reconcile();
+        expect(http.to('POST', '/v1/runs'), hasLength(2));
+        expect(
+          (await store.load(run.id))!
+              .sidecar
+              .sends[CompanionTarget.targetId]!
+              .ok,
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'any other 422 is the run\'s own: logged once as failed, never retried',
+      () async {
+        await enrol();
+        http.handler = (_) => const CompanionReply(422, futureStart);
+        await coordinator.sendAuto(run.id);
+        for (var i = 0; i < 4; i++) {
+          await coordinator.reconcile();
+        }
+        expect(http.to('POST', '/v1/runs'), hasLength(1));
+        final rec = (await store.load(run.id))!
+            .sidecar
+            .sends[CompanionTarget.targetId]!;
+        expect(rec.ok, isFalse);
+        expect(rec.error, contains('refused'));
+        expect(
+          (await store.load(run.id))!.sidecar
+              .autoSendDue(CompanionTarget.targetId),
+          isFalse,
+        );
+        // It does not hold other runs off: no "server out of date" wait.
+        http.handler = null;
+        final other = await store.load(run.id);
+        final res = await target.send(
+          SendRequest(
+            run: other!.run,
+            title: 't',
+            format: ExportFormat.tcx,
+            detail: other,
+          ),
+        );
+        expect(res.ok, isTrue);
+      },
+    );
+
+    test('a new app start retries at once (the wait is in memory)', () async {
+      await enrol();
+      http.handler = (_) => const CompanionReply(422, extraForbidden);
+      await coordinator.sendAuto(run.id);
+      http.handler = null;
+      target = CompanionTarget(controller: ctl, now: () => clock);
+      coordinator = SendCoordinator(
+        history: store,
+        settings: settings,
+        targets: [target],
+        now: () => clock,
+      );
+      await coordinator.reconcile();
+      expect(
+        (await store.load(run.id))!.sidecar.sends[CompanionTarget.targetId]!.ok,
+        isTrue,
+      );
+    });
   });
 
   group('feel persistence', () {

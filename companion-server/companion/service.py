@@ -10,11 +10,12 @@ import logging
 import re
 import secrets
 import string
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic_core import PydanticCustomError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from . import db
 from .channels import ChannelError, Inbound, OutCard, TelegramChannel, WhatsAppChannel, feel_template_eligible
@@ -91,6 +92,28 @@ def replay_hold(now: datetime) -> str:
 VERDICT_WIRE = ("faster", "holding", "slower", "noRealChange", "baselineSet", "noVerdict", "indoorRun")
 
 
+class PlanNextIn(BaseModel):
+    """The next session in the runner's 4-week block, as the app plans it. Numbers only when the plan holds them."""
+    model_config = ConfigDict(extra="forbid")
+    type: str = Field(pattern=r"^(easy|long|quality)$")
+    day: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")  # the planned local date
+    week: int = Field(ge=1, le=52)
+    minutes: int | None = Field(default=None, ge=1, le=600)
+    distance_m: int | None = Field(default=None, ge=500, le=100000)
+
+    @field_validator("minutes", "distance_m", mode="before")
+    @classmethod
+    def _whole(cls, v):
+        """Like the top-level metres: a finite decimal is rounded, not refused."""
+        return round(v) if isinstance(v, float) and math.isfinite(v) else v
+
+    @field_validator("day")
+    @classmethod
+    def _real_date(cls, v: str) -> str:
+        date.fromisoformat(v)  # ValueError -> 422 for 2026-13-45
+        return v
+
+
 class RunIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     run_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.:-]+$")
@@ -110,14 +133,37 @@ class RunIn(BaseModel):
     route_id: str | None = Field(default=None, max_length=64)
     load_state: str | None = Field(default=None, pattern=r"^(low|steady|high|very_high)$")
     pb: str | None = Field(default=None, pattern=r"^(5k|10k|half|longest|fastest_km)$")
-    plan_kind: str | None = Field(default=None, pattern=r"^[a-z_]{1,24}$")
+    plan_kind: str | None = Field(default=None, pattern=r"^(easy|long|quality)$")
     plan_target_m: int | None = Field(default=None, ge=0, le=300000)
     plan_weeks_to_race: int | None = Field(default=None, ge=0, le=104)
+    plan_week: int | None = Field(default=None, ge=1, le=52)   # this run's week of the app's plan
+    plan_weeks: int | None = Field(default=None, ge=1, le=52)  # how many weeks the plan has
+    plan_next: PlanNextIn | None = None
     feel: str | None = Field(default=None, pattern=r"^(easy|right|hard)$")
     area_lat: float | None = Field(default=None, ge=-90, le=90)  # approximate area for weather; the phone rounds to 0.1 degree and the server rounds again
     area_lon: float | None = Field(default=None, ge=-180, le=180)
 
-    @field_validator("distance_m", "climb_m", mode="before")
+    @field_validator("plan_kind", "plan_target_m", "plan_week", "plan_weeks", "plan_next", mode="wrap")
+    @classmethod
+    def _plan_field_is_optional_extra(cls, v, handler):
+        """A bad plan value drops that one field (stored as none), never the run: the plan only adds colour to a card."""
+        try:
+            return handler(v)
+        except ValidationError as e:
+            if any(err["type"] == "extra_forbidden" for err in e.errors()):
+                # an unknown key (inside plan_next) stays a loud 422: the tripwire for a client that over-sends
+                raise PydanticCustomError("extra_forbidden", "Extra inputs are not permitted") from None
+            return None
+
+    @model_validator(mode="after")
+    def _plan_consistent(self):
+        if self.plan_week is not None and self.plan_weeks is not None and self.plan_week > self.plan_weeks:
+            self.plan_week = self.plan_weeks = None
+        if self.plan_next is not None and self.plan_weeks is not None and self.plan_next.week > self.plan_weeks:
+            self.plan_next = None
+        return self
+
+    @field_validator("distance_m", "climb_m", "plan_target_m", mode="before")
     @classmethod
     def _whole_metres(cls, v):
         """The app sends metres with one decimal (r1); store whole metres. Only finite numbers; strings, NaN and inf still fail."""
@@ -509,7 +555,8 @@ class Service:
                 raise NotFound()
             runs = [dict(r) for r in c.execute(
                 "SELECT run_id, type, app_type, start_utc, zone_id, duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, "
-                "verdict, locality, feel, received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
+                "verdict, locality, plan_kind, plan_target_m, plan_week, plan_weeks, plan_next_type, plan_next_day, plan_next_week, "
+                "plan_next_min, plan_next_m, feel, received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
             cutoff = iso(now - timedelta(days=RETENTION_LOG_DAYS))
             msgs = [dict(r) for r in c.execute(
                 "SELECT k.kind, k.headline, k.body, k.sent_at, cc.situation, cc.touch_kind, cc.media_json FROM cards k "
@@ -592,6 +639,9 @@ class Service:
             raise ValueError("start_utc in the future")
         end = run.start_utc + timedelta(seconds=run.duration_s)
         stale = (now - end) > timedelta(hours=self.s.stale_card_hours)
+        nx = run.plan_next
+        plan_cols = (run.plan_week, run.plan_weeks, nx.type if nx else None, nx.day if nx else None,
+                     nx.week if nx else None, nx.minutes if nx else None, nx.distance_m if nx else None)
         with db.tx(self.s.db_path) as c:
             coach_type, app_type = self._coach_type(c, uid, run)
             if c.execute("SELECT 1 FROM runs WHERE user_id=? AND run_id=?", (uid, run.run_id)).fetchone():
@@ -603,12 +653,13 @@ class Service:
                         "UPDATE runs SET start_utc=?, end_utc=?, utc_offset_min=?, zone_id=?, type=?, app_type=?, duration_s=?, "
                         "distance_m=?, pace_s_per_km=?, true_pace_s_per_km=?, verdict=?, scores_delta=?, zone_min=?, "
                         "climb_m=?, locality=?, route_id=?, load_state=?, pb=?, plan_kind=?, plan_target_m=?, "
-                        "plan_weeks_to_race=?, feel=COALESCE(feel, ?) WHERE user_id=? AND run_id=?",
+                        "plan_weeks_to_race=?, plan_week=?, plan_weeks=?, plan_next_type=?, plan_next_day=?, plan_next_week=?, "
+                        "plan_next_min=?, plan_next_m=?, feel=COALESCE(feel, ?) WHERE user_id=? AND run_id=?",
                         (iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, coach_type, app_type,
                          run.duration_s, run.distance_m, run.pace_s_per_km, run.true_pace_s_per_km, run.verdict,
                          json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality,
                          run.route_id, run.load_state, run.pb, run.plan_kind, run.plan_target_m,
-                         run.plan_weeks_to_race, run.feel, uid, run.run_id))
+                         run.plan_weeks_to_race, *plan_cols, run.feel, uid, run.run_id))
                     return {"status": "updated"}
                 return {"status": "duplicate"}
             n = c.execute("SELECT COUNT(*) FROM runs WHERE user_id=? AND received_at >= ?",
@@ -618,12 +669,13 @@ class Service:
             c.execute(
                 "INSERT INTO runs (user_id, run_id, start_utc, end_utc, utc_offset_min, zone_id, type, app_type, "
                 "duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, verdict, scores_delta, zone_min, climb_m, "
-                "locality, route_id, load_state, pb, plan_kind, plan_target_m, plan_weeks_to_race, feel, received_at, "
-                "stale) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "locality, route_id, load_state, pb, plan_kind, plan_target_m, plan_weeks_to_race, plan_week, plan_weeks, plan_next_type, plan_next_day, "
+                "plan_next_week, plan_next_min, plan_next_m, feel, received_at, "
+                "stale) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (uid, run.run_id, iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, coach_type, app_type,
                  run.duration_s, run.distance_m, run.pace_s_per_km, run.true_pace_s_per_km, run.verdict,
                  json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality, run.route_id,
-                 run.load_state, run.pb, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, run.feel,
+                 run.load_state, run.pb, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, *plan_cols, run.feel,
                  iso(now), int(stale)))
             if self.s.weather_enabled and run.area_lat is not None and run.area_lon is not None \
                     and c.execute("SELECT weather_optin FROM users WHERE id=?", (uid,)).fetchone()["weather_optin"]:

@@ -228,6 +228,13 @@ TOUCHES: dict[str, list[str]] = {
         "{months_txt} to race month. Build, don't rush.",
         "Race month in {months_txt}. Steady does it.",
     ],
+    "plan_week": [
+        "This run is {why}.",
+        "You're in {why}.",
+        "Plan check: {why}.",
+        "{why}, and you showed up.",
+        "That run sits in {why}.",
+    ],
     "last_year": [
         "This time last year: {ly_pace}/km. Today {pace}/km.",
         "A year ago this week you ran {ly_km} km at {ly_pace}/km.",
@@ -401,6 +408,18 @@ SUGGESTIONS: dict[str, list[tuple[str, str]]] = {
         ("For the plan", "{weeks_txt} to race, {gap_txt} since the long run. Tomorrow: {session}."),
         ("Distance day", "Plan wants a long run: {gap_txt} since the last, race in {weeks_txt}. {session}, {start}."),
         ("Stay on plan", "{weeks_txt} out from the race. Time for {session} tomorrow."),
+    ],
+    # Tomorrow is a planned session in the app's block. {session} is the plan's own size ("easy 6 km", "long run 14 km",
+    # "quality session"); {why} is "week 3 of 4 of your plan". Weather and gap reasons never replace it.
+    "sugg_plan_session": [
+        ("Plan for tomorrow", "Tomorrow's planned session: {session}, {start}. That is {why}."),
+        ("On the plan", "{session} is next on your plan, {start}. It's {why}."),
+        ("Tomorrow: the plan", "Plan says {session} tomorrow, {start}. You're in {why}."),
+        ("Next session", "Next up: {session} tomorrow, {start}. It comes from {why}."),
+        ("Stay on plan", "{session} tomorrow keeps you on track. That's {why}."),
+        ("Planned day", "Tomorrow is a planned day: {session}, {start}. Part of {why}."),
+        ("Your plan says", "In {why}, tomorrow is {session}, {start}."),
+        ("Tomorrow", "{session} tomorrow, {start}. It's in {why}."),
     ],
     "sugg_weather_heat": [
         ("Beat the heat", "Tomorrow: {session}, start {start}. It'll be {temp} degrees at {fc_at}, so go early."),

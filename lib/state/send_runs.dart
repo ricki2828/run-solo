@@ -86,13 +86,30 @@ class TargetSetup {
 
 @immutable
 class SendResult {
-  const SendResult.ok() : ok = true, error = null;
+  const SendResult.ok()
+    : ok = true,
+      error = null,
+      retryLater = false,
+      permanent = false;
 
-  /// [error] is short and fit to show on run detail.
-  const SendResult.failed(String this.error) : ok = false;
+  /// [error] is short and fit to show on run detail. [retryLater] is a
+  /// failure that is not the run's and not the phone's (a server that is not
+  /// ready): it is not logged, so it spends no automatic try, and the next
+  /// app open or run tries again.
+  const SendResult.failed(
+    String this.error, {
+    this.retryLater = false,
+    this.permanent = false,
+  }) : ok = false;
+
+  /// A failure that retrying cannot fix (the server refused the run itself):
+  /// logged once as failed with the automatic tries used up, so it is not
+  /// sent again and does not crowd the retry window.
+  final bool permanent;
 
   final bool ok;
   final String? error;
+  final bool retryLater;
 }
 
 abstract class ExportTarget {
@@ -529,14 +546,20 @@ class SendCoordinator {
         debugPrint('send: ${t.id} threw ($e)');
         result = const SendResult.failed('Could not send');
       }
-      await history.recordSend(
-        detail.run.id,
-        t.id,
-        ok: result.ok,
-        at: _now(),
-        error: result.error,
-        auto: auto,
-      );
+      if (!result.ok && result.retryLater) return result;
+      final records = result.permanent && auto
+          ? engine.SendRecord.maxAutoTries
+          : 1;
+      for (var i = 0; i < records; i++) {
+        await history.recordSend(
+          detail.run.id,
+          t.id,
+          ok: result.ok,
+          at: _now(),
+          error: result.error,
+          auto: auto,
+        );
+      }
       return result;
     } finally {
       _inFlight.remove(key);
