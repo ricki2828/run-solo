@@ -147,6 +147,13 @@ class TelegramChannel:
     def send_followup(self, ref: str, card: OutCard, mode: str) -> str:
         """The text message a media card could not carry. Sent from its own outbox item, so a failure here retries
         only this message and never re-uploads the media."""
+        if mode == "touch_card":
+            # The second picture a milestone or countdown earned: media only, no buttons. A replay's context line is the
+            # only text it may carry.
+            text = "\n".join(x for x in (card.headline.strip(), card.body.strip()) if x)
+            if not (card.media and card.media.photo):
+                raise ChannelError("touch card without a photo", permanent=True)
+            return self._send_media(ref, OutCard(card.card_id, card.headline, card.body, [], card.media, ()), text)
         if mode == "caption":
             text, kb = f"{card.headline}\n{card.body}", self._keyboard(card, media=False)
         elif mode == "question":
@@ -169,7 +176,7 @@ class TelegramChannel:
         kb = self._keyboard(card, media=True)
         fits = utf16_len(text) <= CAPTION_MAX
         fields: dict[str, Any] = {"chat_id": int(ref)}
-        if fits:
+        if fits and text:
             fields["caption"] = text
             if kb:
                 fields["reply_markup"] = json.dumps({"inline_keyboard": kb})

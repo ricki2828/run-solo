@@ -182,7 +182,7 @@ class ConfirmResult {
 }
 
 /// What a run send came to. [duplicate] counts as sent.
-enum RunSendOutcome { sent, duplicate, unauthorized, busy }
+enum RunSendOutcome { sent, duplicate, unauthorized, outdated, rejected, busy }
 
 class CompanionClient {
   CompanionClient({String? baseUrl, CompanionHttp? http})
@@ -296,10 +296,31 @@ class CompanionClient {
       ),
     );
     if (r.status == 401 || r.status == 403) return RunSendOutcome.unauthorized;
+    // 422 with an `extra_forbidden` error: the server refuses a field it does
+    // not know, so it is older than this app. Not the run's fault; the caller
+    // waits and tries again later. Any other 422 (a start time in the future,
+    // an unknown zone, a value out of range) is the run's own and will not
+    // fix itself.
+    if (r.status == 422) {
+      return _isExtraForbidden(r.body)
+          ? RunSendOutcome.outdated
+          : RunSendOutcome.rejected;
+    }
     if (!r.ok) return RunSendOutcome.busy;
     return r.json['status'] == 'duplicate'
         ? RunSendOutcome.duplicate
         : RunSendOutcome.sent;
+  }
+
+  static bool _isExtraForbidden(String body) {
+    try {
+      final j = jsonDecode(body);
+      final detail = j is Map ? j['detail'] : null;
+      return detail is List &&
+          detail.any((e) => e is Map && e['type'] == 'extra_forbidden');
+    } on FormatException {
+      return false;
+    }
   }
 
   /// True when the server has the feel (or already had it).
@@ -1044,6 +1065,87 @@ double areaCell(double v) {
   return r == 0 ? 0.0 : r;
 }
 
+/// The coach's word for a planned session: easy, long or quality (intervals
+/// and goal runs). The server accepts nothing else.
+String companionPlanType(engine.BlockKind k) => switch (k) {
+  engine.BlockKind.easy => 'easy',
+  engine.BlockKind.long => 'long',
+  engine.BlockKind.interval || engine.BlockKind.goal => 'quality',
+};
+
+String _planDay(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-'
+    '${d.month.toString().padLeft(2, '0')}-'
+    '${d.day.toString().padLeft(2, '0')}';
+
+/// What the stored 4-week plan says about [runId] and what comes next. Only
+/// what the plan already holds, and only when there is a plan: the session
+/// type, the week numbers, the planned local day, and a size where the plan
+/// has one (minutes, or a minimum distance on the long test). No reason text,
+/// no preset, no heart rate. Empty with no plan.
+///
+/// - `plan_kind`, `plan_target_m`: the planned session this run was done as.
+/// - `plan_week`, `plan_weeks`: that session's week (else the current week)
+///   of the plan's [engine.BlockPlanner.weeks]. Only for a run in the plan or
+///   started on or after the plan began ([runStart], the wall clock where it
+///   was run): a backfilled old run never gets today's week.
+/// - `plan_next`: the first session still to do that is planned for the day
+///   after the run or later (an overdue one is skipped, so tomorrow's is not
+///   hidden by it), with its planned day.
+/// - Any value outside what the server accepts is left out, so one corrupt
+///   stored number can never fail the whole run.
+///   `plan_weeks_to_race` is never sent: the app has no race date.
+Map<String, Object?> companionPlanFacts(
+  engine.BlockView? view,
+  String runId, {
+  DateTime? runStart,
+}) {
+  if (view == null) return const {};
+  engine.BlockSessionState? own;
+  for (final st in view.all) {
+    if (st.runId == runId) own = st;
+  }
+  final inPlan =
+      own != null || (runStart != null && !runStart.isBefore(view.plan.start));
+  if (!inPlan) return const {};
+  int? within(num? v, int lo, int hi) {
+    if (v == null) return null;
+    final r = v.round();
+    return r >= lo && r <= hi ? r : null;
+  }
+
+  final week = within(own?.session.week ?? view.currentWeek, 1, 52);
+  engine.BlockSessionState? next;
+  if (runStart != null) {
+    final from = DateTime(runStart.year, runStart.month, runStart.day + 1);
+    for (final st in view.all) {
+      if (st.status != engine.BlockStatus.done &&
+          st.status != engine.BlockStatus.missed &&
+          !st.date.isBefore(from)) {
+        next = st;
+        break;
+      }
+    }
+  }
+  final nextWeek = within(next?.session.week, 1, 52);
+  final minutes = within(next?.session.minutes, 1, 600);
+  final dist = within(next?.session.minDistanceM, 500, 100000);
+  return {
+    if (own != null) 'plan_kind': companionPlanType(own.session.kind),
+    'plan_target_m': ?within(own?.session.minDistanceM, 0, 300000),
+    'plan_week': ?week,
+    if (week != null) 'plan_weeks': engine.BlockPlanner.weeks,
+    if (next != null && nextWeek != null)
+      'plan_next': {
+        'type': companionPlanType(next.session.kind),
+        'day': _planDay(next.date),
+        'week': nextWeek,
+        'minutes': ?minutes,
+        'distance_m': ?dist,
+      },
+  };
+}
+
 /// The compact run summary the companion gets (B6, C4, C6): fields only, no
 /// GPS points, no street, no heart-rate trace. Besides the totals it carries
 /// `splits` (per km: length, pace, HR zone), `reps` (a structured run's rep
@@ -1057,6 +1159,7 @@ Map<String, Object?>? companionSummary(
   engine.RunFeel? feel,
   bool withArea = false,
   bool withRoute = false,
+  Map<String, Object?> plan = const {},
 }) {
   final s = d.summary;
   final run = d.run;
@@ -1092,6 +1195,8 @@ Map<String, Object?>? companionSummary(
     // The area name only (locality), never the street.
     'locality': ?s.place,
     'feel': ?(feel ?? d.sidecar.feel)?.name,
+    // The 4-week plan's facts (companionPlanFacts), when there is a plan.
+    ...plan,
     // Only with "Weather in suggestions" on: the start point rounded to 0.1
     // degree (about 11 km) here on the phone, so the server never gets more.
     if (withArea && s.startPoint != null) ...{
@@ -1122,7 +1227,9 @@ class CompanionTarget extends ExportTarget {
     required this.controller,
     this.zones,
     DateTime Function()? now,
-  });
+  }) : _now = now ?? DateTime.now;
+
+  final DateTime Function() _now;
 
   static const String targetId = 'companion';
 
@@ -1131,6 +1238,16 @@ class CompanionTarget extends ExportTarget {
 
   final CompanionController controller;
   final engine.HrZones Function()? zones;
+
+  /// The plan's facts for a run (companionPlanFacts over the stored plan),
+  /// wired by AppServices; null sends no plan fields.
+  Future<Map<String, Object?>> Function(RunDetail run)? planFacts;
+
+  /// When the server last answered 422 (older than this app). For
+  /// [outdatedWait] no run is sent and no automatic try is spent; a new app
+  /// start clears it, so it is also retried on the next open.
+  DateTime? _outdatedAt;
+  static const Duration outdatedWait = Duration(hours: 6);
   @override
   String get id => targetId;
   @override
@@ -1146,12 +1263,29 @@ class CompanionTarget extends ExportTarget {
   @override
   bool isEnabled(AppSettings s) => controller.enrolled;
 
+  /// A plan read that fails sends the run without plan fields, never fails it.
+  Future<Map<String, Object?>> _plan(RunDetail run) async {
+    try {
+      return await planFacts?.call(run) ?? const {};
+    } catch (e) {
+      companionLog('plan read failed (${e.runtimeType})');
+      return const {};
+    }
+  }
+
   @override
   Future<SendResult> send(SendRequest req) async {
     final d = req.detail;
     if (d == null) return const SendResult.failed('Run not found');
     final token = await controller.token();
     if (token == null) return const SendResult.failed('Companion is off');
+    final out = _outdatedAt;
+    if (out != null && _now().difference(out) < outdatedWait) {
+      return const SendResult.failed(
+        'Companion server needs an update. Will retry later',
+        retryLater: true,
+      );
+    }
     try {
       await controller.syncWeather();
       await controller.syncRouteShape();
@@ -1160,6 +1294,7 @@ class CompanionTarget extends ExportTarget {
         zones: zones?.call(),
         withArea: controller.weatherOn,
         withRoute: controller.routeShapeOn,
+        plan: await _plan(d),
       );
       if (summary == null) {
         return const SendResult.failed('Run has no time zone yet');
@@ -1170,6 +1305,17 @@ class CompanionTarget extends ExportTarget {
           return const SendResult.ok();
         case RunSendOutcome.unauthorized:
           return const SendResult.failed('Companion key not accepted');
+        case RunSendOutcome.outdated:
+          _outdatedAt = _now();
+          return const SendResult.failed(
+            'Companion server needs an update. Will retry later',
+            retryLater: true,
+          );
+        case RunSendOutcome.rejected:
+          return const SendResult.failed(
+            'Companion refused this run (check the phone clock)',
+            permanent: true,
+          );
         case RunSendOutcome.busy:
           return const SendResult.failed('Companion is busy');
       }

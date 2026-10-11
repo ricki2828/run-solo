@@ -1,4 +1,4 @@
-"""Weekly recap: the week's km as the hero, day bars stacked by zone, the score moves, the best moment."""
+"""Weekly recap: the week's km as the hero, day bars in km, coloured by zone share of time, the score moves, the best moment."""
 from __future__ import annotations
 
 from typing import Any, Mapping
@@ -11,25 +11,48 @@ SCORE_ORDER = ("aerobic", "speed", "mid", "long")
 DAYS = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
 
 
+def _day_km(d: Mapping[str, Any]) -> float:
+    try:
+        return max(0.0, float(d.get("distance_km") or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _type_colour(d: Mapping[str, Any]) -> str:
+    return brand.RUN_TYPE_COLOUR.get(str(d.get("type")), brand.SCORE["aerobic"])
+
+
 def _bars(days: list[Mapping[str, Any]], width: int, height: int) -> str:
-    totals = [sum(P.zone_seconds({"zone_s": d.get("zone_s")})) for d in days]
-    peak = max(totals + [1])
+    """Bar height is the day's km; the zone colours split it by each zone's share of that day's moving time."""
+    peak = max([_day_km(d) for d in days[:7]] + [0.1])
     n = 7
     slot = width / n
     bw = slot * 0.62
+    top_pad = 44  # room for the km label above the tallest bar
+    room = height - 52 - top_pad
     parts = []
     for i in range(n):
         d = days[i] if i < len(days) else {}
         x = i * slot + (slot - bw) / 2
+        km = _day_km(d)
         z = P.zone_seconds({"zone_s": d.get("zone_s")})
+        zt = sum(z)
         y = height - 52
-        for k, v in enumerate(z):
-            if v <= 0:
-                continue
-            h = (height - 52) * v / peak
-            y -= h
-            parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bw:.1f}" height="{max(h - 2, 1):.1f}" fill="{brand.ZONE_RAMP[k]}"/>')
-        if not sum(z):
+        if km > 0:
+            full = room * km / peak
+            if zt > 0:
+                for k, v in enumerate(z):
+                    if v <= 0:
+                        continue
+                    h = full * v / zt
+                    y -= h
+                    parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bw:.1f}" height="{max(h - 2, 1):.1f}" fill="{brand.ZONE_RAMP[k]}"/>')
+            else:  # a run with no heart-rate zones: still a km bar, in its run-type colour
+                y -= full
+                parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bw:.1f}" height="{max(full - 2, 1):.1f}" fill="{_type_colour(d)}"/>')
+            parts.append(f'<text x="{x + bw / 2:.1f}" y="{y - 10:.1f}" text-anchor="middle" font-family="{brand.SAIRA}" '
+                         f'font-weight="800" font-size="32" fill="{brand.INK}">{P.fmt_km(km)}</text>')
+        else:
             parts.append(f'<rect x="{x:.1f}" y="{height - 58:.1f}" width="{bw:.1f}" height="6" fill="{brand.HAIRLINE}"/>')
         parts.append(f'<text x="{x + bw / 2:.1f}" y="{height - 10}" text-anchor="middle" font-family="{brand.SCHIBSTED}" '
                      f'font-weight="600" font-size="24" letter-spacing="2" fill="{brand.QUIET}">{DAYS[i]}</text>')

@@ -154,9 +154,18 @@
     intervals, the time and zone of each rep;</li>
     <li><strong>unless you turn off "Show route shape on cards"</strong> (Settings, Companion, on by default): an outline of
     your route with the first and last stretch cut off. See "The route outline" below.</li>
+    <li><strong>only if you follow a 4-week plan in the app</strong>: which planned session the run was (easy, long or
+    quality), which week of the plan it fell in (for example week 3 of 4), the distance the plan asked for when it names
+    one, and the next planned session: its type, its planned day (a date), its week, and its minutes or distance when the
+    plan has them. This is what the plan already holds on your phone. Nothing you typed, no session names, no reasons and
+    no race date go with it, and the app has no race date to send;</li>
     <li><strong>only if you turn on "Weather in suggestions"</strong> (Settings, Companion, off until you turn it on): the area
     where the run started, rounded on your phone to about 11 km (0.1 degree), with no place name.</li>
   </ul>
+  <p>The plan details let a note say things like "your plan has a long run tomorrow, week 3 of 4", and let the evening
+  suggestion follow the session your plan already has for the next day. If you have no plan in the app, none of this is sent
+  and suggestions work as before. They are in the data the server returns about you (the data export); the app's "What the
+  companion knows" screen does not show them. Delete everything removes them with the run they came from.</p>
   <p>It never sends your GPS points, your position, a map, the street, or your heart rate trace. Runs recorded before you
   turned the companion on are not sent. If the phone is offline the summary is queued and sent later.</p>
 
@@ -262,12 +271,26 @@
   <h2>2c. Run companion: images and videos</h2>
   <p>This applies only if you turned the optional Run companion on and it has been set to send pictures. Its notes
   can then arrive in your Telegram chat as an image or a short video instead of plain text. The picture shows more
-  than the text does, and all of it comes from the run summary you already sent the companion: the date and
-  start time, the type of run, distance, duration and pace, any climb, your time in each heart rate zone, your pace for each kilometre
-  or the time of each rep, the name of the suburb or town of the
+  than the text does. Most of it comes from the run summaries you already sent the companion: the date and
+  start time, the type of run, distance, duration and pace, any climb, your time in each heart rate zone, the name of the suburb or town of the
   run (never the street), any personal best, and, on the weekly recap, how your scores moved, plus the coach's one-line note for that run.
-  Unless you turned off "Show route shape on cards", it can also draw an outline of your route with its ends cut off (section 2b): no coordinates and no
-  street, but a distinctive route could still be recognised by someone who knows it. It never contains a map, heart rate readings, your name or a phone number.</p>
+  Unless you turned off "Show route shape on cards", a run picture or video can also draw an outline of your route with its ends cut off (section 2b):
+  no coordinates and no street, but a distinctive route could still be recognised by someone who knows it. It never contains a map, heart rate
+  readings, your name or a phone number. The per-kilometre paces or rep times can be drawn as bars.</p>
+  <p>Three more kinds of picture show a little beyond the run summary itself:</p>
+  <ul>
+    <li><strong>Tomorrow's suggestion.</strong> The date, the session (for example "Tempo, 8 km") and a one-line reason. When the
+    reason is the weather (heat, rain, or good conditions) it carries the forecast: the temperature, the hour and the chance
+    of rain. That forecast comes from Open-Meteo (section 3), and only if you turned on "Weather in suggestions".</li>
+    <li><strong>The monthly poster.</strong> On the 1st, a calendar of the month just ended: for each run its day, type of run,
+    distance and time, plus the month's totals. No route and no place names.</li>
+    <li><strong>Milestones and race countdowns.</strong> The milestone number (for example your 100th run, or 1,000 km) and the
+    weeks to your race, with the distance you told the coach you are training for.</li>
+  </ul>
+  <p>For the suggestion, milestone and countdown pictures the companion keeps the few facts the picture was drawn from, with the
+  message, for 30 days. They are part of what "What the companion knows" and the export show (as <code>picture_facts</code>,
+  including messages built but not yet sent) and are removed when you delete your data. The monthly poster keeps nothing extra:
+  it is drawn again from the runs you already sent.</p>
   <p>The picture is drawn on the companion's server by a separate process that has no internet access, no database
   and none of your account details; it receives only those figures and the route outline, returns the image, and keeps nothing. The finished
   image is then sent to your Telegram chat, so Telegram stores it under its own policy, and it stays in your chat

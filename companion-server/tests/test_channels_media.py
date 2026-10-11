@@ -323,6 +323,7 @@ def test_recap_facts_come_from_rows_and_validate_against_the_real_video_spec(tmp
         assert f["week_label"] == "Week 41" and f["runs"] == 5
         spec = weekly_from_facts({**f, "duration_s": sum(sum(d["zone_s"]) for d in f["days"])})
         assert spec.runs == 5 and abs(spec.total_km - 25.0) < 1e-9
+        assert abs(sum(d["distance_km"] for d in f["days"]) - 25.0) < 1e-9 and sum(d.km for d in spec.days) > 0
         assert week_facts("2026-W40", rows)["runs"] == 0
 
 
@@ -399,7 +400,7 @@ def test_sending_media_stores_no_bytes_and_leaves_the_export_unchanged(tmp_path,
         assert PNG not in raw
         me = c.get("/v1/me", headers=auth(t)).json()
         assert set(me) == set(before)
-        assert set(me["messages_sent_30d"][0]) == {"kind", "headline", "body", "sent_at", "situation", "touch_kind"}
+        assert set(me["messages_sent_30d"][0]) == {"kind", "headline", "body", "sent_at", "situation", "touch_kind", "picture_facts"}
 
 
 # --- real renderers, end to end (Chromium and ffmpeg are required: a missing one fails, never skips) ----------

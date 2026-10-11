@@ -55,6 +55,7 @@ def test_weekly_fixture_is_consistent():
     from datetime import date
     w = F.weekly_recap()
     assert sum(sum(d["zone_s"]) for d in w["days"]) == w["duration_s"]
+    assert abs(sum(d["distance_km"] for d in w["days"]) - w["distance_km"]) < 1e-9
     assert [date.fromisoformat(d["date"]).weekday() for d in w["days"]] == list(range(7))
     sg = F.singapore_intervals()
     assert w["days"][3]["date"] == sg["start_local"][:10] and w["days"][3]["zone_s"] == sg["zone_s"]

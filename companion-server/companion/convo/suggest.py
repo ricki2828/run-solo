@@ -37,6 +37,7 @@ class Evening:
     suggestion: Suggestion
     rendered: voice.Rendered
     style: list[str]
+    card_facts: dict[str, Any] | None = None   # what the suggestion picture shows (render/protocol KIND_FACT_KEYS)
 
 
 def _when(r: Mapping[str, Any]) -> datetime:
@@ -74,7 +75,56 @@ def plan_weeks(history: Sequence[Mapping[str, Any]], now: datetime) -> int | Non
     return None
 
 
-LONG_STEP_KM = 1.5       # build by 1 to 2 km on the last long run ...
+PLAN_KIND_WORD = {"easy": "easy", "long": "long run", "quality": "quality session"}
+PLAN_SUGG_KIND = {"easy": "easy_next", "long": "long_run", "quality": "quality"}
+
+
+def planned_for_tomorrow(history: Sequence[Mapping[str, Any]], now: datetime, zone_id: str) -> Mapping[str, Any] | None:
+    """The newest run's plan snapshot, when its next planned session falls on tomorrow's local date. Older runs are
+    ignored: the app re-sends the plan with every run, so the newest one is the freshest."""
+    if not history:
+        return None
+    h = history[0]
+    tomorrow = (to_local(now, zone_id).date() + timedelta(days=1)).isoformat()
+    if h.get("plan_next_type") in PLAN_KIND_WORD and h.get("plan_next_day") == tomorrow:
+        return h
+    return None
+
+
+def plan_session(h: Mapping[str, Any], history: Sequence[Mapping[str, Any]], now: datetime) -> tuple[str, str] | None:
+    """-> (session text, reason clause) from the plan row, or None when no honest number can be named.
+    The distance or minutes come from the plan; an easy or long session without one uses the runner's own typical
+    distance, exactly as an unplanned suggestion would. A quality session needs no number."""
+    typ = h["plan_next_type"]
+    word = PLAN_KIND_WORD[typ]
+    text: str | None
+    if h.get("plan_next_m"):
+        text = f"{word} {max(1, round(h['plan_next_m'] / 1000))} km"
+    elif h.get("plan_next_min"):
+        text = f"{word} {h['plan_next_min']} min"
+    elif typ == "easy":
+        km = typical_km(history, "easy")
+        text = f"easy {km} km" if km else None
+    elif typ == "long":
+        km = long_run_km(history, now)
+        text = f"long run {km} km" if km else None
+    else:
+        text = word
+    if text is None:
+        return None
+    return text, plan_week_clause(h.get("plan_next_week"), h.get("plan_weeks"))
+
+
+def plan_week_clause(wk: int | None, wks: int | None) -> str:
+    """'week 3 of 4 of your plan', built only from the week numbers the app sent."""
+    if wk and wks and wk <= wks:
+        return f"week {wk} of {wks} of your plan"
+    if wk:
+        return f"week {wk} of your plan"
+    return "your plan"
+
+
+LONG_STEP_KM = 1.5      # build by 1 to 2 km on the last long run ...
 LONG_CAP_OVER_MAX = 1.10  # ... but never more than about 10% over the longest run of the last 28 days
 LONG_PEAK_KM = 20        # peak for a half marathon
 LONG_DROP = 0.8          # after a break or a missed week, step back to this share of the last long run
@@ -106,23 +156,51 @@ def long_run_km(history: Sequence[Mapping[str, Any]], now: datetime) -> int | No
     return max(round(last), min(round(target), int(cap)))
 
 
-def session_for(kind: str, history: Sequence[Mapping[str, Any]], now: datetime | None = None) -> str | None:
-    """The named session for a kind of suggestion, built from the runner's own distances."""
+def session_parts(kind: str, history: Sequence[Mapping[str, Any]], now: datetime | None = None) -> tuple[str, str] | None:
+    """(word, whole km) of the session a kind of suggestion names, from the runner's own distances."""
     easy, tempo = typical_km(history, "easy"), typical_km(history, "tempo")
     long_ = long_run_km(history, now or _when(history[0])) if history else None
     if kind in ("easy_load", "recover", "heat", "wet", "feel", "soft"):
-        return f"easy {easy} km" if easy else None
+        return ("easy", easy) if easy else None
     if kind in ("gap", "good"):
         km = tempo or easy
-        return f"{'tempo' if tempo else 'steady'} {km} km" if km else None
+        return ("tempo" if tempo else "steady", km) if km else None
     if kind == "plan_long":
-        return f"long run {long_} km" if long_ else None
+        return ("long run", str(long_)) if long_ else None
     return None
+
+
+def session_for(kind: str, history: Sequence[Mapping[str, Any]], now: datetime | None = None) -> str | None:
+    """The named session for a kind of suggestion, built from the runner's own distances."""
+    p = session_parts(kind, history, now)
+    return f"{p[0]} {p[1]} km" if p else None
+
+
+# The suggestion picture: the session word -> (card type, label). The label is the session word the text uses.
+_CARD_SESSION = {"easy": ("easy", "Easy run"), "tempo": ("tempo", "Tempo"), "steady": ("easy", "Steady run"),
+                 "long run": ("long", "Long run")}
+
+
+def card_reason(kind: str, slots: Mapping[str, str]) -> str:
+    """One short sentence for the picture, built only from the slots the text itself was written from (so every number
+    on the picture is one the message already says). Never mentions a note: the soft line is generic."""
+    s = slots
+    return {
+        "easy_load": "Your load is high. Easy keeps it from stacking.",
+        "recover": f"Your last run was hard, {s.get('hours_txt', '')} ago.",
+        "feel": f"You called {s.get('weekday', '')} hard at an easy pace. {s.get('cause', '')}".strip(),
+        "heat": f"{s.get('temp', '')} degrees forecast at {s.get('fc_at', '')} tomorrow, so go early.",
+        "wet": f"{s.get('rain', '')}% chance of rain tomorrow.",
+        "plan_long": f"Race is {s.get('weeks_txt', '')} away and your last long run was {s.get('gap_txt', '')} ago.",
+        "good": f"{s.get('temp', '')} degrees, {s.get('rain', '')}% rain, and {s.get('gap_txt', '')} since your last hard run.",
+        "gap": f"It has been {s.get('gap_txt', '')} since your last hard session.",
+        "soft": "Nothing hard for now. Keep it gentle.",
+    }[kind]
 
 
 def _kind_reason(kind: str) -> str:
     return {"easy_load": "load", "recover": "hard_recent", "heat": "weather", "wet": "weather", "feel": "feel",
-            "plan_long": "plan", "good": "weather", "gap": "gap", "soft": "rest"}[kind]
+            "plan_session": "plan", "plan_long": "plan", "good": "weather", "gap": "gap", "soft": "rest"}[kind]
 
 
 def feel_cause(prev_situation: str | None) -> str:
@@ -151,10 +229,15 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
         return None
     slots: dict[str, str] = {"start": start}
     kind: str | None = None
+    use_plan_session = False  # heat naming the planned session (never when a flagged note softens a push)
 
     gap = days_since_hard(history, now)
     long_gap = next(((now - _when(h)).days for h in history if h["type"] == "long"), None)
     weeks = plan_weeks(history, now)
+    planned = planned_for_tomorrow(history, now, zone_id)
+    planned_text = plan_session(planned, history, now) if planned else None
+    hot = bool(forecast and forecast.morning_temp_c >= HEAT_MORNING_C)
+    push_softened = bool(soften and planned and planned["plan_next_type"] != "easy")  # a flagged note vs a planned push
     share = hard_share(last)
     felt_hard = (last.get("feel") == "hard" and last["type"] == "easy" and (share is None or share < 0.15)
                  and since_last <= timedelta(hours=FEEL_WINDOW_H))
@@ -168,6 +251,13 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
         kind = "feel"
         slots.update(weekday=WEEKDAYS[to_local(_when(last), last.get("zone_id") or zone_id).weekday()],
                      cause=feel_cause(last_situation))
+    elif planned_text is not None and hot and not push_softened:
+        kind = "heat"  # the heat warning is a safety line: it keeps its place, and names the planned session
+        slots.update(temp=str(forecast.morning_temp_c), fc_at="7 am")
+        use_plan_session = True
+    elif planned_text is not None and not (hot and push_softened):
+        kind = "plan_session"  # tomorrow is a planned session: follow the plan, ahead of rain and gap reasons
+        slots.update(why=planned_text[1])
     elif forecast and forecast.morning_temp_c >= HEAT_MORNING_C:
         kind = "heat"
         slots.update(temp=str(forecast.morning_temp_c), fc_at="7 am")
@@ -186,21 +276,31 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
             kind = "gap"
     if kind is None:
         return None
-    if soften and kind in ("gap", "good", "plan_long"):
-        kind = "soft"
-    session = session_for(kind, history, now)
+    if soften and (kind in ("gap", "good", "plan_long")
+                   or (kind == "plan_session" and planned["plan_next_type"] != "easy")):
+        kind = "soft"  # a planned push turns into the gentle line too
+        slots.pop("why", None)
+    session = planned_text[0] if planned_text and (kind == "plan_session" or use_plan_session) else session_for(kind, history, now)
     if session is None:
         return None  # no concrete session to name: say nothing rather than something vague
     slots["session"] = session
     situation = {"easy_load": "sugg_easy_load", "recover": "sugg_recover", "heat": "sugg_weather_heat",
-                 "wet": "sugg_weather_wet", "plan_long": "sugg_plan_long", "good": "sugg_weather_good",
+                 "wet": "sugg_weather_wet", "plan_session": "sugg_plan_session", "plan_long": "sugg_plan_long", "good": "sugg_weather_good",
                  "gap": "sugg_gap", "feel": "sugg_feel", "soft": "sugg_soft"}[kind]
     r = voice.render(situation, slots, used, now, seed)
     if r is None:
         return None
-    sk = {"easy_load": "easy_next", "recover": "recover", "heat": "heat", "wet": "wet", "plan_long": "long_run",
+    sk = {"easy_load": "easy_next", "recover": "recover", "heat": "heat", "wet": "wet",
+          "plan_session": PLAN_SUGG_KIND[planned["plan_next_type"]] if planned else "easy_next", "plan_long": "long_run",
           "good": "quality", "gap": "quality", "feel": "easy_next", "soft": "easy_next"}[kind]
-    return Evening(Suggestion(sk, _kind_reason(kind), r.body), r, voice.exemplars(situation, 3, seed))
+    facts = None
+    parts = session_parts(kind, history, now)
+    if parts and parts[0] in _CARD_SESSION and parts[1].isdigit():
+        ctype, label = _CARD_SESSION[parts[0]]
+        tomorrow = to_local(now, zone_id).date() + timedelta(days=1)
+        facts = {"type": ctype, "session": label, "distance_km": int(parts[1]), "date_local": tomorrow.isoformat(),
+                 "reason": card_reason(kind, slots)}
+    return Evening(Suggestion(sk, _kind_reason(kind), r.body), r, voice.exemplars(situation, 3, seed), facts)
 
 
 def after_run(sug: Suggestion, run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],

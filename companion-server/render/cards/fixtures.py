@@ -156,13 +156,13 @@ def weekly_recap() -> dict[str, Any]:
     """Week 41, Mon 5 Oct to Sun 11 Oct 2026. Thursday is the 8 x 400 m session, Saturday the Kastro loop."""
     sg, milos = singapore_intervals(), milos_trail()
     d = [
-        {"date": "2026-10-05", "zone_s": [300, 1500, 600, 0, 0]},
-        {"date": "2026-10-06", "zone_s": []},
-        {"date": "2026-10-07", "zone_s": [200, 1700, 900, 200, 0]},
-        {"date": "2026-10-08", "zone_s": sg["zone_s"]},
-        {"date": "2026-10-09", "zone_s": []},
-        {"date": "2026-10-10", "zone_s": milos["zone_s"]},
-        {"date": "2026-10-11", "zone_s": [300, 1900, 500, 0, 0]},
+        {"date": "2026-10-05", "distance_km": 7.2, "zone_s": [300, 1500, 600, 0, 0]},
+        {"date": "2026-10-06", "distance_km": 0, "zone_s": []},
+        {"date": "2026-10-07", "distance_km": 8.4, "zone_s": [200, 1700, 900, 200, 0]},
+        {"date": "2026-10-08", "distance_km": sg["distance_km"], "zone_s": sg["zone_s"]},
+        {"date": "2026-10-09", "distance_km": 0, "zone_s": []},
+        {"date": "2026-10-10", "distance_km": milos["distance_km"], "zone_s": milos["zone_s"]},
+        {"date": "2026-10-11", "distance_km": 6.0, "zone_s": [300, 1900, 500, 0, 0]},
     ]
     total = sum(sum(x["zone_s"]) for x in d)
     return {

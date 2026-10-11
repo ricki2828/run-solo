@@ -71,6 +71,43 @@ def best_moment(week: Sequence[Mapping[str, Any]], zone_id: str) -> str:
     return ""
 
 
+MONTHLY_DAY = 1               # the 1st of the month, for the month just ended
+MONTHLY_START_MIN = 9 * 60    # plan from 09:00 local ...
+MONTHLY_END_MIN = 12 * 60     # ... until noon: room to wait out MONTHLY_MIN_GAP_H after another card
+MONTHLY_MIN_GAP_H = 3         # never within this long of another card
+MONTH_NAMES = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+               "November", "December")
+
+
+def previous_month(now: datetime, zone_id: str) -> str:
+    """'YYYY-MM' of the month before the local month containing `now`."""
+    loc = to_local(now, zone_id)
+    y, m = (loc.year - 1, 12) if loc.month == 1 else (loc.year, loc.month - 1)
+    return f"{y}-{m:02d}"
+
+
+def month_runs(runs: Sequence[Mapping[str, Any]], zone_id: str, month_ref: str) -> list[Mapping[str, Any]]:
+    """The runs whose local start falls in 'YYYY-MM'."""
+    return [r for r in runs if to_local(_when(r), r.get("zone_id") or zone_id).strftime("%Y-%m") == month_ref]
+
+
+def build_monthly(runs: Sequence[Mapping[str, Any]], month_ref: str, zone_id: str, used: Mapping[str, datetime],
+                  now: datetime, seed: str) -> Recap | None:
+    """The poster text for a finished month. None when the month had no runs (nothing to say, never a nag)."""
+    mine = month_runs(runs, zone_id, month_ref)
+    if not mine:
+        return None
+    km = sum(r["distance_m"] for r in mine) / 1000
+    hours = max(1, round(sum(r["duration_s"] for r in mine) / 3600))
+    slots = {"month": MONTH_NAMES[int(month_ref[5:]) - 1], "runs_txt": T.plural(len(mine), "run"), "km": f"{km:.1f}",
+             "hours_txt": T.plural(hours, "hour")}
+    r = voice.render("recap_month", slots, used, now, seed)
+    if r is None:
+        return None
+    return Recap(r, MediaPlan("monthly", False, "monthly"), voice.exemplars("recap_month", 3, seed), False,
+                 tuple(str(x["run_id"]) for x in mine if x.get("run_id")))
+
+
 def build(runs: Sequence[Mapping[str, Any]], now: datetime, zone_id: str, used: Mapping[str, datetime],
           seed: str) -> Recap | None:
     """`runs`: the whole record, newest first. The week is the local Mon-Sun week containing `now`."""

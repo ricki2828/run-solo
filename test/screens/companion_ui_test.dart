@@ -41,9 +41,9 @@ void main() {
     );
     await pumpTimes(tester, 4);
     expect(find.text('RUN COMPANION'), findsOneWidget);
-    expect(find.text(kCompanionSent), findsOneWidget);
-    expect(find.text(kCompanionWhere), findsOneWidget);
-    expect(find.textContaining('30 days'), findsOneWidget);
+    expect(find.text(kCompanionSent, skipOffstage: false), findsOneWidget);
+    expect(find.text(kCompanionWhere, skipOffstage: false), findsOneWidget);
+    expect(find.textContaining('30 days', skipOffstage: false), findsOneWidget);
     await scrollTo(tester, find.text('Read the privacy page'));
     expect(find.text('Read the privacy page'), findsOneWidget);
     // No switch, tick box or radio that could start ticked.

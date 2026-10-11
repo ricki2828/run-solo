@@ -43,7 +43,7 @@ UPLOAD_DELAY_S = 60        # the app posts a run about a minute after it finishe
 # A 'running' row with a newer heartbeat than this means another process is driving. Longer than the worst item
 # (model call + Telegram send with retries + the 30 s failure back-off), and the loop beats inside every sleep.
 HEARTBEAT_FRESH_S = 180
-TICK_MINUTES = (cv_recap.RECAP_START_MIN, cv_suggest.EVENING_START_MIN)  # local planning moments, as the live tick sees them
+TICK_MINUTES = (cv_recap.MONTHLY_START_MIN, cv_recap.RECAP_START_MIN, cv_suggest.EVENING_START_MIN)  # local planning moments, as the live tick sees them
 MAX_RETRIES_PER_ITEM = 5
 
 
@@ -128,7 +128,7 @@ class ReplayChannel:
         return out
 
     def send_followup(self, ref: str, card: OutCard, mode: str) -> str:
-        if mode == "caption":  # the text a too-long caption could not carry: it needs the context line too
+        if mode in ("caption", "touch_card"):  # text a caption could not carry, or a picture with no text: both need the line
             card = replace(card, headline=f"{self.r.label()}\n{card.headline}")
         out = self.inner.send_followup(ref, card, mode)
         self.r.note_send("followup", card.card_id)
@@ -383,6 +383,7 @@ class Replayer:
             if tick <= self.vnow:
                 self.svc.plan_evening(tick, only_user=self.uid)
                 self.svc.plan_recap(tick, only_user=self.uid)
+                self.svc.plan_monthly(tick, only_user=self.uid)
                 self._save(last_tick=iso(tick))
             self._pending_note = None
             self.svc.run_outbox(self.vnow, limit=1, only_user=self.uid)

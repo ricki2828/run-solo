@@ -50,8 +50,10 @@ class CompanionFactsOptions {
 }
 
 /// Fields of the app payload that this converter cannot derive for a run.
-/// The companion's RunIn accepts all of them; the app does not send them
-/// today either (see `companionSummary`), so they are simply absent.
+/// The companion's RunIn accepts all of them. `plan_kind`, `plan_target_m`,
+/// `plan_week`, `plan_weeks` and `plan_next` come from the phone's stored
+/// 4-week plan (`companionPlanFacts`), which is not in a bundle, so they are
+/// absent here. `plan_weeks_to_race` the app never sends: it has no race date.
 const List<String> kNotSentByTheApp = [
   'scores_delta',
   'route_id',
@@ -60,6 +62,9 @@ const List<String> kNotSentByTheApp = [
   'plan_kind',
   'plan_target_m',
   'plan_weeks_to_race',
+  'plan_week',
+  'plan_weeks',
+  'plan_next',
   'area_lat',
   'area_lon',
 ];

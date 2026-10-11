@@ -27,7 +27,7 @@ PLACE_AT = (3, 4, 5, 25, 75)  # plus every 10th: a regular spot is not news ever
 # Days before the same kind may appear again. 0 = no kind cool-down.
 KIND_COOLDOWN = {
     "milestone_runs": 0, "milestone_km": 0, "new_place": 0, "comeback": 0, "feel_echo": 0,
-    "race_countdown": 6, "race_month": 13, "last_year": 27, "place": 4, "streak": 9,
+    "race_countdown": 6, "race_month": 13, "plan_week": 6, "last_year": 27, "place": 4, "streak": 9,
     "best_month": 13, "year_best": 20, "sunrise": 13, "zone2_week": 6,
 }
 # Kinds whose key may fire only once, ever. Others: the key repeats after KEY_COOLDOWN_DAYS.
@@ -37,8 +37,8 @@ KEY_COOLDOWN_DAYS = {"place": 14, "year_best": 40, "last_year": 27}
 BYPASS_GAP = {"milestone_runs", "milestone_km", "new_place", "comeback", "feel_echo"}
 # Tried in this order; the first one that passes the policy wins.
 PRIORITY = ("milestone_runs", "milestone_km", "new_place", "comeback", "feel_echo", "best_month", "year_best",
-            "last_year", "race_countdown", "race_month", "place", "streak", "sunrise", "zone2_week")
-PUSHY = frozenset({"streak", "race_countdown", "race_month"})  # dropped while softening
+            "last_year", "race_countdown", "race_month", "plan_week", "place", "streak", "sunrise", "zone2_week")
+PUSHY = frozenset({"streak", "race_countdown", "race_month", "plan_week"})  # dropped while softening
 ROTATE_AVOID = 2  # do not reuse either of the last two touch kinds while another candidate exists
 
 
@@ -268,6 +268,15 @@ def race(c: Ctx) -> Touch | None:
     return None
 
 
+def plan_week(c: Ctx) -> Touch | None:
+    """Where the run sits in the app's plan ('week 3 of 4 of your plan'). The week comes from the app, never a guess;
+    the key is the week, so it can say each week once at most."""
+    wk, wks = c.run.get("plan_week"), c.run.get("plan_weeks")
+    if not wk or not wks or wk > wks:
+        return None
+    return Touch("plan_week", f"planwk:{wk}", {"why": f"week {wk} of {wks} of your plan"})
+
+
 def place(c: Ctx) -> Touch | None:
     loc = c.run.get("locality")
     if not loc:
@@ -339,7 +348,7 @@ def zone2_week(c: Ctx) -> Touch | None:
 COMPUTE: dict[str, Callable[[Ctx], Touch | None]] = {
     "milestone_runs": milestone_runs, "milestone_km": milestone_km, "new_place": new_place,
     "comeback": comeback, "feel_echo": feel_echo, "best_month": best_month, "year_best": year_best, "last_year": last_year,
-    "race_countdown": race, "race_month": race, "place": place, "streak": streak, "sunrise": sunrise,
+    "race_countdown": race, "race_month": race, "plan_week": plan_week, "place": place, "streak": streak, "sunrise": sunrise,
     "zone2_week": zone2_week,
 }
 
