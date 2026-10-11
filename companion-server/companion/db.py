@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
   paused INTEGER NOT NULL DEFAULT 0,
   last_run_utc TEXT, last_inbound_at TEXT,
   cap_zone TEXT, cap_week TEXT,
+  weather_optin INTEGER NOT NULL DEFAULT 0,  -- the app's "Weather in suggestions" switch; area is stored only while 1
   UNIQUE (channel, chat_ref)
 );
 CREATE TABLE IF NOT EXISTS devices (
@@ -124,7 +125,7 @@ CREATE TABLE IF NOT EXISTS convo_cards (
 CREATE TABLE IF NOT EXISTS convo_area (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   run_id TEXT NOT NULL,
-  lat REAL NOT NULL, lon REAL NOT NULL,  -- rounded to 0.1 degree (about 11 km), only when weather is on
+  lat REAL NOT NULL, lon REAL NOT NULL,  -- rounded to 0.1 degree (about 11 km); only the latest row per user, only while opted in
   PRIMARY KEY (user_id, run_id)
 );
 -- Coach replay (companion.replay): a virtual-clock walk through the runner's real history.
@@ -188,6 +189,12 @@ def init(path: str) -> None:
         if "tz_set_at" not in cols:  # databases created before this column
             try:
                 c.execute("ALTER TABLE users ADD COLUMN tz_set_at TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e):
+                    raise
+        if "weather_optin" not in cols:  # databases created before the weather switch
+            try:
+                c.execute("ALTER TABLE users ADD COLUMN weather_optin INTEGER NOT NULL DEFAULT 0")
             except sqlite3.OperationalError as e:
                 if "duplicate column" not in str(e):
                     raise

@@ -10,7 +10,7 @@ import pytest
 from companion.channels import (OutCard, WhatsAppChannel, feel_template_eligible, wa_media_upload_spec,
                                 wa_template_payload)
 from companion.service import RunIn
-from conftest import OWNER, auth, enrol, make_settings, run_payload
+from conftest import OWNER, auth, enrol, make_settings, run_payload, weather_on
 
 FX = Path(__file__).parent / "fixtures"
 
@@ -122,6 +122,7 @@ def test_run_without_area_is_accepted_and_stores_none(client):
 
 def test_area_is_rounded_to_a_tenth_of_a_degree_and_exported(client):
     t = enrol(client)
+    weather_on(client, t)
     r = client.post("/v1/runs", json=run_payload("a1", area_lat=37.97123, area_lon=23.72571), headers=auth(t))
     assert r.status_code == 202
     row = q(client, "SELECT lat, lon FROM convo_area")[0]
@@ -132,6 +133,7 @@ def test_area_is_rounded_to_a_tenth_of_a_degree_and_exported(client):
 @pytest.mark.parametrize("extra", [{"area_lat": 1.35}, {"area_lon": 103.8}, {"area_lat": None, "area_lon": None}])
 def test_half_an_area_or_nulls_store_nothing_and_still_accept_the_run(client, extra):
     t = enrol(client)
+    weather_on(client, t)
     assert client.post("/v1/runs", json=run_payload("a2", **extra), headers=auth(t)).status_code == 202
     assert q(client, "SELECT COUNT(*) n FROM convo_area")[0]["n"] == 0
 

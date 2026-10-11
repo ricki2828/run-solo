@@ -489,6 +489,7 @@ def test_area_is_stored_rounded_and_only_when_weather_is_on(tmp_path, fakes):
         app = create_app(s, httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=False)
         with TestClient(app) as c:
             t = enrol(c)
+            c.put("/v1/me/settings", json={"weather": True}, headers=auth(t))
             c.post("/v1/runs", json=run_payload(area_lat=1.3521, area_lon=103.8198), headers=auth(t))
             rows = sqlite3.connect(s.db_path).execute("SELECT lat, lon FROM convo_area").fetchall()
             assert rows == ([(1.4, 103.8)] if on else [])

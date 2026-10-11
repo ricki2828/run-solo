@@ -31,6 +31,28 @@ const String kCompanionDelete =
     'You can also send DELETE to the companion in Telegram. Notes already in '
     'your chat stay there until you delete them.';
 
+/// "Weather in suggestions" (off until the runner turns it on). The blurb
+/// sits under the switch; the sheet is the disclosure shown before it turns
+/// on. Same words as privacy section 2b.
+const String kCompanionWeatherBlurb =
+    'Lets a suggestion say if tomorrow looks hot or wet. Off, no area leaves '
+    'your phone.';
+
+const String kCompanionWeatherSheetTitle = 'WEATHER IN SUGGESTIONS';
+
+const List<String> kCompanionWeatherSheet = [
+  'What is sent: the rough area where each run started, rounded to about '
+      '11 km. No place name, no street, no route, nothing that says who you '
+      'are.',
+  'To whom: our server passes that area, and your time zone, to Open-Meteo, '
+      'a weather service, to ask for the forecast there. Our server also '
+      'keeps your latest area for up to 30 days after the run it came from.',
+  'Why: so a suggestion can say tomorrow looks hot or wet. Weather is the '
+      'reason, never the suggestion.',
+  'You can turn it off any time here. Our server forgets your area as soon '
+      'as your phone can reach it. Backups keep data for up to 14 days.',
+];
+
 /// The companion's setup step (onboarding) and Settings > Companion. Off:
 /// the consent copy with "Turn on" and "Not now" at equal weight, neither
 /// pre-selected. Waiting and failed: the enrolment state with a retry. On:
@@ -326,6 +348,28 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
     });
   }
 
+  Future<void> _setWeather(bool on) async {
+    final ctl = AppServices.of(context).companion!;
+    if (on) {
+      final yes = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Theme.of(context).extension<RunSoloTokens>()!.bgRaised,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(Radii.sheet),
+          ),
+        ),
+        builder: (_) => const CompanionWeatherSheet(),
+      );
+      if (yes != true || !mounted) return;
+    }
+    setState(() => _problem = null);
+    await ctl.setWeather(on);
+    if (!mounted) return;
+    setState(() => _problem = ctl.problem);
+  }
+
   Future<void> _remove() async {
     final ctl = AppServices.of(context).companion!;
     setState(() {
@@ -419,6 +463,14 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
               child: const Text('Try again'),
             ),
           ),
+        const _Heading('Weather'),
+        ListenableBuilder(
+          listenable: services.companion!,
+          builder: (context, _) => _WeatherRow(
+            on: services.companion!.weatherOn,
+            onChanged: _busy ? null : _setWeather,
+          ),
+        ),
         const _Heading('Your data'),
         Text(
           'Notes go to you through Telegram. Delete everything wipes your '
@@ -448,6 +500,115 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
         ),
         const SizedBox(height: Space.x32),
       ],
+    );
+  }
+}
+
+/// The switch row: label, one line of why, and a Switch that starts off.
+class _WeatherRow extends StatelessWidget {
+  const _WeatherRow({required this.on, required this.onChanged});
+  final bool on;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Container(
+      constraints: const BoxConstraints(minHeight: 64),
+      padding: const EdgeInsets.symmetric(vertical: Space.x8),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: t.lineHair)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Weather in suggestions',
+                  style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+                ),
+                Text(
+                  kCompanionWeatherBlurb,
+                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: Space.x12),
+          Switch(
+            key: const ValueKey('companion-weather-switch'),
+            value: on,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What turning weather on means, in plain words, before it turns on.
+/// Pops true for "Turn on weather", false for "Not now".
+class CompanionWeatherSheet extends StatelessWidget {
+  const CompanionWeatherSheet({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    // The words scroll if the screen is small or the text is large; the two
+    // buttons stay pinned underneath so they are always reachable.
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(Space.screenGutter),
+        child: Column(
+          key: const ValueKey('companion-weather-sheet'),
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      kCompanionWeatherSheetTitle,
+                      style: RunSoloType.title28.copyWith(color: t.inkPrimary),
+                    ),
+                    for (final p in kCompanionWeatherSheet) ...[
+                      const SizedBox(height: Space.x12),
+                      Text(
+                        p,
+                        style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: Space.x24),
+            Row(
+              children: [
+                Expanded(
+                  child: _ChoiceButton(
+                    key: const ValueKey('companion-weather-on'),
+                    label: 'Turn on',
+                    onTap: () => Navigator.of(context).pop(true),
+                  ),
+                ),
+                const SizedBox(width: Space.x12),
+                Expanded(
+                  child: _ChoiceButton(
+                    key: const ValueKey('companion-weather-not-now'),
+                    label: 'Not now',
+                    onTap: () => Navigator.of(context).pop(false),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

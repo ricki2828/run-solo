@@ -11,7 +11,7 @@ from typing import Literal
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 
 from . import logs
 from .channels import TelegramChannel, WhatsAppChannel, verify_wa_signature
@@ -108,6 +108,7 @@ class SettingsIn(BaseModel):
     quiet_start_min: int | None = Field(default=None, ge=0, lt=1440)
     quiet_end_min: int | None = Field(default=None, ge=0, lt=1440)
     zone_id: str | None = Field(default=None, max_length=64, pattern=ZONE_RE)
+    weather: StrictBool | None = None  # "Weather in suggestions" switch; false also deletes the stored area
 
     _zone = field_validator("zone_id")(_check_zone)
 
@@ -231,7 +232,7 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
 
     @app.put("/v1/me/settings")
     def put_settings(body: SettingsIn, uid: str = Depends(current_user)):
-        svc.set_settings(uid, body.quiet_start_min, body.quiet_end_min, body.zone_id)
+        svc.set_settings(uid, body.quiet_start_min, body.quiet_end_min, body.zone_id, body.weather)
         return {"status": "ok"}
 
     @app.put("/v1/me/timezone")

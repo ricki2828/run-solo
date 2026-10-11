@@ -62,7 +62,8 @@ class Settings:
     est_usd_per_mtok_out: float = 5.0
 
     # Open-Meteo weather for touches and suggestions. Off by default: it sends a lat/lon cell rounded to 0.1 degree
-    # to a third party, which the privacy page has to say first (see convo/weather.py).
+    # to a third party, which the privacy page says (section 2b). Even with this on, a user's area is stored and
+    # sent only after the app's "Weather in suggestions" switch (users.weather_optin).
     weather_enabled: bool = False
 
     # Cards and videos as Telegram photos/videos. Off by default: it needs Chromium (and ffmpeg for video) on the host.

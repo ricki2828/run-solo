@@ -22,6 +22,7 @@
 ///   `{status: duplicate}`; 401 bad token, 429 daily cap
 /// - `PATCH /v1/runs/{run_id}/feel` (Bearer) `{feel}`
 /// - `GET /v1/me`, `DELETE /v1/me` (Bearer)
+/// - `PUT /v1/me/settings` `{weather: bool}` (Bearer): the weather switch
 library;
 
 import 'dart:async';
@@ -324,6 +325,17 @@ class CompanionClient {
     return (reply: r, me: r.ok ? CompanionMe.fromJson(r.json) : null);
   }
 
+  /// `PUT /v1/me/settings {weather}`: the "Weather in suggestions" switch.
+  /// Off also makes the server delete every area it holds for this runner.
+  Future<CompanionReply> putWeather(String token, bool on) => http.send(
+    CompanionRequest(
+      method: 'PUT',
+      uri: _uri(['v1', 'me', 'settings']),
+      headers: _headers(token, json: true),
+      body: utf8.encode(jsonEncode({'weather': on})),
+    ),
+  );
+
   Future<CompanionReply> deleteMe(String token) => http.send(
     CompanionRequest(
       method: 'DELETE',
@@ -509,6 +521,11 @@ class CompanionController extends ChangeNotifier {
   static const String tokenName = 'companion_token';
   static const String consentName = 'companion_consent_version';
   static const String askedName = 'companion_asked';
+  static const String weatherName = 'companion_weather';
+
+  /// Set while the server has not yet confirmed "forget my areas". Retried
+  /// on open and before the next send, so a switch-off made offline lands.
+  static const String weatherForgetName = 'companion_weather_forget';
 
   final SecretStore store;
   final TransferGateway transfer;
@@ -525,6 +542,11 @@ class CompanionController extends ChangeNotifier {
   bool get enrolled => _phase == CompanionPhase.on;
 
   bool _asked = false;
+  bool _weather = false;
+
+  /// "Weather in suggestions" (off until the runner turns it on). The run
+  /// summary carries a rounded area only while this is true.
+  bool get weatherOn => _weather && enrolled;
 
   /// The runner has answered the setup step ("Turn on" or "Not now"), so
   /// onboarding does not ask again.
@@ -557,6 +579,96 @@ class CompanionController extends ChangeNotifier {
     if (await token() != null) {
       _phase = CompanionPhase.on;
       _asked = true;
+      try {
+        _weather = await store.read(weatherName) == '1';
+      } catch (e) {
+        companionLog('could not read the weather switch (${e.runtimeType})');
+      }
+    }
+    notifyListeners();
+    if (_phase == CompanionPhase.on) await syncWeather();
+  }
+
+  /// "Weather in suggestions". On: the server is told first and only then
+  /// does the phone start sending an area. Off: the phone stops at once, then
+  /// the server is told to forget the areas it holds (retried until it has).
+  /// True when the switch now reads as asked.
+  Future<bool> setWeather(bool on) async {
+    final t = await token();
+    if (t == null) return false;
+    if (on) {
+      try {
+        final r = await client.putWeather(t, true);
+        if (r.status == 401 || r.status == 403) {
+          await _wipe();
+          return false;
+        }
+        if (!r.ok) {
+          problem = 'The companion is busy. Weather is still off. Try again.';
+          notifyListeners();
+          return false;
+        }
+      } on CompanionNetworkError {
+        problem = 'No network. Weather is still off. Try again.';
+        notifyListeners();
+        return false;
+      }
+      problem = null;
+      await _saveWeather(true, forgetPending: false);
+      return true;
+    }
+    await _saveWeather(false, forgetPending: true);
+    await syncWeather();
+    return true;
+  }
+
+  /// Tells the server to forget the areas if a switch-off has not landed yet.
+  Future<void> syncWeather() async {
+    String? pending;
+    try {
+      pending = await store.read(weatherForgetName);
+    } catch (_) {
+      return;
+    }
+    if (pending != '1') return;
+    final t = await token();
+    if (t == null) return;
+    try {
+      final r = await client.putWeather(t, false);
+      if (r.status == 401 || r.status == 403) {
+        await _wipe();
+        return;
+      }
+      if (r.ok) {
+        await store.delete(weatherForgetName);
+        problem = null;
+      } else {
+        problem = _weatherPending;
+      }
+    } on CompanionNetworkError {
+      problem = _weatherPending;
+    } catch (e) {
+      companionLog('weather sync failed (${e.runtimeType})');
+    }
+    notifyListeners();
+  }
+
+  static const String _weatherPending =
+      'Weather is off on your phone. The server will be told when you are '
+      'back online.';
+
+  Future<void> _saveWeather(bool on, {required bool forgetPending}) async {
+    _weather = on;
+    try {
+      if (on) {
+        await store.write(weatherName, '1');
+        await store.delete(weatherForgetName);
+      } else {
+        await store.delete(weatherName);
+        if (forgetPending) await store.write(weatherForgetName, '1');
+      }
+    } catch (e) {
+      companionLog('could not save the weather switch (${e.runtimeType})');
     }
     notifyListeners();
   }
@@ -765,10 +877,13 @@ class CompanionController extends ChangeNotifier {
     try {
       await store.delete(tokenName);
       await store.delete(consentName);
+      await store.delete(weatherName);
+      await store.delete(weatherForgetName);
     } catch (e) {
       companionLog('could not remove the token (${e.runtimeType})');
     }
     _phase = CompanionPhase.off;
+    _weather = false;
     problem = null;
     notifyListeners();
   }
@@ -795,6 +910,12 @@ String? companionZoneId(String? zoneId, int? offsetMin) {
   return h > 0 ? 'Etc/GMT-$h' : 'Etc/GMT+${-h}';
 }
 
+/// One coordinate rounded to 0.1 degree (about 11 km). Never -0.0.
+double areaCell(double v) {
+  final r = (v * 10).roundToDouble() / 10;
+  return r == 0 ? 0.0 : r;
+}
+
 /// The compact run summary the companion gets (B6, C4, C6): fields only, no
 /// route points, no street, no heart-rate trace. Null when the run has no
 /// time zone yet. The server decides staleness (more than 6 h after the run
@@ -803,6 +924,7 @@ Map<String, Object?>? companionSummary(
   RunDetail d, {
   engine.HrZones? zones,
   engine.RunFeel? feel,
+  bool withArea = false,
 }) {
   final s = d.summary;
   final run = d.run;
@@ -838,6 +960,12 @@ Map<String, Object?>? companionSummary(
     // The area name only (locality), never the street.
     'locality': ?s.place,
     'feel': ?(feel ?? d.sidecar.feel)?.name,
+    // Only with "Weather in suggestions" on: the start point rounded to 0.1
+    // degree (about 11 km) here on the phone, so the server never gets more.
+    if (withArea && s.startPoint != null) ...{
+      'area_lat': areaCell(s.startPoint!.lat),
+      'area_lon': areaCell(s.startPoint!.lon),
+    },
   };
 }
 
@@ -883,7 +1011,12 @@ class CompanionTarget extends ExportTarget {
     final token = await controller.token();
     if (token == null) return const SendResult.failed('Companion is off');
     try {
-      final summary = companionSummary(d, zones: zones?.call());
+      await controller.syncWeather();
+      final summary = companionSummary(
+        d,
+        zones: zones?.call(),
+        withArea: controller.weatherOn,
+      );
       if (summary == null) {
         return const SendResult.failed('Run has no time zone yet');
       }
