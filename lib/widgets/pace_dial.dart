@@ -91,9 +91,7 @@ class PaceDial extends StatelessWidget {
             // A small Bone tag, not cyan: cyan means PB everywhere (S6).
             TextSpan(
               text: 'TRUE ',
-              style: RunSoloType.runCaption.copyWith(
-                color: onZone ? HrZones.secondaryOnZone : t.inkSecondary,
-              ),
+              style: RunSoloType.runCaption.copyWith(color: t.inkSecondary),
             ),
             TextSpan(text: Fmt.pace(v, units)),
           ],
@@ -108,7 +106,7 @@ class PaceDial extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final secondary = onZone ? HrZones.secondaryOnZone : t.inkSecondary;
+    final secondary = t.inkSecondary;
     final p = position;
     final trueLine = _trueLine(t);
     return Semantics(
@@ -152,7 +150,7 @@ class PaceDial extends StatelessWidget {
       painter: _DialPainter(
         position: p,
         ink: t.inkPrimary,
-        track: onZone ? HrZones.gaugeEmpty : t.lineHair,
+        track: onZone ? HrZones.gaugeEmptyFor(t) : t.lineHair,
         secondary: secondary,
         truePosition: truePosition,
         trueInk: t.inkPrimary,

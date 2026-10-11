@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../theme/theme.dart';
-import '../theme/zones.dart';
 
 /// bpm + % max. Strap dropped shows "--" and "reconnecting", never 0
 /// (design brief §4.4). Hidden entirely when no strap is paired.
@@ -31,7 +30,7 @@ class HrBadge extends StatelessWidget {
     final numberStyle = (large ? RunSoloType.display44 : RunSoloType.title28)
         .copyWith(
           color: dropped
-              ? (onZone ? HrZones.secondaryOnZone : t.inkMuted)
+              ? (onZone ? t.inkSecondary : t.inkMuted)
               : t.inkPrimary,
         );
     return Semantics(
@@ -51,7 +50,7 @@ class HrBadge extends StatelessWidget {
               color: dropped
                   ? t.semWarn
                   : onZone
-                  ? HrZones.secondaryOnZone
+                  ? t.inkSecondary
                   : t.inkSecondary,
             ),
           ),

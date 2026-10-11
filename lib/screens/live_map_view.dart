@@ -178,6 +178,7 @@ class LiveMapView extends StatefulWidget {
     this.heightVsStartM,
     this.backToStartM,
     this.retrace,
+    this.heroStyle,
   });
 
   final MapSurfaceFactory maps;
@@ -217,6 +218,15 @@ class LiveMapView extends StatefulWidget {
   /// The recorder's retrace state, for the map to draw (null: none).
   final RetraceInput? retrace;
 
+  /// A rep or recovery of a structured session (D2, 11-Oct): the phase hero
+  /// keeps its NUMBERS size, this style, and the map shrinks to a strip of
+  /// [stripMinHeight]..[stripMaxHeight] under it. Null: the map takes the
+  /// room under a compact hero, as before.
+  final TextStyle? heroStyle;
+
+  static const double stripMinHeight = 120;
+  static const double stripMaxHeight = 160;
+
   @override
   State<LiveMapView> createState() => _LiveMapViewState();
 }
@@ -246,6 +256,17 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
     final fg = state == AppLifecycleState.resumed;
     if (fg != _foreground) setState(() => _foreground = fg);
   }
+
+  Widget _map(BuildContext context) => _foreground
+      ? widget.maps.buildLive(
+          context,
+          track: widget.track,
+          color: widget.typeColor,
+          plan: widget.plan,
+          terrain: widget.terrain,
+          retrace: widget.retrace,
+        )
+      : const SizedBox.shrink(key: ValueKey('map-off'));
 
   @override
   Widget build(BuildContext context) {
@@ -293,14 +314,18 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
                         h.text,
                         key: const ValueKey('map-hero'),
                         softWrap: false,
-                        style: RunSoloType.display64
-                            .copyWith(
-                              color: t.inkPrimary,
-                              fontSize: RunSoloType.runSize(
-                                widget.compact ? 52 : 64,
-                              ),
-                            )
-                            .copyWith(fontWeight: FontWeight.w700),
+                        style: widget.heroStyle != null
+                            ? widget.heroStyle!
+                                  .copyWith(color: t.inkPrimary)
+                                  .copyWith(fontWeight: FontWeight.w700)
+                            : RunSoloType.display64
+                                  .copyWith(
+                                    color: t.inkPrimary,
+                                    fontSize: RunSoloType.runSize(
+                                      widget.compact ? 52 : 64,
+                                    ),
+                                  )
+                                  .copyWith(fontWeight: FontWeight.w700),
                       ),
                     ),
                     Text(
@@ -344,22 +369,25 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
               child: StartStrip(
                 backToStartM: widget.backToStartM!,
                 units: widget.units,
-                labelColor: widget.secondary,
-                valueColor: t.inkPrimary,
               ),
             ),
           ),
         Expanded(
-          child: _foreground
-              ? widget.maps.buildLive(
-                  context,
-                  track: widget.track,
-                  color: widget.typeColor,
-                  plan: widget.plan,
-                  terrain: widget.terrain,
-                  retrace: widget.retrace,
-                )
-              : const SizedBox.shrink(key: ValueKey('map-off')),
+          child: widget.heroStyle == null
+              ? _map(context)
+              : LayoutBuilder(
+                  builder: (context, c) => Align(
+                    alignment: Alignment.bottomCenter,
+                    child: SizedBox(
+                      key: const ValueKey('map-strip'),
+                      height: c.maxHeight.clamp(
+                        0.0,
+                        LiveMapView.stripMaxHeight,
+                      ),
+                      child: _map(context),
+                    ),
+                  ),
+                ),
         ),
       ],
     );

@@ -21,6 +21,10 @@ class ZoneLadder extends StatelessWidget {
 
   static const double _inactiveAlpha = 0.30;
 
+  /// On the bright Z3 / Z4 floods the unlit rungs carry only a whisper of
+  /// their hue so their ink numbers stay >= 7:1 on the rung (D1, 11-Oct).
+  static const double inactiveAlphaOnInk = 0.06;
+
   @override
   Widget build(BuildContext context) {
     if (zone <= 0) return const SizedBox.shrink();
@@ -52,9 +56,15 @@ class _Rung extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fill = HrZones.distributionLight[z];
-    // Dark ink or Bone, whichever reads on the rung's own colour.
-    final ink =
-        HrZones.contrast(t.inkPrimary, fill) >= HrZones.contrast(t.bgBase, fill)
+    // On an ink flood (Z3, Z4) the lit rung is a solid ink block with the
+    // flood's colour as its number (>= 7:1 by the flood's own contrast); the
+    // others stay quiet. Elsewhere: dark ink or Bone, whichever reads on the
+    // rung's own colour.
+    final onInk = HrZones.isInk(t);
+    final ink = onInk
+        ? t.bgBase
+        : HrZones.contrast(t.inkPrimary, fill) >=
+              HrZones.contrast(t.bgBase, fill)
         ? t.inkPrimary
         : t.bgBase;
     return Padding(
@@ -76,10 +86,18 @@ class _Rung extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: lit
-                    ? fill
-                    : fill.withValues(alpha: ZoneLadder._inactiveAlpha),
+                    ? (onInk ? t.inkPrimary : fill)
+                    : fill.withValues(
+                        alpha: onInk
+                            ? ZoneLadder.inactiveAlphaOnInk
+                            : ZoneLadder._inactiveAlpha,
+                      ),
                 borderRadius: BorderRadius.circular(4),
-                border: lit ? Border.all(color: t.inkPrimary, width: 2) : null,
+                border: lit
+                    ? Border.all(color: t.inkPrimary, width: 2)
+                    : onInk
+                    ? Border.all(color: t.lineHair)
+                    : null,
               ),
               child: Text(
                 '$z',

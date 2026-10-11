@@ -87,16 +87,17 @@ class StartStrip extends StatelessWidget {
     super.key,
     required this.backToStartM,
     required this.units,
-    required this.labelColor,
-    required this.valueColor,
   });
 
   final double backToStartM;
   final Units units;
-  final Color labelColor;
-  final Color valueColor;
 
   static const double _outline = 2;
+
+  /// The plate is its own dark ground (black 85 %), so it carries Bone on
+  /// every flood, bright ones included (D1: 12:1 or better over Z3 / Z4).
+  static const Color valueColor = NightSession.inkPrimary;
+  static const Color labelColor = NightSession.overlayInk;
 
   /// The strip's height: one 36 sp line, the plate's padding and outline.
   static double get height =>

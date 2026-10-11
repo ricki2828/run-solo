@@ -58,6 +58,14 @@ void main() {
       await pumpTimes(tester, 5);
       await settleAnimations(tester);
       await golden(tester, 'record_map_rep_360x$h');
+      // Into the recovery: the countdown is the hero over the same strip.
+      for (var i = 0; i < 160; i++) {
+        fake.advance(const Duration(seconds: 1));
+        await tester.pump();
+      }
+      await pumpTimes(tester, 5);
+      await settleAnimations(tester);
+      await golden(tester, 'record_map_recovery_360x$h');
     });
   }
 
