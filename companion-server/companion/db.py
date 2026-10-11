@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS runs (
   plan_week INTEGER, plan_weeks INTEGER,  -- the app's 4-week block: this run's week, of how many
   plan_next_type TEXT, plan_next_day TEXT, plan_next_week INTEGER, plan_next_min INTEGER, plan_next_m INTEGER,  -- the next planned session
   feel TEXT,
+  session_name TEXT, work_pace_s_per_km REAL, reps_done INTEGER, rep_spread_s REAL, recovery_pace_s_per_km REAL,  -- an interval session, from the app's verdict numbers
   received_at TEXT NOT NULL,
   stale INTEGER NOT NULL DEFAULT 0,
   real_upload INTEGER,  -- 1 the app uploaded it; 0 a coach replay created it from an export; NULL rows from before this column
@@ -247,7 +248,9 @@ def init(path: str) -> None:
         for col, typ in (("app_type", "TEXT"), ("real_upload", "INTEGER"),
                          ("plan_week", "INTEGER"), ("plan_weeks", "INTEGER"), ("plan_next_type", "TEXT"),
                          ("plan_next_day", "TEXT"), ("plan_next_week", "INTEGER"), ("plan_next_min", "INTEGER"),
-                         ("plan_next_m", "INTEGER")):
+                         ("plan_next_m", "INTEGER"),
+                         ("session_name", "TEXT"), ("work_pace_s_per_km", "REAL"), ("reps_done", "INTEGER"),
+                         ("rep_spread_s", "REAL"), ("recovery_pace_s_per_km", "REAL")):
             if col not in run_cols:  # databases created before these columns
                 try:
                     c.execute(f"ALTER TABLE runs ADD COLUMN {col} {typ}")

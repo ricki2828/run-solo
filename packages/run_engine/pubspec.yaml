@@ -8,6 +8,7 @@ environment:
 
 dependencies:
   xml: ^6.5.0
+  crypto: ^3.0.7
   # Zone rules (10-year database) for the offset at a run's start; the lat/lon
   # to zone lookup is our own coarse grid (lib/src/engine/zone_grid.dart).
   timezone: ^0.11.1

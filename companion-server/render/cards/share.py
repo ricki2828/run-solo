@@ -29,7 +29,10 @@ def build_share_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None 
     reps = facts.get("reps")
     if reps and s.get("reps"):  # intervals: reps replace the session's average pace, which says little
         stats.append((str(len(reps)), "REPS"))
-        stats.append((P.fmt_dur(float(min(r["time_s"] for r in reps))), "BEST REP"))
+        if facts.get("work_pace_s_per_km"):
+            stats.append((P.fmt_pace(float(facts["work_pace_s_per_km"])), "/KM WORK"))
+        else:
+            stats.append((P.fmt_dur(float(min(r["time_s"] for r in reps))), "BEST REP"))
     if s.get("time"):
         stats.append((P.fmt_dur(float(facts["duration_s"])), "TIME"))
     if s.get("pace", True) and facts.get("pace_s_per_km") and not reps:

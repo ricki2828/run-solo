@@ -30,7 +30,7 @@ from .convo import suggest as cv_suggest
 from .convo import touches as cv_touches
 from .convo.questions import REASK_DAYS, known_without_asking, next_weekly_question
 from .convo.weather import NoWeather, OpenMeteo, cell
-from .facts import APP_TYPES, FactsResult, build_facts, infer_coach_type, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
+from .facts import APP_TYPES, FactsResult, build_facts, known_session, infer_coach_type, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
 from .timeutil import (in_quiet, iso, now_utc, parse_iso, quiet_end_utc, resolve_cap_week, to_local, UTC,
                        valid_zone, week_key)
 from .writer import Writer, digest_lines
@@ -141,6 +141,9 @@ class PlanNextIn(BaseModel):
         return v
 
 
+CUSTOM_SESSION_RE = re.compile(r"^custom:[0-9a-f]{16}$")
+
+
 class RunIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     run_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.:-]+$")
@@ -167,6 +170,12 @@ class RunIn(BaseModel):
     plan_weeks: int | None = Field(default=None, ge=1, le=52)  # how many weeks the plan has
     plan_next: PlanNextIn | None = None
     feel: str | None = Field(default=None, pattern=r"^(easy|right|hard)$")
+    # An interval session, from the numbers the app's verdict shows. All optional: an older app sends none.
+    session_name: str | None = Field(default=None, max_length=40)
+    work_pace_s_per_km: float | None = Field(default=None, gt=0, lt=3600)  # mean pace over the work reps
+    reps_done: int | None = Field(default=None, ge=1, le=200)
+    rep_spread_s: float | None = Field(default=None, ge=0, lt=3600)  # slowest minus fastest clean rep, s/km
+    recovery_pace_s_per_km: float | None = Field(default=None, gt=0, lt=3600)
     area_lat: float | None = Field(default=None, ge=-90, le=90)  # approximate area for weather; the phone rounds to 0.1 degree and the server rounds again
     area_lon: float | None = Field(default=None, ge=-180, le=180)
     route: list[tuple[GridInt, GridInt]] | None = Field(default=None, min_length=2, max_length=MAX_ROUTE_POINTS)
@@ -185,6 +194,22 @@ class RunIn(BaseModel):
         if self.splits is not None and sum(x.km for x in self.splits) > self.distance_m / 1000 + 0.5:
             raise ValueError("splits are longer than the run")
         return self
+
+    @field_validator("session_name", "work_pace_s_per_km", "reps_done", "rep_spread_s", "recovery_pace_s_per_km",
+                     mode="wrap")
+    @classmethod
+    def _session_field_is_optional_extra(cls, v, handler):
+        """A bad session value drops that one field (stored as none), never the run: it only adds colour to a card."""
+        try:
+            out = handler(v)
+        except ValidationError:
+            return None
+        if isinstance(out, str):
+            # Only a built-in session name or the app's unreadable code for a custom one is kept: no typed text is
+            # ever stored. Anything else (including control or format characters) drops the field.
+            out = out.strip()
+            return out if known_session(out) or CUSTOM_SESSION_RE.match(out) else None
+        return out
 
     @field_validator("plan_kind", "plan_target_m", "plan_week", "plan_weeks", "plan_next", mode="wrap")
     @classmethod
@@ -603,7 +628,8 @@ class Service:
             runs = [dict(r) for r in c.execute(
                 "SELECT run_id, type, app_type, start_utc, zone_id, duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, "
                 "verdict, locality, plan_kind, plan_target_m, plan_week, plan_weeks, plan_next_type, plan_next_day, plan_next_week, "
-                "plan_next_min, plan_next_m, feel, received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
+                "plan_next_min, plan_next_m, feel, session_name, work_pace_s_per_km, reps_done, rep_spread_s, recovery_pace_s_per_km, "
+                "received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
             cutoff = iso(now - timedelta(days=RETENTION_LOG_DAYS))
             msgs = [dict(r) for r in c.execute(
                 "SELECT k.kind, k.headline, k.body, k.sent_at, cc.situation, cc.touch_kind, cc.media_json FROM cards k "
@@ -703,6 +729,8 @@ class Service:
         nx = run.plan_next
         plan_cols = (run.plan_week, run.plan_weeks, nx.type if nx else None, nx.day if nx else None,
                      nx.week if nx else None, nx.minutes if nx else None, nx.distance_m if nx else None)
+        session_cols = (run.session_name, run.work_pace_s_per_km, run.reps_done, run.rep_spread_s,
+                        run.recovery_pace_s_per_km)
         with db.tx(self.s.db_path) as c:
             coach_type, app_type = self._coach_type(c, uid, run)
             have = c.execute("SELECT real_upload FROM runs WHERE user_id=? AND run_id=?", (uid, run.run_id)).fetchone()
@@ -721,12 +749,13 @@ class Service:
                         "distance_m=?, pace_s_per_km=?, true_pace_s_per_km=?, verdict=?, scores_delta=?, zone_min=?, "
                         "climb_m=?, locality=?, route_id=?, load_state=?, pb=?, plan_kind=?, plan_target_m=?, "
                         "plan_weeks_to_race=?, plan_week=?, plan_weeks=?, plan_next_type=?, plan_next_day=?, plan_next_week=?, "
-                        "plan_next_min=?, plan_next_m=?, feel=COALESCE(feel, ?) WHERE user_id=? AND run_id=?",
+                        "plan_next_min=?, plan_next_m=?, feel=COALESCE(feel, ?), session_name=?, work_pace_s_per_km=?, reps_done=?, "
+                        "rep_spread_s=?, recovery_pace_s_per_km=? WHERE user_id=? AND run_id=?",
                         (iso(now), iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, coach_type, app_type,
                          run.duration_s, run.distance_m, run.pace_s_per_km, run.true_pace_s_per_km, run.verdict,
                          json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality,
                          run.route_id, run.load_state, run.pb, run.plan_kind, run.plan_target_m,
-                         run.plan_weeks_to_race, *plan_cols, run.feel, uid, run.run_id))
+                         run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols, uid, run.run_id))
                     self._keep_shape(c, uid, run)
                     return {"status": "updated"}
                 return {"status": "duplicate"}
@@ -738,12 +767,13 @@ class Service:
                 "INSERT INTO runs (user_id, run_id, start_utc, end_utc, utc_offset_min, zone_id, type, app_type, "
                 "duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, verdict, scores_delta, zone_min, climb_m, "
                 "locality, route_id, load_state, pb, plan_kind, plan_target_m, plan_weeks_to_race, plan_week, plan_weeks, plan_next_type, plan_next_day, "
-                "plan_next_week, plan_next_min, plan_next_m, feel, received_at, "
-                "stale, real_upload) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "plan_next_week, plan_next_min, plan_next_m, feel, session_name, work_pace_s_per_km, reps_done, rep_spread_s, "
+                "recovery_pace_s_per_km, received_at, "
+                "stale, real_upload) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (uid, run.run_id, iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, coach_type, app_type,
                  run.duration_s, run.distance_m, run.pace_s_per_km, run.true_pace_s_per_km, run.verdict,
                  json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality, run.route_id,
-                 run.load_state, run.pb, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, *plan_cols, run.feel,
+                 run.load_state, run.pb, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols,
                  iso(now), int(stale), 0 if replay else 1))
             self._keep_shape(c, uid, run)
             if self.s.weather_enabled and run.area_lat is not None and run.area_lon is not None \
@@ -963,7 +993,7 @@ class Service:
                 c.execute("INSERT INTO convo_log (user_id, kind, key, ts) SELECT ?,?,?,? WHERE NOT EXISTS "
                           "(SELECT 1 FROM convo_log WHERE user_id=? AND kind='sunrise' AND key=?)",
                           (uid, "sunrise", run_id, iso(now), uid, run_id))
-        res = FactsResult(res.facts, None, res.tone, False, res.reason)
+        res = FactsResult(res.facts, None, res.tone, False, res.reason, res.session)
         w = self.writer.write(res, digest_lines(mem, feels), voice=v.rendered, style=v.style,
                               suggestion_line=sline.body if sline else None)
         body = w.body

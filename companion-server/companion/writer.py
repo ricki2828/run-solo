@@ -50,6 +50,7 @@ Rules:
 - Always include at least one real number from the facts.
 - Be honest on slow days: say it was slower, kindly, without spin. Never say "great effort" or similar praise filler.
 - If a fact starts with "Verdict:", quote it word for word.
+- If the JSON has a "session", the run was that interval session: name it and what it trains ("purpose"), and judge it on the work pace in the facts. Never call the whole-run average, recoveries included, a number to beat or a line in the sand.
 - No medical advice, no diagnosis, no links, no phone numbers, no emojis.
 - headline: at most 60 characters. body: at most 220 characters, one to three short sentences.
 - The "style" list shows the voice: a dry, honest coach. Few words, a little Kiwi humour, no hype. Match the tone only. Its {placeholders} stand for numbers: take numbers from the facts, never from "style".
@@ -181,6 +182,8 @@ class Writer:
             return Written(fallback.headline, fallback.body, "template", "spend_cap")
 
         payload = {"tone": result.tone, "facts": [f.text for f in facts], "memory": memory_digest}
+        if result.session:
+            payload["session"] = dict(result.session)
         if style:
             payload["style"] = list(style)
         allowed_text = " ".join(f.text for f in facts)  # memory numbers do not count as grounded

@@ -235,8 +235,35 @@ List<Map<String, Object?>?> companionFactsFor(
         withRoute: options.withRoute,
         privacyZones: privacyZones,
       ),
+      ..._intervalFacts(mode, run.session, a),
     });
   }
   options.onZones?.call(privacyZones);
   return out;
+}
+
+/// Same rule as `companionIntervalFacts` in lib/state/companion.dart: Intervals
+/// runs that are not a goal run or a parkrun; a session-less one is the 4x4.
+Map<String, Object?> _intervalFacts(
+  RunMode mode,
+  SessionSpec? spec,
+  RunAnalysis? a,
+) {
+  final m = a?.intervals;
+  if (mode != RunMode.intervals ||
+      m == null ||
+      spec?.isGoal == true ||
+      spec?.templateId == SessionSpec.parkrunId) {
+    return const {};
+  }
+  return coachIntervalFacts(
+    sessionName: spec?.name ?? SessionCatalogue.norwegian4x4.name,
+    workPaceSecPerKm: a?.trueWorkPaceSecPerKm ?? m.avgWorkPaceSecPerKm,
+    repsDone: m.reps.length,
+    cleanRepPacesSecPerKm: [
+      for (final r in m.reps)
+        if (r.clean) r.paceSecPerKm!,
+    ],
+    recoveryPaceSecPerKm: m.recoveryPaceSecPerKm,
+  );
 }

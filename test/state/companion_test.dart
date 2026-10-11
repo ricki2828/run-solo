@@ -385,9 +385,39 @@ void main() {
         'feel',
         'splits',
         'reps',
+        'session_name',
+        'work_pace_s_per_km',
+        'reps_done',
+        'rep_spread_s',
+        'recovery_pace_s_per_km',
       };
       expect(j.keys.toSet().difference(allowed), isEmpty);
     });
+
+    test(
+      'an interval run names its session and sends the verdict numbers',
+      () async {
+        final j = await summaryOf();
+        final d = (await store.load(run.id))!;
+        final s = d.summary;
+        expect(
+          j['session_name'],
+          s.spec?.name ?? engine.SessionCatalogue.norwegian4x4.name,
+        );
+        expect(
+          j['work_pace_s_per_km'],
+          ((s.trueWorkPaceSecPerKm ?? s.workPaceSecPerKm)! * 10)
+                  .roundToDouble() /
+              10,
+        );
+        expect(j['reps_done'], s.detectedReps);
+        expect(
+          j.containsKey('rep_spread_s'),
+          s.cleanRepPacesSecPerKm.whereType<double>().length > 1,
+        );
+        expect(companionIntervalFacts(s), isNotEmpty);
+      },
+    );
 
     test('carries the feel when the runner tapped before the send', () async {
       await store.setFeel(run.id, engine.RunFeel.hard);

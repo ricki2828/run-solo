@@ -32,10 +32,11 @@ ERROR_CODES = frozenset({"bad_request", "timeout", "too_big", "render_failed"})
 # sides, so adding one is a deliberate change to this list and to the privacy page. `route_xy` is the app's route
 # SHAPE (whole numbers on a 0..255 unit-box grid, no latitude, longitude, scale or north); `route` (lat/lon) is
 # deliberately not here. `splits` and `reps` are per-km paces and rep times, each with an HR zone.
+# `work_pace_s_per_km` is an interval run's mean work-rep pace (the verdict's number), drawn as "/KM WORK".
 ALLOWED_FACT_KEYS = frozenset({
     "type", "start_local", "distance_km", "duration_s", "headline", "pace_s_per_km", "zone_s", "climb_m",
     "place_note", "verdict", "pb", "pb_detail",
-    "title", "route_xy", "splits", "reps",
+    "title", "route_xy", "splits", "reps", "work_pace_s_per_km",
     "week_label", "runs", "days", "score_moves", "best_moment", "quickest_pace_s_per_km",
     # suggestion / milestone / race_countdown / monthly cards (persisted in convo_cards.media_json when the coach
     # decides to send them; each one is something the card's own text already says, see KIND_FACT_KEYS)
@@ -50,7 +51,7 @@ ALLOWED_FACT_KEYS = frozenset({
 # exactly what media.run_facts / week_facts build.
 RUN_KEYS = frozenset({"type", "start_local", "distance_km", "duration_s", "headline", "pace_s_per_km", "zone_s",
                       "climb_m", "place_note", "verdict", "pb", "pb_detail",
-                      "title", "route_xy", "splits", "reps"})   # the shape facts: run cards and run videos only
+                      "title", "route_xy", "splits", "reps", "work_pace_s_per_km"})   # the shape facts: run cards and run videos only
 WEEK_KEYS = frozenset({"week_label", "distance_km", "runs", "duration_s", "days", "score_moves", "best_moment",
                        "pace_s_per_km", "quickest_pace_s_per_km"})
 NEW_KINDS = frozenset({"suggestion", "milestone", "race_countdown", "monthly"})   # these also get value-shape checks
@@ -118,6 +119,9 @@ def _shapes_ok(facts: dict) -> bool:
                 isinstance(x, dict) and set(x) <= {*fields, "zone"} and all(num_ok(x.get(f), f) for f in fields)
                 and (x.get("zone") is None or _int_in(x["zone"], 1, 5)) for x in v)):
             return False
+    wp = facts.get("work_pace_s_per_km")
+    if wp is not None and not (isinstance(wp, (int, float)) and not isinstance(wp, bool) and 60 <= wp <= 3600):
+        return False
     return True
 
 

@@ -44,12 +44,17 @@ def build_post_run_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | No
     reps = facts.get("reps")
     if reps:  # intervals: average pace over the whole session says little, so show the reps
         stats.append((str(len(reps)), "REPS"))
-        stats.append((P.fmt_dur(float(min(r["time_s"] for r in reps))), "BEST REP"))
+        if facts.get("work_pace_s_per_km"):  # the work pace replaces BEST REP: the row fits three
+            stats.append((P.fmt_pace(float(facts["work_pace_s_per_km"])), "/KM WORK"))
+        else:
+            stats.append((P.fmt_dur(float(min(r["time_s"] for r in reps))), "BEST REP"))
         if facts.get("avg_hr"):
             stats.append((P.thousands(facts["avg_hr"]), "AVG BPM"))
     else:
         stats.append((P.fmt_dur(float(facts["duration_s"])), "TIME"))
-    if facts.get("pace_s_per_km") and not reps:
+    if facts.get("work_pace_s_per_km") and not reps:  # an interval run with no rep times: work pace, not the average
+        stats.append((P.fmt_pace(float(facts["work_pace_s_per_km"])), "/KM WORK"))
+    elif facts.get("pace_s_per_km") and not reps:
         stats.append((P.fmt_pace(float(facts["pace_s_per_km"])), "/KM"))
     if reps:
         pass

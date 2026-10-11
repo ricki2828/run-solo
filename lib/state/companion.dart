@@ -1239,6 +1239,8 @@ Map<String, Object?>? companionSummary(
     // The area name only (locality), never the street.
     'locality': ?s.place,
     'feel': ?(feel ?? d.sidecar.feel)?.name,
+    // The session's name and work/rep/recovery paces (interval runs only).
+    ...companionIntervalFacts(s),
     // The 4-week plan's facts (companionPlanFacts), when there is a plan.
     ...plan,
     // Only with "Weather in suggestions" on: the start point rounded to 0.1
@@ -1259,6 +1261,21 @@ Map<String, Object?>? companionSummary(
       privacyZones: privacyZones,
     ),
   };
+}
+
+/// What the coach needs to judge an interval session on its work, not the
+/// whole-run average: the session's name and the verdict's own numbers
+/// (engine `coachIntervalFacts`). A goal run or parkrun sends none, and
+/// neither does a run without a work pace.
+Map<String, Object?> companionIntervalFacts(RunSummary s) {
+  if (!s.isFourByFour || s.isParkrun || !s.hasIntervals) return const {};
+  return engine.coachIntervalFacts(
+    sessionName: s.spec?.name ?? engine.SessionCatalogue.norwegian4x4.name,
+    workPaceSecPerKm: s.trueWorkPaceSecPerKm ?? s.workPaceSecPerKm,
+    repsDone: s.detectedReps,
+    cleanRepPacesSecPerKm: s.cleanRepPacesSecPerKm.whereType<double>(),
+    recoveryPaceSecPerKm: s.recoveryPaceSecPerKm,
+  );
 }
 
 // ------------------------------------------------------------------- target
