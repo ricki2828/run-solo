@@ -173,7 +173,7 @@ SERVER_KEYS = ("type", "start_local", "distance_km", "duration_s", "headline", "
 
 
 # The headline of a minimal card can only use what the stored facts hold: no reps, no place counts ("third time").
-MINIMAL_HEADLINES = {"interval": "Hard session, 9.6 km done.", "long": "12.4 km and 234 m of climb.",
+MINIMAL_HEADLINES = {"trail": "12.4 km and 234 m of climb.", "interval": "Hard session, 9.6 km done.", "long": "12.4 km and 234 m of climb.",
                      "race": "A new best.", "easy": "Slow, and fair enough."}
 
 
@@ -203,6 +203,7 @@ GOLDENS = {
     "post_run_flood_minimal": ("render_post_run", lambda: _minimal(F.singapore_intervals())),
     "pb_minimal": ("render_pb", lambda: _minimal(F.pb_5k())),
     "post_run_light_shape": ("render_post_run", lambda: _with_shape(F.milos_trail())),
+    "post_run_trail_shape": ("render_post_run", lambda: _with_shape(F.milos_trail_run())),
     "post_run_flood_shape": ("render_post_run", lambda: _with_shape(F.singapore_intervals())),
     "pb_shape": ("render_pb", lambda: _with_shape(F.pb_5k())),
     "post_run_slow_hot_day": ("render_post_run", F.slow_hot_day),
@@ -281,6 +282,19 @@ def test_card_matches_golden(cards, name):
     mean, over = _diff(png, path.read_bytes())
     # anti-aliasing and font hinting differ a little between hosts; layout or colour changes do not hide in this
     assert mean < 0.6 and over < 0.004, f"{name}: mean {mean:.3f}, over {over:.4f}"
+
+
+def test_trail_card_leads_with_the_route_when_the_shape_is_there():
+    """A `trail` run is drawn like any other: the route under the headline, splits only when there is no route. The
+    route is only there when the app sent it, which its "Show route shape on cards" switch controls."""
+    with_shape = _with_shape(F.milos_trail_run())
+    assert with_shape["type"] == "trail"
+    html = _body(build_post_run_html(with_shape, MEMORY))
+    assert 'class="abs route"' in html and 'class="abs bars"' not in html
+    assert "TRAIL RUN" in html.upper() and "234 m" in html
+    no_shape = {k: v for k, v in with_shape.items() if k != "route_xy"}
+    html = _body(build_post_run_html(no_shape, MEMORY))
+    assert 'class="abs route"' not in html and 'class="abs bars"' in html
 
 
 def test_poster_size(cards):

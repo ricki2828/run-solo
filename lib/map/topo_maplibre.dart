@@ -24,6 +24,7 @@ import '../topo/pack_models.dart';
 import '../topo/topo_files.dart';
 import '../topo/topo_style.dart';
 import 'blank_snapshot.dart';
+import 'card_framing.dart';
 import 'map_surface.dart';
 import 'retrace_tracker.dart';
 import 'route_builder.dart';
@@ -135,6 +136,7 @@ Widget _mapView({
   bool trackCamera = false,
   ValueChanged<ml.CameraPosition>? onCameraMove,
   ml.LatLngBounds? limit,
+  double maxZoom = 20,
 }) => ml.MapLibreMap(
   styleString: style,
   initialCameraPosition: camera,
@@ -155,7 +157,7 @@ Widget _mapView({
   attributionButtonPosition: ml.AttributionButtonPosition.bottomRight,
   attributionButtonMargins: const Point<num>(-120, -120),
   myLocationEnabled: false,
-  minMaxZoomPreference: const ml.MinMaxZoomPreference(3, 20),
+  minMaxZoomPreference: ml.MinMaxZoomPreference(3, maxZoom),
   cameraTargetBounds: limit == null
       ? ml.CameraTargetBounds.unbounded
       : ml.CameraTargetBounds(limit),
@@ -284,6 +286,9 @@ class _TopoStaticMapState extends State<_TopoStaticMap> {
     _watch?.cancel();
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final b = _bounds;
+    final cardPad = cardPadding(
+      (context.findRenderObject() as RenderBox?)?.size,
+    );
     try {
       if (!widget.mapOnly) {
         final colour = widget.routeColor ?? t.inkPrimary;
@@ -321,10 +326,12 @@ class _TopoStaticMapState extends State<_TopoStaticMap> {
             northeast: ml.LatLng(b.north, b.east),
           ),
           // Room for the switch (detail, top) and the credit line (bottom).
-          left: 24,
-          top: widget.mapOnly ? 24 : 56,
-          right: 24,
-          bottom: widget.mapOnly ? 32 : 48,
+          // Cards: 22% of the short side all round, so the route has streets
+          // and trails around it.
+          left: widget.mapOnly ? cardPad : 24,
+          top: widget.mapOnly ? cardPad : 56,
+          right: widget.mapOnly ? cardPad : 24,
+          bottom: widget.mapOnly ? cardPad : 48,
         ),
       );
       if (widget.mapOnly && _dpr > 1) {
@@ -426,6 +433,11 @@ class _TopoStaticMapState extends State<_TopoStaticMap> {
           onStyle: _onStyle,
           gestures: widget.interactive,
           limit: widget.interactive ? limit : null,
+          // Card snapshots are taken at zoom + log2(dpr) (see _onStyle), so
+          // the ceiling carries the same bump.
+          maxZoom: widget.mapOnly
+              ? kCardMaxZoom + math.log(_dpr) / math.ln2 + 0.01
+              : 20,
         );
         // A non-interactive card must not swallow the tap that opens the
         // full-screen map.

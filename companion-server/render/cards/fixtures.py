@@ -104,6 +104,11 @@ def milos_trail() -> dict[str, Any]:
     }
 
 
+def milos_trail_run() -> dict[str, Any]:
+    """The app's own `trail` type (not a coach type like `long`): what a Trail run reaches the card as."""
+    return milos_trail() | {"type": "trail", "title": "Trail run"}
+
+
 def slow_hot_day() -> dict[str, Any]:
     return {
         "type": "easy", "title": "Easy run", "start_local": "2026-10-06T17:40", "place_note": "32° and humid",

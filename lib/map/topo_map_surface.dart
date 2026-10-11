@@ -25,6 +25,7 @@ import 'retrace_tracker.dart';
 import 'route_builder.dart';
 import 'snapshot_cache.dart';
 import 'cached_map_card.dart';
+import 'card_framing.dart';
 import 'render_queue.dart';
 
 /// The Topo drawing side: the MapLibre widgets in production, plain boxes in
@@ -207,7 +208,7 @@ class TopoMapSurfaceFactory implements MapSurfaceFactory {
             pixelRatio: dpr,
             engine:
                 'topo-${pack.id}-${pack.version}-'
-                '${colour.toARGB32().toRadixString(16)}',
+                '${colour.toARGB32().toRadixString(16)}-$kCardFramingKey',
           ),
           cache: _cache,
           queue: _queue,
