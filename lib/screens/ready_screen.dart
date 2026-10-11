@@ -626,9 +626,12 @@ class _OnChip extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(Radii.pill),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 44),
-          padding: const EdgeInsets.symmetric(horizontal: Space.x12),
-          alignment: Alignment.center,
+          // Sized by its words (a Container with an alignment would fill
+          // the row); 13 sp text plus this padding is a 44 dp target.
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.x12,
+            vertical: 12,
+          ),
           decoration: BoxDecoration(
             border: Border.all(color: ReadyScreen.ink, width: 2),
             borderRadius: BorderRadius.circular(Radii.pill),
