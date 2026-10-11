@@ -7,8 +7,11 @@ import '../platform/gateway.dart' show RecordMode;
 import '../theme/theme.dart';
 
 /// The run-type colour a chart's bars take: free ice, intervals magenta,
-/// the 12-minute test lime, and so on. The PB bar stays Arc so it is unique.
+/// the 12-minute test lime, and so on. The PB bar is ink with a cyan tag.
 extension RunTypeBarColour on RunSoloTokens {
+  /// The PB bar: ink, so no run-type colour (or its tint) can look like it.
+  Color get pbBarColour => inkPrimary;
+
   Color barColourFor(RecordMode m) => switch (m) {
     RecordMode.free => typeFree,
     RecordMode.trail => typeTrail,
@@ -600,7 +603,7 @@ class _BarsPainter extends CustomPainter {
           topRight: const Radius.circular(3),
         ),
         Paint()
-          ..color = isPb ? tokens.accentArc : (barColor ?? tokens.inkMuted),
+          ..color = isPb ? tokens.pbBarColour : (barColor ?? tokens.inkMuted),
       );
       if (showTwins) {
         final twin = points[i].twin;
