@@ -917,8 +917,8 @@ class Service:
             if plan.get("card") in (None, "none"):
                 return None
             if card["kind"] == "recap":
-                runs = [dict(r) for r in c.execute("SELECT * FROM runs WHERE user_id=? AND start_utc>=?",
-                                                    (user["id"], iso(now - timedelta(days=21))))]
+                runs = [dict(r) for r in c.execute("SELECT * FROM runs WHERE user_id=? AND start_utc>=? AND start_utc<=?",
+                                                    (user["id"], iso(now - timedelta(days=21)), iso(now)))]
             else:
                 runs = [dict(r) for r in c.execute("SELECT * FROM runs WHERE user_id=? AND run_id=?",
                                                     (user["id"], card.get("run_id")))]

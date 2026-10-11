@@ -128,7 +128,9 @@ class ReplayChannel:
         return out
 
     def send_followup(self, ref: str, card: OutCard, mode: str) -> str:
-        out = self.inner.send_followup(ref, card, mode)  # media is off, so the service never asks for one
+        if mode == "caption":  # the text a too-long caption could not carry: it needs the context line too
+            card = replace(card, headline=f"{self.r.label()}\n{card.headline}")
+        out = self.inner.send_followup(ref, card, mode)
         self.r.note_send("followup", card.card_id)
         return out
 
@@ -507,7 +509,9 @@ def find_user(settings: Settings) -> str:
 
 
 def replay_settings(s: Settings) -> Settings:
-    return replace(s, media_enabled=False)  # text cards with buttons only
+    """Media follows the environment, as live: with COMPANION_MEDIA on, run and recap cards go through the same
+    render worker and send path (text on any render failure). The "Replay" context line rides in the caption."""
+    return s
 
 
 def from_datetime(text: str | None, zone_id: str) -> datetime | None:
@@ -537,7 +541,7 @@ def dry_run(settings: Settings, facts_dir: str, every_s: int, from_text: str | N
             dst.close()
         Path(path).chmod(0o600)
         s2 = replace(replay_settings(settings), db_path=path, openrouter_key=None, weather_enabled=False,
-                     sends_paused=False)
+                     sends_paused=False, media_enabled=False)  # a dry run renders nothing
         svc = Service(s2, httpx.Client(timeout=5))
         with db.tx(path) as c:  # carry on from wherever a real replay got to, but as a fresh, idle process
             c.execute("UPDATE replay_state SET status='stopped', heartbeat_at=NULL WHERE user_id=?", (uid,))
