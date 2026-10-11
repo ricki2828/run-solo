@@ -64,6 +64,10 @@ class RetraceTracker {
   double? _offCum;
   bool _same = false;
 
+  // Track distance where the last closed section ended: a reopened section's
+  // backdate never goes behind it, so sections do not overlap.
+  double _closedEndCum = 0;
+
   // Where the runner is on the old stretch (index into _pts), found by
   // nearest point and followed incrementally.
   int? _match;
@@ -89,6 +93,7 @@ class RetraceTracker {
     _in = RetraceInput.none;
     _openFrom = _offIdx = _match = null;
     _offCum = null;
+    _closedEndCum = 0;
     _ahead = null;
   }
 
@@ -114,7 +119,9 @@ class RetraceTracker {
     if (!_in.retracing || _openFrom != null || _pts.isEmpty) return;
     _match = null;
     var i = _pts.length - 1;
-    while (i > 0 && _cum.last - _cum[i] < sustainM) {
+    while (i > 0 &&
+        _cum.last - _cum[i] < sustainM &&
+        _cum[i - 1] >= _closedEndCum) {
       i--;
     }
     _openFrom = i;
@@ -138,6 +145,7 @@ class RetraceTracker {
         off != null &&
         _cum.last - off >= gapM) {
       _closed.add(_pts.sublist(_openFrom!, _offIdx! + 1));
+      _closedEndCum = off;
       if (_closed.length > maxClosed) _closed.removeAt(0);
       _openFrom = _offIdx = _match = null;
       _offCum = null;
@@ -148,17 +156,34 @@ class RetraceTracker {
     return true;
   }
 
-  /// Drops every other point (keeping the first and last), so a long run
-  /// stays bounded. Indices are remapped.
+  /// Thins by distance so a long run stays bounded: keeps the first and
+  /// last point and one point per `total / (maxPoints / 2)` metres between,
+  /// so old and recent track end up with the same density however many times
+  /// this runs (halving repeatedly left the oldest track coarsest). The
+  /// result is about half of [maxPoints], so the cap holds with headroom.
+  /// Indices are remapped.
   void _thin() {
-    final keep = <int>[
-      for (var i = 0; i < _pts.length; i += 2) i,
-      if ((_pts.length - 1).isOdd) _pts.length - 1,
-    ];
+    final n = _pts.length;
+    final spacing = math.max(_cum.last / (maxPoints / 2), 1e-6);
+    var keep = <int>[0];
+    for (var i = 1; i < n - 1; i++) {
+      if (_cum[i] - _cum[keep.last] >= spacing) keep.add(i);
+    }
+    keep.add(n - 1);
+    if (keep.length >= n) {
+      // Nothing to drop by distance (e.g. standing still): fall back to
+      // every other point so the cap still holds.
+      keep = [for (var i = 0; i < n; i += 2) i, if ((n - 1).isOdd) n - 1];
+    }
     int remap(int old) {
-      var lo = 0;
-      for (var k = 0; k < keep.length; k++) {
-        if (keep[k] <= old) lo = k;
+      var lo = 0, hi = keep.length - 1;
+      while (lo < hi) {
+        final mid = (lo + hi + 1) >> 1;
+        if (keep[mid] <= old) {
+          lo = mid;
+        } else {
+          hi = mid - 1;
+        }
       }
       return lo;
     }
@@ -219,6 +244,38 @@ class RetraceTracker {
       }
     }
     if (best < 0) return const [];
+    if (m != null && bestD > _lostM * _lostM) {
+      // The window may be stuck after a shortcut. Look wider, but bounded:
+      // a coarse pass of at most [_coarseSteps] points over the whole old
+      // stretch, then the points around its best.
+      final step = math.max(1, (old / _coarseSteps).ceil());
+      var cb = -1;
+      var cd = double.infinity;
+      for (var i = 0; i < old; i += step) {
+        final d = _sq(_pts[i], here);
+        if (d < cd) {
+          cd = d;
+          cb = i;
+        }
+      }
+      if (cb >= 0) {
+        for (
+          var i = math.max(0, cb - step);
+          i <= math.min(old - 1, cb + step);
+          i++
+        ) {
+          final d = _sq(_pts[i], here);
+          if (d < cd) {
+            cd = d;
+            cb = i;
+          }
+        }
+        if (cd < bestD) {
+          bestD = cd;
+          best = cb;
+        }
+      }
+    }
     _match = best;
     final out = <GeoPoint>[_pts[best]];
     var run = 0.0;
@@ -236,6 +293,10 @@ class RetraceTracker {
     _aheadMaxM = maxM;
     return _ahead = out.length < 2 ? const [] : out;
   }
+
+  /// Further than this from the windowed match and the window may be lost.
+  static const double _lostM = 30;
+  static const int _coarseSteps = 200;
 
   static const double _mPerDeg = 111320;
 

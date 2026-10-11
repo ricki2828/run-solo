@@ -183,4 +183,57 @@ void main() {
       expect(t.ahead(maxM: 500).length, lessThan(60));
     });
   });
+
+  group('polish', () {
+    test('after a shortcut the match finds the right spot, not the window', () {
+      // A loop out 0..199 north then back south 199..100 as a parallel line
+      // 5 m east; the runner first retraces near 190, then jumps to ~40.
+      final t = RetraceTracker();
+      GeoPoint east(int i) => GeoPoint(_at(i).lat, 103.0 + 5 / 111320);
+      t.add([for (var i = 0; i < 200; i++) _at(i)]);
+      t.add([for (var i = 199; i >= 180; i--) east(i)]);
+      t.update(_on);
+      t.add([for (var i = 179; i >= 170; i--) east(i)]);
+      final before = t.ahead();
+      expect(before.first.lat, closeTo(_at(170).lat, 1e-4));
+      // Shortcut: far along the old line (130 points = 1.3 km away).
+      t.add([east(40), east(39)]);
+      final after = t.ahead();
+      expect(after, isNotEmpty);
+      expect(after.first.lat, closeTo(_at(39).lat, 2e-5));
+    });
+
+    test('a reopened section does not overlap the closed one', () {
+      final t = _outAndBack((i) => 100.0, turn: 40);
+      t.update(RetraceInput.none);
+      // Well past the gap: the first section closes.
+      t.add([for (var i = 39; i >= 36; i--) _at(i)]);
+      t.update(_on);
+      final closed = t.sections.first;
+      t.add([_at(35)]);
+      final s = t.sections;
+      expect(s.length, 2);
+      final closedEndLat = closed.last.lat;
+      // Without the clamp it would start ~60 m before the closed end.
+      expect(s.last.first.lat, lessThanOrEqualTo(closedEndLat + 1e-9));
+    });
+
+    test('repeated thinning keeps old and recent density similar', () {
+      final t = RetraceTracker(maxPoints: 200);
+      t.add([for (var i = 0; i < 20000; i++) _at(i)]);
+      expect(t.length, lessThanOrEqualTo(200));
+      // Back along the end of the route, then read the whole old track.
+      t.add([for (var i = 19998; i >= 19900; i--) _at(i)]);
+      t.update(_on);
+      t.add([for (var i = 19899; i >= 19880; i--) _at(i)]);
+      final a = t.ahead(maxM: 1e9);
+      expect(a.length, greaterThan(20));
+      final gaps = [
+        for (var i = 1; i < a.length; i++) (a[i - 1].lat - a[i].lat).abs(),
+      ];
+      final old = gaps.skip(gaps.length - 20).reduce((x, y) => x + y) / 20;
+      final recent = gaps.take(20).reduce((x, y) => x + y) / 20;
+      expect(old / recent, inInclusiveRange(0.33, 3));
+    });
+  });
 }
