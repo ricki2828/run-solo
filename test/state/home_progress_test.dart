@@ -174,6 +174,40 @@ void main() {
     });
   });
 
+  group('ProgressMove', () {
+    test('direction words follow the sign, biggest move first', () {
+      final s = {
+        engine.IdentityLane.aerobic: score(
+          engine.IdentityLane.aerobic,
+          vdot: vdotIn(engine.IdentityLane.aerobic, 5, 25, 'Cooper test'),
+          prior: vdotIn(engine.IdentityLane.aerobic, 30, 49, 'Cooper test'),
+          source: 'Cooper test',
+        ),
+        engine.IdentityLane.mid: score(
+          engine.IdentityLane.mid,
+          vdot: 46,
+          prior: 45.5,
+          source: '5K',
+        ),
+      };
+      final moves = ProgressMove.of(s, sex: ProfileSex.male, age: 44);
+      expect(moves.first.lane, engine.IdentityLane.aerobic);
+      expect(moves.first.change, isNegative);
+      expect(moves.first.words, startsWith('slipped '));
+      for (final m in moves.skip(1)) {
+        expect(
+          m.words,
+          m.change < 0 ? startsWith('slipped ') : startsWith('up '),
+        );
+      }
+    });
+
+    test('nothing moved, nothing to say', () {
+      expect(ProgressMove.of(all(), sex: ProfileSex.male, age: 44), isEmpty);
+      expect(ProgressMove.of(const {}, sex: ProfileSex.male, age: 44), isEmpty);
+    });
+  });
+
   group('headline', () {
     test('none: first runs set the scores', () {
       final h = headline(const {});

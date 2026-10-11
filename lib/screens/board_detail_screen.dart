@@ -784,8 +784,16 @@ class _BoardChart extends StatelessWidget {
       engine.BoardKind.distanceInTime => 'Further is taller',
       _ => 'Faster is taller',
     };
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
     return RecentBarsChart(
       chartKey: const ValueKey('board-chart'),
+      barColor: switch (board.kind) {
+        engine.BoardKind.cooper => t.typeTests,
+        engine.BoardKind.interval => t.typeIntervals,
+        engine.BoardKind.distanceInTime ||
+        engine.BoardKind.goalDistance => t.typeGoal,
+        _ => t.typeFree,
+      },
       points: [
         for (final e in shown)
           // The bar is the true value the board ranks; the tick is the

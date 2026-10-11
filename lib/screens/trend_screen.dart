@@ -327,6 +327,8 @@ class _FourByFourTrend extends StatelessWidget {
         const SizedBox(height: Space.x24),
         RecentBarsChart(
           key: const ValueKey('trend-chart'),
+          barColor: t.typeIntervals,
+          minSpan: 30,
           points: [
             for (final p in points)
               BarPoint(
@@ -504,6 +506,8 @@ class _DistanceTrend extends StatelessWidget {
       children: [
         RecentBarsChart(
           key: const ValueKey('distance-trend-chart'),
+          barColor: t.barColourFor(mode),
+          minSpan: laps ? 0 : 30,
           points: [
             for (final (r, v) in shown)
               BarPoint(
@@ -615,6 +619,7 @@ class _CooperTrend extends StatelessWidget {
         tests.length >= 2
             ? RecentBarsChart(
                 key: const ValueKey('cooper-trend-chart'),
+                barColor: t.typeTests,
                 points: [
                   for (final x in tests)
                     BarPoint(date: x.date, value: primeOf(x)),

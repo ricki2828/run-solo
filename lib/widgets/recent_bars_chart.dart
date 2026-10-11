@@ -3,7 +3,23 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../app/format.dart';
+import '../platform/gateway.dart' show RecordMode;
 import '../theme/theme.dart';
+
+/// The run-type colour a chart's bars take: free ice, intervals magenta,
+/// the 12-minute test lime, and so on. The PB bar is ink with a cyan tag.
+extension RunTypeBarColour on RunSoloTokens {
+  /// The PB bar: ink, so no run-type colour (or its tint) can look like it.
+  Color get pbBarColour => inkPrimary;
+
+  Color barColourFor(RecordMode m) => switch (m) {
+    RecordMode.free => typeFree,
+    RecordMode.trail => typeTrail,
+    RecordMode.laps => typeLaps,
+    RecordMode.intervals => typeIntervals,
+    RecordMode.cooper => typeTests,
+  };
+}
 
 /// One attempt on a [RecentBarsChart]: when, the value, and an optional
 /// second reading (the heat-adjusted twin) drawn as a tick over the bar.
@@ -44,7 +60,7 @@ class NoiseBand {
 
 /// The one chart style for Trends and boards: recent attempts as vertical
 /// bars, oldest left, newest right, starting at the left edge. The best bar
-/// is Arc with its label, the rest neutral; a dashed "Best" line, faint
+/// is Arc with a "PB" tag, the rest take [barColor] (the run-type colour); a dashed "Best" line, faint
 /// grid, single-line dates (thinned so they never overlap) and a stated
 /// direction ("Faster is taller"), then the values as a list.
 ///
@@ -77,6 +93,8 @@ class RecentBarsChart extends StatelessWidget {
     this.noise,
     this.caption,
     this.chartKey,
+    this.barColor,
+    this.minSpan = 0,
   });
 
   /// Chronological, oldest first; at most [maxBars] are drawn (the newest).
@@ -132,6 +150,13 @@ class RecentBarsChart extends StatelessWidget {
   /// Key of the chart's tap area.
   final Key? chartKey;
 
+  /// The non-PB bars' colour (the run type's); null keeps them neutral.
+  final Color? barColor;
+
+  /// The smallest range the axis may cover, in the chart's units, so a few
+  /// seconds of noise never looks like a big gap (30 for s/km charts).
+  final double minSpan;
+
   static const double kHeight = 224;
   static const double _gutter = 56;
 
@@ -160,6 +185,7 @@ class RecentBarsChart extends StatelessWidget {
       ],
       lowerIsBetter: lowerIsBetter,
       roundTo: roundTo,
+      minSpan: minSpan,
     );
     final tickFmt = tick ?? format;
     Widget painter(double growT, double moveT) => CustomPaint(
@@ -180,6 +206,7 @@ class RecentBarsChart extends StatelessWidget {
         moveT: moveT,
         previousBest: previousBest,
         noise: noise,
+        barColor: barColor,
         tokens: t,
       ),
     );
@@ -374,10 +401,11 @@ class _BarScale {
     required List<double> values,
     required this.lowerIsBetter,
     required double roundTo,
+    double minSpan = 0,
   }) {
     final hi = values.reduce(math.max);
     final lo = values.reduce(math.min);
-    var span = hi - lo;
+    var span = math.max(hi - lo, minSpan);
     if (span == 0) span = hi.abs() * 0.02;
     if (span == 0) span = 1;
     if (lowerIsBetter) {
@@ -453,6 +481,7 @@ class _BarsPainter extends CustomPainter {
     required this.moveT,
     required this.previousBest,
     required this.noise,
+    required this.barColor,
     required this.tokens,
   });
   final List<BarPoint> points;
@@ -471,6 +500,7 @@ class _BarsPainter extends CustomPainter {
   final double moveT;
   final double? previousBest;
   final NoiseBand? noise;
+  final Color? barColor;
   final RunSoloTokens tokens;
 
   static const _gutter = RecentBarsChart._gutter;
@@ -572,7 +602,8 @@ class _BarsPainter extends CustomPainter {
           topLeft: const Radius.circular(3),
           topRight: const Radius.circular(3),
         ),
-        Paint()..color = isPb ? tokens.accentArc : tokens.inkMuted,
+        Paint()
+          ..color = isPb ? tokens.pbBarColour : (barColor ?? tokens.inkMuted),
       );
       if (showTwins) {
         final twin = points[i].twin;
@@ -608,11 +639,33 @@ class _BarsPainter extends CustomPainter {
             ..strokeWidth = 1.5,
         );
       }
+      // A value on every bar (12 or fewer): "what was the number?" needs
+      // no tap. It sits above the bar, or above its twin tick.
+      var labelTop = vy;
+      final twinY = showTwins && points[i].twin != null
+          ? y(points[i].twin!)
+          : null;
+      if (twinY != null) labelTop = math.min(vy, twinY);
+      if (!isPb || growT >= 1) {
+        final vl = _tp(
+          tick(points[i].value),
+          isPb ? tokens.inkPrimary : tokens.inkSecondary,
+          size: 10,
+        );
+        vl.paint(
+          canvas,
+          Offset(
+            (x + barW / 2 - vl.width / 2).clamp(0.0, plotW - vl.width),
+            labelTop - vl.height - 3,
+          ),
+        );
+        labelTop -= vl.height + 3;
+      }
       if (isPb && growT >= 1) {
         final pl = _tp('PB', tokens.accentArc, w: FontWeight.w700);
         pl.paint(
           canvas,
-          Offset(x + barW / 2 - pl.width / 2, vy - pl.height - 3),
+          Offset(x + barW / 2 - pl.width / 2, labelTop - pl.height - 2),
         );
       }
     }
@@ -694,5 +747,6 @@ class _BarsPainter extends CustomPainter {
       old.moveT != moveT ||
       old.selected != selected ||
       old.noise != noise ||
+      old.barColor != barColor ||
       old.tokens != tokens;
 }

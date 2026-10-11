@@ -348,20 +348,11 @@ class _SettingsScreenState extends State<SettingsScreen>
                   onTap: () => Navigator.of(context).pushNamed(Routes.pairing),
                 ),
               SettingsRow(
-                label: 'Max HR (entered)',
-                value: s.typedMaxHr == null ? 'Not entered' : '${s.typedMaxHr}',
-                onTap: () => _editNumber(
-                  context,
-                  title: 'MAX HR',
-                  hint: 'Beats per minute, ${MaxHrRules.min}–${MaxHrRules.max}',
-                  initial: s.typedMaxHr,
-                  validate: MaxHrRules.validTyped,
-                  onSave: (v) => set(
-                    (x) => v == null
-                        ? x.copyWith(clearTypedMaxHr: true)
-                        : x.copyWith(typedMaxHr: v),
-                  ),
-                ),
+                key: const ValueKey('max-hr-row'),
+                label: 'Max HR',
+                value: maxHrRowValue(resolved),
+                valueColor: s.pendingObservedMaxHr != null ? t.semWarn : null,
+                onTap: () => _maxHrSheet(context, now),
               ),
               SettingsRow(
                 label: 'Birth year',
@@ -378,33 +369,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                         : x.copyWith(birthYear: v),
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: Space.x12),
-                child: Text(
-                  maxHrSourceLine(resolved),
-                  key: const ValueKey('max-hr-source'),
-                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                ),
-              ),
-              if (s.pendingObservedMaxHr != null)
-                SettingsRow(
-                  label: 'Strap saw ${s.pendingObservedMaxHr} bpm',
-                  value: 'Review',
-                  valueColor: t.semWarn,
-                  onTap: () => showPendingMaxSheet(context),
-                ),
-              SettingsRow(
-                label: 'Reset observed max',
-                value: s.observedMaxHr == null ? '' : '${s.observedMaxHr}',
-                onTap: s.observedMaxHr == null && s.pendingObservedMaxHr == null
-                    ? null
-                    : () => set(
-                        (x) => x.copyWith(
-                          clearObservedMaxHr: true,
-                          clearPendingObservedMaxHr: true,
-                        ),
-                      ),
               ),
               HrZonesSection(
                 settings: s,
@@ -1018,6 +982,101 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (picked != null) await set((x) => x.copyWith(checkInMetrics: picked));
   }
 
+  /// One Max HR row opens this: the entered value, the observed value, the
+  /// strap reading waiting for review, and reset. Presentation only; the
+  /// zones read the same resolved value as before.
+  Future<void> _maxHrSheet(BuildContext context, DateTime now) async {
+    final services = AppServices.of(context);
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: t.bgRaised,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Radii.sheet)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: ListenableBuilder(
+          listenable: services.settings,
+          builder: (ctx, _) {
+            final s = services.settings.settings;
+            final r = MaxHr.resolve(s, now);
+            return Padding(
+              padding: const EdgeInsets.all(Space.screenGutter),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const RunSheetHeader(
+                    key: ValueKey('max-hr-sheet'),
+                    title: 'MAX HR',
+                  ),
+                  const SizedBox(height: Space.x8),
+                  Text(
+                    'Zones use ${r.maxHr}, ${maxHrSourceWords(r)}.',
+                    key: const ValueKey('max-hr-sheet-summary'),
+                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                  ),
+                  SettingsRow(
+                    key: const ValueKey('max-hr-entered'),
+                    label: 'Entered',
+                    value: s.typedMaxHr == null
+                        ? 'Not entered'
+                        : '${s.typedMaxHr}',
+                    onTap: () => _editNumber(
+                      ctx,
+                      title: 'MAX HR',
+                      hint:
+                          'Beats per minute, ${MaxHrRules.min}–${MaxHrRules.max}',
+                      initial: s.typedMaxHr,
+                      validate: MaxHrRules.validTyped,
+                      onSave: (v) => services.settings.update(
+                        (x) => v == null
+                            ? x.copyWith(clearTypedMaxHr: true)
+                            : x.copyWith(typedMaxHr: v),
+                      ),
+                    ),
+                  ),
+                  SettingsRow(
+                    key: const ValueKey('max-hr-observed'),
+                    label: 'Seen on your strap',
+                    value: s.observedMaxHr == null
+                        ? 'None yet'
+                        : '${s.observedMaxHr}',
+                    onTap: null,
+                  ),
+                  if (s.pendingObservedMaxHr != null)
+                    SettingsRow(
+                      key: const ValueKey('max-hr-pending'),
+                      label: 'Strap saw ${s.pendingObservedMaxHr} bpm',
+                      value: 'Review',
+                      valueColor: t.semWarn,
+                      onTap: () => showPendingMaxSheet(ctx),
+                    ),
+                  SettingsRow(
+                    key: const ValueKey('max-hr-reset'),
+                    label: 'Reset observed max',
+                    value: '',
+                    onTap:
+                        s.observedMaxHr == null &&
+                            s.pendingObservedMaxHr == null
+                        ? null
+                        : () => services.settings.update(
+                            (x) => x.copyWith(
+                              clearObservedMaxHr: true,
+                              clearPendingObservedMaxHr: true,
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   Future<void> _editNumber(
     BuildContext context, {
     required String title,
@@ -1115,6 +1174,23 @@ String zonesSourceLine(engine.HrZoneMethod m, MaxHrResolution r) => switch (m) {
   engine.HrZoneMethod.percentMax => maxHrSourceLine(r),
   engine.HrZoneMethod.reserve => 'Heart rate reserve zones, max HR ${r.maxHr}',
   engine.HrZoneMethod.custom => 'Your custom zones',
+};
+
+/// The Settings row value: "192 · seen on your strap" / "185 · you entered".
+String maxHrRowValue(MaxHrResolution r) =>
+    '${r.maxHr} · ${switch (r.source) {
+      MaxHrSource.observed => 'seen on your strap',
+      MaxHrSource.typed => 'you entered',
+      MaxHrSource.age => 'from your age',
+      MaxHrSource.fallback => 'default',
+    }}';
+
+/// Lower-case source phrase for the sheet summary.
+String maxHrSourceWords(MaxHrResolution r) => switch (r.source) {
+  MaxHrSource.observed => 'seen on your strap',
+  MaxHrSource.typed => 'entered by you',
+  MaxHrSource.age => 'from your age',
+  MaxHrSource.fallback => 'the default until you enter one',
 };
 
 String maxHrSourceLine(MaxHrResolution r) => switch (r.source) {

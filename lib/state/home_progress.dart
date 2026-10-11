@@ -145,6 +145,39 @@ class ProgressStatement {
   }
 }
 
+/// One lane's six-week move in percentile points, for the one-line summary
+/// in the "How to get better" header.
+class ProgressMove {
+  const ProgressMove(this.lane, this.change);
+  final engine.IdentityLane lane;
+  final int change;
+
+  /// "slipped 20" or "up 5": the direction word follows the sign.
+  String get words => change < 0 ? 'slipped ${-change}' : 'up $change';
+
+  /// The lanes that moved, biggest move first (ties in lane order), at most
+  /// [max]. Empty when nothing moved or there is no six-week comparison.
+  static List<ProgressMove> of(
+    Scores scores, {
+    required ProfileSex sex,
+    required int? age,
+    int max = 2,
+  }) {
+    final moves =
+        <ProgressMove>[
+          for (final lane in engine.IdentityLane.values)
+            if (scores[lane] != null)
+              if (ScoreNorms.change(scores[lane]!, sex: sex, age: age)
+                  case final c? when c != 0)
+                ProgressMove(lane, c),
+        ]..sort((a, b) {
+          final c = b.change.abs().compareTo(a.change.abs());
+          return c != 0 ? c : a.lane.index.compareTo(b.lane.index);
+        });
+    return moves.take(max).toList();
+  }
+}
+
 /// What Home's hero says: the biggest move in the scores over the last six
 /// weeks, or why there is nothing to say yet.
 class ProgressHeadline {

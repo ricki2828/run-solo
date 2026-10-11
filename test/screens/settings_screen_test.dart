@@ -10,6 +10,7 @@ import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/platform/transfer_gateway.dart';
 import 'package:run_solo/screens/settings_screen.dart';
 import 'package:run_solo/state/recording_controller.dart';
+import 'package:run_solo/state/hr_zone_choice.dart';
 import 'package:run_solo/state/settings.dart';
 
 import '../helpers.dart';
@@ -20,15 +21,24 @@ import 'package:run_solo/topo/pack_models.dart';
 
 /// Settings (brief §4.11, plan D3, §18.6 copy, Phase 2 battery row).
 void main() {
-  String sourceLine(WidgetTester tester) =>
-      tester.widget<Text>(find.byKey(const ValueKey('max-hr-source'))).data!;
+  /// The Max HR row's value text, e.g. "192 · seen on your strap".
+  String rowValue(WidgetTester tester) => tester
+      .widget<Text>(
+        find
+            .descendant(
+              of: find.byKey(const ValueKey('max-hr-row')),
+              matching: find.byType(Text),
+            )
+            .last,
+      )
+      .data!;
 
   testWidgets('max HR source line per D3: default, entered, age, strap', (
     tester,
   ) async {
     await pumpApp(tester, fakeServices(), home: SettingsScreen(now: now));
     await pumpTimes(tester, 3);
-    expect(sourceLine(tester), 'Max HR 190, default until you enter one');
+    expect(rowValue(tester), '190 · default');
 
     await pumpApp(
       tester,
@@ -38,7 +48,7 @@ void main() {
       home: SettingsScreen(now: now),
     );
     await pumpTimes(tester, 3);
-    expect(sourceLine(tester), 'Max HR 185, entered');
+    expect(rowValue(tester), '185 · you entered');
 
     await pumpApp(
       tester,
@@ -48,7 +58,7 @@ void main() {
       home: SettingsScreen(now: now),
     );
     await pumpTimes(tester, 3);
-    expect(sourceLine(tester), 'Max HR 180, from your age');
+    expect(rowValue(tester), '180 · from your age');
 
     await pumpApp(
       tester,
@@ -63,7 +73,7 @@ void main() {
       home: SettingsScreen(now: now),
     );
     await pumpTimes(tester, 3);
-    expect(sourceLine(tester), 'Max HR 192, seen on your strap Thu 3 Sep');
+    expect(rowValue(tester), '192 · seen on your strap');
   });
 
   testWidgets('reset observed max clears it and the line falls back', (
@@ -78,10 +88,12 @@ void main() {
     );
     await pumpApp(tester, services, home: SettingsScreen(now: now));
     await pumpTimes(tester, 3);
+    await tester.tap(find.byKey(const ValueKey('max-hr-row')));
+    await settleAnimations(tester);
     await tester.tap(find.text('Reset observed max'));
-    await pumpTimes(tester, 3);
+    await settleAnimations(tester);
     expect(services.settings.settings.observedMaxHr, isNull);
-    expect(sourceLine(tester), 'Max HR 185, entered');
+    expect(rowValue(tester), '185 · you entered');
   });
 
   testWidgets('pending max: confirm sheet applies or ignores', (tester) async {
@@ -94,6 +106,8 @@ void main() {
     );
     await pumpApp(tester, services, home: SettingsScreen(now: now));
     await pumpTimes(tester, 3);
+    await tester.tap(find.byKey(const ValueKey('max-hr-row')));
+    await settleAnimations(tester);
     await tester.tap(find.text('Strap saw 205 bpm'));
     await settleAnimations(tester);
     expect(find.byKey(const ValueKey('pending-max-sheet')), findsOneWidget);
@@ -105,21 +119,23 @@ void main() {
     await services.settings.update(
       (s) => s.copyWith(pendingObservedMaxHr: 205),
     );
-    await pumpTimes(tester, 3);
+    await settleAnimations(tester);
     await tester.tap(find.text('Strap saw 205 bpm'));
     await settleAnimations(tester);
     await tester.tap(find.text('USE 205'));
     await settleAnimations(tester);
     expect(services.settings.settings.observedMaxHr, 205);
     expect(services.settings.settings.pendingObservedMaxHr, isNull);
-    expect(sourceLine(tester), startsWith('Max HR 205, seen on your strap'));
+    expect(rowValue(tester), startsWith('205 · seen on your strap'));
   });
 
   testWidgets('typed max HR sheet validates the range', (tester) async {
     final services = fakeServices();
     await pumpApp(tester, services, home: SettingsScreen(now: now));
     await pumpTimes(tester, 3);
-    await tester.tap(find.text('Max HR (entered)'));
+    await tester.tap(find.byKey(const ValueKey('max-hr-row')));
+    await settleAnimations(tester);
+    await tester.tap(find.byKey(const ValueKey('max-hr-entered')));
     await settleAnimations(tester);
     await tester.enterText(find.byType(TextField), '300');
     await tester.tap(find.text('SAVE'));
@@ -129,6 +145,28 @@ void main() {
     await tester.tap(find.text('SAVE'));
     await settleAnimations(tester);
     expect(services.settings.settings.typedMaxHr, 186);
+  });
+
+  testWidgets('Max HR row shows the value the zones use', (tester) async {
+    for (final settings in [
+      const AppSettings(onboardingDone: true),
+      const AppSettings(onboardingDone: true, typedMaxHr: 185),
+      const AppSettings(onboardingDone: true, birthYear: 1986),
+      const AppSettings(
+        onboardingDone: true,
+        typedMaxHr: 185,
+        observedMaxHr: 192,
+      ),
+    ]) {
+      final services = fakeServices(settings: settings);
+      await pumpApp(tester, services, home: SettingsScreen(now: now));
+      await pumpTimes(tester, 3);
+      final shown = int.parse(rowValue(tester).split(' · ').first);
+      expect(
+        HrZoneChoice.resolve(settings, now()),
+        engine.HrZones.percentMax(shown),
+      );
+    }
   });
 
   testWidgets('battery row asks for the exemption through the gateway', (
