@@ -320,6 +320,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       return Column(
                         children: [
                           _GetBetter(
+                            moves: data == null || data.failed
+                                ? const []
+                                : ProgressMove.of(
+                                    data.scores,
+                                    sex: settings.profileSex,
+                                    age: age,
+                                  ),
                             warning: warned
                                 ? LoadWarning(
                                     flag: planCtx!.loadCheck.flag!,
@@ -559,8 +566,12 @@ class _GetBetter extends StatelessWidget {
     this.warning,
     this.anywayLabel,
     this.onAnyway,
+    this.moves = const [],
   });
   final String? reason;
+
+  /// The lanes that moved over six weeks, shown as one line in the header.
+  final List<ProgressMove> moves;
 
   /// The plan's "This week: 2 of 3 done · Next: ..." line, when one runs.
   final String? summary;
@@ -594,6 +605,33 @@ class _GetBetter extends StatelessWidget {
               'HOW TO GET BETTER',
               style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
             ),
+          if (moves.isNotEmpty) ...[
+            const SizedBox(height: Space.x4),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text.rich(
+                key: const ValueKey('home-progress-line'),
+                maxLines: 1,
+                TextSpan(
+                  style: RunSoloType.label13.copyWith(color: t.inkPrimary),
+                  children: [
+                    for (var i = 0; i < moves.length; i++) ...[
+                      if (i > 0) const TextSpan(text: ' · '),
+                      TextSpan(
+                        text: moves[i].lane.name.toUpperCase(),
+                        style: TextStyle(
+                          color: t.laneText(moves[i].lane),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      TextSpan(text: ' ${moves[i].words}'),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
           if (summary != null) ...[
             const SizedBox(height: Space.x4),
             Text(

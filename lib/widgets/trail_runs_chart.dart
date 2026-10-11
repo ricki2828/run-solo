@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
+import '../theme/theme.dart';
 import 'recent_bars_chart.dart';
 
 /// Your runs on one trail as [RecentBarsChart] bars: moving time, faster is
@@ -23,8 +24,10 @@ class TrailRunsChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final best = group.best;
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
     return RecentBarsChart(
       key: chartKey,
+      barColor: t.typeTrail,
       points: [
         for (final r in group.runs)
           BarPoint(date: r.start, value: r.movingMs / 1000),
