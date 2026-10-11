@@ -274,54 +274,65 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
                   ),
               ],
             ),
+            // The run's words scroll if a small phone cannot fit them; the
+            // checks and START below never move.
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: Space.x8),
+                    Text(
+                      'READY?',
+                      style: RunSoloType.heading26.copyWith(
+                        color: _ink.withValues(alpha: 0.7),
+                        letterSpacing: 4,
+                      ),
+                    ),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        widget.runType,
+                        key: const ValueKey('ready-run-type'),
+                        maxLines: 1,
+                        style: RunSoloType.display96.copyWith(color: _ink),
+                      ),
+                    ),
+                    const SizedBox(height: Space.x12),
+                    Text(
+                      widget.plan,
+                      key: const ValueKey('ready-plan'),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: RunSoloType.body17.copyWith(
+                        color: _ink,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (widget.target != null) ...[
+                      const SizedBox(height: Space.x4),
+                      Text(
+                        widget.target!,
+                        key: const ValueKey('ready-target'),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: RunSoloType.body15.copyWith(color: _ink),
+                      ),
+                    ],
+                    const SizedBox(height: Space.x12),
+                    if (widget.structure != null) _structureBlock(),
+                    if (widget.lastRun != null)
+                      Text(
+                        widget.lastRun!,
+                        key: const ValueKey('ready-last-run'),
+                        style: RunSoloType.body15.copyWith(color: _ink),
+                      ),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: Space.x8),
-            Text(
-              'READY?',
-              style: RunSoloType.heading26.copyWith(
-                color: _ink.withValues(alpha: 0.7),
-                letterSpacing: 4,
-              ),
-            ),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                widget.runType,
-                key: const ValueKey('ready-run-type'),
-                maxLines: 1,
-                style: RunSoloType.display96.copyWith(color: _ink),
-              ),
-            ),
-            const SizedBox(height: Space.x12),
-            Text(
-              widget.plan,
-              key: const ValueKey('ready-plan'),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: RunSoloType.body17.copyWith(
-                color: _ink,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            if (widget.target != null) ...[
-              const SizedBox(height: Space.x4),
-              Text(
-                widget.target!,
-                key: const ValueKey('ready-target'),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: RunSoloType.body15.copyWith(color: _ink),
-              ),
-            ],
-            const SizedBox(height: Space.x12),
-            if (widget.structure != null) _structureBlock(),
-            if (widget.lastRun != null)
-              Text(
-                widget.lastRun!,
-                key: const ValueKey('ready-last-run'),
-                style: RunSoloType.body15.copyWith(color: _ink),
-              ),
-            const Spacer(),
             Wrap(
               spacing: Space.x8,
               runSpacing: Space.x8,
