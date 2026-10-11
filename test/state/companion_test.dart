@@ -69,6 +69,14 @@ class FakeCompanionHttp implements CompanionHttp {
   }
 }
 
+/// What FastAPI answers when the body has a field the server does not know.
+const extraForbidden =
+    '{"detail":[{"type":"extra_forbidden","loc":["body","plan_next"],'
+    '"msg":"Extra inputs are not permitted"}]}';
+
+/// A 422 that is the run's own fault (a start time in the future).
+const futureStart = '{"detail":"start_utc is in the future"}';
+
 /// Turn on, then type the code the bot sent.
 Future<void> enrolNow(CompanionController c, [String code = '123456']) async {
   await c.turnOn();
@@ -801,7 +809,7 @@ void main() {
       'a 422 means the server is older: no try spent, retried after 6 h',
       () async {
         await enrol();
-        http.handler = (_) => const CompanionReply(422, '{"detail":"x"}');
+        http.handler = (_) => const CompanionReply(422, extraForbidden);
         await coordinator.sendAuto(run.id);
         expect(http.to('POST', '/v1/runs'), hasLength(1));
         final d = (await store.load(run.id))!;
@@ -830,9 +838,44 @@ void main() {
       },
     );
 
+    test(
+      'any other 422 is the run\'s own: logged once as failed, never retried',
+      () async {
+        await enrol();
+        http.handler = (_) => const CompanionReply(422, futureStart);
+        await coordinator.sendAuto(run.id);
+        for (var i = 0; i < 4; i++) {
+          await coordinator.reconcile();
+        }
+        expect(http.to('POST', '/v1/runs'), hasLength(1));
+        final rec = (await store.load(run.id))!
+            .sidecar
+            .sends[CompanionTarget.targetId]!;
+        expect(rec.ok, isFalse);
+        expect(rec.error, contains('refused'));
+        expect(
+          (await store.load(run.id))!.sidecar
+              .autoSendDue(CompanionTarget.targetId),
+          isFalse,
+        );
+        // It does not hold other runs off: no "server out of date" wait.
+        http.handler = null;
+        final other = await store.load(run.id);
+        final res = await target.send(
+          SendRequest(
+            run: other!.run,
+            title: 't',
+            format: ExportFormat.tcx,
+            detail: other,
+          ),
+        );
+        expect(res.ok, isTrue);
+      },
+    );
+
     test('a new app start retries at once (the wait is in memory)', () async {
       await enrol();
-      http.handler = (_) => const CompanionReply(422, '{}');
+      http.handler = (_) => const CompanionReply(422, extraForbidden);
       await coordinator.sendAuto(run.id);
       http.handler = null;
       target = CompanionTarget(controller: ctl, now: () => clock);

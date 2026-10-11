@@ -63,11 +63,21 @@ def test_runin_accepts_the_plan_fields_and_they_are_all_optional():
     {"type": "easy", "day": "2026-10-01", "week": 0},
     {"type": "easy", "day": "2026-10-01", "week": 1, "minutes": 0},
     {"type": "easy", "day": "2026-10-01", "week": 1, "distance_m": 10},
-    {"type": "easy", "day": "2026-10-01", "week": 1, "reason": "free text from the app"},  # extra keys are refused
 ])
 def test_a_bad_plan_next_is_dropped_and_the_run_still_lands(bad):
     r = RunIn(**payload(plan_next=bad, plan_week=2, plan_weeks=4))
     assert r.plan_next is None and r.plan_week == 2   # only the bad field goes
+
+
+def test_an_unknown_key_inside_plan_next_is_still_a_loud_422():
+    with pytest.raises(ValidationError) as e:
+        RunIn(**payload(plan_next={"type": "easy", "day": "2026-10-01", "week": 1, "note": "my knee hurts"}))
+    assert e.value.errors()[0]["type"] == "extra_forbidden"   # the type the app reads as "server out of date"
+
+
+def test_a_decimal_plan_next_size_is_rounded_not_dropped():
+    r = RunIn(**payload(plan_next={"type": "long", "day": "2026-10-01", "week": 1, "distance_m": 14000.7, "minutes": 44.4}))
+    assert r.plan_next.distance_m == 14001 and r.plan_next.minutes == 44
 
 
 def test_plan_kind_is_one_of_three_and_other_bad_plan_values_are_dropped():
@@ -153,6 +163,18 @@ def test_the_plan_beats_weather_and_gap_reasons_but_not_load_or_a_hard_day():
     assert suggest.evening(loaded, NOW, None, {}, "s", zone_id=SG).suggestion.reason == "load"
     hard = [{**hist[0], "type": "tempo", "start_utc": NOW - timedelta(hours=10)}] + hist[1:]
     assert suggest.evening(hard, NOW, None, {}, "s", zone_id=SG).suggestion.reason == "hard_recent"
+
+
+def test_heat_with_a_flagged_note_keeps_the_gentle_easy_session_not_the_planned_push():
+    hist = planned("long", m=14000)
+    soft = suggest.evening(hist, NOW, Forecast(34, 5), {}, "s", zone_id=SG, soften=True)
+    assert soft.rendered.situation == "sugg_weather_heat" and "34" in soft.rendered.body   # the heat advice stays
+    assert "easy 7 km" in soft.rendered.body                                                # on main's easy run
+    assert "long run" not in soft.rendered.body and "14" not in soft.rendered.body
+    quality = suggest.evening(planned("quality"), NOW, Forecast(34, 5), {}, "s", zone_id=SG, soften=True)
+    assert "quality" not in quality.rendered.body and "easy 7 km" in quality.rendered.body
+    easy = suggest.evening(planned("easy", minutes=40), NOW, Forecast(34, 5), {}, "s", zone_id=SG, soften=True)
+    assert "easy 40 min" in easy.rendered.body                                              # a planned easy run is fine
 
 
 @pytest.mark.parametrize("day", ["2026-09-30", "2026-10-02", "2026-10-09", None])

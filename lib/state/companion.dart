@@ -177,7 +177,7 @@ class ConfirmResult {
 }
 
 /// What a run send came to. [duplicate] counts as sent.
-enum RunSendOutcome { sent, duplicate, unauthorized, outdated, busy }
+enum RunSendOutcome { sent, duplicate, unauthorized, outdated, rejected, busy }
 
 class CompanionClient {
   CompanionClient({String? baseUrl, CompanionHttp? http})
@@ -291,13 +291,31 @@ class CompanionClient {
       ),
     );
     if (r.status == 401 || r.status == 403) return RunSendOutcome.unauthorized;
-    // 422: the server refuses fields it does not know, so it is older than
-    // this app. Not the run's fault; the caller waits and tries again later.
-    if (r.status == 422) return RunSendOutcome.outdated;
+    // 422 with an `extra_forbidden` error: the server refuses a field it does
+    // not know, so it is older than this app. Not the run's fault; the caller
+    // waits and tries again later. Any other 422 (a start time in the future,
+    // an unknown zone, a value out of range) is the run's own and will not
+    // fix itself.
+    if (r.status == 422) {
+      return _isExtraForbidden(r.body)
+          ? RunSendOutcome.outdated
+          : RunSendOutcome.rejected;
+    }
     if (!r.ok) return RunSendOutcome.busy;
     return r.json['status'] == 'duplicate'
         ? RunSendOutcome.duplicate
         : RunSendOutcome.sent;
+  }
+
+  static bool _isExtraForbidden(String body) {
+    try {
+      final j = jsonDecode(body);
+      final detail = j is Map ? j['detail'] : null;
+      return detail is List &&
+          detail.any((e) => e is Map && e['type'] == 'extra_forbidden');
+    } on FormatException {
+      return false;
+    }
   }
 
   /// True when the server has the feel (or already had it).
@@ -1148,6 +1166,11 @@ class CompanionTarget extends ExportTarget {
           return const SendResult.failed(
             'Companion server needs an update. Will retry later',
             retryLater: true,
+          );
+        case RunSendOutcome.rejected:
+          return const SendResult.failed(
+            'Companion refused this run (check the phone clock)',
+            permanent: true,
           );
         case RunSendOutcome.busy:
           return const SendResult.failed('Companion is busy');

@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 import httpx
+from pydantic_core import PydanticCustomError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from . import db
@@ -100,6 +101,12 @@ class PlanNextIn(BaseModel):
     minutes: int | None = Field(default=None, ge=1, le=600)
     distance_m: int | None = Field(default=None, ge=500, le=100000)
 
+    @field_validator("minutes", "distance_m", mode="before")
+    @classmethod
+    def _whole(cls, v):
+        """Like the top-level metres: a finite decimal is rounded, not refused."""
+        return round(v) if isinstance(v, float) and math.isfinite(v) else v
+
     @field_validator("day")
     @classmethod
     def _real_date(cls, v: str) -> str:
@@ -142,7 +149,10 @@ class RunIn(BaseModel):
         """A bad plan value drops that one field (stored as none), never the run: the plan only adds colour to a card."""
         try:
             return handler(v)
-        except ValidationError:
+        except ValidationError as e:
+            if any(err["type"] == "extra_forbidden" for err in e.errors()):
+                # an unknown key (inside plan_next) stays a loud 422: the tripwire for a client that over-sends
+                raise PydanticCustomError("extra_forbidden", "Extra inputs are not permitted") from None
             return None
 
     @model_validator(mode="after")

@@ -200,12 +200,15 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
         return None
     slots: dict[str, str] = {"start": start}
     kind: str | None = None
+    use_plan_session = False  # heat naming the planned session (never when a flagged note softens a push)
 
     gap = days_since_hard(history, now)
     long_gap = next(((now - _when(h)).days for h in history if h["type"] == "long"), None)
     weeks = plan_weeks(history, now)
     planned = planned_for_tomorrow(history, now, zone_id)
     planned_text = plan_session(planned, history, now) if planned else None
+    hot = bool(forecast and forecast.morning_temp_c >= HEAT_MORNING_C)
+    push_softened = bool(soften and planned and planned["plan_next_type"] != "easy")  # a flagged note vs a planned push
     share = hard_share(last)
     felt_hard = (last.get("feel") == "hard" and last["type"] == "easy" and (share is None or share < 0.15)
                  and since_last <= timedelta(hours=FEEL_WINDOW_H))
@@ -219,10 +222,11 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
         kind = "feel"
         slots.update(weekday=WEEKDAYS[to_local(_when(last), last.get("zone_id") or zone_id).weekday()],
                      cause=feel_cause(last_situation))
-    elif planned_text is not None and forecast and forecast.morning_temp_c >= HEAT_MORNING_C:
+    elif planned_text is not None and hot and not push_softened:
         kind = "heat"  # the heat warning is a safety line: it keeps its place, and names the planned session
         slots.update(temp=str(forecast.morning_temp_c), fc_at="7 am")
-    elif planned_text is not None:
+        use_plan_session = True
+    elif planned_text is not None and not (hot and push_softened):
         kind = "plan_session"  # tomorrow is a planned session: follow the plan, ahead of rain and gap reasons
         slots.update(why=planned_text[1])
     elif forecast and forecast.morning_temp_c >= HEAT_MORNING_C:
@@ -247,7 +251,7 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
                    or (kind == "plan_session" and planned["plan_next_type"] != "easy")):
         kind = "soft"  # a planned push turns into the gentle line too
         slots.pop("why", None)
-    session = planned_text[0] if planned_text and kind in ("plan_session", "heat") else session_for(kind, history, now)
+    session = planned_text[0] if planned_text and (kind == "plan_session" or use_plan_session) else session_for(kind, history, now)
     if session is None:
         return None  # no concrete session to name: say nothing rather than something vague
     slots["session"] = session
