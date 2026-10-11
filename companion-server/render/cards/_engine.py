@@ -69,6 +69,9 @@ def render_html(html: str, width: int, height: int) -> bytes:
         browser = _ensure_browser()
         page = browser.new_page(viewport={"width": width, "height": height}, device_scale_factor=1)
         try:
+            # Defence in depth (sec-review-225 F2): the templates are self-contained (fonts and marks are inlined),
+            # so nothing may be fetched. A facts string that smuggled in a tag still cannot reach a network.
+            page.route("**/*", lambda route: route.abort())
             page.set_content(html, wait_until="load")
             page.evaluate("document.fonts.ready.then(() => true)")
             return page.screenshot(type="png", clip={"x": 0, "y": 0, "width": width, "height": height})

@@ -1,0 +1,64 @@
+[Unit]
+Description=Run Supreme companion: render worker (cards and videos; no network, no DB, no secrets)
+Documentation=file://%h/services/run-supreme-companion/DEPLOY.md
+
+[Service]
+# Facts JSON in, PNG or MP4 out, over a unix socket in ~/companion-data/render/. Chromium and ffmpeg cannot run inside
+# companion.service (MemoryMax=200M, MemoryDenyWriteExecute, ProtectHome=tmpfs: sec-review-225 F2), and that unit holds the
+# bot token, the WhatsApp secret and the DB, so it must not be loosened. This unit holds none of those.
+# Needs the venv from requirements-render.txt (.venv-render), Chromium, ffmpeg and the system libs Chromium links to;
+# the paths below are this host's. Edit RS_CHROMIUM_PATH / LD_LIBRARY_PATH / FFMPEG and the Bind lines together.
+WorkingDirectory=%h/services/run-supreme-companion
+ExecStart=%h/services/run-supreme-companion/.venv-render/bin/python -m render.worker --socket %h/companion-data/render/render.sock
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/tmp
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=COMPANION_ASSETS_DIR=%h/services/run-supreme-companion/assets
+Environment=RS_CHROMIUM_PATH=%h/.cache/ms-playwright/chromium_headless_shell-1208/chrome-linux/headless_shell
+Environment=LD_LIBRARY_PATH=%h/.local/chromium-libs/usr/lib/aarch64-linux-gnu
+Environment=FFMPEG=%h/bin/ffmpeg
+# Renders are serial, so the cap covers one Chromium (or one ffmpeg) plus the worker. Measured peak is in DEPLOY.md.
+MemoryMax=900M
+MemorySwapMax=0
+TasksMax=200
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+# Sandbox. No EnvironmentFile: nothing secret is ever loaded. $HOME is an empty tmpfs; the only things bound back are
+# read-only (the app, the fonts and brand marks, Chromium, its libs, ffmpeg) and the one socket dir (read-write).
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=%h/services/run-supreme-companion %h/.cache/ms-playwright %h/.local/chromium-libs %h/bin/ffmpeg
+BindPaths=%h/companion-data/render
+# No network at all: no IP traffic, and no socket family but AF_UNIX (the worker's socket and Chromium's own pipes).
+IPAddressDeny=any
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+# Chromium installs its own seccomp filter (@sandbox) and calls capget/capset/setpriority; without those the browser
+# dies with SIGSYS or renders flaky. @resources is therefore not denied here (it is in companion.service).
+SystemCallFilter=@system-service @sandbox
+SystemCallFilter=~@privileged
+SystemCallFilter=capget capset setpriority
+# MemoryDenyWriteExecute is deliberately NOT set here (it stays on in companion.service): Playwright's node driver
+# aborts at start-up under it (tested 10 Oct), and Chromium runs the same V8 JIT. See DEPLOY.md section 3b.
+
+[Install]
+WantedBy=default.target
