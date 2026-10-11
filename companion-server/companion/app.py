@@ -149,6 +149,7 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
     async def lifespan(_app):
         t = threading.Thread(target=loop, name="outbox", daemon=True) if run_worker else None
         if t:
+            svc.mark_replay_aware()
             t.start()
         yield
         stop.set()
@@ -170,7 +171,7 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
 
     @app.get("/healthz")
     def healthz():
-        return {"ok": True, "overdue_outbox": svc.overdue_count()}
+        return {"ok": True, "overdue_outbox": svc.overdue_count(), "replay_held": svc.replay_held()}
 
     # --- enrolment (no token yet) ---
     @app.post("/v1/enrol/start")
@@ -205,7 +206,7 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
             raise HTTPException(429, "daily limit")
         except ValueError:
             raise HTTPException(422, "start_utc is in the future")
-        response.status_code = 200 if out["status"] == "duplicate" else 202
+        response.status_code = 200 if out["status"] in ("duplicate", "updated") else 202
         return out
 
     @app.patch("/v1/runs/{run_id}/feel")

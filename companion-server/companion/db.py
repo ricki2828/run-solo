@@ -127,6 +127,31 @@ CREATE TABLE IF NOT EXISTS convo_area (
   lat REAL NOT NULL, lon REAL NOT NULL,  -- rounded to 0.1 degree (about 11 km), only when weather is on
   PRIMARY KEY (user_id, run_id)
 );
+-- Coach replay (companion.replay): a virtual-clock walk through the runner's real history.
+-- While a row is not 'done' the live worker leaves that user's outbox, plans and purges alone.
+CREATE TABLE IF NOT EXISTS replay_state (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('running','stopping','stopped','done')),
+  driver TEXT,                 -- token of the process that owns the row; a newer one taking over stops the older
+  facts_dir TEXT NOT NULL, every_s INTEGER NOT NULL,
+  vnow TEXT NOT NULL,          -- the virtual clock
+  last_tick TEXT,              -- last planning tick that ran
+  items INTEGER NOT NULL DEFAULT 0,
+  heartbeat_at TEXT, started_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS replay_runs (  -- runs the replay has reached. inserted=1: it created the row, so the app's
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,  -- own later upload updates it in place (then 0)
+  run_id TEXT NOT NULL,
+  inserted INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (user_id, run_id)
+);
+CREATE TABLE IF NOT EXISTS replay_items (  -- every message the replay sent: virtual time, real time, card
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  card_id TEXT, kind TEXT NOT NULL,
+  virtual_at TEXT NOT NULL, real_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS replay_items_card ON replay_items (card_id);
 -- Tables below hold no user data (no user_id column).
 CREATE TABLE IF NOT EXISTS llm_calls (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
