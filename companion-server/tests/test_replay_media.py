@@ -36,13 +36,14 @@ def test_run_and_recap_cards_go_out_as_pictures_with_the_replay_line_in_the_capt
     # every message, picture or text, is one paced item: 5 minutes apart
     n = len(e.sent())
     assert sum(waits) == 300 * n and n == len(e.fakes.tg)
-    # picture cards carry at most the three feel buttons; the question travels as its own text message
+    # picture cards carry at most the three feel buttons plus "Add a note"; the question travels as its own text message
     for p in photos:
         rm = p.get("reply_markup")
         if rm:
             import json
             kb = json.loads(rm)["inline_keyboard"] if isinstance(rm, str) else rm["inline_keyboard"]
-            assert sum(len(r) for r in kb) <= 3
+            assert sum(len(r) for r in kb if r[0].get("text") != "Add a note") <= 3
+            assert sum(len(r) for r in kb) <= 4
 
 
 def test_a_render_failure_sends_the_text_card_with_the_same_line(tmp_path):

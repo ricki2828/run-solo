@@ -36,7 +36,15 @@ def populate(client, fakes):
         for i, b in enumerate(json.loads(buttons)):
             if b["action"] in ("ans:goal_type:10k", "sugg:yes:recover", "feel:easy"):
                 post_tg(client, tg_callback(8000 + n * 20 + i, f"{card_id}:{i}"))
-    post_tg(client, tg_update(8100, "STOP"))
+    # a note for the newest run card, then note mode left open (so both note tables hold a row)
+    row = c.execute("SELECT card_id, buttons_json FROM cards WHERE kind='run' ORDER BY created_at DESC, rowid DESC").fetchone()
+    note_i = [b["action"] for b in json.loads(row[1])].index("note:add")
+    post_tg(client, tg_callback(8200, f"{row[0]}:{note_i}"))
+    post_tg(client, tg_update(8201, "calf niggle, privacy sentinel"))
+    post_tg(client, tg_update(8100, "STOP"))   # STOP closes note mode, so leave a waiting row for the deletion walk
+    with db.tx(client.svc.s.db_path) as w:
+        w.execute("INSERT INTO note_mode (user_id, run_id, expires_at) SELECT user_id, run_id, ? FROM run_notes",
+                  (iso(now_utc() + timedelta(minutes=5)),))
     return t
 
 
@@ -58,7 +66,7 @@ def test_delete_leaves_zero_rows_in_every_table_with_user_data(client, fakes):
     populated = {n for n in user_tables if c.execute(
         f"SELECT COUNT(*) FROM {n} WHERE " + ("id" if n == "users" else "user_id") + "=?", (uid,)).fetchone()[0]}
     assert {"users", "devices", "runs", "memory", "cards", "outbox", "quota", "outcomes", "msglog", "inbound_seen", "enrolments",
-            "convo_log", "convo_cards", "convo_area"} <= populated, populated
+            "convo_log", "convo_cards", "convo_area", "run_notes", "note_mode"} <= populated, populated
 
     assert client.delete("/v1/me", headers=auth(t)).json() == {"status": "deleted"}
 
@@ -70,6 +78,7 @@ def test_delete_leaves_zero_rows_in_every_table_with_user_data(client, fakes):
     # the chat id is gone from the file entirely, including free pages and the WAL
     raw = b"".join(open(p, "rb").read() for p in (path, path + "-wal") if os.path.exists(p))
     assert OWNER.encode() not in raw
+    assert b"privacy sentinel" not in raw   # the note text is scrubbed from the file too
 
 
 def test_delete_only_touches_that_user(tmp_path, fakes):
@@ -92,6 +101,7 @@ def test_export_shows_what_is_held_and_hides_the_chat_id(client, fakes):
     me = client.get("/v1/me", headers=auth(t)).json()
     assert {"profile", "runs_received", "memory", "messages_sent_30d", "goes_to", "suggestion_outcomes"} <= set(me)
     assert me["memory"].get("goal_type") == "10k" and me["profile"]["paused"] is True
+    assert [n["note"] for n in me["run_notes"]] == ["calf niggle, privacy sentinel"]   # notes you add are in the export
     assert OWNER not in json.dumps(me) and me["profile"]["chat_ref_hint"].endswith(OWNER[-3:])
     assert me["messages_sent_30d"] and any("OpenRouter" in g for g in me["goes_to"])
 

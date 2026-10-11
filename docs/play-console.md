@@ -210,17 +210,19 @@ Every row below: **Collected: Yes. Optional: yes** (off unless the user turns it
 | Health and fitness | **Fitness info** | Per-run summary: type, start time, duration, distance, pace, True Pace, verdict, zone minutes, climb, and the Easy/Right/Hard tap. Never the GPS route or heart rate trace. | No (see note 1) |
 | Location | **Approximate location** | The run's locality (suburb name, never the street), plus the time zone. Only if the user turns on "Weather in suggestions" (separate switch, off by default): the run's start area rounded on the phone to 0.1 degree (about 11 km), latest one only, kept 30 days after its run and deleted on switch-off. The server passes that area and the time zone to Open-Meteo (a service provider, same basis as note 1) to fetch the forecast. | No (see note 1) |
 | Personal info | **Phone number** | Only when WhatsApp is switched on: the user's WhatsApp number, which WhatsApp supplies when they message first. Not typed into the app. | No (Meta delivers the user's own chat) |
+| App activity | **Other user-generated content** | Notes the runner chooses to type into the chat after tapping "Add a note" (up to 500 characters each, one per run). Kept with the run and deleted with it. Used only to quote back in the weekly recap and to soften suggestions after words like sore or tired. | No (see note 5) |
 | App activity | **App interactions** | Feel taps, button answers (goal, race month, usual days, niggle area), and whether a suggestion was taken or skipped. | No |
 
 Rows the founder did not list, added to over-declare (confirm on the live form):
 - **Personal info, User IDs** and **Name**: the Telegram chat id and chat name the server stores for a Telegram user (the dogfood channel). Optional, App functionality.
-- **Health and fitness, Health info**: the niggle answer (none, calf, knee, hip, foot, other). It expires after 8 weeks. Optional, App functionality.
+- **Health and fitness, Health info**: the niggle answer (none, calf, knee, hip, foot, other). It expires after 8 weeks. Optional, App functionality. This row also covers typed notes, which can mention injury or illness and soften suggestions.
 
 Notes:
-1. Shared with a processor, not "shared" in Play's sense, same basis as Open-Meteo above: OpenRouter and the model provider receive the run facts as sentences and the answers as fixed options, never the phone number, chat id or any typed text, with `data_collection: deny` and zero-retention routing. Founder to confirm on the live form that service-provider processing is not declared as sharing.
+1. Shared with a processor, not "shared" in Play's sense, same basis as Open-Meteo above: OpenRouter and the model provider receive the run facts as sentences and the answers as fixed options, never the phone number, chat id or any note the runner typed, with `data_collection: deny` and zero-retention routing. Founder to confirm on the live form that service-provider processing is not declared as sharing.
 2. The base-release rows (Maps SDK) are unchanged.
 3. Retention to state if Play asks: run summaries and answers until deleted or six months without a run; the weather area 30 days after its run or until switched off; message log 30 days; backups 14 days (encrypted); Meta keeps WhatsApp messages up to 30 days.
 4. The app's Health Connect and user-initiated Send rows are unchanged.
+5. Notes travel through Telegram (a delivery processor, same basis as note 1): the runner types them into their own chat, and the recap quotes one back in that chat. They are never sent to OpenRouter, the model provider, Open-Meteo or the card renderer.
 
 ### 13.2 Store copy that must change
 

@@ -176,9 +176,13 @@ def test_run_card_goes_out_as_a_photo_with_feel_buttons_and_a_deep_link(tmp_path
         kb = markup(photos[0])
         assert [b["text"] for b in kb[0]] == ["Easy", "Right", "Hard"]
         assert kb[-1] == [{"text": "Open in app", "url": f"{BASE}/run/r1"}]
+        assert len(kb) == 3
         assert all(len(row) <= 3 for row in kb)
+        assert [b["text"] for b in kb[1]] == ["Add a note"]   # the note button rides the same photo keyboard, on its own row
         # the question is its own later text message, never on the photo
-        assert not any(b["callback_data"].endswith(":3") for row in kb for b in row if "callback_data" in b)
+        acts = [x["action"] for x in json.loads(sqlite3.connect(c.svc.s.db_path).execute("SELECT buttons_json FROM cards").fetchone()[0])]
+        assert acts == ["feel:easy", "feel:right", "feel:hard", "note:add"]
+        assert not any(b["callback_data"].endswith(":4") for row in kb for b in row if "callback_data" in b)
         card_id = sqlite3.connect(c.svc.s.db_path).execute("SELECT card_id FROM cards").fetchone()[0]
         assert card_id in kb[0][0]["callback_data"]
 

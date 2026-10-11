@@ -432,6 +432,18 @@ SUGGESTIONS: dict[str, list[tuple[str, str]]] = {
         ("Go gentle", "{weekday} was hard for an easy run. {cause} Tomorrow: {session}."),
         ("Your legs said so", "You tapped hard on {weekday}. {cause} Tomorrow: {session}, {start}."),
     ],
+    # Shown instead of any quality or long-run nudge while a recent note carries a niggle/sore/injury/tired/sick word.
+    # Never mentions the note, so the text says nothing about what the runner wrote.
+    "sugg_soft": [
+        ("Easy does it", "Keep tomorrow gentle: {session}, or a rest day if that's the better call."),
+        ("Go easy", "Nothing hard for now. {session} tomorrow, or rest if the legs say so."),
+        ("Look after yourself", "Tomorrow: {session} at an easy effort, {start}. Skipping it is fine too."),
+        ("Light day", "Take it light. {session} tomorrow, and stop early if anything grumbles."),
+        ("Rest is allowed", "A rest day is a fair answer tomorrow. If you go, make it {session}."),
+        ("Soft landing", "Keep the effort low. {session} tomorrow, {start}, nothing sharp."),
+        ("No rush", "No need to chase anything. {session} tomorrow, easy, or take the day off."),
+        ("Keep it small", "Tomorrow can be small: {session}, {start}. Easy or nothing."),
+    ],
     "sugg_after_hard": [
         ("For tomorrow", "That was a hard run. Tomorrow: {session}."),
         ("Recover", "Hard work today. Tomorrow: {session}, nothing sharp."),

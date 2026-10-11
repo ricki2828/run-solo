@@ -16,6 +16,7 @@ from .media import PHOTO_MAX_BYTES, VIDEO_MAX_BYTES, Media
 
 CAPTION_MAX = 1024        # Telegram caption limit
 QUESTION_LEAD = "Quick question"  # follow-up text for question buttons; the card text already went with the media
+MAX_TEXT = 4096           # inbound text kept: above the 500-character note limit so the service can refuse a long note
 MAX_FEEL_BUTTONS = 3      # per card (the 10-Oct review); questions never ride a media card
 
 
@@ -192,13 +193,15 @@ class TelegramChannel:
         assert last is not None
         raise last
 
-    def ack_callback(self, inb: Inbound, text: str, clear: bool = True) -> None:
+    def ack_callback(self, inb: Inbound, text: str, clear: bool = True, keep: list[tuple[str, int]] | None = None) -> None:
+        """Toast the tap. `clear` removes the card's buttons; `keep` (label, index) leaves just those behind."""
         try:
             self._call("answerCallbackQuery", {"callback_query_id": inb.callback_id, "text": text})
             if clear and inb.callback_message_id:
+                kb = [[{"text": label[:40], "callback_data": f"{inb.card_id}:{i}"} for label, i in keep]] if keep else []
                 self._call("editMessageReplyMarkup", {
                     "chat_id": int(inb.ref), "message_id": int(inb.callback_message_id),
-                    "reply_markup": {"inline_keyboard": []}})
+                    "reply_markup": {"inline_keyboard": kb}})
         except ChannelError:
             pass  # cosmetic only
 
@@ -228,7 +231,7 @@ class TelegramChannel:
             name = "@" + f["username"]
         elif name and isinstance(f.get("username"), str):
             name += " (@" + f["username"] + ")"
-        return Inbound("telegram", str(m["chat"]["id"]), msg_id, text=str(m["text"])[:500], name=name[:64])
+        return Inbound("telegram", str(m["chat"]["id"]), msg_id, text=str(m["text"])[:MAX_TEXT], name=name[:64])
 
 
 # --- WhatsApp Cloud API (disabled until Meta config exists) ----------------------------------
@@ -317,23 +320,26 @@ class WhatsAppChannel:
         text = f"{card.headline}\n{card.body}"
         base = {"messaging_product": "whatsapp", "to": ref}
         if in_window:
-            if not card.buttons:
+            # "Add a note" is not offered on WhatsApp (it would turn the three feel buttons into a list). The index of
+            # each kept button is its position in card.buttons, which the callback resolves.
+            offered = [(i, b) for i, b in enumerate(card.buttons) if b["action"] != "note:add"]
+            if not offered:
                 return self._post({**base, "type": "text", "text": {"body": text[:1000]}})
-            if len(card.buttons) <= 3:
+            if len(offered) <= 3:
                 interactive = {"type": "button", "body": {"text": text[:1024]}, "action": {"buttons": [
                     {"type": "reply", "reply": {"id": f"{card.card_id}:{i}", "title": b["label"][:20]}}
-                    for i, b in enumerate(card.buttons)]}}
+                    for i, b in offered]}}
             else:
                 interactive = {"type": "list", "body": {"text": text[:1024]}, "action": {
                     "button": "Choose", "sections": [{"title": "Options", "rows": [
                         {"id": f"{card.card_id}:{i}", "title": b["label"][:24]}
-                        for i, b in enumerate(card.buttons[:10])]}]}}
+                        for i, b in offered[:10]]}]}}
             return self._post({**base, "type": "interactive", "interactive": interactive})
         return self._post(wa_template_payload(
             ref, self.s.wa_template, self.s.wa_template_lang, card, media_id=media_id, media_kind=media_kind,
             url_suffix=url_suffix, url_index=self.s.wa_url_index))
 
-    def ack_callback(self, inb: Inbound, text: str, clear: bool = True) -> None:
+    def ack_callback(self, inb: Inbound, text: str, clear: bool = True, keep: list[tuple[str, int]] | None = None) -> None:
         return None  # WhatsApp has no callback ack
 
     @staticmethod
@@ -353,7 +359,7 @@ class WhatsAppChannel:
                         continue
                     t = m.get("type")
                     if t == "text":
-                        out.append(Inbound("whatsapp", wa_id, mid, text=str(m["text"].get("body", ""))[:500], name=names.get(wa_id, "")))
+                        out.append(Inbound("whatsapp", wa_id, mid, text=str(m["text"].get("body", ""))[:MAX_TEXT], name=names.get(wa_id, "")))
                     elif t == "interactive":
                         it = m["interactive"]
                         rid = (it.get("button_reply") or it.get("list_reply") or {}).get("id", "")

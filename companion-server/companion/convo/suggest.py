@@ -110,7 +110,7 @@ def session_for(kind: str, history: Sequence[Mapping[str, Any]], now: datetime |
     """The named session for a kind of suggestion, built from the runner's own distances."""
     easy, tempo = typical_km(history, "easy"), typical_km(history, "tempo")
     long_ = long_run_km(history, now or _when(history[0])) if history else None
-    if kind in ("easy_load", "recover", "heat", "wet", "feel"):
+    if kind in ("easy_load", "recover", "heat", "wet", "feel", "soft"):
         return f"easy {easy} km" if easy else None
     if kind in ("gap", "good"):
         km = tempo or easy
@@ -122,7 +122,7 @@ def session_for(kind: str, history: Sequence[Mapping[str, Any]], now: datetime |
 
 def _kind_reason(kind: str) -> str:
     return {"easy_load": "load", "recover": "hard_recent", "heat": "weather", "wet": "weather", "feel": "feel",
-            "plan_long": "plan", "good": "weather", "gap": "gap"}[kind]
+            "plan_long": "plan", "good": "weather", "gap": "gap", "soft": "rest"}[kind]
 
 
 def feel_cause(prev_situation: str | None) -> str:
@@ -132,8 +132,11 @@ def feel_cause(prev_situation: str | None) -> str:
 
 def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forecast | None,
             used: Mapping[str, datetime], seed: str, zone_id: str = "UTC",
-            last_situation: str | None = None) -> Evening | None:
-    """`history` newest first. None when no honest reason exists or no session can be named."""
+            last_situation: str | None = None, soften: bool = False) -> Evening | None:
+    """`history` newest first. None when no honest reason exists or no session can be named.
+
+    `soften` (a recent run note carried a niggle/sore/injury/tired/sick word, see companion.notes) turns every push
+    (a quality session, the plan's long run) into a gentle easy-or-rest line. Easy-session reasons are unchanged."""
     if not history:
         return None
     recent = sum(1 for h in history if timedelta(0) <= now - _when(h) <= timedelta(days=14))
@@ -183,18 +186,20 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
             kind = "gap"
     if kind is None:
         return None
+    if soften and kind in ("gap", "good", "plan_long"):
+        kind = "soft"
     session = session_for(kind, history, now)
     if session is None:
         return None  # no concrete session to name: say nothing rather than something vague
     slots["session"] = session
     situation = {"easy_load": "sugg_easy_load", "recover": "sugg_recover", "heat": "sugg_weather_heat",
                  "wet": "sugg_weather_wet", "plan_long": "sugg_plan_long", "good": "sugg_weather_good",
-                 "gap": "sugg_gap", "feel": "sugg_feel"}[kind]
+                 "gap": "sugg_gap", "feel": "sugg_feel", "soft": "sugg_soft"}[kind]
     r = voice.render(situation, slots, used, now, seed)
     if r is None:
         return None
     sk = {"easy_load": "easy_next", "recover": "recover", "heat": "heat", "wet": "wet", "plan_long": "long_run",
-          "good": "quality", "gap": "quality", "feel": "easy_next"}[kind]
+          "good": "quality", "gap": "quality", "feel": "easy_next", "soft": "easy_next"}[kind]
     return Evening(Suggestion(sk, _kind_reason(kind), r.body), r, voice.exemplars(situation, 3, seed))
 
 

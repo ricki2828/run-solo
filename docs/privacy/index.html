@@ -27,7 +27,7 @@
 <body>
 <main>
   <h1>Run Supreme privacy policy</h1>
-  <p class="meta">Applies to the Run Supreme Android app. Last updated 10 October 2026.</p>
+  <p class="meta">Applies to the Run Supreme Android app. Last updated 11 October 2026.</p>
 
   <p>Run Supreme is a running app with no account, no ads and no analytics of our own. This page says
   plainly what stays on your phone, what outside services receive so the app can work, and
@@ -160,8 +160,14 @@
   The weather part is described under "Where it goes" and "How long we keep it" below.</p>
   <p>The companion also keeps your answers to its questions. It asks at most one a week, and only
   inside a run note. The questions are what you are training for, the month of your race, when you usually
-  run, and whether you have a niggle (none, calf, knee, hip, foot or other). You answer with buttons, never typed text.
+  run, and whether you have a niggle (none, calf, knee, hip, foot or other). You answer with buttons.
   It records whether you take or skip a suggestion.</p>
+  <p><strong>Notes you add.</strong> On Telegram, each run note in your chat has an Add a note button. Tap it and the next message you
+  type (up to 500 characters, within 10 minutes) is saved as a note on that run. This is the only typed text the
+  companion keeps. It is used in two plain ways only: the Sunday recap may quote your note back to you, and a few words
+  (niggle, sore, injury, tired, sick) make the next suggestions gentler for a week. A note is never sent to OpenRouter
+  or any AI provider, and never leaves our server except in your own chat. Anything else you type to the companion gets a
+  fixed reply and is not kept.</p>
 
   <h3>Your phone number or Telegram chat</h3>
   <p>The companion has no account. It knows you by your chat. To connect, the app opens Telegram, you tap Start,
@@ -180,7 +186,7 @@
     Open-Meteo sees our server's IP address, not yours. See section 3 for the weather request the app itself makes.</li>
     <li><strong>OpenRouter</strong>, and the AI provider it routes to, which write the words of each note. They receive only
     the facts of the run as short sentences, and your answers as fixed options. They never receive your
-    phone number, Telegram chat, name or any typed text. We ask for providers that do not keep or train on what they receive
+    phone number, Telegram chat, name or any note you type. We ask for providers that do not keep or train on what they receive
     (zero retention), and the request is refused if none is available. If the writing service fails, the note is written from a
     template on our server instead.</li>
     <li><strong>Telegram</strong>, which delivers the notes and sees them like any message in a chat. Telegram's own privacy
@@ -195,6 +201,10 @@
     <li>Run summaries, answers and your chat details are kept until you delete them, or until six months pass with no run,
     when your companion data is deleted automatically.</li>
     <li>The record of notes we sent is kept for 30 days.</li>
+    <li>Notes you add are kept as long as the run they belong to, so until you delete your data or six months pass with no
+    run. They are included in the data the server returns about you, but the app does not show them. Delete everything
+    removes them. A Sunday recap that quotes a note carries that quote only in your chat: our server does not keep a copy
+    of it, so replacing or deleting the note stops it being quoted.</li>
     <li>The rounded weather area: only the latest one is kept. It is deleted 30 days after the run it came from, when you turn
     "Weather in suggestions" off (as soon as your phone can reach our server, or the next time the app connects if you were
     offline), when you re-connect the companion, and when you delete your data. Backups can keep it for up to 14 days.</li>

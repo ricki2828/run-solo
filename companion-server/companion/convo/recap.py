@@ -27,6 +27,7 @@ class Recap:
     media: MediaPlan
     style: list[str]
     empty: bool  # a missed week
+    week_run_ids: tuple[str, ...] = ()  # this week's runs, newest first: the service quotes a note from one of them
 
 
 def _when(r: Mapping[str, Any]) -> datetime:
@@ -102,4 +103,5 @@ def build(runs: Sequence[Mapping[str, Any]], now: datetime, zone_id: str, used: 
         return None
     r = voice.Rendered(r.situation, r.variant_id, r.headline, r.body.strip(), r.allowed)
     video = True  # the weekly recap is always a video moment
-    return Recap(r, MediaPlan("weekly_recap", video, "weekly_recap"), voice.exemplars(situation, 3, seed), False)
+    return Recap(r, MediaPlan("weekly_recap", video, "weekly_recap"), voice.exemplars(situation, 3, seed), False,
+                 tuple(str(r["run_id"]) for r in week if r.get("run_id")))
