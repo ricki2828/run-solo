@@ -35,9 +35,21 @@ String exportSubject(int runs) =>
 
 /// What an export did. [runs] == 0 means nothing was shared.
 class ExportOutcome {
-  const ExportOutcome({required this.runs, this.path});
+  const ExportOutcome({required this.runs, this.skipped = 0});
   final int runs;
-  final String? path;
+
+  /// Run files that could not be read and are NOT in the file.
+  final int skipped;
+
+  /// One line for the toast; null when everything went cleanly.
+  String? get warning {
+    if (skipped == 0) return null;
+    final s = '$skipped run${skipped == 1 ? '' : 's'} could not be read';
+    return runs == 0
+        ? 'Nothing exported · $s.'
+        : 'Exported $runs · $s and are NOT in the file. Keep them on this '
+              'phone until you have checked.';
+  }
 }
 
 /// What an import did, for one result line.
@@ -48,6 +60,7 @@ class ImportOutcome {
     required this.unreadableRuns,
     required this.unreadableFiles,
     required this.newerFiles,
+    this.saveFailed = 0,
   });
   final int imported;
 
@@ -60,18 +73,23 @@ class ImportOutcome {
   /// Files that are not Run Supreme files, or are cut short or damaged.
   final int unreadableFiles;
 
-  /// Files made by a newer Run Supreme.
+  /// Files (or runs inside a file) made by a newer Run Supreme.
   final int newerFiles;
+
+  /// Runs that could not be written to this phone (storage error).
+  final int saveFailed;
 
   /// "Imported 143 · 0 already here", plus a trailing part for anything
   /// that could not be read.
   String get summary {
     final parts = <String>[
       'Imported $imported',
-      '$alreadyHere already here',
+      '$alreadyHere already here${alreadyHere > 0 ? ' (edits not merged)' : ''}',
       if (unreadableRuns > 0)
         '$unreadableRuns run${unreadableRuns == 1 ? '' : 's'} unreadable',
       if (unreadableFiles > 0) '$unreadableFiles not Run Supreme files',
+      if (saveFailed > 0)
+        '$saveFailed run${saveFailed == 1 ? '' : 's'} could not be saved',
       if (newerFiles > 0)
         '$newerFiles from a newer Run Supreme, update this one first',
     ];
@@ -96,35 +114,42 @@ class RunTransfer {
   final Future<Directory> Function() _tempDir;
 
   /// Write every run into one gzipped file and offer it through the share
-  /// sheet. Null when there is nothing to move.
+  /// sheet. Null when there is nothing to move. The temp copy holds every
+  /// run, so it is deleted when the share finishes or fails.
   Future<ExportOutcome?> exportAll() async {
     final dir = await _tempDir();
-    final tmp = File('${dir.path}/export.partial');
-    var count = 0;
-    Stream<engine.RunBundle> counted() async* {
-      await for (final b in history.exportBundleStream()) {
-        count += 1;
-        yield b;
+    try {
+      final tmp = File('${dir.path}/export.partial');
+      var count = 0;
+      var skipped = 0;
+      Stream<engine.RunBundle> counted() async* {
+        await for (final b in history.exportBundleStream(
+          onSkipped: () => skipped += 1,
+        )) {
+          count += 1;
+          yield b;
+        }
       }
-    }
 
-    await engine.RunExportCodec.encode(
-      counted(),
-      exportedAt: _now(),
-    ).transform(utf8.encoder).transform(gzip.encoder).pipe(tmp.openWrite());
-    if (count == 0) {
+      await engine.RunExportCodec.encode(
+        counted(),
+        exportedAt: _now(),
+      ).transform(utf8.encoder).transform(gzip.encoder).pipe(tmp.openWrite());
+      if (count == 0) {
+        return skipped == 0 ? null : ExportOutcome(runs: 0, skipped: skipped);
+      }
+      final file = await tmp.rename(
+        '${dir.path}/${exportFileName(_now(), count)}',
+      );
+      await transfer.shareFiles(
+        [file.path],
+        subject: exportSubject(count),
+        mimeType: 'application/octet-stream',
+      );
+      return ExportOutcome(runs: count, skipped: skipped);
+    } finally {
       await _tryDelete(dir);
-      return null;
     }
-    final file = await tmp.rename(
-      '${dir.path}/${exportFileName(_now(), count)}',
-    );
-    await transfer.shareFiles(
-      [file.path],
-      subject: exportSubject(count),
-      mimeType: 'application/octet-stream',
-    );
-    return ExportOutcome(runs: count, path: file.path);
   }
 
   /// Read the picked files (one-file exports and old per-run files), write
@@ -135,14 +160,21 @@ class RunTransfer {
     var badRuns = 0;
     var badFiles = 0;
     var newer = 0;
+    var saveFailed = 0;
     var batch = <engine.RunBundle>[];
 
     Future<void> flush() async {
       if (batch.isEmpty) return;
-      final r = await history.importBundles(batch);
-      imported += r.imported;
-      already += r.skippedIds.length;
+      final pending = batch;
       batch = <engine.RunBundle>[];
+      try {
+        final r = await history.importBundles(pending);
+        imported += r.imported;
+        already += r.skippedIds.length;
+      } catch (_) {
+        // A storage error loses this batch only; the counts so far stand.
+        saveFailed += pending.length;
+      }
     }
 
     for (final src in picked) {
@@ -155,7 +187,13 @@ class RunTransfer {
                 .transform(const LineSplitter());
         await for (final b in engine.RunExportCodec.readAny(
           lines,
-          onSkipped: (_) => badRuns += 1,
+          onSkipped: (e) {
+            if (e is engine.RunFileNewerVersionException) {
+              newer += 1;
+            } else {
+              badRuns += 1;
+            }
+          },
         )) {
           batch.add(b);
           if (batch.length >= kImportBatch) await flush();
@@ -178,6 +216,7 @@ class RunTransfer {
       unreadableRuns: badRuns,
       unreadableFiles: badFiles,
       newerFiles: newer,
+      saveFailed: saveFailed,
     );
   }
 

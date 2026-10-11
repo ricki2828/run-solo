@@ -369,9 +369,10 @@ void main() {
     expect(transfer.shared, hasLength(1));
     expect(transfer.shared.single, hasLength(1));
     final path = transfer.shared.single.single;
+    expect(File(path).existsSync(), isFalse, reason: 'temp copy removed');
     expect(path, endsWith('-2runs.runsupreme'));
     expect(path.split('/').last, startsWith('run-supreme-runs-'));
-    final text = utf8.decode(gzip.decode(File(path).readAsBytesSync()));
+    final text = utf8.decode(gzip.decode(transfer.sharedBytes.single));
     final ids = {for (final b in engine.RunExportCodec.decode(text)) b.run.id};
     expect(ids, {r1.id, r2.id});
   });
@@ -406,7 +407,7 @@ void main() {
     expect(storage.enforceCalls, 1, reason: 'budget enforced after import');
     expect(
       find.text(
-        'Imported 1 · 1 already here · 1 not Run Supreme files. '
+        'Imported 1 · 1 already here (edits not merged) · 1 not Run Supreme files. '
         '2 older runs are past the backup budget: move runs to another Run '
         'Supreme to keep them safe.',
       ),

@@ -166,6 +166,10 @@ class FakeTransferGateway implements TransferGateway {
     return c.future;
   }
 
+  /// Bytes of the first file of each [shareFiles] call, read at share time
+  /// (callers delete the temp file afterwards).
+  final List<List<int>> sharedBytes = [];
+
   /// Mime type of each [shareFiles] call, parallel to [shared].
   final List<String> sharedMimeTypes = [];
 
@@ -193,6 +197,9 @@ class FakeTransferGateway implements TransferGateway {
       if (!await File(p).exists()) throw StateError('shared file missing: $p');
     }
     shared.add(List.of(paths));
+    sharedBytes.add(
+      paths.isEmpty ? <int>[] : await File(paths.first).readAsBytes(),
+    );
     sharedMimeTypes.add(mimeType);
     for (final c in _waiting) {
       c.complete(List.of(paths));

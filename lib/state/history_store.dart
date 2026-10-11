@@ -452,7 +452,10 @@ abstract class RunStore implements HistoryStore {
 
   /// The same runs one at a time, so "Move all runs (one file)" never holds
   /// them all in memory. One bundle per uuid; order is not promised.
-  Stream<engine.RunBundle> exportBundleStream();
+  ///
+  /// [onSkipped] is called once per run file that could not be read
+  /// (damaged, or made by a newer app), so the export can say so.
+  Stream<engine.RunBundle> exportBundleStream({void Function()? onSkipped});
 
   /// Write bundles that are not already here (run file + sidecar). Returns
   /// how many landed and which uuids were skipped as duplicates.
@@ -951,7 +954,9 @@ class MemoryRunStore implements RunStore {
   ];
 
   @override
-  Stream<engine.RunBundle> exportBundleStream() async* {
+  Stream<engine.RunBundle> exportBundleStream({
+    void Function()? onSkipped,
+  }) async* {
     for (final b in await exportBundles()) {
       yield b;
     }
@@ -1741,7 +1746,9 @@ class FileRunStore implements RunStore {
   /// One run at a time straight off disk (same rules as [_scan]: a damaged
   /// or newer file is skipped, [runsDir] wins over the archive for a uuid).
   @override
-  Stream<engine.RunBundle> exportBundleStream() async* {
+  Stream<engine.RunBundle> exportBundleStream({
+    void Function()? onSkipped,
+  }) async* {
     final seen = <String>{};
     for (final dir in [runsDir, archiveDir]) {
       if (!await dir.exists()) continue;
@@ -1760,6 +1767,7 @@ class FileRunStore implements RunStore {
           );
         } catch (e) {
           debugPrint('export: skipped $base ($e)');
+          onSkipped?.call();
           continue;
         }
         yield bundle;

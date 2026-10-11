@@ -241,7 +241,11 @@ class _SettingsScreenState extends State<SettingsScreen>
         transfer: services.transfer,
         now: services.now,
       ).exportAll();
-      if (out == null) _toast('No runs to move yet.');
+      if (out == null) {
+        _toast('No runs to move yet.');
+      } else if (out.warning case final w?) {
+        _toast(w);
+      }
     } catch (e) {
       _toast('Could not move runs. $e');
     } finally {
