@@ -25,7 +25,7 @@ class SplitBar {
   final double? paceSecPerKm;
 
   /// The HR zone (1-5) the bar mostly ran in: its fill. Null without a
-  /// heart rate (the bar is grey).
+  /// heart rate (the bar takes [SplitsBars.noHrColor], never grey).
   final int? zone;
   final String? readout;
   final String? semantics;
@@ -33,8 +33,8 @@ class SplitBar {
 
 /// Run detail's splits chart, in the leaderboard bar style
 /// (`RecentBarsChart`): one vertical bar per km, mile or lap, taller =
-/// faster, filled by the HR zone the split mostly ran in (grey without a
-/// heart rate); the fastest is outlined and bold, never a different fill. Every bar carries its pace
+/// faster, filled by the HR zone the split mostly ran in (the run-type colour
+/// without a heart rate); the fastest is outlined and bold, never a different fill. Every bar carries its pace
 /// above it (every second bar once they get too tight for it). Tap or drag
 /// across the bars to pick one: it is outlined and its readout shows above
 /// the chart. The axis note says which way is better and where the baseline

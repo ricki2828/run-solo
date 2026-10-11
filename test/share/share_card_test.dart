@@ -102,8 +102,8 @@ void main() {
         sex: ProfileSex.notSet,
         age: null,
       );
-      expect(d.lanes[2].value, '62');
-      expect(d.lanes[2].unit, 'score');
+      expect(d.lanes.first.value, '62');
+      expect(d.lanes.first.unit, 'score');
     });
   });
 

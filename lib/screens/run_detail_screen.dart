@@ -79,7 +79,8 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
           );
         }
         return Scaffold(
-          appBar: RunAppBar(title: runTitle(d.summary)),
+          // The heading below already names the run; the bar just says where we are.
+          appBar: const RunAppBar(title: 'RUN'),
           body: SafeArea(
             child: RunDetailBody(
               detail: d,
@@ -178,9 +179,7 @@ class RunDetailBody extends StatelessWidget {
             route: route,
             indoor: a.indoor,
             terrain: usesTerrainMap(d.summary.mode),
-            plan: d.run.route == null
-                ? null
-                : followedPlanPoints(d.run.route!),
+            plan: d.run.route == null ? null : followedPlanPoints(d.run.route!),
             routeColor: runTypeColor(d.summary, RunSoloTokens.dark),
           ),
           SizedBox(height: d.run.route == null ? Space.x24 : Space.x12),
@@ -1498,15 +1497,22 @@ class _RepVerdict extends StatelessWidget {
               Expanded(
                 child: Text(
                   v.headline.text,
-                  style: RunSoloType.display44.copyWith(
-                    color: switch (v.headline) {
-                      engine.VerdictHeadline.faster => t.accentArc,
-                      engine.VerdictHeadline.slower => t.inkPrimary,
-                      engine.VerdictHeadline.noVerdict ||
-                      engine.VerdictHeadline.indoorRun => t.inkSecondary,
-                      _ => t.inkPrimary,
-                    },
-                  ),
+                  // BASELINE SET is not a result: section-title size, so it
+                  // does not out-shout the page.
+                  style:
+                      (v.headline == engine.VerdictHeadline.baselineSet
+                              ? RunSoloType.heading19
+                              : RunSoloType.display44)
+                          .copyWith(
+                            color: switch (v.headline) {
+                              engine.VerdictHeadline.faster => t.accentArc,
+                              engine.VerdictHeadline.slower => t.inkPrimary,
+                              engine.VerdictHeadline.noVerdict ||
+                              engine.VerdictHeadline.indoorRun =>
+                                t.inkSecondary,
+                              _ => t.inkPrimary,
+                            },
+                          ),
                 ),
               ),
               if (onVerdict != null)

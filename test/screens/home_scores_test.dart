@@ -77,7 +77,8 @@ void main() {
           ),
         ),
       );
-      expect(find.textContaining('--', findRichText: true), findsNWidgets(4));
+      // No empty "--" figure: the tile just says what to add.
+      expect(find.textContaining('--', findRichText: true), findsNothing);
       expect(find.text('Add your sex to compare'), findsNWidgets(4));
       expect(find.textContaining('62', findRichText: true), findsNothing);
     },
