@@ -10,6 +10,12 @@ import 'package:flutter/material.dart';
 /// judge the look from a picture before anything ships.
 bool kOdometerDistance = false;
 
+/// The wheel's darker edge: the fill, a little less light.
+Color _shade(Color c) {
+  final hsl = HSLColor.fromColor(c);
+  return hsl.withLightness((hsl.lightness * 0.8).clamp(0.0, 1.0)).toColor();
+}
+
 class OdometerDistance extends StatelessWidget {
   const OdometerDistance({
     super.key,
@@ -53,12 +59,7 @@ class OdometerDistance extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Color.alphaBlend(const Color(0x66000000), fill),
-            fill,
-            fill,
-            Color.alphaBlend(const Color(0x66000000), fill),
-          ],
+          colors: [_shade(fill), fill, fill, _shade(fill)],
           stops: const [0, 0.22, 0.78, 1],
         ),
       ),
