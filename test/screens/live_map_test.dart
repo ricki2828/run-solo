@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:run_engine/run_engine.dart' as engine;
-import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/app/services.dart';
 import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
-import 'package:run_solo/screens/live_map_view.dart';
 import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/state/live_route.dart';
 import 'package:run_solo/map/route_builder.dart';
@@ -18,9 +15,9 @@ import 'package:run_solo/widgets/lap_button.dart';
 
 import '../helpers.dart';
 
-const _toggle = ValueKey('live-view-toggle');
+const _toggle = ValueKey('page-dots');
 const _map = ValueKey('fake-live-map');
-const _hero = ValueKey('map-hero');
+const _pages = ValueKey('run-pages');
 
 Future<(FakeRecorderGateway, AppServices)> open(
   WidgetTester tester, {
@@ -45,51 +42,84 @@ Future<(FakeRecorderGateway, AppServices)> open(
 }
 
 void main() {
-  testWidgets('no map available: no toggle, NUMBERS only', (tester) async {
+  testWidgets('no map available: no page dots, numbers only', (tester) async {
     await open(
       tester,
       maps: const FakeMapSurfaceFactory(),
       settings: const AppSettings(onboardingDone: true, liveMapTypes: {'laps'}),
     );
     expect(find.byKey(_toggle), findsNothing);
-    // A saved MAP choice cannot show a map that is not there.
+    // A saved MAP page cannot show a map that is not there.
     expect(find.byKey(_map), findsNothing);
     expect(find.byType(LapButton), findsOneWidget);
   });
 
-  testWidgets('NUMBERS is the default; the toggle switches both ways', (
+  testWidgets('page 1 is the default; dots and a swipe go to the map', (
     tester,
   ) async {
     final (_, services) = await open(tester);
     expect(find.byKey(_toggle), findsOneWidget);
     expect(find.byKey(_map), findsNothing);
-    expect(find.byKey(_hero), findsNothing);
 
     await tester.tap(find.byKey(_toggle));
-    await pumpTimes(tester, 3);
+    await settleAnimations(tester);
     expect(find.byKey(_map), findsOneWidget);
-    expect(find.byKey(_hero), findsOneWidget);
     expect(services.settings.settings.liveMapTypes, {'laps'});
 
     await tester.tap(find.byKey(_toggle));
-    await pumpTimes(tester, 3);
+    await settleAnimations(tester);
     expect(find.byKey(_map), findsNothing);
     expect(services.settings.settings.liveMapTypes, isEmpty);
+
+    // A swipe anywhere on the numbers page goes to the map.
+    await tester.fling(find.byKey(_pages), const Offset(-300, 0), 1500);
+    await settleAnimations(tester);
+    expect(find.byKey(_map), findsOneWidget);
   });
 
-  testWidgets('the choice is remembered per run type', (tester) async {
+  testWidgets(
+    'on the map page a drag pans the map; the left edge swipes back',
+    (tester) async {
+      await open(
+        tester,
+        settings: const AppSettings(
+          onboardingDone: true,
+          liveMapTypes: {'laps'},
+        ),
+      );
+      expect(find.byKey(_map), findsOneWidget);
+      // Horizontal drags in the middle are the map's, not the pager's.
+      await tester.fling(find.byKey(_map), const Offset(300, 0), 1500);
+      await settleAnimations(tester);
+      expect(find.byKey(_map), findsOneWidget);
+      await tester.fling(find.byKey(_map), const Offset(-300, 0), 1500);
+      await settleAnimations(tester);
+      expect(find.byKey(_map), findsOneWidget);
+      // From the left-edge strip a swipe right goes back to the numbers.
+      await tester.fling(
+        find.byKey(const ValueKey('page-edge-swipe')),
+        const Offset(300, 0),
+        1500,
+      );
+      await settleAnimations(tester);
+      expect(find.byKey(_map), findsNothing);
+      expect(find.byKey(const ValueKey('timer')), findsOneWidget);
+    },
+  );
+
+  testWidgets('the page is remembered per run type', (tester) async {
     final (_, services) = await open(tester);
     await tester.tap(find.byKey(_toggle));
-    await pumpTimes(tester, 3);
+    await settleAnimations(tester);
     expect(find.byKey(_map), findsOneWidget);
 
-    // A new screen for the same type opens on MAP.
+    // A new screen for the same type opens on the map page.
     await pumpApp(tester, services, home: const SizedBox());
     await pumpApp(tester, services, pushRoute: Routes.recording);
     await pumpTimes(tester, 4);
     expect(find.byKey(_map), findsOneWidget);
 
-    // Other run types keep NUMBERS.
+    // Other run types keep the numbers.
     final other = fakeServices(
       recorder: FakeRecorderGateway(now: now),
       settings: services.settings.settings,
@@ -108,29 +138,26 @@ void main() {
     expect(AppSettings.fromJson(const {}).liveMapTypes, isEmpty);
   });
 
-  testWidgets('MAP keeps the hero big and LAP and Pause / Stop reachable', (
-    tester,
-  ) async {
-    await open(
-      tester,
-      settings: const AppSettings(onboardingDone: true, liveMapTypes: {'laps'}),
-    );
-    final lapMap = tester.getSize(find.byType(LapButton));
-    final pauseMap = tester.getSize(find.byKey(const ValueKey('stop')));
-    expect(find.byKey(_hero), findsOneWidget);
-    // At least the 36 sp floor, and brighter than the label under it.
-    final hero = tester.widget<Text>(find.byKey(_hero));
-    expect(hero.style!.fontSize, greaterThanOrEqualTo(36));
-    expect(find.byKey(const ValueKey('map-hero-label')), findsOneWidget);
-    expect(find.byKey(const ValueKey('vitals-total')), findsOneWidget);
+  testWidgets('LAP and Pause / Stop are the same on both pages; the map page '
+      'repeats no run number', (tester) async {
+    await open(tester);
+    final lap = tester.getSize(find.byType(LapButton));
+    final stop = tester.getSize(find.byKey(const ValueKey('stop')));
+    expect(find.byKey(const ValueKey('timer')), findsOneWidget);
 
     await tester.tap(find.byKey(_toggle));
-    await pumpTimes(tester, 3);
-    expect(tester.getSize(find.byType(LapButton)), lapMap);
-    expect(tester.getSize(find.byKey(const ValueKey('stop'))), pauseMap);
+    await settleAnimations(tester);
+    expect(find.byKey(_map), findsOneWidget);
+    expect(tester.getSize(find.byType(LapButton)), lap);
+    expect(tester.getSize(find.byKey(const ValueKey('stop'))), stop);
+    // Numbers live on page 1 only.
+    expect(find.byKey(const ValueKey('timer')), findsNothing);
+    expect(find.byKey(const ValueKey('map-hero')), findsNothing);
   });
 
-  testWidgets('4x4 rep: the map hero is the rep average', (tester) async {
+  testWidgets('4x4 rep: the rep average is page 1, the map page has no hero', (
+    tester,
+  ) async {
     final (fake, _) = await open(
       tester,
       intervals: true,
@@ -144,75 +171,33 @@ void main() {
     await pumpTimes(tester, 5);
     fake.advance(const Duration(seconds: 60));
     await pumpTimes(tester, 5);
-    expect(find.byKey(_hero), findsOneWidget);
-    expect(find.text('REP AVERAGE /km'), findsOneWidget);
     expect(find.byKey(const ValueKey('segment-avg')), findsNothing);
+    await tester.tap(find.byKey(_toggle));
+    await settleAnimations(tester);
+    expect(find.byKey(const ValueKey('segment-avg')), findsOneWidget);
+    expect(find.text('REP AVERAGE /km'), findsOneWidget);
   });
 
-  // D2 (11-Oct): in a rep or a recovery the phase hero keeps its NUMBERS
-  // size and the map shrinks to a 120-160 dp strip under it.
-  for (final h in [640, 800]) {
-    testWidgets('D2: rep and recovery keep the hero full size over a map '
-        'strip at 360 x $h', (tester) async {
-      final (fake, _) = await open(
-        tester,
-        intervals: true,
-        settings: const AppSettings(
-          onboardingDone: true,
-          liveMapTypes: {'intervals'},
-        ),
-      );
-      tester.view.physicalSize = Size(1080, h * 3.0);
-      await pumpTimes(tester, 3);
-      await tester.tap(find.byKey(const ValueKey('start-reps')));
-      await pumpTimes(tester, 5);
-      fake.advance(const Duration(seconds: 60));
-      await pumpTimes(tester, 5);
-      final compact = h < 720;
-      final full = primaryStyle(compact).fontSize!;
-      void expectStrip(String phase) {
-        final strip = tester.getSize(find.byKey(const ValueKey('map-strip')));
-        expect(
-          strip.height,
-          inInclusiveRange(LiveMapView.stripMinHeight, 160),
-          reason: '$phase strip height',
-        );
-        final hero = tester.widget<Text>(find.byKey(_hero));
-        expect(hero.style!.fontSize, full, reason: '$phase hero size');
-        // The hero is what NUMBERS shows: at least the 128 sp primary.
-        expect(hero.style!.fontSize, greaterThanOrEqualTo(128));
-        expect(
-          tester.getRect(find.byKey(_hero)).bottom,
-          lessThan(
-            tester.getTopLeft(find.byKey(const ValueKey('map-strip'))).dy,
-          ),
-          reason: '$phase hero sits above the strip',
-        );
-        expect(tester.takeException(), isNull);
-      }
+  testWidgets('free run page 1: no TRUE pace and no route readouts; they sit '
+      'on the map page', (tester) async {
+    final (fake, _) = await open(tester, mode: RecordMode.free);
+    fake.elevGainM = 124;
+    fake.advance(const Duration(seconds: 120));
+    await pumpTimes(tester, 5);
+    expect(find.textContaining('TRUE'), findsNothing);
+    expect(find.byKey(const ValueKey('live-climb')), findsNothing);
+    expect(find.byKey(_map), findsNothing);
+    Text fig(String k) => tester.widget<Text>(find.byKey(ValueKey(k)));
+    final size = fig('free-distance').style!.fontSize!;
+    expect(size, greaterThanOrEqualTo(64));
+    expect(fig('timer').style!.fontSize, size);
+    expect(fig('run-average').style!.fontSize, size);
 
-      expect(find.text('REP AVERAGE /km'), findsOneWidget);
-      expectStrip('rep');
-      // Into the recovery (4:00 rep).
-      fake.advance(const Duration(seconds: 200));
-      await pumpTimes(tester, 5);
-      await settleAnimations(tester);
-      expect(find.byKey(const ValueKey('timer')), findsNothing);
-      expect(find.textContaining('RECOVERY'), findsWidgets);
-      expectStrip('recovery');
-    });
-  }
-
-  testWidgets('free and laps map layouts are unchanged by D2', (tester) async {
-    await open(
-      tester,
-      settings: const AppSettings(onboardingDone: true, liveMapTypes: {'laps'}),
-    );
-    expect(find.byKey(const ValueKey('map-strip')), findsNothing);
-    expect(
-      tester.widget<Text>(find.byKey(_hero)).style!.fontSize,
-      lessThan(100),
-    );
+    await tester.tap(find.byKey(_toggle));
+    await settleAnimations(tester);
+    expect(find.byKey(_map), findsOneWidget);
+    expect(find.byKey(const ValueKey('live-climb')), findsOneWidget);
+    expect(find.textContaining('TRUE'), findsNothing);
   });
 
   testWidgets('a map that fails to load shows the route on our canvas', (
@@ -225,7 +210,6 @@ void main() {
     );
     expect(find.byType(MapFailedCard), findsOneWidget);
     // The run itself is untouched: hero, LAP, Pause / Stop all there.
-    expect(find.byKey(_hero), findsOneWidget);
     expect(find.byType(LapButton), findsOneWidget);
     expect(find.byKey(const ValueKey('stop')), findsOneWidget);
   });
@@ -315,152 +299,13 @@ void main() {
     expect(route.count, have);
   });
 
-  // The MAP hero is the NUMBERS layout's dominant figure for every mode and
-  // phase: same text, read from the numbers screen, then from MAP.
-  Future<void> heroMatches(
-    WidgetTester tester, {
-    required RecordMode mode,
-    SessionSpec? spec,
-    required Future<void> Function(FakeRecorderGateway fake) script,
-    required Finder numbers,
-    Finder? inside,
-  }) async {
-    phoneViewport(tester);
-    final fake = FakeRecorderGateway(now: now)..liveSecPerKm = 300;
-    final services = fakeServices(
-      recorder: fake,
-      maps: const FakeMapSurfaceFactory(available: true),
-    );
-    await services.recording.start(mode, spec, Units.km);
-    await pumpApp(tester, services, pushRoute: Routes.recording);
-    await pumpTimes(tester, 4);
-    await script(fake);
-    await pumpTimes(tester, 5);
-    final f = inside ?? numbers;
-    final text = tester
-        .widget<Text>(
-          inside == null
-              ? numbers
-              : find.descendant(of: numbers, matching: find.byType(Text)).first,
-        )
-        .data;
-    expect(f, findsWidgets);
-    await tester.tap(find.byKey(_toggle));
-    await pumpTimes(tester, 3);
-    expect(find.byKey(_map), findsOneWidget);
-    expect(tester.widget<Text>(find.byKey(_hero)).data, text);
-    expect(tester.widget<Text>(find.byKey(_hero)).data, isNot('--:--'));
-  }
-
-  testWidgets('MAP strip on a free run: distance, time, pace at one size', (
-    tester,
-  ) async {
-    final (fake, _) = await open(
-      tester,
-      mode: RecordMode.free,
-      settings: const AppSettings(onboardingDone: true, liveMapTypes: {'free'}),
-    );
-    fake.advance(const Duration(seconds: 120));
-    await pumpTimes(tester, 5);
-    expect(find.byKey(_map), findsOneWidget);
-    Text fig(String k) => tester.widget<Text>(find.byKey(ValueKey(k)));
-    final size = fig('map-hero').style!.fontSize!;
-    expect(size, greaterThanOrEqualTo(36));
-    expect(fig('map-hero-time').style!.fontSize, size);
-    expect(fig('map-hero-pace').style!.fontSize, size);
-    Rect at(String k) => tester.getRect(find.byKey(ValueKey(k)));
-    expect(at('map-hero').top, lessThan(at('map-hero-time').top));
-    expect(at('map-hero-time').left, lessThan(at('map-hero-pace').left));
-    expect(tester.takeException(), isNull);
-  });
-
   Future<void> run(FakeRecorderGateway f, int seconds) async {
     for (var i = 0; i < seconds; i++) {
       f.advance(const Duration(seconds: 1));
     }
   }
 
-  // Founder 3-Oct: Free leads with distance, then time and average pace at
-  // the same size; the MAP strip carries all three.
-  testWidgets('hero = numbers: free run distance', (tester) async {
-    await heroMatches(
-      tester,
-      mode: RecordMode.free,
-      script: (f) => run(f, 120),
-      numbers: find.byKey(const ValueKey('free-distance')),
-    );
-  });
-
-  testWidgets('hero = numbers: laps clock', (tester) async {
-    await heroMatches(
-      tester,
-      mode: RecordMode.laps,
-      script: (f) => run(f, 75),
-      numbers: find.byKey(const ValueKey('timer')),
-    );
-  });
-
-  testWidgets('hero = numbers: 4x4 rep average and recovery countdown', (
-    tester,
-  ) async {
-    await heroMatches(
-      tester,
-      mode: RecordMode.intervals,
-      spec: standardPreset(),
-      script: (f) async {
-        await f.startReps();
-        await run(f, 60);
-      },
-      numbers: find.byKey(const ValueKey('segment-avg')),
-    );
-    await heroMatches(
-      tester,
-      mode: RecordMode.intervals,
-      spec: standardPreset(),
-      script: (f) async {
-        await f.startReps();
-        await run(f, 255);
-      },
-      numbers: find.byKey(const ValueKey('timer')),
-    );
-  });
-
-  testWidgets('hero = numbers: 12-minute test clock', (tester) async {
-    await heroMatches(
-      tester,
-      mode: RecordMode.cooper,
-      spec: engine.SessionSpec.cooper.toPigeon(),
-      script: (f) async {
-        await run(f, 5);
-        await f.startReps();
-        await run(f, 100);
-      },
-      numbers: find.byKey(const ValueKey('timer')),
-    );
-  });
-
-  testWidgets('hero = numbers: goal cool-down clock', (tester) async {
-    await heroMatches(
-      tester,
-      mode: RecordMode.intervals,
-      spec: engine.SessionSpec.goalTime(1800, '30 min').toPigeon(),
-      script: (f) => run(f, 1870),
-      numbers: find.byKey(const ValueKey('goal-cooldown')),
-    );
-  });
-
-  testWidgets('hero = numbers: event to go', (tester) async {
-    await heroMatches(
-      tester,
-      mode: RecordMode.intervals,
-      spec: engine.SessionSpec.parkrun('parkrun').toPigeon()..warmupSeconds = 0,
-      script: (f) => run(f, 60),
-      numbers: find.byKey(const ValueKey('event-to-go')),
-      inside: find.byKey(const ValueKey('event-to-go')),
-    );
-  });
-
-  testWidgets('a compare card slides over the map top; hero and GPS bar stay', (
+  testWidgets('a compare card slides over the map top; the GPS bar stays', (
     tester,
   ) async {
     final (fake, _) = await open(
@@ -488,8 +333,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     final card = find.byKey(const ValueKey('compare-card'));
     expect(card, findsOneWidget);
-    final hero = tester.getRect(find.byKey(_hero));
-    expect(tester.getRect(card).top, greaterThanOrEqualTo(hero.bottom));
     expect(find.byType(GpsBar), findsOneWidget);
     expect(find.byType(CompareCard), findsOneWidget);
   });

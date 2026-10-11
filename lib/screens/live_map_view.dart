@@ -12,12 +12,8 @@ import 'package:flutter/material.dart';
 import '../map/map_surface.dart';
 import '../map/retrace_tracker.dart' show RetraceInput;
 import '../map/route_builder.dart';
-import '../platform/gateway.dart';
 import '../state/live_route.dart';
 import '../theme/theme.dart';
-import '../widgets/compare_card.dart';
-import '../widgets/route_to_go.dart';
-import '../widgets/start_strip.dart';
 
 /// The biggest number for the phase, as the NUMBERS layout would show it.
 ///
@@ -58,6 +54,8 @@ class EqualFigures extends StatelessWidget {
     required this.valueColor,
     this.rowGap = Space.x4,
     this.distanceTrailing,
+    this.stacked = false,
+    this.odometer,
   }) : assert(figures.length == 3 && valueKeys.length == 3);
   final List<LiveFigure> figures;
   final List<Key> valueKeys;
@@ -69,6 +67,13 @@ class EqualFigures extends StatelessWidget {
   /// Sits in the free right half of the DISTANCE row (the map view's VS
   /// START), so it costs no height.
   final Widget? distanceTrailing;
+
+  /// Distance, time and pace each on a full-width row (page 1 of the record
+  /// screen, where there is room now the route readouts moved to the map).
+  final bool stacked;
+
+  /// Builds the distance value as an odometer (the golden-only variant).
+  final Widget Function(TextStyle style)? odometer;
 
   static const double _gap = Space.x16;
   static final double floor = RunSoloType.runSize(36);
@@ -83,7 +88,7 @@ class EqualFigures extends StatelessWidget {
   }
 
   /// The shared size for a column [maxWidth] wide.
-  static double sizeFor(double maxWidth, double cap) {
+  static double sizeFor(double maxWidth, double cap, {bool stacked = false}) {
     const ref = 100.0;
     final base = RunSoloType.display44.copyWith(
       fontSize: ref,
@@ -91,7 +96,7 @@ class EqualFigures extends StatelessWidget {
     );
     final half = (maxWidth - _gap) / 2;
     final fit = [
-      half / _width('8:88:88', base) * ref,
+      (stacked ? maxWidth : half) / _width('8:88:88', base) * ref,
       maxWidth / _width('88.88 mi', base) * ref,
     ].reduce((a, b) => a < b ? a : b);
     return fit.clamp(floor, cap).floorToDouble();
@@ -102,14 +107,17 @@ class EqualFigures extends StatelessWidget {
     mainAxisSize: MainAxisSize.min,
     children: [
       Text(figures[i].label, style: RunLabelScope.style(context, labelColor)),
-      Text(
-        figures[i].value,
-        key: valueKeys[i],
-        softWrap: false,
-        maxLines: 1,
-        overflow: TextOverflow.visible,
-        style: style,
-      ),
+      if (i == 0 && odometer != null)
+        KeyedSubtree(key: valueKeys[i], child: odometer!(style))
+      else
+        Text(
+          figures[i].value,
+          key: valueKeys[i],
+          softWrap: false,
+          maxLines: 1,
+          overflow: TextOverflow.visible,
+          style: style,
+        ),
     ],
   );
 
@@ -117,10 +125,22 @@ class EqualFigures extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, c) {
       final style = RunSoloType.display44.copyWith(
-        fontSize: sizeFor(c.maxWidth, cap),
+        fontSize: sizeFor(c.maxWidth, cap, stacked: stacked),
         fontWeight: FontWeight.w700,
         color: valueColor,
       );
+      if (stacked) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < 3; i++) ...[
+              if (i > 0) SizedBox(height: rowGap),
+              _one(context, i, style),
+            ],
+          ],
+        );
+      }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -160,25 +180,21 @@ class EqualFigures extends StatelessWidget {
   );
 }
 
+/// Page 2 of the record screen: the map and every route readout (distance
+/// back to start, height vs start, climb, follow-route turn hints). The run
+/// numbers live on page 1; nothing here repeats them. The map exists only
+/// while this widget is built and the app is in the foreground; with the
+/// screen off nothing renders and no map is alive.
 class LiveMapView extends StatefulWidget {
   const LiveMapView({
     super.key,
     required this.maps,
     required this.track,
     required this.typeColor,
-    required this.hero,
-    required this.compact,
-    required this.secondary,
-    required this.paused,
-    this.cardLink,
-    this.route,
+    required this.readouts,
     this.plan,
-    this.units = Units.km,
     this.terrain = false,
-    this.heightVsStartM,
-    this.backToStartM,
     this.retrace,
-    this.heroStyle,
   });
 
   final MapSurfaceFactory maps;
@@ -186,46 +202,18 @@ class LiveMapView extends StatefulWidget {
 
   /// The run type's colour: the route so far.
   final Color typeColor;
-  final LiveHero hero;
-  final bool compact;
 
-  /// Label colour that reads on the current zone background.
-  final Color secondary;
+  /// The route readouts above the map, already styled by the record screen.
+  final List<Widget> readouts;
 
-  /// Paused: the numbers hide under the PAUSED card, the map too.
-  final bool paused;
-
-  /// The live compare card's slot (LV1/LV2): a zero-height anchor under the
-  /// hero, so a card slides in over the top of the map, never the hero.
-  final LayerLink? cardLink;
-
-  /// Follow a route: the live figures (a strip line under the hero) and the
-  /// planned line to draw under the track. Null = following nothing.
-  final RouteProgress? route;
+  /// The planned line being followed, drawn under the track.
   final List<GeoPoint>? plan;
-  final Units units;
 
   /// Free and Trail runs: Google's terrain map instead of the night style.
   final bool terrain;
 
-  /// Trail / Free: metres above (+) or below (-) the start, and the distance
-  /// back along the track while heading back over it. VS START rides in the
-  /// DISTANCE row; BACK TO START is one plate line under the hero, only
-  /// while heading back.
-  final double? heightVsStartM;
-  final double? backToStartM;
-
   /// The recorder's retrace state, for the map to draw (null: none).
   final RetraceInput? retrace;
-
-  /// A rep or recovery of a structured session (D2, 11-Oct): the phase hero
-  /// keeps its NUMBERS size, this style, and the map shrinks to a strip of
-  /// [stripMinHeight]..[stripMaxHeight] under it. Null: the map takes the
-  /// room under a compact hero, as before.
-  final TextStyle? heroStyle;
-
-  static const double stripMinHeight = 120;
-  static const double stripMaxHeight = 160;
 
   @override
   State<LiveMapView> createState() => _LiveMapViewState();
@@ -269,163 +257,16 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
       : const SizedBox.shrink(key: ValueKey('map-off'));
 
   @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final h = widget.hero;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // The hero: biggest and brightest (founder readability rule), well
-        // over the 36 sp floor, on the zone background.
-        Visibility(
-          visible: !widget.paused,
-          maintainSize: true,
-          maintainAnimation: true,
-          maintainState: true,
-          child: h.figures.isNotEmpty
-              // Free / Trail: distance, time and average pace at one size.
-              ? EqualFigures(
-                  figures: h.figures,
-                  valueKeys: const [
-                    ValueKey('map-hero'),
-                    ValueKey('map-hero-time'),
-                    ValueKey('map-hero-pace'),
-                  ],
-                  cap: RunSoloType.runSize(widget.compact ? 40 : 44),
-                  labelColor: widget.secondary,
-                  valueColor: t.inkPrimary,
-                  distanceTrailing: widget.heightVsStartM == null
-                      ? null
-                      : HeightFigure(
-                          heightVsStartM: widget.heightVsStartM!,
-                          units: widget.units,
-                          labelColor: widget.secondary,
-                          valueColor: t.inkPrimary,
-                        ),
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        h.text,
-                        key: const ValueKey('map-hero'),
-                        softWrap: false,
-                        style: widget.heroStyle != null
-                            ? widget.heroStyle!
-                                  .copyWith(color: t.inkPrimary)
-                                  .copyWith(fontWeight: FontWeight.w700)
-                            : RunSoloType.display64
-                                  .copyWith(
-                                    color: t.inkPrimary,
-                                    fontSize: RunSoloType.runSize(
-                                      widget.compact ? 52 : 64,
-                                    ),
-                                  )
-                                  .copyWith(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                    Text(
-                      h.label,
-                      key: const ValueKey('map-hero-label'),
-                      style: RunSoloType.label13.copyWith(
-                        color: widget.secondary,
-                      ),
-                    ),
-                  ],
-                ),
-        ),
-        CompareSlot(
-          link: widget.cardLink,
-          child: const SizedBox(width: double.infinity, height: Space.x8),
-        ),
-        // The route's strip sits under the hero, never over it: distance and
-        // climb to go, the next turn, or OFF ROUTE.
-        if (widget.route != null)
-          Visibility(
-            visible: !widget.paused,
-            maintainSize: true,
-            maintainAnimation: true,
-            maintainState: true,
-            child: RouteStrip(
-              route: widget.route!,
-              units: widget.units,
-              // The hero stays the brightest number: the strip is the label tone.
-              valueColor: widget.secondary,
-              warnColor: t.semWarn,
-            ),
-          ),
-        if (widget.backToStartM != null)
-          Visibility(
-            visible: !widget.paused,
-            maintainSize: true,
-            maintainAnimation: true,
-            maintainState: true,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: Space.x8),
-              child: StartStrip(
-                backToStartM: widget.backToStartM!,
-                units: widget.units,
-              ),
-            ),
-          ),
-        Expanded(
-          child: widget.heroStyle == null
-              ? _map(context)
-              : LayoutBuilder(
-                  builder: (context, c) => Align(
-                    alignment: Alignment.bottomCenter,
-                    child: SizedBox(
-                      key: const ValueKey('map-strip'),
-                      height: c.maxHeight.clamp(
-                        0.0,
-                        LiveMapView.stripMaxHeight,
-                      ),
-                      child: _map(context),
-                    ),
-                  ),
-                ),
-        ),
-      ],
-    );
-  }
-}
-
-/// The small NUMBERS / MAP switch in the header row: a 48 dp target that
-/// never takes space from the LAP / BEGIN REPS button.
-class LiveViewToggle extends StatelessWidget {
-  const LiveViewToggle({
-    super.key,
-    required this.mapShown,
-    required this.onTap,
-  });
-  final bool mapShown;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return Semantics(
-      button: true,
-      label: mapShown ? 'Show numbers' : 'Show map',
-      excludeSemantics: true,
-      child: InkResponse(
-        key: const ValueKey('live-view-toggle'),
-        onTap: onTap,
-        radius: 24,
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      for (final r in widget.readouts) ...[r, const SizedBox(height: Space.x8)],
+      Expanded(
         child: SizedBox(
-          width: 48,
-          height: 48,
-          child: Icon(
-            mapShown ? Icons.speed : Icons.map_outlined,
-            size: 28,
-            color: t.inkPrimary,
-          ),
+          key: const ValueKey('map-page-map'),
+          child: _map(context),
         ),
       ),
-    );
-  }
+    ],
+  );
 }

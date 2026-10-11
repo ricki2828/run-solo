@@ -176,8 +176,8 @@ void main() {
       }
       await pumpTimes(tester, 5);
       await settleAnimations(tester);
-      expect(find.byKey(const ValueKey('strip-height')), findsOneWidget);
-      expect(find.byKey(const ValueKey('strip-back')), findsNothing);
+      expect(find.byKey(const ValueKey('height-vs-start')), findsOneWidget);
+      expect(find.byKey(const ValueKey('back-to-start')), findsNothing);
       await golden(tester, 'record_map_trail_height_360x$h');
     });
   }
@@ -213,8 +213,8 @@ void main() {
       }
       await pumpTimes(tester, 5);
       await settleAnimations(tester);
-      expect(find.byKey(const ValueKey('strip-back')), findsOneWidget);
-      expect(find.byKey(const ValueKey('strip-height')), findsOneWidget);
+      expect(find.byKey(const ValueKey('back-to-start')), findsOneWidget);
+      expect(find.byKey(const ValueKey('height-vs-start')), findsOneWidget);
       await golden(tester, 'record_map_trail_retracing_360x$h');
     });
   }

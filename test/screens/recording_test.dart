@@ -569,8 +569,11 @@ void main() {
           // Distance first (above), then time, then pace (beside it).
           Rect at(String k) => tester.getRect(find.byKey(ValueKey(k)));
           expect(at('free-distance').top, lessThan(at('timer').top));
-          expect(at('timer').top, closeTo(at('run-average').top, 0.5));
-          expect(at('timer').left, lessThan(at('run-average').left));
+          // Page 1 has room now: stacked, or time and pace side by side.
+          expect(at('timer').top, lessThanOrEqualTo(at('run-average').top));
+          // Bigger than before the route readouts moved to the map page
+          // (52 / 64 sp at 640 / 800 dp tall).
+          expect(size, greaterThan(h == 640 ? 52 : 64));
           // The PACE cluster: the speedo is always there, 36 sp or more.
           expect(find.byType(PaceDial), findsOneWidget);
           final dial = tester.widget<Text>(
@@ -579,7 +582,7 @@ void main() {
           expect(dial.style!.fontSize, greaterThanOrEqualTo(36));
           expect(
             at('dial-pace').top,
-            greaterThan(at('timer').bottom),
+            greaterThan(at('run-average').bottom),
             reason: 'PACE cluster sits under the RUN trio',
           );
           expect(tester.takeException(), isNull);
@@ -600,6 +603,10 @@ void main() {
           ..gradePct = 3.2;
         fake.advance(const Duration(seconds: 2));
         await settle(tester);
+        // Climb and grade are map-page readouts (11-Oct), not on page 1.
+        expect(find.byKey(const ValueKey('elevation-row')), findsNothing);
+        await tester.tap(find.byKey(const ValueKey('page-dots')));
+        await settleAnimations(tester);
         expect(find.byKey(const ValueKey('elevation-row')), findsOneWidget);
         expect(find.text('124 m'), findsOneWidget);
         expect(find.text('+3%'), findsOneWidget);
@@ -607,25 +614,11 @@ void main() {
           final text = tester.widget<Text>(find.byKey(ValueKey(k)));
           expect(text.style!.fontSize, greaterThanOrEqualTo(36), reason: k);
         }
-        // The three equal primaries stay bigger than climb and grade.
-        final hero = tester.widget<Text>(
-          find.byKey(const ValueKey('run-average')),
-        );
-        expect(
-          hero.style!.fontSize,
-          greaterThan(
-            tester
-                .widget<Text>(find.byKey(const ValueKey('live-climb')))
-                .style!
-                .fontSize!,
-          ),
-        );
       },
     );
 
-    testWidgets('trail and free runs show climb, grade and live TRUE PACE', (
-      tester,
-    ) async {
+    testWidgets('trail and free runs: climb on the map page, no TRUE pace in '
+        'the run', (tester) async {
       for (final mode in [RecordMode.trail, RecordMode.free]) {
         final (fake, _) = await openRecording(tester, mode: mode);
         fake
@@ -634,23 +627,13 @@ void main() {
           ..gradePct = 8;
         fake.advance(const Duration(seconds: 6));
         await settle(tester);
+        expect(find.byKey(const ValueKey('live-true-pace')), findsNothing);
+        expect(find.textContaining('TRUE', findRichText: true), findsNothing);
+        await tester.tap(find.byKey(const ValueKey('page-dots')));
+        await settleAnimations(tester);
         expect(find.byKey(const ValueKey('elevation-row')), findsOneWidget);
-        expect(
-          find.byKey(const ValueKey('live-true-pace')),
-          findsOneWidget,
-          reason: mode.name,
-        );
-        expect(find.text('TRUE PACE'), findsNothing, reason: mode.name);
-        expect(
-          find.textContaining('TRUE ', findRichText: true),
-          findsOneWidget,
-          reason: mode.name,
-        );
-        expect(find.text('GAP'), findsNothing, reason: mode.name);
-        final figure = tester.widget<Text>(
-          find.byKey(const ValueKey('live-true-pace')),
-        );
-        expect(figure.style!.fontSize, greaterThanOrEqualTo(36));
+        expect(find.byKey(const ValueKey('live-true-pace')), findsNothing);
+        expect(find.textContaining('TRUE', findRichText: true), findsNothing);
       }
     });
 
