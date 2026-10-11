@@ -141,6 +141,12 @@ def week_facts(week_ref: str, runs: Sequence[Mapping[str, Any]]) -> dict[str, An
         "duration_s": sum(r["duration_s"] for r in mine),
         "days": days,
     }
+    paced = [(r["duration_s"] / (r["distance_m"] / 1000)) for r in mine if r["distance_m"] >= 1000 and r["duration_s"] > 0]
+    km = facts["distance_km"]
+    if km >= 1 and facts["duration_s"] > 0:  # the week's total time over its total km, runs only
+        facts["pace_s_per_km"] = facts["duration_s"] / km
+    if len(paced) >= 2:  # a lone run's pace is the average, so "quickest" only shows with two or more
+        facts["quickest_pace_s_per_km"] = min(paced)
     if seen_move:
         facts["score_moves"] = {k: round(v) for k, v in moves.items()}
     text = best_moment(mine, mine[0]["zone_id"]) if mine else ""

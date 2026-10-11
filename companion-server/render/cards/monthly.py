@@ -18,6 +18,14 @@ def _hm(s: float) -> str:
 MAX_RUNS = 24
 
 
+def _avg_pace(facts: Mapping[str, Any]) -> float | None:
+    try:
+        km, dur = float(facts.get("distance_km") or 0), float(facts.get("duration_s") or 0)
+    except (TypeError, ValueError):
+        return None
+    return dur / km if km >= 1 and dur > 0 else None
+
+
 def build_monthly_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = None) -> str:
     memory = memory or {}
     ink, quiet = brand.INK, brand.QUIET
@@ -37,6 +45,8 @@ def build_monthly_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | Non
         best_html = (f'<div class="cap" style="font-size:24px;color:{quiet};margin-bottom:10px">BEST RUN</div>'
                      f'<div style="font-size:46px;line-height:1.18;font-weight:600;text-wrap:pretty">{P.esc(best["text"], 110)}</div>')
     stats = [(str(facts.get("run_count", len(runs))), "RUNS"), (_hm(float(facts.get("duration_s", 0))), "ON THE MOVE")]
+    if (pace := _avg_pace(facts)) is not None:  # the month's total time over its total km, from the two numbers the card holds
+        stats.append((P.fmt_pace(pace), "AVG /KM"))
     if facts.get("climb_m"):
         stats.append((P.thousands(facts["climb_m"]) + " m", "CLIMB"))
     stat_html = "".join(
@@ -150,6 +160,8 @@ def build_monthly_calendar_html(facts: Mapping[str, Any], memory: Mapping[str, A
         best_html = (f'<div class="cap" style="font-size:24px;color:{quiet};margin-bottom:10px">BEST RUN</div>'
                      f'<div style="font-size:46px;line-height:1.18;font-weight:600;text-wrap:pretty">{P.esc(best["text"], 110)}</div>')
     stats = [(str(facts.get("run_count", len(runs))), "RUNS"), (_hm(float(facts.get("duration_s", 0))), "ON THE MOVE")]
+    if (pace := _avg_pace(facts)) is not None:  # the month's total time over its total km, from the two numbers the card holds
+        stats.append((P.fmt_pace(pace), "AVG /KM"))
     if facts.get("climb_m"):
         stats.append((P.thousands(facts["climb_m"]) + " m", "CLIMB"))
     stat_html = "".join(

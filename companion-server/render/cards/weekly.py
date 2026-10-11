@@ -86,15 +86,22 @@ def build_weekly_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None
 .hero .n{{font-size:330px;line-height:.78}}
 .hero .u{{font-size:64px;color:{brand.SCORE['aerobic']}}}
 .sub{{left:{P.PAD}px;top:500px;font-size:34px;font-weight:600;color:{quiet}}}
+.pace{{left:{P.PAD}px;top:492px;width:936px;display:flex;justify-content:flex-end;gap:36px;align-items:baseline}}
 .bars{{left:{P.PAD}px;top:556px}}
 .moves{{left:{P.PAD}px;top:964px;width:936px;display:flex;gap:28px}}
 .best{{left:{P.PAD}px;top:1146px;width:936px}}
 """
     sub = f"{facts.get('runs', 0)} runs / {P.fmt_dur(float(facts.get('duration_s', 0)))} on the move"
+    pace = []
+    for key, label in (("pace_s_per_km", "AVG /KM"), ("quickest_pace_s_per_km", "QUICKEST")):
+        if isinstance(facts.get(key), (int, float)) and facts[key] > 0:
+            pace.append(f'<span style="display:flex;align-items:baseline;gap:10px"><span class="saira" style="font-size:44px;color:{ink}">'
+                        f'{P.fmt_pace(float(facts[key]))}</span><span class="cap" style="font-size:22px;color:{quiet}">{label}</span></span>')
     body = f"""{P.header(False, P.esc(memory.get('name', ''), 20).upper(), quiet)}
 <div class="abs cap tag">{week}</div>
 <div class="abs hero"><span class="saira n">{P.fmt_km(float(facts['distance_km']))}</span><span class="saira u">KM</span></div>
 <div class="abs sub">{P.esc(sub, 60)}</div>
+<div class="abs pace">{''.join(pace)}</div>
 <div class="abs bars">{_bars(list(facts.get('days') or []), 936, 380)}</div>
 <div class="abs moves">{''.join(chips)}</div>
 <div class="abs best">{best_html}</div>"""
