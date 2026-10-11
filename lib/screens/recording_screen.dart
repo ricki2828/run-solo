@@ -368,7 +368,7 @@ class _RecordingScreenState extends State<RecordingScreen>
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final t0 = Theme.of(context).extension<RunSoloTokens>()!;
     final ctl = _ctl!;
     final services = AppServices.of(context);
     final settings = services.settings.settings;
@@ -380,7 +380,24 @@ class _RecordingScreenState extends State<RecordingScreen>
         listenable: ctl,
         builder: (context, _) {
           final s = ctl.snapshot;
-          final zoneBg = HrZones.background(s.zone);
+          // What the screen is flooded with and the foreground that reads on
+          // it: the zone's fill, or the run type's colour with no HR (D3).
+          final flood = RunFlood.of(s.zone, liveRunTypeColor(liveRunType(s)));
+          final zoneBg = flood.background;
+          final t = flood.tokens(t0);
+          final baseTheme = Theme.of(context);
+          final floodTheme = baseTheme.copyWith(
+            extensions: [
+              for (final e in baseTheme.extensions.values)
+                if (e is! RunSoloTokens) e,
+              t,
+            ],
+          );
+          // No strap, no zone ladder (D3): its gutter goes back to the screen.
+          final ladderShown = s.hr != null && s.zone > 0;
+          final rightGutter = ladderShown
+              ? ZoneLadder.reserve
+              : Space.recordGutter;
           final compact = MediaQuery.sizeOf(context).height < 720;
           // 148 on short screens: the 36 sp last-lap line (A8) needs the room.
           final lapHeight = compact ? 148.0 : 200.0;
@@ -445,16 +462,14 @@ class _RecordingScreenState extends State<RecordingScreen>
                   ctl: ctl,
                   smoothed: _smoother.value(ctl.now()),
                   units: settings.units,
-                  labelColor: s.zone > 0
-                      ? HrZones.secondaryOnZone
-                      : t.inkSecondary,
+                  labelColor: t.inkSecondary,
                   textColor: t.inkPrimary,
                   labelSize: labelSize,
                 );
           final Widget gap = mapOn || freeBlock
               ? const SizedBox.shrink()
               : const Spacer();
-          return Scaffold(
+          final scaffold = Scaffold(
             backgroundColor: Colors.transparent,
             body: Stack(
               fit: StackFit.expand,
@@ -473,9 +488,9 @@ class _RecordingScreenState extends State<RecordingScreen>
                 SafeArea(
                   child: Padding(
                     // The right edge belongs to the zone ladder.
-                    padding: const EdgeInsets.only(
+                    padding: EdgeInsets.only(
                       left: Space.recordGutter,
-                      right: ZoneLadder.reserve,
+                      right: rightGutter,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -508,10 +523,11 @@ class _RecordingScreenState extends State<RecordingScreen>
                               track: ctl.liveRoute,
                               typeColor: liveRunTypeColor(runType),
                               hero: liveHero(s, ctl, settings.units),
+                              heroStyle: _repOrRecovery(s)
+                                  ? primaryStyle(compact)
+                                  : null,
                               compact: compact,
-                              secondary: s.zone > 0
-                                  ? HrZones.secondaryOnZone
-                                  : t.inkSecondary,
+                              secondary: t.inkSecondary,
                               paused: s.paused,
                               cardLink: _cardLink,
                               route: s.route,
@@ -557,9 +573,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                                   ? kCooperPausedNote
                                   : (s.autoPaused ? kAutoPausedNote : null),
                               compact: compact,
-                              secondary: s.zone > 0
-                                  ? HrZones.secondaryOnZone
-                                  : t.inkSecondary,
+                              secondary: t.inkSecondary,
                             ),
                           ),
                           if (!s.showEndRep) ...[
@@ -861,9 +875,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                               key: const ValueKey('cooper-pause-warning'),
                               textAlign: TextAlign.center,
                               style: RunSoloType.runCaption.copyWith(
-                                color: s.zone > 0
-                                    ? HrZones.secondaryOnZone
-                                    : t.inkSecondary,
+                                color: t.inkSecondary,
                               ),
                             ),
                           ),
@@ -891,46 +903,60 @@ class _RecordingScreenState extends State<RecordingScreen>
                   width:
                       MediaQuery.sizeOf(context).width -
                       Space.recordGutter -
-                      ZoneLadder.reserve,
+                      rightGutter,
                   anchorBottom: !mapOn && !s.isPreset && s.lapsEnabled,
                   card: card,
                 ),
                 if (_finishing)
-                  _FinishScreen(
-                    ctl: ctl,
-                    elapsedMs: _stoppedAtMs,
-                    units: settings.units,
-                    error: _stopError,
-                    onSave: _stop,
-                    onResume: _resumeFromFinish,
-                    onDiscard: _discard,
+                  // The finish and saving screens are their own dark ground:
+                  // they keep the base theme, not the flood's.
+                  Theme(
+                    data: baseTheme,
+                    child: _FinishScreen(
+                      ctl: ctl,
+                      elapsedMs: _stoppedAtMs,
+                      units: settings.units,
+                      error: _stopError,
+                      onSave: _stop,
+                      onResume: _resumeFromFinish,
+                      onDiscard: _discard,
+                    ),
                   ),
                 IgnorePointer(
                   child: FadeTransition(
                     opacity: _invert,
-                    child: ColoredBox(color: t.inkPrimary),
+                    child: ColoredBox(color: t0.inkPrimary),
                   ),
                 ),
                 if (_stopping)
                   ColoredBox(
-                    color: t.bgBase.withValues(alpha: 0.7),
+                    color: t0.bgBase.withValues(alpha: 0.7),
                     child: Center(
                       child: Text(
                         'SAVING',
                         style: RunSoloType.title28.copyWith(
-                          color: t.inkSecondary,
+                          color: t0.inkSecondary,
                         ),
                       ),
                     ),
                   ),
               ],
             ),
-          ).labelScope(labelSize);
+          );
+          return Theme(data: floodTheme, child: scaffold.labelScope(labelSize));
         },
       ),
     );
   }
 }
+
+/// A rep or recovery of a structured session (not the 5 km event or a goal):
+/// the phases whose hero stays full size over a map strip (D2, 11-Oct).
+bool _repOrRecovery(RecordingSnapshot s) =>
+    s.isPreset &&
+    !isEventRun(s) &&
+    !s.isGoal &&
+    (s.phase == Phase.work || s.phase == Phase.recovery);
 
 /// The run type the MAP / NUMBERS choice is remembered under: the chip the
 /// runner picked (`free`, `trail`, `laps`, `intervals`, `goal`, `tests`).
@@ -1134,6 +1160,8 @@ Color phaseTitleColor(RecordingSnapshot s, RunSoloTokens t) {
   // The mint recovery title stays on Z1/Z2 (and no zone); on Z3-Z5 it is
   // Bone like the zone label (S2).
   if (hue == null) return t.inkPrimary;
+  // On an ink flood (Z3, Z4, run-type) every foreground is ink (D1, D3).
+  if (HrZones.isInk(t)) return t.inkPrimary;
   if (s.phase == Phase.recovery && s.zone >= HrZones.boneLabelsFrom) {
     return t.inkPrimary;
   }
@@ -1287,8 +1315,7 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     // A1: labels render in Bone (or Bone 70 %) on a zone background.
-    final onZone = s.zone > 0;
-    final secondary = onZone ? HrZones.secondaryOnZone : t.inkSecondary;
+    final secondary = t.inkSecondary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1317,7 +1344,7 @@ class _Header extends StatelessWidget {
                 // A1: the gauge keeps the last zone until the tracker's 5 s
                 // loss rule; the dropped state reads under the bpm.
                 dropped: s.hr == null,
-                onZoneBackground: onZone,
+                onZoneBackground: true,
                 showLabel: false,
               ),
             ],
@@ -1588,7 +1615,7 @@ class _CooperBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
+    final secondary = t.inkSecondary;
     final testing = s.phase == Phase.work;
     final (clockMs, caption) = cooperClock(s, ctl);
     final metres = testing || s.phase == Phase.cooldown
@@ -1712,7 +1739,7 @@ class _FreeRunBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
+    final secondary = t.inkSecondary;
     final runAverage = runAverageSecPerKm(s, ctl);
     final showElevation =
         runModeOf(s.mode).showsElevation && s.elevGainM != null;
@@ -1832,7 +1859,7 @@ class _FreeRunBlock extends StatelessWidget {
                         currentSecPerKm: s.livePaceSecPerKm,
                         referenceSecPerKm: runAverage,
                         units: units,
-                        onZone: s.zone > 0,
+                        onZone: true,
                         paceStyle: AuxFigure.style.copyWith(
                           fontSize: RunSoloType.runSize(56),
                         ),
@@ -1844,7 +1871,7 @@ class _FreeRunBlock extends StatelessWidget {
                     currentSecPerKm: s.livePaceSecPerKm,
                     referenceSecPerKm: runAverage,
                     units: units,
-                    onZone: s.zone > 0,
+                    onZone: true,
                     beside: true,
                     dialWidth: plan.dialWidth == half ? null : plan.dialWidth,
                     paceStyle: AuxFigure.style.copyWith(
@@ -2047,7 +2074,7 @@ class _TimerBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
+    final secondary = t.inkSecondary;
     final recovery = s.phase == Phase.recovery;
     final ms = timerFigureMs(s, ctl);
     final toGo = s.metresToGo;
@@ -2144,8 +2171,7 @@ class _SegmentPace extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final onZone = s.zone > 0;
-    final secondary = onZone ? HrZones.secondaryOnZone : t.inkSecondary;
+    final secondary = t.inkSecondary;
     final segmentAvg = segmentAverage(s, ctl);
     final reference = s.phase == Phase.work
         ? (s.lastRepPaceSecPerKm ?? segmentAvg)
@@ -2233,7 +2259,7 @@ class _SegmentPace extends StatelessWidget {
                   currentSecPerKm: s.livePaceSecPerKm,
                   referenceSecPerKm: reference,
                   units: units,
-                  onZone: onZone,
+                  onZone: true,
                   // 16 sp "CURRENT PACE" wraps in the 112 dp dial column.
                   label: compact ? 'PACE' : 'CURRENT PACE',
                   paceStyle: RunSoloType.display44,
@@ -2258,23 +2284,16 @@ class _Stats extends StatelessWidget {
     final live = s.livePaceSecPerKm;
     final last = s.lastRepPaceSecPerKm;
     final showGhost = last != null;
-    final onZone = s.zone > 0;
-    Color deltaColor = onZone ? HrZones.secondaryOnZone : t.inkSecondary;
+    Color deltaColor = t.inkSecondary;
     String? delta;
     DeltaDirection? direction;
     if (showGhost && live != null) {
       final g = ghostDelta(live, last, units);
       delta = g.text;
       direction = g.direction;
-      // A1: Vermillion and Arc deltas are Bone with the arrow on a zone
-      // background (Vermillion drops to 4.1:1 on Z3).
-      deltaColor = onZone
-          ? t.inkPrimary
-          : switch (direction) {
-              DeltaDirection.up => t.semFaster,
-              DeltaDirection.down => t.semSlower,
-              DeltaDirection.flat => t.semHolding,
-            };
+      // A1: Vermillion and Arc deltas are the flood's foreground (Bone, or
+      // ink on the bright floods) with the arrow, on every flood.
+      deltaColor = t.inkPrimary;
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2296,9 +2315,7 @@ class _Stats extends StatelessWidget {
                         TextSpan(
                           text: '/${units == Units.mi ? 'mi' : 'km'}',
                           style: RunSoloType.runCaption.copyWith(
-                            color: onZone
-                                ? HrZones.secondaryOnZone
-                                : t.inkSecondary,
+                            color: t.inkSecondary,
                           ),
                         ),
                     ],
@@ -3011,7 +3028,7 @@ class _EventStats extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final secondary = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
+    final secondary = t.inkSecondary;
     final activeMs = ctl.displayElapsedMs;
     final avg = s.totalDistanceM > 20 && activeMs > 0
         ? activeMs / 1000 / (s.totalDistanceM / 1000)
@@ -3080,7 +3097,7 @@ class EventBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final muted = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
+    final muted = t.inkSecondary;
     final last = eventLastStretch(s);
     final toGoText = eventToGoText(s, ctl, units);
     final finishText = eventFinishText(s, ctl, units);
@@ -3151,7 +3168,7 @@ class GoalDoneBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final muted = s.zone > 0 ? HrZones.secondaryOnZone : t.inkSecondary;
+    final muted = t.inkSecondary;
     final byTime = s.spec?.steps.firstOrNull?.target == TargetKind.time;
     final ms = s.goalLapMs;
     final m = s.goalLapM;

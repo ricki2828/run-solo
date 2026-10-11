@@ -73,7 +73,7 @@ class ZoneGauge extends StatelessWidget {
               width: 6,
               height: 14,
               decoration: BoxDecoration(
-                color: i <= zone ? t.inkPrimary : HrZones.gaugeEmpty,
+                color: i <= zone ? t.inkPrimary : HrZones.gaugeEmptyFor(t),
                 borderRadius: BorderRadius.circular(1),
               ),
             ),

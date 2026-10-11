@@ -6,6 +6,7 @@ import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/state/settings.dart';
+import 'package:run_solo/theme/tokens.dart';
 import 'package:run_solo/theme/zones.dart';
 import 'package:run_solo/widgets/delta_glyph.dart';
 import 'package:run_solo/widgets/lap_button.dart';
@@ -132,15 +133,19 @@ void main() {
     },
   );
 
-  testWidgets('no strap: black background, no zone label', (tester) async {
+  testWidgets('no strap: run-type flood, no zone label, no ladder', (
+    tester,
+  ) async {
     final fake = FakeRecorderGateway(now: now)..hrPaired = false;
     final services = fakeServices(recorder: fake);
     await services.recording.start(RecordMode.laps, null, Units.km);
     await pumpApp(tester, services, pushRoute: Routes.recording);
     await pumpTimes(tester, 5);
     await tester.pump(const Duration(milliseconds: 700));
-    expect(background(tester), HrZones.background(0));
+    // D3 (11-Oct): the Laps run's own colour, never black; the ladder is gone.
+    expect(background(tester), AuroraRunType.laps);
     expect(find.byKey(const ValueKey('zone-label')), findsNothing);
+    expect(find.byKey(const ValueKey('ladder-rung-3')), findsNothing);
   });
 
   testWidgets('(d) reduced motion: zone changes are immediate', (tester) async {
@@ -195,7 +200,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(services.recording.snapshot.zone, 0);
       expect(tester.widget<ZoneGauge>(find.byType(ZoneGauge)).zone, 0);
-      expect(background(tester), HrZones.background(0));
+      expect(background(tester), AuroraRunType.free);
       expect(find.text('reconnecting'), findsOneWidget);
     },
   );

@@ -7,6 +7,7 @@ import 'package:run_solo/app/services.dart';
 import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/screens/live_map_view.dart';
 import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/state/live_route.dart';
 import 'package:run_solo/map/route_builder.dart';
@@ -146,6 +147,72 @@ void main() {
     expect(find.byKey(_hero), findsOneWidget);
     expect(find.text('REP AVERAGE /km'), findsOneWidget);
     expect(find.byKey(const ValueKey('segment-avg')), findsNothing);
+  });
+
+  // D2 (11-Oct): in a rep or a recovery the phase hero keeps its NUMBERS
+  // size and the map shrinks to a 120-160 dp strip under it.
+  for (final h in [640, 800]) {
+    testWidgets('D2: rep and recovery keep the hero full size over a map '
+        'strip at 360 x $h', (tester) async {
+      final (fake, _) = await open(
+        tester,
+        intervals: true,
+        settings: const AppSettings(
+          onboardingDone: true,
+          liveMapTypes: {'intervals'},
+        ),
+      );
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 3);
+      await tester.tap(find.byKey(const ValueKey('start-reps')));
+      await pumpTimes(tester, 5);
+      fake.advance(const Duration(seconds: 60));
+      await pumpTimes(tester, 5);
+      final compact = h < 720;
+      final full = primaryStyle(compact).fontSize!;
+      void expectStrip(String phase) {
+        final strip = tester.getSize(find.byKey(const ValueKey('map-strip')));
+        expect(
+          strip.height,
+          inInclusiveRange(LiveMapView.stripMinHeight, 160),
+          reason: '$phase strip height',
+        );
+        final hero = tester.widget<Text>(find.byKey(_hero));
+        expect(hero.style!.fontSize, full, reason: '$phase hero size');
+        // The hero is what NUMBERS shows: at least the 128 sp primary.
+        expect(hero.style!.fontSize, greaterThanOrEqualTo(128));
+        expect(
+          tester.getRect(find.byKey(_hero)).bottom,
+          lessThan(
+            tester.getTopLeft(find.byKey(const ValueKey('map-strip'))).dy,
+          ),
+          reason: '$phase hero sits above the strip',
+        );
+        expect(tester.takeException(), isNull);
+      }
+
+      expect(find.text('REP AVERAGE /km'), findsOneWidget);
+      expectStrip('rep');
+      // Into the recovery (4:00 rep).
+      fake.advance(const Duration(seconds: 200));
+      await pumpTimes(tester, 5);
+      await settleAnimations(tester);
+      expect(find.byKey(const ValueKey('timer')), findsNothing);
+      expect(find.textContaining('RECOVERY'), findsWidgets);
+      expectStrip('recovery');
+    });
+  }
+
+  testWidgets('free and laps map layouts are unchanged by D2', (tester) async {
+    await open(
+      tester,
+      settings: const AppSettings(onboardingDone: true, liveMapTypes: {'laps'}),
+    );
+    expect(find.byKey(const ValueKey('map-strip')), findsNothing);
+    expect(
+      tester.widget<Text>(find.byKey(_hero)).style!.fontSize,
+      lessThan(100),
+    );
   });
 
   testWidgets('a map that fails to load shows the route on our canvas', (

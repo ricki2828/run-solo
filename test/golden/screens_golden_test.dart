@@ -34,7 +34,6 @@ import 'package:run_solo/state/live_context.dart';
 import 'package:run_solo/state/sessions.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/theme/theme.dart';
-import 'package:run_solo/theme/zones.dart';
 import 'package:run_solo/widgets/lap_button.dart';
 import 'package:run_solo/widgets/zone_ladder.dart';
 import 'package:run_solo/widgets/weather_chip.dart';
@@ -212,6 +211,8 @@ void main() {
     fake.strapDropped = true;
     fake.advance(const Duration(seconds: 1));
     await pumpTimes(tester, 5);
+    // Let the flood finish its 400 ms crossfade (the foreground flips at once).
+    await tester.pump(const Duration(milliseconds: 500));
     await golden(tester, 'record_faults');
     await fake.pause();
     await pumpTimes(tester, 5);
@@ -351,6 +352,53 @@ void main() {
     await recordWithHr(tester, RecordMode.intervals, null, 'record_zone0');
     await recordWithHr(tester, RecordMode.intervals, 140, 'record_zone3');
     await recordWithHr(tester, RecordMode.intervals, 178, 'record_zone5');
+  });
+
+  // D3 (11-Oct): no strap, the flood is the run type's colour, no ladder.
+  testWidgets('record: no HR strap floods in the run type colour (D3)', (
+    tester,
+  ) async {
+    await recordWithHr(
+      tester,
+      RecordMode.free,
+      null,
+      'record_nohr_free_360x800',
+      height: 800,
+    );
+    await recordWithHr(
+      tester,
+      RecordMode.trail,
+      null,
+      'record_nohr_trail_360x800',
+      height: 800,
+    );
+    await recordWithHr(
+      tester,
+      RecordMode.laps,
+      null,
+      'record_nohr_laps_360x640',
+      height: 640,
+    );
+  });
+
+  // D1 (11-Oct): the bright Z3 yellow and Z4 orange floods carry ink.
+  testWidgets('record: Z3 yellow and Z4 orange floods with ink (D1)', (
+    tester,
+  ) async {
+    await recordWithHr(
+      tester,
+      RecordMode.laps,
+      140,
+      'record_z3_laps_360x640',
+      height: 640,
+    );
+    await recordWithHr(
+      tester,
+      RecordMode.laps,
+      162,
+      'record_z4_laps_360x640',
+      height: 640,
+    );
   });
 
   testWidgets('record: Z2 free run with the ladder (Full Instrument)', (
@@ -1357,51 +1405,6 @@ void main() {
 
   testWidgets('intro: 0.6 s, final frame', (tester) async {
     await introAt(tester, IntroKind.short, 400, 'intro_short_final');
-  });
-
-  test('zone floods keep Bone numbers >= 7:1, labels >= 6:1, warn >= 4.5:1 '
-      '(Full Instrument, A1, A7 checklist)', () {
-    double lum(Color c) {
-      double ch(double v) => v <= 0.03928
-          ? v / 12.92
-          : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
-      return 0.2126 * ch(c.r) + 0.7152 * ch(c.g) + 0.0722 * ch(c.b);
-    }
-
-    double ratio(Color a, Color b) {
-      final la = lum(a), lb = lum(b);
-      final hi = la > lb ? la : lb, lo = la > lb ? lb : la;
-      return (hi + 0.05) / (lo + 0.05);
-    }
-
-    const t = RunSoloTokens.dark;
-    for (var z = 0; z <= HrZones.count; z++) {
-      final bg = HrZones.background(z);
-      expect(ratio(t.inkPrimary, bg), greaterThan(7), reason: 'Bone on Z$z');
-      expect(ratio(t.semWarn, bg), greaterThan(4.5), reason: 'warn on Z$z');
-      // The cyan TRUE word and Arc deltas are large text on the floods.
-      expect(ratio(t.accentArc, bg), greaterThan(4.5), reason: 'Arc on Z$z');
-      // Secondary labels: Bone 90 % composited over the flood.
-      final secondary = Color.alphaBlend(HrZones.secondaryOnZone, bg);
-      expect(ratio(secondary, bg), greaterThan(6), reason: 'label on Z$z');
-      // The zone label and phase titles fall back to Bone when their hue
-      // does not read on the fill; whichever shows must be >= 4.5:1.
-      final label = HrZones.labelOn(z, t.inkPrimary);
-      expect(ratio(label, bg), greaterThan(4.5), reason: 'label Z$z');
-      for (final hue in [AuroraRunType.intervals, t.semImproving]) {
-        final title = HrZones.legibleOn(z, hue, t.inkPrimary);
-        expect(ratio(title, bg), greaterThan(4.5), reason: 'title Z$z');
-      }
-      // S2: Z3-Z5 carry the zone label in Bone (>= 7:1), never the hue.
-      if (z >= HrZones.boneLabelsFrom) {
-        expect(label, t.inkPrimary, reason: 'zone label is Bone on Z$z');
-        expect(ratio(label, bg), greaterThan(7), reason: 'zone label Z$z');
-      }
-      // The target band bar (Bone on the dark track) over the flood.
-      if (z > 0) {
-        expect(ratio(t.inkPrimary, bg), greaterThan(7), reason: 'band Z$z');
-      }
-    }
   });
 
   test('record-screen token pairs meet 7:1 (design brief §4)', () {

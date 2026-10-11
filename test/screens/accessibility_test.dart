@@ -41,6 +41,9 @@ void main() {
     await fake.lap(LapSource.button);
     fake.advance(const Duration(seconds: 30));
     await pumpTimes(tester, 5);
+    // The flood crossfades from the run type's colour to the first zone's in
+    // 400 ms (the foreground flips at once); measure the settled screen.
+    await tester.pump(const Duration(milliseconds: 500));
     await expectGuidelines(tester);
     handle.dispose();
   });
