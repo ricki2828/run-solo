@@ -21,7 +21,7 @@ PHOTO_MAX_BYTES = 10 * 1024 * 1024     # Telegram sendPhoto
 VIDEO_MAX_BYTES = 50 * 1024 * 1024     # Telegram bot upload ceiling
 OP_MAX_BYTES = {"card": PHOTO_MAX_BYTES, "video": VIDEO_MAX_BYTES}
 OP_KINDS = {
-    "card": frozenset({"light", "flood", "pb", "weekly_recap"}),
+    "card": frozenset({"light", "flood", "pb", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly"}),
     "video": frozenset({"run", "weekly"}),
 }
 ERROR_CODES = frozenset({"bad_request", "timeout", "too_big", "render_failed"})
@@ -33,7 +33,32 @@ ALLOWED_FACT_KEYS = frozenset({
     "type", "start_local", "distance_km", "duration_s", "headline", "pace_s_per_km", "zone_s", "climb_m",
     "place_note", "verdict", "pb", "pb_detail",
     "week_label", "runs", "days", "score_moves", "best_moment",
+    # suggestion / milestone / race_countdown / monthly cards (persisted in convo_cards.media_json when the coach
+    # decides to send them; each one is something the card's own text already says, see KIND_FACT_KEYS)
+    "session", "reason", "date_local",
+    "kind", "value", "line",
+    "weeks_to_race", "race_name",
+    "month_label", "month_start", "run_count",
 })
+
+# Every kind is held to its own list on top of ALLOWED_FACT_KEYS: a suggestion card has no business carrying a place, a
+# milestone no pace, and a run card no suggestion reason, however wide the shared list grows. The older kinds' lists are
+# exactly what media.run_facts / week_facts build.
+RUN_KEYS = frozenset({"type", "start_local", "distance_km", "duration_s", "headline", "pace_s_per_km", "zone_s",
+                      "climb_m", "place_note", "verdict", "pb", "pb_detail"})
+WEEK_KEYS = frozenset({"week_label", "distance_km", "runs", "duration_s", "days", "score_moves", "best_moment"})
+NEW_KINDS = frozenset({"suggestion", "milestone", "race_countdown", "monthly"})   # these also get value-shape checks
+KIND_FACT_KEYS = {
+    "light": RUN_KEYS, "flood": RUN_KEYS, "pb": RUN_KEYS, "weekly_recap": WEEK_KEYS,
+    "run": RUN_KEYS, "weekly": WEEK_KEYS,   # the videos
+    "suggestion": frozenset({"type", "session", "distance_km", "date_local", "reason"}),
+    "milestone": frozenset({"kind", "value", "line"}),
+    "race_countdown": frozenset({"weeks_to_race", "race_name"}),
+    "monthly": frozenset({"month_label", "month_start", "distance_km", "run_count", "duration_s", "climb_m", "runs"}),
+}
+MONTHLY_RUN_KEYS = frozenset({"date", "type", "distance_km", "duration_s"})   # no route, no zones, no place, no run id
+MONTHLY_MAX_RUNS = 62
+TEXT_LIMIT = 200
 
 
 class ProtocolError(Exception):
@@ -53,7 +78,35 @@ def check_request(req: Any) -> tuple[str, str, dict]:
         raise ProtocolError("bad_request")
     if not set(facts) <= ALLOWED_FACT_KEYS:
         raise ProtocolError("bad_request")
+    if kind in KIND_FACT_KEYS:
+        if not set(facts) <= KIND_FACT_KEYS[kind] or (kind in NEW_KINDS and not _kind_values_ok(kind, facts)):
+            raise ProtocolError("bad_request")
     return op, kind, facts
+
+
+def _num(v: Any) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and abs(v) < 1e7
+
+
+def _text(v: Any) -> bool:
+    return isinstance(v, str) and len(v) <= TEXT_LIMIT
+
+
+def _kind_values_ok(kind: str, facts: dict) -> bool:
+    """Value shapes for the new kinds. Cheap and strict: anything nested must be exactly what the card draws."""
+    for k, v in facts.items():
+        if k in ("distance_km", "duration_s", "climb_m", "value", "weeks_to_race", "run_count"):
+            if not _num(v):
+                return False
+        elif k == "runs":
+            if (kind != "monthly" or not isinstance(v, list) or len(v) > MONTHLY_MAX_RUNS
+                    or not all(isinstance(r, dict) and set(r) <= MONTHLY_RUN_KEYS and _text(r.get("date", ""))
+                               and _text(r.get("type", "")) and _num(r.get("distance_km", 0))
+                               and _num(r.get("duration_s", 0)) for r in v)):
+                return False
+        elif not _text(v):
+            return False
+    return True
 
 
 def encode_request(op: str, kind: str, facts: dict) -> bytes:

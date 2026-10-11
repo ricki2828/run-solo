@@ -75,6 +75,12 @@ How it fits together:
   bytes back, or a short error code (`bad_request`, `timeout`, `too_big`, `render_failed`). Protocol: `render/protocol.py`.
 - `facts` is exactly what the card shows (zone time, place name, distance, pace, headline, score moves). Keys outside
   `protocol.ALLOWED_FACT_KEYS` are refused by both sides, so no run id, user id, chat id or token can reach the worker.
+- The suggestion, milestone, race countdown and monthly poster kinds are held to their own key lists
+  (`protocol.KIND_FACT_KEYS`) and value shapes on top of that. Suggestion and touch (milestone, countdown) facts are stored in
+  `convo_cards.media_json` when the coach decides to send the card (30 days, then the card goes; listed in `/v1/me` as
+  `picture_facts`). The monthly poster stores nothing: it is rebuilt from the run rows when sent, route-less (day, type,
+  distance, duration per run). Deploy the worker and the companion from the same commit: an old worker refuses the new kinds
+  and the companion falls back to text.
 - The worker has no DB, no env file, no network. It runs one render at a time, each in a child process that is killed at
   30 s (card) or 120 s (video). Output caps: 10 MB photo, 50 MB video (Telegram's limits).
 - On any worker error, timeout or missing socket the companion sends the text card, as before. After a timeout it skips the

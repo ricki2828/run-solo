@@ -118,11 +118,34 @@ def week_facts(week_ref: str, runs: Sequence[Mapping[str, Any]]) -> dict[str, An
     return facts
 
 
+def month_facts(month_ref: str, runs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Monthly poster facts ('YYYY-MM') from the stored run rows: the route-less calendar layout. Per run only its day,
+    type, distance and duration, the same fields /v1/me already lists; no route, place, run id or zones."""
+    from .convo.recap import MONTH_NAMES, month_runs
+    y, m = int(month_ref[:4]), int(month_ref[5:])
+    mine = sorted(month_runs(runs, runs[0]["zone_id"] if runs else "UTC", month_ref), key=lambda r: r["start_utc"])
+    out_runs = [{"date": to_local(parse_iso(r["start_utc"]), r["zone_id"]).date().isoformat(), "type": r["type"],
+                 "distance_km": round(r["distance_m"] / 1000, 1), "duration_s": r["duration_s"]} for r in mine]
+    return {
+        "month_label": MONTH_NAMES[m - 1],
+        "month_start": date(y, m, 1).isoformat(),
+        "run_count": len(mine),
+        "distance_km": round(sum(r["distance_m"] for r in mine) / 1000, 1),
+        "duration_s": sum(r["duration_s"] for r in mine),
+        "runs": out_runs,
+    }
+
+
+# Cards the worker can draw from stored rows (run, week, month) or from facts persisted in the plan (suggestion).
+CARD_KINDS = ("light", "flood", "pb", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly")
+ROW_KINDS = ("light", "flood", "pb", "weekly_recap", "monthly")
+
+
 def _default_card_fns(client: RenderClient) -> dict[str, Callable[..., bytes]]:
     """Cards come from the render worker. `memory` is never sent: nothing the worker draws needs a name."""
     def make(kind: str) -> Callable[..., bytes]:
         return lambda facts, memory=None: client.card(kind, facts)
-    return {k: make(k) for k in ("light", "flood", "pb", "weekly_recap")}
+    return {k: make(k) for k in CARD_KINDS}
 
 
 def _default_video_fns(client: RenderClient | None = None) -> dict[str, Callable[..., Any]]:
@@ -185,9 +208,21 @@ class MediaRenderer:
                memory: Mapping[str, Any] | None = None) -> Media | None:
         """None when the plan has no media. Raises MediaError when a planned still card cannot be made."""
         kind = plan.get("card")
-        if kind not in ("light", "flood", "pb", "weekly_recap"):
+        if kind == "suggestion":
+            # The evening suggestion's facts were stored when the coach decided to send it. An older card, written
+            # before they were kept, has none: it stays text.
+            facts = plan.get("facts")
+            if not isinstance(facts, dict) or not facts:
+                return None
+            return self._still(kind, facts, memory)
+        if kind not in ROW_KINDS:
             return None
         try:
+            if kind == "monthly":
+                facts = month_facts(str(card["run_id"]).split("monthly:", 1)[1], runs)
+                if not facts["run_count"]:
+                    raise MediaError("monthly: no runs")
+                return self._still(kind, facts, memory)
             if kind == "weekly_recap":
                 week_ref = str(card["run_id"]).split("recap:", 1)[1]
                 facts = week_facts(week_ref, runs)
@@ -203,6 +238,26 @@ class MediaRenderer:
             raise MediaError(f"{kind}: photo size {len(photo or b'')}")
         video = self._video(vkind, vfacts) if plan.get("video") else None
         return Media(photo=photo, video=video, duration_s=13 if video else 0)
+
+
+    def _still(self, kind: str, facts: Mapping[str, Any], memory: Mapping[str, Any] | None) -> Media:
+        try:
+            photo = self.cards[kind](dict(facts), memory or {})
+        except MediaError:
+            raise
+        except Exception as e:
+            raise MediaError(f"{kind}: {type(e).__name__}") from None
+        if not photo or len(photo) > PHOTO_MAX_BYTES:
+            raise MediaError(f"{kind}: photo size {len(photo or b'')}")
+        return Media(photo=photo)
+
+    def render_touch(self, plan: Mapping[str, Any]) -> Media | None:
+        """The second picture a touch earned (a milestone, a race countdown), from the facts stored in the plan. None
+        when the plan has none (older cards). Raises MediaError when the worker cannot make it."""
+        kind, facts = plan.get("touch_card"), plan.get("touch_facts")
+        if kind not in ("milestone", "race_countdown") or not isinstance(facts, dict) or not facts:
+            return None
+        return self._still(kind, facts, None)
 
 
 def from_settings(socket_path: str) -> MediaRenderer:
