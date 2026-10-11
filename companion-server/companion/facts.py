@@ -13,6 +13,43 @@ from .convo.questions import ENUMS as _EXTENDED_ENUMS
 from .timeutil import UTC, parse_iso
 
 HARD_TYPES = frozenset({"tempo", "interval", "race"})
+
+# The app records one of these (RecordMode). The coach's rules speak easy | long | tempo | interval | race.
+APP_TYPES = frozenset({"intervals", "cooper", "laps", "free", "trail"})
+LONG_MIN_KM = 12.0
+LONG_EASY_MULT = 1.5
+LONG_MIN_S = 75 * 60
+TEMPO_MIN_S, TEMPO_MAX_S = 20 * 60, 60 * 60
+
+
+def infer_coach_type(app_type: str, *, distance_m: float, duration_s: float, zone_min: Mapping[str, float] | None,
+                     pb: str | None, history: Sequence[Mapping[str, Any]], has_reps: bool = False) -> str:
+    """The coach's type for a run, from the app's type plus the facts. A type already in the coach's vocabulary
+    passes through. `history` is the earlier runs, newest first, carrying the coach types already inferred.
+
+    intervals -> interval; cooper -> race (a test effort); laps -> interval when it has reps or work/recovery splits
+    (`has_reps`; the app does not upload them today, so laps is easy for now), else easy. free / trail -> race when
+    PB-flagged, else long (distance >= max(1.5 x the typical easy run, 12 km) or 75+ min), else tempo (most time in
+    Z3-Z4 over 20-60 min), else easy."""
+    if app_type not in APP_TYPES:
+        return app_type
+    if app_type == "intervals":
+        return "interval"
+    if app_type == "cooper":
+        return "race"
+    if app_type == "laps":
+        return "interval" if has_reps else "easy"
+    if pb:
+        return "race"
+    easy = [h["distance_m"] for h in history[:80] if h.get("type") == "easy" and h.get("distance_m")][:5]
+    typical_km = sorted(easy)[len(easy) // 2] / 1000 if easy else 0.0
+    if distance_m / 1000 >= max(LONG_EASY_MULT * typical_km, LONG_MIN_KM) or duration_s >= LONG_MIN_S:
+        return "long"
+    zm = zone_min or {}
+    total = sum(zm.values())
+    if total > 0 and (zm.get("z3", 0) + zm.get("z4", 0)) / total > 0.5 and TEMPO_MIN_S <= duration_s <= TEMPO_MAX_S:
+        return "tempo"
+    return "easy"
 TYPE_LABEL = {
     "easy": "easy run", "long": "long run", "tempo": "tempo run",
     "interval": "interval session", "race": "race",
@@ -142,7 +179,7 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
     if dur < MIN_DURATION_S or dist < MIN_DISTANCE_M:
         return FactsResult((), None, "steady", True, "junk")
 
-    label = TYPE_LABEL.get(run["type"], "run")
+    label = "trail run" if run.get("app_type") == "trail" else TYPE_LABEL.get(run["type"], "run")
     pace = run.get("pace_s_per_km")
     base_txt = f"{label.capitalize()}: {fmt_km(dist)} km in {round(dur / 60)} min"
     if pace:
