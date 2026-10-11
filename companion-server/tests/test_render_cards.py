@@ -268,6 +268,9 @@ def test_card_matches_golden(cards, name):
     png = getattr(cards, fn_name)(make(), MEMORY)
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
     path = GOLDEN_DIR / f"{name}.png"
+    if ACTUAL_DIR:  # CI publishes these so goldens can be regenerated from CI output (also when a golden is missing)
+        Path(ACTUAL_DIR).mkdir(parents=True, exist_ok=True)
+        (Path(ACTUAL_DIR) / f"{name}.png").write_bytes(png)
     if REQUIRE and not path.exists():
         pytest.fail(f"no golden for {name}")
     if os.environ.get("RS_UPDATE_GOLDENS") == "1" or not path.exists():
@@ -275,9 +278,6 @@ def test_card_matches_golden(cards, name):
         path.write_bytes(png)
         pytest.skip(f"golden written: {path.name}")
     mean, over = _diff(png, path.read_bytes())
-    if ACTUAL_DIR:  # CI publishes these so goldens can be regenerated from CI output
-        Path(ACTUAL_DIR).mkdir(parents=True, exist_ok=True)
-        (Path(ACTUAL_DIR) / f"{name}.png").write_bytes(png)
     # anti-aliasing and font hinting differ a little between hosts; layout or colour changes do not hide in this
     assert mean < 0.6 and over < 0.004, f"{name}: mean {mean:.3f}, over {over:.4f}"
 
