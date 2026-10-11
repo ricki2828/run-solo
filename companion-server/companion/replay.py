@@ -9,12 +9,14 @@ quiet hours, the two-a-week suggestion cap, no repeats, B4 and the evening / Sun
 
 Items are generated LAZILY, one at a time, just before they are sent, so a button tap that the live webhook records
 between two items changes the next one. State lives in the database (`replay_state`), so a stop or a crash resumes
-where it was, and while it runs the live worker leaves this user alone (service.REPLAY_HOLD).
+where it was, and while it runs the live worker leaves this user's replay items alone (service.replay_hold, bounded:
+a dead or forgotten replay releases the user by itself). A real run uploaded meanwhile is sent live, at once.
 """
 from __future__ import annotations
 
 import json
 import logging
+import secrets
 import sqlite3
 import tempfile
 import time
@@ -30,13 +32,17 @@ from .channels import OutCard
 from .config import Settings
 from .convo import recap as cv_recap
 from .convo import suggest as cv_suggest
-from .service import RunIn, Service
+from pydantic import ValidationError
+
+from .service import LIVE_ROW, RunIn, Service
 from .timeutil import UTC, iso, now_utc, parse_iso, to_local, zone
 
 log = logging.getLogger("companion.replay")
 
 UPLOAD_DELAY_S = 60        # the app posts a run about a minute after it finishes
-HEARTBEAT_FRESH_S = 45     # a 'running' row with a newer heartbeat than this means another process is driving
+# A 'running' row with a newer heartbeat than this means another process is driving. Longer than the worst item
+# (model call + Telegram send with retries + the 30 s failure back-off), and the loop beats inside every sleep.
+HEARTBEAT_FRESH_S = 180
 TICK_MINUTES = (cv_recap.RECAP_START_MIN, cv_suggest.EVENING_START_MIN)  # local planning moments, as the live tick sees them
 MAX_RETRIES_PER_ITEM = 5
 
@@ -57,8 +63,11 @@ def load_facts(facts_dir: str | Path) -> list[RunIn]:
     for f in sorted(d.glob("*.json")):
         try:
             r = RunIn.model_validate(json.loads(f.read_text()))
+        except ValidationError as e:  # field names and error kinds only: the values can be a place name
+            why = ", ".join(f"{'.'.join(map(str, x['loc']))}: {x['type']}" for x in e.errors(include_input=False))
+            raise ReplayError(f"{f.name}: {why[:200]}") from None
         except (ValueError, OSError) as e:
-            raise ReplayError(f"{f.name}: {str(e)[:200]}") from None
+            raise ReplayError(f"{f.name}: unreadable ({type(e).__name__})") from None
         if r.run_id in runs:
             raise ReplayError(f"{f.name}: run id {r.run_id} appears twice")
         runs[r.run_id] = r
@@ -107,20 +116,21 @@ class ReplayChannel:
     def __getattr__(self, item: str) -> Any:  # ack_callback, parse ... stay the inner channel's
         return getattr(self.inner, item)
 
-    def _tag(self, kind: str, card_id: str | None) -> str:
-        self.r.note_send(kind, card_id)
-        return self.r.label()
-
+    # Recorded only after the send succeeded, so a failed send is not counted as an item.
     def send_card(self, ref: str, card: OutCard, **kw: Any) -> str:
-        line = self._tag(self.r.card_kind(card.card_id), card.card_id)
-        return self.inner.send_card(ref, replace(card, headline=f"{line}\n{card.headline}"), **kw)
+        out = self.inner.send_card(ref, replace(card, headline=f"{self.r.label()}\n{card.headline}"), **kw)
+        self.r.note_send(self.r.card_kind(card.card_id), card.card_id)
+        return out
 
     def send_text(self, ref: str, text: str) -> str:
-        return self.inner.send_text(ref, f"{self._tag('text', None)}\n{text}")
+        out = self.inner.send_text(ref, f"{self.r.label()}\n{text}")
+        self.r.note_send("text", None)
+        return out
 
     def send_followup(self, ref: str, card: OutCard, mode: str) -> str:
-        self._tag("followup", card.card_id)  # media is off, so the service never asks for one; kept honest anyway
-        return self.inner.send_followup(ref, card, mode)
+        out = self.inner.send_followup(ref, card, mode)  # media is off, so the service never asks for one
+        self.r.note_send("followup", card.card_id)
+        return out
 
 
 # ---------------------------------------------------------------------------------------- replay
@@ -150,6 +160,7 @@ class Replayer:
         self.vnow: datetime = datetime(1970, 1, 1, tzinfo=UTC)
         self.items: list[Item] = []
         self._sig_stop = False
+        self.token = secrets.token_hex(8)  # who is driving: a second process that takes over makes this one stop
         self._retries: dict[int, int] = {}
         inner = channel if channel is not None else svc.channels.get("telegram")
         while isinstance(inner, ReplayChannel):  # a second replayer on the same service must not stack prefixes
@@ -191,17 +202,38 @@ class Replayer:
             c.execute(f"UPDATE replay_state SET {sets} WHERE user_id=?", (*cols.values(), self.uid))
 
     def _beat(self) -> None:
-        self._save(heartbeat_at=iso(self.real_now()), vnow=iso(self.vnow))
+        """Heartbeat, only while this process still owns a running row (never revives a stopped or released one)."""
+        now = iso(self.real_now())
+        with db.tx(self.s.db_path) as c:
+            c.execute("UPDATE replay_state SET heartbeat_at=?, vnow=?, updated_at=? WHERE user_id=? AND driver=? "
+                      "AND status IN ('running','stopping')", (now, iso(self.vnow), now, self.uid, self.token))
+
+    def _sleep(self, seconds: int) -> None:
+        """Sleep in one-second slices, beating each time, so a long wait never looks like a dead process and a stop
+        lands within a second."""
+        for _ in range(seconds):
+            if self._stopping():
+                return
+            self.sleep(1)
+            self._beat()
 
     def request_stop(self) -> None:
         """Signal-safe: finish the current item, then stop."""
         self._sig_stop = True
 
     def _stopping(self) -> bool:
+        """True on a signal, or whenever the row is anything but ours and 'running': stop, stopping, abort (done), a
+        newer process that took over, or the row gone."""
         if self._sig_stop:
             return True
         st = self._state()
-        return bool(st and st["status"] == "stopping")
+        return st is None or st["status"] != "running" or st["driver"] != self.token
+
+    def _end(self, status: str) -> None:
+        """Move our own running/stopping row to `status`. Never overwrites 'done' (an abort) or another driver."""
+        with db.tx(self.s.db_path) as c:
+            c.execute("UPDATE replay_state SET status=?, updated_at=? WHERE user_id=? AND driver=? "
+                      "AND status IN ('running','stopping')", (status, iso(self.real_now()), self.uid, self.token))
 
     # -- start / resume
     def prepare(self) -> bool:
@@ -210,22 +242,25 @@ class Replayer:
         now = self.real_now()
         if st is not None:
             if st["status"] == "done":
-                raise ReplayError("this replay is complete (replay-abort and a new run are not needed: nothing is left)")
+                raise ReplayError("this replay is finished or was aborted. To start a fresh one, run "
+                                  "`python -m companion.cli replay-reset` first (cards already sent stay sent).")
             fresh = st["heartbeat_at"] and parse_iso(st["heartbeat_at"]) > now - timedelta(seconds=HEARTBEAT_FRESH_S)
             if st["status"] in ("running", "stopping") and fresh:
-                raise ReplayError("a replay is already running; use replay-stop first")
+                raise ReplayError("a replay is already running (fresh heartbeat); run replay-stop and wait for it to stop")
             if st["facts_dir"] != self.facts_dir:
                 raise ReplayError(f"a replay of {st['facts_dir']} is in progress; resume that folder or replay-abort")
             self.vnow = parse_iso(st["vnow"])
-            self._save(status="running", every_s=self.every_s, heartbeat_at=iso(now))
+            with db.tx(self.s.db_path) as c:  # take over: whichever process held the row before now stops itself
+                c.execute("UPDATE replay_state SET status='running', driver=?, every_s=?, heartbeat_at=?, updated_at=? "
+                          "WHERE user_id=?", (self.token, self.every_s, iso(now), iso(now), self.uid))
             return True
         first = upload_time(self.runs[0])
         self.vnow = self.from_dt or (first - timedelta(minutes=1))
         with db.tx(self.s.db_path) as c:
-            c.execute("INSERT INTO replay_state (user_id, status, facts_dir, every_s, vnow, last_tick, items, heartbeat_at, "
-                      "started_at, updated_at) VALUES (?,?,?,?,?,?,0,?,?,?)",
-                      (self.uid, "running", self.facts_dir, self.every_s, iso(self.vnow), iso(self.vnow), iso(now),
-                       iso(now), iso(now)))
+            c.execute("INSERT INTO replay_state (user_id, status, driver, facts_dir, every_s, vnow, last_tick, items, "
+                      "heartbeat_at, started_at, updated_at) VALUES (?,?,?,?,?,?,?,0,?,?,?)",
+                      (self.uid, "running", self.token, self.facts_dir, self.every_s, iso(self.vnow), iso(self.vnow),
+                       iso(now), iso(now), iso(now)))
         # History before --from is context only: stored like an offline-queued old run, no card.
         for r in self.runs:
             if self.from_dt and upload_time(r) < self.from_dt:
@@ -233,27 +268,36 @@ class Replayer:
         return False
 
     def _ingest(self, r: RunIn, *, silent: bool = False) -> None:
-        with db.ro(self.s.db_path) as c:
-            exists = c.execute("SELECT 1 FROM runs WHERE user_id=? AND run_id=?", (self.uid, r.run_id)).fetchone()
+        """Bring one run in at its own moment. The `replay_runs` row goes in FIRST, so the card the ingest queues is
+        the replay's, not something the live worker may pick up."""
         due = upload_time(r)
-        if exists:  # uploaded for real already: replay its card at its own moment instead of today's
-            with db.tx(self.s.db_path) as c:
-                c.execute("UPDATE outbox SET due_at=? WHERE user_id=? AND dedupe_key=? AND state='pending'",
-                          (iso(max(due, self.vnow)), self.uid, f"card:{self.uid}:{r.run_id}"))
-                c.execute("INSERT OR IGNORE INTO replay_runs (user_id, run_id, inserted) VALUES (?,?,0)",
-                          (self.uid, r.run_id))
+        with db.tx(self.s.db_path) as c:
+            exists = c.execute("SELECT 1 FROM runs WHERE user_id=? AND run_id=?", (self.uid, r.run_id)).fetchone()
+            c.execute("INSERT OR IGNORE INTO replay_runs (user_id, run_id, inserted) VALUES (?,?,?)",
+                      (self.uid, r.run_id, 0 if exists else 1))
+            if exists and not silent:
+                # Uploaded for real before the replay got here. Its card belongs at its own moment: move a pending one,
+                # or queue it when none was ever made (a run older than the staleness window gets none on upload).
+                dedupe = f"card:{self.uid}:{r.run_id}"
+                at = iso(max(due, self.vnow))
+                if not c.execute("SELECT 1 FROM cards WHERE user_id=? AND run_id=? AND kind='run'",
+                                 (self.uid, r.run_id)).fetchone():
+                    c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
+                              (self.uid, "run_card", at, dedupe, r.run_id))
+                    c.execute("UPDATE outbox SET due_at=?, state='pending', attempts=0 WHERE dedupe_key=? "
+                              "AND state IN ('pending','skipped')", (at, dedupe))
+        if exists:
             return
         stale_now = r.start_utc + timedelta(seconds=r.duration_s) + timedelta(hours=self.s.stale_card_hours + 1)
-        at = stale_now if silent else max(due, self.vnow)
-        self.svc.ingest_run(self.uid, r, at)
-        with db.tx(self.s.db_path) as c:
-            c.execute("INSERT OR IGNORE INTO replay_runs (user_id, run_id) VALUES (?,?)", (self.uid, r.run_id))
+        self.svc.ingest_run(self.uid, r, stale_now if silent else max(due, self.vnow))
 
     # -- the clock
     def _ingested(self) -> set[str]:
-        """Runs the replay has reached (inserted by it, or already there from a real upload)."""
+        """Runs the replay has reached: marked, and really in the runs table."""
         with db.ro(self.s.db_path) as c:
-            return {x["run_id"] for x in c.execute("SELECT run_id FROM replay_runs WHERE user_id=?", (self.uid,))}
+            return {x["run_id"] for x in c.execute(
+                "SELECT p.run_id FROM replay_runs p JOIN runs u ON u.user_id = p.user_id AND u.run_id = p.run_id "
+                "WHERE p.user_id=?", (self.uid,))}
 
     def _next_tick(self) -> datetime:
         st = self._state()
@@ -274,9 +318,9 @@ class Replayer:
         nxt = next((r for r in self.runs if r.run_id not in have), None)
         if nxt is not None:
             cands.append(upload_time(nxt))
-        with db.ro(self.s.db_path) as c:
-            o = c.execute("SELECT MIN(due_at) d FROM outbox WHERE user_id=? AND state IN ('pending','sending')",
-                          (self.uid,)).fetchone()["d"]
+        with db.ro(self.s.db_path) as c:  # not a real run's card: those go out live, whenever they are due
+            o = c.execute("SELECT MIN(due_at) d FROM outbox WHERE user_id=? AND state IN ('pending','sending') "
+                          f"AND NOT {LIVE_ROW}", (self.uid,)).fetchone()["d"]
         if o:
             cands.append(parse_iso(o))
         cands.append(self._next_tick())
@@ -290,7 +334,8 @@ class Replayer:
 
     def _recover_failed(self) -> bool:
         with db.tx(self.s.db_path) as c:
-            rows = [r["id"] for r in c.execute("SELECT id FROM outbox WHERE user_id=? AND state='failed'", (self.uid,))]
+            rows = [r["id"] for r in c.execute(
+                f"SELECT id FROM outbox WHERE user_id=? AND state='failed' AND NOT {LIVE_ROW}", (self.uid,))]
             for i in rows:
                 self._retries[i] = self._retries.get(i, 0) + 1
                 if self._retries[i] > MAX_RETRIES_PER_ITEM:
@@ -302,37 +347,35 @@ class Replayer:
 
     # -- one item
     def _pace(self) -> None:
-        for _ in range(self.every_s):
-            if self._stopping():
-                return
-            self.sleep(1)
-            self._beat()
+        self._sleep(self.every_s)
 
     def run(self, max_items: int | None = None) -> str:
         """Drive the clock until the history is spent, a stop is requested or `max_items` were sent.
-        Returns 'done', 'stopped' or 'limit'."""
+        Returns 'done', 'stopped' or 'limit'. Anything but our own 'running' row (stop, abort, a newer driver) ends it
+        without touching the row's status."""
         self.prepare()
         sent_here = 0
         while True:
             self._beat()
             if self._stopping():
-                self._save(status="stopped")
+                self._end("stopped")
                 return "stopped"
             if max_items is not None and sent_here >= max_items:
-                self._save(status="stopped")
+                self._end("stopped")
                 return "limit"
             if self._held():
-                self.sleep(5)
+                self._sleep(5)
                 continue
             if self._recover_failed():
-                self.sleep(30)
+                self._sleep(30)
+                continue
             t = self._next_event()
             if t is None:
-                self._finish()
-                return "done"
+                return "done" if self._finish() else "stopped"
             self.vnow = t
+            have = self._ingested()
             for r in self.runs:  # arrivals due at this moment
-                if upload_time(r) <= self.vnow and r.run_id not in self._ingested():
+                if upload_time(r) <= self.vnow and r.run_id not in have:
                     self._ingest(r)
             tick = self._next_tick()
             if tick <= self.vnow:
@@ -366,12 +409,88 @@ class Replayer:
         self.out(f"#{n:03d} {item.local}  {kind}")
         return item
 
-    def _finish(self) -> None:
+    def _finish(self) -> bool:
+        """Release the user to the live worker. False (and nothing changed) if the row is no longer ours and running."""
         cut = iso(self.real_now() - timedelta(hours=self.s.stale_card_hours))
-        with db.tx(self.s.db_path) as c:  # leftovers the live worker must not send in a flood on release
-            c.execute("UPDATE outbox SET state='skipped' WHERE user_id=? AND state IN ('pending','sending') AND due_at < ?",
-                      (self.uid, cut))
-        self._save(status="done", vnow=iso(self.vnow))
+        with db.tx(self.s.db_path) as c:
+            row = c.execute("SELECT 1 FROM replay_state WHERE user_id=? AND driver=? AND status='running'",
+                            (self.uid, self.token)).fetchone()
+            if not row:
+                return False
+            # leftovers of the replay's own the live worker must not send in a flood on release
+            c.execute("UPDATE outbox SET state='skipped' WHERE user_id=? AND state IN ('pending','sending') AND due_at < ? "
+                      f"AND NOT {LIVE_ROW}", (self.uid, cut))
+            c.execute("UPDATE replay_state SET status='done', vnow=?, updated_at=? WHERE user_id=?",
+                      (iso(self.vnow), iso(self.real_now()), self.uid))
+        return True
+
+
+# ---------------------------------------------------------------------------------------- operator controls
+
+def _row(s: Settings) -> sqlite3.Row | None:
+    with db.ro(s.db_path) as c:
+        return c.execute("SELECT * FROM replay_state").fetchone()
+
+
+def _alive(r: sqlite3.Row, now: datetime) -> bool:
+    return bool(r["heartbeat_at"]) and parse_iso(r["heartbeat_at"]) > now - timedelta(seconds=HEARTBEAT_FRESH_S)
+
+
+def stop(s: Settings, now: datetime | None = None) -> str:
+    """Ask a running replay to finish its current message and stop. Always 'stopping' for a running row: only the
+    next `replay` decides whether a heartbeat is dead."""
+    now = now or now_utc()
+    r = _row(s)
+    if r is None:
+        return "no replay"
+    if r["status"] == "running":
+        with db.tx(s.db_path) as c:
+            c.execute("UPDATE replay_state SET status='stopping', updated_at=? WHERE status='running'", (iso(now),))
+        return "stopping after the current message"
+    return {"stopping": "already stopping", "stopped": "already stopped (run the same replay command to resume)",
+            "done": "that replay is finished"}[r["status"]]
+
+
+def abort(s: Settings, wait_s: float = 90, now: Callable[[], datetime] = now_utc,
+          sleep: Callable[[float], None] = time.sleep) -> tuple[int, str]:
+    """Release the user to the live coach. A live process is asked to stop first and must acknowledge; only then is
+    the row marked done and its queued virtual-past items dropped. If it does not acknowledge, nothing is released
+    (a still-running replay beside a released user is what floods the chat)."""
+    r = _row(s)
+    if r is None:
+        return 1, "no replay"
+    if r["status"] in ("running", "stopping") and _alive(r, now()):
+        stop(s, now())
+        waited = 0.0
+        while waited < wait_s:
+            r = _row(s)
+            if r is None or r["status"] not in ("running", "stopping"):
+                break
+            sleep(1)
+            waited += 1
+        r = _row(s)
+        if r is not None and r["status"] in ("running", "stopping") and _alive(r, now()):
+            return 4, ("the replay process has not stopped yet. Stop its unit (systemctl --user stop companion-replay), "
+                       "then run replay-abort again. Nothing was released.")
+    cut = iso(now())
+    with db.tx(s.db_path) as c:
+        c.execute("UPDATE outbox SET state='skipped' WHERE user_id=? AND state IN ('pending','sending') AND due_at < ? "
+                  f"AND NOT {LIVE_ROW}", (r["user_id"], cut))
+        c.execute("UPDATE replay_state SET status='done', updated_at=? WHERE user_id=?", (cut, r["user_id"]))
+    return 0, "replay aborted; the live coach has the user back"
+
+
+def reset(s: Settings) -> tuple[int, str]:
+    """Forget a finished or aborted replay so a new one can start. Cards already sent stay sent."""
+    r = _row(s)
+    if r is None:
+        return 1, "no replay"
+    if r["status"] != "done":
+        return 2, f"the replay is {r['status']}: replay-abort it first"
+    with db.tx(s.db_path) as c:
+        for t in ("replay_items", "replay_runs", "replay_state"):
+            c.execute(f"DELETE FROM {t} WHERE user_id=?", (r["user_id"],))
+    return 0, "replay forgotten; run replay again to start fresh"
 
 
 # ---------------------------------------------------------------------------------------- entry points

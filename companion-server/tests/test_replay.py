@@ -294,7 +294,7 @@ def test_a_stop_request_ends_the_loop_cleanly_and_the_state_says_so(env):
 def test_a_finished_replay_does_not_run_twice(env):
     env.replayer().run()
     n = len(env.fakes.tg)
-    with pytest.raises(ReplayError, match="complete"):
+    with pytest.raises(ReplayError, match="finished or was aborted"):
         env.replayer().run()
     assert len(env.fakes.tg) == n
 
@@ -313,25 +313,26 @@ def test_the_existing_pause_holds_the_replay_without_losing_items(env):
 
     def unpause(s):
         waits.append(s)
-        if len(waits) == 3:
+        if len(waits) == 7:
             with db.tx(env.s.db_path) as c:
                 c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('sends_paused', '0')")
 
     r.sleep = unpause
     assert r.run() == "done"
-    assert waits[:2] == [5, 5] and len(env.cards()) >= len(HISTORY)
+    assert waits == [1] * 10 and len(env.cards()) >= len(HISTORY)  # held for two 5 s waits, in beating one-second slices
 
 
 # --- the live worker leaves a replayed user alone -----------------------------------------------------
 
 def test_live_worker_does_not_touch_a_user_mid_replay(env):
-    r = env.replayer()
+    late = REAL_NOW + timedelta(days=40)  # the replay's cards are 40+ days old by then: purge would delete them
+    r = env.replayer(real_now=lambda: late)
     r.run(max_items=2)  # leaves the replay 'stopped' with more queued in the virtual past
     with db.ro(env.s.db_path) as c:
         pending = c.execute("SELECT COUNT(*) FROM outbox WHERE state='pending'").fetchone()[0]
     sent_before = len(env.fakes.tg)
-    env.svc.tick(REAL_NOW + timedelta(days=30))  # the live clock, far past every virtual due time
-    env.svc.purge(REAL_NOW + timedelta(days=400))  # would delete cards, outbox rows and the idle account
+    env.svc.tick(late + timedelta(hours=1))  # the live clock, an hour on
+    env.svc.purge(late + timedelta(hours=1))
     assert len(env.fakes.tg) == sent_before
     with db.ro(env.s.db_path) as c:
         assert c.execute("SELECT COUNT(*) FROM outbox WHERE state='pending'").fetchone()[0] == pending

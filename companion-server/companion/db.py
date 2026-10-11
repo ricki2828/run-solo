@@ -132,6 +132,7 @@ CREATE TABLE IF NOT EXISTS convo_area (
 CREATE TABLE IF NOT EXISTS replay_state (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   status TEXT NOT NULL CHECK (status IN ('running','stopping','stopped','done')),
+  driver TEXT,                 -- token of the process that owns the row; a newer one taking over stops the older
   facts_dir TEXT NOT NULL, every_s INTEGER NOT NULL,
   vnow TEXT NOT NULL,          -- the virtual clock
   last_tick TEXT,              -- last planning tick that ran

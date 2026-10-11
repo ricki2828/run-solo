@@ -12,7 +12,7 @@ import httpx
 from . import db, replay
 from .config import Settings
 from .service import Service
-from .timeutil import iso, now_utc
+from .timeutil import iso, now_utc, parse_iso
 
 
 def _replay_status(s: Settings) -> str:
@@ -37,9 +37,10 @@ def _replay(s: Settings, argv: list[str]) -> int:
             return replay.dry_run(s, a.facts_dir, a.every, a.from_date, a.full)
         with db.ro(s.db_path) as c:
             aware = c.execute("SELECT value FROM settings WHERE key='replay_aware_at'").fetchone()
-        if not aware:
-            print("The live service has not restarted on code that knows about replays yet (it would send this "
-                  "replay's old items at once). Restart companion.service first, then run this again.")
+        # the live worker refreshes this every tick; stale means it is not running this code (never restarted, or rolled back)
+        if not aware or parse_iso(aware[0]) < now_utc() - timedelta(minutes=10):
+            print("The live service is not running code that knows about replays (it would send this replay's "
+                  "old items at once). Restart companion.service on this code first, then run this again.")
             return 3
         s = replay.replay_settings(s)
         runs = replay.load_facts(a.facts_dir)
@@ -58,24 +59,13 @@ def _replay(s: Settings, argv: list[str]) -> int:
         return 2
 
 
-def _replay_halt(s: Settings, abort: bool) -> int:
-    with db.tx(s.db_path) as c:
-        r = c.execute("SELECT user_id, status, heartbeat_at FROM replay_state").fetchone()
-        if not r:
-            print("no replay")
-            return 1
-        if abort:
-            # release the user to the live worker; anything the replay still had queued from its past is dropped
-            c.execute("UPDATE outbox SET state='skipped' WHERE user_id=? AND state IN ('pending','sending') AND due_at < ?",
-                      (r["user_id"], iso(now_utc())))
-            c.execute("UPDATE replay_state SET status='done', updated_at=?", (iso(now_utc()),))
-            print("replay aborted; the live coach has the user back")
-            return 0
-        alive = bool(r["heartbeat_at"]) and r["heartbeat_at"] > iso(now_utc() - timedelta(seconds=replay.HEARTBEAT_FRESH_S))
-        new = "stopping" if r["status"] == "running" and alive else "stopped"
-        c.execute("UPDATE replay_state SET status=? WHERE status IN ('running','stopping','stopped')", (new,))
-    print("stopping after the current message" if new == "stopping" else "replay stopped (resume with the same replay command)")
-    return 0
+def _replay_control(s: Settings, cmd: str) -> int:
+    if cmd == "replay-stop":
+        print(replay.stop(s))
+        return 0
+    code, msg = replay.abort(s) if cmd == "replay-abort" else replay.reset(s)
+    print(msg)
+    return code
 
 
 def main(argv: list[str]) -> int:
@@ -84,8 +74,8 @@ def main(argv: list[str]) -> int:
     if cmd == "replay":
         return _replay(s, argv[1:])
     svc = Service(s, httpx.Client(timeout=10))
-    if cmd in ("replay-stop", "replay-abort"):
-        return _replay_halt(s, abort=cmd == "replay-abort")
+    if cmd in ("replay-stop", "replay-abort", "replay-reset"):
+        return _replay_control(s, cmd)
     if cmd in ("pause", "resume"):
         with db.tx(s.db_path) as c:
             c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('sends_paused', ?)",

@@ -171,7 +171,7 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
 
     @app.get("/healthz")
     def healthz():
-        return {"ok": True, "overdue_outbox": svc.overdue_count()}
+        return {"ok": True, "overdue_outbox": svc.overdue_count(), "replay_held": svc.replay_held()}
 
     # --- enrolment (no token yet) ---
     @app.post("/v1/enrol/start")
