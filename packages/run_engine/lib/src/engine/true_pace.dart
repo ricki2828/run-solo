@@ -173,8 +173,7 @@ abstract final class TruePaceText {
     final afterHills = PaceFormat.toUnit(rawSecPerKm * f.grade, units);
     final truePace = PaceFormat.toUnit(f.apply(rawSecPerKm), units);
     final r = raw.round(), h = afterHills.round(), t = truePace.round();
-    String part(String label, int sec) =>
-        '$label ${_gap(sec)}';
+    String part(String label, int sec) => '$label ${_gap(sec)}';
     final parts = [
       if (f.grade != 1 && h != r)
         part(f.grade > 1 ? 'downhill' : 'hills', h - r),
