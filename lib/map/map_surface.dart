@@ -267,14 +267,35 @@ class RouteShape extends StatelessWidget {
   }
 }
 
+/// Sent up the tree when a map card has failed, so the owner can swap the
+/// card for a one-line message with Retry (run detail does).
+class MapFailedNotification extends Notification {
+  const MapFailedNotification();
+}
+
 /// "Map failed to load" over the route shape (addendum A4 failed state).
-class MapFailedCard extends StatelessWidget {
+/// Tells its ancestors with a [MapFailedNotification]; an owner that listens
+/// replaces the whole card, one that does not keeps this drawing.
+class MapFailedCard extends StatefulWidget {
   const MapFailedCard({super.key, required this.route});
   final RouteGeometry route;
 
   @override
+  State<MapFailedCard> createState() => _MapFailedCardState();
+}
+
+class _MapFailedCardState extends State<MapFailedCard> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) const MapFailedNotification().dispatch(context);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) =>
-      RouteShape(route: route, caption: 'Map failed to load');
+      RouteShape(route: widget.route, caption: 'Map failed to load');
 }
 
 class _RoutePainter extends CustomPainter {

@@ -127,10 +127,10 @@ void main() {
     final raw = a.intervals!.avgWorkPaceSecPerKm!;
     expect(v.state, WeatherChipState.adjusted);
     expect(v.rawLabel, 'RAW');
-    expect(v.raw, '${engine.PaceFormat.paceBare(raw, engine.Units.km)} /km');
+    expect(v.raw, '${engine.PaceFormat.paceBare(raw, engine.Units.km)}/km');
     expect(
       v.adjusted,
-      '${engine.PaceFormat.paceBare(raw * (1 - f), engine.Units.km)} /km',
+      '${engine.PaceFormat.paceBare(raw * (1 - f), engine.Units.km)}/km',
     );
     expect(
       v.note,
@@ -144,8 +144,8 @@ void main() {
 
   test('miles: both paces per mile', () {
     final v = view(run, ok(28, 21), units: Units.mi);
-    expect(v.raw, endsWith(' /mi'));
-    expect(v.adjusted, endsWith(' /mi'));
+    expect(v.raw, endsWith('/mi'));
+    expect(v.adjusted, endsWith('/mi'));
   });
 
   test('too hot: said in warn, raw only, no adjusted number', () {

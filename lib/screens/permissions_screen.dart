@@ -103,22 +103,26 @@ class _PermissionsScreenState extends State<PermissionsScreen>
         ? 'Approximate only. Choose Precise when asked, or GPS pace is off.'
         : _deniedHint(PermissionKind.location, 'Denied. Allow it under');
 
-    // Set-up (onboarding) lists the rows first: on a short phone the
-    // privacy text pushed "Battery optimisation off" under the fold, just
-    // above CONTINUE (#30 review P2). The checklist keeps the text on top.
     final privacy = <Widget>[
+      // The full paragraph used to sit clipped and faded under the pinned
+      // button on short phones. Both modes say the short version and open
+      // the whole paragraph on a tap, and the rows come first.
       Text(
-        kPrivacyParagraph,
+        kOnboardingInternetLine,
+        key: const ValueKey('onboarding-privacy-short'),
         style: text.bodyMedium?.copyWith(color: t.inkSecondary),
       ),
-      if (widget.onboarding)
-        Padding(
-          padding: const EdgeInsets.only(top: Space.x8),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          key: const ValueKey('onboarding-privacy-more'),
+          onPressed: () => _showPrivacy(context),
           child: Text(
-            kOnboardingInternetLine,
-            style: text.bodyMedium?.copyWith(color: t.inkMuted),
+            'Privacy details',
+            style: text.labelLarge?.copyWith(color: t.inkPrimary),
           ),
         ),
+      ),
     ];
     final rows = <Widget>[
       SetupRow(
@@ -195,15 +199,9 @@ class _PermissionsScreenState extends State<PermissionsScreen>
       body: PinnedFooterLayout(
         content: [
           const SizedBox(height: Space.x8),
-          if (widget.onboarding) ...[
-            ...rows,
-            const SizedBox(height: Space.x24),
-            ...privacy,
-          ] else ...[
-            ...privacy,
-            const SizedBox(height: Space.x24),
-            ...rows,
-          ],
+          ...rows,
+          const SizedBox(height: Space.x24),
+          ...privacy,
           const SizedBox(height: Space.x24),
         ],
         footer: [
@@ -271,6 +269,41 @@ class _PermissionsScreenState extends State<PermissionsScreen>
       ),
     );
   }
+}
+
+/// The full privacy paragraph, whole and readable, on a sheet.
+Future<void> _showPrivacy(BuildContext context) {
+  final t = Theme.of(context).extension<RunSoloTokens>()!;
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: t.bgRaised,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(Radii.sheet)),
+    ),
+    builder: (ctx) => SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(Space.screenGutter),
+        child: Column(
+          key: const ValueKey('privacy-sheet'),
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'PRIVACY',
+              style: RunSoloType.title28.copyWith(color: t.inkPrimary),
+            ),
+            const SizedBox(height: Space.x12),
+            Text(
+              kPrivacyParagraph,
+              style: Theme.of(ctx).textTheme.bodyMedium
+                  ?.copyWith(color: t.inkSecondary),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 /// A warn tint behind the row CONTINUE pointed at. A background, not a

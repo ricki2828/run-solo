@@ -36,7 +36,12 @@ void main() {
       home: RunDetailScreen(runId: r.id),
     );
     await pumpTimes(tester, 6);
-    expect(find.text('NORWEGIAN 4X4'), findsOneWidget);
+    // The bar says where we are; the heading names the run, once.
+    expect(
+      find.descendant(of: find.byType(RunAppBar), matching: find.text('RUN')),
+      findsOneWidget,
+    );
+    expect(find.text('NORWEGIAN 4X4'), findsNothing);
     expect(find.byKey(const ValueKey('fake-map')), findsOneWidget);
     // The chart leads; the tables sit behind "All splits".
     expect(find.byKey(const ValueKey('rep-bars-chart')), findsOneWidget);
@@ -76,8 +81,8 @@ void main() {
       ).toJson(),
     );
     final breakdown = RegExp(
-      r'^True pace \d+:\d\d/km = actual \d+:\d\d(, hills [-+]\d+:\d\d)?'
-      r'(, heat [-+]\d+:\d\d)?$',
+      r'^True pace \d+:\d\d/km = actual \d+:\d\d(, (hills|downhill) (\d+ s|\d+:\d\d) (faster|slower))?'
+      r'(, heat (\d+ s|\d+:\d\d) (faster|slower))?$',
     );
 
     Text line(WidgetTester tester) => tester.widget<Text>(
@@ -102,8 +107,8 @@ void main() {
       expect(find.byKey(const ValueKey('true-pace-breakdown')), findsOneWidget);
       final text = line(tester).data!;
       expect(text, matches(breakdown));
-      expect(text, contains(', hills -'));
-      expect(text, contains(', heat -'));
+      expect(text, contains(', hills '));
+      expect(text, contains(', heat '));
       expect(find.text('Hills and heat are estimates.'), findsOneWidget);
       // The elevation card carries the same true pace, as an estimate.
       await scrollTo(tester, find.textContaining('TRUE PACE (ESTIMATE)'));
@@ -120,7 +125,7 @@ void main() {
       await pumpTimes(tester, 6);
       final text = line(tester).data!;
       expect(text, matches(breakdown));
-      expect(text, contains(', heat -'));
+      expect(text, contains(', heat '));
       expect(text, isNot(contains('hills')));
     });
 
@@ -147,7 +152,7 @@ void main() {
       );
       await pumpTimes(tester, 6);
       expect(line(tester).data, startsWith('True work pace '));
-      expect(line(tester).data, contains(', heat -'));
+      expect(line(tester).data, contains(', heat '));
     });
   });
 
@@ -341,7 +346,7 @@ void main() {
     expect(find.byKey(const ValueKey('fake-map')), findsNothing);
   });
 
-  testWidgets('map failed to load: message over the route shape', (
+  testWidgets('map failed to load: one line with Retry, not an empty card', (
     tester,
   ) async {
     final r = freeRunFile(n: 3, start: d1);
@@ -355,7 +360,18 @@ void main() {
     );
     await pumpTimes(tester, 6);
     expect(find.text('Map failed to load'), findsOneWidget);
-    expect(find.byType(RouteShape), findsOneWidget);
+    expect(find.byKey(const ValueKey('map-failed-line')), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('map-failed-line'))).height,
+      lessThan(80),
+    );
+    expect(find.byType(RouteShape), findsNothing);
+    // Retry puts the map card back (which, with this fake, fails again).
+    await tester.tap(find.byKey(const ValueKey('map-retry')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('map-failed-line')), findsNothing);
+    await pumpTimes(tester, 3);
+    expect(find.byKey(const ValueKey('map-failed-line')), findsOneWidget);
   });
 
   testWidgets('no Google Play services: message, route still drawn', (
@@ -407,7 +423,11 @@ void main() {
       home: RunDetailScreen(runId: r.id),
     );
     await pumpTimes(tester, 6);
-    expect(find.text('LAPS RUN'), findsOneWidget);
+    expect(
+      find.text('LAPS RUN'),
+      findsNothing,
+      reason: 'not repeated in the bar',
+    );
     await scrollTo(tester, find.text('LAP SPREAD'));
     expect(find.text('Lap 2'), findsOneWidget, reason: 'fastest lap tile');
     expect(find.text('LAP SPREAD'), findsOneWidget);
@@ -422,7 +442,11 @@ void main() {
       home: RunDetailScreen(runId: r.id),
     );
     await pumpTimes(tester, 6);
-    expect(find.text('FREE RUN'), findsOneWidget);
+    expect(
+      find.text('FREE RUN'),
+      findsNothing,
+      reason: 'not repeated in the bar',
+    );
     await scrollTo(tester, find.text('AVG PACE'));
     expect(find.text('AVG PACE'), findsOneWidget);
     expect(find.text('Fix laps', skipOffstage: false), findsNothing);

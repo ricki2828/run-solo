@@ -237,6 +237,13 @@ void main() {
       tester.view.physicalSize = Size(1080, height * 3);
       await pumpTimes(tester, 8);
       expect(tester.takeException(), isNull);
+      // The eyebrow always names the lane: "MID · SCORES SET".
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('home-statement-eyebrow')))
+            .data,
+        matches(RegExp(r'^(AEROBIC|SPEED|MID|LONG) · SCORES SET$')),
+      );
       final name = 'home_scores_four_360x$height';
       expect(
         File('test/golden/goldens/$name.png').existsSync() ||

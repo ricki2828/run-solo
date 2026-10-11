@@ -17,6 +17,14 @@ double contrastRatio(Color a, Color b) {
   return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
 }
 
+/// White or near-black, whichever reads better on [fill] (never red on red).
+Color readableOn(Color fill) {
+  const dark = Color(0xFF0B0B0C);
+  return contrastRatio(Colors.white, fill) >= contrastRatio(dark, fill)
+      ? Colors.white
+      : dark;
+}
+
 /// Each score takes the colour of the run type that builds it (the same
 /// colours as Home's unlock dots). Fills (bars, ticks, sparklines, big
 /// numbers at 24 sp+) use the bright token; small text uses [textOn].

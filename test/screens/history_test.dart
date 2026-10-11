@@ -78,6 +78,8 @@ void main() {
     );
     await pumpApp(tester, services, home: const HistoryScreen());
     await pumpTimes(tester);
+    // The filter is a two-row chip wrap now: a taller surface builds every row.
+    tester.view.physicalSize = const Size(1080, 3600);
     await tester.tap(find.byKey(const ValueKey('history-view-1')));
     await pumpTimes(tester);
 
@@ -208,6 +210,7 @@ void main() {
       );
       await tester.pump();
     }
+    tester.view.physicalSize = const Size(1080, 3600);
     await tester.tap(find.byKey(const ValueKey('history-view-1')));
     await pumpTimes(tester);
     expect(find.text('THIS WEEK'), findsOneWidget);

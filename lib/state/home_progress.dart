@@ -97,11 +97,12 @@ class ProgressStatement {
 
   /// "N in 10" only from the 50th percentile up. It rounds down, so a 65th
   /// percentile never claims 7 in 10, and it caps at 9: the percentile is
-  /// 1..99. Below 50 nothing is ranked, just that the score is building.
+  /// 1..99. Below 50 nothing is ranked; the tail says which way the score moved.
   static ProgressStatement? of(
     engine.IdentityScore s, {
     required ProfileSex sex,
     required int? age,
+    int? change,
   }) {
     final p = ScoreNorms.percentile(
       s.lane,
@@ -122,7 +123,13 @@ class ProgressStatement {
       return ProgressStatement(
         lane: s.lane,
         big: s.lane.name.toUpperCase(),
-        tail: 'is building.',
+        // The words follow the direction: "is building" only when it went up
+        // (or has no six-week comparison yet), never next to "DOWN 20".
+        tail: switch (change) {
+          final c? when c < 0 => 'slipped.',
+          0 => 'is holding steady.',
+          _ => 'is building.',
+        },
         tag: tag,
       );
     }
@@ -207,7 +214,12 @@ class ProgressHeadline {
           return c != 0 ? c : a.lane.index.compareTo(b.lane.index);
         });
     final top = moved.isNotEmpty ? moved.first : ranked.first;
-    final st = ProgressStatement.of(top, sex: sex, age: age);
+    final st = ProgressStatement.of(
+      top,
+      sex: sex,
+      age: age,
+      change: ScoreNorms.change(top, sex: sex, age: age),
+    );
     return st == null
         ? h
         : ProgressHeadline(

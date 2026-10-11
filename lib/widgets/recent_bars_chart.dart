@@ -619,8 +619,7 @@ class _BarsPainter extends CustomPainter {
 
     // Single-line dates, thinned so none sit closer than [kLabelGap].
     final labels = [
-      for (final p in points)
-        _tp('${p.date.day}/${p.date.month}', tokens.inkSecondary),
+      for (final p in points) _tp(Fmt.dayMonth(p.date), tokens.inkSecondary),
     ];
     final keep = dateLabelSlots(
       widths: [for (final l in labels) l.width],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../brand/lap_line_paths.dart';
+import '../theme/lanes.dart' show readableOn;
 import '../theme/theme.dart';
 
 enum PillTone { ok, warn, danger, muted }
@@ -17,7 +18,7 @@ class StatusPill extends StatelessWidget {
     final (Color fg, Color bg) = switch (tone) {
       PillTone.ok => (t.inkPrimary, t.bgRaised),
       PillTone.warn => (t.bgBase, t.semWarn),
-      PillTone.danger => (t.inkPrimary, t.semDanger),
+      PillTone.danger => (readableOn(t.semDanger), t.semDanger),
       PillTone.muted => (t.inkMuted, t.bgRaised),
     };
     return Container(

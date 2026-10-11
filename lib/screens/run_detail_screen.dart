@@ -79,7 +79,8 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
           );
         }
         return Scaffold(
-          appBar: RunAppBar(title: runTitle(d.summary)),
+          // The heading below already names the run; the bar just says where we are.
+          appBar: const RunAppBar(title: 'RUN'),
           body: SafeArea(
             child: RunDetailBody(
               detail: d,
@@ -174,17 +175,12 @@ class RunDetailBody extends StatelessWidget {
         ],
         // No route (indoor, or no GPS): no empty box, the figures speak.
         if (hasRoute) ...[
-          AspectRatio(
-            aspectRatio: 4 / 3,
-            child: _MapCard(
-              route: route,
-              indoor: a.indoor,
-              terrain: usesTerrainMap(d.summary.mode),
-              plan: d.run.route == null
-                  ? null
-                  : followedPlanPoints(d.run.route!),
-              routeColor: runTypeColor(d.summary, RunSoloTokens.dark),
-            ),
+          _MapSlot(
+            route: route,
+            indoor: a.indoor,
+            terrain: usesTerrainMap(d.summary.mode),
+            plan: d.run.route == null ? null : followedPlanPoints(d.run.route!),
+            routeColor: runTypeColor(d.summary, RunSoloTokens.dark),
           ),
           SizedBox(height: d.run.route == null ? Space.x24 : Space.x12),
         ],
@@ -614,6 +610,80 @@ int? movingGapMs(
   if (isTest) return null;
   final gap = durationMs - (free.movingSeconds * 1000).round();
   return gap >= 5000 ? gap : null;
+}
+
+/// The 4:3 map card, or, when the map has failed to load, one line with
+/// Retry (no empty card).
+class _MapSlot extends StatefulWidget {
+  const _MapSlot({
+    required this.route,
+    required this.indoor,
+    required this.terrain,
+    required this.plan,
+    required this.routeColor,
+  });
+  final RouteGeometry route;
+  final bool indoor;
+  final bool terrain;
+  final List<GeoPoint>? plan;
+  final Color routeColor;
+
+  @override
+  State<_MapSlot> createState() => _MapSlotState();
+}
+
+class _MapSlotState extends State<_MapSlot> {
+  bool _failed = false;
+  int _attempt = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    if (_failed) {
+      return ConstrainedBox(
+        key: const ValueKey('map-failed-line'),
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Map failed to load',
+                style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+              ),
+            ),
+            TextButton(
+              key: const ValueKey('map-retry'),
+              onPressed: () => setState(() {
+                _failed = false;
+                _attempt++;
+              }),
+              child: Text(
+                'Retry',
+                style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return NotificationListener<MapFailedNotification>(
+      onNotification: (_) {
+        setState(() => _failed = true);
+        return true;
+      },
+      child: AspectRatio(
+        key: ValueKey('map-card-$_attempt'),
+        aspectRatio: 4 / 3,
+        child: _MapCard(
+          route: widget.route,
+          indoor: widget.indoor,
+          terrain: widget.terrain,
+          plan: widget.plan,
+          routeColor: widget.routeColor,
+        ),
+      ),
+    );
+  }
 }
 
 /// Map card states (A4): route on Google (or the shape fallback), "Indoor
@@ -1427,15 +1497,22 @@ class _RepVerdict extends StatelessWidget {
               Expanded(
                 child: Text(
                   v.headline.text,
-                  style: RunSoloType.display44.copyWith(
-                    color: switch (v.headline) {
-                      engine.VerdictHeadline.faster => t.accentArc,
-                      engine.VerdictHeadline.slower => t.inkPrimary,
-                      engine.VerdictHeadline.noVerdict ||
-                      engine.VerdictHeadline.indoorRun => t.inkSecondary,
-                      _ => t.inkPrimary,
-                    },
-                  ),
+                  // BASELINE SET is not a result: section-title size, so it
+                  // does not out-shout the page.
+                  style:
+                      (v.headline == engine.VerdictHeadline.baselineSet
+                              ? RunSoloType.heading19
+                              : RunSoloType.display44)
+                          .copyWith(
+                            color: switch (v.headline) {
+                              engine.VerdictHeadline.faster => t.accentArc,
+                              engine.VerdictHeadline.slower => t.inkPrimary,
+                              engine.VerdictHeadline.noVerdict ||
+                              engine.VerdictHeadline.indoorRun =>
+                                t.inkSecondary,
+                              _ => t.inkPrimary,
+                            },
+                          ),
                 ),
               ),
               if (onVerdict != null)
@@ -1631,6 +1708,7 @@ List<Widget> _splitsChart(
             title: 'PACE PER LAP',
             units: units,
             truePace: truePace,
+            noHrColor: (t) => runTypeColor(d.summary, t),
             bars: lapBarsOf(
               view,
               units,
@@ -1663,6 +1741,7 @@ Widget _kmChart(
   title: splitUnitsOf(d) == Units.mi ? 'PACE PER MILE' : 'PACE PER KM',
   units: units,
   truePace: truePace,
+  noHrColor: (t) => runTypeColor(d.summary, t),
   bars: splitBarsOf(
     d.analysis.freeRun,
     splitUnitsOf(d),

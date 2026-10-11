@@ -11,6 +11,7 @@ import '../state/history_weeks.dart';
 import '../theme/lanes.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
+import '../widgets/choice_chips.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/recent_activity.dart' show runTypeColor;
 import '../widgets/where_when_line.dart';
@@ -92,36 +93,37 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 Space.x8,
               ),
               child: Row(
+                // Intrinsic widths: "CHRONOLOGICAL" at 13 sp does not fit a
+                // third of a 360 dp screen.
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   for (final (i, label) in const [
                     (0, 'LEADERBOARD'),
                     (1, 'CHRONOLOGICAL'),
                     (2, 'TRENDS'),
                   ])
-                    Expanded(
-                      child: Semantics(
-                        button: true,
-                        selected: _view == i,
-                        child: InkWell(
-                          key: ValueKey('history-view-$i'),
-                          onTap: () => setState(() => _view = i),
-                          child: Container(
-                            alignment: Alignment.center,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: _view == i ? t.bgRaised : null,
-                              borderRadius: BorderRadius.circular(Radii.button),
-                            ),
-                            child: Text(
-                              label,
-                              maxLines: 1,
-                              textAlign: TextAlign.center,
-                              style: RunSoloType.micro11.copyWith(
-                                fontSize: 10,
-                                color: _view == i
-                                    ? t.inkPrimary
-                                    : t.inkSecondary,
-                              ),
+                    Semantics(
+                      button: true,
+                      selected: _view == i,
+                      child: InkWell(
+                        key: ValueKey('history-view-$i'),
+                        onTap: () => setState(() => _view = i),
+                        child: Container(
+                          alignment: Alignment.center,
+                          height: 48,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: Space.x8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _view == i ? t.bgRaised : null,
+                            borderRadius: BorderRadius.circular(Radii.button),
+                          ),
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            style: RunSoloType.label13.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: _view == i ? t.inkPrimary : t.inkSecondary,
                             ),
                           ),
                         ),
@@ -158,26 +160,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         ),
                         children: [
                           const SizedBox(height: Space.x8),
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: [
-                                for (final f in HistoryFilter.values) ...[
-                                  _FilterChip(
-                                    label: switch (f) {
-                                      HistoryFilter.all => 'All',
-                                      HistoryFilter.intervals => 'Intervals',
-                                      HistoryFilter.laps => 'Laps',
-                                      HistoryFilter.free => 'Free',
-                                      HistoryFilter.trail => 'Trail',
-                                      HistoryFilter.tests => 'Tests',
-                                    },
-                                    selected: _filter == f,
-                                    onTap: () => setState(() => _filter = f),
-                                  ),
-                                  const SizedBox(width: Space.x8),
-                                ],
-                              ],
+                          ChoiceChips(
+                            labels: const [
+                              'All',
+                              'Intervals',
+                              'Laps',
+                              'Free',
+                              'Trail',
+                              'Tests',
+                            ],
+                            selected: HistoryFilter.values.indexOf(_filter),
+                            onSelect: (i) => setState(
+                              () => _filter = HistoryFilter.values[i],
                             ),
                           ),
                           const SizedBox(height: Space.x16),
@@ -555,51 +549,6 @@ class HistoryRow extends StatelessWidget {
                 ),
               ],
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: MotionDurations.quick,
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: Space.x16),
-          alignment: Alignment.center,
-          // Selected = 2 px Bone border, like the mode chips (brief §5).
-          decoration: BoxDecoration(
-            color: t.bgRaised,
-            borderRadius: BorderRadius.circular(Radii.chip),
-            border: Border.all(
-              color: selected ? t.inkPrimary : t.lineHair,
-              width: 2,
-            ),
-          ),
-          child: Text(
-            label,
-            style: RunSoloType.label13.copyWith(
-              color: selected ? t.inkPrimary : t.inkSecondary,
-            ),
           ),
         ),
       ),

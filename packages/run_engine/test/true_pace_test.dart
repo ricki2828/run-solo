@@ -259,20 +259,20 @@ void main() {
     });
 
     test('the breakdown adds up on the seconds shown', () {
-      // 5:21 actual, hills -0:18, heat -0:05 = 4:58.
+      // 5:21 actual, hills 18 s faster, heat 5 s faster = 4:58.
       const f = TruePaceFactors(grade: 0.9439, heat: 0.9835);
       expect(
         TruePaceText.breakdown(321, f, Units.km),
-        'True pace 4:58/km = actual 5:21, hills -0:18, heat -0:05',
+        'True pace 4:58/km = actual 5:21, hills 18 s faster, heat 5 s faster',
       );
-      // Downhill reads plus, a missing part is left out.
+      // Downhill reads as slower, a missing part is left out.
       expect(
         TruePaceText.breakdown(
           321,
           const TruePaceFactors(grade: 1.05),
           Units.km,
         ),
-        'True pace 5:37/km = actual 5:21, downhill +0:16',
+        'True pace 5:37/km = actual 5:21, downhill 16 s slower',
       );
       expect(
         TruePaceText.breakdown(

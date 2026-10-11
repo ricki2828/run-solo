@@ -64,7 +64,7 @@ void main() {
       expect(runCardData(freeRun(truePace: null), Units.km).truePace, isNull);
     });
 
-    test('scores: four lanes, a lane not earned reads --', () {
+    test('scores: a lane not earned is left off, never printed as --', () {
       final d = scoresCardData(
         {
           engine.IdentityLane.mid: engine.IdentityScore(
@@ -81,10 +81,9 @@ void main() {
         sex: ProfileSex.male,
         age: 40,
       );
-      expect(d.lanes.map((l) => l.label), ['AEROBIC', 'SPEED', 'MID', 'LONG']);
-      expect(d.lanes.first.value, '--');
-      expect(d.lanes[2].value, isNot('--'));
-      expect(d.lanes[2].unit, endsWith('percentile'));
+      expect(d.lanes.map((l) => l.label), ['MID']);
+      expect(d.lanes.any((l) => l.value == '--'), isFalse);
+      expect(d.lanes.first.unit, endsWith('percentile'));
     });
 
     test('scores without a profile fall back to the score, labelled', () {
@@ -103,8 +102,8 @@ void main() {
         sex: ProfileSex.notSet,
         age: null,
       );
-      expect(d.lanes[2].value, '62');
-      expect(d.lanes[2].unit, 'score');
+      expect(d.lanes.first.value, '62');
+      expect(d.lanes.first.unit, 'score');
     });
   });
 

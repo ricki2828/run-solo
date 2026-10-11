@@ -99,6 +99,49 @@ void main() {
       expect(st.tail, isNot(contains('slower')));
     });
 
+    test('the words follow the direction: slipped, steady, building', () {
+      final low = vdotIn(engine.IdentityLane.aerobic, 5, 25, 'Cooper test');
+      final high = vdotIn(engine.IdentityLane.aerobic, 30, 49, 'Cooper test');
+      String tail(double now, double prior) => ProgressStatement.of(
+        score(
+          engine.IdentityLane.aerobic,
+          vdot: now,
+          prior: prior,
+          source: 'Cooper test',
+        ),
+        sex: ProfileSex.male,
+        age: 44,
+        change: ScoreNorms.change(
+          score(
+            engine.IdentityLane.aerobic,
+            vdot: now,
+            prior: prior,
+            source: 'Cooper test',
+          ),
+          sex: ProfileSex.male,
+          age: 44,
+        ),
+      )!.tail;
+      expect(tail(low, high), 'slipped.');
+      expect(tail(high, low), 'is building.');
+      expect(tail(low, low), 'is holding steady.');
+    });
+
+    test('a headline that goes DOWN never says "is building"', () {
+      final s = {
+        engine.IdentityLane.aerobic: score(
+          engine.IdentityLane.aerobic,
+          vdot: vdotIn(engine.IdentityLane.aerobic, 5, 25, 'Cooper test'),
+          prior: vdotIn(engine.IdentityLane.aerobic, 30, 49, 'Cooper test'),
+          source: 'Cooper test',
+        ),
+      };
+      final h = headline(s);
+      expect(h.kind, ProgressKind.down);
+      expect(h.title, startsWith('AEROBIC DOWN '));
+      expect(h.statement!.tail, 'slipped.');
+    });
+
     test('no profile, no statement', () {
       final h = ProgressHeadline.of(
         all(),

@@ -9,6 +9,7 @@ import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
+import '../widgets/choice_chips.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/recent_bars_chart.dart';
 import 'cooper_result_screen.dart' show cooperTests, primeOf, primeRangeLineOf;
@@ -84,7 +85,7 @@ class _TrendScreenState extends State<TrendScreen> {
               ),
               children: [
                 const SizedBox(height: Space.x8),
-                _Segmented(
+                ChoiceChips(
                   labels: const ['Intervals', 'Laps', 'Free', 'Test'],
                   selected: const [
                     RecordMode.intervals,
@@ -103,7 +104,7 @@ class _TrendScreenState extends State<TrendScreen> {
                 ),
                 if (keys.length > 1) ...[
                   const SizedBox(height: Space.x12),
-                  _Segmented(
+                  ChoiceChips(
                     labels: keys.values.toList(),
                     keys: [for (final k in keys.keys) ValueKey('trend-key-$k')],
                     selected: keys.keys.toList().indexOf(key!),
@@ -287,15 +288,16 @@ class _FourByFourTrend extends StatelessWidget {
           style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
         ),
         const SizedBox(height: Space.x8),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.end,
+          spacing: Space.x16,
+          runSpacing: Space.x4,
           children: [
             Text(
               Fmt.paceUnit(current, units),
               key: const ValueKey('trend-hero'),
               style: RunSoloType.display64.copyWith(color: t.inkPrimary),
             ),
-            const SizedBox(width: Space.x16),
             if (delta != null)
               Padding(
                 // Sit the glyph on the number's x-height, not the cap line.
@@ -311,7 +313,10 @@ class _FourByFourTrend extends StatelessWidget {
                     ),
                     const SizedBox(width: Space.x4),
                     Text(
-                      _deltaText(delta, units),
+                      delta.abs() <= floor
+                          ? 'no real change'
+                          : '${_deltaText(delta, units)} ${delta < 0 ? 'faster' : 'slower'}',
+                      key: const ValueKey('trend-delta'),
                       style: RunSoloType.title28.copyWith(color: deltaColor),
                     ),
                   ],
@@ -698,62 +703,4 @@ class _LanePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_LanePainter old) => old.color != color;
-}
-
-/// Normal segmented control: one neutral outline, the selected segment
-/// filled Bone. Scrolls sideways at large text sizes rather than overflow.
-class _Segmented extends StatelessWidget {
-  const _Segmented({
-    required this.labels,
-    required this.selected,
-    required this.onSelect,
-    this.keys,
-  });
-  final List<String> labels;
-  final List<Key>? keys;
-  final int selected;
-  final ValueChanged<int> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(Radii.chip),
-          border: Border.all(color: t.inkMuted),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var i = 0; i < labels.length; i++)
-              Semantics(
-                button: true,
-                selected: i == selected,
-                child: GestureDetector(
-                  key: keys?[i],
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => onSelect(i),
-                  child: AnimatedContainer(
-                    duration: MotionDurations.quick,
-                    height: 48,
-                    padding: const EdgeInsets.symmetric(horizontal: Space.x16),
-                    alignment: Alignment.center,
-                    color: i == selected ? t.inkPrimary : null,
-                    child: Text(
-                      labels[i],
-                      style: RunSoloType.label13.copyWith(
-                        color: i == selected ? t.bgBase : t.inkSecondary,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 }

@@ -25,7 +25,7 @@ class SplitBar {
   final double? paceSecPerKm;
 
   /// The HR zone (1-5) the bar mostly ran in: its fill. Null without a
-  /// heart rate (the bar is grey).
+  /// heart rate (the bar takes [SplitsBars.noHrColor], never grey).
   final int? zone;
   final String? readout;
   final String? semantics;
@@ -33,8 +33,8 @@ class SplitBar {
 
 /// Run detail's splits chart, in the leaderboard bar style
 /// (`RecentBarsChart`): one vertical bar per km, mile or lap, taller =
-/// faster, filled by the HR zone the split mostly ran in (grey without a
-/// heart rate); the fastest is outlined and bold, never a different fill. Every bar carries its pace
+/// faster, filled by the HR zone the split mostly ran in (the run-type colour
+/// without a heart rate); the fastest is outlined and bold, never a different fill. Every bar carries its pace
 /// above it (every second bar once they get too tight for it). Tap or drag
 /// across the bars to pick one: it is outlined and its readout shows above
 /// the chart. The axis note says which way is better and where the baseline
@@ -49,6 +49,7 @@ class SplitsBars extends StatefulWidget {
     required this.units,
     required this.title,
     this.truePace = false,
+    this.noHrColor,
   });
 
   final List<SplitBar> bars;
@@ -57,6 +58,10 @@ class SplitsBars extends StatefulWidget {
   /// "KM SPLITS", "LAPS": the small caps line above the chart.
   final String title;
   final bool truePace;
+
+  /// Bar colour for splits with no heart-rate zone: the run-type colour (Free =
+  /// ice), never grey. Falls back to the muted ink when the caller has none.
+  final Color Function(RunSoloTokens)? noHrColor;
 
   static const double kHeight = 160;
 
@@ -152,6 +157,7 @@ class _SplitsBarsState extends State<SplitsBars> {
                   top: top,
                   tokens: t,
                   brightness: Theme.of(context).brightness,
+                  noHrColor: widget.noHrColor?.call(t),
                 ),
               ),
             ),
@@ -185,6 +191,7 @@ class _SplitsPainter extends CustomPainter {
     required this.top,
     required this.tokens,
     required this.brightness,
+    this.noHrColor,
   });
   final List<SplitBar> bars;
   final Units units;
@@ -194,6 +201,7 @@ class _SplitsPainter extends CustomPainter {
   final double top;
   final RunSoloTokens tokens;
   final Brightness brightness;
+  final Color? noHrColor;
 
   static const _topPad = 20.0, _bottomPad = 22.0;
 
@@ -261,7 +269,7 @@ class _SplitsPainter extends CustomPainter {
         ),
         Paint()
           ..color = bars[i].zone == null
-              ? tokens.inkMuted
+              ? (noHrColor ?? tokens.inkMuted)
               : HrZones.distribution(bars[i].zone!, brightness),
       );
       if (best.contains(i)) {

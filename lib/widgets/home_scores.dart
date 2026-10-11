@@ -275,7 +275,6 @@ class _EarnedScore extends StatelessWidget {
       sex: profileSex,
       age: age,
     );
-    final label = percentile?.toString() ?? '--';
     // A card that names what to add opens Settings, not Progress.
     final needsProfile = !sexKnown || (lab && age == null);
     // Only a card that needs something shows its own line; the norms are named
@@ -346,29 +345,32 @@ class _EarnedScore extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(height: Space.x4),
-                    Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: label,
-                            style: RunSoloType.heading19.copyWith(
-                              fontSize: 30,
-                              color: t.inkPrimary,
+                    // No percentile yet (profile missing): no empty "--" figure,
+                    // just the prompt below.
+                    if (percentile != null) ...[
+                      const SizedBox(height: Space.x4),
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '$percentile',
+                              style: RunSoloType.heading19.copyWith(
+                                fontSize: 30,
+                                color: t.inkPrimary,
+                              ),
                             ),
-                          ),
-                          // "60th percentile": the ordinal sits tight on the number.
-                          TextSpan(
-                            text: percentile == null
-                                ? ' percentile'
-                                : '${ScoreNorms.ordinalSuffix(percentile)} percentile',
-                            style: RunSoloType.label13.copyWith(
-                              color: t.inkSecondary,
+                            // "60th percentile": the ordinal sits tight on the number.
+                            TextSpan(
+                              text:
+                                  '${ScoreNorms.ordinalSuffix(percentile)} percentile',
+                              style: RunSoloType.label13.copyWith(
+                                color: t.inkSecondary,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
+                    ],
                     if (trend.length >= 2) ...[
                       const SizedBox(height: Space.x8),
                       HomeScoreSpark(

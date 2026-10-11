@@ -96,7 +96,7 @@ class ScoreLaneData {
 
   final String label;
 
-  /// "62" (the percentile) or "--" for a lane not earned yet.
+  /// "62" (the percentile), or the 0 to 99 score without a profile.
   final String value;
 
   /// "th percentile" / "percentile"; empty without a value.
@@ -130,8 +130,8 @@ RunCardData runCardData(RunSummary run, Units units) => RunCardData(
   verdictHeadline: run.isFourByFour ? run.verdict?.headline : null,
 );
 
-/// The four lanes as Home shows them (same norms, same rounding); a lane
-/// with no score yet reads "--".
+/// The earned lanes as Home shows them (same norms, same rounding); a lane
+/// with no score yet is left off rather than printed as "--".
 ScoresCardData scoresCardData(
   Map<engine.IdentityLane, engine.IdentityScore> scores, {
   required ProfileSex sex,
@@ -139,39 +139,33 @@ ScoresCardData scoresCardData(
 }) => ScoresCardData(
   lanes: [
     for (final lane in engine.IdentityLane.values)
-      () {
-        final s = scores[lane];
-        if (s == null) {
+      if (scores[lane] != null)
+        () {
+          final s = scores[lane]!;
+          final p = ScoreNorms.percentile(
+            lane,
+            s.vdot,
+            s.source,
+            sex: sex,
+            age: age,
+          );
+          final change = ScoreNorms.change(s, sex: sex, age: age);
           return ScoreLaneData(
             label: lane.name.toUpperCase(),
-            value: '--',
-            unit: '',
+            // Without a profile there is no percentile: the app's own 0 to 99
+            // score stands in, labelled as a score.
+            value: '${p ?? s.score}',
+            unit: p == null
+                ? 'score'
+                : '${ScoreNorms.ordinalSuffix(p)} percentile',
+            change: switch (change) {
+              null => null,
+              > 0 => 'Up $change in 6 weeks',
+              < 0 => 'Down ${-change} in 6 weeks',
+              _ => 'No change in 6 weeks',
+            },
           );
-        }
-        final p = ScoreNorms.percentile(
-          lane,
-          s.vdot,
-          s.source,
-          sex: sex,
-          age: age,
-        );
-        final change = ScoreNorms.change(s, sex: sex, age: age);
-        return ScoreLaneData(
-          label: lane.name.toUpperCase(),
-          // Without a profile there is no percentile: the app's own 0 to 99
-          // score stands in, labelled as a score.
-          value: '${p ?? s.score}',
-          unit: p == null
-              ? 'score'
-              : '${ScoreNorms.ordinalSuffix(p)} percentile',
-          change: switch (change) {
-            null => null,
-            > 0 => 'Up $change in 6 weeks',
-            < 0 => 'Down ${-change} in 6 weeks',
-            _ => 'No change in 6 weeks',
-          },
-        );
-      }(),
+        }(),
   ],
 );
 
