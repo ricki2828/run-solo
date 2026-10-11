@@ -14,7 +14,7 @@ from companion.backup import backup
 from companion.config import Settings
 from companion.logs import redact
 from companion.timeutil import iso, now_utc
-from conftest import OWNER, TG_TOKEN, auth, enrol, post_tg, run_payload, tg_callback, tg_update
+from conftest import OWNER, TG_TOKEN, auth, enrol, post_tg, run_payload, tg_callback, tg_update, weather_on
 
 E164 = re.compile(r"\+?\d{9,15}")
 
@@ -22,6 +22,7 @@ E164 = re.compile(r"\+?\d{9,15}")
 def populate(client, fakes):
     """Touch every table that can hold user data."""
     t = enrol(client)
+    weather_on(client, t)
     client.post("/v1/runs", json=run_payload("r0", minutes_ago=30), headers=auth(t))   # easy: gets the weekly question
     client.post("/v1/runs", json=run_payload("r1", type="tempo", area_lat=1.35, area_lon=103.82), headers=auth(t))    # hard: gets a suggestion
     client.svc.run_outbox(now_utc() + timedelta(seconds=1))
@@ -195,6 +196,7 @@ def test_export_covers_every_table_with_a_runner_id(tmp_path, fakes):
     app = create_app(s, httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=False)
     with TestClient(app) as c:
         t = enrol(c)
+        weather_on(c, t)
         c.post("/v1/runs", json=run_payload("r0", minutes_ago=30, area_lat=1.3521, area_lon=103.8198), headers=auth(t))
         c.app.state.svc.run_outbox(now_utc() + timedelta(seconds=1))
         me = c.get("/v1/me", headers=auth(t)).json()
@@ -210,6 +212,7 @@ def test_export_covers_every_table_with_a_runner_id(tmp_path, fakes):
         assert any(r["kind"] == "card" for r in me["conversation_log"])
         assert me["messages_sent_30d"] and "situation" in me["messages_sent_30d"][0]
         assert any("Open-Meteo" in g for g in me["goes_to"])
+        assert me["profile"]["weather_in_suggestions"] is True
 
 
 def test_open_meteo_listed_only_when_weather_is_on(tmp_path, fakes):

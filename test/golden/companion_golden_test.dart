@@ -76,6 +76,24 @@ void main() {
     await check(tester, 'companion_knows_360x640');
   });
 
+  testWidgets('companion weather sheet 360x640', (tester) async {
+    await tester.runAsync(() => enrolNow(ctl));
+    await pumpApp(
+      tester,
+      fakeServices(companion: ctl),
+      home: const CompanionScreen(),
+    );
+    tester.view.physicalSize = const Size(1080, 640 * 3);
+    await pumpTimes(tester, 8);
+    await scrollTo(
+      tester,
+      find.byKey(const ValueKey('companion-weather-switch')),
+    );
+    await tester.tap(find.byKey(const ValueKey('companion-weather-switch')));
+    await tester.pumpAndSettle();
+    await check(tester, 'companion_weather_sheet_360x640');
+  });
+
   testWidgets('companion feel row 360x640', (tester) async {
     await pumpApp(
       tester,

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
@@ -60,6 +61,7 @@ class FakeCompanionHttp implements CompanionHttp {
       ),
       ('POST', '/v1/runs') => CompanionReply(202, '{"status":"accepted"}'),
       ('PATCH', _) => CompanionReply(200, '{}'),
+      ('PUT', '/v1/me/settings') => CompanionReply(200, '{"status":"ok"}'),
       ('DELETE', '/v1/me') => CompanionReply(200, '{}'),
       ('GET', '/v1/me') => CompanionReply(200, '{}'),
       _ => const CompanionReply(404),
@@ -380,6 +382,140 @@ void main() {
       expect(companionZoneId(null, 0), 'Etc/UTC');
       expect(companionZoneId(null, 345), isNull);
       expect(companionZoneId(null, null), isNull);
+    });
+  });
+
+  group('weather switch', () {
+    late SendCoordinator coordinator;
+    var clock = DateTime.utc(2026, 9, 24, 6, 40);
+
+    Future<void> enrolAndWire() async {
+      await enrolNow(ctl);
+      // History rows (start point) come from the index, so a real file store.
+      final dir = Directory.systemTemp.createTempSync('runsolo-cweather-');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final files = FileRunStore(Directory('${dir.path}/runs'))
+        ..deriveBatch = FileRunStore.deriveInIsolate;
+      await files.importBundles([engine.RunBundle(run: run)]);
+      await files.list();
+      await files.derivedIdle;
+      final s = AppSettings(
+        autoSend: const {CompanionTarget.targetId},
+        autoSendSince: {CompanionTarget.targetId: DateTime.utc(2026, 1, 1)},
+      );
+      coordinator = SendCoordinator(
+        history: files,
+        settings: SettingsController(MemorySettingsStore(s), s),
+        targets: [CompanionTarget(controller: ctl, now: () => clock)],
+        now: () => clock,
+      );
+    }
+
+    Future<Map<String, Object?>> sentSummary() async {
+      await coordinator.sendAuto(run.id);
+      return http.bodyOf(http.to('POST', '/v1/runs').last);
+    }
+
+    setUp(() => clock = run.end.add(const Duration(minutes: 5)));
+
+    test('is off after enrolling, and the summary carries no area', () async {
+      await enrolAndWire();
+      expect(ctl.weatherOn, isFalse);
+      final j = await sentSummary();
+      expect(j.containsKey('area_lat'), isFalse);
+      expect(j.containsKey('area_lon'), isFalse);
+      expect(http.to('PUT', '/v1/me/settings'), isEmpty);
+    });
+
+    test('on: the server is told first, then the area goes, rounded', () async {
+      await enrolAndWire();
+      expect(await ctl.setWeather(true), isTrue);
+      expect(ctl.weatherOn, isTrue);
+      final put = http.to('PUT', '/v1/me/settings').single;
+      expect(http.bodyOf(put), {'weather': true});
+      expect(put.headers['Authorization'], 'Bearer tok-123');
+      final j = await sentSummary();
+      // The fixture starts at -33.9, 151.2: rounded on the phone to 0.1.
+      expect(j['area_lat'], -33.9);
+      expect(j['area_lon'], 151.2);
+    });
+
+    test('a failed PUT leaves it off and sends no area', () async {
+      await enrolAndWire();
+      http.handler = (r) =>
+          r.method == 'PUT' ? const CompanionReply(503) : http.defaultReply(r);
+      expect(await ctl.setWeather(true), isFalse);
+      expect(ctl.weatherOn, isFalse);
+      expect(ctl.problem, isNotNull);
+      expect((await sentSummary()).containsKey('area_lat'), isFalse);
+    });
+
+    test('offline: turning on is refused, still off', () async {
+      await enrolAndWire();
+      http.offline = true;
+      expect(await ctl.setWeather(true), isFalse);
+      expect(ctl.weatherOn, isFalse);
+      expect(await secrets.read(CompanionController.weatherName), isNull);
+    });
+
+    test('off: stops at once and tells the server to forget', () async {
+      await enrolAndWire();
+      await ctl.setWeather(true);
+      expect(await ctl.setWeather(false), isTrue);
+      expect(ctl.weatherOn, isFalse);
+      expect(http.bodyOf(http.to('PUT', '/v1/me/settings').last), {
+        'weather': false,
+      });
+      expect(await secrets.read(CompanionController.weatherForgetName), isNull);
+    });
+
+    test('off while offline: phone stops, the forget is retried', () async {
+      await enrolAndWire();
+      await ctl.setWeather(true);
+      http.offline = true;
+      expect(await ctl.setWeather(false), isTrue);
+      expect(ctl.weatherOn, isFalse);
+      expect(await secrets.read(CompanionController.weatherForgetName), '1');
+      expect(ctl.problem, contains('told when you are back online'));
+      // Back online: the next open lands it.
+      http.offline = false;
+      final next = controller();
+      await next.load();
+      expect(http.bodyOf(http.to('PUT', '/v1/me/settings').last), {
+        'weather': false,
+      });
+      expect(await secrets.read(CompanionController.weatherForgetName), isNull);
+    });
+
+    test('the choice survives a restart', () async {
+      await enrolAndWire();
+      await ctl.setWeather(true);
+      final next = controller();
+      await next.load();
+      expect(next.weatherOn, isTrue);
+    });
+
+    test('Delete everything also clears the switch', () async {
+      await enrolAndWire();
+      await ctl.setWeather(true);
+      expect(await ctl.deleteEverything(), isTrue);
+      expect(ctl.weatherOn, isFalse);
+      expect(await secrets.read(CompanionController.weatherName), isNull);
+      expect(await secrets.read(CompanionController.weatherForgetName), isNull);
+    });
+
+    test('a 401 on the PUT means the key is dead: wipe it', () async {
+      await enrolAndWire();
+      http.handler = (_) => const CompanionReply(401);
+      expect(await ctl.setWeather(true), isFalse);
+      expect(ctl.phase, CompanionPhase.off);
+    });
+
+    test('areaCell rounds to 0.1 and never returns negative zero', () {
+      expect(areaCell(37.97123), 38.0);
+      expect(areaCell(-36.8485), -36.8);
+      expect(areaCell(-0.04), 0.0);
+      expect(areaCell(-0.04).isNegative, isFalse);
     });
   });
 

@@ -149,6 +149,156 @@ void main() {
     expect(find.text('RUN COMPANION'), findsOneWidget);
   });
 
+  group('weather in suggestions', () {
+    Future<void> openKnows(WidgetTester tester) async {
+      await tester.runAsync(() => enrolNow(ctl));
+      await pumpApp(
+        tester,
+        fakeServices(companion: ctl, transfer: transfer),
+        home: const CompanionScreen(),
+      );
+      await pumpTimes(tester, 6);
+      await scrollTo(
+        tester,
+        find.byKey(const ValueKey('companion-weather-switch')),
+      );
+    }
+
+    Switch sw(WidgetTester tester) => tester.widget<Switch>(
+      find.byKey(const ValueKey('companion-weather-switch')),
+    );
+
+    /// The sheet scrolls on a small screen: bring the button into view first.
+    Future<void> tapSheet(WidgetTester tester, String key) async {
+      final f = find.byKey(ValueKey(key));
+      await tester.ensureVisible(f);
+      await tester.tap(f);
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> settle(WidgetTester tester, bool Function() done) async {
+      await tester.runAsync(() async {
+        for (var i = 0; i < 50 && !done(); i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      await pumpTimes(tester, 4);
+    }
+
+    testWidgets('starts off and sends nothing until it is turned on', (
+      tester,
+    ) async {
+      await openKnows(tester);
+      expect(sw(tester).value, isFalse);
+      expect(find.text('Weather in suggestions'), findsOneWidget);
+      expect(find.text(kCompanionWeatherBlurb), findsOneWidget);
+      expect(http.to('PUT', '/v1/me/settings'), isEmpty);
+      expect(ctl.weatherOn, isFalse);
+    });
+
+    testWidgets(
+      'turning it on shows the disclosure first; Not now keeps it off',
+      (tester) async {
+        await openKnows(tester);
+        await tester.tap(
+          find.byKey(const ValueKey('companion-weather-switch')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('companion-weather-sheet')),
+          findsOneWidget,
+        );
+        expect(find.text(kCompanionWeatherSheetTitle), findsOneWidget);
+        for (final p in kCompanionWeatherSheet) {
+          expect(find.text(p), findsOneWidget);
+        }
+        // The four things the sheet has to say.
+        final all = kCompanionWeatherSheet.join(' ');
+        expect(all, contains('11 km'));
+        expect(all, contains('Open-Meteo'));
+        expect(all, contains('Why:'));
+        expect(all, contains('any time'));
+        final on = find.byKey(const ValueKey('companion-weather-on'));
+        final off = find.byKey(const ValueKey('companion-weather-not-now'));
+        await tester.ensureVisible(on);
+        expect(tester.getSize(on), tester.getSize(off));
+        await tester.tap(off);
+        await pumpTimes(tester, 6);
+        expect(sw(tester).value, isFalse);
+        expect(http.to('PUT', '/v1/me/settings'), isEmpty);
+        expect(ctl.weatherOn, isFalse);
+      },
+    );
+
+    testWidgets('Turn on weather tells the server, then the switch reads on', (
+      tester,
+    ) async {
+      await openKnows(tester);
+      await tester.tap(find.byKey(const ValueKey('companion-weather-switch')));
+      await pumpTimes(tester, 6);
+      await tester.pump(const Duration(seconds: 1)); // the sheet slides in
+      await tapSheet(tester, 'companion-weather-on');
+      await settle(tester, () => ctl.weatherOn);
+      expect(ctl.weatherOn, isTrue);
+      expect(sw(tester).value, isTrue);
+      expect(http.bodyOf(http.to('PUT', '/v1/me/settings').single), {
+        'weather': true,
+      });
+    });
+
+    testWidgets(
+      'turning it off needs no sheet and tells the server to forget',
+      (tester) async {
+        await tester.runAsync(() async {
+          await enrolNow(ctl);
+          await ctl.setWeather(true);
+        });
+        await pumpApp(
+          tester,
+          fakeServices(companion: ctl, transfer: transfer),
+          home: const CompanionScreen(),
+        );
+        await pumpTimes(tester, 6);
+        await scrollTo(
+          tester,
+          find.byKey(const ValueKey('companion-weather-switch')),
+        );
+        expect(sw(tester).value, isTrue);
+        await tester.runAsync(() async {
+          await tester.tap(
+            find.byKey(const ValueKey('companion-weather-switch')),
+          );
+        });
+        await settle(tester, () => !ctl.weatherOn);
+        expect(
+          find.byKey(const ValueKey('companion-weather-sheet')),
+          findsNothing,
+        );
+        expect(sw(tester).value, isFalse);
+        expect(http.bodyOf(http.to('PUT', '/v1/me/settings').last), {
+          'weather': false,
+        });
+      },
+    );
+
+    testWidgets('a failed turn-on leaves it off and says why', (tester) async {
+      await openKnows(tester);
+      http.handler = (r) =>
+          r.method == 'PUT' ? const CompanionReply(503) : http.defaultReply(r);
+      await tester.tap(find.byKey(const ValueKey('companion-weather-switch')));
+      await pumpTimes(tester, 6);
+      await tester.pump(const Duration(seconds: 1)); // the sheet slides in
+      await tapSheet(tester, 'companion-weather-on');
+      await settle(tester, () => ctl.problem != null);
+      expect(sw(tester).value, isFalse);
+      expect(ctl.weatherOn, isFalse);
+      expect(ctl.problem, contains('Weather is still off'));
+      await tester.drag(find.byType(ListView), const Offset(0, 2000));
+      await pumpTimes(tester, 4);
+      expect(find.byKey(const ValueKey('companion-problem')), findsOneWidget);
+    });
+  });
+
   testWidgets('Settings shows the Companion row only when the build has it', (
     tester,
   ) async {

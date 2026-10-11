@@ -43,6 +43,10 @@ QUESTION_HEADS = ("Quick question", "Help me out", "For your plan", "Tell me thi
 START_RE = re.compile(r"^\s*/?start\s+([A-Za-z0-9_-]{8,64})\s*$", re.I)
 RETENTION_INACTIVE_DAYS = 183
 RETENTION_LOG_DAYS = 30
+# The stored weather area goes 30 days after the run it came from (its own age, so indoor runs cannot keep a stale
+# cell alive). Lookups ignore an area older than AREA_USABLE_DAYS.
+RETENTION_AREA_DAYS = 30
+AREA_USABLE_DAYS = 7  # a forecast is never asked for a place older than this
 
 NOT_OPEN = "Run Supreme's companion isn't open yet. We'll let you know when it is."
 UNKNOWN = ("I only send run recaps. To connect, open Run Supreme, go to Settings > Companion and tap "
@@ -98,7 +102,7 @@ class RunIn(BaseModel):
     plan_target_m: int | None = Field(default=None, ge=0, le=300000)
     plan_weeks_to_race: int | None = Field(default=None, ge=0, le=104)
     feel: str | None = Field(default=None, pattern=r"^(easy|right|hard)$")
-    area_lat: float | None = Field(default=None, ge=-90, le=90)  # approximate area for weather; rounded on arrival
+    area_lat: float | None = Field(default=None, ge=-90, le=90)  # approximate area for weather; the phone rounds to 0.1 degree and the server rounds again
     area_lon: float | None = Field(default=None, ge=-180, le=180)
 
     @field_validator("distance_m", "climb_m", mode="before")
@@ -236,6 +240,10 @@ class Service:
                 c.execute("DELETE FROM devices WHERE user_id=?", (uid,))  # re-enrol rotates, but only now
                 c.execute("INSERT INTO devices (token_hash, user_id, created_at) VALUES (?,?,?)",
                           (self.token_hash(token), uid, iso(now)))
+                # A fresh enrolment starts with weather off on the phone, so the server must match: forget the
+                # switch and any stored area (reinstall, new phone, 401 wipe of the same chat).
+                c.execute("UPDATE users SET weather_optin=0 WHERE id=?", (uid,))
+                c.execute("DELETE FROM convo_area WHERE user_id=?", (uid,))
                 c.execute("UPDATE users SET paused=0, consent_version=?, consent_at=?, consent_msg_id=?, chat_name=? WHERE id=?",
                           (self.s.consent_version, iso(now), e["consent_msg_id"], e["chat_name"], uid))
                 chat_name = e["chat_name"]
@@ -416,13 +424,14 @@ class Service:
             areas = [dict(r) for r in c.execute("SELECT run_id, lat, lon FROM convo_area WHERE user_id=? ORDER BY rowid", (uid,))]
             convo = [dict(r) for r in c.execute("SELECT kind, key, ts FROM convo_log WHERE user_id=? ORDER BY id", (uid,))]
             memory = self._memory_get(c, uid, now)
+            optin = bool(u["weather_optin"])
             outcomes = [dict(r) for r in c.execute("SELECT kind, outcome, ts FROM outcomes WHERE user_id=?", (uid,))]
         ref = u["chat_ref"]
         return {
             "profile": {
                 "channel": u["channel"], "chat_name": u["chat_name"], "chat_ref_hint": "…" + ref[-3:], "created_at": u["created_at"],
                 "consent_version": u["consent_version"], "consent_at": u["consent_at"], "paused": bool(u["paused"]),
-                "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
+                "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },
             "runs_received": runs, "memory": memory, "suggestion_outcomes": outcomes,
             "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo,
@@ -436,8 +445,13 @@ class Service:
         db.hard_delete_user(self.s.db_path, uid)
         log.info("deleted user=%s via api", uid)
 
-    def set_settings(self, uid: str, quiet_start: int | None, quiet_end: int | None, zone_id: str | None) -> None:
+    def set_settings(self, uid: str, quiet_start: int | None, quiet_end: int | None, zone_id: str | None,
+                     weather: bool | None = None) -> None:
         with db.tx(self.s.db_path) as c:
+            if weather is not None:  # the app's "Weather in suggestions" switch; off forgets every stored area
+                c.execute("UPDATE users SET weather_optin=? WHERE id=?", (int(weather), uid))
+                if not weather:
+                    c.execute("DELETE FROM convo_area WHERE user_id=?", (uid,))
             if quiet_start is not None and quiet_end is not None:
                 c.execute("UPDATE users SET quiet_start=?, quiet_end=? WHERE id=?", (quiet_start, quiet_end, uid))
             if zone_id and valid_zone(zone_id):
@@ -503,10 +517,9 @@ class Service:
                  json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality, run.route_id,
                  run.load_state, run.pb, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, run.feel,
                  iso(now), int(stale)))
-            if self.s.weather_enabled and run.area_lat is not None and run.area_lon is not None:
-                lat, lon = cell(run.area_lat, run.area_lon)
-                c.execute("INSERT OR IGNORE INTO convo_area (user_id, run_id, lat, lon) VALUES (?,?,?,?)",
-                          (uid, run.run_id, lat, lon))
+            if self.s.weather_enabled and run.area_lat is not None and run.area_lon is not None \
+                    and c.execute("SELECT weather_optin FROM users WHERE id=?", (uid,)).fetchone()["weather_optin"]:
+                self._keep_latest_area(c, uid, run.run_id, run.start_utc, cell(run.area_lat, run.area_lon))
             urow = c.execute("SELECT last_run_utc, tz_set_at FROM users WHERE id=?", (uid,)).fetchone()
             last = urow["last_run_utc"]
             # the newest run decides the zone, unless the app PUT a zone after that run started (an offline queue
@@ -522,6 +535,16 @@ class Service:
                 c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
                           (uid, "run_card", iso(now), f"card:{uid}:{run.run_id}", run.run_id))
         return {"status": "stored" if stale else "accepted"}
+
+    @staticmethod
+    def _keep_latest_area(c, uid: str, run_id: str, start: datetime, at: tuple[float, float]) -> None:
+        """One area per user: the one from their newest run. An older run arriving late (offline queue) is dropped."""
+        held = c.execute("SELECT r.start_utc FROM convo_area a JOIN runs r ON r.user_id=a.user_id AND r.run_id=a.run_id "
+                         "WHERE a.user_id=? ORDER BY r.start_utc DESC LIMIT 1", (uid,)).fetchone()
+        if held and held["start_utc"] > iso(start):
+            return
+        c.execute("DELETE FROM convo_area WHERE user_id=?", (uid,))
+        c.execute("INSERT INTO convo_area (user_id, run_id, lat, lon) VALUES (?,?,?,?)", (uid, run_id, at[0], at[1]))
 
     def set_feel(self, uid: str, run_id: str, feel: str) -> None:
         with db.tx(self.s.db_path) as c:
@@ -616,10 +639,16 @@ class Service:
         return u
 
     @staticmethod
-    def _area(c, uid: str, run_id: str | None = None) -> tuple[float | None, float | None]:
-        r = c.execute("SELECT lat, lon FROM convo_area WHERE user_id=? AND run_id=?", (uid, run_id)).fetchone() \
-            if run_id else c.execute("SELECT lat, lon FROM convo_area WHERE user_id=? ORDER BY rowid DESC LIMIT 1",
-                                     (uid,)).fetchone()
+    def _area(c, uid: str, run_id: str | None = None, now: datetime | None = None) -> tuple[float | None, float | None]:
+        """The stored area, only while the runner is opted in. Without a run id: the latest, and only if it came from
+        a run in the last AREA_USABLE_DAYS."""
+        base = ("SELECT a.lat, a.lon FROM convo_area a JOIN users u ON u.id=a.user_id "
+                "JOIN runs r ON r.user_id=a.user_id AND r.run_id=a.run_id WHERE a.user_id=? AND u.weather_optin=1")
+        if run_id:
+            r = c.execute(base + " AND a.run_id=?", (uid, run_id)).fetchone()
+        else:
+            cut = iso((now or now_utc()) - timedelta(days=AREA_USABLE_DAYS))
+            r = c.execute(base + " AND r.start_utc >= ? ORDER BY r.start_utc DESC LIMIT 1", (uid, cut)).fetchone()
         return (r["lat"], r["lon"]) if r else (None, None)
 
     @staticmethod
@@ -758,7 +787,7 @@ class Service:
         if hist:
             tomorrow = to_local(now, zone_id).date() + timedelta(days=1)
             with db.ro(self.s.db_path) as c:
-                lat, lon = self._area(c, uid)
+                lat, lon = self._area(c, uid, None, now)
                 last_sit = self._card_situation(c, uid, hist[0]["run_id"])
             fc = self.weather.tomorrow(lat, lon, hist[0]["zone_id"] or zone_id, tomorrow)
         else:
@@ -1089,6 +1118,10 @@ class Service:
                       "AND updated_at < ?)", (log_cut,))
             c.execute("DELETE FROM replay_state WHERE status = 'done' AND updated_at < ?", (log_cut,))
             c.execute("DELETE FROM llm_calls WHERE ts < ?", (iso(now - timedelta(days=400)),))
+            # the area's own age: 30 days after the run it came from (or its run is gone), or the switch is off
+            c.execute("DELETE FROM convo_area WHERE NOT EXISTS (SELECT 1 FROM runs r WHERE r.user_id=convo_area.user_id "
+                      "AND r.run_id=convo_area.run_id AND r.start_utc >= ?)" + held, (iso(now - timedelta(days=RETENTION_AREA_DAYS)),))
+            c.execute("DELETE FROM convo_area WHERE user_id IN (SELECT id FROM users WHERE weather_optin=0)" + held)
             c.execute("DELETE FROM memory WHERE key='niggle_area' AND updated_at < ?" + held,
                       (iso(now - timedelta(days=NIGGLE_TTL_DAYS)),))
             idle = [r["id"] for r in c.execute(

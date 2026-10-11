@@ -181,6 +181,13 @@ def auth(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+def weather_on(client, token: str, on: bool = True):
+    """The app's "Weather in suggestions" switch (PUT /v1/me/settings {weather})."""
+    r = client.put("/v1/me/settings", json={"weather": on}, headers=auth(token))
+    assert r.status_code == 200, r.text
+    return r
+
+
 def run_payload(run_id="r1", minutes_ago=20, **over):
     start = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago + 40)
     p = {"run_id": run_id, "type": "easy", "start_utc": start.isoformat(), "utc_offset_min": 780,

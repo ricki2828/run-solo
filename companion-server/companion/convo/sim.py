@@ -257,7 +257,7 @@ class Month:
         now = datetime(2025, 9, 1, tzinfo=UTC)
         with db.tx(s.db_path) as c:
             c.execute("INSERT INTO users (id, channel, chat_ref, created_at, consent_version, consent_at, zone_id, "
-                      "utc_offset_min, last_inbound_at) VALUES ('u_sim','telegram',?,?,?,?,?,?,?)",
+                      "utc_offset_min, last_inbound_at, weather_optin) VALUES ('u_sim','telegram',?,?,?,?,?,?,?,1)",
                       (CHAT, iso(now), "1", iso(now), SG, 480, iso(now)))
         self.uid = "u_sim"
         self.entries: list[Entry] = []
