@@ -63,6 +63,11 @@ abstract final class RunSoloType {
   static final TextStyle body17 = _ui(17, FontWeight.w400);
   static final TextStyle body15 = _ui(15, FontWeight.w400);
   static final TextStyle label13 = _ui(13, FontWeight.w500);
+
+  /// The smallest text on the record screen (S1, design review 11-Oct): a
+  /// caption or note is never under 16 sp, however short the phone.
+  static final TextStyle runCaption = _ui(16, FontWeight.w600);
+  static final TextStyle runNote = _ui(16, FontWeight.w400);
   static final TextStyle micro11 = TextStyle(
     fontFamily: ui,
     fontSize: 11,

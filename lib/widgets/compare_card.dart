@@ -91,7 +91,7 @@ class CompareCard extends StatelessWidget {
                       card.eyebrow,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: RunSoloType.label13.copyWith(color: ink),
+                      style: RunSoloType.runCaption.copyWith(color: ink),
                     ),
                   ),
                 ],

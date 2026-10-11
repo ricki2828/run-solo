@@ -203,7 +203,9 @@ void main() {
     expect(find.text('LAP 3'), findsOneWidget);
   });
 
-  testWidgets('GPS lost: banner, pace "--", bar says dropped', (tester) async {
+  testWidgets('GPS lost: banner, pace "--", one dropped message, the banner', (
+    tester,
+  ) async {
     final (fake, _) = await openRecording(tester, mode: RecordMode.laps);
     fake.advance(const Duration(seconds: 5));
     await settle(tester);
@@ -213,10 +215,10 @@ void main() {
     fake.gpsLost = true;
     fake.advance(const Duration(seconds: 1));
     await settle(tester);
-    // Free run, outside a rep: neutral copy (banner + bar both say it).
-    expect(find.text('GPS dropped'), findsNWidgets(2));
+    // Free run, outside a rep: neutral copy, in the banner only (S7).
+    expect(find.text('GPS dropped'), findsOneWidget);
     expect(find.text('GPS dropped, this rep is flagged'), findsNothing);
-    expect(find.text('--'), findsOneWidget);
+    expect(find.text('--', findRichText: true), findsOneWidget);
 
     fake.gpsLost = false;
     fake.gpsAccuracyM = 24;

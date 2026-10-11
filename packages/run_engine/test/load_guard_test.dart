@@ -150,8 +150,33 @@ void main() {
       expect(c.loadRatio, greaterThan(LoadGuard.loadRatio));
       expect(
         c.flag!.message,
-        'This week is ${c.flag!.percent}% above your usual. '
+        matches(
+          RegExp(
+            r'^This week is (\d+% more than usual|about [\d.]+ times your '
+            r'usual|about double your usual)\. '
+            r'An easy run today is the safer choice\.$',
+          ),
+        ),
+      );
+      expect(c.flag!.message, isNot(contains('above')));
+    });
+
+    test('a ratio near 2 reads "about double", never "115% above"', () {
+      LoadFlag at(double r, [LoadTrigger t = LoadTrigger.load]) =>
+          LoadFlag(trigger: t, loadRatio: r, distanceRatio: r);
+      expect(
+        at(2.15).message,
+        'This week is about double your usual. '
         'An easy run today is the safer choice.',
+      );
+      expect(at(1.15).message, startsWith('This week is 15% more than usual.'));
+      expect(
+        at(2.6).planReason,
+        'This week is about 2.5 times your usual, so this one is easy.',
+      );
+      expect(
+        at(1.4, LoadTrigger.distance).planReason,
+        'Your distance is 40% more than your usual week, so this one is easy.',
       );
     });
 
@@ -202,7 +227,10 @@ void main() {
       expect(c.distanceRatio, greaterThan(LoadGuard.distanceRatio));
       expect(c.loadRatio, lessThanOrEqualTo(LoadGuard.loadRatio));
       expect(c.flag!.trigger, LoadTrigger.distance);
-      expect(c.flag!.message, contains('more distance than your usual week'));
+      expect(
+        c.flag!.message,
+        contains('more than your usual week in distance'),
+      );
     });
 
     test('15 days of steady running is steady, not a spike', () {

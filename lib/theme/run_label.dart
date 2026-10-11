@@ -14,6 +14,9 @@ class RunLabelScope extends InheritedWidget {
 
   final double size;
 
+  /// The floor: no label on the record screen is smaller (S1).
+  static const double floor = 16;
+
   /// Labels when nothing above says otherwise.
   static const double defaultSize = 17;
 

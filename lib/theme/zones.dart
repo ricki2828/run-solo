@@ -112,10 +112,17 @@ abstract final class HrZones {
   static Color legibleOn(int zone, Color colour, Color fallback) =>
       contrast(colour, background(zone)) >= 4.5 ? colour : fallback;
 
-  /// The zone's own hue (the time-in-zone chart's) as a label on its fill,
-  /// Bone where that hue does not read on it.
+  /// Zones from which a coloured label no longer sits on its flood: the amber
+  /// and red hues (and the mint phase title) on Z3-Z5 read at 5:1 against a
+  /// 7:1 screen, the weakest text on it (design review 11-Oct, S2). Bone there.
+  static const int boneLabelsFrom = 3;
+
+  /// The zone's own hue (the time-in-zone chart's) as a label on its fill on
+  /// Z1/Z2 only; Bone on Z3-Z5 and with no zone.
   static Color labelOn(int zone, Color fallback) =>
-      zone <= 0 ? fallback : legibleOn(zone, distributionDark[zone], fallback);
+      zone <= 0 || zone >= boneLabelsFrom
+      ? fallback
+      : legibleOn(zone, distributionDark[zone], fallback);
 
   /// "ZONE 4 · HARD"; zone 0 reads as the strap state instead.
   static String label(int zone, {required bool paired}) {
