@@ -193,9 +193,19 @@ Enrolment flow (the app drives it; each step is anti-phishing by design):
 
 ## 9. Coach replay (history through the live bot)
 
-Replays a runner's real history on a virtual clock: `python -m companion.cli replay <facts_dir> --every 300 [--dry-run [--full]] [--from YYYY-MM-DD]`, plus `replay-stop` (finish the current message, save, exit; run `replay` again to resume) and `replay-abort` (release the user to the live coach). The existing `pause` holds it too.
+Replays a runner's real history on a virtual clock: `python -m companion.cli replay <facts_dir> --every 300 [--dry-run [--full]] [--from YYYY-MM-DD]`.
 
-1. Restart `companion.service` on the merged code first. The live worker then records `replay_aware_at`; `replay` refuses to start without it, because an older worker would send the replay's virtual-past items at once.
+Controls:
+- `replay-stop`: a running replay finishes its current message, saves and stops. Run the same `replay` command to resume.
+- `replay-abort`: asks a running process to stop and waits for it. If it does not stop, nothing is released; stop the unit (`systemctl --user stop companion-replay`) and run it again. Then the user goes back to the live coach and the replay's queued past items are dropped.
+- `replay-reset`: forget a finished or aborted replay so a new one can start (cards already sent stay sent).
+- The existing `pause` holds the replay without losing items.
+
+Notes:
+1. Restart `companion.service` on the merged code first. The live worker refreshes `replay_aware_at` every tick; `replay` refuses to start unless it is under 10 minutes old, because an older worker would send the replay's virtual-past items at once.
 2. Facts: `cd packages/run_engine && dart run tool/companion_facts.dart <export_dir> <facts_dir> [--max-hr N] [--age N] [--rest-hr N]` writes one JSON per run, exactly the body the app POSTs, sorted by start. Not derivable (absent, as in the app today): scores_delta, route_id, load_state, pb, plan_*, area_lat/lon. HR zones come from the options (default 190 max HR); locality only if the sidecar has it.
-3. While a replay is not `done`, the live worker skips that user's outbox, planning and retention. Taps are recorded by the live webhook as usual and dated on the card's own virtual clock. A real upload of a replayed run updates it in place (no second card). Media stays off.
-4. Run `--dry-run` first: the whole schedule on a scratch copy of the database (template phrasing, no taps), nothing sent.
+3. While a replay runs, the live worker leaves that user's replay items, planning and retention alone. The hold is bounded: it lapses 15 minutes after the last heartbeat of a running replay, or 48 hours after a stop, and the user is then released automatically (queued past items skipped, `replay auto-released` in the journal).
+4. A real run uploaded during a replay is sent live and straight away, without the "Replay" line. A real upload of a run the replay is walking through updates it in place (no second card); a real upload of an old run before the replay reaches it keeps that run's replay card.
+5. Taps are recorded by the live webhook as usual and dated on the card's own virtual clock. Media stays off.
+6. Health: `/healthz` also reports `replay_held`. `overdue_outbox` counts a held user's overdue items unless the replay has a heartbeat under 5 minutes old, so a stalled or forgotten replay trips the existing sentinel.
+7. Run `--dry-run` first: the whole schedule on a scratch copy of the database (template phrasing, no taps), nothing sent.
