@@ -7,6 +7,7 @@ import app.runsolo.core.model.LiveContext as CoreLiveContext
 import app.runsolo.core.route.FollowRoute as CoreFollowRoute
 import android.Manifest
 import android.content.Context
+import android.os.SystemClock
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.LocationManager
@@ -421,7 +422,9 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     override fun speakCountdownBeat(beat: Long) {
         val word = CueWords.countdownBeat(beat.toInt()) ?: return
         val cues = countdownCues ?: return
-        cues.speakIfReady(word)
+        val spoke = cues.speakIfReady(word)
+        // The recorder's start line (its own engine) waits for the "Go" to finish.
+        if (beat <= 0L && spoke) CuePlayer.holdSpeechUntil = SystemClock.elapsedRealtime() + CuePlayer.GO_HOLD_MS
         // The "Go" is the last line: let it finish, then let go of the engine.
         if (beat <= 0L) {
             countdownCues = null
