@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS runs (
   run_id TEXT NOT NULL,
   start_utc TEXT NOT NULL, end_utc TEXT NOT NULL,
   utc_offset_min INTEGER NOT NULL, zone_id TEXT NOT NULL,
-  type TEXT NOT NULL,
+  type TEXT NOT NULL,  -- the coach's type (easy | long | tempo | interval | race), inferred from the app's
+  app_type TEXT,       -- the app's own type (intervals | cooper | laps | free | trail); NULL when it sent a coach type
   duration_s INTEGER NOT NULL, distance_m INTEGER NOT NULL,
   pace_s_per_km REAL, true_pace_s_per_km REAL,
   verdict TEXT, scores_delta TEXT, zone_min TEXT,
@@ -162,6 +163,12 @@ def init(path: str) -> None:
         if "tz_set_at" not in cols:  # databases created before this column
             try:
                 c.execute("ALTER TABLE users ADD COLUMN tz_set_at TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e):
+                    raise
+        if "app_type" not in [r["name"] for r in c.execute("PRAGMA table_info(runs)")]:
+            try:
+                c.execute("ALTER TABLE runs ADD COLUMN app_type TEXT")
             except sqlite3.OperationalError as e:
                 if "duplicate column" not in str(e):
                     raise

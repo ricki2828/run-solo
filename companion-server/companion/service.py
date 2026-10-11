@@ -27,7 +27,7 @@ from .convo import suggest as cv_suggest
 from .convo import touches as cv_touches
 from .convo.questions import REASK_DAYS, known_without_asking, next_weekly_question
 from .convo.weather import NoWeather, OpenMeteo, cell
-from .facts import FactsResult, build_facts, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
+from .facts import APP_TYPES, FactsResult, build_facts, infer_coach_type, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
 from .timeutil import (in_quiet, iso, now_utc, parse_iso, quiet_end_utc, resolve_cap_week, to_local, UTC,
                        valid_zone, week_key)
 from .writer import Writer, digest_lines
@@ -373,7 +373,7 @@ class Service:
             if not u:
                 raise NotFound()
             runs = [dict(r) for r in c.execute(
-                "SELECT run_id, type, start_utc, zone_id, duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, "
+                "SELECT run_id, type, app_type, start_utc, zone_id, duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, "
                 "verdict, locality, feel, received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
             cutoff = iso(now - timedelta(days=RETENTION_LOG_DAYS))
             msgs = [dict(r) for r in c.execute(
@@ -424,6 +424,13 @@ class Service:
         return {"status": "ok", "zone_id": zone_id, "utc_offset_min": offset}
 
     # ---------------------------------------------------------------- runs (B6)
+    def _coach_type(self, c, uid: str, run: RunIn) -> tuple[str, str | None]:
+        """(coach type, the app's own type when it differed). See facts.infer_coach_type."""
+        hist = self._history(c, uid, iso(run.start_utc), limit=80)
+        coach = infer_coach_type(run.type, distance_m=run.distance_m, duration_s=run.duration_s,
+                                 zone_min=run.zone_min, pb=run.pb, history=hist)
+        return coach, (run.type if run.type in APP_TYPES else None)
+
     def ingest_run(self, uid: str, run: RunIn, now: datetime | None = None) -> dict:
         now = now or now_utc()
         if run.start_utc > now + timedelta(minutes=10):
@@ -433,16 +440,17 @@ class Service:
         with db.tx(self.s.db_path) as c:
             if c.execute("SELECT 1 FROM runs WHERE user_id=? AND run_id=?", (uid, run.run_id)).fetchone():
                 return {"status": "duplicate"}
+            coach_type, app_type = self._coach_type(c, uid, run)
             n = c.execute("SELECT COUNT(*) FROM runs WHERE user_id=? AND received_at >= ?",
                           (uid, iso(now - timedelta(days=1)))).fetchone()[0]
             if n >= RUNS_PER_DAY:
                 raise RateLimited()
             c.execute(
-                "INSERT INTO runs (user_id, run_id, start_utc, end_utc, utc_offset_min, zone_id, type, duration_s, "
-                "distance_m, pace_s_per_km, true_pace_s_per_km, verdict, scores_delta, zone_min, climb_m, locality, "
-                "route_id, load_state, pb, plan_kind, plan_target_m, plan_weeks_to_race, feel, received_at, stale) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (uid, run.run_id, iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, run.type,
+                "INSERT INTO runs (user_id, run_id, start_utc, end_utc, utc_offset_min, zone_id, type, app_type, "
+                "duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, verdict, scores_delta, zone_min, climb_m, "
+                "locality, route_id, load_state, pb, plan_kind, plan_target_m, plan_weeks_to_race, feel, received_at, "
+                "stale) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (uid, run.run_id, iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, coach_type, app_type,
                  run.duration_s, run.distance_m, run.pace_s_per_km, run.true_pace_s_per_km, run.verdict,
                  json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality, run.route_id,
                  run.load_state, run.pb, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, run.feel,

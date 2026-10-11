@@ -120,6 +120,8 @@ def situation_for(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]],
         if run.get("load_state") in ("high", "very_high"):
             return "slower_load", slots
         return "slower", slots
+    if run.get("app_type") == "trail":  # the coach's type (long, easy ...) steers suggestions; the copy stays "trail"
+        return "trail", slots
     if typ == "interval" or (typ == "race"):
         return "intervals", slots
     if typ == "tempo":
