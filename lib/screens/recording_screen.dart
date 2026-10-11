@@ -60,6 +60,12 @@ class _RecordingScreenState extends State<RecordingScreen>
   /// number of whichever layout is showing.
   final LayerLink _cardLink = LayerLink();
 
+  /// Whether the last flood carried ink (true) or Bone (false) foreground.
+  /// A change between the two switches the flood at once: the foreground
+  /// flips instantly, and a fade between a Bone and an ink flood passes
+  /// through colours neither reads on (about 3:1 at the midpoint).
+  bool? _lastFloodInk;
+
   /// M3: 120 ms Bone flash when a work rep ends.
   late final AnimationController _invert = AnimationController(
     vsync: this,
@@ -384,6 +390,11 @@ class _RecordingScreenState extends State<RecordingScreen>
           // it: the zone's fill, or the run type's colour with no HR (D3).
           final flood = RunFlood.of(s.zone, liveRunTypeColor(liveRunType(s)));
           final zoneBg = flood.background;
+          // Same-family fades (Bone to Bone, ink to ink) stay >= 7:1 at every
+          // frame; crossing families is instant so no frame is unreadable.
+          final crossesFamily =
+              _lastFloodInk != null && _lastFloodInk != flood.ink;
+          _lastFloodInk = flood.ink;
           final t = flood.tokens(t0);
           final baseTheme = Theme.of(context);
           final floodTheme = baseTheme.copyWith(
@@ -479,7 +490,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                 // RECONNECTING, then the engine sends zone 0 (neutral).
                 AnimatedContainer(
                   key: const ValueKey('zone-background'),
-                  duration: reduced
+                  duration: reduced || crossesFamily
                       ? Duration.zero
                       : MotionDurations.zoneCrossfade,
                   curve: MotionCurves.standard,
