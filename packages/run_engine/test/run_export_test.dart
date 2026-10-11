@@ -133,50 +133,63 @@ void main() {
     expect(skipped.single, isA<RunFileNewerVersionException>());
   });
 
-  test('memory: the writer streams to gzip, never holding the export', () async {
-    // 800 runs generated lazily and piped through gzip to disk. The whole
-    // text never exists in one piece, so resident-set growth stays far below
-    // the document size.
-    const runs = 800;
-    final one = RunBundleCodec.encode(clone(base, 0, sidecar: true)).length;
-    Stream<RunBundle> gen() async* {
-      for (var i = 0; i < runs; i++) {
-        yield clone(base, i, sidecar: true);
+  test(
+    'memory: the writer streams to gzip, never holding the export',
+    () async {
+      // 800 runs (~95 MB of JSON) generated lazily and piped through gzip to
+      // disk. RSS is too noisy to assert (the GC lags; CI grew 90 MB), so
+      // assert the mechanism: how many bundles are alive between the producer
+      // and the file stays tiny. Heap growth is printed for the record.
+      const runs = 800;
+      final one = RunBundleCodec.encode(clone(base, 0, sidecar: true)).length;
+      var produced = 0;
+      var written = 0;
+      var maxInFlight = 0;
+      Stream<RunBundle> gen() async* {
+        for (var i = 0; i < runs; i++) {
+          produced += 1;
+          final inFlight = produced - written;
+          if (inFlight > maxInFlight) maxInFlight = inFlight;
+          yield clone(base, i, sidecar: true);
+        }
       }
-    }
 
-    final dir = Directory.systemTemp.createTempSync('rs-export-mem-');
-    addTearDown(() => dir.deleteSync(recursive: true));
-    final f = File('${dir.path}/x.runsupreme');
-    final before = ProcessInfo.currentRss;
-    var peak = before;
-    final ticker = Stream.periodic(const Duration(milliseconds: 10), (_) {
-      final r = ProcessInfo.currentRss;
-      if (r > peak) peak = r;
-    }).listen((_) {});
-    await RunExportCodec.encode(
-      gen(),
-      exportedAt: at,
-    ).transform(utf8.encoder).transform(gzip.encoder).pipe(f.openWrite());
-    await ticker.cancel();
-    final grew = peak - before;
-    final plain = one * runs;
-    // ignore: avoid_print
-    print(
-      'export mem: ${plain ~/ 1024} KB of JSON, file ${f.lengthSync() ~/ 1024} '
-      'KB, RSS grew ${grew ~/ 1024} KB',
-    );
-    // Growth plateaus (~30 MB) while the document is ~95 MB.
-    expect(grew, lessThan(plain ~/ 2));
+      final dir = Directory.systemTemp.createTempSync('rs-export-mem-');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final f = File('${dir.path}/x.runsupreme');
+      final before = ProcessInfo.currentRss;
+      var peak = before;
+      final ticker = Stream.periodic(const Duration(milliseconds: 10), (_) {
+        final r = ProcessInfo.currentRss;
+        if (r > peak) peak = r;
+      }).listen((_) {});
+      await RunExportCodec.encode(gen(), exportedAt: at)
+          .map((chunk) {
+            if (chunk.length > one ~/ 2) written += 1; // a bundle chunk
+            return chunk;
+          })
+          .transform(utf8.encoder)
+          .transform(gzip.encoder)
+          .pipe(f.openWrite());
+      await ticker.cancel();
+      // ignore: avoid_print
+      print(
+        'export mem: ${one * runs ~/ 1024} KB of JSON, file '
+        '${f.lengthSync() ~/ 1024} KB, RSS grew ${(peak - before) ~/ 1024} KB, '
+        'max bundles in flight $maxInFlight',
+      );
+      expect(written, runs);
+      expect(maxInFlight, lessThanOrEqualTo(3));
 
-    var n = 0;
-    await RunExportCodec.readAny(
-      f
-          .openRead()
-          .transform(gzip.decoder)
-          .transform(utf8.decoder)
-          .transform(const LineSplitter()),
-    ).forEach((_) => n++);
-    expect(n, runs);
-  });
+      var n = 0;
+      await RunExportCodec.readAny(
+        f
+            .openRead()
+            .transform(gzip.decoder)
+            .transform(utf8.decoder)
+            .transform(const LineSplitter()),
+      ).forEach((_) => n++);
+      expect(n, runs);
+    },
+  );
 }
