@@ -1,6 +1,7 @@
 """Core behaviour: enrolment, run ingest, cards, memory, outbox, inbound commands."""
 from __future__ import annotations
 
+import contextlib
 import math
 
 import hashlib
@@ -203,7 +204,7 @@ NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message con
     "devices": "hashed device tokens", "enrolments": "short-lived sign-up nonces", "outbox": "send queue, ids only",
     "quota": "weekly cap counters", "msglog": "send counts, no content", "inbound_seen": "hashed message ids",
     "replay_state": "coach replay progress", "replay_runs": "run ids the replay inserted",
-    "replay_items": "replay send times and card ids",
+    "replay_items": "replay send times and card ids", "replay_rows": "which rows the replay wrote",
     "note_mode": "10-minute 'Add a note' waiting state: a run id and an expiry, no text",
 }
 
@@ -465,14 +466,14 @@ class Service:
             ch.ack_callback(inb, "That button has expired.", clear=False)
             return
         real_now = now  # note mode runs on the real clock, even for a replayed card
-        now = self._tap_time(card["card_id"], now)
+        now, replay_card = self._tap_time(card["card_id"], now)
         action = buttons[inb.button_idx]["action"]
         kind, _, rest = action.partition(":")
         msg = "Thanks."
         keep: list[tuple[str, int]] = []
         note_tapped = False
         after: str | None = None  # a chat message to send once the transaction is closed
-        with db.tx(self.s.db_path) as c:
+        with (db.origin() if replay_card else contextlib.nullcontext()), db.tx(self.s.db_path) as c:  # a replayed card's answers are the replay's rows
             if kind == "feel" and card["run_id"] and rest in ("easy", "right", "hard"):
                 c.execute("UPDATE runs SET feel=? WHERE user_id=? AND run_id=?", (rest, user["id"], card["run_id"]))
                 # the feel row goes after a tap; "Add a note" stays so a note can still follow
@@ -519,16 +520,16 @@ class Service:
         else:
             ch.ack_callback(inb, msg)
 
-    def _tap_time(self, card_id: str, now: datetime) -> datetime:
-        """When a tap happened on the card's own clock. A replayed card lives at a virtual time in the past, so its
-        answers (memory, caps, outcomes) are stamped with that virtual time, not the real date. Every other card: the
-        real time."""
+    def _tap_time(self, card_id: str, now: datetime) -> tuple[datetime, bool]:
+        """(when a tap happened on the card's own clock, whether the card is a replayed one). A replayed card lives at
+        a virtual time in the past, so its answers (memory, caps, outcomes) are stamped with that virtual time, not
+        the real date, and tagged as the replay's. Every other card: the real time."""
         with db.ro(self.s.db_path) as c:
             r = c.execute("SELECT virtual_at, real_at FROM replay_items WHERE card_id=? ORDER BY id DESC LIMIT 1",
                           (card_id,)).fetchone()
         if not r:
-            return now
-        return parse_iso(r["virtual_at"])  # exactly: anything later would be invisible to the very next virtual item
+            return now, False
+        return parse_iso(r["virtual_at"]), True  # exactly: anything later would be invisible to the very next virtual item
 
     # ---------------------------------------------------------------- memory
     @staticmethod
@@ -536,6 +537,7 @@ class Service:
         c.execute("INSERT INTO memory (user_id, key, value, updated_at) VALUES (?,?,?,?) "
                   "ON CONFLICT(user_id, key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
                   (uid, key, value, iso(now)))
+        db.tag_row(c, uid, "memory", "key=?", (key,))  # an upsert of an existing key is a change, not a new row
 
     @staticmethod
     def _memory_get(c, uid: str, now: datetime) -> dict[str, str]:
@@ -633,7 +635,7 @@ class Service:
                                  zone_min=run.zone_min, pb=run.pb, history=hist)
         return coach, (run.type if run.type in APP_TYPES else None)
 
-    def ingest_run(self, uid: str, run: RunIn, now: datetime | None = None) -> dict:
+    def ingest_run(self, uid: str, run: RunIn, now: datetime | None = None, *, replay: bool = False) -> dict:
         now = now or now_utc()
         if run.start_utc > now + timedelta(minutes=10):
             raise ValueError("start_utc in the future")
@@ -644,18 +646,24 @@ class Service:
                      nx.week if nx else None, nx.minutes if nx else None, nx.distance_m if nx else None)
         with db.tx(self.s.db_path) as c:
             coach_type, app_type = self._coach_type(c, uid, run)
-            if c.execute("SELECT 1 FROM runs WHERE user_id=? AND run_id=?", (uid, run.run_id)).fetchone():
-                if c.execute("UPDATE replay_runs SET inserted=2 WHERE user_id=? AND run_id=? AND inserted=1",
-                             (uid, run.run_id)).rowcount:
+            have = c.execute("SELECT real_upload FROM runs WHERE user_id=? AND run_id=?", (uid, run.run_id)).fetchone()
+            if have:
+                tag = c.execute("SELECT inserted FROM replay_runs WHERE user_id=? AND run_id=?", (uid, run.run_id)).fetchone()
+                replay_made = have["real_upload"] == 0 or (have["real_upload"] is None and bool(tag) and tag["inserted"] == 1)
+                if replay_made and not replay:
                     # The coach replay inserted this run from an export file; the app's own upload is the same run.
-                    # Update it in place (a feel tapped during the replay is kept) and send no second card.
+                    # Update it in place (a feel tapped during the replay is kept), send no second card, and mark it
+                    # real ON THE RUN (real_upload, and the real arrival time) so no replay reset or tag loss can make
+                    # it look replay-made again.
+                    c.execute("UPDATE replay_runs SET inserted=2 WHERE user_id=? AND run_id=?", (uid, run.run_id))
                     c.execute(
-                        "UPDATE runs SET start_utc=?, end_utc=?, utc_offset_min=?, zone_id=?, type=?, app_type=?, duration_s=?, "
+                        "UPDATE runs SET real_upload=1, received_at=?, "
+                        "start_utc=?, end_utc=?, utc_offset_min=?, zone_id=?, type=?, app_type=?, duration_s=?, "
                         "distance_m=?, pace_s_per_km=?, true_pace_s_per_km=?, verdict=?, scores_delta=?, zone_min=?, "
                         "climb_m=?, locality=?, route_id=?, load_state=?, pb=?, plan_kind=?, plan_target_m=?, "
                         "plan_weeks_to_race=?, plan_week=?, plan_weeks=?, plan_next_type=?, plan_next_day=?, plan_next_week=?, "
                         "plan_next_min=?, plan_next_m=?, feel=COALESCE(feel, ?) WHERE user_id=? AND run_id=?",
-                        (iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, coach_type, app_type,
+                        (iso(now), iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, coach_type, app_type,
                          run.duration_s, run.distance_m, run.pace_s_per_km, run.true_pace_s_per_km, run.verdict,
                          json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality,
                          run.route_id, run.load_state, run.pb, run.plan_kind, run.plan_target_m,
@@ -671,12 +679,12 @@ class Service:
                 "duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, verdict, scores_delta, zone_min, climb_m, "
                 "locality, route_id, load_state, pb, plan_kind, plan_target_m, plan_weeks_to_race, plan_week, plan_weeks, plan_next_type, plan_next_day, "
                 "plan_next_week, plan_next_min, plan_next_m, feel, received_at, "
-                "stale) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "stale, real_upload) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (uid, run.run_id, iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, coach_type, app_type,
                  run.duration_s, run.distance_m, run.pace_s_per_km, run.true_pace_s_per_km, run.verdict,
                  json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality, run.route_id,
                  run.load_state, run.pb, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, *plan_cols, run.feel,
-                 iso(now), int(stale)))
+                 iso(now), int(stale), 0 if replay else 1))
             if self.s.weather_enabled and run.area_lat is not None and run.area_lon is not None \
                     and c.execute("SELECT weather_optin FROM users WHERE id=?", (uid,)).fetchone()["weather_optin"]:
                 self._keep_latest_area(c, uid, run.run_id, run.start_utc, cell(run.area_lat, run.area_lon))
@@ -1409,6 +1417,8 @@ class Service:
             c.execute("DELETE FROM quota WHERE created_at < ?" + held, (iso(now - timedelta(days=60)),))
             c.execute("DELETE FROM replay_items WHERE real_at < ?" + held, (log_cut,))
             c.execute("DELETE FROM replay_runs WHERE user_id IN (SELECT user_id FROM replay_state WHERE status = 'done' "
+                      "AND updated_at < ?)", (log_cut,))
+            c.execute("DELETE FROM replay_rows WHERE user_id IN (SELECT user_id FROM replay_state WHERE status = 'done' "
                       "AND updated_at < ?)", (log_cut,))
             c.execute("DELETE FROM replay_state WHERE status = 'done' AND updated_at < ?", (log_cut,))
             c.execute("DELETE FROM llm_calls WHERE ts < ?", (iso(now - timedelta(days=400)),))

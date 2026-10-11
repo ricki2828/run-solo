@@ -88,10 +88,80 @@ def test_it_works_when_the_replay_marks_are_gone_by_telling_virtual_from_real_ti
     assert rows(env, "SELECT 1 FROM cards WHERE run_id=?", real.run_id)
 
 
+def test_it_works_on_a_database_from_before_the_run_marks_by_timestamps(env):
+    env.replayer().run()
+    real = real_run(env)
+    with db.tx(env.s.db_path) as c:
+        c.execute("UPDATE runs SET real_upload=NULL")          # rows written before the column existed
+        c.execute("DELETE FROM replay_rows")                    # and before row tagging
+    replay.reset(env.s)
+    plan = fresh_apply(env.s, UID, load_facts(env.folder))
+    assert len(plan.created) == len(HISTORY) and plan.cut      # untagged history rows: bounded by the first real upload
+    assert [x[0] for x in rows(env, "SELECT run_id FROM runs")] == [real.run_id]
+    assert "this database predates row tagging" in plan.summary()
+
+
+def test_a_takeover_survives_reset_and_repeated_fresh_starts(env):
+    """replay -> the app uploads t03 -> --fresh -> replay -> replay-reset -> --fresh: t03 and its note are still there."""
+    env.replayer().run()
+    taken = RunIn.model_validate({**HISTORY[2], "locality": "Bishan"})
+    assert env.svc.ingest_run(UID, taken, REAL_NOW)["status"] == "updated"
+    row = rows(env, "SELECT real_upload, received_at FROM runs WHERE run_id='t03'")[0]
+    assert row["real_upload"] == 1 and row["received_at"] == iso(REAL_NOW)   # the run itself says it is real
+    with db.tx(env.s.db_path) as c:
+        c.execute("INSERT INTO run_notes (user_id, run_id, note, created_at) VALUES (?,?,?,?)", (UID, "t03", "mine", iso(REAL_NOW)))
+    fresh_apply(env.s, UID, load_facts(env.folder))
+    assert [x[0] for x in rows(env, "SELECT run_id FROM runs")] == ["t03"]
+    env.replayer().run()                                       # t03 is adopted by the new replay (re-marked in replay_runs)
+    assert replay.reset(env.s)[0] == 0                         # and the marks are wiped
+    plan = fresh_apply(env.s, UID, load_facts(env.folder))
+    assert "t03" in plan.real and "t03" not in plan.created
+    assert [x[0] for x in rows(env, "SELECT run_id FROM runs")] == ["t03"]
+    assert rows(env, "SELECT note FROM run_notes WHERE run_id='t03'")[0][0] == "mine"
+
+
+def test_only_rows_the_replay_wrote_are_removed_not_the_live_workers(env):
+    ticks: list[str] = []
+
+    def on_item(item):  # Ricki answers the question on a replayed card, as the live webhook records it
+        if item.kind == "question" and not ticks:
+            ticks.append(item.card_id)
+            assert env.tap(item.card_id, "ans:")
+
+    env.replayer(on_item=on_item).run()
+    assert ticks and rows(env, "SELECT COUNT(*) FROM memory")[0][0] == 1
+    real = real_run(env)                                         # live card: live convo_log/msglog rows, untagged
+    with db.tx(env.s.db_path) as c:                              # a live answer, as a live tap would write it
+        c.execute("INSERT INTO memory (user_id, key, value, updated_at) VALUES (?,?,?,?)", (UID, "surface", "road", iso(REAL_NOW)))
+        c.execute("INSERT INTO quota (user_id, key, created_at) VALUES (?,?,?)", (UID, "sugg:live:1", iso(REAL_NOW)))
+    live_log = rows(env, "SELECT COUNT(*) FROM convo_log WHERE ts >= ?", iso(REAL_NOW))[0][0]
+    live_msg = rows(env, "SELECT COUNT(*) FROM msglog WHERE ts >= ?", iso(REAL_NOW))[0][0]
+    assert live_log and live_msg
+    plan = fresh_apply(env.s, UID, load_facts(env.folder))
+    assert plan.counts["memory"] == 1 and plan.counts["quota"] > 0        # the replay's tap and caps, not the live ones
+    assert [tuple(x) for x in rows(env, "SELECT key, value FROM memory")] == [("surface", "road")]
+    assert [x[0] for x in rows(env, "SELECT key FROM quota")] == ["sugg:live:1"]
+    assert rows(env, "SELECT COUNT(*) FROM convo_log")[0][0] == live_log
+    assert rows(env, "SELECT COUNT(*) FROM msglog")[0][0] == live_msg
+    assert rows(env, "SELECT 1 FROM cards WHERE run_id=?", real.run_id)
+
+
+def test_a_done_queue_row_whose_card_was_purged_is_not_queued_again(env):
+    live = Service(env.s, httpx.Client(transport=httpx.MockTransport(env.fakes.handler)))
+    live.ingest_run(UID, RunIn.model_validate(HISTORY[4]), REAL_NOW)         # t05: stale on upload, real, no queue row
+    with db.tx(env.s.db_path) as c:                                          # it had a card once; the 30-day purge took it
+        c.execute("INSERT INTO outbox (user_id, kind, due_at, state, dedupe_key, ref) VALUES (?,?,?,?,?,?)",
+                  (UID, "run_card", "2026-08-01T00:00:00Z", "done", f"card:{UID}:t05", "t05"))
+    env.replayer().run()
+    assert not rows(env, "SELECT 1 FROM cards WHERE run_id='t05'")
+
+
 def test_it_refuses_when_it_cannot_tell_replayed_runs_from_real_ones(env):
     live = Service(env.s, httpx.Client(transport=httpx.MockTransport(env.fakes.handler)))
-    for h in HISTORY[:3]:  # real uploads of runs that are also in the facts folder
+    for h in HISTORY[:3]:  # old rows with no mark: real uploads of runs that are also in the facts folder
         live.ingest_run(UID, RunIn.model_validate(h), REAL_NOW)
+    with db.tx(env.s.db_path) as c:
+        c.execute("UPDATE runs SET real_upload=NULL")
     with pytest.raises(ReplayError, match="cannot tell"):
         fresh_apply(env.s, UID, load_facts(env.folder))
     assert rows(env, "SELECT COUNT(*) FROM runs")[0][0] == 3     # nothing was removed
@@ -112,6 +182,7 @@ def test_dry_run_shows_what_would_be_removed_and_removes_nothing(env):
     before = [rows(env, f"SELECT COUNT(*) FROM {t}")[0][0] for t in ("runs", "cards", "outbox", "run_notes")]
     lines: list[str] = []
     assert dry_run(env.s, str(env.folder), 300, None, fresh=True, out=lines.append) == 0
-    assert lines[0].startswith("Fresh start would remove: 8 replayed runs") and "1 real uploads kept" in lines[0]
+    assert lines[0].startswith("Fresh start would remove: 8 replayed runs, ") and "cards" in lines[0]
+    assert lines[0].endswith("; 1 real upload kept")                                  # plain words, not table names
     assert lines[1].startswith("Dry run:") and int(lines[1].split()[2]) > 6   # the schedule starts over from item 1
     assert [rows(env, f"SELECT COUNT(*) FROM {t}")[0][0] for t in ("runs", "cards", "outbox", "run_notes")] == before

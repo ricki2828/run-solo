@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import threading
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -60,6 +61,7 @@ CREATE TABLE IF NOT EXISTS runs (
   feel TEXT,
   received_at TEXT NOT NULL,
   stale INTEGER NOT NULL DEFAULT 0,
+  real_upload INTEGER,  -- 1 the app uploaded it; 0 a coach replay created it from an export; NULL rows from before this column
   UNIQUE (user_id, run_id)
 );
 CREATE INDEX IF NOT EXISTS runs_user_start ON runs (user_id, start_utc);
@@ -166,6 +168,11 @@ CREATE TABLE IF NOT EXISTS replay_runs (  -- runs the replay has reached. insert
   inserted INTEGER NOT NULL DEFAULT 1,
   PRIMARY KEY (user_id, run_id)
 );
+CREATE TABLE IF NOT EXISTS replay_rows (  -- rows the replay driver created (tbl + rowid), tagged as they are written
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tbl TEXT NOT NULL, rid INTEGER NOT NULL,
+  PRIMARY KEY (user_id, tbl, rid)
+);
 CREATE TABLE IF NOT EXISTS replay_items (  -- every message the replay sent: virtual time, real time, card
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -218,17 +225,12 @@ def init(path: str) -> None:
             except sqlite3.OperationalError as e:
                 if "duplicate column" not in str(e):
                     raise
-        if "app_type" not in [r["name"] for r in c.execute("PRAGMA table_info(runs)")]:
-            try:
-                c.execute("ALTER TABLE runs ADD COLUMN app_type TEXT")
-            except sqlite3.OperationalError as e:
-                if "duplicate column" not in str(e):
-                    raise
         run_cols = {r["name"] for r in c.execute("PRAGMA table_info(runs)")}
-        for col, typ in (("plan_week", "INTEGER"), ("plan_weeks", "INTEGER"), ("plan_next_type", "TEXT"),
+        for col, typ in (("app_type", "TEXT"), ("real_upload", "INTEGER"),
+                         ("plan_week", "INTEGER"), ("plan_weeks", "INTEGER"), ("plan_next_type", "TEXT"),
                          ("plan_next_day", "TEXT"), ("plan_next_week", "INTEGER"), ("plan_next_min", "INTEGER"),
                          ("plan_next_m", "INTEGER")):
-            if col not in run_cols:  # databases created before plan-aware coaching
+            if col not in run_cols:  # databases created before these columns
                 try:
                     c.execute(f"ALTER TABLE runs ADD COLUMN {col} {typ}")
                 except sqlite3.OperationalError as e:
@@ -245,12 +247,47 @@ def init(path: str) -> None:
         c.close()
 
 
+_origin = threading.local()
+# Tables whose new rows are tagged (in replay_rows) when written under origin("replay"): the coach replay's own
+# writes, and the taps on a replayed card. Every table here is a rowid table with a user_id column.
+TAGGED = ("cards", "outbox", "convo_log", "quota", "outcomes", "msglog", "memory")
+
+
+@contextmanager
+def origin(tag: str | None = "replay") -> Iterator[None]:
+    """Transactions opened on this thread inside the block tag the rows they create as the replay's. The write lock a
+    `tx` holds makes that exact: no other writer can add a row in between, so nothing the live worker writes is tagged."""
+    prev = getattr(_origin, "tag", None)
+    _origin.tag = tag
+    try:
+        yield
+    finally:
+        _origin.tag = prev
+
+
+def origin_active() -> bool:
+    return getattr(_origin, "tag", None) == "replay"
+
+
+def tag_row(c: sqlite3.Connection, uid: str, tbl: str, where: str, args: tuple) -> None:
+    """Tag an existing row the replay changed in place (an upsert), e.g. a memory answer."""
+    if origin_active():
+        c.execute(f"INSERT OR IGNORE INTO replay_rows (user_id, tbl, rid) SELECT user_id, ?, rowid FROM {tbl} "
+                  f"WHERE user_id=? AND {where}", (tbl, uid, *args))
+
+
 @contextmanager
 def tx(path: str) -> Iterator[sqlite3.Connection]:
     c = connect(path)
     try:
         c.execute("BEGIN IMMEDIATE")
+        before = {t: c.execute(f"SELECT COALESCE(MAX(rowid), 0) FROM {t}").fetchone()[0] for t in TAGGED} \
+            if origin_active() else None
         yield c
+        if before is not None:
+            for t, last in before.items():
+                c.execute(f"INSERT OR IGNORE INTO replay_rows (user_id, tbl, rid) SELECT user_id, ?, rowid FROM {t} "
+                          "WHERE rowid > ?", (t, last))
         c.commit()
     except BaseException:
         c.rollback()
