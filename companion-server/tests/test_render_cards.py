@@ -293,6 +293,38 @@ def test_poster_size(cards):
     assert Image.open(BytesIO(cards.render_race_countdown(F.race_countdown(), MEMORY))).size == (1080, 1350)
 
 
+def test_share_card_shows_pace_by_default_and_the_runner_can_turn_it_off():
+    facts = F.milos_trail()
+    for share, shown in (({}, True), ({"pace": True}, True), ({"pace": False}, False)):
+        html = _body(share_mod.build_share_html({**facts, "share": share}, MEMORY))
+        assert ("/KM" in html) is shown, share
+    # intervals: the reps replace the session's average pace, whatever the option says
+    iv = F.singapore_intervals()
+    assert "/KM" not in _body(share_mod.build_share_html({**iv, "share": {"reps": True}}, MEMORY))
+    assert "/KM" not in _body(share_mod.build_share_html({**iv, "share": {"pace": True}}, MEMORY))
+
+
+def test_weekly_card_shows_average_and_quickest_pace_only_when_given():
+    from render.cards import weekly
+    w = F.weekly_recap()
+    html = _body(weekly.build_weekly_html(w, MEMORY))
+    assert P.fmt_pace(w["pace_s_per_km"]) in html and "AVG /KM" in html
+    assert P.fmt_pace(w["quickest_pace_s_per_km"]) in html and "QUICKEST" in html
+    bare = {k: v for k, v in w.items() if "pace" not in k}
+    html = _body(weekly.build_weekly_html(bare, MEMORY))
+    assert "/KM" not in html and "QUICKEST" not in html
+
+
+def test_monthly_poster_shows_the_months_average_pace_in_both_layouts():
+    from render.cards import monthly
+    for facts, build in ((F.monthly_poster_noroute(), monthly.build_monthly_calendar_html),
+                         (F.monthly_poster(), monthly.build_monthly_html)):
+        html = _body(build(facts, MEMORY))
+        assert P.fmt_pace(facts["duration_s"] / facts["distance_km"]) in html and "AVG /KM" in html
+    no_time = {**F.monthly_poster_noroute(), "duration_s": 0}
+    assert "AVG /KM" not in _body(monthly.build_monthly_calendar_html(no_time, MEMORY))
+
+
 def test_zone_bar_has_the_same_margins_on_every_minimal_card():
     PIL = pytest.importorskip("PIL.Image")
     spans = []

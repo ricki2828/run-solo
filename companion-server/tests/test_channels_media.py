@@ -299,6 +299,7 @@ def test_weekly_recap_goes_out_as_a_video_with_a_week_link(tmp_path, fakes):
         f = made[0]
         assert f["runs"] == 5 and abs(f["distance_km"] - 25.0) < 1e-9 and f["score_moves"]["aerobic"] == 5
         assert sum(1 for d in f["days"] if sum(d["zone_s"])) == 5
+        assert f["pace_s_per_km"] == 360 and f["quickest_pace_s_per_km"] == 360   # 1800 s over 5 km, five times
 
 
 def test_weekly_video_failure_still_sends_the_still_recap(tmp_path, fakes):
@@ -325,6 +326,12 @@ def test_recap_facts_come_from_rows_and_validate_against_the_real_video_spec(tmp
         assert spec.runs == 5 and abs(spec.total_km - 25.0) < 1e-9
         assert abs(sum(d["distance_km"] for d in f["days"]) - 25.0) < 1e-9 and sum(d.km for d in spec.days) > 0
         assert week_facts("2026-W40", rows)["runs"] == 0
+        assert "pace_s_per_km" not in week_facts("2026-W40", rows)
+        faster = [{**r, "duration_s": 1500} if i == 0 else r for i, r in enumerate(rows)]
+        g = week_facts("2026-W41", faster)
+        assert abs(g["pace_s_per_km"] - (1500 + 4 * 1800) / 25) < 1e-9 and g["quickest_pace_s_per_km"] == 300
+        one = week_facts("2026-W41", rows[:1])
+        assert one["pace_s_per_km"] == 360 and "quickest_pace_s_per_km" not in one   # one run: nothing to be quickest of
 
 
 def test_media_error_is_raised_for_unknown_run_or_bad_renderer():

@@ -36,7 +36,7 @@ ALLOWED_FACT_KEYS = frozenset({
     "type", "start_local", "distance_km", "duration_s", "headline", "pace_s_per_km", "zone_s", "climb_m",
     "place_note", "verdict", "pb", "pb_detail",
     "title", "route_xy", "splits", "reps",
-    "week_label", "runs", "days", "score_moves", "best_moment",
+    "week_label", "runs", "days", "score_moves", "best_moment", "quickest_pace_s_per_km",
     # suggestion / milestone / race_countdown / monthly cards (persisted in convo_cards.media_json when the coach
     # decides to send them; each one is something the card's own text already says, see KIND_FACT_KEYS)
     "session", "reason", "date_local",
@@ -51,7 +51,8 @@ ALLOWED_FACT_KEYS = frozenset({
 RUN_KEYS = frozenset({"type", "start_local", "distance_km", "duration_s", "headline", "pace_s_per_km", "zone_s",
                       "climb_m", "place_note", "verdict", "pb", "pb_detail",
                       "title", "route_xy", "splits", "reps"})   # the shape facts: run cards and run videos only
-WEEK_KEYS = frozenset({"week_label", "distance_km", "runs", "duration_s", "days", "score_moves", "best_moment"})
+WEEK_KEYS = frozenset({"week_label", "distance_km", "runs", "duration_s", "days", "score_moves", "best_moment",
+                       "pace_s_per_km", "quickest_pace_s_per_km"})
 NEW_KINDS = frozenset({"suggestion", "milestone", "race_countdown", "monthly"})   # these also get value-shape checks
 KIND_FACT_KEYS = {
     "light": RUN_KEYS, "flood": RUN_KEYS, "pb": RUN_KEYS, "weekly_recap": WEEK_KEYS,

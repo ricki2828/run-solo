@@ -165,8 +165,10 @@ def weekly_recap() -> dict[str, Any]:
         {"date": "2026-10-11", "distance_km": 6.0, "zone_s": [300, 1900, 500, 0, 0]},
     ]
     total = sum(sum(x["zone_s"]) for x in d)
+    quickest = min(sum(x["zone_s"]) / x["distance_km"] for x in d if x["distance_km"])
     return {
         "week_label": "Week 41", "distance_km": 43.6, "runs": 5, "duration_s": total, "days": d,
+        "pace_s_per_km": total / 43.6, "quickest_pace_s_per_km": quickest,
         "score_moves": {"aerobic": 3, "speed": 5, "mid": 0, "long": -2},
         "best_moment": {"text": "Rep 6 on Thursday: 1:21 for 400 m, your fastest yet."},
     }

@@ -32,7 +32,7 @@ def build_share_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None 
         stats.append((P.fmt_dur(float(min(r["time_s"] for r in reps))), "BEST REP"))
     if s.get("time"):
         stats.append((P.fmt_dur(float(facts["duration_s"])), "TIME"))
-    if s.get("pace") and facts.get("pace_s_per_km") and not reps:
+    if s.get("pace", True) and facts.get("pace_s_per_km") and not reps:
         stats.append((P.fmt_pace(float(facts["pace_s_per_km"])), "/KM"))
     if s.get("hr") and facts.get("avg_hr"):
         stats.append((P.thousands(facts["avg_hr"]), "BPM"))
