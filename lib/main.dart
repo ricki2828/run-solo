@@ -1,7 +1,8 @@
 import 'package:flutter/foundation.dart'
     show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart'
+    show DeviceOrientation, SystemChrome, rootBundle;
 
 import 'app/routes.dart';
 import 'app/services.dart';
@@ -37,6 +38,10 @@ void _registerFontLicences() {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Portrait only (Ricki 11-Oct): no landscape layouts exist.
+  await SystemChrome.setPreferredOrientations(const [
+    DeviceOrientation.portraitUp,
+  ]);
   _registerFontLicences();
   // `--dart-define=RUN_SOLO_FAKE=true` runs every screen on the in-process
   // fake so the APK is usable before the Kotlin RecorderService lands.

@@ -22,6 +22,7 @@ import '../widgets/compare_card.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/gps_bar.dart';
 import '../widgets/lap_button.dart';
+import '../widgets/odometer_distance.dart';
 import '../widgets/pace_dial.dart';
 import '../widgets/route_to_go.dart';
 import '../widgets/start_readout.dart';
@@ -59,6 +60,10 @@ class _RecordingScreenState extends State<RecordingScreen>
   /// LV2: ties the card (drawn on top of the screen) to the secondary
   /// number of whichever layout is showing.
   final LayerLink _cardLink = LayerLink();
+
+  /// The compare card's slot on the map page: page 1 has its own link, so
+  /// the two pages never share one while a swipe has both built.
+  final LayerLink _mapCardLink = LayerLink();
 
   /// Whether the last flood carried ink (true) or Bone (false) foreground.
   /// A change between the two switches the flood at once: the foreground
@@ -127,20 +132,38 @@ class _RecordingScreenState extends State<RecordingScreen>
     services.permissions.setKeepScreenOn(on).catchError((_) {});
   }
 
-  /// NUMBERS <-> MAP, remembered for this run type until changed again.
-  void _toggleMap(String runType, bool on) {
-    final ctl = _ctl!;
+  PageController? _pageCtl;
+  int _page = 0;
+
+  /// The page the runner settled on, remembered for this run type (the
+  /// setting is the old NUMBERS / MAP choice, so nothing new to store).
+  void _onPage(String runType, int page) {
+    if (page == _page) return;
+    setState(() => _page = page);
+    final types = _services!.settings.settings.liveMapTypes;
+    if (types.contains(runType) == (page == 1)) return;
     unawaited(
       _services!.settings.update(
         (st) => st.copyWith(
-          liveMapTypes: on
+          liveMapTypes: page == 1
               ? {...st.liveMapTypes, runType}
               : ({...st.liveMapTypes}..remove(runType)),
         ),
       ),
     );
-    if (on) unawaited(ctl.syncRoute());
-    setState(() {});
+    if (page == 1) unawaited(_ctl!.syncRoute());
+  }
+
+  void _goPage(int page) {
+    final c = _pageCtl;
+    if (c == null || !c.hasClients) return;
+    unawaited(
+      c.animateToPage(
+        page,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+      ),
+    );
   }
 
   /// The service discarded the run (`FaultKind.startFailed`): nothing to
@@ -369,6 +392,7 @@ class _RecordingScreenState extends State<RecordingScreen>
     _ctl?.repCompletePulse.removeListener(_onRepComplete);
     _ctl?.repStartPulse.removeListener(_onRepStart);
     _invert.dispose();
+    _pageCtl?.dispose();
     super.dispose();
   }
 
@@ -450,11 +474,19 @@ class _RecordingScreenState extends State<RecordingScreen>
           // per run type, and never under the finish or saving screens.
           final runType = liveRunType(s);
           final canMap = services.maps.available;
-          final mapOn =
-              canMap &&
-              settings.liveMapTypes.contains(runType) &&
-              !_finishing &&
-              !_stopping;
+          // Run pages (11-Oct): page 1 the numbers, page 2 the map and the
+          // route readouts; the page is remembered per run type.
+          if (!(s.paused && !_finishing)) {
+            _pageCtl ??= PageController(
+              initialPage: _page = settings.liveMapTypes.contains(runType)
+                  ? 1
+                  : 0,
+            );
+          } else if (_pageCtl != null) {
+            final old = _pageCtl!;
+            _pageCtl = null;
+            WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+          }
           // In MAP the numbers' leftover space belongs to the map.
           // Free / Trail have no LAP button: their block takes that room.
           final pausedNow = s.paused && !_finishing;
@@ -477,9 +509,250 @@ class _RecordingScreenState extends State<RecordingScreen>
                   textColor: t.inkPrimary,
                   labelSize: labelSize,
                 );
-          final Widget gap = mapOn || freeBlock
-              ? const SizedBox.shrink()
-              : const Spacer();
+          final waitGps =
+              (s.isPreset || s.isCooper) &&
+              s.phase == Phase.warmup &&
+              (s.needsGps || s.isCooper) &&
+              s.gpsLost;
+          final lapGap =
+              !pausedNow &&
+              !waitGps &&
+              !(s.isCooper && s.phase == Phase.warmup) &&
+              (s.isCooper ||
+                  (s.isPreset && !(s.phase == Phase.warmup || s.showEndRep)) ||
+                  (!s.isPreset && !s.lapsEnabled));
+          const Widget gap = SizedBox.shrink();
+          // Page 2: the map and every route readout (none of it is on page 1).
+          final route = s.route;
+          final retraceSt = s.retrace;
+          final showStart =
+              runModeOf(s.mode).showsElevation &&
+              (retraceSt.heightVsStartM != null || retraceSt.headingBack);
+          final readouts = <Widget>[
+            if (runModeOf(s.mode).showsElevation && s.elevGainM != null)
+              ElevationRow(
+                s: s,
+                units: settings.units,
+                labelColor: t.inkSecondary,
+                valueColor: t.inkPrimary,
+                showGrade: !compact,
+              ),
+            if (showStart)
+              StartReadout(
+                heightVsStartM: retraceSt.heightVsStartM,
+                backToStartM: retraceSt.headingBack
+                    ? retraceSt.backToStartM
+                    : null,
+                units: settings.units,
+                labelColor: t.inkSecondary,
+                valueColor: t.inkPrimary,
+              ),
+            if (route != null)
+              RouteToGoRow(
+                route: route,
+                units: settings.units,
+                labelColor: t.inkSecondary,
+                valueColor: t.inkPrimary,
+                warnColor: t.semWarn,
+              ),
+          ];
+          final hasPage2 = canMap || readouts.isNotEmpty;
+          final Widget page2 = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // The compare card's slot: it slides in over the top of the map.
+              CompareSlot(
+                link: _mapCardLink,
+                child: const SizedBox(width: double.infinity, height: 0),
+              ),
+              Expanded(
+                child: canMap && !_finishing && !_stopping
+                    ? LiveMapView(
+                        maps: services.maps,
+                        track: ctl.liveRoute,
+                        typeColor: liveRunTypeColor(runType),
+                        readouts: readouts,
+                        plan: ctl.followedPlan,
+                        terrain: usesTerrainMap(s.mode),
+                        retrace: RetraceInput(
+                          retracing: s.retrace.retracing,
+                          same: s.retrace.same,
+                        ),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (final r in readouts) ...[
+                            r,
+                            const SizedBox(height: Space.x8),
+                          ],
+                        ],
+                      ),
+              ),
+              if (coach != null && !freeBlock) ...[
+                const SizedBox(height: Space.x8),
+                coach,
+              ],
+              if (!s.showEndRep) ...[
+                const SizedBox(height: Space.x8),
+                GpsBar(accuracyM: s.gpsAccuracyM, lost: s.gpsLost),
+              ],
+            ],
+          );
+          final page1 = <Widget>[
+            // The Free / Trail block takes the room itself.
+            if (!freeBlock) const Spacer(),
+            if ((isEventRun(s) || s.isGoal) && s.phase == Phase.work) ...[
+              // K1 / A10.10, G3 (A8): distance or time to go is
+              // the biggest number, projected finish second;
+              // they swap for the last 400 m / last minute.
+              _PausedHidden(
+                paused: s.paused,
+                child: EventBlock(
+                  s: s,
+                  ctl: ctl,
+                  units: settings.units,
+                  compact: compact,
+                  reduced: reduced,
+                  card: _cardLink,
+                ),
+              ),
+              // 29-Sep field test: the run's own numbers under
+              // the countdown (big screens only; compact keeps
+              // the two-number budget).
+              if (!compact) ...[
+                const SizedBox(height: Space.x16),
+                _PausedHidden(
+                  paused: s.paused,
+                  child: _EventStats(s: s, ctl: ctl, units: settings.units),
+                ),
+              ],
+              _CoachSlot(coach),
+            ] else if (s.isGoal && s.phase == Phase.cooldown) ...[
+              // G3: after the goal, the cool-down's time is
+              // primary and the goal's result sits locked below.
+              _PausedHidden(
+                paused: s.paused,
+                child: GoalDoneBlock(
+                  s: s,
+                  ctl: ctl,
+                  units: settings.units,
+                  compact: compact,
+                ),
+              ),
+              const Spacer(),
+            ] else if (s.isPreset) ...[
+              // 4x4 (founder field test 25-Sep): no big LAP.
+              // Warm-up → big START 4x4; then the phases run on
+              // their own and the screen shows the countdown,
+              // the segment's average pace and the current-pace
+              // dial. Lock-screen LAP still re-aligns a phase.
+              // Timed phases (founder, tester 0.2 / 25-Sep): in
+              // a rep the rep average is the biggest number, in
+              // a recovery the countdown to the next rep is; one
+              // step smaller on short screens so both fit at
+              // 360 x 640.
+              _PausedHidden(
+                paused: s.paused,
+                child: _TimerBlock(
+                  s: s,
+                  ctl: ctl,
+                  hideCaption:
+                      compact &&
+                      coach != null &&
+                      coach.nextLine != null &&
+                      (s.phase == Phase.work || s.phase == Phase.recovery),
+                  style: switch (s.phase) {
+                    Phase.work => primaryStyle(compact, secondary: true),
+                    Phase.recovery => primaryStyle(compact),
+                    _ => null,
+                  },
+                ),
+              ),
+              _CoachSlot(coach),
+              CompareSlot(
+                link: s.phase == Phase.warmup ? null : _cardLink,
+                child: Visibility(
+                  visible: !s.paused,
+                  maintainSize: true,
+                  maintainAnimation: true,
+                  maintainState: true,
+                  child: s.phase == Phase.warmup
+                      ? _Stats(s: s, units: settings.units)
+                      : _SegmentPace(
+                          s: s,
+                          ctl: ctl,
+                          units: settings.units,
+                          compact: compact,
+                          hideAverage: cardShowing,
+                        ),
+                ),
+              ),
+            ] else if (s.isCooper) ...[
+              // Scales down rather than overflow when a banner
+              // and the GPS wait share a short screen with it;
+              // the high flex keeps it at full size otherwise
+              // (the spacers around it share what is left), and
+              // Expanded keeps Pause / Stop at the bottom.
+              Expanded(
+                flex: 20,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: _PausedHidden(
+                    paused: s.paused,
+                    child: _CooperBlock(
+                      s: s,
+                      ctl: ctl,
+                      units: settings.units,
+                      compact: compact,
+                      card: _cardLink,
+                    ),
+                  ),
+                ),
+              ),
+            ] else if (s.lapsEnabled) ...[
+              _PausedHidden(
+                paused: s.paused,
+                child: _TimerBlock(s: s, ctl: ctl),
+              ),
+              _CoachSlot(coach),
+              // The PAUSED card sits here; keep the space, hide
+              // the numbers so nothing peeks out around it.
+              CompareSlot(
+                link: _cardLink,
+                child: Visibility(
+                  visible: !s.paused,
+                  maintainSize: true,
+                  maintainAnimation: true,
+                  maintainState: true,
+                  child: _Stats(s: s, units: settings.units),
+                ),
+              ),
+            ] else
+              _FreeRunBlock(
+                s: s,
+                ctl: ctl,
+                units: settings.units,
+                maxHr: maxHr,
+                compact: compact,
+                card: _cardLink,
+                reserveCard: settings.showWhileRunning && s.tipsMuted != true,
+                cardShowing: cardShowing,
+              ),
+            // END REP: the banner already says GPS is lost,
+            // and the short phone needs the bar's height.
+            if (!s.showEndRep) ...[
+              SizedBox(height: compact ? Space.x4 : Space.x8),
+              Visibility(
+                visible: !s.paused,
+                maintainSize: true,
+                maintainAnimation: true,
+                maintainState: true,
+                child: GpsBar(accuracyM: s.gpsAccuracyM, lost: s.gpsLost),
+              ),
+            ],
+            if (lapGap && !freeBlock) const Spacer(),
+          ];
           final scaffold = Scaffold(
             backgroundColor: Colors.transparent,
             body: Stack(
@@ -511,11 +784,8 @@ class _RecordingScreenState extends State<RecordingScreen>
                           s: s,
                           maxHr: maxHr,
                           compact: compact,
-                          trailing: canMap
-                              ? LiveViewToggle(
-                                  mapShown: mapOn,
-                                  onTap: () => _toggleMap(runType, !mapOn),
-                                )
+                          trailing: hasPage2 && !pausedNow
+                              ? PageDots(page: _page, onTap: (p) => _goPage(p))
                               : null,
                         ),
                         if (_stopError != null)
@@ -526,54 +796,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                           _Banner(text: gpsBannerCopy(s), color: t.semWarn)
                         else if (s.notice != null)
                           _Banner(text: s.notice!, color: t.semWarn),
-                        if (mapOn && !pausedNow) ...[
-                          const SizedBox(height: Space.x8),
-                          Expanded(
-                            child: LiveMapView(
-                              maps: services.maps,
-                              track: ctl.liveRoute,
-                              typeColor: liveRunTypeColor(runType),
-                              hero: liveHero(s, ctl, settings.units),
-                              heroStyle: _repOrRecovery(s)
-                                  ? primaryStyle(compact)
-                                  : null,
-                              compact: compact,
-                              secondary: t.inkSecondary,
-                              paused: s.paused,
-                              cardLink: _cardLink,
-                              route: s.route,
-                              plan: ctl.followedPlan,
-                              units: settings.units,
-                              terrain: usesTerrainMap(s.mode),
-                              heightVsStartM: runModeOf(s.mode).showsElevation
-                                  ? s.retrace.heightVsStartM
-                                  : null,
-                              backToStartM:
-                                  runModeOf(s.mode).showsElevation &&
-                                      s.retrace.headingBack
-                                  ? s.retrace.backToStartM
-                                  : null,
-                              retrace: RetraceInput(
-                                retracing: s.retrace.retracing,
-                                same: s.retrace.same,
-                              ),
-                            ),
-                          ),
-                          // The GPS bar stays, as in NUMBERS.
-                          if (!s.showEndRep) ...[
-                            SizedBox(height: Space.x8),
-                            Visibility(
-                              visible: !s.paused,
-                              maintainSize: true,
-                              maintainAnimation: true,
-                              maintainState: true,
-                              child: GpsBar(
-                                accuracyM: s.gpsAccuracyM,
-                                lost: s.gpsLost,
-                              ),
-                            ),
-                          ],
-                        ] else if (pausedNow) ...[
+                        if (pausedNow) ...[
                           // O7: run so far, big, and one big RESUME. No LAP.
                           Expanded(
                             child: _PausedPanel(
@@ -591,205 +814,23 @@ class _RecordingScreenState extends State<RecordingScreen>
                             const SizedBox(height: Space.x12),
                             GpsBar(accuracyM: s.gpsAccuracyM, lost: s.gpsLost),
                           ],
-                        ] else ...[
-                          // The Free / Trail block takes the room itself.
-                          if (!freeBlock) const Spacer(),
-                          if ((isEventRun(s) || s.isGoal) &&
-                              s.phase == Phase.work) ...[
-                            // K1 / A10.10, G3 (A8): distance or time to go is
-                            // the biggest number, projected finish second;
-                            // they swap for the last 400 m / last minute.
-                            _PausedHidden(
-                              paused: s.paused,
-                              child: EventBlock(
-                                s: s,
-                                ctl: ctl,
-                                units: settings.units,
-                                compact: compact,
-                                reduced: reduced,
-                                card: _cardLink,
+                        ] else
+                          Expanded(
+                            child: _RunPages(
+                              key: const ValueKey('run-pages'),
+                              controller: _pageCtl!,
+                              page: _page,
+                              twoPages: hasPage2,
+                              mapGesture: canMap,
+                              onPage: (p) => _onPage(runType, p),
+                              one: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: page1,
                               ),
+                              two: page2,
                             ),
-                            // 29-Sep field test: the run's own numbers under
-                            // the countdown (big screens only; compact keeps
-                            // the two-number budget).
-                            if (!compact) ...[
-                              const SizedBox(height: Space.x16),
-                              _PausedHidden(
-                                paused: s.paused,
-                                child: _EventStats(
-                                  s: s,
-                                  ctl: ctl,
-                                  units: settings.units,
-                                ),
-                              ),
-                            ],
-                            if (s.route != null)
-                              _PausedHidden(
-                                paused: s.paused,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(
-                                    top: Space.x12,
-                                  ),
-                                  child: RouteStrip(
-                                    route: s.route!,
-                                    units: settings.units,
-                                    valueColor: t.inkPrimary,
-                                    warnColor: t.semWarn,
-                                  ),
-                                ),
-                              ),
-                            _CoachSlot(coach),
-                          ] else if (s.isGoal && s.phase == Phase.cooldown) ...[
-                            // G3: after the goal, the cool-down's time is
-                            // primary and the goal's result sits locked below.
-                            _PausedHidden(
-                              paused: s.paused,
-                              child: GoalDoneBlock(
-                                s: s,
-                                ctl: ctl,
-                                units: settings.units,
-                                compact: compact,
-                              ),
-                            ),
-                            if (s.route != null)
-                              _PausedHidden(
-                                paused: s.paused,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(
-                                    top: Space.x12,
-                                  ),
-                                  child: RouteStrip(
-                                    route: s.route!,
-                                    units: settings.units,
-                                    valueColor: t.inkPrimary,
-                                    warnColor: t.semWarn,
-                                  ),
-                                ),
-                              ),
-                            const Spacer(),
-                          ] else if (s.isPreset) ...[
-                            // 4x4 (founder field test 25-Sep): no big LAP.
-                            // Warm-up → big START 4x4; then the phases run on
-                            // their own and the screen shows the countdown,
-                            // the segment's average pace and the current-pace
-                            // dial. Lock-screen LAP still re-aligns a phase.
-                            // Timed phases (founder, tester 0.2 / 25-Sep): in
-                            // a rep the rep average is the biggest number, in
-                            // a recovery the countdown to the next rep is; one
-                            // step smaller on short screens so both fit at
-                            // 360 x 640.
-                            _PausedHidden(
-                              paused: s.paused,
-                              child: _TimerBlock(
-                                s: s,
-                                ctl: ctl,
-                                hideCaption:
-                                    compact &&
-                                    coach != null &&
-                                    coach.nextLine != null &&
-                                    (s.phase == Phase.work ||
-                                        s.phase == Phase.recovery),
-                                style: switch (s.phase) {
-                                  Phase.work => primaryStyle(
-                                    compact,
-                                    secondary: true,
-                                  ),
-                                  Phase.recovery => primaryStyle(compact),
-                                  _ => null,
-                                },
-                              ),
-                            ),
-                            _CoachSlot(coach),
-                            CompareSlot(
-                              link: s.phase == Phase.warmup ? null : _cardLink,
-                              child: Visibility(
-                                visible: !s.paused,
-                                maintainSize: true,
-                                maintainAnimation: true,
-                                maintainState: true,
-                                child: s.phase == Phase.warmup
-                                    ? _Stats(s: s, units: settings.units)
-                                    : _SegmentPace(
-                                        s: s,
-                                        ctl: ctl,
-                                        units: settings.units,
-                                        compact: compact,
-                                        hideAverage: cardShowing,
-                                      ),
-                              ),
-                            ),
-                          ] else if (s.isCooper) ...[
-                            // Scales down rather than overflow when a banner
-                            // and the GPS wait share a short screen with it;
-                            // the high flex keeps it at full size otherwise
-                            // (the spacers around it share what is left), and
-                            // Expanded keeps Pause / Stop at the bottom.
-                            Expanded(
-                              flex: 20,
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: _PausedHidden(
-                                  paused: s.paused,
-                                  child: _CooperBlock(
-                                    s: s,
-                                    ctl: ctl,
-                                    units: settings.units,
-                                    compact: compact,
-                                    card: _cardLink,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ] else if (s.lapsEnabled) ...[
-                            _PausedHidden(
-                              paused: s.paused,
-                              child: _TimerBlock(s: s, ctl: ctl),
-                            ),
-                            _CoachSlot(coach),
-                            // The PAUSED card sits here; keep the space, hide
-                            // the numbers so nothing peeks out around it.
-                            CompareSlot(
-                              link: _cardLink,
-                              child: Visibility(
-                                visible: !s.paused,
-                                maintainSize: true,
-                                maintainAnimation: true,
-                                maintainState: true,
-                                child: _Stats(s: s, units: settings.units),
-                              ),
-                            ),
-                          ] else
-                            _FreeRunBlock(
-                              s: s,
-                              ctl: ctl,
-                              units: settings.units,
-                              maxHr: maxHr,
-                              compact: compact,
-                              card: _cardLink,
-                              startSlowdown: _startSlowdown,
-                              reserveCard:
-                                  settings.showWhileRunning &&
-                                  s.tipsMuted != true,
-                              cardShowing: cardShowing,
-                            ),
-                          // END REP: the banner already says GPS is lost,
-                          // and the short phone needs the bar's height.
-                          if (!s.showEndRep) ...[
-                            SizedBox(height: compact ? Space.x4 : Space.x8),
-                            Visibility(
-                              visible: !s.paused,
-                              maintainSize: true,
-                              maintainAnimation: true,
-                              maintainState: true,
-                              child: GpsBar(
-                                accuracyM: s.gpsAccuracyM,
-                                lost: s.gpsLost,
-                              ),
-                            ),
-                          ],
-                        ],
-                        if (coach != null && (mapOn || freeBlock)) ...[
+                          ),
+                        if (coach != null && freeBlock && !pausedNow) ...[
                           const SizedBox(height: Space.x8),
                           coach,
                         ],
@@ -910,12 +951,12 @@ class _RecordingScreenState extends State<RecordingScreen>
                   child: ZoneLadder(zone: s.hr == null ? 0 : s.zone),
                 ),
                 CompareCardLayer(
-                  link: _cardLink,
+                  link: _page == 1 ? _mapCardLink : _cardLink,
                   width:
                       MediaQuery.sizeOf(context).width -
                       Space.recordGutter -
                       rightGutter,
-                  anchorBottom: !mapOn && !s.isPreset && s.lapsEnabled,
+                  anchorBottom: !s.isPreset && s.lapsEnabled,
                   card: card,
                 ),
                 if (_finishing)
@@ -960,14 +1001,6 @@ class _RecordingScreenState extends State<RecordingScreen>
     );
   }
 }
-
-/// A rep or recovery of a structured session (not the 5 km event or a goal):
-/// the phases whose hero stays full size over a map strip (D2, 11-Oct).
-bool _repOrRecovery(RecordingSnapshot s) =>
-    s.isPreset &&
-    !isEventRun(s) &&
-    !s.isGoal &&
-    (s.phase == Phase.work || s.phase == Phase.recovery);
 
 /// The run type the MAP / NUMBERS choice is remembered under: the chip the
 /// runner picked (`free`, `trail`, `laps`, `intervals`, `goal`, `tests`).
@@ -1701,21 +1734,16 @@ class _FreeRunBlock extends StatelessWidget {
     required this.maxHr,
     this.compact = false,
     this.card,
-    this.startSlowdown,
     this.reserveCard = false,
     this.cardShowing = false,
   });
 
   /// The compare card may show: it gets a slot of its own below the
   /// clusters, so it covers no live number. Where the phone is too short for
-  /// that, it covers the ROUTE or CLIMB cluster and those hide while it
-  /// shows (A10.1: covered = hidden).
+  /// that, it covers the pace cluster and that hides while it shows (A10.1:
+  /// covered = hidden).
   final bool reserveCard;
   final bool cardShowing;
-
-  /// The heat slowdown at the start of the run (null = none known): the
-  /// heat share of the live true pace.
-  final double? startSlowdown;
   final RecordingSnapshot s;
   final RecordingController ctl;
   final Units units;
@@ -1735,50 +1763,26 @@ class _FreeRunBlock extends StatelessWidget {
     return p.height;
   }
 
-  /// A label over a 36 sp value (AuxFigure, route figures).
-  static final double _figH =
-      _textH(RunSoloType.runLabel) + _textH(AuxFigure.style);
-
-  /// The RUN trio's height at [size]: distance, then time and pace.
-  static double _trioH(double size) =>
-      2 *
+  /// The RUN trio's height at [size]: stacked is three full rows, otherwise
+  /// distance, then time and pace side by side.
+  static double _trioH(double size, {required bool stacked}) =>
+      (stacked ? 3 : 2) *
           (_textH(RunSoloType.runLabel) +
               _textH(RunSoloType.display44.copyWith(fontSize: size))) +
-      Space.x4 +
-      Space.x8;
+      (stacked ? 2 : 1) * Space.x4;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final secondary = t.inkSecondary;
     final runAverage = runAverageSecPerKm(s, ctl);
-    final showElevation =
-        runModeOf(s.mode).showsElevation && s.elevGainM != null;
-    final showGap = runModeOf(s.mode).showsLiveTruePace;
-    // Trail: height vs the start, and BACK TO START while retracing. The
-    // plate (and its chrome) is budgeted whenever the row shows, so the
-    // layout does not jump when a retrace starts.
-    final retrace = s.retrace;
-    final showStart =
-        runModeOf(s.mode).showsElevation &&
-        (retrace.heightVsStartM != null || retrace.headingBack);
-    final startH = showStart ? _figH + StartReadout.chrome : 0.0;
-    final route = s.route;
-    final turn = route == null || route.off ? '' : routeTurnText(route, units);
-    final routeH = route == null
-        ? 0.0
-        : _figH + (turn.isEmpty ? 0 : Space.x4 + _textH(AuxFigure.style));
-    // Founder 3-Oct: the screen reads as clusters, top to bottom: RUN
-    // (distance, time, average pace, equal size), PACE (the current-pace
-    // speedo, always shown, TRUE PACE folded in), CLIMB, ROUTE, then the
-    // compare card's own slot. Priority when height is short: the dial
-    // shrinks, the RUN trio steps down a size, then TRUE PACE and grade go,
-    // before the card is allowed to cover anything. Never the dial, the trio
-    // or the heart rate; no number under 36 sp.
+    // Page 1 is the run numbers only (Ricki 11-Oct): distance, time and
+    // average pace big, then the current-pace dial. Climb, route and
+    // retrace readouts live on the map page; TRUE PACE is post-run only.
     final cardH = CompareCard.heightFor(compact: compact);
     // The card's slot is zero tall until a card shows, then opens (and
-    // closes) over ~250 ms, pushing the lower clusters down instead of
-    // covering them. Reduced motion: instant.
+    // closes) over ~250 ms, pushing the pace cluster down instead of
+    // covering it. Reduced motion: instant.
     final slotOpen = reserveCard && cardShowing;
     return Expanded(
       child: TweenAnimationBuilder<double>(
@@ -1793,50 +1797,37 @@ class _FreeRunBlock extends StatelessWidget {
             const minGap = Space.x8 + divider;
             final width = c.maxWidth;
             final half = (width - Space.x16) / 2;
-            // Plans from the roomiest to the leanest.
+            // Plans from the roomiest to the leanest. The numbers are
+            // bigger than before the route readouts moved off this page.
             final plans = <_FreePlan>[
               _FreePlan(
-                RunSoloType.runSize(compact ? 52 : 64),
+                RunSoloType.runSize(compact ? 76 : 96),
                 half,
-                true,
-                true,
+                big: true,
+                stacked: true,
+              ),
+              _FreePlan(
+                RunSoloType.runSize(compact ? 72 : 88),
+                half,
+                stacked: true,
+              ),
+              _FreePlan(
+                RunSoloType.runSize(compact ? 64 : 80),
+                112,
+                stacked: true,
+              ),
+              _FreePlan(
+                RunSoloType.runSize(compact ? 60 : 72),
+                half,
                 big: true,
               ),
-              _FreePlan(
-                RunSoloType.runSize(compact ? 52 : 64),
-                half,
-                true,
-                true,
-              ),
-              _FreePlan(
-                RunSoloType.runSize(compact ? 48 : 56),
-                half,
-                true,
-                true,
-              ),
-              _FreePlan(
-                RunSoloType.runSize(compact ? 44 : 48),
-                112,
-                true,
-                true,
-              ),
-              _FreePlan(RunSoloType.runSize(44), 112, false, true),
-              _FreePlan(RunSoloType.runSize(44), 112, false, false),
-              _FreePlan(RunSoloType.runSize(40), 96, false, false),
+              _FreePlan(RunSoloType.runSize(compact ? 56 : 64), half),
+              _FreePlan(RunSoloType.runSize(compact ? 52 : 56), 112),
+              _FreePlan(RunSoloType.runSize(44), 112),
+              _FreePlan(RunSoloType.runSize(40), 96),
             ];
             double heightOf(_FreePlan p, {required double slot}) =>
-                _planH(
-                  p,
-                  width,
-                  showGap,
-                  showElevation,
-                  routeH,
-                  startH,
-                  minGap,
-                ) +
-                slot;
-            // The card's own slot when some plan fits with it open; else the
-            // card covers the tail while it shows (below).
+                _planH(p, width, minGap) + slot;
             final full = minGap + cardH;
             final reserve =
                 reserveCard &&
@@ -1850,18 +1841,11 @@ class _FreeRunBlock extends StatelessWidget {
               }
             }
             final plan = fit ?? plans.last;
-            final size = EqualFigures.sizeFor(width, plan.trioCap);
-            final gapOn = showGap && plan.gap;
-            // O6: TRUE PACE rides inside the dial (a cyan marker on the arc and
-            // "TRUE 4:46" under the current pace), not as a block of its own.
-            final trueSec = gapOn
-                ? engine.RunTruePace.live(
-                    paceSecPerKm: s.livePaceSecPerKm,
-                    gradePct: s.gradePct,
-                    slowdown: startSlowdown,
-                    distanceM: s.totalDistanceM,
-                  )
-                : null;
+            final size = EqualFigures.sizeFor(
+              width,
+              plan.trioCap,
+              stacked: plan.stacked,
+            );
             final dial = plan.big
                 ? Center(
                     child: SizedBox(
@@ -1874,7 +1858,6 @@ class _FreeRunBlock extends StatelessWidget {
                         paceStyle: AuxFigure.style.copyWith(
                           fontSize: RunSoloType.runSize(56),
                         ),
-                        trueSecPerKm: trueSec,
                       ),
                     ),
                   )
@@ -1888,7 +1871,6 @@ class _FreeRunBlock extends StatelessWidget {
                     paceStyle: AuxFigure.style.copyWith(
                       fontSize: RunSoloType.runSize(40),
                     ),
-                    trueSecPerKm: trueSec,
                   );
             final clusters = <Widget>[
               EqualFigures(
@@ -1899,41 +1881,27 @@ class _FreeRunBlock extends StatelessWidget {
                   ValueKey('run-average'),
                 ],
                 cap: size,
+                stacked: plan.stacked,
                 labelColor: secondary,
                 valueColor: t.inkPrimary,
+                odometer: kOdometerDistance
+                    ? (style) => FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: OdometerDistance(
+                          value: liveHero(s, ctl, units).figures.first.value,
+                          style: style,
+                          wholeFill: t.inkPrimary.withValues(alpha: 0.16),
+                          wholeInk: t.inkPrimary,
+                          decimalFill: t.inkPrimary,
+                          decimalInk: t.bgBase,
+                        ),
+                      )
+                    : null,
               ),
               dial,
-              if (showElevation)
-                ElevationRow(
-                  s: s,
-                  units: units,
-                  labelColor: secondary,
-                  valueColor: t.inkPrimary,
-                  showGrade: plan.grade,
-                ),
-              if (showStart)
-                StartReadout(
-                  heightVsStartM: retrace.heightVsStartM,
-                  backToStartM: retrace.headingBack
-                      ? retrace.backToStartM
-                      : null,
-                  units: units,
-                  labelColor: secondary,
-                  valueColor: t.inkPrimary,
-                ),
-              if (route != null)
-                RouteToGoRow(
-                  route: route,
-                  units: units,
-                  labelColor: secondary,
-                  valueColor: t.inkPrimary,
-                  warnColor: t.semWarn,
-                ),
             ];
             final contentH = heightOf(plan, slot: slot);
-            // Spare height is shared by the top margin, the gaps and the
-            // bottom, so the clusters sit evenly (no dead band under the
-            // heart rate).
             final gaps = clusters.length - 1 + (reserve ? open : 0);
             final share = (c.maxHeight - contentH) / (gaps + 2);
             final top = share.clamp(0.0, Space.x32);
@@ -1945,50 +1913,27 @@ class _FreeRunBlock extends StatelessWidget {
               ),
             );
             final children = <Widget>[SizedBox(height: top)];
-            // Without a slot of its own the card covers the last cluster(s)
-            // until it is 'cardH' tall; they hide while it shows.
-            var coverFrom = clusters.length;
-            if (!reserve && reserveCard) {
-              var h = 0.0;
-              while (coverFrom > 2 && h < cardH) {
-                coverFrom--;
-                h +=
-                    (coverFrom == clusters.length - 1 ? 0 : minGap) +
-                    (clusters[coverFrom] is RouteToGoRow
-                        ? routeH
-                        : clusters[coverFrom] is StartReadout
-                        ? startH
-                        : _figH);
-              }
-            }
-            final covered = <Widget>[];
+            // Without a slot of its own the card covers the pace cluster
+            // while it shows; it hides then.
+            final cover = !reserve && reserveCard;
             for (var i = 0; i < clusters.length; i++) {
-              if (i > 0 && i != coverFrom && i < coverFrom) children.add(sep());
-              if (i >= coverFrom) {
-                if (i > coverFrom) covered.add(const SizedBox(height: minGap));
-                covered.add(clusters[i]);
+              if (i == 1) children.add(sep());
+              if (i == 1 && cover) {
+                children.add(
+                  CompareSlot(
+                    link: card,
+                    child: Visibility(
+                      visible: !cardShowing,
+                      maintainSize: true,
+                      maintainAnimation: true,
+                      maintainState: true,
+                      child: clusters[i],
+                    ),
+                  ),
+                );
               } else {
                 children.add(clusters[i]);
               }
-            }
-            if (covered.isNotEmpty) {
-              children.add(sep());
-              children.add(
-                CompareSlot(
-                  link: card,
-                  child: Visibility(
-                    visible: !cardShowing,
-                    maintainSize: true,
-                    maintainAnimation: true,
-                    maintainState: true,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: covered,
-                    ),
-                  ),
-                ),
-              );
             }
             if (reserve) {
               children.add(SizedBox(height: open * between));
@@ -2010,16 +1955,8 @@ class _FreeRunBlock extends StatelessWidget {
     );
   }
 
-  double _planH(
-    _FreePlan p,
-    double width,
-    bool showGap,
-    bool showElevation,
-    double routeH,
-    double startH,
-    double minGap,
-  ) {
-    final size = EqualFigures.sizeFor(width, p.trioCap);
+  double _planH(_FreePlan p, double width, double minGap) {
+    final size = EqualFigures.sizeFor(width, p.trioCap, stacked: p.stacked);
     final label = _textH(RunSoloType.runLabel);
     final double pace;
     if (p.big) {
@@ -2028,41 +1965,149 @@ class _FreeRunBlock extends StatelessWidget {
           w / 2 +
           Space.x4 +
           _textH(AuxFigure.style.copyWith(fontSize: RunSoloType.runSize(56))) +
-          (showGap && p.gap ? _textH(AuxFigure.style) : 0) +
           label;
     } else {
       final paceCol =
           label +
-          _textH(AuxFigure.style.copyWith(fontSize: RunSoloType.runSize(40))) +
-          (showGap && p.gap ? _textH(AuxFigure.style) : 0);
+          _textH(AuxFigure.style.copyWith(fontSize: RunSoloType.runSize(40)));
       pace = paceCol > p.dialWidth / 2 ? paceCol : p.dialWidth / 2;
     }
-    final parts = <double>[
-      _trioH(size) - Space.x8,
-      pace,
-      if (showElevation) _figH,
-      if (startH > 0) startH,
-      if (routeH > 0) routeH,
-    ];
-    return parts.fold(0.0, (a, b) => a + b) + (parts.length - 1) * minGap;
+    return _trioH(size, stacked: p.stacked) + minGap + pace;
   }
 }
 
 class _FreePlan {
   const _FreePlan(
     this.trioCap,
-    this.dialWidth,
-    this.gap,
-    this.grade, {
+    this.dialWidth, {
     this.big = false,
+    this.stacked = false,
   });
   final double trioCap;
   final double dialWidth;
-  final bool gap;
-  final bool grade;
 
   /// The stacked speedo (arc, then the pace under it) when there is room.
   final bool big;
+
+  /// Distance, time and pace each on a full-width row.
+  final bool stacked;
+}
+
+/// The two run pages: 1 the numbers, 2 the map and route readouts.
+///
+/// Gesture approach: page 1 is a plain horizontal PageView, so a swipe
+/// anywhere on the numbers goes to the map. On page 2 the PageView stops
+/// taking drags (NeverScrollable) so the map keeps every pan and zoom; the
+/// way back is a swipe from a thin strip on the left edge, or a tap on the
+/// page dots. No gesture arena fights, and the map's own gestures are
+/// untouched.
+class _RunPages extends StatelessWidget {
+  const _RunPages({
+    super.key,
+    required this.controller,
+    required this.page,
+    required this.twoPages,
+    required this.mapGesture,
+    required this.onPage,
+    required this.one,
+    required this.two,
+  });
+  final PageController controller;
+  final int page;
+  final bool twoPages;
+
+  /// Page 2 carries a map that needs the horizontal drags.
+  final bool mapGesture;
+  final ValueChanged<int> onPage;
+  final Widget one;
+  final Widget two;
+
+  /// The left-edge strip that swipes back from the map.
+  static const double edge = 28;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!twoPages) return one;
+    final onMap = page == 1 && mapGesture;
+    return PageView(
+      controller: controller,
+      onPageChanged: onPage,
+      physics: onMap
+          ? const NeverScrollableScrollPhysics()
+          : const PageScrollPhysics(),
+      children: [
+        one,
+        Stack(
+          children: [
+            two,
+            if (mapGesture)
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: edge,
+                child: GestureDetector(
+                  key: const ValueKey('page-edge-swipe'),
+                  behavior: HitTestBehavior.translucent,
+                  onHorizontalDragEnd: (d) {
+                    if ((d.primaryVelocity ?? 0) > 0) {
+                      unawaited(
+                        controller.animateToPage(
+                          0,
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeOutCubic,
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Two dots in the header: which page is showing, and a 48 dp tap to switch.
+class PageDots extends StatelessWidget {
+  const PageDots({super.key, required this.page, required this.onTap});
+  final int page;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Semantics(
+      button: true,
+      label: page == 0 ? 'Show map' : 'Show numbers',
+      excludeSemantics: true,
+      child: InkResponse(
+        key: const ValueKey('page-dots'),
+        onTap: () => onTap(page == 0 ? 1 : 0),
+        radius: 24,
+        child: SizedBox(
+          width: 48,
+          height: 48,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (var i = 0; i < 2; i++)
+                Container(
+                  width: i == page ? 14 : 10,
+                  height: i == page ? 14 : 10,
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: t.inkPrimary.withValues(alpha: i == page ? 1 : 0.4),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _TimerBlock extends StatelessWidget {

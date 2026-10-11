@@ -17,7 +17,13 @@ import '../run_fixtures.dart';
 
 const _row = ValueKey('follow-route-row');
 const _toGo = ValueKey('route-to-go');
-const _strip = ValueKey('route-strip');
+const _strip = ValueKey('route-turn');
+
+/// Page 2 of the run screen holds the map and every route readout.
+Future<void> toMapPage(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('page-dots')));
+  await settleAnimations(tester);
+}
 
 Future<(FakeRecorderGateway, AppServices)> openStart(
   WidgetTester tester, {
@@ -244,11 +250,14 @@ void main() {
     });
   });
 
-  group('live: NUMBERS', () {
-    testWidgets('a free run shows distance and climb to go under the hero', (
+  group('live: route readouts sit on the map page', () {
+    testWidgets('a free run shows distance and climb to go on page 2', (
       tester,
     ) async {
       final (fake, _) = await openLive(tester);
+      // Page 1 is the numbers only.
+      expect(find.byKey(_toGo), findsNothing);
+      await toMapPage(tester);
       expect(find.byKey(_toGo), findsOneWidget);
       final route = testRoute();
       // Nothing run yet: the whole route is to go (about 3 km, no more than
@@ -262,14 +271,9 @@ void main() {
         findsOneWidget,
         reason: 'the route has elevation (${route.climbM})',
       );
-      // The equal primaries stay bigger than the route figures.
-      final hero = tester.widget<Text>(
-        find.byKey(const ValueKey('run-average')),
-      );
       for (final k in ['route-to-go-distance', 'route-to-go-climb']) {
         final fig = tester.widget<Text>(find.byKey(ValueKey(k)));
         expect(fig.style!.fontSize, greaterThanOrEqualTo(36), reason: k);
-        expect(hero.style!.fontSize, greaterThan(fig.style!.fontSize!));
       }
       expect(fake.state, RecorderState.recording);
     });
@@ -287,6 +291,7 @@ void main() {
       );
       fake.advance(const Duration(seconds: 2));
       await pumpTimes(tester, 3);
+      await toMapPage(tester);
       expect(find.text('1.23 km'), findsOneWidget);
       expect(find.text('45 m'), findsOneWidget);
       expect(find.text('Left turn in 120 m'), findsOneWidget);
@@ -314,6 +319,7 @@ void main() {
       );
       fake.advance(const Duration(seconds: 3));
       await pumpTimes(tester, 3);
+      await toMapPage(tester);
       // 100 m is 109 yd, shown as 110.
       expect(find.text('Left turn in 110 yd'), findsOneWidget);
       expect(find.textContaining('mi'), findsWidgets); // to go in miles
@@ -331,6 +337,7 @@ void main() {
       );
       fake.advance(const Duration(seconds: 2));
       await pumpTimes(tester, 3);
+      await toMapPage(tester);
       expect(find.text('OFF ROUTE'), findsOneWidget);
       expect(find.byKey(const ValueKey('route-turn')), findsNothing);
       expect(
@@ -347,23 +354,26 @@ void main() {
       expect(find.byKey(_toGo), findsNothing);
     });
 
-    testWidgets('a goal run shows the strip under its own hero', (
-      tester,
-    ) async {
-      await openLive(
-        tester,
-        mode: RecordMode.intervals,
-        goalSpec: engine.SessionSpec.goalDistance(10000, '10K'),
-      );
-      expect(find.byKey(_strip), findsOneWidget);
-      expect(find.byKey(const ValueKey('event-to-go')), findsOneWidget);
-    });
+    testWidgets(
+      'a goal run: the to-go strip is on page 2, its hero on page 1',
+      (tester) async {
+        await openLive(
+          tester,
+          mode: RecordMode.intervals,
+          goalSpec: engine.SessionSpec.goalDistance(10000, '10K'),
+        );
+        expect(find.byKey(const ValueKey('event-to-go')), findsOneWidget);
+        expect(find.byKey(_toGo), findsNothing);
+        await toMapPage(tester);
+        expect(find.byKey(_toGo), findsOneWidget);
+      },
+    );
   });
 
   group('live: MAP', () {
     const mapOn = AppSettings(onboardingDone: true, liveMapTypes: {'free'});
 
-    testWidgets('a strip line under the hero keeps the phase number', (
+    testWidgets('the to-go line and the map share page 2; no run hero', (
       tester,
     ) async {
       final (fake, _) = await openLive(tester, settings: mapOn);
@@ -375,17 +385,21 @@ void main() {
       );
       fake.advance(const Duration(seconds: 2));
       await pumpTimes(tester, 3);
-      expect(find.byKey(const ValueKey('map-hero')), findsOneWidget);
-      final strip = tester.widget<Text>(find.byKey(_strip));
-      expect(strip.data, '2.50 km to go · 80 m up');
-      expect(strip.style!.fontSize, greaterThanOrEqualTo(36));
-      final hero = tester.widget<Text>(find.byKey(const ValueKey('map-hero')));
-      expect(hero.style!.fontSize, greaterThan(strip.style!.fontSize!));
+      expect(find.byKey(const ValueKey('map-hero')), findsNothing);
+      final dist = tester.widget<Text>(
+        find.byKey(const ValueKey('route-to-go-distance')),
+      );
+      expect(dist.data, '2.50 km');
+      expect(dist.style!.fontSize, greaterThanOrEqualTo(36));
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('route-to-go-climb')))
+            .data,
+        '80 m',
+      );
     });
 
-    testWidgets('a close turn takes the strip, off route overrides it', (
-      tester,
-    ) async {
+    testWidgets('a close turn shows, off route overrides it', (tester) async {
       final (fake, _) = await openLive(tester, settings: mapOn);
       fake.routeProgress = RouteProgress(
         toGoM: 2500,
@@ -402,10 +416,8 @@ void main() {
       fake.routeProgress = RouteProgress(toGoM: 2500, off: true);
       fake.advance(const Duration(seconds: 2));
       await pumpTimes(tester, 3);
-      expect(
-        tester.widget<Text>(find.byKey(_strip)).data,
-        startsWith('OFF ROUTE'),
-      );
+      expect(find.text('OFF ROUTE'), findsOneWidget);
+      expect(find.byKey(_strip), findsNothing);
     });
 
     testWidgets('no strip when the run follows nothing', (tester) async {
