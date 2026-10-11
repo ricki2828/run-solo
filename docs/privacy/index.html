@@ -234,10 +234,24 @@
   <h2>2c. Run companion: images and videos</h2>
   <p>This applies only if you turned the optional Run companion on and it has been set to send pictures. Its notes
   can then arrive in your Telegram chat as an image or a short video instead of plain text. The picture shows more
-  than the text does, and all of it comes from the run summary you already sent the companion: the date and
+  than the text does. Most of it comes from the run summaries you already sent the companion: the date and
   start time, the type of run, distance, duration and pace, any climb, your time in each heart rate zone, the name of the suburb or town of the
   run (never the street), any personal best, and, on the weekly recap, how your scores moved, plus the coach's one-line note for that run. It never contains
   your route, a map, heart rate readings, your name or a phone number.</p>
+  <p>Three more kinds of picture show a little beyond the run summary itself:</p>
+  <ul>
+    <li><strong>Tomorrow's suggestion.</strong> The date, the session (for example "Tempo, 8 km") and a one-line reason. When the
+    reason is the weather (heat, rain, or good conditions) it carries the forecast: the temperature, the hour and the chance
+    of rain. That forecast comes from Open-Meteo (section 3), and only if you turned on "Weather in suggestions".</li>
+    <li><strong>The monthly poster.</strong> On the 1st, a calendar of the month just ended: for each run its day, type of run,
+    distance and time, plus the month's totals. No route and no place names.</li>
+    <li><strong>Milestones and race countdowns.</strong> The milestone number (for example your 100th run, or 1,000 km) and the
+    weeks to your race, with the distance you told the coach you are training for.</li>
+  </ul>
+  <p>For the suggestion, milestone and countdown pictures the companion keeps the few facts the picture was drawn from, with the
+  message, for 30 days. They are part of what "What the companion knows" and the export show (as <code>picture_facts</code>,
+  including messages built but not yet sent) and are removed when you delete your data. The monthly poster keeps nothing extra:
+  it is drawn again from the runs you already sent.</p>
   <p>The picture is drawn on the companion's server by a separate process that has no internet access, no database
   and none of your account details; it receives only those figures, returns the image, and keeps nothing. The finished
   image is then sent to your Telegram chat, so Telegram stores it under its own policy, and it stays in your chat

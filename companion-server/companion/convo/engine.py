@@ -177,7 +177,11 @@ MILESTONE_LINE = {
 }
 
 
-def touch_card_facts(touch: T.Touch | None) -> tuple[str | None, dict[str, Any] | None]:
+# The goal the runner told the coach (memory goal_type), as the card's title. Not a race name: we only know the distance.
+GOAL_TITLE = {"5k": "5 km", "10k": "10 km", "half": "Half marathon", "marathon": "Marathon"}
+
+
+def touch_card_facts(touch: T.Touch | None, memory: Mapping[str, str] | None = None) -> tuple[str | None, dict[str, Any] | None]:
     """-> (touch card kind, the facts it shows). Only what the touch line already says: the milestone number, or the
     whole weeks to the race. race_month ("N months away") stays text: a month is not a countdown."""
     if touch is None:
@@ -190,17 +194,21 @@ def touch_card_facts(touch: T.Touch | None) -> tuple[str | None, dict[str, Any] 
             n = int(touch.slots["total_km"])
             return "milestone", {"kind": "distance_km", "value": n, "line": MILESTONE_LINE.get(("distance_km", n), "")}
         if touch.kind == "race_countdown":
-            return "race_countdown", {"weeks_to_race": int(touch.key.split(":", 1)[1])}
+            facts: dict[str, Any] = {"weeks_to_race": int(touch.key.split(":", 1)[1])}
+            title = GOAL_TITLE.get((memory or {}).get("goal_type", ""))
+            if title:
+                facts["race_name"] = title
+            return "race_countdown", facts
     except (KeyError, ValueError, IndexError):
         pass
     return None, None
 
 
 def media_for_run(run: Mapping[str, Any], situation: str, touch: T.Touch | None,
-                  hist: Sequence[Mapping[str, Any]] = ()) -> MediaPlan:
+                  hist: Sequence[Mapping[str, Any]] = (), memory: Mapping[str, str] | None = None) -> MediaPlan:
     share = hard_share(run)
     hard = run["type"] in HARD_TYPES or (share is not None and share >= FLOOD_SHARE)
-    extra, tfacts = touch_card_facts(touch)
+    extra, tfacts = touch_card_facts(touch, memory)
     if run.get("pb"):
         return MediaPlan("pb", True, "pb", extra, None, tfacts)
     reason = big_session(run, hist)
@@ -234,5 +242,5 @@ def enrich_run(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]], memory
             used.append(t_variant)
         else:
             touch = None
-    return RunVoice(situation, rendered, touch, t_variant, t_line, media_for_run(run, situation, touch, hist),
+    return RunVoice(situation, rendered, touch, t_variant, t_line, media_for_run(run, situation, touch, hist, memory),
                     allowed, voice.exemplars(situation, 3, seed), used)

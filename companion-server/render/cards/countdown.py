@@ -25,7 +25,8 @@ def build_countdown_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | N
             for i in range(weeks_total))
         blocks = f'<svg width="936" height="34" viewBox="0 0 936 34">{blocks}</svg>'
     unit = ("WEEK" if days == 1 else "WEEKS") if weeks_mode else ("DAY" if days == 1 else "DAYS")
-    name = P.esc(facts.get("race_name", "Race day"), 30)
+    # "Race day" says the race is today: only for zero. Otherwise the goal's name, or "Your race".
+    name = P.esc(facts.get("race_name") or ("Race day" if days == 0 else "Your race"), 30)
     sub = P.esc(facts.get("race_line", ""), 70)
     css = P.base_css(brand.GROUND, brand.INK) + f"""
 .tag{{left:{P.PAD}px;top:176px;font-size:34px;color:{colour};letter-spacing:.14em}}

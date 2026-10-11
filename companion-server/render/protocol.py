@@ -37,16 +37,23 @@ ALLOWED_FACT_KEYS = frozenset({
     # decides to send them; each one is something the card's own text already says, see KIND_FACT_KEYS)
     "session", "reason", "date_local",
     "kind", "value", "line",
-    "weeks_to_race",
+    "weeks_to_race", "race_name",
     "month_label", "month_start", "run_count",
 })
 
-# New card kinds are held to their own, narrower list on top of ALLOWED_FACT_KEYS: a suggestion card has no business
-# carrying a place, a milestone no pace. The four older kinds keep the shared list (their builders are unchanged).
+# Every kind is held to its own list on top of ALLOWED_FACT_KEYS: a suggestion card has no business carrying a place, a
+# milestone no pace, and a run card no suggestion reason, however wide the shared list grows. The older kinds' lists are
+# exactly what media.run_facts / week_facts build.
+RUN_KEYS = frozenset({"type", "start_local", "distance_km", "duration_s", "headline", "pace_s_per_km", "zone_s",
+                      "climb_m", "place_note", "verdict", "pb", "pb_detail"})
+WEEK_KEYS = frozenset({"week_label", "distance_km", "runs", "duration_s", "days", "score_moves", "best_moment"})
+NEW_KINDS = frozenset({"suggestion", "milestone", "race_countdown", "monthly"})   # these also get value-shape checks
 KIND_FACT_KEYS = {
+    "light": RUN_KEYS, "flood": RUN_KEYS, "pb": RUN_KEYS, "weekly_recap": WEEK_KEYS,
+    "run": RUN_KEYS, "weekly": WEEK_KEYS,   # the videos
     "suggestion": frozenset({"type", "session", "distance_km", "date_local", "reason"}),
     "milestone": frozenset({"kind", "value", "line"}),
-    "race_countdown": frozenset({"weeks_to_race"}),
+    "race_countdown": frozenset({"weeks_to_race", "race_name"}),
     "monthly": frozenset({"month_label", "month_start", "distance_km", "run_count", "duration_s", "climb_m", "runs"}),
 }
 MONTHLY_RUN_KEYS = frozenset({"date", "type", "distance_km", "duration_s"})   # no route, no zones, no place, no run id
@@ -72,7 +79,7 @@ def check_request(req: Any) -> tuple[str, str, dict]:
     if not set(facts) <= ALLOWED_FACT_KEYS:
         raise ProtocolError("bad_request")
     if kind in KIND_FACT_KEYS:
-        if not set(facts) <= KIND_FACT_KEYS[kind] or not _kind_values_ok(kind, facts):
+        if not set(facts) <= KIND_FACT_KEYS[kind] or (kind in NEW_KINDS and not _kind_values_ok(kind, facts)):
             raise ProtocolError("bad_request")
     return op, kind, facts
 

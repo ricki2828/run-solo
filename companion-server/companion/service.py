@@ -513,8 +513,9 @@ class Service:
             cutoff = iso(now - timedelta(days=RETENTION_LOG_DAYS))
             msgs = [dict(r) for r in c.execute(
                 "SELECT k.kind, k.headline, k.body, k.sent_at, cc.situation, cc.touch_kind, cc.media_json FROM cards k "
-                "LEFT JOIN convo_cards cc ON cc.card_id = k.card_id WHERE k.user_id=? AND k.sent_at >= ? "
-                "ORDER BY k.sent_at DESC", (uid, cutoff))]
+                "LEFT JOIN convo_cards cc ON cc.card_id = k.card_id WHERE k.user_id=? AND "
+                "(k.sent_at >= ? OR (k.sent_at IS NULL AND k.created_at >= ?)) "   # built but not sent yet is held too
+                "ORDER BY COALESCE(k.sent_at, k.created_at) DESC", (uid, cutoff, cutoff))]
             for m in msgs:  # the facts a picture was drawn from, stored when the card was decided (see media_json)
                 m["picture_facts"] = self._picture_facts(m.pop("media_json", None))
             areas = [dict(r) for r in c.execute("SELECT run_id, lat, lon FROM convo_area WHERE user_id=? ORDER BY rowid", (uid,))]

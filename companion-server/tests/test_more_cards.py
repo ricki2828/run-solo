@@ -249,6 +249,36 @@ def test_a_race_countdown_sends_the_weeks_to_go(env):
     assert "7 weeks" in env.q("SELECT body FROM cards WHERE kind='run'")[0]["body"]
 
 
+def test_the_countdown_title_is_the_goal_and_never_race_day_unless_zero(env):
+    from companion.convo import engine
+    from companion.convo.touches import Touch
+    from render.cards.countdown import build_countdown_html
+    t = Touch("race_countdown", "race:7", {"weeks_txt": "7 weeks"})
+    titles = {"5k": "5 km", "10k": "10 km", "half": "Half marathon", "marathon": "Marathon"}
+    for goal, title in titles.items():
+        assert engine.touch_card_facts(t, {"goal_type": goal})[1] == {"weeks_to_race": 7, "race_name": title}
+    for mem in ({}, {"goal_type": "fitness"}, {"goal_type": "unknown"}):
+        assert engine.touch_card_facts(t, mem)[1] == {"weeks_to_race": 7}
+    for facts in ({"weeks_to_race": 7}, {"weeks_to_race": 1}, {"weeks_to_race": 7, "race_name": "Half marathon"},
+                  {"days_to_race": 61}):
+        assert "race day" not in build_countdown_html(facts).lower()
+    assert "YOUR RACE" in build_countdown_html({"weeks_to_race": 7}).upper()
+    assert "HALF MARATHON" in build_countdown_html({"weeks_to_race": 7, "race_name": "Half marathon"}).upper()
+    assert "race day" in build_countdown_html({"weeks_to_race": 0}).lower()
+
+
+def test_the_stored_countdown_facts_carry_the_goal(env):
+    for i in range(4):
+        env.run(i + 1, datetime(2026, 10, 2, 7, 0, tzinfo=UTC) + timedelta(days=2 * i))
+    env.quiet_outbox()
+    with db.tx(env.s.db_path) as c:
+        c.execute("INSERT INTO memory (user_id, key, value, updated_at) VALUES (?,?,?,?)", (UID, "goal_type", "half", iso(NOW)))
+    env.run(5, NOW - timedelta(hours=2), plan_weeks_to_race=7)
+    env.svc.run_outbox(NOW + timedelta(seconds=1))
+    env.svc.run_outbox(NOW + timedelta(seconds=2))
+    assert env.rec.sent[-1] == ("race_countdown", {"weeks_to_race": 7, "race_name": "Half marathon"})
+
+
 def test_a_month_to_race_stays_text(env):
     """race_month ("2 months away") is not a countdown: no picture, and nothing is stored for one."""
     from companion.convo import engine
@@ -507,3 +537,39 @@ def test_the_cards_accept_exactly_the_facts_the_companion_sends():
     assert "Triple digits." in build_milestone_html(GOOD["milestone"])
     assert "Easy run" in build_suggestion_html(GOOD["suggestion"])
     assert "September" in build_monthly_calendar_html(GOOD["monthly"])
+
+
+# ---------------------------------------------------------------- the older kinds stay strict
+
+@pytest.mark.parametrize("kind,op", [("light", "card"), ("flood", "card"), ("pb", "card"), ("weekly_recap", "card"),
+                                     ("run", "video"), ("weekly", "video")])
+def test_the_older_kinds_refuse_the_keys_the_newer_cards_added(kind, op):
+    base = {"type": "easy", "distance_km": 5, "duration_s": 100}
+    for key in ("session", "reason", "date_local", "kind", "value", "line", "weeks_to_race", "race_name",
+                "month_label", "month_start", "run_count"):
+        assert key in P.ALLOWED_FACT_KEYS
+        with pytest.raises(P.ProtocolError):
+            P.check_request({"v": 1, "op": op, "kind": kind, "facts": {**base, key: "x"}})
+
+
+def test_the_older_kinds_still_accept_exactly_what_the_companion_builds():
+    from companion.media import run_facts, week_facts
+    row = {"run_id": "r", "type": "easy", "start_utc": "2026-10-10T06:00:00+00:00", "zone_id": "UTC", "distance_m": 7000,
+           "duration_s": 2400, "pace_s_per_km": 342.9, "climb_m": 40, "locality": "Takapuna", "verdict": "holding",
+           "pb": "5k", "zone_min": {"z1": 5, "z2": 30}}
+    for kind in ("light", "flood", "pb"):
+        P.check_request({"v": 1, "op": "card", "kind": kind, "facts": run_facts(row, "Steady")})
+    wf = week_facts("2026-W41", [{**row, "scores_delta": '{"aerobic": 1}'}])
+    P.check_request({"v": 1, "op": "card", "kind": "weekly_recap", "facts": wf})
+    P.check_request({"v": 1, "op": "video", "kind": "weekly", "facts": {**wf, "duration_s": 1}})
+
+
+# ---------------------------------------------------------------- the export holds built-but-unsent cards too
+
+def test_a_built_but_unsent_card_is_in_the_export_with_its_facts(env):
+    seed_for_suggestion(env)
+    cid = env.svc._build_evening_card(UID, "2026-10-13", NOW)       # built, never sent
+    assert cid
+    me = env.svc.get_me(UID, NOW)
+    (m,) = [x for x in me["messages_sent_30d"] if x["kind"] == "evening"]
+    assert m["sent_at"] is None and m["picture_facts"]["facts"]["session"] == "Tempo"
