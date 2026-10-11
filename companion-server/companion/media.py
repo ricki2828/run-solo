@@ -95,6 +95,8 @@ def week_facts(week_ref: str, runs: Sequence[Mapping[str, Any]]) -> dict[str, An
             continue
         mine.append(r)
         d = days[(loc.date() - monday).days]
+        if r["distance_m"] >= d.get("_longest", 0):  # the day's longest run names its type
+            d["_longest"], d["type"] = r["distance_m"], r["type"]
         d["distance_km"] += r["distance_m"] / 1000
         d["zone_s"] = [a + b for a, b in zip(d["zone_s"], _zone_s(r))]
         sd = r.get("scores_delta")
@@ -103,6 +105,8 @@ def week_facts(week_ref: str, runs: Sequence[Mapping[str, Any]]) -> dict[str, An
             if isinstance(sd.get(k), (int, float)):
                 moves[k] += sd[k]
                 seen_move = True
+    for d in days:
+        d.pop("_longest", None)
     from .convo.recap import best_moment
     facts: dict[str, Any] = {
         "week_label": f"Week {int(week_ref.split('-W')[1])}",

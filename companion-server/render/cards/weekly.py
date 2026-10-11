@@ -18,6 +18,10 @@ def _day_km(d: Mapping[str, Any]) -> float:
         return 0.0
 
 
+def _type_colour(d: Mapping[str, Any]) -> str:
+    return brand.RUN_TYPE_COLOUR.get(str(d.get("type")), brand.SCORE["aerobic"])
+
+
 def _bars(days: list[Mapping[str, Any]], width: int, height: int) -> str:
     """Bar height is the day's km; the zone colours split it by each zone's share of that day's moving time."""
     peak = max([_day_km(d) for d in days[:7]] + [0.1])
@@ -43,9 +47,9 @@ def _bars(days: list[Mapping[str, Any]], width: int, height: int) -> str:
                     h = full * v / zt
                     y -= h
                     parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bw:.1f}" height="{max(h - 2, 1):.1f}" fill="{brand.ZONE_RAMP[k]}"/>')
-            else:  # a run with no heart-rate zones: still a km bar, in a neutral colour
+            else:  # a run with no heart-rate zones: still a km bar, in its run-type colour
                 y -= full
-                parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bw:.1f}" height="{max(full - 2, 1):.1f}" fill="{brand.QUIET}"/>')
+                parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bw:.1f}" height="{max(full - 2, 1):.1f}" fill="{_type_colour(d)}"/>')
             parts.append(f'<text x="{x + bw / 2:.1f}" y="{y - 10:.1f}" text-anchor="middle" font-family="{brand.SAIRA}" '
                          f'font-weight="800" font-size="32" fill="{brand.INK}">{P.fmt_km(km)}</text>')
         else:

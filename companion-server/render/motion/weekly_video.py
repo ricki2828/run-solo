@@ -24,6 +24,7 @@ SIGN_T = 11.45
 class Day:
     label: str  # "M"
     zone_min: list[float]  # minutes in Z1..Z5; they only split the bar by share of time
+    run_type: str = "easy"  # colours the bar when the day has no zones
     km: float = 0.0  # the day's distance: the bar height; 0 = rest day
 
 
@@ -74,7 +75,9 @@ DAY_LABELS = "MTWTFSS"
 def weekly_from_facts(f: dict, signoff: str = "See you next Sunday.") -> WeeklySpec:
     """Same schema as the weekly card: week_label, distance_km, runs, duration_s, days[{distance_km, zone_s}],
     score_moves{aerobic..long}, best_moment{text}. duration_s must equal the days' zone time."""
-    days = [Day(DAY_LABELS[i], [x / 60 for x in (d.get("zone_s") or [0] * 5)], float(d["distance_km"])) for i, d in enumerate(f["days"])]
+    if any(d.get("distance_km") is None for d in f["days"]):
+        raise ValueError("facts carry no per-day distance_km; the caller falls back to the still card")
+    days = [Day(DAY_LABELS[i], [x / 60 for x in (d.get("zone_s") or [0] * 5)], run_type=str(d.get("type") or "easy"), km=float(d["distance_km"])) for i, d in enumerate(f["days"])]
     moves = f.get("score_moves") or {}
     best = f.get("best_moment") or {}
     return WeeklySpec(
@@ -139,8 +142,9 @@ class WeeklyVideo:
             else:
                 full = maxh * d.km / self.max_km * clamp(e, 0, 1.05)
                 y = base
-                if tot <= 0:  # a run with no heart-rate zones: a neutral km bar
-                    cv.rect(x, base - full, x + bw, base, th.fade(th.quiet, a), r=14, top_only=True)
+                if tot <= 0:  # a run with no heart-rate zones: a km bar in its run-type colour
+                    col = brand.RUN_TYPE_COLOUR.get(d.run_type, brand.SCORE["aerobic"])
+                    cv.rect(x, base - full, x + bw, base, th.fade(col, a), r=14, top_only=True)
                     y = base - full
                 for z, mins in enumerate(d.zone_min):
                     if mins <= 0:
