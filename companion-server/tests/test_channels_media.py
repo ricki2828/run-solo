@@ -322,6 +322,7 @@ def test_recap_facts_come_from_rows_and_validate_against_the_real_video_spec(tmp
         assert f["week_label"] == "Week 41" and f["runs"] == 5
         spec = weekly_from_facts({**f, "duration_s": sum(sum(d["zone_s"]) for d in f["days"])})
         assert spec.runs == 5 and abs(spec.total_km - 25.0) < 1e-9
+        assert abs(sum(d["distance_km"] for d in f["days"]) - 25.0) < 1e-9 and sum(d.km for d in spec.days) > 0
         assert week_facts("2026-W40", rows)["runs"] == 0
 
 
