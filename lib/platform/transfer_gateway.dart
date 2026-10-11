@@ -105,12 +105,10 @@ class ShareSheetTransferGateway implements TransferGateway {
 
   @override
   Future<List<PickedSource>> pickRunSources() async {
-    const group = fs.XTypeGroup(
-      label: 'Run Supreme exports',
-      extensions: ['runsupreme', 'json'],
-      mimeTypes: ['application/json', 'application/octet-stream'],
-    );
-    final files = await fs.openFiles(acceptedTypeGroups: const [group]);
+    // Any file: Drive can hand back an export with no extension (it once
+    // saved one as "Run Supreme: 7 runs"). The reader sniffs gzip and
+    // reports anything that is not a Run Supreme file.
+    final files = await fs.openFiles();
     return [
       for (final f in files) PickedSource(name: f.name, open: f.openRead),
     ];
@@ -170,6 +168,9 @@ class FakeTransferGateway implements TransferGateway {
   /// (callers delete the temp file afterwards).
   final List<List<int>> sharedBytes = [];
 
+  /// Subject of each [shareFiles] call, parallel to [shared].
+  final List<String?> sharedSubjects = [];
+
   /// Mime type of each [shareFiles] call, parallel to [shared].
   final List<String> sharedMimeTypes = [];
 
@@ -197,6 +198,7 @@ class FakeTransferGateway implements TransferGateway {
       if (!await File(p).exists()) throw StateError('shared file missing: $p');
     }
     shared.add(List.of(paths));
+    sharedSubjects.add(subject);
     sharedBytes.add(
       paths.isEmpty ? <int>[] : await File(paths.first).readAsBytes(),
     );

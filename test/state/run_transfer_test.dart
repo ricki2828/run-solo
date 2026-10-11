@@ -27,13 +27,11 @@ void main() {
       ),
   ];
 
-  test('file name and subject', () {
+  test('file name', () {
     expect(
       exportFileName(DateTime(2026, 10, 10, 9), 143),
       'run-supreme-runs-2026-10-10-143runs.runsupreme',
     );
-    expect(exportSubject(143), 'Run Supreme: 143 runs');
-    expect(exportSubject(1), 'Run Supreme: 1 run');
   });
 
   test('export then import on another phone: one file, all runs', () async {
@@ -47,6 +45,15 @@ void main() {
       tempDir: () async => dir,
     ).exportAll();
     expect(out!.runs, 12);
+    expect(
+      gateway.sharedSubjects.single,
+      'run-supreme-runs-2026-10-10-12runs.runsupreme',
+      reason: 'Drive takes the subject as the file title',
+    );
+    expect(
+      out.message,
+      "Shared 12 runs in one file. Keep it until you've imported it.",
+    );
     expect(gateway.shared.single, [
       '${dir.path}/run-supreme-runs-2026-10-10-12runs.runsupreme',
     ]);
@@ -319,6 +326,28 @@ void main() {
       expect(result.summary, contains('newer Run Supreme'));
     },
   );
+
+  test('a file with no extension still imports (gzip is sniffed)', () async {
+    final text = (await engine.RunExportCodec.encode(
+      Stream.fromIterable([engine.RunBundle(run: runs(1).single)]),
+      exportedAt: d1,
+    ).toList()).join();
+    final target = MemoryRunStore();
+    final result =
+        await RunTransfer(
+          history: target,
+          transfer: FakeTransferGateway(),
+        ).importPicked([
+          PickedSource.fromBytes(
+            'Run Supreme: 1 run',
+            gzip.encode(utf8.encode(text)),
+          ),
+          PickedSource.fromText('download (1)', text),
+        ]);
+    expect(result.imported, 1);
+    expect(result.alreadyHere, 1);
+    expect(result.unreadableFiles, 0);
+  });
 }
 
 class _FailSecondBatch extends MemoryRunStore {

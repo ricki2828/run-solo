@@ -29,10 +29,6 @@ String exportFileName(DateTime now, int runs) {
       '-${runs}runs.runsupreme';
 }
 
-/// "Run Supreme: 143 runs"
-String exportSubject(int runs) =>
-    'Run Supreme: $runs run${runs == 1 ? '' : 's'}';
-
 /// What an export did. [runs] == 0 means nothing was shared.
 class ExportOutcome {
   const ExportOutcome({required this.runs, this.skipped = 0});
@@ -41,7 +37,14 @@ class ExportOutcome {
   /// Run files that could not be read and are NOT in the file.
   final int skipped;
 
-  /// One line for the toast; null when everything went cleanly.
+  /// The toast after the share sheet closes. Android cannot say whether the
+  /// user actually saved the file, so this says "Shared", not "Saved".
+  String get message =>
+      warning ??
+      'Shared $runs run${runs == 1 ? '' : 's'} in one file. Keep it until '
+          "you've imported it.";
+
+  /// A line about runs left out; null when everything went cleanly.
   String? get warning {
     if (skipped == 0) return null;
     final s = '$skipped run${skipped == 1 ? '' : 's'} could not be read';
@@ -141,9 +144,11 @@ class RunTransfer {
       final file = await tmp.rename(
         '${dir.path}/${exportFileName(_now(), count)}',
       );
+      // Drive and Files take the subject as the saved file's title, so it is
+      // the real file name (date, count and .runsupreme extension).
       await transfer.shareFiles(
         [file.path],
-        subject: exportSubject(count),
+        subject: file.uri.pathSegments.last,
         mimeType: 'application/octet-stream',
       );
       return ExportOutcome(runs: count, skipped: skipped);

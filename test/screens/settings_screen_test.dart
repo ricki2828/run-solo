@@ -366,7 +366,13 @@ void main() {
       await shared.timeout(const Duration(seconds: 20));
     });
     await pumpTimes(tester, 3);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
+    await pumpTimes(tester, 3);
     expect(transfer.shared, hasLength(1));
+    expect(find.textContaining('Shared 2 runs in one file'), findsOneWidget);
+    expect(transfer.sharedSubjects.single, endsWith('-2runs.runsupreme'));
     expect(transfer.shared.single, hasLength(1));
     final path = transfer.shared.single.single;
     expect(File(path).existsSync(), isFalse, reason: 'temp copy removed');

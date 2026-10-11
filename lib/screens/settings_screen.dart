@@ -243,8 +243,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       ).exportAll();
       if (out == null) {
         _toast('No runs to move yet.');
-      } else if (out.warning case final w?) {
-        _toast(w);
+      } else {
+        _toast(out.message);
       }
     } catch (e) {
       _toast('Could not move runs. $e');
