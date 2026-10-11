@@ -347,6 +347,16 @@ RECAPS: dict[str, list[tuple[str, str]]] = {
         ("First recap", "{runs_txt}, {km} km. Nothing to compare yet. {moment}"),
         ("Week logged", "{min} minutes and {km} km. A fine first picture. {moment}"),
     ],
+    # The month poster (the 1st, for the month just ended). Totals only: the picture adds each run's day, type and
+    # distance from the stored rows, and nothing the runner has not already sent.
+    "recap_month": [
+        ("{month} in runs", "{runs_txt}, {km} km, {hours_txt} on the move."),
+        ("{month} done", "{km} km over {runs_txt} in {month}, about {hours_txt} out there."),
+        ("The month in numbers", "{month}: {km} km, {runs_txt}, {hours_txt} of running."),
+        ("{month} wrapped", "{runs_txt} and {km} km in {month}, {hours_txt} on the move."),
+        ("Last month", "{month} came to {km} km across {runs_txt}, about {hours_txt} of running."),
+        ("Month check", "{km} km in {month}, over {runs_txt}. {hours_txt} on the move."),
+    ],
 }
 
 # Suggestions name the session: {session} is "easy 7 km", "tempo 8 km" or "long run 16 km", {start} is

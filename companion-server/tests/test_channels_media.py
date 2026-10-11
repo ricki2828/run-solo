@@ -398,7 +398,7 @@ def test_sending_media_stores_no_bytes_and_leaves_the_export_unchanged(tmp_path,
         assert PNG not in raw
         me = c.get("/v1/me", headers=auth(t)).json()
         assert set(me) == set(before)
-        assert set(me["messages_sent_30d"][0]) == {"kind", "headline", "body", "sent_at", "situation", "touch_kind"}
+        assert set(me["messages_sent_30d"][0]) == {"kind", "headline", "body", "sent_at", "situation", "touch_kind", "picture_facts"}
 
 
 # --- real renderers, end to end (Chromium and ffmpeg are required: a missing one fails, never skips) ----------

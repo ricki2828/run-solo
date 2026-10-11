@@ -33,13 +33,23 @@ FLOOD_SHARE = 0.4       # share of zone time in Z4 and Z5 that makes a run a "ha
 
 @dataclass(frozen=True)
 class MediaPlan:
-    card: str   # light | flood | pb | suggestion | weekly_recap | none
+    card: str   # light | flood | pb | suggestion | weekly_recap | monthly | none
     video: bool
     reason: str
     touch_card: str | None = None  # milestone | race_countdown: a second card the channel may add
+    # What the picture shows, persisted at the moment the coach decides to send the card (the server holds no routes
+    # and the text it writes is not re-parseable). `facts` is for the card itself (suggestion, monthly: run and recap
+    # cards rebuild theirs from the stored run rows), `touch_facts` for the touch card. Both hold only what the card's
+    # own text says; see render/protocol.KIND_FACT_KEYS for the exact keys. Shown to the runner in /v1/me.
+    facts: dict[str, Any] | None = None
+    touch_facts: dict[str, Any] | None = None
 
     def to_json(self) -> str:
-        return json.dumps(asdict(self), sort_keys=True)
+        d = asdict(self)
+        for k in ("facts", "touch_facts"):
+            if d[k] is None:
+                del d[k]   # cards without a picture keep the shape they always had
+        return json.dumps(d, sort_keys=True)
 
 
 @dataclass(frozen=True)
@@ -153,20 +163,52 @@ def big_session(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]]) -> st
     return None
 
 
+# The line under a milestone number. Fixed copy keyed on the number: nothing personal, nothing the text does not say.
+MILESTONE_LINE = {
+    ("runs", 10): "Double digits.", ("runs", 25): "A habit forming.", ("runs", 50): "Fifty on the board.",
+    ("runs", 100): "Triple digits.", ("runs", 150): "Still showing up.", ("runs", 200): "Two hundred and counting.",
+    ("runs", 250): "A quarter of a thousand.", ("runs", 300): "Three hundred strong.", ("runs", 400): "Four hundred runs.",
+    ("runs", 500): "Five hundred runs.", ("runs", 750): "Seven hundred and fifty.", ("runs", 1000): "One thousand runs.",
+    ("distance_km", 100): "The first hundred.", ("distance_km", 250): "A quarter way to a thousand.",
+    ("distance_km", 500): "Halfway to a thousand.", ("distance_km", 1000): "A thousand kilometres.",
+    ("distance_km", 1500): "Fifteen hundred.", ("distance_km", 2000): "Two thousand kilometres.",
+    ("distance_km", 2500): "Twenty-five hundred.", ("distance_km", 3000): "Three thousand kilometres.",
+    ("distance_km", 4000): "Four thousand kilometres.", ("distance_km", 5000): "Five thousand kilometres.",
+}
+
+
+def touch_card_facts(touch: T.Touch | None) -> tuple[str | None, dict[str, Any] | None]:
+    """-> (touch card kind, the facts it shows). Only what the touch line already says: the milestone number, or the
+    whole weeks to the race. race_month ("N months away") stays text: a month is not a countdown."""
+    if touch is None:
+        return None, None
+    try:
+        if touch.kind == "milestone_runs":
+            n = int(touch.slots["n"])
+            return "milestone", {"kind": "runs", "value": n, "line": MILESTONE_LINE.get(("runs", n), "")}
+        if touch.kind == "milestone_km":
+            n = int(touch.slots["total_km"])
+            return "milestone", {"kind": "distance_km", "value": n, "line": MILESTONE_LINE.get(("distance_km", n), "")}
+        if touch.kind == "race_countdown":
+            return "race_countdown", {"weeks_to_race": int(touch.key.split(":", 1)[1])}
+    except (KeyError, ValueError, IndexError):
+        pass
+    return None, None
+
+
 def media_for_run(run: Mapping[str, Any], situation: str, touch: T.Touch | None,
                   hist: Sequence[Mapping[str, Any]] = ()) -> MediaPlan:
     share = hard_share(run)
     hard = run["type"] in HARD_TYPES or (share is not None and share >= FLOOD_SHARE)
-    extra = ("milestone" if touch and touch.kind.startswith("milestone")
-             else "race_countdown" if touch and touch.kind in ("race_countdown", "race_month") else None)
+    extra, tfacts = touch_card_facts(touch)
     if run.get("pb"):
-        return MediaPlan("pb", True, "pb", extra)
+        return MediaPlan("pb", True, "pb", extra, None, tfacts)
     reason = big_session(run, hist)
     if reason:
-        return MediaPlan("flood" if hard else "light", True, reason, extra)
+        return MediaPlan("flood" if hard else "light", True, reason, extra, None, tfacts)
     if hard:
-        return MediaPlan("flood", False, "hard_run", extra)
-    return MediaPlan("light", False, "easy", extra)
+        return MediaPlan("flood", False, "hard_run", extra, None, tfacts)
+    return MediaPlan("light", False, "easy", extra, None, tfacts)
 
 
 def enrich_run(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]], memory: Mapping[str, str],

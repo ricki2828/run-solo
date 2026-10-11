@@ -10,7 +10,9 @@ from ._engine import render_html
 
 def build_countdown_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = None) -> str:
     memory = memory or {}
-    days = int(facts["days_to_race"])
+    # The coach only knows whole weeks ("7 weeks to race day"), so it sends weeks; a full date feed would send days.
+    weeks_mode = facts.get("days_to_race") is None and facts.get("weeks_to_race") is not None
+    days = int(facts["weeks_to_race"] if weeks_mode else facts["days_to_race"])
     colour = brand.SCORE["speed"]
     quiet = brand.QUIET
     weeks_total = int(facts.get("plan_weeks") or 0)
@@ -22,7 +24,7 @@ def build_countdown_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | N
             f'<rect x="{i * (w + 8):.1f}" y="0" width="{w:.1f}" height="34" rx="4" fill="{colour if i < weeks_done else brand.HAIRLINE}"/>'
             for i in range(weeks_total))
         blocks = f'<svg width="936" height="34" viewBox="0 0 936 34">{blocks}</svg>'
-    unit = "DAY" if days == 1 else "DAYS"
+    unit = ("WEEK" if days == 1 else "WEEKS") if weeks_mode else ("DAY" if days == 1 else "DAYS")
     name = P.esc(facts.get("race_name", "Race day"), 30)
     sub = P.esc(facts.get("race_line", ""), 70)
     css = P.base_css(brand.GROUND, brand.INK) + f"""

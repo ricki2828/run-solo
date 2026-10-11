@@ -512,9 +512,11 @@ class Service:
                 "verdict, locality, feel, received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
             cutoff = iso(now - timedelta(days=RETENTION_LOG_DAYS))
             msgs = [dict(r) for r in c.execute(
-                "SELECT k.kind, k.headline, k.body, k.sent_at, cc.situation, cc.touch_kind FROM cards k "
+                "SELECT k.kind, k.headline, k.body, k.sent_at, cc.situation, cc.touch_kind, cc.media_json FROM cards k "
                 "LEFT JOIN convo_cards cc ON cc.card_id = k.card_id WHERE k.user_id=? AND k.sent_at >= ? "
                 "ORDER BY k.sent_at DESC", (uid, cutoff))]
+            for m in msgs:  # the facts a picture was drawn from, stored when the card was decided (see media_json)
+                m["picture_facts"] = self._picture_facts(m.pop("media_json", None))
             areas = [dict(r) for r in c.execute("SELECT run_id, lat, lon FROM convo_area WHERE user_id=? ORDER BY rowid", (uid,))]
             convo = [dict(r) for r in c.execute("SELECT kind, key, ts FROM convo_log WHERE user_id=? ORDER BY id", (uid,))]
             memory = self._memory_get(c, uid, now)
@@ -536,6 +538,15 @@ class Service:
                         *(["Open-Meteo (a location rounded to about 11 km and a timezone, no identifier)"]
                           if self.s.weather_enabled else [])],
         }
+
+    @staticmethod
+    def _picture_facts(media_json: str | None) -> dict | None:
+        try:
+            plan = json.loads(media_json) if media_json else {}
+        except ValueError:
+            return None
+        out = {k: plan[k] for k in ("facts", "touch_facts") if isinstance(plan, dict) and plan.get(k)}
+        return out or None
 
     def delete_me(self, uid: str) -> None:
         db.hard_delete_user(self.s.db_path, uid)
@@ -906,7 +917,7 @@ class Service:
                               voice=ev.rendered, style=ev.style)
         buttons = self._buttons("set", ev.suggestion.kind, None)
         card_id = secrets.token_hex(16)
-        media = cv_engine.MediaPlan("suggestion", False, ev.suggestion.reason)
+        media = cv_engine.MediaPlan("suggestion", False, ev.suggestion.reason, facts=ev.card_facts)
         used = [ev.rendered.variant_id] if w.source == "template" else []
         with db.tx(self.s.db_path) as c:
             c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
@@ -949,6 +960,31 @@ class Service:
                           (uid, "recap_empty", week_ref, iso(now)))
         return card_id
 
+    def _build_monthly_card(self, uid: str, month_ref: str, now: datetime) -> str | None:
+        """The month poster for 'YYYY-MM' (the month just ended). Nothing is stored for the picture: it is rebuilt from the
+        run rows when it is sent, like the weekly recap. Once per user per month, however often it is planned."""
+        ref = f"monthly:{month_ref}"
+        with db.ro(self.s.db_path) as c:
+            ex = c.execute("SELECT card_id FROM cards WHERE user_id=? AND run_id=? AND kind='monthly'", (uid, ref)).fetchone()
+            if ex:
+                return ex["card_id"]
+            runs = self._full_history(c, uid, None, now)
+            usage = self._usage(c, uid, now)
+            zone_id = c.execute("SELECT zone_id FROM users WHERE id=?", (uid,)).fetchone()["zone_id"]
+        mr = cv_recap.build_monthly(runs, month_ref, zone_id, usage.variants, now, month_ref)
+        if mr is None:
+            return None
+        card_id = secrets.token_hex(16)
+        with db.tx(self.s.db_path) as c:
+            if not self._claim(c, uid, f"monthly:{month_ref}", now):
+                return None
+            c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
+                      "VALUES (?,?,?,?,?,?,?,?,?)",
+                      (card_id, uid, ref, "monthly", mr.rendered.headline, mr.rendered.body, "[]", "template", iso(now)))
+            self._convo_write(c, uid, now, card_id, mr.rendered.situation, mr.media, mr.rendered.allowed,
+                              [mr.rendered.variant_id], None)
+        return card_id
+
     def _send_card(self, user: dict, card_id: str, now: datetime) -> bool:
         """True when the card went out. False when it was deliberately not sent (WhatsApp, outside the 24 h window,
         on a card the fixed Easy/Right/Hard template cannot honestly carry)."""
@@ -982,6 +1018,10 @@ class Service:
         if media is None:
             ch.send_card(user["chat_ref"], OutCard(card_id, card["headline"], card["body"], buttons, None, links),
                          in_window=in_window)
+        if telegram and self.s.media_enabled:
+            plan = self._plan(card_id)
+            if plan.get("touch_card") and plan.get("touch_facts"):
+                followups.append("touch_card")   # its own outbox item: a failed render never blocks or repeats the card
         with db.tx(self.s.db_path) as c:
             c.execute("UPDATE cards SET sent_at=? WHERE card_id=?", (iso(now), card_id))
             c.execute("INSERT INTO msglog (user_id, ts, direction, kind) VALUES (?,?,?,?)",
@@ -1007,7 +1047,7 @@ class Service:
         follow-up held back by the kill switch or quiet hours must not arrive long after its card)."""
         card_id, _, mode = ref.partition(":")
         ch = self.channels.get(user["channel"])
-        if ch is None or mode not in ("caption", "question"):
+        if ch is None or mode not in ("caption", "question", "touch_card"):
             return False
         with db.ro(self.s.db_path) as c:
             row = c.execute("SELECT * FROM cards WHERE card_id=? AND user_id=?", (card_id, user["id"])).fetchone()
@@ -1018,9 +1058,37 @@ class Service:
         if not card["sent_at"] or parse_iso(card["sent_at"]) < now - timedelta(hours=self.s.stale_card_hours):
             log.info("follow-up dropped: stale")
             return False
+        if mode == "touch_card":
+            # The milestone or countdown picture. The touch line already rode the card's text, so any failure to draw it
+            # (no worker, refused upload) just means the text stands alone: skipped, not retried into a loop.
+            try:
+                media = self.media.render_touch(self._plan(card_id))
+            except Exception as e:
+                log.warning("touch card render failed, text stands: %s", type(e).__name__)
+                return False
+            if media is None:
+                return False
+            try:
+                ch.send_followup(user["chat_ref"], OutCard(card_id, "", "", [], media, ()), mode)
+            except ChannelError as e:
+                if not e.permanent:
+                    raise
+                log.warning("touch card refused, text stands: %s", e)
+                return False
+            return True
         ch.send_followup(user["chat_ref"], OutCard(card_id, card["headline"], card["body"],
                                                    json.loads(card["buttons_json"]), None, self._links(card)), mode)
         return True
+
+    def _plan(self, card_id: str) -> dict:
+        """The stored media plan of a card ({} when there is none or it cannot be read)."""
+        with db.ro(self.s.db_path) as c:
+            cc = c.execute("SELECT media_json FROM convo_cards WHERE card_id=?", (card_id,)).fetchone()
+        try:
+            plan = json.loads(cc["media_json"]) if cc else {}
+        except ValueError:
+            return {}
+        return plan if isinstance(plan, dict) else {}
 
     def _links(self, card: dict) -> tuple[tuple[str, str], ...]:
         """Deep-link buttons for a card: the run itself, or the recap's week. Empty without a configured https base."""
@@ -1046,6 +1114,15 @@ class Service:
             if card["kind"] == "recap":
                 runs = [dict(r) for r in c.execute("SELECT * FROM runs WHERE user_id=? AND start_utc>=? AND start_utc<=?",
                                                     (user["id"], iso(now - timedelta(days=21)), iso(now)))]
+            elif card["kind"] == "monthly":
+                ref = str(card.get("run_id") or "")
+                try:
+                    y, m = int(ref[len("monthly:"):][:4]), int(ref[len("monthly:"):][5:7])
+                    lo, hi = datetime(y, m, 1, tzinfo=UTC) - timedelta(days=2), datetime(y + m // 12, m % 12 + 1, 1, tzinfo=UTC) + timedelta(days=2)
+                except ValueError:
+                    return None
+                runs = [dict(r) for r in c.execute("SELECT * FROM runs WHERE user_id=? AND start_utc>=? AND start_utc<=?",
+                                                    (user["id"], iso(lo), iso(hi)))]
             else:
                 runs = [dict(r) for r in c.execute("SELECT * FROM runs WHERE user_id=? AND run_id=?",
                                                     (user["id"], card.get("run_id")))]
@@ -1087,6 +1164,10 @@ class Service:
             if user["channel"] != "telegram":  # Telegram first; WhatsApp would bill it as marketing
                 return "skipped", None
             card_id = self._build_recap_card(user["id"], item["ref"], now)
+        elif item["kind"] == "monthly":
+            if user["channel"] != "telegram":  # same as the recap: WhatsApp would bill an unprompted poster as marketing
+                return "skipped", None
+            card_id = self._build_monthly_card(user["id"], item["ref"], now)
         else:
             return "skipped", None
         if card_id is None:
@@ -1218,6 +1299,42 @@ class Service:
                                (u["id"], "recap", iso(now), f"recap:{u['id']}:{wk}", wk)).rowcount
         return n
 
+    def plan_monthly(self, now: datetime | None = None, only_user: str | None = None) -> int:
+        """Queue the month poster on the 1st, 09:00-12:00 local, for the month that just ended. Once per user per month
+        (the dedupe key, the existing card and the build's own quota claim all say so), only when that month had runs,
+        never inside quiet hours and never within MONTHLY_MIN_GAP_H of another card: the poster waits for a later tick
+        in its window rather than land on top of one."""
+        now = now or now_utc()
+        n = 0
+        who, args = ((" AND id = ?", (only_user,)) if only_user else (f" AND id NOT IN {replay_hold(now)}", ()))
+        with db.tx(self.s.db_path) as c:
+            users = [dict(r) for r in c.execute(
+                "SELECT * FROM users WHERE channel='telegram' AND paused=0 AND last_run_utc >= ?" + who,
+                (iso(now - timedelta(days=62)), *args))]
+            for u in users:
+                loc = to_local(now, u["zone_id"])
+                if loc.day != cv_recap.MONTHLY_DAY:
+                    continue
+                if not (cv_recap.MONTHLY_START_MIN <= loc.hour * 60 + loc.minute < cv_recap.MONTHLY_END_MIN):
+                    continue
+                qs, qe = self._quiet(u)
+                if in_quiet(now, u["zone_id"], qs, qe):
+                    continue
+                ref = cv_recap.previous_month(now, u["zone_id"])
+                if c.execute("SELECT 1 FROM cards WHERE user_id=? AND run_id=? AND kind='monthly'",
+                             (u["id"], f"monthly:{ref}")).fetchone():
+                    continue  # already built (and sent or about to be)
+                if c.execute("SELECT 1 FROM cards WHERE user_id=? AND sent_at>?",
+                             (u["id"], iso(now - timedelta(hours=cv_recap.MONTHLY_MIN_GAP_H)))).fetchone():
+                    continue
+                rows = [dict(r) for r in c.execute("SELECT start_utc, zone_id FROM runs WHERE user_id=? AND start_utc>=? "
+                                                   "AND start_utc<=?", (u["id"], iso(now - timedelta(days=64)), iso(now)))]
+                if not cv_recap.month_runs(rows, u["zone_id"], ref):
+                    continue  # nothing to show for the month
+                n += c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
+                               (u["id"], "monthly", iso(now), f"monthly:{u['id']}:{ref}", ref)).rowcount
+        return n
+
     def purge(self, now: datetime | None = None) -> None:
         now = now or now_utc()
         log_cut = iso(now - timedelta(days=RETENTION_LOG_DAYS))
@@ -1259,6 +1376,7 @@ class Service:
         self.tick_replay_flag(now)
         self.plan_evening(now)
         self.plan_recap(now)
+        self.plan_monthly(now)
         self.run_outbox(now)
         with db.tx(self.s.db_path) as c:
             r = c.execute("SELECT value FROM settings WHERE key='last_purge'").fetchone()
