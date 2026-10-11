@@ -390,3 +390,27 @@ def test_cli_refuses_until_the_live_service_knows_about_replays(env, monkeypatch
     env.svc.mark_replay_aware()
     assert cli_main(["replay", str(env.folder), "--dry-run", "--every", "300"]) == 0
     assert capsys.readouterr().out.startswith("Dry run:")
+
+
+# --- run cards carry only the feel row -----------------------------------------------------------
+
+def test_dry_run_no_run_card_carries_more_than_the_feel_row(tmp_path):
+    """The live dry run showed a trail run's post-run card with five buttons. The shape of that history: hard
+    sessions, then trail runs abroad. Every dry-run line and every stored run card has at most three buttons, and
+    they are the feel row."""
+    d = date(2026, 9, 21)
+    facts = [fact(1, d, "06:30"), fact(2, d + timedelta(days=2), "06:30", "intervals", 8.0, 322),
+             fact(3, d + timedelta(days=3), "06:30", "tempo", 8.0, 322), fact(4, d + timedelta(days=4), "06:30"),
+             fact(5, d + timedelta(days=9), "08:00", "trail", 9.0, 420, zone="Europe/Athens"),
+             fact(6, d + timedelta(days=16), "10:30", "trail", 12.0, 450, zone="Europe/Rome")]
+    e = Env(tmp_path)
+    e.folder = write_facts(tmp_path / "copied-facts", facts)  # copied to a scratch dir, as the real facts are
+    lines: list[str] = []
+    assert dry_run(e.s, str(e.folder), 300, None, out=lines.append) == 0
+    assert all(ln.count(" | ") <= 2 for ln in lines[1:] if " run " in ln)
+    e.replayer().run()
+    run_cards = [c for c in e.cards() if c["kind"] == "run"]
+    assert len(run_cards) >= len(facts) - 1
+    for c in run_cards:
+        acts = [b["action"] for b in json.loads(c["buttons_json"])]
+        assert len(acts) <= 3 and all(a.startswith("feel:") for a in acts), (c["headline"], acts)

@@ -170,14 +170,34 @@ def test_question_answers_are_validated_against_enums(client, fakes):
     assert q(client, "SELECT COUNT(*) n FROM memory")[0]["n"] == 0
 
 
-def test_suggestion_rides_on_card_cap_two_per_week_and_not_this_week(client, fakes):
+def evening(client, day):
+    """Build the evening-before card for `day` the way the outbox worker would. None when nothing is suggested."""
+    uid = q(client, "SELECT id FROM users")[0]["id"]
+    return client.svc._build_evening_card(uid, day, now_utc())
+
+
+def test_run_cards_carry_only_the_feel_row(client, fakes):
     t = enrol(client)
     seed_easy(client, t)
-    # two hard sessions -> each earns a "recover" suggestion; the third in the same week must not
     for i in range(3):
         send_run(client, t, f"h{i}", type="tempo", minutes_ago=5 + i)
-    kinds = []
     for row in q(client, "SELECT buttons_json FROM cards WHERE kind='run' ORDER BY rowid"):
+        acts = [b["action"] for b in json.loads(row["buttons_json"])]
+        assert len(acts) <= 3 and all(a.startswith("feel:") for a in acts)
+
+
+def test_suggestion_buttons_live_on_the_evening_card_cap_two_per_week(client, fakes):
+    t = enrol(client)
+    seed_easy(client, t)
+    for i in range(3):
+        send_run(client, t, f"h{i}", type="tempo", minutes_ago=5 + i)
+    built = [evening(client, f"2099-01-0{d}") for d in (1, 2, 3)]
+    kinds = []
+    for cid in built:
+        if cid is None:
+            kinds.append(False)
+            continue
+        row = q(client, "SELECT buttons_json FROM cards WHERE card_id=?", cid)[0]
         kinds.append(any(b["action"].startswith("sugg:yes") for b in json.loads(row["buttons_json"])))
     assert kinds == [True, True, False]
 
@@ -185,14 +205,14 @@ def test_suggestion_rides_on_card_cap_two_per_week_and_not_this_week(client, fak
 def test_not_this_week_spends_the_rest_of_the_cap(client, fakes):
     t = enrol(client)
     seed_easy(client, t)
-    send_run(client, t, "h0", type="tempo")
-    card_id, buttons = card_buttons(client)
+    for i in range(3):
+        send_run(client, t, f"h{i}", type="tempo", minutes_ago=5 + i)
+    card_id = evening(client, "2099-01-01")
+    buttons = json.loads(q(client, "SELECT buttons_json FROM cards WHERE card_id=?", card_id)[0]["buttons_json"])
     skip = next(i for i, b in enumerate(buttons) if b["action"].startswith("sugg:skip"))
     post_tg(client, tg_callback(next_id(), f"{card_id}:{skip}"))
     assert q(client, "SELECT outcome FROM outcomes")[0]["outcome"] == "skip"
-    send_run(client, t, "h1", type="tempo", minutes_ago=3)
-    _, b2 = card_buttons(client)
-    assert not any(b["action"].startswith("sugg") for b in b2)
+    assert evening(client, "2099-01-02") is None
 
 
 def test_say_nothing_creates_no_card(client, fakes):
