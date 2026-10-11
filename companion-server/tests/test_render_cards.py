@@ -124,7 +124,8 @@ def test_out_and_back_is_drawn_once():
 
 
 def test_interval_card_shows_reps_not_average_pace():
-    html = _body(build_post_run_html(F.singapore_intervals(), MEMORY))
+    old_app = {k: v for k, v in F.singapore_intervals().items() if k != "work_pace_s_per_km"}
+    html = _body(build_post_run_html(old_app, MEMORY))
     assert "BEST REP" in html and ">REPS<" in html and "/KM" not in html
 
 
@@ -169,7 +170,7 @@ def _noroute(facts):
 
 # What the server stores (companion/media.py run_facts): no route, splits or reps, and pb_detail is only a label.
 SERVER_KEYS = ("type", "start_local", "distance_km", "duration_s", "headline", "pace_s_per_km", "zone_s", "climb_m",
-               "place_note", "verdict", "pb")
+               "place_note", "verdict", "pb", "work_pace_s_per_km")
 
 
 # The headline of a minimal card can only use what the stored facts hold: no reps, no place counts ("third time").
@@ -191,6 +192,22 @@ def _with_shape(facts):
     if facts.get("reps"):
         out["reps"] = facts["reps"]
     return out
+
+
+def test_interval_card_shows_work_pace_and_keeps_reps():
+    facts = F.singapore_intervals()
+    html = _body(build_post_run_html(facts, MEMORY))
+    assert "3:30" in html and "/KM WORK" in html and "REPS" in html
+    assert "BEST REP" not in html
+    old = {k: v for k, v in facts.items() if k != "work_pace_s_per_km"}   # an old app: today's card
+    html = _body(build_post_run_html(old, MEMORY))
+    assert "BEST REP" in html and "/KM WORK" not in html
+
+
+def test_work_pace_is_an_allowed_run_fact_and_not_a_week_fact():
+    from render import protocol as PR
+    assert "work_pace_s_per_km" in PR.ALLOWED_FACT_KEYS and "work_pace_s_per_km" in PR.RUN_KEYS
+    assert "work_pace_s_per_km" not in PR.WEEK_KEYS
 
 
 GOLDENS = {

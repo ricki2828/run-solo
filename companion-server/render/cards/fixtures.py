@@ -83,7 +83,7 @@ def _splits(distance_km: float, duration_s: float, zones: list[int], seed: int) 
 def singapore_intervals() -> dict[str, Any]:
     return {
         "type": "interval", "title": "8 × 400 m", "start_local": "2026-10-08T06:10", "place_note": "Singapore",
-        "distance_km": 9.6, "duration_s": 3170, "pace_s_per_km": 330, "avg_hr": 158,
+        "distance_km": 9.6, "duration_s": 3170, "pace_s_per_km": 330, "work_pace_s_per_km": 210.4, "avg_hr": 158,
         "zone_s": [240, 420, 360, 780, 1370],
         "route": _stadium(1.3631, 103.8478, turns=1),
         "verdict": "faster", "headline": "Eight reps, all on pace.",

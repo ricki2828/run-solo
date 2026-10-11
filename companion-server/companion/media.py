@@ -88,6 +88,8 @@ def run_facts(run: Mapping[str, Any], headline: str) -> dict[str, Any]:
         facts["splits"] = shape["splits"]
     if shape.get("reps") and run["type"] == "interval":
         facts["reps"] = shape["reps"]
+    if run.get("work_pace_s_per_km") and run["type"] == "interval":
+        facts["work_pace_s_per_km"] = run["work_pace_s_per_km"]
     return facts
 
 
