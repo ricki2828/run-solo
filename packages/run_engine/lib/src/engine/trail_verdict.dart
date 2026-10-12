@@ -54,9 +54,12 @@ class TrailRunFacts {
   /// Heat-adjusted moving time as if the run had covered [refDistanceM] at
   /// the same pace. "Same trail" allows lengths 10% apart, so raw time would
   /// call a shorter run faster; this is the like-for-like number.
+  ///
+  /// Whole seconds, so a displayed time and a displayed gap always agree
+  /// (the clock floors).
   int normalisedMs(double refDistanceM) => distanceM <= 0
       ? heatAdjustedMovingMs
-      : (heatAdjustedMovingMs * refDistanceM / distanceM).round();
+      : (heatAdjustedMovingMs * refDistanceM / distanceM / 1000).round() * 1000;
 }
 
 /// Runs that went the same way round the same trail, oldest first. The
