@@ -14,4 +14,7 @@ abstract final class Routes {
   static const String settings = '/settings';
   static const String offlineMaps = '/settings/offline-maps';
   static const String plan = '/plan';
+
+  /// Last week's story. Optional argument: a `WeeklyStory` to show.
+  static const String weeklyStory = '/weekly-story';
 }

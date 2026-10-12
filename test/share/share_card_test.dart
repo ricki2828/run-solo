@@ -38,6 +38,18 @@ List<GeoPoint> loop() => [
 ];
 
 void main() {
+  test('shared moment detail carries no day or month', () {
+    expect(shareSafeMomentDetail('28:12 on Sunday, run 5.'), '28:12, run 5.');
+    expect(
+      shareSafeMomentDetail('1:14 faster than September.'),
+      '1:14 faster.',
+    );
+    expect(
+      shareSafeMomentDetail('Up from 12 a month ago.'),
+      'Up from 12 a month ago.',
+    );
+  });
+
   group('card data', () {
     test('a run: title, distance, time, true pace; no place anywhere', () {
       final d = runCardData(freeRun(title: 'Sunday long one'), Units.km);

@@ -10,6 +10,7 @@ import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/max_hr.dart';
+import '../state/progress_snapshot.dart';
 import '../state/spoken_summary.dart';
 import '../state/zone_histogram.dart';
 import '../theme/theme.dart';
@@ -22,11 +23,25 @@ import '../widgets/rep_bars.dart';
 import '../widgets/splits_bars.dart';
 import 'cooper_result_screen.dart';
 import 'course_board_screen.dart';
+import 'moment_screen.dart';
 import 'board_detail_screen.dart';
 import 'bronco_result_screen.dart';
 import 'run_detail_screen.dart';
 import 'trail_suggest_card.dart';
 import 'trail_verdict_screen.dart';
+
+/// The moment to show for a run that made several pending: PB, then
+/// level-up, then first, then the weekly story; engine order breaks ties.
+@visibleForTesting
+Moment pickMoment(List<Moment> pending) {
+  int rank(Moment m) => switch (m.kind) {
+    MomentKind.pb => 0,
+    MomentKind.levelUp => 1,
+    MomentKind.first => 2,
+    MomentKind.story => 3,
+  };
+  return pending.reduce((a, b) => rank(b) < rank(a) ? b : a);
+}
 
 /// Post-run screen (design brief §4.6). A 4x4 gets the verdict with the M4
 /// reveal; a Laps or Free run gets its summary (no verdict word, plan
@@ -57,6 +72,56 @@ class _VerdictScreenState extends State<VerdictScreen> {
   /// The spoken summary is said once, for the run that has just finished.
   bool _spoke = false;
 
+  /// At most one moment, once, after the result is up.
+  bool _momentChecked = false;
+  Timer? _momentTimer;
+
+  @override
+  void dispose() {
+    _momentTimer?.cancel();
+    super.dispose();
+  }
+
+  /// A just-finished run may unlock a full-screen moment: the first unseen
+  /// one, shown over the result a beat after it appears, then marked seen.
+  /// Never for a run that is not fresh (a replayed or imported run keeps its
+  /// old timestamps), and nothing is scheduled when no moment is pending.
+  Future<void> _maybeShowMoment(RunDetail detail, List<RunSummary> all) async {
+    if (_momentChecked || !widget.justFinished) return;
+    _momentChecked = true;
+    final services = AppServices.of(context);
+    final now = services.now();
+    if (now.difference(detail.run.end).abs() > const Duration(hours: 2)) {
+      return;
+    }
+    final seen = services.seenMoments;
+    final p = services.settings.settings;
+    final snapshot = buildProgressSnapshot(
+      all,
+      now: now,
+      sex: p.profileSex,
+      birthYear: p.birthYear,
+      seenMoments: await seen.load(),
+    );
+    if (snapshot.pending.isEmpty || !mounted) return;
+    // One moment per run: the highest priority (PB, level-up, first, then
+    // the weekly story). Every other moment this run made pending is marked
+    // seen with it, so a stale "your first 5K" never shows after a later
+    // run. The firsts still count on Home and Progress. A story that was
+    // not the one shown stays pending: it has its own entry point.
+    final moment = pickMoment(snapshot.pending);
+    final toMark = [
+      for (final m in snapshot.pending)
+        if (m.kind != MomentKind.story || m.id == moment.id) m.id,
+    ];
+    _momentTimer = Timer(const Duration(milliseconds: 900), () async {
+      if (!mounted) return;
+      await seen.markSeen(toMark);
+      if (!mounted) return;
+      await showMoment(context, moment);
+    });
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -81,6 +146,7 @@ class _VerdictScreenState extends State<VerdictScreen> {
         (s) => MaxHr.foldObserved(s, observed, detail.run.end),
       );
     }
+    if (widget.justFinished) unawaited(_maybeShowMoment(detail, all));
     if (widget.justFinished && !_spoke) {
       _spoke = true;
       unawaited(

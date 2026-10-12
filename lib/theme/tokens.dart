@@ -56,6 +56,13 @@ abstract final class AuroraRunType {
   static const Color trail = Color(0xFFB8C04C);
 }
 
+/// Weekly story ground: a deep indigo that carries no lane, run-type, HR zone
+/// or semantic meaning (a test holds it at least 60 RGB from all of them, in
+/// both themes). White ink on it is 7:1.
+abstract final class AuroraStory {
+  static const Color fill = Color(0xFF5A2DE0);
+}
+
 /// Route-line gradient classes (10-Oct trail run). Kept clear of the zone
 /// ramp, the semantic mint / vermillion / cyan and the run-type identities
 /// (a test measures the distance), so a colour on the map never doubles as
