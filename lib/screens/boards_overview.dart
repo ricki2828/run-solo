@@ -452,8 +452,8 @@ class _BoardCard extends StatelessWidget {
   }
 }
 
-/// One trail's card on the Boards tab: its best moving time, how the last
-/// run stood, the bars of the last 8.
+/// One trail's card on the Boards tab: its best time (heat-adjusted pace over
+/// the trail's distance), how the last run stood, the bars of the last 8.
 class _TrailCard extends StatelessWidget {
   const _TrailCard({required this.group, required this.onTap});
   final engine.TrailGroup group;
@@ -465,8 +465,10 @@ class _TrailCard extends StatelessWidget {
     final best = group.best;
     final last = group.runs.last;
     final n = group.runs.length;
-    final rank = 1 + group.runs.where((r) => r.movingMs < last.movingMs).length;
-    final off = last.movingMs - best.movingMs;
+    final rank =
+        1 +
+        group.runs.where((r) => group.normMs(r) < group.normMs(last)).length;
+    final off = group.normMs(last) - group.normMs(best);
     final sub = rank == 1
         ? '$n runs · last was your best'
         : '$n runs · last #$rank, ${Fmt.clock(off)} off';
@@ -491,7 +493,7 @@ class _TrailCard extends StatelessWidget {
               ),
               const SizedBox(height: Space.x4),
               Text(
-                Fmt.clock(best.movingMs),
+                Fmt.clock(group.normMs(best)),
                 style: RunSoloType.display44.copyWith(color: t.inkPrimary),
               ),
               const SizedBox(height: Space.x4),
@@ -501,9 +503,9 @@ class _TrailCard extends StatelessWidget {
               ),
               const SizedBox(height: Space.x12),
               BoardSpark(
-                values: [for (final r in shown) r.movingMs / 1000],
+                values: [for (final r in shown) group.normMs(r) / 1000],
                 lowerBetter: true,
-                best: best.movingMs / 1000,
+                best: group.normMs(best) / 1000,
                 bestColor: t.accentArc,
                 newestColor: t.inkPrimary,
                 barColor: t.inkMuted,

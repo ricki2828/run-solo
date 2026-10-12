@@ -156,6 +156,79 @@ void main() {
     });
   });
 
+  group('same trail, different distance', () {
+    // 6.0 km in 40:00 is 6:40/km.
+    final a = run('a', d, 2400, r: loop);
+
+    test('same pace over 8% less distance is no real change, not faster', () {
+      // The 12-Oct bug: 5.52 km in 36:48 is the same pace, 192 s less clock.
+      final b = run('b', d2, 2208, r: loop, distanceM: 5520);
+      final v = TrailVerdict.of(b, [a]);
+      expect(v.tone, TrailTone.same);
+      expect(v.headline, 'NO REAL CHANGE');
+      expect(v.deltaSec!.abs(), lessThan(1));
+      expect(v.subline, startsWith('Same pace as 12 Sep'));
+      expect(v.isTrailBest, isFalse);
+      expect(v.differentLength, isTrue);
+      expect(
+        v.lines,
+        contains(
+          'This run was 0.5 km shorter than 12 Sep; compared on pace over '
+          '6.0 km.',
+        ),
+      );
+    });
+
+    test('a genuinely faster pace over less distance is still faster', () {
+      // 5.52 km in 35:00 is 6:20/km, about 5% quicker than 6:40/km.
+      final b = run('b', d2, 2100, r: loop, distanceM: 5520);
+      final v = TrailVerdict.of(b, [a]);
+      expect(v.tone, TrailTone.faster);
+      expect(v.deltaSec, closeTo(2400 - 2100 * 6000 / 5520, 1));
+      // 117 s over the full 6.0 km, not the 300 s the clock shows.
+      expect(v.subline, startsWith('1:57 quicker than 12 Sep'));
+      expect(v.lines.any((l) => l.contains('shorter than 12 Sep')), isTrue);
+      expect(v.isTrailBest, isTrue);
+    });
+
+    test('a longer run at the same pace is no real change, not slower', () {
+      final b = run('b', d2, 2640, r: loop, distanceM: 6600);
+      final v = TrailVerdict.of(b, [a]);
+      expect(v.tone, TrailTone.same);
+      expect(
+        v.lines,
+        contains(
+          'This run was 0.6 km longer than 12 Sep; compared on pace over '
+          '6.0 km.',
+        ),
+      );
+    });
+
+    test('a longer run at a quicker pace is faster despite more clock', () {
+      // 6.6 km in 41:40 (100 s more clock) is 6:19/km.
+      final b = run('b', d2, 2500, r: loop, distanceM: 6600);
+      final v = TrailVerdict.of(b, [a]);
+      expect(v.tone, TrailTone.faster);
+      expect(v.deltaSec, closeTo(2400 - 2500 * 6000 / 6600, 1));
+    });
+
+    test('within 3% no distance line is added', () {
+      final b = run('b', d2, 2350, r: loop, distanceM: 5900);
+      final v = TrailVerdict.of(b, [a]);
+      expect(v.differentLength, isFalse);
+      expect(v.lines.any((l) => l.contains('compared on pace')), isFalse);
+    });
+
+    test('the best on a trail is ranked on pace, not clock time', () {
+      // The short run has the least clock but the slowest pace.
+      final short = run('s', d2, 2100, r: loop, distanceM: 5000); // 7:00/km
+      final full = run('f', d3, 2400, r: loop); // 6:40/km
+      final g = Trails.group([a, short, full]).single;
+      expect(g.best.id, 'a');
+      expect(g.normMs(short), 2520000);
+    });
+  });
+
   group('no match: true pace', () {
     test('no earlier trail run is a baseline', () {
       final v = TrailVerdict.of(run('a', d, 2600, r: loop, gap: 341), []);
