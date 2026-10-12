@@ -51,7 +51,7 @@ void main() {
         tester.view.physicalSize = const Size(1080, 800 * 3);
         await pumpTimes(tester, 8);
         await tester.tap(find.byKey(ValueKey('pack-chip-$chip')));
-        await pumpTimes(tester, 4);
+        await settleAnimations(tester);
         expect(tester.takeException(), isNull);
         expect(find.byKey(const ValueKey('pack-statement')), findsOneWidget);
         if (chip == 1) {
