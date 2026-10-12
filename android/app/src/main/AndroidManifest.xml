@@ -30,6 +30,13 @@
     <uses-permission android:name="android.permission.health.WRITE_EXERCISE_ROUTE" />
     <uses-permission android:name="android.permission.health.WRITE_HEART_RATE" />
     <uses-permission android:name="android.permission.health.WRITE_DISTANCE" />
+    <!-- SPIKE (X2 any watch): read runs another app wrote. Minimum set; the route is not requested
+         (Health Connect asks consent per read). Declaring these changes the Play Health apps
+         declaration from write-only to read+write: see the spike notes before merging. -->
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+    <uses-permission android:name="android.permission.health.READ_DISTANCE" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_SPEED" />
 
     <uses-feature
         android:name="android.hardware.bluetooth_le"
