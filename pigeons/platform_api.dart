@@ -519,13 +519,19 @@ class FollowRoute {
   List<double>? elevM;
 }
 
+/// What the runner should do at the end of the followed route: [turnAround] on a
+/// route that ends away from its start, [done] on a loop that closes on it.
+enum RouteEndCue { turnAround, done }
+
 /// The followed route's live figures, from the recorder's own fixes. [toGoM] is
 /// the route still ahead of the runner's progress (progress only moves forward);
 /// [climbToGoM] the route's ascent still ahead, null when the route has no
 /// elevation. [off] is the off-route state (more than about 40 m away for about
 /// 10 s, with hysteresis). [turnLabel] and [turnInM] are the next turn from the
 /// route's shape ("Left turn", "Keep right", ...), null when none is ahead or
-/// while off route.
+/// while off route. [endCue] is set from the moment the runner reaches the end
+/// of the route until about a minute later or until they head back (it is the
+/// screen's big cue; the voice and buzz fire once, natively).
 class RouteProgress {
   RouteProgress({
     required this.toGoM,
@@ -533,12 +539,14 @@ class RouteProgress {
     required this.off,
     this.turnLabel,
     this.turnInM,
+    this.endCue,
   });
   double toGoM;
   double? climbToGoM;
   bool off;
   String? turnLabel;
   double? turnInM;
+  RouteEndCue? endCue;
 }
 
 /// An in-progress journal found on app open without a finalised run file.
