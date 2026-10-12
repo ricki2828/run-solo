@@ -158,11 +158,12 @@ class _RunRow extends StatelessWidget {
     final norm = group.normMs(run);
     final off = norm - group.normMs(best);
     // A run of another length says so, since its time is worked out on pace.
+    final ref = group.refDistanceM;
+    final gapM = run.distanceM - ref;
     final far =
-        (run.distanceM - group.refDistanceM).abs() / group.refDistanceM >
-            engine.TrailVerdict.distanceTolerance
-        ? ' · ${Fmt.distance1((run.distanceM - group.refDistanceM).abs(), units)} '
-              '${run.distanceM < group.refDistanceM ? 'shorter' : 'longer'}'
+        ref > 0 && gapM.abs() / ref > engine.TrailVerdict.distanceTolerance
+        ? ' · ${Fmt.distance1(gapM.abs(), units)} '
+              '${gapM < 0 ? 'shorter' : 'longer'}'
         : '';
     final climb = run.climbM == null
         ? ''
