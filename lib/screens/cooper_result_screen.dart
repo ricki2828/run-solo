@@ -20,6 +20,9 @@ import '../widgets/board_chips.dart';
 import 'board_detail_screen.dart';
 import '../widgets/chrome.dart';
 import '../widgets/coaching.dart';
+import '../widgets/recent_activity.dart' show runTypeColor;
+import '../widgets/result_b/result_b.dart';
+import '../widgets/section_card.dart';
 import '../widgets/vo2_trend.dart';
 import 'run_detail_screen.dart';
 import 'settings_screen.dart' show kOpenMeteoAttribution;
@@ -162,134 +165,177 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
               ),
               children: [
                 const SizedBox(height: Space.x8),
-                Text(
-                  Fmt.dayDate(d.run.start),
-                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                ),
-                const SizedBox(height: Space.x8),
-                Text(
-                  metresText(c?.testDistanceM ?? d.analysis.freeRun.distanceM),
-                  key: const ValueKey('cooper-distance'),
-                  style: RunSoloType.display96.copyWith(color: t.inkPrimary),
-                ),
-                const SizedBox(height: Space.x12),
-                const LapLineDivider(gapAt: 0.18),
-                const SizedBox(height: Space.x16),
-                if (e != null) ...[
-                  Text(
-                    'VO2 MAX ESTIMATE',
-                    style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+                ResultHeadBlock(
+                  fill: runTypeColor(d.summary, t),
+                  builder: (context, ink) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        Fmt.dayDate(d.run.start),
+                        style: RunSoloType.label13.copyWith(
+                          color: ink,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: Space.x8),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          metresText(
+                            c?.testDistanceM ?? d.analysis.freeRun.distanceM,
+                          ),
+                          key: const ValueKey('cooper-distance'),
+                          softWrap: false,
+                          style: RunSoloType.display96.copyWith(color: ink),
+                        ),
+                      ),
+                    ],
                   ),
-                  Semantics(
-                    label: c!.primeRangeLine!,
-                    excludeSemantics: true,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
+                ),
+                const SizedBox(height: Space.x16),
+                if (e != null || c?.invalidLine != null)
+                  SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (e != null) ...[
+                          Text(
+                            'VO2 MAX ESTIMATE',
+                            style: RunSoloType.micro11.copyWith(
+                              color: t.inkSecondary,
+                            ),
+                          ),
+                          Semantics(
+                            container: true,
+                            label: c!.primeRangeLine!,
+                            excludeSemantics: true,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              children: [
+                                Text(
+                                  '${c.primeVo2!.round()}',
+                                  key: const ValueKey('cooper-vo2'),
+                                  style: RunSoloType.display96.copyWith(
+                                    color: t.inkPrimary,
+                                  ),
+                                ),
+                                const SizedBox(width: Space.x12),
+                                Text(
+                                  '(${(c.primeVo2! - engine.CooperProjection.rangeHalfWidth).round()} to ${(c.primeVo2! + engine.CooperProjection.rangeHalfWidth).round()})',
+                                  style: RunSoloType.body17.copyWith(
+                                    color: t.inkPrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            'ml/kg/min',
+                            style: RunSoloType.label13.copyWith(
+                              color: t.inkSecondary,
+                            ),
+                          ),
+                          // The raw figure stays visible, secondary (27-Sep call).
+                          if (c.rawSecondaryLine != null)
+                            Text(
+                              c.rawSecondaryLine!,
+                              key: const ValueKey('cooper-raw-secondary'),
+                              style: RunSoloType.label13.copyWith(
+                                color: t.inkSecondary,
+                              ),
+                            ),
+                          const SizedBox(height: Space.x8),
+                          // A10.3 via the shared board fold (LB3).
+                          BoardChips(
+                            runId: d.run.id,
+                            justFinished: widget.justFinished,
+                            onTapBoard: (k) => openBoardDetail(context, k),
+                          ),
+                          if (change != null)
+                            Text(
+                              change,
+                              key: const ValueKey('cooper-change'),
+                              style: RunSoloType.body15.copyWith(
+                                color: t.inkPrimary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          // A10.6: on the test result, coaching sits under the
+                          // rank chip (the flat-VO2 suggestion lands here).
+                          CoachingSection(
+                            runId: d.run.id,
+                            padding: const EdgeInsets.only(top: Space.x16),
+                          ),
+                          if (upTo.length >= 2) ...[
+                            const SizedBox(height: Space.x16),
+                            Text(
+                              'VO2 EST. BY TEST',
+                              style: RunSoloType.micro11.copyWith(
+                                color: t.inkSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: Space.x8),
+                            Vo2Bars(
+                              key: const ValueKey('cooper-result-trend'),
+                              values: upTo.length > Vo2Bars.maxBars
+                                  ? upTo.sublist(upTo.length - Vo2Bars.maxBars)
+                                  : upTo,
+                              best: upTo.reduce(math.max),
+                            ),
+                          ],
+                        ] else if (c?.invalidLine != null)
+                          Text(
+                            c!.invalidLine!,
+                            key: const ValueKey('cooper-invalid'),
+                            style: RunSoloType.body17.copyWith(
+                              color: t.inkPrimary,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                if (c?.heatLine != null) ...[
+                  const SizedBox(height: Space.x16),
+                  SectionCard(child: _HeatLine(result: c!)),
+                ],
+                if (c?.minuteM != null) ...[
+                  const SizedBox(height: Space.x16),
+                  SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          '${c.primeVo2!.round()}',
-                          key: const ValueKey('cooper-vo2'),
-                          style: RunSoloType.display96.copyWith(
-                            color: t.inkPrimary,
+                          'PACE BY MINUTE',
+                          style: RunSoloType.micro11.copyWith(
+                            color: t.inkSecondary,
                           ),
                         ),
-                        const SizedBox(width: Space.x12),
+                        const SizedBox(height: Space.x8),
+                        PaceStrip(
+                          minuteM: c!.minuteM!,
+                          curve: engine.CooperProjection.curveFor([
+                            for (final p in prior) p.minuteM,
+                          ]),
+                        ),
+                        const SizedBox(height: Space.x8),
                         Text(
-                          '(${(c.primeVo2! - engine.CooperProjection.rangeHalfWidth).round()} to ${(c.primeVo2! + engine.CooperProjection.rangeHalfWidth).round()})',
-                          style: RunSoloType.body17.copyWith(
-                            color: t.inkPrimary,
+                          prior.length <
+                                  engine.CooperProjection.personalAfterTests
+                              ? 'vs typical curve (research-based)'
+                              : 'vs your usual',
+                          style: RunSoloType.label13.copyWith(
+                            color: t.inkSecondary,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Text(
-                    'ml/kg/min',
-                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                  ),
-                  // The raw figure stays visible, secondary (27-Sep call).
-                  if (c.rawSecondaryLine != null)
-                    Text(
-                      c.rawSecondaryLine!,
-                      key: const ValueKey('cooper-raw-secondary'),
-                      style: RunSoloType.label13.copyWith(
-                        color: t.inkSecondary,
-                      ),
-                    ),
-                  const SizedBox(height: Space.x8),
-                  // A10.3 via the shared board fold (LB3).
-                  BoardChips(
-                    runId: d.run.id,
-                    justFinished: widget.justFinished,
-                    onTapBoard: (k) => openBoardDetail(context, k),
-                  ),
-                  if (change != null)
-                    Text(
-                      change,
-                      key: const ValueKey('cooper-change'),
-                      style: RunSoloType.body15.copyWith(
-                        color: t.inkPrimary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  // A10.6: on the test result, coaching sits under the
-                  // rank chip (the flat-VO2 suggestion lands here).
-                  CoachingSection(
-                    runId: d.run.id,
-                    padding: const EdgeInsets.only(top: Space.x16),
-                  ),
-                  if (upTo.length >= 2) ...[
-                    const SizedBox(height: Space.x16),
-                    Text(
-                      'VO2 EST. BY TEST',
-                      style: RunSoloType.micro11.copyWith(
-                        color: t.inkSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: Space.x8),
-                    Vo2Bars(
-                      key: const ValueKey('cooper-result-trend'),
-                      values: upTo.length > Vo2Bars.maxBars
-                          ? upTo.sublist(upTo.length - Vo2Bars.maxBars)
-                          : upTo,
-                      best: upTo.reduce(math.max),
-                    ),
-                  ],
-                ] else if (c?.invalidLine != null)
-                  Text(
-                    c!.invalidLine!,
-                    key: const ValueKey('cooper-invalid'),
-                    style: RunSoloType.body17.copyWith(color: t.inkPrimary),
-                  ),
-                if (c?.heatLine != null) ...[
-                  const SizedBox(height: Space.x16),
-                  _HeatLine(result: c!),
-                ],
-                if (c?.minuteM != null) ...[
-                  const SizedBox(height: Space.x24),
-                  Text(
-                    'PACE BY MINUTE',
-                    style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-                  ),
-                  const SizedBox(height: Space.x8),
-                  PaceStrip(
-                    minuteM: c!.minuteM!,
-                    curve: engine.CooperProjection.curveFor([
-                      for (final p in prior) p.minuteM,
-                    ]),
-                  ),
-                  const SizedBox(height: Space.x8),
-                  Text(
-                    prior.length < engine.CooperProjection.personalAfterTests
-                        ? 'vs typical curve (research-based)'
-                        : 'vs your usual',
-                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                  ),
                 ],
                 if (norms != null) ...[
-                  const SizedBox(height: Space.x24),
-                  _PeopleYourAge(norms: norms),
+                  const SizedBox(height: Space.x16),
+                  SectionCard(child: _PeopleYourAge(norms: norms)),
                 ],
                 const SizedBox(height: Space.x24),
                 Text(

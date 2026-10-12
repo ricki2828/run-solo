@@ -218,6 +218,9 @@ void main() {
     );
     await pumpTimes(tester, 6);
     expect(find.byKey(const ValueKey('detail-moving')), findsNothing);
+    // A tall view so the splits card below the head block is built.
+    tester.view.physicalSize = const Size(1080, 4000);
+    await pumpTimes(tester, 2);
     expect(find.widgetWithText(StatTile, '30:00'), findsNWidgets(2));
   });
 

@@ -20,6 +20,8 @@ import '../widgets/hold_button.dart';
 import '../widgets/rep_bars.dart';
 import '../widgets/splits_bars.dart';
 import '../widgets/time_in_zone.dart';
+import '../widgets/result_b/result_b.dart';
+import '../widgets/section_card.dart';
 import '../widgets/recent_activity.dart' show runTypeColor;
 import '../widgets/trail_runs_section.dart';
 import '../widgets/weather_chip.dart';
@@ -166,11 +168,11 @@ class RunDetailBody extends StatelessWidget {
         ],
         // A6: the weather chip sits under the header, before the map.
         if (weather != null) ...[
-          WeatherChip(view: weather),
+          SectionCard(child: WeatherChip(view: weather)),
           const SizedBox(height: Space.x16),
         ],
         if (breakdown != null) ...[
-          TruePaceBreakdown(line: breakdown),
+          SectionCard(child: TruePaceBreakdown(line: breakdown)),
           const SizedBox(height: Space.x16),
         ],
         // No route (indoor, or no GPS): no empty box, the figures speak.
@@ -191,89 +193,96 @@ class RunDetailBody extends StatelessWidget {
         ],
         ..._splitsChart(d, units, elev, services.hrZones, onVerdict),
         if (elev != null) ...[
-          ElevationProfile(
-            elevation: elev,
-            units: units,
-            truePaceSecPerKm: a.truePace?.trueSecPerKm,
+          SectionCard(
+            child: ElevationProfile(
+              elevation: elev,
+              units: units,
+              truePaceSecPerKm: a.truePace?.trueSecPerKm,
+            ),
           ),
-          const SizedBox(height: Space.x24),
+          const SizedBox(height: Space.x16),
         ],
         if (d.summary.mode == RecordMode.trail)
           TrailRunsSection(runId: d.run.id),
-        switch (d.summary.mode) {
-          RecordMode.intervals => Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _FourByFourTables(
-                detail: d,
-                units: units,
-                trailing: _DistanceSplits(
-                  free: free,
-                  splitUnits: splitUnitsOf(d),
-                  elevation: elev,
-                  units: units,
-                  color: d.summary.spec?.isGoal == true || d.summary.isParkrun
-                      ? t.typeGoal
-                      : t.typeIntervals,
-                ),
-              ),
-            ],
-          ),
-          RecordMode.laps
-              when d.summary.spec?.templateId == engine.SessionSpec.fartlekId =>
-            Column(
+        SectionCard(
+          child: switch (d.summary.mode) {
+            RecordMode.intervals => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                FartlekBlock(
-                  summary: a.fartlek,
-                  timeInBandSeconds: a.laps?.hrPresent == true
-                      ? a.laps?.timeInBandSeconds
-                      : null,
+                _FourByFourTables(
+                  detail: d,
                   units: units,
-                ),
-                const SizedBox(height: Space.x24),
-                _LapsTable(
-                  view: a.laps,
-                  units: units,
-                  elevation: elev,
-                  laps: d.run.laps,
+                  trailing: _DistanceSplits(
+                    free: free,
+                    splitUnits: splitUnitsOf(d),
+                    elevation: elev,
+                    units: units,
+                    color: d.summary.spec?.isGoal == true || d.summary.isParkrun
+                        ? t.typeGoal
+                        : t.typeIntervals,
+                  ),
                 ),
               ],
             ),
-          RecordMode.laps => _LapsTable(
-            view: a.laps,
-            units: units,
-            elevation: elev,
-            laps: d.run.laps,
-          ),
-          RecordMode.free || RecordMode.trail || RecordMode.cooper => _Splits(
-            free: free,
-            splitUnits: splitUnitsOf(d),
-            elevation: elev,
-            // The header already says moving time when it differs.
-            showMoving:
-                movingGapMs(
-                  free,
-                  d.summary.durationMs,
-                  isTest: d.summary.cooper != null,
-                ) ==
-                null,
-            units: units,
-            heat: d.summary.mode == RecordMode.cooper ? null : a.heat,
-          ),
-        },
-        const SizedBox(height: Space.x24),
-        TimeInZone(
-          seconds: zoneSecondsOf(d.run, services.hrZones),
-          maxHrLine: zonesSourceLine(
-            services.settings.settings.hrZoneMethod,
-            services.maxHr,
-          ),
-          onPairStrap: HostCaps.strapPairing
-              ? () => Navigator.of(context).pushNamed(Routes.pairing)
-              : null,
+            RecordMode.laps
+                when d.summary.spec?.templateId ==
+                    engine.SessionSpec.fartlekId =>
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FartlekBlock(
+                    summary: a.fartlek,
+                    timeInBandSeconds: a.laps?.hrPresent == true
+                        ? a.laps?.timeInBandSeconds
+                        : null,
+                    units: units,
+                  ),
+                  const SizedBox(height: Space.x24),
+                  _LapsTable(
+                    view: a.laps,
+                    units: units,
+                    elevation: elev,
+                    laps: d.run.laps,
+                  ),
+                ],
+              ),
+            RecordMode.laps => _LapsTable(
+              view: a.laps,
+              units: units,
+              elevation: elev,
+              laps: d.run.laps,
+            ),
+            RecordMode.free || RecordMode.trail || RecordMode.cooper => _Splits(
+              free: free,
+              splitUnits: splitUnitsOf(d),
+              elevation: elev,
+              // The header already says moving time when it differs.
+              showMoving:
+                  movingGapMs(
+                    free,
+                    d.summary.durationMs,
+                    isTest: d.summary.cooper != null,
+                  ) ==
+                  null,
+              units: units,
+              heat: d.summary.mode == RecordMode.cooper ? null : a.heat,
+            ),
+          },
         ),
-        const SizedBox(height: Space.x32),
+        const SizedBox(height: Space.x16),
+        SectionCard(
+          child: TimeInZone(
+            seconds: zoneSecondsOf(d.run, services.hrZones),
+            maxHrLine: zonesSourceLine(
+              services.settings.settings.hrZoneMethod,
+              services.maxHr,
+            ),
+            onPairStrap: HostCaps.strapPairing
+                ? () => Navigator.of(context).pushNamed(Routes.pairing)
+                : null,
+          ),
+        ),
+        const SizedBox(height: Space.x24),
         _SendRow(detail: d),
         _Row(
           label: 'Share card',
@@ -477,124 +486,119 @@ class _HeaderState extends State<_Header> {
     final avgHr = free.avgHr;
     // The test's figures, when this is one (C1 via the index row).
     final cooper = d.summary.cooper;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text.rich(
-                TextSpan(
-                  children: [
-                    if (custom == null)
-                      TextSpan(
-                        text: '$timeWord ',
-                        style: TextStyle(color: t.inkPrimary),
-                      ),
-                    TextSpan(
-                      text: custom ?? runSessionName(summary),
-                      style: TextStyle(
-                        color: custom == null
-                            ? runTypeColor(summary, t)
-                            : t.inkPrimary,
-                      ),
-                    ),
-                  ],
+    final fill = runTypeColor(summary, t);
+    return ResultHeadBlock(
+      fill: fill,
+      builder: (context, ink) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      if (custom == null) TextSpan(text: '$timeWord '),
+                      TextSpan(text: custom ?? runSessionName(summary)),
+                    ],
+                  ),
+                  key: const ValueKey('detail-title'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: RunSoloType.heading26.copyWith(color: ink),
                 ),
-                key: const ValueKey('detail-title'),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: RunSoloType.heading19,
               ),
-            ),
-            SizedBox(
-              width: 48,
-              height: 48,
-              child: IconButton(
-                key: const ValueKey('rename-run'),
-                padding: EdgeInsets.zero,
-                tooltip: 'Rename run',
-                icon: Icon(
-                  Icons.edit_outlined,
-                  size: 20,
-                  color: t.inkSecondary,
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: IconButton(
+                  key: const ValueKey('rename-run'),
+                  padding: EdgeInsets.zero,
+                  tooltip: 'Rename run',
+                  icon: Icon(Icons.edit_outlined, size: 20, color: ink),
+                  onPressed: _rename,
                 ),
-                onPressed: _rename,
               ),
-            ),
-          ],
-        ),
-        WhereWhenLine(
-          key: const ValueKey('detail-where-when'),
-          place: _place,
-          street: _street,
-          start: summary.start,
-          utcOffsetMin: summary.utcOffsetMin,
-          style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-        ),
-        const SizedBox(height: Space.x12),
-        // Labels share one bottom edge; the numbers scale down to fit.
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              child: StatTile(
-                label: 'time',
-                // A test's own window (27-Sep field test: total time
-                // counted the cool-down).
-                value: cooper == null
-                    ? Fmt.clock(d.summary.durationMs)
-                    : cooper.valid
-                    ? '12:00'
-                    : Fmt.clock(
-                        d.summary.durationMs <
-                                engine.CooperProjection.testSeconds * 1000
-                            ? d.summary.durationMs
-                            : engine.CooperProjection.testSeconds * 1000,
-                      ),
-                size: 36,
-              ),
-            ),
-            const SizedBox(width: Space.x16),
-            Expanded(
-              child: StatTile(
-                label: 'distance',
-                value: Fmt.distance(
-                  cooper?.testDistanceM ?? free.distanceM,
-                  units,
-                ),
-                size: 36,
-              ),
-            ),
-            const SizedBox(width: Space.x16),
-            Expanded(
-              child: StatTile(
-                label: cooper?.primeVo2 != null
-                    ? 'VO2 est.'
-                    : avgHr == null
-                    ? 'pace'
-                    : 'avg hr',
-                value: cooper?.primeVo2 != null
-                    ? '${cooper!.primeVo2!.round()}'
-                    : avgHr == null
-                    ? Fmt.pace(free.avgPaceSecPerKm, units)
-                    : '${avgHr.round()}',
-                size: 36,
-              ),
-            ),
-          ],
-        ),
-        if (movingGapMs(free, d.summary.durationMs, isTest: cooper != null)
-            case final gapMs?) ...[
-          const SizedBox(height: Space.x8),
-          Text(
-            'Moving ${Fmt.clock(d.summary.durationMs - gapMs)}, '
-            'paused ${Fmt.clock(gapMs)}',
-            key: const ValueKey('detail-moving'),
-            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+            ],
           ),
+          WhereWhenLine(
+            key: const ValueKey('detail-where-when'),
+            place: _place,
+            street: _street,
+            start: summary.start,
+            utcOffsetMin: summary.utcOffsetMin,
+            style: RunSoloType.label13.copyWith(color: ink),
+          ),
+          const SizedBox(height: Space.x12),
+          // Labels share one bottom edge; the numbers scale down to fit.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: StatTile(
+                  label: 'time',
+                  // A test's own window (27-Sep field test: total time
+                  // counted the cool-down).
+                  value: cooper == null
+                      ? Fmt.clock(d.summary.durationMs)
+                      : cooper.valid
+                      ? '12:00'
+                      : Fmt.clock(
+                          d.summary.durationMs <
+                                  engine.CooperProjection.testSeconds * 1000
+                              ? d.summary.durationMs
+                              : engine.CooperProjection.testSeconds * 1000,
+                        ),
+                  size: 36,
+                  valueColor: ink,
+                  labelColor: ink,
+                ),
+              ),
+              const SizedBox(width: Space.x16),
+              Expanded(
+                child: StatTile(
+                  label: 'distance',
+                  value: Fmt.distance(
+                    cooper?.testDistanceM ?? free.distanceM,
+                    units,
+                  ),
+                  size: 36,
+                  valueColor: ink,
+                  labelColor: ink,
+                ),
+              ),
+              const SizedBox(width: Space.x16),
+              Expanded(
+                child: StatTile(
+                  label: cooper?.primeVo2 != null
+                      ? 'VO2 est.'
+                      : avgHr == null
+                      ? 'pace'
+                      : 'avg hr',
+                  value: cooper?.primeVo2 != null
+                      ? '${cooper!.primeVo2!.round()}'
+                      : avgHr == null
+                      ? Fmt.pace(free.avgPaceSecPerKm, units)
+                      : '${avgHr.round()}',
+                  size: 36,
+                  valueColor: ink,
+                  labelColor: ink,
+                ),
+              ),
+            ],
+          ),
+          if (movingGapMs(free, d.summary.durationMs, isTest: cooper != null)
+              case final gapMs?) ...[
+            const SizedBox(height: Space.x8),
+            Text(
+              'Moving ${Fmt.clock(d.summary.durationMs - gapMs)}, '
+              'paused ${Fmt.clock(gapMs)}',
+              key: const ValueKey('detail-moving'),
+              style: RunSoloType.body15.copyWith(color: ink),
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
@@ -1726,7 +1730,10 @@ List<Widget> _splitsChart(
   return [
     if (mode == RecordMode.intervals && v != null)
       _RepVerdict(verdict: v, onVerdict: onVerdict),
-    if (chart != null) ...[chart, const SizedBox(height: Space.x24)],
+    if (chart != null) ...[
+      SectionCard(child: chart),
+      const SizedBox(height: Space.x16),
+    ],
   ];
 }
 

@@ -40,12 +40,14 @@ class StatTile extends StatelessWidget {
     required this.label,
     required this.value,
     this.valueColor,
+    this.labelColor,
     this.size = 44,
     this.align = CrossAxisAlignment.start,
   });
   final String label;
   final String value;
   final Color? valueColor;
+  final Color? labelColor;
   final double size;
   final CrossAxisAlignment align;
 
@@ -73,7 +75,9 @@ class StatTile extends StatelessWidget {
         const SizedBox(height: Space.x4),
         Text(
           label.toUpperCase(),
-          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+          style: RunSoloType.micro11.copyWith(
+            color: labelColor ?? t.inkSecondary,
+          ),
         ),
       ],
     );
