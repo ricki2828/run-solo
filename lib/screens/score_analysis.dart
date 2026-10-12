@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
@@ -113,7 +114,7 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
             key: const ValueKey('score-analysis'),
             // The whole page is a short list: build it all, so every lane
             // card exists for finders and screen readers.
-            cacheExtent: 10000,
+            scrollCacheExtent: const ScrollCacheExtent.pixels(10000),
             padding: const EdgeInsets.fromLTRB(
               Space.screenGutter,
               Space.x8,
