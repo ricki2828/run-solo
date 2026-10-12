@@ -421,6 +421,17 @@ class _HomeScreenState extends State<HomeScreen> {
                             firstsTotal: kFirstsTotal,
                           ),
                           const SizedBox(height: Space.x16),
+                          if (data == null || data.failed) ...[
+                            Text(
+                              data == null
+                                  ? ProgressHeadline.loading.line
+                                  : ProgressHeadline.failed.line,
+                              style: RunSoloType.body15.copyWith(
+                                color: t.inkSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: Space.x16),
+                          ],
                           if (data != null && !data.failed) ...[
                             Padding(
                               padding: const EdgeInsets.only(bottom: Space.x8),
