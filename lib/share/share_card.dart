@@ -115,7 +115,8 @@ class ScoresCardData extends ShareCardData {
 }
 
 /// A moment (first, PB, level up, weekly story) as a card: the big figure
-/// in its colour, nothing about where or when.
+/// in its colour, nothing about where or when. [detail] must already be free
+/// of days and months: build it with [shareSafeMomentDetail].
 class MomentCardData extends ShareCardData {
   const MomentCardData({
     required this.eyebrow,
@@ -129,6 +130,19 @@ class MomentCardData extends ShareCardData {
   final String detail;
   final Color colour;
 }
+
+final RegExp _whenPhrase = RegExp(
+  r'\s+(?:on|than|in|since|from|last)\s+(?:'
+  r'(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day|'
+  r'(?:January|February|March|April|May|June|July|August|September|October|'
+  r'November|December))\b',
+  caseSensitive: false,
+);
+
+/// A moment's detail line without any day or month ("28:12 on Sunday." ->
+/// "28:12."), so a shared card says nothing about when.
+String shareSafeMomentDetail(String detail) =>
+    detail.replaceAll(_whenPhrase, '');
 
 /// The run's card, from what History already holds (index-row fields only)
 /// and its route. [route] is passed in only for "Show map".

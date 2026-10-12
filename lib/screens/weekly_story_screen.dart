@@ -95,7 +95,7 @@ class _WeeklyStoryScreenState extends State<WeeklyStoryScreen>
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final fill = t.typeIntervals;
+    const fill = AuroraStory.fill;
     final ink = readableOn(fill);
     return FutureBuilder<WeeklyStory?>(
       future: _load,

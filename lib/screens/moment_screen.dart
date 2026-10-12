@@ -82,7 +82,7 @@ class _MomentScreenState extends State<MomentScreen>
       data: MomentCardData(
         eyebrow: m.eyebrow,
         big: m.big,
-        detail: m.detail,
+        detail: shareSafeMomentDetail(m.detail),
         colour: fill,
       ),
     );
