@@ -9,7 +9,7 @@ String _clock(Duration d) {
   return '$m:${s.toString().padLeft(2, '0')}';
 }
 
-/// "You last month": the same effort now against a month ago, as two bars so
+/// The same effort now against the 4 weeks before, as two bars so
 /// the gap reads without maths.
 class GhostCard extends StatelessWidget {
   const GhostCard({super.key, required this.ghost});
@@ -22,17 +22,17 @@ class GhostCard extends StatelessWidget {
     final gap = ghost.then - ghost.now;
     final faster = gap > Duration.zero;
     final line = gap == Duration.zero
-        ? 'Same as ${ghost.thenLabel}. Steady.'
+        ? 'Same as ${ghost.thenLabel.toLowerCase()}. Steady.'
         : faster
-        ? '${gap.inSeconds} seconds faster than ${ghost.thenLabel}.'
-        : '${-gap.inSeconds} seconds slower than ${ghost.thenLabel}.';
+        ? '${gap.inSeconds} seconds faster than ${ghost.thenLabel.toLowerCase()}.'
+        : '${-gap.inSeconds} seconds slower than ${ghost.thenLabel.toLowerCase()}.';
     final slow = ghost.then > ghost.now ? ghost.then : ghost.now;
     double frac(Duration d) =>
         slow.inSeconds == 0 ? 0 : d.inSeconds / slow.inSeconds;
     Widget bar(String label, Duration d, Color fill, Color ink) => Row(
       children: [
         SizedBox(
-          width: 52,
+          width: 120,
           child: Text(
             label,
             style: RunSoloType.label13.copyWith(color: t.inkSecondary),
@@ -68,14 +68,14 @@ class GhostCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'YOU LAST MONTH, ${ghost.label}',
+            '${ghost.nowLabel.toUpperCase()} VS ${ghost.thenLabel.toUpperCase()}, ${ghost.label}',
             style: RunSoloType.micro11.copyWith(
               color: t.inkSecondary,
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: Space.x8),
-          bar('Now', ghost.now, t.inkPrimary, t.bgBase),
+          bar(ghost.nowLabel, ghost.now, t.inkPrimary, t.bgBase),
           const SizedBox(height: Space.x8),
           bar(ghost.thenLabel, ghost.then, t.lineHair, t.inkPrimary),
           const SizedBox(height: Space.x8),

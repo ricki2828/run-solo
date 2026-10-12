@@ -201,6 +201,7 @@ class _HomeScreenState extends State<HomeScreen> {
     };
   }
 
+  // TODO: navigate to Routes.weeklyStory once #269 is on main.
   void _openStory(WeeklyStory story) {
     final open = widget.onOpenStory;
     if (open != null) return open(story);
