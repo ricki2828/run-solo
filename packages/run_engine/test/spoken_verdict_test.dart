@@ -92,6 +92,17 @@ void main() {
       expect(SpokenVerdict.ofTrail(r), 'No real change.');
     });
 
+    test('a different length is said out loud, never read as a gain', () {
+      final r = TrailVerdict.of(run('b', d2, 2392, r: loop, distanceM: 5520), [
+        run('a', d, 2600, r: loop),
+      ]);
+      expect(r.differentLength, isTrue);
+      expect(
+        SpokenVerdict.ofTrail(r),
+        'No real change. It was shorter than last time, so that is on pace.',
+      );
+    });
+
     test(
       'effort pace and baseline say the headline; no elevation says nothing',
       () {
