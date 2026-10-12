@@ -130,6 +130,14 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
                   units: settings.units,
                   onOpenSettings: () =>
                       Navigator.of(context).pushNamed(Routes.settings),
+                  onShare: packShareData(snap.data?.pack) == null
+                      ? null
+                      : () => showShareCardSheet(
+                          context,
+                          data: PackCardData(
+                            pack: packShareData(snap.data?.pack)!,
+                          ),
+                        ),
                 ),
               ),
               const SizedBox(height: Space.x32),

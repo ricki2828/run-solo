@@ -17,10 +17,12 @@ import '../map/route_builder.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/home_progress.dart';
+import '../state/progress_snapshot.dart' show PackStanding;
 import '../state/settings.dart';
 import '../theme/lanes.dart';
 import '../theme/pack_look.dart';
 import '../theme/theme.dart';
+import '../widgets/home_b/pack_hero.dart' show PackHistogram;
 import '../widgets/chrome.dart' show LapLineFullMark;
 import '../widgets/recent_activity.dart' show runTypeColor;
 
@@ -112,13 +114,29 @@ class ScoreLaneData {
 /// A pack result as a band only: "faster than 6 in 10" and "men 40-49", from
 /// published norms. Never a name, a route or a real runner.
 class PackShareData {
-  const PackShareData({required this.fasterThanInTen, required this.band});
+  const PackShareData({
+    required this.fasterThanInTen,
+    required this.band,
+    this.histogram = const [],
+    this.youBin,
+  });
 
   /// 1 to 9.
   final int fasterThanInTen;
 
   /// "men 40-49".
   final String band;
+
+  /// The age band's bars from published norms, slowest first, and the bar the
+  /// runner sits in. Empty draws no chart.
+  final List<double> histogram;
+  final int? youBin;
+}
+
+/// The pack result on its own: one violet hero, nothing else.
+class PackCardData extends ShareCardData {
+  const PackCardData({required this.pack});
+  final PackShareData pack;
 }
 
 class ScoresCardData extends ShareCardData {
@@ -162,6 +180,22 @@ final RegExp _whenPhrase = RegExp(
 /// "28:12."), so a shared card says nothing about when.
 String shareSafeMomentDetail(String detail) =>
     detail.replaceAll(_whenPhrase, '');
+
+/// The pack result as a band only: "faster than 6 in 10", "men 40-49". Null
+/// when there is no pack or the runner is still under 1 in 10 (the card has
+/// nothing to say yet).
+PackShareData? packShareData(PackStanding? pack) {
+  if (pack == null) return null;
+  final n = pack.fasterThanInTen.clamp(0, 9);
+  final m = RegExp(r'^([MF])(\d+-\d+)$').firstMatch(pack.band);
+  if (n == 0 || m == null) return null;
+  return PackShareData(
+    fasterThanInTen: n,
+    band: '${m.group(1) == 'F' ? 'women' : 'men'} ${m.group(2)}',
+    histogram: pack.histogram,
+    youBin: pack.youBin,
+  );
+}
 
 /// The run's card, from what History already holds (index-row fields only)
 /// and its route. [route] is passed in only for "Show map".
@@ -243,6 +277,7 @@ class ShareCard extends StatelessWidget {
                 final RunCardData d => _RunBody(data: d, t: t),
                 final ScoresCardData d => _ScoresBody(data: d, t: t),
                 final MomentCardData d => _MomentBody(data: d, t: t),
+                final PackCardData d => _PackBody(data: d, t: t),
               },
             ),
           ),
@@ -453,6 +488,75 @@ Widget _maybeExpanded({
     : height == null
     ? child
     : SizedBox(height: height, child: child);
+
+class _PackBody extends StatelessWidget {
+  const _PackBody({required this.data, required this.t});
+  final PackCardData data;
+  final RunSoloTokens t;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = data.pack;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Header(t: t),
+        const SizedBox(height: 12),
+        Expanded(
+          child: Container(
+            key: const ValueKey('share-pack-hero'),
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: PackLook.violet,
+              borderRadius: BorderRadius.circular(Radii.sheet),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'MY PACK',
+                  style: RunSoloType.micro11.copyWith(
+                    color: PackLook.onVioletSoft,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'FASTER THAN\n${p.fasterThanInTen} IN 10',
+                    style: RunSoloType.display96.copyWith(
+                      color: PackLook.onViolet,
+                      height: 0.95,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '${p.band}, from published norms.',
+                  style: RunSoloType.body17.copyWith(color: PackLook.onViolet),
+                ),
+                if (p.histogram.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  PackHistogram(
+                    bins: p.histogram,
+                    youBin: p.youBin,
+                    height: 56,
+                  ),
+                ],
+                const Spacer(),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _Footer(t: t),
+      ],
+    );
+  }
+}
 
 class _MomentBody extends StatelessWidget {
   const _MomentBody({required this.data, required this.t});

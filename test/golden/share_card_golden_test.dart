@@ -6,6 +6,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/map/route_builder.dart';
 import 'package:run_solo/share/share_card.dart';
 import 'package:run_solo/theme/theme.dart';
+import 'package:run_solo/widgets/home_b/pack_hero.dart' show PackHistogram;
 
 import '../helpers.dart';
 
@@ -92,6 +93,14 @@ void main() {
           change: 'Down 3 in 6 weeks',
         ),
       ],
+    ),
+    'pack': PackCardData(
+      pack: PackShareData(
+        fasterThanInTen: 6,
+        band: 'men 40-49',
+        histogram: PackHistogram.placeholder,
+        youBin: 11,
+      ),
     ),
     'moment_pb': const MomentCardData(
       eyebrow: 'NEW 5K BEST',
