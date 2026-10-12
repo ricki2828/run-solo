@@ -86,7 +86,7 @@ def _compute(c: sqlite3.Connection, now: datetime | None, weeks: int) -> dict:
     weeks = max(1, weeks)
     cur_start = _week_start(now)
     starts = [cur_start - timedelta(weeks=weeks - 1 - i) for i in range(weeks)]
-    cutoff = _week_start(now - timedelta(days=RETENTION_DAYS))
+    cutoff = now - timedelta(days=RETENTION_DAYS)  # purge cut point; a week starting before it has lost its earliest days
     end = starts[-1] + timedelta(weeks=1)
 
     users = _rows(c, "SELECT id, created_at FROM users WHERE EXISTS (SELECT 1 FROM devices d WHERE d.user_id = users.id) ORDER BY created_at, id")

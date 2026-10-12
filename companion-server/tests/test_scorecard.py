@@ -118,3 +118,16 @@ def test_empty_db(tmp_path):
     sc = compute_scorecard(c, now=NOW)
     assert sc["testers"] == []
     assert "Week-4 retention: 0/0" in format_text(sc)
+
+
+def test_partial_marker_covers_week_straddling_purge(tmp_path):
+    # Purge cut = NOW - 30d; any week starting before it has lost its earliest days.
+    from companion.scorecard import RETENTION_DAYS
+    from companion.service import RETENTION_LOG_DAYS
+    assert RETENTION_DAYS == RETENTION_LOG_DAYS
+    sc = score(build(tmp_path), weeks=6)
+    cut = NOW - timedelta(days=RETENTION_DAYS)
+    for i, st in enumerate(sc["week_starts"]):
+        start = datetime.fromisoformat(st).replace(tzinfo=timezone.utc)
+        assert sc["testers"][0]["weeks"][i]["partial"] == (start < cut)
+    assert any(w["partial"] for w in sc["testers"][0]["weeks"])
