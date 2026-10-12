@@ -134,12 +134,10 @@ class _RecentActivityState extends State<RecentActivity> {
           if (widget.estimates case final e? when i == 0)
             Padding(
               padding: const EdgeInsets.only(bottom: Space.x8),
-              child: SectionCard(
-                child: _EstimatesTable(
-                  estimates: e,
-                  moreLine: widget.moreLine,
-                  onMore: widget.onMore,
-                ),
+              child: _EstimatesTable(
+                estimates: e,
+                moreLine: widget.moreLine,
+                onMore: widget.onMore,
               ),
             ),
         ],

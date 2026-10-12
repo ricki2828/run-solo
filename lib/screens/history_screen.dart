@@ -387,22 +387,18 @@ class HistoryRow extends StatelessWidget {
           children: [
             Row(
               children: [
-                SizedBox(
-                  width: 56,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    // The run type as a pill in its own colour.
-                    child: RunTypePill(
-                      label: runLabel(run),
-                      fill: run.missing ? t.bgRaised : runTypeColor(run, t),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: Space.x12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // The run type as a pill in its own colour.
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: Space.x4),
+                        child: RunTypePill(
+                          label: runLabel(run),
+                          fill: run.missing ? t.bgRaised : runTypeColor(run, t),
+                        ),
+                      ),
                       Text(
                         label,
                         maxLines: 2,
@@ -469,6 +465,7 @@ class HistoryRow extends StatelessWidget {
                     ],
                   ),
                 ),
+                const SizedBox(width: Space.x12),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -503,7 +500,7 @@ class HistoryRow extends StatelessWidget {
                               ? '${run.cooper!.primeVo2!.round()}'
                               : Fmt.paceUnit(run.headlineSecPerKm, units),
                           style: RunSoloType.title28.copyWith(
-                            fontSize: 26,
+                            fontSize: 24,
                             color: muted,
                           ),
                         ),
