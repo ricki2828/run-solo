@@ -481,6 +481,21 @@ enum class LiveBoardKind(val raw: Int) {
 }
 
 /**
+ * What the runner should do at the end of the followed route: [turnAround] on a
+ * route that ends away from its start, [done] on a loop that closes on it.
+ */
+enum class RouteEndCue(val raw: Int) {
+  TURN_AROUND(0),
+  DONE(1);
+
+  companion object {
+    fun ofRaw(raw: Int): RouteEndCue? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+/**
  * Whether the phone can take a workout. `notInstalled`: Android 13 and
  * older without the Health Connect app. `needsUpdate`: it is there but too
  * old. `unsupported`: this platform has no implementation.
@@ -1478,7 +1493,9 @@ data class FollowRoute (
  * elevation. [off] is the off-route state (more than about 40 m away for about
  * 10 s, with hysteresis). [turnLabel] and [turnInM] are the next turn from the
  * route's shape ("Left turn", "Keep right", ...), null when none is ahead or
- * while off route.
+ * while off route. [endCue] is set from the moment the runner reaches the end
+ * of the route until about a minute later or until they head back (it is the
+ * screen's big cue; the voice and buzz fire once, natively).
  *
  * Generated class from Pigeon that represents data sent in messages.
  */
@@ -1487,7 +1504,8 @@ data class RouteProgress (
   val climbToGoM: Double? = null,
   val off: Boolean,
   val turnLabel: String? = null,
-  val turnInM: Double? = null
+  val turnInM: Double? = null,
+  val endCue: RouteEndCue? = null
 )
  {
   companion object {
@@ -1497,7 +1515,8 @@ data class RouteProgress (
       val off = pigeonVar_list[2] as Boolean
       val turnLabel = pigeonVar_list[3] as String?
       val turnInM = pigeonVar_list[4] as Double?
-      return RouteProgress(toGoM, climbToGoM, off, turnLabel, turnInM)
+      val endCue = pigeonVar_list[5] as RouteEndCue?
+      return RouteProgress(toGoM, climbToGoM, off, turnLabel, turnInM, endCue)
     }
   }
   fun toList(): List<Any?> {
@@ -1507,6 +1526,7 @@ data class RouteProgress (
       off,
       turnLabel,
       turnInM,
+      endCue,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -1517,7 +1537,7 @@ data class RouteProgress (
       return true
     }
     val other = other as RouteProgress
-    return PlatformApiPigeonUtils.deepEquals(this.toGoM, other.toGoM) && PlatformApiPigeonUtils.deepEquals(this.climbToGoM, other.climbToGoM) && PlatformApiPigeonUtils.deepEquals(this.off, other.off) && PlatformApiPigeonUtils.deepEquals(this.turnLabel, other.turnLabel) && PlatformApiPigeonUtils.deepEquals(this.turnInM, other.turnInM)
+    return PlatformApiPigeonUtils.deepEquals(this.toGoM, other.toGoM) && PlatformApiPigeonUtils.deepEquals(this.climbToGoM, other.climbToGoM) && PlatformApiPigeonUtils.deepEquals(this.off, other.off) && PlatformApiPigeonUtils.deepEquals(this.turnLabel, other.turnLabel) && PlatformApiPigeonUtils.deepEquals(this.turnInM, other.turnInM) && PlatformApiPigeonUtils.deepEquals(this.endCue, other.endCue)
   }
 
   override fun hashCode(): Int {
@@ -1527,6 +1547,7 @@ data class RouteProgress (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.off)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.turnLabel)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.turnInM)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.endCue)
     return result
   }
 }
@@ -3188,220 +3209,225 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
       }
       144.toByte() -> {
         return (readValue(buffer) as Long?)?.let {
-          HealthAvailability.ofRaw(it.toInt())
+          RouteEndCue.ofRaw(it.toInt())
         }
       }
       145.toByte() -> {
         return (readValue(buffer) as Long?)?.let {
-          HealthWriteOutcome.ofRaw(it.toInt())
+          HealthAvailability.ofRaw(it.toInt())
         }
       }
       146.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          SessionStep.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          HealthWriteOutcome.ofRaw(it.toInt())
         }
       }
       147.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          SessionSpec.fromList(it)
+          SessionStep.fromList(it)
         }
       }
       148.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LiveEntry.fromList(it)
+          SessionSpec.fromList(it)
         }
       }
       149.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LiveBoard.fromList(it)
+          LiveEntry.fromList(it)
         }
       }
       150.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LiveTarget.fromList(it)
+          LiveBoard.fromList(it)
         }
       }
       151.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          NudgePlan.fromList(it)
+          LiveTarget.fromList(it)
         }
       }
       152.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FastStartRule.fromList(it)
+          NudgePlan.fromList(it)
         }
       }
       153.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          RepFadeRule.fromList(it)
+          FastStartRule.fromList(it)
         }
       }
       154.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HrDriftRule.fromList(it)
+          RepFadeRule.fromList(it)
         }
       }
       155.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LiveContext.fromList(it)
+          HrDriftRule.fromList(it)
         }
       }
       156.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StartResult.fromList(it)
+          LiveContext.fromList(it)
         }
       }
       157.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapSummary.fromList(it)
+          StartResult.fromList(it)
         }
       }
       158.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          RecorderStatus.fromList(it)
+          LapSummary.fromList(it)
         }
       }
       159.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FollowRoute.fromList(it)
+          RecorderStatus.fromList(it)
         }
       }
       160.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          RouteProgress.fromList(it)
+          FollowRoute.fromList(it)
         }
       }
       161.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          OrphanJournal.fromList(it)
+          RouteProgress.fromList(it)
         }
       }
       162.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ReplayConfig.fromList(it)
+          OrphanJournal.fromList(it)
         }
       }
       163.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          PermissionStatus.fromList(it)
+          ReplayConfig.fromList(it)
         }
       }
       164.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BleStatus.fromList(it)
+          PermissionStatus.fromList(it)
         }
       }
       165.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ExitDiagnosis.fromList(it)
+          BleStatus.fromList(it)
         }
       }
       166.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BleDevice.fromList(it)
+          ExitDiagnosis.fromList(it)
         }
       }
       167.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BackupStatus.fromList(it)
+          BleDevice.fromList(it)
         }
       }
       168.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          PlaceName.fromList(it)
+          BackupStatus.fromList(it)
         }
       }
       169.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TickEvent.fromList(it)
+          PlaceName.fromList(it)
         }
       }
       170.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapEvent.fromList(it)
+          TickEvent.fromList(it)
         }
       }
       171.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          LapPendingEvent.fromList(it)
+          LapEvent.fromList(it)
         }
       }
       172.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CueEvent.fromList(it)
+          LapPendingEvent.fromList(it)
         }
       }
       173.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          GpsProbeEvent.fromList(it)
+          CueEvent.fromList(it)
         }
       }
       174.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          RoutePointsEvent.fromList(it)
+          GpsProbeEvent.fromList(it)
         }
       }
       175.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CompareEvent.fromList(it)
+          RoutePointsEvent.fromList(it)
         }
       }
       176.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          GoalEvent.fromList(it)
+          CompareEvent.fromList(it)
         }
       }
       177.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FaultEvent.fromList(it)
+          GoalEvent.fromList(it)
         }
       }
       178.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StateEvent.fromList(it)
+          FaultEvent.fromList(it)
         }
       }
       179.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          PhaseEvent.fromList(it)
+          StateEvent.fromList(it)
         }
       }
       180.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthStatus.fromList(it)
+          PhaseEvent.fromList(it)
         }
       }
       181.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthLap.fromList(it)
+          HealthStatus.fromList(it)
         }
       }
       182.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthPause.fromList(it)
+          HealthLap.fromList(it)
         }
       }
       183.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthHrSample.fromList(it)
+          HealthPause.fromList(it)
         }
       }
       184.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthRoutePoint.fromList(it)
+          HealthHrSample.fromList(it)
         }
       }
       185.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthWorkout.fromList(it)
+          HealthRoutePoint.fromList(it)
         }
       }
       186.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthWriteResult.fromList(it)
+          HealthWorkout.fromList(it)
         }
       }
       187.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          HealthWriteResult.fromList(it)
+        }
+      }
+      188.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           VoiceCoachConfig.fromList(it)
         }
@@ -3471,180 +3497,184 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(143)
         writeValue(stream, value.raw.toLong())
       }
-      is HealthAvailability -> {
+      is RouteEndCue -> {
         stream.write(144)
         writeValue(stream, value.raw.toLong())
       }
-      is HealthWriteOutcome -> {
+      is HealthAvailability -> {
         stream.write(145)
         writeValue(stream, value.raw.toLong())
       }
-      is SessionStep -> {
+      is HealthWriteOutcome -> {
         stream.write(146)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is SessionSpec -> {
+      is SessionStep -> {
         stream.write(147)
         writeValue(stream, value.toList())
       }
-      is LiveEntry -> {
+      is SessionSpec -> {
         stream.write(148)
         writeValue(stream, value.toList())
       }
-      is LiveBoard -> {
+      is LiveEntry -> {
         stream.write(149)
         writeValue(stream, value.toList())
       }
-      is LiveTarget -> {
+      is LiveBoard -> {
         stream.write(150)
         writeValue(stream, value.toList())
       }
-      is NudgePlan -> {
+      is LiveTarget -> {
         stream.write(151)
         writeValue(stream, value.toList())
       }
-      is FastStartRule -> {
+      is NudgePlan -> {
         stream.write(152)
         writeValue(stream, value.toList())
       }
-      is RepFadeRule -> {
+      is FastStartRule -> {
         stream.write(153)
         writeValue(stream, value.toList())
       }
-      is HrDriftRule -> {
+      is RepFadeRule -> {
         stream.write(154)
         writeValue(stream, value.toList())
       }
-      is LiveContext -> {
+      is HrDriftRule -> {
         stream.write(155)
         writeValue(stream, value.toList())
       }
-      is StartResult -> {
+      is LiveContext -> {
         stream.write(156)
         writeValue(stream, value.toList())
       }
-      is LapSummary -> {
+      is StartResult -> {
         stream.write(157)
         writeValue(stream, value.toList())
       }
-      is RecorderStatus -> {
+      is LapSummary -> {
         stream.write(158)
         writeValue(stream, value.toList())
       }
-      is FollowRoute -> {
+      is RecorderStatus -> {
         stream.write(159)
         writeValue(stream, value.toList())
       }
-      is RouteProgress -> {
+      is FollowRoute -> {
         stream.write(160)
         writeValue(stream, value.toList())
       }
-      is OrphanJournal -> {
+      is RouteProgress -> {
         stream.write(161)
         writeValue(stream, value.toList())
       }
-      is ReplayConfig -> {
+      is OrphanJournal -> {
         stream.write(162)
         writeValue(stream, value.toList())
       }
-      is PermissionStatus -> {
+      is ReplayConfig -> {
         stream.write(163)
         writeValue(stream, value.toList())
       }
-      is BleStatus -> {
+      is PermissionStatus -> {
         stream.write(164)
         writeValue(stream, value.toList())
       }
-      is ExitDiagnosis -> {
+      is BleStatus -> {
         stream.write(165)
         writeValue(stream, value.toList())
       }
-      is BleDevice -> {
+      is ExitDiagnosis -> {
         stream.write(166)
         writeValue(stream, value.toList())
       }
-      is BackupStatus -> {
+      is BleDevice -> {
         stream.write(167)
         writeValue(stream, value.toList())
       }
-      is PlaceName -> {
+      is BackupStatus -> {
         stream.write(168)
         writeValue(stream, value.toList())
       }
-      is TickEvent -> {
+      is PlaceName -> {
         stream.write(169)
         writeValue(stream, value.toList())
       }
-      is LapEvent -> {
+      is TickEvent -> {
         stream.write(170)
         writeValue(stream, value.toList())
       }
-      is LapPendingEvent -> {
+      is LapEvent -> {
         stream.write(171)
         writeValue(stream, value.toList())
       }
-      is CueEvent -> {
+      is LapPendingEvent -> {
         stream.write(172)
         writeValue(stream, value.toList())
       }
-      is GpsProbeEvent -> {
+      is CueEvent -> {
         stream.write(173)
         writeValue(stream, value.toList())
       }
-      is RoutePointsEvent -> {
+      is GpsProbeEvent -> {
         stream.write(174)
         writeValue(stream, value.toList())
       }
-      is CompareEvent -> {
+      is RoutePointsEvent -> {
         stream.write(175)
         writeValue(stream, value.toList())
       }
-      is GoalEvent -> {
+      is CompareEvent -> {
         stream.write(176)
         writeValue(stream, value.toList())
       }
-      is FaultEvent -> {
+      is GoalEvent -> {
         stream.write(177)
         writeValue(stream, value.toList())
       }
-      is StateEvent -> {
+      is FaultEvent -> {
         stream.write(178)
         writeValue(stream, value.toList())
       }
-      is PhaseEvent -> {
+      is StateEvent -> {
         stream.write(179)
         writeValue(stream, value.toList())
       }
-      is HealthStatus -> {
+      is PhaseEvent -> {
         stream.write(180)
         writeValue(stream, value.toList())
       }
-      is HealthLap -> {
+      is HealthStatus -> {
         stream.write(181)
         writeValue(stream, value.toList())
       }
-      is HealthPause -> {
+      is HealthLap -> {
         stream.write(182)
         writeValue(stream, value.toList())
       }
-      is HealthHrSample -> {
+      is HealthPause -> {
         stream.write(183)
         writeValue(stream, value.toList())
       }
-      is HealthRoutePoint -> {
+      is HealthHrSample -> {
         stream.write(184)
         writeValue(stream, value.toList())
       }
-      is HealthWorkout -> {
+      is HealthRoutePoint -> {
         stream.write(185)
         writeValue(stream, value.toList())
       }
-      is HealthWriteResult -> {
+      is HealthWorkout -> {
         stream.write(186)
         writeValue(stream, value.toList())
       }
-      is VoiceCoachConfig -> {
+      is HealthWriteResult -> {
         stream.write(187)
+        writeValue(stream, value.toList())
+      }
+      is VoiceCoachConfig -> {
+        stream.write(188)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)

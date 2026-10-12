@@ -66,6 +66,7 @@ import app.runsolo.platform.PhaseEvent
 import app.runsolo.platform.RecorderEventBus
 import app.runsolo.platform.RecorderStatus
 import app.runsolo.platform.RoutePointsEvent
+import app.runsolo.platform.RouteEndCue
 import app.runsolo.platform.RouteProgress
 import app.runsolo.platform.StateEvent
 import app.runsolo.platform.TickEvent
@@ -1181,6 +1182,11 @@ class RecordingSession(
             off = f.off,
             turnLabel = turnIn?.let { f.nextTurn?.let { turn -> RouteWords.turnLabel(turn) } },
             turnInM = turnIn,
+            endCue = when (f.endCue) {
+                RouteFollower.EndKind.turnAround -> RouteEndCue.TURN_AROUND
+                RouteFollower.EndKind.done -> RouteEndCue.DONE
+                null -> null
+            },
         )
     }
 
@@ -1196,6 +1202,12 @@ class RecordingSession(
                 cues.alert(RouteWords.BACK_ON_ROUTE, longArrayOf(0, 120, 80, 120))
                 logSaid(RouteWords.BACK_ON_ROUTE)
                 Log.i(TAG, "back on route at ${core.status(e.t).elapsedMs} ms")
+            }
+            is RouteFollower.Event.RouteEnd -> {
+                // Two long pulses: unlike the off-route triple or the short turn tick. The screen cue comes from [routeProgress].
+                cues.alert(e.text, longArrayOf(0, 600, 200, 600))
+                logSaid(e.text)
+                Log.i(TAG, "route end: ${e.kind}")
             }
             is RouteFollower.Event.Turn -> {
                 cues.alert(e.text, longArrayOf(0, 150))

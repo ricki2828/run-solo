@@ -150,4 +150,54 @@ void main() {
     );
     await golden(tester, 'record_route_turn_map_free_360x640');
   });
+
+  // End of the route: the big TURN AROUND card, above both pages.
+  for (final h in [800, 640]) {
+    testWidgets('record: end of route, TURN AROUND, NUMBERS at 360 x $h', (
+      tester,
+    ) async {
+      await run(
+        tester,
+        height: h,
+        map: false,
+        mode: RecordMode.free,
+        progress: RouteProgress(
+          toGoM: 8,
+          off: false,
+          endCue: RouteEndCue.turnAround,
+        ),
+      );
+      await golden(tester, 'record_route_end_numbers_free_360x$h');
+    });
+  }
+
+  testWidgets('record: end of route, TURN AROUND, MAP at 360 x 640', (
+    tester,
+  ) async {
+    await run(
+      tester,
+      height: 640,
+      map: true,
+      mode: RecordMode.free,
+      progress: RouteProgress(
+        toGoM: 8,
+        off: false,
+        endCue: RouteEndCue.turnAround,
+      ),
+    );
+    await golden(tester, 'record_route_end_map_free_360x640');
+  });
+
+  testWidgets('record: end of a loop, ROUTE DONE, NUMBERS at 360 x 640', (
+    tester,
+  ) async {
+    await run(
+      tester,
+      height: 640,
+      map: false,
+      mode: RecordMode.free,
+      progress: RouteProgress(toGoM: 8, off: false, endCue: RouteEndCue.done),
+    );
+    await golden(tester, 'record_route_done_numbers_free_360x640');
+  });
 }

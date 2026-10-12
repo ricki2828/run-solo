@@ -269,6 +269,13 @@ enum LiveBoardKind {
   distanceInTime,
 }
 
+/// What the runner should do at the end of the followed route: [turnAround] on a
+/// route that ends away from its start, [done] on a loop that closes on it.
+enum RouteEndCue {
+  turnAround,
+  done,
+}
+
 /// Whether the phone can take a workout. `notInstalled`: Android 13 and
 /// older without the Health Connect app. `needsUpdate`: it is there but too
 /// old. `unsupported`: this platform has no implementation.
@@ -1350,7 +1357,9 @@ class FollowRoute {
 /// elevation. [off] is the off-route state (more than about 40 m away for about
 /// 10 s, with hysteresis). [turnLabel] and [turnInM] are the next turn from the
 /// route's shape ("Left turn", "Keep right", ...), null when none is ahead or
-/// while off route.
+/// while off route. [endCue] is set from the moment the runner reaches the end
+/// of the route until about a minute later or until they head back (it is the
+/// screen's big cue; the voice and buzz fire once, natively).
 class RouteProgress {
   RouteProgress({
     required this.toGoM,
@@ -1358,6 +1367,7 @@ class RouteProgress {
     required this.off,
     this.turnLabel,
     this.turnInM,
+    this.endCue,
   });
 
   double toGoM;
@@ -1370,6 +1380,8 @@ class RouteProgress {
 
   double? turnInM;
 
+  RouteEndCue? endCue;
+
   List<Object?> _toList() {
     return <Object?>[
       toGoM,
@@ -1377,6 +1389,7 @@ class RouteProgress {
       off,
       turnLabel,
       turnInM,
+      endCue,
     ];
   }
 
@@ -1391,6 +1404,7 @@ class RouteProgress {
       off: result[2]! as bool,
       turnLabel: result[3] as String?,
       turnInM: result[4] as double?,
+      endCue: result[5] as RouteEndCue?,
     );
   }
 
@@ -1403,7 +1417,7 @@ class RouteProgress {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(toGoM, other.toGoM) && _deepEquals(climbToGoM, other.climbToGoM) && _deepEquals(off, other.off) && _deepEquals(turnLabel, other.turnLabel) && _deepEquals(turnInM, other.turnInM);
+    return _deepEquals(toGoM, other.toGoM) && _deepEquals(climbToGoM, other.climbToGoM) && _deepEquals(off, other.off) && _deepEquals(turnLabel, other.turnLabel) && _deepEquals(turnInM, other.turnInM) && _deepEquals(endCue, other.endCue);
   }
 
   @override
@@ -3261,137 +3275,140 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is LiveBoardKind) {
       buffer.putUint8(143);
       writeValue(buffer, value.index);
-    }    else if (value is HealthAvailability) {
+    }    else if (value is RouteEndCue) {
       buffer.putUint8(144);
       writeValue(buffer, value.index);
-    }    else if (value is HealthWriteOutcome) {
+    }    else if (value is HealthAvailability) {
       buffer.putUint8(145);
       writeValue(buffer, value.index);
-    }    else if (value is SessionStep) {
+    }    else if (value is HealthWriteOutcome) {
       buffer.putUint8(146);
-      writeValue(buffer, value.encode());
-    }    else if (value is SessionSpec) {
+      writeValue(buffer, value.index);
+    }    else if (value is SessionStep) {
       buffer.putUint8(147);
       writeValue(buffer, value.encode());
-    }    else if (value is LiveEntry) {
+    }    else if (value is SessionSpec) {
       buffer.putUint8(148);
       writeValue(buffer, value.encode());
-    }    else if (value is LiveBoard) {
+    }    else if (value is LiveEntry) {
       buffer.putUint8(149);
       writeValue(buffer, value.encode());
-    }    else if (value is LiveTarget) {
+    }    else if (value is LiveBoard) {
       buffer.putUint8(150);
       writeValue(buffer, value.encode());
-    }    else if (value is NudgePlan) {
+    }    else if (value is LiveTarget) {
       buffer.putUint8(151);
       writeValue(buffer, value.encode());
-    }    else if (value is FastStartRule) {
+    }    else if (value is NudgePlan) {
       buffer.putUint8(152);
       writeValue(buffer, value.encode());
-    }    else if (value is RepFadeRule) {
+    }    else if (value is FastStartRule) {
       buffer.putUint8(153);
       writeValue(buffer, value.encode());
-    }    else if (value is HrDriftRule) {
+    }    else if (value is RepFadeRule) {
       buffer.putUint8(154);
       writeValue(buffer, value.encode());
-    }    else if (value is LiveContext) {
+    }    else if (value is HrDriftRule) {
       buffer.putUint8(155);
       writeValue(buffer, value.encode());
-    }    else if (value is StartResult) {
+    }    else if (value is LiveContext) {
       buffer.putUint8(156);
       writeValue(buffer, value.encode());
-    }    else if (value is LapSummary) {
+    }    else if (value is StartResult) {
       buffer.putUint8(157);
       writeValue(buffer, value.encode());
-    }    else if (value is RecorderStatus) {
+    }    else if (value is LapSummary) {
       buffer.putUint8(158);
       writeValue(buffer, value.encode());
-    }    else if (value is FollowRoute) {
+    }    else if (value is RecorderStatus) {
       buffer.putUint8(159);
       writeValue(buffer, value.encode());
-    }    else if (value is RouteProgress) {
+    }    else if (value is FollowRoute) {
       buffer.putUint8(160);
       writeValue(buffer, value.encode());
-    }    else if (value is OrphanJournal) {
+    }    else if (value is RouteProgress) {
       buffer.putUint8(161);
       writeValue(buffer, value.encode());
-    }    else if (value is ReplayConfig) {
+    }    else if (value is OrphanJournal) {
       buffer.putUint8(162);
       writeValue(buffer, value.encode());
-    }    else if (value is PermissionStatus) {
+    }    else if (value is ReplayConfig) {
       buffer.putUint8(163);
       writeValue(buffer, value.encode());
-    }    else if (value is BleStatus) {
+    }    else if (value is PermissionStatus) {
       buffer.putUint8(164);
       writeValue(buffer, value.encode());
-    }    else if (value is ExitDiagnosis) {
+    }    else if (value is BleStatus) {
       buffer.putUint8(165);
       writeValue(buffer, value.encode());
-    }    else if (value is BleDevice) {
+    }    else if (value is ExitDiagnosis) {
       buffer.putUint8(166);
       writeValue(buffer, value.encode());
-    }    else if (value is BackupStatus) {
+    }    else if (value is BleDevice) {
       buffer.putUint8(167);
       writeValue(buffer, value.encode());
-    }    else if (value is PlaceName) {
+    }    else if (value is BackupStatus) {
       buffer.putUint8(168);
       writeValue(buffer, value.encode());
-    }    else if (value is TickEvent) {
+    }    else if (value is PlaceName) {
       buffer.putUint8(169);
       writeValue(buffer, value.encode());
-    }    else if (value is LapEvent) {
+    }    else if (value is TickEvent) {
       buffer.putUint8(170);
       writeValue(buffer, value.encode());
-    }    else if (value is LapPendingEvent) {
+    }    else if (value is LapEvent) {
       buffer.putUint8(171);
       writeValue(buffer, value.encode());
-    }    else if (value is CueEvent) {
+    }    else if (value is LapPendingEvent) {
       buffer.putUint8(172);
       writeValue(buffer, value.encode());
-    }    else if (value is GpsProbeEvent) {
+    }    else if (value is CueEvent) {
       buffer.putUint8(173);
       writeValue(buffer, value.encode());
-    }    else if (value is RoutePointsEvent) {
+    }    else if (value is GpsProbeEvent) {
       buffer.putUint8(174);
       writeValue(buffer, value.encode());
-    }    else if (value is CompareEvent) {
+    }    else if (value is RoutePointsEvent) {
       buffer.putUint8(175);
       writeValue(buffer, value.encode());
-    }    else if (value is GoalEvent) {
+    }    else if (value is CompareEvent) {
       buffer.putUint8(176);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is GoalEvent) {
       buffer.putUint8(177);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is FaultEvent) {
       buffer.putUint8(178);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is StateEvent) {
       buffer.putUint8(179);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthStatus) {
+    }    else if (value is PhaseEvent) {
       buffer.putUint8(180);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthLap) {
+    }    else if (value is HealthStatus) {
       buffer.putUint8(181);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthPause) {
+    }    else if (value is HealthLap) {
       buffer.putUint8(182);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthHrSample) {
+    }    else if (value is HealthPause) {
       buffer.putUint8(183);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthRoutePoint) {
+    }    else if (value is HealthHrSample) {
       buffer.putUint8(184);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthWorkout) {
+    }    else if (value is HealthRoutePoint) {
       buffer.putUint8(185);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthWriteResult) {
+    }    else if (value is HealthWorkout) {
       buffer.putUint8(186);
       writeValue(buffer, value.encode());
-    }    else if (value is VoiceCoachConfig) {
+    }    else if (value is HealthWriteResult) {
       buffer.putUint8(187);
+      writeValue(buffer, value.encode());
+    }    else if (value is VoiceCoachConfig) {
+      buffer.putUint8(188);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -3448,93 +3465,96 @@ class _PigeonCodec extends StandardMessageCodec {
         return value == null ? null : LiveBoardKind.values[value];
       case 144:
         final value = readValue(buffer) as int?;
-        return value == null ? null : HealthAvailability.values[value];
+        return value == null ? null : RouteEndCue.values[value];
       case 145:
         final value = readValue(buffer) as int?;
-        return value == null ? null : HealthWriteOutcome.values[value];
+        return value == null ? null : HealthAvailability.values[value];
       case 146:
-        return SessionStep.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : HealthWriteOutcome.values[value];
       case 147:
-        return SessionSpec.decode(readValue(buffer)!);
+        return SessionStep.decode(readValue(buffer)!);
       case 148:
-        return LiveEntry.decode(readValue(buffer)!);
+        return SessionSpec.decode(readValue(buffer)!);
       case 149:
-        return LiveBoard.decode(readValue(buffer)!);
+        return LiveEntry.decode(readValue(buffer)!);
       case 150:
-        return LiveTarget.decode(readValue(buffer)!);
+        return LiveBoard.decode(readValue(buffer)!);
       case 151:
-        return NudgePlan.decode(readValue(buffer)!);
+        return LiveTarget.decode(readValue(buffer)!);
       case 152:
-        return FastStartRule.decode(readValue(buffer)!);
+        return NudgePlan.decode(readValue(buffer)!);
       case 153:
-        return RepFadeRule.decode(readValue(buffer)!);
+        return FastStartRule.decode(readValue(buffer)!);
       case 154:
-        return HrDriftRule.decode(readValue(buffer)!);
+        return RepFadeRule.decode(readValue(buffer)!);
       case 155:
-        return LiveContext.decode(readValue(buffer)!);
+        return HrDriftRule.decode(readValue(buffer)!);
       case 156:
-        return StartResult.decode(readValue(buffer)!);
+        return LiveContext.decode(readValue(buffer)!);
       case 157:
-        return LapSummary.decode(readValue(buffer)!);
+        return StartResult.decode(readValue(buffer)!);
       case 158:
-        return RecorderStatus.decode(readValue(buffer)!);
+        return LapSummary.decode(readValue(buffer)!);
       case 159:
-        return FollowRoute.decode(readValue(buffer)!);
+        return RecorderStatus.decode(readValue(buffer)!);
       case 160:
-        return RouteProgress.decode(readValue(buffer)!);
+        return FollowRoute.decode(readValue(buffer)!);
       case 161:
-        return OrphanJournal.decode(readValue(buffer)!);
+        return RouteProgress.decode(readValue(buffer)!);
       case 162:
-        return ReplayConfig.decode(readValue(buffer)!);
+        return OrphanJournal.decode(readValue(buffer)!);
       case 163:
-        return PermissionStatus.decode(readValue(buffer)!);
+        return ReplayConfig.decode(readValue(buffer)!);
       case 164:
-        return BleStatus.decode(readValue(buffer)!);
+        return PermissionStatus.decode(readValue(buffer)!);
       case 165:
-        return ExitDiagnosis.decode(readValue(buffer)!);
+        return BleStatus.decode(readValue(buffer)!);
       case 166:
-        return BleDevice.decode(readValue(buffer)!);
+        return ExitDiagnosis.decode(readValue(buffer)!);
       case 167:
-        return BackupStatus.decode(readValue(buffer)!);
+        return BleDevice.decode(readValue(buffer)!);
       case 168:
-        return PlaceName.decode(readValue(buffer)!);
+        return BackupStatus.decode(readValue(buffer)!);
       case 169:
-        return TickEvent.decode(readValue(buffer)!);
+        return PlaceName.decode(readValue(buffer)!);
       case 170:
-        return LapEvent.decode(readValue(buffer)!);
+        return TickEvent.decode(readValue(buffer)!);
       case 171:
-        return LapPendingEvent.decode(readValue(buffer)!);
+        return LapEvent.decode(readValue(buffer)!);
       case 172:
-        return CueEvent.decode(readValue(buffer)!);
+        return LapPendingEvent.decode(readValue(buffer)!);
       case 173:
-        return GpsProbeEvent.decode(readValue(buffer)!);
+        return CueEvent.decode(readValue(buffer)!);
       case 174:
-        return RoutePointsEvent.decode(readValue(buffer)!);
+        return GpsProbeEvent.decode(readValue(buffer)!);
       case 175:
-        return CompareEvent.decode(readValue(buffer)!);
+        return RoutePointsEvent.decode(readValue(buffer)!);
       case 176:
-        return GoalEvent.decode(readValue(buffer)!);
+        return CompareEvent.decode(readValue(buffer)!);
       case 177:
-        return FaultEvent.decode(readValue(buffer)!);
+        return GoalEvent.decode(readValue(buffer)!);
       case 178:
-        return StateEvent.decode(readValue(buffer)!);
+        return FaultEvent.decode(readValue(buffer)!);
       case 179:
-        return PhaseEvent.decode(readValue(buffer)!);
+        return StateEvent.decode(readValue(buffer)!);
       case 180:
-        return HealthStatus.decode(readValue(buffer)!);
+        return PhaseEvent.decode(readValue(buffer)!);
       case 181:
-        return HealthLap.decode(readValue(buffer)!);
+        return HealthStatus.decode(readValue(buffer)!);
       case 182:
-        return HealthPause.decode(readValue(buffer)!);
+        return HealthLap.decode(readValue(buffer)!);
       case 183:
-        return HealthHrSample.decode(readValue(buffer)!);
+        return HealthPause.decode(readValue(buffer)!);
       case 184:
-        return HealthRoutePoint.decode(readValue(buffer)!);
+        return HealthHrSample.decode(readValue(buffer)!);
       case 185:
-        return HealthWorkout.decode(readValue(buffer)!);
+        return HealthRoutePoint.decode(readValue(buffer)!);
       case 186:
-        return HealthWriteResult.decode(readValue(buffer)!);
+        return HealthWorkout.decode(readValue(buffer)!);
       case 187:
+        return HealthWriteResult.decode(readValue(buffer)!);
+      case 188:
         return VoiceCoachConfig.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
