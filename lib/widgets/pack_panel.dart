@@ -411,10 +411,18 @@ class _Consistency extends StatelessWidget {
           children: [
             for (var i = 0; i < streak.recent.length; i++)
               Expanded(
-                child: Text(
-                  _weekLabel(i, streak.recent),
-                  textAlign: TextAlign.center,
-                  style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+                // Tight tracking and scale-down keep "This wk" on two lines
+                // and stop neighbours touching at 8 bars on 360 wide.
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    _weekLabel(i, streak.recent),
+                    textAlign: TextAlign.center,
+                    style: RunSoloType.micro11.copyWith(
+                      color: t.inkSecondary,
+                      letterSpacing: 0,
+                    ),
+                  ),
                 ),
               ),
           ],
