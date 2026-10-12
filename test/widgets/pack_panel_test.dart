@@ -86,7 +86,7 @@ void main() {
       ),
     );
     expect(labels.length, 8);
-    expect(labels.last.data, 'NOW\nRAN');
-    expect(labels.first.data, startsWith('-7W'));
+    expect(labels.last.data, 'This wk\nran');
+    expect(labels.first.data, '7 wks\nran');
   });
 }

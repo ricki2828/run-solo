@@ -347,14 +347,15 @@ class _RefTable extends StatelessWidget {
   }
 }
 
-/// Per-week label under a consistency bar: weeks back from this one, and
-/// what the bar means ("RAN", "ICE" for a freeze, "OFF"). The last bar is
-/// this week.
+/// Per-week label under a consistency bar, two short lines: how long ago
+/// ("7 wks", "1 wk", "This wk") over what the bar means ("ran", "ice" for a
+/// freeze, "off"). The last bar is this week.
 String _weekLabel(int i, List<bool?> recent) {
   final back = recent.length - 1 - i;
   final w = recent[i];
-  final state = w == true ? 'RAN' : (w == null ? 'ICE' : 'OFF');
-  return back == 0 ? 'NOW\n$state' : '-${back}W\n$state';
+  final state = w == true ? 'ran' : (w == null ? 'ice' : 'off');
+  final when = back == 0 ? 'This wk' : '$back ${back == 1 ? 'wk' : 'wks'}';
+  return '$when\n$state';
 }
 
 class _Consistency extends StatelessWidget {
