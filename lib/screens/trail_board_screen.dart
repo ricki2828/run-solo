@@ -75,7 +75,7 @@ class _Body extends StatelessWidget {
     final best = group.best;
     final ranked = [...group.runs]
       ..sort((a, b) {
-        final c = a.movingMs.compareTo(b.movingMs);
+        final c = group.normMs(a).compareTo(group.normMs(b));
         return c != 0 ? c : a.start.compareTo(b.start);
       });
     final last = group.runs.last;
@@ -95,13 +95,20 @@ class _Body extends StatelessWidget {
         ),
         const SizedBox(height: Space.x4),
         Text(
-          Fmt.clock(best.movingMs),
+          Fmt.clock(group.normMs(best)),
           key: const ValueKey('trail-board-best'),
           style: RunSoloType.display44.copyWith(color: t.inkPrimary),
         ),
         Text(
           '${Fmt.dayDate(best.start)} · ${group.runs.length} runs · '
           '${lastRank == 1 ? 'last was your best' : 'last was #$lastRank'}',
+          style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+        ),
+        const SizedBox(height: Space.x4),
+        Text(
+          'Compared on pace over ${Fmt.distance1(group.refDistanceM, units)}, '
+          'heat taken out.',
+          key: const ValueKey('trail-board-basis'),
           style: RunSoloType.body15.copyWith(color: t.inkSecondary),
         ),
         const SizedBox(height: Space.x24),
@@ -116,6 +123,7 @@ class _Body extends StatelessWidget {
             rank: i + 1,
             run: ranked[i],
             best: best,
+            group: group,
             units: units,
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
@@ -133,25 +141,36 @@ class _RunRow extends StatelessWidget {
     required this.rank,
     required this.run,
     required this.best,
+    required this.group,
     required this.units,
     required this.onTap,
   });
   final int rank;
   final engine.TrailRunFacts run;
   final engine.TrailRunFacts best;
+  final engine.TrailGroup group;
   final Units units;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final off = run.movingMs - best.movingMs;
+    final norm = group.normMs(run);
+    final off = norm - group.normMs(best);
+    // A run of another length says so, since its time is worked out on pace.
+    final ref = group.refDistanceM;
+    final gapM = run.distanceM - ref;
+    final far =
+        ref > 0 && gapM.abs() / ref > engine.TrailVerdict.distanceTolerance
+        ? ' · ${Fmt.distance1(gapM.abs(), units)} '
+              '${gapM < 0 ? 'shorter' : 'longer'}'
+        : '';
     final climb = run.climbM == null
         ? ''
         : ' · ${Fmt.elevation(run.climbM, units)} climb';
     return Semantics(
       button: true,
-      label: '#$rank, ${Fmt.clock(run.movingMs)}, ${Fmt.dayDate(run.start)}',
+      label: '#$rank, ${Fmt.clock(norm)}, ${Fmt.dayDate(run.start)}',
       excludeSemantics: true,
       child: InkWell(
         onTap: onTap,
@@ -172,11 +191,11 @@ class _RunRow extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      Fmt.clock(run.movingMs),
+                      Fmt.clock(norm),
                       style: RunSoloType.body17.copyWith(color: t.inkPrimary),
                     ),
                     Text(
-                      '${Fmt.dayDate(run.start)}$climb',
+                      '${Fmt.dayDate(run.start)}$far$climb',
                       style: RunSoloType.body15.copyWith(color: t.inkSecondary),
                     ),
                   ],

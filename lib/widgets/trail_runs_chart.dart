@@ -5,9 +5,10 @@ import '../app/format.dart';
 import '../theme/theme.dart';
 import 'recent_bars_chart.dart';
 
-/// Your runs on one trail as [RecentBarsChart] bars: moving time, faster is
-/// taller, the best run dashed. The one chart the run detail section and the
-/// trail board share.
+/// Your runs on one trail as [RecentBarsChart] bars: faster is taller, the
+/// best run dashed. Times are heat-adjusted pace over the trail's distance, so
+/// a shorter run is not a faster one. The one chart the run detail section and
+/// the trail board share.
 class TrailRunsChart extends StatelessWidget {
   const TrailRunsChart({
     super.key,
@@ -30,16 +31,16 @@ class TrailRunsChart extends StatelessWidget {
       barColor: t.typeTrail,
       points: [
         for (final r in group.runs)
-          BarPoint(date: r.start, value: r.movingMs / 1000),
+          BarPoint(date: r.start, value: group.normMs(r) / 1000),
       ],
       lowerIsBetter: true,
       format: (v) => Fmt.clock((v * 1000).round()),
       direction: 'Faster is taller',
       emptyTitle: 'Two runs on this trail draw the first chart.',
-      best: best.movingMs / 1000,
+      best: group.normMs(best) / 1000,
       roundTo: 10,
       showValues: showValues,
-      caption: 'Moving time on ${group.name}',
+      caption: 'Time on ${group.name}',
     );
   }
 }
