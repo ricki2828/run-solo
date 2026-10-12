@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/home_screen.dart';
 import 'package:run_solo/state/history_store.dart';
+import 'package:run_solo/state/live_context.dart';
 import 'package:run_solo/state/progress_snapshot.dart';
 import 'package:run_solo/state/settings.dart';
 
@@ -137,4 +138,35 @@ void main() {
     expect(find.text('HOW TO GET BETTER'), findsOneWidget);
     expect(find.text('Change'), findsOneWidget);
   });
+
+  testWidgets('failed scores read: message, Start still there, hero stays', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      fakeServices(
+        runs: [shortRun],
+        live: _FailingLive(),
+        settings: const AppSettings(
+          onboardingDone: true,
+          profileSex: ProfileSex.male,
+          birthYear: 1982,
+        ),
+      ),
+      home: HomeScreen(now: now),
+    );
+    await pumpTimes(tester, 8);
+    expect(tester.takeException(), isNull);
+    expect(find.text("Couldn't load your scores."), findsOneWidget);
+    expect(find.byKey(const ValueKey('pack-hero')), findsOneWidget);
+    expect(find.byKey(const ValueKey('home-score-aerobic')), findsNothing);
+    expect(find.byKey(const ValueKey('home-unlock-aerobic')), findsNothing);
+  });
+}
+
+class _FailingLive extends LiveContextSource {
+  _FailingLive() : super.prepared(const []);
+
+  @override
+  Future<void> prepare() => Future<void>.error(StateError('index unreadable'));
 }
