@@ -6,16 +6,24 @@ import '../app/identity_display.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
 import '../state/live_context.dart';
+import '../state/progress_snapshot.dart';
 import '../state/settings.dart';
 import '../share/share_card.dart';
 import '../share/share_card_sheet.dart';
 import '../theme/theme.dart';
+import '../widgets/pack_panel.dart';
 import '../widgets/race_estimates_card.dart';
+import 'boards_overview.dart';
 
-/// The four earned identities in one place, with the evidence and the
+/// The Progress tab body: YOUR PACK (age band from published norms), BOARDS
+/// & RECORDS, then the four earned identities with the evidence and the
 /// qualified age-group context separate from the app's own display score.
 class ScoreAnalysis extends StatefulWidget {
-  const ScoreAnalysis({super.key});
+  const ScoreAnalysis({super.key, this.snapshot});
+
+  /// Goldens and widget tests pass a fixture; production builds one from the
+  /// run history with [buildProgressSnapshot].
+  final ProgressSnapshot? snapshot;
 
   @override
   State<ScoreAnalysis> createState() => _ScoreAnalysisState();
@@ -24,6 +32,7 @@ class ScoreAnalysis extends StatefulWidget {
 class _ScoreAnalysisState extends State<ScoreAnalysis> {
   Future<Map<engine.IdentityLane, engine.IdentityScore>>? _scores;
   Future<engine.RaceEstimates?>? _race;
+  Future<ProgressSnapshot>? _snap;
   AppServices? _services;
 
   @override
@@ -36,7 +45,9 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
       services.history.derivedChanged.addListener(_reloadScores);
       _scores = null;
       _race = null;
+      _snap = null;
     }
+    _snap ??= _loadSnapshot(services);
     final live = services.live;
     _scores ??= live == null
         ? Future.value(<engine.IdentityLane, engine.IdentityScore>{})
@@ -52,10 +63,24 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
             .then<engine.RaceEstimates?>((_) => live.raceEstimates())
             .catchError((_) => null);
 
+  Future<ProgressSnapshot> _loadSnapshot(AppServices services) async {
+    final fixed = widget.snapshot;
+    if (fixed != null) return fixed;
+    final runs = await services.history.list();
+    final s = services.settings.settings;
+    return buildProgressSnapshot(
+      runs,
+      now: services.now(),
+      sex: s.profileSex,
+      birthYear: s.birthYear,
+    );
+  }
+
   void _reloadScores() {
     if (!mounted) return;
     final live = _services?.live;
     setState(() {
+      _snap = _loadSnapshot(_services!);
       _scores = live == null
           ? Future.value(<engine.IdentityLane, engine.IdentityScore>{})
           : live.prepare().then((_) => live.identityScores());
@@ -86,6 +111,9 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
               : services.now().year - settings.birthYear!;
           return ListView(
             key: const ValueKey('score-analysis'),
+            // The whole page is a short list: build it all, so every lane
+            // card exists for finders and screen readers.
+            cacheExtent: 10000,
             padding: const EdgeInsets.fromLTRB(
               Space.screenGutter,
               Space.x8,
@@ -93,6 +121,23 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
               Space.x32,
             ),
             children: [
+              FutureBuilder<ProgressSnapshot>(
+                future: _snap,
+                initialData: widget.snapshot,
+                builder: (context, snap) => PackPanel(
+                  snapshot: snap.data ?? ProgressSnapshot.empty,
+                  onOpenSettings: () =>
+                      Navigator.of(context).pushNamed(Routes.settings),
+                ),
+              ),
+              const SizedBox(height: Space.x32),
+              Text(
+                'BOARDS & RECORDS',
+                style: RunSoloType.title28.copyWith(color: t.inkPrimary),
+              ),
+              const SizedBox(height: Space.x8),
+              const BoardsOverview(embedded: true),
+              const SizedBox(height: Space.x24),
               FutureBuilder<engine.RaceEstimates?>(
                 future: _race,
                 builder: (context, snap) {

@@ -21,7 +21,11 @@ import 'trail_board_screen.dart';
 /// spark-bars of the last 8 results. A best set in the last 14 days gets
 /// the "New best" strip on top and a NEW tag on its card.
 class BoardsOverview extends StatefulWidget {
-  const BoardsOverview({super.key});
+  const BoardsOverview({super.key, this.embedded = false});
+
+  /// Inside another scroll view (the Progress tab): wraps its content and
+  /// leaves the scrolling and the outer padding to the parent.
+  final bool embedded;
 
   @override
   State<BoardsOverview> createState() => _BoardsOverviewState();
@@ -93,12 +97,18 @@ class _BoardsOverviewState extends State<BoardsOverview> {
         final strip = _latestBest(boards, titleOf, now);
         return ListView(
           key: const ValueKey('boards-overview'),
-          padding: const EdgeInsets.fromLTRB(
-            Space.screenGutter,
-            Space.x8,
-            Space.screenGutter,
-            Space.x32,
-          ),
+          shrinkWrap: widget.embedded,
+          physics: widget.embedded
+              ? const NeverScrollableScrollPhysics()
+              : null,
+          padding: widget.embedded
+              ? EdgeInsets.zero
+              : const EdgeInsets.fromLTRB(
+                  Space.screenGutter,
+                  Space.x8,
+                  Space.screenGutter,
+                  Space.x32,
+                ),
           children: [
             if (boards.updating)
               Padding(
