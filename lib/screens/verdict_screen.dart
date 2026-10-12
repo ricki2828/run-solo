@@ -20,6 +20,9 @@ import '../widgets/coaching.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/feel_row.dart';
 import '../widgets/rep_bars.dart';
+import '../widgets/recent_activity.dart' show runTypeColor;
+import '../widgets/result_b/result_b.dart';
+import '../widgets/section_card.dart';
 import '../widgets/splits_bars.dart';
 import 'cooper_result_screen.dart';
 import 'course_board_screen.dart';
@@ -442,6 +445,7 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
     final flagged = state == RevealState.none;
     final durationMs = d.summary.durationMs;
     return Scaffold(
+      backgroundColor: t.bgBase,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -481,10 +485,14 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        '${runHeaderTitle(d.summary)} · ${Fmt.dayDate(d.run.start)} · ${Fmt.clock(durationMs)}',
-                        style: RunSoloType.label13.copyWith(
-                          color: t.inkSecondary,
+                      child: ResultHeadBlock(
+                        fill: runTypeColor(d.summary, t),
+                        builder: (context, ink) => Text(
+                          '${runHeaderTitle(d.summary)} · ${Fmt.dayDate(d.run.start)} · ${Fmt.clock(durationMs)}',
+                          style: RunSoloType.label13.copyWith(
+                            color: ink,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ),
@@ -501,57 +509,68 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                       ),
                   ],
                 ),
-                const SizedBox(height: Space.x24),
+                const SizedBox(height: Space.x16),
                 if (reps.isNotEmpty)
-                  AnimatedBuilder(
-                    animation: _reveal,
-                    builder: (context, _) => RepBars(
-                      reps: reps,
-                      units: units,
-                      progress: _bars.value,
-                      deltaProgress: _delta.value,
-                      // No slope line; the axis never spans under 30 s, as on
-                      // run detail, so a 5 s spread is not dramatic.
-                      fadeProgress: 0,
-                      minSpanSec: SplitsBars.minSpanSec,
-                      tone: _delta.value > 0 || _reduced
-                          ? tone
-                          : RepTone.neutral,
-                    ),
-                  ),
-                const SizedBox(height: Space.x24),
-                const LapLineDivider(gapAt: 0.18),
-                const SizedBox(height: Space.x12),
-                // The verdict word wipes upward out of the lap line.
-                ClipRect(
-                  child: AnimatedBuilder(
-                    animation: _word,
-                    builder: (context, child) => Transform.translate(
-                      offset: Offset(0, 96 * (1 - _word.value)),
-                      child: Opacity(
-                        opacity: _word.value.clamp(0, 1),
-                        child: child,
+                  SectionCard(
+                    child: AnimatedBuilder(
+                      animation: _reveal,
+                      builder: (context, _) => RepBars(
+                        reps: reps,
+                        units: units,
+                        progress: _bars.value,
+                        deltaProgress: _delta.value,
+                        // No slope line; the axis never spans under 30 s, as on
+                        // run detail, so a 5 s spread is not dramatic.
+                        fadeProgress: 0,
+                        minSpanSec: SplitsBars.minSpanSec,
+                        tone: _delta.value > 0 || _reduced
+                            ? tone
+                            : RepTone.neutral,
                       ),
                     ),
-                    child: VerdictWord(
-                      text: v?.headline.text ?? 'NO VERDICT',
-                      state: state,
-                    ),
+                  ),
+                const SizedBox(height: Space.x16),
+                // The verdict word wipes upward inside its card.
+                SectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ClipRect(
+                        child: AnimatedBuilder(
+                          animation: _word,
+                          builder: (context, child) => Transform.translate(
+                            offset: Offset(0, 96 * (1 - _word.value)),
+                            child: Opacity(
+                              opacity: _word.value.clamp(0, 1),
+                              child: child,
+                            ),
+                          ),
+                          child: VerdictWord(
+                            text: v?.headline.text ?? 'NO VERDICT',
+                            state: state,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: Space.x12),
+                      AnimatedBuilder(
+                        animation: _lines,
+                        builder: (context, child) => Transform.translate(
+                          offset: Offset(0, 12 * (1 - _lines.value)),
+                          child: Opacity(
+                            opacity: _lines.value.clamp(0, 1),
+                            child: child,
+                          ),
+                        ),
+                        child: _Lines(
+                          detail: d,
+                          units: units,
+                          flagged: flagged,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: Space.x12),
-                AnimatedBuilder(
-                  animation: _lines,
-                  builder: (context, child) => Transform.translate(
-                    offset: Offset(0, 12 * (1 - _lines.value)),
-                    child: Opacity(
-                      opacity: _lines.value.clamp(0, 1),
-                      child: child,
-                    ),
-                  ),
-                  child: _Lines(detail: d, units: units, flagged: flagged),
-                ),
-                const SizedBox(height: Space.x24),
+                const SizedBox(height: Space.x16),
                 // A10.3: the rank on this session's board (or its PB), in
                 // the old "New best" chip's slot; the verdict is unchanged.
                 BoardChips(
@@ -603,16 +622,16 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                   ],
                 ),
                 const SizedBox(height: Space.x24),
-                FeelRow(runId: d.run.id, initial: d.sidecar.feel),
-                const SizedBox(height: Space.x24),
+                SectionCard(
+                  child: FeelRow(runId: d.run.id, initial: d.sidecar.feel),
+                ),
+                const SizedBox(height: Space.x16),
                 // A10.6: coaching below Details, in the scroll, so the
                 // verdict hero and its goldens do not move.
                 CoachingSection(runId: d.run.id),
               ],
             ),
           ),
-          // 2 % static grain, verdict screen only.
-          const IgnorePointer(child: VerdictGrain()),
         ],
       ),
     );
@@ -697,6 +716,7 @@ class _GoalResultScreen extends StatelessWidget {
     final firstOfGoal = sameGoal <= 1;
 
     return Scaffold(
+      backgroundColor: t.bgBase,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
@@ -705,9 +725,15 @@ class _GoalResultScreen extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    'GOAL · ${name.toUpperCase()} · ${Fmt.dayDate(d.run.start)} · ${Fmt.clock(d.summary.durationMs)}',
-                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                  child: ResultHeadBlock(
+                    fill: runTypeColor(d.summary, t),
+                    builder: (context, ink) => Text(
+                      'GOAL · ${name.toUpperCase()} · ${Fmt.dayDate(d.run.start)} · ${Fmt.clock(d.summary.durationMs)}',
+                      style: RunSoloType.label13.copyWith(
+                        color: ink,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
                 if (!justFinished)
@@ -723,42 +749,58 @@ class _GoalResultScreen extends StatelessWidget {
                   ),
               ],
             ),
-            const SizedBox(height: Space.x32),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                figure,
-                key: const ValueKey('goal-result-figure'),
-                softWrap: false,
-                style: RunSoloType.display96.copyWith(color: t.inkPrimary),
+            const SizedBox(height: Space.x16),
+            SectionCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      figure,
+                      key: const ValueKey('goal-result-figure'),
+                      softWrap: false,
+                      style: RunSoloType.display96.copyWith(
+                        color: t.inkPrimary,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    g != null && !g.reached
+                        ? '$figureLabel - NOT REACHED'
+                        : figureLabel,
+                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                  ),
+                ],
               ),
             ),
-            Text(
-              g != null && !g.reached
-                  ? '$figureLabel - NOT REACHED'
-                  : figureLabel,
-              style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+            const SizedBox(height: Space.x16),
+            SectionCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final l in lines)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: Space.x4),
+                      child: Text(
+                        l,
+                        style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+                      ),
+                    ),
+                  if (firstOfGoal) ...[
+                    const SizedBox(height: Space.x8),
+                    Text(
+                      'First $name on the books. Run it again and your $name '
+                      'board opens - every run from there gets ranked against '
+                      'your best.',
+                      style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                    ),
+                  ],
+                ],
+              ),
             ),
-            const SizedBox(height: Space.x24),
-            for (final l in lines)
-              Padding(
-                padding: const EdgeInsets.only(bottom: Space.x4),
-                child: Text(
-                  l,
-                  style: RunSoloType.body17.copyWith(color: t.inkPrimary),
-                ),
-              ),
-            if (firstOfGoal) ...[
-              const SizedBox(height: Space.x8),
-              Text(
-                'First $name on the books. Run it again and your $name '
-                'board opens - every run from there gets ranked against '
-                'your best.',
-                style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-              ),
-            ],
-            const SizedBox(height: Space.x24),
+            const SizedBox(height: Space.x16),
             BoardChips(
               runId: d.run.id,
               justFinished: justFinished,
@@ -789,8 +831,10 @@ class _GoalResultScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: Space.x24),
-            FeelRow(runId: d.run.id, initial: d.sidecar.feel),
-            const SizedBox(height: Space.x24),
+            SectionCard(
+              child: FeelRow(runId: d.run.id, initial: d.sidecar.feel),
+            ),
+            const SizedBox(height: Space.x16),
             CoachingSection(runId: d.run.id),
           ],
         ),

@@ -11,6 +11,9 @@ import '../theme/theme.dart';
 import '../widgets/feel_row.dart';
 import '../widgets/chrome.dart';
 import '../widgets/rank_chip.dart';
+import '../widgets/recent_activity.dart' show runTypeColor;
+import '../widgets/result_b/result_b.dart';
+import '../widgets/section_card.dart';
 import 'run_detail_screen.dart';
 import 'trail_board_screen.dart';
 import 'verdict_screen.dart';
@@ -188,81 +191,99 @@ class _TrailVerdictScreenState extends State<TrailVerdictScreen>
               ),
               children: [
                 const SizedBox(height: Space.x8),
-                Text(
-                  '${Fmt.dayDate(d.run.start)} · ${Fmt.clock(d.summary.durationMs)}',
-                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                ),
-                const SizedBox(height: Space.x24),
-                FadeTransition(
-                  opacity: _hero,
-                  child: _Hero(facts: _facts, units: units),
-                ),
-                const SizedBox(height: Space.x24),
-                const LapLineDivider(gapAt: 0.18),
-                const SizedBox(height: Space.x12),
-                ClipRect(
-                  child: AnimatedBuilder(
-                    animation: _word,
-                    builder: (context, child) => Transform.translate(
-                      offset: Offset(0, 96 * (1 - _word.value)),
-                      child: Opacity(
-                        opacity: _word.value.clamp(0, 1),
-                        child: child,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        VerdictWord(text: big, state: state),
-                        if (split)
-                          Padding(
-                            padding: const EdgeInsets.only(top: Space.x4),
-                            child: Text(
-                              kicker.trim(),
-                              key: const ValueKey('trail-verdict-kicker'),
-                              style: RunSoloType.title28.copyWith(
-                                color: _toneColor(t, state),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: Space.x12),
-                AnimatedBuilder(
-                  animation: _lines,
-                  builder: (context, child) => Transform.translate(
-                    offset: Offset(0, 12 * (1 - _lines.value)),
-                    child: Opacity(
-                      opacity: _lines.value.clamp(0, 1),
-                      child: child,
-                    ),
-                  ),
-                  child: Column(
-                    key: const ValueKey('trail-verdict-lines'),
+                ResultHeadBlock(
+                  fill: runTypeColor(d.summary, t),
+                  builder: (context, ink) => Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: Space.x8),
-                        child: Text(
-                          r.subline,
-                          key: const ValueKey('trail-verdict-subline'),
-                          style: RunSoloType.body17.copyWith(
-                            color: t.inkPrimary,
+                      Text(
+                        '${Fmt.dayDate(d.run.start)} · ${Fmt.clock(d.summary.durationMs)}',
+                        style: RunSoloType.label13.copyWith(
+                          color: ink,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: Space.x12),
+                      FadeTransition(
+                        opacity: _hero,
+                        child: _Hero(facts: _facts, units: units, ink: ink),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: Space.x16),
+                SectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ClipRect(
+                        child: AnimatedBuilder(
+                          animation: _word,
+                          builder: (context, child) => Transform.translate(
+                            offset: Offset(0, 96 * (1 - _word.value)),
+                            child: Opacity(
+                              opacity: _word.value.clamp(0, 1),
+                              child: child,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              VerdictWord(text: big, state: state),
+                              if (split)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: Space.x4),
+                                  child: Text(
+                                    kicker.trim(),
+                                    key: const ValueKey('trail-verdict-kicker'),
+                                    style: RunSoloType.title28.copyWith(
+                                      color: _toneColor(t, state),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                       ),
-                      for (final l in r.lines)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: Space.x4),
-                          child: Text(
-                            l,
-                            style: RunSoloType.body15.copyWith(
-                              color: t.inkSecondary,
-                            ),
+                      const SizedBox(height: Space.x12),
+                      AnimatedBuilder(
+                        animation: _lines,
+                        builder: (context, child) => Transform.translate(
+                          offset: Offset(0, 12 * (1 - _lines.value)),
+                          child: Opacity(
+                            opacity: _lines.value.clamp(0, 1),
+                            child: child,
                           ),
                         ),
+                        child: Column(
+                          key: const ValueKey('trail-verdict-lines'),
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: Space.x8),
+                              child: Text(
+                                r.subline,
+                                key: const ValueKey('trail-verdict-subline'),
+                                style: RunSoloType.body17.copyWith(
+                                  color: t.inkPrimary,
+                                ),
+                              ),
+                            ),
+                            for (final l in r.lines)
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: Space.x4,
+                                ),
+                                child: Text(
+                                  l,
+                                  style: RunSoloType.body15.copyWith(
+                                    color: t.inkSecondary,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -309,12 +330,13 @@ class _TrailVerdictScreenState extends State<TrailVerdictScreen>
                   ],
                 ),
                 const SizedBox(height: Space.x24),
-                FeelRow(runId: d.run.id, initial: d.sidecar.feel),
+                SectionCard(
+                  child: FeelRow(runId: d.run.id, initial: d.sidecar.feel),
+                ),
                 const SizedBox(height: Space.x24),
               ],
             ),
           ),
-          const IgnorePointer(child: VerdictGrain()),
         ],
       ),
     );
@@ -330,13 +352,13 @@ Color _toneColor(RunSoloTokens t, RevealState state) => switch (state) {
 
 /// The run's moving time, big, with distance and climb under it.
 class _Hero extends StatelessWidget {
-  const _Hero({required this.facts, required this.units});
+  const _Hero({required this.facts, required this.units, required this.ink});
   final engine.TrailRunFacts facts;
   final Units units;
+  final Color ink;
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
     final climb = facts.climbM == null
         ? ''
         : ' · ${Fmt.elevation(facts.climbM, units)} climb';
@@ -350,17 +372,14 @@ class _Hero extends StatelessWidget {
             Fmt.clock(facts.movingMs),
             key: const ValueKey('trail-verdict-moving'),
             softWrap: false,
-            style: RunSoloType.display96.copyWith(color: t.inkPrimary),
+            style: RunSoloType.display96.copyWith(color: ink),
           ),
         ),
-        Text(
-          'MOVING TIME',
-          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-        ),
+        Text('MOVING TIME', style: RunSoloType.micro11.copyWith(color: ink)),
         const SizedBox(height: Space.x4),
         Text(
           '${Fmt.distance(facts.distanceM, units)}$climb',
-          style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+          style: RunSoloType.body17.copyWith(color: ink),
         ),
       ],
     );
