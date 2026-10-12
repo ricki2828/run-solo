@@ -276,18 +276,22 @@ engine.RunFile trailLoopRun({
   double dLat = 0,
   double noiseM = 4,
   double climbAmpM = 18,
+  double km = 6,
+
+  /// The loop's real size when it differs from [km]: a run that cut a corner
+  /// is shorter but still the same trail.
+  double? loopKm,
 }) {
-  const km = 6;
   final base = freeRunFile(
     n: n,
     start: start,
-    seconds: secPerKm * km,
+    seconds: (secPerKm * km).round(),
     secPerKm: secPerKm,
   );
   final rnd = math.Random(n);
   const lat0 = 37.4, lon0 = 24.9, mPerDeg = 111194.9;
   final kx = math.cos(lat0 * math.pi / 180) * mPerDeg;
-  final scale = base.distanceM / 2200;
+  final scale = (loopKm == null ? base.distanceM : loopKm * 1000) / 2200;
   final total = base.distanceM;
   return base.copyWith(
     mode: engine.RunMode.trail,

@@ -1891,10 +1891,6 @@ class _FreeRunBlock extends StatelessWidget {
                         child: OdometerDistance(
                           value: liveHero(s, ctl, units).figures.first.value,
                           style: style,
-                          wholeFill: t.inkPrimary.withValues(alpha: 0.16),
-                          wholeInk: t.inkPrimary,
-                          decimalFill: t.inkPrimary,
-                          decimalInk: t.bgBase,
                         ),
                       )
                     : null,
@@ -1998,9 +1994,16 @@ class _FreePlan {
 /// Gesture approach: page 1 is a plain horizontal PageView, so a swipe
 /// anywhere on the numbers goes to the map. On page 2 the PageView stops
 /// taking drags (NeverScrollable) so the map keeps every pan and zoom; the
-/// way back is a swipe from a thin strip on the left edge, or a tap on the
-/// page dots. No gesture arena fights, and the map's own gestures are
-/// untouched.
+/// way back is a swipe from a strip on the left edge, or a tap on the page
+/// dots.
+///
+/// Why the strip failed on a device (12-Oct): it was `translucent`, which
+/// hit-tests the strip AND the map underneath it. The map is a platform
+/// view, and its recognizer claims the gesture arena on pointer down, so the
+/// strip's drag recognizer always lost. The strip is now `opaque` (the map
+/// never sees touches in it), and it goes back on drag distance or flick, so
+/// a slow swipe works too. Unproven on hardware: the fake map in tests does
+/// not claim the arena, so a widget test cannot show the original failure.
 class _RunPages extends StatelessWidget {
   const _RunPages({
     super.key,
@@ -2023,7 +2026,19 @@ class _RunPages extends StatelessWidget {
   final Widget two;
 
   /// The left-edge strip that swipes back from the map.
-  static const double edge = 28;
+  static const double edge = 44;
+
+  /// A slow drag this far (dp) goes back; a flick needs less.
+  static const double _backDistance = 48;
+  static const double _backVelocity = 300;
+
+  void _back() => unawaited(
+    controller.animateToPage(
+      0,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -2046,27 +2061,42 @@ class _RunPages extends StatelessWidget {
                 top: 0,
                 bottom: 0,
                 width: edge,
-                child: GestureDetector(
-                  key: const ValueKey('page-edge-swipe'),
-                  behavior: HitTestBehavior.translucent,
-                  onHorizontalDragEnd: (d) {
-                    if ((d.primaryVelocity ?? 0) > 0) {
-                      unawaited(
-                        controller.animateToPage(
-                          0,
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeOutCubic,
-                        ),
-                      );
-                    }
-                  },
-                ),
+                child: _BackEdge(onBack: _back),
               ),
           ],
         ),
       ],
     );
   }
+}
+
+/// The strip itself. Stateful so the drag total survives parent rebuilds
+/// (the run screen rebuilds every tick).
+class _BackEdge extends StatefulWidget {
+  const _BackEdge({required this.onBack});
+  final VoidCallback onBack;
+
+  @override
+  State<_BackEdge> createState() => _BackEdgeState();
+}
+
+class _BackEdgeState extends State<_BackEdge> {
+  double _dragged = 0;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    key: const ValueKey('page-edge-swipe'),
+    // Opaque: the map under the strip must not see the touch.
+    behavior: HitTestBehavior.opaque,
+    onHorizontalDragStart: (_) => _dragged = 0,
+    onHorizontalDragUpdate: (d) => _dragged += d.delta.dx,
+    onHorizontalDragEnd: (d) {
+      final v = d.primaryVelocity ?? 0;
+      if (v > _RunPages._backVelocity || _dragged > _RunPages._backDistance) {
+        widget.onBack();
+      }
+    },
+  );
 }
 
 /// Two dots in the header: which page is showing, and a 48 dp tap to switch.
