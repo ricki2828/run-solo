@@ -10,6 +10,7 @@ library;
 import 'package:run_engine/run_engine.dart' as engine;
 
 import 'history_store.dart';
+import 'progress/progress_build.dart';
 import 'settings.dart';
 
 /// Total first-time milestones (about 15, most land in runs 1 to 5).
@@ -220,15 +221,26 @@ class ProgressSnapshot {
   };
 }
 
-/// Fills in the snapshot from history; the engine stream owns the body.
+/// Fills in the snapshot from history (see `progress/progress_build.dart`).
 /// Pure: same runs, clock, profile and seen set give the same snapshot.
+///
+/// [leaderboards] (optional, `Boards.byKey`) feeds the PB moments; without it
+/// no PB moment appears. Seen ids live in `SeenMomentsStore`.
 ProgressSnapshot buildProgressSnapshot(
   List<RunSummary> runs, {
   required DateTime now,
   required ProfileSex sex,
   required int? birthYear,
   Set<String> seenMoments = const {},
-}) => ProgressSnapshot.empty;
+  Map<String, engine.Leaderboard> leaderboards = const {},
+}) => buildSnapshot(
+  runs,
+  now: now,
+  sex: sex,
+  birthYear: birthYear,
+  seen: seenMoments,
+  leaderboards: leaderboards,
+);
 
 List<double> get _histo => [
   for (var i = 0; i < 20; i++) 1 / (1 + (i - 9.5) * (i - 9.5) / 12),
@@ -306,7 +318,8 @@ final _month3 = ProgressSnapshot(
     weekStart: DateTime(2026, 10, 5),
     km: 42.6,
     runs: 4,
-    headline: 'Your biggest week. Four runs, one long one, every easy day easy.',
+    headline:
+        'Your biggest week. Four runs, one long one, every easy day easy.',
     dailyKm: const [8.1, 0, 7.2, 0, 10.9, 0, 16.4],
     dailyLane: const [
       engine.IdentityLane.aerobic,
