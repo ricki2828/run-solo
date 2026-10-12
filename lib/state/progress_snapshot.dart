@@ -106,6 +106,7 @@ class GhostCompare {
     required this.now,
     required this.then,
     required this.thenLabel,
+    this.nowLabel = kGhostNowLabel,
   });
 
   /// "5K".
@@ -113,9 +114,16 @@ class GhostCompare {
   final Duration now;
   final Duration then;
 
-  /// "Sept".
+  /// The windows are rolling 28 days, not calendar months, so the copy names
+  /// the span and never a month (both sides could read the same month).
+  final String nowLabel;
+
+  /// "The 4 weeks before".
   final String thenLabel;
 }
+
+const kGhostNowLabel = 'Last 4 weeks';
+const kGhostThenLabel = 'The 4 weeks before';
 
 class WeeklyStory {
   const WeeklyStory({
@@ -312,7 +320,7 @@ final _month3 = ProgressSnapshot(
     label: '5K',
     now: Duration(minutes: 26, seconds: 41),
     then: Duration(minutes: 27, seconds: 55),
-    thenLabel: 'Sept',
+    thenLabel: kGhostThenLabel,
   ),
   story: WeeklyStory(
     weekStart: DateTime(2026, 10, 5),

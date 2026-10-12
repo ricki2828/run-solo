@@ -363,9 +363,6 @@ GhostCompare? buildGhost(List<ProgressRun> runs, DateTime now) {
 
   Duration atDistance(ProgressRun r, double d) =>
       Duration(milliseconds: (r.durationMs / r.distanceM * d).round());
-  // Name the month of the run it was compared against, not a date guess.
-  String monthOf(ProgressRun r) => _months[r.start.month - 1];
-
   for (final (d, name) in [(5000.0, '5K'), (3000.0, '3K'), (1000.0, '1K')]) {
     final a = bestRun(thisMonth, d), b = bestRun(lastMonth, d);
     if (a != null && b != null) {
@@ -373,7 +370,7 @@ GhostCompare? buildGhost(List<ProgressRun> runs, DateTime now) {
         label: name,
         now: atDistance(a, d),
         then: atDistance(b, d),
-        thenLabel: monthOf(b),
+        thenLabel: kGhostThenLabel,
       );
     }
   }
@@ -393,7 +390,7 @@ GhostCompare? buildGhost(List<ProgressRun> runs, DateTime now) {
     label: '${_fmtKm(d / 1000)}K',
     now: at(topNow),
     then: at(topThen),
-    thenLabel: monthOf(topThen),
+    thenLabel: kGhostThenLabel,
   );
 }
 

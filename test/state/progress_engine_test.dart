@@ -307,6 +307,38 @@ void main() {
     });
   });
 
+  group('local calendar', () {
+    // 1 Oct 07:00 in NZ (+13) and 1 Oct 06:00 in SGT (+8) are still 30 Sep
+    // in UTC; the run must read as the 1st of October where it was run.
+    for (final (name, offsetMin, hour) in [
+      ('NZ', 13 * 60, 7),
+      ('SGT', 8 * 60, 6),
+    ]) {
+      test('first-run on the 1st in $name is labelled with the local date', () {
+        final startUtc = DateTime.utc(
+          2026,
+          10,
+          1,
+          hour,
+        ).subtract(Duration(minutes: offsetMin));
+        expect(startUtc.month, 9);
+        final s = build([
+          RunSummary(
+            id: 'tz-$name',
+            mode: RecordMode.free,
+            start: startUtc,
+            durationMs: 30 * 60000,
+            distanceM: 5000,
+            laps: 0,
+            utcOffsetMin: offsetMin,
+          ),
+        ]);
+        expect(first(s, 'first-run').detail, contains('1 Oct'));
+        expect(first(s, 'first-run').detail, isNot(contains('Sep')));
+      });
+    }
+  });
+
   group('ghost', () {
     test('5K this month against a month earlier', () {
       final s = build([
@@ -317,7 +349,22 @@ void main() {
       expect(g.label, '5K');
       expect(g.now, const Duration(minutes: 26));
       expect(g.then, const Duration(minutes: 28));
-      expect(g.thenLabel, 'Sept');
+      expect(g.nowLabel, 'Last 4 weeks');
+      expect(g.thenLabel, 'The 4 weeks before');
+    });
+
+    test('names the span, never a month, even when both runs share one', () {
+      final at = DateTime(2026, 10, 30, 9);
+      final s = build([
+        run(DateTime(2026, 10, 1, 7), km: 5, minutes: 28),
+        run(DateTime(2026, 10, 29, 7), km: 5, minutes: 26),
+      ], at: at);
+      final g = s.ghost!;
+      expect(g.nowLabel, isNot(g.thenLabel));
+      for (final m in ['Sept', 'Oct']) {
+        expect(g.nowLabel, isNot(contains(m)));
+        expect(g.thenLabel, isNot(contains(m)));
+      }
     });
 
     test('falls back to 3K, then null without a pair', () {
