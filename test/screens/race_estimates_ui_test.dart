@@ -56,6 +56,7 @@ void main() {
       home: const ProgressScreen(),
     );
     await pumpTimes(tester, 6);
+    await useTallPhoneView(tester);
   }
 
   testWidgets('Progress: 5K, 10K, VO2, and why there is no half', (

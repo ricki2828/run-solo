@@ -11,6 +11,9 @@ import '../app/format.dart';
 import '../state/history_store.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
+import '../widgets/recent_activity.dart' show runTypeColor;
+import '../widgets/result_b/result_b.dart';
+import '../widgets/section_card.dart';
 
 class BroncoResultScreen extends StatelessWidget {
   const BroncoResultScreen({
@@ -53,61 +56,80 @@ class BroncoResultScreen extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
           children: [
             const SizedBox(height: Space.x8),
-            Text(
-              Fmt.dayDate(d.run.start),
-              style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-            ),
-            const SizedBox(height: Space.x24),
-            Text(
-              Fmt.clock(totalMs),
-              key: const ValueKey('bronco-total'),
-              textAlign: TextAlign.center,
-              style: RunSoloType.display96.copyWith(color: t.inkPrimary),
-            ),
-            const SizedBox(height: Space.x8),
-            Text(
-              complete
-                  ? 'total for 5 x 240 m'
-                  : 'total for ${sets.length} of 5 sets - ended early',
-              key: const ValueKey('bronco-total-caption'),
-              textAlign: TextAlign.center,
-              style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-            ),
-            const SizedBox(height: Space.x24),
-            Divider(color: t.inkSecondary.withValues(alpha: 0.3)),
-            for (var i = 0; i < sets.length; i++) ...[
-              const SizedBox(height: Space.x12),
-              Row(
-                key: ValueKey('bronco-set-${i + 1}'),
+            ResultHeadBlock(
+              fill: runTypeColor(d.summary, t),
+              builder: (context, ink) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: Text(
-                      'SET ${i + 1}',
-                      style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+                  Text(
+                    Fmt.dayDate(d.run.start),
+                    style: RunSoloType.label13.copyWith(
+                      color: ink,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
+                  const SizedBox(height: Space.x12),
                   Text(
-                    Fmt.clock(sets[i].durationMs),
-                    style: RunSoloType.body17.copyWith(
-                      color: sets[i].durationMs == fastestMs && complete
-                          ? t.accentArc
-                          : t.inkPrimary,
-                    ),
+                    Fmt.clock(totalMs),
+                    key: const ValueKey('bronco-total'),
+                    textAlign: TextAlign.center,
+                    style: RunSoloType.display96.copyWith(color: ink),
+                  ),
+                  const SizedBox(height: Space.x8),
+                  Text(
+                    complete
+                        ? 'total for 5 x 240 m'
+                        : 'total for ${sets.length} of 5 sets - ended early',
+                    key: const ValueKey('bronco-total-caption'),
+                    textAlign: TextAlign.center,
+                    style: RunSoloType.body15.copyWith(color: ink),
                   ),
                 ],
               ),
-            ],
-            const SizedBox(height: Space.x24),
-            Divider(color: t.inkSecondary.withValues(alpha: 0.3)),
-            const SizedBox(height: Space.x12),
-            Text(
-              'Average set ${Fmt.clock(avgMs)}.',
-              style: RunSoloType.body15.copyWith(color: t.inkSecondary),
             ),
-            const SizedBox(height: Space.x8),
-            Text(
-              'Time only. The 12-minute test stays the fitness measure.',
-              style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+            const SizedBox(height: Space.x16),
+            SectionCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var i = 0; i < sets.length; i++) ...[
+                    const SizedBox(height: Space.x12),
+                    Row(
+                      key: ValueKey('bronco-set-${i + 1}'),
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'SET ${i + 1}',
+                            style: RunSoloType.body17.copyWith(
+                              color: t.inkPrimary,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          Fmt.clock(sets[i].durationMs),
+                          style: RunSoloType.body17.copyWith(
+                            color: sets[i].durationMs == fastestMs && complete
+                                ? t.accentArc
+                                : t.inkPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: Space.x24),
+                  Divider(color: t.inkSecondary.withValues(alpha: 0.3)),
+                  const SizedBox(height: Space.x12),
+                  Text(
+                    'Average set ${Fmt.clock(avgMs)}.',
+                    style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                  ),
+                  const SizedBox(height: Space.x8),
+                  Text(
+                    'Time only. The 12-minute test stays the fitness measure.',
+                    style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: Space.x24),
           ],
