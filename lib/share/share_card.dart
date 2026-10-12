@@ -114,6 +114,22 @@ class ScoresCardData extends ShareCardData {
   String get title => _title;
 }
 
+/// A moment (first, PB, level up, weekly story) as a card: the big figure
+/// in its colour, nothing about where or when.
+class MomentCardData extends ShareCardData {
+  const MomentCardData({
+    required this.eyebrow,
+    required this.big,
+    required this.detail,
+    required this.colour,
+  });
+
+  final String eyebrow;
+  final String big;
+  final String detail;
+  final Color colour;
+}
+
 /// The run's card, from what History already holds (index-row fields only)
 /// and its route. [route] is passed in only for "Show map".
 RunCardData runCardData(RunSummary run, Units units) => RunCardData(
@@ -184,6 +200,7 @@ class ShareCard extends StatelessWidget {
         final glow = switch (data) {
           RunCardData d => d.colour,
           ScoresCardData() => t.typeLaps,
+          MomentCardData d => d.colour,
         };
         return SizedBox.fromSize(
           size: kShareCardSize,
@@ -207,6 +224,7 @@ class ShareCard extends StatelessWidget {
                   child: switch (data) {
                     final RunCardData d => _RunBody(data: d, t: t),
                     final ScoresCardData d => _ScoresBody(data: d, t: t),
+                    final MomentCardData d => _MomentBody(data: d, t: t),
                   },
                 ),
               ],
@@ -349,6 +367,43 @@ class _RunBody extends StatelessWidget {
       ],
       const SizedBox(height: 20),
       _Footer(t: t, left: data.date),
+    ],
+  );
+}
+
+class _MomentBody extends StatelessWidget {
+  const _MomentBody({required this.data, required this.t});
+  final MomentCardData data;
+  final RunSoloTokens t;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _Header(right: data.eyebrow, rightColour: data.colour),
+      const Spacer(),
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(
+          data.big,
+          key: const ValueKey('share-moment-big'),
+          maxLines: 1,
+          style: RunSoloType.display96.copyWith(
+            fontSize: 150,
+            color: data.colour,
+          ),
+        ),
+      ),
+      const SizedBox(height: 12),
+      Text(
+        data.detail,
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+        style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+      ),
+      const Spacer(),
+      _Footer(t: t),
     ],
   );
 }
