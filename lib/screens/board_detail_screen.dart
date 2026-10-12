@@ -8,10 +8,12 @@ import '../platform/gateway.dart';
 import '../state/boards.dart';
 import '../state/courses.dart';
 import '../state/history_store.dart';
+import '../theme/pack_look.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/recent_bars_chart.dart';
+import '../widgets/run_card.dart';
 import '../widgets/weather_chip.dart';
 import 'run_detail_screen.dart';
 
@@ -1012,88 +1014,91 @@ class _AllTable extends StatelessWidget {
   Widget _row(BuildContext context, RunSoloTokens t, engine.BoardRun r, int i) {
     final rank = i + 1;
     final selected = r.runId == selectedRunId;
-    return InkWell(
+    return RunCard(
       key: ValueKey('board-row-${r.runId}'),
+      accent: rank == 1 ? t.accentArc : boardAccent(t, view.board.kind),
+      wash: selected ? 0.32 : PackLook.laneTint,
+      margin: const EdgeInsets.only(bottom: Space.x8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.x12,
+        vertical: Space.x8,
+      ),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => RunDetailScreen(runId: r.runId)),
       ),
-      child: Container(
-        color: selected ? t.bgRaised : null,
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 22,
-              child: rank == 1
-                  ? Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: t.accentArc,
-                      ),
-                    )
-                  : Text(
-                      '$rank',
-                      style: RunSoloType.label13.copyWith(
-                        fontSize: 14,
-                        color: t.inkSecondary,
-                      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 22,
+            child: rank == 1
+                ? Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: t.accentArc,
                     ),
-            ),
-            SizedBox(
-              width: 74,
-              child: Text(
-                view.fmt(view.board.rankValue(r), units),
-                style: RunSoloType.label13.copyWith(
-                  fontSize: 14,
-                  color: t.inkPrimary,
-                ),
-              ),
-            ),
-            SizedBox(
-              width: 60,
-              child: Text(
-                view.gap(view.board.rankValue(r), units),
-                style: RunSoloType.label13.copyWith(
-                  fontSize: 13,
-                  color: t.inkSecondary,
-                ),
-              ),
-            ),
-            Expanded(
-              child: Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      shortDate(r.date),
-                      style: RunSoloType.label13.copyWith(
-                        fontSize: 14,
-                        color: t.inkSecondary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                  )
+                : Text(
+                    '$rank',
+                    style: RunSoloType.label13.copyWith(
+                      fontSize: 14,
+                      color: t.inkSecondary,
                     ),
                   ),
-                  if (r.official) ...[
-                    const SizedBox(width: Space.x8),
-                    _Tag(text: 'official', color: t.inkSecondary),
-                  ],
-                ],
+          ),
+          SizedBox(
+            width: 74,
+            child: Text(
+              view.fmt(view.board.rankValue(r), units),
+              style: RunSoloType.label13.copyWith(
+                fontSize: 14,
+                color: t.inkPrimary,
               ),
             ),
-            SizedBox(
-              width: 70,
-              child: Text(
-                view.fmt(r.metric, units),
-                style: RunSoloType.label13.copyWith(
-                  fontSize: 14,
-                  color: t.inkSecondary,
+          ),
+          SizedBox(
+            width: 60,
+            child: Text(
+              view.gap(view.board.rankValue(r), units),
+              style: RunSoloType.label13.copyWith(
+                fontSize: 13,
+                color: t.inkSecondary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    shortDate(r.date),
+                    style: RunSoloType.label13.copyWith(
+                      fontSize: 14,
+                      color: t.inkSecondary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                textAlign: TextAlign.right,
-              ),
+                if (r.official) ...[
+                  const SizedBox(width: Space.x8),
+                  _Tag(text: 'official', color: t.inkSecondary),
+                ],
+              ],
             ),
-          ],
-        ),
+          ),
+          SizedBox(
+            width: 70,
+            child: Text(
+              view.fmt(r.metric, units),
+              style: RunSoloType.label13.copyWith(
+                fontSize: 14,
+                color: t.inkSecondary,
+              ),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
       ),
     );
   }

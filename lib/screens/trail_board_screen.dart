@@ -8,6 +8,7 @@ import '../state/history_store.dart';
 import '../state/trails.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
+import '../widgets/run_card.dart';
 import '../widgets/trail_runs_chart.dart';
 import 'run_detail_screen.dart';
 
@@ -172,10 +173,16 @@ class _RunRow extends StatelessWidget {
       button: true,
       label: '#$rank, ${Fmt.clock(norm)}, ${Fmt.dayDate(run.start)}',
       excludeSemantics: true,
-      child: InkWell(
+      child: RunCard(
+        accent: off <= 0 ? t.accentArc : t.typeTrail,
         onTap: onTap,
+        margin: const EdgeInsets.only(bottom: Space.x8),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Space.x12,
+          vertical: Space.x8,
+        ),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 56),
+          constraints: const BoxConstraints(minHeight: 40),
           child: Row(
             children: [
               SizedBox(

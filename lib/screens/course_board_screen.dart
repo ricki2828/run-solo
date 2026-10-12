@@ -9,6 +9,7 @@ import '../state/history_store.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
+import '../widgets/run_card.dart';
 import 'run_detail_screen.dart';
 
 /// "23:20" for whole seconds.
@@ -545,12 +546,18 @@ class _BoardRow extends StatelessWidget {
       fontFeatures: const [FontFeature.tabularFigures()],
     );
     final truth = entry.trueSeconds;
-    return InkWell(
+    return RunCard(
+      accent: rank == 1 ? t.accentArc : t.typeGoal,
+      margin: const EdgeInsets.only(bottom: Space.x8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.x12,
+        vertical: Space.x8,
+      ),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => RunDetailScreen(runId: entry.run.id)),
       ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
+        constraints: const BoxConstraints(minHeight: 40),
         child: Row(
           children: [
             SizedBox(
