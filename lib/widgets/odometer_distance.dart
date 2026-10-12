@@ -48,7 +48,11 @@ class OdometerDistance extends StatelessWidget {
         for (final ch in whole.split('')) wheel(ch),
         Text('.', softWrap: false, style: s),
         for (final ch in dec.split('')) wheel(ch),
-        if (unit.isNotEmpty) Text(' $unit', softWrap: false, style: s),
+        if (unit.isNotEmpty)
+          Padding(
+            padding: EdgeInsets.only(left: (style.fontSize ?? 48) * 0.18),
+            child: Text(unit, softWrap: false, style: s),
+          ),
       ],
     );
   }
@@ -106,7 +110,7 @@ class _WheelState extends State<_Wheel> with SingleTickerProviderStateMixin {
     final size = style.fontSize ?? 48;
     final h = size;
     // Fixed-width cell so the number never jitters.
-    final w = size * 0.6;
+    final w = size * 0.44;
     return Semantics(
       label: '${widget.digit}',
       excludeSemantics: true,
