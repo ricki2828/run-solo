@@ -237,13 +237,10 @@ void main() {
       tester.view.physicalSize = Size(1080, height * 3);
       await pumpTimes(tester, 8);
       expect(tester.takeException(), isNull);
-      // The eyebrow always names the lane: "MID · SCORES SET".
-      expect(
-        tester
-            .widget<Text>(find.byKey(const ValueKey('home-statement-eyebrow')))
-            .data,
-        matches(RegExp(r'^(AEROBIC|SPEED|MID|LONG) · SCORES SET$')),
-      );
+      // Four earned lanes: all four blocks carry a number.
+      for (final lane in engine.IdentityLane.values) {
+        expect(find.byKey(ValueKey('home-score-${lane.name}')), findsOneWidget);
+      }
       final name = 'home_scores_four_360x$height';
       expect(
         File('test/golden/goldens/$name.png').existsSync() ||

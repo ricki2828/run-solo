@@ -1,0 +1,145 @@
+import 'package:flutter/material.dart';
+import 'package:run_engine/run_engine.dart' as engine;
+
+import '../../theme/lanes.dart';
+import '../../theme/pack_look.dart';
+import '../../theme/theme.dart';
+
+/// A flat lane-colour tile: the lane's name, a big number, a caption. [value]
+/// null shows the lane as not set yet (a dash), still in its colour so week
+/// one is not grey. Ink is picked for contrast on the fill.
+class LaneBlock extends StatelessWidget {
+  const LaneBlock({
+    super.key,
+    required this.lane,
+    required this.value,
+    required this.caption,
+    this.onTap,
+  });
+
+  final engine.IdentityLane lane;
+  final String? value;
+  final String caption;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final fill = t.laneFill(lane);
+    final ink = readableOn(fill);
+    return Semantics(
+      button: onTap != null,
+      label: '${lane.name}, ${value ?? 'not set yet'}. $caption',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Radii.card),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(
+            Space.x8,
+            Space.x8,
+            Space.x8,
+            Space.x8,
+          ),
+          decoration: BoxDecoration(
+            color: fill,
+            borderRadius: BorderRadius.circular(Radii.card),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                lane.name.toUpperCase(),
+                maxLines: 1,
+                style: RunSoloType.micro11.copyWith(
+                  color: ink,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: Space.x4),
+              Text(
+                value ?? '-',
+                maxLines: 1,
+                style: RunSoloType.display44.copyWith(color: ink),
+              ),
+              Text(
+                caption,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: RunSoloType.micro11.copyWith(
+                  color: ink,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The four scores side by side. [blocks] must be four, in lane order.
+class LaneBlockRow extends StatelessWidget {
+  const LaneBlockRow({super.key, required this.blocks});
+
+  final List<LaneBlock> blocks;
+
+  @override
+  Widget build(BuildContext context) => IntrinsicHeight(
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < blocks.length; i++) ...[
+          if (i > 0) const SizedBox(width: Space.x8),
+          Expanded(child: blocks[i]),
+        ],
+      ],
+    ),
+  );
+}
+
+/// A block on the light page washed in a lane colour, with that colour as a
+/// 4 dp accent down the left edge. For anything that belongs to a lane but
+/// should stay calm: next session, a coach card, a result card.
+class LaneTintCard extends StatelessWidget {
+  const LaneTintCard({
+    super.key,
+    required this.lane,
+    required this.child,
+    this.padding = const EdgeInsets.all(Space.x16),
+  });
+
+  final engine.IdentityLane lane;
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final fill = t.laneFill(lane);
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(
+          fill.withValues(alpha: PackLook.laneTint),
+          t.bgRaised,
+        ),
+        borderRadius: BorderRadius.circular(Radii.sheet),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 6, color: fill),
+            Expanded(
+              child: Padding(padding: padding, child: child),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

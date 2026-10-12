@@ -17,13 +17,19 @@ import '../widgets/goal_picker.dart';
 import '../state/home_progress.dart';
 import '../theme/lanes.dart';
 import '../theme/theme.dart';
-import '../widgets/home_scores.dart';
+import '../state/progress_snapshot.dart';
+import '../widgets/home_b/home_b.dart';
+import '../widgets/home_b/home_lane_blocks.dart';
 import '../widgets/readiness_line.dart';
 import '../widgets/load_warning.dart';
 import '../widgets/recent_activity.dart';
 import '../widgets/section_card.dart';
 import 'progress_screen.dart';
 
+/// Direction B Home: the pack hero first, then the next session, the weekly
+/// streak, the four scores as lane blocks, the last-month ghost and the weekly
+/// story. The reusable pieces live in `widgets/home_b/home_b.dart`.
+///
 /// Scores-first Home. Start opens setup with the saved session unchanged;
 /// results and recent activity remain history-backed, never synthetic.
 class HomeScreen extends StatefulWidget {
@@ -32,7 +38,17 @@ class HomeScreen extends StatefulWidget {
     this.now,
     this.onShowHistory,
     this.onShowProgress,
+    this.snapshot,
+    this.onOpenStory,
   });
+
+  /// Injected for tests and goldens; defaults to [buildProgressSnapshot] over
+  /// the runs Home loaded.
+  final ProgressSnapshot? snapshot;
+
+  /// Opens the weekly story screen. Until that screen lands Home shows the
+  /// week's headline in a sheet.
+  final void Function(WeeklyStory story)? onOpenStory;
 
   /// Injected for tests; defaults to the wall clock.
   final DateTime Function()? now;
@@ -185,6 +201,23 @@ class _HomeScreenState extends State<HomeScreen> {
     };
   }
 
+  void _openStory(WeeklyStory story) {
+    final open = widget.onOpenStory;
+    if (open != null) return open(story);
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(Space.x24),
+        child: Text(
+          story.headline,
+          style: RunSoloType.pageHeadline.copyWith(
+            color: Theme.of(context).extension<RunSoloTokens>()!.inkPrimary,
+          ),
+        ),
+      ),
+    );
+  }
+
   void _openProgress() {
     if (widget.onShowProgress != null) {
       widget.onShowProgress!();
@@ -317,9 +350,26 @@ class _HomeScreenState extends State<HomeScreen> {
                       final plannedName =
                           rec?.sessionName ??
                           _lastUsedName(settings, services.pickedSession);
+                      final snap0 =
+                          widget.snapshot ??
+                          (data == null
+                              ? ProgressSnapshot.empty
+                              : buildProgressSnapshot(
+                                  data.runs,
+                                  now: _now,
+                                  sex: settings.profileSex,
+                                  birthYear: settings.birthYear,
+                                ));
                       return Column(
                         children: [
+                          PackHero(
+                            level: snap0.level,
+                            pack: snap0.pack,
+                            runCount: snap0.runCount,
+                          ),
+                          const SizedBox(height: Space.x16),
                           _GetBetter(
+                            lane: rec?.lane ?? engine.IdentityLane.aerobic,
                             moves: data == null || data.failed
                                 ? const []
                                 : ProgressMove.of(
@@ -365,19 +415,45 @@ class _HomeScreenState extends State<HomeScreen> {
                             onPlan: _openPlan,
                           ),
                           const SizedBox(height: Space.x16),
-                          _ProgressHero(
-                            headline: data != null && !data.failed
-                                ? ProgressHeadline.of(
-                                    data.scores,
-                                    now: _now,
-                                    sex: settings.profileSex,
-                                    age: age,
-                                  )
-                                : data != null || snap.hasError
-                                ? ProgressHeadline.failed
-                                : ProgressHeadline.loading,
+                          StreakCard(
+                            streak: snap0.streak,
+                            firstsDone: snap0.firstsDone,
+                            firstsTotal: kFirstsTotal,
                           ),
                           const SizedBox(height: Space.x16),
+                          if (data != null && !data.failed) ...[
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: Space.x8),
+                              child: Text(
+                                data.scores.isEmpty
+                                    ? 'SET YOUR SCORES'
+                                    : 'YOUR FOUR SCORES',
+                                style: RunSoloType.micro11.copyWith(
+                                  color: t.inkSecondary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            HomeLaneBlocks(
+                              scores: data.scores,
+                              profileSex: settings.profileSex,
+                              age: age,
+                              onOpen: _openProgress,
+                              onUnlock: _start,
+                            ),
+                            const SizedBox(height: Space.x16),
+                          ],
+                          if (snap0.ghost != null) ...[
+                            GhostCard(ghost: snap0.ghost!),
+                            const SizedBox(height: Space.x16),
+                          ],
+                          if (snap0.story != null) ...[
+                            StoryButton(
+                              story: snap0.story!,
+                              onTap: () => _openStory(snap0.story!),
+                            ),
+                            const SizedBox(height: Space.x16),
+                          ],
                           if (data != null) ...[
                             SectionCard(
                               child: WeekStrip(
@@ -385,16 +461,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                 zones: services.hrZones,
                                 now: _now,
                               ),
-                            ),
-                            const SizedBox(height: Space.x16),
-                          ],
-                          if (data != null && !data.failed) ...[
-                            HomeScores(
-                              scores: data.scores,
-                              profileSex: settings.profileSex,
-                              age: age,
-                              onOpen: _openProgress,
-                              onUnlock: _start,
                             ),
                             const SizedBox(height: Space.x16),
                           ],
@@ -467,94 +533,11 @@ class _HomeData {
   final Map<engine.IdentityLane, engine.IdentityScore> scores;
 }
 
-/// Always names the lane: "MID · SCORES SET". Up/down titles already lead
-/// with it ("AEROBIC DOWN 20").
-String _eyebrow(String title, engine.IdentityLane lane) {
-  final name = lane.name.toUpperCase();
-  return title.startsWith(name) ? title : '$name · $title';
-}
-
-class _ProgressHero extends StatelessWidget {
-  const _ProgressHero({required this.headline});
-  final ProgressHeadline headline;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final st = headline.statement;
-    if (st == null) {
-      return SectionCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              headline.title,
-              style: RunSoloType.pageHeadline.copyWith(color: t.inkPrimary),
-            ),
-            Text(
-              headline.line,
-              style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-            ),
-          ],
-        ),
-      );
-    }
-    return SectionCard(
-      accent: t.laneFill(st.lane),
-      child: Column(
-        key: const ValueKey('home-statement'),
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Huge, in the colour of the score it refers to (>= 3:1, 24 sp+).
-          Text(
-            st.big,
-            key: const ValueKey('home-statement-big'),
-            style: RunSoloType.statement56.copyWith(color: t.laneFill(st.lane)),
-          ),
-          const SizedBox(height: Space.x4),
-          Text(
-            st.tail,
-            style: RunSoloType.body17.copyWith(color: t.inkPrimary),
-          ),
-          const SizedBox(height: Space.x8),
-          Container(
-            key: const ValueKey('home-statement-tag'),
-            padding: const EdgeInsets.symmetric(
-              horizontal: Space.x8,
-              vertical: Space.x4,
-            ),
-            decoration: BoxDecoration(
-              color: t.inkPrimary,
-              borderRadius: BorderRadius.circular(Radii.chip),
-            ),
-            child: Text(
-              st.tag,
-              style: RunSoloType.micro11.copyWith(color: t.bgBase),
-            ),
-          ),
-          const SizedBox(height: Space.x12),
-          Text(
-            _eyebrow(headline.title, st.lane),
-            key: const ValueKey('home-statement-eyebrow'),
-            style: RunSoloType.micro11.copyWith(
-              color: t.laneText(st.lane),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          Text(
-            headline.line,
-            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// One recommended session with its reason. Start opens setup preset to it;
 /// Change opens the same screen to pick something else.
 class _GetBetter extends StatelessWidget {
   const _GetBetter({
+    required this.lane,
     required this.reason,
     required this.startLabel,
     required this.onStart,
@@ -568,6 +551,7 @@ class _GetBetter extends StatelessWidget {
     this.onAnyway,
     this.moves = const [],
   });
+  final engine.IdentityLane lane;
   final String? reason;
 
   /// The lanes that moved over six weeks, shown as one line in the header.
@@ -596,7 +580,8 @@ class _GetBetter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return SectionCard(
+    return LaneTintCard(
+      lane: lane,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
