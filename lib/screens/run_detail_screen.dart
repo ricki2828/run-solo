@@ -168,7 +168,7 @@ class RunDetailBody extends StatelessWidget {
         ],
         // A6: the weather chip sits under the header, before the map.
         if (weather != null) ...[
-          SectionCard(child: WeatherChip(view: weather)),
+          WeatherChip(view: weather),
           const SizedBox(height: Space.x16),
         ],
         if (breakdown != null) ...[
