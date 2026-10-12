@@ -107,6 +107,29 @@ void main() {
     },
   );
 
+  testWidgets('a slow drag right from page 2 goes back to page 1', (
+    tester,
+  ) async {
+    await open(
+      tester,
+      settings: const AppSettings(onboardingDone: true, liveMapTypes: {'laps'}),
+    );
+    expect(find.byKey(_map), findsOneWidget);
+    // Start inside the strip, move slowly: no flick velocity.
+    final strip = tester.getTopLeft(
+      find.byKey(const ValueKey('page-edge-swipe')),
+    );
+    final g = await tester.startGesture(strip + const Offset(20, 200));
+    for (var i = 0; i < 12; i++) {
+      await g.moveBy(const Offset(10, 0));
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await g.up();
+    await settleAnimations(tester);
+    expect(find.byKey(_map), findsNothing);
+    expect(find.byKey(const ValueKey('timer')), findsOneWidget);
+  });
+
   testWidgets('the page is remembered per run type', (tester) async {
     final (_, services) = await open(tester);
     await tester.tap(find.byKey(_toggle));
