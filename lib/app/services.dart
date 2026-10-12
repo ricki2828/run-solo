@@ -22,6 +22,7 @@ import '../platform/transfer_gateway.dart';
 import '../state/block_plan.dart';
 import '../state/companion.dart';
 import '../state/courses.dart';
+import '../state/progress/seen_moments_store.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../state/hr_zone_choice.dart';
@@ -63,6 +64,7 @@ class AppServices {
     required this.health,
     SessionsController? sessions,
     CourseNamesController? courseNames,
+    SeenMomentsStore? seenMoments,
     BlockPlanController? plans,
     RouteLibrary? routes,
     RecordingController? recording,
@@ -106,6 +108,7 @@ class AppServices {
        sessions = sessions ?? SessionsController(MemorySessionsStore()),
        courseNames =
            courseNames ?? CourseNamesController(MemoryCourseNamesStore()),
+       seenMoments = seenMoments ?? MemorySeenMomentsStore(),
        plans = plans ?? BlockPlanController(MemoryBlockPlanStore()),
        routes = routes ?? RouteLibrary(MemoryRouteStore(), now: now),
        recording =
@@ -303,6 +306,9 @@ class AppServices {
   /// K1: the runner's names for event courses (`state/courses.json`).
   final CourseNamesController courseNames;
 
+  /// Which full-screen moments were shown (`state/seen_moments.json`).
+  final SeenMomentsStore seenMoments;
+
   /// The 4-week progress block (`state/plan.json`), if one is running.
   final BlockPlanController plans;
 
@@ -337,6 +343,7 @@ class AppServices {
     DateTime Function()? now,
     List<CustomSession> customSessions = const [],
     Map<String, String> courseNames = const {},
+    SeenMomentsStore? seenMoments,
     engine.BlockPlan? plan,
     List<engine.SavedRoute> routes = const [],
     LiveContextSource? live,
@@ -379,6 +386,7 @@ class AppServices {
         MemorySessionsStore(customSessions),
         now: now,
       )..preload(customSessions),
+      seenMoments: seenMoments,
       courseNames: CourseNamesController(MemoryCourseNamesStore(courseNames))
         ..preload(courseNames),
       plans: BlockPlanController(MemoryBlockPlanStore(plan))..preload(plan),
@@ -483,6 +491,7 @@ class AppServices {
       topo: topo,
       sessions: sessions,
       courseNames: courseNames,
+      seenMoments: FileSeenMomentsStore(Directory('${support.path}/state')),
       plans: plans,
       routes: routes,
     );

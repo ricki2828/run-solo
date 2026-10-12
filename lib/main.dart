@@ -18,6 +18,8 @@ import 'state/settings.dart';
 import 'screens/shell_screen.dart';
 import 'screens/start_screen.dart';
 import 'screens/verdict_screen.dart';
+import 'screens/weekly_story_screen.dart';
+import 'state/progress_snapshot.dart' show WeeklyStory;
 import 'splash/intro_gate.dart';
 import 'splash/intro_host.dart';
 import 'theme/theme.dart';
@@ -155,6 +157,11 @@ class RunSoloApp extends StatelessWidget {
                 Routes.settings => SettingsScreen(now: now),
                 Routes.offlineMaps => const OfflineMapsScreen(),
                 Routes.plan => PlanScreen(now: now),
+                Routes.weeklyStory => WeeklyStoryScreen(
+                  story: settings.arguments is WeeklyStory
+                      ? settings.arguments as WeeklyStory
+                      : null,
+                ),
                 _ => null,
               };
               if (page == null) return null;
