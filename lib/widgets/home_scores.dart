@@ -70,7 +70,7 @@ class HomeScores extends StatelessWidget {
                 set: scores[lane] != null,
                 onTap: onUnlock == null
                     ? null
-                    : () => onUnlock!(_unlockApply(lane)),
+                    : () => onUnlock!(laneUnlockApply(lane)),
               ),
           ],
         ),
@@ -134,7 +134,7 @@ String _unlock(engine.IdentityLane lane) => switch (lane) {
 };
 
 /// Start, preselected on the format that sets [lane].
-AppSettings Function(AppSettings) _unlockApply(engine.IdentityLane lane) =>
+AppSettings Function(AppSettings) laneUnlockApply(engine.IdentityLane lane) =>
     switch (lane) {
       engine.IdentityLane.aerobic => (s) => s.copyWith(
         lastMode: RecordMode.cooper,

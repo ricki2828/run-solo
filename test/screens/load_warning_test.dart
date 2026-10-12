@@ -74,6 +74,8 @@ void main() {
       expect(anyway, findsOneWidget);
       expect(tester.getSize(anyway).height, greaterThanOrEqualTo(48));
       expect(find.textContaining('anyway'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey('load-dismiss')));
+      await pumpTimes(tester, 2);
       await tester.tap(find.byKey(const ValueKey('load-dismiss')));
       await pumpTimes(tester, 6);
       expect(find.text('Norwegian 4x4 ›'), findsOneWidget);
@@ -118,6 +120,8 @@ void main() {
       home: HomeScreen(now: now),
     );
     await pumpTimes(tester, 6);
+    await tester.ensureVisible(find.byKey(const ValueKey('load-why')));
+    await pumpTimes(tester, 2);
     await tester.tap(find.byKey(const ValueKey('load-why')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
@@ -130,6 +134,8 @@ void main() {
     final services = fakeServices(runs: hotWeek());
     await pumpApp(tester, services, home: HomeScreen(now: now));
     await pumpTimes(tester, 6);
+    await tester.ensureVisible(find.byKey(const ValueKey('load-dismiss')));
+    await pumpTimes(tester, 2);
     await tester.tap(find.byKey(const ValueKey('load-dismiss')));
     await pumpTimes(tester, 4);
     expect(find.byKey(const ValueKey('load-warning')), findsNothing);
@@ -205,6 +211,8 @@ void main() {
     await pumpApp(tester, services, home: HomeScreen(now: now));
     await pumpTimes(tester, 6);
     expect(find.text('Easy run ›'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const ValueKey('load-dismiss')));
+    await pumpTimes(tester, 2);
     await tester.tap(find.byKey(const ValueKey('load-dismiss')));
     await pumpTimes(tester, 6);
     expect(find.byKey(const ValueKey('load-warning')), findsNothing);
