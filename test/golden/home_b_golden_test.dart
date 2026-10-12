@@ -97,6 +97,16 @@ void main() {
           find.byType(MaterialApp),
           matchesGoldenFile('goldens/$name.png'),
         );
+        // The lower half: lane blocks, ghost, story, week strip.
+        await tester.drag(
+          find.byType(SingleChildScrollView).first,
+          const Offset(0, -4000),
+        );
+        await pumpTimes(tester, 4);
+        await expectLater(
+          find.byType(MaterialApp),
+          matchesGoldenFile('goldens/home_b_${stage}_low_360x$height.png'),
+        );
       });
     }
   }
