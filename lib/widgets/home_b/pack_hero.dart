@@ -71,11 +71,25 @@ class PackHero extends StatelessWidget {
     required this.level,
     required this.runCount,
     this.pack,
+    this.needsProfile = false,
+    this.onAddProfile,
+    this.slowerLabel = 'Slower',
+    this.fasterLabel = 'Faster',
   });
 
   final CalibratedLevel level;
   final PackStanding? pack;
   final int runCount;
+
+  /// The runner has runs but no sex or birth year, so no pack can be worked
+  /// out. The hero says so and [onAddProfile] opens the profile.
+  final bool needsProfile;
+  final VoidCallback? onAddProfile;
+
+  /// The axis words under the histogram, plain strings so a share card or a
+  /// translated build can swap them.
+  final String slowerLabel;
+  final String fasterLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -85,7 +99,19 @@ class PackHero extends StatelessWidget {
     final String eyebrow;
     final String big;
     final String sub;
-    if (p == null) {
+    if (p == null && needsProfile && runCount > 0) {
+      eyebrow = 'YOUR AGE-BAND PACK';
+      big = 'ADD YOUR\nAGE BAND';
+      sub =
+          'Add your age and sex to see where your runs put you in the pack. '
+          'It stays on your phone.';
+    } else if (p == null && runCount > 0) {
+      eyebrow = 'YOUR AGE-BAND PACK';
+      big = 'ALMOST\nIN THE PACK';
+      sub =
+          'Your runs so far are not enough to place you. A steady run of a '
+          'few km does it. Nothing leaves your phone.';
+    } else if (p == null) {
       eyebrow = 'YOUR AGE-BAND PACK';
       big = 'FIND\nYOUR PACK';
       sub =
@@ -155,6 +181,33 @@ class PackHero extends StatelessWidget {
               sub,
               style: RunSoloType.body15.copyWith(color: PackLook.onViolet),
             ),
+            if (p == null && needsProfile && runCount > 0) ...[
+              const SizedBox(height: Space.x12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: InkWell(
+                  key: const ValueKey('pack-hero-add-profile'),
+                  onTap: onAddProfile,
+                  borderRadius: BorderRadius.circular(Radii.pill),
+                  child: Container(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(horizontal: Space.x16),
+                    decoration: BoxDecoration(
+                      color: PackLook.onViolet,
+                      borderRadius: BorderRadius.circular(Radii.pill),
+                    ),
+                    child: Text(
+                      'Add your age band',
+                      style: RunSoloType.body15.copyWith(
+                        color: PackLook.violet,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: Space.x16),
             Container(
               padding: const EdgeInsets.all(Space.x12),
@@ -173,7 +226,7 @@ class PackHero extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      for (final s in const ['Slower', 'Faster'])
+                      for (final s in [slowerLabel, fasterLabel])
                         Text(
                           s,
                           style: RunSoloType.label13.copyWith(

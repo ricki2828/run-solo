@@ -15,12 +15,16 @@ class LaneBlock extends StatelessWidget {
     required this.value,
     required this.caption,
     this.onTap,
+    this.change,
   });
 
   final engine.IdentityLane lane;
   final String? value;
   final String caption;
   final VoidCallback? onTap;
+
+  /// Percentile points moved against a month ago; null or 0 shows nothing.
+  final int? change;
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +33,13 @@ class LaneBlock extends StatelessWidget {
     final ink = readableOn(fill);
     return Semantics(
       button: onTap != null,
-      label: '${lane.name}, ${value ?? 'not set yet'}. $caption',
+      label:
+          '${lane.name}, ${value ?? 'not set yet'}'
+          '${change == null || change == 0
+              ? ''
+              : change! > 0
+              ? ', up $change'
+              : ', down ${-change!}'}. $caption',
       excludeSemantics: true,
       child: InkWell(
         onTap: onTap,
@@ -63,6 +73,31 @@ class LaneBlock extends StatelessWidget {
                 maxLines: 1,
                 style: RunSoloType.display44.copyWith(color: ink),
               ),
+              if (change != null && change != 0)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: Space.x4),
+                  child: DecoratedBox(
+                    key: ValueKey('lane-change-${lane.name}'),
+                    decoration: BoxDecoration(
+                      color: t.bgRaised,
+                      borderRadius: BorderRadius.circular(Radii.pill),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: Space.x8,
+                        vertical: 2,
+                      ),
+                      child: Text(
+                        change! > 0 ? '+$change' : '$change',
+                        maxLines: 1,
+                        style: RunSoloType.micro11.copyWith(
+                          color: change! > 0 ? t.semImproving : t.semSlower,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               Text(
                 caption,
                 maxLines: 2,

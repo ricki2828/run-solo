@@ -15,11 +15,9 @@ import '../widgets/week_strip.dart';
 import '../widgets/chrome.dart';
 import '../widgets/goal_picker.dart';
 import '../state/home_progress.dart';
-import '../theme/lanes.dart';
 import '../theme/theme.dart';
 import '../state/progress_snapshot.dart';
 import '../widgets/home_b/home_b.dart';
-import '../widgets/home_b/home_lane_blocks.dart';
 import '../widgets/readiness_line.dart';
 import '../widgets/load_warning.dart';
 import '../widgets/recent_activity.dart';
@@ -99,7 +97,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _runs = services.history.list();
     _loadEstimates();
     final runs = _runs!, scores = _scores;
-    _data = _load(runs, scores);
+    final settings = services.settings.settings;
+    _data = _load(
+      runs,
+      scores,
+      now: _now,
+      sex: settings.profileSex,
+      birthYear: settings.birthYear,
+    );
     services.permissions.status().then((p) {
       if (mounted) setState(() => _perms = p);
     });
@@ -109,13 +114,24 @@ class _HomeScreenState extends State<HomeScreen> {
   /// so Home still shows Start and the run list.
   static Future<_HomeData> _load(
     Future<List<RunSummary>> runs,
-    Future<Map<engine.IdentityLane, engine.IdentityScore>?>? scores,
-  ) async {
+    Future<Map<engine.IdentityLane, engine.IdentityScore>?>? scores, {
+    required DateTime now,
+    required ProfileSex sex,
+    required int? birthYear,
+  }) async {
     final r = await runs;
     final sc = scores == null
         ? const <engine.IdentityLane, engine.IdentityScore>{}
         : await scores;
-    return sc == null ? _HomeData(r, const {}, failed: true) : _HomeData(r, sc);
+    final snap = buildProgressSnapshot(
+      r,
+      now: now,
+      sex: sex,
+      birthYear: birthYear,
+    );
+    return sc == null
+        ? _HomeData(r, const {}, snap, failed: true)
+        : _HomeData(r, sc, snap);
   }
 
   void _loadEstimates() {
@@ -201,22 +217,10 @@ class _HomeScreenState extends State<HomeScreen> {
     };
   }
 
-  // TODO: navigate to Routes.weeklyStory once #269 is on main.
   void _openStory(WeeklyStory story) {
     final open = widget.onOpenStory;
     if (open != null) return open(story);
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(Space.x24),
-        child: Text(
-          story.headline,
-          style: RunSoloType.pageHeadline.copyWith(
-            color: Theme.of(context).extension<RunSoloTokens>()!.inkPrimary,
-          ),
-        ),
-      ),
-    );
+    Navigator.of(context).pushNamed(Routes.weeklyStory, arguments: story);
   }
 
   void _openProgress() {
@@ -353,14 +357,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           _lastUsedName(settings, services.pickedSession);
                       final snap0 =
                           widget.snapshot ??
-                          (data == null
-                              ? ProgressSnapshot.empty
-                              : buildProgressSnapshot(
-                                  data.runs,
-                                  now: _now,
-                                  sex: settings.profileSex,
-                                  birthYear: settings.birthYear,
-                                ));
+                          data?.snapshot ??
+                          ProgressSnapshot.empty;
                       final firstRun = data == null || data.runs.isEmpty
                           ? null
                           : data.runs
@@ -389,17 +387,17 @@ class _HomeScreenState extends State<HomeScreen> {
                             level: snap0.level,
                             pack: snap0.pack,
                             runCount: snap0.runCount,
+                            needsProfile:
+                                (settings.profileSex != ProfileSex.male &&
+                                    settings.profileSex != ProfileSex.female) ||
+                                settings.birthYear == null,
+                            onAddProfile: () =>
+                                Navigator.of(context)
+                                    .pushNamed(Routes.settings),
                           ),
                           const SizedBox(height: Space.x16),
                           _GetBetter(
                             lane: rec?.lane ?? engine.IdentityLane.aerobic,
-                            moves: data == null || data.failed
-                                ? const []
-                                : ProgressMove.of(
-                                    data.scores,
-                                    sex: settings.profileSex,
-                                    age: age,
-                                  ),
                             warning: warned
                                 ? LoadWarning(
                                     flag: planCtx!.loadCheck.flag!,
@@ -484,6 +482,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           if (snap0.story != null) ...[
                             StoryButton(
                               story: snap0.story!,
+                              units: settings.units,
                               onTap: () => _openStory(snap0.story!),
                             ),
                             const SizedBox(height: Space.x16),
@@ -561,8 +560,11 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _HomeData {
-  const _HomeData(this.runs, this.scores, {this.failed = false});
+  const _HomeData(this.runs, this.scores, this.snapshot, {this.failed = false});
   final bool failed;
+
+  /// Built once per load, not per rebuild.
+  final ProgressSnapshot snapshot;
   final List<RunSummary> runs;
   final Map<engine.IdentityLane, engine.IdentityScore> scores;
 }
@@ -583,13 +585,9 @@ class _GetBetter extends StatelessWidget {
     this.warning,
     this.anywayLabel,
     this.onAnyway,
-    this.moves = const [],
   });
   final engine.IdentityLane lane;
   final String? reason;
-
-  /// The lanes that moved over six weeks, shown as one line in the header.
-  final List<ProgressMove> moves;
 
   /// The plan's "This week: 2 of 3 done · Next: ..." line, when one runs.
   final String? summary;
@@ -624,33 +622,6 @@ class _GetBetter extends StatelessWidget {
               'HOW TO GET BETTER',
               style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
             ),
-          if (moves.isNotEmpty) ...[
-            const SizedBox(height: Space.x4),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text.rich(
-                key: const ValueKey('home-progress-line'),
-                maxLines: 1,
-                TextSpan(
-                  style: RunSoloType.label13.copyWith(color: t.inkPrimary),
-                  children: [
-                    for (var i = 0; i < moves.length; i++) ...[
-                      if (i > 0) const TextSpan(text: ' · '),
-                      TextSpan(
-                        text: moves[i].lane.name.toUpperCase(),
-                        style: TextStyle(
-                          color: t.laneText(moves[i].lane),
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      TextSpan(text: ' ${moves[i].words}'),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ],
           if (summary != null) ...[
             const SizedBox(height: Space.x4),
             Text(

@@ -67,6 +67,9 @@ class HomeLaneBlocks extends StatelessWidget {
       key: ValueKey('home-score-${lane.name}'),
       lane: lane,
       value: known ? '$p' : null,
+      change: known
+          ? ScoreNorms.change(score, sex: profileSex, age: age)
+          : null,
       caption: known ? 'of your age band' : 'add age and sex',
       onTap: known
           ? onOpen

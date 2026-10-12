@@ -15,11 +15,15 @@ class StreakCard extends StatelessWidget {
     required this.streak,
     required this.firstsDone,
     required this.firstsTotal,
+    this.lane = engine.IdentityLane.aerobic,
   });
 
   final WeeklyStreak streak;
   final int firstsDone;
   final int firstsTotal;
+
+  /// The lane the card is tinted with; aerobic (green) on Home.
+  final engine.IdentityLane lane;
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +46,7 @@ class StreakCard extends StatelessWidget {
         : '${streak.freezesReady} freezes ready';
     return LaneTintCard(
       key: const ValueKey('home-streak'),
-      lane: engine.IdentityLane.aerobic,
+      lane: lane,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

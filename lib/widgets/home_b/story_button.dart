@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../app/format.dart';
+import '../../platform/gateway.dart';
 import '../../state/progress_snapshot.dart';
 import '../../theme/lanes.dart';
 import '../../theme/theme.dart';
@@ -7,10 +9,16 @@ import '../../theme/theme.dart';
 /// The weekly story entry: last week in km and runs, with a button into the
 /// full-screen story. A button, not a nag: it sits quietly on Home.
 class StoryButton extends StatelessWidget {
-  const StoryButton({super.key, required this.story, required this.onTap});
+  const StoryButton({
+    super.key,
+    required this.story,
+    required this.onTap,
+    this.units = Units.km,
+  });
 
   final WeeklyStory story;
   final VoidCallback onTap;
+  final Units units;
 
   @override
   Widget build(BuildContext context) {
@@ -18,10 +26,10 @@ class StoryButton extends StatelessWidget {
     final lane = story.laneOfWeek;
     final fill = lane == null ? t.inkPrimary : t.laneFill(lane);
     final ink = readableOn(fill);
-    final km = story.km.toStringAsFixed(1);
+    final dist = Fmt.distance1(story.km * 1000, units);
     return Semantics(
       button: true,
-      label: 'Last week: $km km in ${story.runs} runs. See your week.',
+      label: 'Last week: $dist in ${story.runs} runs. See your week.',
       excludeSemantics: true,
       child: InkWell(
         key: const ValueKey('home-story'),
@@ -51,7 +59,7 @@ class StoryButton extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '$km KM, ${story.runs} ${story.runs == 1 ? 'RUN' : 'RUNS'}',
+                      '${dist.toUpperCase()}, ${story.runs} ${story.runs == 1 ? 'RUN' : 'RUNS'}',
                       style: RunSoloType.heading26.copyWith(color: ink),
                     ),
                   ],

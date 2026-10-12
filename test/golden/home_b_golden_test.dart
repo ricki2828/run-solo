@@ -110,4 +110,27 @@ void main() {
       });
     }
   }
+
+  // Has runs, no age or sex: the hero says what to add, never "find your pack".
+  for (final height in [640, 800]) {
+    testWidgets('Home B has runs, no profile 360x$height', (tester) async {
+      await pumpApp(
+        tester,
+        fakeServices(
+          runs: [run],
+          settings: const AppSettings(onboardingDone: true),
+        ),
+        home: HomeScreen(now: now),
+      );
+      tester.view.physicalSize = Size(1080, height * 3);
+      await pumpTimes(tester, 8);
+      expect(tester.takeException(), isNull);
+      expect(find.text('ADD YOUR\nAGE BAND'), findsOneWidget);
+      expect(find.text('FIND\nYOUR PACK'), findsNothing);
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/home_b_noprofile_360x$height.png'),
+      );
+    });
+  }
 }

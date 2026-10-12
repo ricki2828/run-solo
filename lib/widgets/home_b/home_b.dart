@@ -22,6 +22,7 @@ library;
 export '../../theme/pack_look.dart';
 export 'block_chip.dart';
 export 'ghost_card.dart';
+export 'home_lane_blocks.dart';
 export 'lane_block.dart';
 export 'pack_hero.dart';
 export 'streak_card.dart';
