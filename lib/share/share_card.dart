@@ -298,8 +298,10 @@ class _RunBody extends StatelessWidget {
       children: [
         _Header(t: t),
         const SizedBox(height: 12),
-        // The run-type block: which kind of run, never how good it was.
-        Expanded(
+        // The run-type block: which kind of run, never how good it was. With
+        // no route it is a short title band and the numbers take the room.
+        _maybeExpanded(
+          expand: data.hasRoute,
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.all(14),
@@ -308,6 +310,7 @@ class _RunBody extends StatelessWidget {
               borderRadius: BorderRadius.circular(Radii.card),
             ),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
@@ -361,7 +364,8 @@ class _RunBody extends StatelessWidget {
           const SizedBox(height: 8),
         ],
         if (data.truePace case final p?)
-          SizedBox(
+          _maybeExpanded(
+            expand: !data.hasRoute,
             height: 104,
             child: Row(
               children: [
@@ -375,6 +379,7 @@ class _RunBody extends StatelessWidget {
                           value: data.distance,
                           t: t,
                           fill: tile,
+                          big: !data.hasRoute,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -384,6 +389,7 @@ class _RunBody extends StatelessWidget {
                           value: data.time,
                           t: t,
                           fill: tile,
+                          big: !data.hasRoute,
                         ),
                       ),
                     ],
@@ -398,13 +404,15 @@ class _RunBody extends StatelessWidget {
                     t: t,
                     fill: tile,
                     big: true,
+                    huge: !data.hasRoute,
                   ),
                 ),
               ],
             ),
           )
         else
-          SizedBox(
+          _maybeExpanded(
+            expand: !data.hasRoute,
             height: 64,
             child: Row(
               children: [
@@ -434,6 +442,17 @@ class _RunBody extends StatelessWidget {
     );
   }
 }
+
+/// [child] filling the free space, or at a fixed [height] (natural when null).
+Widget _maybeExpanded({
+  required bool expand,
+  required Widget child,
+  double? height,
+}) => expand
+    ? Expanded(child: child)
+    : height == null
+    ? child
+    : SizedBox(height: height, child: child);
 
 class _MomentBody extends StatelessWidget {
   const _MomentBody({required this.data, required this.t});
@@ -508,12 +527,16 @@ class _Stat extends StatelessWidget {
     required this.t,
     required this.fill,
     this.big = false,
+    this.huge = false,
   });
   final String label;
   final String value;
   final RunSoloTokens t;
   final Color fill;
   final bool big;
+
+  /// The routeless card's pace: bigger than [big].
+  final bool huge;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -534,11 +557,16 @@ class _Stat extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: Text(
               value,
-              style: (big ? RunSoloType.display64 : RunSoloType.display44)
-                  .copyWith(
-                    color: t.inkPrimary,
-                    fontFeatures: RunSoloType.tabular,
-                  ),
+              style:
+                  (huge
+                          ? RunSoloType.display96
+                          : big
+                          ? RunSoloType.display64
+                          : RunSoloType.display44)
+                      .copyWith(
+                        color: t.inkPrimary,
+                        fontFeatures: RunSoloType.tabular,
+                      ),
             ),
           ),
         ),
