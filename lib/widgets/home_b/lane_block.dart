@@ -90,7 +90,7 @@ class LaneBlock extends StatelessWidget {
                       child: Text(
                         change! > 0 ? '+$change' : '$change',
                         maxLines: 1,
-                        style: RunSoloType.micro11.copyWith(
+                        style: RunSoloType.label13.copyWith(
                           color: change! > 0 ? t.semImproving : t.semSlower,
                           fontWeight: FontWeight.w700,
                         ),
