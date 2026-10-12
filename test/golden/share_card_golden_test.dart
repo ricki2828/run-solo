@@ -64,6 +64,47 @@ void main() {
         ),
       ],
     ),
+    'scores_pack': const ScoresCardData(
+      pack: PackShareData(fasterThanInTen: 6, band: 'men 40-49'),
+      lanes: [
+        ScoreLaneData(
+          label: 'AEROBIC',
+          value: '62',
+          unit: 'nd percentile',
+          change: 'Up 2 in 6 weeks',
+        ),
+        ScoreLaneData(
+          label: 'SPEED',
+          value: '48',
+          unit: 'th percentile',
+          change: 'No change in 6 weeks',
+        ),
+        ScoreLaneData(
+          label: 'MID',
+          value: '71',
+          unit: 'st percentile',
+          change: 'Up 4 in 6 weeks',
+        ),
+        ScoreLaneData(
+          label: 'LONG',
+          value: '51',
+          unit: 'st percentile',
+          change: 'Down 3 in 6 weeks',
+        ),
+      ],
+    ),
+    'moment_pb': const MomentCardData(
+      eyebrow: 'NEW 5K BEST',
+      big: '24:08',
+      detail: '1:14 faster than your last best.',
+      colour: AuroraRunType.laps,
+    ),
+    'moment_first': const MomentCardData(
+      eyebrow: 'FIRST 10K',
+      big: '10K',
+      detail: 'You ran 10 km in one go.',
+      colour: AuroraRunType.goal,
+    ),
   };
   for (final e in cards.entries) {
     testWidgets('share card ${e.key}', (tester) async {
