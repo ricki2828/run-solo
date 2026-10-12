@@ -169,6 +169,10 @@ class FakeRecorderGateway implements RecorderGateway {
           ? null
           : _routeClimbM! * toGo / _routeLengthM,
       off: false,
+      // At the end of a route longer than a few strides (the fake has no loops).
+      endCue: _routeLengthM >= 100 && toGo <= 20
+          ? RouteEndCue.turnAround
+          : null,
     );
   }
 
