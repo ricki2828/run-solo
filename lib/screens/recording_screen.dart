@@ -2044,7 +2044,6 @@ class _RunPages extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!twoPages) return one;
     final onMap = page == 1 && mapGesture;
-    var dragged = 0.0;
     return PageView(
       controller: controller,
       onPageChanged: onPage,
@@ -2062,23 +2061,42 @@ class _RunPages extends StatelessWidget {
                 top: 0,
                 bottom: 0,
                 width: edge,
-                child: GestureDetector(
-                  key: const ValueKey('page-edge-swipe'),
-                  // Opaque: the map under the strip must not see the touch.
-                  behavior: HitTestBehavior.opaque,
-                  onHorizontalDragStart: (_) => dragged = 0,
-                  onHorizontalDragUpdate: (d) => dragged += d.delta.dx,
-                  onHorizontalDragEnd: (d) {
-                    final v = d.primaryVelocity ?? 0;
-                    if (v > _backVelocity || dragged > _backDistance) _back();
-                  },
-                ),
+                child: _BackEdge(onBack: _back),
               ),
           ],
         ),
       ],
     );
   }
+}
+
+/// The strip itself. Stateful so the drag total survives parent rebuilds
+/// (the run screen rebuilds every tick).
+class _BackEdge extends StatefulWidget {
+  const _BackEdge({required this.onBack});
+  final VoidCallback onBack;
+
+  @override
+  State<_BackEdge> createState() => _BackEdgeState();
+}
+
+class _BackEdgeState extends State<_BackEdge> {
+  double _dragged = 0;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    key: const ValueKey('page-edge-swipe'),
+    // Opaque: the map under the strip must not see the touch.
+    behavior: HitTestBehavior.opaque,
+    onHorizontalDragStart: (_) => _dragged = 0,
+    onHorizontalDragUpdate: (d) => _dragged += d.delta.dx,
+    onHorizontalDragEnd: (d) {
+      final v = d.primaryVelocity ?? 0;
+      if (v > _RunPages._backVelocity || _dragged > _RunPages._backDistance) {
+        widget.onBack();
+      }
+    },
+  );
 }
 
 /// Two dots in the header: which page is showing, and a 48 dp tap to switch.
