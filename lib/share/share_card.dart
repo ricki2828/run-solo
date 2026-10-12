@@ -1,5 +1,6 @@
-/// The share card: one good-looking image of a run or of the four scores,
-/// drawn in the app's own night theme whatever theme the phone uses. It is
+/// The share card: one good-looking image of a run, the four scores or a
+/// moment, drawn in the B look (light ground, colour blocks, condensed type)
+/// whatever theme the phone uses. It is
 /// rendered on the phone and handed to the share sheet; nothing is uploaded
 /// and no account is involved. No place name, date-and-time stamp or map
 /// ever appears on it, except the bare route line when the runner turns on
@@ -17,6 +18,8 @@ import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/home_progress.dart';
 import '../state/settings.dart';
+import '../theme/lanes.dart';
+import '../theme/pack_look.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart' show LapLineFullMark;
 import '../widgets/recent_activity.dart' show runTypeColor;
@@ -106,9 +109,25 @@ class ScoreLaneData {
   final String? change;
 }
 
+/// A pack result as a band only: "faster than 6 in 10" and "men 40-49", from
+/// published norms. Never a name, a route or a real runner.
+class PackShareData {
+  const PackShareData({required this.fasterThanInTen, required this.band});
+
+  /// 1 to 9.
+  final int fasterThanInTen;
+
+  /// "men 40-49".
+  final String band;
+}
+
 class ScoresCardData extends ShareCardData {
-  const ScoresCardData({required this.lanes});
+  const ScoresCardData({required this.lanes, this.pack});
   final List<ScoreLaneData> lanes;
+
+  /// Set only by a caller that chooses to share the pack result; the scores
+  /// builder leaves it null, so the card shows no age band unless asked.
+  final PackShareData? pack;
 
   static const String _title = 'MY SCORES';
   String get title => _title;
@@ -200,6 +219,9 @@ ScoresCardData scoresCardData(
 );
 
 /// The image itself. Size is [kShareCardSize]; wrap in a FittedBox to preview.
+/// Direction B look: a light ground whatever theme the phone uses, one big
+/// colour block (the run type, the violet pack, or the moment's colour) and
+/// condensed type, so a shared card reads as the same product as Home.
 class ShareCard extends StatelessWidget {
   const ShareCard({super.key, required this.data});
 
@@ -207,41 +229,21 @@ class ShareCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Theme(
-    data: runSoloTheme(brightness: Brightness.dark),
+    data: runSoloTheme(brightness: Brightness.light),
     child: Builder(
       builder: (context) {
         final t = Theme.of(context).extension<RunSoloTokens>()!;
-        final glow = switch (data) {
-          RunCardData d => d.colour,
-          ScoresCardData() => t.typeLaps,
-          MomentCardData d => d.colour,
-        };
         return SizedBox.fromSize(
           size: kShareCardSize,
           child: DecoratedBox(
             decoration: BoxDecoration(color: t.bgBase),
-            child: Stack(
-              children: [
-                // Aurora: two soft glows of the run-type colour.
-                Positioned(
-                  left: -120,
-                  top: -140,
-                  child: _Glow(colour: glow, size: 420, alpha: 0.30),
-                ),
-                Positioned(
-                  right: -160,
-                  bottom: -180,
-                  child: _Glow(colour: glow, size: 460, alpha: 0.18),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(28),
-                  child: switch (data) {
-                    final RunCardData d => _RunBody(data: d, t: t),
-                    final ScoresCardData d => _ScoresBody(data: d, t: t),
-                    final MomentCardData d => _MomentBody(data: d, t: t),
-                  },
-                ),
-              ],
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: switch (data) {
+                final RunCardData d => _RunBody(data: d, t: t),
+                final ScoresCardData d => _ScoresBody(data: d, t: t),
+                final MomentCardData d => _MomentBody(data: d, t: t),
+              },
             ),
           ),
         );
@@ -250,49 +252,15 @@ class ShareCard extends StatelessWidget {
   );
 }
 
-class _Glow extends StatelessWidget {
-  const _Glow({required this.colour, required this.size, required this.alpha});
-  final Color colour;
-  final double size;
-  final double alpha;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: size,
-    height: size,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      gradient: RadialGradient(
-        colors: [
-          colour.withValues(alpha: alpha),
-          colour.withValues(alpha: 0),
-        ],
-      ),
-    ),
-  );
-}
-
+/// The mark, top left.
 class _Header extends StatelessWidget {
-  const _Header({required this.right, required this.rightColour});
-  final String right;
-  final Color rightColour;
+  const _Header({required this.t});
+  final RunSoloTokens t;
 
   @override
   Widget build(BuildContext context) => Row(
     crossAxisAlignment: CrossAxisAlignment.center,
-    children: [
-      const LapLineFullMark(height: 34),
-      const SizedBox(width: 12),
-      Expanded(
-        child: Text(
-          right,
-          maxLines: 1,
-          textAlign: TextAlign.right,
-          overflow: TextOverflow.ellipsis,
-          style: RunSoloType.micro11.copyWith(color: rightColour),
-        ),
-      ),
-    ],
+    children: [const LapLineFullMark(height: 30)],
   );
 }
 
@@ -321,68 +289,150 @@ class _RunBody extends StatelessWidget {
   final RunSoloTokens t;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      _Header(right: data.typeName, rightColour: data.colour),
-      const SizedBox(height: 20),
-      Text(
-        data.title,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        key: const ValueKey('share-title'),
-        style: RunSoloType.heading19.copyWith(
-          fontSize: 26,
-          color: t.inkPrimary,
-        ),
-      ),
-      if (data.hasRoute)
+  Widget build(BuildContext context) {
+    final fill = data.colour;
+    final ink = readableOn(fill);
+    final tile = fill.withValues(alpha: PackLook.laneTint);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Header(t: t),
+        const SizedBox(height: 12),
+        // The run-type block: which kind of run, never how good it was.
         Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: CustomPaint(
-              key: const ValueKey('share-route'),
-              painter: RouteLinePainter(data.route, data.colour),
-              size: Size.infinite,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: fill,
+              borderRadius: BorderRadius.circular(Radii.card),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  data.typeName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: RunSoloType.micro11.copyWith(
+                    color: ink,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  data.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  key: const ValueKey('share-title'),
+                  style: RunSoloType.heading19.copyWith(
+                    fontSize: 30,
+                    color: ink,
+                  ),
+                ),
+                if (data.hasRoute)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: CustomPaint(
+                        key: const ValueKey('share-route'),
+                        painter: RouteLinePainter(data.route, ink),
+                        size: Size.infinite,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
-        )
-      else
-        const Spacer(),
-      if (data.verdict case final v?) ...[
-        Text(
-          v,
-          key: const ValueKey('share-verdict'),
-          style: RunSoloType.display44.copyWith(
-            color: switch (data.verdictHeadline) {
-              engine.VerdictHeadline.faster => t.semImproving,
-              engine.VerdictHeadline.slower => t.semSlower,
-              _ => t.inkPrimary,
-            },
-          ),
         ),
-        const SizedBox(height: 8),
-      ],
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: _Stat(label: 'DISTANCE', value: data.distance, t: t),
+        const SizedBox(height: 12),
+        if (data.verdict case final v?) ...[
+          Text(
+            v,
+            key: const ValueKey('share-verdict'),
+            style: RunSoloType.display44.copyWith(
+              color: switch (data.verdictHeadline) {
+                engine.VerdictHeadline.faster => t.semImproving,
+                engine.VerdictHeadline.slower => t.semSlower,
+                _ => t.inkPrimary,
+              },
+            ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _Stat(label: 'TIME', value: data.time, t: t),
-          ),
+          const SizedBox(height: 8),
         ],
-      ),
-      if (data.truePace case final p?) ...[
-        const SizedBox(height: 14),
-        _Stat(label: 'TRUE PACE', value: p, t: t, big: true),
+        if (data.truePace case final p?)
+          SizedBox(
+            height: 104,
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: _Stat(
+                          label: 'DISTANCE',
+                          value: data.distance,
+                          t: t,
+                          fill: tile,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: _Stat(
+                          label: 'TIME',
+                          value: data.time,
+                          t: t,
+                          fill: tile,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 6,
+                  child: _Stat(
+                    label: 'TRUE PACE',
+                    value: p,
+                    t: t,
+                    fill: tile,
+                    big: true,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          SizedBox(
+            height: 64,
+            child: Row(
+              children: [
+                Expanded(
+                  child: _Stat(
+                    label: 'DISTANCE',
+                    value: data.distance,
+                    t: t,
+                    fill: tile,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _Stat(
+                    label: 'TIME',
+                    value: data.time,
+                    t: t,
+                    fill: tile,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 12),
+        _Footer(t: t, left: data.date),
       ],
-      const SizedBox(height: 20),
-      _Footer(t: t, left: data.date),
-    ],
-  );
+    );
+  }
 }
 
 class _MomentBody extends StatelessWidget {
@@ -391,35 +441,64 @@ class _MomentBody extends StatelessWidget {
   final RunSoloTokens t;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      _Header(right: data.eyebrow, rightColour: data.colour),
-      const Spacer(),
-      FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerLeft,
-        child: Text(
-          data.big,
-          key: const ValueKey('share-moment-big'),
-          maxLines: 1,
-          style: RunSoloType.display96.copyWith(
-            fontSize: 150,
-            color: data.colour,
+  Widget build(BuildContext context) {
+    final ink = readableOn(data.colour);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Header(t: t),
+        const SizedBox(height: 12),
+        Expanded(
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: data.colour,
+              borderRadius: BorderRadius.circular(Radii.sheet),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  data.eyebrow,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: RunSoloType.micro11.copyWith(
+                    color: ink,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    data.big,
+                    key: const ValueKey('share-moment-big'),
+                    maxLines: 1,
+                    style: RunSoloType.display96.copyWith(
+                      fontSize: 150,
+                      color: ink,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  data.detail,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: RunSoloType.body17.copyWith(color: ink),
+                ),
+                const Spacer(),
+              ],
+            ),
           ),
         ),
-      ),
-      const SizedBox(height: 12),
-      Text(
-        data.detail,
-        maxLines: 3,
-        overflow: TextOverflow.ellipsis,
-        style: RunSoloType.body17.copyWith(color: t.inkPrimary),
-      ),
-      const Spacer(),
-      _Footer(t: t),
-    ],
-  );
+        const SizedBox(height: 12),
+        _Footer(t: t),
+      ],
+    );
+  }
 }
 
 class _Stat extends StatelessWidget {
@@ -427,31 +506,44 @@ class _Stat extends StatelessWidget {
     required this.label,
     required this.value,
     required this.t,
+    required this.fill,
     this.big = false,
   });
   final String label;
   final String value;
   final RunSoloTokens t;
+  final Color fill;
   final bool big;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Text(label, style: RunSoloType.micro11.copyWith(color: t.inkSecondary)),
-      FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerLeft,
-        child: Text(
-          value,
-          style: (big ? RunSoloType.display64 : RunSoloType.display44).copyWith(
-            color: t.inkPrimary,
-            fontFeatures: RunSoloType.tabular,
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    decoration: BoxDecoration(
+      color: fill,
+      borderRadius: BorderRadius.circular(Radii.card),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(label, style: RunSoloType.micro11.copyWith(color: t.inkSecondary)),
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: (big ? RunSoloType.display64 : RunSoloType.display44)
+                  .copyWith(
+                    color: t.inkPrimary,
+                    fontFeatures: RunSoloType.tabular,
+                  ),
+            ),
           ),
         ),
-      ),
-    ],
+      ],
+    ),
   );
 }
 
@@ -460,74 +552,163 @@ class _ScoresBody extends StatelessWidget {
   final ScoresCardData data;
   final RunSoloTokens t;
 
+  /// The lane a label names ("AEROBIC" -> aerobic); null for an unknown one.
+  static engine.IdentityLane? _lane(String label) {
+    for (final l in engine.IdentityLane.values) {
+      if (l.name.toUpperCase() == label) return l;
+    }
+    return null;
+  }
+
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      _Header(right: data.title, rightColour: t.inkSecondary),
-      const SizedBox(height: 20),
-      for (final lane in data.lanes) ...[
-        Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+  Widget build(BuildContext context) {
+    final pack = data.pack;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Header(t: t),
+        const SizedBox(height: 12),
+        // The pack hero: a band only, from published norms. Never names,
+        // routes or real runners.
+        Container(
+          key: const ValueKey('share-pack-hero'),
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: PackLook.violet,
+            borderRadius: BorderRadius.circular(Radii.card),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                flex: 5,
-                child: Text(
-                  lane.label,
-                  style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+              Text(
+                data.title,
+                style: RunSoloType.micro11.copyWith(
+                  color: PackLook.onVioletSoft,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              Expanded(
-                flex: 9,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: lane.value,
-                            style: RunSoloType.display44.copyWith(
-                              color: lane.unit.isEmpty
-                                  ? t.inkMuted
-                                  : t.inkPrimary,
-                              fontFeatures: RunSoloType.tabular,
-                            ),
-                          ),
-                          if (lane.unit.isNotEmpty)
-                            TextSpan(
-                              // The ordinal sits tight on the number: "62nd percentile".
-                              text:
-                                  RegExp(r'^(st|nd|rd|th) ').hasMatch(lane.unit)
-                                  ? lane.unit
-                                  : ' ${lane.unit}',
-                              style: RunSoloType.label13.copyWith(
-                                color: t.inkSecondary,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    if (lane.change case final c?)
-                      Text(
-                        c,
-                        style: RunSoloType.label13.copyWith(
-                          color: t.inkSecondary,
-                        ),
-                      ),
-                  ],
+              const SizedBox(height: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  pack == null
+                      ? 'MY FOUR SCORES'
+                      : 'FASTER THAN ${pack.fasterThanInTen} IN 10',
+                  maxLines: 1,
+                  style: RunSoloType.display44.copyWith(
+                    color: PackLook.onViolet,
+                  ),
                 ),
+              ),
+              Text(
+                pack == null
+                    ? 'Percentiles from published norms.'
+                    : '${pack.band}, from published norms.',
+                style: RunSoloType.label13.copyWith(color: PackLook.onViolet),
               ),
             ],
           ),
         ),
+        const SizedBox(height: 12),
+        for (final lane in data.lanes) ...[
+          Expanded(
+            child: _LaneRow(lane: lane, laneId: _lane(lane.label), t: t),
+          ),
+          const SizedBox(height: 8),
+        ],
+        _Footer(t: t),
       ],
-      const SizedBox(height: 8),
-      const _Footer(t: RunSoloTokens.dark),
-    ],
-  );
+    );
+  }
+}
+
+class _LaneRow extends StatelessWidget {
+  const _LaneRow({required this.lane, required this.laneId, required this.t});
+  final ScoreLaneData lane;
+  final engine.IdentityLane? laneId;
+  final RunSoloTokens t;
+
+  @override
+  Widget build(BuildContext context) {
+    // A lane keeps its own colour; an unknown label falls back to the
+    // tinted ground.
+    final fill = laneId == null
+        ? t.inkMuted.withValues(alpha: PackLook.laneTint)
+        : t.laneFill(laneId!);
+    final ink = laneId == null ? t.inkPrimary : readableOn(fill);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(Radii.card),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            flex: 6,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  lane.label,
+                  maxLines: 1,
+                  style: RunSoloType.micro11.copyWith(
+                    color: ink,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (lane.change case final c?)
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      c,
+                      maxLines: 1,
+                      style: RunSoloType.label13.copyWith(color: ink),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 7,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: lane.value,
+                        style: RunSoloType.display44.copyWith(
+                          color: lane.unit.isEmpty ? t.inkMuted : ink,
+                          fontFeatures: RunSoloType.tabular,
+                        ),
+                      ),
+                      if (lane.unit.isNotEmpty)
+                        TextSpan(
+                          // The ordinal sits tight on the number: "62nd percentile".
+                          text: RegExp(r'^(st|nd|rd|th) ').hasMatch(lane.unit)
+                              ? lane.unit
+                              : ' ${lane.unit}',
+                          style: RunSoloType.label13.copyWith(color: ink),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// The route as a bare line fitted into its box: no tiles, no coordinates.

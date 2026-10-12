@@ -50,6 +50,42 @@ void main() {
     );
   });
 
+  testWidgets('scores card: pack hero says a band only, none unless given', (
+    tester,
+  ) async {
+    const lanes = [
+      ScoreLaneData(label: 'MID', value: '71', unit: 'st percentile'),
+    ];
+    for (final (data, want) in [
+      (
+        const ScoresCardData(
+          lanes: lanes,
+          pack: PackShareData(fasterThanInTen: 6, band: 'men 40-49'),
+        ),
+        ['FASTER THAN 6 IN 10', 'men 40-49, from published norms.'],
+      ),
+      (const ScoresCardData(lanes: lanes), ['MY FOUR SCORES']),
+    ]) {
+      await pumpApp(
+        tester,
+        fakeServices(),
+        home: Scaffold(
+          body: Center(child: ShareCard(data: data)),
+        ),
+      );
+      await pumpTimes(tester, 2);
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('share-pack-hero')), findsOneWidget);
+      for (final w in want) {
+        expect(find.text(w), findsOneWidget);
+      }
+      expect(
+        find.textContaining('men '),
+        data.pack == null ? findsNothing : findsOneWidget,
+      );
+    }
+  });
+
   group('card data', () {
     test('a run: title, distance, time, true pace; no place anywhere', () {
       final d = runCardData(freeRun(title: 'Sunday long one'), Units.km);
