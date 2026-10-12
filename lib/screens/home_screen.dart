@@ -361,8 +361,30 @@ class _HomeScreenState extends State<HomeScreen> {
                                   sex: settings.profileSex,
                                   birthYear: settings.birthYear,
                                 ));
+                      final firstRun = data == null || data.runs.isEmpty
+                          ? null
+                          : data.runs
+                                .map((r) => r.start)
+                                .reduce((a, b) => a.isBefore(b) ? a : b);
+                      final weekN = firstRun == null
+                          ? 1
+                          : _now.difference(firstRun).inDays ~/ 7 + 1;
+                      // No name is held in the app, so no greeting: the chip
+                      // sits alone on the right.
                       return Column(
                         children: [
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: BlockChip(
+                              key: const ValueKey('home-week-chip'),
+                              label: snap0.streak.weeks >= 2
+                                  ? '${snap0.streak.weeks} WK STREAK'
+                                  : 'WEEK $weekN',
+                              fill: t.inkPrimary,
+                              ink: t.bgBase,
+                            ),
+                          ),
+                          const SizedBox(height: Space.x8),
                           PackHero(
                             level: snap0.level,
                             pack: snap0.pack,
