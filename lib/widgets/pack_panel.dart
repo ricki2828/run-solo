@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
+import '../app/format.dart';
+import '../platform/gateway.dart';
 import '../state/pack_norms.dart';
 import '../state/progress_snapshot.dart';
 import '../theme/lanes.dart';
@@ -11,9 +13,17 @@ import 'choice_chips.dart';
 /// norms. Filter chips pick the lane of evidence; the pace chip carries the
 /// histogram, the YOU marker and the band reference paces.
 class PackPanel extends StatefulWidget {
-  const PackPanel({super.key, required this.snapshot, this.onOpenSettings});
+  const PackPanel({
+    super.key,
+    required this.snapshot,
+    this.units = Units.km,
+    this.onOpenSettings,
+  });
 
   final ProgressSnapshot snapshot;
+
+  /// Display units. The norms stay per-km inside; only the text converts.
+  final Units units;
 
   /// Opens Settings, for the "add your age" prompt.
   final VoidCallback? onOpenSettings;
@@ -60,19 +70,19 @@ class _PackPanelState extends State<PackPanel> {
           ),
           child: switch (_chip) {
             1 => _Consistency(streak: snap.streak),
-            2 => _Distance(story: snap.story),
+            2 => _Distance(story: snap.story, units: widget.units),
             _ =>
               pack == null
                   ? _NoPack(
                       snapshot: snap,
                       onOpenSettings: widget.onOpenSettings,
                     )
-                  : _Pace(snapshot: snap, pack: pack),
+                  : _Pace(snapshot: snap, pack: pack, units: widget.units),
           },
         ),
         if (_chip == 0 && pack != null) ...[
           const SizedBox(height: Space.x12),
-          _RefTable(pack: pack),
+          _RefTable(pack: pack, units: widget.units),
         ],
         const SizedBox(height: Space.x12),
         Text(
@@ -132,20 +142,26 @@ String _statement(int percentile) {
   if (percentile >= 50) return 'YOU ARE IN THE FAST HALF';
   final n = percentile ~/ 10;
   if (n == 0) return 'EVERY PACK STARTS SOMEWHERE';
-  return 'FASTER THAN $n IN 10';
+  // The break keeps "4 IN 10" together instead of orphaning the 10.
+  return 'FASTER THAN\n$n IN 10';
 }
 
 class _Pace extends StatelessWidget {
-  const _Pace({required this.snapshot, required this.pack});
+  const _Pace({
+    required this.snapshot,
+    required this.pack,
+    required this.units,
+  });
   final ProgressSnapshot snapshot;
   final PackStanding pack;
+  final Units units;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final female = PackNorms.isFemaleBand(pack.band);
     String pace(int p) =>
-        '${PackNorms.pace(PackNorms.paceSecPerKm(p, female: female))}/km';
+        Fmt.paceUnit(PackNorms.paceSecPerKm(p, female: female), units);
     final lvl = snapshot.level;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,7 +177,11 @@ class _Pace extends StatelessWidget {
           style: _bigStyle(t),
         ),
         const SizedBox(height: Space.x16),
-        _Histogram(histogram: pack.histogram, youBin: pack.youBin),
+        _Histogram(
+          histogram: pack.histogram,
+          youBin: pack.youBin,
+          tint: Color.alphaBlend(t.typeGoal.withValues(alpha: 0.18), t.bgBase),
+        ),
         const SizedBox(height: Space.x8),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -179,82 +199,102 @@ class _Pace extends StatelessWidget {
 }
 
 class _Histogram extends StatelessWidget {
-  const _Histogram({required this.histogram, required this.youBin});
+  const _Histogram({
+    required this.histogram,
+    required this.youBin,
+    required this.tint,
+  });
   final List<double> histogram;
   final int youBin;
+  final Color tint;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     const maxH = 110.0;
+    const tagW = 44.0;
+    const tagH = 22.0;
+    double barH(int i) => histogram[i].clamp(0.04, 1.0) * maxH;
     return SizedBox(
       key: const ValueKey('pack-histogram'),
       height: maxH + 28,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (var i = 0; i < histogram.length; i++)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 1.5),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    if (i == youBin)
-                      SizedBox(
-                        height: 22,
-                        child: OverflowBox(
-                          maxWidth: 48,
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final slot = box.maxWidth / histogram.length;
+          final left = ((youBin + 0.5) * slot - tagW / 2).clamp(
+            0.0,
+            box.maxWidth - tagW,
+          );
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  for (var i = 0; i < histogram.length; i++)
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                        child: Align(
+                          alignment: Alignment.bottomCenter,
                           child: Container(
-                            key: const ValueKey('pack-you'),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: Space.x8,
-                              vertical: 2,
-                            ),
+                            height: barH(i),
                             decoration: BoxDecoration(
-                              color: t.inkPrimary,
-                              borderRadius: BorderRadius.circular(Radii.chip),
-                            ),
-                            child: Text(
-                              'YOU',
-                              style: RunSoloType.micro11.copyWith(
-                                color: t.bgBase,
+                              color: i == youBin
+                                  ? t.inkPrimary
+                                  : t.typeGoal.withValues(alpha: 0.75),
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(3),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    Container(
-                      height: histogram[i].clamp(0.04, 1.0) * maxH,
-                      decoration: BoxDecoration(
-                        color: i == youBin
-                            ? t.inkPrimary
-                            : t.typeGoal.withValues(alpha: 0.75),
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(3),
-                        ),
-                      ),
                     ),
-                  ],
+                ],
+              ),
+              // Painted after the bars so a taller neighbour never covers it;
+              // the tint border leaves a gap around the tag.
+              Positioned(
+                left: left,
+                bottom: barH(youBin) + 4,
+                width: tagW,
+                height: tagH,
+                child: Container(
+                  key: const ValueKey('pack-you'),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: t.inkPrimary,
+                    border: Border.all(color: tint, width: 2),
+                    borderRadius: BorderRadius.circular(Radii.chip),
+                  ),
+                  child: Text(
+                    'YOU',
+                    style: RunSoloType.micro11.copyWith(color: t.bgBase),
+                  ),
                 ),
               ),
-            ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
 }
 
 class _RefTable extends StatelessWidget {
-  const _RefTable({required this.pack});
+  const _RefTable({required this.pack, required this.units});
   final PackStanding pack;
+  final Units units;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final female = PackNorms.isFemaleBand(pack.band);
-    String pace(int p) =>
-        '${PackNorms.pace(PackNorms.paceSecPerKm(p, female: female))} /KM';
+    String pace(int p) => Fmt.paceUnit(
+      PackNorms.paceSecPerKm(p, female: female),
+      units,
+    ).toUpperCase();
     final rows = [
       ('Top 10% of the pack', pace(90), false),
       ('Top 25%', pace(75), false),
@@ -307,6 +347,16 @@ class _RefTable extends StatelessWidget {
   }
 }
 
+/// Per-week label under a consistency bar: weeks back from this one, and
+/// what the bar means ("RAN", "ICE" for a freeze, "MISS"). The last bar is
+/// this week.
+String _weekLabel(int i, List<bool?> recent) {
+  final back = recent.length - 1 - i;
+  final w = recent[i];
+  final state = w == true ? 'RAN' : (w == null ? 'ICE' : 'MISS');
+  return back == 0 ? 'NOW\n$state' : '-${back}W\n$state';
+}
+
 class _Consistency extends StatelessWidget {
   const _Consistency({required this.streak});
   final WeeklyStreak streak;
@@ -343,7 +393,9 @@ class _Consistency extends StatelessWidget {
                     child: Container(
                       height: w == true ? 72 : (w == null ? 40 : 10),
                       decoration: BoxDecoration(
-                        color: w == true ? lime : (w == null ? ice : t.bgRaised),
+                        color: w == true
+                            ? lime
+                            : (w == null ? ice : t.bgRaised),
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -351,6 +403,20 @@ class _Consistency extends StatelessWidget {
                 ),
             ],
           ),
+        ),
+        const SizedBox(height: Space.x4),
+        Row(
+          key: const ValueKey('pack-week-labels'),
+          children: [
+            for (var i = 0; i < streak.recent.length; i++)
+              Expanded(
+                child: Text(
+                  _weekLabel(i, streak.recent),
+                  textAlign: TextAlign.center,
+                  style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: Space.x8),
         Text(
@@ -364,8 +430,9 @@ class _Consistency extends StatelessWidget {
 }
 
 class _Distance extends StatelessWidget {
-  const _Distance({required this.story});
+  const _Distance({required this.story, required this.units});
   final WeeklyStory? story;
+  final Units units;
 
   @override
   Widget build(BuildContext context) {
@@ -393,19 +460,27 @@ class _Distance extends StatelessWidget {
     }
     final peak = s.dailyKm.fold<double>(1, (m, v) => v > m ? v : m);
     const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    String dayLabel(double km) {
+      final v = units == Units.mi
+          ? km * 1000 / engine.PaceFormat.metresPerMile
+          : km;
+      return v.toStringAsFixed(1);
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const _Eyebrow('DISTANCE, LAST WEEK'),
         const SizedBox(height: Space.x8),
         Text(
-          '${s.km.toStringAsFixed(1)} KM IN ${s.runs} RUNS',
+          '${Fmt.distance1(s.km * 1000, units).toUpperCase()} IN ${s.runs} '
+          '${s.runs == 1 ? 'RUN' : 'RUNS'}',
           key: const ValueKey('pack-statement'),
           style: _bigStyle(t),
         ),
         const SizedBox(height: Space.x16),
         SizedBox(
-          height: 96,
+          height: 96 + 16,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -413,16 +488,32 @@ class _Distance extends StatelessWidget {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 3),
-                    child: Container(
-                      height: s.dailyKm[i] == 0
-                          ? 6
-                          : 6 + 90 * s.dailyKm[i] / peak,
-                      decoration: BoxDecoration(
-                        color: s.dailyLane[i] == null
-                            ? t.bgRaised
-                            : t.laneFill(s.dailyLane[i]!),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        // Value label: the day's distance in the runner's unit.
+                        SizedBox(
+                          height: 16,
+                          child: Text(
+                            s.dailyKm[i] == 0 ? '' : dayLabel(s.dailyKm[i]),
+                            maxLines: 1,
+                            style: RunSoloType.micro11.copyWith(
+                              color: t.inkPrimary,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          height: s.dailyKm[i] == 0
+                              ? 6
+                              : 6 + 90 * s.dailyKm[i] / peak,
+                          decoration: BoxDecoration(
+                            color: s.dailyLane[i] == null
+                                ? t.bgRaised
+                                : t.laneFill(s.dailyLane[i]!),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -459,7 +550,11 @@ class _NoPack extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final ran = snapshot.runCount > 0;
     const rows = [
-      (engine.IdentityLane.aerobic, 'AEROBIC', 'Any easy run starts your number'),
+      (
+        engine.IdentityLane.aerobic,
+        'AEROBIC',
+        'Any easy run starts your number',
+      ),
       (engine.IdentityLane.speed, 'SPEED', 'One interval session unlocks it'),
       (engine.IdentityLane.mid, 'MID', 'A clean 5K or 10K effort'),
       (engine.IdentityLane.long, 'LONG', 'A 15K or longer run'),

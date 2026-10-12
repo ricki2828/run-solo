@@ -127,6 +127,7 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
                 initialData: widget.snapshot,
                 builder: (context, snap) => PackPanel(
                   snapshot: snap.data ?? ProgressSnapshot.empty,
+                  units: settings.units,
                   onOpenSettings: () =>
                       Navigator.of(context).pushNamed(Routes.settings),
                 ),
