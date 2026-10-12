@@ -11,8 +11,6 @@ import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/max_hr.dart';
 import '../state/progress_snapshot.dart';
-import '../state/seen_moments.dart';
-import '../state/settings.dart';
 import '../state/spoken_summary.dart';
 import '../state/zone_histogram.dart';
 import '../theme/theme.dart';
@@ -46,17 +44,6 @@ class VerdictScreen extends StatefulWidget {
     this.justFinished = false,
   });
   final String runId;
-
-  /// How the pending moment is computed; tests swap it for a fixed snapshot.
-  @visibleForTesting
-  static ProgressSnapshot Function(
-    List<RunSummary> runs, {
-    required DateTime now,
-    required ProfileSex sex,
-    required int? birthYear,
-    Set<String> seenMoments,
-  })
-  snapshotBuilder = buildProgressSnapshot;
 
   /// Opened from Stop: fold this run's observed max HR into settings and show
   /// "Done" instead of a back arrow.
@@ -94,9 +81,9 @@ class _VerdictScreenState extends State<VerdictScreen> {
     if (now.difference(detail.run.end).abs() > const Duration(hours: 2)) {
       return;
     }
-    final seen = SeenMoments.instance;
+    final seen = services.seenMoments;
     final p = services.settings.settings;
-    final snapshot = VerdictScreen.snapshotBuilder(
+    final snapshot = buildProgressSnapshot(
       all,
       now: now,
       sex: p.profileSex,
@@ -107,7 +94,7 @@ class _VerdictScreenState extends State<VerdictScreen> {
     final moment = snapshot.pending.first;
     _momentTimer = Timer(const Duration(milliseconds: 900), () async {
       if (!mounted) return;
-      await seen.markSeen(moment.id);
+      await seen.markSeen([moment.id]);
       if (!mounted) return;
       await showMoment(context, moment);
     });
