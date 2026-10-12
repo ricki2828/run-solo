@@ -130,7 +130,7 @@ void main() {
       final runs = [
         old,
         trailLoopRun(n: 2, start: d2, secPerKm: 400),
-        trailLoopRun(n: 3, start: d3, secPerKm: 400, km: 5.5, loopKm: 6),
+        trailLoopRun(n: 3, start: d3, secPerKm: 405, km: 5.5, loopKm: 6),
       ];
       await pumpApp(
         tester,

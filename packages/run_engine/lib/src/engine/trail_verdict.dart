@@ -280,7 +280,7 @@ abstract final class TrailVerdict {
       tone = TrailTone.same;
       headline = 'NO REAL CHANGE';
       final gap = deltaS.abs().round() == 0
-          ? 'Same time as'
+          ? (sameLength ? 'Same time as' : 'Same pace as')
           : '${PaceFormat.mmss(deltaS.abs())} '
                 '${deltaS > 0 ? 'quicker than' : 'slower than'}';
       subline =

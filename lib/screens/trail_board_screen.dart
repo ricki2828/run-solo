@@ -161,7 +161,8 @@ class _RunRow extends StatelessWidget {
     final far =
         (run.distanceM - group.refDistanceM).abs() / group.refDistanceM >
             engine.TrailVerdict.distanceTolerance
-        ? ' · ${Fmt.distance1(run.distanceM, units)}'
+        ? ' · ${Fmt.distance1((run.distanceM - group.refDistanceM).abs(), units)} '
+              '${run.distanceM < group.refDistanceM ? 'shorter' : 'longer'}'
         : '';
     final climb = run.climbM == null
         ? ''

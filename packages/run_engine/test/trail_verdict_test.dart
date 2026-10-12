@@ -167,6 +167,7 @@ void main() {
       expect(v.tone, TrailTone.same);
       expect(v.headline, 'NO REAL CHANGE');
       expect(v.deltaSec!.abs(), lessThan(1));
+      expect(v.subline, startsWith('Same pace as 12 Sep'));
       expect(v.isTrailBest, isFalse);
       expect(v.differentLength, isTrue);
       expect(
