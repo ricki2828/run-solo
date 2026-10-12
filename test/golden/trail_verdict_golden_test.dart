@@ -104,7 +104,13 @@ void main() {
     testWidgets('trail verdict: shorter run, same pace at 360 x $h', (
       tester,
     ) async {
-      final run = trailLoopRun(n: 6, start: d3, secPerKm: 420, km: 5.52);
+      final run = trailLoopRun(
+        n: 6,
+        start: d3,
+        secPerKm: 420,
+        km: 5.52,
+        loopKm: 6,
+      );
       await result(tester, h, run, [old], 'trail_verdict_shorter');
     });
 
@@ -124,7 +130,7 @@ void main() {
       final runs = [
         old,
         trailLoopRun(n: 2, start: d2, secPerKm: 400),
-        trailLoopRun(n: 3, start: d3, secPerKm: 400, km: 5.5),
+        trailLoopRun(n: 3, start: d3, secPerKm: 400, km: 5.5, loopKm: 6),
       ];
       await pumpApp(
         tester,
