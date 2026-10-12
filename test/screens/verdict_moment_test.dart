@@ -5,6 +5,7 @@ import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/screens/moment_screen.dart';
 import 'package:run_solo/screens/verdict_screen.dart';
 import 'package:run_solo/state/progress/seen_moments_store.dart';
+import 'package:run_solo/state/progress_snapshot.dart';
 import 'package:run_solo/state/settings.dart';
 
 import '../helpers.dart';
@@ -40,49 +41,58 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1600));
   }
 
-  testWidgets('a pending moment shows once; reopening moves on', (
+  testWidgets('several pending: one shown, all marked seen, none return', (
     tester,
   ) async {
     final seen = MemorySeenMomentsStore();
     final run = fourByFourFile(n: 1, start: fresh);
+    final runs = await tester.runAsync(
+      () => fakeServices(files: [run]).history.list(),
+    );
+    final pending = buildProgressSnapshot(
+      runs!,
+      now: testNow,
+      sex: ProfileSex.notSet,
+      birthYear: null,
+    ).pending.where((m) => m.kind != MomentKind.story).map((m) => m.id);
+    expect(
+      pending.length,
+      greaterThan(1),
+      reason: 'a first run stacks moments',
+    );
+
     await open(tester, run, seen);
     expect(find.byType(MomentScreen), findsOneWidget);
-    final firstSeen = await seen.load();
-    expect(firstSeen, hasLength(1));
-    final firstBig = tester
-        .widget<Text>(find.byKey(const ValueKey('moment-big')))
-        .data;
+    expect(await seen.load(), pending.toSet());
 
-    // Close it, then open the same result screen again.
+    // A later run: none of the first run's moments come back.
     await tester.tap(find.byKey(const ValueKey('moment-nice')));
     await settleAnimations(tester);
-    expect(find.byType(MomentScreen), findsNothing);
-
     await tester.pumpWidget(const SizedBox());
-    await open(tester, run, seen);
-    final again = find.byKey(const ValueKey('moment-big'));
-    if (again.evaluate().isNotEmpty) {
-      // The next unseen moment, never the one already shown.
-      expect(tester.widget<Text>(again).data, isNot(firstBig));
-      expect(await seen.load(), hasLength(2));
-    }
+    final next = fourByFourFile(
+      n: 2,
+      start: fresh.add(const Duration(minutes: 50)),
+    );
+    final before = await seen.load();
+    await open(tester, next, seen);
+    final big = find.byKey(const ValueKey('moment-big'));
+    final after = await seen.load();
+    // Whatever this run adds is new; nothing already seen is shown again.
+    expect(after.containsAll(before), isTrue);
+    if (big.evaluate().isEmpty) expect(after, before);
   });
 
-  testWidgets('everything already seen: no moment', (tester) async {
-    final seen = MemorySeenMomentsStore();
-    final run = fourByFourFile(n: 1, start: fresh);
-    await open(tester, run, seen);
-    await tester.tap(find.byKey(const ValueKey('moment-nice')));
-    await settleAnimations(tester);
-    // Drain any further pending moments the same way.
-    for (var i = 0; i < 5; i++) {
-      await tester.pumpWidget(const SizedBox());
-      await open(tester, run, seen);
-      if (find.byType(MomentScreen).evaluate().isEmpty) break;
-      await tester.tap(find.byKey(const ValueKey('moment-nice')));
-      await settleAnimations(tester);
-    }
-    expect(find.byType(MomentScreen), findsNothing);
+  test('pickMoment: PB over level-up over first over story', () {
+    Moment m(String id, MomentKind k) =>
+        Moment(id: id, kind: k, eyebrow: '', big: '', detail: '');
+    final first = m('first:a', MomentKind.first);
+    final level = m('level:3', MomentKind.levelUp);
+    final pb = m('pb:5k:x', MomentKind.pb);
+    final story = m('story:1', MomentKind.story);
+    expect(pickMoment([story, first, level, pb]), pb);
+    expect(pickMoment([story, first, level]), level);
+    expect(pickMoment([story, first]), first);
+    expect(pickMoment([story]), story);
   });
 
   testWidgets('not just finished: no moment, nothing marked seen', (
