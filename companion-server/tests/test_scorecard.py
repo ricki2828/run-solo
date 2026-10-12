@@ -3,7 +3,9 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 
 from companion import db
-from companion.scorecard import compute_scorecard, format_text, main
+import pytest
+
+from companion.scorecard import compute_scorecard, format_text, main, open_ro
 
 NOW = datetime(2026, 10, 14, 12, 0, tzinfo=timezone.utc)  # a Wednesday; week starts Mon 2026-10-12
 
@@ -43,7 +45,11 @@ def build(tmp_path):
     card(c, "u-old", "c2", None)  # never sent
     card(c, "u-new", "c3", NOW - timedelta(days=1))
     c.execute("INSERT INTO inbound_seen (msg_id, user_id, ts) VALUES ('m1','u-old',?)", (z(NOW - timedelta(days=1)),))
-    c.execute("INSERT INTO inbound_seen (msg_id, user_id, ts) VALUES ('m2',NULL,?)", (z(NOW - timedelta(days=1)),))
+    user(c, "u-half", "999333", old)  # started enrolling, no device: not a tester
+    run(c, "u-old", "n", NOW - timedelta(days=1), real=None)
+    c.execute("INSERT INTO replay_runs (user_id, run_id, inserted) VALUES ('u-old','n',1)")  # NULL + replay-tagged: skipped
+    for u in ("u-old", "u-new"):
+        c.execute("INSERT INTO devices (token_hash, user_id, created_at) VALUES (?,?,?)", ("h" + u, u, z(NOW)))
     c.execute("INSERT INTO run_notes (user_id, run_id, note, created_at) VALUES ('u-old','b','SECRET NOTE',?)",
               (z(NOW - timedelta(days=1)),))
     c.execute("INSERT INTO llm_calls (ts, model, provider, cost_usd, outcome) VALUES (?,?,?,?,?)",
@@ -56,7 +62,7 @@ def build(tmp_path):
 
 
 def score(p, weeks=2):
-    c = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+    c = open_ro(p)
     try:
         return compute_scorecard(c, now=NOW, weeks=weeks)
     finally:
@@ -66,9 +72,11 @@ def score(p, weeks=2):
 def test_counts_and_retention(tmp_path):
     sc = score(build(tmp_path))
     old, new = sc["testers"]
-    assert (old["id"], new["id"]) == ("T1", "T2")
+    assert [t["id"] for t in sc["testers"]] == ["T1", "T2"]
     assert sc["week_starts"] == ["2026-10-05", "2026-10-12"]
-    assert old["weeks"][1] == dict(runs=1, cards=1, taps=1, feel=1, replies=1, notes=1)
+    assert {k: old["weeks"][1][k] for k in ("runs", "cards", "taps", "feel", "notes")} == dict(runs=1, cards=1, taps=1, feel=1, notes=1)
+    assert new["weeks"][0]["pre_signup"] and not new["weeks"][1]["pre_signup"]
+    assert old["weeks_since_signup"] == 6
     assert new["weeks"][1]["cards"] == 1 and new["weeks"][1]["runs"] == 0
     assert old["week4_retained"] is True   # run on day 22
     assert new["week4_retained"] is None   # too new to judge
@@ -94,6 +102,13 @@ def test_no_identifiers_and_read_only(tmp_path, capsys):
             assert bad not in s
     assert len(text) < 4000
     assert "T1" in text and "Week-4 retention" in text
+
+
+def test_write_raises_on_ro(tmp_path):
+    c = open_ro(build(tmp_path))
+    with pytest.raises(sqlite3.OperationalError):
+        c.execute("DELETE FROM users")
+    c.close()
 
 
 def test_empty_db(tmp_path):

@@ -9,10 +9,16 @@ Definitions (weeks are Monday 00:00 UTC to Monday, the last one being the curren
   cards     cards actually sent (sent_at set; replay cards excluded)
   taps      cards with any button answered (cards.answered_at)
   feel      runs carrying a feel tap (easy/right/hard), by upload week
-  replies   inbound messages seen from the user (inbound_seen)
   notes     run notes typed
-  engaged   a week with at least one run, tap, reply or note (opens are not logged, so a tap/reply is the proof of return)
+  engaged   a calendar week with at least one run or note. Opens are not logged, and inbound_seen / msglog cannot separate
+            a free-text reply from a button tap, /start, STOP or a note (msglog holds outbound only), so there is no
+            replies column.
   w4        week-4 retention: engaged in days 21..27 after sign-up; None until that week has fully passed
+Retention: purge() deletes cards (and msglog) older than 30 days. cards and taps for weeks that start before the 30-day
+window are partial and are marked "~". Engagement and w4 use runs and run_notes only, which are not purged, so they
+never flip later.
+Testers: users with a device (a finished enrolment). Runs with real_upload 0, or NULL and tagged inserted=1 in
+replay_runs, are replay-created and skipped. llm_calls cannot be told apart for replays, so cost includes any replay calls.
 LLM cost: llm_calls has cost_usd but no user column, so cost is a weekly total, and the per-user figure is that total
 split evenly across the users who were sent a card that week (an allocation, not a measurement).
 """
@@ -22,10 +28,11 @@ import argparse
 import json
 import sqlite3
 import sys
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 UTC = timezone.utc
-_KEY = {"run": "runs", "card": "cards", "tap": "taps", "feel": "feel", "reply": "replies", "note": "notes"}
+_KEY = {"run": "runs", "card": "cards", "tap": "taps", "feel": "feel", "note": "notes"}
 
 
 def _iso(dt: datetime) -> str:
@@ -49,18 +56,40 @@ def _has(c: sqlite3.Connection, table: str) -> bool:
     return c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is not None
 
 
+RUNS_SQL = ("SELECT user_id, received_at, feel FROM runs WHERE COALESCE(real_upload,1) != 0 AND NOT (real_upload IS NULL "
+            "AND EXISTS (SELECT 1 FROM replay_runs p WHERE p.user_id = runs.user_id AND p.run_id = runs.run_id AND p.inserted = 1))")
+RETENTION_DAYS = 30  # service.RETENTION_LOG_DAYS
+
+
 def _blank() -> dict:
-    return dict(runs=0, cards=0, taps=0, feel=0, replies=0, notes=0)
+    return dict(runs=0, cards=0, taps=0, feel=0, notes=0)
+
+
+def open_ro(path: str) -> sqlite3.Connection:
+    return sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True, timeout=15)
 
 
 def compute_scorecard(c: sqlite3.Connection, now: datetime | None = None, weeks: int = 4) -> dict:
+    """All SELECTs run in one read transaction, so the sections agree with each other."""
+    opened = not c.in_transaction
+    if opened:
+        c.execute("BEGIN")
+    try:
+        return _compute(c, now, weeks)
+    finally:
+        if opened:
+            c.rollback()
+
+
+def _compute(c: sqlite3.Connection, now: datetime | None, weeks: int) -> dict:
     now = (now or datetime.now(UTC)).astimezone(UTC)
     weeks = max(1, weeks)
     cur_start = _week_start(now)
     starts = [cur_start - timedelta(weeks=weeks - 1 - i) for i in range(weeks)]
+    cutoff = _week_start(now - timedelta(days=RETENTION_DAYS))
     end = starts[-1] + timedelta(weeks=1)
 
-    users = _rows(c, "SELECT id, created_at FROM users ORDER BY created_at, id")
+    users = _rows(c, "SELECT id, created_at FROM users WHERE EXISTS (SELECT 1 FROM devices d WHERE d.user_id = users.id) ORDER BY created_at, id")
     alias = {uid: f"T{i + 1}" for i, (uid, _) in enumerate(users)}
     signup = {uid: _parse(ts) for uid, ts in users}
 
@@ -68,7 +97,7 @@ def compute_scorecard(c: sqlite3.Connection, now: datetime | None = None, weeks:
                     if _has(c, "replay_items") else set())
 
     ev: list[tuple[str, str, datetime]] = []
-    for uid, ts, feel in _rows(c, "SELECT user_id, received_at, feel FROM runs WHERE COALESCE(real_upload,1) != 0"):
+    for uid, ts, feel in _rows(c, RUNS_SQL):
         ev.append((uid, "run", _parse(ts)))
         if feel:
             ev.append((uid, "feel", _parse(ts)))
@@ -79,19 +108,19 @@ def compute_scorecard(c: sqlite3.Connection, now: datetime | None = None, weeks:
             ev.append((uid, "card", _parse(sent)))
         if ans:
             ev.append((uid, "tap", _parse(ans)))
-    for uid, ts in _rows(c, "SELECT user_id, ts FROM inbound_seen WHERE user_id IS NOT NULL"):
-        ev.append((uid, "reply", _parse(ts)))
     for uid, ts in _rows(c, "SELECT user_id, created_at FROM run_notes"):
         ev.append((uid, "note", _parse(ts)))
 
-    engaging = {"run", "tap", "reply", "note"}
+    engaging = {"run", "note"}
     per_week: dict[str, list[dict]] = {}
     engaged_days: dict[str, set[int]] = {}
+    engaged_weeks: dict[str, set[datetime]] = {}
     for uid, kind, ts in ev:
         if uid not in alias:
             continue
         if kind in engaging:
             engaged_days.setdefault(uid, set()).add((ts - signup[uid]).days)
+            engaged_weeks.setdefault(uid, set()).add(_week_start(ts))
         if ts < starts[0] or ts >= end:
             continue
         wi = (_week_start(ts) - starts[0]).days // 7
@@ -108,11 +137,16 @@ def compute_scorecard(c: sqlite3.Connection, now: datetime | None = None, weeks:
     for uid, _ in users:
         days = engaged_days.get(uid, set())
         age_days = (now - signup[uid]).days
+        sw = _week_start(signup[uid])
+        wk = per_week.get(uid) or [_blank() for _ in starts]
+        wk = [dict(w, pre_signup=True) if st < sw else dict(w, pre_signup=False) for w, st in zip(wk, starts)]
+        for w, st in zip(wk, starts):
+            w["partial"] = st < cutoff  # cards/taps older than the purge window are incomplete
         testers.append({
-            "id": alias[uid], "signed_up": signup[uid].strftime("%Y-%m-%d"), "weeks_since_signup": age_days // 7,
-            "active_weeks": len({d // 7 for d in days if d >= 0}),
+            "id": alias[uid], "signed_up": signup[uid].strftime("%Y-%m-%d"), "weeks_since_signup": (cur_start - sw).days // 7,
+            "active_weeks": len({w for w in engaged_weeks.get(uid, ()) if w >= sw}),
             "week4_retained": any(21 <= d < 28 for d in days) if age_days >= 28 else None,
-            "weeks": per_week.get(uid) or [_blank() for _ in starts],
+            "weeks": wk,
         })
 
     sent_users = [sum(1 for t in testers if t["weeks"][i]["cards"] > 0) for i in range(weeks)]
@@ -132,15 +166,18 @@ def format_text(sc: dict) -> str:
     ws = sc["week_starts"]
     n = len(ws)
     out = [f"Run Supreme Phase A scorecard ({sc['generated'][:10]})",
-           f"Weeks from {ws[0]} (Mon, UTC). Per week: runs/cards/taps/replies/notes + f=feel taps",
-           "act = engaged weeks / weeks since sign-up", ""]
+           f"Weeks from {ws[0]} (Mon, UTC). Per week: runs/cards/taps/notes + f=feel taps",
+           "act = calendar weeks with a run or note / weeks since sign-up (incl. current); - = before sign-up;",
+           "~ = cards/taps incomplete (older than 30-day purge); w4 uses runs+notes only", ""]
     for t in sc["testers"]:
         w4 = {None: "n/a", True: "yes", False: "NO"}[t["week4_retained"]]
-        cells = " ".join(f"{w['runs']}/{w['cards']}/{w['taps']}/{w['replies']}/{w['notes']}f{w['feel']}" for w in t["weeks"])
+        cells = " ".join("-" if w["pre_signup"] else
+                         f"{w['runs']}/{w['cards']}/{w['taps']}/{w['notes']}f{w['feel']}" + ("~" if w["partial"] else "")
+                         for w in t["weeks"])
         out.append(f"{t['id']} act {t['active_weeks']}/{t['weeks_since_signup'] + 1} w4 {w4} | {cells}")
     out.append("")
-    out.append("Cards sent/wk: " + " ".join(str(sum(t["weeks"][i]["cards"] for t in sc["testers"])) for i in range(n)))
-    out.append("LLM cost USD/wk (total): " + " ".join(f"{x:.2f}" for x in sc["llm_cost_usd_total"]))
+    out.append("Cards sent/wk: " + " ".join(str(sum(t["weeks"][i]["cards"] for t in sc["testers"])) + ("~" if sc["testers"] and sc["testers"][0]["weeks"][i]["partial"] else "") for i in range(n)))
+    out.append("LLM cost USD/wk (total, replay calls not separable): " + " ".join(f"{x:.2f}" for x in sc["llm_cost_usd_total"]))
     per = []
     for i in range(n):
         k = sum(1 for t in sc["testers"] if t["weeks"][i]["cards"] > 0)
@@ -157,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--weeks", type=int, default=4)
     p.add_argument("--format", choices=("text", "json"), default="text")
     a = p.parse_args(argv)
-    c = sqlite3.connect("file:" + a.db + "?mode=ro", uri=True, timeout=15)
+    c = open_ro(a.db)
     try:
         sc = compute_scorecard(c, weeks=a.weeks)
     finally:
