@@ -1,14 +1,14 @@
 /// Odometer-style distance (Ricki 11-Oct, "decision for Ricki"): rolling
 /// digit wheels in individual cells, the whole kilometres dark and the
-/// decimals inverted so "07.42" reads at arm's length. Off by default: only
-/// [kOdometerDistance] (flipped by the golden test) turns it on.
+/// decimals inverted so "07.42" reads at arm's length. On by default since
+/// Ricki's 12-Oct "odo yes". Tests default [kOdometerDistance] off (see
+/// test/flutter_test_config.dart) and the run-page goldens cover both.
 library;
 
 import 'package:flutter/material.dart';
 
-/// The hidden variant flag. No setting, no UI: goldens flip it so Ricki can
-/// judge the look from a picture before anything ships.
-bool kOdometerDistance = false;
+/// The variant flag. No setting, no UI.
+bool kOdometerDistance = true;
 
 /// The wheel's darker edge: the fill, a little less light.
 Color _shade(Color c) {

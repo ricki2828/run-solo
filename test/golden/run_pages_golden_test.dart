@@ -74,6 +74,7 @@ void main() {
 
   for (final z in ['z3', 'z2']) {
     testWidgets('run page 1: numbers, zone ${z.substring(1)}', (tester) async {
+      kOdometerDistance = false; // plain-digit variant
       await openRun(tester, hr: zones[z]!, mapPage: false);
       expect(find.byKey(const ValueKey('page-dots')), findsOneWidget);
       expect(find.byKey(const ValueKey('free-distance')), findsOneWidget);
@@ -93,11 +94,12 @@ void main() {
   }
 
   testWidgets('run page 1 at 360 x 640, zone 3', (tester) async {
+    kOdometerDistance = false; // plain-digit variant
     await openRun(tester, hr: zones['z3']!, mapPage: false, height: 640);
     await golden(tester, 'run_page1_z3_360x640');
   });
 
-  // Decision for Ricki: odometer distance (default OFF, golden only).
+  // Odometer distance: the default since Ricki's 12-Oct "odo yes".
   for (final z in ['z3', 'z2', 'z4']) {
     testWidgets('run page 1 with odometer distance, zone ${z.substring(1)}', (
       tester,
@@ -109,9 +111,9 @@ void main() {
     });
   }
 
-  testWidgets('the odometer is off by default', (tester) async {
-    expect(kOdometerDistance, isFalse);
+  testWidgets('the flag drives the odometer', (tester) async {
+    kOdometerDistance = true;
     await openRun(tester, hr: zones['z3']!, mapPage: false);
-    expect(find.byKey(const ValueKey('odo-cell-0')), findsNothing);
+    expect(find.byKey(const ValueKey('odo-cell-0')), findsWidgets);
   });
 }
