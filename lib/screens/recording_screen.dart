@@ -796,6 +796,13 @@ class _RecordingScreenState extends State<RecordingScreen>
                           _Banner(text: gpsBannerCopy(s), color: t.semWarn)
                         else if (s.notice != null)
                           _Banner(text: s.notice!, color: t.semWarn),
+                        if (route?.endCue != null && !pausedNow)
+                          RouteEndCard(
+                            cue: route!.endCue!,
+                            fill: t.inkPrimary,
+                            ink: t.bgBase,
+                            compact: compact,
+                          ),
                         if (pausedNow) ...[
                           // O7: run so far, big, and one big RESUME. No LAP.
                           Expanded(

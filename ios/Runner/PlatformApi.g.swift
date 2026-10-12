@@ -346,6 +346,13 @@ enum LiveBoardKind: Int {
   case distanceInTime = 3
 }
 
+/// What the runner should do at the end of the followed route: [turnAround] on a
+/// route that ends away from its start, [done] on a loop that closes on it.
+enum RouteEndCue: Int {
+  case turnAround = 0
+  case done = 1
+}
+
 /// Whether the phone can take a workout. `notInstalled`: Android 13 and
 /// older without the Health Connect app. `needsUpdate`: it is there but too
 /// old. `unsupported`: this platform has no implementation.
@@ -1314,7 +1321,9 @@ struct FollowRoute: Hashable {
 /// elevation. [off] is the off-route state (more than about 40 m away for about
 /// 10 s, with hysteresis). [turnLabel] and [turnInM] are the next turn from the
 /// route's shape ("Left turn", "Keep right", ...), null when none is ahead or
-/// while off route.
+/// while off route. [endCue] is set from the moment the runner reaches the end
+/// of the route until about a minute later or until they head back (it is the
+/// screen's big cue; the voice and buzz fire once, natively).
 ///
 /// Generated class from Pigeon that represents data sent in messages.
 struct RouteProgress: Hashable {
@@ -1323,6 +1332,7 @@ struct RouteProgress: Hashable {
   var off: Bool
   var turnLabel: String? = nil
   var turnInM: Double? = nil
+  var endCue: RouteEndCue? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -1332,13 +1342,15 @@ struct RouteProgress: Hashable {
     let off = pigeonVar_list[2] as! Bool
     let turnLabel: String? = nilOrValue(pigeonVar_list[3])
     let turnInM: Double? = nilOrValue(pigeonVar_list[4])
+    let endCue: RouteEndCue? = nilOrValue(pigeonVar_list[5])
 
     return RouteProgress(
       toGoM: toGoM,
       climbToGoM: climbToGoM,
       off: off,
       turnLabel: turnLabel,
-      turnInM: turnInM
+      turnInM: turnInM,
+      endCue: endCue
     )
   }
   func toList() -> [Any?] {
@@ -1348,13 +1360,14 @@ struct RouteProgress: Hashable {
       off,
       turnLabel,
       turnInM,
+      endCue,
     ]
   }
   static func == (lhs: RouteProgress, rhs: RouteProgress) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.toGoM, rhs.toGoM) && deepEqualsPlatformApi(lhs.climbToGoM, rhs.climbToGoM) && deepEqualsPlatformApi(lhs.off, rhs.off) && deepEqualsPlatformApi(lhs.turnLabel, rhs.turnLabel) && deepEqualsPlatformApi(lhs.turnInM, rhs.turnInM)
+    return deepEqualsPlatformApi(lhs.toGoM, rhs.toGoM) && deepEqualsPlatformApi(lhs.climbToGoM, rhs.climbToGoM) && deepEqualsPlatformApi(lhs.off, rhs.off) && deepEqualsPlatformApi(lhs.turnLabel, rhs.turnLabel) && deepEqualsPlatformApi(lhs.turnInM, rhs.turnInM) && deepEqualsPlatformApi(lhs.endCue, rhs.endCue)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -1364,6 +1377,7 @@ struct RouteProgress: Hashable {
     deepHashPlatformApi(value: off, hasher: &hasher)
     deepHashPlatformApi(value: turnLabel, hasher: &hasher)
     deepHashPlatformApi(value: turnInM, hasher: &hasher)
+    deepHashPlatformApi(value: endCue, hasher: &hasher)
   }
 }
 
@@ -3036,98 +3050,104 @@ private class PlatformApiPigeonCodecReader: FlutterStandardReader {
     case 144:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return HealthAvailability(rawValue: enumResultAsInt)
+        return RouteEndCue(rawValue: enumResultAsInt)
       }
       return nil
     case 145:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return HealthWriteOutcome(rawValue: enumResultAsInt)
+        return HealthAvailability(rawValue: enumResultAsInt)
       }
       return nil
     case 146:
-      return SessionStep.fromList(self.readValue() as! [Any?])
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return HealthWriteOutcome(rawValue: enumResultAsInt)
+      }
+      return nil
     case 147:
-      return SessionSpec.fromList(self.readValue() as! [Any?])
+      return SessionStep.fromList(self.readValue() as! [Any?])
     case 148:
-      return LiveEntry.fromList(self.readValue() as! [Any?])
+      return SessionSpec.fromList(self.readValue() as! [Any?])
     case 149:
-      return LiveBoard.fromList(self.readValue() as! [Any?])
+      return LiveEntry.fromList(self.readValue() as! [Any?])
     case 150:
-      return LiveTarget.fromList(self.readValue() as! [Any?])
+      return LiveBoard.fromList(self.readValue() as! [Any?])
     case 151:
-      return NudgePlan.fromList(self.readValue() as! [Any?])
+      return LiveTarget.fromList(self.readValue() as! [Any?])
     case 152:
-      return FastStartRule.fromList(self.readValue() as! [Any?])
+      return NudgePlan.fromList(self.readValue() as! [Any?])
     case 153:
-      return RepFadeRule.fromList(self.readValue() as! [Any?])
+      return FastStartRule.fromList(self.readValue() as! [Any?])
     case 154:
-      return HrDriftRule.fromList(self.readValue() as! [Any?])
+      return RepFadeRule.fromList(self.readValue() as! [Any?])
     case 155:
-      return LiveContext.fromList(self.readValue() as! [Any?])
+      return HrDriftRule.fromList(self.readValue() as! [Any?])
     case 156:
-      return StartResult.fromList(self.readValue() as! [Any?])
+      return LiveContext.fromList(self.readValue() as! [Any?])
     case 157:
-      return LapSummary.fromList(self.readValue() as! [Any?])
+      return StartResult.fromList(self.readValue() as! [Any?])
     case 158:
-      return RecorderStatus.fromList(self.readValue() as! [Any?])
+      return LapSummary.fromList(self.readValue() as! [Any?])
     case 159:
-      return FollowRoute.fromList(self.readValue() as! [Any?])
+      return RecorderStatus.fromList(self.readValue() as! [Any?])
     case 160:
-      return RouteProgress.fromList(self.readValue() as! [Any?])
+      return FollowRoute.fromList(self.readValue() as! [Any?])
     case 161:
-      return OrphanJournal.fromList(self.readValue() as! [Any?])
+      return RouteProgress.fromList(self.readValue() as! [Any?])
     case 162:
-      return ReplayConfig.fromList(self.readValue() as! [Any?])
+      return OrphanJournal.fromList(self.readValue() as! [Any?])
     case 163:
-      return PermissionStatus.fromList(self.readValue() as! [Any?])
+      return ReplayConfig.fromList(self.readValue() as! [Any?])
     case 164:
-      return BleStatus.fromList(self.readValue() as! [Any?])
+      return PermissionStatus.fromList(self.readValue() as! [Any?])
     case 165:
-      return ExitDiagnosis.fromList(self.readValue() as! [Any?])
+      return BleStatus.fromList(self.readValue() as! [Any?])
     case 166:
-      return BleDevice.fromList(self.readValue() as! [Any?])
+      return ExitDiagnosis.fromList(self.readValue() as! [Any?])
     case 167:
-      return BackupStatus.fromList(self.readValue() as! [Any?])
+      return BleDevice.fromList(self.readValue() as! [Any?])
     case 168:
-      return PlaceName.fromList(self.readValue() as! [Any?])
+      return BackupStatus.fromList(self.readValue() as! [Any?])
     case 169:
-      return TickEvent.fromList(self.readValue() as! [Any?])
+      return PlaceName.fromList(self.readValue() as! [Any?])
     case 170:
-      return LapEvent.fromList(self.readValue() as! [Any?])
+      return TickEvent.fromList(self.readValue() as! [Any?])
     case 171:
-      return LapPendingEvent.fromList(self.readValue() as! [Any?])
+      return LapEvent.fromList(self.readValue() as! [Any?])
     case 172:
-      return CueEvent.fromList(self.readValue() as! [Any?])
+      return LapPendingEvent.fromList(self.readValue() as! [Any?])
     case 173:
-      return GpsProbeEvent.fromList(self.readValue() as! [Any?])
+      return CueEvent.fromList(self.readValue() as! [Any?])
     case 174:
-      return RoutePointsEvent.fromList(self.readValue() as! [Any?])
+      return GpsProbeEvent.fromList(self.readValue() as! [Any?])
     case 175:
-      return CompareEvent.fromList(self.readValue() as! [Any?])
+      return RoutePointsEvent.fromList(self.readValue() as! [Any?])
     case 176:
-      return GoalEvent.fromList(self.readValue() as! [Any?])
+      return CompareEvent.fromList(self.readValue() as! [Any?])
     case 177:
-      return FaultEvent.fromList(self.readValue() as! [Any?])
+      return GoalEvent.fromList(self.readValue() as! [Any?])
     case 178:
-      return StateEvent.fromList(self.readValue() as! [Any?])
+      return FaultEvent.fromList(self.readValue() as! [Any?])
     case 179:
-      return PhaseEvent.fromList(self.readValue() as! [Any?])
+      return StateEvent.fromList(self.readValue() as! [Any?])
     case 180:
-      return HealthStatus.fromList(self.readValue() as! [Any?])
+      return PhaseEvent.fromList(self.readValue() as! [Any?])
     case 181:
-      return HealthLap.fromList(self.readValue() as! [Any?])
+      return HealthStatus.fromList(self.readValue() as! [Any?])
     case 182:
-      return HealthPause.fromList(self.readValue() as! [Any?])
+      return HealthLap.fromList(self.readValue() as! [Any?])
     case 183:
-      return HealthHrSample.fromList(self.readValue() as! [Any?])
+      return HealthPause.fromList(self.readValue() as! [Any?])
     case 184:
-      return HealthRoutePoint.fromList(self.readValue() as! [Any?])
+      return HealthHrSample.fromList(self.readValue() as! [Any?])
     case 185:
-      return HealthWorkout.fromList(self.readValue() as! [Any?])
+      return HealthRoutePoint.fromList(self.readValue() as! [Any?])
     case 186:
-      return HealthWriteResult.fromList(self.readValue() as! [Any?])
+      return HealthWorkout.fromList(self.readValue() as! [Any?])
     case 187:
+      return HealthWriteResult.fromList(self.readValue() as! [Any?])
+    case 188:
       return VoiceCoachConfig.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -3182,137 +3202,140 @@ private class PlatformApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? LiveBoardKind {
       super.writeByte(143)
       super.writeValue(value.rawValue)
-    } else if let value = value as? HealthAvailability {
+    } else if let value = value as? RouteEndCue {
       super.writeByte(144)
       super.writeValue(value.rawValue)
-    } else if let value = value as? HealthWriteOutcome {
+    } else if let value = value as? HealthAvailability {
       super.writeByte(145)
       super.writeValue(value.rawValue)
-    } else if let value = value as? SessionStep {
+    } else if let value = value as? HealthWriteOutcome {
       super.writeByte(146)
-      super.writeValue(value.toList())
-    } else if let value = value as? SessionSpec {
+      super.writeValue(value.rawValue)
+    } else if let value = value as? SessionStep {
       super.writeByte(147)
       super.writeValue(value.toList())
-    } else if let value = value as? LiveEntry {
+    } else if let value = value as? SessionSpec {
       super.writeByte(148)
       super.writeValue(value.toList())
-    } else if let value = value as? LiveBoard {
+    } else if let value = value as? LiveEntry {
       super.writeByte(149)
       super.writeValue(value.toList())
-    } else if let value = value as? LiveTarget {
+    } else if let value = value as? LiveBoard {
       super.writeByte(150)
       super.writeValue(value.toList())
-    } else if let value = value as? NudgePlan {
+    } else if let value = value as? LiveTarget {
       super.writeByte(151)
       super.writeValue(value.toList())
-    } else if let value = value as? FastStartRule {
+    } else if let value = value as? NudgePlan {
       super.writeByte(152)
       super.writeValue(value.toList())
-    } else if let value = value as? RepFadeRule {
+    } else if let value = value as? FastStartRule {
       super.writeByte(153)
       super.writeValue(value.toList())
-    } else if let value = value as? HrDriftRule {
+    } else if let value = value as? RepFadeRule {
       super.writeByte(154)
       super.writeValue(value.toList())
-    } else if let value = value as? LiveContext {
+    } else if let value = value as? HrDriftRule {
       super.writeByte(155)
       super.writeValue(value.toList())
-    } else if let value = value as? StartResult {
+    } else if let value = value as? LiveContext {
       super.writeByte(156)
       super.writeValue(value.toList())
-    } else if let value = value as? LapSummary {
+    } else if let value = value as? StartResult {
       super.writeByte(157)
       super.writeValue(value.toList())
-    } else if let value = value as? RecorderStatus {
+    } else if let value = value as? LapSummary {
       super.writeByte(158)
       super.writeValue(value.toList())
-    } else if let value = value as? FollowRoute {
+    } else if let value = value as? RecorderStatus {
       super.writeByte(159)
       super.writeValue(value.toList())
-    } else if let value = value as? RouteProgress {
+    } else if let value = value as? FollowRoute {
       super.writeByte(160)
       super.writeValue(value.toList())
-    } else if let value = value as? OrphanJournal {
+    } else if let value = value as? RouteProgress {
       super.writeByte(161)
       super.writeValue(value.toList())
-    } else if let value = value as? ReplayConfig {
+    } else if let value = value as? OrphanJournal {
       super.writeByte(162)
       super.writeValue(value.toList())
-    } else if let value = value as? PermissionStatus {
+    } else if let value = value as? ReplayConfig {
       super.writeByte(163)
       super.writeValue(value.toList())
-    } else if let value = value as? BleStatus {
+    } else if let value = value as? PermissionStatus {
       super.writeByte(164)
       super.writeValue(value.toList())
-    } else if let value = value as? ExitDiagnosis {
+    } else if let value = value as? BleStatus {
       super.writeByte(165)
       super.writeValue(value.toList())
-    } else if let value = value as? BleDevice {
+    } else if let value = value as? ExitDiagnosis {
       super.writeByte(166)
       super.writeValue(value.toList())
-    } else if let value = value as? BackupStatus {
+    } else if let value = value as? BleDevice {
       super.writeByte(167)
       super.writeValue(value.toList())
-    } else if let value = value as? PlaceName {
+    } else if let value = value as? BackupStatus {
       super.writeByte(168)
       super.writeValue(value.toList())
-    } else if let value = value as? TickEvent {
+    } else if let value = value as? PlaceName {
       super.writeByte(169)
       super.writeValue(value.toList())
-    } else if let value = value as? LapEvent {
+    } else if let value = value as? TickEvent {
       super.writeByte(170)
       super.writeValue(value.toList())
-    } else if let value = value as? LapPendingEvent {
+    } else if let value = value as? LapEvent {
       super.writeByte(171)
       super.writeValue(value.toList())
-    } else if let value = value as? CueEvent {
+    } else if let value = value as? LapPendingEvent {
       super.writeByte(172)
       super.writeValue(value.toList())
-    } else if let value = value as? GpsProbeEvent {
+    } else if let value = value as? CueEvent {
       super.writeByte(173)
       super.writeValue(value.toList())
-    } else if let value = value as? RoutePointsEvent {
+    } else if let value = value as? GpsProbeEvent {
       super.writeByte(174)
       super.writeValue(value.toList())
-    } else if let value = value as? CompareEvent {
+    } else if let value = value as? RoutePointsEvent {
       super.writeByte(175)
       super.writeValue(value.toList())
-    } else if let value = value as? GoalEvent {
+    } else if let value = value as? CompareEvent {
       super.writeByte(176)
       super.writeValue(value.toList())
-    } else if let value = value as? FaultEvent {
+    } else if let value = value as? GoalEvent {
       super.writeByte(177)
       super.writeValue(value.toList())
-    } else if let value = value as? StateEvent {
+    } else if let value = value as? FaultEvent {
       super.writeByte(178)
       super.writeValue(value.toList())
-    } else if let value = value as? PhaseEvent {
+    } else if let value = value as? StateEvent {
       super.writeByte(179)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthStatus {
+    } else if let value = value as? PhaseEvent {
       super.writeByte(180)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthLap {
+    } else if let value = value as? HealthStatus {
       super.writeByte(181)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthPause {
+    } else if let value = value as? HealthLap {
       super.writeByte(182)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthHrSample {
+    } else if let value = value as? HealthPause {
       super.writeByte(183)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthRoutePoint {
+    } else if let value = value as? HealthHrSample {
       super.writeByte(184)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthWorkout {
+    } else if let value = value as? HealthRoutePoint {
       super.writeByte(185)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthWriteResult {
+    } else if let value = value as? HealthWorkout {
       super.writeByte(186)
       super.writeValue(value.toList())
-    } else if let value = value as? VoiceCoachConfig {
+    } else if let value = value as? HealthWriteResult {
       super.writeByte(187)
+      super.writeValue(value.toList())
+    } else if let value = value as? VoiceCoachConfig {
+      super.writeByte(188)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
