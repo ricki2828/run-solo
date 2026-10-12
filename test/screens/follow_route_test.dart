@@ -297,6 +297,47 @@ void main() {
       expect(find.text('Left turn in 120 m'), findsOneWidget);
     });
 
+    testWidgets('the end of the route puts a big TURN AROUND card up', (
+      tester,
+    ) async {
+      final (fake, _) = await openLive(tester);
+      expect(find.byKey(const ValueKey('route-end-card')), findsNothing);
+      fake.routeProgress = RouteProgress(
+        toGoM: 5,
+        off: false,
+        endCue: RouteEndCue.turnAround,
+      );
+      fake.advance(const Duration(seconds: 2));
+      await pumpTimes(tester, 3);
+      expect(find.text('TURN AROUND'), findsOneWidget);
+      final text = tester.widget<Text>(
+        find.byKey(const ValueKey('route-end-text')),
+      );
+      expect(text.style!.fontSize, greaterThanOrEqualTo(36));
+      // Still there on the map page, then gone once the recorder clears it.
+      await toMapPage(tester);
+      expect(find.text('TURN AROUND'), findsOneWidget);
+      fake.routeProgress = RouteProgress(toGoM: 5, off: false);
+      fake.advance(const Duration(seconds: 2));
+      await pumpTimes(tester, 3);
+      expect(find.text('TURN AROUND'), findsNothing);
+    });
+
+    testWidgets('a loop that ends where it began says ROUTE DONE', (
+      tester,
+    ) async {
+      final (fake, _) = await openLive(tester);
+      fake.routeProgress = RouteProgress(
+        toGoM: 5,
+        off: false,
+        endCue: RouteEndCue.done,
+      );
+      fake.advance(const Duration(seconds: 2));
+      await pumpTimes(tester, 3);
+      expect(find.text('ROUTE DONE'), findsOneWidget);
+      expect(find.text('TURN AROUND'), findsNothing);
+    });
+
     testWidgets('miles users read yards for the next turn', (tester) async {
       final fake = FakeRecorderGateway(now: now)..emitRoute = true;
       final services = fakeServices(

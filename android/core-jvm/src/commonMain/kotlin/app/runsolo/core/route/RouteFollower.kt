@@ -41,7 +41,26 @@ class RouteFollower(
         val turnAnnounceM: Double = 50.0,
         /** Off route still: the alert again after this long. */
         val repeatOffMs: Long = 60_000,
+        /** The end of the route is reached when this little is left (a trail finish is rarely on the exact point). */
+        val endM: Double = 20.0,
+        /** Off the line or on loose fixes, the end also counts when this little route is left... */
+        val endNearM: Double = 60.0,
+        /** ...and the runner is within this of the end point as the crow flies (widened for a poor fix). */
+        val endCrowM: Double = 40.0,
+        /** A fix worse than this does not announce the end: it could be tens of metres short or past it. */
+        val endAccuracyM: Double = 20.0,
+        /** A route shorter than this has no end worth a cue. */
+        val minEndRouteM: Double = 100.0,
+        /** A route that finishes this close to its start is a loop: "Route done", not "Turn around". */
+        val loopM: Double = 50.0,
+        /** The screen's turn-around cue stays up this long after the end... */
+        val endCueMs: Long = 60_000,
+        /** ...or until the runner is this far from the end (heading back). */
+        val endClearM: Double = 60.0,
     )
+
+    /** What the end of the route means: an out-and-back or point-to-point end says turn around, a loop is simply done. */
+    enum class EndKind { turnAround, done }
 
     /** What the follower wants said or buzzed. */
     sealed class Event {
@@ -50,6 +69,9 @@ class RouteFollower(
 
         /** An approaching turn, [text] as the voice says it. */
         data class Turn(val t: Long, val turn: RouteTurn, val text: String) : Event()
+
+        /** The runner reached the end of the route, once. [kind] says whether to turn around or that the route is done. */
+        data class RouteEnd(val t: Long, val kind: EndKind, val text: String) : Event()
     }
 
     var progressM: Double = 0.0
@@ -82,6 +104,18 @@ class RouteFollower(
     private var lastAlertT = 0L
     private var turnIndex = 0
     private var turnToldIndex = -1
+    private var ended = false
+    private var endT: Long? = null
+    private var distToEndM = Double.MAX_VALUE
+    private val endKind = if (path.closesOnStart(config.loopM)) EndKind.done else EndKind.turnAround
+
+    /** The end-of-route cue the screen shows now, or null: it lapses after [Config.endCueMs] or once the runner is [Config.endClearM] back along the way. */
+    val endCue: EndKind?
+        get() {
+            val at = endT ?: return null
+            val now = lastFixT ?: return null
+            return if (ended && now - at < config.endCueMs && distToEndM <= config.endClearM) endKind else null
+        }
 
     /** The next turn still ahead (the cue for it may already have been said). */
     val nextTurn: RouteTurn? get() = path.turns.getOrNull(turnIndex)
@@ -112,6 +146,13 @@ class RouteFollower(
         // Nothing in the window at all (the run is somewhere the route never goes): as far off as it gets.
         val dist = hit?.offM ?: Double.MAX_VALUE
         offsetM = dist
+        if (ended) {
+            // The end was announced, possibly a few metres early: progress still runs on to the finish, but the
+            // route is done, so there are no off-route alerts for the way back.
+            distToEndM = path.distToEndM(path.toLocalX(lon), path.toLocalY(lat))
+            if (hit != null && dist <= config.offM) advance(hit)
+            return emptyList()
+        }
         val events = ArrayList<Event>()
         // A poor fix may sit a few metres out without the runner having moved.
         val offLimit = max(config.offM, accuracyM * 1.5)
@@ -151,6 +192,13 @@ class RouteFollower(
                 events.add(Event.OffRoute(t))
             }
         }
+        endEvent(t, accuracyM, lat, lon, quiet)?.let { end ->
+            // The end says it all: no turn or off-route alert on the same fix, and the route is done, not "off".
+            events.removeAll { it is Event.Turn || it is Event.OffRoute }
+            off = false
+            offSinceT = null
+            events.add(end)
+        }
         return if (quiet) emptyList() else events
     }
 
@@ -160,6 +208,23 @@ class RouteFollower(
         lastFixT = null
         offSinceT = null
         backSinceT = null
+        endT = null // a restored run does not re-show the cue
+    }
+
+    /** Once, when the runner is within [Config.endM] of the end on a good fix. A restore (quiet) marks the end as reached with no cue. */
+    private fun endEvent(t: Long, accuracyM: Double, lat: Double, lon: Double, quiet: Boolean): Event.RouteEnd? {
+        if (path.totalM < config.minEndRouteM || accuracyM > config.endAccuracyM) return null
+        val crowM = path.distToEndM(path.toLocalX(lon), path.toLocalY(lat))
+        // On the line within endM of the end; or, when the trail's finish is off the line or the fixes are loose,
+        // progress already near the end and the runner close to the end point as the crow flies.
+        val reached = toGoM <= config.endM ||
+            (toGoM <= config.endNearM && crowM <= max(config.endCrowM, accuracyM * 1.5))
+        if (!reached) return null
+        ended = true
+        distToEndM = crowM
+        if (quiet) return null
+        endT = t
+        return Event.RouteEnd(t, endKind, if (endKind == EndKind.done) RouteWords.END_DONE else RouteWords.END_TURN_AROUND)
     }
 
     private fun advance(hit: RouteHit) {
@@ -192,6 +257,8 @@ class RouteFollower(
 object RouteWords {
     const val OFF_ROUTE = "Off route"
     const val BACK_ON_ROUTE = "Back on route"
+    const val END_TURN_AROUND = "End of route. Turn around."
+    const val END_DONE = "End of route. Route done."
 
     /** "Left turn", "Keep right", "Sharp left", "U-turn": the label the strip shows (with the distance) and the voice says. */
     fun turnLabel(turn: RouteTurn): String = when (turn.kind) {
