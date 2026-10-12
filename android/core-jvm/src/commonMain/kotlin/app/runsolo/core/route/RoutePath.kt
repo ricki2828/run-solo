@@ -70,6 +70,12 @@ class RoutePath(val route: FollowRoute) {
 
     fun toLocalY(lat: Double): Double = (lat - lat0) * METRES_PER_DEG
 
+    /** Straight-line metres from the local position ([px], [py]) to the route's last point. */
+    fun distToEndM(px: Double, py: Double): Double = hypot(px - x[size - 1], py - y[size - 1])
+
+    /** True when the route finishes within [withinM] of where it starts (a loop): there is no "back the way you came". */
+    fun closesOnStart(withinM: Double): Boolean = hypot(x[size - 1] - x[0], y[size - 1] - y[0]) <= withinM
+
     /** Ascent still ahead from [alongM]; null when the route has no elevation. */
     fun climbToGoM(alongM: Double): Double? {
         val c = climbCum ?: return null
