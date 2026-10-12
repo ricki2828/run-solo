@@ -48,11 +48,8 @@ void main() {
   });
 
   test('the fake never reads a route unless asked', () async {
-    final g = FakeHealthImportGateway(
-      runs: {
-        's': const HcRunSession(sessionId: 's', startMs: 0, endMs: 5000),
-      },
-    );
+    const s = HcRunSession(sessionId: 's', startMs: 0, endMs: 5000);
+    final g = FakeHealthImportGateway(runs: {'s': s});
     expect(await g.listRuns(), hasLength(1));
     await g.readRun('s');
     expect(g.routeReads, [false]);

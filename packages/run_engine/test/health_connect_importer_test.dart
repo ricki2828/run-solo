@@ -97,7 +97,7 @@ void main() {
     );
   });
 
-  test('companion shape fields: splits without a route, only declared keys', () {
+  test('companion fields: splits without a route', () {
     final noRoute = companionShapeFields(importer.import(session()));
     expect(noRoute.containsKey('route'), isFalse);
     expect((noRoute['splits'] as List).length, 3);
