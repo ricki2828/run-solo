@@ -35,15 +35,22 @@ abstract final class SpokenVerdict {
     final delta = r.deltaSec;
     if (r.basis == TrailBasis.sameTrail && delta != null) {
       final gap = gapWords(delta.abs().round());
+      final diff = r.distanceDiffM;
+      // Same rule as the verdict lines: a different length is said out loud
+      // so a gap is never mistaken for distance.
+      final note = diff != null && r.differentLength
+          ? ' It was ${diff < 0 ? 'shorter' : 'longer'} than last time, so '
+                'that is on pace.'
+          : '';
       switch (r.tone) {
         case TrailTone.faster:
-          return 'Faster on this trail, $gap quicker than last time.';
+          return 'Faster on this trail, $gap quicker than last time.$note';
         case TrailTone.slower:
-          return 'Slower on this trail, $gap slower than last time.';
+          return 'Slower on this trail, $gap slower than last time.$note';
         case TrailTone.same:
         case TrailTone.baseline:
         case TrailTone.none:
-          return 'No real change.';
+          return 'No real change.$note';
       }
     }
     return _sentence(r.headline);

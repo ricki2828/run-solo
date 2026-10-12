@@ -50,6 +50,13 @@ class TrailRunFacts {
   /// Moving time with the heat taken out, ms. The same trail has the same
   /// hills every time, so a same-trail comparison only needs the heat.
   int get heatAdjustedMovingMs => (movingMs * heatFactor).round();
+
+  /// Heat-adjusted moving time as if the run had covered [refDistanceM] at
+  /// the same pace. "Same trail" allows lengths 10% apart, so raw time would
+  /// call a shorter run faster; this is the like-for-like number.
+  int normalisedMs(double refDistanceM) => distanceM <= 0
+      ? heatAdjustedMovingMs
+      : (heatAdjustedMovingMs * refDistanceM / distanceM).round();
 }
 
 /// Runs that went the same way round the same trail, oldest first. The
@@ -67,11 +74,15 @@ class TrailGroup {
 
   TrailRunFacts get anchor => runs.first;
 
-  /// The fastest run by heat-adjusted moving time (ties go to the earlier
-  /// run).
-  TrailRunFacts get best => runs.reduce(
-    (a, b) => b.heatAdjustedMovingMs < a.heatAdjustedMovingMs ? b : a,
-  );
+  /// The distance every run on this trail is compared over: the anchor's.
+  double get refDistanceM => anchor.distanceM;
+
+  /// [r]'s heat-adjusted time over [refDistanceM] (pace, not clock time).
+  int normMs(TrailRunFacts r) => r.normalisedMs(refDistanceM);
+
+  /// The fastest run by heat-adjusted pace (ties go to the earlier run).
+  TrailRunFacts get best =>
+      runs.reduce((a, b) => normMs(b) < normMs(a) ? b : a);
 }
 
 abstract final class Trails {
@@ -130,7 +141,8 @@ enum TrailBasis { sameTrail, effortPace, baseline, none }
 enum TrailTone { faster, slower, same, baseline, none }
 
 /// A Trail run's result: judged against your earlier runs on the SAME trail
-/// when there are any (heat-adjusted moving time: the hills are identical),
+/// when there are any (heat-adjusted pace over the trail's distance: the
+/// hills are identical),
 /// else on True Pace against your recent trail runs. Never frozen into the sidecar; it is worked out from the index
 /// each time it is shown, so it always agrees with the boards.
 class TrailResult {
@@ -144,6 +156,8 @@ class TrailResult {
     this.isTrailBest = false,
     this.comparedWith,
     this.deltaSec,
+    this.distanceDiffM,
+    this.differentLength = false,
     this.runsOnTrail = 0,
   });
 
@@ -164,16 +178,24 @@ class TrailResult {
   /// "last", "best" or "median": what the headline was measured against.
   final String? comparedWith;
 
-  /// Seconds (heat-adjusted moving time) or s/km (true pace), positive =
-  /// faster.
+  /// Seconds (heat-adjusted time over the same distance) or s/km (true
+  /// pace), positive = faster.
   final double? deltaSec;
+
+  /// Signed metres this run differs from the one it was compared with (null
+  /// off a same-trail verdict); positive = longer.
+  final double? distanceDiffM;
+
+  /// The two runs differ in length by more than
+  /// [TrailVerdict.distanceTolerance], so the gap was worked out on pace.
+  final bool differentLength;
 
   /// How many runs this trail has, this one included (0 off a trail).
   final int runsOnTrail;
 }
 
 abstract final class TrailVerdict {
-  /// Heat-adjusted moving time on one trail: inside this, two runs are
+  /// Heat-adjusted time over the trail's distance: inside this, two runs are
   /// level.
   static double timeFloorSec(int refMs) => _max(15, refMs / 1000 * 0.015);
 
@@ -181,6 +203,11 @@ abstract final class TrailVerdict {
   /// floor because the grade model is an estimate.
   static double paceFloorSecPerKm(double refSecPerKm) =>
       _max(12, refSecPerKm * 0.025);
+
+  /// Runs whose lengths differ by more than this fraction are not the same
+  /// distance. GPS length on one trail wanders about 1-2%, so 3% (150 m on
+  /// 5 km) flags a real shortcut or detour, not noise.
+  static const double distanceTolerance = 0.03;
 
   /// Recent trail runs the true-pace median is taken over.
   static const int medianSetSize = 6;
@@ -223,12 +250,15 @@ abstract final class TrailVerdict {
     Units units,
   ) {
     final last = prior.last;
-    final best = prior.reduce(
-      (a, b) => b.heatAdjustedMovingMs < a.heatAdjustedMovingMs ? b : a,
-    );
-    final deltaS =
-        (last.heatAdjustedMovingMs - cur.heatAdjustedMovingMs) / 1000;
-    final floor = timeFloorSec(last.heatAdjustedMovingMs);
+    final ref = group.refDistanceM;
+    int norm(TrailRunFacts r) => r.normalisedMs(ref);
+    final best = prior.reduce((a, b) => norm(b) < norm(a) ? b : a);
+    final deltaS = (norm(last) - norm(cur)) / 1000;
+    final floor = timeFloorSec(norm(last));
+    final diffM = cur.distanceM - last.distanceM;
+    final sameLength =
+        last.distanceM <= 0 ||
+        diffM.abs() / last.distanceM <= distanceTolerance;
     final when = _dayMonth(last.start);
     final TrailTone tone;
     final String headline;
@@ -255,12 +285,18 @@ abstract final class TrailVerdict {
           '(${PaceFormat.mmss(floor)}).';
     }
 
-    final isBest =
-        cur.heatAdjustedMovingMs < best.heatAdjustedMovingMs - floor * 1000;
+    final isBest = norm(cur) < norm(best) - floor * 1000;
     final lines = <String>[
       '${group.name}, your ${_ordinal(prior.length + 1)} run here.',
       'Moving time ${_clock(cur.movingMs)}, was ${_clock(last.movingMs)}.',
     ];
+    if (!sameLength) {
+      lines.add(
+        'This run was ${_dist(diffM.abs(), units)} '
+        '${diffM < 0 ? 'shorter' : 'longer'} than $when; compared on pace '
+        'over ${_dist(ref, units)}.',
+      );
+    }
     final heat = _heatLine(cur, last);
     if (heat != null) lines.add(heat);
     final climb = _climbLine(cur, last, units);
@@ -270,9 +306,9 @@ abstract final class TrailVerdict {
     } else if (best.id == last.id) {
       lines.add('That $when run is also your best here.');
     } else {
-      final off = (cur.heatAdjustedMovingMs - best.heatAdjustedMovingMs) / 1000;
+      final off = (norm(cur) - norm(best)) / 1000;
       lines.add(
-        'Your best here is ${_clock(best.heatAdjustedMovingMs)} '
+        'Your best here is ${_clock(norm(best))} '
         '(${_dayMonth(best.start)}${_cool(best) ? '' : ', cool-day time'}). '
         '${off.abs() < floor ? 'You were level with it.' : 'You were ${PaceFormat.mmss(off)} off.'}',
       );
@@ -287,6 +323,8 @@ abstract final class TrailVerdict {
       isTrailBest: isBest,
       comparedWith: 'last',
       deltaSec: deltaS,
+      distanceDiffM: diffM,
+      differentLength: !sameLength,
       runsOnTrail: prior.length + 1,
     );
   }
@@ -402,6 +440,11 @@ abstract final class TrailVerdict {
     return 'Climb ${_height(cur.climbM!, units)}, '
         'was ${_height(last.climbM!, units)}.';
   }
+
+  /// "0.4 km" / "0.2 mi".
+  static String _dist(double m, Units units) => units == Units.mi
+      ? '${(m / PaceFormat.metresPerMile).toStringAsFixed(1)} mi'
+      : '${(m / 1000).toStringAsFixed(1)} km';
 
   static String _height(double m, Units units) =>
       units == Units.mi ? '${(m * 3.28084).round()} ft' : '${m.round()} m';
