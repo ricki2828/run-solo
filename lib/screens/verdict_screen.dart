@@ -74,10 +74,7 @@ class _VerdictScreenState extends State<VerdictScreen> {
   /// one, shown over the result a beat after it appears, then marked seen.
   /// Never for a run that is not fresh (a replayed or imported run keeps its
   /// old timestamps), and nothing is scheduled when no moment is pending.
-  Future<void> _maybeShowMoment(
-    RunDetail detail,
-    List<RunSummary> all,
-  ) async {
+  Future<void> _maybeShowMoment(RunDetail detail, List<RunSummary> all) async {
     if (_momentChecked || !widget.justFinished) return;
     _momentChecked = true;
     final services = AppServices.of(context);

@@ -173,7 +173,10 @@ class _Body extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Animation<double> beat(double a, double b, [Curve k = Curves.easeOut]) =>
-        CurvedAnimation(parent: c, curve: Interval(a, b, curve: k));
+        CurvedAnimation(
+          parent: c,
+          curve: Interval(a, b, curve: k),
+        );
     final figure = beat(0.05, 0.5, Curves.easeOutBack);
     final bars = beat(0.35, 0.9, Curves.easeOutCubic);
     final rest = beat(0.5, 0.9);

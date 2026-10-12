@@ -95,7 +95,10 @@ class _MomentScreenState extends State<MomentScreen>
     final fill = momentColour(t, m);
     final ink = readableOn(fill);
     Animation<double> beat(double a, double b, [Curve c = Curves.easeOut]) =>
-        CurvedAnimation(parent: _c, curve: Interval(a, b, curve: c));
+        CurvedAnimation(
+          parent: _c,
+          curve: Interval(a, b, curve: c),
+        );
     final figure = beat(0.08, 0.6, Curves.easeOutBack);
     final figureFade = beat(0.08, 0.35);
     final rest = beat(0.45, 0.85);
