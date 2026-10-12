@@ -100,6 +100,14 @@ void main() {
       await result(tester, h, run, [old], 'trail_verdict_slower');
     });
 
+    // Ricki's case (12-Oct): same pace on a run 8% shorter is no change.
+    testWidgets('trail verdict: shorter run, same pace at 360 x $h', (
+      tester,
+    ) async {
+      final run = trailLoopRun(n: 6, start: d3, secPerKm: 420, km: 5.52);
+      await result(tester, h, run, [old], 'trail_verdict_shorter');
+    });
+
     testWidgets('trail verdict: no match, true pace at 360 x $h', (
       tester,
     ) async {
@@ -110,6 +118,23 @@ void main() {
     testWidgets('trail verdict: baseline at 360 x $h', (tester) async {
       final run = trailLoopRun(n: 5, start: d1, secPerKm: 400);
       await result(tester, h, run, [], 'trail_verdict_baseline');
+    });
+
+    testWidgets('trail board, one shorter run at 360 x $h', (tester) async {
+      final runs = [
+        old,
+        trailLoopRun(n: 2, start: d2, secPerKm: 400),
+        trailLoopRun(n: 3, start: d3, secPerKm: 400, km: 5.5),
+      ];
+      await pumpApp(
+        tester,
+        fakeServices(runs: [for (final r in runs) indexed(r)]),
+        home: TrailBoardScreen(trailKey: 'trail:${old.id}'),
+      );
+      phone(tester, h);
+      await pumpTimes(tester, 6);
+      await settleAnimations(tester);
+      await golden(tester, 'trail_board_shorter_360x$h');
     });
 
     testWidgets('trail board at 360 x $h', (tester) async {

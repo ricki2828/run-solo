@@ -276,12 +276,12 @@ engine.RunFile trailLoopRun({
   double dLat = 0,
   double noiseM = 4,
   double climbAmpM = 18,
+  double km = 6,
 }) {
-  const km = 6;
   final base = freeRunFile(
     n: n,
     start: start,
-    seconds: secPerKm * km,
+    seconds: (secPerKm * km).round(),
     secPerKm: secPerKm,
   );
   final rnd = math.Random(n);
