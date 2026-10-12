@@ -43,6 +43,10 @@ class RouteFollower(
         val repeatOffMs: Long = 60_000,
         /** The end of the route is reached when this little is left (a trail finish is rarely on the exact point). */
         val endM: Double = 20.0,
+        /** Off the line or on loose fixes, the end also counts when this little route is left... */
+        val endNearM: Double = 60.0,
+        /** ...and the runner is within this of the end point as the crow flies (widened for a poor fix). */
+        val endCrowM: Double = 40.0,
         /** A fix worse than this does not announce the end: it could be tens of metres short or past it. */
         val endAccuracyM: Double = 20.0,
         /** A route shorter than this has no end worth a cue. */
@@ -167,7 +171,6 @@ class RouteFollower(
                 lastOnT = t
                 advance(hit)
                 turnEvent(t)?.let { events.add(it) }
-                endEvent(t, accuracyM, lat, lon, quiet)?.let { events.add(it) }
             }
         } else if (hit != null && dist <= backLimit) {
             val since = backSinceT ?: t.also { backSinceT = it }
@@ -187,6 +190,13 @@ class RouteFollower(
                 events.add(Event.OffRoute(t))
             }
         }
+        endEvent(t, accuracyM, lat, lon, quiet)?.let { end ->
+            // The end says it all: no turn or off-route alert on the same fix, and the route is done, not "off".
+            events.removeAll { it is Event.Turn || it is Event.OffRoute }
+            off = false
+            offSinceT = null
+            events.add(end)
+        }
         return if (quiet) emptyList() else events
     }
 
@@ -201,9 +211,15 @@ class RouteFollower(
 
     /** Once, when the runner is within [Config.endM] of the end on a good fix. A restore (quiet) marks the end as reached with no cue. */
     private fun endEvent(t: Long, accuracyM: Double, lat: Double, lon: Double, quiet: Boolean): Event.RouteEnd? {
-        if (path.totalM < config.minEndRouteM || toGoM > config.endM || accuracyM > config.endAccuracyM) return null
+        if (path.totalM < config.minEndRouteM || accuracyM > config.endAccuracyM) return null
+        val crowM = path.distToEndM(path.toLocalX(lon), path.toLocalY(lat))
+        // On the line within endM of the end; or, when the trail's finish is off the line or the fixes are loose,
+        // progress already near the end and the runner close to the end point as the crow flies.
+        val reached = toGoM <= config.endM ||
+            (toGoM <= config.endNearM && crowM <= max(config.endCrowM, accuracyM * 1.5))
+        if (!reached) return null
         ended = true
-        distToEndM = path.distToEndM(path.toLocalX(lon), path.toLocalY(lat))
+        distToEndM = crowM
         if (quiet) return null
         endT = t
         return Event.RouteEnd(t, endKind, if (endKind == EndKind.done) RouteWords.END_DONE else RouteWords.END_TURN_AROUND)

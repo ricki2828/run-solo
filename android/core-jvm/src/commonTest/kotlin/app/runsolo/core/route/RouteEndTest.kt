@@ -109,4 +109,46 @@ class RouteEndTest {
         assertNull(f.endCue)
         assertTrue(f.offer(1_000L, RouteTestKit.lat(0.0), RouteTestKit.lon(1_000.0), 5.0).isEmpty())
     }
+
+    @Test
+    fun `a finish short of the end and to the side still fires on loose fixes`() {
+        val f = RouteTestKit.follower(RouteTestKit.route(straight))
+        val r = Runner(f)
+        r.run(listOf(0.0 to 0.0, 940.0 to 0.0))
+        // 25 m short of the end and 30 m to the side: toGo is over 20 m but the end point is within 40 m.
+        r.fix(975.0, 30.0, accuracyM = 18.0)
+        val e = ends(r)
+        assertEquals(1, e.size)
+        assertEquals(RouteFollower.EndKind.turnAround, e[0].kind)
+        assertEquals(0, r.offAlerts)
+        assertFalse(f.off)
+    }
+
+    @Test
+    fun `off route then reaching the end ends the route and clears off route`() {
+        val f = RouteTestKit.follower(RouteTestKit.route(straight))
+        val r = Runner(f)
+        r.run(listOf(0.0 to 0.0, 940.0 to 0.0))
+        r.hold(940.0, 120.0, 12)
+        assertTrue(f.off)
+        assertEquals(1, r.offAlerts)
+        assertEquals(0, ends(r).size)
+        r.hold(1_000.0, 20.0, 10)
+        assertEquals(1, ends(r).size)
+        assertFalse(f.off)
+        assertEquals(1, r.offAlerts)
+        assertEquals(0, r.backAlerts)
+    }
+
+    @Test
+    fun `an out and back whose end sits near its middle does not fire early`() {
+        // Out 1000 m east, 400 m north, then back west to finish 30 m from the midpoint of the first leg.
+        val corners = listOf(0.0 to 0.0, 1_000.0 to 0.0, 1_000.0 to 400.0, 500.0 to 400.0, 500.0 to 30.0)
+        val f = RouteTestKit.follower(RouteTestKit.route(corners))
+        val r = Runner(f)
+        r.run(listOf(0.0 to 0.0, 1_000.0 to 0.0, 1_000.0 to 400.0, 520.0 to 400.0))
+        assertEquals(0, ends(r).size)
+        r.run(listOf(500.0 to 400.0, 500.0 to 30.0))
+        assertEquals(1, ends(r).size)
+    }
 }
