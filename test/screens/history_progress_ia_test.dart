@@ -31,7 +31,7 @@ class _EarnedLive extends LiveContextSource {
 
 void main() {
   testWidgets(
-    'History opens leaderboard and retains chronological and trends',
+    'History is the run log: chronological first, trends kept, no boards',
     (tester) async {
       await pumpApp(
         tester,
@@ -41,10 +41,8 @@ void main() {
         home: const HistoryScreen(),
       );
       await pumpTimes(tester, 6);
-      expect(find.byKey(const ValueKey('boards-overview')), findsOneWidget);
-      expect(find.byType(HistoryRow), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('history-view-1')));
-      await pumpTimes(tester, 2);
+      expect(find.byKey(const ValueKey('boards-overview')), findsNothing);
+      expect(find.text('LEADERBOARD'), findsNothing);
       expect(find.byType(HistoryRow), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('history-view-2')));
       await pumpTimes(tester, 2);
@@ -57,12 +55,28 @@ void main() {
   ) async {
     await pumpApp(tester, fakeServices(), home: const ProgressScreen());
     await pumpTimes(tester, 6);
+    await useTallPhoneView(tester);
     expect(find.byKey(const ValueKey('score-analysis')), findsOneWidget);
     for (final lane in ['aerobic', 'speed', 'mid', 'long']) {
       expect(find.byKey(ValueKey('analysis-$lane')), findsOneWidget);
     }
     expect(find.text('HOW YOU COMPARE'), findsOneWidget);
     expect(find.textContaining('rough comparison'), findsOneWidget);
+  });
+
+  testWidgets('Progress leads with YOUR PACK, then BOARDS & RECORDS', (
+    tester,
+  ) async {
+    await pumpApp(tester, fakeServices(), home: const ProgressScreen());
+    await pumpTimes(tester, 6);
+    await useTallPhoneView(tester);
+    expect(find.byKey(const ValueKey('pack-panel')), findsOneWidget);
+    expect(find.text('YOUR PACK'), findsOneWidget);
+    expect(find.text('BOARDS & RECORDS'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('YOUR PACK')).dy,
+      lessThan(tester.getTopLeft(find.text('BOARDS & RECORDS')).dy),
+    );
   });
 
   testWidgets('Progress: a missing sex says what to add and opens Settings', (
@@ -74,6 +88,7 @@ void main() {
       home: const ProgressScreen(),
     );
     await pumpTimes(tester, 6);
+    await useTallPhoneView(tester);
     final prompt = find.text(
       'Add your sex in Settings to see how you compare.',
     );
@@ -103,6 +118,7 @@ void main() {
       home: const ProgressScreen(),
     );
     await pumpTimes(tester, 6);
+    await useTallPhoneView(tester);
     expect(find.textContaining('tested on a lab treadmill'), findsWidgets);
     expect(find.textContaining('Estimate, compared with US men'), findsWidgets);
     expect(find.textContaining('VDOT'), findsNothing);
@@ -136,6 +152,7 @@ void main() {
         home: const ProgressScreen(),
       );
       await pumpTimes(tester, 6);
+      await useTallPhoneView(tester);
       final card = find.byKey(const ValueKey('analysis-aerobic'));
       expect(
         find.descendant(of: card, matching: find.text('$number percentile')),

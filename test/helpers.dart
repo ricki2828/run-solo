@@ -250,6 +250,17 @@ Future<void> tapVisible(WidgetTester tester, Finder finder) async {
   await tester.tap(finder);
 }
 
+/// A phone-width view tall enough that a long scrolling page builds every
+/// section: `find` skips list children outside the viewport, so a test of a
+/// section below the fold needs this (360 x 3000 logical). Call it after
+/// [pumpApp], which resets the view to a phone.
+Future<void> useTallPhoneView(WidgetTester tester) async {
+  tester.view.physicalSize = const Size(1080, 9000);
+  tester.view.devicePixelRatio = 3.0;
+  addTearDown(tester.view.reset);
+  await tester.pump();
+}
+
 /// Settle without `pumpAndSettle` (the record screen keeps a periodic timer).
 Future<void> pumpTimes(WidgetTester tester, [int n = 3]) async {
   for (var i = 0; i < n; i++) {

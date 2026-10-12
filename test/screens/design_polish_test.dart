@@ -127,7 +127,7 @@ void main() {
         tester.getRect(find.text('All')).top,
         tester.getRect(find.text('Intervals')).top,
       );
-      for (final label in ['LEADERBOARD', 'CHRONOLOGICAL', 'TRENDS']) {
+      for (final label in ['CHRONOLOGICAL', 'TRENDS']) {
         final text = tester.widget<Text>(find.text(label));
         expect(text.style!.fontSize, greaterThanOrEqualTo(13), reason: label);
         expect(

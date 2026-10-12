@@ -16,7 +16,6 @@ import '../widgets/delta_glyph.dart';
 import '../widgets/recent_activity.dart' show runTypeColor;
 import '../widgets/where_when_line.dart';
 import '../widgets/zone_strip.dart';
-import 'boards_overview.dart';
 import 'trend_screen.dart';
 
 enum HistoryFilter { all, intervals, laps, free, trail, tests }
@@ -49,7 +48,8 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   HistoryFilter _filter = HistoryFilter.all;
-  int _view = 0;
+  // 1 = CHRONOLOGICAL, 2 = TRENDS (keys history-view-N are kept stable).
+  int _view = 1;
   Future<List<RunSummary>>? _runs;
   RunStore? _history;
 
@@ -93,12 +93,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 Space.x8,
               ),
               child: Row(
-                // Intrinsic widths: "CHRONOLOGICAL" at 13 sp does not fit a
-                // third of a 360 dp screen.
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                // Intrinsic widths, left aligned. Boards and records live on
+                // the Progress tab; History is the run log only.
                 children: [
                   for (final (i, label) in const [
-                    (0, 'LEADERBOARD'),
                     (1, 'CHRONOLOGICAL'),
                     (2, 'TRENDS'),
                   ])
@@ -134,9 +132,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
             Expanded(
               child: IndexedStack(
-                index: _view,
+                index: _view - 1,
                 children: [
-                  const BoardsOverview(),
                   FutureBuilder<List<RunSummary>>(
                     future: _runs,
                     builder: (context, snap) {
