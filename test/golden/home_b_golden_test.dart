@@ -6,6 +6,8 @@ import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/home_screen.dart';
 import 'package:run_solo/state/history_store.dart';
+import 'package:run_solo/state/home_progress.dart';
+import 'package:run_solo/widgets/home_b/home_b.dart';
 import 'package:run_solo/state/live_context.dart';
 import 'package:run_solo/state/progress_snapshot.dart';
 import 'package:run_solo/state/run_index.dart';
@@ -133,4 +135,59 @@ void main() {
       );
     });
   }
+
+  // One lane up, one down, one flat, one not set: the change chips.
+  testWidgets('Home B lane change chips', (tester) async {
+    engine.IdentityScore score(
+      engine.IdentityLane lane,
+      double vdot,
+      double? prior,
+    ) => engine.IdentityScore(
+      lane: lane,
+      score: 60,
+      vdot: vdot,
+      priorVdot: prior,
+      runId: lane.name,
+      date: testNow,
+      source: lane == engine.IdentityLane.mid ? '5K' : '4x4',
+      boardKey: null,
+    );
+    final scores = {
+      engine.IdentityLane.aerobic: score(engine.IdentityLane.aerobic, 44, 38),
+      engine.IdentityLane.speed: score(engine.IdentityLane.speed, 38, 44),
+      engine.IdentityLane.mid: score(engine.IdentityLane.mid, 40, 40),
+    };
+    await pumpApp(
+      tester,
+      fakeServices(),
+      home: Scaffold(
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: HomeLaneBlocks(
+            scores: scores,
+            profileSex: ProfileSex.male,
+            age: 44,
+            onOpen: () {},
+            onUnlock: (_) {},
+          ),
+        ),
+      ),
+    );
+    tester.view.physicalSize = const Size(1080, 600);
+    await pumpTimes(tester, 4);
+    int? change(engine.IdentityLane l) =>
+        ScoreNorms.change(scores[l]!, sex: ProfileSex.male, age: 44);
+    final up = change(engine.IdentityLane.aerobic)!;
+    final down = change(engine.IdentityLane.speed)!;
+    expect(up, greaterThan(0));
+    expect(down, lessThan(0));
+    expect(change(engine.IdentityLane.mid), 0);
+    expect(find.text('+$up'), findsOneWidget);
+    expect(find.text('$down'), findsOneWidget);
+    expect(find.byKey(const ValueKey('lane-change-mid')), findsNothing);
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/home_b_lane_chips_360.png'),
+    );
+  });
 }

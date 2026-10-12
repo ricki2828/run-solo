@@ -72,6 +72,8 @@ class PackHero extends StatelessWidget {
     required this.runCount,
     this.pack,
     this.needsProfile = false,
+    this.noNorms = false,
+    this.needsBirthYear = false,
     this.onAddProfile,
     this.slowerLabel = 'Slower',
     this.fasterLabel = 'Faster',
@@ -84,6 +86,13 @@ class PackHero extends StatelessWidget {
   /// The runner has runs but no sex or birth year, so no pack can be worked
   /// out. The hero says so and [onAddProfile] opens the profile.
   final bool needsProfile;
+
+  /// The saved sex has no published norms (prefer not to say), so no pack
+  /// exists for this profile whatever else is added. Says so once, no nag.
+  final bool noNorms;
+
+  /// With [noNorms], the birth year is still missing: the one fix on offer.
+  final bool needsBirthYear;
   final VoidCallback? onAddProfile;
 
   /// The axis words under the histogram, plain strings so a share card or a
@@ -99,7 +108,15 @@ class PackHero extends StatelessWidget {
     final String eyebrow;
     final String big;
     final String sub;
-    if (p == null && needsProfile && runCount > 0) {
+    final showAdd =
+        p == null && runCount > 0 && (noNorms ? needsBirthYear : needsProfile);
+    if (p == null && noNorms && runCount > 0) {
+      eyebrow = 'YOUR AGE-BAND PACK';
+      big = 'NO PACK FOR\nTHIS PROFILE';
+      sub =
+          "Pack comparisons use published men's and women's norms, so "
+          "there's no pack for this profile.";
+    } else if (p == null && needsProfile && runCount > 0) {
       eyebrow = 'YOUR AGE-BAND PACK';
       big = 'ADD YOUR\nAGE BAND';
       sub =
@@ -181,7 +198,7 @@ class PackHero extends StatelessWidget {
               sub,
               style: RunSoloType.body15.copyWith(color: PackLook.onViolet),
             ),
-            if (p == null && needsProfile && runCount > 0) ...[
+            if (showAdd) ...[
               const SizedBox(height: Space.x12),
               Align(
                 alignment: Alignment.centerLeft,
@@ -198,7 +215,7 @@ class PackHero extends StatelessWidget {
                       borderRadius: BorderRadius.circular(Radii.pill),
                     ),
                     child: Text(
-                      'Add your age band',
+                      noNorms ? 'Add your birth year' : 'Add your age band',
                       style: RunSoloType.body15.copyWith(
                         color: PackLook.violet,
                         fontWeight: FontWeight.w700,

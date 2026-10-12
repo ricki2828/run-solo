@@ -387,9 +387,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             level: snap0.level,
                             pack: snap0.pack,
                             runCount: snap0.runCount,
+                            noNorms:
+                                settings.profileSex == ProfileSex.preferNot,
+                            needsBirthYear: settings.birthYear == null,
                             needsProfile:
-                                (settings.profileSex != ProfileSex.male &&
-                                    settings.profileSex != ProfileSex.female) ||
+                                settings.profileSex == ProfileSex.notSet ||
                                 settings.birthYear == null,
                             onAddProfile: () =>
                                 Navigator.of(context)

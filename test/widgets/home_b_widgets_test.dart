@@ -226,4 +226,45 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('pack-hero-add-profile')));
     expect(added, 1);
   });
+
+  testWidgets('PackHero: profile set but no pack yet says almost there', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      fakeServices(),
+      home: _scaffold(
+        PackHero(level: ProgressSnapshot.empty.level, runCount: 1),
+      ),
+    );
+    expect(find.text('ALMOST\nIN THE PACK'), findsOneWidget);
+    expect(find.byKey(const ValueKey('pack-hero-add-profile')), findsNothing);
+  });
+
+  testWidgets('PackHero: no norms for the sex, button only for birth year', (
+    tester,
+  ) async {
+    Widget hero({required bool needsBirthYear}) => _scaffold(
+      PackHero(
+        level: ProgressSnapshot.empty.level,
+        runCount: 2,
+        needsProfile: true,
+        noNorms: true,
+        needsBirthYear: needsBirthYear,
+        onAddProfile: () {},
+      ),
+    );
+    await pumpApp(tester, fakeServices(), home: hero(needsBirthYear: false));
+    expect(find.text('NO PACK FOR\nTHIS PROFILE'), findsOneWidget);
+    expect(
+      find.text(
+        "Pack comparisons use published men's and women's norms, so there's "
+        'no pack for this profile.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('pack-hero-add-profile')), findsNothing);
+    await pumpApp(tester, fakeServices(), home: hero(needsBirthYear: true));
+    expect(find.text('Add your birth year'), findsOneWidget);
+  });
 }
