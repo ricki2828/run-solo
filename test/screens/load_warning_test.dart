@@ -205,6 +205,8 @@ void main() {
     await pumpApp(tester, services, home: HomeScreen(now: now));
     await pumpTimes(tester, 6);
     expect(find.text('Easy run ›'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const ValueKey('load-dismiss')));
+    await pumpTimes(tester, 2);
     await tester.tap(find.byKey(const ValueKey('load-dismiss')));
     await pumpTimes(tester, 6);
     expect(find.byKey(const ValueKey('load-warning')), findsNothing);
