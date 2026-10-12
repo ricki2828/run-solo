@@ -362,7 +362,7 @@ def test_monthly_poster_shows_the_months_average_pace_in_both_layouts():
 def test_zone_bar_has_the_same_margins_on_every_minimal_card():
     PIL = pytest.importorskip("PIL.Image")
     spans = []
-    for name, y in (("post_run_light_minimal", 900), ("post_run_flood_minimal", 900), ("pb_minimal", 960)):
+    for name, y in (("post_run_light_minimal", 840), ("post_run_flood_minimal", 840), ("pb_minimal", 840)):
         im = PIL.open(GOLDEN_DIR / f"{name}.png").convert("RGB")
         bg = im.getpixel((5, y))
         xs = [x for x in range(im.width) if sum(abs(a - b) for a, b in zip(im.getpixel((x, y)), bg)) > 60]

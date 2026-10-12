@@ -1,4 +1,4 @@
-"""PB card: always the zone flood, the new time as the one hero, the old best underneath."""
+"""PB card, direction B: the zone flood block with the new time in cyan (cyan is only ever PB / best), the old best underneath."""
 from __future__ import annotations
 
 from typing import Any, Mapping
@@ -10,9 +10,6 @@ from ._engine import render_html
 
 def build_pb_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = None) -> str:
     memory = memory or {}
-    _, zone = P.effort_mode({**facts, "pb": True})
-    bg = brand.flood_for_zone(zone)
-    bone, arc = brand.BONE, brand.ARC
     d = facts.get("pb_detail") or {}
     hero = P.esc((facts.get("hero") or {}).get("value", P.fmt_dur(float(facts["duration_s"]))), 8)
     label = P.esc(d.get("label", "PERSONAL BEST"), 24)
@@ -22,37 +19,27 @@ def build_pb_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = N
         word = "faster" if d["delta_s"] < 0 else "slower"
         gain = f"{n} seconds {word} than before"
     prev = P.fmt_dur(float(d["previous_s"])) if d.get("previous_s") else ""
-    route = P.facts_route_svg(facts, 936, 330, bone, 8, bg, pad=22, end_dot=True)
+    colour = brand.CARD_TYPE_COLOUR.get(str(facts.get("type")), brand.LANE["speed"])
+    route = P.facts_route_svg(facts, P.INNER, 200, colour, 10, "#FFFFFF", pad=22, end_dot=True)
     has_route = bool(route)
     items = P.bar_items(facts)
-    bars = "" if has_route else P.split_bars(items, 936, 230, bone)
+    bars = "" if has_route else P.split_bars(items, P.INNER, 170, brand.INK_SECONDARY)
     if not has_route and not items:
-        bars = P.zone_block(P.zone_seconds(facts), 936, bone, bone, bg, True)
+        bars = P.zone_block(P.zone_seconds(facts), P.INNER, brand.INK, brand.INK_SECONDARY, "#FFFFFF", False, bar_h=80)
     stats = [(P.fmt_pace(float(facts["pace_s_per_km"])), "/KM")] if facts.get("pace_s_per_km") else []
     if prev:
         stats.insert(0, (prev, "OLD BEST"))
     if facts.get("avg_hr"):
         stats.append((P.thousands(facts["avg_hr"]), "BPM"))
-    stat_html = "".join(
-        f'<div style="display:flex;align-items:baseline;gap:12px"><span class="saira" style="font-size:62px">{P.esc(v)}</span>'
-        f'<span class="cap" style="font-size:22px">{P.esc(l)}</span></div>' for v, l in stats)
-    css = P.base_css(bg, bone) + f"""
-.tag{{left:{P.PAD}px;top:176px;font-size:34px;color:{arc};letter-spacing:.14em}}
-.label{{left:{P.PAD}px;top:222px;font-size:132px;line-height:.9;width:936px}}
-.hero{{left:{P.PAD - 10}px;top:392px;font-size:560px;line-height:.8;color:{arc};white-space:nowrap}}
-.gain{{left:{P.PAD}px;top:850px;font-size:44px;font-weight:600}}
-.route{{left:{P.PAD}px;top:905px}}
-.bars{{left:{P.PAD}px;top:925px}}
-.stats{{left:{P.PAD}px;top:1236px;width:936px;display:flex;justify-content:space-between;align-items:baseline}}
-.line{{left:0;top:1190px;width:{P.W}px;height:6px;background:{arc}}}
-"""
-    body = f"""{P.header(True, (P.esc(memory.get('name', ''), 20).upper() + ' / ' if memory.get('name') else '') + P.date_label(facts.get('start_local')), bone)}
-<div class="abs cap tag">NEW PERSONAL BEST</div>
-<div class="abs saira label">{label}</div>
-<div class="abs saira hero">{hero}</div>
-<div class="abs gain">{P.esc(gain, 60)}</div>
-{f'<div class="abs route">{route}</div>' if has_route else f'<div class="abs bars">{bars}</div>'}
-<div class="abs stats">{stat_html}</div>"""
+    visual = (f'<div class="abs route" style="position:static">{route}</div>' if has_route
+              else (f'<div class="abs bars" style="position:static">{bars}</div>' if bars else ""))
+    top_right = (P.esc(memory.get("name", ""), 20).upper() + " / " if memory.get("name") else "") + P.date_label(facts.get("start_local"))
+    body = (P.header(False, top_right, brand.QUIET)
+            + P.run_layout(tag="NEW PERSONAL BEST", headline=label, value=hero, unit="", colour=colour, visual=visual, strip="",
+                           stats=stats, value_colour=brand.ARC, chip="PB", extra=P.esc(gain, 60), moment=True,
+                           ground=brand.flood_for_zone(P.effort_mode({**facts, "pb": True})[1]), fg=brand.BONE, soft=brand.BONE,
+                           chip_bg="rgba(237,234,227,.22)"))
+    css = P.base_css(brand.GROUND, brand.INK)
     return P.doc(css, body)
 
 

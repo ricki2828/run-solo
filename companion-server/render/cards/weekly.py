@@ -1,4 +1,4 @@
-"""Weekly recap: the week's km as the hero, day bars in km, coloured by zone share of time, the score moves, the best moment."""
+"""Weekly recap, direction B: a violet hero block, day bars on a white panel, lane blocks for the score moves. The week's km as the hero, day bars in km, coloured by zone share of time, the score moves, the best moment."""
 from __future__ import annotations
 
 from typing import Any, Mapping
@@ -19,7 +19,7 @@ def _day_km(d: Mapping[str, Any]) -> float:
 
 
 def _type_colour(d: Mapping[str, Any]) -> str:
-    return brand.RUN_TYPE_COLOUR.get(str(d.get("type")), brand.SCORE["aerobic"])
+    return brand.CARD_TYPE_COLOUR.get(str(d.get("type")), brand.LANE["aerobic"])
 
 
 def _bars(days: list[Mapping[str, Any]], width: int, height: int) -> str:
@@ -68,43 +68,34 @@ def build_weekly_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None
         if key not in moves:
             continue
         mv = float(moves[key])
-        col = brand.SCORE[key]
+        col = brand.LANE[key]
         arrow = brand.MINT if mv > 0 else (brand.VERMILLION if mv < 0 else quiet)
         chips.append(
-            f'<div style="flex:1"><div style="height:8px;background:{col};border-radius:4px;margin-bottom:14px"></div>'
-            f'<div class="cap" style="font-size:22px;color:{quiet}">{key}</div>'
-            f'<div class="saira" style="font-size:64px;line-height:1;color:{arrow}">{P.signed(mv)}</div></div>')
+            f'<div style="flex:1;min-width:0;position:relative;border-radius:34px;overflow:hidden;background:{brand.tint(col)};padding:34px 22px 0 26px">'
+            f'<div style="position:absolute;left:0;top:0;width:100%;height:12px;background:{col}"></div>'
+            f'<div class="cap" style="font-size:22px;color:{brand.INK_SECONDARY}">{key}</div>'
+            f'<div class="saira" style="font-size:80px;line-height:1.05;color:{arrow}">{P.signed(mv)}</div></div>')
     best = facts.get("best_moment") or {}
     best_html = ""
     if best.get("text"):
-        best_html = (f'<div class="cap" style="font-size:22px;color:{quiet};margin-bottom:8px">BEST MOMENT</div>'
-                     f'<div style="font-size:38px;line-height:1.2;font-weight:600">{P.esc(best["text"], 110)}</div>')
+        best_html = (f'<div class="abs" style="left:{P.BX}px;top:1140px;width:{P.BW}px;height:150px;border-radius:{P.RADIUS}px;background:#FFFFFF;'
+                     f'border:2px solid {brand.HAIRLINE};overflow:hidden"><div class="abs cap" style="left:40px;top:22px;font-size:22px;color:{quiet}">BEST MOMENT</div>'
+                     f'<div class="abs" style="left:40px;top:56px;width:{P.BW - 80}px;font-size:36px;line-height:1.2;font-weight:600">{P.esc(best["text"], 110)}</div></div>')
     week = P.esc(facts.get("week_label", ""), 24)
-    css = P.base_css(brand.GROUND, ink) + f"""
-.tag{{left:{P.PAD}px;top:176px;font-size:34px;color:{quiet};letter-spacing:.14em}}
-.hero{{left:{P.PAD - 8}px;top:214px;display:flex;align-items:baseline;gap:20px}}
-.hero .n{{font-size:330px;line-height:.78}}
-.hero .u{{font-size:64px;color:{brand.SCORE['aerobic']}}}
-.sub{{left:{P.PAD}px;top:500px;font-size:34px;font-weight:600;color:{quiet}}}
-.pace{{left:{P.PAD}px;top:492px;width:936px;display:flex;justify-content:flex-end;gap:36px;align-items:baseline}}
-.bars{{left:{P.PAD}px;top:556px}}
-.moves{{left:{P.PAD}px;top:964px;width:936px;display:flex;gap:28px}}
-.best{{left:{P.PAD}px;top:1146px;width:936px}}
-"""
     sub = f"{facts.get('runs', 0)} runs / {P.fmt_dur(float(facts.get('duration_s', 0)))} on the move"
     pace = []
     for key, label in (("pace_s_per_km", "AVG /KM"), ("quickest_pace_s_per_km", "QUICKEST")):
         if isinstance(facts.get(key), (int, float)) and facts[key] > 0:
-            pace.append(f'<span style="display:flex;align-items:baseline;gap:10px"><span class="saira" style="font-size:44px;color:{ink}">'
-                        f'{P.fmt_pace(float(facts[key]))}</span><span class="cap" style="font-size:22px;color:{quiet}">{label}</span></span>')
-    body = f"""{P.header(False, P.esc(memory.get('name', ''), 20).upper(), quiet)}
-<div class="abs cap tag">{week}</div>
-<div class="abs hero"><span class="saira n">{P.fmt_km(float(facts['distance_km']))}</span><span class="saira u">KM</span></div>
-<div class="abs sub">{P.esc(sub, 60)}</div>
-<div class="abs pace">{''.join(pace)}</div>
-<div class="abs bars">{_bars(list(facts.get('days') or []), 936, 380)}</div>
-<div class="abs moves">{''.join(chips)}</div>
-<div class="abs best">{best_html}</div>"""
+            pace.append(f'<span style="display:flex;align-items:baseline;gap:10px"><span class="saira" style="font-size:50px;color:{brand.INK}">'
+                        f'{P.fmt_pace(float(facts[key]))}</span><span class="cap" style="font-size:22px;color:{brand.INK}">{label}</span></span>')
+    overlay = (f'<div class="abs" style="right:40px;top:92px;display:flex;flex-direction:column;align-items:flex-end;gap:8px">{"".join(pace)}</div>'
+               f'<div class="abs" style="right:40px;bottom:40px;font-size:34px;font-weight:600;color:{brand.INK}">{P.esc(sub, 60)}</div>')
+    block = P.hero_block(168, 360, tag=week, headline="", value=P.fmt_km(float(facts['distance_km'])), unit="KM", size=250, overlay=overlay,
+                         ground=brand.LANE["aerobic"], fg=brand.INK, soft=brand.INK)
+    bars = P.panel(552, 370, f'<div class="abs bars" style="position:static">{_bars(list(facts.get("days") or []), P.INNER, 340)}</div>')
+    moves_html = f'<div class="abs moves" style="left:{P.BX}px;top:946px;width:{P.BW}px;height:170px;display:flex;gap:16px">{"".join(chips)}</div>'
+    body = P.header(False, P.esc(memory.get('name', ''), 20).upper(), quiet) + block + bars + moves_html + best_html
+    css = P.base_css(brand.GROUND, ink)
     return P.doc(css, body)
 
 
