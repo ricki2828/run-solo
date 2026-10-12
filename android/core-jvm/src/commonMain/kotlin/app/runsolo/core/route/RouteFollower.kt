@@ -132,11 +132,6 @@ class RouteFollower(
         val prevFix = lastFixT
         lastFixT = t
         val sinceFix = if (prevFix == null) 0L else (t - prevFix).coerceAtLeast(0)
-        if (ended) {
-            // The route is done: nothing more to follow, so no off-route alerts for the way back.
-            distToEndM = path.distToEndM(path.toLocalX(lon), path.toLocalY(lat))
-            return emptyList()
-        }
         if (sinceFix > config.gapResetMs) {
             offSinceT = null
             backSinceT = null
@@ -151,6 +146,13 @@ class RouteFollower(
         // Nothing in the window at all (the run is somewhere the route never goes): as far off as it gets.
         val dist = hit?.offM ?: Double.MAX_VALUE
         offsetM = dist
+        if (ended) {
+            // The end was announced, possibly a few metres early: progress still runs on to the finish, but the
+            // route is done, so there are no off-route alerts for the way back.
+            distToEndM = path.distToEndM(path.toLocalX(lon), path.toLocalY(lat))
+            if (hit != null && dist <= config.offM) advance(hit)
+            return emptyList()
+        }
         val events = ArrayList<Event>()
         // A poor fix may sit a few metres out without the runner having moved.
         val offLimit = max(config.offM, accuracyM * 1.5)
