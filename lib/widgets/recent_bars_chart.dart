@@ -174,7 +174,12 @@ class RecentBarsChart extends StatelessWidget {
         ? values.reduce(math.min)
         : values.reduce(math.max);
     final bestValue = best ?? shownBest;
-    final pb = bestIndex ?? shown.indexWhere((p) => p.value == bestValue);
+    // Only a unique best is a PB: two bars level on the best share the
+    // honour, so neither gets the tag or the ink bar.
+    final atBest = shown.where((p) => p.value == bestValue).length;
+    final pb =
+        bestIndex ??
+        (atBest == 1 ? shown.indexWhere((p) => p.value == bestValue) : -1);
     final scale = _BarScale(
       values: [
         ...values,

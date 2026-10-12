@@ -74,6 +74,10 @@ class _Body extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final best = group.best;
+    // Only a best nobody ties is Best; level runs are just on the board.
+    final uniqueBest =
+        group.runs.where((r) => group.normMs(r) == group.normMs(best)).length ==
+        1;
     final ranked = [...group.runs]
       ..sort((a, b) {
         final c = group.normMs(a).compareTo(group.normMs(b));
@@ -126,6 +130,7 @@ class _Body extends StatelessWidget {
             best: best,
             group: group,
             units: units,
+            uniqueBest: uniqueBest,
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => RunDetailScreen(runId: ranked[i].id),
@@ -144,6 +149,7 @@ class _RunRow extends StatelessWidget {
     required this.best,
     required this.group,
     required this.units,
+    required this.uniqueBest,
     required this.onTap,
   });
   final int rank;
@@ -151,6 +157,9 @@ class _RunRow extends StatelessWidget {
   final engine.TrailRunFacts best;
   final engine.TrailGroup group;
   final Units units;
+
+  /// Only a best nobody ties gets the cyan accent and the word Best.
+  final bool uniqueBest;
   final VoidCallback onTap;
 
   @override
@@ -174,7 +183,7 @@ class _RunRow extends StatelessWidget {
       label: '#$rank, ${Fmt.clock(norm)}, ${Fmt.dayDate(run.start)}',
       excludeSemantics: true,
       child: RunCard(
-        accent: off <= 0 ? t.accentArc : t.typeTrail,
+        accent: off <= 0 && uniqueBest ? t.accentArc : t.typeTrail,
         onTap: onTap,
         margin: const EdgeInsets.only(bottom: Space.x8),
         padding: const EdgeInsets.symmetric(
@@ -209,9 +218,11 @@ class _RunRow extends StatelessWidget {
                 ),
               ),
               Text(
-                off <= 0 ? 'Best' : '+${Fmt.clock(off)}',
+                off <= 0
+                    ? (uniqueBest ? 'Best' : 'Level')
+                    : '+${Fmt.clock(off)}',
                 style: RunSoloType.body15.copyWith(
-                  color: off <= 0 ? t.accentArc : t.inkSecondary,
+                  color: off <= 0 && uniqueBest ? t.accentArc : t.inkSecondary,
                 ),
               ),
               Icon(Icons.chevron_right, color: t.inkSecondary),

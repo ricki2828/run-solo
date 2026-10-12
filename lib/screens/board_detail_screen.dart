@@ -776,6 +776,11 @@ class _BoardChart extends StatelessWidget {
 
   static const _maxBars = 8;
 
+  /// Two runs level on the best: neither is the PB.
+  static bool _tiedBest(engine.Leaderboard b) =>
+      b.ranked.length > 1 &&
+      b.rankValue(b.ranked[0]) == b.rankValue(b.ranked[1]);
+
   @override
   Widget build(BuildContext context) {
     final board = view.board;
@@ -814,12 +819,23 @@ class _BoardChart extends StatelessWidget {
       axisSuffix: view.axisUnit(units),
       roundTo: view.roundTo,
       steps: view.steps,
+      // At least 30 s/km of range: over the board's distance for a time
+      // board, 30 for a pace board.
+      minSpan: switch (board.kind) {
+        engine.BoardKind.interval => 30,
+        engine.BoardKind.bestEffort ||
+        engine.BoardKind.course ||
+        engine.BoardKind.goalDistance => 30 * (board.metres ?? 0) / 1000,
+        _ => 0,
+      },
       direction: direction,
       emptyTitle: 'Two ${view.noun} draw the first chart.',
       best: view.board.rankValue(pbRun),
-      bestIndex: shown.indexWhere(
-        (e) => e.runId == pbRun.runId && e.metric == pbRun.metric,
-      ),
+      bestIndex: _tiedBest(board)
+          ? -1
+          : shown.indexWhere(
+              (e) => e.runId == pbRun.runId && e.metric == pbRun.metric,
+            ),
       maxBars: _maxBars,
       showValues: false,
       showTwins: true,
@@ -1016,7 +1032,9 @@ class _AllTable extends StatelessWidget {
     final selected = r.runId == selectedRunId;
     return RunCard(
       key: ValueKey('board-row-${r.runId}'),
-      accent: rank == 1 ? t.accentArc : boardAccent(t, view.board.kind),
+      accent: rank == 1 && !_BoardChart._tiedBest(view.board)
+          ? t.accentArc
+          : boardAccent(t, view.board.kind),
       wash: selected ? 0.32 : PackLook.laneTint,
       margin: const EdgeInsets.only(bottom: Space.x8),
       padding: const EdgeInsets.symmetric(

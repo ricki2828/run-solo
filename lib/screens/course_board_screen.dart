@@ -363,6 +363,9 @@ class _CourseBoardScreenState extends State<CourseBoardScreen> {
           services.courseNames,
         ).labelOf(widget.courseId);
         final best = board.best;
+        final uniqueBest =
+            board.ranked.length < 2 ||
+            board.ranked[0].rankSeconds != board.ranked[1].rankSeconds;
         final n = board.ranked.length;
         return Scaffold(
           appBar: RunAppBar(title: '$label · $n ${n == 1 ? 'RUN' : 'RUNS'}'),
@@ -411,12 +414,18 @@ class _CourseBoardScreenState extends State<CourseBoardScreen> {
                     rank: board.rankOf(e.run.id)!,
                     entry: e,
                     showTrue: false,
+                    uniqueBest: uniqueBest,
                   ),
                 const SizedBox(height: Space.x24),
                 _Eyebrow('ALL'),
                 const _BoardHeader(),
                 for (final (i, e) in board.ranked.indexed)
-                  _BoardRow(rank: i + 1, entry: e, showTrue: true),
+                  _BoardRow(
+                    rank: i + 1,
+                    entry: e,
+                    showTrue: true,
+                    uniqueBest: uniqueBest,
+                  ),
               ],
             ],
           ),
@@ -532,9 +541,13 @@ class _BoardRow extends StatelessWidget {
     required this.rank,
     required this.entry,
     required this.showTrue,
+    required this.uniqueBest,
   });
   final int rank;
   final CourseBoardEntry entry;
+
+  /// Only a best nobody ties gets the cyan accent and dot.
+  final bool uniqueBest;
   final bool showTrue;
 
   @override
@@ -547,7 +560,7 @@ class _BoardRow extends StatelessWidget {
     );
     final truth = entry.trueSeconds;
     return RunCard(
-      accent: rank == 1 ? t.accentArc : t.typeGoal,
+      accent: rank == 1 && uniqueBest ? t.accentArc : t.typeGoal,
       margin: const EdgeInsets.only(bottom: Space.x8),
       padding: const EdgeInsets.symmetric(
         horizontal: Space.x12,
@@ -565,7 +578,7 @@ class _BoardRow extends StatelessWidget {
               child: Row(
                 children: [
                   Text('$rank', style: num),
-                  if (rank == 1) ...[
+                  if (rank == 1 && uniqueBest) ...[
                     const SizedBox(width: 4),
                     // A10.2: the #1 row's 6 dp Arc dot; the only Arc here.
                     Container(
