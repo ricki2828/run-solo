@@ -57,7 +57,7 @@ void main() {
     ).pending.where((m) => m.kind != MomentKind.story).map((m) => m.id);
     expect(
       pending.length,
-      greaterThan(1),
+      greaterThan(2),
       reason: 'a first run stacks moments',
     );
 
