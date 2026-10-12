@@ -55,6 +55,7 @@ void main() {
   ) async {
     await pumpApp(tester, fakeServices(), home: const ProgressScreen());
     await pumpTimes(tester, 6);
+    await useTallPhoneView(tester);
     expect(find.byKey(const ValueKey('score-analysis')), findsOneWidget);
     for (final lane in ['aerobic', 'speed', 'mid', 'long']) {
       expect(find.byKey(ValueKey('analysis-$lane')), findsOneWidget);
@@ -68,6 +69,7 @@ void main() {
   ) async {
     await pumpApp(tester, fakeServices(), home: const ProgressScreen());
     await pumpTimes(tester, 6);
+    await useTallPhoneView(tester);
     expect(find.byKey(const ValueKey('pack-panel')), findsOneWidget);
     expect(find.text('YOUR PACK'), findsOneWidget);
     expect(find.text('BOARDS & RECORDS'), findsOneWidget);
@@ -86,6 +88,7 @@ void main() {
       home: const ProgressScreen(),
     );
     await pumpTimes(tester, 6);
+    await useTallPhoneView(tester);
     final prompt = find.text(
       'Add your sex in Settings to see how you compare.',
     );
@@ -115,6 +118,7 @@ void main() {
       home: const ProgressScreen(),
     );
     await pumpTimes(tester, 6);
+    await useTallPhoneView(tester);
     expect(find.textContaining('tested on a lab treadmill'), findsWidgets);
     expect(find.textContaining('Estimate, compared with US men'), findsWidgets);
     expect(find.textContaining('VDOT'), findsNothing);
@@ -148,6 +152,7 @@ void main() {
         home: const ProgressScreen(),
       );
       await pumpTimes(tester, 6);
+      await useTallPhoneView(tester);
       final card = find.byKey(const ValueKey('analysis-aerobic'));
       expect(
         find.descendant(of: card, matching: find.text('$number percentile')),

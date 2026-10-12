@@ -14,6 +14,7 @@ void main() {
   testWidgets('empty: the boards explain themselves', (tester) async {
     await pumpApp(tester, fakeServices(), home: const ProgressScreen());
     await pumpTimes(tester, 6);
+    await useTallPhoneView(tester);
     expect(find.text('PROGRESS'), findsOneWidget);
     expect(find.text('BOARDS & RECORDS'), findsOneWidget);
     expect(find.text('Nothing to rank yet'), findsOneWidget);
@@ -90,6 +91,7 @@ void main() {
       home: const ProgressScreen(),
     );
     await pumpTimes(tester, 6);
+    await useTallPhoneView(tester);
     expect(find.text('INTERVALS'), findsOneWidget);
   });
 
