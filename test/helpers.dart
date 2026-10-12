@@ -16,6 +16,7 @@ import 'package:run_solo/splash/intro_gate.dart';
 import 'package:run_solo/state/companion.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/live_context.dart';
+import 'package:run_solo/state/progress/seen_moments_store.dart';
 import 'package:run_solo/state/send_runs.dart';
 import 'package:run_solo/state/sessions.dart';
 import 'package:run_solo/state/settings.dart';
@@ -51,6 +52,7 @@ AppServices fakeServices({
   FakeStorageGateway? storage,
   List<CustomSession> customSessions = const [],
   Map<String, String> courseNames = const {},
+  SeenMomentsStore? seenMoments,
   engine.BlockPlan? plan,
   List<engine.SavedRoute> routes = const [],
   LiveContextSource? live,
@@ -90,6 +92,7 @@ AppServices fakeServices({
   now: now,
   customSessions: customSessions,
   courseNames: courseNames,
+  seenMoments: seenMoments,
   plan: plan,
   routes: routes,
   history: history,
