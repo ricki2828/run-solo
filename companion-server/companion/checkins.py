@@ -68,8 +68,7 @@ class Planned:
     weeks: int | None = None
     minutes: int | None = None
     distance_m: int | None = None
-    session_id: str | None = None      # which session, when the app said (plan_next.session_id / session_name)
-    session_name: str | None = None
+    session_name: str | None = None    # the session's display name, when the app's plan_next carried one
 
 
 @dataclass(frozen=True)
@@ -121,7 +120,7 @@ def planned_from_run(run: Mapping[str, Any] | None) -> Planned | None:
         return None
     return Planned(run["plan_next_type"], day, run.get("plan_next_week"), run.get("plan_weeks"),
                    run.get("plan_next_min"), run.get("plan_next_m"),
-                   run.get("plan_next_session_id"), run.get("plan_next_session_name"))
+                   run.get("plan_next_session_name"))
 
 
 def usual_weekdays(usual: str | None) -> frozenset[int] | None:

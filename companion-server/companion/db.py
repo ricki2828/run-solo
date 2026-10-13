@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS runs (
   plan_kind TEXT, plan_target_m INTEGER, plan_weeks_to_race INTEGER,
   plan_week INTEGER, plan_weeks INTEGER,  -- the app's 4-week block: this run's week, of how many
   plan_next_type TEXT, plan_next_day TEXT, plan_next_week INTEGER, plan_next_min INTEGER, plan_next_m INTEGER,  -- the next planned session
-  plan_next_session_id TEXT, plan_next_session_name TEXT,  -- which session it is, when the app says so
+  plan_next_session_ref TEXT, plan_next_session_name TEXT,  -- which session it is, when the app says so (ref: opaque, never shown)
   feel TEXT,
   session_name TEXT, work_pace_s_per_km REAL, reps_done INTEGER, rep_spread_s REAL, recovery_pace_s_per_km REAL,  -- an interval session, from the app's verdict numbers
   received_at TEXT NOT NULL,
@@ -277,7 +277,7 @@ def init(path: str) -> None:
         for col, typ in (("app_type", "TEXT"), ("real_upload", "INTEGER"),
                          ("plan_week", "INTEGER"), ("plan_weeks", "INTEGER"), ("plan_next_type", "TEXT"),
                          ("plan_next_day", "TEXT"), ("plan_next_week", "INTEGER"), ("plan_next_min", "INTEGER"),
-                         ("plan_next_m", "INTEGER"), ("plan_next_session_id", "TEXT"), ("plan_next_session_name", "TEXT"),
+                         ("plan_next_m", "INTEGER"), ("plan_next_session_ref", "TEXT"), ("plan_next_session_name", "TEXT"),
                          ("session_name", "TEXT"), ("work_pace_s_per_km", "REAL"), ("reps_done", "INTEGER"),
                          ("rep_spread_s", "REAL"), ("recovery_pace_s_per_km", "REAL")):
             if col not in run_cols:  # databases created before these columns

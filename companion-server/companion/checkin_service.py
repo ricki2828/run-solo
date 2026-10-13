@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import re
 import secrets
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -84,18 +85,18 @@ class CheckinMixin:
         return None if m is None else f"around {m // 60}:{m % 60:02d}"
 
     @staticmethod
-    def _ci_session_name(planned: ci.Planned | None, typ: str) -> tuple[str | None, str | None]:
-        """-> (session id, display name) when the app's plan named the session and it is still that session (a session the
+    def _ci_session_name(planned: ci.Planned | None, typ: str) -> str | None:
+        """The display name when the app's plan named the session and it is still that session (a session the
         coach made easy is a different one). Never guessed from the runner's past runs: none means "kind-level name"."""
-        if planned and planned.session_id and planned.session_name and typ == planned.type:
-            return planned.session_id, planned.session_name
-        return None, None
+        if planned and planned.session_name and typ == planned.type:
+            return planned.session_name
+        return None
 
     def _ci_ctx(self, c, user: dict, slot: str, for_date: date, now: datetime) -> cc.Ctx:
         ans, planned, usual, _today, res = self._ci_state(c, user, now)
         # the session as it stands now: "flat" has made a hard one easy, so the morning card must not call it hard
         typ = res.type if res and res.day == for_date else planned.type if planned else None
-        name = self._ci_session_name(planned, typ)[1] if planned and typ else None
+        name = self._ci_session_name(planned, typ) if planned and typ else None
         label = cc.session_label(typ, planned.minutes, planned.distance_m, name) if planned and typ else None
         if slot == "shape":
             away = ans.get("shape", for_date) == "away"
@@ -681,7 +682,7 @@ class CheckinMixin:
                 raise NotFound()
             user = dict(u)
             _ans, planned, _usual, _today, res = self._ci_state(c, user, now)
-            sid_, name_ = self._ci_session_name(planned, res.type) if res else (None, None)
+            name_ = self._ci_session_name(planned, res.type) if res else None
             line = c.execute(
                 "SELECT kind, headline, body, sent_at FROM cards WHERE user_id=? AND sent_at IS NOT NULL AND sent_at<=? "
                 f"AND kind IN ({','.join('?' * len(COACH_LINE_KINDS))}) ORDER BY sent_at DESC LIMIT 1",
@@ -689,7 +690,7 @@ class CheckinMixin:
         session = None
         if res is not None and planned is not None:
             session = {"date": res.day.isoformat(), "type": res.type, "kind": res.type,
-                       "name": name_ or cc.WORD.get(res.type), "session_id": sid_ or res.type,
+                       "name": name_ or cc.WORD.get(res.type), "session_id": re.sub(r"[^a-z0-9]+", "_", name_.lower()).strip("_") if name_ else res.type,
                        "name_source": "plan" if name_ else "none", "minutes": planned.minutes if not res.easier else None,
                        "distance_m": planned.distance_m if not res.easier else None, "week": planned.week,
                        "weeks": planned.weeks, "moved": res.moved,

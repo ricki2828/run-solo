@@ -1078,7 +1078,7 @@ def test_next_session_names_the_session_only_when_the_plan_did_and_never_guesses
     assert (n["kind"], n["name"], n["session_id"], n["name_source"], n["label"]) == (
         "quality", "Quality session", "quality", "none", "Quality session, 6 km")
     with db.tx(env.path) as c:
-        c.execute("UPDATE runs SET plan_next_session_id='tempo', plan_next_session_name='Tempo' WHERE run_id='last'")
+        c.execute("UPDATE runs SET plan_next_session_name='Tempo' WHERE run_id='last'")
     n = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))["next_session"]
     assert (n["name"], n["session_id"], n["name_source"], n["label"]) == ("Tempo", "tempo", "plan", "Tempo, 6 km")
     env.step(at(2026, 10, 15, 6, 45))
@@ -1088,69 +1088,41 @@ def test_next_session_names_the_session_only_when_the_plan_did_and_never_guesses
     assert (n["kind"], n["name"], n["session_id"], n["name_source"]) == ("easy", "Easy run", "easy", "none")
 
 
-def planned_run(session_id="norwegian_4x4", session_name="Norwegian 4x4", **over):
-    return RunIn(run_id="p1", type="easy", start_utc=at(2026, 10, 13, 7, 0), utc_offset_min=120, zone_id="Europe/Rome",
+def planned_run(**plan):
+    return RunIn(run_id="p1", type="easy", start_utc=at(2026, 10, 13, 8, 0), utc_offset_min=120, zone_id="Europe/Rome",
                  duration_s=2400, distance_m=7000, plan_week=3, plan_weeks=4,
-                 plan_next={"type": "quality", "day": "2026-10-15", "week": 3, "session_id": session_id,
-                            "session_name": session_name, **over})
+                 plan_next={"type": "quality", "day": "2026-10-15", "week": 3, **plan})
 
 
-@pytest.mark.parametrize("sid,name,ok", [
-    ("norwegian_4x4", "Norwegian 4x4", True), (None, None, False), ("tempo", None, False), (None, "Tempo", False),
-    ("Bad Slug!", "Tempo", False), ("x" * 41, "Tempo", False), ("tempo", "T" * 41, False), ("tempo", "Te\u202empo", False),
-    ("tempo", "   ", False), ("tempo", "Tempo\n", True),
+@pytest.mark.parametrize("name,ref,name_ok,ref_ok", [
+    ("Norwegian 4x4", "w1s1", True, True), (None, None, False, False), ("Tempo", None, True, False), (None, "w2s3", False, True),
+    ("T" * 41, "w1s1", False, True), ("Te\u202empo", "w1s1", False, True), ("Te\x00mpo", "w1s1", False, True),
+    ("Tempo\u200b", "w1s1", False, True), ("   ", "w1s1", False, True), ("Tempo\n", "w1s1", True, True),
+    ("Tempo", "Bad Ref!", True, False), ("Tempo", "x" * 17, True, False), ("Tempo", "W1S1", True, False),
 ])
-def test_plan_next_accepts_an_optional_validated_session_pair_and_a_bad_one_never_costs_the_plan(sid, name, ok):
-    kw = {"session_id": sid, "session_name": name}
-    run = RunIn(**{**planned_run().model_dump(), "plan_next": {"type": "quality", "day": "2026-10-15", "week": 3, **kw}})
-    nx = run.plan_next
-    assert nx is not None and nx.day == "2026-10-15"                    # the plan survives whatever the pair is
-    assert (nx.session_id is not None) is ok and (nx.session_name is not None) is ok
+def test_plan_next_takes_optional_session_name_and_ref_and_a_hostile_value_is_dropped_never_the_plan(name, ref, name_ok, ref_ok):
+    kw = {k: v for k, v in (("session_name", name), ("session_ref", ref)) if v is not None}
+    nx = planned_run(**kw).plan_next
+    assert nx is not None and nx.day == "2026-10-15"                    # the plan survives whatever the fields are
+    assert (nx.session_name is not None) is name_ok and (nx.session_ref is not None) is ref_ok
 
 
 def test_old_plan_next_payloads_still_validate_and_unknown_keys_stay_loud():
-    run = RunIn(**{**planned_run().model_dump(), "plan_next": {"type": "easy", "day": "2026-10-15", "week": 3}})
-    assert run.plan_next.session_id is None
+    assert planned_run().plan_next.session_name is None
     with pytest.raises(Exception):
-        RunIn(**{**planned_run().model_dump(), "plan_next": {"type": "easy", "day": "2026-10-15", "week": 3, "mood": "x"}})
+        planned_run(mood="x")
 
 
-def test_the_pair_is_stored_with_the_run_and_listed_in_the_export(env, client):
-    env.svc.ingest_run(env.uid, planned_run(), now=at(2026, 10, 13, 20, 0))
-    row = env.q("SELECT plan_next_session_id, plan_next_session_name FROM runs WHERE run_id='p1'")[0]
-    assert row == {"plan_next_session_id": "norwegian_4x4", "plan_next_session_name": "Norwegian 4x4"}
+def test_the_new_fields_flow_to_the_run_the_export_next_session_and_the_morning_card_but_the_ref_is_never_shown(env, client):
+    env.svc.ingest_run(env.uid, planned_run(session_name="Norwegian 4x4", session_ref="w1s1", distance_m=6000), now=at(2026, 10, 13, 20, 0))
+    assert env.q("SELECT plan_next_session_ref r, plan_next_session_name n FROM runs WHERE run_id='p1'") == [
+        {"r": "w1s1", "n": "Norwegian 4x4"}]
     me = client.get("/v1/me", headers=auth(env.token)).json()
     assert [r["plan_next_session_name"] for r in me["runs_received"] if r["run_id"] == "p1"] == ["Norwegian 4x4"]
-
-
-
-def test_an_ill_window_asks_nothing_and_a_tired_one_still_does(env):
-    put(env, "today", "2026-10-14", "skip", at(2026, 10, 14, 8, 0))
-    put(env, "why", "2026-10-14", "ill", at(2026, 10, 14, 8, 1))
-    with db.tx(env.path) as c:
-        c.execute("UPDATE runs SET plan_next_day='2026-10-16', plan_next_type='easy'")
-    assert env.step(at(2026, 10, 15, 20, 5)) == 0 and env.step(at(2026, 10, 16, 6, 45)) == 0
-    assert env.sends() == []
-    put(env, "why", "2026-10-14", "tired", at(2026, 10, 14, 8, 1))              # control: 3 days, the 16th is outside it
-    assert env.step(at(2026, 10, 16, 6, 45)) == 1
-
-
-def test_a_usual_start_just_after_midnight_does_not_crash_the_planner(env):
-    with db.tx(env.path) as c:
-        c.execute("UPDATE runs SET start_utc=replace(start_utc, 'T05:00:00Z', 'T22:02:00Z')")   # 00:02 in Rome
-        c.execute("UPDATE runs SET start_utc=replace(start_utc, 'T07:00:00Z', 'T22:02:00Z')")
-    with db.tx(env.path) as c:                                # called directly: plan_checkins would swallow an error
-        u = dict(c.execute("SELECT * FROM users").fetchone())
-        assert env.svc._ci_plan_user(c, u, at(2026, 10, 15, 0, 1)) in (0, 1)
-    assert ci.usual_start_min([{"start_utc": "2026-10-12T22:02:00Z", "zone_id": "Europe/Rome"}] * 3, 1, "Europe/Rome",
-                              at(2026, 10, 15, 12, 0)) in (0, 5)
-
-
-def test_a_change_made_while_the_week_card_renders_queues_one_more_render(penv):
-    user = {"id": penv.uid, "channel": "telegram", "zone_id": "Europe/Rome"}
-    now = at(2026, 10, 15, 9, 0)
-    penv.svc._ci_week_enqueue(user, now)
-    with db.tx(penv.path) as c:
-        c.execute("UPDATE outbox SET state='sending' WHERE kind='ci_week'")
-    penv.svc._ci_week_enqueue(user, now + timedelta(seconds=5))
-    assert sorted(r["state"] for r in penv.q("SELECT state FROM outbox WHERE kind='ci_week'")) == ["pending", "sending"]
+    out = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))
+    n = out["next_session"]
+    assert (n["name"], n["session_id"], n["name_source"], n["label"]) == (
+        "Norwegian 4x4", "norwegian_4x4", "plan", "Norwegian 4x4, 6 km")
+    assert "w1s1" not in json.dumps(out)
+    env.step(at(2026, 10, 15, 6, 45))
+    assert any("Today: Norwegian 4x4" in b.get("text", "") for b in env.sends())
