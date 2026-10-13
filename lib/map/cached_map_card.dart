@@ -25,6 +25,14 @@ typedef CardMapRenderer = Widget Function(
   ValueChanged<MapFailure> onFailed,
 );
 
+/// Saturation 0.55: busy tile colours step back, the route stays the colour.
+const List<double> _muted = [
+  0.6457, 0.3218, 0.0325, 0, 0, //
+  0.0957, 0.8718, 0.0325, 0, 0, //
+  0.0957, 0.3218, 0.5825, 0, 0, //
+  0, 0, 0, 1, 0, //
+];
+
 class CachedMapCard extends StatefulWidget {
   const CachedMapCard({
     super.key,
@@ -148,26 +156,35 @@ class _CachedMapCardState extends State<CachedMapCard> {
                 (kind) => _onFailed(key, kind),
               ),
             if (png == null)
-              RouteShape(route: widget.route, color: widget.routeColor)
+              RouteShape(
+                route: widget.route,
+                color: widget.routeColor,
+                card: true,
+              )
             else ...[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(Radii.card),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.memory(
+              Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Tiles step back so the route stays the brightest thing:
+                  // Google and Topo snapshots get the same treatment.
+                  ColorFiltered(
+                    colorFilter: const ColorFilter.matrix(_muted),
+                    child: Image.memory(
                       png,
                       key: const ValueKey('card-map-image'),
                       fit: BoxFit.cover,
                       gaplessPlayback: true,
                       errorBuilder: (_, _, _) => ColoredBox(color: t.bgRaised),
                     ),
-                    // Light dimming only: the card style is already dark, and
-                    // the place has to stay readable. The route is drawn over
-                    // this, in the run-type colour, with a dark casing.
-                    ColoredBox(color: t.bgBase.withValues(alpha: 0.1)),
-                  ],
-                ),
+                  ),
+                  // Tint toward the run colour so the map reads as part of
+                  // the card, then dim a touch so the place stays readable.
+                  if (widget.routeColor != null)
+                    ColoredBox(
+                      color: widget.routeColor!.withValues(alpha: 0.14),
+                    ),
+                  ColoredBox(color: t.bgBase.withValues(alpha: 0.1)),
+                ],
               ),
               if (!widget.bakedRoute)
                 RouteShape(

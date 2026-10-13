@@ -9,6 +9,7 @@ import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../theme/lanes.dart';
 import '../theme/theme.dart';
+import 'activity_map.dart';
 import 'run_card.dart';
 import 'section_card.dart';
 import 'where_when_line.dart';
@@ -117,6 +118,7 @@ class _RecentActivityState extends State<RecentActivity> {
         for (var i = 0; i < shown.length; i++) ...[
           RunCard(
             accent: runTypeColor(shown[i], t),
+            padding: EdgeInsets.zero,
             margin: const EdgeInsets.only(bottom: Space.x8),
             child: _ActivityRow(
               run: shown[i],
@@ -220,110 +222,129 @@ class _ActivityRow extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _ActivityMap(detail: detail, runId: run.id, color: typeColor),
-            Row(
-              children: [
-                Expanded(
-                  // The run-type colour stays on the session name only.
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        if (custom == null)
+            // The map bleeds to the card's edges: no frame inside the card.
+            _ActivityMap(
+              detail: detail,
+              runId: run.id,
+              color: typeColor,
+              climbM: run.row?.climbM,
+              units: units,
+            ),
+            Padding(
+              padding: const EdgeInsets.all(Space.x16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        // The run-type colour stays on the session name only.
+                        child: Text.rich(
                           TextSpan(
-                            text: '$timeWord ',
-                            style: TextStyle(color: t.inkPrimary),
+                            children: [
+                              if (custom == null)
+                                TextSpan(
+                                  text: '$timeWord ',
+                                  style: TextStyle(color: t.inkPrimary),
+                                ),
+                              TextSpan(
+                                text: custom ?? sessionName,
+                                // The run-type colour is the session name's
+                                // alone; a runner's own title is Bone.
+                                style: TextStyle(
+                                  color: custom == null
+                                      ? typeText
+                                      : t.inkPrimary,
+                                ),
+                              ),
+                            ],
                           ),
-                        TextSpan(
-                          text: custom ?? sessionName,
-                          // The run-type colour is the session name's
-                          // alone; a runner's own title is Bone.
-                          style: TextStyle(
-                            color: custom == null ? typeText : t.inkPrimary,
-                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: RunSoloType.heading19,
                         ),
-                      ],
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: RunSoloType.heading19,
-                  ),
-                ),
-                if (run.mode == RecordMode.cooper)
-                  SizedBox(
-                    width: 48,
-                    height: 48,
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      tooltip: '12-minute test info',
-                      icon: Icon(
-                        Icons.info_outline,
-                        size: 18,
-                        color: t.inkSecondary,
                       ),
-                      onPressed: () => showDialog<void>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('12-minute test'),
-                          content: const Text(
-                            '12-minute test: a 12-minute run used to estimate VO2 max from the distance covered. This is a running estimate, not a lab measurement.',
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('Close'),
+                      if (run.mode == RecordMode.cooper)
+                        SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: IconButton(
+                            padding: EdgeInsets.zero,
+                            tooltip: '12-minute test info',
+                            icon: Icon(
+                              Icons.info_outline,
+                              size: 18,
+                              color: t.inkSecondary,
                             ),
-                          ],
+                            onPressed: () => showDialog<void>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('12-minute test'),
+                                content: const Text(
+                                  '12-minute test: a 12-minute run used to estimate VO2 max from the distance covered. This is a running estimate, not a lab measurement.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Close'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: Space.x4),
+                  WhereWhenLine(
+                    key: const ValueKey('activity-where-when'),
+                    place: run.place,
+                    street: run.street,
+                    start: run.start,
+                    utcOffsetMin: run.utcOffsetMin,
+                    style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                  ),
+                  const SizedBox(height: Space.x12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _ActivityStat(
+                          label: units == Units.km ? 'KM' : 'MI',
+                          value: Fmt.distanceBare(run.distanceM, units),
+                          color: typeColor,
                         ),
                       ),
+                      Expanded(
+                        child: _ActivityStat(
+                          label: 'TIME',
+                          value: Fmt.clock(run.durationMs),
+                          color: typeColor,
+                        ),
+                      ),
+                      Expanded(
+                        child: _ActivityStat(
+                          label: workPace ? 'WORK PACE' : 'AVG PACE',
+                          value: Fmt.paceUnit(
+                            workPace ? run.workPaceSecPerKm : run.avgSecPerKm,
+                            units,
+                          ),
+                          color: typeColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (word != null || run.mode == RecordMode.cooper) ...[
+                    const SizedBox(height: Space.x8),
+                    Text(
+                      word != null
+                          ? word.toUpperCase()
+                          : '$stat${statSmall ?? ''}',
+                      style: RunSoloType.micro11.copyWith(color: wordColor),
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: Space.x4),
-            WhereWhenLine(
-              key: const ValueKey('activity-where-when'),
-              place: run.place,
-              street: run.street,
-              start: run.start,
-              utcOffsetMin: run.utcOffsetMin,
-              style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-            ),
-            const SizedBox(height: Space.x12),
-            Row(
-              children: [
-                Expanded(
-                  child: _ActivityStat(
-                    label: units == Units.km ? 'KM' : 'MI',
-                    value: Fmt.distanceBare(run.distanceM, units),
-                    color: typeColor,
-                  ),
-                ),
-                Expanded(
-                  child: _ActivityStat(
-                    label: 'TIME',
-                    value: Fmt.clock(run.durationMs),
-                    color: typeColor,
-                  ),
-                ),
-                Expanded(
-                  child: _ActivityStat(
-                    label: workPace ? 'WORK PACE' : 'AVG PACE',
-                    value: Fmt.paceUnit(
-                      workPace ? run.workPaceSecPerKm : run.avgSecPerKm,
-                      units,
-                    ),
-                    color: typeColor,
-                  ),
-                ),
-              ],
-            ),
-            if (word != null || run.mode == RecordMode.cooper) ...[
-              const SizedBox(height: Space.x8),
-              Text(
-                word != null ? word.toUpperCase() : '$stat${statSmall ?? ''}',
-                style: RunSoloType.micro11.copyWith(color: wordColor),
+                  ],
+                ],
               ),
-            ],
+            ),
           ],
         ),
       ),
@@ -395,10 +416,14 @@ class _ActivityMap extends StatelessWidget {
     required this.detail,
     required this.runId,
     required this.color,
+    required this.climbM,
+    required this.units,
   });
   final Future<RunDetail?> detail;
   final String runId;
   final Color color;
+  final double? climbM;
+  final Units units;
 
   @override
   Widget build(BuildContext context) => FutureBuilder<RunDetail?>(
@@ -408,22 +433,15 @@ class _ActivityMap extends StatelessWidget {
       if (d == null || d.analysis.indoor) return const SizedBox.shrink();
       final route = RouteBuilder.build(d.run);
       if (route.isEmpty) return const SizedBox.shrink();
-      return Padding(
-        padding: const EdgeInsets.only(bottom: Space.x12),
-        child: SizedBox(
-          height: 148,
-          width: double.infinity,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(Radii.card),
-            child: AppServices.of(context).maps.buildCard(
-              context,
-              route,
-              runId: runId,
-              routeColor: color,
-              terrain: usesTerrainMap(d.summary.mode),
-            ),
-          ),
-        ),
+      // The index row's climb, else the loaded run's own elevation.
+      return ActivityMapHeader(
+        route: route,
+        runId: runId,
+        color: color,
+        terrain: usesTerrainMap(d.summary.mode),
+        // The index row's climb, else the loaded run's own elevation.
+        climbM: climbM ?? engine.RunElevation.of(d.run)?.ascentM,
+        units: units,
       );
     },
   );

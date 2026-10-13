@@ -159,6 +159,7 @@ class FakeMapSurfaceFactory implements MapSurfaceFactory {
   }) => RouteShape(
     route: route,
     color: routeColor,
+    card: true,
     key: const ValueKey('fake-card-map'),
   );
 
@@ -212,9 +213,15 @@ class RouteShape extends StatelessWidget {
     this.color,
     this.overlay = false,
     this.plan,
+    this.card = false,
   });
   final RouteGeometry route;
   final String? caption;
+
+  /// Home-card look: square corners (the card clips), a lane-colour wash with
+  /// a soft radial glow and dot grid for ground (texture, never contours), a bolder route with a soft glow, and
+  /// ringed start and finish dots.
+  final bool card;
 
   /// A route being followed (Follow a route), drawn under [route] in a muted
   /// Bone.
@@ -233,14 +240,35 @@ class RouteShape extends StatelessWidget {
     return Semantics(
       label: 'Route map, ${route.markers.length} markers',
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(Radii.card),
-        child: ColoredBox(
-          color: overlay ? Colors.transparent : t.bgRaised,
+        borderRadius: BorderRadius.circular(card ? 0 : Radii.card),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: overlay || card ? null : t.bgRaised,
+            gradient: card && !overlay
+                ? LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color.alphaBlend(
+                        (color ?? t.inkPrimary).withValues(alpha: 0.26),
+                        t.bgRaised,
+                      ),
+                      Color.alphaBlend(
+                        (color ?? t.inkPrimary).withValues(alpha: 0.10),
+                        t.bgRaised,
+                      ),
+                    ],
+                  )
+                : null,
+          ),
           child: Stack(
             fit: StackFit.expand,
             children: [
+              if (card && !overlay)
+                CustomPaint(painter: _GroundPainter(color ?? t.inkPrimary)),
               CustomPaint(
                 painter: _RoutePainter(
+                  card: card,
                   route: route,
                   plan: plan,
                   planInk: t.inkSecondary,
@@ -307,7 +335,9 @@ class _RoutePainter extends CustomPainter {
     required this.muted,
     required this.ground,
     this.casing = false,
+    this.card = false,
   });
+  final bool card;
   final RouteGeometry route;
   final List<GeoPoint>? plan;
   final Color? planInk;
@@ -366,6 +396,18 @@ class _RoutePainter extends CustomPainter {
       final o = map(p);
       path.lineTo(o.dx, o.dy);
     }
+    if (card) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = ink.withValues(alpha: 0.55)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 12
+          ..strokeJoin = StrokeJoin.round
+          ..strokeCap = StrokeCap.round
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
+      );
+    }
     if (casing) {
       canvas.drawPath(
         path,
@@ -382,7 +424,7 @@ class _RoutePainter extends CustomPainter {
       Paint()
         ..color = ink
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 4
+        ..strokeWidth = card ? 5 : 4
         ..strokeJoin = StrokeJoin.round
         ..strokeCap = StrokeCap.round,
     );
@@ -390,16 +432,20 @@ class _RoutePainter extends CustomPainter {
       final o = map(m.point);
       switch (m.kind) {
         case RouteMarkerKind.start:
-          canvas.drawCircle(o, 5, Paint()..color = ink);
+          if (card) {
+            canvas.drawCircle(o, 8, Paint()..color = ground);
+          }
+          canvas.drawCircle(o, card ? 5.5 : 5, Paint()..color = ink);
         case RouteMarkerKind.finish:
-          canvas.drawCircle(o, 5, Paint()..color = ground);
+          final r = card ? 7.0 : 5.0;
+          canvas.drawCircle(o, r, Paint()..color = ground);
           canvas.drawCircle(
             o,
-            5,
+            r,
             Paint()
               ..color = ink
               ..style = PaintingStyle.stroke
-              ..strokeWidth = 2,
+              ..strokeWidth = card ? 3 : 2,
           );
         case RouteMarkerKind.work:
         case RouteMarkerKind.recovery:
@@ -431,5 +477,36 @@ class _RoutePainter extends CustomPainter {
       old.route != route ||
       old.plan != plan ||
       old.ink != ink ||
-      old.casing != casing;
+      old.casing != casing ||
+      old.card != card;
+}
+
+/// Ground for a card with no map yet: a soft radial wash and a fine dot grid
+/// in the run colour. Deliberately texture, not terrain: it carries no
+/// contour lines, which a runner would read as real hills.
+class _GroundPainter extends CustomPainter {
+  _GroundPainter(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width * 0.6, size.height * 0.45);
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [color.withValues(alpha: 0.14), color.withValues(alpha: 0)],
+        ).createShader(Rect.fromCircle(center: c, radius: size.width * 0.7)),
+    );
+    final dot = Paint()..color = color.withValues(alpha: 0.22);
+    const gap = 14.0;
+    for (var y = gap / 2; y < size.height; y += gap) {
+      for (var x = gap / 2; x < size.width; x += gap) {
+        canvas.drawCircle(Offset(x, y), 0.9, dot);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GroundPainter old) => old.color != color;
 }
