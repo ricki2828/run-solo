@@ -8,7 +8,7 @@ import '../platform/gateway.dart' show Units;
 import '../theme/theme.dart';
 
 /// The map that leads a Home run card: full width, the route in the run
-/// colour, and the run's climb over the map's lower left. The map credit
+/// colour, and the run's climb over the map's top left. The map credit
 /// stays bottom right, where the tile licence needs it. [maps] defaults to
 /// the app's factory; the topo-surface harness passes its own.
 class ActivityMapHeader extends StatelessWidget {
@@ -51,7 +51,7 @@ class ActivityMapHeader extends StatelessWidget {
           if (climb != null && climb >= 1)
             Positioned(
               left: Space.x12,
-              bottom: Space.x12,
+              top: Space.x12,
               child: IgnorePointer(
                 child: Container(
                   key: const ValueKey('activity-map-climb'),
