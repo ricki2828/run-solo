@@ -1078,7 +1078,7 @@ def test_next_session_names_the_session_only_when_the_plan_did_and_never_guesses
     assert (n["kind"], n["name"], n["session_id"], n["name_source"], n["label"]) == (
         "quality", "Quality session", "quality", "none", "Quality session, 6 km")
     with db.tx(env.path) as c:
-        c.execute("UPDATE runs SET plan_next_session_name='Tempo intervals' WHERE run_id='last'")
+        c.execute("UPDATE runs SET plan_next_session_id='tempo_intervals', plan_next_session_name='Tempo intervals' WHERE run_id='last'")
     n = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))["next_session"]
     assert (n["name"], n["session_id"], n["name_source"], n["label"]) == (
         "Tempo intervals", "tempo_intervals", "plan", "Tempo intervals, 6 km")
@@ -1101,9 +1101,9 @@ def builtin_names():
 
 
 @pytest.mark.parametrize("name", builtin_names())
-def test_every_built_in_session_name_is_accepted_with_its_id_hint_and_ref(name):
-    nx = planned_run(session_name=name, session_id="norwegian_4x4", session_ref="w1s1").plan_next
-    assert (nx.session_name, nx.session_id, nx.session_ref) == (name, "norwegian_4x4", "w1s1")
+def test_every_built_in_session_name_is_accepted_with_its_id(name):
+    nx = planned_run(session_name=name, session_id="norwegian_4x4").plan_next
+    assert (nx.session_name, nx.session_id) == (name, "norwegian_4x4")
 
 
 @pytest.mark.parametrize("name", [
@@ -1112,23 +1112,26 @@ def test_every_built_in_session_name_is_accepted_with_its_id_hint_and_ref(name):
     "@runner", "t.me/someone", "https://x.example", "8 x 400 m", "8 × 400 m extra", "123 × 400 m", "A" * 41,
     "my own session", "   ",
 ])
-def test_anything_but_a_built_in_name_drops_the_name_and_its_id_and_never_the_plan(name):
-    nx = planned_run(session_name=name, session_id="norwegian_4x4", session_ref="w1s1").plan_next
+def test_anything_but_a_built_in_name_drops_the_pair_and_never_the_plan(name):
+    nx = planned_run(session_name=name, session_id="norwegian_4x4").plan_next
     assert nx is not None and nx.day == "2026-10-15" and nx.type == "quality"
-    assert nx.session_name is None and nx.session_id is None          # the hint only ever rides with an accepted name
-    assert nx.session_ref == "w1s1"                                   # the opaque ref is independent
+    assert nx.session_name is None and nx.session_id is None
 
 
-@pytest.mark.parametrize("sid,ref,id_ok,ref_ok", [
-    ("norwegian_4x4", "w1s1", True, True), ("Bad Slug!", "w1s1", False, True), ("x" * 41, "w1s1", False, True),
-    ("norwegian-4x4", "w1s1", False, True), (None, "Bad Ref!", False, False), (None, "x" * 17, False, False),
-    (None, "W1S1", False, False), (None, None, False, False),
+@pytest.mark.parametrize("sid,name,kept", [
+    ("norwegian_4x4", "Norwegian 4x4", True), ("Bad Slug!", "Norwegian 4x4", False), ("x" * 41, "Norwegian 4x4", False),
+    ("norwegian-4x4", "Norwegian 4x4", False), ("norwegian_4x4", None, False), (None, "Norwegian 4x4", False), (None, None, False),
 ])
-def test_the_id_hint_and_the_ref_are_bounded_slugs_and_a_bad_one_is_dropped_alone(sid, ref, id_ok, ref_ok):
-    kw = {k: v for k, v in (("session_id", sid), ("session_ref", ref)) if v is not None}
-    nx = planned_run(session_name="Norwegian 4x4", **kw).plan_next
-    assert nx.session_name == "Norwegian 4x4"
-    assert (nx.session_id is not None) is id_ok and (nx.session_ref is not None) is ref_ok
+def test_the_pair_is_both_or_neither(sid, name, kept):
+    kw = {k: v for k, v in (("session_id", sid), ("session_name", name)) if v is not None}
+    nx = planned_run(**kw).plan_next
+    assert nx.day == "2026-10-15"
+    assert (nx.session_id is not None) is kept and (nx.session_name is not None) is kept
+
+
+def test_a_session_ref_is_not_a_field_any_more():
+    with pytest.raises(Exception):
+        planned_run(session_name="Norwegian 4x4", session_id="norwegian_4x4", session_ref="w1s1")
 
 
 def test_old_plan_next_payloads_still_validate_and_unknown_keys_stay_loud():
@@ -1137,16 +1140,28 @@ def test_old_plan_next_payloads_still_validate_and_unknown_keys_stay_loud():
         planned_run(mood="x")
 
 
-def test_the_new_fields_flow_to_the_run_the_export_next_session_and_the_morning_card_but_the_ref_is_never_shown(env, client):
-    env.svc.ingest_run(env.uid, planned_run(session_name="Norwegian 4x4", session_ref="w1s1", distance_m=6000), now=at(2026, 10, 13, 20, 0))
-    assert env.q("SELECT plan_next_session_ref r, plan_next_session_name n FROM runs WHERE run_id='p1'") == [
-        {"r": "w1s1", "n": "Norwegian 4x4"}]
+def test_the_apps_exact_payload_is_accepted_with_200_and_the_name_flows_everywhere(env, client):
+    """The payload shape of the app's templated plan_next (PR 287: companionPlanFacts + companionTemplateFacts)."""
+    start = at(2026, 10, 13, 8, 0)
+    body = {"run_id": "app1", "type": "easy", "start_utc": start.isoformat(), "utc_offset_min": 120, "zone_id": "Europe/Rome",
+            "duration_s": 2400, "distance_m": 7000, "plan_week": 3, "plan_weeks": 4,
+            "plan_next": {"type": "quality", "day": "2026-10-15", "week": 3, "distance_m": 6000,
+                          "session_id": "tempo", "session_name": "Tempo intervals"}}
+    r = client.post("/v1/runs", json=body, headers=auth(env.token))
+    assert r.status_code in (200, 202), r.text
+    r2 = client.post("/v1/runs", json={**body, "run_id": "app2", "plan_next": {k: v for k, v in body["plan_next"].items()
+                                                                              if k not in ("session_id", "session_name")}},
+                     headers=auth(env.token))
+    assert r2.status_code in (200, 202), r2.text                      # an old payload, no session keys
+    assert env.q("SELECT plan_next_session_id i, plan_next_session_name n FROM runs WHERE run_id='app1'") == [
+        {"i": "tempo", "n": "Tempo intervals"}]
     me = client.get("/v1/me", headers=auth(env.token)).json()
-    assert [r["plan_next_session_name"] for r in me["runs_received"] if r["run_id"] == "p1"] == ["Norwegian 4x4"]
+    assert [r["plan_next_session_name"] for r in me["runs_received"] if r["run_id"] == "app1"] == ["Tempo intervals"]
+    with db.tx(env.path) as c:   # both runs share a start; make the named one the newest
+        c.execute("DELETE FROM runs WHERE run_id='app2'")
     out = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))
     n = out["next_session"]
     assert (n["name"], n["session_id"], n["name_source"], n["label"]) == (
-        "Norwegian 4x4", "norwegian_4x4", "plan", "Norwegian 4x4, 6 km")
-    assert "w1s1" not in json.dumps(out)
+        "Tempo intervals", "tempo", "plan", "Tempo intervals, 6 km")
     env.step(at(2026, 10, 15, 6, 45))
-    assert any("Today: Norwegian 4x4" in b.get("text", "") for b in env.sends())
+    assert any("Today: Tempo intervals, 6 km" in b.get("text", "") for b in env.sends())
