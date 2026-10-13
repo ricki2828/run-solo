@@ -21,7 +21,8 @@ PHOTO_MAX_BYTES = 10 * 1024 * 1024     # Telegram sendPhoto
 VIDEO_MAX_BYTES = 50 * 1024 * 1024     # Telegram bot upload ceiling
 OP_MAX_BYTES = {"card": PHOTO_MAX_BYTES, "video": VIDEO_MAX_BYTES}
 OP_KINDS = {
-    "card": frozenset({"light", "flood", "pb", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly"}),
+    "card": frozenset({"light", "flood", "pb", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly",
+                       "today", "today_verdict", "moved", "pinned_week"}),
     "video": frozenset({"run", "weekly"}),
 }
 ROUTE_GRID, ROUTE_MAX_POINTS, SPLITS_MAX, REPS_MAX, TITLE_MAX = 255, 120, 100, 60, 24
@@ -44,6 +45,9 @@ ALLOWED_FACT_KEYS = frozenset({
     "kind", "value", "line",
     "weeks_to_race", "race_name",
     "month_label", "month_start", "run_count",
+    # coach cards (today, today_verdict, moved, pinned_week): numbers, fixed enums and short labels only
+    "target_pace_lo_s", "target_pace_hi_s", "target_kind", "result_pace_s", "units",
+    "to_day", "from_day", "skip_reason", "today_idx", "guide", "hr_ceiling_bpm",
 })
 
 # Every kind is held to its own list on top of ALLOWED_FACT_KEYS: a suggestion card has no business carrying a place, a
@@ -55,6 +59,18 @@ RUN_KEYS = frozenset({"type", "start_local", "distance_km", "duration_s", "headl
 WEEK_KEYS = frozenset({"week_label", "distance_km", "runs", "duration_s", "days", "score_moves", "best_moment",
                        "pace_s_per_km", "quickest_pace_s_per_km"})
 NEW_KINDS = frozenset({"suggestion", "milestone", "race_countdown", "monthly"})   # these also get value-shape checks
+# Coach cards. The session name is a short label the plan owns; the reason is a fixed enum, never free text.
+COACH_KINDS = frozenset({"today", "today_verdict", "moved", "pinned_week"})
+TODAY_KEYS = frozenset({"type", "session", "distance_km", "duration_s", "date_local", "target_pace_lo_s", "target_pace_hi_s",
+                        "target_kind", "units", "guide", "hr_ceiling_bpm"})
+RUN_TYPES = frozenset({"easy", "long", "tempo", "interval", "race", "cooper", "trail", "rest"})
+DAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+SKIP_REASONS = frozenset({"tired", "busy", "sore", "travelling", "ill", "weather", "missed"})
+VERDICTS = ("faster", "slower", "in_range", "pb")   # the app's verdict, scored with the engine's per-session floor
+SESSION_MAX = 32
+WEEK_DAY_KEYS = frozenset({"type", "planned_km", "done_km"})
+COACH_REQUIRED = {"today": {"type", "session"}, "today_verdict": {"type", "session"}, "moved": {"type", "session", "to_day"},
+                  "pinned_week": {"days"}}
 KIND_FACT_KEYS = {
     "light": RUN_KEYS, "flood": RUN_KEYS, "pb": RUN_KEYS, "weekly_recap": WEEK_KEYS,
     "run": RUN_KEYS, "weekly": WEEK_KEYS,   # the videos
@@ -62,6 +78,9 @@ KIND_FACT_KEYS = {
     "milestone": frozenset({"kind", "value", "line"}),
     "race_countdown": frozenset({"weeks_to_race", "race_name"}),
     "monthly": frozenset({"month_label", "month_start", "distance_km", "run_count", "duration_s", "climb_m", "runs"}),
+    "today": TODAY_KEYS, "today_verdict": TODAY_KEYS | {"result_pace_s", "pb", "verdict"},
+    "moved": frozenset({"type", "session", "distance_km", "duration_s", "units", "to_day", "from_day", "skip_reason"}),
+    "pinned_week": frozenset({"week_label", "days", "duration_s", "units", "today_idx"}),
 }
 MONTHLY_RUN_KEYS = frozenset({"date", "type", "distance_km", "duration_s"})   # no route, no zones, no place, no run id
 MONTHLY_MAX_RUNS = 62
@@ -87,6 +106,8 @@ def check_request(req: Any) -> tuple[str, str, dict]:
         raise ProtocolError("bad_request")
     if kind in KIND_FACT_KEYS:
         if not set(facts) <= KIND_FACT_KEYS[kind] or (kind in NEW_KINDS and not _kind_values_ok(kind, facts)):
+            raise ProtocolError("bad_request")
+        if kind in COACH_KINDS and not (COACH_REQUIRED[kind] <= set(facts) and _coach_values_ok(facts)):
             raise ProtocolError("bad_request")
     return op, kind, facts
 
@@ -148,6 +169,60 @@ def _kind_values_ok(kind: str, facts: dict) -> bool:
         elif not _text(v):
             return False
     return True
+
+
+def _in(v: Any, allowed: Any) -> bool:
+    """Membership for an enum, False (never a TypeError) for an unhashable value such as a list or a dict."""
+    return isinstance(v, str) and v in allowed
+
+
+def _coach_values_ok(facts: dict) -> bool:
+    """Value shapes for the coach cards: a number in range, a member of a fixed set, or a short string. Nothing else."""
+    def rng(v: Any, lo: float, hi: float) -> bool:
+        return _num(v) and lo <= v <= hi
+    for k, v in facts.items():
+        if k in ("session", "week_label"):
+            ok = isinstance(v, str) and 1 <= len(v) <= (SESSION_MAX if k == "session" else TITLE_MAX)
+        elif k == "date_local":
+            ok = isinstance(v, str) and len(v) <= 32
+        elif k == "type":
+            ok = _in(v, RUN_TYPES)
+        elif k == "distance_km":
+            ok = rng(v, 0.01, 500)
+        elif k == "duration_s":
+            ok = rng(v, 1, 1_000_000)
+        elif k in ("target_pace_lo_s", "target_pace_hi_s", "result_pace_s"):
+            ok = rng(v, 60, 3600)
+        elif k == "target_kind":
+            ok = _in(v, ("work", "pace"))
+        elif k == "guide":
+            ok = _in(v, ("chatty", "recovery", "steady"))
+        elif k == "hr_ceiling_bpm":
+            ok = _int_in(v, 80, 220)
+        elif k == "verdict":
+            ok = _in(v, VERDICTS)
+        elif k == "units":
+            ok = _in(v, ("km", "mi"))
+        elif k == "pb":
+            ok = isinstance(v, bool)
+        elif k == "skip_reason":
+            ok = _in(v, SKIP_REASONS)
+        elif k == "from_day":
+            ok = _in(v, DAY_NAMES)
+        elif k == "to_day":
+            ok = _in(v, DAY_NAMES) or v == "next_week"
+        elif k == "today_idx":
+            ok = _int_in(v, 0, 6)
+        elif k == "days":
+            ok = isinstance(v, list) and 1 <= len(v) <= 7 and all(
+                isinstance(d, dict) and set(d) <= WEEK_DAY_KEYS and _in(d.get("type"), RUN_TYPES)
+                and rng(d.get("planned_km", 0), 0, 1000) and rng(d.get("done_km", 0), 0, 1000) for d in v)
+        else:
+            ok = False
+        if not ok:
+            return False
+    lo, hi = facts.get("target_pace_lo_s"), facts.get("target_pace_hi_s")
+    return lo is None or hi is None or lo <= hi
 
 
 def encode_request(op: str, kind: str, facts: dict) -> bytes:

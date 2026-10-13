@@ -35,11 +35,14 @@ VIDEO_TIMEOUT_S = 120.0
 def _render_one(op: str, kind: str, facts: dict, out: Path) -> None:
     """Runs inside the child. Raises on any failure."""
     if op == "card":
-        from .cards import (render_milestone, render_monthly_poster, render_pb, render_post_run, render_race_countdown,
-                            render_suggestion, render_weekly_recap)
+        from .cards import (render_milestone, render_monthly_poster, render_moved, render_pb, render_pinned_week,
+                            render_post_run, render_race_countdown, render_suggestion, render_today,
+                            render_today_verdict, render_weekly_recap)
         fn = {"light": render_post_run, "flood": render_post_run, "pb": render_pb,
               "weekly_recap": render_weekly_recap, "suggestion": render_suggestion, "milestone": render_milestone,
-              "race_countdown": render_race_countdown, "monthly": render_monthly_poster}[kind]
+              "race_countdown": render_race_countdown, "monthly": render_monthly_poster,
+              "today": render_today, "today_verdict": render_today_verdict, "moved": render_moved,
+              "pinned_week": render_pinned_week}[kind]
         out.write_bytes(fn(facts, {}))  # no memory: nothing here draws a name
     elif kind == "run":
         from .motion import render_run_video
