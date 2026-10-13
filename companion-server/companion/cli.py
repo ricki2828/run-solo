@@ -1,4 +1,4 @@
-"""Operator commands: python -m companion.cli {status|pause|resume|set-webhook|purge|replay|replay-stop|replay-abort}.
+"""Operator commands: python -m companion.cli {status|pause|resume|set-webhook|set-menu-button|purge|replay|replay-stop|replay-abort}.
 Never prints secrets."""
 from __future__ import annotations
 
@@ -108,6 +108,13 @@ def main(argv: list[str]) -> int:
             "url": f"{base.rstrip('/')}/hooks/telegram", "secret_token": s.telegram_webhook_secret,
             "allowed_updates": ["message", "callback_query"], "drop_pending_updates": True})
         print("setWebhook:", r.status_code, r.json().get("description", ""))
+    elif cmd == "set-menu-button":  # the bot's default menu button opens the Mini App (needs COMPANION_MINIAPP=1)
+        if not (s.telegram_enabled and s.miniapp_enabled):
+            print("telegram or COMPANION_MINIAPP not configured")
+            return 1
+        r = svc.http.post(f"{s.telegram_api}/bot{s.telegram_token}/setChatMenuButton", json={
+            "menu_button": {"type": "web_app", "text": "My week", "web_app": {"url": s.miniapp_url}}})
+        print("setChatMenuButton:", r.status_code, r.json().get("description", ""))
     else:
         print(__doc__)
         return 2
