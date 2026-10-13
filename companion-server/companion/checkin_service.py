@@ -190,6 +190,8 @@ class CheckinMixin:
         ans, planned, usual, today, res = self._ci_state(c, u, now)
         if planned is None:
             return False
+        if slot in ("ready", "today") and ci.ill_covers(ans, for_date):
+            return False   # ill: rest. No question and no morning card; the evening hold says the same
         if slot == "ready":
             return (res is not None and res.day == for_date and for_date == today + timedelta(days=1)
                     and ans.get("ready", for_date) is None and ci.worth_asking("ready", planned, ans, for_date, today, usual))
@@ -242,7 +244,7 @@ class CheckinMixin:
             due = ci.at_local(today, max(start_m - ci.TODAY_LEAD_MIN, 0), u["zone_id"])
             if in_quiet(due, u["zone_id"], qs, qe):
                 due = quiet_end_utc(due, u["zone_id"], qe)
-            latest = ci.at_local(today, start_m - ci.TODAY_MIN_LEAD_MIN, u["zone_id"])   # C4: never after start - 5 min
+            latest = ci.at_local(today, max(start_m - ci.TODAY_MIN_LEAD_MIN, 0), u["zone_id"])   # C4: never after start - 5 min
             if due <= latest and due <= now and self._ci_wanted(c, u, "today", today, now):
                 n += self._ci_enqueue(c, u, "today", today, due, now, latest)
         # after an easy run that came out slower and harder than it should: ask once
@@ -498,9 +500,10 @@ class CheckinMixin:
             return
         monday = (to_local(now, user["zone_id"]).date() - timedelta(days=to_local(now, user["zone_id"]).weekday())).isoformat()
         with db.tx(self.s.db_path) as c:
-            if c.execute("SELECT 1 FROM outbox WHERE user_id=? AND kind='ci_week' AND ref=? AND state IN ('pending','sending')",
+            if c.execute("SELECT 1 FROM outbox WHERE user_id=? AND kind='ci_week' AND ref=? AND state='pending'",
                          (user["id"], monday)).fetchone():
-                return   # one render per burst: the queued item draws the newest state when it runs
+                return   # one render per burst: the queued item draws the newest state when it runs (a render already under way
+                # may have missed this change, so only a waiting item counts)
             c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
                       (user["id"], "ci_week", iso(now + timedelta(seconds=WEEK_DEBOUNCE_S)),
                        f"ciw:{user['id']}:{monday}:{int(now.timestamp())}", monday))

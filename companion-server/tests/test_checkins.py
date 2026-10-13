@@ -974,6 +974,7 @@ LIGHTER = {
     "sore the evening before": ([("ready", "2026-10-15", "sore")], "2026-10-17"),
     "ill week with a fresh plan": ([("today", "2026-10-15", "skip"), ("why", "2026-10-15", "ill")], "2026-10-21"),
 }
+NO_CARD = {"ill week with a fresh plan"}   # ill: rest, so no morning card at all (the other sources still get an easy one)
 
 
 @pytest.mark.parametrize("name", list(LIGHTER))
@@ -988,6 +989,9 @@ def test_inside_a_lighter_window_a_quality_session_is_easy_on_every_surface(penv
     nxt = penv.svc.next_session(penv.uid, now)["next_session"]
     assert nxt["type"] == "easy" and nxt["label"].startswith("Easy run") and nxt["date"] == plan_day   # Home
     penv.step(now)
+    if name in NO_CARD:
+        assert penv.sends("sendPhoto") == [] and penv.sends() == []
+        return
     caption = [b["caption"] for b in penv.sends("sendPhoto") if "caption" in b][-1]
     assert caption.startswith("Today: Easy run")                                                       # the morning card
     wk = penv.svc._ci_week_facts(sqlite3_ro(penv), {"id": penv.uid, "zone_id": "Europe/Rome"},
@@ -1081,3 +1085,35 @@ def test_next_session_carries_the_real_type_and_name_read_from_the_last_quality_
     n = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))["next_session"]
     assert (n["kind"], n["name"], n["name_source"]) == ("long", "Long run", "plan")
     env.step(at(2026, 10, 15, 6, 45))   # messages use the same name
+
+
+def test_an_ill_window_asks_nothing_and_a_tired_one_still_does(env):
+    put(env, "today", "2026-10-14", "skip", at(2026, 10, 14, 8, 0))
+    put(env, "why", "2026-10-14", "ill", at(2026, 10, 14, 8, 1))
+    with db.tx(env.path) as c:
+        c.execute("UPDATE runs SET plan_next_day='2026-10-16', plan_next_type='easy'")
+    assert env.step(at(2026, 10, 15, 20, 5)) == 0 and env.step(at(2026, 10, 16, 6, 45)) == 0
+    assert env.sends() == []
+    put(env, "why", "2026-10-14", "tired", at(2026, 10, 14, 8, 1))              # control: 3 days, the 16th is outside it
+    assert env.step(at(2026, 10, 16, 6, 45)) == 1
+
+
+def test_a_usual_start_just_after_midnight_does_not_crash_the_planner(env):
+    with db.tx(env.path) as c:
+        c.execute("UPDATE runs SET start_utc=replace(start_utc, 'T05:00:00Z', 'T22:02:00Z')")   # 00:02 in Rome
+        c.execute("UPDATE runs SET start_utc=replace(start_utc, 'T07:00:00Z', 'T22:02:00Z')")
+    with db.tx(env.path) as c:                                # called directly: plan_checkins would swallow an error
+        u = dict(c.execute("SELECT * FROM users").fetchone())
+        assert env.svc._ci_plan_user(c, u, at(2026, 10, 15, 0, 1)) in (0, 1)
+    assert ci.usual_start_min([{"start_utc": "2026-10-12T22:02:00Z", "zone_id": "Europe/Rome"}] * 3, 1, "Europe/Rome",
+                              at(2026, 10, 15, 12, 0)) in (0, 5)
+
+
+def test_a_change_made_while_the_week_card_renders_queues_one_more_render(penv):
+    user = {"id": penv.uid, "channel": "telegram", "zone_id": "Europe/Rome"}
+    now = at(2026, 10, 15, 9, 0)
+    penv.svc._ci_week_enqueue(user, now)
+    with db.tx(penv.path) as c:
+        c.execute("UPDATE outbox SET state='sending' WHERE kind='ci_week'")
+    penv.svc._ci_week_enqueue(user, now + timedelta(seconds=5))
+    assert sorted(r["state"] for r in penv.q("SELECT state FROM outbox WHERE kind='ci_week'")) == ["pending", "sending"]
