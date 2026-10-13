@@ -1150,3 +1150,23 @@ def test_the_new_fields_flow_to_the_run_the_export_next_session_and_the_morning_
     assert "w1s1" not in json.dumps(out)
     env.step(at(2026, 10, 15, 6, 45))
     assert any("Today: Norwegian 4x4" in b.get("text", "") for b in env.sends())
+
+
+def test_the_apps_exact_payload_is_accepted_over_http_and_the_name_reaches_next_session(env, client):
+    """The templated plan_next the app sends (session_id and session_name only; there is no session_ref)."""
+    start = at(2026, 10, 13, 8, 0)
+    body = {"run_id": "app1", "type": "easy", "start_utc": start.isoformat(), "utc_offset_min": 120, "zone_id": "Europe/Rome",
+            "duration_s": 2400, "distance_m": 7000, "plan_week": 3, "plan_weeks": 4,
+            "plan_next": {"type": "quality", "day": "2026-10-15", "week": 3, "distance_m": 6000,
+                          "session_id": "tempo", "session_name": "Tempo intervals"}}
+    r = client.post("/v1/runs", json=body, headers=auth(env.token))
+    assert r.status_code in (200, 202), r.text
+    n = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))["next_session"]
+    assert (n["name"], n["session_id"], n["name_source"], n["label"]) == (
+        "Tempo intervals", "tempo", "plan", "Tempo intervals, 6 km")
+    # an unknown name is dropped, not refused: the run is still accepted and the kind name shows
+    bad = {**body, "run_id": "app2", "start_utc": at(2026, 10, 13, 9, 0).isoformat(),
+           "plan_next": {**body["plan_next"], "session_name": "My secret session"}}
+    assert client.post("/v1/runs", json=bad, headers=auth(env.token)).status_code in (200, 202)
+    n = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))["next_session"]
+    assert (n["name"], n["name_source"]) == ("Quality session", "none")
