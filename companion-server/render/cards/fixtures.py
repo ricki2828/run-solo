@@ -248,3 +248,78 @@ def share_opted_in() -> dict[str, Any]:
 # Route generators and every run fixture, public so other renderers (motion) share one source.
 stadium, loop, out_and_back = _stadium, _loop, _out_and_back
 RUNS = {"singapore_intervals": singapore_intervals, "milos_trail": milos_trail, "slow_hot_day": slow_hot_day, "pb_5k": pb_5k}
+
+
+# --- coach cards (today, today_verdict, moved, pinned_week) ---------------------------------------------------------
+# Only numbers, fixed enums and short labels: see render/protocol.py COACH_* for the contract.
+
+def today_4x4() -> dict[str, Any]:
+    return {"type": "interval", "session": "Norwegian 4x4", "duration_s": 2820, "date_local": "2026-10-20T06:45",
+            "target_pace_lo_s": 255, "target_pace_hi_s": 260, "target_kind": "work", "units": "km"}
+
+
+def today_easy_no_target() -> dict[str, Any]:
+    return {"type": "easy", "session": "Easy run", "distance_km": 6, "date_local": "2026-10-21T07:00", "units": "km"}
+
+
+def today_long_name() -> dict[str, Any]:
+    return {"type": "long", "session": "Progressive long run, strides", "distance_km": 18.5, "date_local": "2026-10-24T08:10",
+            "target_pace_lo_s": 345, "target_pace_hi_s": 365, "target_kind": "pace", "units": "km"}
+
+
+def today_tempo_miles() -> dict[str, Any]:
+    return {"type": "tempo", "session": "Tempo", "distance_km": 9.66, "date_local": "2026-10-22T18:00",
+            "target_pace_lo_s": 335, "target_pace_hi_s": 345, "target_kind": "work", "units": "mi"}
+
+
+def verdict_faster() -> dict[str, Any]:
+    return today_4x4() | {"result_pace_s": 254}
+
+
+def verdict_slower() -> dict[str, Any]:
+    return today_4x4() | {"result_pace_s": 268}
+
+
+def verdict_in_range() -> dict[str, Any]:
+    return today_4x4() | {"result_pace_s": 257}
+
+
+def verdict_pb() -> dict[str, Any]:
+    return {"type": "race", "session": "5 km time trial", "distance_km": 5, "date_local": "2026-10-25T07:00",
+            "target_pace_lo_s": 262, "target_pace_hi_s": 268, "target_kind": "pace", "result_pace_s": 260, "pb": True, "units": "km"}
+
+
+def verdict_miles() -> dict[str, Any]:
+    return today_tempo_miles() | {"result_pace_s": 327}
+
+
+def moved_tempo_tired() -> dict[str, Any]:
+    return {"type": "tempo", "session": "Tempo", "distance_km": 9, "to_day": "tue", "from_day": "thu", "skip_reason": "tired",
+            "units": "km"}
+
+
+def moved_next_week_long_name() -> dict[str, Any]:
+    return {"type": "interval", "session": "Norwegian 4x4 with warm-up", "duration_s": 3000, "to_day": "next_week",
+            "from_day": "thu", "skip_reason": "travelling", "units": "km"}
+
+
+def moved_miles_no_reason() -> dict[str, Any]:
+    return {"type": "long", "session": "Long run", "distance_km": 19.3, "to_day": "sun", "units": "mi"}
+
+
+def pinned_week_midweek() -> dict[str, Any]:
+    return {"week_label": "Week 43", "duration_s": 5560, "today_idx": 2, "units": "km", "days": [
+        {"type": "rest"}, {"type": "interval", "planned_km": 8.4, "done_km": 8.4}, {"type": "easy", "planned_km": 6, "done_km": 0},
+        {"type": "tempo", "planned_km": 9}, {"type": "rest"}, {"type": "long", "planned_km": 14}, {"type": "rest"}]}
+
+
+def pinned_week_big_missed() -> dict[str, Any]:
+    """A 10+ hour week with a missed day (Tuesday's easy run) and an unplanned extra on the rest day."""
+    return {"week_label": "Week 44 build", "duration_s": 12 * 3600 + 31 * 60 + 45, "today_idx": 5, "units": "km", "days": [
+        {"type": "easy", "planned_km": 12, "done_km": 12.4}, {"type": "easy", "planned_km": 10, "done_km": 0},
+        {"type": "interval", "planned_km": 14, "done_km": 14.6}, {"type": "easy", "planned_km": 12, "done_km": 11.8},
+        {"type": "rest", "done_km": 6.2}, {"type": "long", "planned_km": 32, "done_km": 0}, {"type": "tempo", "planned_km": 16}]}
+
+
+def pinned_week_miles() -> dict[str, Any]:
+    return pinned_week_midweek() | {"units": "mi"}

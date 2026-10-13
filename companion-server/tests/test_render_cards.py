@@ -237,6 +237,21 @@ GOLDENS = {
     "monthly_poster_noroute": ("render_monthly_poster", F.monthly_poster_noroute),
     "share_private": ("render_share_card", F.share_private),
     "share_opted_in": ("render_share_card", F.share_opted_in),
+    "today_4x4": ("render_today", F.today_4x4),
+    "today_easy_no_target": ("render_today", F.today_easy_no_target),
+    "today_long_name": ("render_today", F.today_long_name),
+    "today_miles": ("render_today", F.today_tempo_miles),
+    "verdict_faster": ("render_today_verdict", F.verdict_faster),
+    "verdict_slower": ("render_today_verdict", F.verdict_slower),
+    "verdict_in_range": ("render_today_verdict", F.verdict_in_range),
+    "verdict_pb": ("render_today_verdict", F.verdict_pb),
+    "verdict_miles": ("render_today_verdict", F.verdict_miles),
+    "moved_tempo_tired": ("render_moved", F.moved_tempo_tired),
+    "moved_next_week_long_name": ("render_moved", F.moved_next_week_long_name),
+    "moved_miles_no_reason": ("render_moved", F.moved_miles_no_reason),
+    "pinned_week_midweek": ("render_pinned_week", F.pinned_week_midweek),
+    "pinned_week_big_missed": ("render_pinned_week", F.pinned_week_big_missed),
+    "pinned_week_miles": ("render_pinned_week", F.pinned_week_miles),
 }
 SIZES = {"monthly_poster": (1080, 1920), "monthly_poster_noroute": (1080, 1920)}
 
