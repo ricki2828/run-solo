@@ -422,7 +422,7 @@ SUGGESTIONS: dict[str, list[tuple[str, str]]] = {
         ("Plan says long", "{weeks_txt} to the race, {gap_txt} since the last long run. Do {session} tomorrow."),
         ("Tomorrow: long", "{gap_txt} since a long run, race in {weeks_txt}. {session} tomorrow, {start}."),
         ("Keep the long run", "With {weeks_txt} to go, {session} tomorrow keeps the plan honest."),
-        ("Long run tomorrow?", "Race day is {weeks_txt} out. Last long run was {gap_txt} back. Go {session}."),
+        ("Long run tomorrow?", "Race day is {weeks_txt} out. Last long run was {gap_txt} back. Go {session} tomorrow."),
         ("For the plan", "{weeks_txt} to race, {gap_txt} since the long run. Tomorrow: {session}."),
         ("Distance day", "Plan wants a long run: {gap_txt} since the last, race in {weeks_txt}. {session}, {start}."),
         ("Stay on plan", "{weeks_txt} out from the race. Time for {session} tomorrow."),

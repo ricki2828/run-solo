@@ -193,6 +193,34 @@ CREATE TABLE IF NOT EXISTS replay_items (  -- every message the replay sent: vir
   virtual_at TEXT NOT NULL, real_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS replay_items_card ON replay_items (card_id);
+-- Check-ins (companion.checkins): the runner's one-tap life answers. Kept 14 days, then purged; shown in the export under
+-- `checkins`; excluded from the nightly backup (backup.PRIVATE_TABLES). Never read by the writer or any model prompt.
+-- kind: ready | today | why | postrun | shape. local_date: the session day (ready, today, why), the run's local day
+-- (postrun) or the Monday of the week it is about (shape). value: a fixed enum (see checkins.py), never free text.
+CREATE TABLE IF NOT EXISTS checkin_answers (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL, local_date TEXT NOT NULL, value TEXT NOT NULL, created_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, kind, local_date)
+);
+CREATE INDEX IF NOT EXISTS checkin_answers_age ON checkin_answers (user_id, created_at);
+-- One row per coach-initiated check-in message (C2): claimed BEFORE the send, message_id stored after, so a retry or a
+-- restart can never post it twice (at-most-once). Holds ids and dates only, no answer.
+CREATE TABLE IF NOT EXISTS checkin_slots (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  slot TEXT NOT NULL, local_date TEXT NOT NULL,
+  card_id TEXT, message_id TEXT, is_photo INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL DEFAULT 'claimed',  -- claimed | sent | consumed
+  claimed_at TEXT NOT NULL, sent_at TEXT,
+  PRIMARY KEY (user_id, slot, local_date)
+);
+CREATE INDEX IF NOT EXISTS checkin_slots_card ON checkin_slots (card_id);
+-- The question cap (C1): at most one unprompted question with a keyboard per runner local day. The unique key IS the
+-- cap: a send claims its row first, and only the claimer sends.
+CREATE TABLE IF NOT EXISTS question_cap (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  local_date TEXT NOT NULL, slot TEXT NOT NULL, claimed_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, local_date)
+);
 -- Tables below hold no user data (no user_id column).
 CREATE TABLE IF NOT EXISTS llm_calls (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

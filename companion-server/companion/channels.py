@@ -37,9 +37,32 @@ def utf16_len(text: str) -> int:
 
 
 class ChannelError(Exception):
-    def __init__(self, msg: str, *, permanent: bool = False):
+    def __init__(self, msg: str, *, permanent: bool = False, status: int | None = None, description: str = "",
+                 retry_after: float | None = None, ambiguous: bool = False):
         super().__init__(msg)
         self.permanent = permanent  # the content was refused (bad media): retrying the same bytes will not help
+        self.status = status
+        self.description = description.lower()
+        self.retry_after = retry_after  # Telegram 429: seconds to wait before the next call
+        # The request may have been delivered although we did not see the answer (timeout, dropped connection, a 5xx).
+        # A caller that must not send twice (check-in slots) leaves its claim in place instead of retrying.
+        self.ambiguous = ambiguous
+
+    @property
+    def rate_limited(self) -> bool:
+        return self.status == 429
+
+    @property
+    def not_modified(self) -> bool:
+        """The edit asked for what the message already shows. That is success."""
+        return self.status == 400 and "not modified" in self.description
+
+    @property
+    def cant_edit(self) -> bool:
+        """The message to edit is gone (deleted by the runner), too old, or not that kind of message."""
+        return self.status == 400 and any(w in self.description for w in (
+            "not found", "can't be edited", "no text in the message", "no caption in the message",
+            "message_id_invalid", "message identifier"))
 
 
 @dataclass(frozen=True)
@@ -63,6 +86,23 @@ class Inbound:
     callback_id: str | None = None
     callback_message_id: str | None = None
     name: str = ""  # display name or @username of the sender, never the id
+    code: str | None = None  # a check-in button: its code (checkins.CODES), with card_id; no button_idx
+
+
+CHECKIN_PREFIX = "ci1:"   # `ci1:<card id>:<code>`; the code names its stage, so a stale tap cannot be misread
+
+
+def checkin_data(card_id: str, code: str) -> str:
+    return f"{CHECKIN_PREFIX}{card_id}:{code}"
+
+
+def parse_checkin_callback(data: str) -> tuple[str, str] | None:
+    if not data.startswith(CHECKIN_PREFIX):
+        return None
+    card_id, sep, code = data[len(CHECKIN_PREFIX):].partition(":")
+    if not sep or not card_id.isalnum() or len(card_id) > 64 or not code.replace(".", "").isalnum() or len(code) > 12:
+        return None
+    return card_id, code
 
 
 def parse_callback(data: str) -> tuple[str, int] | None:
@@ -88,12 +128,22 @@ class TelegramChannel:
                 r = self.http.post(url, data={k: str(v) for k, v in payload.items()}, files=files, timeout=60)
             else:
                 r = self.http.post(url, json=payload, timeout=10)
+        except httpx.HTTPError as e:
+            raise ChannelError(f"telegram transport: {type(e).__name__}", ambiguous=True) from None
+        try:
             data = r.json()
-        except (httpx.HTTPError, ValueError) as e:
-            raise ChannelError(f"telegram transport: {type(e).__name__}") from None
+        except ValueError:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
         if r.status_code != 200 or not data.get("ok"):
+            desc = data.get("description") if isinstance(data.get("description"), str) else ""
+            params = data.get("parameters") if isinstance(data.get("parameters"), dict) else {}
+            ra = params.get("retry_after")
             raise ChannelError(f"telegram {method}: http {r.status_code}",
-                               permanent=_media_rejected(r.status_code, data.get("description")))
+                               permanent=_media_rejected(r.status_code, desc), status=r.status_code, description=desc,
+                               retry_after=float(ra) if isinstance(ra, (int, float)) and not isinstance(ra, bool) else None,
+                               ambiguous=r.status_code >= 500 or r.status_code == 200)
         return data
 
     def send_text(self, ref: str, text: str) -> str:
@@ -212,6 +262,83 @@ class TelegramChannel:
         except ChannelError:
             pass  # cosmetic only
 
+    # ---- check-ins: plain messages the coach starts and then edits in place (service.checkins) ----
+    @staticmethod
+    def checkin_markup(card_id: str, keyboard: list[list[tuple[str, str]]]) -> dict:
+        return {"inline_keyboard": [[{"text": label[:40], "callback_data": checkin_data(card_id, code)}
+                                     for label, code in row] for row in keyboard]}
+
+    def send_checkin(self, ref: str, card_id: str, text: str, keyboard: list[list[tuple[str, str]]],
+                     media: Media | None = None) -> tuple[str, bool]:
+        """-> (message id, is a photo). A photo when the renderer supplied one and the text fits a caption."""
+        markup = self.checkin_markup(card_id, keyboard) if keyboard else None
+        if media and media.photo and len(media.photo) <= PHOTO_MAX_BYTES and utf16_len(text) <= CAPTION_MAX:
+            fields: dict[str, Any] = {"chat_id": int(ref), "caption": text}
+            if markup:
+                fields["reply_markup"] = json.dumps(markup)
+            try:
+                return str(self._call("sendPhoto", fields, {"photo": ("card.png", media.photo, "image/png")})
+                           ["result"]["message_id"]), True
+            except ChannelError as e:
+                if not e.permanent:
+                    raise
+        payload: dict[str, Any] = {"chat_id": int(ref), "text": text}
+        if markup:
+            payload["reply_markup"] = markup
+        return str(self._call("sendMessage", payload)["result"]["message_id"]), False
+
+    def edit_checkin(self, ref: str, message_id: str, card_id: str, text: str, keyboard: list[list[tuple[str, str]]],
+                     is_photo: bool) -> None:
+        """Edit the message to this text and keyboard. "Not modified" is success; every other failure raises
+        ChannelError (`cant_edit` when the message is gone, `rate_limited` with `retry_after` on a 429)."""
+        payload: dict[str, Any] = {"chat_id": int(ref), "message_id": int(message_id),
+                                   "reply_markup": self.checkin_markup(card_id, keyboard)}
+        payload["caption" if is_photo else "text"] = text
+        try:
+            self._call("editMessageCaption" if is_photo else "editMessageText", payload)
+        except ChannelError as e:
+            if not e.not_modified:
+                raise
+
+    def edit_into_card(self, ref: str, message_id: str, card: OutCard, is_photo: bool) -> None:
+        """Turn an earlier message (the morning today card) into this run card, in place (C3). A photo replaces the
+        picture; text edits the caption or the text. "Not modified" is success; anything else raises ChannelError, and
+        the caller sends the card as a new message instead."""
+        text = f"{card.headline}\n{card.body}"
+        has_photo = bool(card.media and card.media.photo)
+        kb = self._keyboard(card, media=has_photo)
+        markup = {"inline_keyboard": kb}
+        try:
+            if has_photo:
+                if not is_photo or utf16_len(text) > CAPTION_MAX:
+                    raise ChannelError("telegram editMessageMedia: not applicable", status=400, description="can't be edited")
+                fields = {"chat_id": int(ref), "message_id": int(message_id), "reply_markup": json.dumps(markup),
+                          "media": json.dumps({"type": "photo", "media": "attach://photo", "caption": text})}
+                self._call("editMessageMedia", fields, {"photo": ("card.png", card.media.photo, "image/png")})
+            else:
+                payload: dict[str, Any] = {"chat_id": int(ref), "message_id": int(message_id), "reply_markup": markup}
+                payload["caption" if is_photo else "text"] = text
+                self._call("editMessageCaption" if is_photo else "editMessageText", payload)
+        except ChannelError as e:
+            if not e.not_modified:
+                raise
+
+    def clear_keyboard(self, ref: str, message_id: str) -> None:
+        try:
+            self._call("editMessageReplyMarkup", {"chat_id": int(ref), "message_id": int(message_id),
+                                                  "reply_markup": {"inline_keyboard": []}})
+        except ChannelError:
+            pass  # cosmetic
+
+    def answer_callback(self, callback_id: str | None, text: str = "") -> None:
+        """Answer the tap first, so the button stops spinning whatever happens next."""
+        if not callback_id:
+            return
+        try:
+            self._call("answerCallbackQuery", {"callback_query_id": callback_id, **({"text": text} if text else {})})
+        except ChannelError:
+            pass  # cosmetic
+
     @staticmethod
     def parse(update: dict) -> Inbound | None:
         uid = update.get("update_id")
@@ -224,6 +351,10 @@ class TelegramChannel:
             chat = m.get("chat") or {}
             if chat.get("type") != "private" or "id" not in (cb.get("from") or {}):
                 return None
+            ci = parse_checkin_callback(str(cb.get("data", "")))
+            if ci:
+                return Inbound("telegram", str(cb["from"]["id"]), msg_id, card_id=ci[0], code=ci[1],
+                               callback_id=str(cb.get("id")), callback_message_id=str(m.get("message_id", "")) or None)
             parsed = parse_callback(str(cb.get("data", "")))
             if not parsed:
                 return None

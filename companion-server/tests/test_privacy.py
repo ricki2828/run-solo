@@ -45,6 +45,13 @@ def populate(client, fakes):
     with db.tx(client.svc.s.db_path) as w:
         w.execute("INSERT INTO note_mode (user_id, run_id, expires_at) SELECT user_id, run_id, ? FROM run_notes",
                   (iso(now_utc() + timedelta(minutes=5)),))
+        # the check-in tables (coach v2): an answer, a sent-slot row and a cap row
+        w.execute("INSERT INTO checkin_answers (user_id, kind, local_date, value, created_at) SELECT id, 'why', '2026-10-15', "
+                  "'ill', ? FROM users", (iso(now_utc()),))
+        w.execute("INSERT INTO checkin_slots (user_id, slot, local_date, state, claimed_at) SELECT id, 'today', '2026-10-15', "
+                  "'sent', ? FROM users", (iso(now_utc()),))
+        w.execute("INSERT INTO question_cap (user_id, local_date, slot, claimed_at) SELECT id, '2026-10-15', 'today', ? "
+                  "FROM users", (iso(now_utc()),))
     return t
 
 
@@ -66,7 +73,8 @@ def test_delete_leaves_zero_rows_in_every_table_with_user_data(client, fakes):
     populated = {n for n in user_tables if c.execute(
         f"SELECT COUNT(*) FROM {n} WHERE " + ("id" if n == "users" else "user_id") + "=?", (uid,)).fetchone()[0]}
     assert {"users", "devices", "runs", "memory", "cards", "outbox", "quota", "outcomes", "msglog", "inbound_seen", "enrolments",
-            "convo_log", "convo_cards", "convo_area", "run_notes", "note_mode", "run_shape"} <= populated, populated
+            "convo_log", "convo_cards", "convo_area", "run_notes", "note_mode", "run_shape", "checkin_answers", "checkin_slots",
+            "question_cap"} <= populated, populated
 
     assert client.delete("/v1/me", headers=auth(t)).json() == {"status": "deleted"}
 

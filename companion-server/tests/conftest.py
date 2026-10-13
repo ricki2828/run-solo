@@ -47,12 +47,29 @@ class Fakes:
         self.llm: list[dict] = []
         self.llm_mode = "ok"
         self.mid = 100
+        self.fails: dict[str, list[tuple]] = {}   # Telegram method -> queued failures (see fail())
+
+    def fail(self, method: str, status: int = 400, description: str = "", retry_after: float | None = None,
+             times: int = 1, timeout: bool = False) -> None:
+        """The next `times` calls to this Telegram method fail: an HTTP error (optionally a 429 with retry_after) or a
+        timeout, in which case the call may or may not have been delivered (it is recorded, then times out)."""
+        self.fails.setdefault(method, []).extend([(status, description, retry_after, timeout)] * times)
 
     def handler(self, req: httpx.Request) -> httpx.Response:
         host, path = req.url.host, req.url.path
         body = parse_request_body(req)
         if host == "api.telegram.org":
             method = path.rsplit("/", 1)[-1]
+            queued = self.fails.get(method)
+            if queued:
+                status, description, retry_after, timeout = queued.pop(0)
+                if timeout:
+                    self.tg.append((method, body))   # delivered, but the answer never arrives
+                    raise httpx.ReadTimeout("slow")
+                err: dict = {"ok": False, "error_code": status, "description": description}
+                if retry_after is not None:
+                    err["parameters"] = {"retry_after": retry_after}
+                return httpx.Response(status, json=err)
             self.tg.append((method, body))
             self.mid += 1
             return httpx.Response(200, json={"ok": True, "result": {"message_id": self.mid}})
@@ -109,6 +126,7 @@ def make_settings(tmp_path, **over) -> Settings:
         wa_app_secret=WA_SECRET, wa_verify_token="verifyme",
         openrouter_key="or-test-key", monthly_cap_usd=5.0,
         default_quiet=(0, 0),  # never quiet unless a test says so
+        checkins_enabled=True,
         weather_enabled=True,  # fake Open-Meteo answers 404, so weather simply stays absent
     )
     base.update(over)
