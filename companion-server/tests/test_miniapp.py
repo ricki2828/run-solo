@@ -144,6 +144,15 @@ def test_unlinked_user_is_403(mc):
     assert mc.get("/miniapp/api/me", headers=tma(sign(STRANGER))).status_code == 403
 
 
+def test_unconfirmed_enrolment_is_403(mc):
+    """A users row exists from /start, but until the app confirms the code (consent_at set) the user is not linked."""
+    con = sqlite3.connect(mc.svc.s.db_path)
+    con.execute("UPDATE users SET consent_at=NULL WHERE chat_ref=?", (OTHER,))
+    con.commit()
+    assert mc.get("/miniapp/api/me", headers=tma(sign(int(OTHER)))).status_code == 403
+    assert mc.get("/miniapp/api/me", headers=tma(sign(int(OWNER)))).status_code == 200
+
+
 def test_missing_and_wrong_scheme_headers_are_401(mc):
     assert mc.get("/miniapp/api/me").status_code == 401
     assert mc.get("/miniapp/api/me", headers={"Authorization": f"Bearer {mc.tok}"}).status_code == 401  # a device token is not initData
@@ -250,6 +259,22 @@ def test_view_week_lanes_latest_next(tmp_path):
     assert {x["lane"]: x["change"] for x in v["lanes"]} == {"aerobic": 1, "speed": 3, "mid": 0, "long": 0}
     assert v["week"]["next"]["type"] == "tempo" and v["latest"]["reps"] == [{"time_s": 250.0}]
     assert "route" not in json.dumps(v)
+
+
+def test_lane_change_is_the_42_day_sum_of_stored_deltas(tmp_path):
+    """Server definition: the sum of the per-run deltas over the last 42 days. It cannot be the app's percentile change
+    (ScoreNorms.change needs VDOT, age and sex, which stay on the phone), and the app does not send scores_delta today."""
+    path, now = _seed(tmp_path)
+    with db.tx(path) as c:
+        c.execute("INSERT INTO runs (user_id, run_id, start_utc, end_utc, utc_offset_min, zone_id, type, duration_s, distance_m, "
+                  "scores_delta, received_at) VALUES ('u','old',?,?,0,'UTC','easy',100,1000,'{\"aerobic\": 5}','x')",
+                  ((now - timedelta(days=41)).isoformat(),) * 2)
+        c.execute("INSERT INTO runs (user_id, run_id, start_utc, end_utc, utc_offset_min, zone_id, type, duration_s, distance_m, "
+                  "scores_delta, received_at) VALUES ('u','older',?,?,0,'UTC','easy',100,1000,'{\"aerobic\": 9}','x')",
+                  ((now - timedelta(days=43)).isoformat(),) * 2)
+    with db.ro(path) as c:
+        v = build_view(c, "u", "UTC", now)
+    assert v["lane_days"] == 42 and {x["lane"]: x["change"] for x in v["lanes"]}["aerobic"] == 1 + 5
 
 
 def test_view_with_no_runs_and_a_past_next_session(tmp_path):

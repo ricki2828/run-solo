@@ -150,21 +150,27 @@
       app.appendChild(card);
     }
 
-    app.appendChild(el("h2", null, "Your four lanes"));
-    var grid = el("div", "lanes");
-    data.lanes.forEach(function (ln) {
-      var t = el("button", "lane " + ln.lane);
-      t.type = "button";
-      t.appendChild(el("span", "eyebrow", LANE_NAME[ln.lane]));
-      var c = ln.change;
-      var n = el("span", "n" + (c > 0 ? " up" : c < 0 ? " down" : ""), c == null ? "-" : (c > 0 ? "+" : c < 0 ? "−" : "") + Math.abs(c));
-      t.appendChild(n);
-      var cap = el("span", "cap", c == null ? "no moves yet" : "last " + (data.lane_days / 7) + " weeks");
-      t.appendChild(cap);
-      t.addEventListener("click", function () { tap(); });
-      grid.appendChild(t);
-    });
-    app.appendChild(grid);
+    var anyLane = data.lanes.some(function (ln) { return ln.change != null; });
+    if (!anyLane) {
+      app.appendChild(el("h2", null, "Your four lanes"));
+      app.appendChild(el("p", "foot", "Lane changes show in the Run Supreme app."));
+    } else {
+      app.appendChild(el("h2", null, "Your four lanes"));
+      var grid = el("div", "lanes");
+      data.lanes.forEach(function (ln) {
+        var t = el("button", "lane " + ln.lane);
+        t.type = "button";
+        t.appendChild(el("span", "eyebrow", LANE_NAME[ln.lane]));
+        var c = ln.change;
+        var n = el("span", "n" + (c > 0 ? " up" : c < 0 ? " down" : ""), c == null ? "-" : (c > 0 ? "+" : c < 0 ? "−" : "") + Math.abs(c));
+        t.appendChild(n);
+        var cap = el("span", "cap", c == null ? "no moves yet" : "last " + (data.lane_days / 7) + " weeks");
+        t.appendChild(cap);
+        t.addEventListener("click", function () { tap(); });
+        grid.appendChild(t);
+      });
+      app.appendChild(grid);
+    }
     app.appendChild(el("p", "foot", "Only your runs, from what your coach already has."));
   }
 

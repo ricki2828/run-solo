@@ -146,9 +146,9 @@ def install(app: FastAPI, settings: Settings, svc) -> None:
             log.info("miniapp auth refused: %s", e.code)
             raise HTTPException(401, "unauthorised") from None
         with db.ro(settings.db_path) as c:
-            u = c.execute("SELECT id, zone_id FROM users WHERE channel='telegram' AND chat_ref=?",
+            u = c.execute("SELECT id, zone_id FROM users WHERE channel='telegram' AND chat_ref=? AND consent_at IS NOT NULL",
                           (str(who["user_id"]),)).fetchone()
-            if not u:
+            if not u:  # no row, or enrolment never confirmed in the app (consent_at is set at confirm)
                 raise HTTPException(403, "not linked")
             return build_view(c, u["id"], u["zone_id"], now)
 
