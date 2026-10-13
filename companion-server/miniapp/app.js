@@ -22,10 +22,13 @@
     var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
     return h ? h + "h " + m + "m" : m + " min";
   }
-  function when(iso) {
-    var d = new Date(iso + "T12:00:00");
-    return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  var WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  var MO = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function when(iso) {   // "Tue 13 Oct", as the app writes it
+    var p = iso.split("-"), d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+    return WD[d.getUTCDay()] + " " + d.getUTCDate() + " " + MO[d.getUTCMonth()];
   }
+  function mmss(s) { return Math.floor(s / 60) + ":" + String(Math.round(s % 60)).padStart(2, "0"); }
 
   function applyTheme() {
     var root = document.documentElement;
@@ -41,27 +44,38 @@
     } catch (e) {}
   }
 
-  function message(title, text) {
+  function message(title, text, steps) {
     app.replaceChildren();
-    var p = el("p", "state");
-    p.appendChild(el("b", null, title));
-    p.appendChild(document.createTextNode(text));
-    app.appendChild(p);
+    var hero = el("section", "hero");
+    hero.appendChild(el("div", "eyebrow", "Run Supreme"));
+    hero.appendChild(el("p", "big", title));
+    hero.appendChild(el("p", "lede", text));
+    if (steps) {
+      var ol = el("ol", "steps");
+      steps.forEach(function (s) { ol.appendChild(el("li", null, s)); });
+      hero.appendChild(ol);
+    }
+    app.appendChild(hero);
   }
 
-  function bars(values, cls, lane) {
-    var wrap = el("div", "bars " + cls + " " + lane);
-    var max = Math.max.apply(null, values);
-    var min = Math.min.apply(null, values);
-    var spread = 1 - min / max;   // how far the slowest is behind the fastest, as speed
+  // Pace bars, taller = faster. The scale spans at least 30 s/km, so near-equal splits look near-equal.
+  function bars(values, lane) {
+    var wrap = el("div", "bars " + lane);
+    var min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+    var span = Math.max(max - min, 30);
     values.forEach(function (v) {
       var i = el("i");
-      // taller = faster (speed = 1/time). A spread under 3% is shown flat rather than blown up.
-      var f = spread < 0.03 ? 0.8 : 0.4 + 0.6 * ((min / v) - (min / max)) / (1 - min / max);
-      i.style.height = Math.round(f * 100) + "%";
+      i.style.height = Math.round((0.4 + 0.6 * (1 - (v - min) / span)) * 100) + "%";
       wrap.appendChild(i);
     });
     return wrap;
+  }
+
+  function headline(l) {
+    var h = el("span", "eyebrow");
+    h.appendChild(el("span", "date", when(l.date)));
+    h.appendChild(document.createTextNode(" \u00b7 " + (l.title || TYPE_NAME[l.type] || l.type)));
+    return h;
   }
 
   function home() {
@@ -110,7 +124,7 @@
       var card = el("button", "card " + l.lane);
       card.type = "button";
       var head = el("div", "head");
-      head.appendChild(el("span", "eyebrow", when(l.date) + " · " + (l.title || TYPE_NAME[l.type] || l.type)));
+      head.appendChild(headline(l));
       var b = el("b", null, String(l.km));
       b.appendChild(el("small", null, "km"));
       head.appendChild(b);
@@ -121,11 +135,14 @@
         .forEach(function (f) { if (f[0]) { var s = el("span"); s.appendChild(el("b", null, f[0])); s.appendChild(document.createTextNode(" " + f[1])); facts.appendChild(s); } });
       body.appendChild(facts);
       if (l.reps) {
-        body.appendChild(bars(l.reps.map(function (r) { return r.time_s; }), "reps", l.lane));
-        body.appendChild(el("div", "axis", l.reps.length + " reps"));
+        var chips = el("div", "chips");   // rep times, labelled: equal reps are the point of a 4x4, so no bars
+        l.reps.forEach(function (r) { chips.appendChild(el("span", null, mmss(r.time_s))); });
+        body.appendChild(chips);
+        body.appendChild(el("div", "axis", l.reps.length + " reps, time each"));
       } else if (l.splits) {
-        body.appendChild(bars(l.splits.map(function (s) { return s.pace_s; }), "splits", l.lane));
-        body.appendChild(el("div", "axis", "pace per km"));
+        var ps = l.splits.map(function (s) { return s.pace_s; });
+        body.appendChild(bars(ps, l.lane));
+        body.appendChild(el("div", "axis", "pace per km, fastest " + pace(Math.min.apply(null, ps)) + ", slowest " + pace(Math.max.apply(null, ps))));
       }
       body.appendChild(el("span", "more", "See the detail"));
       card.appendChild(body);
@@ -148,7 +165,7 @@
       grid.appendChild(t);
     });
     app.appendChild(grid);
-    app.appendChild(el("p", "foot", "Only your own runs. Nothing here is new data."));
+    app.appendChild(el("p", "foot", "Only your runs, from what your coach already has."));
   }
 
   function run() {
@@ -156,7 +173,7 @@
     var l = data.latest;
     var card = el("section", "card " + l.lane);
     var head = el("div", "head");
-    head.appendChild(el("span", "eyebrow", when(l.date) + " · " + (l.title || TYPE_NAME[l.type] || l.type)));
+    head.appendChild(headline(l));
     var b = el("b", null, String(l.km));
     b.appendChild(el("small", null, "km"));
     head.appendChild(b);
@@ -174,7 +191,7 @@
       body.appendChild(ul);
     }
     if (l.work_pace_s) body.appendChild(el("p", "facts", "Work pace " + pace(l.work_pace_s) + (l.rep_spread_s ? ", reps within " + l.rep_spread_s + " s" : "")));
-    if (l.reps) rows("Reps", l.reps, function (r) { return Math.floor(r.time_s / 60) + ":" + String(Math.round(r.time_s % 60)).padStart(2, "0"); }, function (r, i) { return "Rep " + (i + 1); });
+    if (l.reps) rows("Reps", l.reps, function (r) { return mmss(r.time_s); }, function (r, i) { return "Rep " + (i + 1); });
     if (l.splits) rows("Splits", l.splits, function (s) { return pace(s.pace_s); }, function (s, i) { return s.km < 1 ? s.km + " km" : "Km " + (i + 1); });
     if (!l.reps && !l.splits) body.appendChild(el("p", "state", "No splits were sent for this run."));
     card.appendChild(body);
@@ -190,7 +207,7 @@
 
   function load() {
     var init = tg && tg.initData;
-    if (!init) { message("Open from Telegram", "This page works inside the Run Supreme bot chat."); return; }
+    if (!init) { message("Open from Telegram", "This page works inside your Run Supreme coach chat.", ["Open the coach chat in Telegram", "Tap Open the week under a run card"]); return; }
     fetch("api/me", { headers: { Authorization: "tma " + init }, cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer" })
       .then(function (r) {
         if (r.status === 401) throw "reopen";
@@ -204,9 +221,9 @@
         show("home");
       })
       .catch(function (e) {
-        if (e === "reopen") message("Reopen me", "This session has expired. Close it and open it again from the coach message.");
-        else if (e === "unlinked") message("Not linked", "Turn on the companion in the Run Supreme app first.");
-        else message("No signal", "Couldn't load your week. Try again in a moment.");
+        if (e === "reopen") message("Reopen me", "This session has expired.", ["Close this page", "Tap Open the week again in the coach chat"]);
+        else if (e === "unlinked") message("Not linked", "Your Telegram isn\u2019t connected to the Run Supreme app yet.", ["Open the Run Supreme app", "Go to Settings, then Run companion", "Tap Turn on and follow the steps"]);
+        else message("No signal", "Couldn\u2019t load your week. Try again in a moment.");
       });
   }
 

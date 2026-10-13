@@ -27,7 +27,7 @@ log = logging.getLogger("companion")
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "miniapp"
 FONTS = {"SairaExtraCondensed-ExtraBold.ttf", "SairaExtraCondensed-Bold.ttf", "SchibstedGrotesk-Variable.ttf"}
-LANE_DAYS = 28
+LANE_DAYS = 42  # six weeks, the window of the app's lane chips (ScoreNorms.change)
 CSP = ("default-src 'none'; script-src 'self' https://telegram.org; style-src 'self'; font-src 'self'; "
        "img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; "
        "frame-ancestors https://web.telegram.org https://webk.telegram.org https://webz.telegram.org "
