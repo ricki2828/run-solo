@@ -5,6 +5,7 @@ import hashlib
 import hmac
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -137,7 +138,8 @@ class TelegramChannel:
                         continue
             rows.setdefault(b.get("row", 0), []).append({"text": b["label"][:40], "callback_data": f"{card.card_id}:{i}"})
         out = [rows[k] for k in sorted(rows)]
-        links = [{"text": label[:40], "url": url} for label, url in card.links if url.startswith("https://")]
+        links = [{"text": label[:40], **({"web_app": {"url": url}} if urlparse(url).path.startswith("/miniapp") else {"url": url})}
+                 for label, url in card.links if url.startswith("https://")]
         if links:
             out.append(links[:2])
         return out

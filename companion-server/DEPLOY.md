@@ -153,6 +153,18 @@ systemctl --user list-units | grep -i tunnel     # restart whichever unit runs ~
 
 In the Cloudflare dashboard add a rate-limit rule: `/v1/enrol/start`, per IP, 5 requests per hour (the app also limits to 5/h/IP).
 
+## 4b. Mini App (off by default)
+
+`COMPANION_MINIAPP=1` serves the read-only Mini App (week, latest run, four lanes) under `/miniapp/` on the same host, and adds an
+"Open the week" web_app button to run and recap cards. Without the flag there are no `/miniapp` routes and no button.
+- Env: `COMPANION_MINIAPP=1`; `COMPANION_MINIAPP_URL` only if the host differs (default `https://companion.taiaroa.xyz/miniapp/`, https only).
+- Edge: apply `deploy/nginx-miniapp.conf` (location, rate limit, tunnel path). Telegram needs HTTPS on that origin.
+- Menu button: `.venv/bin/python -m companion.cli set-menu-button` (sets the bot's default menu button to "My week").
+- Auth: `Authorization: tma <initData>` only (HMAC with the bot token, auth_date within 1 h, user id must match a linked Telegram chat, else 403).
+  There is no session token: a session older than an hour gets 401 and the page asks the runner to reopen it from the chat.
+- Deploy the whole `miniapp/` directory beside `companion/`; fonts are served from the live `assets/fonts` already used by the renderer.
+- Smoke: `curl -s -o /dev/null -w '%{http_code}' https://companion.taiaroa.xyz/miniapp/api/me` returns 401; a forged `Authorization: tma x` returns 401.
+
 ## 5. Telegram webhook
 
 ```bash

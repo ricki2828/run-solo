@@ -74,6 +74,10 @@ class Settings:
     # https base the deep-link buttons point at (`<base>/run/<id>`, `<base>/week/<iso-week>`); no base, no link buttons.
     deeplink_base: str | None = None
 
+    # Telegram Mini App (read-only week, latest run and lanes), served under /miniapp/. Off by default.
+    miniapp_enabled: bool = False
+    miniapp_url: str = "https://companion.taiaroa.xyz/miniapp/"  # what the web_app buttons open
+
     sends_paused: bool = False
     stale_card_hours: float = 6.0
     default_quiet: tuple[int, int] = (21 * 60 + 30, 7 * 60)  # minutes after local midnight
@@ -122,5 +126,7 @@ class Settings:
             media_enabled=_flag(e.get("COMPANION_MEDIA")),
             render_socket=os.path.expanduser(e.get("COMPANION_RENDER_SOCKET", "~/companion-data/render/render.sock")),
             deeplink_base=_https_base(e.get("COMPANION_DEEPLINK_BASE")),
+            miniapp_enabled=_flag(e.get("COMPANION_MINIAPP")),
+            miniapp_url=(_https_base(e.get("COMPANION_MINIAPP_URL")) or "https://companion.taiaroa.xyz/miniapp").rstrip("/") + "/",
             sends_paused=_flag(e.get("COMPANION_SENDS_PAUSED")),
         )
