@@ -11,6 +11,7 @@ import logging
 import re
 import secrets
 import string
+import unicodedata
 from datetime import date, datetime, timedelta
 from typing import Annotated, Any
 
@@ -128,6 +129,28 @@ class PlanNextIn(BaseModel):
     week: int = Field(ge=1, le=52)
     minutes: int | None = Field(default=None, ge=1, le=600)
     distance_m: int | None = Field(default=None, ge=500, le=100000)
+    # Optional, new: which session it is. Both or neither; a bad value drops the pair, never the plan.
+    session_id: str | None = Field(default=None, pattern=r"^[a-z0-9_]{1,40}$")
+    session_name: str | None = Field(default=None, min_length=1, max_length=40)
+
+    @field_validator("session_id", "session_name", mode="wrap")
+    @classmethod
+    def _optional_session_ident(cls, v, handler):
+        try:
+            out = handler(v)
+        except ValidationError:
+            return None
+        if isinstance(out, str):
+            out = out.strip()
+            if not out or any(unicodedata.category(ch)[0] == "C" for ch in out):
+                return None   # control or format characters: not a name
+        return out
+
+    @model_validator(mode="after")
+    def _ident_pair(self):
+        if self.session_id is None or self.session_name is None:
+            self.session_id = self.session_name = None
+        return self
 
     @field_validator("minutes", "distance_m", mode="before")
     @classmethod
@@ -634,8 +657,8 @@ class Service(CheckinMixin):
             runs = [dict(r) for r in c.execute(
                 "SELECT run_id, type, app_type, start_utc, zone_id, duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, "
                 "verdict, locality, plan_kind, plan_target_m, plan_week, plan_weeks, plan_next_type, plan_next_day, plan_next_week, "
-                "plan_next_min, plan_next_m, feel, session_name, work_pace_s_per_km, reps_done, rep_spread_s, recovery_pace_s_per_km, "
-                "received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
+                "plan_next_min, plan_next_m, plan_next_session_id, plan_next_session_name, feel, session_name, work_pace_s_per_km, reps_done, "
+                "rep_spread_s, recovery_pace_s_per_km, received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
             cutoff = iso(now - timedelta(days=RETENTION_LOG_DAYS))
             msgs = [dict(r) for r in c.execute(
                 "SELECT k.kind, k.headline, k.body, k.sent_at, cc.situation, cc.touch_kind, cc.media_json FROM cards k "
@@ -763,6 +786,7 @@ class Service(CheckinMixin):
                          json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality,
                          run.route_id, run.load_state, run.pb, run.plan_kind, run.plan_target_m,
                          run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols, uid, run.run_id))
+                    self._keep_plan_session(c, uid, run)
                     self._keep_shape(c, uid, run)
                     return {"status": "updated"}
                 return {"status": "duplicate"}
@@ -782,6 +806,7 @@ class Service(CheckinMixin):
                  json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality, run.route_id,
                  run.load_state, run.pb, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols,
                  iso(now), int(stale), 0 if replay else 1))
+            self._keep_plan_session(c, uid, run)
             self._keep_shape(c, uid, run)
             if self.s.weather_enabled and run.area_lat is not None and run.area_lon is not None \
                     and c.execute("SELECT weather_optin FROM users WHERE id=?", (uid,)).fetchone()["weather_optin"]:
@@ -801,6 +826,13 @@ class Service(CheckinMixin):
                 c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
                           (uid, "run_card", iso(now), f"card:{uid}:{run.run_id}", run.run_id))
         return {"status": "stored" if stale else "accepted"}
+
+    @staticmethod
+    def _keep_plan_session(c, uid: str, run: RunIn) -> None:
+        """Which session the plan's next one is (id and display name), when the app sent them."""
+        nx = run.plan_next
+        c.execute("UPDATE runs SET plan_next_session_id=?, plan_next_session_name=? WHERE user_id=? AND run_id=?",
+                  (nx.session_id if nx else None, nx.session_name if nx else None, uid, run.run_id))
 
     @staticmethod
     def _keep_shape(c, uid: str, run: RunIn) -> None:

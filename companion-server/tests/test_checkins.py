@@ -1072,19 +1072,56 @@ def test_the_usual_start_is_a_circular_median_across_midnight():
     assert ci.usual_start_min(hist, 0, "UTC", at(2026, 10, 15, 12, 0)) == 0
 
 
-def test_next_session_carries_the_real_type_and_name_read_from_the_last_quality_run(env):
-    env.run("nor", at(2026, 10, 8, 7, 0), type="interval", session_name="Norwegian 4x4")
+def test_next_session_names_the_session_only_when_the_plan_did_and_never_guesses_from_history(env):
+    env.run("nor", at(2026, 10, 8, 7, 0), type="interval", session_name="Norwegian 4x4")      # history must not name a tempo
     n = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))["next_session"]
-    assert (n["type"], n["kind"], n["name"], n["session_id"], n["name_source"], n["label"]) == (
-        "quality", "interval", "Norwegian 4x4", "norwegian_4x4", "history", "Norwegian 4x4, 6 km")
-    env.run("tmp", at(2026, 10, 10, 7, 0), type="tempo")                        # a later tempo run is the newer evidence
-    n = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))["next_session"]
-    assert (n["kind"], n["name"]) == ("tempo", "Tempo")
+    assert (n["kind"], n["name"], n["session_id"], n["name_source"], n["label"]) == (
+        "quality", "Quality session", "quality", "none", "Quality session, 6 km")
     with db.tx(env.path) as c:
-        c.execute("UPDATE runs SET plan_next_type='long'")
+        c.execute("UPDATE runs SET plan_next_session_id='tempo', plan_next_session_name='Tempo' WHERE run_id='last'")
     n = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))["next_session"]
-    assert (n["kind"], n["name"], n["name_source"]) == ("long", "Long run", "plan")
-    env.step(at(2026, 10, 15, 6, 45))   # messages use the same name
+    assert (n["name"], n["session_id"], n["name_source"], n["label"]) == ("Tempo", "tempo", "plan", "Tempo, 6 km")
+    env.step(at(2026, 10, 15, 6, 45))
+    assert any("Today: Tempo, 6 km" in b.get("text", "") for b in env.sends())            # the messages use the same name
+    put(env, "ready", "2026-10-15", "flat", at(2026, 10, 14, 20, 0))                      # made easy: a different session
+    n = env.svc.next_session(env.uid, at(2026, 10, 14, 21, 0))["next_session"]
+    assert (n["kind"], n["name"], n["session_id"], n["name_source"]) == ("easy", "Easy run", "easy", "none")
+
+
+def planned_run(session_id="norwegian_4x4", session_name="Norwegian 4x4", **over):
+    return RunIn(run_id="p1", type="easy", start_utc=at(2026, 10, 13, 7, 0), utc_offset_min=120, zone_id="Europe/Rome",
+                 duration_s=2400, distance_m=7000, plan_week=3, plan_weeks=4,
+                 plan_next={"type": "quality", "day": "2026-10-15", "week": 3, "session_id": session_id,
+                            "session_name": session_name, **over})
+
+
+@pytest.mark.parametrize("sid,name,ok", [
+    ("norwegian_4x4", "Norwegian 4x4", True), (None, None, False), ("tempo", None, False), (None, "Tempo", False),
+    ("Bad Slug!", "Tempo", False), ("x" * 41, "Tempo", False), ("tempo", "T" * 41, False), ("tempo", "Te\u202empo", False),
+    ("tempo", "   ", False), ("tempo", "Tempo\n", True),
+])
+def test_plan_next_accepts_an_optional_validated_session_pair_and_a_bad_one_never_costs_the_plan(sid, name, ok):
+    kw = {"session_id": sid, "session_name": name}
+    run = RunIn(**{**planned_run().model_dump(), "plan_next": {"type": "quality", "day": "2026-10-15", "week": 3, **kw}})
+    nx = run.plan_next
+    assert nx is not None and nx.day == "2026-10-15"                    # the plan survives whatever the pair is
+    assert (nx.session_id is not None) is ok and (nx.session_name is not None) is ok
+
+
+def test_old_plan_next_payloads_still_validate_and_unknown_keys_stay_loud():
+    run = RunIn(**{**planned_run().model_dump(), "plan_next": {"type": "easy", "day": "2026-10-15", "week": 3}})
+    assert run.plan_next.session_id is None
+    with pytest.raises(Exception):
+        RunIn(**{**planned_run().model_dump(), "plan_next": {"type": "easy", "day": "2026-10-15", "week": 3, "mood": "x"}})
+
+
+def test_the_pair_is_stored_with_the_run_and_listed_in_the_export(env, client):
+    env.svc.ingest_run(env.uid, planned_run(), now=at(2026, 10, 13, 20, 0))
+    row = env.q("SELECT plan_next_session_id, plan_next_session_name FROM runs WHERE run_id='p1'")[0]
+    assert row == {"plan_next_session_id": "norwegian_4x4", "plan_next_session_name": "Norwegian 4x4"}
+    me = client.get("/v1/me", headers=auth(env.token)).json()
+    assert [r["plan_next_session_name"] for r in me["runs_received"] if r["run_id"] == "p1"] == ["Norwegian 4x4"]
+
 
 
 def test_an_ill_window_asks_nothing_and_a_tired_one_still_does(env):

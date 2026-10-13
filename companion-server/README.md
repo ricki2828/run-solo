@@ -36,10 +36,10 @@ For the app's Home (stream S3). `Cache-Control: no-store`. A server without chec
   "next_session": {
     "date": "2026-10-19",            // the runner's local date the session is on now
     "type": "quality",              // the plan's type: easy | long | quality ("easy" when the coach made it easy)
-    "kind": "interval",             // the session's real type: easy | long | tempo | interval | quality (see below)
-    "name": "Norwegian 4x4",        // the display name the coach uses in its messages ("Easy run", "Long run", "Tempo")
-    "session_id": "norwegian_4x4",  // name as a slug, for the app to key icons or copy on
-    "name_source": "history",       // plan | history | none
+    "kind": "quality",              // same as type (the plan's kind)
+    "name": "Norwegian 4x4",        // plan_next.session_name when the app sent it, else the kind name ("Quality session")
+    "session_id": "norwegian_4x4",  // plan_next.session_id when sent, else the kind ("quality")
+    "name_source": "plan",          // plan: the app named it | none: kind-level name
     "minutes": null,                // the plan's size, when it has one (null when made easy)
     "distance_m": 6000,
     "week": 3, "weeks": 4,          // the plan's week, when the app sent it
@@ -51,10 +51,11 @@ For the app's Home (stream S3). `Cache-Control: no-store`. A server without chec
 }
 ```
 
-The app's plan sends only easy, long or quality, so for a quality session the server reads the runner's last tempo or interval
-run: `kind` is that run's type and `name` its built-in session name (Norwegian 4x4, ...) or "Tempo" / "Intervals", with
-`name_source: "history"`. With no such run `kind` is "quality", `name` is "Quality session" and `name_source` is "none". For easy
-and long, `name_source` is "plan". It is an inference until the app sends the session itself in `plan_next`.
+The server never guesses a name. `plan_next` (the `POST /v1/runs` field) takes two OPTIONAL keys, `session_id` (a slug,
+`^[a-z0-9_]{1,40}$`) and `session_name` (1-40 printable characters, no control or format characters). Both or neither: if one
+is missing or either is invalid, both are dropped and the plan still counts (old payloads without them pass unchanged). When
+present they are used as sent; a session the coach made easy loses them (it is a different session). Without them
+`name` is the kind name, `session_id` the kind and `name_source` is "none".
 
 `next_session` is `null` when the app's newest run carries no planned session or its date has passed; `coach_line` is `null`
 before the first card. `kind` is one of `run`, `evening`, `recap`, `monthly`. Nothing here holds a check-in answer, only the
