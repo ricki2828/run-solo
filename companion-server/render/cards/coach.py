@@ -18,9 +18,10 @@ DAY_ORDER = tuple(DAY_WORDS)
 REASON_WORDS = {"tired": "TIRED", "busy": "BUSY", "sore": "SORE", "travelling": "TRAVELLING", "ill": "ILL",
                 "weather": "WEATHER", "missed": "MISSED"}
 GAIN_FG = "#FFFFFF"
-# A result only reads FASTER or SLOWER when it is outside the target band by at least this many s/km. It is the engine's
-# run-to-run pace noise floor (packages/run_engine constants.dart runFloorSecPerKm, mirrored by companion facts.REP_BAND_S):
-# anything closer is GPS and day-to-day noise, not a verdict.
+# FALLBACK only, for a card sent without a `verdict`: a result reads FASTER or SLOWER when it is outside the target band by
+# at least this many s/km. It is the engine's base run-to-run pace floor (packages/run_engine constants.dart
+# runFloorSecPerKm). The engine's real floor is per session (floorFor(key): 10 to 20 s/km by work time, plus parkrun
+# floors), so the caller sends the app's own verdict and the card colours from that.
 NOISE_FLOOR_S = 10
 # The easy session's own guide, from a fixed enum (never free text): (big text, small label)
 GUIDE_WORDS = {"chatty": ("ZONE 2", "CHATTY PACE"), "recovery": ("ZONE 1", "SLOW AND LOOSE"), "steady": ("ZONE 3", "STEADY EFFORT")}
@@ -50,6 +51,11 @@ def _per(facts: Mapping[str, Any]) -> str:
     return "/MI" if _mi(facts) else "/KM"
 
 
+def _trim(km_text: str) -> str:
+    """'8.0' -> '8' (a whole number reads without its decimal)."""
+    return km_text[:-2] if km_text.endswith(".0") else km_text
+
+
 def _fit(text: str, sizes: tuple[tuple[int, int], ...]) -> int:
     """Font size for a label by its length: (max_len, size) steps, the last size for anything longer."""
     for limit, size in sizes:
@@ -64,7 +70,7 @@ def _hero(facts: Mapping[str, Any], tag: str, height: int) -> str:
     name = P.esc(name_raw, 32)
     dist, dur = _num(facts.get("distance_km")), _num(facts.get("duration_s"))
     if dist:
-        value, unit = _dist(dist, facts).replace(".0", ""), "MI" if _mi(facts) else "KM"
+        value, unit = _trim(_dist(dist, facts)), "MI" if _mi(facts) else "KM"
     elif dur:
         value, unit = str(max(1, round(dur / 60))), "MIN"
     else:
@@ -92,7 +98,7 @@ def _plate(facts: Mapping[str, Any]) -> tuple[str, str, str, int] | None:
     guide enum) so an easy card has the same layout as a target card. -> (caption, big, unit, size) or None."""
     target = _target_text(facts)
     if target:
-        return "TARGET", target[0], target[1], 230
+        return "TARGET", target[0], target[1], _fit(target[0], ((9, 230), (11, 180), (99, 150)))
     hr = facts.get("hr_ceiling_bpm")
     if isinstance(hr, int) and not isinstance(hr, bool) and 80 <= hr <= 220:
         return "KEEP IT UNDER", str(hr), "BPM", 300
@@ -127,41 +133,51 @@ def build_today_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None 
     return P.doc(P.base_css(brand.GROUND, brand.INK), body)
 
 
-def _verdict(facts: Mapping[str, Any], result: float, lo: float, hi: float) -> tuple[str, str, str, str]:
-    """-> (block ground, text colour, small text colour, delta line). The colour is decided here, from the numbers, so it
-    can never disagree with them: faster than the band is mint, slower vermillion, a PB cyan, inside the band neutral."""
+def _verdict(facts: Mapping[str, Any], result: float, lo: float | None, hi: float | None) -> tuple[str, str, str, str]:
+    """-> (block ground, text colour, small text colour, delta line). The caller's `verdict` (the app's own, scored with the
+    engine's per-session floor) decides the colour; only when it is absent does the pace-versus-band rule below decide.
+    Faster is mint, slower vermillion, a PB cyan, anything else neutral."""
     unit = "s/mi" if _mi(facts) else "s/km"
     k = KM_PER_MI if _mi(facts) else 1.0
+    verdict = facts.get("verdict")
     if facts.get("pb") is True:
+        verdict = "pb"
+    elif verdict is None and lo is not None and hi is not None:     # fallback: the flat floor against the band
+        verdict = ("faster" if lo - result >= NOISE_FLOOR_S else "slower" if result - hi >= NOISE_FLOOR_S else "in_range")
+    if verdict == "pb":
         return brand.INK, brand.ARC, brand.BONE, "A NEW BEST"
-    if lo - result >= NOISE_FLOOR_S:
-        return brand.MINT, GAIN_FG, GAIN_FG, f"{round((lo - result) * k)} {unit} FASTER"
-    if result - hi >= NOISE_FLOOR_S:
-        return brand.VERMILLION, GAIN_FG, GAIN_FG, f"{round((result - hi) * k)} {unit} SLOWER"
-    return brand.INK, brand.BONE, brand.BONE, "IN RANGE"
+    if verdict == "faster":
+        gap = round((lo - result) * k) if lo is not None and lo > result else 0
+        return brand.MINT, GAIN_FG, GAIN_FG, f"{gap} {unit} FASTER" if gap > 0 else "FASTER"
+    if verdict == "slower":
+        gap = round((result - hi) * k) if hi is not None and result > hi else 0
+        return brand.VERMILLION, GAIN_FG, GAIN_FG, f"{gap} {unit} SLOWER" if gap > 0 else "SLOWER"
+    return brand.INK, brand.BONE, brand.BONE, "IN RANGE" if verdict == "in_range" else ""
 
 
 def build_today_verdict_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = None) -> str:
     target = _target_text(facts)
     result = _num(facts.get("result_pace_s"))
     plate = _plate(facts)
-    hero, _ = _hero(facts, "DONE", 640 if plate else 1106)
+    hero, _ = _hero(facts, "DONE", 640 if (plate or result) else 1106)
     body = P.header(False, "", brand.QUIET) + hero
-    if target and result:
+    if result:
         lo = _num(facts.get("target_pace_lo_s"))
         hi = _num(facts.get("target_pace_hi_s"))
         lo = lo if lo is not None else hi
         hi = hi if hi is not None else lo
-        assert lo is not None and hi is not None
         ground, fg, soft, delta = _verdict(facts, result, lo, hi)
-        body += _target_block(P.BX, 440, 840, 434, target[0], target[1], 104, narrow=True)
         ran = _pace(result, facts)
+        left, width = (P.BX + 440 + 16, P.BW - 440 - 16) if target else (P.BX, P.BW)
+        size = _fit(ran, ((4, 230), (99, 190))) if target else 300
         inner = (f'<div class="abs cap" style="left:40px;top:34px;font-size:28px;letter-spacing:.14em;color:{soft}">YOU RAN</div>'
                  f'<div class="abs" style="left:32px;top:92px;display:flex;align-items:baseline;gap:16px;white-space:nowrap">'
-                 f'<span class="saira ran" style="font-size:230px;line-height:.8;color:{fg}">{P.esc(ran, 8)}</span>'
+                 f'<span class="saira ran" style="font-size:{size}px;line-height:.8;color:{fg}">{P.esc(ran, 8)}</span>'
                  f'<span class="saira" style="font-size:52px;color:{soft}">{_per(facts)}</span></div>'
-                 f'<div class="abs cap delta" style="left:40px;bottom:36px;font-size:40px;letter-spacing:.1em;color:{fg}">{P.esc(delta, 24)}</div>')
-        body += _block(P.BX + 440 + 16, P.BW - 440 - 16, 840, 434, ground, "none", inner)
+                 + (f'<div class="abs cap delta" style="left:40px;bottom:36px;font-size:40px;letter-spacing:.1em;color:{fg}">{P.esc(delta, 24)}</div>' if delta else ""))
+        if target:
+            body += _target_block(P.BX, 440, 840, 434, target[0], target[1], _fit(target[0], ((9, 104), (99, 84))), narrow=True)
+        body += _block(left, width, 840, 434, ground, "none", inner)
     elif plate:
         body += _target_block(P.BX, P.BW, 840, 434, plate[1], plate[2], plate[3], caption=plate[0])
     return P.doc(P.base_css(brand.GROUND, brand.INK), body)
@@ -176,12 +192,14 @@ def build_moved_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None 
     next_week = to_day == "next_week"
     value, unit = ("NEXT", "WEEK") if next_week else (DAY_WORDS.get(to_day, ""), "")
     reason = REASON_WORDS.get(str(facts.get("skip_reason", "")), "")
-    head = f"{name} moved to"
+    head_raw = f"{name_raw} moved to"
+    clamp = "display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"   # never more than two lines
+    head = f'<span style="{clamp}">{name} moved to</span>'
     hero = P.hero_block(168, 560, tag="MOVED", headline=head, value=value, unit=unit, size=330, ground=brand.INK, fg=brand.BONE,
                         soft=brand.BONE, chip=reason, chip_bg="rgba(237,234,227,.18)",
-                        headline_size=_fit(head, ((16, 120), (24, 96), (99, 76))))
+                        headline_size=_fit(head_raw, ((16, 120), (24, 96), (36, 76), (99, 64))))
     dist, dur = _num(facts.get("distance_km")), _num(facts.get("duration_s"))
-    amount = (f"{_dist(dist, facts).replace('.0', '')} {'MI' if _mi(facts) else 'KM'}" if dist
+    amount = (f"{_trim(_dist(dist, facts))} {'MI' if _mi(facts) else 'KM'}" if dist
               else (f"{max(1, round(dur / 60))} MIN" if dur else ""))
     inner = (f'<div class="abs" style="left:0;top:0;width:100%;height:16px;background:{colour}"></div>'
              f'<div class="abs cap" style="left:40px;top:50px;font-size:28px;letter-spacing:.14em;color:{brand.INK_SECONDARY}">THE SESSION</div>'

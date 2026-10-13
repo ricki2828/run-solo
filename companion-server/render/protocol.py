@@ -66,6 +66,7 @@ TODAY_KEYS = frozenset({"type", "session", "distance_km", "duration_s", "date_lo
 RUN_TYPES = frozenset({"easy", "long", "tempo", "interval", "race", "cooper", "trail", "rest"})
 DAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 SKIP_REASONS = frozenset({"tired", "busy", "sore", "travelling", "ill", "weather", "missed"})
+VERDICTS = ("faster", "slower", "in_range", "pb")   # the app's verdict, scored with the engine's per-session floor
 SESSION_MAX = 32
 WEEK_DAY_KEYS = frozenset({"type", "planned_km", "done_km"})
 COACH_REQUIRED = {"today": {"type", "session"}, "today_verdict": {"type", "session"}, "moved": {"type", "session", "to_day"},
@@ -77,7 +78,7 @@ KIND_FACT_KEYS = {
     "milestone": frozenset({"kind", "value", "line"}),
     "race_countdown": frozenset({"weeks_to_race", "race_name"}),
     "monthly": frozenset({"month_label", "month_start", "distance_km", "run_count", "duration_s", "climb_m", "runs"}),
-    "today": TODAY_KEYS, "today_verdict": TODAY_KEYS | {"result_pace_s", "pb"},
+    "today": TODAY_KEYS, "today_verdict": TODAY_KEYS | {"result_pace_s", "pb", "verdict"},
     "moved": frozenset({"type", "session", "distance_km", "duration_s", "units", "to_day", "from_day", "skip_reason"}),
     "pinned_week": frozenset({"week_label", "days", "duration_s", "units", "today_idx"}),
 }
@@ -170,6 +171,11 @@ def _kind_values_ok(kind: str, facts: dict) -> bool:
     return True
 
 
+def _in(v: Any, allowed: Any) -> bool:
+    """Membership for an enum, False (never a TypeError) for an unhashable value such as a list or a dict."""
+    return isinstance(v, str) and v in allowed
+
+
 def _coach_values_ok(facts: dict) -> bool:
     """Value shapes for the coach cards: a number in range, a member of a fixed set, or a short string. Nothing else."""
     def rng(v: Any, lo: float, hi: float) -> bool:
@@ -180,7 +186,7 @@ def _coach_values_ok(facts: dict) -> bool:
         elif k == "date_local":
             ok = isinstance(v, str) and len(v) <= 32
         elif k == "type":
-            ok = v in RUN_TYPES
+            ok = _in(v, RUN_TYPES)
         elif k == "distance_km":
             ok = rng(v, 0.01, 500)
         elif k == "duration_s":
@@ -188,26 +194,28 @@ def _coach_values_ok(facts: dict) -> bool:
         elif k in ("target_pace_lo_s", "target_pace_hi_s", "result_pace_s"):
             ok = rng(v, 60, 3600)
         elif k == "target_kind":
-            ok = v in ("work", "pace")
+            ok = _in(v, ("work", "pace"))
         elif k == "guide":
-            ok = v in ("chatty", "recovery", "steady")
+            ok = _in(v, ("chatty", "recovery", "steady"))
         elif k == "hr_ceiling_bpm":
             ok = _int_in(v, 80, 220)
+        elif k == "verdict":
+            ok = _in(v, VERDICTS)
         elif k == "units":
-            ok = v in ("km", "mi")
+            ok = _in(v, ("km", "mi"))
         elif k == "pb":
             ok = isinstance(v, bool)
         elif k == "skip_reason":
-            ok = v in SKIP_REASONS
+            ok = _in(v, SKIP_REASONS)
         elif k == "from_day":
-            ok = v in DAY_NAMES
+            ok = _in(v, DAY_NAMES)
         elif k == "to_day":
-            ok = v in DAY_NAMES or v == "next_week"
+            ok = _in(v, DAY_NAMES) or v == "next_week"
         elif k == "today_idx":
             ok = _int_in(v, 0, 6)
         elif k == "days":
             ok = isinstance(v, list) and 1 <= len(v) <= 7 and all(
-                isinstance(d, dict) and set(d) <= WEEK_DAY_KEYS and d.get("type") in RUN_TYPES
+                isinstance(d, dict) and set(d) <= WEEK_DAY_KEYS and _in(d.get("type"), RUN_TYPES)
                 and rng(d.get("planned_km", 0), 0, 1000) and rng(d.get("done_km", 0), 0, 1000) for d in v)
         else:
             ok = False

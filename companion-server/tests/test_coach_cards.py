@@ -10,8 +10,9 @@ from render.cards import fixtures as F
 from render.cards.coach import (build_moved_html, build_pinned_week_html, build_today_html, build_today_verdict_html)
 
 KINDS = {
-    "today": [F.today_4x4, F.today_easy_no_target, F.today_long_name, F.today_tempo_miles, F.today_easy_hr_ceiling, F.today_bare],
-    "today_verdict": [F.verdict_faster, F.verdict_slower, F.verdict_in_range, F.verdict_pb, F.verdict_miles],
+    "today": [F.today_two_digit_km, F.today_two_digit_mi, F.today_4x4, F.today_easy_no_target, F.today_long_name, F.today_tempo_miles, F.today_easy_hr_ceiling, F.today_bare],
+    "today_verdict": [F.verdict_two_digit_km, F.verdict_two_digit_mi, F.verdict_enum_small_gap_faster,
+                      F.verdict_enum_big_gap_in_range, F.verdict_no_target, F.verdict_faster, F.verdict_slower, F.verdict_in_range, F.verdict_pb, F.verdict_miles],
     "moved": [F.moved_tempo_tired, F.moved_next_week_long_name, F.moved_miles_no_reason],
     "pinned_week": [F.pinned_week_midweek, F.pinned_week_big_missed, F.pinned_week_miles],
 }
@@ -126,17 +127,12 @@ def test_just_outside_the_range_is_still_in_range_until_the_noise_floor():
     assert "10 s/km SLOWER" in at_floor and f"background:{brand.VERMILLION}" in at_floor
 
 
-def test_the_noise_floor_matches_the_engine_and_the_server():
+def test_the_fallback_floor_is_the_engines_base_floor():
     import re
     from pathlib import Path
     from render.cards.coach import NOISE_FLOOR_S
     consts = (Path(__file__).resolve().parents[2] / "packages/run_engine/lib/src/engine/constants.dart").read_text()
     assert int(re.search(r"this\.runFloorSecPerKm = (\d+)", consts).group(1)) == NOISE_FLOOR_S
-    try:
-        from companion import facts
-    except ImportError:
-        pytest.skip("companion deps not installed")
-    assert facts.REP_BAND_S == NOISE_FLOOR_S
 
 
 def test_violet_is_never_used():
@@ -159,7 +155,7 @@ def test_an_easy_card_shows_the_sessions_own_guide_in_the_lower_plate():
     hr = _body(build_today_html(F.today_easy_hr_ceiling(), {}))
     assert "KEEP IT UNDER" in hr and ">148<" in hr and "BPM" in hr and "ZONE" not in hr      # a measured ceiling wins
     v = _body(build_today_verdict_html(F.today_easy_no_target() | {"result_pace_s": 330}, {}))
-    assert "YOU RAN" not in v and "GUIDE" in v      # no band to judge against, so no verdict colour is invented
+    assert "YOU RAN" in v and "FASTER" not in v and "SLOWER" not in v      # no band to judge against: no verdict colour invented
 
 
 def test_a_bare_card_with_no_target_or_guide_keeps_one_block_and_no_placeholder():
@@ -254,3 +250,69 @@ def test_render_checkin_returns_media_or_none_and_never_raises():
 def test_the_today_card_never_prints_a_clock_time():
     html = _body(build_today_html(F.today_4x4(), {}))
     assert "06:45" not in html and "6:45" not in html
+
+
+def test_the_callers_verdict_beats_the_pace_rule():
+    small = build_today_verdict_html(F.verdict_enum_small_gap_faster(), {})       # 3 s/km under: flat floor says in range
+    assert f"background:{brand.MINT}" in small and "3 s/km FASTER" in _body(small)
+    big = build_today_verdict_html(F.verdict_enum_big_gap_in_range(), {})         # 15 s/km under: flat floor says faster
+    assert "IN RANGE" in _body(big) and brand.MINT not in big and brand.VERMILLION not in big
+    for verdict, ground in (("faster", brand.MINT), ("slower", brand.VERMILLION), ("in_range", brand.INK)):
+        html = build_today_verdict_html(F.today_4x4() | {"result_pace_s": 257, "verdict": verdict}, {})
+        assert f"background:{ground}" in html, verdict
+    assert brand.ARC in build_today_verdict_html(F.today_4x4() | {"result_pace_s": 257, "verdict": "pb"}, {})
+    # a verdict with the result inside the band says the bare word, never a made-up gap
+    assert "0 s/km" not in _body(build_today_verdict_html(F.today_4x4() | {"result_pace_s": 257, "verdict": "faster"}, {}))
+
+
+def test_the_pace_rule_only_applies_when_there_is_no_verdict():
+    assert "IN RANGE" in _body(build_today_verdict_html(F.today_4x4() | {"result_pace_s": 250}, {}))   # 5 s under
+    assert "10 s/km FASTER" in _body(build_today_verdict_html(F.today_4x4() | {"result_pace_s": 245}, {}))
+
+
+def test_verdict_enum_is_strict():
+    PR.check_request(_req("today_verdict", F.verdict_enum_small_gap_faster()))
+    for bad in ("fast", "holding", ["faster"], {"a": 1}, 1, True):
+        with pytest.raises(PR.ProtocolError):
+            PR.check_request(_req("today_verdict", F.verdict_faster() | {"verdict": bad}))
+    with pytest.raises(PR.ProtocolError):
+        PR.check_request(_req("today", F.today_4x4() | {"verdict": "faster"}))      # a verdict needs a result
+
+
+@pytest.mark.parametrize("key,bad", [("type", ["easy"]), ("units", {"a": 1}), ("skip_reason", ["tired"]), ("to_day", ["mon"]),
+                                     ("from_day", {"x": 1}), ("guide", ["chatty"]), ("target_kind", ["work"])])
+def test_unhashable_enum_values_are_a_clean_refusal(key, bad):
+    facts = {"type": "easy", "session": "Easy run", "to_day": "tue", "units": "km", "target_kind": "work",
+             "guide": "chatty", "from_day": "mon", "skip_reason": "busy"}
+    kind = "moved" if key in ("skip_reason", "to_day", "from_day") else "today"
+    keep = PR.KIND_FACT_KEYS[kind]
+    facts = {k: v for k, v in facts.items() if k in keep} | {key: bad}
+    with pytest.raises(PR.ProtocolError) as e:
+        PR.check_request(_req(kind, facts))
+    assert e.value.code == "bad_request"
+    with pytest.raises(PR.ProtocolError):
+        PR.check_request(_req("pinned_week", {"days": [{"type": ["easy"]}]}))
+
+
+def test_two_digit_minute_paces_get_a_smaller_figure():
+    import re
+    size = lambda h, cls: int(re.search(rf'class="saira {cls}" style="font-size:(\d+)px', h).group(1))  # noqa: E731
+    wide = _body(build_today_html(F.today_two_digit_mi(), {}))
+    normal = _body(build_today_html(F.today_4x4(), {}))
+    assert "12:30-13:10" in wide and "/MI" in wide and size(wide, "tgt") < size(normal, "tgt") == 230
+    narrow = _body(build_today_verdict_html(F.verdict_two_digit_mi(), {}))
+    base = _body(build_today_verdict_html(F.verdict_faster(), {}))
+    assert size(narrow, "tgt") < size(base, "tgt") and size(narrow, "ran") < size(base, "ran")
+    assert "13:57" in narrow
+
+
+def test_a_result_with_no_target_still_shows_neutral():
+    v = _body(build_today_verdict_html(F.verdict_no_target(), {}))
+    assert "YOU RAN" in v and "5:45" in v and "FASTER" not in v and "SLOWER" not in v and "IN RANGE" not in v
+    assert brand.MINT not in v and brand.VERMILLION not in v
+
+
+def test_the_moved_headline_is_clamped_to_two_lines_and_shrinks():
+    long = F.moved_next_week_long_name() | {"session": "x" * 32}
+    html = build_moved_html(long, {})
+    assert "-webkit-line-clamp:2" in html and "font-size:64px" in html.split("saira head")[1][:200]

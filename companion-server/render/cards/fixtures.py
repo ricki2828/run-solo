@@ -332,3 +332,38 @@ def today_easy_hr_ceiling() -> dict[str, Any]:
 def today_bare() -> dict[str, Any]:
     """An easy run with neither a pace target nor a guide: the one case that keeps the single big block."""
     return {"type": "easy", "session": "Easy run", "distance_km": 6, "units": "km"}
+
+
+def today_two_digit_km() -> dict[str, Any]:
+    """A slow easy range (10:30-11:15 /km): two-digit minutes in the plate."""
+    return {"type": "easy", "session": "Easy run", "distance_km": 8, "date_local": "2026-10-21T07:00",
+            "target_pace_lo_s": 630, "target_pace_hi_s": 675, "target_kind": "pace", "units": "km"}
+
+
+def today_two_digit_mi() -> dict[str, Any]:
+    """12:30-13:10 /mi, the widest range the plate has to hold."""
+    return {"type": "easy", "session": "Easy run", "distance_km": 8, "date_local": "2026-10-21T07:00",
+            "target_pace_lo_s": 466, "target_pace_hi_s": 491, "target_kind": "pace", "units": "mi"}
+
+
+def verdict_two_digit_km() -> dict[str, Any]:
+    return today_two_digit_km() | {"result_pace_s": 700}
+
+
+def verdict_two_digit_mi() -> dict[str, Any]:
+    return today_two_digit_mi() | {"result_pace_s": 520}
+
+
+def verdict_enum_small_gap_faster() -> dict[str, Any]:
+    """The app scored this faster (a short session has a small floor) although it is only 3 s/km under the band."""
+    return today_4x4() | {"result_pace_s": 252, "verdict": "faster"}
+
+
+def verdict_enum_big_gap_in_range() -> dict[str, Any]:
+    """15 s/km under the band, but the app scored it as noise (a long session has a bigger floor)."""
+    return today_4x4() | {"result_pace_s": 240, "verdict": "in_range"}
+
+
+def verdict_no_target() -> dict[str, Any]:
+    """An easy run with a guide but no pace band: the result still shows, neutral, with no verdict word invented."""
+    return today_easy_no_target() | {"result_pace_s": 345}
