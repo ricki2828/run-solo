@@ -1,4 +1,4 @@
-"""Post-run card. Light for easy days; the full zone-colour flood for hard runs, intervals and PBs."""
+"""Post-run card, direction B: light page, a hero block (zone flood for a hard session or PB, lane colour for an everyday run), a lane-tinted visual panel and lane-tinted stat blocks."""
 from __future__ import annotations
 
 from typing import Any, Mapping
@@ -26,14 +26,6 @@ def _headline(facts: Mapping[str, Any]) -> str:
 
 def build_post_run_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = None) -> str:
     memory = memory or {}
-    mode, zone = P.effort_mode(facts)
-    flood = mode == "flood"
-    bg = brand.flood_for_zone(zone) if flood else brand.GROUND
-    fg = brand.BONE if flood else brand.INK
-    quiet = brand.BONE if flood else brand.QUIET
-    accent = brand.BONE if flood else brand.RUN_TYPE_COLOUR.get(str(facts.get("type")), brand.SCORE["aerobic"])
-    if flood and facts.get("pb"):
-        accent = brand.ARC
     hero_v, hero_u = _hero(facts)
     z = P.zone_seconds(facts)
     title = facts.get("title") or TYPE_WORDS.get(str(facts.get("type")), "Run")
@@ -62,40 +54,34 @@ def build_post_run_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | No
         stats.append((P.thousands(facts["climb_m"]) + " m", "CLIMB"))
     elif facts.get("avg_hr"):
         stats.append((P.thousands(facts["avg_hr"]), "BPM"))
-    stat_html = "".join(
-        f'<div style="display:flex;align-items:baseline;gap:12px"><span class="saira" style="font-size:62px">{P.esc(v)}</span>'
-        f'<span class="cap" style="font-size:22px;color:{quiet}">{P.esc(l)}</span></div>' for v, l in stats)
-    route = P.facts_route_svg(facts, 936, 420, accent if not flood else brand.BONE, 12, bg, pad=26, end_dot=True)
-    strip = P.zone_strip(z, 936, 26, gap=4, radius=4 if not flood else 0, stroke=bg if flood else None)
+    colour = brand.CARD_TYPE_COLOUR.get(str(facts.get("type")), brand.LANE["aerobic"])
+    mode0 = P.effort_mode(facts)[0] == "flood"
+    vh = 200 if mode0 else 300
+    route = P.facts_route_svg(facts, P.INNER, vh, colour, 12, "#FFFFFF", pad=24, end_dot=True)
+    strip = P.zone_strip(z, 936, 22, gap=4, radius=6)
     has_route = bool(route)
     items = P.bar_items(facts)
-    bars = "" if has_route else P.split_bars(items, 936, 230, quiet)
-    zblock = "" if (has_route or items) else P.zone_block(z, 936, fg, quiet, bg, flood)
+    bars = "" if has_route else P.split_bars(items, P.INNER, vh - 30, brand.INK_SECONDARY)
+    zblock = "" if (has_route or items) else P.zone_block(z, P.INNER, brand.INK, brand.INK_SECONDARY, "#FFFFFF", False, bar_h=80)
     if zblock:  # no route and no splits: the zone bar is the visual, so the small strip goes
         bars, strip = zblock, ""
     who = P.esc(memory.get("name", ""), 20).upper()
     when = P.date_label(facts.get("start_local"))
     top_right = " / ".join(x for x in (who, when) if x)
-    lone = not has_route and not bars  # nothing to draw under the hero: let it take the space
-    css = P.base_css(bg, fg) + f"""
-.tag{{left:{P.PAD}px;top:176px;font-size:30px;color:{accent}}}
-.head{{left:{P.PAD}px;top:218px;width:936px;font-size:118px;line-height:.9;color:{fg};text-wrap:balance}}
-.route{{left:{P.PAD}px;top:430px}}
-.hero{{left:{P.PAD - 8}px;top:{850 if has_route else (560 if lone else 440)}px;display:flex;align-items:baseline;gap:20px}}
-.hero .n{{font-size:{360 if has_route else (580 if lone else 520)}px;line-height:.78}}
-.bars{{left:{P.PAD}px;top:880px}}
-.hero .u{{font-size:64px;color:{accent}}}
-.strip{{left:{P.PAD}px;top:1168px}}
-.stats{{left:{P.PAD}px;top:1214px;width:936px;display:flex;justify-content:space-between;align-items:baseline}}
-"""
-    body = f"""
-{P.header(flood, top_right, quiet)}
-<div class="abs cap tag">{tag}</div>
-<div class="abs saira head">{_headline(facts)}</div>
-{f'<div class="abs route">{route}</div>' if has_route else f'<div class="abs bars">{bars}</div>'}
-<div class="abs hero"><span class="saira n">{hero_v}</span><span class="saira u">{hero_u}</span></div>
-<div class="abs strip">{strip}</div>
-<div class="abs stats">{stat_html}</div>"""
+    pb = bool(facts.get("pb"))  # cyan is only ever PB / best
+    mode, zone = P.effort_mode(facts)
+    moment = mode == "flood"  # hard session, race, PB: the zone flood and the number at full size
+    if moment:
+        look = dict(ground=brand.flood_for_zone(zone), fg=brand.BONE, soft=brand.BONE, chip_bg="rgba(237,234,227,.22)")
+    else:  # an everyday run: its lane colour
+        look = dict(ground=colour, fg=brand.INK, soft=brand.INK, chip_bg="rgba(18,20,23,.12)")
+    visual = (f'<div class="abs route" style="position:static">{route}</div>' if has_route
+              else (f'<div class="abs bars" style="position:static">{bars}</div>' if bars else ""))
+    body = (P.header(False, top_right, brand.QUIET)
+            + P.run_layout(tag=tag, headline=_headline(facts), value=hero_v, unit=hero_u, colour=colour, visual=visual,
+                           strip="" if not visual else strip, stats=stats,
+                           value_colour=brand.ARC if pb else None, chip="PB" if pb else "", moment=moment, **look))
+    css = P.base_css(brand.GROUND, brand.INK)
     return P.doc(css, body)
 
 

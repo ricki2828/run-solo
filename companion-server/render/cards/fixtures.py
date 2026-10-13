@@ -179,6 +179,25 @@ def weekly_recap() -> dict[str, Any]:
     }
 
 
+def weekly_recap_big() -> dict[str, Any]:
+    """A heavy week: 12 runs, 11:05:00 on the move, 123.4 km (the longest strings the weekly hero line can hold)."""
+    w = weekly_recap()
+    km = [18.0, 0, 21.4, 15.0, 12.0, 30.0, 27.0]
+    zone = [[400, 3000, 2400, 800, 300] for _ in km]
+    days = [{"date": d["date"], "distance_km": k, "zone_s": z if k else []} for d, k, z in zip(w["days"], km, zone)]
+    return {**w, "distance_km": 123.4, "runs": 12, "duration_s": 39900, "days": days,
+            "pace_s_per_km": 39900 / 123.4, "quickest_pace_s_per_km": 301}
+
+
+def pb_marathon_half() -> dict[str, Any]:
+    """An hour-plus PB (half marathon, 1:45:12): the hero is as wide as it gets."""
+    f = pb_5k()
+    return {**f, "title": "Half marathon best", "distance_km": 21.1, "duration_s": 6312, "pace_s_per_km": 299,
+            "hero": {"value": "1:45:12", "unit": ""}, "headline": "Two minutes off.",
+            "pb_detail": {"label": "HALF MARATHON BEST", "delta_s": -131, "previous_s": 6443},
+            "splits": _splits(21.1, 6312, [3, 4, 4, 4, 5], seed=5)}
+
+
 def race_countdown() -> dict[str, Any]:
     # Same race as the month simulator (companion/convo/sim.py RACE_DAY, a half marathon on Sunday 6 Dec 2026),
     # on its 6 Oct card: 61 days to go, "8 weeks to go" of a 12 week plan. tests/test_render_cards.py keeps them equal.

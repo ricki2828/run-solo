@@ -42,6 +42,31 @@ RUN_TYPE_COLOUR = {
     "interval": SCORE["speed"], "race": SCORE["speed"], "cooper": SCORE["speed"], "trail": SCORE["long"],
 }
 
+# Direction B ("Cohort", 12-Oct-2026). Mirrors lib/theme/pack_look.dart and the light lane colours in lib/theme/tokens.dart.
+# The cards sit on the light ground; the one big colour block is violet, lane blocks are a tint of the lane colour.
+VIOLET = "#6D3FE0"        # the hero block ground (white text 6.1:1)
+ON_VIOLET = "#FFFFFF"
+ON_VIOLET_SOFT = "#EDE6FF"  # secondary text on violet
+VIOLET_PANEL = "rgba(255,255,255,.20)"  # a chip or panel sitting on violet
+LANE_TINT = 0.16          # how strongly a lane colour tints a whole block
+INK_SECONDARY = "#4A5058"
+# Lane colours on the light ground, by run type. Cyan is not a lane: it is only ever PB / best.
+LANE = {"aerobic": "#2FA100", "speed": "#FF31AF", "mid": "#A270FF", "long": "#0095CE"}
+CARD_TYPE_COLOUR = {
+    "easy": LANE["aerobic"], "long": LANE["long"], "tempo": LANE["mid"],
+    "interval": LANE["speed"], "race": LANE["speed"], "cooper": LANE["speed"], "trail": LANE["long"],
+}
+ARC_ON_VIOLET = ARC  # 4.7:1 on VIOLET, large type only
+
+
+def tint(colour: str, amount: float = LANE_TINT, base: str = "#FFFFFF") -> str:
+    """The colour mixed into the base (white by default): the fill of a lane block."""
+    c = colour.lstrip("#")
+    b = base.lstrip("#")
+    out = [round(int(b[i:i + 2], 16) * (1 - amount) + int(c[i:i + 2], 16) * amount) for i in (0, 2, 4)]
+    return "#" + "".join(f"{v:02X}" for v in out)
+
+
 SAIRA = "Saira Extra Condensed"
 SCHIBSTED = "Schibsted Grotesk"
 

@@ -28,8 +28,8 @@ def test_video_no_zone_day_uses_run_type_colour():
 def test_card_no_zone_day_uses_run_type_colour():
     f = F.weekly_recap()
     f["days"][0] = {**f["days"][0], "zone_s": [], "type": "long"}
-    svg = build_weekly_html(f, {}).split('<div class="abs bars">', 1)[1].split("</svg>")[0]
-    assert f'fill="{brand.RUN_TYPE_COLOUR["long"]}"' in svg
+    svg = build_weekly_html(f, {}).split('class="abs bars"', 1)[1].split("</svg>")[0]
+    assert f'fill="{brand.CARD_TYPE_COLOUR["long"]}"' in svg
     assert f'fill="{brand.QUIET}"/>' not in svg
 
 

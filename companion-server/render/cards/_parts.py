@@ -299,11 +299,11 @@ def bar_items(facts: Mapping[str, Any]) -> list[tuple[float, int, str]]:
     return [(float(s["pace_s"]), int(s.get("zone", 3)), str(i + 1)) for i, s in enumerate(facts.get("splits") or [])]
 
 
-def zone_block(z: Sequence[float], width: int, fg: str, quiet: str, bg: str, flood: bool) -> str:
+def zone_block(z: Sequence[float], width: int, fg: str, quiet: str, bg: str, flood: bool, bar_h: int = 130) -> str:
     """The zone bar as the card's main visual: a tall proportional bar and a minutes figure under each zone."""
     if not sum(z):
         return ""
-    bar = zone_strip(z, width, 130, gap=4, radius=0 if flood else 6, stroke=bg if flood else None)
+    bar = zone_strip(z, width, bar_h, gap=4, radius=0 if flood else 6, stroke=bg if flood else None)
     col_w = width / 5
     cols = "".join(
         f'<div style="width:{col_w:.0f}px"><div style="display:flex;align-items:center;gap:10px">'
@@ -312,4 +312,89 @@ def zone_block(z: Sequence[float], width: int, fg: str, quiet: str, bg: str, flo
         f'<div class="saira" style="font-size:64px;line-height:1.05;color:{fg}">{round(v / 60)}'
         f'<span class="cap" style="font-size:22px;margin-left:8px;color:{quiet}">MIN</span></div></div>'
         for i, v in enumerate(z))
-    return f'{bar}<div style="display:flex;margin-top:28px">{cols}</div>'
+    return f'{bar}<div style="display:flex;margin-top:{28 if bar_h > 100 else 18}px">{cols}</div>'
+
+
+# --- direction B blocks ------------------------------------------------------------------
+# Light ground, one violet hero block, lane-tinted blocks, rounded corners (12-Oct-2026).
+
+BX = 48                 # block left edge; blocks are W - 2 * BX wide
+BW = W - 2 * BX
+RADIUS = 44
+INNER = BW - 2 * 24     # a visual that sits inside a panel with 24 px padding
+
+
+def hero_block(top: int, height: int, *, tag: str, headline: str, value: str, unit: str, size: int,
+               value_colour: str | None = None, unit_colour: str | None = None, chip: str = "",
+               extra: str = "", headline_size: int = 96, overlay: str = "", pad_bottom: int = 30,
+               ground: str = brand.VIOLET, fg: str = brand.ON_VIOLET, soft: str = brand.ON_VIOLET_SOFT,
+               chip_bg: str = brand.VIOLET_PANEL) -> str:
+    """The big hero block: violet by default (pack, milestone), or the card's own colour (zone flood, lane colour). `tag`, `headline`, `unit` and `extra` are already-escaped HTML."""
+    value_colour = value_colour or fg
+    unit_colour = unit_colour or soft
+    extra_line = (f'<div style="margin-top:14px;font-size:38px;line-height:1.15;font-weight:600;font-family:\'{brand.SCHIBSTED}\',sans-serif;'
+                  f'text-transform:none;letter-spacing:0;color:{soft}">{extra}</div>') if extra else ""
+    # the gain line sits under the headline in the same column, so a long hero (1:45:12) can never run into it
+    head = (f'<div class="abs saira head" style="left:40px;top:92px;width:{BW - 80}px;font-size:{headline_size}px;'
+            f'line-height:.92;color:{fg};text-wrap:balance">{headline}{extra_line}</div>') if (headline or extra) else ""
+    chip_html = (f'<div class="abs cap" style="right:36px;top:30px;padding:8px 22px;border-radius:999px;font-size:24px;'
+                 f'background:{chip_bg};color:{fg}">{chip}</div>') if chip else ""
+    return (f'<div class="abs hero" style="left:{BX}px;top:{top}px;width:{BW}px;height:{height}px;border-radius:{RADIUS}px;'
+            f'background:{ground};overflow:hidden">'
+            f'<div class="abs cap tag" style="left:40px;top:36px;font-size:28px;letter-spacing:.14em;color:{soft}">{tag}</div>'
+            f'{chip_html}{head}'
+            f'<div class="abs" style="left:32px;bottom:{pad_bottom}px;display:flex;align-items:baseline;gap:20px;white-space:nowrap">'
+            f'<span class="saira n" style="font-size:{size}px;line-height:.78;color:{value_colour}">{value}</span>'
+            f'<span class="saira u" style="font-size:64px;color:{unit_colour}">{unit}</span></div>'
+            f'{overlay}</div>')
+
+
+def panel(top: int, height: int, inner: str, colour: str | None = None, cls: str = "") -> str:
+    """A rounded block holding a visual: lane-tinted when given a lane colour, else white with a hairline."""
+    bg = brand.tint(colour) if colour else "#FFFFFF"
+    edge = "none" if colour else f"2px solid {brand.HAIRLINE}"
+    return (f'<div class="abs {cls}" style="left:{BX}px;top:{top}px;width:{BW}px;height:{height}px;border-radius:{RADIUS}px;'
+            f'background:{bg};border:{edge};overflow:hidden"><div class="abs" style="left:24px;top:0;width:{INNER}px;'
+            f'height:{height}px;display:flex;align-items:center">{inner}</div></div>')
+
+
+def stat_blocks(stats: Sequence[tuple[str, str]], top: int, height: int, colour: str, gap: int = 16) -> str:
+    """A row of lane-tinted blocks, one number each, the lane colour as a bar across the top."""
+    if not stats:
+        return ""
+    n = len(stats)
+    size = 84 if n <= 3 else 60
+    items = "".join(
+        f'<div style="flex:1;min-width:0;position:relative;border-radius:34px;overflow:hidden;background:{brand.tint(colour)};'
+        f'padding:30px 22px 0 26px"><div style="position:absolute;left:0;top:0;width:100%;height:12px;background:{colour}"></div>'
+        f'<div class="saira" style="font-size:{size}px;line-height:1;color:{brand.INK};white-space:nowrap">{esc(v)}</div>'
+        f'<div class="cap" style="font-size:22px;margin-top:6px;color:{brand.INK_SECONDARY};white-space:nowrap">{esc(l)}</div></div>'
+        for v, l in stats)
+    return (f'<div class="abs stats" style="left:{BX}px;top:{top}px;width:{BW}px;height:{height}px;display:flex;gap:{gap}px">'
+            f'{items}</div>')
+
+
+def run_layout(*, tag: str, headline: str, value: str, unit: str, colour: str, visual: str, strip: str,
+               stats: Sequence[tuple[str, str]], value_colour: str | None = None, chip: str = "",
+               extra: str = "", headline_size: int = 96, unit_colour: str | None = None,
+               ground: str = brand.VIOLET, fg: str = brand.ON_VIOLET, soft: str = brand.ON_VIOLET_SOFT,
+               chip_bg: str = brand.VIOLET_PANEL, moment: bool = False) -> str:
+    """Post-run, PB and share cards: a hero block (zone flood, lane colour or violet), a lane-tinted visual panel, a thin
+    zone strip, stat blocks. A `moment` (hard session, PB) gets the number at full size and a shorter panel.
+    With no visual the hero block takes the space."""
+    top = 168
+    look = dict(tag=tag, headline=headline, value=value, unit=unit, value_colour=value_colour, unit_colour=unit_colour, chip=chip,
+                extra=extra, headline_size=headline_size, ground=ground, fg=fg, soft=soft, chip_bg=chip_bg)
+    if visual and moment:
+        out = hero_block(top, 620, size=380, **look)
+        out += panel(812, 240, visual, colour, "visual")
+        if strip:
+            out += f'<div class="abs strip" style="left:{PAD}px;top:1068px">{strip}</div>'
+    elif visual:
+        out = hero_block(top, 520, size=250, **look)
+        out += panel(712, 330, visual, colour, "visual")
+        if strip:
+            out += f'<div class="abs strip" style="left:{PAD}px;top:1062px">{strip}</div>'
+    else:
+        out = hero_block(top, 920 if stats else 1120, size=520, **look)
+    return out + stat_blocks(stats, 1104, 170, colour)

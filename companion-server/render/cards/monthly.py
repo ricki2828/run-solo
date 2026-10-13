@@ -1,4 +1,4 @@
-"""Monthly poster, 1080x1920: route shapes as small multiples, the month's km as the hero, the best run."""
+"""Monthly poster, 1080x1920, direction B: route shapes as small multiples, the month's km as the hero, the best run."""
 from __future__ import annotations
 
 import calendar
@@ -26,51 +26,55 @@ def _avg_pace(facts: Mapping[str, Any]) -> float | None:
     return dur / km if km >= 1 and dur > 0 else None
 
 
-def build_monthly_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = None) -> str:
-    memory = memory or {}
-    ink, quiet = brand.INK, brand.QUIET
-    runs = list(facts.get("runs") or [])[:MAX_RUNS]
-    rows = max(1, -(-len(runs) // COLS))
-    cell_w = 936 / COLS
-    cell_h = min(214.0, 760 / rows)
-    cells = []
-    for i, r in enumerate(runs):
-        col = brand.RUN_TYPE_COLOUR.get(str(r.get("type")), brand.SCORE["aerobic"])
-        svg = P.route_svg(r.get("route") or [], int(cell_w - 28), int(cell_h - 28), col, 5, brand.GROUND, pad=8, start_dot=False)
-        x, y = (i % COLS) * cell_w, (i // COLS) * cell_h
-        cells.append(f'<div class="abs" style="left:{x + 14:.0f}px;top:{y + 14:.0f}px">{svg}</div>')
-    best = facts.get("best_run") or {}
-    best_html = ""
-    if best.get("text"):
-        best_html = (f'<div class="cap" style="font-size:24px;color:{quiet};margin-bottom:10px">BEST RUN</div>'
-                     f'<div style="font-size:46px;line-height:1.18;font-weight:600;text-wrap:pretty">{P.esc(best["text"], 110)}</div>')
+def _stats(facts: Mapping[str, Any], runs: list) -> list:
     stats = [(str(facts.get("run_count", len(runs))), "RUNS"), (_hm(float(facts.get("duration_s", 0))), "ON THE MOVE")]
     if (pace := _avg_pace(facts)) is not None:  # the month's total time over its total km, from the two numbers the card holds
         stats.append((P.fmt_pace(pace), "AVG /KM"))
     if facts.get("climb_m"):
         stats.append((P.thousands(facts["climb_m"]) + " m", "CLIMB"))
-    stat_html = "".join(
-        f'<div><div class="saira" style="font-size:84px;line-height:1">{P.esc(v)}</div>'
-        f'<div class="cap" style="font-size:22px;color:{quiet}">{P.esc(l)}</div></div>' for v, l in stats)
-    grid_top = 700
-    css = P.base_css(brand.GROUND, ink, P.W, P.POSTER_H) + f"""
-.tag{{left:{P.PAD}px;top:176px;font-size:34px;color:{quiet};letter-spacing:.14em}}
-.month{{left:{P.PAD}px;top:222px;font-size:150px;line-height:.9}}
-.hero{{left:{P.PAD - 10}px;top:410px;display:flex;align-items:baseline;gap:20px}}
-.hero .n{{font-size:330px;line-height:.78}}
-.hero .u{{font-size:64px;color:{brand.SCORE['aerobic']}}}
-.grid{{left:{P.PAD}px;top:{grid_top}px;width:936px;height:{cell_h * rows:.0f}px}}
-.stats{{left:{P.PAD}px;top:1500px;width:936px;display:flex;justify-content:space-between}}
-.best{{left:{P.PAD}px;top:1668px;width:936px}}
-"""
-    body = f"""{P.header(False, P.esc(memory.get('name', ''), 20).upper(), quiet)}
-<div class="abs cap tag">MONTH IN RUNS</div>
-<div class="abs saira month">{P.esc(facts.get('month_label', ''), 24)}</div>
-<div class="abs hero"><span class="saira n">{P.thousands(float(facts['distance_km']))}</span><span class="saira u">KM</span></div>
-<div class="abs grid">{''.join(cells)}</div>
-<div class="abs stats">{stat_html}</div>
-<div class="abs best">{best_html}</div>"""
-    return P.doc(css, body)
+    return stats
+
+
+def _frame(facts: Mapping[str, Any], memory: Mapping[str, Any], grid_html: str, grid_h: float, legend_html: str, stats: list) -> str:
+    """Direction B poster: violet hero block, the month's picture on a white panel, stat blocks, the best run."""
+    quiet = brand.QUIET
+    legend_h = 56 if legend_html else 0
+    panel_h = int(grid_h + 40 + legend_h)
+    block = P.hero_block(168, 520, tag="MONTH IN RUNS", headline=P.esc(facts.get("month_label", ""), 24),
+                         value=P.thousands(float(facts["distance_km"])), unit="KM", size=250, headline_size=120)
+    inner = (f'<div class="abs grid" style="left:{P.BX + 24}px;top:{712 + 20}px;width:{P.INNER}px;height:{int(grid_h)}px">{grid_html}</div>'
+             + (f'<div class="abs legend" style="left:{P.BX + 24}px;top:{712 + 20 + int(grid_h) + 14}px;width:{P.INNER}px;white-space:nowrap">{legend_html}</div>'
+                if legend_html else ""))
+    panel = (f'<div class="abs" style="left:{P.BX}px;top:712px;width:{P.BW}px;height:{panel_h}px;border-radius:{P.RADIUS}px;'
+             f'background:#FFFFFF;border:2px solid {brand.HAIRLINE}"></div>' + inner)
+    stats_top = 712 + panel_h + 24
+    stat_html = P.stat_blocks(stats, stats_top, 150, brand.LANE["aerobic"])
+    best = facts.get("best_run") or {}
+    best_html = ""
+    if best.get("text"):
+        best_top = stats_top + 150 + 24
+        best_html = (f'<div class="abs best" style="left:{P.BX}px;top:{best_top}px;width:{P.BW}px;height:{min(1880 - best_top, 240)}px;border-radius:{P.RADIUS}px;'
+                     f'background:{brand.tint(brand.LANE["aerobic"])};overflow:hidden"><div class="abs" style="left:0;top:0;width:100%;height:12px;'
+                     f'background:{brand.LANE["aerobic"]}"></div><div class="abs cap" style="left:40px;top:34px;font-size:24px;color:{brand.INK_SECONDARY}">BEST RUN</div>'
+                     f'<div class="abs" style="left:40px;top:76px;width:{P.BW - 80}px;font-size:42px;line-height:1.18;font-weight:600;text-wrap:pretty">'
+                     f'{P.esc(best["text"], 110)}</div></div>')
+    css = P.base_css(brand.GROUND, brand.INK, P.W, P.POSTER_H)
+    return P.doc(css, P.header(False, P.esc(memory.get("name", ""), 20).upper(), quiet) + block + panel + stat_html + best_html)
+
+
+def build_monthly_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = None) -> str:
+    memory = memory or {}
+    runs = list(facts.get("runs") or [])[:MAX_RUNS]
+    rows = max(1, -(-len(runs) // COLS))
+    cell_w = P.INNER / COLS
+    cell_h = min(214.0, 590 / rows)
+    cells = []
+    for i, r in enumerate(runs):
+        col = brand.CARD_TYPE_COLOUR.get(str(r.get("type")), brand.LANE["aerobic"])
+        svg = P.route_svg(r.get("route") or [], int(cell_w - 28), int(cell_h - 28), col, 5, "#FFFFFF", pad=8, start_dot=False)
+        x, y = (i % COLS) * cell_w, (i // COLS) * cell_h
+        cells.append(f'<div class="abs" style="left:{x + 14:.0f}px;top:{y + 14:.0f}px">{svg}</div>')
+    return _frame(facts, memory, "".join(cells), cell_h * rows, "", _stats(facts, runs))
 
 
 # --- route-less layout ------------------------------------------------------------------------
@@ -86,7 +90,7 @@ TYPE_ORDER = ("easy", "long", "tempo", "interval", "race")
 
 
 def _type_colour(t: Any) -> str:
-    return brand.RUN_TYPE_COLOUR.get(str(t), brand.SCORE["aerobic"])
+    return brand.CARD_TYPE_COLOUR.get(str(t), brand.LANE["aerobic"])
 
 
 def _run_date(r: Mapping[str, Any]) -> date | None:
@@ -102,7 +106,7 @@ def has_routes(facts: Mapping[str, Any]) -> bool:
 
 def build_monthly_calendar_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = None) -> str:
     memory = memory or {}
-    ink, quiet = brand.INK, brand.QUIET
+    quiet = brand.QUIET
     runs = [(d, r) for r in facts.get("runs") or [] if (d := _run_date(r)) is not None]
     if facts.get("month_start"):
         first = date.fromisoformat(str(facts["month_start"])[:10]).replace(day=1)
@@ -111,8 +115,8 @@ def build_monthly_calendar_html(facts: Mapping[str, Any], memory: Mapping[str, A
     days_in = calendar.monthrange(first.year, first.month)[1]
     lead = first.weekday()
     rows = -(-(lead + days_in) // 7)
-    cell_w = 936 / 7
-    row_h = min(118.0, (1380 - GRID_TOP - HEAD_H) / rows)
+    cell_w = P.INNER / 7
+    row_h = min(118.0, (1330 - 732 - HEAD_H) / rows)
     longest = max([float(r.get("distance_km") or 0) for _, r in runs] + [1.0])
     by_day: dict[int, list[Mapping[str, Any]]] = {}
     for d, r in runs:
@@ -127,7 +131,7 @@ def build_monthly_calendar_html(facts: Mapping[str, Any], memory: Mapping[str, A
         idx = lead + day - 1
         x, y = (idx % 7) * cell_w, HEAD_H + (idx // 7) * row_h
         parts.append(f'<div class="abs" style="left:{x + 4:.1f}px;top:{y + 4:.1f}px;width:{cell_w - 8:.1f}px;height:{row_h - 8:.1f}px;'
-                     f'background:{brand.HAIRLINE};opacity:.55;border-radius:8px"></div>')
+                     f'background:{brand.GROUND};border-radius:10px"></div>')
         parts.append(f'<div class="abs" style="left:{x + 12:.1f}px;top:{y + 8:.1f}px;font-size:19px;font-weight:600;color:{quiet}">{day}</div>')
         todays = by_day.get(day, [])
         n = len(todays)
@@ -141,7 +145,7 @@ def build_monthly_calendar_html(facts: Mapping[str, Any], memory: Mapping[str, A
             bx = x + 12 + k * slot + (slot - bw) / 2
             parts.append(f'<div class="abs run" data-type="{P.esc(r.get("type"), 16)}" data-km="{km:.1f}" '
                          f'style="left:{bx:.1f}px;top:{y + row_h - 12 - h:.1f}px;width:{bw:.1f}px;height:{h:.1f}px;'
-                         f'background:{_type_colour(r.get("type"))};border-radius:6px"></div>')
+                         f'background:{_type_colour(r.get("type"))};border-radius:10px"></div>')
     legend, seen = [], set()
     types = [t for t in TYPE_ORDER if any(r.get("type") == t for _, r in runs)]
     for t in types:
@@ -153,40 +157,7 @@ def build_monthly_calendar_html(facts: Mapping[str, Any], memory: Mapping[str, A
         legend.append(f'<span style="display:inline-flex;align-items:center;gap:10px;margin-right:30px">'
                       f'<span style="width:20px;height:20px;border-radius:5px;background:{col}"></span>'
                       f'<span class="cap" style="font-size:22px;color:{quiet}">{P.esc(label, 24)}</span></span>')
-    legend_top = GRID_TOP + HEAD_H + row_h * rows + LEGEND_GAP
-    best = facts.get("best_run") or {}
-    best_html = ""
-    if best.get("text"):
-        best_html = (f'<div class="cap" style="font-size:24px;color:{quiet};margin-bottom:10px">BEST RUN</div>'
-                     f'<div style="font-size:46px;line-height:1.18;font-weight:600;text-wrap:pretty">{P.esc(best["text"], 110)}</div>')
-    stats = [(str(facts.get("run_count", len(runs))), "RUNS"), (_hm(float(facts.get("duration_s", 0))), "ON THE MOVE")]
-    if (pace := _avg_pace(facts)) is not None:  # the month's total time over its total km, from the two numbers the card holds
-        stats.append((P.fmt_pace(pace), "AVG /KM"))
-    if facts.get("climb_m"):
-        stats.append((P.thousands(facts["climb_m"]) + " m", "CLIMB"))
-    stat_html = "".join(
-        f'<div><div class="saira" style="font-size:84px;line-height:1">{P.esc(v)}</div>'
-        f'<div class="cap" style="font-size:22px;color:{quiet}">{P.esc(l)}</div></div>' for v, l in stats)
-    css = P.base_css(brand.GROUND, ink, P.W, P.POSTER_H) + f"""
-.tag{{left:{P.PAD}px;top:176px;font-size:34px;color:{quiet};letter-spacing:.14em}}
-.month{{left:{P.PAD}px;top:222px;font-size:150px;line-height:.9}}
-.hero{{left:{P.PAD - 10}px;top:410px;display:flex;align-items:baseline;gap:20px}}
-.hero .n{{font-size:330px;line-height:.78}}
-.hero .u{{font-size:64px;color:{brand.SCORE['aerobic']}}}
-.grid{{left:{P.PAD}px;top:{GRID_TOP}px;width:936px;height:{HEAD_H + row_h * rows:.0f}px}}
-.legend{{left:{P.PAD}px;top:{legend_top:.0f}px;width:936px;white-space:nowrap}}
-.stats{{left:{P.PAD}px;top:1500px;width:936px;display:flex;justify-content:space-between}}
-.best{{left:{P.PAD}px;top:1668px;width:936px}}
-"""
-    body = f"""{P.header(False, P.esc(memory.get('name', ''), 20).upper(), quiet)}
-<div class="abs cap tag">MONTH IN RUNS</div>
-<div class="abs saira month">{P.esc(facts.get('month_label', ''), 24)}</div>
-<div class="abs hero"><span class="saira n">{P.thousands(float(facts['distance_km']))}</span><span class="saira u">KM</span></div>
-<div class="abs grid">{''.join(parts)}</div>
-<div class="abs legend">{''.join(legend)}</div>
-<div class="abs stats">{stat_html}</div>
-<div class="abs best">{best_html}</div>"""
-    return P.doc(css, body)
+    return _frame(facts, memory, "".join(parts), HEAD_H + row_h * rows, "".join(legend), _stats(facts, [r for _, r in runs]))
 
 
 def render_monthly_poster(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = None) -> bytes:

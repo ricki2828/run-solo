@@ -225,6 +225,8 @@ GOLDENS = {
     "pb_shape": ("render_pb", lambda: _with_shape(F.pb_5k())),
     "post_run_slow_hot_day": ("render_post_run", F.slow_hot_day),
     "pb_5k": ("render_pb", F.pb_5k),
+    "pb_half_marathon": ("render_pb", F.pb_marathon_half),
+    "weekly_recap_big": ("render_weekly_recap", F.weekly_recap_big),
     "milestone_1000km": ("render_milestone", F.milestone_1000km),
     "milestone_100th": ("render_milestone", F.milestone_100th),
     "suggestion_easy_hot": ("render_suggestion", F.suggestion_easy_hot),
@@ -362,7 +364,7 @@ def test_monthly_poster_shows_the_months_average_pace_in_both_layouts():
 def test_zone_bar_has_the_same_margins_on_every_minimal_card():
     PIL = pytest.importorskip("PIL.Image")
     spans = []
-    for name, y in (("post_run_light_minimal", 900), ("post_run_flood_minimal", 900), ("pb_minimal", 960)):
+    for name, y in (("post_run_light_minimal", 840), ("post_run_flood_minimal", 840), ("pb_minimal", 840)):
         im = PIL.open(GOLDEN_DIR / f"{name}.png").convert("RGB")
         bg = im.getpixel((5, y))
         xs = [x for x in range(im.width) if sum(abs(a - b) for a, b in zip(im.getpixel((x, y)), bg)) > 60]
