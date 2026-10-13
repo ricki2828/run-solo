@@ -9,6 +9,7 @@ Future<void> _pump(
   WidgetTester tester,
   Units units, {
   String stage = 'month3',
+  VoidCallback? onShare,
 }) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 3;
@@ -21,6 +22,7 @@ Future<void> _pump(
           child: PackPanel(
             snapshot: ProgressSnapshot.sample(stage),
             units: units,
+            onShare: onShare,
           ),
         ),
       ),
@@ -88,5 +90,16 @@ void main() {
     expect(labels.length, 8);
     expect(labels.last.data, 'This wk\nran');
     expect(labels.first.data, '7 wks\nran');
+  });
+
+  testWidgets('share button only when the caller offers one', (tester) async {
+    await _pump(tester, Units.km);
+    expect(find.byKey(const ValueKey('share-pack')), findsNothing);
+    var taps = 0;
+    await _pump(tester, Units.km, onShare: () => taps++);
+    await tester.ensureVisible(find.byKey(const ValueKey('share-pack')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('share-pack')));
+    expect(taps, 1);
   });
 }

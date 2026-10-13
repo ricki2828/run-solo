@@ -18,6 +18,7 @@ class PackPanel extends StatefulWidget {
     required this.snapshot,
     this.units = Units.km,
     this.onOpenSettings,
+    this.onShare,
   });
 
   final ProgressSnapshot snapshot;
@@ -27,6 +28,10 @@ class PackPanel extends StatefulWidget {
 
   /// Opens Settings, for the "add your age" prompt.
   final VoidCallback? onOpenSettings;
+
+  /// Shares the pack band as a card. Null hides the button; the caller
+  /// passes it only when there is a pack to share.
+  final VoidCallback? onShare;
 
   @override
   State<PackPanel> createState() => _PackPanelState();
@@ -83,6 +88,14 @@ class _PackPanelState extends State<PackPanel> {
         if (_chip == 0 && pack != null) ...[
           const SizedBox(height: Space.x12),
           _RefTable(pack: pack, units: widget.units),
+          if (widget.onShare != null) ...[
+            const SizedBox(height: Space.x12),
+            OutlinedButton(
+              key: const ValueKey('share-pack'),
+              onPressed: widget.onShare,
+              child: const Text('SHARE MY PACK'),
+            ),
+          ],
         ],
         const SizedBox(height: Space.x12),
         Text(

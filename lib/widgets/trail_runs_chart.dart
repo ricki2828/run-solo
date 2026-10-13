@@ -39,6 +39,9 @@ class TrailRunsChart extends StatelessWidget {
       emptyTitle: 'Two runs on this trail draw the first chart.',
       best: group.normMs(best) / 1000,
       roundTo: 10,
+      // The y-span covers at least 30 s/km over the trail's distance, so a
+      // couple of minutes on a long trail never reads as a huge gap.
+      minSpan: 30 * group.refDistanceM / 1000,
       showValues: showValues,
       caption: 'Time on ${group.name}',
     );

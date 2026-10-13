@@ -9,6 +9,7 @@ import '../state/history_store.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/delta_glyph.dart';
+import '../widgets/run_card.dart';
 import 'run_detail_screen.dart';
 
 /// "23:20" for whole seconds.
@@ -362,6 +363,11 @@ class _CourseBoardScreenState extends State<CourseBoardScreen> {
           services.courseNames,
         ).labelOf(widget.courseId);
         final best = board.best;
+        final uniqueBest =
+            board.ranked.length < 2 ||
+            // Level at the displayed second is a tie, however the fractions fall.
+            board.ranked[0].rankSeconds.round() !=
+                board.ranked[1].rankSeconds.round();
         final n = board.ranked.length;
         return Scaffold(
           appBar: RunAppBar(title: '$label · $n ${n == 1 ? 'RUN' : 'RUNS'}'),
@@ -410,12 +416,18 @@ class _CourseBoardScreenState extends State<CourseBoardScreen> {
                     rank: board.rankOf(e.run.id)!,
                     entry: e,
                     showTrue: false,
+                    uniqueBest: uniqueBest,
                   ),
                 const SizedBox(height: Space.x24),
                 _Eyebrow('ALL'),
                 const _BoardHeader(),
                 for (final (i, e) in board.ranked.indexed)
-                  _BoardRow(rank: i + 1, entry: e, showTrue: true),
+                  _BoardRow(
+                    rank: i + 1,
+                    entry: e,
+                    showTrue: true,
+                    uniqueBest: uniqueBest,
+                  ),
               ],
             ],
           ),
@@ -510,8 +522,14 @@ class _BoardHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final s = RunSoloType.micro11.copyWith(color: t.inkSecondary);
+    // Inset like the rows below: left is the 6 dp accent plus the row's 12 dp
+    // padding, right is the row's 12 dp padding.
     return Padding(
-      padding: const EdgeInsets.only(bottom: Space.x4),
+      padding: const EdgeInsets.only(
+        left: 18,
+        right: Space.x12,
+        bottom: Space.x4,
+      ),
       child: Row(
         children: [
           SizedBox(width: 40, child: Text('#', style: s)),
@@ -531,9 +549,13 @@ class _BoardRow extends StatelessWidget {
     required this.rank,
     required this.entry,
     required this.showTrue,
+    required this.uniqueBest,
   });
   final int rank;
   final CourseBoardEntry entry;
+
+  /// Only a best nobody ties gets the cyan accent and dot.
+  final bool uniqueBest;
   final bool showTrue;
 
   @override
@@ -545,12 +567,18 @@ class _BoardRow extends StatelessWidget {
       fontFeatures: const [FontFeature.tabularFigures()],
     );
     final truth = entry.trueSeconds;
-    return InkWell(
+    return RunCard(
+      accent: rank == 1 && uniqueBest ? t.accentArc : t.typeGoal,
+      margin: const EdgeInsets.only(bottom: Space.x8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.x12,
+        vertical: Space.x8,
+      ),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => RunDetailScreen(runId: entry.run.id)),
       ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
+        constraints: const BoxConstraints(minHeight: 40),
         child: Row(
           children: [
             SizedBox(
@@ -558,7 +586,7 @@ class _BoardRow extends StatelessWidget {
               child: Row(
                 children: [
                   Text('$rank', style: num),
-                  if (rank == 1) ...[
+                  if (rank == 1 && uniqueBest) ...[
                     const SizedBox(width: 4),
                     // A10.2: the #1 row's 6 dp Arc dot; the only Arc here.
                     Container(
