@@ -5,13 +5,30 @@ import '../app/services.dart';
 import '../state/companion.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
+import '../widgets/section_card.dart';
 
 /// What the consent screen says, in one place so the screen, the privacy page
 /// and the store copy can be checked against it. Plain words, no em dashes.
 const String kCompanionIntro =
     'After a run, the companion sends you a short note in Telegram with the '
-    'numbers that matter. It may ask how a run felt, and suggest up to two '
-    'sessions a week. WhatsApp is coming later.';
+    'numbers that matter. It may ask how a run felt, suggest up to two '
+    'sessions a week, and check in with you before and after a planned run. '
+    'WhatsApp is coming later.';
+
+/// The check-ins disclosure. Same words as privacy section 2b, "Check-ins".
+const String kCompanionCheckins =
+    'The companion can check in with buttons and nothing typed: how your '
+    'body feels the evening before a planned session, going or skipping on '
+    'the morning (with why, if you skip), what was behind an easy run that '
+    'came out slower and harder than usual, and on Sunday how many runs you '
+    'want next week. If you skip, the session moves to a later day. Sore '
+    'and ill are health information; the companion uses them only to go '
+    'lighter, and they never leave our server, so no writing service or '
+    'weather service ever sees them. Answers are kept 14 days, then '
+    'deleted, and they are left out of backups. They show below under '
+    'Check-ins, and Delete everything removes them at once. Home asks our '
+    'server for your next session and the coach\'s latest note; the reply '
+    'says whether a session moved and nothing else about your answers.';
 
 const String kCompanionSent =
     'Each run\'s summary: type, date and start time, time zone, duration, '
@@ -228,6 +245,8 @@ class _CompanionConsentViewState extends State<CompanionConsentView> {
         body(kCompanionIntro),
         const _Heading('What leaves your phone'),
         body(kCompanionSent),
+        const _Heading('Check-ins'),
+        body(kCompanionCheckins),
         const _Heading('Where it goes'),
         body(kCompanionWhere),
         const _Heading('How to delete it'),
@@ -426,6 +445,49 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
               ),
             ),
           ),
+        if (services.companion?.needsReconsent ?? false)
+          Padding(
+            padding: const EdgeInsets.only(top: Space.x16),
+            child: SectionCard(
+              key: const ValueKey('companion-reconsent'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'NEW: CHECK-INS',
+                    style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+                  ),
+                  const SizedBox(height: Space.x8),
+                  Text(
+                    kCompanionCheckins,
+                    style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+                  ),
+                  const SizedBox(height: Space.x16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _ChoiceButton(
+                          key: const ValueKey('companion-agree'),
+                          label: 'Agree',
+                          onTap: _busy
+                              ? null
+                              : services.companion!.acceptConsent,
+                        ),
+                      ),
+                      const SizedBox(width: Space.x12),
+                      Expanded(
+                        child: _ChoiceButton(
+                          key: const ValueKey('companion-decline'),
+                          label: 'Turn off',
+                          onTap: _busy ? null : _remove,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
         const _Heading('What the companion knows'),
         if (_loading)
           const Padding(
@@ -434,36 +496,29 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
           )
         else if (me != null) ...[
           for (final (what, answer) in me.lines)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: Space.x12),
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: t.lineHair)),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 5,
-                    child: Text(
-                      what,
-                      style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-                    ),
-                  ),
-                  const SizedBox(width: Space.x12),
-                  Expanded(
-                    flex: 6,
-                    child: Text(
-                      answer,
-                      textAlign: TextAlign.end,
-                      style: RunSoloType.body15.copyWith(
-                        color: t.inkPrimary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
+            _FactRow(what: what, answer: answer),
+        ],
+        if (me != null) ...[
+          const _Heading('Check-ins'),
+          Text(
+            'Your answers to the coach\'s check-ins. Kept 14 days, then '
+            'deleted. Delete everything removes them now.',
+            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+          ),
+          if (me.checkinLines.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: Space.x12),
+              child: Text(
+                'None in the last 14 days',
+                key: const ValueKey('companion-checkins-none'),
+                style: RunSoloType.body15.copyWith(
+                  color: t.inkPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
+          for (final (what, answer) in me.checkinLines)
+            _FactRow(what: what, answer: answer),
         ],
         if (_problem != null)
           Padding(
@@ -536,6 +591,48 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
         ),
         const SizedBox(height: Space.x32),
       ],
+    );
+  }
+}
+
+/// One fact: what on the left, the answer on the right.
+class _FactRow extends StatelessWidget {
+  const _FactRow({required this.what, required this.answer});
+  final String what;
+  final String answer;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: Space.x12),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: t.lineHair)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 5,
+            child: Text(
+              what,
+              style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+            ),
+          ),
+          const SizedBox(width: Space.x12),
+          Expanded(
+            flex: 6,
+            child: Text(
+              answer,
+              textAlign: TextAlign.end,
+              style: RunSoloType.body15.copyWith(
+                color: t.inkPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

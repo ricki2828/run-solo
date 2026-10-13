@@ -28,7 +28,15 @@ void main() {
           '"runs_received":[{"feel":"easy"},{"feel":"right"},{"feel":"right"},'
           '{"feel":"hard"},{}],"messages_sent_30d":6,"chat_name":"Ricki",'
           '"memory":{"goal_type":"first_5k","race_month":"2026-11",'
-          '"usual_days":"both","niggle_area":"calf"}}',
+          '"usual_days":"both","niggle_area":"calf"},'
+          '"checkins":[{"kind":"ready","local_date":"2026-10-12","value":"flat",'
+          '"created_at":"2026-10-12T20:10:00Z"},{"kind":"today",'
+          '"local_date":"2026-10-13","value":"skip",'
+          '"created_at":"2026-10-13T06:40:00Z"},{"kind":"why",'
+          '"local_date":"2026-10-13","value":"tired",'
+          '"created_at":"2026-10-13T06:41:00Z"},{"kind":"shape",'
+          '"local_date":"2026-10-11","value":"4",'
+          '"created_at":"2026-10-11T19:06:00Z"}]}',
         ),
         _ => FakeCompanionHttp().defaultReply(r),
       };
@@ -74,6 +82,32 @@ void main() {
     tester.view.physicalSize = const Size(1080, 640 * 3);
     await pumpTimes(tester, 8);
     await check(tester, 'companion_knows_360x640');
+  });
+
+  testWidgets('companion new check-ins ask again 360x640', (tester) async {
+    await tester.runAsync(() => enrolNow(ctl));
+    // A runner who turned on under version 1.
+    final store = MemorySecretStore()
+      ..values[CompanionController.tokenName] = 'tok-123'
+      ..values[CompanionController.consentName] = '1';
+    final old = CompanionController(
+      store: store,
+      transfer: FakeTransferGateway(),
+      client: CompanionClient(baseUrl: 'https://c.test', http: http),
+    );
+    await tester.runAsync(old.load);
+    await pumpApp(
+      tester,
+      fakeServices(companion: old),
+      home: const CompanionScreen(),
+    );
+    tester.view.physicalSize = const Size(1080, 640 * 3);
+    await pumpTimes(tester, 8);
+    expect(find.byKey(const ValueKey('companion-reconsent')), findsOneWidget);
+    await check(tester, 'companion_reconsent_360x640');
+    await tester.tap(find.byKey(const ValueKey('companion-agree')));
+    await pumpTimes(tester, 4);
+    expect(find.byKey(const ValueKey('companion-reconsent')), findsNothing);
   });
 
   testWidgets('companion weather sheet 360x640', (tester) async {

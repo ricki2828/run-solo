@@ -6,6 +6,7 @@ import '../app/routes.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/block_plan.dart';
+import '../state/companion.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../state/load_guard.dart';
@@ -22,6 +23,7 @@ import '../widgets/readiness_line.dart';
 import '../widgets/load_warning.dart';
 import '../widgets/recent_activity.dart';
 import '../widgets/section_card.dart';
+import 'companion_screen.dart';
 import 'progress_screen.dart';
 
 /// Direction B Home: the pack hero first, then the next session, the weekly
@@ -108,6 +110,11 @@ class _HomeScreenState extends State<HomeScreen> {
     services.permissions.status().then((p) {
       if (mounted) setState(() => _perms = p);
     });
+    // The coach's next session, quietly: nothing shows if it fails.
+    final companion = services.companion;
+    if (companion != null) {
+      companion.load().then((_) => companion.refreshNext());
+    }
   }
 
   /// Never throws: a failed scores read comes back as [_HomeData.failed],
@@ -437,6 +444,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                 : 'See the plan',
                             onPlan: _openPlan,
                           ),
+                          if (services.companion != null)
+                            ListenableBuilder(
+                              listenable: services.companion!,
+                              builder: (context, _) => _CoachSlot(
+                                controller: services.companion!,
+                                now: _now,
+                              ),
+                            ),
                           const SizedBox(height: Space.x16),
                           StreakCard(
                             streak: snap0.streak,
@@ -573,6 +588,60 @@ class _HomeData {
 
 /// One recommended session with its reason. Start opens setup preset to it;
 /// Change opens the same screen to pick something else.
+/// Home's coach slot: the coach's next session and line, or, for a runner who
+/// turned the companion on before check-ins, a prompt to look and agree.
+/// Nothing at all when the companion is off, offline or has nothing to say.
+class _CoachSlot extends StatelessWidget {
+  const _CoachSlot({required this.controller, required this.now});
+  final CompanionController controller;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    if (controller.needsReconsent) {
+      return Padding(
+        padding: const EdgeInsets.only(top: Space.x16),
+        child: SectionCard(
+          key: const ValueKey('home-coach-reconsent'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'YOUR COACH HAS NEW CHECK-INS',
+                style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+              ),
+              const SizedBox(height: Space.x4),
+              Text(
+                'It can ask how you feel before a run and move a session '
+                'for you. Have a look, then agree to keep it going.',
+                style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute(builder: (_) => const CompanionScreen()),
+                  ),
+                  child: const Text('See what is new'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    final next = controller.coachNext;
+    if (next == null || !CoachNextCard.visible(next, now)) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: Space.x16),
+      child: CoachNextCard(next: next, now: now),
+    );
+  }
+}
+
 class _GetBetter extends StatelessWidget {
   const _GetBetter({
     required this.lane,
