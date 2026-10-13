@@ -308,17 +308,53 @@ class TelegramChannel:
         return str(self._call("sendMessage", payload)["result"]["message_id"]), False
 
     def edit_checkin(self, ref: str, message_id: str, card_id: str, text: str, keyboard: list[list[tuple[str, str]]],
-                     is_photo: bool) -> None:
-        """Edit the message to this text and keyboard. "Not modified" is success; every other failure raises
-        ChannelError (`cant_edit` when the message is gone, `rate_limited` with `retry_after` on a 429)."""
-        payload: dict[str, Any] = {"chat_id": int(ref), "message_id": int(message_id),
-                                   "reply_markup": self.checkin_markup(card_id, keyboard)}
-        payload["caption" if is_photo else "text"] = text
+                     is_photo: bool, media: Media | None = None) -> None:
+        """Edit the message to this text and keyboard (and, on a photo message given `media`, the picture). "Not
+        modified" is success; every other failure raises ChannelError (`cant_edit` when the message is gone,
+        `rate_limited` with `retry_after` on a 429)."""
+        markup = self.checkin_markup(card_id, keyboard)
         try:
+            if media and media.photo and is_photo and utf16_len(text) <= CAPTION_MAX:
+                fields = {"chat_id": int(ref), "message_id": int(message_id), "reply_markup": json.dumps(markup),
+                          "media": json.dumps({"type": "photo", "media": "attach://photo", "caption": text})}
+                self._call("editMessageMedia", fields, {"photo": ("card.png", media.photo, "image/png")})
+                return
+            payload: dict[str, Any] = {"chat_id": int(ref), "message_id": int(message_id), "reply_markup": markup}
+            payload["caption" if is_photo else "text"] = text
             self._call("editMessageCaption" if is_photo else "editMessageText", payload)
         except ChannelError as e:
             if not e.not_modified:
                 raise
+
+    def send_photo(self, ref: str, photo: bytes, caption: str = "", silent: bool = True) -> str:
+        """A picture with no buttons (the week card). Silent by default: no notification."""
+        fields: dict[str, Any] = {"chat_id": int(ref), "disable_notification": "true" if silent else "false"}
+        if caption:
+            fields["caption"] = caption
+        return str(self._call("sendPhoto", fields, {"photo": ("card.png", photo, "image/png")})["result"]["message_id"])
+
+    def edit_photo(self, ref: str, message_id: str, photo: bytes, caption: str = "") -> None:
+        """Replace a picture message's picture. "Not modified" is success."""
+        fields = {"chat_id": int(ref), "message_id": int(message_id),
+                  "media": json.dumps({"type": "photo", "media": "attach://photo", **({"caption": caption} if caption else {})})}
+        try:
+            self._call("editMessageMedia", fields, {"photo": ("card.png", photo, "image/png")})
+        except ChannelError as e:
+            if not e.not_modified:
+                raise
+
+    def pin(self, ref: str, message_id: str) -> None:
+        """Pin silently. Cosmetic: a refusal (no right to pin, message gone) never fails the caller."""
+        try:
+            self._call("pinChatMessage", {"chat_id": int(ref), "message_id": int(message_id), "disable_notification": True})
+        except ChannelError:
+            pass
+
+    def unpin(self, ref: str, message_id: str) -> None:
+        try:
+            self._call("unpinChatMessage", {"chat_id": int(ref), "message_id": int(message_id)})
+        except ChannelError:
+            pass
 
     def edit_into_card(self, ref: str, message_id: str, card: OutCard, is_photo: bool) -> None:
         """Turn an earlier message (the morning today card) into this run card, in place (C3). A photo replaces the

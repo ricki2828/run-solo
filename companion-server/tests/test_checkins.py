@@ -820,3 +820,114 @@ def test_telegram_errors_carry_their_meaning(client):
               "Bad Request: there is no text in the message to edit"):
         assert ChannelError("x", status=400, description=d).cant_edit
     assert not ChannelError("x", status=403, description="Forbidden: bot was blocked by the user").cant_edit
+
+
+# ================================================================= the pictures (S2's cards) and the pinned week
+class FakeMedia:
+    """Stands in for the render client: checks every request against the real worker protocol, then returns a picture."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, dict]] = []
+        self.refused = False
+
+    def render_checkin(self, kind, facts):
+        from render import protocol as P
+        P.check_request({"v": P.VERSION, "op": "card", "kind": kind, "facts": dict(facts)})   # raises on a bad key or value
+        self.calls.append((kind, dict(facts)))
+        return None if self.refused else __import__("companion.media", fromlist=["Media"]).Media(photo=b"PNG-" + kind.encode())
+
+
+@pytest.fixture
+def penv(env):
+    import dataclasses
+    env.svc.s = dataclasses.replace(env.svc.s, media_enabled=True)
+    env.svc.media = FakeMedia()
+    return env
+
+
+def kinds(env):
+    return [k for k, _ in env.svc.media.calls]
+
+
+def test_the_morning_card_is_a_picture_in_s2s_vocabulary_with_no_answer_in_it(penv):
+    penv.step(at(2026, 10, 15, 6, 45))
+    [(kind, facts)] = [c for c in penv.svc.media.calls if c[0] == "today"]
+    assert facts == {"type": "tempo", "session": "Quality session", "date_local": "2026-10-15", "units": "km", "distance_km": 6.0}
+    photos = [(m, b) for m, b in penv.fakes.tg if m == "sendPhoto" and "caption" in b and "Today:" in b["caption"]]
+    assert photos and "Planned for around 7:00" in photos[0][1]["caption"]          # the time is in the text, not the card
+    assert penv.slot("today")["is_photo"] == 1
+
+
+def test_an_easy_session_always_sends_a_guide(penv):
+    with db.tx(penv.path) as c:
+        c.execute("UPDATE runs SET plan_next_type='easy'")
+    penv.step(at(2026, 10, 15, 6, 45))
+    assert [f for k, f in penv.svc.media.calls if k == "today"][0]["guide"] == "chatty"
+
+
+def test_skip_with_a_reason_swaps_the_picture_to_moved_and_the_reason_never_reaches_the_renderer(penv):
+    penv.step(at(2026, 10, 15, 6, 45))
+    penv.tap("t.skip", at(2026, 10, 15, 6, 46))
+    before = len(penv.fakes.tg)
+    penv.tap("w.ill", at(2026, 10, 15, 6, 47))
+    edits = [(m, b) for m, b in penv.fakes.tg[before:] if m == "editMessageMedia"]
+    assert edits and "Rest up" in json.loads(edits[0][1]["media"])["caption"]
+    [(_, moved)] = [c for c in penv.svc.media.calls if c[0] == "moved"]
+    assert moved["from_day"] == "thu" and moved["to_day"] == "next_week" and "skip_reason" not in moved
+    assert "ill" not in json.dumps(penv.svc.media.calls)
+    penv.tap("u.undo", at(2026, 10, 15, 6, 48))
+    assert [m for m, _ in penv.fakes.tg[-2:]] == ["answerCallbackQuery", "editMessageMedia"]   # back to the today picture
+
+
+def test_the_result_replaces_the_morning_picture_with_the_verdict_card_using_the_apps_verdict(penv):
+    penv.step(at(2026, 10, 15, 6, 45))
+    run_thursday(penv)
+    [(_, facts)] = [c for c in penv.svc.media.calls if c[0] == "today_verdict"]
+    assert facts["verdict"] == "faster" and facts["type"] == "tempo" and facts["result_pace_s"] == 342.0
+    assert [m for m, _ in penv.fakes.tg if m == "editMessageMedia"]
+    assert penv.slot("today")["state"] == "consumed"
+
+
+def test_the_week_card_is_posted_once_pinned_silently_then_edited_after_each_run_and_move(penv):
+    start = at(2026, 10, 15, 7, 0)
+    run_thursday(penv)                                           # a run: the week card follows
+    penv.svc.run_outbox(start + timedelta(minutes=47))
+    assert len([1 for m, b in penv.fakes.tg if m == "sendPhoto" and b.get("disable_notification") == "true"]) == 1
+    pins = [b for m, b in penv.fakes.tg if m == "pinChatMessage"]
+    assert len(pins) == 1 and pins[0]["disable_notification"] is True
+    [(_, wk)] = [c for c in penv.svc.media.calls if c[0] == "pinned_week"]
+    assert wk["week_label"] == "Week 42" and wk["today_idx"] == 3 and len(wk["days"]) == 7
+    assert wk["days"][3]["done_km"] == 7.0 and [d["type"] for d in wk["days"]].count("rest") >= 3
+    # a move edits it; it never posts a second one, and the slot is one row per runner per week
+    penv.svc.plan_checkins(at(2026, 10, 15, 21, 0))
+    run2 = at(2026, 10, 16, 7, 0)
+    penv.run("fri", run2, now=run2 + timedelta(minutes=45), plan_next={"type": "easy", "day": "2026-10-17", "week": 3, "distance_m": 5000})
+    penv.svc.run_outbox(run2 + timedelta(minutes=46))
+    penv.svc.run_outbox(run2 + timedelta(minutes=48))
+    assert len([1 for m, _ in penv.fakes.tg if m == "sendPhoto" and "caption" not in _]) == 1
+    assert [m for m, _ in penv.fakes.tg if m == "editMessageMedia"]
+    assert len(penv.q("SELECT * FROM checkin_slots WHERE slot='week'")) == 1
+
+
+def test_a_deleted_week_card_is_sent_again_and_pinned_and_a_new_week_unpins_the_old(penv):
+    run_thursday(penv)
+    start = at(2026, 10, 15, 7, 0)
+    penv.svc.run_outbox(start + timedelta(minutes=47))
+    first = penv.q("SELECT message_id FROM checkin_slots WHERE slot='week'")[0]["message_id"]
+    penv.fakes.fail("editMessageMedia", description="Bad Request: message to edit not found")
+    penv.svc._ci_week_enqueue({"id": penv.uid, "channel": "telegram", "zone_id": "Europe/Rome"}, start + timedelta(hours=2))
+    penv.svc.run_outbox(start + timedelta(hours=2, minutes=1))
+    now_id = penv.q("SELECT message_id FROM checkin_slots WHERE slot='week'")[0]["message_id"]
+    assert now_id != first and len([1 for m, _ in penv.fakes.tg if m == "pinChatMessage"]) == 2
+    nxt = at(2026, 10, 20, 8, 0)
+    penv.svc._ci_week_enqueue({"id": penv.uid, "channel": "telegram", "zone_id": "Europe/Rome"}, nxt)
+    penv.svc.run_outbox(nxt + timedelta(minutes=1))
+    assert len(penv.q("SELECT * FROM checkin_slots WHERE slot='week'")) == 2
+    assert [b["message_id"] for m, b in penv.fakes.tg if m == "unpinChatMessage"] == [int(now_id)]
+
+
+def test_no_week_card_without_a_picture_and_none_when_check_ins_are_off(penv):
+    penv.svc.media.refused = True
+    run_thursday(penv)
+    penv.svc.run_outbox(at(2026, 10, 15, 8, 0))
+    assert penv.q("SELECT * FROM checkin_slots WHERE slot='week'") == [] and not [m for m, _ in penv.fakes.tg if m == "pinChatMessage"]

@@ -15,6 +15,7 @@ Mixed into `service.Service`. Rules it enforces (eng-review 13-Oct):
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import secrets
 from datetime import date, datetime, timedelta
@@ -31,6 +32,11 @@ log = logging.getLogger("companion")
 CI_KINDS = ("ci", "ci_edit")
 LINE_LOOKBACK_DAYS = 3
 COACH_LINE_KINDS = ("run", "evening", "recap", "monthly")
+DAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+def ci_types() -> frozenset[str]:
+    return frozenset({"easy", "long", "tempo", "interval", "race", "cooper", "trail", "rest"})
 
 
 def _sep(*parts: object) -> str:
@@ -266,7 +272,6 @@ class CheckinMixin:
                 log.info("check-in %s held back: today's question is taken", slot)
                 return "skipped", None
             head, body, kb = self._ci_text(c, user, slot, for_date, now)
-            when = self._ci_when(c, uid, user, for_date, now)
             self._ci_claim_question(c, uid, slot, now)
             card_id = secrets.token_hex(16)
             c.execute("INSERT INTO checkin_slots (user_id, slot, local_date, card_id, state, claimed_at) VALUES (?,?,?,?,?,?)",
@@ -275,9 +280,8 @@ class CheckinMixin:
             c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
                       "VALUES (?,?,?,?,?,?,?,?,?)", (card_id, uid, f"ci:{slot}:{d_s}", f"ci_{slot}", head, body, "[]",
                                                      "template", iso(now)))
-            facts = {"session": self._ci_ctx(c, user, slot, for_date, now).label, "when_local": when,
-                     "date_local": d_s}
-        media = self._ci_media("today", facts) if slot == "today" else None
+            facts = self._ci_card_facts(c, user, for_date, now) if slot == "today" else None
+        media = self._ci_media("today", facts) if facts else None
         try:
             mid, is_photo = ch.send_checkin(user["chat_ref"], card_id, f"{head}\n{body}", kb, media)
         except ChannelError as e:
@@ -334,6 +338,7 @@ class CheckinMixin:
             return
         ch.answer_callback(inb.callback_id)   # first: the button stops spinning whatever the edit does
         self._ci_sync_or_queue(user, slot, for_date, now)
+        self._ci_week_enqueue(user, now)
 
     @staticmethod
     def _ci_apply(c, uid: str, kind: str, value: str, for_date: date, now: datetime) -> None:
@@ -374,9 +379,10 @@ class CheckinMixin:
                 return False
             srow = dict(r)
             head, body, kb = self._ci_text(c, user, slot, for_date, now)
+            pic = self._ci_stage_media(c, user, slot, for_date, now) if srow["is_photo"] else None
         text = f"{head}\n{body}"
         try:
-            ch.edit_checkin(user["chat_ref"], srow["message_id"], srow["card_id"], text, kb, bool(srow["is_photo"]))
+            ch.edit_checkin(user["chat_ref"], srow["message_id"], srow["card_id"], text, kb, bool(srow["is_photo"]), pic)
         except ChannelError as e:
             if not e.cant_edit:
                 raise
@@ -384,6 +390,170 @@ class CheckinMixin:
             with db.tx(self.s.db_path) as c:
                 c.execute("UPDATE checkin_slots SET message_id=?, is_photo=? WHERE card_id=?", (mid, int(is_photo), srow["card_id"]))
         return True
+
+    # ------------------------------------------------------------------ the pictures (stream S2's kinds)
+    @staticmethod
+    def _ci_card_type(typ: str) -> str:
+        return {"quality": "tempo"}.get(typ, typ)
+
+    def _ci_card_facts(self, c, user: dict, for_date: date, now: datetime) -> dict | None:
+        """Facts for the today card, in S2's vocabulary (numbers, fixed enums and a short label; the time of day is in
+        the message text, not the picture). Nothing from an answer goes in. None when nothing is planned."""
+        ans, planned, usual, today, res = self._ci_state(c, user, now)
+        if planned is None:
+            return None
+        typ = res.type if res and res.day == for_date else planned.type
+        facts: dict[str, Any] = {"type": self._ci_card_type(typ), "session": cc.WORD.get(typ, "Run"),
+                                 "date_local": for_date.isoformat(), "units": "km"}
+        if planned.distance_m:
+            facts["distance_km"] = round(planned.distance_m / 1000, 1)
+        elif planned.minutes:
+            facts["duration_s"] = planned.minutes * 60
+        if typ == "easy":
+            facts["guide"] = "chatty"      # an easy session never renders the bare block
+        elif typ == "long":
+            facts["guide"] = "steady"
+        return facts
+
+    def _ci_moved_facts(self, c, user: dict, for_date: date, now: datetime) -> dict | None:
+        """The MOVED card: where the session went. The reason is deliberately not sent (it stays out of the renderer)."""
+        facts = self._ci_card_facts(c, user, for_date, now)
+        if facts is None:
+            return None
+        ans, _p, usual, _t, _r = self._ci_state(c, user, now)
+        to = ci._move_from(for_date, ans, usual)
+        facts.pop("guide", None)
+        facts.pop("date_local", None)
+        facts["from_day"] = DAY_NAMES[for_date.weekday()]
+        same_week = to is not None and to.isocalendar()[:2] == for_date.isocalendar()[:2]
+        facts["to_day"] = DAY_NAMES[to.weekday()] if to is not None and same_week else "next_week"
+        return facts
+
+    def _ci_stage_media(self, c, user: dict, slot: str, for_date: date, now: datetime) -> Any:
+        """The picture the morning message should show at its current stage: the today card, or the MOVED card once a
+        reason has moved the session. Other stages keep the picture they have."""
+        if slot != "today":
+            return None
+        ans, *_ = self._ci_state(c, user, now)
+        stage, why = self._ci_stage(slot, ans, for_date)
+        if stage == "skip" and why:
+            facts = self._ci_moved_facts(c, user, for_date, now)
+            return self._ci_media("moved", facts) if facts else None
+        if stage in (None, "skip"):
+            facts = self._ci_card_facts(c, user, for_date, now)
+            return self._ci_media("today", facts) if facts else None
+        return None
+
+    def _ci_verdict_media(self, user: dict, card: dict, slot: dict) -> Any:
+        """The result picture for the morning message (today_verdict), from the run itself, with the app's own verdict
+        mapped to S2's enum so the picture never disagrees with the coach text. None leaves the ordinary run card
+        picture in place."""
+        if not slot["is_photo"]:
+            return None
+        with db.ro(self.s.db_path) as c:
+            r = c.execute("SELECT * FROM runs WHERE user_id=? AND run_id=?", (user["id"], card["run_id"])).fetchone()
+        if r is None:
+            return None
+        run = dict(r)
+        facts: dict[str, Any] = {"type": self._ci_card_type(run["type"]), "session": cc.WORD.get(run["type"], "Run"),
+                                 "units": "km"}
+        if run["distance_m"] >= 10:
+            facts["distance_km"] = round(run["distance_m"] / 1000, 2)
+        pace = run.get("pace_s_per_km") or run.get("true_pace_s_per_km")
+        if pace:
+            facts["result_pace_s"] = float(pace)
+        verdict = "pb" if run.get("pb") else {"faster": "faster", "slower": "slower", "holding": "in_range",
+                                               "noRealChange": "in_range"}.get(run.get("verdict") or "")
+        if verdict:
+            facts["verdict"] = verdict
+        if run.get("pb"):
+            facts["pb"] = True
+        return self._ci_media("today_verdict", facts)
+
+    # ------------------------------------------------------------------ the pinned week card
+    def _ci_week_enqueue(self, user: dict, now: datetime) -> None:
+        """Ask the worker to bring this week's pinned card up to date (after a run or a move). It rebuilds from the rows,
+        so asking twice is harmless."""
+        if not (self.s.checkins_enabled and self.s.media_enabled) or user["channel"] != "telegram":
+            return
+        monday = (to_local(now, user["zone_id"]).date() - timedelta(days=to_local(now, user["zone_id"]).weekday())).isoformat()
+        with db.tx(self.s.db_path) as c:
+            c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
+                      (user["id"], "ci_week", iso(now), f"ciw:{user['id']}:{monday}:{int(now.timestamp())}", monday))
+
+    def _ci_week_facts(self, c, user: dict, monday: date, now: datetime) -> dict:
+        uid, zone_id = user["id"], user["zone_id"]
+        lo, hi = ci.at_local(monday, 0, zone_id), ci.at_local(monday + timedelta(days=7), 0, zone_id)
+        done: dict[int, tuple[str, float]] = {}
+        for r in c.execute("SELECT start_utc, zone_id, type, distance_m FROM runs WHERE user_id=? AND start_utc>=? AND start_utc<?",
+                           (uid, iso(lo), iso(hi))):
+            i = (to_local(parse_iso(r["start_utc"]), r["zone_id"]).date() - monday).days
+            typ, km = done.get(i, (r["type"], 0.0))
+            done[i] = (r["type"] if r["type"] in ("long", "tempo", "interval", "race") else typ, km + r["distance_m"] / 1000)
+        _a, planned, _u, today, res = self._ci_state(c, user, now)
+        days = []
+        for i in range(7):
+            d = monday + timedelta(days=i)
+            entry: dict[str, Any] = {"type": "rest", "planned_km": 0, "done_km": 0}
+            if res and res.day == d and planned:
+                entry.update(type=self._ci_card_type(res.type), planned_km=round((planned.distance_m or 0) / 1000, 1))
+            if i in done:
+                entry.update(type=done[i][0] if done[i][0] in ci_types() else "easy", done_km=round(done[i][1], 1))
+            days.append(entry)
+        iso_week = monday.isocalendar()[1]
+        return {"week_label": f"Week {iso_week}", "days": days, "units": "km",
+                "today_idx": (today - monday).days if 0 <= (today - monday).days <= 6 else 0}
+
+    def _ci_week_sync(self, user: dict, monday_s: str, now: datetime) -> tuple[str, datetime | None]:
+        """Create (once, silently pinned) or update the runner's week card. One message per runner per week: the
+        (user, 'week', Monday) slot is claimed before the send, so a retry or a restart cannot post a second one."""
+        ch = self.channels.get("telegram")
+        if ch is None or user["channel"] != "telegram" or not self.s.media_enabled:
+            return "skipped", None
+        monday = date.fromisoformat(monday_s)
+        with db.ro(self.s.db_path) as c:
+            facts = self._ci_week_facts(c, user, monday, now)
+            r = c.execute("SELECT * FROM checkin_slots WHERE user_id=? AND slot='week' AND local_date=?",
+                          (user["id"], monday_s)).fetchone()
+        srow = dict(r) if r else None
+        media = self._ci_media("pinned_week", facts)
+        if srow is None:
+            if media is None or not media.photo:
+                return "skipped", None   # a picture or nothing: there is no text stand-in for it
+            with db.tx(self.s.db_path) as c:   # claim before the send: one message per runner per week
+                if not c.execute("INSERT OR IGNORE INTO checkin_slots (user_id, slot, local_date, state, claimed_at, is_photo) "
+                                 "VALUES (?,?,?,?,?,1)", (user["id"], "week", monday_s, "claimed", iso(now))).rowcount:
+                    return "skipped", None
+            try:
+                mid = ch.send_photo(user["chat_ref"], media.photo)
+            except ChannelError as e:
+                if e.ambiguous:
+                    return "skipped", None
+                with db.tx(self.s.db_path) as c:
+                    c.execute("DELETE FROM checkin_slots WHERE user_id=? AND slot='week' AND local_date=?", (user["id"], monday_s))
+                raise
+            self._ci_week_pinned(user, monday_s, mid, ch)
+            return "done", None
+        if srow["state"] != "sent" or not srow["message_id"] or media is None or not media.photo:
+            return "skipped", None   # claimed but unknown, or no picture this time: leave the card as it is
+        try:
+            ch.edit_photo(user["chat_ref"], srow["message_id"], media.photo)
+        except ChannelError as e:
+            if not e.cant_edit:
+                raise
+            mid = ch.send_photo(user["chat_ref"], media.photo)   # deleted by the runner: a new one, pinned again (C3)
+            self._ci_week_pinned(user, monday_s, mid, ch)
+        return "done", None
+
+    def _ci_week_pinned(self, user: dict, monday_s: str, mid: str, ch: Any) -> None:
+        with db.tx(self.s.db_path) as c:
+            old = c.execute("SELECT message_id FROM checkin_slots WHERE user_id=? AND slot='week' AND local_date<>? AND "
+                            "state='sent' ORDER BY local_date DESC LIMIT 1", (user["id"], monday_s)).fetchone()
+            c.execute("UPDATE checkin_slots SET message_id=?, state='sent', sent_at=? WHERE user_id=? AND slot='week' AND "
+                      "local_date=?", (mid, iso(now_utc()), user["id"], monday_s))
+        if old and old["message_id"]:
+            ch.unpin(user["chat_ref"], old["message_id"])   # last week's card stops being the pinned one
+        ch.pin(user["chat_ref"], mid)
 
     def _ci_process_edit(self, user: dict, ref: str, now: datetime) -> tuple[str, datetime | None]:
         slot, d_s = ref.split("|")
@@ -416,6 +586,9 @@ class CheckinMixin:
         slot = self._ci_today_slot_for(user, card) if user["channel"] == "telegram" else None
         if slot is None:
             return ch.send_card(user["chat_ref"], out, **kw)
+        pic = self._ci_verdict_media(user, card, slot)
+        if pic is not None and pic.photo:
+            out = dataclasses.replace(out, media=pic)   # the morning picture becomes its own result picture
         has_photo = bool(out.media and out.media.photo)
         try:
             ch.edit_into_card(user["chat_ref"], slot["message_id"], out, bool(slot["is_photo"]))

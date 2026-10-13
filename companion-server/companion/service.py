@@ -1210,6 +1210,8 @@ class Service(CheckinMixin):
             for mode in followups:  # its own outbox item each: a failure retries the text, never the upload
                 c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
                           (user["id"], "followup", iso(now), f"fu:{card_id}:{mode}", f"{card_id}:{mode}"))
+        if card["kind"] == "run":
+            self._ci_week_enqueue(user, now)   # the pinned week card follows each run
         return True
 
     @staticmethod
@@ -1337,6 +1339,8 @@ class Service(CheckinMixin):
             return "defer", now + timedelta(minutes=15)
         if item["kind"] == "ci_edit":   # the answer to a tap the runner just made: not held back by quiet hours
             return self._ci_process_edit(user, item["ref"], now)
+        if item["kind"] == "ci_week":   # a silent edit of the pinned week card, also not held back by quiet hours
+            return self._ci_week_sync(user, item["ref"], now)
         qs, qe = self._quiet(user)
         if in_quiet(now, user["zone_id"], qs, qe):
             until = quiet_end_utc(now, user["zone_id"], qe)
