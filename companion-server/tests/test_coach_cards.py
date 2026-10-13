@@ -183,3 +183,26 @@ def test_the_worker_dispatches_every_coach_kind():
     src = inspect.getsource(worker._render_one)
     for kind in KINDS:
         assert f'"{kind}"' in src
+
+
+def test_render_checkin_returns_media_or_none_and_never_raises():
+    from companion.media import CHECKIN_KINDS, MediaRenderer
+    assert CHECKIN_KINDS == tuple(KINDS)
+    seen = []
+    fns = {k: (lambda facts, memory=None, k=k: seen.append(k) or b"\x89PNG-fake") for k in CHECKIN_KINDS}
+    r = MediaRenderer(card_fns=fns)
+    for kind, makers in KINDS.items():
+        m = r.render_checkin(kind, makers[0]())
+        assert m is not None and m.photo == b"\x89PNG-fake"
+    assert seen == list(KINDS)
+    assert r.render_checkin("suggestion", {}) is None and r.render_checkin("nope", {}) is None
+
+    def boom(facts, memory=None):
+        raise RuntimeError("worker down")
+    assert MediaRenderer(card_fns={"today": boom}).render_checkin("today", F.today_4x4()) is None
+    assert MediaRenderer(card_fns={"today": lambda f, m=None: b""}).render_checkin("today", F.today_4x4()) is None
+
+
+def test_the_today_card_never_prints_a_clock_time():
+    html = _body(build_today_html(F.today_4x4(), {}))
+    assert "06:45" not in html and "6:45" not in html

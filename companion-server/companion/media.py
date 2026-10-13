@@ -177,6 +177,8 @@ def month_facts(month_ref: str, runs: Sequence[Mapping[str, Any]]) -> dict[str, 
 
 # Cards the worker can draw from stored rows (run, week, month) or from facts persisted in the plan (suggestion).
 CARD_KINDS = ("light", "flood", "pb", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly")
+# Coach check-in cards (stream S2): drawn from facts the caller builds, never from stored rows.
+CHECKIN_KINDS = ("today", "today_verdict", "moved", "pinned_week")
 ROW_KINDS = ("light", "flood", "pb", "weekly_recap", "monthly")
 
 
@@ -184,7 +186,7 @@ def _default_card_fns(client: RenderClient) -> dict[str, Callable[..., bytes]]:
     """Cards come from the render worker. `memory` is never sent: nothing the worker draws needs a name."""
     def make(kind: str) -> Callable[..., bytes]:
         return lambda facts, memory=None: client.card(kind, facts)
-    return {k: make(k) for k in CARD_KINDS}
+    return {k: make(k) for k in (*CARD_KINDS, *CHECKIN_KINDS)}
 
 
 def _default_video_fns(client: RenderClient | None = None) -> dict[str, Callable[..., Any]]:
@@ -289,6 +291,17 @@ class MediaRenderer:
         if not photo or len(photo) > PHOTO_MAX_BYTES:
             raise MediaError(f"{kind}: photo size {len(photo or b'')}")
         return Media(photo=photo)
+
+    def render_checkin(self, kind: str, facts: Mapping[str, Any]) -> Media | None:
+        """A coach check-in card (today, today_verdict, moved, pinned_week) from caller-built facts. None on ANY failure
+        (unknown kind, refused facts, worker down, oversize): the caller sends text only. Never raises."""
+        if kind not in CHECKIN_KINDS or not isinstance(facts, Mapping):
+            return None
+        try:
+            return self._still(kind, dict(facts), None)
+        except Exception as e:
+            log.warning("check-in card skipped: %s %s", kind, type(e).__name__)
+            return None
 
     def render_touch(self, plan: Mapping[str, Any]) -> Media | None:
         """The second picture a touch earned (a milestone, a race countdown), from the facts stored in the plan. None
