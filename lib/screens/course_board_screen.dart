@@ -365,7 +365,9 @@ class _CourseBoardScreenState extends State<CourseBoardScreen> {
         final best = board.best;
         final uniqueBest =
             board.ranked.length < 2 ||
-            board.ranked[0].rankSeconds != board.ranked[1].rankSeconds;
+            // Level at the displayed second is a tie, however the fractions fall.
+            board.ranked[0].rankSeconds.round() !=
+                board.ranked[1].rankSeconds.round();
         final n = board.ranked.length;
         return Scaffold(
           appBar: RunAppBar(title: '$label · $n ${n == 1 ? 'RUN' : 'RUNS'}'),
@@ -520,8 +522,9 @@ class _BoardHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final s = RunSoloType.micro11.copyWith(color: t.inkSecondary);
+    // Inset like the rows below: the 6 dp accent plus the row's padding.
     return Padding(
-      padding: const EdgeInsets.only(bottom: Space.x4),
+      padding: const EdgeInsets.only(left: 18, right: 18, bottom: Space.x4),
       child: Row(
         children: [
           SizedBox(width: 40, child: Text('#', style: s)),

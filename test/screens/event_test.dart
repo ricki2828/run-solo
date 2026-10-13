@@ -7,6 +7,8 @@ import 'package:run_solo/app/services.dart';
 import 'package:run_solo/screens/course_board_screen.dart';
 import 'package:run_solo/screens/verdict_screen.dart';
 import 'package:run_solo/state/courses.dart';
+import 'package:run_solo/theme/theme.dart';
+import 'package:run_solo/widgets/run_card.dart';
 
 import '../helpers.dart';
 import '../run_fixtures.dart';
@@ -154,6 +156,47 @@ void main() {
         '${(best.finishSeconds.round() % 60).toString().padLeft(2, '0')}',
       ),
       findsWidgets,
+    );
+  });
+
+  testWidgets('board: two runs level at the displayed second share the best, '
+      'no cyan', (tester) async {
+    // 3.5 and 3.5001 m/s finish a 5K a few hundredths apart: the same
+    // second on screen.
+    final files = [
+      event(1, mps: 3.5),
+      event(2, mps: 3.5001),
+      event(3, mps: 3.0),
+      event(4, mps: 3.1),
+    ];
+    final services = fakeServices(files: files);
+    final runs = await services.history.list();
+    final course = runs.first.parkrun!.courseId!;
+    await pumpApp(tester, services, home: CourseBoardScreen(courseId: course));
+    await pumpTimes(tester, 6);
+    final t = Theme.of(tester.element(find.byType(CourseBoardScreen)))
+        .extension<RunSoloTokens>()!;
+    final accents = tester
+        .widgetList<RunCard>(find.byType(RunCard))
+        .map((c) => c.accent);
+    expect(accents, isNotEmpty);
+    expect(accents, isNot(contains(t.accentArc)));
+  });
+
+  testWidgets('board: a best nobody ties keeps the cyan accent', (
+    tester,
+  ) async {
+    final files = [for (var i = 1; i <= 4; i++) event(i, mps: 3.0 + 0.2 * i)];
+    final services = fakeServices(files: files);
+    final runs = await services.history.list();
+    final course = runs.first.parkrun!.courseId!;
+    await pumpApp(tester, services, home: CourseBoardScreen(courseId: course));
+    await pumpTimes(tester, 6);
+    final t = Theme.of(tester.element(find.byType(CourseBoardScreen)))
+        .extension<RunSoloTokens>()!;
+    expect(
+      tester.widgetList<RunCard>(find.byType(RunCard)).map((c) => c.accent),
+      contains(t.accentArc),
     );
   });
 }
