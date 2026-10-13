@@ -1,4 +1,4 @@
-"""Weekly recap, direction B: a violet hero block, day bars on a white panel, lane blocks for the score moves. The week's km as the hero, day bars in km, coloured by zone share of time, the score moves, the best moment."""
+"""Weekly recap, direction B: an aerobic-green hero block, day bars on a white panel, lane blocks for the score moves. The week's km as the hero, day bars in km, coloured by zone share of time, the score moves, the best moment."""
 from __future__ import annotations
 
 from typing import Any, Mapping
@@ -89,8 +89,8 @@ def build_weekly_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None
             pace.append(f'<span style="display:flex;align-items:baseline;gap:10px"><span class="saira" style="font-size:50px;color:{brand.INK}">'
                         f'{P.fmt_pace(float(facts[key]))}</span><span class="cap" style="font-size:22px;color:{brand.INK}">{label}</span></span>')
     overlay = (f'<div class="abs" style="right:40px;top:92px;display:flex;flex-direction:column;align-items:flex-end;gap:8px">{"".join(pace)}</div>'
-               f'<div class="abs" style="right:40px;bottom:40px;font-size:34px;font-weight:600;color:{brand.INK}">{P.esc(sub, 60)}</div>')
-    block = P.hero_block(168, 360, tag=week, headline="", value=P.fmt_km(float(facts['distance_km'])), unit="KM", size=250, overlay=overlay,
+               f'<div class="abs" style="left:40px;top:78px;font-size:34px;font-weight:600;color:{brand.INK}">{P.esc(sub, 60)}</div>')
+    block = P.hero_block(168, 360, tag=week, headline="", value=P.fmt_km(float(facts['distance_km'])), unit="KM", size=225, overlay=overlay,
                          ground=brand.LANE["aerobic"], fg=brand.INK, soft=brand.INK)
     bars = P.panel(552, 370, f'<div class="abs bars" style="position:static">{_bars(list(facts.get("days") or []), P.INNER, 340)}</div>')
     moves_html = f'<div class="abs moves" style="left:{P.BX}px;top:946px;width:{P.BW}px;height:170px;display:flex;gap:16px">{"".join(chips)}</div>'

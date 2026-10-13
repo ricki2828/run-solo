@@ -332,13 +332,13 @@ def hero_block(top: int, height: int, *, tag: str, headline: str, value: str, un
     """The big hero block: violet by default (pack, milestone), or the card's own colour (zone flood, lane colour). `tag`, `headline`, `unit` and `extra` are already-escaped HTML."""
     value_colour = value_colour or fg
     unit_colour = unit_colour or soft
+    extra_line = (f'<div style="margin-top:14px;font-size:38px;line-height:1.15;font-weight:600;font-family:\'{brand.SCHIBSTED}\',sans-serif;'
+                  f'text-transform:none;letter-spacing:0;color:{soft}">{extra}</div>') if extra else ""
+    # the gain line sits under the headline in the same column, so a long hero (1:45:12) can never run into it
     head = (f'<div class="abs saira head" style="left:40px;top:92px;width:{BW - 80}px;font-size:{headline_size}px;'
-            f'line-height:.92;color:{fg};text-wrap:balance">{headline}</div>') if headline else ""
+            f'line-height:.92;color:{fg};text-wrap:balance">{headline}{extra_line}</div>') if (headline or extra) else ""
     chip_html = (f'<div class="abs cap" style="right:36px;top:30px;padding:8px 22px;border-radius:999px;font-size:24px;'
                  f'background:{chip_bg};color:{fg}">{chip}</div>') if chip else ""
-    spot = "left:40px;top:300px;width:900px" if size >= 500 else "right:40px;bottom:40px;width:380px;text-align:right"
-    extra_html = (f'<div class="abs" style="{spot};font-size:38px;line-height:1.15;'
-                  f'font-weight:600;color:{soft}">{extra}</div>') if extra else ""
     return (f'<div class="abs hero" style="left:{BX}px;top:{top}px;width:{BW}px;height:{height}px;border-radius:{RADIUS}px;'
             f'background:{ground};overflow:hidden">'
             f'<div class="abs cap tag" style="left:40px;top:36px;font-size:28px;letter-spacing:.14em;color:{soft}">{tag}</div>'
@@ -346,7 +346,7 @@ def hero_block(top: int, height: int, *, tag: str, headline: str, value: str, un
             f'<div class="abs" style="left:32px;bottom:{pad_bottom}px;display:flex;align-items:baseline;gap:20px;white-space:nowrap">'
             f'<span class="saira n" style="font-size:{size}px;line-height:.78;color:{value_colour}">{value}</span>'
             f'<span class="saira u" style="font-size:64px;color:{unit_colour}">{unit}</span></div>'
-            f'{extra_html}{overlay}</div>')
+            f'{overlay}</div>')
 
 
 def panel(top: int, height: int, inner: str, colour: str | None = None, cls: str = "") -> str:

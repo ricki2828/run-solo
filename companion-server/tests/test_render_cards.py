@@ -225,6 +225,8 @@ GOLDENS = {
     "pb_shape": ("render_pb", lambda: _with_shape(F.pb_5k())),
     "post_run_slow_hot_day": ("render_post_run", F.slow_hot_day),
     "pb_5k": ("render_pb", F.pb_5k),
+    "pb_half_marathon": ("render_pb", F.pb_marathon_half),
+    "weekly_recap_big": ("render_weekly_recap", F.weekly_recap_big),
     "milestone_1000km": ("render_milestone", F.milestone_1000km),
     "milestone_100th": ("render_milestone", F.milestone_100th),
     "suggestion_easy_hot": ("render_suggestion", F.suggestion_easy_hot),
