@@ -140,6 +140,9 @@ void main() {
             n: i + 1,
             start: base.add(Duration(days: 2 * i)),
             seconds: 1800 - 60 * i,
+            // Each run faster than the last: the fixture's default pace is
+            // level, and level runs share the best (no PB).
+            secPerKm: 360 - 15 * i,
           ),
       ], 'Free');
       expect(chart, findsOneWidget);

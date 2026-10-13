@@ -177,7 +177,7 @@ class RecentBarsChart extends StatelessWidget {
     // Only a unique best is a PB: two bars level on the best, at the value
     // as it is shown, share the honour, so neither gets the tag or the ink
     // bar.
-    final shownFmt = tick ?? format;
+    final shownFmt = format;
     final bestText = shownFmt(bestValue);
     final atBest = shown.where((p) => shownFmt(p.value) == bestText).length;
     final pb =
