@@ -433,6 +433,7 @@ class _ActivityMap extends StatelessWidget {
       final route = RouteBuilder.build(d.run);
       if (route.isEmpty) return const SizedBox.shrink();
       final climb = climbM;
+      final t = Theme.of(context).extension<RunSoloTokens>()!;
       return SizedBox(
         height: 168,
         width: double.infinity,
@@ -466,16 +467,14 @@ class _ActivityMap extends StatelessWidget {
                         center: Alignment.bottomLeft,
                         radius: 1.3,
                         colors: [
-                          Colors.black.withValues(alpha: 0.55),
-                          Colors.black.withValues(alpha: 0),
+                          t.inkPrimary.withValues(alpha: 0.6),
+                          t.inkPrimary.withValues(alpha: 0),
                         ],
                       ),
                     ),
                     child: Text(
                       '\u25B2 ${Fmt.elevation(climb, units)} CLIMB',
-                      style: RunSoloType.heading19.copyWith(
-                        color: Colors.white,
-                      ),
+                      style: RunSoloType.heading19.copyWith(color: t.bgBase),
                     ),
                   ),
                 ),
