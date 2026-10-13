@@ -5,6 +5,7 @@ fact texts below, which is what the writer's grounding check enforces.
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -14,6 +15,7 @@ from .convo.questions import ENUMS as _EXTENDED_ENUMS
 from .timeutil import UTC, parse_iso
 
 HARD_TYPES = frozenset({"tempo", "interval", "race"})
+FLOOD_SHARE = 0.4  # share of zone time in Z4 and Z5 that makes a run hard
 
 # The app records one of these (RecordMode). The coach's rules speak easy | long | tempo | interval | race.
 APP_TYPES = frozenset({"intervals", "cooper", "laps", "free", "trail"})
@@ -21,6 +23,44 @@ LONG_MIN_KM = 12.0
 LONG_EASY_MULT = 1.5
 LONG_MIN_S = 75 * 60
 TEMPO_MIN_S, TEMPO_MAX_S = 20 * 60, 60 * 60
+
+
+def hard_zone_share(run: Mapping[str, Any]) -> float | None:
+    """Share of the zone time spent in Z4 and Z5, or None without zone data. Reads zone_min as the run row stores it."""
+    raw = run.get("zone_min")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            raw = {}
+    z: dict[int, float] = {}
+    for k, v in (raw or {}).items():
+        digits = "".join(ch for ch in str(k) if ch.isdigit())
+        if digits and isinstance(v, (int, float)) and 1 <= int(digits) <= 6:
+            z[int(digits)] = z.get(int(digits), 0.0) + float(v)
+    total = sum(z.values())
+    return (z.get(4, 0) + z.get(5, 0)) / total if total else None
+
+
+def is_hard_run(run: Mapping[str, Any]) -> bool:
+    """Whether a run was hard, judged from the zones and the feel tap, not the coach type alone.
+
+    An interval session or a race/test effort is hard. Any run with 40%+ of its time in Z4 and Z5 is hard. A tempo
+    run (the coach's type for mostly Z3-Z4 time) is hard only when the runner tapped Hard; a mostly-Z3 tempo that
+    felt Easy or Right is not. With no zones and no feel tap, a tempo falls back to its type."""
+    typ, feel = run.get("type"), run.get("feel")
+    if typ in ("interval", "race"):
+        return True
+    share = hard_zone_share(run)
+    if share is not None and share >= FLOOD_SHARE:
+        return True
+    if typ == "tempo":
+        if feel == "hard":
+            return True
+        if feel in ("easy", "right"):
+            return False
+        return share is None
+    return False
 
 
 def infer_coach_type(app_type: str, *, distance_m: float, duration_s: float, zone_min: Mapping[str, float] | None,
@@ -110,6 +150,17 @@ TYPE_LABEL = {
     "interval": "interval session", "race": "race",
 }
 APP_TYPE_LABEL = {"trail": "trail run", "cooper": "Cooper test"}  # app types whose own name beats the coach type
+TRAIL_SESSION_LABEL = {"easy": "easy trail run", "tempo": "tempo trail run", "long": "long trail run"}
+
+
+def run_label(run: Mapping[str, Any]) -> str:
+    """What the run is called in a fact. A trail run keeps "trail" as the place and names the session the coach knows
+    (easy, tempo, long): "tempo trail run". Other app types keep their own name (Cooper test)."""
+    app = run.get("app_type") or ""
+    if app == "trail":
+        return TRAIL_SESSION_LABEL.get(run.get("type") or "", "trail run")
+    return APP_TYPE_LABEL.get(app) or TYPE_LABEL.get(run.get("type"), "run")
+
 VERDICT_TEXT = {  # app wire name (VerdictHeadline.name) -> the verdict copy; noVerdict is silent
     "faster": "faster", "holding": "holding", "slower": "slower", "noRealChange": "no real change",
     "baselineSet": "baseline set", "indoorRun": "indoor run",
@@ -208,9 +259,29 @@ def pace_pair(run: Mapping[str, Any], prev: Mapping[str, Any]) -> tuple[float, f
     return _metric(run, use_true), _metric(prev, use_true)
 
 
+def pace_basis(run: Mapping[str, Any], prev: Mapping[str, Any]) -> str:
+    """The basis `pace_pair` compares on: work | true | raw."""
+    if is_session_run(run):
+        return "work"
+    return "true" if _metric(prev, True) is not None and _metric(run, True) is not None else "raw"
+
+
+def verdict_delta(run: Mapping[str, Any], delta: int) -> int | None:
+    """The pace gap the card may state, given the app's own verdict (which owns the direction). A directional verdict
+    keeps only a gap that points the same way; holding / no real change keeps only a gap too small to be a direction.
+    Anything else would put "no real change" over "9 s/km faster"."""
+    v = run.get("verdict")
+    if v in ("faster", "slower"):
+        want = -1 if v == "faster" else 1
+        return delta if delta * want >= DELTA_MIN_S_PER_KM else None
+    if v in ("holding", "noRealChange"):
+        return delta if abs(delta) < DELTA_MIN_S_PER_KM else None
+    return delta
+
+
 def days_since_hard(history: Sequence[Mapping[str, Any]], now: datetime) -> int | None:
     for h in history:
-        if h["type"] in HARD_TYPES:
+        if is_hard_run(h):
             return (now - _when(h)).days
     return None
 
@@ -223,7 +294,7 @@ def suggest_after_run(run: Mapping[str, Any], history: Sequence[Mapping[str, Any
     now = _when(run)
     if run.get("load_state") in LOAD_ALERT:
         return Suggestion("easy_next", "load", "Load is high right now, so an easy day or a rest day next suits you.")
-    if run["type"] in HARD_TYPES:
+    if is_hard_run(run):
         return Suggestion("recover", "hard_today", "That was a hard session, so an easy day next lets it land.")
     gap = days_since_hard(history, now)
     if gap is not None and gap >= 6 and _recent_count(history, now, 14) >= 3:
@@ -240,7 +311,7 @@ def suggest_evening(history: Sequence[Mapping[str, Any]], now: datetime) -> Sugg
         return None
     if last.get("load_state") in LOAD_ALERT:
         return Suggestion("easy_next", "load", "Load is high right now, so tomorrow is best easy or a rest day.")
-    if last["type"] in HARD_TYPES and (now - _when(last)) <= timedelta(hours=40):
+    if is_hard_run(last) and (now - _when(last)) <= timedelta(hours=40):
         return Suggestion("recover", "hard_recent", "Your last run was a hard one, so keep tomorrow easy.")
     gap = days_since_hard(history, now)
     if gap is not None and gap >= 5:
@@ -255,8 +326,10 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
     if dur < MIN_DURATION_S or dist < MIN_DISTANCE_M:
         return FactsResult((), None, "steady", True, "junk")
 
-    label = APP_TYPE_LABEL.get(run.get("app_type") or "") or TYPE_LABEL.get(run["type"], "run")
+    label = run_label(run)
     pace = run.get("pace_s_per_km")
+    prev = comparable(run, history)
+    true_basis = prev is not None and not is_session_run(run) and pace_basis(run, prev) == "true"
     session_run = is_session_run(run)
     if session_run:
         # Name the session and its purpose and give its work pace; the whole-run pace (recoveries included) is left out.
@@ -265,7 +338,7 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
             f"{fmt_pace(run['work_pace_s_per_km'])}/km work pace{spread_text(run)}"
     else:
         base_txt = f"{label.capitalize()}: {fmt_km(dist)} km in {round(dur / 60)} min"
-        if pace:
+        if pace and not true_basis:  # a true-pace comparison below must not sit beside the raw pace
             base_txt += f" at {fmt_pace(pace)}/km"
     base = Fact("base", base_txt)
 
@@ -280,7 +353,6 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
         worthy.append(Fact("pb", f"New personal best: {PB_LABEL[run['pb']]}"))
         tone = "pb"
 
-    prev = comparable(run, history)
     if prev is not None:
         now_p, prev_p = pace_pair(run, prev)
         delta = round(now_p - prev_p)
@@ -288,13 +360,17 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
             what, unit = f"your last {session_noun(run)}", f"{fmt_pace(prev_p)}/km work pace"
         else:
             what, unit = f"your last similar {label}", f"{fmt_pace(prev_p)}/km"
-        if abs(delta) >= DELTA_MIN_S_PER_KM:
-            word = "slower" if delta > 0 else "faster"
-            worthy.append(Fact("delta", f"{abs(delta)} s/km {word} than {what} ({unit})"))
-            if delta >= SLOW_DAY_S_PER_KM and tone != "pb":
-                tone = "slow"
-        else:
-            worthy.append(Fact("delta", f"Level with {what} ({unit})"))
+            if true_basis:  # one basis, said out loud: both paces are True Pace
+                unit = f"on true pace, {fmt_pace(now_p)}/km now and {fmt_pace(prev_p)}/km then"
+        shown = verdict_delta(run, delta)
+        if shown is not None:
+            if abs(shown) >= DELTA_MIN_S_PER_KM:
+                word = "slower" if shown > 0 else "faster"
+                worthy.append(Fact("delta", f"{abs(shown)} s/km {word} than {what} ({unit})"))
+                if shown >= SLOW_DAY_S_PER_KM and tone != "pb":
+                    tone = "slow"
+            else:
+                worthy.append(Fact("delta", f"Level with {what} ({unit})"))
 
     if run.get("load_state") in LOAD_ALERT:
         worthy.append(Fact("load", f"Training load is {run['load_state'].replace('_', ' ')}"))

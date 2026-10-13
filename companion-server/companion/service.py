@@ -1172,7 +1172,8 @@ class Service:
         media = self._render_media(user, card, now) if telegram and self.s.media_enabled else None
         followups: list[str] = []
         if media is not None:
-            out = OutCard(card_id, card["headline"], card["body"], buttons, media, links)
+            out = OutCard(card_id, card["headline"], card["body"], buttons, media, links,
+                          short_caption=card["kind"] == "run")
             try:
                 ch.send_card(user["chat_ref"], out)
                 followups = ch.followups(out)  # the media is delivered: from here only text may be retried

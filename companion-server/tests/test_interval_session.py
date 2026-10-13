@@ -106,7 +106,7 @@ def test_old_app_payload_falls_back_to_todays_wording():
     assert res.session is None
     prev = hist(7, pace_s_per_km=345.0, true_pace_s_per_km=345.0, distance_m=5000)
     res = build_facts(run(verdict=None), [prev], {})
-    assert next(f for f in res.facts if f.id == "delta").text == "19 s/km faster than your last similar interval session (5:45/km)"
+    assert next(f for f in res.facts if f.id == "delta").text == "19 s/km faster than your last similar interval session (on true pace, 5:26/km now and 5:45/km then)"
 
 
 # --- the template path ---------------------------------------------------------------------------

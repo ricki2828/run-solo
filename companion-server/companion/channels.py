@@ -50,6 +50,24 @@ class OutCard:
     buttons: list[dict]  # [{"label": str, "action": str, "row": int}] ; callback = f"{card_id}:{index}"
     media: Media | None = None
     links: tuple[tuple[str, str], ...] = ()  # (label, https url): deep-link buttons
+    short_caption: bool = False  # a picture carries the numbers: the caption is the headline and one line of judgement
+
+
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+
+
+def caption_text(card: OutCard) -> str:
+    """The text a picture rides with. A short-caption card (a run card) keeps its headline and the last sentence of
+    its first paragraph, which is the judgement (the sentences before it restate the numbers the picture shows),
+    plus any later paragraph (a personal touch or a quoted note), which the picture does not carry."""
+    if not card.short_caption:
+        return f"{card.headline}\n{card.body}"
+    first, _, rest = card.body.partition("\n\n")
+    sentences = [x for x in _SENTENCE_SPLIT.split(first.strip()) if x]
+    lines = [card.headline.strip(), sentences[-1] if sentences else ""]
+    if rest.strip():
+        lines.append(rest.strip())
+    return "\n".join(x for x in lines if x)
 
 
 @dataclass(frozen=True)
@@ -125,7 +143,7 @@ class TelegramChannel:
     def send_card(self, ref: str, card: OutCard, **_: Any) -> str:
         text = f"{card.headline}\n{card.body}"
         if card.media and (card.media.photo or card.media.video):
-            return self._send_media(ref, card, text)
+            return self._send_media(ref, card, caption_text(card))
         payload: dict[str, Any] = {"chat_id": int(ref), "text": text}
         kb = self._keyboard(card, media=False)
         if kb:
@@ -138,7 +156,7 @@ class TelegramChannel:
         buttons ride that text), "question" when question buttons were kept off the media."""
         if not (card.media and (card.media.photo or card.media.video)):
             return []
-        if utf16_len(f"{card.headline}\n{card.body}") > CAPTION_MAX:
+        if utf16_len(caption_text(card)) > CAPTION_MAX:
             return ["caption"]  # the text goes once, with every button, questions included
         if any(b["action"].startswith("ans:") for b in card.buttons):
             return ["question"]  # the body already rode the caption, so this carries only the question buttons
