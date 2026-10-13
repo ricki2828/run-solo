@@ -12,6 +12,7 @@ import '../state/settings.dart';
 import '../state/trails.dart';
 import '../theme/theme.dart';
 import '../widgets/board_spark.dart';
+import '../widgets/run_card.dart';
 import 'board_detail_screen.dart';
 import 'trail_board_screen.dart';
 
@@ -326,8 +327,9 @@ class _LatestBestStrip extends StatelessWidget {
         '${_gapText(board.kind, gap, units)} further',
       _ => '${_gapText(board.kind, gap, units)} quicker',
     };
-    return InkWell(
+    return RunCard(
       key: const ValueKey('boards-latest-best'),
+      accent: t.accentArc,
       onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -401,62 +403,50 @@ class _BoardCard extends StatelessWidget {
     final spark = byDate.length > 8
         ? byDate.sublist(byDate.length - 8)
         : byDate;
-    return Material(
+    return RunCard(
       key: ValueKey('board-card-${card.key}'),
-      color: t.bgRaised,
-      borderRadius: BorderRadius.circular(Radii.card),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(Radii.card),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(Space.x16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      accent: boardAccent(t, board.kind),
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      card.title,
-                      style: RunSoloType.label13.copyWith(
-                        color: t.inkSecondary,
-                      ),
-                    ),
-                  ),
-                  if (fresh) _Tag(text: 'NEW', color: t.accentArc),
-                  if (pb.official) ...[
-                    const SizedBox(width: Space.x8),
-                    _Tag(text: 'official', color: t.inkSecondary),
-                  ],
-                ],
-              ),
-              const SizedBox(height: Space.x4),
-              Text(
-                _value(board, board.rankValue(pb), units),
-                style: RunSoloType.display44.copyWith(color: t.inkPrimary),
-              ),
-              if (board.kind == engine.BoardKind.cooper)
-                Text(
-                  'VO2 estimate',
-                  style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+              Expanded(
+                child: Text(
+                  card.title,
+                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
                 ),
-              const SizedBox(height: Space.x4),
-              Text(
-                sub,
-                style: RunSoloType.body15.copyWith(color: t.inkSecondary),
               ),
-              const SizedBox(height: Space.x12),
-              BoardSpark(
-                values: [for (final r in spark) board.rankValue(r)],
-                lowerBetter: !higher,
-                best: board.rankValue(pb),
-                bestColor: t.accentArc,
-                newestColor: t.inkPrimary,
-                barColor: t.inkMuted,
-              ),
+              if (fresh) _Tag(text: 'NEW', color: t.accentArc),
+              if (pb.official) ...[
+                const SizedBox(width: Space.x8),
+                _Tag(text: 'official', color: t.inkSecondary),
+              ],
             ],
           ),
-        ),
+          const SizedBox(height: Space.x4),
+          Text(
+            _value(board, board.rankValue(pb), units),
+            style: RunSoloType.display44.copyWith(color: t.inkPrimary),
+          ),
+          if (board.kind == engine.BoardKind.cooper)
+            Text(
+              'VO2 estimate',
+              style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+            ),
+          const SizedBox(height: Space.x4),
+          Text(sub, style: RunSoloType.body15.copyWith(color: t.inkSecondary)),
+          const SizedBox(height: Space.x12),
+          BoardSpark(
+            values: [for (final r in spark) board.rankValue(r)],
+            lowerBetter: !higher,
+            best: board.rankValue(pb),
+            bestColor: t.accentArc,
+            newestColor: t.inkPrimary,
+            barColor: t.inkMuted,
+          ),
+        ],
       ),
     );
   }
@@ -485,44 +475,34 @@ class _TrailCard extends StatelessWidget {
     final shown = group.runs.length > 8
         ? group.runs.sublist(group.runs.length - 8)
         : group.runs;
-    return Material(
+    return RunCard(
       key: ValueKey('board-card-${group.key}'),
-      color: t.bgRaised,
-      borderRadius: BorderRadius.circular(Radii.card),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(Radii.card),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(Space.x16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                group.name,
-                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-              ),
-              const SizedBox(height: Space.x4),
-              Text(
-                Fmt.clock(group.normMs(best)),
-                style: RunSoloType.display44.copyWith(color: t.inkPrimary),
-              ),
-              const SizedBox(height: Space.x4),
-              Text(
-                sub,
-                style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-              ),
-              const SizedBox(height: Space.x12),
-              BoardSpark(
-                values: [for (final r in shown) group.normMs(r) / 1000],
-                lowerBetter: true,
-                best: group.normMs(best) / 1000,
-                bestColor: t.accentArc,
-                newestColor: t.inkPrimary,
-                barColor: t.inkMuted,
-              ),
-            ],
+      accent: t.typeTrail,
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            group.name,
+            style: RunSoloType.label13.copyWith(color: t.inkSecondary),
           ),
-        ),
+          const SizedBox(height: Space.x4),
+          Text(
+            Fmt.clock(group.normMs(best)),
+            style: RunSoloType.display44.copyWith(color: t.inkPrimary),
+          ),
+          const SizedBox(height: Space.x4),
+          Text(sub, style: RunSoloType.body15.copyWith(color: t.inkSecondary)),
+          const SizedBox(height: Space.x12),
+          BoardSpark(
+            values: [for (final r in shown) group.normMs(r) / 1000],
+            lowerBetter: true,
+            best: group.normMs(best) / 1000,
+            bestColor: t.accentArc,
+            newestColor: t.inkPrimary,
+            barColor: t.inkMuted,
+          ),
+        ],
       ),
     );
   }

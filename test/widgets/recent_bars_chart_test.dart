@@ -94,4 +94,57 @@ void main() {
       ]);
     });
   });
+
+  Widget hostWith(List<BarPoint> pts, {double minSpan = 0}) => MaterialApp(
+    theme: ThemeData(extensions: const [RunSoloTokens.dark]),
+    home: Scaffold(
+      body: SingleChildScrollView(
+        child: RecentBarsChart(
+          points: pts,
+          lowerIsBetter: true,
+          format: (v) => '${v.round()} s',
+          direction: 'Faster is taller',
+          emptyTitle: 'Two runs draw the first chart.',
+          roundTo: 10,
+          minSpan: minSpan,
+        ),
+      ),
+    ),
+  );
+
+  testWidgets('a unique best is the PB', (tester) async {
+    await tester.pumpWidget(
+      hostWith([
+        BarPoint(date: d0, value: 2520),
+        BarPoint(date: d0.add(const Duration(days: 1)), value: 2400),
+      ]),
+    );
+    expect(find.text('PB'), findsOneWidget);
+  });
+
+  testWidgets('two bars level on the best: no PB for either', (tester) async {
+    await tester.pumpWidget(
+      hostWith([
+        BarPoint(date: d0, value: 2400),
+        BarPoint(date: d0.add(const Duration(days: 1)), value: 2400),
+        BarPoint(date: d0.add(const Duration(days: 2)), value: 2520),
+      ]),
+    );
+    expect(find.text('PB'), findsNothing);
+  });
+
+  testWidgets('a minimum span keeps a small gap from reading as big', (
+    tester,
+  ) async {
+    final two = [
+      BarPoint(date: d0, value: 2520),
+      BarPoint(date: d0.add(const Duration(days: 1)), value: 2400),
+    ];
+    // A 2:00 gap on a 6 km trail: without a floor the axis starts at 2540.
+    await tester.pumpWidget(hostWith(two));
+    expect(find.text('Axis starts at 2540 s'), findsOneWidget);
+    // With 30 s/km x 6 km = 180 s of span it starts lower, 2550.
+    await tester.pumpWidget(hostWith(two, minSpan: 180));
+    expect(find.text('Axis starts at 2550 s'), findsOneWidget);
+  });
 }

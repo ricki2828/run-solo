@@ -9,6 +9,7 @@ import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../theme/lanes.dart';
 import '../theme/theme.dart';
+import 'run_card.dart';
 import 'section_card.dart';
 import 'where_when_line.dart';
 
@@ -77,16 +78,19 @@ class _RecentActivityState extends State<RecentActivity> {
     final shown = widget.runs.where((r) => !r.missing).take(3).toList();
     final ids = shown.map((r) => r.id).toSet();
     _details.removeWhere((id, _) => !ids.contains(id));
-    return SectionCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'RECENT ACTIVITY',
-            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-          ),
-          const SizedBox(height: Space.x8),
-          if (shown.isEmpty) ...[
+    final header = Padding(
+      padding: const EdgeInsets.only(bottom: Space.x8),
+      child: Text(
+        'RECENT ACTIVITY',
+        style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+      ),
+    );
+    if (shown.isEmpty) {
+      return SectionCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            header,
             Text(
               'Nothing yet. Sessions of any kind - 4x4, Laps, Free, tests - '
               'land here, newest first.',
@@ -100,53 +104,57 @@ class _RecentActivityState extends State<RecentActivity> {
                 onMore: widget.onMore,
               ),
             ],
-          ] else ...[
-            for (var i = 0; i < shown.length; i++) ...[
-              _ActivityRow(
-                run: shown[i],
-                units: widget.units,
-                now: widget.now,
-                detail: _details.putIfAbsent(
-                  shown[i].id,
-                  () => _store!.load(shown[i].id),
-                ),
-                onTap: widget.onOpen == null
-                    ? null
-                    : () => widget.onOpen!(shown[i]),
-              ),
-              if (widget.estimates case final e? when i == 0) ...[
-                const SizedBox(height: Space.x4),
-                _EstimatesTable(
-                  estimates: e,
-                  moreLine: widget.moreLine,
-                  onMore: widget.onMore,
-                ),
-              ],
-              if (i < shown.length - 1 || widget.onShowAll != null)
-                Divider(
-                  height: Space.x24,
-                  thickness: 1,
-                  color: Theme.of(context).extension<RunSoloTokens>()!.lineHair,
-                ),
-            ],
-            if (widget.onShowAll != null)
-              InkWell(
-                onTap: widget.onShowAll,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: Space.x4),
-                  child: Center(
-                    child: Text(
-                      'All activity ›',
-                      style: RunSoloType.label13.copyWith(
-                        color: t.inkSecondary,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
           ],
+        ),
+      );
+    }
+    // Each activity is its own run-type card (direction B); the estimated
+    // times table sits between card one and card two.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        header,
+        for (var i = 0; i < shown.length; i++) ...[
+          RunCard(
+            accent: runTypeColor(shown[i], t),
+            margin: const EdgeInsets.only(bottom: Space.x8),
+            child: _ActivityRow(
+              run: shown[i],
+              units: widget.units,
+              now: widget.now,
+              detail: _details.putIfAbsent(
+                shown[i].id,
+                () => _store!.load(shown[i].id),
+              ),
+              onTap: widget.onOpen == null
+                  ? null
+                  : () => widget.onOpen!(shown[i]),
+            ),
+          ),
+          if (widget.estimates case final e? when i == 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Space.x8),
+              child: _EstimatesTable(
+                estimates: e,
+                moreLine: widget.moreLine,
+                onMore: widget.onMore,
+              ),
+            ),
         ],
-      ),
+        if (widget.onShowAll != null)
+          InkWell(
+            onTap: widget.onShowAll,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: Space.x8),
+              child: Center(
+                child: Text(
+                  'All activity ›',
+                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
