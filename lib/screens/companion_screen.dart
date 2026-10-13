@@ -445,49 +445,57 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
               ),
             ),
           ),
-        if (services.companion?.needsReconsent ?? false)
-          Padding(
-            padding: const EdgeInsets.only(top: Space.x16),
-            child: SectionCard(
-              key: const ValueKey('companion-reconsent'),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'NEW: CHECK-INS',
-                    style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-                  ),
-                  const SizedBox(height: Space.x8),
-                  Text(
-                    kCompanionCheckins,
-                    style: RunSoloType.body15.copyWith(color: t.inkPrimary),
-                  ),
-                  const SizedBox(height: Space.x16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _ChoiceButton(
-                          key: const ValueKey('companion-agree'),
-                          label: 'Agree',
-                          onTap: _busy
-                              ? null
-                              : services.companion!.acceptConsent,
+        ListenableBuilder(
+          listenable: services.companion!,
+          builder: (context, _) => !services.companion!.needsReconsent
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: const EdgeInsets.only(top: Space.x16),
+                  child: SectionCard(
+                    key: const ValueKey('companion-reconsent'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'NEW: CHECK-INS',
+                          style: RunSoloType.micro11.copyWith(
+                            color: t.inkSecondary,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: Space.x12),
-                      Expanded(
-                        child: _ChoiceButton(
-                          key: const ValueKey('companion-decline'),
-                          label: 'Turn off',
-                          onTap: _busy ? null : _remove,
+                        const SizedBox(height: Space.x8),
+                        Text(
+                          kCompanionCheckins,
+                          style: RunSoloType.body15.copyWith(
+                            color: t.inkPrimary,
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: Space.x16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _ChoiceButton(
+                                key: const ValueKey('companion-agree'),
+                                label: 'Agree',
+                                onTap: _busy
+                                    ? null
+                                    : services.companion!.acceptConsent,
+                              ),
+                            ),
+                            const SizedBox(width: Space.x12),
+                            Expanded(
+                              child: _ChoiceButton(
+                                key: const ValueKey('companion-decline'),
+                                label: 'Turn off',
+                                onTap: _busy ? null : _remove,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-              ),
-            ),
-          ),
+                ),
+        ),
         const _Heading('What the companion knows'),
         if (_loading)
           const Padding(

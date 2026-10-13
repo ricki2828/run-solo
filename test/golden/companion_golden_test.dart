@@ -84,6 +84,25 @@ void main() {
     await check(tester, 'companion_knows_360x640');
   });
 
+  testWidgets('companion knows check-ins 360x640', (tester) async {
+    await tester.runAsync(() => enrolNow(ctl));
+    await pumpApp(
+      tester,
+      fakeServices(companion: ctl),
+      home: const CompanionScreen(),
+    );
+    tester.view.physicalSize = const Size(1080, 640 * 3);
+    await pumpTimes(tester, 8);
+    await scrollTo(tester, find.text('CHECK-INS'));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -150));
+    await tester.pump();
+    expect(find.text('Skipped the session'), findsOneWidget);
+    expect(find.text('Tired'), findsOneWidget);
+    expect(find.text('Felt flat'), findsOneWidget);
+    expect(find.text('4 runs next week'), findsOneWidget);
+    await check(tester, 'companion_knows_checkins_360x640');
+  });
+
   testWidgets('companion new check-ins ask again 360x640', (tester) async {
     await tester.runAsync(() => enrolNow(ctl));
     // A runner who turned on under version 1.
