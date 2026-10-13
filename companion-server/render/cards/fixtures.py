@@ -259,7 +259,7 @@ def today_4x4() -> dict[str, Any]:
 
 
 def today_easy_no_target() -> dict[str, Any]:
-    return {"type": "easy", "session": "Easy run", "distance_km": 6, "date_local": "2026-10-21T07:00", "units": "km"}
+    return {"type": "easy", "session": "Easy run", "distance_km": 6, "date_local": "2026-10-21T07:00", "guide": "chatty", "units": "km"}
 
 
 def today_long_name() -> dict[str, Any]:
@@ -273,11 +273,11 @@ def today_tempo_miles() -> dict[str, Any]:
 
 
 def verdict_faster() -> dict[str, Any]:
-    return today_4x4() | {"result_pace_s": 254}
+    return today_4x4() | {"result_pace_s": 243}
 
 
 def verdict_slower() -> dict[str, Any]:
-    return today_4x4() | {"result_pace_s": 268}
+    return today_4x4() | {"result_pace_s": 272}
 
 
 def verdict_in_range() -> dict[str, Any]:
@@ -290,7 +290,7 @@ def verdict_pb() -> dict[str, Any]:
 
 
 def verdict_miles() -> dict[str, Any]:
-    return today_tempo_miles() | {"result_pace_s": 327}
+    return today_tempo_miles() | {"result_pace_s": 322}
 
 
 def moved_tempo_tired() -> dict[str, Any]:
@@ -323,3 +323,12 @@ def pinned_week_big_missed() -> dict[str, Any]:
 
 def pinned_week_miles() -> dict[str, Any]:
     return pinned_week_midweek() | {"units": "mi"}
+
+
+def today_easy_hr_ceiling() -> dict[str, Any]:
+    return today_easy_no_target() | {"hr_ceiling_bpm": 148, "guide": "recovery", "session": "Recovery run", "distance_km": 5}
+
+
+def today_bare() -> dict[str, Any]:
+    """An easy run with neither a pace target nor a guide: the one case that keeps the single big block."""
+    return {"type": "easy", "session": "Easy run", "distance_km": 6, "units": "km"}

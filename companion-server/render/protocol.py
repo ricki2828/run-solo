@@ -47,7 +47,7 @@ ALLOWED_FACT_KEYS = frozenset({
     "month_label", "month_start", "run_count",
     # coach cards (today, today_verdict, moved, pinned_week): numbers, fixed enums and short labels only
     "target_pace_lo_s", "target_pace_hi_s", "target_kind", "result_pace_s", "units",
-    "to_day", "from_day", "skip_reason", "today_idx",
+    "to_day", "from_day", "skip_reason", "today_idx", "guide", "hr_ceiling_bpm",
 })
 
 # Every kind is held to its own list on top of ALLOWED_FACT_KEYS: a suggestion card has no business carrying a place, a
@@ -62,7 +62,7 @@ NEW_KINDS = frozenset({"suggestion", "milestone", "race_countdown", "monthly"}) 
 # Coach cards. The session name is a short label the plan owns; the reason is a fixed enum, never free text.
 COACH_KINDS = frozenset({"today", "today_verdict", "moved", "pinned_week"})
 TODAY_KEYS = frozenset({"type", "session", "distance_km", "duration_s", "date_local", "target_pace_lo_s", "target_pace_hi_s",
-                        "target_kind", "units"})
+                        "target_kind", "units", "guide", "hr_ceiling_bpm"})
 RUN_TYPES = frozenset({"easy", "long", "tempo", "interval", "race", "cooper", "trail", "rest"})
 DAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 SKIP_REASONS = frozenset({"tired", "busy", "sore", "travelling", "ill", "weather", "missed"})
@@ -189,6 +189,10 @@ def _coach_values_ok(facts: dict) -> bool:
             ok = rng(v, 60, 3600)
         elif k == "target_kind":
             ok = v in ("work", "pace")
+        elif k == "guide":
+            ok = v in ("chatty", "recovery", "steady")
+        elif k == "hr_ceiling_bpm":
+            ok = _int_in(v, 80, 220)
         elif k == "units":
             ok = v in ("km", "mi")
         elif k == "pb":

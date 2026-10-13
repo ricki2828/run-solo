@@ -10,7 +10,7 @@ from render.cards import fixtures as F
 from render.cards.coach import (build_moved_html, build_pinned_week_html, build_today_html, build_today_verdict_html)
 
 KINDS = {
-    "today": [F.today_4x4, F.today_easy_no_target, F.today_long_name, F.today_tempo_miles],
+    "today": [F.today_4x4, F.today_easy_no_target, F.today_long_name, F.today_tempo_miles, F.today_easy_hr_ceiling, F.today_bare],
     "today_verdict": [F.verdict_faster, F.verdict_slower, F.verdict_in_range, F.verdict_pb, F.verdict_miles],
     "moved": [F.moved_tempo_tired, F.moved_next_week_long_name, F.moved_miles_no_reason],
     "pinned_week": [F.pinned_week_midweek, F.pinned_week_big_missed, F.pinned_week_miles],
@@ -102,9 +102,41 @@ def test_verdict_colours_follow_the_numbers():
 
 
 def test_the_verdict_cannot_disagree_with_its_numbers():
-    # the caller sends a pace, never a verdict word: a result inside the band is never faster or slower
-    for result, word in ((254, "FASTER"), (255, "IN RANGE"), (260, "IN RANGE"), (261, "SLOWER")):
-        assert word in build_today_verdict_html(F.today_4x4() | {"result_pace_s": result}, {})
+    # band 4:15-4:20 (255-260). The caller sends a pace, never a verdict word. Outside the band by under the noise
+    # floor (10 s/km) is noise, so it reads IN RANGE in the neutral colour; the colours need the full 10 s.
+    from render.cards.coach import NOISE_FLOOR_S
+    assert NOISE_FLOOR_S == 10
+    cases = ((235, "FASTER"), (245, "FASTER"), (246, "IN RANGE"), (254, "IN RANGE"), (255, "IN RANGE"), (260, "IN RANGE"),
+             (261, "IN RANGE"), (269, "IN RANGE"), (270, "SLOWER"), (290, "SLOWER"))
+    for result, word in cases:
+        html = build_today_verdict_html(F.today_4x4() | {"result_pace_s": result}, {})
+        assert word in _body(html), (result, word)
+        assert (brand.MINT in html) == (word == "FASTER") and (brand.VERMILLION in html) == (word == "SLOWER"), result
+
+
+def test_one_second_per_km_is_noise_not_a_win():
+    html = _body(build_today_verdict_html(F.today_4x4() | {"result_pace_s": 254}, {}))
+    assert "IN RANGE" in html and "FASTER" not in html and "1 s/km" not in html and brand.MINT not in html
+
+
+def test_just_outside_the_range_is_still_in_range_until_the_noise_floor():
+    just_out = build_today_verdict_html(F.today_4x4() | {"result_pace_s": 269}, {})     # 9 s/km over the band
+    assert "IN RANGE" in just_out and brand.VERMILLION not in just_out
+    at_floor = build_today_verdict_html(F.today_4x4() | {"result_pace_s": 270}, {})      # 10 s/km over
+    assert "10 s/km SLOWER" in at_floor and f"background:{brand.VERMILLION}" in at_floor
+
+
+def test_the_noise_floor_matches_the_engine_and_the_server():
+    import re
+    from pathlib import Path
+    from render.cards.coach import NOISE_FLOOR_S
+    consts = (Path(__file__).resolve().parents[2] / "packages/run_engine/lib/src/engine/constants.dart").read_text()
+    assert int(re.search(r"this\.runFloorSecPerKm = (\d+)", consts).group(1)) == NOISE_FLOOR_S
+    try:
+        from companion import facts
+    except ImportError:
+        pytest.skip("companion deps not installed")
+    assert facts.REP_BAND_S == NOISE_FLOOR_S
 
 
 def test_violet_is_never_used():
@@ -118,21 +150,37 @@ def test_today_shows_the_target_and_the_verdict_shows_both():
     t = _body(build_today_html(F.today_4x4(), {}))
     assert "4:15-4:20" in t and "/KM WORK" in t and "TODAY" in t and "YOU RAN" not in t
     v = _body(build_today_verdict_html(F.verdict_faster(), {}))
-    assert "4:15-4:20" in v and "4:14" in v and "YOU RAN" in v and "DONE" in v
+    assert "4:15-4:20" in v and "4:03" in v and "YOU RAN" in v and "DONE" in v
 
 
-def test_a_card_with_no_target_still_renders_without_a_placeholder():
+def test_an_easy_card_shows_the_sessions_own_guide_in_the_lower_plate():
     t = _body(build_today_html(F.today_easy_no_target(), {}))
-    assert "TARGET" not in t and "Easy run" in t
+    assert "TARGET" not in t and "GUIDE" in t and "ZONE 2" in t and "CHATTY PACE" in t
+    hr = _body(build_today_html(F.today_easy_hr_ceiling(), {}))
+    assert "KEEP IT UNDER" in hr and ">148<" in hr and "BPM" in hr and "ZONE" not in hr      # a measured ceiling wins
     v = _body(build_today_verdict_html(F.today_easy_no_target() | {"result_pace_s": 330}, {}))
-    assert "YOU RAN" not in v      # no band to judge against, so no verdict colour is invented
+    assert "YOU RAN" not in v and "GUIDE" in v      # no band to judge against, so no verdict colour is invented
+
+
+def test_a_bare_card_with_no_target_or_guide_keeps_one_block_and_no_placeholder():
+    t = _body(build_today_html(F.today_bare(), {}))
+    assert "TARGET" not in t and "GUIDE" not in t and "KEEP IT UNDER" not in t and "Easy run" in t
+
+
+def test_guide_and_hr_ceiling_are_strict_enum_and_number():
+    PR.check_request(_req("today", F.today_easy_hr_ceiling()))
+    for bad in ({"guide": "feel it out"}, {"hr_ceiling_bpm": 30}, {"hr_ceiling_bpm": 148.5}, {"hr_ceiling_bpm": "148"}):
+        with pytest.raises(PR.ProtocolError):
+            PR.check_request(_req("today", F.today_easy_no_target() | bad))
+    with pytest.raises(PR.ProtocolError):
+        PR.check_request(_req("moved", F.moved_tempo_tired() | {"guide": "chatty"}))
 
 
 def test_miles_convert_distance_pace_and_units():
     t = _body(build_today_html(F.today_tempo_miles(), {}))
     assert "8:59-9:15" in t and "/MI WORK" in t and ">6<" in t and ">MI<" in t and ">KM<" not in t
     v = _body(build_today_verdict_html(F.verdict_miles(), {}))
-    assert "8:46" in v and "13 s/mi FASTER" in v
+    assert "8:38" in v and "21 s/mi FASTER" in v
     m = _body(build_moved_html(F.moved_miles_no_reason(), {}))
     assert "12 MI" in m
     w = _body(build_pinned_week_html(F.pinned_week_miles(), {}))

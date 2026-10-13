@@ -241,6 +241,8 @@ GOLDENS = {
     "today_easy_no_target": ("render_today", F.today_easy_no_target),
     "today_long_name": ("render_today", F.today_long_name),
     "today_miles": ("render_today", F.today_tempo_miles),
+    "today_easy_hr_ceiling": ("render_today", F.today_easy_hr_ceiling),
+    "today_bare": ("render_today", F.today_bare),
     "verdict_faster": ("render_today_verdict", F.verdict_faster),
     "verdict_slower": ("render_today_verdict", F.verdict_slower),
     "verdict_in_range": ("render_today_verdict", F.verdict_in_range),

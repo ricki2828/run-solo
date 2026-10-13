@@ -18,6 +18,12 @@ DAY_ORDER = tuple(DAY_WORDS)
 REASON_WORDS = {"tired": "TIRED", "busy": "BUSY", "sore": "SORE", "travelling": "TRAVELLING", "ill": "ILL",
                 "weather": "WEATHER", "missed": "MISSED"}
 GAIN_FG = "#FFFFFF"
+# A result only reads FASTER or SLOWER when it is outside the target band by at least this many s/km. It is the engine's
+# run-to-run pace noise floor (packages/run_engine constants.dart runFloorSecPerKm, mirrored by companion facts.REP_BAND_S):
+# anything closer is GPS and day-to-day noise, not a verdict.
+NOISE_FLOOR_S = 10
+# The easy session's own guide, from a fixed enum (never free text): (big text, small label)
+GUIDE_WORDS = {"chatty": ("ZONE 2", "CHATTY PACE"), "recovery": ("ZONE 1", "SLOW AND LOOSE"), "steady": ("ZONE 3", "STEADY EFFORT")}
 
 
 def _lane(kind: Any) -> str:
@@ -81,14 +87,30 @@ def _target_text(facts: Mapping[str, Any]) -> tuple[str, str] | None:
     return text, _per(facts) + (" WORK" if facts.get("target_kind") == "work" else "")
 
 
+def _plate(facts: Mapping[str, Any]) -> tuple[str, str, str, int] | None:
+    """The lower plate: the pace target when there is one, else the session's own guide (an HR ceiling, then the fixed
+    guide enum) so an easy card has the same layout as a target card. -> (caption, big, unit, size) or None."""
+    target = _target_text(facts)
+    if target:
+        return "TARGET", target[0], target[1], 230
+    hr = facts.get("hr_ceiling_bpm")
+    if isinstance(hr, int) and not isinstance(hr, bool) and 80 <= hr <= 220:
+        return "KEEP IT UNDER", str(hr), "BPM", 300
+    guide = GUIDE_WORDS.get(str(facts.get("guide", "")))
+    if guide:
+        return "GUIDE", guide[0], guide[1], 190
+    return None
+
+
 def _block(left: int, width: int, top: int, height: int, ground: str, edge: str, inner: str) -> str:
     return (f'<div class="abs" style="left:{left}px;top:{top}px;width:{width}px;height:{height}px;border-radius:{P.RADIUS}px;'
             f'background:{ground};border:{edge};overflow:hidden">{inner}</div>')
 
 
-def _target_block(left: int, width: int, top: int, height: int, text: str, unit: str, size: int, narrow: bool = False) -> str:
+def _target_block(left: int, width: int, top: int, height: int, text: str, unit: str, size: int, narrow: bool = False,
+                  caption: str = "TARGET") -> str:
     """The narrow variant (beside the result) puts the unit under the caption: the range alone fills the block."""
-    cap = f"TARGET" + (f'<span style="margin-left:14px;color:{brand.INK_SECONDARY}">{P.esc(unit, 12)}</span>' if narrow else "")
+    cap = caption + (f'<span style="margin-left:14px;color:{brand.INK_SECONDARY}">{P.esc(unit, 12)}</span>' if narrow else "")
     unit_html = "" if narrow else f'<span class="saira" style="font-size:52px;color:{brand.INK_SECONDARY}">{P.esc(unit, 12)}</span>'
     inner = (f'<div class="abs cap" style="left:40px;top:34px;font-size:28px;letter-spacing:.14em;color:{brand.QUIET};white-space:nowrap">{cap}</div>'
              f'<div class="abs" style="left:32px;bottom:30px;display:flex;align-items:baseline;gap:16px;white-space:nowrap">'
@@ -97,11 +119,11 @@ def _target_block(left: int, width: int, top: int, height: int, text: str, unit:
 
 
 def build_today_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = None) -> str:
-    target = _target_text(facts)
-    hero, _ = _hero(facts, "TODAY", 640 if target else 1106)
+    plate = _plate(facts)
+    hero, _ = _hero(facts, "TODAY", 640 if plate else 1106)
     body = P.header(False, "", brand.QUIET) + hero
-    if target:
-        body += _target_block(P.BX, P.BW, 840, 434, target[0], target[1], 230)
+    if plate:
+        body += _target_block(P.BX, P.BW, 840, 434, plate[1], plate[2], plate[3], caption=plate[0])
     return P.doc(P.base_css(brand.GROUND, brand.INK), body)
 
 
@@ -112,9 +134,9 @@ def _verdict(facts: Mapping[str, Any], result: float, lo: float, hi: float) -> t
     k = KM_PER_MI if _mi(facts) else 1.0
     if facts.get("pb") is True:
         return brand.INK, brand.ARC, brand.BONE, "A NEW BEST"
-    if round(result) < round(lo):
+    if lo - result >= NOISE_FLOOR_S:
         return brand.MINT, GAIN_FG, GAIN_FG, f"{round((lo - result) * k)} {unit} FASTER"
-    if round(result) > round(hi):
+    if result - hi >= NOISE_FLOOR_S:
         return brand.VERMILLION, GAIN_FG, GAIN_FG, f"{round((result - hi) * k)} {unit} SLOWER"
     return brand.INK, brand.BONE, brand.BONE, "IN RANGE"
 
@@ -122,7 +144,8 @@ def _verdict(facts: Mapping[str, Any], result: float, lo: float, hi: float) -> t
 def build_today_verdict_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = None) -> str:
     target = _target_text(facts)
     result = _num(facts.get("result_pace_s"))
-    hero, _ = _hero(facts, "DONE", 640 if target and result else 1106)
+    plate = _plate(facts)
+    hero, _ = _hero(facts, "DONE", 640 if plate else 1106)
     body = P.header(False, "", brand.QUIET) + hero
     if target and result:
         lo = _num(facts.get("target_pace_lo_s"))
@@ -139,8 +162,8 @@ def build_today_verdict_html(facts: Mapping[str, Any], memory: Mapping[str, Any]
                  f'<span class="saira" style="font-size:52px;color:{soft}">{_per(facts)}</span></div>'
                  f'<div class="abs cap delta" style="left:40px;bottom:36px;font-size:40px;letter-spacing:.1em;color:{fg}">{P.esc(delta, 24)}</div>')
         body += _block(P.BX + 440 + 16, P.BW - 440 - 16, 840, 434, ground, "none", inner)
-    elif target:
-        body += _target_block(P.BX, P.BW, 840, 434, target[0], target[1], 230)
+    elif plate:
+        body += _target_block(P.BX, P.BW, 840, 434, plate[1], plate[2], plate[3], caption=plate[0])
     return P.doc(P.base_css(brand.GROUND, brand.INK), body)
 
 
