@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from statistics import median
 from typing import Any, Mapping, Sequence
 
-from ..facts import HARD_TYPES, LOAD_ALERT, Suggestion, days_since_hard, fmt_km
+from ..facts import LOAD_ALERT, Suggestion, days_since_hard, fmt_km, is_hard_run
 from ..timeutil import parse_iso, to_local
 from . import voice
 from .touches import WEEKDAYS, hard_share, plural
@@ -237,6 +237,9 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
     planned = planned_for_tomorrow(history, now, zone_id)
     planned_text = plan_session(planned, history, now) if planned else None
     hot = bool(forecast and forecast.morning_temp_c >= HEAT_MORNING_C)
+    # The runner's own Hard tap on the last run counts like a flagged note: no push on top of it, whatever the type was.
+    tapped_hard = last.get("feel") == "hard" and since_last <= timedelta(hours=FEEL_WINDOW_H)
+    soften = soften or tapped_hard
     push_softened = bool(soften and planned and planned["plan_next_type"] != "easy")  # a flagged note vs a planned push
     share = hard_share(last)
     felt_hard = (last.get("feel") == "hard" and last["type"] == "easy" and (share is None or share < 0.15)
@@ -244,7 +247,7 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
 
     if last.get("load_state") in LOAD_ALERT:
         kind = "easy_load"
-    elif last["type"] in HARD_TYPES and since_last <= timedelta(hours=40):
+    elif is_hard_run(last) and since_last <= timedelta(hours=40):
         kind = "recover"
         slots["hours_txt"] = plural(int(since_last.total_seconds() // 3600), "hour")
     elif felt_hard:

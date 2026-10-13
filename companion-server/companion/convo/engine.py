@@ -10,7 +10,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, Mapping, Sequence
 
-from ..facts import (HARD_TYPES, comparable, fmt_km, fmt_pace, is_session_run, pace_pair, session_label)
+from ..facts import (FLOOD_SHARE, comparable, fmt_km, fmt_pace, is_hard_run, is_session_run, pace_basis, pace_pair,
+                     session_label, verdict_delta)
 from ..timeutil import parse_iso
 from . import touches as T
 from . import voice
@@ -28,7 +29,6 @@ HARD_VIDEO_MIN = 8
 LONG_VIDEO_MIN_KM = 10.0
 LONG_VIDEO_SHARE = 0.9
 LONG_WINDOW_DAYS = 28
-FLOOD_SHARE = 0.4       # share of zone time in Z4 and Z5 that makes a run a "hard" card
 
 
 @dataclass(frozen=True)
@@ -70,12 +70,14 @@ def fmt_duration(seconds: float) -> str:
     return f"{t // 3600}:{t % 3600 // 60:02d}:{t % 60:02d}" if t >= 3600 else f"{t // 60}:{t % 60:02d}"
 
 
-def _delta(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]]) -> int | None:
+def _delta(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]]) -> tuple[int | None, str | None]:
+    """(the pace gap the card may state, the basis it is on). The app's verdict owns the direction, so a gap that
+    contradicts it is not stated at all."""
     prev = comparable(run, hist)
     if prev is None:
-        return None
+        return None, None
     now_p, prev_p = pace_pair(run, prev)
-    return round(now_p - prev_p)
+    return verdict_delta(run, round(now_p - prev_p)), pace_basis(run, prev)
 
 
 def _when(r: Mapping[str, Any]) -> datetime:
@@ -96,9 +98,11 @@ def situation_for(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]],
     slots: dict[str, str] = {"km": fmt_km(dist), "min": str(round(dur / 60))}
     if run.get("pace_s_per_km"):
         slots["pace"] = fmt_pace(run["pace_s_per_km"])
-    delta = _delta(run, hist)
+    delta, basis = _delta(run, hist)
     if delta is not None:
         slots["delta"] = str(abs(delta))
+        if basis == "true" and abs(delta) >= FASTER_S:
+            slots.pop("pace", None)  # the gap is on true pace: the raw pace never shares a line with it
     hm = T.hard_minutes(run)
     if hm:
         slots["hard_min"] = str(hm)
@@ -146,8 +150,8 @@ def situation_for(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]],
         if run.get("load_state") in ("high", "very_high"):
             return "slower_load", slots
         return "slower", slots
-    if run.get("app_type") == "trail":  # the coach's type (long, easy ...) steers suggestions; the copy stays "trail"
-        return "trail", slots
+    if run.get("app_type") == "trail":  # "trail" stays the place; the session the coach knows is named inside it
+        return {"easy": "trail_easy", "tempo": "trail_tempo", "long": "trail_long"}.get(typ, "trail"), slots
     if typ == "interval" or (typ == "race"):
         return "intervals", slots
     if typ == "tempo":
@@ -168,7 +172,7 @@ def situation_for(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]],
 
 def big_session(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]]) -> str | None:
     """The reason this run is a big session, or None."""
-    if run["type"] in HARD_TYPES and T.hard_minutes(run) >= HARD_VIDEO_MIN:
+    if is_hard_run(run) and T.hard_minutes(run) >= HARD_VIDEO_MIN:
         return "big_session"
     if run["type"] == "long" and run["distance_m"] / 1000 >= LONG_VIDEO_MIN_KM:
         t0 = _when(run)
@@ -222,8 +226,7 @@ def touch_card_facts(touch: T.Touch | None, memory: Mapping[str, str] | None = N
 
 def media_for_run(run: Mapping[str, Any], situation: str, touch: T.Touch | None,
                   hist: Sequence[Mapping[str, Any]] = (), memory: Mapping[str, str] | None = None) -> MediaPlan:
-    share = hard_share(run)
-    hard = run["type"] in HARD_TYPES or (share is not None and share >= FLOOD_SHARE)
+    hard = is_hard_run(run)
     extra, tfacts = touch_card_facts(touch, memory)
     if run.get("pb"):
         return MediaPlan("pb", True, "pb", extra, None, tfacts)

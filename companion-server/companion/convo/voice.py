@@ -30,6 +30,9 @@ SITUATIONS: dict[str, list[tuple[str, str]]] = {
         ("Ticking along nicely", "{pace}/km for {km} km. That is {delta} s/km quicker than last time."),
         ("Quick", "{delta} s/km faster, {pace}/km. Fitness is doing its thing."),
         ("Better pace", "{km} km at {pace}/km, {delta} s/km faster than your last similar run. Not bad at all."),
+        ("Quicker again", "{delta} s/km faster than your last similar run over {km} km. The legs are paying you back."),
+        ("Faster legs", "{delta} s/km quicker than last time. The week is working."),
+        ("A step up", "{km} km, {delta} s/km faster than last time. That is a real gain."),
     ],
     "holding": [
         ("Holding steady", "{pace}/km over {km} km. Level with last time. Boring is the point."),
@@ -53,6 +56,9 @@ SITUATIONS: dict[str, list[tuple[str, str]]] = {
         ("Heavy legs", "{km} km in {min} min, {delta} s/km slower. Easy day tomorrow and see."),
         ("Down a touch", "{pace}/km today, {delta} s/km slower. Honest answer: not your best, and that's allowed."),
         ("Slow day", "{delta} s/km off last time. Log it and move on."),
+        ("Behind a touch", "{delta} s/km slower than your last similar run over {km} km. A single run, not a trend."),
+        ("Quiet legs", "{delta} s/km slower than last time. Look at sleep and the week before the run."),
+        ("Not today", "{km} km, {delta} s/km slower than last time. Easy does it."),
     ],
     "slower_heat": [
         ("Heat tax", "{temp} degrees at the start. {pace}/km is {delta} s/km slower, and the heat is the likely reason."),
@@ -195,6 +201,24 @@ SITUATIONS: dict[str, list[tuple[str, str]]] = {
         ("Another run", "{km} km at {pace}/km. The count goes up."),
         ("Showed up", "{min} min, {km} km. That's most of the job."),
         ("Quiet effort", "{km} km at {pace}/km. Nothing dramatic, nothing wrong."),
+    ],
+    "trail_easy": [
+        ("Easy trail run", "{km} km of trail at an easy effort. Pace means little off-road."),
+        ("Easy on the trails", "{min} minutes of easy running on trail. Good for the legs and the head."),
+        ("Gentle trail", "An easy trail run, {km} km. Nothing to prove out there."),
+        ("Trail, kept easy", "{km} km on trail, easy. That is the whole idea."),
+    ],
+    "trail_tempo": [
+        ("Tempo on the trail", "{km} km of tempo on trail. Judge it by effort, not pace."),
+        ("Trail tempo", "A tempo run off-road, {min} minutes of steady work on uneven ground."),
+        ("Working the trail", "{km} km of tempo effort on trail. Go by feel."),
+        ("Tempo, trail style", "{min} minutes of tempo on rough ground. Honest work."),
+    ],
+    "trail_long": [
+        ("Long trail run", "{km} km on trail. Time on feet counts for more than pace."),
+        ("Big day on the trail", "{min} minutes out on trail. That is the week's long run done."),
+        ("Long and rough", "{km} km of long trail running. Eat, drink, sit down."),
+        ("Trail distance", "{km} km off-road, and the engine is bigger for it."),
     ],
     "tempo": [
         ("Tempo done", "{km} km, {hard_min} min at the hard end. Comfortably uncomfortable."),
