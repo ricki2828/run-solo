@@ -21,6 +21,7 @@ library;
 
 export '../../theme/pack_look.dart';
 export 'block_chip.dart';
+export 'coach_next_card.dart';
 export 'ghost_card.dart';
 export 'home_lane_blocks.dart';
 export 'lane_block.dart';

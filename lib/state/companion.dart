@@ -22,6 +22,8 @@
 ///   `{status: duplicate}`; 401 bad token, 429 daily cap
 /// - `PATCH /v1/runs/{run_id}/feel` (Bearer) `{feel}`
 /// - `GET /v1/me`, `DELETE /v1/me` (Bearer)
+/// - `GET /v1/me/next-session` (Bearer): the coach's next session and latest
+///   line, for Home. 404 from a server without check-ins means "nothing".
 /// - `PUT /v1/me/settings` `{weather: bool}` or `{route_shape: bool}`
 ///   (Bearer): the weather switch and the "Show route shape on cards" switch
 ///
@@ -59,7 +61,8 @@ const String kCompanionUrl = String.fromEnvironment(
 const String kCompanionPrivacyUrl = 'https://runsupreme.taiaroa.xyz/privacy/';
 
 /// Bump when the consent copy changes in a way that needs a fresh "Turn on".
-const int kCompanionConsentVersion = 1;
+/// 2: check-ins (readiness and skip answers, kept 14 days).
+const int kCompanionConsentVersion = 2;
 
 // ---------------------------------------------------------------- HTTP seam
 
@@ -351,6 +354,15 @@ class CompanionClient {
     return (reply: r, me: r.ok ? CompanionMe.fromJson(r.json) : null);
   }
 
+  /// `GET /v1/me/next-session`: the coach's next session and latest note.
+  Future<CompanionReply> getNextSession(String token) => http.send(
+    CompanionRequest(
+      method: 'GET',
+      uri: _uri(['v1', 'me', 'next-session']),
+      headers: _headers(token),
+    ),
+  );
+
   /// `PUT /v1/me/settings {weather}`: the "Weather in suggestions" switch.
   /// Off also makes the server delete every area it holds for this runner.
   Future<CompanionReply> putWeather(String token, bool on) => http.send(
@@ -382,7 +394,214 @@ class CompanionClient {
   );
 }
 
+// ------------------------------------------------------- the coach's plan
+
+/// The next session the coach has in mind, from `GET /v1/me/next-session`.
+/// Read leniently: a missing or odd field is just absent.
+@immutable
+class CoachSession {
+  const CoachSession({
+    required this.date,
+    required this.type,
+    this.minutes,
+    this.distanceM,
+    this.week,
+    this.weeks,
+    this.moved = false,
+    this.originalDate,
+    this.label,
+    this.name,
+  });
+
+  /// The session's own name (Tempo, Norwegian 4x4...) when the server sends
+  /// one as `name` or `session_name`. Absent today: the type is all it knows.
+  final String? name;
+
+  /// The runner's local calendar day (no time, no zone).
+  final DateTime date;
+
+  /// `easy`, `long` or `quality`.
+  final String type;
+  final int? minutes;
+  final double? distanceM;
+  final int? week;
+  final int? weeks;
+
+  /// True when the coach moved it: shown as "moved by your coach".
+  final bool moved;
+  final DateTime? originalDate;
+  final String? label;
+
+  /// "Quality session, 6 km" as the server wrote it, else built from the type.
+  String get title {
+    final n = name;
+    if (n != null && n.isNotEmpty) return n;
+    final l = label;
+    if (l != null && l.isNotEmpty) return l;
+    return switch (type) {
+      'long' => 'Long run',
+      'quality' => 'Quality session',
+      _ => 'Easy run',
+    };
+  }
+
+  static DateTime? _day(Object? v) {
+    final m = v is String
+        ? RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(v)
+        : null;
+    if (m == null) return null;
+    return DateTime(int.parse(m[1]!), int.parse(m[2]!), int.parse(m[3]!));
+  }
+
+  static CoachSession? fromJson(Object? j) {
+    if (j is! Map) return null;
+    final date = _day(j['date']);
+    if (date == null) return null;
+    final type = j['type'];
+    final dist = j['distance_m'];
+    final label = j['label'];
+    final nm = j['name'] ?? j['session_name'];
+    int? whole(Object? v) => v is int && v > 0 ? v : null;
+    return CoachSession(
+      date: date,
+      type: type is String ? type : 'easy',
+      minutes: whole(j['minutes']),
+      distanceM: dist is num && dist > 0 ? dist.toDouble() : null,
+      week: whole(j['week']),
+      weeks: whole(j['weeks']),
+      moved: j['moved'] == true,
+      originalDate: _day(j['original_date']),
+      label: label is String && label.isNotEmpty ? label : null,
+      name: nm is String && nm.trim().isNotEmpty ? nm.trim() : null,
+    );
+  }
+}
+
+/// The coach's latest note (the headline and body of its last card).
+@immutable
+class CoachLine {
+  const CoachLine({required this.headline, this.body, this.sentAt});
+  final String headline;
+  final String? body;
+  final DateTime? sentAt;
+
+  static CoachLine? fromJson(Object? j) {
+    if (j is! Map) return null;
+    final h = j['headline'], b = j['body'], at = j['sent_at'];
+    if (h is! String || h.trim().isEmpty) return null;
+    return CoachLine(
+      headline: h.trim(),
+      body: b is String && b.trim().isNotEmpty ? b.trim() : null,
+      sentAt: at is String ? DateTime.tryParse(at) : null,
+    );
+  }
+}
+
+/// What Home shows from the coach. Either part can be absent.
+@immutable
+class CoachNext {
+  const CoachNext({this.session, this.line, this.generatedAt});
+  final CoachSession? session;
+  final CoachLine? line;
+  final DateTime? generatedAt;
+
+  bool get isEmpty => session == null && line == null;
+
+  /// Null when the body is not a version-1 reply.
+  static CoachNext? parse(Map<String, Object?> j) {
+    if (j['v'] != 1) return null;
+    final at = j['generated_at'];
+    return CoachNext(
+      session: CoachSession.fromJson(j['next_session']),
+      line: CoachLine.fromJson(j['coach_line']),
+      generatedAt: at is String ? DateTime.tryParse(at) : null,
+    );
+  }
+}
+
 // ------------------------------------------------------------ what it knows
+
+/// One answer to a coach check-in, from `checkins` in `GET /v1/me`
+/// (`{kind, local_date, value, created_at}`). Enums only on the wire; they are
+/// turned into plain words here and an unknown one is dropped, so a raw name
+/// never reaches the screen.
+@immutable
+class CheckinAnswer {
+  const CheckinAnswer({
+    required this.kind,
+    required this.value,
+    required this.day,
+    required this.words,
+    required this.sortKey,
+  });
+  final String kind;
+  final String value;
+  final DateTime day;
+  final String words;
+  final String sortKey;
+
+  static const _when = {
+    'ready': 'evening before',
+    'today': 'morning of',
+    'why': 'why you skipped',
+    'postrun': 'after the run',
+    'shape': 'Sunday',
+  };
+
+  static const _words = {
+    'ready': {
+      'fresh': 'Felt fresh',
+      'normal': 'Felt normal',
+      'flat': 'Felt flat',
+      'sore': 'Sore somewhere',
+      'not_tomorrow': 'Not running tomorrow',
+    },
+    'today': {
+      'going': 'Going now',
+      'later': 'Later today',
+      'skip': 'Skipped the session',
+    },
+    'why': {
+      'busy': 'Busy',
+      'tired': 'Tired',
+      'sore': 'Sore',
+      'travelling': 'Travelling',
+      'ill': 'Feeling ill',
+    },
+    'postrun': {
+      'sleep': 'Short sleep',
+      'stress': 'Stressed',
+      'heat': 'The heat',
+      'none': 'Nothing in particular',
+    },
+    'shape': {
+      '3': '3 runs next week',
+      '4': '4 runs next week',
+      '5': '5 runs next week',
+      'away': 'Away next week',
+    },
+  };
+
+  /// "Tue 13 Oct, evening before".
+  String get when => '${Fmt.dayDate(day)}, ${_when[kind]}';
+
+  static CheckinAnswer? fromJson(Object? j) {
+    if (j is! Map) return null;
+    final kind = j['kind'], value = j['value'], date = j['local_date'];
+    if (kind is! String || value is! String || date is! String) return null;
+    final words = _words[kind]?[value];
+    final d = CoachSession._day(date);
+    if (words == null || d == null) return null;
+    final at = j['created_at'];
+    return CheckinAnswer(
+      kind: kind,
+      value: value,
+      day: d,
+      words: words,
+      sortKey: at is String ? at : date,
+    );
+  }
+}
 
 /// `GET /v1/me`, read leniently (an unknown or missing field is just absent)
 /// and rendered in plain words by [lines].
@@ -402,7 +621,11 @@ class CompanionMe {
     this.quietStartMin,
     this.quietEndMin,
     this.channel,
+    this.checkins = const [],
   });
+
+  /// The check-in answers the server holds (kept 14 days), newest first.
+  final List<CheckinAnswer> checkins;
 
   /// Memory is enums only (no free text): `goal_type`, `race_month`
   /// ("YYYY-MM" or "none"), `usual_days` ("weekdays", "weekends", "both"),
@@ -448,6 +671,11 @@ class CompanionMe {
       }
     }
     final sent = j['messages_sent_30d'];
+    final answers = j['checkins'];
+    final checkins = <CheckinAnswer>[
+      if (answers is List)
+        for (final a in answers) ?CheckinAnswer.fromJson(a),
+    ]..sort((a, b) => b.sortKey.compareTo(a.sortKey));
     int? mins(Object? v) => v is int && v >= 0 && v < 1440 ? v : null;
     return CompanionMe(
       goal: s(memory['goal_type']),
@@ -462,6 +690,7 @@ class CompanionMe {
       quietStartMin: mins(profile['quiet_start_min']),
       quietEndMin: mins(profile['quiet_end_min']),
       channel: s(profile['channel']),
+      checkins: checkins,
       chatName:
           s(j['chat_name']) ??
           s(profile['chat_name']) ??
@@ -486,6 +715,11 @@ class CompanionMe {
     'both' => 'Weekdays and weekends',
     _ => v.replaceAll('_', ' '),
   };
+
+  /// The check-in answers in plain words: (day and moment, answer).
+  List<(String, String)> get checkinLines => [
+    for (final c in checkins) (c.when, c.words),
+  ];
 
   /// Plain words, one fact per entry: (what, answer).
   List<(String, String)> get lines => [
@@ -560,6 +794,10 @@ class CompanionController extends ChangeNotifier {
   static const String askedName = 'companion_asked';
   static const String weatherName = 'companion_weather';
 
+  /// The last good `next-session` reply, kept so Home has something to show
+  /// between fetches. Holds no check-in answer, only the plan and the line.
+  static const String nextName = 'companion_next_session';
+
   /// Set while the server has not yet confirmed "forget my areas". Retried
   /// on open and before the next send, so a switch-off made offline lands.
   static const String weatherForgetName = 'companion_weather_forget';
@@ -592,7 +830,11 @@ class CompanionController extends ChangeNotifier {
   bool get enrolled => _phase == CompanionPhase.on;
 
   bool _asked = false;
+  int _consent = 0;
   bool _weather = false;
+  CoachNext? _coachNext;
+  bool _nextBusy = false;
+  DateTime? _nextAt;
   bool _routeShape = true;
 
   /// "Weather in suggestions" (off until the runner turns it on). The run
@@ -603,6 +845,32 @@ class CompanionController extends ChangeNotifier {
   /// summary carries the route SHAPE only while this is true: an outline with
   /// no place, scale or direction in it.
   bool get routeShapeOn => _routeShape && enrolled;
+
+  /// True when the runner agreed to the current consent copy. A runner who
+  /// turned on before [kCompanionConsentVersion] went up has to agree again.
+  bool get consentCurrent => _consent >= kCompanionConsentVersion;
+
+  /// Turned on, but under older consent copy: ask again before the coach's
+  /// check-in data is shown or asked for.
+  bool get needsReconsent => enrolled && !consentCurrent;
+
+  /// The runner agrees to the current copy ("Agree" on the new check-ins).
+  Future<void> acceptConsent() async {
+    _consent = kCompanionConsentVersion;
+    try {
+      await store.write(consentName, '$kCompanionConsentVersion');
+    } catch (e) {
+      companionLog('could not save consent (${e.runtimeType})');
+    }
+    notifyListeners();
+  }
+
+  /// What Home shows from the coach; null when there is nothing to show
+  /// (companion off, not linked, not agreed, offline with no cache, error).
+  CoachNext? get coachNext =>
+      enrolled && consentCurrent && !(_coachNext?.isEmpty ?? true)
+      ? _coachNext
+      : null;
 
   /// The runner has answered the setup step ("Turn on" or "Not now"), so
   /// onboarding does not ask again.
@@ -635,6 +903,16 @@ class CompanionController extends ChangeNotifier {
     if (await token() != null) {
       _phase = CompanionPhase.on;
       _asked = true;
+      try {
+        _consent = int.tryParse(await store.read(consentName) ?? '') ?? 0;
+        final cached = await store.read(nextName);
+        if (cached != null && cached.isNotEmpty) {
+          final j = jsonDecode(cached);
+          if (j is Map<String, Object?>) _coachNext = CoachNext.parse(j);
+        }
+      } catch (e) {
+        companionLog('could not read the coach cache (${e.runtimeType})');
+      }
       try {
         _weather = await store.read(weatherName) == '1';
       } catch (e) {
@@ -890,6 +1168,7 @@ class CompanionController extends ChangeNotifier {
     _phase = CompanionPhase.waiting;
     notifyListeners();
     await _markAsked();
+    _consent = kCompanionConsentVersion;
     try {
       await store.write(consentName, '$kCompanionConsentVersion');
     } catch (e) {
@@ -1015,6 +1294,57 @@ class CompanionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Fetches the coach's next session for Home. Quiet by design: only runs
+  /// when the companion is on, linked and agreed; offline or an error keeps
+  /// the last good reply; a 404 (a server without check-ins) or a bad token
+  /// clears it. Never sets [problem]. At most one call a minute.
+  Future<void> refreshNext() async {
+    if (!enrolled || !consentCurrent || _nextBusy) return;
+    final at = _nextAt;
+    if (at != null && _now().difference(at) < const Duration(minutes: 1)) {
+      return;
+    }
+    final t = await token();
+    if (t == null) return;
+    _nextBusy = true;
+    _nextAt = _now();
+    try {
+      final r = await client.getNextSession(t);
+      if (r.status == 401 || r.status == 403) {
+        await _wipe();
+        return;
+      }
+      if (r.status == 404) {
+        await _setNext(null, null);
+        return;
+      }
+      if (!r.ok) return;
+      final parsed = CoachNext.parse(r.json);
+      if (parsed == null) return;
+      await _setNext(parsed, r.body);
+    } on CompanionNetworkError {
+      // Keep what we have.
+    } catch (e) {
+      companionLog('next session failed (${e.runtimeType})');
+    } finally {
+      _nextBusy = false;
+    }
+  }
+
+  Future<void> _setNext(CoachNext? next, String? raw) async {
+    _coachNext = next;
+    try {
+      if (raw == null) {
+        await store.delete(nextName);
+      } else {
+        await store.write(nextName, raw);
+      }
+    } catch (e) {
+      companionLog('could not keep the coach reply (${e.runtimeType})');
+    }
+    notifyListeners();
+  }
+
   /// GET /v1/me. Null with [problem] set when it could not be read.
   Future<CompanionMe?> fetchMe() async {
     final t = await token();
@@ -1067,6 +1397,7 @@ class CompanionController extends ChangeNotifier {
       await store.delete(consentName);
       await store.delete(weatherName);
       await store.delete(weatherForgetName);
+      await store.delete(nextName);
       // The route choice is the runner's and survives a wipe (a 401, a
       // re-enrol): an OFF stays off, and the new server record is told so as
       // soon as there is a token again.
@@ -1076,6 +1407,8 @@ class CompanionController extends ChangeNotifier {
     }
     _phase = CompanionPhase.off;
     _weather = false;
+    _consent = 0;
+    _coachNext = null;
     problem = null;
     notifyListeners();
   }
@@ -1185,8 +1518,31 @@ Map<String, Object?> companionPlanFacts(
         'week': nextWeek,
         'minutes': ?minutes,
         'distance_m': ?dist,
+        ...companionTemplateFacts(next.session),
       },
   };
+}
+
+final RegExp _templateId = RegExp(r'^[a-z0-9_]{1,40}$');
+
+/// `session_id` and `session_name` for a planned session, both or neither:
+/// the built-in template's id (`norwegian_4x4`, hyphens as underscores; never
+/// the plan slot id like `w1s1`) and its built-in display name. A session with
+/// no built-in template (an easy or long run, a goal run, a custom session)
+/// sends neither. The name is always the catalogue's, never text the runner
+/// typed.
+Map<String, Object?> companionTemplateFacts(engine.BlockSession session) {
+  if (session.kind != engine.BlockKind.interval) return const {};
+  final preset = session.presetId == null
+      ? null
+      : engine.SessionCatalogue.byId(session.presetId!);
+  if (preset == null) return const {};
+  final id = preset.id.toLowerCase().replaceAll('-', '_');
+  final name = preset.name;
+  if (!_templateId.hasMatch(id) || name.isEmpty || name.length > 40) {
+    return const {};
+  }
+  return {'session_id': id, 'session_name': name};
 }
 
 /// The compact run summary the companion gets (B6, C4, C6): fields only, no
