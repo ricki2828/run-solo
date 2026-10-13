@@ -90,7 +90,19 @@ void main() {
   testWidgets('Home with a session moved by your coach', (tester) async {
     await pumpHome(tester, reply(moved: true));
     expect(find.text('MOVED BY YOUR COACH'), findsOneWidget);
-    expect(find.textContaining('Norwegian 4x4'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('home-coach-session')),
+        matching: find.textContaining('Norwegian 4x4'),
+      ),
+      findsNothing,
+    );
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('home-coach-session')))
+          .data,
+      'Mon 28 Sep: Norwegian 4x4',
+    );
     expect(find.text('Was Fri 25 Sep'), findsOneWidget);
     await check(tester, 'home_coach_moved_360x800');
   });
