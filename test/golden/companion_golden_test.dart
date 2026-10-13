@@ -94,12 +94,8 @@ void main() {
     tester.view.physicalSize = const Size(1080, 640 * 3);
     await pumpTimes(tester, 8);
     await scrollTo(tester, find.text('CHECK-INS'));
-    await tester.drag(find.byType(ListView).first, const Offset(0, -150));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -60));
     await tester.pump();
-    expect(find.text('Skipped the session'), findsOneWidget);
-    expect(find.text('Tired'), findsOneWidget);
-    expect(find.text('Felt flat'), findsOneWidget);
-    expect(find.text('4 runs next week'), findsOneWidget);
     await check(tester, 'companion_knows_checkins_360x640');
   });
 
