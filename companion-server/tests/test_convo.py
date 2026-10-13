@@ -192,8 +192,10 @@ def test_media_plan_rules():
     assert m.video and m.reason == "long_run"
     m = engine.media_for_run(run(1, 0), "steady", None)
     assert (m.card, m.video) == ("light", False)
-    m = engine.media_for_run(run(1, 0, typ="tempo", zone_min={"z4": 3.0, "z2": 30.0}), "tempo", None)
-    assert m.card == "flood" and not m.video  # hard card, but not a big enough session for video
+    m = engine.media_for_run(run(1, 0, typ="tempo", zone_min={"z4": 7.0, "z2": 10.0}), "tempo", None)
+    assert m.card == "flood" and not m.video  # hard card (over 40% in Z4), but not a big enough session for video
+    m = engine.media_for_run(run(1, 0, typ="tempo", zone_min={"z3": 20.0, "z4": 1.0, "z2": 5.0}), "tempo", None)
+    assert m.card == "light"  # a mostly-Z3 tempo is not a hard card
 
 
 # --- suggestions ------------------------------------------------------------------------------
