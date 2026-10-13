@@ -10,6 +10,7 @@ import 'package:run_solo/platform/transfer_gateway.dart';
 import 'package:run_solo/share/share_card.dart';
 import 'package:run_solo/share/share_card_sheet.dart';
 import 'package:run_solo/state/history_store.dart';
+import 'package:run_solo/state/progress_snapshot.dart';
 import 'package:run_solo/state/run_index.dart';
 import 'package:run_solo/state/settings.dart';
 
@@ -84,6 +85,30 @@ void main() {
         data.pack == null ? findsNothing : findsOneWidget,
       );
     }
+  });
+
+  group('pack share', () {
+    PackStanding standing(String band, int percentile) => PackStanding(
+      band: band,
+      lane: engine.IdentityLane.mid,
+      percentile: percentile,
+      histogram: const [0.2, 0.5, 1],
+      youBin: 1,
+    );
+
+    test('a band only: faster than N in 10 and the age band', () {
+      final d = packShareData(standing('M40-49', 63))!;
+      expect(d.fasterThanInTen, 6);
+      expect(d.band, 'men 40-49');
+      expect(packShareData(standing('F30-39', 100))!.fasterThanInTen, 9);
+      expect(packShareData(standing('F30-39', 88))!.band, 'women 30-39');
+    });
+
+    test('nothing to share without a pack or under 1 in 10', () {
+      expect(packShareData(null), isNull);
+      expect(packShareData(standing('M40-49', 7)), isNull);
+      expect(packShareData(standing('weird', 60)), isNull);
+    });
   });
 
   group('card data', () {
