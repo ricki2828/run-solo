@@ -50,30 +50,29 @@ class ActivityMapHeader extends StatelessWidget {
           ),
           if (climb != null && climb >= 1)
             Positioned(
-              left: 0,
-              bottom: 0,
+              left: Space.x12,
+              bottom: Space.x12,
               child: IgnorePointer(
                 child: Container(
                   key: const ValueKey('activity-map-climb'),
-                  padding: const EdgeInsets.fromLTRB(
-                    Space.x12,
-                    Space.x16,
-                    Space.x16,
-                    Space.x8,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Space.x8,
+                    vertical: Space.x4,
                   ),
                   decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: Alignment.bottomLeft,
-                      radius: 1.3,
-                      colors: [
-                        t.inkPrimary.withValues(alpha: 0.6),
-                        t.inkPrimary.withValues(alpha: 0),
-                      ],
-                    ),
+                    color: t.inkPrimary.withValues(alpha: 0.82),
+                    borderRadius: BorderRadius.circular(Radii.button),
                   ),
-                  child: Text(
-                    '▲ ${Fmt.elevation(climb, units)} CLIMB',
-                    style: RunSoloType.heading19.copyWith(color: t.bgBase),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.terrain, size: 16, color: t.bgBase),
+                      const SizedBox(width: Space.x4),
+                      Text(
+                        '${Fmt.elevation(climb, units)} CLIMB',
+                        style: RunSoloType.heading19.copyWith(color: t.bgBase),
+                      ),
+                    ],
                   ),
                 ),
               ),
