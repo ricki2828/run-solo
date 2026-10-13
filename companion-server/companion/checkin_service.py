@@ -690,7 +690,8 @@ class CheckinMixin:
         session = None
         if res is not None and planned is not None:
             session = {"date": res.day.isoformat(), "type": res.type, "kind": res.type,
-                       "name": name_ or cc.WORD.get(res.type), "session_id": re.sub(r"[^a-z0-9]+", "_", name_.lower()).strip("_") if name_ else res.type,
+                       "name": name_ or cc.WORD.get(res.type), "session_id": ((planned.session_id if planned and planned.type == res.type else None)
+                                   or re.sub(r"[^a-z0-9]+", "_", name_.lower()).strip("_")) if name_ else res.type,
                        "name_source": "plan" if name_ else "none", "minutes": planned.minutes if not res.easier else None,
                        "distance_m": planned.distance_m if not res.easier else None, "week": planned.week,
                        "weeks": planned.weeks, "moved": res.moved,

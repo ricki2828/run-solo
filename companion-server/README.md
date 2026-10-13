@@ -51,13 +51,18 @@ For the app's Home (stream S3). `Cache-Control: no-store`. A server without chec
 }
 ```
 
-The server never guesses a name. `plan_next` (the `POST /v1/runs` field) takes two OPTIONAL keys: `session_name` (1-40
-printable characters, no control or format characters; shown to the runner, so a built-in session name only, never one the
-runner typed) and `session_ref` (the app's opaque plan id, `^[a-z0-9_]{1,16}$`, e.g. "w1s1"; stored for dedupe only and never
-shown or returned by next-session). Each is independent; an invalid one is dropped on its own and the plan still counts (old
-payloads without them pass unchanged; any other unknown key is still a 422). `name` is `session_name` when sent, `session_id`
-is that name as a slug, and `name_source` is "plan". A session the coach made easy loses the name (it is a different session).
-Without a name, `name` is the kind name ("Quality session", "Easy run", "Long run"), `session_id` the kind, `name_source` "none".
+The server never guesses a name. `plan_next` (the `POST /v1/runs` field) takes three OPTIONAL keys:
+- `session_name`: accepted only if it is exactly one of the app's built-in session names (`facts.known_session`: Norwegian 4x4,
+  30/30s, 1-minute reps, Pyramid, Tempo intervals, Yasso 800s, 1 km repeats, and "N × 400 m" with the real × sign). Anything
+  else (a custom or typed name, a homoglyph, hidden or control characters, a link or handle, ASCII "x") drops the name.
+- `session_id`: a hint, `^[a-z0-9_]{1,40}$`, the app's template id with hyphens as underscores (e.g. `norwegian_4x4`). It is kept
+  only together with an accepted `session_name` and returned as `next_session.session_id`; without a hint the id is the name as a slug.
+- `session_ref`: the app's opaque plan id, `^[a-z0-9_]{1,16}$` (e.g. `w1s1`), stored for dedupe only and never shown or returned.
+
+An invalid key is dropped on its own and the plan still counts; old payloads without them pass unchanged; any other unknown key
+is still a 422. `name_source` is "plan" when a name was accepted. A session the coach made easy loses the name (it is a different
+session). Without a name, `name` is the kind name ("Quality session", "Easy run", "Long run"), `session_id` the kind and
+`name_source` "none". Easy and long sessions have no built-in name, so they always show the kind name.
 
 `next_session` is `null` when the app's newest run carries no planned session or its date has passed; `coach_line` is `null`
 before the first card. `kind` is one of `run`, `evening`, `recap`, `monthly`. Nothing here holds a check-in answer, only the

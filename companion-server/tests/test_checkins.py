@@ -1078,11 +1078,12 @@ def test_next_session_names_the_session_only_when_the_plan_did_and_never_guesses
     assert (n["kind"], n["name"], n["session_id"], n["name_source"], n["label"]) == (
         "quality", "Quality session", "quality", "none", "Quality session, 6 km")
     with db.tx(env.path) as c:
-        c.execute("UPDATE runs SET plan_next_session_name='Tempo' WHERE run_id='last'")
+        c.execute("UPDATE runs SET plan_next_session_name='Tempo intervals' WHERE run_id='last'")
     n = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))["next_session"]
-    assert (n["name"], n["session_id"], n["name_source"], n["label"]) == ("Tempo", "tempo", "plan", "Tempo, 6 km")
+    assert (n["name"], n["session_id"], n["name_source"], n["label"]) == (
+        "Tempo intervals", "tempo_intervals", "plan", "Tempo intervals, 6 km")
     env.step(at(2026, 10, 15, 6, 45))
-    assert any("Today: Tempo, 6 km" in b.get("text", "") for b in env.sends())            # the messages use the same name
+    assert any("Today: Tempo intervals, 6 km" in b.get("text", "") for b in env.sends())            # the messages use the same name
     put(env, "ready", "2026-10-15", "flat", at(2026, 10, 14, 20, 0))                      # made easy: a different session
     n = env.svc.next_session(env.uid, at(2026, 10, 14, 21, 0))["next_session"]
     assert (n["kind"], n["name"], n["session_id"], n["name_source"]) == ("easy", "Easy run", "easy", "none")
@@ -1094,17 +1095,40 @@ def planned_run(**plan):
                  plan_next={"type": "quality", "day": "2026-10-15", "week": 3, **plan})
 
 
-@pytest.mark.parametrize("name,ref,name_ok,ref_ok", [
-    ("Norwegian 4x4", "w1s1", True, True), (None, None, False, False), ("Tempo", None, True, False), (None, "w2s3", False, True),
-    ("T" * 41, "w1s1", False, True), ("Te\u202empo", "w1s1", False, True), ("Te\x00mpo", "w1s1", False, True),
-    ("Tempo\u200b", "w1s1", False, True), ("   ", "w1s1", False, True), ("Tempo\n", "w1s1", True, True),
-    ("Tempo", "Bad Ref!", True, False), ("Tempo", "x" * 17, True, False), ("Tempo", "W1S1", True, False),
+def builtin_names():
+    from companion.facts import SESSION_PURPOSE
+    return [*SESSION_PURPOSE, "8 × 400 m", "12 × 400 m"]
+
+
+@pytest.mark.parametrize("name", builtin_names())
+def test_every_built_in_session_name_is_accepted_with_its_id_hint_and_ref(name):
+    nx = planned_run(session_name=name, session_id="norwegian_4x4", session_ref="w1s1").plan_next
+    assert (nx.session_name, nx.session_id, nx.session_ref) == (name, "norwegian_4x4", "w1s1")
+
+
+@pytest.mark.parametrize("name", [
+    "Tempo", "Easy run", "norwegian 4x4", "Norwegian 4x4!", "Norwegian  4x4", "Norwegian\u20284x4",          # not an exact name
+    "N\u043erwegian 4x4", "Norwegian 4x4\u200b", "Norwegian 4x4\x00", "\u202eNorwegian 4x4",                   # homoglyph, hidden characters
+    "@runner", "t.me/someone", "https://x.example", "8 x 400 m", "8 × 400 m extra", "123 × 400 m", "A" * 41,
+    "my own session", "   ",
 ])
-def test_plan_next_takes_optional_session_name_and_ref_and_a_hostile_value_is_dropped_never_the_plan(name, ref, name_ok, ref_ok):
-    kw = {k: v for k, v in (("session_name", name), ("session_ref", ref)) if v is not None}
-    nx = planned_run(**kw).plan_next
-    assert nx is not None and nx.day == "2026-10-15"                    # the plan survives whatever the fields are
-    assert (nx.session_name is not None) is name_ok and (nx.session_ref is not None) is ref_ok
+def test_anything_but_a_built_in_name_drops_the_name_and_its_id_and_never_the_plan(name):
+    nx = planned_run(session_name=name, session_id="norwegian_4x4", session_ref="w1s1").plan_next
+    assert nx is not None and nx.day == "2026-10-15" and nx.type == "quality"
+    assert nx.session_name is None and nx.session_id is None          # the hint only ever rides with an accepted name
+    assert nx.session_ref == "w1s1"                                   # the opaque ref is independent
+
+
+@pytest.mark.parametrize("sid,ref,id_ok,ref_ok", [
+    ("norwegian_4x4", "w1s1", True, True), ("Bad Slug!", "w1s1", False, True), ("x" * 41, "w1s1", False, True),
+    ("norwegian-4x4", "w1s1", False, True), (None, "Bad Ref!", False, False), (None, "x" * 17, False, False),
+    (None, "W1S1", False, False), (None, None, False, False),
+])
+def test_the_id_hint_and_the_ref_are_bounded_slugs_and_a_bad_one_is_dropped_alone(sid, ref, id_ok, ref_ok):
+    kw = {k: v for k, v in (("session_id", sid), ("session_ref", ref)) if v is not None}
+    nx = planned_run(session_name="Norwegian 4x4", **kw).plan_next
+    assert nx.session_name == "Norwegian 4x4"
+    assert (nx.session_id is not None) is id_ok and (nx.session_ref is not None) is ref_ok
 
 
 def test_old_plan_next_payloads_still_validate_and_unknown_keys_stay_loud():

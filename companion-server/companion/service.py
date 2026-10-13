@@ -132,9 +132,10 @@ class PlanNextIn(BaseModel):
     # Optional: which session it is. session_name is shown; session_ref is the app's opaque plan id (dedupe only, never
     # shown). A bad value drops that one field, never the plan.
     session_name: str | None = Field(default=None, min_length=1, max_length=40)
+    session_id: str | None = Field(default=None, pattern=r"^[a-z0-9_]{1,40}$")   # a hint from the app's template id
     session_ref: str | None = Field(default=None, pattern=r"^[a-z0-9_]{1,16}$")
 
-    @field_validator("session_name", "session_ref", mode="wrap")
+    @field_validator("session_name", "session_id", "session_ref", mode="wrap")
     @classmethod
     def _optional_session_ident(cls, v, handler):
         try:
@@ -146,6 +147,19 @@ class PlanNextIn(BaseModel):
             if not out or any(unicodedata.category(ch)[0] == "C" for ch in out):
                 return None   # control or format characters: not a name
         return out
+
+    @field_validator("session_name", mode="after")
+    @classmethod
+    def _built_in_only(cls, v):
+        """Only the app's own built-in session names, exactly (facts.known_session): nothing a runner typed, nothing that
+        merely looks like a name (a homoglyph, a link, a handle). Anything else drops the name."""
+        return v if v is None or known_session(v) else None
+
+    @model_validator(mode="after")
+    def _id_needs_a_name(self):
+        if self.session_name is None:
+            self.session_id = None   # the id is only a hint about a name we accepted
+        return self
 
     @field_validator("minutes", "distance_m", mode="before")
     @classmethod
@@ -652,7 +666,7 @@ class Service(CheckinMixin):
             runs = [dict(r) for r in c.execute(
                 "SELECT run_id, type, app_type, start_utc, zone_id, duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, "
                 "verdict, locality, plan_kind, plan_target_m, plan_week, plan_weeks, plan_next_type, plan_next_day, plan_next_week, "
-                "plan_next_min, plan_next_m, plan_next_session_ref, plan_next_session_name, feel, session_name, work_pace_s_per_km, reps_done, "
+                "plan_next_min, plan_next_m, plan_next_session_id, plan_next_session_ref, plan_next_session_name, feel, session_name, work_pace_s_per_km, reps_done, "
                 "rep_spread_s, recovery_pace_s_per_km, received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
             cutoff = iso(now - timedelta(days=RETENTION_LOG_DAYS))
             msgs = [dict(r) for r in c.execute(
@@ -828,6 +842,8 @@ class Service(CheckinMixin):
         nx = run.plan_next
         c.execute("UPDATE runs SET plan_next_session_ref=?, plan_next_session_name=? WHERE user_id=? AND run_id=?",
                   (nx.session_ref if nx else None, nx.session_name if nx else None, uid, run.run_id))
+        c.execute("UPDATE runs SET plan_next_session_id=? WHERE user_id=? AND run_id=?",
+                  (nx.session_id if nx else None, uid, run.run_id))
 
     @staticmethod
     def _keep_shape(c, uid: str, run: RunIn) -> None:
