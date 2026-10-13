@@ -522,9 +522,14 @@ class _BoardHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final s = RunSoloType.micro11.copyWith(color: t.inkSecondary);
-    // Inset like the rows below: the 6 dp accent plus the row's padding.
+    // Inset like the rows below: left is the 6 dp accent plus the row's 12 dp
+    // padding, right is the row's 12 dp padding.
     return Padding(
-      padding: const EdgeInsets.only(left: 18, right: 18, bottom: Space.x4),
+      padding: const EdgeInsets.only(
+        left: 18,
+        right: Space.x12,
+        bottom: Space.x4,
+      ),
       child: Row(
         children: [
           SizedBox(width: 40, child: Text('#', style: s)),
