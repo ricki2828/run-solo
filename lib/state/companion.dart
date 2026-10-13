@@ -1518,8 +1518,31 @@ Map<String, Object?> companionPlanFacts(
         'week': nextWeek,
         'minutes': ?minutes,
         'distance_m': ?dist,
+        ...companionTemplateFacts(next.session),
       },
   };
+}
+
+final RegExp _templateId = RegExp(r'^[a-z0-9_]{1,40}$');
+
+/// `session_id` and `session_name` for a planned session, both or neither:
+/// the built-in template's id (`norwegian_4x4`, hyphens as underscores; never
+/// the plan slot id like `w1s1`) and its built-in display name. A session with
+/// no built-in template (an easy or long run, a goal run, a custom session)
+/// sends neither. The name is always the catalogue's, never text the runner
+/// typed.
+Map<String, Object?> companionTemplateFacts(engine.BlockSession session) {
+  if (session.kind != engine.BlockKind.interval) return const {};
+  final preset = session.presetId == null
+      ? null
+      : engine.SessionCatalogue.byId(session.presetId!);
+  if (preset == null) return const {};
+  final id = preset.id.toLowerCase().replaceAll('-', '_');
+  final name = preset.name;
+  if (!_templateId.hasMatch(id) || name.isEmpty || name.length > 40) {
+    return const {};
+  }
+  return {'session_id': id, 'session_name': name};
 }
 
 /// The compact run summary the companion gets (B6, C4, C6): fields only, no

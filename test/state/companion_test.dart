@@ -531,9 +531,73 @@ void main() {
           'week',
           'minutes',
           'distance_m',
+          'session_id',
+          'session_name',
         }),
         isEmpty,
       );
+    });
+
+    test('a templated next session carries its built-in id and name', () {
+      final p = plan();
+      final tempo = p.sessions[1].copyWith(
+        kind: engine.BlockKind.interval,
+        presetId: 'tempo',
+      );
+      final next =
+          companionPlanFacts(
+                view(p.withSession(tempo)),
+                'y',
+                runStart: at,
+              )['plan_next']!
+              as Map;
+      expect(next['session_id'], 'tempo');
+      expect(next['session_name'], 'Tempo intervals');
+      expect(next['session_id'], isNot('w1s2')); // never the plan slot id
+      final n4 = companionTemplateFacts(
+        p.sessions[0].copyWith(
+          kind: engine.BlockKind.interval,
+          presetId: engine.SessionSpec.norwegian4x4Id,
+        ),
+      );
+      expect(n4, {
+        'session_id': 'norwegian_4x4',
+        'session_name': 'Norwegian 4x4',
+      });
+    });
+
+    test('every built-in template id and name fits the wire rules', () {
+      final id = RegExp(r'^[a-z0-9_]{1,40}$');
+      for (final preset in engine.SessionCatalogue.presets) {
+        final f = companionTemplateFacts(
+          plan().sessions[0].copyWith(
+            kind: engine.BlockKind.interval,
+            presetId: preset.id,
+          ),
+        );
+        expect(f['session_id'], matches(id), reason: preset.id);
+        expect((f['session_name']! as String).length, lessThanOrEqualTo(40));
+      }
+    });
+
+    test('no template, no id and no name: easy, long, unknown or custom', () {
+      final p = plan();
+      expect(companionTemplateFacts(p.sessions[1]), isEmpty); // easy
+      expect(companionTemplateFacts(p.sessions[2]), isEmpty); // long
+      for (final preset in ['custom:my-secret-session', 'nope', '']) {
+        final f = companionTemplateFacts(
+          p.sessions[0].copyWith(
+            kind: engine.BlockKind.interval,
+            presetId: preset,
+          ),
+        );
+        expect(f, isEmpty, reason: preset);
+        expect('$f', isNot(contains('secret')));
+      }
+      final next =
+          companionPlanFacts(view(p), 'y', runStart: at)['plan_next']! as Map;
+      expect(next.containsKey('session_id'), isFalse);
+      expect(next.containsKey('session_name'), isFalse);
     });
 
     test('a corrupt stored number is left out, not sent to fail the run', () {
