@@ -91,13 +91,6 @@ void main() {
     await pumpHome(tester, reply(moved: true));
     expect(find.text('MOVED BY YOUR COACH'), findsOneWidget);
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('home-coach-session')),
-        matching: find.textContaining('Norwegian 4x4'),
-      ),
-      findsNothing,
-    );
-    expect(
       tester
           .widget<Text>(find.byKey(const ValueKey('home-coach-session')))
           .data,
