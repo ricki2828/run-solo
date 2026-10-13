@@ -57,7 +57,7 @@ class Env:
     def __init__(self, tmp_path, rec, channel="telegram", **over):
         self.fakes = Fakes()
         self.rec = rec
-        self.s = make_settings(tmp_path, media_enabled=True, weather_enabled=False, openrouter_key=None, **over)
+        self.s = make_settings(tmp_path, media_enabled=True, checkins_enabled=False, weather_enabled=False, openrouter_key=None, **over)
         self.svc = Service(self.s, httpx.Client(transport=httpx.MockTransport(self.fakes.handler)))
         self.svc.media = MediaRenderer(client=rec)
         with db.tx(self.s.db_path) as c:

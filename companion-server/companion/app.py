@@ -226,6 +226,17 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
         except NotFound:
             raise HTTPException(404, "gone")
 
+    @app.get("/v1/me/next-session")
+    def get_next_session(response: Response, uid: str = Depends(current_user)):
+        """Read-only, for the app's Home: the coach's next session and the latest coach line. Same device token as the
+        run upload. Shape v1 is in README.md; it holds no check-in answer, only whether the session was moved."""
+        try:
+            out = svc.next_session(uid)
+        except NotFound:
+            raise HTTPException(404, "gone")
+        response.headers["Cache-Control"] = "no-store"
+        return out
+
     @app.delete("/v1/me")
     def delete_me(uid: str = Depends(current_user)):
         svc.delete_me(uid)

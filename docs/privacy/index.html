@@ -143,7 +143,7 @@
 
   <h2>2b. Run companion (optional)</h2>
   <p>The Run companion sends a short note to your Telegram after a run, with the numbers that matter. It
-  may ask how a run felt and suggest up to two sessions a week. WhatsApp is planned for later. <strong>It is off
+  may ask how a run felt, suggest up to two sessions a week, and check in with you before and after a planned run (see "Check-ins" below). WhatsApp is planned for later. <strong>It is off
   unless you turn it on.</strong> The setup screen and Settings, Companion have two equal buttons, Turn on
   and Not now, and neither is pre-selected. Until you turn it on, nothing in this section applies and
   nothing is sent.</p>
@@ -167,9 +167,12 @@
     your route with the first and last stretch cut off. See "The route outline" below.</li>
     <li><strong>only if you follow a 4-week plan in the app</strong>: which planned session the run was (easy, long or
     quality), which week of the plan it fell in (for example week 3 of 4), the distance the plan asked for when it names
-    one, and the next planned session: its type, its planned day (a date), its week, and its minutes or distance when the
-    plan has them. This is what the plan already holds on your phone. Nothing you typed, no planned session names, no reasons and
-    no race date go with it, and the app has no race date to send;</li>
+    one, and the next planned session: its type, its planned day (a date), its week, its minutes or distance when the
+    plan has them. When that session is one of the app's built-in sessions (for example "Norwegian 4x4" or "Tempo intervals"), its
+    name goes too, together with a short code for it and an opaque plan reference that is never shown to anyone. The server
+    accepts a session name only if it is exactly one of the built-in names; a session you built yourself is never named, and
+    nothing you typed is ever sent. This is what the plan already holds on your phone. No reasons and no race date go with it, and the
+    app has no race date to send;</li>
     <li><strong>only if you turn on "Weather in suggestions"</strong> (Settings, Companion, off until you turn it on): the area
     where the run started, rounded on your phone to about 11 km (0.1 degree), with no place name.</li>
   </ul>
@@ -208,10 +211,35 @@
   <p>Turning on "Weather in suggestions" first shows a sheet with what is sent, to whom and why. With the switch off, no area
   leaves your phone for the companion. Runs sent after you turn it on carry the area; runs sent before do not.
   The weather part is described under "Where it goes" and "How long we keep it" below.</p>
-  <p>The companion also keeps your answers to its questions. It asks at most one a week, and only
-  inside a run note. The questions are what you are training for, the month of your race, when you usually
-  run, and whether you have a niggle (none, calf, knee, hip, foot or other). You answer with buttons.
+  <p>The companion also keeps your answers to its questions. It asks at most one question a day, counted on your own
+  calendar day, and only when your answer would change what it suggests next. A weekly set of background questions
+  (what you are training for, the month of your race, when you usually run, and whether you have a niggle: none, calf,
+  knee, hip, foot or other) comes under the same limit. You answer with buttons.
   It records whether you take or skip a suggestion. A Hard tap on a run also makes that evening's suggestion gentler.</p>
+
+  <h3>Check-ins</h3>
+  <p>The companion can check in with you, with buttons and nothing typed. Each answer edits the same message in your chat.</p>
+  <ul>
+    <li><strong>The evening before</strong> a planned session: how the body feels (Fresh, Normal, Flat, Sore somewhere, Not tomorrow).</li>
+    <li><strong>The morning of</strong> a planned session, about 15 minutes before the time you usually start and never inside
+    your quiet hours: Going now, Later today or Skip. Skip asks why (Busy, Tired, Sore, Travelling, Feeling ill), and the planned
+    session moves to a later day.</li>
+    <li><strong>After an easy run</strong> that came out slower and harder than usual, and only then: what was behind it (Short sleep,
+    Stressed, Heat, Nothing).</li>
+    <li><strong>On Sunday</strong>: how many runs you want next week (3, 4, 5 or Away).</li>
+  </ul>
+  <p>The answers are fixed choices, not text you type. Soreness and illness are health information. The companion uses them
+  for one thing, to go lighter: for 3 days after a skip, and for a week if you say you are ill. When you say sore or ill it also
+  tells you to get it looked at or to see a doctor if it hangs around. It gives no medical advice and makes no diagnosis.</p>
+  <p>These answers stay on our server and in your chat. They are <strong>never sent to OpenRouter</strong> or the model provider,
+  to Open-Meteo or to the card renderer: every line that uses one is a fixed template filled in on our server, and a run note
+  can carry one such line after the writing service has finished. The picture of a moved session shows only that it moved and to
+  which day, never why. A pinned card for the week shows your planned and finished distances per day. <strong>We keep each answer for 14 days and then delete it.</strong>
+  They are left out of the nightly backup, so a backup never holds them. They are in the data the server returns about you, and the
+  app lists them under What the companion knows. Delete everything removes them at once.</p>
+  <p>The server also keeps a small record of which check-in messages it sent, by day, so it never sends one twice and keeps to
+  one question a day. That record holds no answer and goes after 14 days too, as do the stored texts of the check-in messages themselves. The app can ask the server for your next planned
+  session and the latest note the companion sent; the reply says whether the session was moved, and nothing else about your answers.</p>
   <p><strong>Notes you add.</strong> On Telegram, each run note in your chat has an Add a note button. Tap it and the next message you
   type (up to 500 characters, within 10 minutes) is saved as a note on that run. This is the only typed text the
   companion keeps. It is used in two plain ways only: the Sunday recap may quote your note back to you, and a few words
@@ -236,7 +264,7 @@
     rounded area (about 11 km) and your time zone, to ask for the forecast there. No name, account or device ID goes with it.
     Open-Meteo sees our server's IP address, not yours. See section 3 for the weather request the app itself makes.</li>
     <li><strong>OpenRouter</strong>, and the AI provider it routes to, which write the words of each note. They receive only
-    the facts of the run as short sentences (for a trail run, whether the companion read it as easy, tempo or long from its distance, time and heart rate zones; and, when it compares two runs, your True Pace for both), and your answers as fixed options. They never receive your
+    the facts of the run as short sentences (for a trail run, whether the companion read it as easy, tempo or long from its distance, time and heart rate zones; and, when it compares two runs, your True Pace for both), and your answers to the background questions as fixed options. They never receive your check-in answers,
     phone number, Telegram chat, name, any note you type, or the route outline, per-kilometre paces or rep times, which are
     used only to draw the picture. We ask for providers that do not keep or train on what they receive
     (zero retention), and the request is refused if none is available. If the writing service fails, the note is written from a
@@ -265,6 +293,8 @@
     "Weather in suggestions" off (as soon as your phone can reach our server, or the next time the app connects if you were
     offline), when you re-connect the companion, and when you delete your data. Backups can keep it for up to 14 days.</li>
     <li>A niggle answer expires after 8 weeks.</li>
+    <li>Check-in answers (how the body feels, why you skipped, what was behind a slow easy run, how many runs next week) are kept
+    for 14 days, then deleted. The record of which check-ins were sent goes after 14 days too. Neither is in the nightly backup.</li>
     <li>An unfinished connection (you never entered the code) is deleted after an hour.</li>
     <li>Backups: the server database is backed up each night, encrypted, and each backup is deleted after 14 days. Data you
     delete is gone from the live server at once and from the backups within 14 days.</li>

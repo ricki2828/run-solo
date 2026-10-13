@@ -11,6 +11,7 @@ import logging
 import re
 import secrets
 import string
+import unicodedata
 from datetime import date, datetime, timedelta
 from typing import Annotated, Any
 
@@ -20,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from . import db
 from .channels import ChannelError, Inbound, OutCard, TelegramChannel, WhatsAppChannel, feel_template_eligible
+from .checkin_service import CheckinMixin
 from .config import Settings
 from .deeplink import run_link, web_twin, week_link
 from .media import Media, MediaError, from_settings
@@ -33,7 +35,7 @@ from .convo.weather import NoWeather, OpenMeteo, cell
 from .facts import APP_TYPES, FactsResult, build_facts, known_session, infer_coach_type, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
 from .timeutil import (in_quiet, iso, now_utc, parse_iso, quiet_end_utc, resolve_cap_week, to_local, UTC,
                        valid_zone, week_key)
-from .writer import Writer, digest_lines
+from .writer import Writer, Written, digest_lines
 
 log = logging.getLogger("companion")
 
@@ -127,6 +129,37 @@ class PlanNextIn(BaseModel):
     week: int = Field(ge=1, le=52)
     minutes: int | None = Field(default=None, ge=1, le=600)
     distance_m: int | None = Field(default=None, ge=500, le=100000)
+    # Optional: which session it is. session_name is shown; session_ref is the app's opaque plan id (dedupe only, never
+    # shown). A bad value drops that one field, never the plan.
+    session_name: str | None = Field(default=None, min_length=1, max_length=40)
+    session_id: str | None = Field(default=None, pattern=r"^[a-z0-9_]{1,40}$")   # a hint from the app's template id
+    session_ref: str | None = Field(default=None, pattern=r"^[a-z0-9_]{1,16}$")
+
+    @field_validator("session_name", "session_id", "session_ref", mode="wrap")
+    @classmethod
+    def _optional_session_ident(cls, v, handler):
+        try:
+            out = handler(v)
+        except ValidationError:
+            return None
+        if isinstance(out, str):
+            out = out.strip()
+            if not out or any(unicodedata.category(ch)[0] == "C" for ch in out):
+                return None   # control or format characters: not a name
+        return out
+
+    @field_validator("session_name", mode="after")
+    @classmethod
+    def _built_in_only(cls, v):
+        """Only the app's own built-in session names, exactly (facts.known_session): nothing a runner typed, nothing that
+        merely looks like a name (a homoglyph, a link, a handle). Anything else drops the name."""
+        return v if v is None or known_session(v) else None
+
+    @model_validator(mode="after")
+    def _id_needs_a_name(self):
+        if self.session_name is None:
+            self.session_id = None   # the id is only a hint about a name we accepted
+        return self
 
     @field_validator("minutes", "distance_m", mode="before")
     @classmethod
@@ -265,7 +298,7 @@ class RunIn(BaseModel):
 EXPORTED_TABLES = {
     "users": "profile", "runs": "runs_received", "memory": "memory", "cards": "messages_sent_30d",
     "outcomes": "suggestion_outcomes", "convo_cards": "messages_sent_30d", "convo_log": "conversation_log",
-    "convo_area": "areas", "run_notes": "run_notes", "run_shape": "run_shapes",
+    "convo_area": "areas", "run_notes": "run_notes", "run_shape": "run_shapes", "checkin_answers": "checkins",
 }
 NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message content of its own
     "devices": "hashed device tokens", "enrolments": "short-lived sign-up nonces", "outbox": "send queue, ids only",
@@ -273,6 +306,8 @@ NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message con
     "replay_state": "coach replay progress", "replay_runs": "run ids the replay inserted",
     "replay_items": "replay send times and card ids", "replay_rows": "which rows the replay wrote",
     "note_mode": "10-minute 'Add a note' waiting state: a run id and an expiry, no text",
+    "checkin_slots": "which check-in messages were sent (ids and dates, no answer)",
+    "question_cap": "one row per local day a question was sent (the daily cap)",
 }
 
 
@@ -288,7 +323,7 @@ def _opaque_user_id() -> str:
     return "u_" + "".join(secrets.choice(string.ascii_lowercase) for _ in range(12))
 
 
-class Service:
+class Service(CheckinMixin):
     def __init__(self, settings: Settings, http: httpx.Client):
         self.s, self.http = settings, http
         self.writer = Writer(settings, http)
@@ -528,6 +563,9 @@ class Service:
         if not card or not user or card["user_id"] != user["id"]:
             ch.ack_callback(inb, "That button has expired.", clear=False)
             return
+        if inb.code is not None:   # a check-in button: edits its own message in place (checkin_service)
+            self._ci_tap(ch, inb, user, dict(card), now)
+            return
         buttons = json.loads(card["buttons_json"])
         if inb.button_idx is None or not 0 <= inb.button_idx < len(buttons):
             ch.ack_callback(inb, "That button has expired.", clear=False)
@@ -628,8 +666,8 @@ class Service:
             runs = [dict(r) for r in c.execute(
                 "SELECT run_id, type, app_type, start_utc, zone_id, duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, "
                 "verdict, locality, plan_kind, plan_target_m, plan_week, plan_weeks, plan_next_type, plan_next_day, plan_next_week, "
-                "plan_next_min, plan_next_m, feel, session_name, work_pace_s_per_km, reps_done, rep_spread_s, recovery_pace_s_per_km, "
-                "received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
+                "plan_next_min, plan_next_m, plan_next_session_id, plan_next_session_ref, plan_next_session_name, feel, session_name, work_pace_s_per_km, reps_done, "
+                "rep_spread_s, recovery_pace_s_per_km, received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
             cutoff = iso(now - timedelta(days=RETENTION_LOG_DAYS))
             msgs = [dict(r) for r in c.execute(
                 "SELECT k.kind, k.headline, k.body, k.sent_at, cc.situation, cc.touch_kind, cc.media_json FROM cards k "
@@ -641,6 +679,7 @@ class Service:
             areas = [dict(r) for r in c.execute("SELECT run_id, lat, lon FROM convo_area WHERE user_id=? ORDER BY rowid", (uid,))]
             convo = [dict(r) for r in c.execute("SELECT kind, key, ts FROM convo_log WHERE user_id=? ORDER BY id", (uid,))]
             memory = self._memory_get(c, uid, now)
+            checkins = self._ci_export(c, uid, now)
             optin = bool(u["weather_optin"])
             outcomes = [dict(r) for r in c.execute("SELECT kind, outcome, ts FROM outcomes WHERE user_id=?", (uid,))]
             run_notes = [dict(r) for r in c.execute(
@@ -658,7 +697,7 @@ class Service:
                 "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "route_shape_on_cards": bool(u["route_optin"]), "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },
             "runs_received": runs, "run_shapes": shapes, "run_notes": run_notes, "memory": memory, "suggestion_outcomes": outcomes,
-            "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo,
+            "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo, "checkins": checkins,
             "goes_to": ["OpenRouter and the model provider (facts and enumerated memory only, no phone number or chat id)",
                         "Telegram" if u["channel"] == "telegram" else "Meta (WhatsApp Cloud API, keeps messages up to 30 days)",
                         *(["Open-Meteo (a location rounded to about 11 km and a timezone, no identifier)"]
@@ -756,6 +795,7 @@ class Service:
                          json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality,
                          run.route_id, run.load_state, run.pb, run.plan_kind, run.plan_target_m,
                          run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols, uid, run.run_id))
+                    self._keep_plan_session(c, uid, run)
                     self._keep_shape(c, uid, run)
                     return {"status": "updated"}
                 return {"status": "duplicate"}
@@ -775,6 +815,7 @@ class Service:
                  json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality, run.route_id,
                  run.load_state, run.pb, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols,
                  iso(now), int(stale), 0 if replay else 1))
+            self._keep_plan_session(c, uid, run)
             self._keep_shape(c, uid, run)
             if self.s.weather_enabled and run.area_lat is not None and run.area_lon is not None \
                     and c.execute("SELECT weather_optin FROM users WHERE id=?", (uid,)).fetchone()["weather_optin"]:
@@ -794,6 +835,15 @@ class Service:
                 c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
                           (uid, "run_card", iso(now), f"card:{uid}:{run.run_id}", run.run_id))
         return {"status": "stored" if stale else "accepted"}
+
+    @staticmethod
+    def _keep_plan_session(c, uid: str, run: RunIn) -> None:
+        """Which session the plan's next one is (its display name and the app's opaque ref), when the app sent them."""
+        nx = run.plan_next
+        c.execute("UPDATE runs SET plan_next_session_ref=?, plan_next_session_name=? WHERE user_id=? AND run_id=?",
+                  (nx.session_ref if nx else None, nx.session_name if nx else None, uid, run.run_id))
+        c.execute("UPDATE runs SET plan_next_session_id=? WHERE user_id=? AND run_id=?",
+                  (nx.session_id if nx else None, uid, run.run_id))
 
     @staticmethod
     def _keep_shape(c, uid: str, run: RunIn) -> None:
@@ -1038,8 +1088,9 @@ class Service:
         with db.tx(self.s.db_path) as c:
             q = self._question_for(c, uid, hist, mem, now)
             wk = self._cap_week(c, uid, now)
-            if q is None or not self._claim(c, uid, f"question:{wk}", now):
-                return None  # one a week
+            if q is None or self._ci_cap_taken(c, uid, now) or not self._claim(c, uid, f"question:{wk}", now):
+                return None  # one a week, and never on a day that already had a question (C1)
+            self._ci_claim_question(c, uid, "question", now)
             head = QUESTION_HEADS[sum(map(ord, q["key"])) % len(QUESTION_HEADS)]
             card_id = secrets.token_hex(16)
             buttons = self._buttons("set", None, q)
@@ -1063,6 +1114,11 @@ class Service:
             usage = self._usage(c, uid, now)
             zone_id = c.execute("SELECT zone_id FROM users WHERE id=?", (uid,)).fetchone()["zone_id"]
             soft = self._soften(c, uid, now)
+            tomorrow_d = to_local(now, zone_id).date() + timedelta(days=1)
+            lighter = self._ci_lighter(c, uid, now, tomorrow_d)
+            hold = self._ci_evening_held(c, uid, tomorrow_d, now)
+        if hold:   # ill or away: no suggestion at all; or a readiness question is due in this window and wins the day's cap
+            return None
         fc = None
         if hist:
             tomorrow = to_local(now, zone_id).date() + timedelta(days=1)
@@ -1073,14 +1129,19 @@ class Service:
         else:
             last_sit = None
         ev = cv_suggest.evening(hist, now, fc, usage.variants, seed=local_date, zone_id=zone_id, last_situation=last_sit,
-                                soften=soft)
+                                soften=soft or lighter)
         if not ev:
             return None
         with db.tx(self.s.db_path) as c:
-            if not self._claim_suggestion(c, uid, now):
+            # a suggestion has a keyboard, so it is the day's one question (C1): it yields to a check-in already sent
+            if self._ci_cap_taken(c, uid, now, local_date) or not self._claim_suggestion(c, uid, now):
                 return None
-        w = self.writer.write(FactsResult((), ev.suggestion, "steady", False, "ok"), digest_lines(mem, feels),
-                              voice=ev.rendered, style=ev.style)
+            self._ci_claim_question(c, uid, "evening", now, local_date)
+        if lighter:   # the softening came from a check-in answer: templated only, the writer never sees it (A2)
+            w = Written(ev.rendered.headline, ev.rendered.body, "template")
+        else:
+            w = self.writer.write(FactsResult((), ev.suggestion, "steady", False, "ok"), digest_lines(mem, feels),
+                                  voice=ev.rendered, style=ev.style)
         buttons = self._buttons("set", ev.suggestion.kind, None)
         card_id = secrets.token_hex(16)
         media = cv_engine.MediaPlan("suggestion", False, ev.suggestion.reason, facts=ev.card_facts)
@@ -1158,7 +1219,7 @@ class Service:
         if ch is None:
             raise ChannelError("channel not configured")
         with db.ro(self.s.db_path) as c:
-            card = self._quoted(c, dict(c.execute("SELECT * FROM cards WHERE card_id=?", (card_id,)).fetchone()))
+            card = self._ci_line(c, self._quoted(c, dict(c.execute("SELECT * FROM cards WHERE card_id=?", (card_id,)).fetchone())), now)
         if card["sent_at"]:
             return True
         buttons = json.loads(card["buttons_json"])
@@ -1175,7 +1236,7 @@ class Service:
             out = OutCard(card_id, card["headline"], card["body"], buttons, media, links,
                           short_caption=card["kind"] == "run")
             try:
-                ch.send_card(user["chat_ref"], out)
+                self._deliver(ch, user, card, out)
                 followups = ch.followups(out)  # the media is delivered: from here only text may be retried
             except ChannelError as e:
                 if not e.permanent:
@@ -1183,8 +1244,8 @@ class Service:
                 log.warning("media refused, sending text: %s", e)
                 media = None
         if media is None:
-            ch.send_card(user["chat_ref"], OutCard(card_id, card["headline"], card["body"], buttons, None, links),
-                         in_window=in_window)
+            self._deliver(ch, user, card, OutCard(card_id, card["headline"], card["body"], buttons, None, links),
+                          in_window=in_window)
         if telegram and self.s.media_enabled:
             plan = self._plan(card_id)
             if plan.get("touch_card") and plan.get("touch_facts"):
@@ -1196,6 +1257,8 @@ class Service:
             for mode in followups:  # its own outbox item each: a failure retries the text, never the upload
                 c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
                           (user["id"], "followup", iso(now), f"fu:{card_id}:{mode}", f"{card_id}:{mode}"))
+        if card["kind"] == "run":
+            self._ci_week_enqueue(user, now)   # the pinned week card follows each run
         return True
 
     @staticmethod
@@ -1221,7 +1284,7 @@ class Service:
         if row is None:
             return False
         with db.ro(self.s.db_path) as c:
-            card = self._quoted(c, dict(row))
+            card = self._ci_line(c, self._quoted(c, dict(row)), now)
         if not card["sent_at"] or parse_iso(card["sent_at"]) < now - timedelta(hours=self.s.stale_card_hours):
             log.info("follow-up dropped: stale")
             return False
@@ -1324,9 +1387,18 @@ class Service:
             return "skipped", None
         if self._kill_switch():
             return "defer", now + timedelta(minutes=15)
+        if item["kind"] == "ci_edit":   # the answer to a tap the runner just made: not held back by quiet hours
+            return self._ci_process_edit(user, item["ref"], now)
+        if item["kind"] == "ci_week":   # a silent edit of the pinned week card, also not held back by quiet hours
+            return self._ci_week_sync(user, item["ref"], now)
         qs, qe = self._quiet(user)
         if in_quiet(now, user["zone_id"], qs, qe):
-            return "defer", quiet_end_utc(now, user["zone_id"], qe)
+            until = quiet_end_utc(now, user["zone_id"], qe)
+            if item["kind"] == "ci" and until >= self._ci_deadline(item["ref"]):
+                return "skipped", None   # a check-in is dropped, never sent late (C2)
+            return "defer", until
+        if item["kind"] == "ci":
+            return self._ci_process(user, item["ref"], now)
         if item["kind"] == "followup":
             return ("done" if self._send_followup(user, item["ref"], now) else "skipped"), None
         if item["kind"] == "run_card":
@@ -1367,11 +1439,13 @@ class Service:
                           (iso(now + timedelta(minutes=5)), r["id"]))
         for r in rows:
             attempts = r["attempts"] + 1
+            wait = 0.0
             try:
                 state, retry = self._process(r, now)
                 err = None
             except ChannelError as e:
                 state, retry, err = "retry", None, str(e)[:120]
+                wait = e.retry_after or 0.0   # Telegram 429: never earlier than it asked
             except Exception as e:  # never let one item stall the loop
                 log.error("outbox item failed: %s", type(e).__name__)
                 state, retry, err = "retry", None, type(e).__name__
@@ -1385,7 +1459,7 @@ class Service:
                     c.execute("UPDATE outbox SET state='failed', last_error=? WHERE id=?", (err, r["id"]))
                 else:
                     c.execute("UPDATE outbox SET state='pending', due_at=?, last_error=? WHERE id=?",
-                              (iso(now + timedelta(minutes=2 ** attempts)), err, r["id"]))
+                              (iso(now + max(timedelta(minutes=2 ** attempts), timedelta(seconds=wait))), err, r["id"]))
         return len(rows)
 
     def mark_replay_aware(self) -> None:  # also refreshed every tick (tick_replay_flag)
@@ -1552,9 +1626,12 @@ class Service:
                       "AND r.run_id=run_shape.run_id)")  # belt and braces: a shape never outlives its run
             c.execute("DELETE FROM memory WHERE key='niggle_area' AND updated_at < ?" + held,
                       (iso(now - timedelta(days=NIGGLE_TTL_DAYS)),))
+            gone = self.purge_checkins(c, now, held)
             idle = [r["id"] for r in c.execute(
                 f"SELECT id FROM users WHERE COALESCE(last_run_utc, created_at) < ? AND id NOT IN {replay_hold(now)}",
                 (iso(now - timedelta(days=RETENTION_INACTIVE_DAYS)),))]
+        if gone:   # old page images of purged answers must not wait in the WAL (P1)
+            db.checkpoint_truncate(self.s.db_path)
         for uid in idle:  # six months without a run: hard delete
             db.hard_delete_user(self.s.db_path, uid)
             log.info("retention-deleted user=%s", uid)
@@ -1562,6 +1639,7 @@ class Service:
     def tick(self, now: datetime | None = None) -> None:
         now = now or now_utc()
         self.tick_replay_flag(now)
+        self.plan_checkins(now)   # before the evening suggestion: a question that is due in the same window goes first
         self.plan_evening(now)
         self.plan_recap(now)
         self.plan_monthly(now)

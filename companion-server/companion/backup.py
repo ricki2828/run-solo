@@ -22,6 +22,9 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 RETENTION_DAYS = 14
 MAGIC = b"RSB1"
+# The runner's check-in answers are kept 14 days on the live database, so they must not outlive that in a backup that is
+# itself kept 14 days (eng-review P1). They are emptied from the snapshot: a restore comes back without them.
+PRIVATE_TABLES = ("checkin_answers", "checkin_slots", "question_cap")
 
 
 def _key(key_file: str) -> bytes:
@@ -37,6 +40,13 @@ def _snapshot(db_path: str) -> bytes:
     mem = sqlite3.connect(":memory:")
     try:
         src.backup(mem)
+        for t in PRIVATE_TABLES:
+            try:
+                mem.execute(f"DELETE FROM {t}")
+            except sqlite3.OperationalError:   # a database from before the check-ins has no such table
+                pass
+        mem.commit()
+        mem.execute("VACUUM")   # so the deleted rows are not left in free pages of the snapshot
         return mem.serialize()
     finally:
         mem.close()

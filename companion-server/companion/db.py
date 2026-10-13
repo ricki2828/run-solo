@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS runs (
   plan_kind TEXT, plan_target_m INTEGER, plan_weeks_to_race INTEGER,
   plan_week INTEGER, plan_weeks INTEGER,  -- the app's 4-week block: this run's week, of how many
   plan_next_type TEXT, plan_next_day TEXT, plan_next_week INTEGER, plan_next_min INTEGER, plan_next_m INTEGER,  -- the next planned session
+  plan_next_session_id TEXT, plan_next_session_ref TEXT, plan_next_session_name TEXT,  -- which session it is, when the app says so (ref: opaque, never shown)
   feel TEXT,
   session_name TEXT, work_pace_s_per_km REAL, reps_done INTEGER, rep_spread_s REAL, recovery_pace_s_per_km REAL,  -- an interval session, from the app's verdict numbers
   received_at TEXT NOT NULL,
@@ -193,6 +194,34 @@ CREATE TABLE IF NOT EXISTS replay_items (  -- every message the replay sent: vir
   virtual_at TEXT NOT NULL, real_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS replay_items_card ON replay_items (card_id);
+-- Check-ins (companion.checkins): the runner's one-tap life answers. Kept 14 days, then purged; shown in the export under
+-- `checkins`; excluded from the nightly backup (backup.PRIVATE_TABLES). Never read by the writer or any model prompt.
+-- kind: ready | today | why | postrun | shape. local_date: the session day (ready, today, why), the run's local day
+-- (postrun) or the Monday of the week it is about (shape). value: a fixed enum (see checkins.py), never free text.
+CREATE TABLE IF NOT EXISTS checkin_answers (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL, local_date TEXT NOT NULL, value TEXT NOT NULL, created_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, kind, local_date)
+);
+CREATE INDEX IF NOT EXISTS checkin_answers_age ON checkin_answers (user_id, created_at);
+-- One row per coach-initiated check-in message (C2): claimed BEFORE the send, message_id stored after, so a retry or a
+-- restart can never post it twice (at-most-once). Holds ids and dates only, no answer.
+CREATE TABLE IF NOT EXISTS checkin_slots (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  slot TEXT NOT NULL, local_date TEXT NOT NULL,
+  card_id TEXT, message_id TEXT, is_photo INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL DEFAULT 'claimed',  -- claimed | sent | consumed
+  claimed_at TEXT NOT NULL, sent_at TEXT,
+  PRIMARY KEY (user_id, slot, local_date)
+);
+CREATE INDEX IF NOT EXISTS checkin_slots_card ON checkin_slots (card_id);
+-- The question cap (C1): at most one unprompted question with a keyboard per runner local day. The unique key IS the
+-- cap: a send claims its row first, and only the claimer sends.
+CREATE TABLE IF NOT EXISTS question_cap (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  local_date TEXT NOT NULL, slot TEXT NOT NULL, claimed_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, local_date)
+);
 -- Tables below hold no user data (no user_id column).
 CREATE TABLE IF NOT EXISTS llm_calls (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -248,7 +277,7 @@ def init(path: str) -> None:
         for col, typ in (("app_type", "TEXT"), ("real_upload", "INTEGER"),
                          ("plan_week", "INTEGER"), ("plan_weeks", "INTEGER"), ("plan_next_type", "TEXT"),
                          ("plan_next_day", "TEXT"), ("plan_next_week", "INTEGER"), ("plan_next_min", "INTEGER"),
-                         ("plan_next_m", "INTEGER"),
+                         ("plan_next_m", "INTEGER"), ("plan_next_session_id", "TEXT"), ("plan_next_session_ref", "TEXT"), ("plan_next_session_name", "TEXT"),
                          ("session_name", "TEXT"), ("work_pace_s_per_km", "REAL"), ("reps_done", "INTEGER"),
                          ("rep_spread_s", "REAL"), ("recovery_pace_s_per_km", "REAL")):
             if col not in run_cols:  # databases created before these columns
@@ -271,11 +300,14 @@ def init(path: str) -> None:
 _origin = threading.local()
 # Tables whose new rows are tagged (in replay_rows) when written under origin("replay"): the coach replay's own
 # writes, and the taps on a replayed card. Every table here is a rowid table with a user_id column.
-TAGGED = ("cards", "outbox", "convo_log", "quota", "outcomes", "msglog", "memory")
+TAGGED = ("cards", "outbox", "convo_log", "quota", "outcomes", "msglog", "memory",
+          "checkin_answers", "checkin_slots", "question_cap")
 # A tagged row is named by a stable identity: SQLite reuses the rowid of a deleted row in tables without
 # AUTOINCREMENT, and a live row must never inherit a replay tag that way. (Those with AUTOINCREMENT never reuse.)
 IDENT = {"cards": "card_id", "quota": "key", "memory": "key", "outcomes": "card_id",
-         "outbox": "CAST(id AS TEXT)", "convo_log": "CAST(id AS TEXT)", "msglog": "CAST(id AS TEXT)"}
+         "outbox": "CAST(id AS TEXT)", "convo_log": "CAST(id AS TEXT)", "msglog": "CAST(id AS TEXT)",
+         "checkin_answers": "kind || '|' || local_date", "checkin_slots": "slot || '|' || local_date",
+         "question_cap": "local_date"}
 
 
 @contextmanager
