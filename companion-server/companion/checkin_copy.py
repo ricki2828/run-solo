@@ -27,8 +27,9 @@ class Ctx:
     original_word: str | None = None   # what the plan had, when "flat" made it easy
 
 
-def session_label(typ: str, minutes: int | None, distance_m: int | None) -> str:
-    word = WORD.get(typ, "Run")
+def session_label(typ: str, minutes: int | None, distance_m: int | None, name: str | None = None) -> str:
+    """"Quality session, 6 km", or with the session's own name when the coach knows it: "Norwegian 4x4, 6 km"."""
+    word = name or WORD.get(typ, "Run")
     if distance_m:
         return f"{word}, {max(1, round(distance_m / 1000))} km"
     if minutes:

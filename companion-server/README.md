@@ -35,7 +35,11 @@ For the app's Home (stream S3). `Cache-Control: no-store`. A server without chec
   "generated_at": "2026-10-15T09:00:00Z",
   "next_session": {
     "date": "2026-10-19",            // the runner's local date the session is on now
-    "type": "quality",              // easy | long | quality ("easy" when the coach made it easy)
+    "type": "quality",              // the plan's type: easy | long | quality ("easy" when the coach made it easy)
+    "kind": "interval",             // the session's real type: easy | long | tempo | interval | quality (see below)
+    "name": "Norwegian 4x4",        // the display name the coach uses in its messages ("Easy run", "Long run", "Tempo")
+    "session_id": "norwegian_4x4",  // name as a slug, for the app to key icons or copy on
+    "name_source": "history",       // plan | history | none
     "minutes": null,                // the plan's size, when it has one (null when made easy)
     "distance_m": 6000,
     "week": 3, "weeks": 4,          // the plan's week, when the app sent it
@@ -46,6 +50,11 @@ For the app's Home (stream S3). `Cache-Control: no-store`. A server without chec
   "coach_line": { "kind": "run", "headline": "...", "body": "...", "sent_at": "2026-10-15T05:46:00Z" }
 }
 ```
+
+The app's plan sends only easy, long or quality, so for a quality session the server reads the runner's last tempo or interval
+run: `kind` is that run's type and `name` its built-in session name (Norwegian 4x4, ...) or "Tempo" / "Intervals", with
+`name_source: "history"`. With no such run `kind` is "quality", `name` is "Quality session" and `name_source` is "none". For easy
+and long, `name_source` is "plan". It is an inference until the app sends the session itself in `plan_next`.
 
 `next_session` is `null` when the app's newest run carries no planned session or its date has passed; `coach_line` is `null`
 before the first card. `kind` is one of `run`, `evening`, `recap`, `monthly`. Nothing here holds a check-in answer, only the

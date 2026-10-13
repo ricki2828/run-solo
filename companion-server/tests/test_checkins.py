@@ -814,7 +814,8 @@ def test_next_session_returns_the_plan_then_the_moved_session_with_the_latest_co
     assert body["coach_line"] is None
     # the endpoint reads the real clock for "today": pin it through the service for the dated assertions below
     n = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))["next_session"]
-    assert n == {"date": "2026-10-15", "type": "quality", "minutes": None, "distance_m": 6000, "week": 3, "weeks": 4,
+    assert n == {"date": "2026-10-15", "type": "quality", "kind": "quality", "name": "Quality session",
+                 "session_id": "quality", "name_source": "none", "minutes": None, "distance_m": 6000, "week": 3, "weeks": 4,
                  "moved": False, "original_date": None, "label": "Quality session, 6 km"}
     put(env, "today", "2026-10-15", "skip", at(2026, 10, 15, 7, 0))
     put(env, "why", "2026-10-15", "ill", at(2026, 10, 15, 7, 1))
@@ -1065,3 +1066,18 @@ def test_a_burst_of_runs_and_taps_makes_one_week_card_render(penv):
 def test_the_usual_start_is_a_circular_median_across_midnight():
     hist = [{"start_utc": "2026-10-12T23:50:00Z", "zone_id": "UTC"}, {"start_utc": "2026-10-14T00:10:00Z", "zone_id": "UTC"}]
     assert ci.usual_start_min(hist, 0, "UTC", at(2026, 10, 15, 12, 0)) == 0
+
+
+def test_next_session_carries_the_real_type_and_name_read_from_the_last_quality_run(env):
+    env.run("nor", at(2026, 10, 8, 7, 0), type="interval", session_name="Norwegian 4x4")
+    n = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))["next_session"]
+    assert (n["type"], n["kind"], n["name"], n["session_id"], n["name_source"], n["label"]) == (
+        "quality", "interval", "Norwegian 4x4", "norwegian_4x4", "history", "Norwegian 4x4, 6 km")
+    env.run("tmp", at(2026, 10, 10, 7, 0), type="tempo")                        # a later tempo run is the newer evidence
+    n = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))["next_session"]
+    assert (n["kind"], n["name"]) == ("tempo", "Tempo")
+    with db.tx(env.path) as c:
+        c.execute("UPDATE runs SET plan_next_type='long'")
+    n = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))["next_session"]
+    assert (n["kind"], n["name"], n["name_source"]) == ("long", "Long run", "plan")
+    env.step(at(2026, 10, 15, 6, 45))   # messages use the same name

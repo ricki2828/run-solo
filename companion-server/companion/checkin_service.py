@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import re
 import secrets
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -25,6 +26,7 @@ from . import checkin_copy as cc
 from . import checkins as ci
 from . import db
 from .channels import ChannelError
+from .facts import known_session
 from .timeutil import in_quiet, iso, now_utc, parse_iso, quiet_end_utc, to_local
 
 log = logging.getLogger("companion")
@@ -83,11 +85,26 @@ class CheckinMixin:
         m = ci.usual_start_min(hist, for_date.weekday(), user["zone_id"], now)
         return None if m is None else f"around {m // 60}:{m % 60:02d}"
 
+    @staticmethod
+    def _ci_session_kind(c, uid: str, typ: str) -> tuple[str, str | None, str]:
+        """-> (kind, display name, where the name came from). The app's plan says only easy | long | quality. For a quality
+        session the coach reads the runner's last tempo or interval run: its type and, for a built-in interval session,
+        its name ("Norwegian 4x4"). That is an inference from history ("history"), not something the plan sent."""
+        if typ != "quality":
+            return typ, None, "plan"
+        r = c.execute("SELECT type, session_name FROM runs WHERE user_id=? AND type IN ('interval','tempo') "
+                      "ORDER BY start_utc DESC LIMIT 1", (uid,)).fetchone()
+        if r is None:
+            return "quality", None, "none"
+        known = known_session(r["session_name"]) if r["type"] == "interval" else None
+        return r["type"], (known[0] if known else ("Tempo" if r["type"] == "tempo" else "Intervals")), "history"
+
     def _ci_ctx(self, c, user: dict, slot: str, for_date: date, now: datetime) -> cc.Ctx:
         ans, planned, usual, _today, res = self._ci_state(c, user, now)
         # the session as it stands now: "flat" has made a hard one easy, so the morning card must not call it hard
         typ = res.type if res and res.day == for_date else planned.type if planned else None
-        label = cc.session_label(typ, planned.minutes, planned.distance_m) if planned and typ else None
+        name = self._ci_session_kind(c, user["id"], typ)[1] if planned and typ else None
+        label = cc.session_label(typ, planned.minutes, planned.distance_m, name) if planned and typ else None
         if slot == "shape":
             away = ans.get("shape", for_date) == "away"
             back = ci._next_usual(for_date + timedelta(days=7), usual) if away else (res.day if res else None)
@@ -669,18 +686,20 @@ class CheckinMixin:
                 raise NotFound()
             user = dict(u)
             _ans, planned, _usual, _today, res = self._ci_state(c, user, now)
+            kind_, name_, src_ = self._ci_session_kind(c, uid, res.type) if res else ("", None, "none")
             line = c.execute(
                 "SELECT kind, headline, body, sent_at FROM cards WHERE user_id=? AND sent_at IS NOT NULL AND sent_at<=? "
                 f"AND kind IN ({','.join('?' * len(COACH_LINE_KINDS))}) ORDER BY sent_at DESC LIMIT 1",
                 (uid, iso(now), *COACH_LINE_KINDS)).fetchone()
         session = None
         if res is not None and planned is not None:
-            session = {"date": res.day.isoformat(), "type": res.type, "minutes": planned.minutes if not res.easier else None,
+            session = {"date": res.day.isoformat(), "type": res.type, "kind": kind_, "name": name_ or cc.WORD.get(res.type),
+                       "session_id": re.sub(r"[^a-z0-9]+", "_", (name_ or kind_).lower()).strip("_"), "name_source": src_, "minutes": planned.minutes if not res.easier else None,
                        "distance_m": planned.distance_m if not res.easier else None, "week": planned.week,
                        "weeks": planned.weeks, "moved": res.moved,
                        "original_date": res.original_day.isoformat() if res.moved else None,
                        "label": cc.session_label(res.type, planned.minutes if not res.easier else None,
-                                                 planned.distance_m if not res.easier else None)}
+                                                 planned.distance_m if not res.easier else None, name_)}
         return {"v": 1, "generated_at": iso(now), "next_session": session,
                 "coach_line": ({"kind": line["kind"], "headline": line["headline"], "body": line["body"],
                                 "sent_at": line["sent_at"]} if line else None)}
