@@ -410,7 +410,12 @@ class CoachSession {
     this.moved = false,
     this.originalDate,
     this.label,
+    this.name,
   });
+
+  /// The session's own name (Tempo, Norwegian 4x4...) when the server sends
+  /// one as `name` or `session_name`. Absent today: the type is all it knows.
+  final String? name;
 
   /// The runner's local calendar day (no time, no zone).
   final DateTime date;
@@ -429,6 +434,8 @@ class CoachSession {
 
   /// "Quality session, 6 km" as the server wrote it, else built from the type.
   String get title {
+    final n = name;
+    if (n != null && n.isNotEmpty) return n;
     final l = label;
     if (l != null && l.isNotEmpty) return l;
     return switch (type) {
@@ -453,6 +460,7 @@ class CoachSession {
     final type = j['type'];
     final dist = j['distance_m'];
     final label = j['label'];
+    final nm = j['name'] ?? j['session_name'];
     int? whole(Object? v) => v is int && v > 0 ? v : null;
     return CoachSession(
       date: date,
@@ -464,6 +472,7 @@ class CoachSession {
       moved: j['moved'] == true,
       originalDate: _day(j['original_date']),
       label: label is String && label.isNotEmpty ? label : null,
+      name: nm is String && nm.trim().isNotEmpty ? nm.trim() : null,
     );
   }
 }

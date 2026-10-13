@@ -4,7 +4,17 @@
 library;
 
 /// 5K finish seconds at the 90th, 80th ... 10th percentile (fastest first).
-const List<int> _male5k = [1406, 1564, 1678, 1781, 1888, 2008, 2155, 2361, 2743];
+const List<int> _male5k = [
+  1406,
+  1564,
+  1678,
+  1781,
+  1888,
+  2008,
+  2155,
+  2361,
+  2743,
+];
 const List<int> _female5k = [
   1704,
   1869,

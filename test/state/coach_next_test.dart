@@ -64,6 +64,16 @@ void main() {
     expect(ctl.coachNext!.line!.headline, 'Solid easy run');
   });
 
+  test('a session name from the server wins over the generic label', () {
+    final s = CoachSession.fromJson({
+      'date': '2026-09-28',
+      'type': 'quality',
+      'label': 'Quality session, 6 km',
+      'name': 'Tempo',
+    })!;
+    expect(s.title, 'Tempo');
+  });
+
   test('at most one call a minute', () async {
     await enrolNow(ctl);
     await ctl.refreshNext();

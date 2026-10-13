@@ -6,7 +6,6 @@ import '../../state/companion.dart';
 import '../../theme/lanes.dart';
 import '../../theme/theme.dart';
 import '../section_card.dart';
-import 'block_chip.dart';
 
 /// The coach's next session and latest line, on Home under the plan card.
 /// Fed by `GET /v1/me/next-session`; Home builds nothing when there is no
@@ -73,7 +72,6 @@ class CoachNextCard extends StatelessWidget {
         : laneOf(session.type);
     return SectionCard(
       key: const ValueKey('home-coach-card'),
-      accent: t.laneFill(lane),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -86,11 +84,32 @@ class CoachNextCard extends StatelessWidget {
                 ),
               ),
               if (session != null && session.moved)
-                BlockChip(
+                // Ink plus an icon, not a colour: the lane colours already
+                // mean something here.
+                Container(
                   key: const ValueKey('home-coach-moved'),
-                  label: 'MOVED BY YOUR COACH',
-                  fill: t.laneFill(lane),
-                  ink: t.laneText(lane),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Space.x8,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: t.inkPrimary,
+                    borderRadius: BorderRadius.circular(Radii.pill),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.swap_horiz, size: 14, color: t.bgBase),
+                      const SizedBox(width: 4),
+                      Text(
+                        'MOVED BY YOUR COACH',
+                        style: RunSoloType.micro11.copyWith(
+                          color: t.bgBase,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
             ],
           ),
@@ -101,12 +120,30 @@ class CoachNextCard extends StatelessWidget {
               style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
             ),
             const SizedBox(height: Space.x4),
-            Text(
-              '${dayWords(session.date, now)}: ${session.title}',
-              key: const ValueKey('home-coach-session'),
-              style: RunSoloType.body17.copyWith(
-                color: t.inkPrimary,
-                fontWeight: FontWeight.w700,
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    key: const ValueKey('home-coach-lane'),
+                    width: 5,
+                    decoration: BoxDecoration(
+                      color: t.laneFill(lane),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                  const SizedBox(width: Space.x8),
+                  Expanded(
+                    child: Text(
+                      '${dayWords(session.date, now)}: ${session.title}',
+                      key: const ValueKey('home-coach-session'),
+                      style: RunSoloType.body17.copyWith(
+                        color: t.inkPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             if (session.moved && session.originalDate != null) ...[

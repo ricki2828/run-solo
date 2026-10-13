@@ -19,6 +19,7 @@ void main() {
       '{"v":1,"generated_at":"2026-09-24T09:00:00Z","next_session":'
       '{"date":"${moved ? '2026-09-28' : '2026-09-26'}","type":"quality",'
       '"minutes":null,"distance_m":6000,"week":3,"weeks":4,'
+      '${moved ? '"name":"Norwegian 4x4",' : ''}'
       '"moved":$moved,"original_date":${moved ? '"2026-09-25"' : 'null'},'
       '"label":"Quality session, 6 km"},"coach_line":{"kind":"run",'
       '"headline":"Easy run done right","body":"Your heart rate stayed low '
@@ -89,6 +90,7 @@ void main() {
   testWidgets('Home with a session moved by your coach', (tester) async {
     await pumpHome(tester, reply(moved: true));
     expect(find.text('MOVED BY YOUR COACH'), findsOneWidget);
+    expect(find.textContaining('Norwegian 4x4'), findsOneWidget);
     expect(find.text('Was Fri 25 Sep'), findsOneWidget);
     await check(tester, 'home_coach_moved_360x800');
   });
