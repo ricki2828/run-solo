@@ -53,6 +53,7 @@ class OutCard:
     short_caption: bool = False  # a picture carries the numbers: the caption is the headline and one line of judgement
 
 
+_COMPARISON = re.compile(r"\b(faster|slower|level with|than (?:your )?last|no real change)\b", re.I)
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 
 
@@ -64,7 +65,8 @@ def caption_text(card: OutCard) -> str:
         return f"{card.headline}\n{card.body}"
     first, _, rest = card.body.partition("\n\n")
     sentences = [x for x in _SENTENCE_SPLIT.split(first.strip()) if x]
-    lines = [card.headline.strip(), sentences[-1] if sentences else ""]
+    keep = [x for x in sentences[:-1] if _COMPARISON.search(x)] + sentences[-1:]  # the comparison stays too
+    lines = [card.headline.strip(), " ".join(keep)]
     if rest.strip():
         lines.append(rest.strip())
     return "\n".join(x for x in lines if x)

@@ -16,6 +16,7 @@ from .timeutil import UTC, parse_iso
 
 HARD_TYPES = frozenset({"tempo", "interval", "race"})
 FLOOD_SHARE = 0.4  # share of zone time in Z4 and Z5 that makes a run hard
+TEMPO_LIGHT_SHARE = 0.15  # a tempo with no feel tap reads light only below this Z4+Z5 share
 
 # The app records one of these (RecordMode). The coach's rules speak easy | long | tempo | interval | race.
 APP_TYPES = frozenset({"intervals", "cooper", "laps", "free", "trail"})
@@ -46,8 +47,9 @@ def is_hard_run(run: Mapping[str, Any]) -> bool:
     """Whether a run was hard, judged from the zones and the feel tap, not the coach type alone.
 
     An interval session or a race/test effort is hard. Any run with 40%+ of its time in Z4 and Z5 is hard. A tempo
-    run (the coach's type for mostly Z3-Z4 time) is hard only when the runner tapped Hard; a mostly-Z3 tempo that
-    felt Easy or Right is not. With no zones and no feel tap, a tempo falls back to its type."""
+    run (the coach's type for mostly Z3-Z4 time) is hard when the runner tapped Hard, and not when they tapped Easy
+    or Right (under 40% in Z4/Z5). With no tap it stays hard unless Z4+Z5 is under 15%: a real threshold run counts,
+    a mostly-Z3 one does not. With no zones and no tap, a tempo falls back to its type."""
     typ, feel = run.get("type"), run.get("feel")
     if typ in ("interval", "race"):
         return True
@@ -59,7 +61,7 @@ def is_hard_run(run: Mapping[str, Any]) -> bool:
             return True
         if feel in ("easy", "right"):
             return False
-        return share is None
+        return share is None or share >= TEMPO_LIGHT_SHARE
     return False
 
 

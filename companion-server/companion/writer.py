@@ -50,9 +50,9 @@ BANNED = FILLER + ("diagnos", "injur", "doctor", "physio", "medical", "medicat",
 PIPE_RE = re.compile(r"[|\u2014\u2013]")  # exemplars are shown as "headline | body": the model must not copy that shape
 # A distance, duration or pace is on the picture; a headline that says it again only duplicates the caption.
 MEASURE_RE = re.compile(r"\d[\d:.]*\s*(?:km|kms|min|mins|h|hr|hrs|m|s/km|/km)\b|\b\d{1,2}:\d{2}\b", re.I)
-PACE_RE = re.compile(r"\b(\d{1,2}:\d{2})\s*/\s*km\b")
-FASTER_RE = re.compile(r"\b(faster|quicker|quickest|speedier|picked up the pace)\b", re.I)
-SLOWER_RE = re.compile(r"\b(slower|slowed|slowest|behind)\b", re.I)
+PACE_RE = re.compile(r"\b(\d{1,2}:\d{2})\s*(?:/|per)\s*(?:km|mi|mile)\b")
+FASTER_RE = re.compile(r"\b(faster|quick\w*|speedier|picked up the pace|better|ahead|shaved|improved)\b", re.I)
+SLOWER_RE = re.compile(r"\b(slow\w*|behind)\b", re.I)
 LEVEL_RE = re.compile(r"\b(no real change|no change|level|unchanged|the same|same again|holding|flat)\b", re.I)
 # Which of those the card may say, by the direction the facts state (verdict first, else the pace gap).
 FORBIDDEN_DIRECTION = {"faster": (SLOWER_RE, LEVEL_RE), "slower": (FASTER_RE, LEVEL_RE), "level": (FASTER_RE, SLOWER_RE),
@@ -187,7 +187,7 @@ def clean(out: CardText, facts: Sequence[Fact] = ()) -> str | None:
 def with_verdict(headline: str, facts: Sequence[Fact]) -> str:
     """The app's verdict owns the headline word: a directional verdict is appended, never left to the model."""
     v = verdict_word(facts)
-    if v in ("faster", "slower", "holding", "no real change"):
+    if v in ("faster", "slower", "holding", "no real change") and v not in headline.lower():
         tail = f", {v}"
         if len(headline) + len(tail) <= 60:
             return headline + tail
@@ -245,6 +245,7 @@ class Writer:
         if voice is not None:
             extra = f"\n{suggestion_line or result.suggestion.text}" if result.suggestion and result.facts else ""
             fallback = Written(voice.headline, voice.body + extra, "template")
+        fallback = Written(with_verdict(fallback.headline, facts), fallback.body, fallback.source)
         if not self.s.openrouter_key:
             return Written(fallback.headline, fallback.body, "template", "no_key")
         if self.month_spend() >= self.s.monthly_cap_usd:

@@ -46,6 +46,11 @@ def test_the_same_tempo_tapped_hard_or_with_real_z4_is_hard():
     assert engine.media_for_run(run(feel="hard"), "tempo", None).card == "flood"
 
 
+def test_an_untapped_tempo_is_hard_unless_zones_are_nearly_all_z3():
+    assert is_hard_run(run(feel=None, zone_min={"z2": 5.0, "z3": 14.0, "z4": 8.0, "z5": 0.0}))    # ~30% Z4: threshold
+    assert not is_hard_run(run(feel=None, zone_min=Z3_RUN))                                         # ~3% Z4
+
+
 def test_sessions_and_unmeasured_tempos_stay_hard():
     assert is_hard_run(run(typ="interval", app="intervals", zone_min={}))
     assert is_hard_run(run(typ="race", app="cooper", zone_min={}))
@@ -170,7 +175,7 @@ def test_the_verdict_word_is_added_by_the_app_not_the_model(tmp_path, fakes):
 # --- 4. the day's feel tap shapes the evening suggestion --------------------------------------
 
 def evening_hist(feel, typ="easy", app="trail"):
-    last = run(0, typ=typ, app=app, feel=feel, zone_min={"z1": 3.0, "z2": 14.0, "z3": 4.0, "z4": 2.0})
+    last = run(0, typ=typ, app=app, feel=feel, zone_min={"z1": 3.0, "z2": 11.0, "z3": 4.0, "z4": 5.0})  # 22% Z4: past felt_hard's 15% gate
     older = [run(3, typ="easy", app="free"), run(5, typ="easy", app="free"), run(7, typ="interval", app="intervals")]
     return [last] + older
 
@@ -199,10 +204,15 @@ def test_soften_still_outranks_a_planned_session_after_a_hard_tap():
         assert ev.suggestion.kind == "easy_next", soft
 
 
-def test_heat_still_warns_after_a_hard_tap():
+def test_heat_still_warns_after_a_hard_tap_and_never_turns_into_a_push():
     from companion.convo.weather import Forecast
-    ev = suggest.evening(evening_hist("hard"), T0 + timedelta(hours=14), Forecast(33, 5), {}, "s")
-    assert ev.suggestion.kind in ("heat", "easy_next")         # a safety line is never turned into a push
+    now = T0 + timedelta(hours=14)
+    hist = evening_hist("hard", typ="long")
+    hist[0].update(plan_next_type="quality", plan_next_day=(now.date() + timedelta(days=1)).isoformat(),
+                   plan_next_week=2, plan_weeks=4)
+    ev = suggest.evening(hist, now, Forecast(33, 5), {}, "s")
+    assert ev.suggestion.kind in ("heat", "easy_next") and ev.suggestion.kind != "quality"
+    assert ev.suggestion.reason in ("weather", "rest")
 
 
 # --- 5. a trail run names its session ---------------------------------------------------------
@@ -267,3 +277,32 @@ def test_headline_must_not_repeat_the_picture_or_use_a_pipe():
     for h in ("Trail run: 4.7 km in 28 min", "Tempo ticked | 6.2 km", "Tempo ticked.", "Pace 6:03/km"):
         assert clean(CardText(headline=h, body="Level with last time.")) in ("format", "headline_repeats_picture"), h
     assert clean(CardText(headline="Norwegian 4x4 done", body="Four reps at work pace.")) is None
+
+
+def test_word_only_contradictions_are_blocked():
+    level = facts_result(("base", "Tempo trail run: 4.7 km in 28 min"), ("verdict", "Verdict: no real change"))
+    for w in ("Better than last time.", "Ahead of last time.", "Shaved a bit off.", "Quicker today.", "Improved over 4.7 km."):
+        assert clean(CardText(headline="Tempo trail run", body=w), level.facts) == "contradicts_facts", w
+    fast = facts_result(("base", "Tempo trail run: 4.7 km in 28 min"), ("verdict", "Verdict: faster"))
+    for w in ("Slow and steady over 4.7 km.", "Slowly does it."):
+        assert clean(CardText(headline="Tempo trail run", body=w), fast.facts) == "contradicts_facts", w
+
+
+def test_pace_basis_check_also_reads_per_km_and_per_mile():
+    f = facts_result(*TRUE_FACTS).facts
+    assert clean(CardText(headline="Trail run", body="6:00 per km, 45 s/km faster."), f) == "mixed_pace_basis"
+    assert clean(CardText(headline="Trail run", body="9:40 per mile, 45 s/km faster."), f) == "mixed_pace_basis"
+
+
+def test_the_template_path_carries_the_verdict_word_too(tmp_path, fakes):
+    s = make_settings(tmp_path, openrouter_key="")
+    db.init(s.db_path)
+    w = Writer(s, httpx.Client(transport=httpx.MockTransport(fakes.handler)))
+    facts = facts_result(("base", "Tempo trail run: 4.7 km in 28 min"), ("verdict", "Verdict: no real change"))
+    assert w.write(facts, {}).headline.endswith(", no real change")
+
+
+def test_caption_keeps_the_comparison_sentence():
+    card = OutCard("c", "Easy run", "6.5 km at 5:40/km. 12 s/km faster than last time. Boring is the point.", [],
+                   short_caption=True)
+    assert caption_text(card) == "Easy run\n12 s/km faster than last time. Boring is the point."
