@@ -27,7 +27,7 @@ log = logging.getLogger("companion")
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "miniapp"
 FONTS = {"SairaExtraCondensed-ExtraBold.ttf", "SairaExtraCondensed-Bold.ttf", "SchibstedGrotesk-Variable.ttf"}
-LANE_DAYS = 42  # six weeks, the window of the app's lane chips (ScoreNorms.change)
+LANE_DAYS = 42  # six weeks
 CSP = ("default-src 'none'; script-src 'self' https://telegram.org; style-src 'self'; font-src 'self'; "
        "img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; "
        "frame-ancestors https://web.telegram.org https://webk.telegram.org https://webz.telegram.org "
@@ -46,7 +46,7 @@ def build_view(c, uid: str, zone_id: str, now: datetime) -> dict:
     monday, sunday = week_bounds(wk)
     rows = [dict(r) for r in c.execute(
         "SELECT run_id, type, start_utc, zone_id, duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, "
-        "scores_delta, climb_m, plan_next_type, plan_next_day, plan_next_week, plan_next_min, plan_next_m, "
+        "climb_m, plan_next_type, plan_next_day, plan_next_week, plan_next_min, plan_next_m, "
         "session_name, work_pace_s_per_km, reps_done, rep_spread_s FROM runs WHERE user_id=? AND start_utc >= ? "
         "ORDER BY start_utc DESC", (uid, (now - timedelta(days=max(LANE_DAYS, 35))).isoformat()))]
     latest = dict(c.execute(
@@ -65,21 +65,14 @@ def build_view(c, uid: str, zone_id: str, now: datetime) -> dict:
             done_m += r["distance_m"]
             done_n += 1
 
+    # Runs per lane over the last six weeks, counted from run types. No score change: the app's chip is a percentile
+    # change that needs VDOT, age and sex (on the phone only), and a different number under the same label would mislead.
     cutoff = now - timedelta(days=LANE_DAYS)
-    moves = {k: 0.0 for k in SCORE_KEYS}
-    seen = False
+    counts = {k: 0 for k in SCORE_KEYS}
     for r in rows:
-        if parse_iso(r["start_utc"]) < cutoff:
-            continue
-        try:
-            sd = json.loads(r["scores_delta"] or "{}")
-        except ValueError:
-            sd = {}
-        for k in SCORE_KEYS:
-            if isinstance(sd.get(k), (int, float)):
-                moves[k] += sd[k]
-                seen = True
-    lanes = [{"lane": k, "change": round(moves[k]) if seen else None} for k in SCORE_KEYS]
+        if parse_iso(r["start_utc"]) >= cutoff:
+            counts[LANE_OF.get(r["type"], "aerobic")] += 1
+    lanes = [{"lane": k, "runs": counts[k]} for k in SCORE_KEYS]
 
     out: dict = {"week": {"label": f"Week {int(wk.split('-W')[1])}", "days": days,
                           "done_km": _num(done_m / 1000), "done_runs": done_n, "next": None},

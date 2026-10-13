@@ -256,25 +256,22 @@ def test_view_week_lanes_latest_next(tmp_path):
     assert v["week"]["label"] == "Week 43" and v["week"]["done_runs"] == 2 and v["week"]["done_km"] == 13.4
     assert [len(d["runs"]) for d in v["week"]["days"]] == [0, 1, 1, 0, 0, 0, 0]
     assert v["week"]["days"][1]["runs"][0]["lane"] == "speed"
-    assert {x["lane"]: x["change"] for x in v["lanes"]} == {"aerobic": 1, "speed": 3, "mid": 0, "long": 0}
+    assert {x["lane"]: x["runs"] for x in v["lanes"]} == {"aerobic": 1, "speed": 1, "mid": 0, "long": 0}
     assert v["week"]["next"]["type"] == "tempo" and v["latest"]["reps"] == [{"time_s": 250.0}]
     assert "route" not in json.dumps(v)
 
 
-def test_lane_change_is_the_42_day_sum_of_stored_deltas(tmp_path):
-    """Server definition: the sum of the per-run deltas over the last 42 days. It cannot be the app's percentile change
-    (ScoreNorms.change needs VDOT, age and sex, which stay on the phone), and the app does not send scores_delta today."""
+def test_lanes_count_runs_over_42_days_and_carry_no_change(tmp_path):
     path, now = _seed(tmp_path)
-    with db.tx(path) as c:
-        c.execute("INSERT INTO runs (user_id, run_id, start_utc, end_utc, utc_offset_min, zone_id, type, duration_s, distance_m, "
-                  "scores_delta, received_at) VALUES ('u','old',?,?,0,'UTC','easy',100,1000,'{\"aerobic\": 5}','x')",
-                  ((now - timedelta(days=41)).isoformat(),) * 2)
-        c.execute("INSERT INTO runs (user_id, run_id, start_utc, end_utc, utc_offset_min, zone_id, type, duration_s, distance_m, "
-                  "scores_delta, received_at) VALUES ('u','older',?,?,0,'UTC','easy',100,1000,'{\"aerobic\": 9}','x')",
-                  ((now - timedelta(days=43)).isoformat(),) * 2)
+    for rid, days, typ in (("old", 41, "easy"), ("older", 43, "easy")):
+        with db.tx(path) as c:
+            c.execute("INSERT INTO runs (user_id, run_id, start_utc, end_utc, utc_offset_min, zone_id, type, duration_s, "
+                      "distance_m, received_at) VALUES ('u',?,?,?,0,'UTC',?,100,1000,'x')",
+                      (rid, (now - timedelta(days=days)).isoformat(), (now - timedelta(days=days)).isoformat(), typ))
     with db.ro(path) as c:
         v = build_view(c, "u", "UTC", now)
-    assert v["lane_days"] == 42 and {x["lane"]: x["change"] for x in v["lanes"]}["aerobic"] == 1 + 5
+    assert v["lane_days"] == 42 and v["lanes"] == [{"lane": "aerobic", "runs": 2}, {"lane": "speed", "runs": 1},
+                                                   {"lane": "mid", "runs": 0}, {"lane": "long", "runs": 0}]
 
 
 def test_view_with_no_runs_and_a_past_next_session(tmp_path):
@@ -286,7 +283,7 @@ def test_view_with_no_runs_and_a_past_next_session(tmp_path):
         c.execute("INSERT INTO users (id, channel, chat_ref, created_at, zone_id) VALUES ('e','telegram','2','x','UTC')")
     with db.ro(path) as c:
         v = build_view(c, "e", "UTC", now)
-    assert v["latest"] is None and v["week"]["done_runs"] == 0 and all(x["change"] is None for x in v["lanes"])
+    assert v["latest"] is None and v["week"]["done_runs"] == 0 and all(x["runs"] == 0 for x in v["lanes"])
 
 
 # --- the keyboard hook ---------------------------------------------------------------------------
