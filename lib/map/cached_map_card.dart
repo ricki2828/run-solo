@@ -165,15 +165,10 @@ class _CachedMapCardState extends State<CachedMapCard> {
               Stack(
                 fit: StackFit.expand,
                 children: [
-                  // A drawn route is muted ground for the glow to sit on; a
-                  // baked route (Topo) keeps its own colours.
+                  // Tiles step back so the route stays the brightest thing:
+                  // Google and Topo snapshots get the same treatment.
                   ColorFiltered(
-                    colorFilter: widget.bakedRoute
-                        ? const ColorFilter.mode(
-                            Colors.transparent,
-                            BlendMode.dst,
-                          )
-                        : const ColorFilter.matrix(_muted),
+                    colorFilter: const ColorFilter.matrix(_muted),
                     child: Image.memory(
                       png,
                       key: const ValueKey('card-map-image'),
@@ -184,7 +179,7 @@ class _CachedMapCardState extends State<CachedMapCard> {
                   ),
                   // Tint toward the run colour so the map reads as part of
                   // the card, then dim a touch so the place stays readable.
-                  if (!widget.bakedRoute && widget.routeColor != null)
+                  if (widget.routeColor != null)
                     ColoredBox(
                       color: widget.routeColor!.withValues(alpha: 0.14),
                     ),
