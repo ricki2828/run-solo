@@ -100,7 +100,7 @@ class GoogleMapSurfaceFactory implements MapSurfaceFactory {
     bool terrain = false,
   }) {
     if (!available || route.isEmpty) {
-      return RouteShape(route: route, color: routeColor);
+      return RouteShape(route: route, color: routeColor, card: true);
     }
     final hash = routeFingerprint(route);
     return CachedMapCard(

@@ -1063,6 +1063,35 @@ void main() {
     await golden(tester, 'recent_activity_trail_360');
   });
 
+  testWidgets('recent activity: trail run cards lead with the map', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360 * 3, 640 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final services = fakeServices(
+      files: [
+        trailLoopRun(n: 21, start: DateTime.utc(2026, 9, 24, 6), climbAmpM: 40),
+        freeRunFile(n: 22, start: DateTime.utc(2026, 9, 22, 6)),
+      ],
+      maps: const FakeMapSurfaceFactory(available: true),
+    );
+    final runs = await services.history.list();
+    await pumpApp(
+      tester,
+      services,
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: RecentActivity(runs: runs, units: Units.km, now: now()),
+        ),
+      ),
+    );
+    await pumpTimes(tester, 8);
+    expect(find.byKey(const ValueKey('fake-card-map')), findsWidgets);
+    await golden(tester, 'recent_activity_trail_map_360');
+  });
+
   testWidgets('run detail: map failed to load, no Play services', (
     tester,
   ) async {
