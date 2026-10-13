@@ -9,6 +9,7 @@ import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../theme/lanes.dart';
 import '../theme/theme.dart';
+import 'activity_map.dart';
 import 'run_card.dart';
 import 'section_card.dart';
 import 'where_when_line.dart';
@@ -432,55 +433,15 @@ class _ActivityMap extends StatelessWidget {
       if (d == null || d.analysis.indoor) return const SizedBox.shrink();
       final route = RouteBuilder.build(d.run);
       if (route.isEmpty) return const SizedBox.shrink();
-      final climb = climbM;
-      final t = Theme.of(context).extension<RunSoloTokens>()!;
-      return SizedBox(
-        height: 168,
-        width: double.infinity,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            AppServices.of(context).maps.buildCard(
-              context,
-              route,
-              runId: runId,
-              routeColor: color,
-              terrain: usesTerrainMap(d.summary.mode),
-            ),
-            // A soft foot under the climb figure; the map credit (bottom
-            // right, where the tile licence needs it) is left clear.
-            if (climb != null && climb >= 1)
-              Positioned(
-                left: 0,
-                bottom: 0,
-                child: IgnorePointer(
-                  child: Container(
-                    key: const ValueKey('activity-map-climb'),
-                    padding: const EdgeInsets.fromLTRB(
-                      Space.x12,
-                      Space.x16,
-                      Space.x16,
-                      Space.x8,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: RadialGradient(
-                        center: Alignment.bottomLeft,
-                        radius: 1.3,
-                        colors: [
-                          t.inkPrimary.withValues(alpha: 0.6),
-                          t.inkPrimary.withValues(alpha: 0),
-                        ],
-                      ),
-                    ),
-                    child: Text(
-                      '\u25B2 ${Fmt.elevation(climb, units)} CLIMB',
-                      style: RunSoloType.heading19.copyWith(color: t.bgBase),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
+      // The index row's climb, else the loaded run's own elevation.
+      return ActivityMapHeader(
+        route: route,
+        runId: runId,
+        color: color,
+        terrain: usesTerrainMap(d.summary.mode),
+        // The index row's climb, else the loaded run's own elevation.
+        climbM: climbM ?? engine.RunElevation.of(d.run)?.ascentM,
+        units: units,
       );
     },
   );

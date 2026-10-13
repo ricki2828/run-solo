@@ -20,9 +20,12 @@ import 'map/topo_map_surface.dart';
 import 'map/topo_maplibre.dart';
 import 'state/live_route.dart';
 import 'state/settings.dart';
+import 'platform/gateway.dart' show Units;
 import 'theme/theme.dart';
 import 'topo/pack_manager.dart';
 import 'topo/topo_files.dart';
+import 'widgets/activity_map.dart';
+import 'widgets/run_card.dart';
 
 const String _r2 = 'https://pub-b1d26357d23144f8a9c96f35588be8fe.r2.dev';
 
@@ -113,6 +116,15 @@ final List<GeoPoint> _hillRoute = [
       _hillEle[i],
     ),
 ];
+
+double _climb(List<GeoPoint> pts) {
+  var up = 0.0;
+  for (var i = 1; i < pts.length; i++) {
+    final d = (pts[i].ele ?? 0) - (pts[i - 1].ele ?? 0);
+    if (d > 0) up += d;
+  }
+  return up;
+}
 
 RouteGeometry _geometry(List<GeoPoint> pts) => RouteGeometry(
   points: pts,
@@ -267,16 +279,34 @@ class _HarnessState extends State<_Harness> {
             ],
             terrain: true,
           ),
+          // Home's trail card as the app lays it out: the map bleeds to the
+          // card edges, the climb sits over its lower left, the map credit
+          // bottom right, then the title and figures.
           _Stage.card => Padding(
             padding: const EdgeInsets.all(16),
-            child: SizedBox(
-              height: 148,
-              child: f!.buildCard(
-                context,
-                _geometry(_milosRoute),
-                runId: 'harness-run',
-                routeColor: AuroraRunType.free,
-                terrain: true,
+            child: RunCard(
+              accent: AuroraRunType.trail,
+              padding: EdgeInsets.zero,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ActivityMapHeader(
+                    maps: f,
+                    route: _geometry(_milosRoute),
+                    runId: 'harness-run',
+                    color: AuroraRunType.trail,
+                    terrain: true,
+                    climbM: _climb(_milosRoute),
+                    units: Units.km,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(Space.x16),
+                    child: Text(
+                      'Afternoon Trail run',
+                      style: RunSoloType.heading19,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

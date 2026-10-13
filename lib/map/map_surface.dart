@@ -219,7 +219,7 @@ class RouteShape extends StatelessWidget {
   final String? caption;
 
   /// Home-card look: square corners (the card clips), a lane-colour wash with
-  /// a faint contour hint for ground, a bolder route with a soft glow, and
+  /// a soft radial glow and dot grid for ground (texture, never contours), a bolder route with a soft glow, and
   /// ringed start and finish dots.
   final bool card;
 
@@ -265,9 +265,7 @@ class RouteShape extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               if (card && !overlay)
-                CustomPaint(
-                  painter: _ContourPainter(color ?? t.inkPrimary, route),
-                ),
+                CustomPaint(painter: _GroundPainter(color ?? t.inkPrimary)),
               CustomPaint(
                 painter: _RoutePainter(
                   card: card,
@@ -483,43 +481,32 @@ class _RoutePainter extends CustomPainter {
       old.card != card;
 }
 
-/// A contour hint for a card with no map yet: wobbly rings round the route's
-/// centre, a few per cent of the run colour, so the ground reads as terrain
-/// rather than a blank box. Deterministic, cheap, and under the route.
-class _ContourPainter extends CustomPainter {
-  _ContourPainter(this.color, this.route);
+/// Ground for a card with no map yet: a soft radial wash and a fine dot grid
+/// in the run colour. Deliberately texture, not terrain: it carries no
+/// contour lines, which a runner would read as real hills.
+class _GroundPainter extends CustomPainter {
+  _GroundPainter(this.color);
   final Color color;
-  final RouteGeometry route;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final seed = route.points.isEmpty ? 0.0 : route.points.first.lon * 1000;
-    final c = Offset(size.width * 0.62, size.height * 0.46);
-    for (var i = 1; i <= 7; i++) {
-      final rx = size.width * (0.07 * i);
-      final ry = size.height * (0.10 * i);
-      final path = Path();
-      for (var a = 0; a <= 64; a++) {
-        final th = a / 64 * math.pi * 2;
-        final wob =
-            1 +
-            0.10 * math.sin(3 * th + i + seed) +
-            0.05 * math.sin(5 * th - i * 0.7);
-        final p = c + Offset(math.cos(th) * rx * wob, math.sin(th) * ry * wob);
-        a == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
+    final c = Offset(size.width * 0.6, size.height * 0.45);
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [color.withValues(alpha: 0.14), color.withValues(alpha: 0)],
+        ).createShader(Rect.fromCircle(center: c, radius: size.width * 0.7)),
+    );
+    final dot = Paint()..color = color.withValues(alpha: 0.22);
+    const gap = 14.0;
+    for (var y = gap / 2; y < size.height; y += gap) {
+      for (var x = gap / 2; x < size.width; x += gap) {
+        canvas.drawCircle(Offset(x, y), 0.9, dot);
       }
-      path.close();
-      canvas.drawPath(
-        path,
-        Paint()
-          ..color = color.withValues(alpha: i.isEven ? 0.16 : 0.09)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = i.isEven ? 1.4 : 1,
-      );
     }
   }
 
   @override
-  bool shouldRepaint(_ContourPainter old) =>
-      old.color != color || old.route != route;
+  bool shouldRepaint(_GroundPainter old) => old.color != color;
 }
