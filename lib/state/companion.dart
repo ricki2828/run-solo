@@ -532,10 +532,10 @@ class CheckinAnswer {
   final String sortKey;
 
   static const _when = {
-    'ready': 'Evening before',
-    'today': 'Morning of',
-    'why': 'Why you skipped',
-    'postrun': 'After the run',
+    'ready': 'evening before',
+    'today': 'morning of',
+    'why': 'why you skipped',
+    'postrun': 'after the run',
     'shape': 'Sunday',
   };
 
@@ -574,7 +574,7 @@ class CheckinAnswer {
   };
 
   /// "Tue 13 Oct, evening before".
-  String get when => '${Fmt.dayDate(day)}, ${_when[kind]!.toLowerCase()}';
+  String get when => '${Fmt.dayDate(day)}, ${_when[kind]}';
 
   static CheckinAnswer? fromJson(Object? j) {
     if (j is! Map) return null;

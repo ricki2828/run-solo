@@ -58,6 +58,12 @@ void main() {
     tester.view.physicalSize = const Size(1080, 800 * 3);
     await pumpTimes(tester, 8);
     expect(tester.takeException(), isNull);
+    // The coach card sits under the plan card: scroll it to the top.
+    await tester.drag(
+      find.byType(SingleChildScrollView).first,
+      const Offset(0, -520),
+    );
+    await pumpTimes(tester, 4);
   }
 
   Future<void> check(WidgetTester tester, String name) async {

@@ -190,7 +190,7 @@ void main() {
       expect(m.checkinLines, [
         ('Thu 24 Sep, why you skipped', 'Feeling ill'),
         ('Tue 22 Sep, evening before', 'Not running tomorrow'),
-        ('Sun 20 Sep, sunday', 'Away next week'),
+        ('Sun 20 Sep, Sunday', 'Away next week'),
       ]);
       for (final (what, answer) in m.checkinLines) {
         expect('$what $answer', isNot(contains('_')));
