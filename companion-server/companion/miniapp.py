@@ -32,8 +32,13 @@ CSP = ("default-src 'none'; script-src 'self' https://telegram.org; style-src 's
        "img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; "
        "frame-ancestors https://web.telegram.org https://webk.telegram.org https://webz.telegram.org "
        "https://*.telegram.org")
-LANE_OF = {"easy": "aerobic", "long": "long", "tempo": "mid", "interval": "speed", "race": "speed",
-           "cooper": "speed", "trail": "long"}
+LONG_LANE_M = 15000  # the app's LONG lane is "15K+"
+LANE_OF = {"interval": "speed", "race": "speed", "cooper": "speed", "tempo": "mid"}
+
+
+def lane_of(run_type: str, distance_m: int) -> str:
+    """The app's lane meanings: Long is 15 km or more whatever the type; else speed work is Speed, tempo is Mid, the rest Aerobic."""
+    return "long" if distance_m >= LONG_LANE_M else LANE_OF.get(run_type, "aerobic")
 
 
 def _num(v, nd: int = 1):
@@ -61,7 +66,7 @@ def build_view(c, uid: str, zone_id: str, now: datetime) -> dict:
         loc = to_local(parse_iso(r["start_utc"]), zone_id)
         if monday <= loc.date() <= sunday:
             days[(loc.date() - monday).days]["runs"].append(
-                {"type": r["type"], "lane": LANE_OF.get(r["type"], "aerobic"), "km": _num(r["distance_m"] / 1000)})
+                {"type": r["type"], "lane": lane_of(r["type"], r["distance_m"]), "km": _num(r["distance_m"] / 1000)})
             done_m += r["distance_m"]
             done_n += 1
 
@@ -71,7 +76,7 @@ def build_view(c, uid: str, zone_id: str, now: datetime) -> dict:
     counts = {k: 0 for k in SCORE_KEYS}
     for r in rows:
         if parse_iso(r["start_utc"]) >= cutoff:
-            counts[LANE_OF.get(r["type"], "aerobic")] += 1
+            counts[lane_of(r["type"], r["distance_m"])] += 1
     lanes = [{"lane": k, "runs": counts[k]} for k in SCORE_KEYS]
 
     out: dict = {"week": {"label": f"Week {int(wk.split('-W')[1])}", "days": days,
@@ -89,7 +94,7 @@ def build_view(c, uid: str, zone_id: str, now: datetime) -> dict:
         reps = json.loads(sh["reps_json"]) if sh and sh["reps_json"] else None
         interval = latest["type"] == "interval"
         out["latest"] = {
-            "type": latest["type"], "lane": LANE_OF.get(latest["type"], "aerobic"),
+            "type": latest["type"], "lane": lane_of(latest["type"], latest["distance_m"]),
             "title": session_label(latest) if interval else None,
             "date": to_local(parse_iso(latest["start_utc"]), latest["zone_id"]).date().isoformat(),
             "km": _num(latest["distance_m"] / 1000), "duration_s": latest["duration_s"],

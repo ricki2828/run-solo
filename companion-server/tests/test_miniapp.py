@@ -274,6 +274,14 @@ def test_lanes_count_runs_over_42_days_and_carry_no_change(tmp_path):
                                                    {"lane": "mid", "runs": 0}, {"lane": "long", "runs": 0}]
 
 
+@pytest.mark.parametrize("typ,m,lane", [("easy", 14999, "aerobic"), ("trail", 9000, "aerobic"), ("long", 12000, "aerobic"),
+                                         ("easy", 15000, "long"), ("trail", 21000, "long"), ("tempo", 8000, "mid"),
+                                         ("tempo", 16000, "long"), ("interval", 8400, "speed"), ("race", 5000, "speed")])
+def test_lane_follows_the_apps_meaning_not_just_type(typ, m, lane):
+    from companion.miniapp import lane_of
+    assert lane_of(typ, m) == lane
+
+
 def test_view_with_no_runs_and_a_past_next_session(tmp_path):
     path, now = _seed(tmp_path)
     with db.ro(path) as c:
