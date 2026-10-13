@@ -301,6 +301,10 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
             await _run_sync(svc.handle_inbound, inb)
         return {"ok": True}
 
+    if settings.miniapp_enabled and settings.telegram_enabled:
+        from . import miniapp
+        miniapp.install(app, settings, svc)
+
     return app
 
 

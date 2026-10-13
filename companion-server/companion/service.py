@@ -1283,7 +1283,10 @@ class Service(CheckinMixin):
         else:
             return ()
         url = web_twin(self.s.deeplink_base, uri)
-        return (("Open in app", url),) if url else ()
+        out = (("Open in app", url),) if url else ()
+        if self.s.miniapp_enabled:  # a web_app button: opens the read-only Mini App inside Telegram
+            out += (("Open the week", self.s.miniapp_url),)
+        return out
 
     def _render_media(self, user: dict, card: dict, now: datetime) -> Media | None:
         """The card's planned photo or video, or None (no media planned, or any render failure: the text goes out)."""

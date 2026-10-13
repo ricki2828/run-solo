@@ -77,6 +77,10 @@ class Settings:
     # Check-ins (evening readiness, morning card, post-run and Sunday questions). Off until the privacy page that
     # describes them is published and the site redeployed (eng-review P1); taps on messages already sent still work.
     checkins_enabled: bool = False
+    # Telegram Mini App (read-only week, latest run and lanes), served under /miniapp/. Off by default.
+    miniapp_enabled: bool = False
+    miniapp_url: str = "https://companion.taiaroa.xyz/miniapp/"  # what the web_app buttons open
+
     sends_paused: bool = False
     stale_card_hours: float = 6.0
     default_quiet: tuple[int, int] = (21 * 60 + 30, 7 * 60)  # minutes after local midnight
@@ -126,5 +130,7 @@ class Settings:
             render_socket=os.path.expanduser(e.get("COMPANION_RENDER_SOCKET", "~/companion-data/render/render.sock")),
             deeplink_base=_https_base(e.get("COMPANION_DEEPLINK_BASE")),
             checkins_enabled=_flag(e.get("COMPANION_CHECKINS")),
+            miniapp_enabled=_flag(e.get("COMPANION_MINIAPP")),
+            miniapp_url=(_https_base(e.get("COMPANION_MINIAPP_URL")) or "https://companion.taiaroa.xyz/miniapp").rstrip("/") + "/",
             sends_paused=_flag(e.get("COMPANION_SENDS_PAUSED")),
         )
