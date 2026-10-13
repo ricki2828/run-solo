@@ -32,6 +32,7 @@ log = logging.getLogger("companion")
 CI_KINDS = ("ci", "ci_edit")
 LINE_LOOKBACK_DAYS = 3
 COACH_LINE_KINDS = ("run", "evening", "recap", "monthly")
+WEEK_DEBOUNCE_S = 45   # a burst of runs and taps becomes one render of the week card
 DAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 
@@ -154,8 +155,9 @@ class CheckinMixin:
                     log.error("check-in planning failed: %s", type(e).__name__)
         return n
 
-    def _ci_enqueue(self, c, u: dict, slot: str, for_date: date, due: datetime, now: datetime) -> int:
-        deadline = ci.send_deadline(slot, due)
+    def _ci_enqueue(self, c, u: dict, slot: str, for_date: date, due: datetime, now: datetime,
+                    latest: datetime | None = None) -> int:
+        deadline = ci.send_deadline(slot, due, latest)
         if now >= deadline:
             return 0
         if c.execute("SELECT 1 FROM checkin_slots WHERE user_id=? AND slot=? AND local_date=?",
@@ -223,9 +225,9 @@ class CheckinMixin:
             due = ci.at_local(today, max(start_m - ci.TODAY_LEAD_MIN, 0), u["zone_id"])
             if in_quiet(due, u["zone_id"], qs, qe):
                 due = quiet_end_utc(due, u["zone_id"], qe)
-            if due <= ci.at_local(today, start_m - ci.TODAY_MIN_LEAD_MIN, u["zone_id"]) and due <= now \
-                    and self._ci_wanted(c, u, "today", today, now):
-                n += self._ci_enqueue(c, u, "today", today, due, now)
+            latest = ci.at_local(today, start_m - ci.TODAY_MIN_LEAD_MIN, u["zone_id"])   # C4: never after start - 5 min
+            if due <= latest and due <= now and self._ci_wanted(c, u, "today", today, now):
+                n += self._ci_enqueue(c, u, "today", today, due, now, latest)
         # after an easy run that came out slower and harder than it should: ask once
         run = self._ci_latest_run(c, u["id"])
         if run and run.get("real_upload") and (now - parse_iso(run["received_at"])).total_seconds() < 3 * 3600 \
@@ -259,8 +261,8 @@ class CheckinMixin:
         slot, d_s, exp_s = ref.split("|")
         for_date = date.fromisoformat(d_s)
         ch = self.channels.get("telegram")
-        if ch is None or user["channel"] != "telegram" or now >= parse_iso(exp_s):
-            return "skipped", None
+        if ch is None or user["channel"] != "telegram" or now >= parse_iso(exp_s) or not self.s.checkins_enabled:
+            return "skipped", None   # switched off since it was queued: nothing new goes out
         uid = user["id"]
         with db.tx(self.s.db_path) as c:
             if c.execute("SELECT 1 FROM checkin_slots WHERE user_id=? AND slot=? AND local_date=?",
@@ -338,7 +340,8 @@ class CheckinMixin:
             return
         ch.answer_callback(inb.callback_id)   # first: the button stops spinning whatever the edit does
         self._ci_sync_or_queue(user, slot, for_date, now)
-        self._ci_week_enqueue(user, now)
+        if parsed[0] in ("why", "undo", "ready", "shape"):   # only answers that move or soften a session redraw the week
+            self._ci_week_enqueue(user, now)
 
     @staticmethod
     def _ci_apply(c, uid: str, kind: str, value: str, for_date: date, now: datetime) -> None:
@@ -478,8 +481,12 @@ class CheckinMixin:
             return
         monday = (to_local(now, user["zone_id"]).date() - timedelta(days=to_local(now, user["zone_id"]).weekday())).isoformat()
         with db.tx(self.s.db_path) as c:
+            if c.execute("SELECT 1 FROM outbox WHERE user_id=? AND kind='ci_week' AND ref=? AND state IN ('pending','sending')",
+                         (user["id"], monday)).fetchone():
+                return   # one render per burst: the queued item draws the newest state when it runs
             c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
-                      (user["id"], "ci_week", iso(now), f"ciw:{user['id']}:{monday}:{int(now.timestamp())}", monday))
+                      (user["id"], "ci_week", iso(now + timedelta(seconds=WEEK_DEBOUNCE_S)),
+                       f"ciw:{user['id']}:{monday}:{int(now.timestamp())}", monday))
 
     def _ci_week_facts(self, c, user: dict, monday: date, now: datetime) -> dict:
         uid, zone_id = user["id"], user["zone_id"]
@@ -508,7 +515,7 @@ class CheckinMixin:
         """Create (once, silently pinned) or update the runner's week card. One message per runner per week: the
         (user, 'week', Monday) slot is claimed before the send, so a retry or a restart cannot post a second one."""
         ch = self.channels.get("telegram")
-        if ch is None or user["channel"] != "telegram" or not self.s.media_enabled:
+        if ch is None or user["channel"] != "telegram" or not self.s.media_enabled or not self.s.checkins_enabled:
             return "skipped", None
         monday = date.fromisoformat(monday_s)
         with db.ro(self.s.db_path) as c:
@@ -632,6 +639,24 @@ class CheckinMixin:
         until = ci.lighter_until(self._ci_answers(c, uid, now), on)
         return until is not None and until >= on
 
+    def _ci_evening_held(self, c, uid: str, tomorrow: date, now: datetime) -> bool:
+        """True when the evening suggestion must not go: the runner said ill (rest, no nudge) or is away that week, or a
+        readiness question for tomorrow is due in the same window and takes the day's one question (P3-6)."""
+        ans = self._ci_answers(c, uid, now)
+        if ci.ill_covers(ans, tomorrow) or ci.away_covers(ans, tomorrow):
+            return True
+        if not self.s.checkins_enabled:
+            return False
+        u = c.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+        if u is not None:
+            loc = to_local(now, u["zone_id"])
+            if not ci.READY_START_MIN <= loc.hour * 60 + loc.minute < ci.READY_END_MIN:
+                return False   # the readiness question is only planned in its own window
+        if u is None or c.execute("SELECT 1 FROM checkin_slots WHERE user_id=? AND slot='ready' AND local_date=?",
+                                  (uid, tomorrow.isoformat())).fetchone():
+            return False
+        return self._ci_wanted(c, dict(u), "ready", tomorrow, now) and not self._ci_cap_taken(c, uid, now)
+
     # ------------------------------------------------------------------ the app's read-only view
     def next_session(self, uid: str, now: datetime | None = None) -> dict:
         """GET /v1/me/next-session: the coach's next session and the latest coach line. Holds no check-in value: only
@@ -673,4 +698,6 @@ class CheckinMixin:
         n = 0
         for tbl, col in (("checkin_answers", "created_at"), ("checkin_slots", "claimed_at"), ("question_cap", "claimed_at")):
             n += c.execute(f"DELETE FROM {tbl} WHERE {col} < ?" + held, (cut,)).rowcount
+        # the check-in messages' own text rows carry what an answer resolved to (a label, a moved day): same 14 days
+        n += c.execute("DELETE FROM cards WHERE kind LIKE 'ci\\_%' ESCAPE '\\' AND created_at < ?" + held, (cut,)).rowcount
         return n

@@ -168,25 +168,46 @@ def resolve(planned: Planned | None, a: Answers, today: date, usual: frozenset[i
             d, moved = _next_usual(monday + timedelta(days=7), usual), True
     if d < today:
         return None
-    easier = a.get("ready", d) == "flat" and planned.type != "easy"
+    easier = planned.type != "easy" and (a.get("ready", d) == "flat" or lighter_covers(a, d))
     return Resolved("easy" if easier else planned.type, d, moved, planned.day, easier, planned)
 
 
-def lighter_until(a: Answers, today: date) -> date | None:
-    """The last day the coach keeps things light, from skips (3 days, 7 for ill), a sore evening-before answer and a
-    post-run sleep or stress answer. Derived on read, never stored, so the purge removes it with the answers."""
-    ends: list[date] = []
+def lighter_windows(a: Answers) -> list[tuple[date, date, str]]:
+    """(first day, last day, source) of every window in which the coach keeps things light: a skip (3 days, 7 for ill)
+    from the day skipped, a sore evening-before answer from the session day, a sleepless or stressed post-run answer
+    from the run day. Derived on read, never stored, so the purge removes it with the answers."""
+    out: list[tuple[date, date, str]] = []
     for d, v in a.by["today"].items():
         if v == "skip":
-            ends.append(d + timedelta(days=lighter_days(a.get("why", d))))
+            why = a.get("why", d)
+            out.append((d, d + timedelta(days=lighter_days(why)), "ill" if why == "ill" else "skip"))
     for d, v in a.by["ready"].items():
         if v == "sore":
-            ends.append(d + timedelta(days=LIGHTER_DAYS))
+            out.append((d, d + timedelta(days=LIGHTER_DAYS), "sore"))
     for d, v in a.by["postrun"].items():
         if v in ("sleep", "stress"):
-            ends.append(d + timedelta(days=POSTRUN_LIGHTER_DAYS))
-    live = [e for e in ends if e >= today]
+            out.append((d, d + timedelta(days=POSTRUN_LIGHTER_DAYS), "postrun"))
+    return out
+
+
+def lighter_until(a: Answers, today: date) -> date | None:
+    """The last day the coach keeps things light, or None when no window reaches today or later."""
+    live = [e for _s, e, _k in lighter_windows(a) if e >= today]
     return max(live) if live else None
+
+
+def lighter_covers(a: Answers, day: date) -> bool:
+    """Is `day` inside a lighter window? Soften outranks the plan, so a session on such a day is made easy wherever it
+    is shown (the morning card, the next-session view, the week card), whatever plan the newest run brought."""
+    return any(s <= day <= e for s, e, _k in lighter_windows(a))
+
+
+def ill_covers(a: Answers, day: date) -> bool:
+    return any(s <= day <= e for s, e, k in lighter_windows(a) if k == "ill")
+
+
+def away_covers(a: Answers, day: date) -> bool:
+    return any(v == "away" and m <= day <= m + timedelta(days=6) for m, v in a.by["shape"].items())
 
 
 def _signature(slot: str, planned: Planned | None, a: Answers, today: date, usual: frozenset[int] | None):
@@ -226,11 +247,16 @@ def usual_start_min(history: Sequence[Mapping[str, Any]], weekday: int, zone_id:
     pool = same if len(same) >= 2 else [minute(h)[1] for h in history[:8]]
     if not pool:
         return None
-    return int(round(median(pool) / 5.0) * 5)
+    # a circular median: starts either side of midnight (23:50 and 00:10) must not average to midday
+    ref = pool[0]
+    off = [((m - ref + 720) % 1440) - 720 for m in pool]
+    return int(round(((median(off) + ref) % 1440) / 5.0) * 5) % 1440
 
 
-def send_deadline(slot: str, due: datetime) -> datetime:
-    return due + timedelta(minutes=SEND_WINDOW_MIN[slot])
+def send_deadline(slot: str, due: datetime, latest: datetime | None = None) -> datetime:
+    """When a slot stops being worth sending. `latest` caps it: the morning card never goes out after start - 5 min."""
+    d = due + timedelta(minutes=SEND_WINDOW_MIN[slot])
+    return min(d, latest) if latest else d
 
 
 def tap_open(slot: str, for_date: date, local_today: date) -> bool:

@@ -1071,7 +1071,11 @@ class Service(CheckinMixin):
             usage = self._usage(c, uid, now)
             zone_id = c.execute("SELECT zone_id FROM users WHERE id=?", (uid,)).fetchone()["zone_id"]
             soft = self._soften(c, uid, now)
-            lighter = self._ci_lighter(c, uid, now, to_local(now, zone_id).date() + timedelta(days=1))
+            tomorrow_d = to_local(now, zone_id).date() + timedelta(days=1)
+            lighter = self._ci_lighter(c, uid, now, tomorrow_d)
+            hold = self._ci_evening_held(c, uid, tomorrow_d, now)
+        if hold:   # ill or away: no suggestion at all; or a readiness question is due in this window and wins the day's cap
+            return None
         fc = None
         if hist:
             tomorrow = to_local(now, zone_id).date() + timedelta(days=1)
@@ -1592,10 +1596,10 @@ class Service(CheckinMixin):
     def tick(self, now: datetime | None = None) -> None:
         now = now or now_utc()
         self.tick_replay_flag(now)
+        self.plan_checkins(now)   # before the evening suggestion: a question that is due in the same window goes first
         self.plan_evening(now)
         self.plan_recap(now)
         self.plan_monthly(now)
-        self.plan_checkins(now)
         self.run_outbox(now)
         with db.tx(self.s.db_path) as c:
             r = c.execute("SELECT value FROM settings WHERE key='last_purge'").fetchone()

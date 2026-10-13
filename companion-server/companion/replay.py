@@ -628,7 +628,8 @@ def _fresh(c: sqlite3.Connection, s: Settings, uid: str, runs: list[RunIn], appl
         for i in range(0, len(ids), 500):
             c.execute(f"DELETE FROM outbox WHERE user_id=? AND rowid IN ({_marks(len(ids[i:i + 500]))})", (uid, *ids[i:i + 500]))
     for table, col in (("convo_log", "ts"), ("memory", "updated_at"), ("quota", "created_at"), ("outcomes", "ts"),
-                       ("msglog", "ts")):
+                       ("msglog", "ts"), ("checkin_answers", "created_at"), ("checkin_slots", "claimed_at"),
+                       ("question_cap", "claimed_at")):
         go_rows(table, col)
     go("convo_area", *in_runs)
     go("run_notes", *in_runs, delete=False)  # removed with their runs (cascade); counted here

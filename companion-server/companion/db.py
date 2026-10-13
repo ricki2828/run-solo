@@ -299,11 +299,14 @@ def init(path: str) -> None:
 _origin = threading.local()
 # Tables whose new rows are tagged (in replay_rows) when written under origin("replay"): the coach replay's own
 # writes, and the taps on a replayed card. Every table here is a rowid table with a user_id column.
-TAGGED = ("cards", "outbox", "convo_log", "quota", "outcomes", "msglog", "memory")
+TAGGED = ("cards", "outbox", "convo_log", "quota", "outcomes", "msglog", "memory",
+          "checkin_answers", "checkin_slots", "question_cap")
 # A tagged row is named by a stable identity: SQLite reuses the rowid of a deleted row in tables without
 # AUTOINCREMENT, and a live row must never inherit a replay tag that way. (Those with AUTOINCREMENT never reuse.)
 IDENT = {"cards": "card_id", "quota": "key", "memory": "key", "outcomes": "card_id",
-         "outbox": "CAST(id AS TEXT)", "convo_log": "CAST(id AS TEXT)", "msglog": "CAST(id AS TEXT)"}
+         "outbox": "CAST(id AS TEXT)", "convo_log": "CAST(id AS TEXT)", "msglog": "CAST(id AS TEXT)",
+         "checkin_answers": "kind || '|' || local_date", "checkin_slots": "slot || '|' || local_date",
+         "question_cap": "local_date"}
 
 
 @contextmanager

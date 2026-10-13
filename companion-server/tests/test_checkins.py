@@ -676,18 +676,51 @@ def test_the_writer_and_facts_modules_know_nothing_of_check_ins():
         assert "checkin" not in src and "question_cap" not in src
 
 
+def evening_ready_env(env):
+    """A hard run the same evening, so the evening suggestion is eligible on 13 Oct 20:05 (tomorrow, Wed, is no plan day)."""
+    env.run("tempo", at(2026, 10, 13, 18, 0), now=at(2026, 10, 13, 19, 0), type="tempo",
+            plan_next={"type": "quality", "day": "2026-10-15", "week": 3, "distance_m": 6000})
+    return at(2026, 10, 13, 20, 5)
+
+
 def test_a_softened_evening_suggestion_from_a_skip_is_templated_and_skips_the_writer(env):
-    day = date(2026, 10, 14)
-    with db.tx(env.path) as c:
-        c.execute("INSERT INTO checkin_answers VALUES (?,?,?,?,?)", (env.uid, "today", "2026-10-12", "skip", iso(at(2026, 10, 12, 8, 0))))
-    # make the evening suggestion eligible: a hard run two evenings ago and a quiet tomorrow
-    env.run("tempo", at(2026, 10, 12, 7, 0), now=at(2026, 10, 12, 18, 0), type="tempo")
+    now = evening_ready_env(env)
+    put(env, "today", "2026-10-12", "skip", at(2026, 10, 12, 8, 0))        # lighter through 15 Oct, which covers tomorrow
     seen = spy_writer(env)
-    cid = env.svc._build_evening_card(env.uid, day.isoformat(), at(2026, 10, 13, 20, 5))
-    if cid is not None:
-        assert seen == []
-        [row] = env.q("SELECT source FROM cards WHERE card_id=?", cid)
-        assert row["source"] == "template"
+    cid = env.svc._build_evening_card(env.uid, "2026-10-13", now)
+    assert cid is not None
+    assert seen == []
+    [row] = env.q("SELECT source FROM cards WHERE card_id=?", cid)
+    assert row["source"] == "template"
+
+
+def test_without_a_check_in_answer_the_same_evening_card_does_go_through_the_writer(env):
+    now = evening_ready_env(env)
+    seen = spy_writer(env)
+    assert env.svc._build_evening_card(env.uid, "2026-10-13", now) is not None and seen
+
+
+def test_ill_stops_the_evening_suggestion_and_away_does_too(env):
+    now = evening_ready_env(env)
+    put(env, "today", "2026-10-12", "skip", at(2026, 10, 12, 8, 0))
+    put(env, "why", "2026-10-12", "ill", at(2026, 10, 12, 8, 1))
+    assert env.svc._build_evening_card(env.uid, "2026-10-13", now) is None
+    with db.tx(env.path) as c:
+        c.execute("DELETE FROM checkin_answers")
+    put(env, "shape", "2026-10-12", "away", at(2026, 10, 11, 19, 0))       # away 12-18 Oct
+    assert env.svc._build_evening_card(env.uid, "2026-10-13", now) is None
+    with db.tx(env.path) as c:
+        c.execute("DELETE FROM checkin_answers")
+    assert env.svc._build_evening_card(env.uid, "2026-10-13", now) is not None
+
+
+def test_a_readiness_question_due_in_the_same_window_wins_the_day_over_the_evening_suggestion(env):
+    env.run("tempo", at(2026, 10, 14, 18, 0), now=at(2026, 10, 14, 19, 0), type="tempo",
+            plan_next={"type": "quality", "day": "2026-10-15", "week": 3, "distance_m": 6000})
+    now = at(2026, 10, 14, 20, 5)
+    assert env.svc._build_evening_card(env.uid, "2026-10-14", now) is None      # yields, even though it ran first
+    env.svc.tick(now)
+    assert any("How's the body?" in b["text"] for b in env.sends())
 
 
 # ================================================================= P1: 14 days, DELETE, export, backups
@@ -931,3 +964,104 @@ def test_no_week_card_without_a_picture_and_none_when_check_ins_are_off(penv):
     run_thursday(penv)
     penv.svc.run_outbox(at(2026, 10, 15, 8, 0))
     assert penv.q("SELECT * FROM checkin_slots WHERE slot='week'") == [] and not [m for m, _ in penv.fakes.tg if m == "pinChatMessage"]
+
+
+# ================================================================= round 2: soften outranks the plan everywhere
+LIGHTER = {
+    "post-run sleep": ([("postrun", "2026-10-15", "sleep")], "2026-10-17"),
+    "tired skip": ([("today", "2026-10-15", "skip"), ("why", "2026-10-15", "tired")], "2026-10-17"),
+    "sore the evening before": ([("ready", "2026-10-15", "sore")], "2026-10-17"),
+    "ill week with a fresh plan": ([("today", "2026-10-15", "skip"), ("why", "2026-10-15", "ill")], "2026-10-21"),
+}
+
+
+@pytest.mark.parametrize("name", list(LIGHTER))
+def test_inside_a_lighter_window_a_quality_session_is_easy_on_every_surface(penv, name):
+    answers, plan_day = LIGHTER[name]
+    for kind, d, v in answers:
+        put(penv, kind, d, v, at(2026, 10, 15, 8, 0))
+    with db.tx(penv.path) as c:   # the newest run brought a fresh plan (an unplanned run during the window)
+        c.execute("UPDATE runs SET plan_next_day=?, plan_next_type='quality'", (plan_day,))
+    day = date.fromisoformat(plan_day)
+    now = at(day.year, day.month, day.day, 6, 45)
+    nxt = penv.svc.next_session(penv.uid, now)["next_session"]
+    assert nxt["type"] == "easy" and nxt["label"].startswith("Easy run") and nxt["date"] == plan_day   # Home
+    penv.step(now)
+    caption = [b["caption"] for b in penv.sends("sendPhoto") if "caption" in b][-1]
+    assert caption.startswith("Today: Easy run")                                                       # the morning card
+    wk = penv.svc._ci_week_facts(sqlite3_ro(penv), {"id": penv.uid, "zone_id": "Europe/Rome"},
+                                 day - timedelta(days=day.weekday()), now)
+    assert wk["days"][day.weekday()]["type"] == "easy"                                                  # the week card
+    assert [f["type"] for k, f in penv.svc.media.calls if k == "today"][0] == "easy"                    # the picture
+
+
+def sqlite3_ro(env):
+    c = sqlite3.connect(env.path)
+    c.row_factory = sqlite3.Row
+    return c
+
+
+def test_a_session_outside_the_window_stays_as_planned_and_an_easy_one_is_untouched(penv):
+    put(penv, "postrun", "2026-10-15", "sleep", at(2026, 10, 15, 8, 0))     # window 15-17 Oct
+    with db.tx(penv.path) as c:
+        c.execute("UPDATE runs SET plan_next_day='2026-10-18', plan_next_type='quality'")
+    assert penv.svc.next_session(penv.uid, at(2026, 10, 16, 9, 0))["next_session"]["type"] == "quality"
+    with db.tx(penv.path) as c:
+        c.execute("UPDATE runs SET plan_next_day='2026-10-16', plan_next_type='easy'")
+    assert penv.svc.next_session(penv.uid, at(2026, 10, 16, 9, 0))["next_session"]["label"] == "Easy run, 6 km"
+
+
+# ================================================================= round 2: the other fixes
+def test_the_morning_card_is_dropped_not_sent_after_five_minutes_before_the_usual_start(env):
+    env.svc.plan_checkins(at(2026, 10, 15, 6, 45))
+    env.svc.run_outbox(at(2026, 10, 15, 6, 56))           # a stalled worker: the runner has started by now
+    assert env.sends() == []
+    assert env.q("SELECT state FROM outbox WHERE kind='ci'")[0]["state"] == "skipped"
+
+
+def test_the_morning_card_is_still_sent_inside_its_window(env):
+    env.svc.plan_checkins(at(2026, 10, 15, 6, 45))
+    env.svc.run_outbox(at(2026, 10, 15, 6, 54))
+    assert len(env.sends()) == 1
+
+
+def test_a_queued_check_in_is_not_sent_once_the_flag_is_switched_off(env):
+    import dataclasses
+    env.svc.plan_checkins(at(2026, 10, 14, 20, 5))
+    env.svc.s = dataclasses.replace(env.svc.s, checkins_enabled=False)
+    env.svc.run_outbox(at(2026, 10, 14, 20, 6))
+    assert env.sends() == []
+
+
+def test_the_check_in_message_rows_go_after_14_days_with_the_answers(env):
+    env.step(at(2026, 10, 14, 20, 5))
+    run_card = env.q("SELECT COUNT(*) n FROM cards WHERE kind='run'")[0]["n"]
+    env.svc.purge(at(2026, 10, 14, 20, 5) + timedelta(days=13))
+    assert env.q("SELECT COUNT(*) n FROM cards WHERE kind='ci_ready'")[0]["n"] == 1
+    env.svc.purge(at(2026, 10, 14, 20, 5) + timedelta(days=15))
+    assert env.q("SELECT COUNT(*) n FROM cards WHERE kind='ci_ready'")[0]["n"] == 0
+    assert env.q("SELECT COUNT(*) n FROM cards WHERE kind='run'")[0]["n"] <= run_card
+
+
+def test_check_in_rows_written_by_a_replay_are_tagged(env):
+    assert {"checkin_answers", "checkin_slots", "question_cap"} <= set(db.TAGGED)
+    with db.origin(), db.tx(env.path) as c:
+        c.execute("INSERT INTO checkin_slots (user_id, slot, local_date, state, claimed_at) VALUES (?,?,?,?,?)",
+                  (env.uid, "week", "2026-10-12", "sent", iso(at(2026, 10, 15, 9, 0))))
+    assert env.q("SELECT rid FROM replay_rows WHERE tbl='checkin_slots'") == [{"rid": "week|2026-10-12"}]
+
+
+def test_a_burst_of_runs_and_taps_makes_one_week_card_render(penv):
+    user = {"id": penv.uid, "channel": "telegram", "zone_id": "Europe/Rome"}
+    for i in range(4):
+        penv.svc._ci_week_enqueue(user, at(2026, 10, 15, 9, 0) + timedelta(seconds=i))
+    assert len(penv.q("SELECT * FROM outbox WHERE kind='ci_week'")) == 1
+    penv.step(at(2026, 10, 15, 9, 0) + timedelta(seconds=10))
+    assert kinds(penv).count("pinned_week") == 0                      # not due yet (the debounce)
+    penv.svc.run_outbox(at(2026, 10, 15, 9, 2))
+    assert kinds(penv).count("pinned_week") >= 1
+
+
+def test_the_usual_start_is_a_circular_median_across_midnight():
+    hist = [{"start_utc": "2026-10-12T23:50:00Z", "zone_id": "UTC"}, {"start_utc": "2026-10-14T00:10:00Z", "zone_id": "UTC"}]
+    assert ci.usual_start_min(hist, 0, "UTC", at(2026, 10, 15, 12, 0)) == 0

@@ -15,7 +15,7 @@ from companion.convo import suggest, touches as T, voice
 from companion.convo.weather import Forecast
 from companion.service import RunIn
 from companion.timeutil import now_utc, to_local
-from conftest import auth, enrol, run_payload
+from conftest import auth, enrol, make_settings, run_payload
 
 U = timezone.utc
 SG = "Asia/Singapore"
@@ -272,6 +272,11 @@ def _seed(client, token, typ, **plan):
     r = client.post("/v1/runs", json=run_payload("fresh", minutes_ago=60 * 20, plan_week=3, plan_weeks=4, plan_next=nxt),
                     headers=auth(token))
     assert r.status_code in (200, 202), r.text
+
+
+@pytest.fixture
+def settings(tmp_path):
+    return make_settings(tmp_path, checkins_enabled=False)   # these tests build evening cards at any real time of day
 
 
 def _evening(client, day):
