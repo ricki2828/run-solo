@@ -35,7 +35,6 @@ data class MomentInput(
 class TrailMoments {
     private var gate = AheadBehindGate()
     private var switchId = 0
-    private val knownClimbsSaid = HashSet<Int>()
     private var climbAheadAtM = Double.NEGATIVE_INFINITY
     private var climbId = 0
     private var climbStartAscent: Double? = null
@@ -44,8 +43,10 @@ class TrailMoments {
 
     fun tick(i: MomentInput): List<TalkLine> {
         val out = ArrayList<TalkLine>(2)
-        climbAhead(i)?.let { out += it }
-        knownClimb(i)?.let { out += it }
+        // On a known trail the climb ahead comes from its profile: it replaces the retrace total in range, never both.
+        val known = knownClimb(i)
+        if (known != null) out += known else climbAhead(i)?.let { out += it }
+        if (i.knownClimbStartM != null) climbAheadAtM = i.distM
         climbDone(i)?.let { out += it }
         flip(i)?.let { out += it }
         finalPush(i)?.let { out += it }
@@ -60,14 +61,14 @@ class TrailMoments {
     }
 
     /**
-     * A climb of the known trail, called out once each from its own key (so two climbs on one trail are both said, and
+     * A climb of the known trail, called out once each from its own key (the budget's once-per-key rule: offered every tick
+     * in range, so a line it dropped or held is tried again, and one it said is not repeated) (so two climbs on one trail are both said, and
      * neither waits on the retrace rule's 1 km repeat gap): "Climb ahead. 40 metres up."
      */
     private fun knownClimb(i: MomentInput): TalkLine? {
         val start = i.knownClimbStartM ?: return null
         val gain = i.knownClimbGainM?.takeIf { it >= MIN_CLIMB_M } ?: return null
         val id = start.roundToInt()
-        if (!knownClimbsSaid.add(id)) return null
         return TalkLine(CueSlot.climbAhead, "climbAhead:known:$id", "Climb ahead. ${CheckInWords.metres(gain)} up.")
     }
 

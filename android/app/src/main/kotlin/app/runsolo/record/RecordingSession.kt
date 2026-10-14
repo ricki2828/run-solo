@@ -735,6 +735,7 @@ class RecordingSession(
     private fun autoResumeNow(t: Long, speak: Boolean) {
         if (!core.autoResume(t)) return
         ticker.onAutoResume()
+        ghostLastT = null
         writer.append(JournalLine.AutoResume(t, System.currentTimeMillis()))
         if (speak && replay == null) cues.announce("Resumed")
         Log.i(TAG, "auto-resume at ${core.status(t).elapsedMs} ms")
@@ -765,6 +766,7 @@ class RecordingSession(
         if (core.autoPaused) return autoResumeNow(t, speak = false)
         core.resume(t)
         ticker.onResume()
+        ghostLastT = null // the paused stretch is not the ghost's time
         writer.append(JournalLine.Resume(t, System.currentTimeMillis()))
         emitState()
         onNotificationChanged?.invoke()
