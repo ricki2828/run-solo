@@ -6,7 +6,6 @@ import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
-import 'package:run_solo/platform/platform_api.g.dart' show TrailProgress;
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/widgets/odometer_distance.dart';
 import 'package:run_solo/widgets/trail_ghost.dart';
@@ -34,6 +33,7 @@ TrailProgress trail({
   bool lastIsBest = true,
   bool off = false,
   bool turn = false,
+  String racing = 'best',
 }) => TrailProgress(
   trailId: 't1',
   name: 'Ridge loop',
@@ -46,6 +46,8 @@ TrailProgress trail({
   bestDateMs: 0,
   lastDateMs: 0,
   turnCue: turn,
+  inClimb: false,
+  racing: racing,
 );
 
 Future<FakeRecorderGateway> openRun(
@@ -92,6 +94,15 @@ void main() {
     expect(trailGapLine(300, 'best'), 'Level with best');
   });
 
+  test('gap figure is signed and number first', () {
+    expect(trailGapFigure(12000), '+12 s');
+    expect(trailGapFigure(-8400), '−8 s');
+    expect(trailGapFigure(65000), '+1:05');
+    expect(trailGapFigure(-102000), '−1:42');
+    expect(trailGapFigure(-42000), '−42 s');
+    expect(trailGapFigure(300), '0 s');
+  });
+
   testWidgets('no trail matched: no readout, no gap', (tester) async {
     await openRun(tester, progress: null, hr: 124);
     expect(find.byKey(const ValueKey('trail-ghost')), findsNothing);
@@ -100,7 +111,8 @@ void main() {
 
   testWidgets('matched ahead of best: mint, page 1', (tester) async {
     await openRun(tester, progress: trail(best: 12000), hr: 124);
-    expect(find.text('12 s ahead of best'), findsOneWidget);
+    expect(find.text('+12 s'), findsOneWidget);
+    expect(find.text('VS BEST'), findsOneWidget);
     expect(find.byKey(const ValueKey('trail-ghost-last')), findsNothing);
     expect(
       tester
@@ -120,9 +132,29 @@ void main() {
       progress: trail(best: -8000, last: 5000, lastIsBest: false),
       hr: 140,
     );
-    expect(find.text('8 s behind best'), findsOneWidget);
-    expect(find.text('5 s ahead of last'), findsOneWidget);
+    expect(find.text('−8 s'), findsOneWidget);
+    expect(find.text('vs last +5 s'), findsOneWidget);
     await golden(tester, 'trail_ghost_behind_z3_360x800');
+  });
+
+  testWidgets('racing the last run names it first', (tester) async {
+    await openRun(
+      tester,
+      progress: trail(
+        best: -30000,
+        last: 9000,
+        lastIsBest: false,
+        racing: 'last',
+      ),
+      hr: 124,
+    );
+    expect(find.text('VS LAST'), findsOneWidget);
+    expect(find.text('+9 s'), findsOneWidget);
+    expect(find.text('vs best −30 s'), findsOneWidget);
+    final lead = tester.getTopLeft(find.text('+9 s'));
+    final other = tester.getTopLeft(find.text('vs best −30 s'));
+    expect(lead.dy, lessThan(other.dy));
+    await golden(tester, 'trail_ghost_racing_last_z2_360x800');
   });
 
   testWidgets('TURN AROUND card', (tester) async {
@@ -146,8 +178,8 @@ void main() {
       hr: 124,
       mapPage: true,
     );
-    expect(find.text('12 s ahead of best'), findsOneWidget);
-    expect(find.text('3 s behind last'), findsNothing);
+    expect(find.text('+12 s'), findsOneWidget);
+    expect(find.textContaining('vs last'), findsNothing);
     final ghost = tester.getTopLeft(find.byKey(const ValueKey('trail-ghost')));
     final row = tester.getTopLeft(find.byKey(const ValueKey('elevation-row')));
     expect(ghost.dy, lessThan(row.dy));
@@ -156,7 +188,7 @@ void main() {
 
   testWidgets('short phone 360 x 640 still fits the numbers', (tester) async {
     await openRun(tester, progress: trail(best: 12000), hr: 140, height: 640);
-    expect(find.text('12 s ahead of best'), findsOneWidget);
+    expect(find.text('+12 s'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await golden(tester, 'trail_ghost_ahead_z3_360x640');
   });

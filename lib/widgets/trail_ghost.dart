@@ -15,29 +15,45 @@ String trailGap(int ms) {
   return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
 }
 
-/// "12 s ahead of best", "8 s behind last", "Level with best". Positive
-/// [ms] is ahead.
+/// The gap as a signed figure, number first: "+12 s" ahead, "\u22128 s"
+/// behind, "+1:05" / "\u22120:42" from a minute. Positive [ms] is ahead.
+String trailGapFigure(int ms) {
+  final g = trailGap(ms);
+  if ((ms.abs() / 1000).round() < 1) return g;
+  return '${ms > 0 ? '+' : '\u2212'}$g';
+}
+
+/// "12 s ahead of best", "8 s behind last", "Level with best": the spoken
+/// form, for the screen reader.
 String trailGapLine(int ms, String against) {
   if ((ms.abs() / 1000).round() < 1) return 'Level with $against';
   return '${trailGap(ms)} ${ms > 0 ? 'ahead of' : 'behind'} $against';
 }
 
-/// Ahead is mint, behind is vermillion, on a dark plate so both read on any
-/// zone flood (the plate's ground is the app's near-black in both themes).
+/// The gap to the run being raced, number first like DISTANCE and TIME: a
+/// small "VS BEST" (or "VS LAST") label, the signed gap big, and the other
+/// run's gap smaller underneath. Ahead is mint, behind is vermillion, on a
+/// dark plate so both read on any zone flood (the plate's ground is the
+/// app's near-black in both themes). [page2] is the one-figure form for the
+/// top of the map page.
 class TrailGhostReadout extends StatelessWidget {
   const TrailGhostReadout({
     super.key,
     required this.trail,
     this.compact = false,
     this.showLast = true,
+    this.page2 = false,
   });
   final TrailProgress trail;
 
   /// Short phone: one step smaller.
   final bool compact;
 
-  /// Page 1 also says how the last run compares when it was not the best.
+  /// Page 1 also says how the other run compares.
   final bool showLast;
+
+  /// The map page's top slot: same figure, smaller, no second line.
+  final bool page2;
 
   static const Color _ground = NightSession.bgBase;
 
@@ -45,62 +61,100 @@ class TrailGhostReadout extends StatelessWidget {
   Widget build(BuildContext context) {
     final best = trail.aheadBestMs;
     final last = trail.aheadLastMs;
-    final lines = <(String, Color)>[
+    // The run being raced leads: the best to start with, the last once the
+    // runner has slipped clearly behind the best. When the last run IS the
+    // best there is one gap and it is called the best.
+    final racingLast =
+        trail.racing == 'last' && !trail.lastIsBest && last != null;
+    final lead = racingLast ? last : best;
+    final leadName = racingLast ? 'LAST' : 'BEST';
+    final other = racingLast ? best : (trail.lastIsBest ? null : last);
+    final otherName = racingLast ? 'best' : 'last';
+    if (!trail.off && lead == null) return const SizedBox.shrink();
+    final size = RunSoloType.runSize(page2 ? 44 : (compact ? 48 : 64));
+    final tone = trail.off ? NightSession.inkPrimary : _tone(lead!);
+    final label = [
       if (trail.off)
-        ('Off the trail', NightSession.inkPrimary)
-      else ...[
-        if (best != null) (trailGapLine(best, 'best'), _tone(best)),
-        if (showLast && !trail.lastIsBest && last != null)
-          (trailGapLine(last, 'last'), _tone(last)),
-      ],
-    ];
-    if (lines.isEmpty) return const SizedBox.shrink();
-    final lead = lines.first.$2;
+        'Off the trail'
+      else
+        trailGapLine(lead!, leadName.toLowerCase()),
+      if (!trail.off && showLast && !page2 && other != null)
+        trailGapLine(other, otherName),
+    ].join('. ');
     return Semantics(
       liveRegion: true,
       container: true,
-      label: [for (final l in lines) l.$1].join('. '),
-      child: Container(
-        key: const ValueKey('trail-ghost'),
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: Space.x8),
-        padding: const EdgeInsets.symmetric(
-          horizontal: Space.x12,
-          vertical: Space.x4,
-        ),
-        decoration: BoxDecoration(
-          color: _ground,
-          borderRadius: BorderRadius.circular(Radii.chip),
-          border: Border.all(color: lead, width: 2),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final (i, l) in lines.indexed)
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  l.$1,
-                  key: ValueKey(
-                    i == 0 ? 'trail-ghost-best' : 'trail-ghost-last',
-                  ),
-                  softWrap: false,
-                  style: RunSoloType.display44.copyWith(
-                    fontSize: RunSoloType.runSize(
-                      i == 0 ? (compact ? 36 : 44) : 36,
-                    ),
-                    fontWeight: FontWeight.w800,
-                    color: l.$2,
+      label: label,
+      child: ExcludeSemantics(
+        child: Container(
+          key: const ValueKey('trail-ghost'),
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: Space.x8),
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.x12,
+            vertical: Space.x4,
+          ),
+          decoration: BoxDecoration(
+            color: _ground,
+            borderRadius: BorderRadius.circular(Radii.chip),
+            border: Border.all(color: tone, width: 2),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (trail.off)
+                _figure(
+                  'Off the trail',
+                  size,
+                  tone,
+                  const ValueKey('trail-ghost-best'),
+                )
+              else ...[
+                Text(
+                  'VS $leadName',
+                  key: const ValueKey('trail-ghost-label'),
+                  style: RunLabelScope.style(
+                    context,
+                    NightSession.inkSecondary,
                   ),
                 ),
-              ),
-          ],
+                _figure(
+                  trailGapFigure(lead!),
+                  size,
+                  tone,
+                  const ValueKey('trail-ghost-best'),
+                ),
+                if (showLast && !page2 && other != null)
+                  _figure(
+                    'vs $otherName ${trailGapFigure(other)}',
+                    RunSoloType.runSize(36),
+                    _tone(other),
+                    const ValueKey('trail-ghost-last'),
+                  ),
+              ],
+            ],
+          ),
         ),
       ),
     );
   }
+
+  static Widget _figure(String text, double size, Color color, Key key) =>
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(
+          text,
+          key: key,
+          softWrap: false,
+          style: RunSoloType.display44.copyWith(
+            fontSize: size,
+            fontWeight: FontWeight.w800,
+            color: color,
+          ),
+        ),
+      );
 
   static Color _tone(int ms) => (ms.abs() / 1000).round() < 1
       ? NightSession.inkPrimary

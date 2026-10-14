@@ -544,7 +544,7 @@ class _RecordingScreenState extends State<RecordingScreen>
           final readouts = <Widget>[
             // Page 2 top: the trail gap to best, one line (page 1 has both).
             if (s.trail case final tr?)
-              TrailGhostReadout(trail: tr, compact: true, showLast: false),
+              TrailGhostReadout(trail: tr, compact: true, page2: true),
             if (runModeOf(s.mode).showsElevation && s.elevGainM != null)
               ElevationRow(
                 s: s,
