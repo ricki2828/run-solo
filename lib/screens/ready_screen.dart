@@ -10,6 +10,7 @@ import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../platform/host_caps.dart';
 import '../state/settings.dart';
+import '../theme/caps_text.dart';
 import '../theme/theme.dart';
 import '../widgets/structure_glyph.dart';
 
@@ -453,7 +454,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
                         ),
                         textStyle: RunSoloType.display96,
                       ),
-                      child: const Text('START'),
+                      child: const CapsText('START'),
                     ),
                   ],
                 );

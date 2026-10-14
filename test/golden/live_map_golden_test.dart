@@ -147,6 +147,36 @@ void main() {
     }
   }
 
+  // Trail page 1 with a map available: the MAP button sits where page 2's
+  // NUMBERS button does (founder 14-Oct).
+  for (final h in [800, 640]) {
+    testWidgets('record: trail numbers page with MAP button at 360 x $h', (
+      tester,
+    ) async {
+      final fake = FakeRecorderGateway(now: now)
+        ..emitRoute = true
+        ..elevGainM = 124
+        ..elevLossM = 87;
+      final services = fakeServices(
+        recorder: fake,
+        maps: const FakeMapSurfaceFactory(available: true),
+        settings: const AppSettings(onboardingDone: true),
+      );
+      await services.recording.start(RecordMode.trail, null, Units.km);
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 4);
+      for (var i = 0; i < 95; i++) {
+        fake.advance(const Duration(seconds: 1));
+        await tester.pump();
+      }
+      await pumpTimes(tester, 5);
+      await settleAnimations(tester);
+      expect(find.byKey(const ValueKey('page-map-button')), findsOneWidget);
+      await golden(tester, 'record_numbers_trail_map_button_360x$h');
+    });
+  }
+
   // Trail MAP view, not retracing: VS START rides in the DISTANCE row and
   // the map keeps all its height.
   for (final h in [800, 640]) {

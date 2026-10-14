@@ -21,6 +21,7 @@ import '../state/recording_controller.dart';
 import '../state/sessions.dart';
 import '../state/settings.dart';
 import '../state/voice_coach_plan.dart';
+import '../theme/caps_text.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/goal_picker.dart';
@@ -1434,7 +1435,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                           )
                         : _openReady,
                     // The only START is on the Ready screen (Ricki, 10-Oct).
-                    child: const Text('READY UP ›'),
+                    child: const CapsText('READY UP ›'),
                   ),
                 ],
               ),

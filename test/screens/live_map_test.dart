@@ -173,6 +173,63 @@ void main() {
     expect(find.byKey(const ValueKey('timer')), findsOneWidget);
   });
 
+  testWidgets(
+    'page 1 has a MAP button matching NUMBERS, and it opens the map',
+    (tester) async {
+      await open(tester);
+      const mapButton = ValueKey('page-map-button');
+      const numbersButton = ValueKey('page-numbers-button');
+      expect(find.byKey(mapButton), findsOneWidget);
+      expect(find.text('MAP'), findsOneWidget);
+      final onOne = tester.getRect(find.byKey(mapButton));
+      expect(onOne.height, 56);
+      await tester.tap(find.byKey(mapButton));
+      await settleAnimations(tester);
+      expect(find.byKey(_map), findsOneWidget);
+      expect(find.byKey(mapButton), findsNothing);
+      final onTwo = tester.getRect(find.byKey(numbersButton));
+      // Same size and the same left/right edges; page 1 has no map to shrink,
+      // so only the size and width are compared.
+      expect(onTwo.size, onOne.size);
+    },
+  );
+
+  testWidgets('no MAP button when there is no map', (tester) async {
+    await open(tester, maps: const FakeMapSurfaceFactory());
+    expect(find.byKey(const ValueKey('page-map-button')), findsNothing);
+  });
+
+  testWidgets(
+    'a swipe right outside the map goes back; on the map it does not',
+    (tester) async {
+      await open(tester);
+      await tester.tap(find.byKey(_toggle));
+      await settleAnimations(tester);
+      expect(find.byKey(_map), findsOneWidget);
+      // On the map: the map's.
+      await tester.fling(find.byKey(_map), const Offset(300, 0), 1500);
+      await settleAnimations(tester);
+      expect(find.byKey(_map), findsOneWidget);
+      // On the button row (outside the map's rectangle): back to the numbers.
+      await tester.fling(
+        find.byKey(const ValueKey('page-numbers-button')),
+        const Offset(200, 0),
+        1500,
+      );
+      await settleAnimations(tester);
+      expect(find.byKey(_map), findsNothing);
+      expect(find.byKey(const ValueKey('timer')), findsOneWidget);
+      // And page 1 still swipes on to the map.
+      await tester.fling(
+        find.byKey(const ValueKey('timer')),
+        const Offset(-300, 0),
+        1500,
+      );
+      await settleAnimations(tester);
+      expect(find.byKey(_map), findsOneWidget);
+    },
+  );
+
   testWidgets('the page is remembered per run type', (tester) async {
     final (_, services) = await open(tester);
     await tester.tap(find.byKey(_toggle));

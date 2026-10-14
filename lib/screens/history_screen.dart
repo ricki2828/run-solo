@@ -8,6 +8,7 @@ import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
 import '../state/history_weeks.dart';
+import '../theme/caps_text.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/choice_chips.dart';
@@ -564,7 +565,7 @@ class _Empty extends StatelessWidget {
           ),
           const SizedBox(height: Space.x24),
           if (onStart != null)
-            FilledButton(onPressed: onStart, child: const Text('START')),
+            FilledButton(onPressed: onStart, child: const CapsText('START')),
         ],
       ),
     );
