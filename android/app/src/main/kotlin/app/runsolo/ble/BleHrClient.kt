@@ -202,6 +202,7 @@ class BleHrClient(context: Context) {
                 pendingReconnect = r
                 main.postDelayed(r, action.delayMs)
             }
+            is BleReconnectPolicy.Action.ScanForName -> startNameScan(action)
         }
     }
 
