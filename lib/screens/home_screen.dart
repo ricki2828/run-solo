@@ -11,6 +11,7 @@ import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../state/load_guard.dart';
 import '../state/settings.dart';
+import '../theme/caps_text.dart';
 import 'start_screen.dart' show StartArgs;
 import '../widgets/week_strip.dart';
 import '../widgets/chrome.dart';
@@ -728,7 +729,7 @@ class _GetBetter extends StatelessWidget {
                   onPressed: onStart,
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: Text(startLabel, maxLines: 1),
+                    child: CapsText(startLabel),
                   ),
                 ),
               ),

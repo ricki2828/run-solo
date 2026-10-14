@@ -16,6 +16,7 @@ import '../state/next_step.dart';
 import '../state/recording_controller.dart';
 import '../state/true_pace_smoother.dart';
 import '../state/voice_coach_plan.dart' show CoachTarget;
+import '../theme/caps_text.dart';
 import '../theme/grade_band.dart';
 import '../theme/theme.dart';
 import '../theme/zones.dart';
@@ -2240,7 +2241,7 @@ class NumbersButton extends StatelessWidget {
               children: [
                 Icon(Icons.arrow_back_rounded, size: 28, color: t.inkPrimary),
                 const SizedBox(width: Space.x8),
-                Text(
+                CapsText(
                   'NUMBERS',
                   style: RunSoloType.display44.copyWith(
                     fontSize: RunSoloType.runSize(28),

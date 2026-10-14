@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../share/share_card.dart';
 import '../share/share_card_sheet.dart';
 import '../state/progress_snapshot.dart';
+import '../theme/caps_text.dart';
 import '../theme/lanes.dart';
 import '../theme/theme.dart';
 
@@ -187,7 +188,7 @@ class _MomentScreenState extends State<MomentScreen>
                               foregroundColor: fill,
                             ),
                             onPressed: () => Navigator.of(context).maybePop(),
-                            child: const Text('Nice'),
+                            child: const CapsText('Nice'),
                           ),
                         ),
                         const SizedBox(width: Space.x12),
