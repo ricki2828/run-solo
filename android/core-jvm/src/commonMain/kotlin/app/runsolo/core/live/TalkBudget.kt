@@ -160,7 +160,8 @@ class TalkBudget(
         return v == null || step == null || last == null || abs(v - last) < step
     }
 
-    private fun gapOpen(now: Long, busyUntil: Long): Boolean = now >= maxOf(lastEndMs, busyUntil) + minGapMs
+    /** [busyUntil] only counts while speech is still queued; an idle player (0 or in the past) is not a line just said. */
+    private fun gapOpen(now: Long, busyUntil: Long): Boolean = now >= maxOf(lastEndMs, if (busyUntil > now) busyUntil else Long.MIN_VALUE / 2) + minGapMs
 
     private fun overWindow(line: TalkLine, now: Long): Boolean {
         while (spoken.isNotEmpty() && spoken.first().first <= now - windowMs) spoken.removeFirst()
