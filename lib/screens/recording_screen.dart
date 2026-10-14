@@ -16,6 +16,7 @@ import '../state/next_step.dart';
 import '../state/recording_controller.dart';
 import '../state/true_pace_smoother.dart';
 import '../state/voice_coach_plan.dart' show CoachTarget;
+import '../theme/grade_band.dart';
 import '../theme/theme.dart';
 import '../theme/zones.dart';
 import '../widgets/compare_card.dart';
@@ -406,6 +407,13 @@ class _RecordingScreenState extends State<RecordingScreen>
     final reduced = _reduced;
     return PopScope(
       canPop: false,
+      // Android gesture navigation: a swipe in from the left edge IS the
+      // system back gesture, so it never reaches the page-2 edge strip. On
+      // the map page it goes back to the numbers; the run itself is never
+      // popped (14-Oct).
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _page == 1 && _pageCtl != null) _goPage(0);
+      },
       child: ListenableBuilder(
         listenable: ctl,
         builder: (context, _) {
@@ -529,6 +537,10 @@ class _RecordingScreenState extends State<RecordingScreen>
               runModeOf(s.mode).showsElevation &&
               (retraceSt.heightVsStartM != null || retraceSt.headingBack);
           final readouts = <Widget>[
+            // SLOT (page 2, top): the trail "ahead / behind" readout and the
+            // turnaround cue go here, first in this list, above climb and
+            // grade. They read new RecordingSnapshot fields; nothing else
+            // on the screen needs to move.
             if (runModeOf(s.mode).showsElevation && s.elevGainM != null)
               ElevationRow(
                 s: s,
@@ -589,6 +601,10 @@ class _RecordingScreenState extends State<RecordingScreen>
                         ],
                       ),
               ),
+              if (_page == 1 && hasPage2) ...[
+                const SizedBox(height: Space.x8),
+                NumbersButton(onTap: () => _goPage(0)),
+              ],
               if (coach != null && !freeBlock) ...[
                 const SizedBox(height: Space.x8),
                 coach,
@@ -1490,6 +1506,7 @@ class ElevationRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Expanded(
+          flex: showGrade ? 2 : 1,
           child: AuxFigure(
             label: 'CLIMB',
             value: Fmt.elevation(s.elevGainM, units),
@@ -1500,16 +1517,92 @@ class ElevationRow extends StatelessWidget {
         ),
         const SizedBox(width: Space.x16),
         Expanded(
+          flex: showGrade ? 3 : 1,
           child: showGrade
-              ? AuxFigure(
-                  label: 'GRADE',
-                  value: Fmt.grade(s.gradePct),
+              ? GradeFigure(
+                  pct: s.gradePct,
                   labelColor: labelColor,
                   valueColor: valueColor,
-                  valueKey: const ValueKey('live-grade'),
                 )
               : const SizedBox.shrink(),
         ),
+      ],
+    );
+  }
+}
+
+/// The grade as a word on a colour chip (Flat, Gentle, Climb, Steep, Very
+/// steep, Down, Steep down), the word at the same size as every other
+/// in-run number. The percentage stays, small, beside the label.
+class GradeFigure extends StatelessWidget {
+  const GradeFigure({
+    super.key,
+    required this.pct,
+    required this.labelColor,
+    required this.valueColor,
+  });
+  final double? pct;
+  final Color labelColor;
+  final Color valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final band = GradeBand.of(pct);
+    final label = RunLabelScope.style(context, labelColor);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('GRADE', style: label),
+            if (band != null) ...[
+              const SizedBox(width: Space.x8),
+              Text(
+                Fmt.grade(pct),
+                key: const ValueKey('live-grade-pct'),
+                style: label,
+              ),
+            ],
+          ],
+        ),
+        if (band == null)
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '--',
+              key: const ValueKey('live-grade'),
+              softWrap: false,
+              style: AuxFigure.style.copyWith(color: valueColor),
+            ),
+          )
+        else
+          DecoratedBox(
+            key: ValueKey('live-grade-chip-${band.name}'),
+            decoration: BoxDecoration(
+              color: band.fill,
+              borderRadius: BorderRadius.circular(Radii.chip),
+              border: Border.all(color: valueColor, width: 2),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: Space.x8,
+                vertical: Space.x4,
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  band.word,
+                  key: const ValueKey('live-grade'),
+                  softWrap: false,
+                  style: AuxFigure.style.copyWith(color: band.ink),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -2104,6 +2197,57 @@ class _BackEdgeState extends State<_BackEdge> {
       }
     },
   );
+}
+
+/// Page 2's big way back to the numbers: a full-width, 56 dp button at the
+/// bottom, where the thumb is. A second way back beside the system back
+/// gesture and the left-edge swipe (14-Oct: the swipe alone failed on the
+/// phone).
+class NumbersButton extends StatelessWidget {
+  const NumbersButton({super.key, required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Semantics(
+      button: true,
+      label: 'Show numbers',
+      excludeSemantics: true,
+      child: Material(
+        color: t.bgRaised,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Radii.button),
+          side: BorderSide(color: t.inkPrimary, width: 2),
+        ),
+        child: InkWell(
+          key: const ValueKey('page-numbers-button'),
+          customBorder: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Radii.button),
+          ),
+          onTap: onTap,
+          child: SizedBox(
+            height: 56,
+            width: double.infinity,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.arrow_back_rounded, size: 28, color: t.inkPrimary),
+                const SizedBox(width: Space.x8),
+                Text(
+                  'NUMBERS',
+                  style: RunSoloType.display44.copyWith(
+                    fontSize: RunSoloType.runSize(28),
+                    color: t.inkPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Two dots in the header: which page is showing, and a 48 dp tap to switch.

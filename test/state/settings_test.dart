@@ -131,4 +131,13 @@ void main() {
     expect(AppSettings.fromJson({'reps': 4}).topoMap, isTrue);
     expect(AppSettings.fromJson({'topoMap': 'x'}).topoMap, isTrue);
   });
+
+  test('Live map choice: Google by default, remembered', () {
+    expect(const AppSettings().liveTopoMap, isFalse);
+    final on = const AppSettings().copyWith(liveTopoMap: true);
+    expect(AppSettings.fromJson(on.toJson()).liveTopoMap, isTrue);
+    expect(AppSettings.fromJson({'reps': 4}).liveTopoMap, isFalse);
+    // A phone that saved the old Topo choice still opens Google in a run.
+    expect(AppSettings.fromJson({'topoMap': true}).liveTopoMap, isFalse);
+  });
 }

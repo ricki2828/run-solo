@@ -130,6 +130,49 @@ void main() {
     expect(find.byKey(const ValueKey('timer')), findsOneWidget);
   });
 
+  testWidgets('system back on the map page goes to the numbers and never '
+      'leaves the run', (tester) async {
+    // Android gesture navigation sends a left-edge swipe as a system pop, so
+    // it never reaches the edge strip (14-Oct). Simulates that pop.
+    await open(
+      tester,
+      settings: const AppSettings(onboardingDone: true, liveMapTypes: {'laps'}),
+    );
+    expect(find.byKey(_map), findsOneWidget);
+    final handled = await tester.binding.handlePopRoute();
+    expect(handled, isTrue);
+    await settleAnimations(tester);
+    expect(find.byKey(_map), findsNothing);
+    expect(find.byKey(const ValueKey('timer')), findsOneWidget);
+    expect(find.byType(RecordingScreen), findsOneWidget);
+
+    // On the numbers a second back does nothing: the run stays open.
+    await tester.binding.handlePopRoute();
+    await settleAnimations(tester);
+    expect(find.byType(RecordingScreen), findsOneWidget);
+    expect(find.byKey(const ValueKey('timer')), findsOneWidget);
+  });
+
+  testWidgets('the big NUMBERS button is on the map page only, 48 dp or more, '
+      'and goes back', (tester) async {
+    await open(tester);
+    const button = ValueKey('page-numbers-button');
+    expect(find.byKey(button), findsNothing);
+    await tester.tap(find.byKey(_toggle));
+    await settleAnimations(tester);
+    expect(find.byKey(_map), findsOneWidget);
+    expect(find.byKey(button), findsOneWidget);
+    final box = tester.getRect(find.byKey(button));
+    expect(box.height, greaterThanOrEqualTo(48));
+    expect(box.width, greaterThanOrEqualTo(48));
+    expect(find.text('NUMBERS'), findsOneWidget);
+    await tester.tap(find.byKey(button));
+    await settleAnimations(tester);
+    expect(find.byKey(_map), findsNothing);
+    expect(find.byKey(button), findsNothing);
+    expect(find.byKey(const ValueKey('timer')), findsOneWidget);
+  });
+
   testWidgets('the page is remembered per run type', (tester) async {
     final (_, services) = await open(tester);
     await tester.tap(find.byKey(_toggle));

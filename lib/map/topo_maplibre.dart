@@ -614,10 +614,17 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
     final c = _ctl;
     if (c == null || !mounted) return;
     final t = Theme.of(context).extension<RunSoloTokens>()!;
+    // One bold line in the run's colour with a white casing (14-Oct: the
+    // gradient colouring added nothing on the live map).
     await _setSource(
       c,
       TopoStyle.trackSource,
-      TopoStyle.gradientLine(_line, fallback: widget.color, casing: t.bgBase),
+      TopoStyle.line(
+        [for (final p in _line) (p.lat, p.lon)],
+        colour: widget.color,
+        casing: kLiveRouteCasing,
+        bold: true,
+      ),
     );
     if (!mounted) return; // disposed mid-paint: the map is gone
     await _setSource(
@@ -657,10 +664,10 @@ class _TopoLiveMapState extends State<_TopoLiveMap> {
       await _setSource(
         c,
         TopoStyle.planSource,
-        TopoStyle.gradientLine(
-          plan,
-          fallback: t.inkSecondary,
-          casing: t.bgBase,
+        TopoStyle.line(
+          [for (final p in plan) (p.lat, p.lon)],
+          colour: t.inkSecondary,
+          casing: kLiveRouteCasing,
         ),
       );
     }

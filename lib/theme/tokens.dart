@@ -76,6 +76,23 @@ abstract final class AuroraGradient {
   static const Color down = Color(0xFF85A5AD);
 }
 
+/// In-run grade chip fills (14-Oct): a calm-to-hot ramp for the bands Flat,
+/// Gentle, Climb, Steep and Very steep (pale bone to dark plum), and a
+/// grey-teal pair for Down and Steep down. Each chip carries its word, and
+/// all seven sit at least 60 RGB apart from each other and from the zone
+/// ramp, the semantic colours and the run-type identities in both themes (a
+/// test measures it). The chip has its own fill, so one set serves every
+/// zone flood and both themes.
+abstract final class AuroraGrade {
+  static const Color flat = Color(0xFFE4E2DC);
+  static const Color gentle = Color(0xFFE9F0A0);
+  static const Color climb = Color(0xFFFFB78F);
+  static const Color steep = Color(0xFFB8508B);
+  static const Color verySteep = Color(0xFF5E2D80);
+  static const Color down = Color(0xFF8CB4BC);
+  static const Color steepDown = Color(0xFF5A7480);
+}
+
 /// The retraced-stretch band on the map: a Bone halo inside a dark rim. The
 /// topo map is a dark map in both themes, so both themes use the same pair;
 /// they are tokens so a test measures them against the map and the gradient

@@ -266,11 +266,12 @@ class TopoStyle {
   };
 
   /// A GeoJSON line for [points] given as (lat, lon) pairs; fewer than two
-  /// points is an empty collection.
+  /// points is an empty collection. [bold] draws it wide.
   static Map<String, Object?> line(
     Iterable<(double, double)> points, {
     required Color colour,
     required Color casing,
+    bool bold = false,
   }) {
     final coords = [
       for (final (lat, lon) in points) <double>[lon, lat],
@@ -281,7 +282,13 @@ class TopoStyle {
       'features': [
         {
           'type': 'Feature',
-          'properties': {'c': hex(colour), 'k': hex(casing)},
+          'properties': {
+            'c': hex(colour),
+            'k': hex(casing),
+            // `w` 1 draws the wide variant of the line layers (7 over an 11
+            // casing, not 5 over 9): the live route.
+            if (bold) 'w': 1,
+          },
           'geometry': {'type': 'LineString', 'coordinates': coords},
         },
       ],

@@ -281,6 +281,10 @@ void main() {
   });
 
   group('live', () {
+    setUp(() async {
+      await settings.update((s) => s.copyWith(liveTopoMap: true));
+    });
+
     testWidgets('waits for a fix, then follows in Topo', (tester) async {
       final track = LiveRouteTrack();
       await tester.pumpWidget(
@@ -494,11 +498,10 @@ void main() {
     });
   });
 
-  group('gradient legend', () {
+  group('live map: Google first', () {
     final climb = [
       for (var i = 0; i < 12; i++) GeoPoint(36.7 + i * 1e-4, 24.4, 50.0 + i),
     ];
-    final legend = find.byKey(const ValueKey('gradient-legend'));
 
     Widget live(BuildContext c, LiveRouteTrack t, {List<GeoPoint>? plan}) =>
         factory.buildLive(
@@ -509,63 +512,54 @@ void main() {
           terrain: true,
         );
 
-    testWidgets('shown with Topo on a plan that has elevation, clear of the '
-        'toggle and the credit line', (tester) async {
+    testWidgets('inside a pack the default is still Google', (tester) async {
       final track = LiveRouteTrack()..apply(0, [36.7, 24.4]);
-      await tester.pumpWidget(host((c) => live(c, track, plan: climb)));
-      expect(legend, findsOneWidget);
-      final key = tester.getRect(legend);
-      final toggle = tester.getRect(
-        find.byKey(const ValueKey('map-style-toggle')),
-      );
-      final credit = tester.getRect(
-        find.byKey(const ValueKey('topo-attribution')),
-      );
-      expect(key.overlaps(toggle), isFalse);
-      expect(key.overlaps(credit), isFalse);
-      expect(key.left, greaterThanOrEqualTo(0));
-      expect(key.right, lessThanOrEqualTo(360));
+      await tester.pumpWidget(host((c) => live(c, track)));
+      expect(find.byKey(const ValueKey('fake-live-map')), findsOneWidget);
+      expect(engine.built, isEmpty);
+      expect(find.text(kDownloadMapPrompt), findsNothing);
     });
 
-    testWidgets('shown when the live track itself carries elevation', (
+    testWidgets('the toggle picks Topo for the live map only', (tester) async {
+      final track = LiveRouteTrack()..apply(0, [36.7, 24.4]);
+      await tester.pumpWidget(host((c) => live(c, track)));
+      await tester.tap(find.byKey(const ValueKey('map-style-topo')));
+      await tester.pump();
+      expect(settings.settings.liveTopoMap, isTrue);
+      expect(settings.settings.topoMap, isTrue);
+      expect(find.byKey(const ValueKey('topo-live-milos')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('map-style-google')));
+      await tester.pump();
+      expect(settings.settings.liveTopoMap, isFalse);
+      // Run detail's own choice is untouched.
+      expect(settings.settings.topoMap, isTrue);
+    });
+
+    testWidgets('no Google map on the phone: Topo where a pack covers', (
       tester,
     ) async {
+      factory = TopoMapSurfaceFactory(
+        packs: packs,
+        settings: settings,
+        fallback: const FakeMapSurfaceFactory(),
+        engine: engine,
+        cache: store,
+        queue: RenderQueue(),
+      );
+      final track = LiveRouteTrack()..apply(0, [36.7, 24.4]);
+      await tester.pumpWidget(host((c) => live(c, track)));
+      expect(find.byKey(const ValueKey('topo-live-milos')), findsOneWidget);
+    });
+
+    testWidgets('no gradient key on the live map, with or without elevation', (
+      tester,
+    ) async {
+      await settings.update((s) => s.copyWith(liveTopoMap: true));
       final track = LiveRouteTrack()
         ..apply(0, [36.7, 24.4, 36.7001, 24.4], [50, 51]);
-      await tester.pumpWidget(host((c) => live(c, track)));
-      expect(legend, findsOneWidget);
-    });
-
-    testWidgets('not shown without elevation on the plan', (tester) async {
-      final track = LiveRouteTrack()..apply(0, [36.7, 24.4]);
-      await tester.pumpWidget(
-        host(
-          (c) => live(
-            c,
-            track,
-            plan: [for (final p in climb) GeoPoint(p.lat, p.lon)],
-          ),
-        ),
-      );
-      expect(legend, findsNothing);
-    });
-
-    testWidgets(
-      'not shown on the Google fallback, where no gradient is drawn',
-      (tester) async {
-        final track = LiveRouteTrack()..apply(0, [36.7, 24.4]);
-        await tester.pumpWidget(host((c) => live(c, track, plan: climb)));
-        await tester.tap(find.byKey(const ValueKey('map-style-google')));
-        await tester.pump();
-        expect(legend, findsNothing);
-      },
-    );
-
-    testWidgets('not shown when no pack covers the run', (tester) async {
-      packs.set([]);
-      final track = LiveRouteTrack()..apply(0, [36.7, 24.4]);
       await tester.pumpWidget(host((c) => live(c, track, plan: climb)));
-      expect(legend, findsNothing);
+      expect(find.byKey(const ValueKey('topo-live-milos')), findsOneWidget);
+      expect(find.byKey(const ValueKey('gradient-legend')), findsNothing);
     });
   });
 }
