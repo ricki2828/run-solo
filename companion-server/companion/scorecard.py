@@ -175,6 +175,7 @@ def _compute(c: sqlite3.Connection, now: datetime | None, weeks: int) -> dict:
         "generated": _iso(now), "week_starts": [s.strftime("%Y-%m-%d") for s in starts], "testers": testers,
         "llm_cost_usd_total": [round(x, 4) for x in cost],
         "llm_cost_note": "per-tester cost is that runner's own calls (llm_calls.user_id); calls with no runner id are split evenly across testers sent a card that week",
+        "enrol_refused_by_day": (dict(_rows(c, "SELECT day, n FROM enrol_refused ORDER BY day")) if _has(c, "enrol_refused") else {}),
         "week4": {"retained": sum(1 for t in eligible if t["week4_retained"]), "eligible": len(eligible)},
     }
 

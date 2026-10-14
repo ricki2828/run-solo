@@ -214,9 +214,10 @@ Enrolment flow (the app drives it; each step is anti-phishing by design):
 What the server does by itself:
 - **Enrolment cap.** With `COMPANION_OPEN_ENROLMENT=1`, at most `COMPANION_MAX_USERS` (default 25) runners are connected. The 26th
   gets "the test is full" and nothing about them is stored (only a per-day tally, `enrol_refused`). Ricki's allowlist
-  (`COMPANION_ALLOWED_IDS`) is not held to the cap but does count towards it. An unfinished connection holds a place for up to an hour.
+  (`COMPANION_ALLOWED_IDS`) is not held to the cap and takes none of the 25 places. An unfinished connection holds a place for up to an hour, then releases it.
 - **Cost.** Every writing-service call is stored with the runner it was for (`llm_calls.user_id`). The monthly cap defaults to US$20
   (`COMPANION_MONTHLY_CAP_USD`); above it the coach sends template text only. Alerts to Ricki at 50%, 80% and 100% of the cap, each once a month.
+- **Per-runner ceiling.** One runner can use at most US$3 of model spend a month (`COMPANION_USER_MONTHLY_CAP_USD`); above it they get template text and an alert, so one runner cannot drain the shared US$20. A paused runner makes no model calls.
 - **Rate limit.** 20 messages a minute and 200 a day per chat (`COMPANION_RATE_PER_MIN`, `COMPANION_RATE_PER_DAY`, in memory, reset
   by a restart). Over it: one polite slow-down note per 10 minutes, then silence. A connected runner slowed down 3 times in 24 hours
   (`COMPANION_RATE_STRIKES`) is paused automatically and an alert is raised. Only `ops resume` un-pauses them (their own RESUME does not).
@@ -252,7 +253,7 @@ $OPS ops alerts          # alerts not yet sent
 3. Open enrolment last, as a recorded release step, only after the privacy page is redeployed (server first, then the site), the Play Data safety form is updated and
    the app build with the coach is in testers' hands (section 0). Write a drop-in `~/.config/systemd/user/companion.service.d/enrolment.conf` containing
    `[Service]` and `Environment=COMPANION_OPEN_ENROLMENT=1` and `Environment=COMPANION_MAX_USERS=25`, then `systemctl --user daemon-reload && systemctl --user restart companion.service`,
-   then check `systemctl --user show companion.service -p Environment` and `$OPS ops status` shows `open_enrolment=on` and `runners=n/25`.
+   then check `systemctl --user show companion.service -p Environment` and `$OPS ops status` shows `open_enrolment=on` and `places=n/25`.
 
 **Setting the OpenRouter key limit (Ricki, in the browser; the agent does not do this).** Target: US$25 on the coach's own key
 (the cap in the server is US$20, so the key limit is the backstop that still holds if the server code is wrong). The labels below are from memory of the

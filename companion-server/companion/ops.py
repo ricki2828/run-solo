@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import timedelta
 from typing import Callable
 
 from . import db
@@ -46,6 +47,11 @@ def status(s: Settings) -> list[str]:
     today = now_utc().strftime("%Y-%m-%d")
     with db.ro(s.db_path) as c:
         n = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        held = [f"{r['channel']}:{r['chat_ref']}" for r in c.execute(
+            "SELECT channel, chat_ref FROM users WHERE EXISTS (SELECT 1 FROM devices d WHERE d.user_id = users.id) OR created_at >= ?",
+            (iso(now_utc() - timedelta(hours=1)),))]
+        places = sum(1 for h in held if h not in s.allowed_ids)
+        stale = c.execute("SELECT COUNT(*) FROM alerts WHERE sent_at IS NULL AND ts < ?", (iso(now_utc() - timedelta(hours=24)),)).fetchone()[0]
         ops = c.execute("SELECT COUNT(*) FROM users WHERE ops_paused=1").fetchone()[0]
         stopped = c.execute("SELECT COUNT(*) FROM users WHERE paused=1 AND ops_paused=0").fetchone()[0]
         spend = c.execute("SELECT COALESCE(SUM(cost_usd),0) FROM llm_calls WHERE ts >= ?", (start,)).fetchone()[0]
@@ -54,13 +60,14 @@ def status(s: Settings) -> list[str]:
         kill = c.execute("SELECT value FROM settings WHERE key='sends_paused'").fetchone()
     cap = s.monthly_cap_usd
     return [
-        f"runners={n}/{s.max_users} open_enrolment={'on' if s.open_enrolment else 'off'} "
+        f"runners={n} places={places}/{s.max_users} (allowlisted runners take none) open_enrolment={'on' if s.open_enrolment else 'off'} "
         f"ops_paused={ops} stopped_by_runner={stopped}",
         f"llm_month_usd={spend:.2f} cap_usd={cap:g} used={spend / cap * 100 if cap else 0:.0f}% "
         f"{'(templates only)' if cap and spend >= cap else ''}".rstrip(),
         f"enrol_refused_today={refused[0] if refused else 0} enrol_refused_total={refused_all}",
         f"global_pause={'ON' if (kill and kill[0] == '1') or s.sends_paused else 'off'} "
-        f"alerts_unsent={len(pending_alerts(s.db_path))}",
+        f"alerts_unsent={len(pending_alerts(s.db_path))}"
+        + (f" ALERTS_STALE={stale} unsent for over 24h: the alert cron is not delivering (crontab -l | grep flush-alerts)" if stale else ""),
     ]
 
 

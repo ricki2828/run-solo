@@ -43,8 +43,8 @@ class Settings:
     # "telegram:<chat id>" / "whatsapp:<number>". Only these may enrol until open_enrolment is on.
     allowed_ids: frozenset[str] = frozenset()
     open_enrolment: bool = False  # flipping this is a recorded release step (eng-review B2)
-    # With open enrolment on, at most this many runners may be connected at once (counted from the users table, so an
-    # unfinished connection holds a place for up to an hour). The allowlist is not held to it. Tester programme: 25.
+    # With open enrolment on, at most this many runners may be connected at once. Runners on the allowlist neither count
+    # towards it nor are held to it; an unfinished connection holds a place for up to an hour. Tester programme: 25.
     max_users: int = 25
     consent_version: str = "1"
 
@@ -68,6 +68,8 @@ class Settings:
     openrouter_url: str = "https://openrouter.ai/api/v1"
     model: str = "anthropic/claude-haiku-4.5"
     monthly_cap_usd: float = 20.0  # OpenRouter key limit on the dashboard is the hard backstop (DEPLOY.md, kill switches)
+    # One runner's ceiling inside the shared cap, so one runner cannot drain it for everyone (templates only above it).
+    user_monthly_cap_usd: float = 3.0
     # Spend alerts to Ricki, as fractions of the monthly cap (each fires once a month).
     cap_alert_fractions: tuple[float, ...] = (0.5, 0.8, 1.0)
     llm_timeout_s: float = 8.0
@@ -149,6 +151,7 @@ class Settings:
             openrouter_key=key,
             model=e.get("COMPANION_MODEL", "anthropic/claude-haiku-4.5"),
             monthly_cap_usd=float(e.get("COMPANION_MONTHLY_CAP_USD", "20")),
+            user_monthly_cap_usd=float(e.get("COMPANION_USER_MONTHLY_CAP_USD", "3")),
             weather_enabled=_flag(e.get("COMPANION_WEATHER")),
             media_enabled=_flag(e.get("COMPANION_MEDIA")),
             render_socket=os.path.expanduser(e.get("COMPANION_RENDER_SOCKET", "~/companion-data/render/render.sock")),

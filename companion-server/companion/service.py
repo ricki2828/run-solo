@@ -443,7 +443,7 @@ class Service(CheckinMixin):
             if u:
                 uid = u["id"]  # existing user: nothing changes until the code is confirmed
             else:
-                if ident not in self.s.allowed_ids and c.execute("SELECT COUNT(*) FROM users").fetchone()[0] >= self.s.max_users:
+                if ident not in self.s.allowed_ids and self._places_taken(c, now) >= self.s.max_users:
                     # The test is full. Nothing about this chat is written: the enrolment row (a random nonce) is marked
                     # denied, and today's refusal tally goes up by one.
                     c.execute("UPDATE enrolments SET state='denied' WHERE nonce=?", (nonce,))
@@ -459,6 +459,13 @@ class Service(CheckinMixin):
                       "chat_name=? WHERE nonce=?", (uid, code, self._mac(inb.msg_id), inb.name or None, nonce))
             c.execute("UPDATE inbound_seen SET user_id=? WHERE msg_id=?", (uid, self._mac(inb.msg_id)))
         return CODE_MSG.format(code=code)
+
+    def _places_taken(self, c, now: datetime) -> int:
+        """Runners holding one of the open places: not on the allowlist, and either connected or started within the last hour
+        (an unfinished connection is deleted after an hour, and until then it must not hold a place)."""
+        rows = c.execute("SELECT channel, chat_ref FROM users WHERE EXISTS (SELECT 1 FROM devices d WHERE d.user_id = users.id) "
+                         "OR created_at >= ?", (iso(now - timedelta(hours=1)),)).fetchall()
+        return sum(1 for r in rows if f"{r['channel']}:{r['chat_ref']}" not in self.s.allowed_ids)
 
     # ---------------------------------------------------------------- inbound (webhooks)
     def _seen(self, inb: Inbound, now: datetime) -> bool:
@@ -478,14 +485,20 @@ class Service(CheckinMixin):
         ch = self.channels.get(inb.channel)
         if ch is None:
             return
-        verdict = self.limiter.check(f"{inb.channel}:{inb.ref}", now)   # before anything is stored for this message
+        bare_delete = inb.card_id is None and inb.text.strip().lstrip("/").upper() == "DELETE"
+        if not bare_delete:   # erasure by chat DELETE always works, flooding or paused: it never meets the limiter
+            if self._redelivered(inb):
+                return   # a webhook retry of a message we already handled does not count against the limit
+            verdict = self.limiter.check(f"{inb.channel}:{inb.ref}", now)   # before anything is stored for this message
+        else:
+            verdict = "ok"
         if verdict != "ok":
             self._rate_limited(ch, inb, verdict, now)
             return
         if self._seen(inb, now):
             return
         user = self._user_by_ref(inb.channel, inb.ref)
-        if user and user["ops_paused"] and not (inb.card_id is None and inb.text.strip().lstrip("/").upper() == "DELETE"):
+        if user and user["ops_paused"] and not bare_delete:
             return   # an operator-paused runner gets nothing back; DELETE still works (erasure is not ours to refuse)
         if user:
             with db.tx(self.s.db_path) as c:
@@ -536,6 +549,10 @@ class Service(CheckinMixin):
             # free text ever reaches a model.
             reply = self._note_reply(user, inb.text, now) or UNKNOWN
         self._reply(ch, inb.ref, reply)
+
+    def _redelivered(self, inb: Inbound) -> bool:
+        with db.ro(self.s.db_path) as c:
+            return c.execute("SELECT 1 FROM inbound_seen WHERE msg_id=?", (self._mac(inb.msg_id),)).fetchone() is not None
 
     def _rate_limited(self, ch: Any, inb: Inbound, verdict: str, now: datetime) -> None:
         """Over the per-chat limit: one polite note per ten minutes, then silence. A known runner's slow-downs are counted,
@@ -1685,7 +1702,9 @@ class Service(CheckinMixin):
             c.execute("DELETE FROM replay_state WHERE status = 'done' AND updated_at < ?", (log_cut,))
             c.execute("DELETE FROM llm_calls WHERE ts < ?", (iso(now - timedelta(days=400)),))
             c.execute("DELETE FROM inbound_strikes WHERE ts < ?", (iso(now - timedelta(days=2)),))
-            c.execute("DELETE FROM alerts WHERE ts < ?", (iso(now - timedelta(days=30)),))
+            # Only sent alerts age out, and after 62 days (two months), so a month's cap keys outlive the month: no re-fire on
+            # the 31st, and an unsent backlog (cron not running) is never silently dropped.
+            c.execute("DELETE FROM alerts WHERE sent_at IS NOT NULL AND ts < ?", (iso(now - timedelta(days=62)),))
             c.execute("DELETE FROM enrol_refused WHERE day < ?", ((now - timedelta(days=90)).strftime("%Y-%m-%d"),))
             # the area's own age: 30 days after the run it came from (or its run is gone), or the switch is off
             c.execute("DELETE FROM convo_area WHERE NOT EXISTS (SELECT 1 FROM runs r WHERE r.user_id=convo_area.user_id "
