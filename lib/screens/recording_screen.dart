@@ -752,8 +752,6 @@ class _RecordingScreenState extends State<RecordingScreen>
             ] else ...[
               // The big gap to your best on a known trail; absent (no gap)
               // until one is matched.
-              if (s.trail case final tr?)
-                TrailGhostReadout(trail: tr, compact: compact),
               _FreeRunBlock(
                 s: s,
                 ctl: ctl,
@@ -763,6 +761,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                 card: _cardLink,
                 reserveCard: settings.showWhileRunning && s.tipsMuted != true,
                 cardShowing: cardShowing,
+                trail: s.trail,
               ),
             ],
             // Page 1's way to the map, matching NUMBERS on page 2. Not in a
@@ -1860,7 +1859,12 @@ class _FreeRunBlock extends StatelessWidget {
     this.card,
     this.reserveCard = false,
     this.cardShowing = false,
+    this.trail,
   });
+
+  /// The matched known trail, if any. Its gap sits above the trio at the
+  /// trio's own size (TIME's), and the plan fitting counts its height.
+  final TrailProgress? trail;
 
   /// The compare card may show: it gets a slot of its own below the
   /// clusters, so it covers no live number. Where the phone is too short for
@@ -2032,7 +2036,12 @@ class _FreeRunBlock extends StatelessWidget {
                 child: Container(height: divider, color: t.lineHair),
               ),
             );
-            final children = <Widget>[SizedBox(height: top)];
+            final children = <Widget>[
+              SizedBox(height: top),
+              // The gap to the run being raced, at TIME's size.
+              if (trail case final tr?)
+                TrailGhostReadout(trail: tr, valueSize: size),
+            ];
             // Without a slot of its own the card covers the pace cluster
             // while it shows; it hides then.
             final cover = !reserve && reserveCard;
@@ -2092,7 +2101,10 @@ class _FreeRunBlock extends StatelessWidget {
           _textH(AuxFigure.style.copyWith(fontSize: RunSoloType.runSize(40)));
       pace = paceCol > p.dialWidth / 2 ? paceCol : p.dialWidth / 2;
     }
-    return _trioH(size, stacked: p.stacked) + minGap + pace;
+    final ghost = trail == null
+        ? 0.0
+        : TrailGhostReadout.heightFor(trail!, size);
+    return ghost + _trioH(size, stacked: p.stacked) + minGap + pace;
   }
 }
 

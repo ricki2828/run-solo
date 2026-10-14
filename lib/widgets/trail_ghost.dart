@@ -43,8 +43,13 @@ class TrailGhostReadout extends StatelessWidget {
     this.compact = false,
     this.showLast = true,
     this.page2 = false,
+    this.valueSize,
   });
   final TrailProgress trail;
+
+  /// The figure's size on page 1: the same as TIME's, so the run screen hands
+  /// over the trio's adaptive size. Null falls back to a fixed size.
+  final double? valueSize;
 
   /// Short phone: one step smaller.
   final bool compact;
@@ -71,7 +76,8 @@ class TrailGhostReadout extends StatelessWidget {
     final other = racingLast ? best : (trail.lastIsBest ? null : last);
     final otherName = racingLast ? 'best' : 'last';
     if (!trail.off && lead == null) return const SizedBox.shrink();
-    final size = RunSoloType.runSize(page2 ? 44 : (compact ? 48 : 64));
+    final size =
+        valueSize ?? RunSoloType.runSize(page2 ? 44 : (compact ? 48 : 64));
     final tone = trail.off ? NightSession.inkPrimary : _tone(lead!);
     final label = [
       if (trail.off)
@@ -138,6 +144,46 @@ class TrailGhostReadout extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Height of the page 1 readout at [size] (the run screen's plan fitting
+  /// needs it before the widget exists): plate padding and border, the label,
+  /// the figure and the second line when there is one.
+  static double heightFor(TrailProgress trail, double size) {
+    double text(double fs) {
+      final p = TextPainter(
+        text: TextSpan(
+          text: '0',
+          style: RunSoloType.display44.copyWith(
+            fontSize: fs,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      return p.height;
+    }
+
+    final label = TextPainter(
+      text: TextSpan(text: '0', style: RunSoloType.runLabel),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final racingLast =
+        trail.racing == 'last' &&
+        !trail.lastIsBest &&
+        trail.aheadLastMs != null;
+    final lead = racingLast ? trail.aheadLastMs : trail.aheadBestMs;
+    final other = racingLast
+        ? trail.aheadBestMs
+        : (trail.lastIsBest ? null : trail.aheadLastMs);
+    if (!trail.off && lead == null) return 0;
+    // Plate: 4 + 4 padding, 2 + 2 border, 8 margin; 4 for the label scope.
+    var h = Space.x4 * 2 + 4 + Space.x8 + text(size);
+    if (!trail.off) {
+      h += label.height + 4;
+      if (other != null) h += text(RunSoloType.runSize(36));
+    }
+    return h;
   }
 
   static Widget _figure(String text, double size, Color color, Key key) =>

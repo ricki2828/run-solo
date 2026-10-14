@@ -113,6 +113,14 @@ void main() {
     await openRun(tester, progress: trail(best: 12000), hr: 124);
     expect(find.text('+12 s'), findsOneWidget);
     expect(find.text('VS BEST'), findsOneWidget);
+    // The gap is exactly as big as TIME, in whatever plan the screen chose.
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('trail-ghost-best')))
+          .style!
+          .fontSize,
+      tester.widget<Text>(find.byKey(const ValueKey('timer'))).style!.fontSize,
+    );
     expect(find.byKey(const ValueKey('trail-ghost-last')), findsNothing);
     expect(
       tester
@@ -189,6 +197,13 @@ void main() {
   testWidgets('short phone 360 x 640 still fits the numbers', (tester) async {
     await openRun(tester, progress: trail(best: 12000), hr: 140, height: 640);
     expect(find.text('+12 s'), findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('trail-ghost-best')))
+          .style!
+          .fontSize,
+      tester.widget<Text>(find.byKey(const ValueKey('timer'))).style!.fontSize,
+    );
     expect(tester.takeException(), isNull);
     await golden(tester, 'trail_ghost_ahead_z3_360x640');
   });
