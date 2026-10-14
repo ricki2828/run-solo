@@ -971,6 +971,7 @@ class CompanionController extends ChangeNotifier {
     if (_phase == CompanionPhase.on) {
       await syncWeather();
       await syncRouteShape();
+      await syncConsent();
     }
   }
 

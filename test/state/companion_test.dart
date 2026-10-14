@@ -1324,6 +1324,17 @@ void main() {
       expect(sent(), [kCompanionConsentVersion]);
     });
 
+    test('app start sends it when the last PUT never landed', () async {
+      http.handler = (r) => r.uri.path == '/v1/me/consent'
+          ? const CompanionReply(503)
+          : http.defaultReply(r);
+      await enrolNow(ctl);
+      http.handler = null;
+      http.requests.clear();
+      await controller().load();
+      expect(sent(), [kCompanionConsentVersion]);
+    });
+
     test('a runner who has not agreed sends nothing', () async {
       await ctl.syncConsent();
       expect(http.requests, isEmpty);
