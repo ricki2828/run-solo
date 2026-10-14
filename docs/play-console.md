@@ -229,6 +229,8 @@ Notes:
 
 ### 13.2 Store copy that must change
 
+The closed-test AAB includes the coach (`--dart-define=COMPANION=1` on the `release-aab` job, versionCode 4). It is off in the app until the runner turns it on and accepts the consent, so the copy below applies from the first closed release.
+
 The base copy says "No account. Nothing uploaded." and "Your routes, times and heart rate stay on your phone unless you choose to send them." That stays true for the base app but is no longer true once the companion exists. Change before the release, in the listing and in `docs/closed-test-testers.md`.
 
 - **Short description (72)**, replacing the one in section 1:
