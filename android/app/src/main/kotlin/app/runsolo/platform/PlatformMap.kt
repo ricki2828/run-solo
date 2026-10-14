@@ -150,12 +150,13 @@ fun LiveContext.toCore(): CoreLiveContext = CoreLiveContext(
     coachingMuted = coachingMuted,
     builtAtMs = builtAtMs,
     engineVersion = engineVersion.toInt(),
-    trails = trails.orEmpty().map { it.toCore() },
+    // One malformed trail costs the run that trail's ghost, never the boards, target and Cooper curve with it.
+    trails = trails.orEmpty().mapNotNull { t -> runCatching { t.toCore() }.getOrNull() },
 )
 
 private fun TrailProfile.toCore() = CoreTrailProfile(runId = runId, dateMs = dateMs, ms = ms)
 
-/** Throws [IllegalArgumentException] for a trail that breaks its contract (the whole context is then dropped). */
+/** Throws [IllegalArgumentException] for a trail that breaks its contract (the caller drops that trail alone). */
 private fun TrailRef.toCore() = CoreTrailRef(
     id = id, name = name, latLon = latLon, best = best.toCore(), last = last?.toCore(), turnAlongM = turnAlongM,
     elevM = elevM, elevSrc = elevSrc,

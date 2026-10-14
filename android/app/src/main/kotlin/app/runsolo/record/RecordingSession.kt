@@ -136,6 +136,7 @@ class RecordingSession(
     /** The ghost's own active clock (ms): grows while recording and not auto-paused, the same live and on restore. */
     private var ghostActiveMs = 0L
     private var ghostLastT: Long? = null
+    private var lastGhostTrailId: String? = null
     private val moving = MovingDetector()
 
     /** Stop/go for auto-pause only; [moving] keeps its own settings for the moving-time summary. */
@@ -318,7 +319,7 @@ class RecordingSession(
                     }
                 }
                 is RunEvent.Pause -> { paused = true; reanchor = true }
-                is RunEvent.Resume -> { paused = false; ticker.filter.reanchor(); reanchor = false }
+                is RunEvent.Resume -> { paused = false; ghostLastT = null; ticker.filter.reanchor(); reanchor = false }
                 is RunEvent.AutoPause -> paused = true
                 is RunEvent.AutoResume -> { paused = false; if (reanchor) ticker.filter.reanchor(); reanchor = false }
                 is RunEvent.Lap -> {
@@ -330,6 +331,7 @@ class RecordingSession(
         }
         follower?.restartClock() // the fixes' clock starts over after a kill
         ghostLastT = null
+        trailFeed.drainSwitches() // lead changes the replay queued were said (or not) before the kill: never said late
         ticker.filter.reanchor() // the runner moved during the dark span; do not count the jump
         lapStartDist = lastLapDist
         dispatch.ticked(t, ticker.distanceM)
@@ -1166,19 +1168,25 @@ class RecordingSession(
             val switches = trailFeed.drainSwitches()
             if (mode != RunMode.trail || core.state != RecorderState.recording || core.autoPaused) return
             val plan = checkIn ?: return
-            if (plan.level != VoiceLevel.coach) return
+            if (plan.level == VoiceLevel.minimal) return
             val ghost = trailFeed.state?.takeIf { !it.off }
-            // Which known climb is close: its gain, spoken like the retrace climb ("Climb ahead. 40 metres up.").
-            val knownClimbAheadM = ghost?.toClimbM?.takeIf { it in 1.0..GHOST_CLIMB_AHEAD_M }?.let { ahead ->
-                ghost.climbs.firstOrNull { it.startM > ghost.alongM && it.startM - ghost.alongM <= ahead + 1.0 }?.gainM
+            // The next known climb when it is close: spoken as its own beat, "Climb ahead. 40 metres up."
+            val knownClimb = ghost?.let { g ->
+                g.climbs.firstOrNull { it.startM > g.alongM && it.startM - g.alongM <= GHOST_CLIMB_AHEAD_M }
             }
+            // A different trail leading now is a different reference: the ahead/behind gate starts over, nothing is said.
+            val leaderId = ghost?.trailId
+            if (leaderId != null && lastGhostTrailId != null && leaderId != lastGhostTrailId) trailMoments.leaderChanged()
+            if (leaderId != null) lastGhostTrailId = leaderId
             // The leading figure (best to start, the last run once slipped), in seconds, positive = ahead.
             val lead = ghost?.let { if (it.racing == TrailGhost.Racing.last) it.aheadLastMs else it.aheadBestMs }
             for (sw in switches) cues.moment(trailMoments.switched(sw.toLast))?.let { said -> logSaid(said.text) }
             val input = MomentInput(
                 nowMs = t,
                 distM = ticker.distanceM,
-                climbAheadM = retrace.state.takeIf { it.retracing && it.direction == RetraceDirection.reverse }?.climbAheadM ?: knownClimbAheadM,
+                climbAheadM = retrace.state.takeIf { it.retracing && it.direction == RetraceDirection.reverse }?.climbAheadM,
+                knownClimbStartM = knownClimb?.startM,
+                knownClimbGainM = knownClimb?.gainM,
                 ghostAheadSec = lead?.let { it / 1000.0 },
                 toEndM = ghost?.toGoM,
                 racingLast = ghost?.racing == TrailGhost.Racing.last,

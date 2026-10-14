@@ -159,7 +159,8 @@ class LiveContextSource {
           outcome: BuildOutcome.timedOut,
         );
       }
-      return null;
+      // The trails were prepared ahead and cost no I/O: a slow compare keeps the ghost.
+      return withTrails(null, mode);
     } catch (e) {
       debugPrint('live: no context ($e)');
       if (kPerfDiagnostics) {
@@ -168,7 +169,7 @@ class LiveContextSource {
           outcome: BuildOutcome.failed,
         );
       }
-      return null;
+      return withTrails(null, mode);
     }
   }
 

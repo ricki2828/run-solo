@@ -20,6 +20,9 @@ data class MomentInput(
     val toEndM: Double? = null,
     /** Trail ghost: the figure above is against the last run (the runner slipped behind the best), not the best. */
     val racingLast: Boolean = false,
+    /** Trail ghost: the next known climb within call-out range (where it starts along the trail and what it gains); null = none. */
+    val knownClimbStartM: Double? = null,
+    val knownClimbGainM: Double? = null,
 )
 
 /**
@@ -32,6 +35,7 @@ data class MomentInput(
 class TrailMoments {
     private var gate = AheadBehindGate()
     private var switchId = 0
+    private val knownClimbsSaid = HashSet<Int>()
     private var climbAheadAtM = Double.NEGATIVE_INFINITY
     private var climbId = 0
     private var climbStartAscent: Double? = null
@@ -41,6 +45,7 @@ class TrailMoments {
     fun tick(i: MomentInput): List<TalkLine> {
         val out = ArrayList<TalkLine>(2)
         climbAhead(i)?.let { out += it }
+        knownClimb(i)?.let { out += it }
         climbDone(i)?.let { out += it }
         flip(i)?.let { out += it }
         finalPush(i)?.let { out += it }
@@ -52,6 +57,23 @@ class TrailMoments {
         climbAheadAtM = distM
         climbStartAscent = null
         flatSinceM = null
+    }
+
+    /**
+     * A climb of the known trail, called out once each from its own key (so two climbs on one trail are both said, and
+     * neither waits on the retrace rule's 1 km repeat gap): "Climb ahead. 40 metres up."
+     */
+    private fun knownClimb(i: MomentInput): TalkLine? {
+        val start = i.knownClimbStartM ?: return null
+        val gain = i.knownClimbGainM?.takeIf { it >= MIN_CLIMB_M } ?: return null
+        val id = start.roundToInt()
+        if (!knownClimbsSaid.add(id)) return null
+        return TalkLine(CueSlot.climbAhead, "climbAhead:known:$id", "Climb ahead. ${CheckInWords.metres(gain)} up.")
+    }
+
+    /** The lead moved to another known trail: its gap is another reference, so the flip gate starts over. Nothing is said. */
+    fun leaderChanged() {
+        gate = AheadBehindGate()
     }
 
     private fun climbAhead(i: MomentInput): TalkLine? {

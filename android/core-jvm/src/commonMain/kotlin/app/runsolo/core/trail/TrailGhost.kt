@@ -137,6 +137,7 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
         var racingLast = false
         var behindSince: Long? = null
         var calmSince: Long? = null
+        var rebaseAt = Long.MIN_VALUE / 2
         var turnFired = false
         var turnT = 0L
         var crowToApexM = Double.MAX_VALUE
@@ -193,6 +194,16 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
                             off = true
                             offSince = null
                             backSince = null
+                        } else if (runDistM <= config.engageWithinM) {
+                            // Still in the first stretch and not yet sure: a warm-up wobble (or the car park) is not the end of the
+                            // trail. Look for the line again from scratch.
+                            engaged = false
+                            offSince = null
+                            backSince = null
+                            n = 0
+                            onN = 0
+                            sumOff = 0.0
+                            return
                         } else {
                             dead = true
                             return
@@ -229,12 +240,14 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
             if (alongM - along > max(config.skipM, config.skipFrac * path.totalM)) {
                 a0 = alongM
                 myT0 = activeMs
+                rebaseAt = activeMs
             }
             along = alongM
         }
     }
 
-    private val cands: List<Cand> = refs.take(TrailRef.MAX_TRAILS).map { Cand(it) }
+    // One trail that cannot be set up (or later throws on a fix) is dropped alone: the others keep matching.
+    private val cands: List<Cand> = refs.take(TrailRef.MAX_TRAILS).mapNotNull { r -> runCatching { Cand(r) }.getOrNull() }
     private var leader: Cand? = null
 
     /** The matched trail's state after the last fix; null until one is confirmed. */
@@ -250,7 +263,13 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
      */
     fun offer(t: Long, lat: Double, lon: Double, accuracyM: Double, activeMs: Long, runDistM: Double): List<RouteFollower.Event> {
         if (!lat.isFinite() || !lon.isFinite() || !accuracyM.isFinite() || accuracyM > config.maxAccuracyM) return emptyList()
-        for (c in cands) if (!c.dead) c.step(t, lat, lon, accuracyM, activeMs, runDistM)
+        for (c in cands) if (!c.dead) {
+            try {
+                c.step(t, lat, lon, accuracyM, activeMs, runDistM)
+            } catch (e: Exception) {
+                c.dead = true
+            }
+        }
         val cur = leader
         if (cur == null || cur.off) {
             val next = cands.filter { it.confirmed && !it.dead && !it.off }.minByOrNull { it.meanOffM }
@@ -289,7 +308,7 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
         val turn = ref.turnAlongM
         val aBest = ahead(ref.best)
         val aLast = if (ref.last == null) aBest else ahead(last)
-        adapt(c, t, aBest, aLast, ref)
+        adapt(c, t, activeMs, aBest, aLast, ref)
         val onClimb = c.climbs.any { c.along >= it.startM && c.along <= it.endM }
         val nextClimb = if (onClimb) null else c.climbs.firstOrNull { it.startM > c.along }
         return TrailState(
@@ -329,7 +348,7 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
      * best on recovery. The enter margin is max(floor, 3% of the best's time over the stretch run), the exit margin half
      * of it, each held for a time, so it cannot flap. A figure that is missing (off the line, too early) pauses both timers.
      */
-    private fun adapt(c: Cand, t: Long, aBest: Long?, aLast: Long?, ref: TrailRef) {
+    private fun adapt(c: Cand, t: Long, now: Long, aBest: Long?, aLast: Long?, ref: TrailRef) {
         if (ref.last == null || aBest == null || aLast == null) {
             c.behindSince = null
             c.calmSince = null
@@ -339,8 +358,8 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
         val margin = max(config.slipFloorMs.toDouble(), config.slipFrac * stretch)
         if (!c.racingLast) {
             if (aBest < -margin && aLast > aBest) {
-                val since = c.behindSince ?: t.also { c.behindSince = it }
-                if (t - since >= config.slipHoldMs) {
+                val since = c.behindSince ?: now.also { c.behindSince = it }
+                if (now - since >= config.slipHoldMs) {
                     c.racingLast = true
                     c.behindSince = null
                     c.calmSince = null
@@ -348,9 +367,10 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
                 }
             } else c.behindSince = null
         } else {
-            if (aBest >= -margin * config.recoverFrac) {
-                val since = c.calmSince ?: t.also { c.calmSince = it }
-                if (t - since >= config.recoverHoldMs) {
+            // Right after a skipped section the compare restarts from near zero: that is not a recovery.
+            if (aBest >= -margin * config.recoverFrac && now - c.rebaseAt >= config.recoverHoldMs) {
+                val since = c.calmSince ?: now.also { c.calmSince = it }
+                if (now - since >= config.recoverHoldMs) {
                     c.racingLast = false
                     c.calmSince = null
                     c.behindSince = null

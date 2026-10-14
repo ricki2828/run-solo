@@ -419,4 +419,56 @@ class TrailGhostTest {
         val last = r.states.last()!!
         assertTrue(last.alongM > 1_400)
     }
+
+    @Test
+    fun `a pause or a gap does not count towards the hold`() {
+        val g = TrailGhost(listOf(TrailGhostKit.trail(straight)))
+        val r = Runner(g, mps = 3.0)
+        // 480 m: well past the 30 s margin, 100 s of the 120 s hold.
+        r.run(listOf(0.0 to 0.0, 480.0 to 0.0))
+        assertTrue(g.drainSwitches().isEmpty())
+        // Five minutes with no fixes (a pause, a dropout): the active clock stands still.
+        val after = Runner(g, mps = 3.0, startActiveMs = r.activeMs).also { it.t = r.t + 300_000; it.distM = r.distM }
+        after.run(listOf(480.0 to 0.0, 520.0 to 0.0))
+        assertTrue(g.drainSwitches().isEmpty(), "the first fixes after the gap must not switch")
+        after.run(listOf(520.0 to 0.0, 800.0 to 0.0))
+        assertEquals(listOf(true), g.drainSwitches().map { it.toLast })
+    }
+
+    @Test
+    fun `a shortcut while racing the last run is not a recovery`() {
+        val u = listOf(0.0 to 0.0, 800.0 to 0.0, 800.0 to 400.0, 0.0 to 400.0)
+        val g = TrailGhost(listOf(TrailGhostKit.trail(u, bestMps = 4.0, lastMps = 3.5)))
+        val r = Runner(g, mps = 3.0)
+        r.run(listOf(0.0 to 0.0, 800.0 to 0.0))
+        assertEquals(listOf(true), g.drainSwitches().map { it.toLast })
+        // Cut the corner, then carry on at the same slow pace for 100 s.
+        r.run(listOf(800.0 to 0.0, 400.0 to 400.0, 250.0 to 400.0))
+        assertTrue(g.drainSwitches().none { !it.toLast }, "no Back to your best from a cut corner")
+        assertEquals(TrailGhost.Racing.last, r.states.last()!!.racing)
+    }
+
+    @Test
+    fun `a warm up wobble before the trail is confirmed does not end it`() {
+        val g = TrailGhost(listOf(TrailGhostKit.trail(straight)))
+        val r = Runner(g, mps = 2.0)
+        // On the line at the car park, then 15 s of GPS drift far off it, then the run proper.
+        repeat(3) { r.fix(5.0, 0.0) }
+        repeat(15) { r.fix(5.0, 90.0) }
+        r.run(listOf(5.0 to 0.0, 700.0 to 0.0))
+        assertEquals("t1", r.states.last()?.trailId)
+    }
+
+    @Test
+    fun `lead changes queued while a run is rebuilt are drained and never come back`() {
+        // The recorder replays a killed run's fixes through the ghost, then drains: the switches the replay queued are
+        // gone, so the first live tick says nothing about them.
+        val feed = TrailGhostFeed(listOf(TrailGhostKit.trail(straight)))
+        val r = Runner(TrailGhost(listOf(TrailGhostKit.trail(straight))), mps = 3.0)
+        r.run(listOf(0.0 to 0.0, 900.0 to 0.0))
+        for (i in 0..300) feed.offer(i * 1_000L, 0.0, 0.0, 5.0, i * 1_000L, 0.0)
+        assertTrue(feed.drainSwitches().isEmpty())
+        assertTrue(r.ghost.drainSwitches().isNotEmpty())
+        assertTrue(r.ghost.drainSwitches().isEmpty(), "drained once, gone")
+    }
 }

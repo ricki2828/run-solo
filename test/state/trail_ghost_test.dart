@@ -159,6 +159,28 @@ void main() {
     },
   );
 
+  test(
+    'a compare build over the 150 ms budget still carries the trails',
+    () async {
+      final store = await storeWith(runs);
+      final src = LiveContextSource(
+        indexFile: store.indexFile,
+        trailGhosts: TrailGhostSource(
+          indexFile: store.indexFile,
+          runDirs: [runsDir, store.archiveDir],
+        ),
+      )..beforeFold = () => Future<void>.delayed(const Duration(seconds: 2));
+      await src.prepare();
+      await src.trailGhosts!.prepare();
+      final ctx = await src.build(mode: RecordMode.trail);
+      expect(ctx, isNotNull);
+      expect(ctx!.boards, isEmpty);
+      expect(ctx.trails, hasLength(2));
+      // A mode with no ghost still gets nothing on a timeout.
+      expect(await src.build(mode: RecordMode.intervals), isNull);
+    },
+  );
+
   test('no trail runs gives no trails and no context', () async {
     final store = await storeWith([
       freeRunFile(n: 1, start: d1, seconds: 1800),

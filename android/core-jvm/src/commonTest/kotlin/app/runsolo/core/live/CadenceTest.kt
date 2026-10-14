@@ -161,6 +161,35 @@ class CadenceTest {
     }
 
     @Test
+    fun `two known climbs on one trail are both called`() {
+        val m = TrailMoments()
+        val budget = TalkBudget(VoiceLevel.coach)
+        val first = m.tick(MomentInput(nowMs = 0, distM = 1_800.0, knownClimbStartM = 2_000.0, knownClimbGainM = 35.0)).single()
+        assertEquals("Climb ahead. 35 metres up.", first.text)
+        assertEquals("climbAhead:known:2000", first.key)
+        assertNotNull(budget.offer(first, 0L, 0L))
+        // The same climb on the next ticks is not offered again.
+        assertTrue(m.tick(MomentInput(nowMs = 1_000, distM = 1_850.0, knownClimbStartM = 2_000.0, knownClimbGainM = 35.0)).isEmpty())
+        // 1.5 km on, 10 m more gain than before: the second climb is news, the retrace rule's 1 km gap and 40 m step do not apply.
+        val second = m.tick(MomentInput(nowMs = 300_000, distM = 3_300.0, knownClimbStartM = 3_500.0, knownClimbGainM = 45.0)).single()
+        assertEquals("climbAhead:known:3500", second.key)
+        assertNotNull(budget.offer(second, 300_000L, 0L))
+        // A bump under 30 m is not called.
+        assertTrue(m.tick(MomentInput(nowMs = 400_000, distM = 4_300.0, knownClimbStartM = 4_500.0, knownClimbGainM = 20.0)).isEmpty())
+    }
+
+    @Test
+    fun `a change of leading trail starts the flip gate over and says nothing`() {
+        val m = TrailMoments()
+        m.tick(MomentInput(nowMs = 0, distM = 1_000.0, ghostAheadSec = -20.0))
+        m.tick(MomentInput(nowMs = 35_000, distM = 1_200.0, ghostAheadSec = -20.0))
+        m.leaderChanged()
+        // Without the reset this would be a flip to ahead after the hold; after it, it only sets the side.
+        assertTrue(m.tick(MomentInput(nowMs = 40_000, distM = 1_800.0, ghostAheadSec = 10.0)).isEmpty())
+        assertTrue(m.tick(MomentInput(nowMs = 75_000, distM = 2_300.0, ghostAheadSec = 10.0)).isEmpty())
+    }
+
+    @Test
     fun `a restore does not repeat a climb ahead or guess at a climb under way`() {
         val m = TrailMoments()
         m.resumeAt(5_000.0)

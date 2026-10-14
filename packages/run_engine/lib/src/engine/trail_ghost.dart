@@ -345,6 +345,7 @@ class _Cand {
   bool racingLast = false;
   int? behindSince;
   int? calmSince;
+  int rebaseAt = -(1 << 60);
   bool turnFired = false;
   int turnT = 0;
   double crowToApexM = double.maxFinite;
@@ -421,6 +422,16 @@ class _Cand {
             off = true;
             offSince = null;
             backSince = null;
+          } else if (runDistM <= cfg.engageWithinM) {
+            // Kotlin twin: a warm-up wobble before confirmation looks for the
+            // line again from scratch instead of ending the trail.
+            engaged = false;
+            offSince = null;
+            backSince = null;
+            n = 0;
+            onN = 0;
+            sumOff = 0;
+            return;
           } else {
             dead = true;
             return;
@@ -461,6 +472,7 @@ class _Cand {
     if (alongM - along > math.max(cfg.skipM, cfg.skipFrac * path.totalM)) {
       a0 = alongM;
       myT0 = activeMs;
+      rebaseAt = activeMs;
     }
     along = alongM;
   }
@@ -555,7 +567,7 @@ class TrailGhostTracker {
     final turn = ref.turnAlongM;
     final aBest = ahead(ref.best);
     final aLast = ahead(last);
-    _adapt(c, t, aBest, aLast);
+    _adapt(c, t, activeMs, aBest, aLast);
     return GhostState(
       trailId: ref.id,
       name: ref.name,
@@ -589,7 +601,7 @@ class TrailGhostTracker {
 
   /// Kotlin `TrailGhost.adapt`: the best leads; clearly behind it for a while
   /// with the last run closer, the last leads; back to the best on recovery.
-  void _adapt(_Cand c, int t, int? aBest, int? aLast) {
+  void _adapt(_Cand c, int t, int now, int? aBest, int? aLast) {
     final ref = c.ref;
     if (ref.last == null || aBest == null || aLast == null) {
       c.behindSince = null;
@@ -605,8 +617,8 @@ class TrailGhostTracker {
     );
     if (!c.racingLast) {
       if (aBest < -margin && aLast > aBest) {
-        final since = c.behindSince ??= t;
-        if (t - since >= config.slipHoldMs) {
+        final since = c.behindSince ??= now;
+        if (now - since >= config.slipHoldMs) {
           c.racingLast = true;
           c.behindSince = null;
           c.calmSince = null;
@@ -616,9 +628,10 @@ class TrailGhostTracker {
         c.behindSince = null;
       }
     } else {
-      if (aBest >= -margin * config.recoverFrac) {
-        final since = c.calmSince ??= t;
-        if (t - since >= config.recoverHoldMs) {
+      if (aBest >= -margin * config.recoverFrac &&
+          now - c.rebaseAt >= config.recoverHoldMs) {
+        final since = c.calmSince ??= now;
+        if (now - since >= config.recoverHoldMs) {
           c.racingLast = false;
           c.calmSince = null;
           c.behindSince = null;
