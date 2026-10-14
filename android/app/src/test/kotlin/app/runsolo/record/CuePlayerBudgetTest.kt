@@ -77,7 +77,8 @@ class CuePlayerBudgetTest {
         cues.alert("Turn here.", longArrayOf(0, 150), CueSlot.turnaround)
         clock = 1_000
         assertEquals(25_750L, cues.coachBusyUntil)
-        assertEquals(750L, CuePlayer(context) { clock }.also { it.alert("Turn here.", longArrayOf(0, 150)) }.coachBusyUntil)
+        // Everything: just the speech queue (this player's alert starts at clock 1000, 2 words = 750 ms), no budget gap.
+        assertEquals(1_750L, CuePlayer(context) { clock }.also { it.alert("Turn here.", longArrayOf(0, 150)) }.coachBusyUntil)
     }
 
     @Test
