@@ -41,6 +41,11 @@ enum _Stage {
   detail,
   live,
   card,
+  cardCur,
+  cardA,
+  cardB,
+  cardC,
+  cardDark,
   noPack,
   hill,
   hillLive,
@@ -145,6 +150,7 @@ class _Harness extends StatefulWidget {
 class _HarnessState extends State<_Harness> {
   _Stage _stage = _Stage.setup;
   TopoMapSurfaceFactory? _factory;
+  final Map<_Stage, TopoMapSurfaceFactory> _cardFactories = {};
   final LiveRouteTrack _track = LiveRouteTrack();
   Timer? _feed;
 
@@ -212,6 +218,47 @@ class _HarnessState extends State<_Harness> {
     await _go(_Stage.live, 16);
     _feed?.cancel();
     await _go(_Stage.card, 16);
+    // The Home card over real steep terrain, the old look beside each new
+    // card style, then the dark theme.
+    TopoMapSurfaceFactory with_(String light, String dark) =>
+        TopoMapSurfaceFactory(
+          packs: packs,
+          settings: SettingsController(
+            MemorySettingsStore(const AppSettings()),
+          ),
+          fallback: const FakeMapSurfaceFactory(available: true),
+          engine: MapLibreTopoEngine(
+            TopoFiles(
+              packsRoot: packs.root,
+              cardLightAsset: light,
+              cardDarkAsset: dark,
+            ),
+          ),
+        );
+    const cardDir = 'assets/maps/card';
+    _cardFactories[_Stage.cardCur] = with_(kTopoStyleAsset, kTopoStyleAsset);
+    _cardFactories[_Stage.cardA] = with_(
+      '$cardDir/aurora_card_a.json',
+      '$cardDir/aurora_card_dark.json',
+    );
+    _cardFactories[_Stage.cardB] = with_(
+      '$cardDir/aurora_card_b.json',
+      '$cardDir/aurora_card_dark.json',
+    );
+    _cardFactories[_Stage.cardC] = with_(
+      '$cardDir/aurora_card_c.json',
+      '$cardDir/aurora_card_dark.json',
+    );
+    _cardFactories[_Stage.cardDark] = _cardFactories[_Stage.cardA]!;
+    for (final s in const [
+      _Stage.cardCur,
+      _Stage.cardA,
+      _Stage.cardB,
+      _Stage.cardC,
+      _Stage.cardDark,
+    ]) {
+      await _go(s, 14);
+    }
     await _go(_Stage.noPack, 6);
     await _go(_Stage.hill, 9);
     await _hillRun(_Stage.hillLive);
@@ -307,6 +354,52 @@ class _HarnessState extends State<_Harness> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+          _Stage.cardCur ||
+          _Stage.cardA ||
+          _Stage.cardB ||
+          _Stage.cardC ||
+          _Stage.cardDark => Theme(
+            data: runSoloTheme(
+              brightness: _stage == _Stage.cardDark
+                  ? Brightness.dark
+                  : Brightness.light,
+            ),
+            child: Builder(
+              builder: (context) => ColoredBox(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: RunCard(
+                    accent: AuroraRunType.trail,
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ActivityMapHeader(
+                          maps: _cardFactories[_stage],
+                          route: _geometry(_hillRoute),
+                          runId: 'harness-${_stage.name}',
+                          color: _stage == _Stage.cardDark
+                              ? AuroraRunType.trail
+                              : AuroraRunTypeLight.trail,
+                          terrain: true,
+                          climbM: _climb(_hillRoute),
+                          units: Units.km,
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(Space.x16),
+                          child: Text(
+                            'Afternoon Trail run ${_stage.name}',
+                            style: RunSoloType.heading19,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
           ),

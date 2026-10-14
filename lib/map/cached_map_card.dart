@@ -43,7 +43,12 @@ class CachedMapCard extends StatefulWidget {
     required this.renderer,
     this.routeColor,
     this.bakedRoute = false,
+    this.printed = false,
   });
+
+  /// The snapshot is a finished picture (the printed Topo card): shown as
+  /// it is, with no muting, tint or dimming over it.
+  final bool printed;
   final RouteGeometry route;
 
   /// The renderer's snapshot already has the route drawn in: no overlay.
@@ -162,30 +167,40 @@ class _CachedMapCardState extends State<CachedMapCard> {
                 card: true,
               )
             else ...[
-              Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Tiles step back so the route stays the brightest thing:
-                  // Google and Topo snapshots get the same treatment.
-                  ColorFiltered(
-                    colorFilter: const ColorFilter.matrix(_muted),
-                    child: Image.memory(
-                      png,
-                      key: const ValueKey('card-map-image'),
-                      fit: BoxFit.cover,
-                      gaplessPlayback: true,
-                      errorBuilder: (_, _, _) => ColoredBox(color: t.bgRaised),
+              if (widget.printed)
+                Image.memory(
+                  png,
+                  key: const ValueKey('card-map-image'),
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                  errorBuilder: (_, _, _) => ColoredBox(color: t.bgRaised),
+                )
+              else
+                Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Tiles step back so the route stays the brightest thing:
+                    // Google and Topo snapshots get the same treatment.
+                    ColorFiltered(
+                      colorFilter: const ColorFilter.matrix(_muted),
+                      child: Image.memory(
+                        png,
+                        key: const ValueKey('card-map-image'),
+                        fit: BoxFit.cover,
+                        gaplessPlayback: true,
+                        errorBuilder: (_, _, _) =>
+                            ColoredBox(color: t.bgRaised),
+                      ),
                     ),
-                  ),
-                  // Tint toward the run colour so the map reads as part of
-                  // the card, then dim a touch so the place stays readable.
-                  if (widget.routeColor != null)
-                    ColoredBox(
-                      color: widget.routeColor!.withValues(alpha: 0.14),
-                    ),
-                  ColoredBox(color: t.bgBase.withValues(alpha: 0.1)),
-                ],
-              ),
+                    // Tint toward the run colour so the map reads as part of
+                    // the card, then dim a touch so the place stays readable.
+                    if (widget.routeColor != null)
+                      ColoredBox(
+                        color: widget.routeColor!.withValues(alpha: 0.14),
+                      ),
+                    ColoredBox(color: t.bgBase.withValues(alpha: 0.1)),
+                  ],
+                ),
               if (!widget.bakedRoute)
                 RouteShape(
                   route: widget.route,

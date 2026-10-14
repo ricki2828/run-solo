@@ -62,9 +62,14 @@ class TopoStyle {
     required String glyphsDir,
     Map<String, Map<String, Object?>> routeData = const {},
     double pixelScale = 1,
+    Map<String, String> swaps = const {},
   }) {
-    final style = (_fill(jsonDecode(template), packDir, glyphsDir) as Map)
-        .cast<String, Object?>();
+    final style = (_fill(
+      jsonDecode(template),
+      packDir,
+      glyphsDir,
+      swaps,
+    ) as Map).cast<String, Object?>();
     _swapFonts(style['layers']);
     final sources = (style['sources'] as Map).cast<String, Object?>();
     for (final id in const [
@@ -81,7 +86,8 @@ class TopoStyle {
       };
     }
     final layers = (style['layers'] as List).cast<Object?>();
-    layers.addAll(_routeLayers);
+    final card = (style['metadata'] as Map?)?['card'] == true;
+    layers.addAll(card ? _cardRouteLayers : _routeLayers);
     if (pixelScale != 1) scaleForPixelRatio(layers, pixelScale);
     style['metadata'] = {
       ...((style['metadata'] as Map?)?.cast<String, Object?>() ?? const {}),
@@ -163,16 +169,68 @@ class TopoStyle {
     return v;
   }
 
-  static Object? _fill(Object? v, String packDir, String glyphsDir) =>
-      switch (v) {
-        String s =>
+  static Object? _fill(
+    Object? v,
+    String packDir,
+    String glyphsDir,
+    Map<String, String> swaps,
+  ) => switch (v) {
+    String s =>
+      swaps[s] ??
           s.replaceAll('{pack}', packDir).replaceAll('{glyphs}', glyphsDir),
-        List l => [for (final e in l) _fill(e, packDir, glyphsDir)],
-        Map m => {
-          for (final e in m.entries) e.key: _fill(e.value, packDir, glyphsDir),
-        },
-        _ => v,
-      };
+    List l => [for (final e in l) _fill(e, packDir, glyphsDir, swaps)],
+    Map m => {
+      for (final e in m.entries)
+        e.key: _fill(e.value, packDir, glyphsDir, swaps),
+    },
+    _ => v,
+  };
+
+  /// The sentinel colours in the card styles (tools/topo/build_card_style.py)
+  /// and what they become for a run in [lane]: the lane itself, a light grey
+  /// with a little lane in it for contours and trails, and the lane as a
+  /// wash. [dark] picks the darker grey.
+  static Map<String, String> cardSwaps(Color lane, {required bool dark}) => {
+    '#fe01fe': hex(lane),
+    '#fe02fe': hex(
+      Color.lerp(
+        dark ? const Color(0xFF6A7075) : const Color(0xFFA2A49C),
+        lane,
+        dark ? 0.35 : 0.38,
+      )!,
+    ),
+    '#fe03fe': hex(lane),
+  };
+
+  /// A card's route: a soft glow, a white casing and the lane colour, drawn
+  /// like ink on a printed map. Only used by the card styles.
+  static final List<Map<String, Object?>> _cardRouteLayers = [
+    {
+      'id': 'rs-track-glow',
+      'type': 'line',
+      'source': trackSource,
+      'layout': {'line-cap': 'round', 'line-join': 'round'},
+      'paint': {
+        'line-color': ['get', 'c'],
+        'line-width': 18,
+        'line-blur': 9,
+        'line-opacity': 0.4,
+      },
+    },
+    _line('rs-track-casing', trackSource, ['get', 'k'], 9),
+    _line('rs-track', trackSource, ['get', 'c'], 5.5),
+    {
+      'id': 'rs-marks',
+      'type': 'circle',
+      'source': marksSource,
+      'paint': {
+        'circle-radius': 6.5,
+        'circle-color': ['get', 'c'],
+        'circle-stroke-color': ['get', 'k'],
+        'circle-stroke-width': 2.5,
+      },
+    },
+  ];
 
   /// Every `text-font` in the style becomes [kTopoFontStack]: the style
   /// names "Noto Sans Regular" / "Italic", the bundled glyph folder is one

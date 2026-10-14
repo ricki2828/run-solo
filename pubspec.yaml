@@ -48,6 +48,7 @@ flutter:
     - assets/maps/night_session.json
     - assets/maps/night_session_card.json
     - assets/maps/aurora_topo.json
+    - assets/maps/card/
     # Glyphs the offline Topo map's labels need (Noto Sans, OFL); copied to the files dir on first use.
     - assets/topo/glyphs/
     - assets/topo/glyphs/NotoSans/

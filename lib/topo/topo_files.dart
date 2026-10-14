@@ -18,12 +18,32 @@ import 'topo_style.dart';
 typedef AssetLoader = Future<ByteData> Function(String key);
 
 const String kTopoStyleAsset = 'assets/maps/aurora_topo.json';
+
+/// Home card styles: a pale printed-map look (and its dark twin), generated
+/// by tools/topo/build_card_style.py. The live and detail maps keep
+/// [kTopoStyleAsset].
+const String kTopoCardLightAsset = 'assets/maps/card/aurora_card_a.json';
+const String kTopoCardDarkAsset = 'assets/maps/card/aurora_card_dark.json';
 const String kTopoGlyphAssetDir = 'assets/topo/glyphs/NotoSans';
 
 class TopoFiles {
-  TopoFiles({required Directory packsRoot, AssetLoader? loader})
-    : _dir = Directory('${packsRoot.parent.path}/topo-assets'),
-      _load = loader ?? rootBundle.load;
+  TopoFiles({
+    required Directory packsRoot,
+    AssetLoader? loader,
+    this.cardLightAsset = kTopoCardLightAsset,
+    this.cardDarkAsset = kTopoCardDarkAsset,
+  }) : _dir = Directory('${packsRoot.parent.path}/topo-assets'),
+       _load = loader ?? rootBundle.load;
+
+  /// The style a Home card is drawn with, by theme. The harness points these
+  /// at the variants (or the old dark style) to compare them.
+  final String cardLightAsset;
+  final String cardDarkAsset;
+
+  /// False when the card uses the live map's own style (the old look): its
+  /// snapshot then gets the card's tint and the gradient route.
+  bool get printedCards =>
+      cardLightAsset != kTopoStyleAsset && cardDarkAsset != kTopoStyleAsset;
 
   /// `<app files>/topo-assets`, beside the pack folder so the pack manager
   /// never mistakes it for a pack.
@@ -57,12 +77,14 @@ class TopoFiles {
     required String key,
     required Map<String, Map<String, Object?>> data,
     double pixelScale = 1,
+    bool dark = false,
+    Map<String, String> swaps = const {},
   }) async {
     await (_glyphs ??= _copyGlyphs().catchError((Object e) {
       _glyphs = null;
       throw e;
     }));
-    final bytes = await _load(kTopoStyleAsset);
+    final bytes = await _load(dark ? cardDarkAsset : cardLightAsset);
     final text = TopoStyle.build(
       utf8.decode(
         bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
@@ -71,6 +93,7 @@ class TopoFiles {
       glyphsDir: glyphsDir,
       routeData: data,
       pixelScale: pixelScale,
+      swaps: swaps,
     );
     final safe = key.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
     final file = File('${_dir.path}/styles/card-$safe.json');
