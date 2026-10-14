@@ -232,6 +232,20 @@ void main() {
       ]),
     ),
     vector(
+      'shortcut_is_not_time_gained',
+      [
+        trail(const [(0, 0), (800, 0), (800, 400), (0, 400)], id: 'u'),
+      ],
+      runner(
+        [
+          const [(0, 0), (800, 0), (400, 400), (0, 400)],
+        ],
+        mps: 4,
+        noiseM: 3,
+        seed: 9,
+      ),
+    ),
+    vector(
       'shared_start_hands_over',
       [a, b],
       runner(

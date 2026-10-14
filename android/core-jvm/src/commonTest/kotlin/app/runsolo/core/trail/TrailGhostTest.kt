@@ -403,4 +403,20 @@ class TrailGhostTest {
         assertTrue(level.states.filterNotNull().all { it.racing == TrailGhost.Racing.last })
         assertEquals(listOf(true), g.drainSwitches().map { it.toLast })
     }
+
+    @Test
+    fun `a shortcut is never time gained`() {
+        val u = listOf(0.0 to 0.0, 800.0 to 0.0, 800.0 to 400.0, 0.0 to 400.0)
+        // Best and last both at 4 m/s; the runner too, but cuts the corner (566 m instead of 800 m of trail).
+        val g = TrailGhost(listOf(TrailGhostKit.trail(u, bestMps = 4.0, lastMps = null)))
+        val r = Runner(g, mps = 4.0)
+        r.run(listOf(0.0 to 0.0, 800.0 to 0.0, 400.0 to 400.0, 0.0 to 400.0))
+        val figures = r.states.filterNotNull().mapNotNull { it.aheadBestMs }
+        assertTrue(figures.isNotEmpty())
+        // At the best's own pace the figure stays level; the skipped ground would have read about a minute ahead.
+        assertTrue(figures.all { it in -20_000..20_000 }, "figures $figures".take(300))
+        // Right after the rejoin there is no figure until 100 m are covered again.
+        val last = r.states.last()!!
+        assertTrue(last.alongM > 1_400)
+    }
 }

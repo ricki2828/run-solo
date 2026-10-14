@@ -55,6 +55,9 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
         val minCover: Double = 0.8,
         /** No ahead/behind figure until the runner has covered this much of the trail. */
         val reportM: Double = 100.0,
+        /** A jump along the trail over max(this, [skipFrac] of it) is ground not covered: the compare restarts from there. */
+        val skipM: Double = 150.0,
+        val skipFrac: Double = 0.05,
         /** Adaptive lead: clearly behind the best by more than max(this, [slipFrac] of the best's time over the stretch)... */
         val slipFloorMs: Long = 30_000,
         val slipFrac: Double = 0.03,
@@ -198,7 +201,7 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
                 } else {
                     offSince = null
                     lastOnT = t
-                    advance(hit.alongM)
+                    advance(hit.alongM, activeMs)
                 }
             } else if (hit != null && dist <= backLimit) {
                 val since = backSince ?: t.also { backSince = it }
@@ -207,7 +210,7 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
                     backSince = null
                     offSince = null
                     lastOnT = t
-                    advance(hit.alongM)
+                    advance(hit.alongM, activeMs)
                 }
             } else {
                 backSince = null
@@ -216,8 +219,18 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
             apex?.let { crowToApexM = hypot(x - it.first, y - it.second) }
         }
 
-        private fun advance(alongM: Double) {
-            if (alongM > along) along = alongM
+        /**
+         * Progress only moves forward. A jump further than [skipM] is ground the runner did not cover (a shortcut, a
+         * long fix gap): the comparison starts over from the re-matched point, so a skipped section never reads as
+         * time gained.
+         */
+        private fun advance(alongM: Double, activeMs: Long) {
+            if (alongM <= along) return
+            if (alongM - along > max(config.skipM, config.skipFrac * path.totalM)) {
+                a0 = alongM
+                myT0 = activeMs
+            }
+            along = alongM
         }
     }
 

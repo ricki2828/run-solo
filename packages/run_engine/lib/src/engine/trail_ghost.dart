@@ -158,6 +158,8 @@ class GhostConfig {
   final double confirmM = 300;
   final double minCover = RouteMatch.minCover;
   final double reportM = 100;
+  final double skipM = 150;
+  final double skipFrac = 0.05;
   final int slipFloorMs = 30000;
   final double slipFrac = 0.03;
   final int slipHoldMs = 120000;
@@ -427,7 +429,7 @@ class _Cand {
       } else {
         offSince = null;
         lastOnT = t;
-        _advance(hit.alongM);
+        _advance(hit.alongM, activeMs);
       }
     } else if (hit != null && dist <= backLimit) {
       final since = backSince ?? (backSince = t);
@@ -436,7 +438,7 @@ class _Cand {
         backSince = null;
         offSince = null;
         lastOnT = t;
-        _advance(hit.alongM);
+        _advance(hit.alongM, activeMs);
       }
     } else {
       backSince = null;
@@ -452,8 +454,15 @@ class _Cand {
     }
   }
 
-  void _advance(double alongM) {
-    if (alongM > along) along = alongM;
+  /// Kotlin `advance`: a jump over [GhostConfig.skipM] (or its share of the
+  /// trail) is ground not covered, so the compare restarts from there.
+  void _advance(double alongM, int activeMs) {
+    if (alongM <= along) return;
+    if (alongM - along > math.max(cfg.skipM, cfg.skipFrac * path.totalM)) {
+      a0 = alongM;
+      myT0 = activeMs;
+    }
+    along = alongM;
   }
 }
 
