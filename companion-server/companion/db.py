@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
   cap_zone TEXT, cap_week TEXT,
   weather_optin INTEGER NOT NULL DEFAULT 0,  -- the app's "Weather in suggestions" switch; area is stored only while 1
   route_optin INTEGER NOT NULL DEFAULT 1,    -- the app's "Show route shape on cards" switch (default on); a shape is stored only while 1
+  checkin_consent INTEGER,                   -- the companion consent version the app says the runner agreed to; NULL = never said (no check-ins)
   UNIQUE (channel, chat_ref)
 );
 CREATE TABLE IF NOT EXISTS devices (
@@ -270,6 +271,12 @@ def init(path: str) -> None:
         if "route_optin" not in cols:  # databases created before the route-shape switch (default on, like the app)
             try:
                 c.execute("ALTER TABLE users ADD COLUMN route_optin INTEGER NOT NULL DEFAULT 1")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e):
+                    raise
+        if "checkin_consent" not in cols:  # databases created before check-in consent gating
+            try:
+                c.execute("ALTER TABLE users ADD COLUMN checkin_consent INTEGER")
             except sqlite3.OperationalError as e:
                 if "duplicate column" not in str(e):
                     raise

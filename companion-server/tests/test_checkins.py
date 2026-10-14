@@ -88,10 +88,17 @@ class Env:
         return {(r["kind"], r["local_date"]): r["value"] for r in self.q("SELECT * FROM checkin_answers")}
 
 
+def agree(client, token, version=2):
+    """The app's Agree tap: PUT /v1/me/consent."""
+    r = client.put("/v1/me/consent", json={"consent_version": version}, headers=auth(token))
+    assert r.status_code == 200, r.text
+
+
 @pytest.fixture
 def env(client, fakes):
     t = enrol(client)
     e = Env(client, fakes, t)
+    agree(client, t)
     e.seed()
     return e
 
@@ -796,6 +803,7 @@ def test_the_privacy_page_says_what_check_ins_keep_and_for_how_long():
     for needle in ("check-in", "14 days", "sore", "ill", "never sent to openrouter"):
         assert needle in low, needle
     assert "at most one a week, and only inside a run note" not in low
+    assert "which version of the agreement you accepted" in low and "no check-in until that number" in low
 
 
 # ================================================================= the app's read-only endpoint
@@ -1170,3 +1178,173 @@ def test_the_apps_exact_payload_is_accepted_over_http_and_the_name_reaches_next_
     assert client.post("/v1/runs", json=bad, headers=auth(env.token)).status_code in (200, 202)
     n = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))["next_session"]
     assert (n["name"], n["name_source"]) == ("Quality session", "none")
+
+
+# ================================================================= consent gate: the server must know the app's agreed version
+@pytest.fixture
+def env_nc(client, fakes):
+    """A runner whose app has never told the server it agreed (an old app, or the Agree card not tapped yet)."""
+    e = Env(client, fakes, enrol(client))
+    e.seed()
+    return e
+
+
+def every_slot_time(env):
+    """(label, instant) for each way a check-in can start: evening readiness, morning card, Sunday question, post-run."""
+    return [("ready", at(2026, 10, 14, 20, 5)), ("today", at(2026, 10, 15, 6, 45))]
+
+
+def test_an_old_app_that_never_sent_a_consent_version_gets_no_check_ins(env_nc):
+    assert env_nc.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] is None
+    for label, t in every_slot_time(env_nc):
+        assert env_nc.step(t) == 0, label
+    env_nc.run("sat", at(2026, 10, 24, 7, 0), now=at(2026, 10, 24, 20, 0),
+               plan_next={"type": "quality", "day": "2026-10-27", "week": 4, "distance_m": 6000})
+    assert env_nc.step(at(2026, 10, 25, 19, 10)) == 0           # the Sunday question
+    assert env_nc.sends() == [] and env_nc.q("SELECT * FROM checkin_slots") == []
+
+
+def test_v2_gets_check_ins_and_the_same_runner_below_it_does_not(client, env_nc):
+    agree(client, env_nc.token, 1)                               # the old consent text
+    assert env_nc.step(at(2026, 10, 14, 20, 5)) == 0
+    agree(client, env_nc.token, 2)
+    assert env_nc.step(at(2026, 10, 14, 20, 5)) == 1
+    assert env_nc.sends()[-1]["text"].startswith("Quality session, 6 km tomorrow")
+
+
+def test_a_downgrade_stops_new_check_ins_and_old_buttons_record_nothing(env, client):
+    now = at(2026, 10, 14, 20, 5)
+    env.step(now)
+    agree(client, env.token, 1)                                  # e.g. the runner reinstalled an older build
+    assert env.tap("r.flat", now + timedelta(minutes=1)) != [] and env.answers() == {}   # toast + keyboard cleared only
+    assert env.step(at(2026, 10, 15, 6, 45)) == 0
+    assert [m for m, _ in env.fakes.tg[env.base:] if m == "editMessageText"] == []
+    agree(client, env.token, 0)
+    assert env.step(at(2026, 10, 15, 6, 46)) == 0
+
+
+def test_a_queued_check_in_is_not_sent_if_consent_is_withdrawn_before_the_worker_runs(env, client):
+    now = at(2026, 10, 14, 20, 5)
+    env.svc.plan_checkins(now)
+    agree(client, env.token, 1)
+    env.svc.run_outbox(now)
+    assert env.sends() == []
+
+
+def test_the_pinned_week_card_needs_consent_too(env_nc, client):
+    import dataclasses
+    env_nc.svc.s = dataclasses.replace(env_nc.svc.s, media_enabled=True)
+    env_nc.svc._ci_week_enqueue({"id": env_nc.uid, "channel": "telegram", "zone_id": "Europe/Rome"}, at(2026, 10, 14, 9, 0))
+    assert env_nc.q("SELECT * FROM outbox WHERE kind='ci_week'") == []
+    agree(client, env_nc.token)
+    env_nc.svc._ci_week_enqueue({"id": env_nc.uid, "channel": "telegram", "zone_id": "Europe/Rome"}, at(2026, 10, 14, 9, 0))
+    assert len(env_nc.q("SELECT * FROM outbox WHERE kind='ci_week'")) == 1
+    agree(client, env_nc.token, 1)
+    assert env_nc.svc._ci_week_sync({"id": env_nc.uid, "channel": "telegram", "zone_id": "Europe/Rome"}, "2026-10-12",
+                                    at(2026, 10, 14, 9, 0)) == ("skipped", None)
+
+
+def test_the_run_card_stays_a_new_message_when_consent_is_missing(env_nc):
+    """Runs and the existing coach messages work without consent: the result card is sent, just never as an edit of a check-in."""
+    run_thursday(env_nc)
+    assert [m for m, _ in env_nc.fakes.tg[env_nc.base:] if m in ("sendMessage", "sendPhoto")] != []
+    assert [m for m, _ in env_nc.fakes.tg[env_nc.base:] if m == "editMessageText"] == []
+    assert env_nc.q("SELECT * FROM cards WHERE kind='run'")
+
+
+def test_the_consent_endpoint_validates_and_needs_the_device_token(env_nc, client):
+    h = auth(env_nc.token)
+    assert client.put("/v1/me/consent", json={"consent_version": 2}).status_code == 401
+    for bad in ({"consent_version": -1}, {"consent_version": "2"}, {"consent_version": 2.5}, {"consent_version": None},
+                {}, {"consent_version": 2, "extra": 1}, {"consent_version": 10 ** 6}, {"consent_version": True}):
+        assert client.put("/v1/me/consent", json=bad, headers=h).status_code == 422, bad
+    assert env_nc.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] is None
+
+
+def test_the_run_upload_may_carry_the_consent_version_and_an_old_payload_still_posts(env_nc, client):
+    start = at(2026, 10, 13, 8, 0)
+    body = {"run_id": "app1", "type": "easy", "start_utc": start.isoformat(), "utc_offset_min": 120, "zone_id": "Europe/Rome",
+            "duration_s": 2400, "distance_m": 7000, "plan_week": 3, "plan_weeks": 4,
+            "plan_next": {"type": "quality", "day": "2026-10-15", "week": 3, "distance_m": 6000,
+                          "session_id": "tempo", "session_name": "Tempo intervals"}}
+    r = client.post("/v1/runs", json=body, headers=auth(env_nc.token))                     # the app as it is on main today
+    assert r.status_code in (200, 202), r.text
+    assert env_nc.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] is None
+    r = client.post("/v1/runs", json={**body, "run_id": "app2", "consent_version": 2}, headers=auth(env_nc.token))
+    assert r.status_code in (200, 202), r.text
+    assert env_nc.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] == 2
+    r = client.post("/v1/runs", json={**body, "run_id": "app3", "consent_version": 1}, headers=auth(env_nc.token))
+    assert env_nc.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] == 1        # the latest report wins
+    r = client.post("/v1/runs", json={**body, "run_id": "app4", "consent_version": -3}, headers=auth(env_nc.token))
+    assert r.status_code == 422
+    assert client.post("/v1/runs", json={**body, "run_id": "app5", "nope": 1}, headers=auth(env_nc.token)).status_code == 422
+
+
+def test_delete_clears_the_consent_and_a_fresh_enrolment_starts_without_it(env, client):
+    assert env.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] == 2
+    me = client.get("/v1/me", headers=auth(env.token)).json()
+    assert me["profile"]["checkin_consent"] == 2
+    assert client.delete("/v1/me", headers=auth(env.token)).json() == {"status": "deleted"}
+    assert env.q("SELECT checkin_consent FROM users") == []
+    t2 = enrol(client)
+    assert client.get("/v1/me", headers=auth(t2)).json()["profile"]["checkin_consent"] is None
+    assert client.put("/v1/me/consent", json={"consent_version": 2}, headers=auth(env.token)).status_code == 401   # old token is gone
+
+
+def test_the_cli_seeds_a_consent_version_for_one_runner_by_chat_ref_or_id(env_nc, client, capsys, caplog):
+    from companion import cli
+    s, svc = env_nc.svc.s, env_nc.svc
+    assert env_nc.step(at(2026, 10, 14, 20, 5)) == 0
+    assert cli.set_consent(s, svc, "nobody", "2") == 1 and cli.set_consent(s, svc, OWNER, "x") == 2
+    assert cli.set_consent(s, svc, OWNER, "1001") == 2
+    assert env_nc.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] is None
+    with caplog.at_level("INFO", logger="companion"):
+        assert cli.set_consent(s, svc, OWNER, "2") == 0
+    assert "via cli" in caplog.text and OWNER not in capsys.readouterr().out
+    assert env_nc.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] == 2
+    assert env_nc.step(at(2026, 10, 14, 20, 5)) == 1                      # check-ins now flow
+    assert cli.set_consent(s, svc, env_nc.uid, "1") == 0                  # by user id too; lowers it again
+    assert env_nc.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] == 1
+
+
+# ================================================================= consent gate, round 2 (review of #295)
+def test_a_real_relink_by_an_old_app_clears_the_consent_so_no_check_ins(env, client):
+    assert env.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] == 2
+    enrol(client)                                    # reinstall / new phone: the full enrol flow, no consent version sent
+    assert env.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] is None
+    assert env.step(at(2026, 10, 14, 20, 5)) == 0
+    assert env.q("SELECT * FROM checkin_slots") == []
+
+
+def test_stored_answers_are_ignored_once_consent_is_withdrawn(env, client):
+    put(env, "why", "2026-10-15", "ill", at(2026, 10, 15, 8, 0))
+    put(env, "why", "2026-10-15", "sore", at(2026, 10, 15, 8, 1))
+    agree(client, env.token, 1)
+    start = at(2026, 10, 16, 7, 0)
+    env.run("fri", start, now=start + timedelta(minutes=45), type="easy", verdict="slower")
+    env.svc.run_outbox(start + timedelta(minutes=46))
+    assert "You said" not in env.sends()[-1]["text"]
+    with db.ro(env.path) as c:
+        assert env.svc._ci_lighter(c, env.uid, start, date(2026, 10, 16)) is False
+        assert env.svc._ci_evening_held(c, env.uid, date(2026, 10, 16), start) is False
+
+
+def test_withdrawing_consent_unpins_the_week_card(penv, client):
+    run_thursday(penv)
+    penv.svc.run_outbox(at(2026, 10, 15, 7, 47))
+    [slot] = penv.q("SELECT message_id FROM checkin_slots WHERE slot='week'")
+    assert not [m for m, _ in penv.fakes.tg if m == "unpinChatMessage"]
+    agree(client, penv.token, 1)
+    assert [b["message_id"] for m, b in penv.fakes.tg if m == "unpinChatMessage"] == [int(slot["message_id"])]
+
+
+def test_the_cli_audit_line_reaches_the_log_through_the_real_logger_setup(env_nc, monkeypatch, capsys):
+    import logging
+    from companion import cli
+    root = logging.getLogger()
+    monkeypatch.setattr(root, "handlers", [])          # as in a fresh process: nothing configured yet
+    monkeypatch.setattr(cli.Settings, "from_env", staticmethod(lambda: env_nc.svc.s))
+    monkeypatch.setattr(cli, "Service", lambda *a, **k: env_nc.svc)
+    assert cli.main(["set-consent", env_nc.uid, "2"]) == 0
+    err = capsys.readouterr().err
+    assert "via cli" in err and "version=2" in err
