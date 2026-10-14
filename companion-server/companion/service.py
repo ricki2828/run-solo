@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import math
 
 import hashlib
@@ -26,6 +27,7 @@ from .config import Settings
 from .deeplink import run_link, web_twin, week_link
 from .media import Media, MediaError, from_settings
 from . import notes as cv_notes
+from . import trail as cv_trail
 from .convo import engine as cv_engine
 from .convo import recap as cv_recap
 from .convo import suggest as cv_suggest
@@ -220,6 +222,15 @@ class RunIn(BaseModel):
     route: list[tuple[GridInt, GridInt]] | None = Field(default=None, min_length=2, max_length=MAX_ROUTE_POINTS)
     splits: list[SplitIn] | None = Field(default=None, min_length=1, max_length=MAX_SPLITS)
     reps: list[RepIn] | None = Field(default=None, min_length=1, max_length=MAX_REPS)
+    trail: cv_trail.TrailIn | None = None  # the run's trail board, profile and ghost gap; a bad block drops the trail, never the run
+
+    @field_validator("trail", mode="wrap")
+    @classmethod
+    def _trail_is_optional_extra(cls, v, handler):
+        try:
+            return handler(v)
+        except ValidationError:
+            return None
 
     @model_validator(mode="after")
     def _shape(self):
@@ -751,15 +762,16 @@ class Service(CheckinMixin):
                 "SELECT run_id, note, created_at FROM run_notes WHERE user_id=? ORDER BY created_at", (uid,))]
             shapes = [{"run_id": r["run_id"], "route": json.loads(r["route_json"]) if r["route_json"] else None,
                        "splits": json.loads(r["splits_json"]) if r["splits_json"] else None,
-                       "reps": json.loads(r["reps_json"]) if r["reps_json"] else None}
-                      for r in c.execute("SELECT run_id, route_json, splits_json, reps_json FROM run_shape WHERE user_id=? "
+                       "reps": json.loads(r["reps_json"]) if r["reps_json"] else None,
+                       "trail": json.loads(r["trail_json"]) if r["trail_json"] else None}
+                      for r in c.execute("SELECT run_id, route_json, splits_json, reps_json, trail_json FROM run_shape WHERE user_id=? "
                                          "ORDER BY rowid", (uid,))]
         ref = u["chat_ref"]
         return {
             "profile": {
                 "channel": u["channel"], "chat_name": u["chat_name"], "chat_ref_hint": "…" + ref[-3:], "created_at": u["created_at"],
                 "consent_version": u["consent_version"], "consent_at": u["consent_at"], "checkin_consent": u["checkin_consent"], "paused": bool(u["paused"]),
-                "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "route_shape_on_cards": bool(u["route_optin"]), "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
+                "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "route_shape_on_cards": bool(u["route_optin"]), "place_names_on_cards": bool(u["place_optin"]), "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },
             "runs_received": runs, "run_shapes": shapes, "run_notes": run_notes, "memory": memory, "suggestion_outcomes": outcomes,
             "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo, "checkins": checkins,
@@ -783,14 +795,26 @@ class Service(CheckinMixin):
         log.info("deleted user=%s via api", uid)
 
     def set_settings(self, uid: str, quiet_start: int | None, quiet_end: int | None, zone_id: str | None,
-                     weather: bool | None = None, route_shape: bool | None = None) -> None:
+                     weather: bool | None = None, route_shape: bool | None = None,
+                     place_names: bool | None = None) -> None:
         wipe_wal = False
         with db.tx(self.s.db_path) as c:
             if route_shape is not None:  # "Show route shape on cards"; off forgets every stored shape, now
                 c.execute("UPDATE users SET route_optin=? WHERE id=?", (int(route_shape), uid))
                 if not route_shape:
                     c.execute("UPDATE run_shape SET route_json=NULL WHERE user_id=?", (uid,))
-                    c.execute("DELETE FROM run_shape WHERE user_id=? AND splits_json IS NULL AND reps_json IS NULL", (uid,))
+                    c.execute("DELETE FROM run_shape WHERE user_id=? AND splits_json IS NULL AND reps_json IS NULL "
+                              "AND trail_json IS NULL", (uid,))
+                    wipe_wal = True
+            if place_names is not None:  # the place opt-in; off forgets every stored trail name, now
+                c.execute("UPDATE users SET place_optin=? WHERE id=?", (int(place_names), uid))
+                if not place_names:
+                    for r in c.execute("SELECT run_id, trail_json FROM run_shape WHERE user_id=? AND trail_json LIKE '%\"name\"%'",
+                                       (uid,)).fetchall():
+                        t = json.loads(r["trail_json"])
+                        t.pop("name", None)
+                        c.execute("UPDATE run_shape SET trail_json=? WHERE user_id=? AND run_id=?",
+                                  (json.dumps(t, separators=(",", ":")), uid, r["run_id"]))
                     wipe_wal = True
             if weather is not None:  # the app's "Weather in suggestions" switch; off forgets every stored area
                 c.execute("UPDATE users SET weather_optin=? WHERE id=?", (int(weather), uid))
@@ -939,11 +963,14 @@ class Service(CheckinMixin):
         route = run.route if c.execute("SELECT route_optin FROM users WHERE id=?", (uid,)).fetchone()["route_optin"] else None
         splits = [x.model_dump(exclude_none=True) for x in run.splits] if run.splits else None
         reps = [x.model_dump(exclude_none=True) for x in run.reps] if run.reps else None
-        if route is None and splits is None and reps is None:
+        place_ok = c.execute("SELECT place_optin FROM users WHERE id=?", (uid,)).fetchone()["place_optin"]
+        trail = cv_trail.dump(run.trail, keep_name=bool(place_ok))   # the elevation profile stays whatever the route switch says: own chat only
+        if route is None and splits is None and reps is None and trail is None:
             return
         dump = lambda v: None if v is None else json.dumps(v, separators=(",", ":"))  # noqa: E731
-        c.execute("INSERT OR REPLACE INTO run_shape (user_id, run_id, route_json, splits_json, reps_json) VALUES (?,?,?,?,?)",
-                  (uid, run.run_id, dump([list(p) for p in route]) if route else None, dump(splits), dump(reps)))
+        c.execute("INSERT OR REPLACE INTO run_shape (user_id, run_id, route_json, splits_json, reps_json, trail_json) "
+                  "VALUES (?,?,?,?,?,?)",
+                  (uid, run.run_id, dump([list(p) for p in route]) if route else None, dump(splits), dump(reps), trail))
 
     @staticmethod
     def _keep_latest_area(c, uid: str, run_id: str, start: datetime, at: tuple[float, float]) -> None:
@@ -1101,6 +1128,8 @@ class Service(CheckinMixin):
             if not run_r:
                 return None
             run = dict(run_r)
+            tr = c.execute("SELECT trail_json FROM run_shape WHERE user_id=? AND run_id=?", (uid, run_id)).fetchone()
+            trail = cv_trail.load(tr["trail_json"]) if tr else None
             hist = self._history(c, uid, run["start_utc"])
             mem = self._memory_get(c, uid, now)
             last = c.execute("SELECT MAX(sent_at) m FROM cards WHERE user_id=? AND sent_at<=?",
@@ -1122,6 +1151,10 @@ class Service(CheckinMixin):
         rw = self.weather.at_run(lat, lon, run["zone_id"], parse_iso(run["start_utc"]), now)
         v = cv_engine.enrich_run(run, full, mem, now, usage, rw, sunrise_count=sunrises, prev_situation=prev_sit,
                                  soften=soft)
+        tkind = cv_trail.card_kind(trail) if self.s.trail_cards else None
+        if tkind:   # a trail best or board is the run's picture; it replaces the generic PB or run card, and has no video
+            v = dataclasses.replace(v, media=cv_engine.MediaPlan(tkind, False, "trail_pb" if tkind == "trail_record" else "trail_board",
+                                                                 v.media.touch_card, None, v.media.touch_facts))
         # A run card carries the feel row only. A post-run suggestion is deferred to the evening-before slot
         # (under its own weekly cap and spacing), never piggybacked as buttons or text on the run card.
         suggestion, sline = None, None
@@ -1143,7 +1176,7 @@ class Service(CheckinMixin):
         used = v.used_variants if w.source == "template" else [x for x in v.used_variants if x.startswith("touch_")]
         if sline and w.source == "template":
             used = used + [sline.variant_id]
-        quiet_card = (v.media.reason in ("pb", "big_session", "long_run") or v.situation == "back_after_break"
+        quiet_card = (v.media.reason in ("pb", "trail_pb", "big_session", "long_run") or v.situation == "back_after_break"
                       or (v.touch is not None and v.touch.kind == "comeback"))
         with db.tx(self.s.db_path) as c:
             c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
@@ -1321,7 +1354,8 @@ class Service(CheckinMixin):
         followups: list[str] = []
         if media is not None:
             out = OutCard(card_id, card["headline"], card["body"], buttons, media, links,
-                          short_caption=card["kind"] == "run")
+                          short_caption=card["kind"] == "run",
+                          neutral_caption=self._spoiler_caption(user["id"], card) if media.spoiler else "")
             try:
                 self._deliver(ch, user, card, out)
                 followups = ch.followups(out)  # the media is delivered: from here only text may be retried
@@ -1359,12 +1393,22 @@ class Service(CheckinMixin):
                 card = {**card, "body": f"{card['body']}\n\n{cv_notes.quote(n['note'])}"}
         return card
 
+    def _spoiler_caption(self, uid: str, card: dict) -> str:
+        """The caption of a spoilered trail photo: which run it was and nothing about how it went."""
+        with db.ro(self.s.db_path) as c:
+            tr = c.execute("SELECT trail_json FROM run_shape WHERE user_id=? AND run_id=?", (uid, card.get("run_id"))).fetchone()
+        trail = cv_trail.load(tr["trail_json"]) if tr else None
+        if not trail:
+            return "Trail run done. Tap to see how it went."
+        place = f" on {trail['name']}" if trail.get("name") else ""
+        return f"Trail run {trail['n']}{place}. Tap to see how it went."
+
     def _send_followup(self, user: dict, ref: str, now: datetime) -> bool:
         """False when dropped: unknown card or mode, or older than stale_card_hours since the media went out (a
         follow-up held back by the kill switch or quiet hours must not arrive long after its card)."""
         card_id, _, mode = ref.partition(":")
         ch = self.channels.get(user["channel"])
-        if ch is None or mode not in ("caption", "question", "touch_card"):
+        if ch is None or mode not in ("caption", "question", "touch_card", "coach_line"):
             return False
         with db.ro(self.s.db_path) as c:
             row = c.execute("SELECT * FROM cards WHERE card_id=? AND user_id=?", (card_id, user["id"])).fetchone()
@@ -1447,15 +1491,21 @@ class Service(CheckinMixin):
                 runs = [dict(r) for r in c.execute("SELECT * FROM runs WHERE user_id=? AND run_id=?",
                                                     (user["id"], card.get("run_id")))]
                 for r in runs:  # the shape rides beside the row, for the renderer only (never into a prompt)
-                    sh = c.execute("SELECT route_json, splits_json, reps_json FROM run_shape WHERE user_id=? AND run_id=?",
+                    sh = c.execute("SELECT route_json, splits_json, reps_json, trail_json FROM run_shape WHERE user_id=? AND run_id=?",
                                    (user["id"], r["run_id"])).fetchone()
                     if sh:
                         r["_shape"] = {"route": json.loads(sh["route_json"]) if sh["route_json"] else None,
                                        "splits": json.loads(sh["splits_json"]) if sh["splits_json"] else None,
-                                       "reps": json.loads(sh["reps_json"]) if sh["reps_json"] else None}
+                                       "reps": json.loads(sh["reps_json"]) if sh["reps_json"] else None,
+                                       "trail": cv_trail.load(sh["trail_json"])}
         try:
             # the renderer gets the two fields it uses, never the whole card (whose body may quote a note)
-            return self.media.render(plan, {"run_id": card.get("run_id"), "headline": card["headline"]}, runs)
+            media = self.media.render(plan, {"run_id": card.get("run_id"), "headline": card["headline"]}, runs)
+            if media is not None and self.s.trail_spoiler and (
+                    plan.get("card") in cv_trail.TRAIL_KINDS
+                    or (card["kind"] == "run" and runs and runs[0].get("app_type") == "trail")):
+                media = dataclasses.replace(media, spoiler=True)   # the verdict is a tap to reveal: trail cards, and any trail-type run's picture
+            return media
         except MediaError as e:
             log.warning("render failed, sending text: %s", e)
         except Exception as e:  # renderer missing or crashed: the text card is still the product
@@ -1713,7 +1763,11 @@ class Service(CheckinMixin):
             c.execute("UPDATE run_shape SET route_json=NULL WHERE route_json IS NOT NULL AND EXISTS (SELECT 1 FROM runs r "
                       "WHERE r.user_id=run_shape.user_id AND r.run_id=run_shape.run_id AND r.start_utc < ?)" + held,
                       (iso(now - timedelta(days=RETENTION_ROUTE_DAYS)),))
-            c.execute("DELETE FROM run_shape WHERE route_json IS NULL AND splits_json IS NULL AND reps_json IS NULL")
+            c.execute("UPDATE run_shape SET trail_json=NULL WHERE trail_json IS NOT NULL AND EXISTS (SELECT 1 FROM runs r "
+                      "WHERE r.user_id=run_shape.user_id AND r.run_id=run_shape.run_id AND r.start_utc < ?)" + held,
+                      (iso(now - timedelta(days=RETENTION_ROUTE_DAYS)),))   # the trail block ages like the route outline
+            c.execute("DELETE FROM run_shape WHERE route_json IS NULL AND splits_json IS NULL AND reps_json IS NULL "
+                      "AND trail_json IS NULL")
             c.execute("DELETE FROM run_shape WHERE NOT EXISTS (SELECT 1 FROM runs r WHERE r.user_id=run_shape.user_id "
                       "AND r.run_id=run_shape.run_id)")  # belt and braces: a shape never outlives its run
             c.execute("DELETE FROM memory WHERE key='niggle_area' AND updated_at < ?" + held,

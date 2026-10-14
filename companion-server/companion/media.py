@@ -21,6 +21,7 @@ from .convo.touches import _zone_minutes
 from render import protocol as P
 
 from .render_client import RenderClient
+from .trail import card_facts as trail_card_facts
 from .timeutil import parse_iso, to_local
 
 log = logging.getLogger("companion")
@@ -45,6 +46,7 @@ class Media:
     width: int = WIDTH
     height: int = HEIGHT
     duration_s: int = 0
+    spoiler: bool = False   # Telegram has_spoiler on the photo: a tap to reveal
 
 
 def _zone_s(row: Mapping[str, Any]) -> list[float]:
@@ -176,10 +178,11 @@ def month_facts(month_ref: str, runs: Sequence[Mapping[str, Any]]) -> dict[str, 
 
 
 # Cards the worker can draw from stored rows (run, week, month) or from facts persisted in the plan (suggestion).
-CARD_KINDS = ("light", "flood", "pb", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly")
+CARD_KINDS = ("light", "flood", "pb", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly",
+              "trail_board", "trail_record")
 # Coach check-in cards (stream S2): drawn from facts the caller builds, never from stored rows.
 CHECKIN_KINDS = ("today", "today_verdict", "moved", "pinned_week")
-ROW_KINDS = ("light", "flood", "pb", "weekly_recap", "monthly")
+ROW_KINDS = ("light", "flood", "pb", "weekly_recap", "monthly", "trail_board", "trail_record")
 
 
 def _default_card_fns(client: RenderClient) -> dict[str, Callable[..., bytes]]:
@@ -268,6 +271,13 @@ class MediaRenderer:
                 week_ref = str(card["run_id"]).split("recap:", 1)[1]
                 facts = week_facts(week_ref, runs)
                 vkind, vfacts = "weekly", {**facts, "duration_s": sum(sum(d["zone_s"]) for d in facts["days"])}
+            elif kind in ("trail_board", "trail_record"):
+                run = next(r for r in runs if r["run_id"] == card["run_id"])
+                trail = (run.get("_shape") or {}).get("trail")
+                if not trail:
+                    raise MediaError("trail block gone")
+                facts = trail_card_facts(run, trail)
+                vkind, vfacts = "run", None   # no video: the picture is the moment
             else:
                 run = next(r for r in runs if r["run_id"] == card["run_id"])
                 facts = run_facts(run, card["headline"])

@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
   last_run_utc TEXT, last_inbound_at TEXT,
   cap_zone TEXT, cap_week TEXT,
   weather_optin INTEGER NOT NULL DEFAULT 0,  -- the app's "Weather in suggestions" switch; area is stored only while 1
+  place_optin INTEGER NOT NULL DEFAULT 0,    -- the app's place opt-in (share place names); a trail name is kept only while 1
   route_optin INTEGER NOT NULL DEFAULT 1,    -- the app's "Show route shape on cards" switch (default on); a shape is stored only while 1
   checkin_consent INTEGER,                   -- the companion consent version the app says the runner agreed to; NULL = never said (no check-ins)
   tester_no INTEGER,                         -- T1, T2 ...: the number the operator CLI and the logs use instead of a name; never reused
@@ -153,6 +154,7 @@ CREATE TABLE IF NOT EXISTS run_shape (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   run_id TEXT NOT NULL,
   route_json TEXT, splits_json TEXT, reps_json TEXT,
+  trail_json TEXT,   -- the trail board, elevation profile (metres relative to the start) and ghost gap: whole numbers, no coordinates
   PRIMARY KEY (user_id, run_id),
   FOREIGN KEY (user_id, run_id) REFERENCES runs (user_id, run_id) ON DELETE CASCADE
 );
@@ -298,6 +300,12 @@ def init(path: str) -> None:
             except sqlite3.OperationalError as e:
                 if "duplicate column" not in str(e):
                     raise
+        if "place_optin" not in cols:  # databases created before the place switch (default off)
+            try:
+                c.execute("ALTER TABLE users ADD COLUMN place_optin INTEGER NOT NULL DEFAULT 0")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e):
+                    raise
         if "checkin_consent" not in cols:  # databases created before check-in consent gating
             try:
                 c.execute("ALTER TABLE users ADD COLUMN checkin_consent INTEGER")
@@ -333,6 +341,12 @@ def init(path: str) -> None:
                 except sqlite3.OperationalError as e:
                     if "duplicate column" not in str(e):
                         raise
+        if "trail_json" not in [r["name"] for r in c.execute("PRAGMA table_info(run_shape)")]:
+            try:
+                c.execute("ALTER TABLE run_shape ADD COLUMN trail_json TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e):
+                    raise
         if "quote_run_id" not in [r["name"] for r in c.execute("PRAGMA table_info(cards)")]:
             try:
                 c.execute("ALTER TABLE cards ADD COLUMN quote_run_id TEXT")

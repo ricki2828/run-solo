@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import hmac
 from dataclasses import dataclass
 from typing import Any
@@ -74,6 +75,7 @@ class OutCard:
     buttons: list[dict]  # [{"label": str, "action": str, "row": int}] ; callback = f"{card_id}:{index}"
     media: Media | None = None
     links: tuple[tuple[str, str], ...] = ()  # (label, https url): deep-link buttons
+    neutral_caption: str = ""  # with a spoilered photo: the caption that gives nothing away (the coach line follows as its own message)
     short_caption: bool = False  # a picture carries the numbers: the caption is the headline and one line of judgement
 
 
@@ -94,6 +96,13 @@ def caption_text(card: OutCard) -> str:
     if rest.strip():
         lines.append(rest.strip())
     return "\n".join(x for x in lines if x)
+
+
+def photo_caption(card: OutCard) -> str:
+    """What a photo rides with. A spoilered photo carries only the neutral line: the verdict must stay behind the tap."""
+    if card.media and card.media.spoiler and card.neutral_caption:
+        return card.neutral_caption
+    return caption_text(card)
 
 
 @dataclass(frozen=True)
@@ -197,7 +206,7 @@ class TelegramChannel:
     def send_card(self, ref: str, card: OutCard, **_: Any) -> str:
         text = f"{card.headline}\n{card.body}"
         if card.media and (card.media.photo or card.media.video):
-            return self._send_media(ref, card, caption_text(card))
+            return self._send_media(ref, card, photo_caption(card))
         payload: dict[str, Any] = {"chat_id": int(ref), "text": text}
         kb = self._keyboard(card, media=False)
         if kb:
@@ -210,6 +219,9 @@ class TelegramChannel:
         buttons ride that text), "question" when question buttons were kept off the media."""
         if not (card.media and (card.media.photo or card.media.video)):
             return []
+        if card.media.spoiler and card.neutral_caption:
+            # the coach line (the verdict) goes as its own message after the photo; question buttons follow as before
+            return ["coach_line"] + (["question"] if any(b["action"].startswith("ans:") for b in card.buttons) else [])
         if utf16_len(caption_text(card)) > CAPTION_MAX:
             return ["caption"]  # the text goes once, with every button, questions included
         if any(b["action"].startswith("ans:") for b in card.buttons):
@@ -226,7 +238,18 @@ class TelegramChannel:
             if not (card.media and card.media.photo):
                 raise ChannelError("touch card without a photo", permanent=True)
             return self._send_media(ref, OutCard(card.card_id, card.headline, card.body, [], card.media, ()), text)
-        if mode == "caption":
+        if mode == "coach_line":
+            # the verdict sits behind a spoiler, so neither the chat nor the notification preview shows it
+            payload = {"chat_id": int(ref), "parse_mode": "HTML",
+                       "text": "<tg-spoiler>" + html.escape(f"{card.headline}\n{card.body}", quote=False) + "</tg-spoiler>"}
+            try:
+                return str(self._call("sendMessage", payload)["result"]["message_id"])
+            except ChannelError as e:
+                if e.status != 400 or "parse" not in e.description:
+                    raise
+                # Telegram refused the markup (a 400 parse error): the line still goes, as plain text
+                return str(self._call("sendMessage", {"chat_id": int(ref), "text": f"{card.headline}\n{card.body}"})["result"]["message_id"])
+        elif mode == "caption":
             text, kb = f"{card.headline}\n{card.body}", self._keyboard(card, media=False)
         elif mode == "question":
             text = QUESTION_LEAD
@@ -255,9 +278,11 @@ class TelegramChannel:
         attempts: list[tuple[str, dict, dict]] = []
         if m.video and len(m.video) <= VIDEO_MAX_BYTES:
             attempts.append(("sendVideo", {**fields, "supports_streaming": "true", "width": m.width, "height": m.height,
-                                           "duration": m.duration_s},
+                                           "duration": m.duration_s, **({"has_spoiler": "true"} if m.spoiler else {})},
                              {"video": ("run.mp4", m.video, "video/mp4")}))
         if m.photo and len(m.photo) <= PHOTO_MAX_BYTES:
+            if m.spoiler:   # a tap to reveal; a refusal falls back to the plain photo below
+                attempts.append(("sendPhoto", {**fields, "has_spoiler": "true"}, {"photo": ("card.png", m.photo, "image/png")}))
             attempts.append(("sendPhoto", fields, {"photo": ("card.png", m.photo, "image/png")}))
         if not attempts:
             raise ChannelError("telegram media over the size limit", permanent=True)
