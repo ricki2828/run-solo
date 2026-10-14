@@ -59,7 +59,7 @@ void main() {
     await m.download('milos');
     expect(server.userAgents, isNotEmpty);
     expect(
-      server.userAgents.every((u) => u == 'RunSupreme/0.1.0+3 (Android)'),
+      server.userAgents.every((u) => u == 'RunSupreme/0.1.0+4 (Android)'),
       isTrue,
     );
   });

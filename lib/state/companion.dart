@@ -47,8 +47,9 @@ import 'send_runs.dart';
 import 'settings.dart' show AppSettings;
 import 'zone_histogram.dart';
 
-/// `--dart-define=COMPANION=1` (or `true`). ON only in the dogfood build;
-/// the Play release build ships without the companion (B2 release gate).
+/// `--dart-define=COMPANION=1` (or `true`). ON in the dogfood build and in the Play
+/// release AAB (closed test, plan run-supreme-testers M1). The companion itself stays off
+/// until the runner turns it on and accepts the consent.
 const String _kCompanionFlag = String.fromEnvironment('COMPANION');
 const bool kCompanion = _kCompanionFlag == '1' || _kCompanionFlag == 'true';
 

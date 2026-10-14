@@ -640,13 +640,15 @@ jobs:
             || { echo "::error::upload keystore: RUN_SOLO_UPLOAD_KEY_PASSWORD does not open alias 'upload'"; exit 1; }
           rm -f "$RUNNER_TEMP/preflight.p12"
           echo "upload key preflight ok"
+      # COMPANION=1: the coach is compiled in for the closed test (plan run-supreme-testers D1/M1).
+      # LIVE_COMPARE stays off in play (a dogfood-only call). It is still off by default in the app.
       - name: Build release AAB (play flavour, R8, obfuscated, split debug info)
         env:
           RUN_SOLO_UPLOAD_STORE_PASSWORD: ${{ secrets.RUN_SOLO_UPLOAD_STORE_PASSWORD }}
           RUN_SOLO_UPLOAD_KEY_ALIAS: upload  # not a secret: a secret value here masks the word in logs
           RUN_SOLO_UPLOAD_KEY_PASSWORD: ${{ secrets.RUN_SOLO_UPLOAD_KEY_PASSWORD }}
         run: |
-          flutter build appbundle --release --flavor play --obfuscate --split-debug-info=build/symbols-play $MAPS_DEFINE
+          flutter build appbundle --release --flavor play --obfuscate --split-debug-info=build/symbols-play $MAPS_DEFINE --dart-define=COMPANION=1
           ls -la build/app/outputs/bundle/playRelease/
       - name: Split native debug symbols out of the AAB (bundle 155 -> ~41 MiB) and re-sign
         env:
