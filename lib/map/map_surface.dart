@@ -23,7 +23,7 @@ const String kMapsApiKey = String.fromEnvironment('RUN_SOLO_MAPS_API_KEY');
 
 /// The casing under the live route on every in-run map: white, so the run's
 /// own colour reads on a light road map, a dark night one and Topo alike.
-const Color kLiveRouteCasing = Color(0xFFFFFFFF);
+const Color kLiveRouteCasing = LiveRouteInk.casing;
 
 abstract class MapSurfaceFactory {
   /// Whether a Google map can be shown at all (key present, GMS on device).

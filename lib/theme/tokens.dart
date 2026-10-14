@@ -56,6 +56,11 @@ abstract final class AuroraRunType {
   static const Color trail = Color(0xFFB8C04C);
 }
 
+/// White casing under the live route on every in-run map.
+abstract final class LiveRouteInk {
+  static const Color casing = Color(0xFFFFFFFF);
+}
+
 /// Weekly story ground: a deep indigo that carries no lane, run-type, HR zone
 /// or semantic meaning (a test holds it at least 60 RGB from all of them, in
 /// both themes). White ink on it is 7:1.
