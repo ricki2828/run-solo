@@ -745,6 +745,12 @@ class _RecordingScreenState extends State<RecordingScreen>
                 ),
               ),
             ] else
+              // SLOT (page 1, Free / Trail): the big "+12 s vs best" readout
+              // for a matched trail goes ABOVE this block, as a `...[...]`
+              // spread here (this branch becomes `else ...[ readout,
+              // _FreeRunBlock(...) ]`). Absent when no trail is matched, so
+              // it leaves no gap. Mint ahead, vermillion behind, at the
+              // other in-run numbers' size.
               _FreeRunBlock(
                 s: s,
                 ctl: ctl,
