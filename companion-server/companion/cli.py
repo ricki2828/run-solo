@@ -1,4 +1,4 @@
-"""Operator commands: python -m companion.cli {status|pause|resume|set-webhook|set-menu-button|set-consent|purge|replay|replay-stop|replay-abort}.
+"""Operator commands: python -m companion.cli {status|pause|resume|ops|set-webhook|set-menu-button|set-consent|purge|replay|replay-stop|replay-abort}.
 Never prints secrets."""
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from datetime import timedelta
 
 import httpx
 
-from . import db, logs, replay
+from . import db, logs, ops, replay
 from .config import Settings
 from .service import Service
 from .timeutil import iso, now_utc, parse_iso
@@ -98,6 +98,9 @@ def main(argv: list[str]) -> int:
     cmd = argv[0] if argv else "status"
     if cmd == "replay":
         return _replay(s, argv[1:])
+    if cmd == "ops":   # the tester programme: roster by T-number, pause one runner, spend and enrolment status
+        db.init(s.db_path)
+        return ops.main(s, argv[1:])
     svc = Service(s, httpx.Client(timeout=10))
     if cmd in ("replay-stop", "replay-abort", "replay-reset"):
         return _replay_control(s, cmd)

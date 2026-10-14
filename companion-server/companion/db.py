@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS users (
   weather_optin INTEGER NOT NULL DEFAULT 0,  -- the app's "Weather in suggestions" switch; area is stored only while 1
   route_optin INTEGER NOT NULL DEFAULT 1,    -- the app's "Show route shape on cards" switch (default on); a shape is stored only while 1
   checkin_consent INTEGER,                   -- the companion consent version the app says the runner agreed to; NULL = never said (no check-ins)
+  tester_no INTEGER,                         -- T1, T2 ...: the number the operator CLI and the logs use instead of a name; never reused
+  ops_paused INTEGER NOT NULL DEFAULT 0,     -- paused by the operator or the rate limiter; only `ops resume` clears it (the runner's own RESUME does not)
+  ops_paused_reason TEXT,                    -- 'ops' | 'rate'
   UNIQUE (channel, chat_ref)
 );
 CREATE TABLE IF NOT EXISTS devices (
@@ -223,16 +226,37 @@ CREATE TABLE IF NOT EXISTS question_cap (
   local_date TEXT NOT NULL, slot TEXT NOT NULL, claimed_at TEXT NOT NULL,
   PRIMARY KEY (user_id, local_date)
 );
--- Tables below hold no user data (no user_id column).
+-- Inbound rate-limit slow-downs (one row each, kept 2 days): three inside 24 hours pause the runner.
+CREATE TABLE IF NOT EXISTS inbound_strikes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ts TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS inbound_strikes_user ON inbound_strikes (user_id, ts);
+-- One row per writing-service call. user_id says whose card it paid for (per-runner cost). It has no foreign key:
+-- deleting a runner sets it to NULL (see hard_delete_user) so the month's spend, which the cap counts, cannot be reset by
+-- deleting; what remains is a cost, a time and a model name with nothing to link it to anyone.
 CREATE TABLE IF NOT EXISTS llm_calls (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  ts TEXT NOT NULL, model TEXT, provider TEXT, cost_usd REAL NOT NULL DEFAULT 0, outcome TEXT NOT NULL
+  ts TEXT NOT NULL, model TEXT, provider TEXT, cost_usd REAL NOT NULL DEFAULT 0, outcome TEXT NOT NULL,
+  user_id TEXT
 );
+-- Tables below hold no user data (no user_id column).
+-- Messages for Ricki (spend at 50/80/100% of the cap, a runner paused for flooding). T-numbers only, never a name or chat.
+-- The host cron (deploy/flush-alerts.sh) sends the unsent ones through notify: the service sandbox cannot reach it.
+CREATE TABLE IF NOT EXISTS alerts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT NOT NULL UNIQUE, ts TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, sent_at TEXT
+);
+-- "The test is full" refusals: a count per day, nothing about who asked.
+CREATE TABLE IF NOT EXISTS enrol_refused (day TEXT PRIMARY KEY, n INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 # Tables allowed to carry no user_id. The deletion test fails on any other new table without one.
-NO_USER_TABLES = frozenset({"llm_calls", "settings", "sqlite_sequence"})
+NO_USER_TABLES = frozenset({"alerts", "enrol_refused", "settings", "sqlite_sequence"})
+# Tables with a user_id that a delete clears (sets NULL) instead of removing the rows, so shared totals stay true.
+ANONYMISE_ON_DELETE = frozenset({"llm_calls"})
 
 
 def connect(path: str) -> sqlite3.Connection:
@@ -280,6 +304,22 @@ def init(path: str) -> None:
             except sqlite3.OperationalError as e:
                 if "duplicate column" not in str(e):
                     raise
+        for col, typ in (("tester_no", "INTEGER"), ("ops_paused", "INTEGER NOT NULL DEFAULT 0"), ("ops_paused_reason", "TEXT")):
+            if col not in cols:  # databases created before the tester rails
+                try:
+                    c.execute(f"ALTER TABLE users ADD COLUMN {col} {typ}")
+                except sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e):
+                        raise
+        if "user_id" not in [r["name"] for r in c.execute("PRAGMA table_info(llm_calls)")]:  # per-runner cost
+            try:
+                c.execute("ALTER TABLE llm_calls ADD COLUMN user_id TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e):
+                    raise
+        c.execute("CREATE INDEX IF NOT EXISTS llm_calls_user ON llm_calls (user_id, ts)")
+        c.commit()
+        number_testers(c)
         run_cols = {r["name"] for r in c.execute("PRAGMA table_info(runs)")}
         for col, typ in (("app_type", "TEXT"), ("real_upload", "INTEGER"),
                          ("plan_week", "INTEGER"), ("plan_weeks", "INTEGER"), ("plan_next_type", "TEXT"),
@@ -302,6 +342,25 @@ def init(path: str) -> None:
         c.commit()
     finally:
         c.close()
+
+
+def next_tester_no(c: sqlite3.Connection) -> int:
+    """The next T-number. A counter in `settings`, never the max of the users, so a deleted runner's number is not reused."""
+    r = c.execute("SELECT value FROM settings WHERE key='tester_seq'").fetchone()
+    n = int(r[0]) + 1 if r else 1
+    c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('tester_seq', ?)", (str(n),))
+    return n
+
+
+def number_testers(c: sqlite3.Connection) -> None:
+    """Give runners that predate the numbers one, oldest first (a fresh database has none to give)."""
+    todo = [r[0] for r in c.execute("SELECT id FROM users WHERE tester_no IS NULL ORDER BY created_at, rowid")]
+    if not todo:
+        return
+    c.execute("BEGIN IMMEDIATE")
+    for uid in todo:
+        c.execute("UPDATE users SET tester_no=? WHERE id=? AND tester_no IS NULL", (next_tester_no(c), uid))
+    c.commit()
 
 
 _origin = threading.local()
@@ -409,6 +468,9 @@ def hard_delete_user(path: str, user_id: str) -> None:
     """Delete every row keyed by the user in one transaction, then scrub and truncate the WAL."""
     with tx(path) as c:
         for t in user_tables(c):
-            c.execute(f"DELETE FROM {t} WHERE user_id = ?", (user_id,))
+            if t in ANONYMISE_ON_DELETE:
+                c.execute(f"UPDATE {t} SET user_id = NULL WHERE user_id = ?", (user_id,))
+            else:
+                c.execute(f"DELETE FROM {t} WHERE user_id = ?", (user_id,))
         c.execute("DELETE FROM users WHERE id = ?", (user_id,))
     checkpoint_truncate(path)

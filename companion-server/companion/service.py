@@ -33,6 +33,7 @@ from .convo import touches as cv_touches
 from .convo.questions import REASK_DAYS, known_without_asking, next_weekly_question
 from .convo.weather import NoWeather, OpenMeteo, cell
 from .facts import APP_TYPES, FactsResult, build_facts, known_session, infer_coach_type, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
+from .rails import SLOW_DOWN, SLOW_DOWN_DAY, RateLimiter, add_alert, tag
 from .timeutil import (in_quiet, iso, now_utc, parse_iso, quiet_end_utc, resolve_cap_week, to_local, UTC,
                        valid_zone, week_key)
 from .writer import Writer, Written, digest_lines
@@ -57,6 +58,10 @@ RETENTION_ROUTE_DAYS = 30
 AREA_USABLE_DAYS = 7  # a forecast is never asked for a place older than this
 
 NOT_OPEN = "Run Supreme's companion isn't open yet. We'll let you know when it is."
+# Open enrolment is capped (Settings.max_users). The refusal names exactly what is kept (docs/privacy, 2b).
+TEST_FULL = ("The Run Supreme coach test is full right now, so I can't connect you. The app works without me. "
+             "I haven't kept your chat or your name: the only record is a tally of how many people asked today.")
+RATE_PAUSED = "I've paused this chat for now because of how many messages came in. Your runs still sync as normal."
 NOTE_ACTION = "note:add"
 NOTE_STOP_WORDS = frozenset({"STOP", "STOP ALL", "UNSUBSCRIBE"})
 NOTE_CANCEL_WORDS = frozenset({"CANCEL", "END", "QUIT"})
@@ -309,6 +314,8 @@ NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message con
     "note_mode": "10-minute 'Add a note' waiting state: a run id and an expiry, no text",
     "checkin_slots": "which check-in messages were sent (ids and dates, no answer)",
     "question_cap": "one row per local day a question was sent (the daily cap)",
+    "inbound_strikes": "times the chat was told to slow down (2 days), used to pause a flood",
+    "llm_calls": "the cost of each writing-service call, so the monthly cap can be counted per runner; no content",
 }
 
 
@@ -329,6 +336,7 @@ class Service(CheckinMixin):
         self.s, self.http = settings, http
         self.writer = Writer(settings, http)
         self.channels: dict[str, Any] = {}
+        self.limiter = RateLimiter(settings.rate_per_min, settings.rate_per_day)
         if settings.telegram_enabled:
             self.channels["telegram"] = TelegramChannel(settings, http)
         if settings.wa_ready:
@@ -435,9 +443,17 @@ class Service(CheckinMixin):
             if u:
                 uid = u["id"]  # existing user: nothing changes until the code is confirmed
             else:
+                if ident not in self.s.allowed_ids and c.execute("SELECT COUNT(*) FROM users").fetchone()[0] >= self.s.max_users:
+                    # The test is full. Nothing about this chat is written: the enrolment row (a random nonce) is marked
+                    # denied, and today's refusal tally goes up by one.
+                    c.execute("UPDATE enrolments SET state='denied' WHERE nonce=?", (nonce,))
+                    c.execute("INSERT INTO enrol_refused (day, n) VALUES (?, 1) ON CONFLICT(day) DO UPDATE SET n = n + 1",
+                              (now.strftime("%Y-%m-%d"),))
+                    log.info("enrolment refused: test full")
+                    return TEST_FULL
                 uid = _opaque_user_id()
-                c.execute("INSERT INTO users (id, channel, chat_ref, created_at, last_inbound_at) VALUES (?,?,?,?,?)",
-                          (uid, inb.channel, inb.ref, iso(now), iso(now)))
+                c.execute("INSERT INTO users (id, channel, chat_ref, created_at, last_inbound_at, tester_no) VALUES (?,?,?,?,?,?)",
+                          (uid, inb.channel, inb.ref, iso(now), iso(now), db.next_tester_no(c)))
             code = f"{secrets.randbelow(10**6):06d}"
             c.execute("UPDATE enrolments SET state='awaiting_code', user_id=?, code=?, attempts=0, consent_msg_id=?, "
                       "chat_name=? WHERE nonce=?", (uid, code, self._mac(inb.msg_id), inb.name or None, nonce))
@@ -459,12 +475,18 @@ class Service(CheckinMixin):
 
     def handle_inbound(self, inb: Inbound, now: datetime | None = None) -> None:
         now = now or now_utc()
-        if self._seen(inb, now):
-            return
         ch = self.channels.get(inb.channel)
         if ch is None:
             return
+        verdict = self.limiter.check(f"{inb.channel}:{inb.ref}", now)   # before anything is stored for this message
+        if verdict != "ok":
+            self._rate_limited(ch, inb, verdict, now)
+            return
+        if self._seen(inb, now):
+            return
         user = self._user_by_ref(inb.channel, inb.ref)
+        if user and user["ops_paused"] and not (inb.card_id is None and inb.text.strip().lstrip("/").upper() == "DELETE"):
+            return   # an operator-paused runner gets nothing back; DELETE still works (erasure is not ours to refuse)
         if user:
             with db.tx(self.s.db_path) as c:
                 c.execute("UPDATE users SET last_inbound_at=? WHERE id=?", (iso(now), user["id"]))
@@ -514,6 +536,31 @@ class Service(CheckinMixin):
             # free text ever reaches a model.
             reply = self._note_reply(user, inb.text, now) or UNKNOWN
         self._reply(ch, inb.ref, reply)
+
+    def _rate_limited(self, ch: Any, inb: Inbound, verdict: str, now: datetime) -> None:
+        """Over the per-chat limit: one polite note per ten minutes, then silence. A known runner's slow-downs are counted,
+        and `rate_strikes_to_pause` of them in 24 hours pause that runner and raise an alert. A stranger's chat is never
+        stored: the limiter is in memory."""
+        if verdict == "silent":
+            return
+        user = self._user_by_ref(inb.channel, inb.ref)
+        text = SLOW_DOWN_DAY if verdict == "notice-day" else SLOW_DOWN
+        if user and user["ops_paused"]:
+            return
+        if user:
+            with db.tx(self.s.db_path) as c:
+                c.execute("INSERT INTO inbound_strikes (user_id, ts) VALUES (?,?)", (user["id"], iso(now)))
+                n = c.execute("SELECT COUNT(*) FROM inbound_strikes WHERE user_id=? AND ts > ?",
+                              (user["id"], iso(now - timedelta(hours=24)))).fetchone()[0]
+                if n >= self.s.rate_strikes_to_pause:
+                    c.execute("UPDATE users SET ops_paused=1, ops_paused_reason='rate' WHERE id=?", (user["id"],))
+                    t = tag(user["tester_no"])
+                    add_alert(c, f"rate-pause:{t}:{iso(now)}", f"Run Supreme coach: {t} paused for flooding",
+                              f"{t} hit the inbound limit {n} times in 24 hours and was paused automatically. "
+                              f"To let them back in: companion.cli ops resume {t}", now)
+                    log.warning("rate-paused tester=%s", t)
+                    text = RATE_PAUSED
+        self._reply(ch, inb.ref, text)
 
     def _note_mode_open(self, uid: str, now: datetime) -> bool:
         with db.ro(self.s.db_path) as c:
@@ -1068,7 +1115,7 @@ class Service(CheckinMixin):
                           (uid, "sunrise", run_id, iso(now), uid, run_id))
         res = FactsResult(res.facts, None, res.tone, False, res.reason, res.session)
         w = self.writer.write(res, digest_lines(mem, feels), voice=v.rendered, style=v.style,
-                              suggestion_line=sline.body if sline else None)
+                              suggestion_line=sline.body if sline else None, user_id=uid)
         body = w.body
         if v.touch_line:
             body += f"\n\n{v.touch_line}"
@@ -1164,7 +1211,7 @@ class Service(CheckinMixin):
             w = Written(ev.rendered.headline, ev.rendered.body, "template")
         else:
             w = self.writer.write(FactsResult((), ev.suggestion, "steady", False, "ok"), digest_lines(mem, feels),
-                                  voice=ev.rendered, style=ev.style)
+                                  voice=ev.rendered, style=ev.style, user_id=uid)
         buttons = self._buttons("set", ev.suggestion.kind, None)
         card_id = secrets.token_hex(16)
         media = cv_engine.MediaPlan("suggestion", False, ev.suggestion.reason, facts=ev.card_facts)
@@ -1406,7 +1453,7 @@ class Service(CheckinMixin):
         if not r:
             return "skipped", None
         user = dict(r)
-        if user["paused"]:
+        if user["paused"] or user["ops_paused"]:
             return "skipped", None
         if self._kill_switch():
             return "defer", now + timedelta(minutes=15)
@@ -1527,7 +1574,7 @@ class Service(CheckinMixin):
         who, args = ((" AND id = ?", (only_user,)) if only_user else (f" AND id NOT IN {replay_hold(now)}", ()))
         with db.tx(self.s.db_path) as c:
             users = [dict(r) for r in c.execute(
-                "SELECT * FROM users WHERE channel='telegram' AND paused=0 AND last_run_utc >= ?" + who,
+                "SELECT * FROM users WHERE channel='telegram' AND paused=0 AND ops_paused=0 AND last_run_utc >= ?" + who,
                 (iso(now - timedelta(days=14)), *args))]
             for u in users:
                 loc = to_local(now, u["zone_id"])
@@ -1557,7 +1604,7 @@ class Service(CheckinMixin):
         who, args = ((" AND id = ?", (only_user,)) if only_user else (f" AND id NOT IN {replay_hold(now)}", ()))
         with db.tx(self.s.db_path) as c:
             users = [dict(r) for r in c.execute(
-                "SELECT * FROM users WHERE channel='telegram' AND paused=0 AND last_run_utc >= ?" + who,
+                "SELECT * FROM users WHERE channel='telegram' AND paused=0 AND ops_paused=0 AND last_run_utc >= ?" + who,
                 (iso(now - timedelta(days=cv_recap.QUIET_AFTER_DAYS)), *args))]
             for u in users:
                 loc = to_local(now, u["zone_id"])
@@ -1583,7 +1630,7 @@ class Service(CheckinMixin):
         who, args = ((" AND id = ?", (only_user,)) if only_user else (f" AND id NOT IN {replay_hold(now)}", ()))
         with db.tx(self.s.db_path) as c:
             users = [dict(r) for r in c.execute(
-                "SELECT * FROM users WHERE channel='telegram' AND paused=0 AND last_run_utc >= ?" + who,
+                "SELECT * FROM users WHERE channel='telegram' AND paused=0 AND ops_paused=0 AND last_run_utc >= ?" + who,
                 (iso(now - timedelta(days=62)), *args))]
             for u in users:
                 loc = to_local(now, u["zone_id"])
@@ -1637,6 +1684,9 @@ class Service(CheckinMixin):
                           "t.user_id = replay_rows.user_id AND " + ident + " = replay_rows.rid)", (tbl,))
             c.execute("DELETE FROM replay_state WHERE status = 'done' AND updated_at < ?", (log_cut,))
             c.execute("DELETE FROM llm_calls WHERE ts < ?", (iso(now - timedelta(days=400)),))
+            c.execute("DELETE FROM inbound_strikes WHERE ts < ?", (iso(now - timedelta(days=2)),))
+            c.execute("DELETE FROM alerts WHERE ts < ?", (iso(now - timedelta(days=30)),))
+            c.execute("DELETE FROM enrol_refused WHERE day < ?", ((now - timedelta(days=90)).strftime("%Y-%m-%d"),))
             # the area's own age: 30 days after the run it came from (or its run is gone), or the switch is off
             c.execute("DELETE FROM convo_area WHERE NOT EXISTS (SELECT 1 FROM runs r WHERE r.user_id=convo_area.user_id "
                       "AND r.run_id=convo_area.run_id AND r.start_utc >= ?)" + held, (iso(now - timedelta(days=RETENTION_AREA_DAYS)),))

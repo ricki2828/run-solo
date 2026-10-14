@@ -331,7 +331,7 @@ class Replayer:
 
     def _held(self) -> bool:
         with db.ro(self.s.db_path) as c:
-            paused = c.execute("SELECT paused FROM users WHERE id=?", (self.uid,)).fetchone()["paused"]
+            paused = c.execute("SELECT paused OR ops_paused AS paused FROM users WHERE id=?", (self.uid,)).fetchone()["paused"]
         return bool(paused) or self.svc._kill_switch()
 
     def _recover_failed(self) -> bool:
