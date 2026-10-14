@@ -117,9 +117,11 @@ def card_kind(trail: Mapping[str, Any] | None) -> str | None:
 def card_facts(run: Mapping[str, Any], trail: Mapping[str, Any]) -> dict[str, Any]:
     """The render facts for a trail card, from the stored run row and trail block."""
     facts: dict[str, Any] = {
-        "type": "trail", "duration_s": run["duration_s"], "distance_km": run["distance_m"] / 1000,
-        "trail_runs": trail["n"], "trail_board": [dict(r) for r in trail["board"]],
+        "type": "trail", "duration_s": run["duration_s"], "trail_runs": trail["n"],
+        "trail_board": [dict(r) for r in trail["board"]],
     }
+    if run["distance_m"] >= 10:   # the protocol wants 0.01 km or more: a 0 m run keeps its card, minus the distance
+        facts["distance_km"] = run["distance_m"] / 1000
     if run.get("pace_s_per_km"):
         facts["pace_s_per_km"] = run["pace_s_per_km"]
     if run.get("climb_m"):

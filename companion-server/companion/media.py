@@ -273,7 +273,10 @@ class MediaRenderer:
                 vkind, vfacts = "weekly", {**facts, "duration_s": sum(sum(d["zone_s"]) for d in facts["days"])}
             elif kind in ("trail_board", "trail_record"):
                 run = next(r for r in runs if r["run_id"] == card["run_id"])
-                facts = trail_card_facts(run, (run.get("_shape") or {}).get("trail"))
+                trail = (run.get("_shape") or {}).get("trail")
+                if not trail:
+                    raise MediaError("trail block gone")
+                facts = trail_card_facts(run, trail)
                 vkind, vfacts = "run", None   # no video: the picture is the moment
             else:
                 run = next(r for r in runs if r["run_id"] == card["run_id"])

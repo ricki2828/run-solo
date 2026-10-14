@@ -278,7 +278,7 @@ class TelegramChannel:
         attempts: list[tuple[str, dict, dict]] = []
         if m.video and len(m.video) <= VIDEO_MAX_BYTES:
             attempts.append(("sendVideo", {**fields, "supports_streaming": "true", "width": m.width, "height": m.height,
-                                           "duration": m.duration_s},
+                                           "duration": m.duration_s, **({"has_spoiler": "true"} if m.spoiler else {})},
                              {"video": ("run.mp4", m.video, "video/mp4")}))
         if m.photo and len(m.photo) <= PHOTO_MAX_BYTES:
             if m.spoiler:   # a tap to reveal; a refusal falls back to the plain photo below

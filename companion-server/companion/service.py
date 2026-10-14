@@ -1440,7 +1440,7 @@ class Service(CheckinMixin):
             if media is not None and self.s.trail_spoiler and (
                     plan.get("card") in cv_trail.TRAIL_KINDS
                     or (card["kind"] == "run" and runs and runs[0].get("app_type") == "trail")):
-                media = dataclasses.replace(media, spoiler=True)   # the verdict is a tap to reveal; trail cards only
+                media = dataclasses.replace(media, spoiler=True)   # the verdict is a tap to reveal: trail cards, and any trail-type run's picture
             return media
         except MediaError as e:
             log.warning("render failed, sending text: %s", e)

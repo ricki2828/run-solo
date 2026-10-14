@@ -330,3 +330,18 @@ def test_the_spoiler_line_falls_back_to_plain_text_on_a_parse_error(tmp_path):
     ch._call = fake.__get__(ch)
     assert ch.send_followup("123", OutCard("c1", "Head", "Body <b>", [], None, ()), "coach_line") == "9"
     assert calls[0]["text"].startswith("<tg-spoiler>") and "parse_mode" not in calls[1] and calls[1]["text"] == "Head\nBody <b>"
+
+def test_tied_times_do_not_draw_a_spacer_but_a_real_skip_does():
+    from render.cards.trail import _rows_html
+    row = lambda a, t, **k: {"attempt": a, "time_s": t, **k}  # noqa: E731
+    tied = [(1, row(1, 3600)), (2, row(2, 3650)), (2, row(3, 3650)), (4, row(4, 3700, today=True))]
+    assert "···" not in _rows_html(tied, 3600, 900, 66)
+    skipped = [(1, row(1, 3600)), (2, row(2, 3650)), (5, row(5, 3900, today=True))]
+    assert "···" in _rows_html(skipped, 3600, 900, 66)
+
+
+def test_a_zero_distance_run_and_a_gone_block_do_not_break_the_card():
+    t = T.parse(trail_block([(1, 3900), (2, 3800), (3, 3700)], 3, n=3)).model_dump(exclude_none=True)
+    facts = T.card_facts({"duration_s": 60, "distance_m": 0, "pace_s_per_km": None, "climb_m": None}, t)
+    assert "distance_km" not in facts
+    P.check_request({"v": 1, "op": "card", "kind": "trail_record", "facts": facts})

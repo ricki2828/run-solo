@@ -208,12 +208,15 @@ def _rows_html(shown: list[tuple[int | None, dict[str, Any]]], best: int, top: i
     worst = max(r["time_s"] for _, r in shown)
     lo = best - 60
     out = ""
-    prev = 0
+    prev, at_prev = 0, 0
     for rank, r in shown:
-        if prev and rank and rank > prev + 1:   # ranks were skipped (a tie is not a skip): a thin spacer says so
+        # a spacer only where ranks are really skipped: after k rows tied on rank p the next rank is p + k, not p + 1
+        if prev and rank and rank > prev + at_prev:
             out += (f'<div class="saira" style="height:20px;line-height:14px;padding-left:60px;font-size:34px;color:{brand.QUIET};'
                     f'letter-spacing:.2em">···</div>')
-        prev = rank or prev
+        if rank:
+            at_prev = at_prev + 1 if rank == prev else 1
+            prev = rank
         t = r["time_s"]
         today = bool(r.get("today"))
         is_best = rank == 1 or (rank is None and t == best)
@@ -332,7 +335,7 @@ def build_trail_record_html(facts: Mapping[str, Any], memory: Mapping[str, Any] 
     profile = _profile_of(facts)
     gap = facts.get("ghost_gap")
     dist_m = float(facts.get("distance_km") or 0) * 1000
-    hero_h = 560 if (profile or gap) else 800
+    hero_h = 560 if profile else 800
     hero = P.hero_block(160, hero_h, tag=tag, headline=head_text, value=value, unit="", size=_fit(value, ((7, 330), (8, 270), (99, 240))),
                         value_colour=brand.ARC, ground=FLOOD, fg=brand.BONE, soft=brand.BONE, chip=f"BEST OF {n}",
                         chip_bg="rgba(237,234,227,.22)", extra=P.esc(sub, 50), headline_size=98)
@@ -358,7 +361,7 @@ def build_trail_record_html(facts: Mapping[str, Any], memory: Mapping[str, Any] 
         stats.append(c)
     if facts.get("pace_s_per_km"):
         stats.append((P.fmt_pace(float(facts["pace_s_per_km"])), "/KM"))
-    stat_top = 1100 if (profile or gap) else 1000
+    stat_top = 1100 if profile else 1000
     return P.doc(P.base_css(brand.GROUND, brand.INK), body + panel + P.stat_blocks(stats, stat_top, 170, LANE))
 
 
