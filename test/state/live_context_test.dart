@@ -137,8 +137,8 @@ void main() {
     expect(kPerfDiagnostics, isTrue, reason: 'every build but play');
   });
 
-  test('off by default until LV2 (in-app mute) ships', () {
-    expect(kLiveCompare, isFalse);
+  test('on by default now the Voice detail mute (Minimal) ships', () {
+    expect(kLiveCompare, isTrue);
   });
 
   test(

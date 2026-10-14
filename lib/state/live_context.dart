@@ -9,9 +9,11 @@
 /// prepared, a timeout, an empty plan or any error: the answer is null: Start goes ahead with no compare,
 /// no overlay and nothing said (#59 review P2).
 ///
-/// Off by default ([kLiveCompare]): comparisons fire only once the in-app
-/// mute (LV2) ships in the same build, because Laps and Intervals runs have
-/// no room for a "Mute tips" notification action (#48 review).
+/// On by default ([kLiveCompare]) since the Voice detail setting shipped
+/// (Settings → Voice: Coach, Everything, Minimal). That was the in-app mute
+/// this waited for (LV2, #48 review): Laps and Intervals runs have no room for
+/// a "Mute tips" notification action, and Minimal now silences every compare
+/// line (the overlay still shows it) alongside the Coaching tips switch.
 library;
 
 import 'dart:async';
@@ -29,9 +31,12 @@ import 'history_store.dart' show runModeOf;
 import 'run_index.dart';
 import 'trail_ghost.dart';
 
-/// `--dart-define=LIVE_COMPARE=true` turns the live compare on. Default off
-/// until LV2 (in-app mute) merges.
-const bool kLiveCompare = bool.fromEnvironment('LIVE_COMPARE');
+/// `--dart-define=LIVE_COMPARE=false` turns the live compare off. It is also
+/// what carries the known trails for the in-run ghost.
+const bool kLiveCompare = bool.fromEnvironment(
+  'LIVE_COMPARE',
+  defaultValue: true,
+);
 
 class LiveContextSource {
   LiveContextSource({

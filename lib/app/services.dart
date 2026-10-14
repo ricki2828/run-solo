@@ -193,7 +193,7 @@ class AppServices {
   final CompanionController? companion;
 
   /// The live compare's context at Start (LC1); null in tests and the fake
-  /// APK. Only used when `kLiveCompare` is on.
+  /// APK. Only used when `kLiveCompare` is on (the default).
   final LiveContextSource? live;
   String? _lastFinishedRunId;
 

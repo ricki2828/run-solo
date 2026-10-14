@@ -55,7 +55,7 @@ import app.runsolo.core.record.SampleTicker
 import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.core.route.FollowRoute
 import app.runsolo.core.route.RouteFollower
-import app.runsolo.core.trail.TrailCueSink
+import app.runsolo.core.trail.TrailGhost
 import app.runsolo.core.trail.TrailGhostFeed
 import app.runsolo.core.route.RoutePath
 import app.runsolo.core.route.RouteWords
@@ -562,7 +562,7 @@ class RecordingSession(
             val active = ghostClock(last.t, !core.autoPaused)
             if (!core.autoPaused) {
                 for (e in trailFeed.offer(last.t, last.lat!!, last.lon!!, last.accuracyM!!, active, ticker.distanceM)) {
-                    if (follower == null && e is RouteFollower.Event.RouteEnd) trailTurn(e)
+                    if (follower == null && e is RouteFollower.Event.RouteEnd) routeEvent(e)
                 }
             }
         }
@@ -1162,13 +1162,26 @@ class RecordingSession(
         try {
             // Steep and working hard: the budget keeps the km and half km quiet (Free and Trail alike).
             cues.hardEffort = (liveElev.grade ?: 0.0) > HARD_GRADE && (checkInTracker?.smoothedZone() ?: 0) >= HARD_ZONE
+            // Taken every tick so a lead change in a run that is not spoken about never waits to be said late.
+            val switches = trailFeed.drainSwitches()
             if (mode != RunMode.trail || core.state != RecorderState.recording || core.autoPaused) return
             val plan = checkIn ?: return
             if (plan.level != VoiceLevel.coach) return
+            val ghost = trailFeed.state?.takeIf { !it.off }
+            // Which known climb is close: its gain, spoken like the retrace climb ("Climb ahead. 40 metres up.").
+            val knownClimbAheadM = ghost?.toClimbM?.takeIf { it in 1.0..GHOST_CLIMB_AHEAD_M }?.let { ahead ->
+                ghost.climbs.firstOrNull { it.startM > ghost.alongM && it.startM - ghost.alongM <= ahead + 1.0 }?.gainM
+            }
+            // The leading figure (best to start, the last run once slipped), in seconds, positive = ahead.
+            val lead = ghost?.let { if (it.racing == TrailGhost.Racing.last) it.aheadLastMs else it.aheadBestMs }
+            for (sw in switches) cues.moment(trailMoments.switched(sw.toLast))?.let { said -> logSaid(said.text) }
             val input = MomentInput(
                 nowMs = t,
                 distM = ticker.distanceM,
-                climbAheadM = retrace.state.takeIf { it.retracing && it.direction == RetraceDirection.reverse }?.climbAheadM,
+                climbAheadM = retrace.state.takeIf { it.retracing && it.direction == RetraceDirection.reverse }?.climbAheadM ?: knownClimbAheadM,
+                ghostAheadSec = lead?.let { it / 1000.0 },
+                toEndM = ghost?.toGoM,
+                racingLast = ghost?.racing == TrailGhost.Racing.last,
                 ascentM = liveElev.ascentM.takeIf { liveElev.source == ElevSource.baro },
                 grade = liveElev.grade,
             )
@@ -1265,19 +1278,6 @@ class RecordingSession(
             route = routeProgress(),
             trail = trailProgress(),
         )
-    }
-
-    /**
-     * Set by whoever arbitrates speech (the voice budget): the ghost's turnaround is then offered to it instead of being
-     * said here. Null = say it straight away.
-     */
-    @Volatile
-    var trailCueSink: TrailCueSink? = null
-
-    private fun trailTurn(e: RouteFollower.Event.RouteEnd) {
-        val sink = trailCueSink
-        val id = trailFeed.state?.trailId
-        if (sink != null && id != null) sink.turnaround(id, e.text, e.t) else routeEvent(e)
     }
 
     /** The ghost's clock: advances by the time since the last fix (a kill gap or a long silence counts for at most 5 s) while [running]. */
@@ -1393,6 +1393,9 @@ class RecordingSession(
         /** The strip shows the next turn from this far out. */
         private const val TURN_STRIP_M = 300.0
         private const val GHOST_MAX_STEP_MS = 5_000L
+
+        /** A known climb is called out from this far ahead. */
+        private const val GHOST_CLIMB_AHEAD_M = 200.0
 
 
         /** Voice coaching: a distance rep this close to its end counts as ended; a grade over 3% widens the band. */

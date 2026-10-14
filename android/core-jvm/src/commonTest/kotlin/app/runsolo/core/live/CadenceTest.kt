@@ -133,6 +133,34 @@ class CadenceTest {
     }
 
     @Test
+    fun `the switch to the last run is one P1 line and the flip gate starts over`() {
+        val m = TrailMoments()
+        // Behind the best for long enough to establish a side, then ahead of it: a flip is said.
+        m.tick(MomentInput(nowMs = 0, distM = 1_000.0, ghostAheadSec = -20.0))
+        m.tick(MomentInput(nowMs = 40_000, distM = 1_200.0, ghostAheadSec = -20.0))
+        val line = m.switched(true)
+        assertEquals("Racing your last run now.", line.text)
+        assertEquals(CueSlot.ghostFlip, line.slot)
+        assertEquals("Back to racing your best.", m.switched(false).text)
+        assertTrue(line.key != m.switched(true).key, "each switch has its own key")
+        // The gate started over: the first figure after a switch only sets the side, it is never a flip.
+        assertTrue(m.tick(MomentInput(nowMs = 50_000, distM = 2_000.0, ghostAheadSec = 20.0, racingLast = true)).isEmpty())
+        assertTrue(m.tick(MomentInput(nowMs = 90_000, distM = 2_300.0, ghostAheadSec = 20.0, racingLast = true)).isEmpty())
+    }
+
+    @Test
+    fun `flips and the final push name the run the ghost is racing`() {
+        val m = TrailMoments()
+        m.tick(MomentInput(nowMs = 0, distM = 1_000.0, ghostAheadSec = 20.0, racingLast = true))
+        m.tick(MomentInput(nowMs = 40_000, distM = 1_200.0, ghostAheadSec = 20.0, racingLast = true))
+        m.tick(MomentInput(nowMs = 50_000, distM = 1_800.0, ghostAheadSec = -20.0, racingLast = true))
+        val flip = m.tick(MomentInput(nowMs = 90_000, distM = 2_000.0, ghostAheadSec = -20.0, racingLast = true))
+        assertEquals(listOf("Your last run just passed you."), flip.map { it.text })
+        val push = m.tick(MomentInput(nowMs = 100_000, distM = 3_000.0, ghostAheadSec = -12.0, toEndM = 900.0, racingLast = true))
+        assertTrue(push.any { it.slot == CueSlot.finalPush && it.text.endsWith("for your last run.") }, push.toString())
+    }
+
+    @Test
     fun `a restore does not repeat a climb ahead or guess at a climb under way`() {
         val m = TrailMoments()
         m.resumeAt(5_000.0)
