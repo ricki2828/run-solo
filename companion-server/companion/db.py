@@ -150,6 +150,7 @@ CREATE TABLE IF NOT EXISTS run_shape (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   run_id TEXT NOT NULL,
   route_json TEXT, splits_json TEXT, reps_json TEXT,
+  trail_json TEXT,   -- the trail board, elevation profile (metres relative to the start) and ghost gap: whole numbers, no coordinates
   PRIMARY KEY (user_id, run_id),
   FOREIGN KEY (user_id, run_id) REFERENCES runs (user_id, run_id) ON DELETE CASCADE
 );
@@ -293,6 +294,12 @@ def init(path: str) -> None:
                 except sqlite3.OperationalError as e:
                     if "duplicate column" not in str(e):
                         raise
+        if "trail_json" not in [r["name"] for r in c.execute("PRAGMA table_info(run_shape)")]:
+            try:
+                c.execute("ALTER TABLE run_shape ADD COLUMN trail_json TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e):
+                    raise
         if "quote_run_id" not in [r["name"] for r in c.execute("PRAGMA table_info(cards)")]:
             try:
                 c.execute("ALTER TABLE cards ADD COLUMN quote_run_id TEXT")

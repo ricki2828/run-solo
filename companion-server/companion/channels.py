@@ -258,6 +258,8 @@ class TelegramChannel:
                                            "duration": m.duration_s},
                              {"video": ("run.mp4", m.video, "video/mp4")}))
         if m.photo and len(m.photo) <= PHOTO_MAX_BYTES:
+            if m.spoiler:   # a tap to reveal; a refusal falls back to the plain photo below
+                attempts.append(("sendPhoto", {**fields, "has_spoiler": "true"}, {"photo": ("card.png", m.photo, "image/png")}))
             attempts.append(("sendPhoto", fields, {"photo": ("card.png", m.photo, "image/png")}))
         if not attempts:
             raise ChannelError("telegram media over the size limit", permanent=True)

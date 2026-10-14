@@ -367,3 +367,106 @@ def verdict_enum_big_gap_in_range() -> dict[str, Any]:
 def verdict_no_target() -> dict[str, Any]:
     """An easy run with a guide but no pace band: the result still shows, neutral, with no verdict word invented."""
     return today_easy_no_target() | {"result_pace_s": 345}
+
+
+# --- trail cards (trail_board, trail_record): an invented 9.6 km out-and-back, whole numbers only ---------------------
+
+def _trail_profile(n: int = 64, top: int = 387, noisy: bool = False) -> list[int]:
+    """Metres above the start, evenly spaced along an out-and-back: gentle, steady, steep, very steep, then a ridge."""
+    segs = [(0, 1.2, 0.03), (1.2, 2.6, 0.07), (2.6, 3.6, 0.12), (3.6, 4.2, 0.19), (4.2, 4.8, 0.035)]
+    raw = []
+    for i in range(n):
+        d = i / (n - 1) * 9.6
+        x = min(d, 9.6 - d)
+        e = sum((min(x, b) - a) * 1000 * g for a, b, g in segs if x > a)
+        raw.append(e)
+    scale = top / max(raw)
+    out = [round(e * scale) for e in raw]
+    if noisy:
+        out = [v + (7 if i % 2 else -7) for i, v in enumerate(out)]
+    return out
+
+
+def _trail_gap(n: int = 64) -> list[int]:
+    """Signed seconds vs the old best along the run (positive = ahead): lost a little early, won the climb, pulled away on the way down."""
+    out = []
+    for i in range(n):
+        d = i / (n - 1) * 9.6
+        if d < 1.5:
+            v = 4 * d / 1.5
+        elif d < 4.2:
+            v = 4 - 16 * (d - 1.5) / 2.7
+        elif d < 5.4:
+            v = -12 + (d - 4.2)
+        else:
+            v = -11 - 30 * ((d - 5.4) / 4.2) ** 1.3
+        out.append(-round(v))
+    out[-1] = 41
+    return out
+
+
+def _board(rows: list[tuple[int, int]], today: int) -> list[dict[str, Any]]:
+    return [{"attempt": a, "time_s": t, **({"today": True} if a == today else {})} for a, t in rows]
+
+
+def trail_board_five() -> dict[str, Any]:
+    """5th run, second fastest, with the trail's name (place opt-in)."""
+    return {"type": "trail", "distance_km": 9.6, "duration_s": 3734, "pace_s_per_km": 389, "climb_m": 412, "trail_runs": 5,
+            "trail_board": _board([(4, 3683), (5, 3734), (2, 3790), (3, 3852), (1, 3978)], 5),
+            "elev_profile": _trail_profile(), "elev_src": "baro", "turn_idx": 31, "trail_shape": "out_and_back", "trail_name": "The Saddle Trail"}
+
+
+def trail_board_third_private() -> dict[str, Any]:
+    """3rd run, no name, no turn index, a loop: the card says only what the numbers say."""
+    return {"type": "trail", "distance_km": 6.2, "duration_s": 2410, "pace_s_per_km": 389, "climb_m": 180, "trail_runs": 3,
+            "trail_board": _board([(1, 2455), (2, 2402), (3, 2410)], 3),
+            "elev_profile": _trail_profile(top=96), "elev_src": "baro", "trail_shape": "loop"}
+
+
+def trail_board_many_runs() -> dict[str, Any]:
+    """The 12th run, ranked 8th: the board keeps the best four and today, and a time over an hour with a long name."""
+    rows = [(1, 3978), (2, 3790), (3, 3852), (4, 3683), (5, 3734), (6, 3701), (7, 3722), (8, 3811), (9, 3765), (12, 3905)]
+    return {"type": "trail", "distance_km": 9.6, "duration_s": 3905, "pace_s_per_km": 407, "climb_m": 412, "trail_runs": 12,
+            "trail_board": _board(rows, 12), "elev_profile": _trail_profile(), "elev_src": "baro", "turn_idx": 31, "trail_shape": "out_and_back",
+            "trail_name": "Mt Wellington Pinnacle Circuit"}
+
+
+def trail_board_no_profile() -> dict[str, Any]:
+    """GPS-only altitude was too noisy to draw: no profile, the stat blocks stand in."""
+    return {k: v for k, v in trail_board_five().items() if k not in ("elev_profile", "turn_idx", "trail_name")}
+
+
+def trail_record_six() -> dict[str, Any]:
+    return {"type": "trail", "distance_km": 9.6, "duration_s": 3642, "pace_s_per_km": 379, "climb_m": 412, "trail_runs": 6,
+            "trail_board": _board([(1, 3978), (2, 3790), (3, 3852), (4, 3683), (5, 3734), (6, 3642)], 6),
+            "elev_profile": _trail_profile(), "elev_src": "baro", "ghost_gap": _trail_gap(), "turn_idx": 31, "trail_shape": "out_and_back",
+            "trail_name": "The Saddle Trail"}
+
+
+def trail_record_hours() -> dict[str, Any]:
+    """A long trail: 12:34:56 on the hero, no profile of the gap, a loop."""
+    return {"type": "trail", "distance_km": 52.0, "duration_s": 45296, "pace_s_per_km": 871, "climb_m": 2900, "trail_runs": 2,
+            "trail_board": _board([(1, 47010), (2, 45296)], 2), "elev_profile": _trail_profile(top=420), "elev_src": "baro", "trail_shape": "loop"}
+
+
+def trail_board_gps() -> dict[str, Any]:
+    """A GPS-only profile (noisy): a calm smoothed line, no steepness bands, no steepness label."""
+    return trail_board_five() | {"elev_profile": _trail_profile(noisy=True), "elev_src": "gps"}
+
+
+def trail_record_gps() -> dict[str, Any]:
+    return trail_record_six() | {"elev_profile": _trail_profile(noisy=True), "elev_src": "gps"}
+
+
+def trail_record_no_gap() -> dict[str, Any]:
+    """The ghost gap did not arrive: the profile alone stands in for the panel."""
+    return {k: v for k, v in trail_record_six().items() if k not in ("ghost_gap", "trail_name")}
+
+
+TRAIL_CARDS = {
+    "trail_board_five": ("trail_board", trail_board_five), "trail_board_third_private": ("trail_board", trail_board_third_private),
+    "trail_board_many_runs": ("trail_board", trail_board_many_runs), "trail_board_no_profile": ("trail_board", trail_board_no_profile),
+    "trail_record_six": ("trail_record", trail_record_six), "trail_record_hours": ("trail_record", trail_record_hours),
+    "trail_record_no_gap": ("trail_record", trail_record_no_gap), "trail_board_gps": ("trail_board", trail_board_gps),
+    "trail_record_gps": ("trail_record", trail_record_gps),
+}

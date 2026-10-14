@@ -165,6 +165,10 @@
     intervals, the time and zone of each rep;</li>
     <li><strong>unless you turn off "Show route shape on cards"</strong> (Settings, Companion, on by default): an outline of
     your route with the first and last stretch cut off. See "The route outline" below.</li>
+    <li><strong>only for a run the app has matched to a trail you have run before</strong>: your own times on that trail
+    (a list of up to 10 whole-second times with the attempt number of each, so "Run 4, 1:01:23"; no dates), how many times you have run
+    it, a rough elevation profile of the trail (and whether your phone measured it with its barometer or with GPS), how far ahead of or behind your best you were along the way, and whether it is an out and back, a
+    loop or one way. See "Trail pictures" below. Only your own runs: no other runner is ever compared with you.</li>
     <li><strong>only if you follow a 4-week plan in the app</strong>: which planned session the run was (easy, long or
     quality), which week of the plan it fell in (for example week 3 of 4), the distance the plan asked for when it names
     one, and the next planned session: its type, its planned day (a date), its week, its minutes or distance when the
@@ -189,6 +193,18 @@
   it collects nothing new. It does not show the pack or your age band, your route outline, or the area name. Telegram sees that you
   opened the Mini App, and the page it displays, because it runs inside Telegram. To know it is you, Telegram gives the page a
   signed token that our server checks; the token expires after an hour and we do not store or log it.</p>
+
+  <h3>Trail pictures</h3>
+  <p>When you run a trail you have run before, the coach can send two kinds of picture to your own Telegram chat: a trail board
+  (your own runs of that trail, ranked, from your third run) and a trail record (when you set a new best on it). What is sent for them is
+  only whole numbers: your pace-normalised times, the elevation profile (at most 64 heights in whole metres, counted up or down from where the
+  trail starts, so there is no absolute altitude and no coordinates) and the seconds you were ahead or behind your best along the way.
+  Your phone works out which of your runs are the same trail and which times to send: nothing about it is matched on our server.
+  The trail's name is a place, so it is sent and drawn only if you have turned on the place option for sharing; otherwise
+  the picture says "Your trail". The elevation profile is not an outline of your route and does not depend on "Show route shape on cards",
+  because it only appears in your own chat. If you forward such a picture, anyone you send it to can see what it shows, which is
+  why the app only draws the profile on a picture you share from the app when "Show route shape on cards" is on. Trail pictures arrive hidden under a spoiler
+  that you tap to reveal. The profile is a relative shape, not a place: whole metres up or down from the start, at most 64 of them, no latitude or longitude, no altitude above sea level. All of it is kept for 30 days after its run, then deleted, is in the data the server returns about you, and is deleted at once when you delete your data.</p>
 
   <h3>The route outline</h3>
   <p>With "Show route shape on cards" on, the app sends an outline of each run's route so the companion can draw it on the
@@ -290,7 +306,7 @@
     removes them. A Sunday recap that quotes a note carries that quote only in your chat: our server does not keep a copy
     of it, so replacing or deleting the note stops it being quoted.</li>
     <li>Per-kilometre paces and rep times are kept with the run they belong to, so until you delete your data or six months pass
-    with no run. The route outline is kept for 30 days after its run, then deleted. All of them are in the data the server returns
+    with no run. The trail times and elevation profile are kept for 30 days after their run, then deleted, like the route outline. The route outline is kept for 30 days after its run, then deleted. All of them are in the data the server returns
     about you (the app does not show them). Turning "Show route shape on cards" off deletes the outlines at once, as soon as your phone can reach our server, or the next
     time the app connects if you were offline.</li>
     <li>The rounded weather area: only the latest one is kept. It is deleted 30 days after the run it came from, when you turn
@@ -331,13 +347,15 @@
   Unless you turned off "Show route shape on cards", a run picture or video can also draw an outline of your route with its ends cut off (section 2b):
   no coordinates and no street, but a distinctive route could still be recognised by someone who knows it. It never contains a map, heart rate
   readings, your name or a phone number. The per-kilometre paces or rep times can be drawn as bars.</p>
-  <p>Three more kinds of picture show a little beyond the run summary itself:</p>
+  <p>Four more kinds of picture show a little beyond the run summary itself:</p>
   <ul>
     <li><strong>Tomorrow's suggestion.</strong> The date, the session (for example "Tempo, 8 km") and a one-line reason. When the
     reason is the weather (heat, rain, or good conditions) it carries the forecast: the temperature, the hour and the chance
     of rain. That forecast comes from Open-Meteo (section 3), and only if you turned on "Weather in suggestions".</li>
     <li><strong>The monthly poster.</strong> On the 1st, a calendar of the month just ended: for each run its day, type of run,
     distance and time, plus the month's totals, including its average pace (total time over total distance). No route and no place names.</li>
+    <li><strong>Trail board and trail record.</strong> Your own runs of one trail, ranked by time, the trail's elevation profile shaded by
+    steepness, and where you gained or lost time against your best (section 2b, "Trail pictures"). Your own runs only, no dates, no map.</li>
     <li><strong>Milestones and race countdowns.</strong> The milestone number (for example your 100th run, or 1,000 km) and the
     weeks to your race, with the distance you told the coach you are training for.</li>
   </ul>
@@ -378,7 +396,7 @@
   <table>
     <tr><th>Permission</th><th>Why</th></tr>
     <tr><td>Precise location</td><td>To record your pace and route with GPS during a run you started. Recording runs as a visible notification while the run is in progress and stops when you press Stop. Run Supreme never records location in the background on its own.</td></tr>
-    <tr><td>Barometer (no permission needed)</td><td>If your phone has one, Run Supreme reads its air-pressure sensor during a run you started, to work out climb and descent. The readings stay on your phone: they become the run's elevation, are stored with the run, and are never sent anywhere.</td></tr>
+    <tr><td>Barometer (no permission needed)</td><td>If your phone has one, Run Supreme reads its air-pressure sensor during a run you started, to work out climb and descent. The readings stay on your phone: they become the run's elevation and are stored with the run. They are not sent anywhere, except that for a trail you have run before the run companion (if you turned it on) gets a rough profile of the trail in whole metres relative to its start, with no location, for your trail pictures (section 2b).</td></tr>
     <tr><td>Files (no permission needed)</td><td>When you choose "Import a GPX or TCX file" under Follow a route, Android's file picker hands Run Supreme the one file you pick. Run Supreme cannot see any other file, and keeps only the simplified route.</td></tr>
     <tr><td>Nearby devices (Bluetooth)</td><td>To pair a heart-rate strap. Bluetooth is not used to work out where you are.</td></tr>
     <tr><td>Notifications</td><td>The recording notification with its LAP and Stop buttons, and cues while your screen is off.</td></tr>

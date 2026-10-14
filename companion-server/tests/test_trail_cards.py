@@ -1,0 +1,229 @@
+"""Trail board and trail record cards: the protocol allow-list, the trigger rules, storage, the strict RunIn block, the
+spoiler flag and its fallback. Nothing here needs Chromium (a recording worker stands in)."""
+import copy
+import json
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from pydantic import ValidationError
+
+from companion import db
+from companion import trail as T
+from companion.channels import ChannelError
+from companion.service import RunIn
+from render import protocol as P
+from render.cards import fixtures as F
+from test_more_cards import NOW, UID, Env, Rec
+
+UTC = timezone.utc
+
+
+def board(rows, today):
+    return [{"attempt": a, "time_s": t, **({"today": True} if a == today else {})} for a, t in rows]
+
+
+def trail_block(rows, today, n=None, **extra):
+    return {"n": n or len(rows), "board": board(rows, today), "profile": F._trail_profile(), "shape": "out_and_back", **extra}
+
+
+# ---------------------------------------------------------------- protocol
+
+@pytest.mark.parametrize("name", sorted(F.TRAIL_CARDS))
+def test_every_fixture_passes_the_protocol(name):
+    kind, fn = F.TRAIL_CARDS[name]
+    P.check_request({"v": 1, "op": "card", "kind": kind, "facts": fn()})
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda f: f.update(route_xy=[[0, 0], [255, 255]]),                        # a shape key on a trail card
+    lambda f: f.update(trail_name="x" * 31),
+    lambda f: f.update(elev_profile=[0.5, 1.5]),                              # floats cannot pass: no coordinates
+    lambda f: f.update(elev_profile=list(range(65))),
+    lambda f: f.update(elev_profile=[0, 99999]),
+    lambda f: f.update(ghost_gap=[0, 5000]),
+    lambda f: f.update(turn_idx=99),
+    lambda f: f.update(trail_shape="figure_eight"),
+    lambda f: f.update(trail_board=[{"attempt": 1, "time_s": 100, "date": "2026-10-01"}, {"attempt": 2, "time_s": 90, "today": True}]),
+    lambda f: f.update(trail_board=[{"attempt": 1, "time_s": 100}, {"attempt": 2, "time_s": 90}]),           # no today row
+    lambda f: f.update(trail_board=f["trail_board"] + [{"attempt": 40 + i, "time_s": 4000} for i in range(6)]),  # over 10
+    lambda f: f.update(lat=1.0),
+    lambda f: f.update(type="easy"),
+])
+def test_the_protocol_refuses_anything_off_the_list(mutate):
+    f = F.trail_record_six()
+    mutate(f)
+    with pytest.raises(P.ProtocolError):
+        P.check_request({"v": 1, "op": "card", "kind": "trail_record", "facts": f})
+
+
+def test_trail_keys_are_refused_on_other_cards():
+    with pytest.raises(P.ProtocolError):
+        P.check_request({"v": 1, "op": "card", "kind": "pb", "facts": {"type": "trail", "distance_km": 5, "duration_s": 900,
+                                                                       "elev_profile": [0, 1, 2]}})
+
+
+# ---------------------------------------------------------------- trigger rules
+
+def test_record_beats_board_and_board_starts_at_the_third_run():
+    rec = T.parse(trail_block([(1, 4000), (2, 3900), (3, 3800)], 3)).model_dump()
+    assert T.card_kind(rec) == "trail_record"
+    third = T.parse(trail_block([(1, 4000), (2, 3800), (3, 3900)], 3)).model_dump()
+    assert T.card_kind(third) == "trail_board"
+    second = T.parse(trail_block([(1, 3900), (2, 4000)], 2)).model_dump()
+    assert T.card_kind(second) is None        # the 2nd run, not a best, no card
+    first_best = T.parse(trail_block([(1, 4000), (2, 3900)], 2)).model_dump()
+    first_best["board"][1]["time_s"] = 3000
+    assert T.card_kind(first_best) == "trail_record"
+    tie = T.parse(trail_block([(1, 3800), (2, 4000), (3, 3800)], 3)).model_dump()
+    assert T.card_kind(tie) == "trail_board"  # level with the best is not a record
+
+
+def test_a_bad_trail_block_is_dropped_not_the_run():
+    p = {"run_id": "r1", "type": "trail", "start_utc": "2026-10-13T08:00:00Z", "utc_offset_min": 0, "zone_id": "UTC",
+         "duration_s": 3600, "distance_m": 9600}
+    assert RunIn.model_validate(p | {"trail": {"n": 3, "board": []}}).trail is None
+    assert RunIn.model_validate(p | {"trail": {**trail_block([(1, 1), (2, 2)], 2), "lat": 1.2}}).trail is None
+    assert RunIn.model_validate(p | {"trail": trail_block([(1, 4000), (2, 3900)], 2)}).trail is not None
+    assert RunIn.model_validate(p).trail is None
+
+
+# ---------------------------------------------------------------- end to end
+
+@pytest.fixture
+def env(tmp_path):
+    return Env(tmp_path, Rec())
+
+
+def trail_run(e: Env, i, trail, start=None):
+    start = start or datetime(2026, 10, 1 + i, 7, 0, tzinfo=UTC)
+    return e.run(i, start, "trail", 9.6, climb_m=412, trail=trail)
+
+
+def test_trail_best_sends_the_record_card_with_a_spoiler_and_stores_the_block(env):
+    trail_run(env, 1, trail_block([(1, 3900), (2, 3800), (3, 3700)], 3, n=3, ghost_gap=F._trail_gap()))
+    env.quiet_outbox()
+    cid = env.svc._build_run_card(UID, "r01", NOW)
+    plan = json.loads(env.q("SELECT media_json FROM convo_cards WHERE card_id=?", cid)[0]["media_json"])
+    assert plan["card"] == "trail_record" and plan["video"] is False and plan["reason"] == "trail_pb"
+    assert env.svc._send_card(env.user(), cid, NOW)
+    kind, facts = env.rec.sent[-1]
+    assert kind == "trail_record" and facts["type"] == "trail" and len(facts["elev_profile"]) == 64
+    assert "route_xy" not in facts and "start_local" not in facts
+    (photo,) = env.photos()
+    assert photo["has_spoiler"] == "true"
+    stored = env.q("SELECT trail_json FROM run_shape WHERE run_id='r01'")[0]["trail_json"]
+    assert "profile" in json.loads(stored)
+
+
+def test_board_card_after_three_runs_and_once_per_run(env):
+    trail_run(env, 1, trail_block([(1, 3700), (2, 3900), (3, 3800)], 3, n=3))
+    env.quiet_outbox()
+    cid = env.svc._build_run_card(UID, "r01", NOW)
+    assert json.loads(env.q("SELECT media_json FROM convo_cards WHERE card_id=?", cid)[0]["media_json"])["card"] == "trail_board"
+    assert env.svc._build_run_card(UID, "r01", NOW) == cid          # idempotent: never a second card for the run
+    assert len(env.q("SELECT 1 FROM cards WHERE run_id='r01' AND kind='run'")) == 1
+
+
+def test_the_switch_turns_the_trail_cards_off(tmp_path):
+    e = Env(tmp_path, Rec(), trail_cards=False)
+    trail_run(e, 1, trail_block([(1, 3900), (2, 3800), (3, 3700)], 3, n=3))
+    e.quiet_outbox()
+    cid = e.svc._build_run_card(UID, "r01", NOW)
+    assert json.loads(e.q("SELECT media_json FROM convo_cards WHERE card_id=?", cid)[0]["media_json"])["card"] != "trail_record"
+
+
+def test_spoiler_can_be_switched_off(tmp_path):
+    e = Env(tmp_path, Rec(), trail_spoiler=False)
+    trail_run(e, 1, trail_block([(1, 3900), (2, 3800), (3, 3700)], 3, n=3))
+    e.quiet_outbox()
+    cid = e.svc._build_run_card(UID, "r01", NOW)
+    assert e.svc._send_card(e.user(), cid, NOW)
+    assert "has_spoiler" not in e.photos()[0]
+
+
+def test_a_road_run_never_gets_a_spoiler(env):
+    env.run(1, datetime(2026, 10, 2, 7, 0, tzinfo=UTC), "easy", 7.0)
+    env.quiet_outbox()
+    cid = env.svc._build_run_card(UID, "r01", NOW)
+    if cid and env.svc._send_card(env.user(), cid, NOW) and env.photos():
+        assert "has_spoiler" not in env.photos()[0]
+
+
+def test_the_route_switch_off_keeps_the_trail_block_for_the_own_chat(env):
+    trail_run(env, 1, trail_block([(1, 3900), (2, 3800), (3, 3700)], 3, n=3))
+    env.svc.set_settings(UID, None, None, None, route_shape=False)
+    assert env.q("SELECT trail_json FROM run_shape WHERE run_id='r01'")[0]["trail_json"]
+
+
+def test_the_export_shows_the_trail_block(env):
+    trail_run(env, 1, trail_block([(1, 3900), (2, 3800), (3, 3700)], 3, n=3))
+    shapes = env.svc.get_me(UID)["run_shapes"]
+    assert shapes[0]["trail"]["board"][2]["today"] is True
+
+
+def test_a_refused_spoiler_falls_back_to_the_plain_photo(tmp_path):
+    from companion.channels import OutCard, TelegramChannel
+    from companion.media import Media
+    import httpx
+    from conftest import make_settings
+    calls = []
+
+    def fake(self, method, payload, files=None):
+        calls.append((method, dict(payload)))
+        if "has_spoiler" in payload:
+            raise ChannelError("bad request: spoiler", permanent=True)
+        return {"result": {"message_id": 7}}
+    ch = TelegramChannel(make_settings(tmp_path), httpx.Client())
+    ch._call = fake.__get__(ch)
+    out = OutCard("c1", "h", "b", [], Media(photo=b"png", spoiler=True), ())
+    assert ch._send_media("123", out, "caption") == "7"
+    assert ["has_spoiler" in p for _, p in calls] == [True, False]
+
+
+def test_the_cards_render_at_full_size_when_chromium_is_present():
+    pytest.importorskip("playwright")
+    from render.cards import _engine
+    from render.cards.trail import render_trail_board, render_trail_record
+    try:
+        _engine._ensure_browser()
+    except Exception:
+        pytest.skip("no chromium")
+    for name, (kind, fn) in F.TRAIL_CARDS.items():
+        png = (render_trail_board if kind == "trail_board" else render_trail_record)(fn(), {})
+        assert png[:8] == b"\x89PNG\r\n\x1a\n" and len(png) < 10 * 1024 * 1024, name
+
+
+@pytest.mark.parametrize("name", ["12345", "@rickirun", "see www.trails.com", "https://x.io/a", "trail.com", "a@b", " lead"])
+def test_a_trail_name_that_is_a_handle_a_link_or_digits_is_refused(name):
+    f = F.trail_record_six()
+    f["trail_name"] = name
+    with pytest.raises(P.ProtocolError):
+        P.check_request({"v": 1, "op": "card", "kind": "trail_record", "facts": f})
+    t = T.parse({**trail_block([(1, 3900), (2, 3800)], 2), "name": name})
+    assert t is not None and t.name is None          # the server keeps the trail and drops only the name
+
+
+def test_good_names_pass():
+    for name in ("The Saddle Trail", "Mt Eden loop", "Parkrun 5k"):
+        assert T.parse({**trail_block([(1, 3900), (2, 3800)], 2), "name": name}).name == name
+
+
+def test_elev_src_is_an_enum_and_reaches_the_card_facts():
+    assert T.parse({**trail_block([(1, 3900), (2, 3800)], 2), "elev_src": "radar"}) is None
+    t = T.parse({**trail_block([(1, 3900), (2, 3800)], 2), "elev_src": "gps"}).model_dump(exclude_none=True)
+    run = {"duration_s": 3600, "distance_m": 9600, "pace_s_per_km": 375, "climb_m": 100}
+    assert T.card_facts(run, t)["elev_src"] == "gps"
+
+
+def test_ghost_gap_positive_means_ahead_on_the_card():
+    from render.cards.trail import _halves
+    f = F.trail_record_six()
+    first, second = _halves(f, f["ghost_gap"], f["elev_profile"])
+    assert first[0] > 0 and second[0] > 0 and f["ghost_gap"][-1] == 41
+
+
+def test_trail_block_is_deleted_30_days_after_the_run(env):
+    trail_run(env, 1, trail_block([(1, 3900), (2, 3800), (3, 3700)], 3, n=3), start=datetime(2026, 8, 1, 7, 0, tzinfo=UTC))
+    assert env.q("SELECT trail_json FROM run_shape")[0]["trail_json"]
+    env.svc.purge(NOW)
+    assert env.q("SELECT trail_json FROM run_shape") == []

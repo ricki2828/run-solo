@@ -76,3 +76,31 @@ harder), `shape` (Sunday 19:05). At most one *question* (an unprompted message w
 and the weekly question) per runner local day, claimed through `question_cap`'s unique key before sending. A slot is claimed in
 `checkin_slots` (user, slot, date) before the send and its message id stored after: at most once, and one past its window is
 dropped, never sent late. Answers are `checkin_answers` (enums only), purged after 14 days, never read by `writer.py` or `facts.py`.
+
+### Trail block (`POST /v1/runs`, optional `trail`)
+
+Sent only for a run the app has matched to a trail. The app owns matching (like for like, pace-normalised per #274); the server
+stores the block (`run_shape.trail_json`, 30 days after the run, deleted with the user) and draws the trail cards from it. Every
+number is a whole number, there are no coordinates and no dates, and an unknown key or a bad block drops the trail, never the run.
+
+```json
+"trail": {
+  "n": 5,                                   // int 1..999: runs of this trail including this one
+  "board": [                                // 2..10 rows, your OWN runs only, no dates
+    {"attempt": 4, "time_s": 3683},         // attempt 1..999 (distinct), time_s 1..86400 = the pace-normalised time
+    {"attempt": 5, "time_s": 3734, "today": true}   // exactly one row has today:true. If n > 10, send the all-time best, today and the nearest rows
+  ],
+  "profile": [0, 6, 14, "..."],             // optional, 2..64 ints, -2000..9000: metres RELATIVE to the start (start = 0), evenly spaced along the trail
+  "elev_src": "baro",                       // optional "baro"|"gps": shading by steepness is drawn only for baro; absent counts as gps
+  "ghost_gap": [0, 1, -2, "..."],           // optional, 2..64 ints, -3600..3600: seconds vs your old best along the same progress, POSITIVE = ahead (aheadBestMs)
+  "turn": 31,                               // optional, index into profile (0..63), requires profile
+  "shape": "out_and_back",                  // optional "out_and_back"|"loop"|"one_way"
+  "name": "The Saddle Trail"                // optional, <=30 chars, ONLY with the place opt-in. Dropped (trail kept) if digits only, has @, or looks like a link
+}
+```
+
+Cards: `trail_record` when today's `time_s` is strictly under every other row (a trail PB; replaces the generic PB card, no video);
+otherwise `trail_board` from the 3rd run (`n >= 3`, at least 3 rows). One card per run, built once. Both go to the runner's own
+Telegram chat with `has_spoiler` (tap to reveal; `COMPANION_TRAIL_SPOILER=0` turns it off, a refusal falls back to a plain photo).
+`COMPANION_TRAIL_CARDS=0` turns the cards off. The render worker's kinds `trail_board` and `trail_record` take the keys in
+`render/protocol.py` `TRAIL_KEYS` (`elev_profile`, `elev_src`, `ghost_gap`, `trail_board`, `trail_runs`, `turn_idx`, `trail_shape`, `trail_name`).

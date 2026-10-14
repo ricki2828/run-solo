@@ -10,6 +10,7 @@ or chat ids. One request per connection.
 from __future__ import annotations
 
 import json
+import re
 import socket
 import struct
 import time
@@ -22,7 +23,7 @@ VIDEO_MAX_BYTES = 50 * 1024 * 1024     # Telegram bot upload ceiling
 OP_MAX_BYTES = {"card": PHOTO_MAX_BYTES, "video": VIDEO_MAX_BYTES}
 OP_KINDS = {
     "card": frozenset({"light", "flood", "pb", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly",
-                       "today", "today_verdict", "moved", "pinned_week"}),
+                       "today", "today_verdict", "moved", "pinned_week", "trail_board", "trail_record"}),
     "video": frozenset({"run", "weekly"}),
 }
 ROUTE_GRID, ROUTE_MAX_POINTS, SPLITS_MAX, REPS_MAX, TITLE_MAX = 255, 120, 100, 60, 24
@@ -48,7 +49,30 @@ ALLOWED_FACT_KEYS = frozenset({
     # coach cards (today, today_verdict, moved, pinned_week): numbers, fixed enums and short labels only
     "target_pace_lo_s", "target_pace_hi_s", "target_kind", "result_pace_s", "units",
     "to_day", "from_day", "skip_reason", "today_idx", "guide", "hr_ceiling_bpm",
+    # trail cards (trail_board, trail_record): whole numbers and fixed enums only. `elev_profile` is metres RELATIVE to the
+    # start (start = 0, no absolute altitude); `ghost_gap` is signed seconds along the same progress (POSITIVE = ahead of the old best, as the app's aheadBestMs); `elev_src` says whether the profile is barometer or GPS; `trail_board` rows
+    # are an attempt number, a pace-normalised time and a today flag. No coordinates, no dates. `trail_name` is a place,
+    # so the caller sends it only with the runner's place opt-in.
+    "trail_runs", "trail_board", "elev_profile", "elev_src", "ghost_gap", "turn_idx", "trail_shape", "trail_name",
 })
+
+TRAIL_KINDS = frozenset({"trail_board", "trail_record"})
+TRAIL_KEYS = frozenset({"type", "distance_km", "duration_s", "pace_s_per_km", "climb_m", "trail_runs", "trail_board", "elev_profile", "elev_src",
+                        "ghost_gap", "turn_idx", "trail_shape", "trail_name"})
+TRAIL_SHAPES = frozenset({"out_and_back", "loop", "one_way"})
+ELEV_SRCS = frozenset({"baro", "gps"})
+
+
+def trail_name_ok(v: Any) -> bool:
+    """A trail name is a short label: not digits only, no @ and nothing URL-like (a name must not carry a handle, an address
+    or a link)."""
+    if not (isinstance(v, str) and 1 <= len(v.strip()) <= 30 and v == v.strip()):
+        return False
+    low = v.lower()
+    if v.replace(" ", "").isdigit() or "@" in v or "://" in low or "www." in low or "http" in low:
+        return False
+    return not re.search(r"\.(com|net|org|io|co|nz|au|app|me|ly|xyz)\b", low)
+TRAIL_PROFILE_MAX, TRAIL_BOARD_MAX, TRAIL_NAME_MAX = 64, 10, 30
 
 # Every kind is held to its own list on top of ALLOWED_FACT_KEYS: a suggestion card has no business carrying a place, a
 # milestone no pace, and a run card no suggestion reason, however wide the shared list grows. The older kinds' lists are
@@ -81,6 +105,7 @@ KIND_FACT_KEYS = {
     "today": TODAY_KEYS, "today_verdict": TODAY_KEYS | {"result_pace_s", "pb", "verdict"},
     "moved": frozenset({"type", "session", "distance_km", "duration_s", "units", "to_day", "from_day", "skip_reason"}),
     "pinned_week": frozenset({"week_label", "days", "duration_s", "units", "today_idx"}),
+    "trail_board": TRAIL_KEYS, "trail_record": TRAIL_KEYS,
 }
 MONTHLY_RUN_KEYS = frozenset({"date", "type", "distance_km", "duration_s"})   # no route, no zones, no place, no run id
 MONTHLY_MAX_RUNS = 62
@@ -108,6 +133,8 @@ def check_request(req: Any) -> tuple[str, str, dict]:
         if not set(facts) <= KIND_FACT_KEYS[kind] or (kind in NEW_KINDS and not _kind_values_ok(kind, facts)):
             raise ProtocolError("bad_request")
         if kind in COACH_KINDS and not (COACH_REQUIRED[kind] <= set(facts) and _coach_values_ok(facts)):
+            raise ProtocolError("bad_request")
+        if kind in TRAIL_KINDS and not _trail_values_ok(facts):
             raise ProtocolError("bad_request")
     return op, kind, facts
 
@@ -223,6 +250,53 @@ def _coach_values_ok(facts: dict) -> bool:
             return False
     lo, hi = facts.get("target_pace_lo_s"), facts.get("target_pace_hi_s")
     return lo is None or hi is None or lo <= hi
+
+
+def _trail_values_ok(facts: dict) -> bool:
+    """Value shapes for the trail cards. A board needs at least two rows and exactly one is today. Every number is a bounded whole number, nothing is free text but the opt-in name."""
+    def ints(v: Any, cap: int, lo: int, hi: int) -> bool:
+        return isinstance(v, list) and 2 <= len(v) <= cap and all(_int_in(x, lo, hi) for x in v)
+    board = facts.get("trail_board")
+    if not (isinstance(board, list) and 2 <= len(board) <= TRAIL_BOARD_MAX and all(
+            isinstance(r, dict) and set(r) <= {"attempt", "time_s", "today"} and _int_in(r.get("attempt"), 1, 999)
+            and _int_in(r.get("time_s"), 1, 86400) and isinstance(r.get("today", False), bool) for r in board)):
+        return False
+    if sum(1 for r in board if r.get("today")) != 1 or len({r["attempt"] for r in board}) != len(board):
+        return False
+    for k, v in facts.items():
+        if k == "type":
+            ok = v == "trail"
+        elif k == "distance_km":
+            ok = _num(v) and 0.01 <= v <= 500
+        elif k == "duration_s":
+            ok = _num(v) and 1 <= v <= 1_000_000
+        elif k == "pace_s_per_km":
+            ok = _num(v) and 60 <= v <= 3600
+        elif k == "climb_m":
+            ok = _num(v) and 0 <= v <= 10000
+        elif k == "trail_runs":
+            ok = _int_in(v, 1, 999)
+        elif k == "trail_board":
+            ok = True
+        elif k == "elev_profile":
+            ok = ints(v, TRAIL_PROFILE_MAX, -2000, 9000)
+        elif k == "ghost_gap":
+            ok = ints(v, TRAIL_PROFILE_MAX, -3600, 3600)
+        elif k == "turn_idx":
+            ok = _int_in(v, 0, TRAIL_PROFILE_MAX - 1)
+        elif k == "trail_shape":
+            ok = _in(v, TRAIL_SHAPES)
+        elif k == "elev_src":
+            ok = _in(v, ELEV_SRCS)
+        elif k == "trail_name":
+            ok = trail_name_ok(v)
+        else:
+            ok = False
+        if not ok:
+            return False
+    if "turn_idx" in facts and (not isinstance(facts.get("elev_profile"), list) or facts["turn_idx"] >= len(facts["elev_profile"])):
+        return False
+    return True
 
 
 def encode_request(op: str, kind: str, facts: dict) -> bytes:
