@@ -168,6 +168,26 @@ void main() {
       }
     });
 
+    test('building with a pixel scale does not change later builds', () {
+      double width(String json) {
+        final layers = (jsonDecode(json) as Map)['layers'] as List;
+        final l =
+            layers.firstWhere((l) => (l as Map)['id'] == 'rs-track') as Map;
+        return (l['paint']['line-width'] as num).toDouble();
+      }
+
+      String build(double k) => TopoStyle.build(
+        File(kTopoCardLightAsset).readAsStringSync(),
+        packDir: '/p',
+        glyphsDir: '/g',
+        pixelScale: k,
+      );
+      final first = width(build(3));
+      expect(first, closeTo(5.5 * 3, 1e-9));
+      expect(width(build(3)), first);
+      expect(width(build(1)), 5.5);
+    });
+
     test('the template itself is not touched', () {
       expect(_template(), contains('{pack}'));
     });

@@ -87,7 +87,12 @@ class TopoStyle {
     }
     final layers = (style['layers'] as List).cast<Object?>();
     final card = (style['metadata'] as Map?)?['card'] == true;
-    layers.addAll(card ? _cardRouteLayers : _routeLayers);
+    // A copy: pixel scaling below edits the layers in place, and the static
+    // lists must stay at 1x for the next style.
+    layers.addAll(
+      (jsonDecode(jsonEncode(card ? _cardRouteLayers : _routeLayers)) as List)
+          .cast<Object?>(),
+    );
     if (pixelScale != 1) scaleForPixelRatio(layers, pixelScale);
     style['metadata'] = {
       ...((style['metadata'] as Map?)?.cast<String, Object?>() ?? const {}),
