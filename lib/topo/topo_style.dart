@@ -15,6 +15,7 @@ import 'package:flutter/painting.dart' show Color;
 
 import '../map/gradient.dart';
 import '../map/route_builder.dart';
+import '../theme/tokens.dart' show TopoCard;
 
 /// The glyph ranges bundled under `assets/topo/glyphs/NotoSans/`. Latin,
 /// Greek, Cyrillic and general punctuation: a range a tile asks for that is
@@ -199,7 +200,7 @@ class TopoStyle {
     '#fe01fe': hex(lane),
     '#fe02fe': hex(
       Color.lerp(
-        dark ? const Color(0xFF6A7075) : const Color(0xFFA2A49C),
+        dark ? TopoCard.contourGreyDark : TopoCard.contourGreyLight,
         lane,
         dark ? 0.35 : 0.38,
       )!,

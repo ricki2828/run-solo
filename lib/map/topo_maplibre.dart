@@ -252,7 +252,7 @@ class _TopoStaticMapState extends State<_TopoStaticMap> {
     final lane = widget.routeColor ?? t.inkPrimary;
     // Printed cards: the route in the lane colour inside a white casing,
     // the start in the lane and the finish in white.
-    final casing = dark ? t.bgBase : Colors.white;
+    final casing = dark ? t.bgBase : TopoCard.casingLight;
     final path = await widget.files.cardStyleFor(
       widget.pack,
       key: '${routeFingerprint(widget.route)}-${identityHashCode(this)}',

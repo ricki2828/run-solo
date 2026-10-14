@@ -125,6 +125,14 @@ abstract final class AuroraRunTypeLight {
   static const Color trail = Color(0xFF8B9133);
 }
 
+/// Home card topo snapshots (the printed-map style): the route's casing on
+/// the light card and the grey the lane is mixed into for contours and trails.
+abstract final class TopoCard {
+  static const Color casingLight = Color(0xFFFFFFFF);
+  static const Color contourGreyLight = Color(0xFFA2A49C);
+  static const Color contourGreyDark = Color(0xFF6A7075);
+}
+
 /// Spacing scale in dp (design brief §5).
 abstract final class Space {
   static const double x4 = 4;
