@@ -3,7 +3,7 @@ description: "Run Supreme: 4x4 Interval Run. Local-only Android running app with
 publish_to: 'none'
 
 # versionCode comes from the +N suffix (plan §11 release train).
-version: 0.1.0+3
+version: 0.1.0+4
 
 environment:
   sdk: ^3.13.4
@@ -48,6 +48,7 @@ flutter:
     - assets/maps/night_session.json
     - assets/maps/night_session_card.json
     - assets/maps/aurora_topo.json
+    - assets/maps/card/
     # Glyphs the offline Topo map's labels need (Noto Sans, OFL); copied to the files dir on first use.
     - assets/topo/glyphs/
     - assets/topo/glyphs/NotoSans/

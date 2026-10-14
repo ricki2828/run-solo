@@ -80,6 +80,9 @@ class MapLibreTopoEngine implements TopoEngine {
   );
 
   @override
+  bool get printedCards => files.printedCards;
+
+  @override
   Widget card(
     InstalledPack pack,
     RouteGeometry route, {
@@ -108,6 +111,22 @@ Iterable<(double, double, Color, Color)> _markDots(
       yield (m.point.lat, m.point.lon, t.inkPrimary, t.inkPrimary);
     } else if (m.kind == RouteMarkerKind.finish) {
       yield (m.point.lat, m.point.lon, t.bgBase, t.inkPrimary);
+    }
+  }
+}
+
+/// Start dot in the lane colour, finish dot in the casing colour, each ringed
+/// by the other.
+Iterable<(double, double, Color, Color)> _printedDots(
+  RouteGeometry route,
+  Color lane,
+  Color casing,
+) sync* {
+  for (final m in route.markers) {
+    if (m.kind == RouteMarkerKind.start) {
+      yield (m.point.lat, m.point.lon, lane, casing);
+    } else if (m.kind == RouteMarkerKind.finish) {
+      yield (m.point.lat, m.point.lon, casing, lane);
     }
   }
 }
@@ -228,17 +247,35 @@ class _TopoStaticMapState extends State<_TopoStaticMap> {
   Future<String> _makeCardStyle() async {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     _dpr = MediaQuery.devicePixelRatioOf(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final printed = widget.files.printedCards;
+    final lane = widget.routeColor ?? t.inkPrimary;
+    // Printed cards: the route in the lane colour inside a white casing,
+    // the start in the lane and the finish in white.
+    final casing = dark ? t.bgBase : TopoCard.casingLight;
     final path = await widget.files.cardStyleFor(
       widget.pack,
       key: '${routeFingerprint(widget.route)}-${identityHashCode(this)}',
       pixelScale: _dpr,
+      dark: dark,
+      swaps: TopoStyle.cardSwaps(lane, dark: dark),
       data: {
-        TopoStyle.trackSource: TopoStyle.gradientLine(
-          widget.route.points,
-          fallback: widget.routeColor ?? t.inkPrimary,
-          casing: t.bgBase,
+        TopoStyle.trackSource: printed
+            ? TopoStyle.line(
+                [for (final p in widget.route.points) (p.lat, p.lon)],
+                colour: lane,
+                casing: casing,
+              )
+            : TopoStyle.gradientLine(
+                widget.route.points,
+                fallback: lane,
+                casing: t.bgBase,
+              ),
+        TopoStyle.marksSource: TopoStyle.dots(
+          printed
+              ? _printedDots(widget.route, lane, casing)
+              : _markDots(widget.route, t),
         ),
-        TopoStyle.marksSource: TopoStyle.dots(_markDots(widget.route, t)),
       },
     );
     _cardStyle = path;

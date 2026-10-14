@@ -30,6 +30,10 @@ import 'render_queue.dart';
 /// The Topo drawing side: the MapLibre widgets in production, plain boxes in
 /// tests (a platform view renders nothing under `flutter_test`).
 abstract class TopoEngine {
+  /// True when Home cards use the pale printed-map style, so their snapshot
+  /// is shown as drawn (no muting, tint or dimming over it).
+  bool get printedCards;
+
   /// Run detail map (4:3 card or full screen when [interactive]).
   Widget detail(
     InstalledPack pack, {
@@ -196,6 +200,7 @@ class TopoMapSurfaceFactory implements MapSurfaceFactory {
     final hash = routeFingerprint(route);
     final colour =
         routeColor ?? Theme.of(context).extension<RunSoloTokens>()!.inkPrimary;
+    final dark = Theme.of(context).brightness == Brightness.dark;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -203,6 +208,7 @@ class TopoMapSurfaceFactory implements MapSurfaceFactory {
           route: route,
           routeColor: routeColor,
           bakedRoute: true,
+          printed: engine.printedCards,
           cacheKey: (size, dpr) => MapSnapshotCache.keyFor(
             runId: runId,
             styleVersion: kMapStyleVersion,
@@ -212,7 +218,8 @@ class TopoMapSurfaceFactory implements MapSurfaceFactory {
             pixelRatio: dpr,
             engine:
                 'topo-${pack.id}-${pack.version}-'
-                '${colour.toARGB32().toRadixString(16)}-$kCardFramingKey',
+                '${colour.toARGB32().toRadixString(16)}-$kCardFramingKey'
+                '${engine.printedCards ? (dark ? '-pd' : '-pl') : ''}',
           ),
           cache: _cache,
           queue: _queue,
