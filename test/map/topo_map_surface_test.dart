@@ -67,6 +67,9 @@ InstalledPack _pack(
 final _milos = _pack('milos', const [24.3, 36.64, 24.55, 36.76]);
 
 class _FakeEngine implements TopoEngine {
+  @override
+  bool get printedCards => true;
+
   final List<String> built = [];
 
   @override

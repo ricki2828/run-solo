@@ -140,6 +140,54 @@ void main() {
       expect(baked['sources']['rs-plan']['data']['features'], isEmpty);
     });
 
+    test('a card style swaps its lane sentinels and draws the glow route', () {
+      for (final dark in [false, true]) {
+        final text = File(dark ? kTopoCardDarkAsset : kTopoCardLightAsset)
+            .readAsStringSync();
+        final built = TopoStyle.build(
+          text,
+          packDir: '/p',
+          glyphsDir: '/g',
+          swaps: TopoStyle.cardSwaps(const Color(0xFF8B9133), dark: dark),
+        );
+        for (final s in ['#fe01fe', '#fe02fe', '#fe03fe']) {
+          expect(built, isNot(contains(s)));
+        }
+        final ids = [
+          for (final l in (jsonDecode(built) as Map)['layers'] as List)
+            (l as Map)['id'],
+        ];
+        expect(
+          ids,
+          containsAll(['rs-track-glow', 'rs-track-casing', 'rs-track']),
+        );
+        // No labels but place names.
+        expect(ids.where((i) => (i as String).startsWith('label')), [
+          'label-locality',
+        ]);
+      }
+    });
+
+    test('building with a pixel scale does not change later builds', () {
+      double width(String json) {
+        final layers = (jsonDecode(json) as Map)['layers'] as List;
+        final l =
+            layers.firstWhere((l) => (l as Map)['id'] == 'rs-track') as Map;
+        return (l['paint']['line-width'] as num).toDouble();
+      }
+
+      String build(double k) => TopoStyle.build(
+        File(kTopoCardLightAsset).readAsStringSync(),
+        packDir: '/p',
+        glyphsDir: '/g',
+        pixelScale: k,
+      );
+      final first = width(build(3));
+      expect(first, closeTo(5.5 * 3, 1e-9));
+      expect(width(build(3)), first);
+      expect(width(build(1)), 5.5);
+    });
+
     test('the template itself is not touched', () {
       expect(_template(), contains('{pack}'));
     });

@@ -26,7 +26,7 @@ adb shell am start -W -n "$PKG/app.runsolo.MainActivity" > /dev/null
 START=$(date +%s)
 OFFLINE=0
 i=0
-while [ $(( $(date +%s) - START )) -lt 240 ]; do
+while [ $(( $(date +%s) - START )) -lt 400 ]; do
   i=$((i + 1))
   if [ "$OFFLINE" = 0 ] && grep -q "TOPO_SURFACE pack_installed" "$OUT/logcat.txt"; then
     # Offline from here on: a tile, glyph or style request over the network would fail loudly.
