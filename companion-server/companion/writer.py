@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from . import db
 from .config import Settings
 from .facts import Fact, FactsResult
+from .rails import add_alert, tag
 from .timeutil import iso, now_utc
 
 NUM_RE = re.compile(r"\d+(?:[:.]\d+)*")
@@ -229,14 +230,64 @@ class Writer:
         with db.ro(self.s.db_path) as c:
             return c.execute("SELECT COALESCE(SUM(cost_usd),0) FROM llm_calls WHERE ts >= ?", (start,)).fetchone()[0]
 
-    def _log(self, model: str | None, provider: str | None, cost: float, outcome: str) -> None:
+    def user_month_spend(self, user_id: str) -> float:
+        start = now_utc().strftime("%Y-%m-01T00:00:00Z")
+        with db.ro(self.s.db_path) as c:
+            return c.execute("SELECT COALESCE(SUM(cost_usd),0) FROM llm_calls WHERE user_id=? AND ts >= ?",
+                             (user_id, start)).fetchone()[0]
+
+    def _blocked(self, user_id: str | None) -> str | None:
+        """Why this runner gets no model call: operator-paused (costs nothing), or over their own monthly ceiling."""
+        if not user_id:
+            return None
+        with db.ro(self.s.db_path) as c:
+            u = c.execute("SELECT ops_paused, tester_no FROM users WHERE id=?", (user_id,)).fetchone()
+        if u and u["ops_paused"]:
+            return "ops_paused"
+        ceiling = self.s.user_monthly_cap_usd
+        if ceiling > 0 and self.user_month_spend(user_id) >= ceiling:
+            now = now_utc()
+            t = tag(u["tester_no"] if u else None)
+            with db.tx(self.s.db_path) as c:
+                add_alert(c, f"usercap:{now.strftime('%Y-%m')}:{t}:{ceiling:g}", f"Run Supreme coach: {t} hit the per-runner LLM ceiling",
+                          f"{t} has used US${ceiling:g} of model spend this month (the per-runner ceiling). "
+                          "They get template text until the 1st; the shared cap is unaffected.", now)
+            return "user_cap"
+        return None
+
+    def _log(self, model: str | None, provider: str | None, cost: float, outcome: str, user_id: str | None = None) -> None:
+        now = now_utc()
         with db.tx(self.s.db_path) as c:
-            c.execute("INSERT INTO llm_calls (ts, model, provider, cost_usd, outcome) VALUES (?,?,?,?,?)",
-                      (iso(now_utc()), model, provider, cost, outcome))
+            c.execute("INSERT INTO llm_calls (ts, model, provider, cost_usd, outcome, user_id) VALUES (?,?,?,?,?,?)",
+                      (iso(now), model, provider, cost, outcome, user_id))
+            if cost > 0:
+                self._cap_alerts(c, now)
+
+    def _cap_alerts(self, c, now) -> None:
+        """Queue an alert the first time the month's spend reaches each fraction of the cap (50/80/100% by default).
+        A call that jumps over several queues the highest and marks the lower ones as already told."""
+        cap = self.s.monthly_cap_usd
+        if cap <= 0:
+            return
+        month = now.strftime("%Y-%m")
+        # the cap value is in the key: raising the cap mid-month re-arms the alerts for the new figure
+        spend = c.execute("SELECT COALESCE(SUM(cost_usd),0) FROM llm_calls WHERE ts >= ?", (f"{month}-01T00:00:00Z",)).fetchone()[0]
+        crossed = [f for f in sorted(self.s.cap_alert_fractions) if spend >= cap * f]
+        for i, f in enumerate(crossed):
+            pct = round(f * 100)
+            if f >= 1.0:
+                title = f"Run Supreme coach: LLM spend hit the ${cap:g} monthly cap"
+                body = (f"US${spend:.2f} of US${cap:g} spent this month. The coach now writes from templates only until "
+                        "the 1st, or until COMPANION_MONTHLY_CAP_USD is raised. The OpenRouter key limit is the hard stop.")
+            else:
+                title = f"Run Supreme coach: LLM spend at {pct}% of the ${cap:g} monthly cap"
+                body = f"US${spend:.2f} of US${cap:g} spent this month. At 100% the coach switches to templates only."
+            add_alert(c, f"cap:{month}:{cap:g}:{pct}", title, body, now, sent=i < len(crossed) - 1)
 
     # -- main ----------------------------------------------------------------------------
     def write(self, result: FactsResult, memory_digest: dict[str, Any], voice: Any = None,
-              style: Sequence[str] | None = None, suggestion_line: str | None = None) -> Written:
+              style: Sequence[str] | None = None, suggestion_line: str | None = None,
+              user_id: str | None = None) -> Written:
         """`voice` (convo.voice.Rendered) is the template fallback in the house voice; `style` are exemplars."""
         facts = list(result.facts)
         if result.suggestion:
@@ -246,6 +297,9 @@ class Writer:
             extra = f"\n{suggestion_line or result.suggestion.text}" if result.suggestion and result.facts else ""
             fallback = Written(voice.headline, voice.body + extra, "template")
         fallback = Written(with_verdict(fallback.headline, facts), fallback.body, fallback.source)
+        why_not = self._blocked(user_id)
+        if why_not:
+            return Written(fallback.headline, fallback.body, "template", why_not)
         if not self.s.openrouter_key:
             return Written(fallback.headline, fallback.body, "template", "no_key")
         if self.month_spend() >= self.s.monthly_cap_usd:
@@ -269,29 +323,30 @@ class Writer:
             "max_tokens": 200,
             "usage": {"include": True},
         }
-        data, why = self._post(body)
+        data, why = self._post(body, user_id)
         if data is None:
             return Written(fallback.headline, fallback.body, "template", why)
         try:
-            return self._accept(data, allowed_text, fallback, facts)
+            return self._accept(data, allowed_text, fallback, facts, user_id)
         except Exception as e:  # a card must never fail because of what the model returned
-            self._safe_log("error")
+            self._safe_log("error", user_id=user_id)
             return Written(fallback.headline, fallback.body, "template", f"bad_response:{type(e).__name__}")
 
-    def _safe_log(self, outcome: str, provider: str | None = None, cost: float = 0.0) -> None:
+    def _safe_log(self, outcome: str, provider: str | None = None, cost: float = 0.0, user_id: str | None = None) -> None:
         try:
-            self._log(self.s.model, provider, cost, outcome)
+            self._log(self.s.model, provider, cost, outcome, user_id)
         except Exception:
             pass
 
-    def _accept(self, data: Any, allowed_text: str, fallback: Written, facts: Sequence[Fact] = ()) -> Written:
+    def _accept(self, data: Any, allowed_text: str, fallback: Written, facts: Sequence[Fact] = (),
+                user_id: str | None = None) -> Written:
         if not isinstance(data, dict):
             raise TypeError("shape")
         provider = data.get("provider") if isinstance(data.get("provider"), str) else None
         cost = self._cost(data)
 
         def reject(outcome: str, note: str) -> Written:
-            self._log(self.s.model, provider, cost, outcome)
+            self._log(self.s.model, provider, cost, outcome, user_id)
             return Written(fallback.headline, fallback.body, "template", note)
 
         try:
@@ -305,10 +360,10 @@ class Writer:
             return reject("ungrounded", "ungrounded_number")
         if not numbers_in(out.headline + " " + out.body):
             return reject("no_number", "no_number")
-        self._log(self.s.model, provider, cost, "ok")
+        self._log(self.s.model, provider, cost, "ok", user_id)
         return Written(with_verdict(out.headline, facts), out.body, "llm", provider or "")
 
-    def _post(self, body: dict) -> tuple[dict | None, str]:
+    def _post(self, body: dict, user_id: str | None = None) -> tuple[dict | None, str]:
         """8 s timeout, one retry on timeout/429/5xx."""
         last = "error"
         for attempt in (0, 1):
@@ -322,14 +377,14 @@ class Writer:
                     last = f"http_{r.status_code}"
                     continue
                 if r.status_code != 200:
-                    self._log(self.s.model, None, 0.0, f"http_{r.status_code}")
+                    self._log(self.s.model, None, 0.0, f"http_{r.status_code}", user_id)
                     return None, f"http_{r.status_code}"
                 return r.json(), ""  # may be any JSON shape; _accept checks it
             except httpx.TimeoutException:
                 last = "timeout"
             except (httpx.HTTPError, ValueError):
                 last = "transport"
-        self._log(self.s.model, None, 0.0, last)
+        self._log(self.s.model, None, 0.0, last, user_id)
         return None, last
 
     def _cost(self, data: dict) -> float:

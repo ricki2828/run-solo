@@ -19,8 +19,8 @@ window are partial and are marked "~". Engagement and w4 use runs and run_notes 
 never flip later.
 Testers: users with a device (a finished enrolment). Runs with real_upload 0, or NULL and tagged inserted=1 in
 replay_runs, are replay-created and skipped. llm_calls cannot be told apart for replays, so cost includes any replay calls.
-LLM cost: llm_calls has cost_usd but no user column, so cost is a weekly total, and the per-user figure is that total
-split evenly across the users who were sent a card that week (an allocation, not a measurement).
+LLM cost: a call with llm_calls.user_id is that runner's own cost. Calls without one (made before the column existed, or by
+a runner since deleted) are a weekly total split evenly across the users sent a card that week (an allocation).
 """
 from __future__ import annotations
 
@@ -91,6 +91,11 @@ def _compute(c: sqlite3.Connection, now: datetime | None, weeks: int) -> dict:
 
     users = _rows(c, "SELECT id, created_at FROM users WHERE EXISTS (SELECT 1 FROM devices d WHERE d.user_id = users.id) ORDER BY created_at, id")
     alias = {uid: f"T{i + 1}" for i, (uid, _) in enumerate(users)}
+    if any(r[1] == "tester_no" for r in c.execute("PRAGMA table_info(users)")):
+        # the same T-number the ops CLI shows, so the scorecard and `ops roster` talk about the same people
+        nums = dict(_rows(c, "SELECT id, tester_no FROM users"))
+        if all(nums.get(uid) for uid, _ in users) and len({nums[uid] for uid, _ in users}) == len(users):
+            alias = {uid: f"T{nums[uid]}" for uid, _ in users}
     signup = {uid: _parse(ts) for uid, ts in users}
 
     replay_cards = ({r[0] for r in _rows(c, "SELECT card_id FROM replay_items WHERE card_id IS NOT NULL")}
@@ -126,12 +131,19 @@ def _compute(c: sqlite3.Connection, now: datetime | None, weeks: int) -> dict:
         wi = (_week_start(ts) - starts[0]).days // 7
         per_week.setdefault(uid, [_blank() for _ in starts])[wi][_KEY[kind]] += 1
 
-    cost = [0.0] * weeks
+    cost = [0.0] * weeks              # every call, attributed or not
+    user_cost: dict[str, list[float]] = {}   # calls that carry a user_id, by user and week
     if _has(c, "llm_calls"):
-        for ts, usd in _rows(c, "SELECT ts, cost_usd FROM llm_calls WHERE ts >= ?", (_iso(starts[0]),)):
+        has_uid = any(r[1] == "user_id" for r in c.execute("PRAGMA table_info(llm_calls)"))
+        sql = ("SELECT ts, cost_usd, user_id FROM llm_calls WHERE ts >= ?" if has_uid
+               else "SELECT ts, cost_usd, NULL FROM llm_calls WHERE ts >= ?")
+        for ts, usd, cuid in _rows(c, sql, (_iso(starts[0]),)):
             wi = (_week_start(_parse(ts)) - starts[0]).days // 7
             if 0 <= wi < weeks:
                 cost[wi] += usd or 0.0
+                if cuid:
+                    user_cost.setdefault(cuid, [0.0] * weeks)[wi] += usd or 0.0
+    attributed = [sum(v[i] for v in user_cost.values()) for i in range(weeks)]
 
     testers = []
     for uid, _ in users:
@@ -150,14 +162,20 @@ def _compute(c: sqlite3.Connection, now: datetime | None, weeks: int) -> dict:
         })
 
     sent_users = [sum(1 for t in testers if t["weeks"][i]["cards"] > 0) for i in range(weeks)]
+    by_alias = {alias[u]: u for u, _ in users}
     for t in testers:
-        t["llm_cost_usd_alloc"] = [round(cost[i] / sent_users[i], 4) if sent_users[i] and t["weeks"][i]["cards"] else 0.0
+        own = user_cost.get(by_alias[t["id"]], [0.0] * weeks)
+        # a call with a user_id is that runner's; calls without one (made before the column, or by a runner since deleted)
+        # are split evenly across the runners sent a card that week, as before
+        t["llm_cost_usd_alloc"] = [round(own[i] + ((cost[i] - attributed[i]) / sent_users[i]
+                                                   if sent_users[i] and t["weeks"][i]["cards"] else 0.0), 4)
                                    for i in range(weeks)]
     eligible = [t for t in testers if t["week4_retained"] is not None]
     return {
         "generated": _iso(now), "week_starts": [s.strftime("%Y-%m-%d") for s in starts], "testers": testers,
         "llm_cost_usd_total": [round(x, 4) for x in cost],
-        "llm_cost_note": "llm_calls has no user column: per-tester cost is the weekly total split evenly across testers sent a card that week",
+        "llm_cost_note": "per-tester cost is that runner's own calls (llm_calls.user_id); calls with no runner id are split evenly across testers sent a card that week",
+        "enrol_refused_by_day": (dict(_rows(c, "SELECT day, n FROM enrol_refused ORDER BY day")) if _has(c, "enrol_refused") else {}),
         "week4": {"retained": sum(1 for t in eligible if t["week4_retained"]), "eligible": len(eligible)},
     }
 

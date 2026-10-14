@@ -182,7 +182,7 @@ class CheckinMixin:
         who, args = ((" AND id = ?", (only_user,)) if only_user else (f" AND id NOT IN {replay_hold(now)}", ()))
         with db.tx(self.s.db_path) as c:
             users = [dict(r) for r in c.execute(
-                "SELECT * FROM users WHERE channel='telegram' AND paused=0 AND last_run_utc >= ? "
+                "SELECT * FROM users WHERE channel='telegram' AND paused=0 AND ops_paused=0 AND last_run_utc >= ? "
                 "AND checkin_consent >= ?" + who,
                 (iso(now - timedelta(days=14)), self.s.checkin_consent_required, *args))]
             for u in users:

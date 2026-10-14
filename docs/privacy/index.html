@@ -258,6 +258,18 @@
   when you send your first message. You do not type your phone number into the app. The app keeps a connection key
   in your phone's secure storage, and the server keeps only a scrambled copy of it.</p>
 
+  <p><strong>When the test is full.</strong> While the companion is in testing it connects a limited number of runners (25). If
+  you ask after that, the chat gets a short reply saying so, and we keep nothing about you: not your Telegram chat or name. The
+  only record is a count of how many people asked that day, with nothing to say who. (A hashed copy of the message's id
+  is kept for 30 days to stop the same message being handled twice, like every other message.)</p>
+  <p><strong>Flooding and cost limits.</strong> The server counts how many messages a chat sends in a minute and in a day, in
+  memory only, to slow down a flood. If a connected runner is slowed down three times in 24 hours, they are paused automatically
+  (the server keeps one row per slow-down for 2 days to count them), and Ricki can pause or un-pause a runner by hand. A paused
+  runner gets no messages, but sending DELETE still erases everything. The server also records the cost of each call to the
+  writing service against the runner it was for, so the monthly spend can be capped and checked per runner. That record holds
+  a cost, a time and a model name, no text. When you delete your data it stays only as an anonymous cost line, with nothing
+  linking it to you.</p>
+
   <h3>Where it goes</h3>
   <ul>
     <li><strong>Our server</strong>, hosted by Hetzner in Germany. It stores your run summaries, your answers, the notes it
@@ -300,6 +312,7 @@
     <li>Check-in answers (how the body feels, why you skipped, what was behind a slow easy run, how many runs next week) are kept
     for 14 days, then deleted. The record of which check-ins were sent goes after 14 days too. Neither is in the nightly backup.</li>
     <li>An unfinished connection (you never entered the code) is deleted after an hour.</li>
+    <li>The cost of each call to the writing service is kept for 400 days, linked to you until you delete your data and anonymous after that. The slow-down record that pauses a flood is kept for 2 days. The count of people turned away when the test was full is kept for 90 days.</li>
     <li>Backups: the server database is backed up each night, encrypted, and each backup is deleted after 14 days. Data you
     delete is gone from the live server at once and from the backups within 14 days.</li>
     <li>Server logs hide phone numbers, chat ids and keys.</li>
