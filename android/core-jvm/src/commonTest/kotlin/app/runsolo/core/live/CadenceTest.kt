@@ -109,10 +109,29 @@ class CadenceTest {
     fun `a climb ahead is said once and not again within a km`() {
         val m = TrailMoments()
         val first = m.tick(MomentInput(nowMs = 0, distM = 3_000.0, climbAheadM = 70.0))
-        assertEquals(listOf("Climb ahead. 70 metres up."), first.map { it.text })
+        assertEquals(listOf("Climb ahead. 70 metres of climbing left."), first.map { it.text })
         assertEquals(CueSlot.climbAhead, first.single().slot)
         assertTrue(m.tick(MomentInput(nowMs = 5_000, distM = 3_100.0, climbAheadM = 65.0)).isEmpty())
         assertTrue(m.tick(MomentInput(nowMs = 0, distM = 3_000.0, climbAheadM = 20.0)).isEmpty())
+    }
+
+    @Test
+    fun `every later climb ahead is said without a barometer`() {
+        val m = TrailMoments()
+        val a = m.tick(MomentInput(nowMs = 0, distM = 3_000.0, climbAheadM = 70.0)).single()
+        val b = m.tick(MomentInput(nowMs = 1, distM = 4_200.0, climbAheadM = 50.0)).single()
+        assertTrue(a.key != b.key, "a new key per sighting, so the budget does not call it a repeat")
+        val budget = TalkBudget(VoiceLevel.coach)
+        assertNotNull(budget.offer(a, 0L, 0L))
+        assertNotNull(budget.offer(b, 300_000L, 0L))
+    }
+
+    @Test
+    fun `a restore does not repeat a climb ahead or guess at a climb under way`() {
+        val m = TrailMoments()
+        m.resumeAt(5_000.0)
+        assertTrue(m.tick(MomentInput(nowMs = 0, distM = 5_100.0, climbAheadM = 70.0)).isEmpty())
+        assertEquals(1, m.tick(MomentInput(nowMs = 1, distM = 6_100.0, climbAheadM = 70.0)).size)
     }
 
     @Test

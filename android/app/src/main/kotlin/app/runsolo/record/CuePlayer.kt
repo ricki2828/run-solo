@@ -59,6 +59,13 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
 
     private var seq = 0
 
+    /** The last [play] was dropped by the budget (not by cues being off): its compare was never said, so it is not journaled as fired. */
+    private var dropped = false
+
+    /** True once when the last [play] was dropped by the [TalkBudget]. */
+    @Synchronized
+    fun consumeDropped(): Boolean = dropped.also { dropped = false }
+
     /** Steep and zone 4+ right now: the km and half km lines stay quiet (set by the session each tick). */
     @Volatile
     var hardEffort: Boolean = false
@@ -178,8 +185,12 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
         }
         val full = if (tail != null && fresh) "${head.trimEnd()} $tail" else head
         // Interval and plan cues (a kind) are structure: they always speak. A km or half km line can be dropped or merged.
-        val line = TalkLine(slot, key ?: "${slot.name}:${seq++}", full)
-        val offered = budget.offer(line, t, speech.busyUntil, hardEffort) ?: return null
+        val line = TalkLine(slot, key ?: "${slot.name}:${seq++}", full, whole = composed.compareSpoken)
+        val offered = budget.offer(line, t, speech.busyUntil, hardEffort)
+        if (offered == null) {
+            dropped = true
+            return null
+        }
         vibrate(kind ?: CueKind.minuteMark)
         val words = offered.text
         speech.queued(t, CueComposer.words(words))
@@ -217,6 +228,16 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
 
     /** When the speech queued so far will be done, on the session's clock (voice coaching only speaks when this has passed). */
     val speechBusyUntil: Long get() = synchronized(this) { speech.busyUntil }
+
+    /**
+     * Like [speechBusyUntil], and on the Coach level not before the budget's gap has opened: voice coaching keeps its own
+     * cooldown, so it must not fire a line the budget would then drop.
+     */
+    val coachBusyUntil: Long
+        get() = synchronized(this) {
+            val busy = speech.busyUntil
+            if (budget.level == VoiceLevel.coach) maxOf(busy, budget.gapOpensAt(now(), busy)) else busy
+        }
 
     /** A nudge is waiting to follow its cue; coaching holds off so it is not dropped. */
     val nudgePending: Boolean get() = synchronized(this) { followUp.pending != null }

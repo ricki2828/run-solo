@@ -31,6 +31,7 @@ class TrailMoments {
     private val gate = AheadBehindGate()
     private var climbAheadAtM = Double.NEGATIVE_INFINITY
     private var climbId = 0
+    private var aheadCount = 0
     private var climbStartAscent: Double? = null
     private var flatSinceM: Double? = null
     private var finalPushSaid = false
@@ -44,11 +45,19 @@ class TrailMoments {
         return out
     }
 
+    /** After a restore: what was passed while dead is not said late, and a climb under way is not guessed at. */
+    fun resumeAt(distM: Double) {
+        climbAheadAtM = distM
+        climbStartAscent = null
+        flatSinceM = null
+    }
+
     private fun climbAhead(i: MomentInput): TalkLine? {
         val c = i.climbAheadM?.takeIf { it >= MIN_CLIMB_M } ?: return null
         if (i.distM - climbAheadAtM < CLIMB_AHEAD_REPEAT_M) return null
         climbAheadAtM = i.distM
-        return TalkLine(CueSlot.climbAhead, "climbAhead:${climbId}", "Climb ahead. ${CheckInWords.metres(c)} up.")
+        // The retrace figure is the climb left on the way back in total, not one slope: say so. Keyed per sighting so every later one speaks, barometer or not.
+        return TalkLine(CueSlot.climbAhead, "climbAhead:${aheadCount++}", "Climb ahead. ${CheckInWords.metres(c)} of climbing left.")
     }
 
     /** The top of a climb: 30 m of gain, then the grade stays under 2% for 100 m. */

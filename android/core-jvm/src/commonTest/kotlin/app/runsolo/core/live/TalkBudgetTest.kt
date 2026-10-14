@@ -30,6 +30,31 @@ class TalkBudgetTest {
     }
 
     @Test
+    fun `the first line of a run is not held by the gap whether the player is idle at zero or in the past`() {
+        assertNotNull(coach().offer(line(CueSlot.km, "km:1", "1 k."), 0L, 0L))
+        assertNotNull(coach().offer(line(CueSlot.km, "km:1", "1 k."), 400_000L, 399_000L))
+        assertNotNull(coach().offer(line(CueSlot.climbAhead, "c", "Climb ahead."), 5_000L, 0L))
+    }
+
+    @Test
+    fun `a km line carrying a compare is never merged with an event`() {
+        val b = coach()
+        assertNotNull(b.offer(line(CueSlot.turnaround, "t", "Turn here."), 0L, 0L))
+        assertNull(b.offer(line(CueSlot.climbAhead, "c", "Climb ahead."), 20_000L, 0L))
+        val km = TalkLine(CueSlot.km, "km:3", "3 k. 2nd of 7, 5 seconds off your best.", whole = true)
+        assertEquals(km.text, b.offer(km, 26_000L, 0L)?.text)
+        assertEquals(km, TalkBudget.merge(km, line(CueSlot.climbAhead, "c", "Climb ahead.")))
+    }
+
+    @Test
+    fun `gap opens at the end of what was just said`() {
+        val b = coach()
+        b.offer(line(CueSlot.turnaround, "t", "Turn here."), 0L, 0L)
+        assertEquals(750L + TalkBudget.MIN_GAP_MS, b.gapOpensAt(1_000L, 0L))
+        assertEquals(5_000L + TalkBudget.MIN_GAP_MS, b.gapOpensAt(1_000L, 5_000L))
+    }
+
+    @Test
     fun `speech still queued ahead counts for the gap`() {
         val b = coach()
         assertNull(b.offer(line(CueSlot.km, "km:1", "1 k."), 10_000L, 20_000L))

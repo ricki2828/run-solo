@@ -68,6 +68,8 @@ data class TalkLine(
     val text: String,
     val value: Double? = null,
     val minChange: Double? = null,
+    /** A km line carrying a board compare: never merged with an event (a merge would cut the comparison). */
+    val whole: Boolean = false,
 ) {
     val words: Int get() = CueComposer.words(text)
 }
@@ -115,7 +117,7 @@ class TalkBudget(
         if (held != null && now - heldAtMs > holdMs) held = null
         // A km line that finds an event waiting takes it along: one utterance.
         val waiting = held
-        if (waiting != null && line.slot == CueSlot.km && gapOpen(now, busyUntil)) {
+        if (waiting != null && line.slot == CueSlot.km && !line.whole && gapOpen(now, busyUntil)) {
             held = null
             return accept(merge(line, waiting), now, busyUntil)
         }
@@ -163,13 +165,22 @@ class TalkBudget(
     /** [busyUntil] only counts while speech is still queued; an idle player (0 or in the past) is not a line just said. */
     private fun gapOpen(now: Long, busyUntil: Long): Boolean = now >= maxOf(lastEndMs, if (busyUntil > now) busyUntil else Long.MIN_VALUE / 2) + minGapMs
 
-    private fun overWindow(line: TalkLine, now: Long): Boolean {
+    private fun pruneWindow(now: Long) {
         while (spoken.isNotEmpty() && spoken.first().first <= now - windowMs) spoken.removeFirst()
+    }
+
+    /** When a non-P0 line could next be said, given speech queued until [busyUntil]; callers that own their own cooldown wait for it. */
+    fun gapOpensAt(now: Long, busyUntil: Long): Long = maxOf(lastEndMs, if (busyUntil > now) busyUntil else Long.MIN_VALUE / 2) + minGapMs
+
+    private fun overWindow(line: TalkLine, now: Long): Boolean {
+        pruneWindow(now)
         return spoken.sumOf { it.second } + line.words > windowWords
     }
 
     private fun accept(line: TalkLine, now: Long, busyUntil: Long): TalkLine {
-        said[line.key] = line.value
+        // P0 lines are never checked for repeats, so their keys are not kept (a run of announces stays bounded).
+        if (line.slot.priority > 0) said[line.key] = line.value
+        pruneWindow(now)
         if (line.slot.priority > 0) spoken.addLast(now to line.words)
         lastEndMs = maxOf(now, busyUntil, lastEndMs) + line.words * SpeechClock.MS_PER_WORD
         return line
@@ -198,6 +209,7 @@ class TalkBudget(
          * If even that is too long the event is dropped and the km line is said whole.
          */
         fun merge(km: TalkLine, event: TalkLine): TalkLine {
+            if (km.whole) return km
             val short = km.text.trim().substringBefore(". ").let { if (it.endsWith(".")) it else "$it." }
             val text = "$short ${event.text.trim()}"
             return if (CueComposer.words(text) <= MERGE_MAX_WORDS) km.copy(slot = event.slot, key = event.key, text = text) else km

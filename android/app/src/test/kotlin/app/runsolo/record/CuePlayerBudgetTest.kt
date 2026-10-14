@@ -62,6 +62,25 @@ class CuePlayerBudgetTest {
     }
 
     @Test
+    fun `a dropped km line says so once for its compare`() {
+        val cues = coachPlayer()
+        cues.alert("Turn here.", longArrayOf(0, 150), CueSlot.turnaround)
+        clock = 5_000
+        assertNull(cues.play(null, "3 k.", "2nd of 7, 5 seconds off your best.", key = "km:3"))
+        assertEquals(true, cues.consumeDropped())
+        assertEquals(false, cues.consumeDropped())
+    }
+
+    @Test
+    fun `voice coaching waits for the budget gap on Coach and not on Everything`() {
+        val cues = coachPlayer()
+        cues.alert("Turn here.", longArrayOf(0, 150), CueSlot.turnaround)
+        clock = 1_000
+        assertEquals(25_750L, cues.coachBusyUntil)
+        assertEquals(750L, CuePlayer(context) { clock }.also { it.alert("Turn here.", longArrayOf(0, 150)) }.coachBusyUntil)
+    }
+
+    @Test
     fun `the default level only de-dupes`() {
         val cues = CuePlayer(context) { clock }
         cues.alert("Turn here.", longArrayOf(0, 150), CueSlot.turnaround)

@@ -327,6 +327,7 @@ class RecordingSession(
         var cumActive = 0L
         coach.restoreReps(replayed.events, core, laps.map { l -> cumActive += l.activeMs; l.distanceM to cumActive })
         coach.resumeAt(ticker.distanceM)
+        trailMoments.resumeAt(ticker.distanceM)
         // A goal already reached before the kill is never said again; a kill before it marks the
         // result interrupted (WARN-G2).
         goal = GoalCoach(spec, liveContext).also { it.restored(reachedBeforeKill = core.finalStepEnd != null) }
@@ -920,9 +921,13 @@ class RecordingSession(
         // (the next run's `blocked` list comes from those lines), never when it is dropped.
         val said = if (kind != null || base != null || extra != null) cues.play(kind, base, extra, nudge, tail, slot, key) else null
         said?.text?.let { logSaid(it) }
+        val droppedByBudget = cues.consumeDropped()
         fire ?: return
         val st = core.status(t)
-        writer.append(JournalLine.CueFired(t, System.currentTimeMillis(), JournalLine.FiredKind.compare, fire.key, fire.index, st.elapsedMs))
+        // A compare the budget dropped was never said: it is not journaled as fired (the overlay below still shows it).
+        if (!droppedByBudget || !fire.speak) {
+            writer.append(JournalLine.CueFired(t, System.currentTimeMillis(), JournalLine.FiredKind.compare, fire.key, fire.index, st.elapsedMs))
+        }
         val r = fire.result
         RecorderEventBus.emit(
             CompareEvent(
@@ -976,7 +981,8 @@ class RecordingSession(
             field = value
             checkInTracker = value?.let { p -> CheckInTracker(p.zoneBottomsBpm).also { it.partial = checkInPartial } }
             synchronized(this) { coach.checkIn = value }
-            cues.voiceLevel = value?.level ?: VoiceLevel.everything
+            // Voice detail is for Free and Trail runs; intervals and laps keep today's voice (Coaching detail governs their coaching lines).
+            cues.voiceLevel = if (mode == RunMode.free || mode == RunMode.trail) value?.level ?: VoiceLevel.everything else VoiceLevel.everything
         }
 
     private var checkInTracker: CheckInTracker? = null
@@ -985,6 +991,9 @@ class RecordingSession(
     private var checkInPartial = false
 
     /** Tests: the check-in's tracker says only the zone (restored run). */
+    /** Tests: the Voice detail the cue player is on (Free and Trail only; everything else is Everything). */
+    internal val voiceLevel: VoiceLevel get() = cues.voiceLevel
+
     internal val checkInSaysZoneOnly: Boolean get() = checkInTracker?.partial == true
     private var checkInPace: Double? = null
     private var checkInTruePace: Double? = null
@@ -1094,7 +1103,7 @@ class RecordingSession(
                 paceSecPerKm = truePace,
                 hr = hr?.toDouble(),
                 msToPhaseEnd = toEndMs,
-                busyUntil = if (cues.nudgePending) t + 1 else cues.speechBusyUntil,
+                busyUntil = if (cues.nudgePending) t + 1 else cues.coachBusyUntil,
                 wideBand = mode == RunMode.trail || (grade != null && abs(grade) > COACH_STEEP_GRADE),
             ),
         ) ?: return
@@ -1112,7 +1121,11 @@ class RecordingSession(
      * [CuePlayer.moment] by their owners.
      */
     private fun trailMomentsTick(t: Long) {
-        if (replay != null || trailMomentsOff) return
+        if (replay != null) return
+        if (trailMomentsOff) {
+            cues.hardEffort = false
+            return
+        }
         try {
             // Steep and working hard: the budget keeps the km and half km quiet (Free and Trail alike).
             cues.hardEffort = (liveElev.grade ?: 0.0) > HARD_GRADE && (checkInTracker?.smoothedZone() ?: 0) >= HARD_ZONE
@@ -1130,6 +1143,7 @@ class RecordingSession(
             cues.dueMoment()?.let { logSaid(it.text) }
         } catch (e: Exception) {
             trailMomentsOff = true
+            cues.hardEffort = false
             Log.w(TAG, "trail moments off: $e")
         }
     }
