@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 import socket
 import struct
 import time
@@ -69,7 +70,13 @@ def trail_name_ok(v: Any) -> bool:
     if not (isinstance(v, str) and 1 <= len(v.strip()) <= 30 and v == v.strip()):
         return False
     low = v.lower()
-    if v.replace(" ", "").isdigit() or "@" in v or "://" in low or "www." in low or "http" in low:
+    if any(unicodedata.category(ch)[0] == "C" for ch in v):    # control and format characters (newlines, RTL overrides)
+        return False
+    if sum(ch.isdigit() for ch in v) >= 5 or re.search(r"\+\s*\d", v):    # a phone number, however it is spaced
+        return False
+    if "@" in v or "://" in low or "www." in low or "http" in low:
+        return False
+    if re.search(r"\b(insta|instagram|ig|tiktok|strava|fb|facebook|whatsapp|snap|snapchat)\b", low) or re.search(r":\s*[a-z0-9_.]{3,}", low):
         return False
     return not re.search(r"\.(com|net|org|io|co|nz|au|app|me|ly|xyz)\b", low)
 TRAIL_PROFILE_MAX, TRAIL_BOARD_MAX, TRAIL_NAME_MAX = 64, 10, 30
@@ -258,7 +265,8 @@ def _trail_values_ok(facts: dict) -> bool:
         return isinstance(v, list) and 2 <= len(v) <= cap and all(_int_in(x, lo, hi) for x in v)
     board = facts.get("trail_board")
     if not (isinstance(board, list) and 2 <= len(board) <= TRAIL_BOARD_MAX and all(
-            isinstance(r, dict) and set(r) <= {"attempt", "time_s", "today"} and _int_in(r.get("attempt"), 1, 999)
+            isinstance(r, dict) and set(r) <= {"attempt", "time_s", "today", "rank"} and _int_in(r.get("attempt"), 1, 999)
+            and (r.get("rank") is None or _int_in(r["rank"], 1, 999))
             and _int_in(r.get("time_s"), 1, 86400) and isinstance(r.get("today", False), bool) for r in board)):
         return False
     if sum(1 for r in board if r.get("today")) != 1 or len({r["attempt"] for r in board}) != len(board):
@@ -294,6 +302,8 @@ def _trail_values_ok(facts: dict) -> bool:
             ok = False
         if not ok:
             return False
+    if _int_in(facts.get("trail_runs"), 1, 999) and facts["trail_runs"] < len(board):
+        return False
     if "turn_idx" in facts and (not isinstance(facts.get("elev_profile"), list) or facts["turn_idx"] >= len(facts["elev_profile"])):
         return False
     return True

@@ -424,10 +424,11 @@ def trail_board_third_private() -> dict[str, Any]:
 
 
 def trail_board_many_runs() -> dict[str, Any]:
-    """The 12th run, ranked 8th: the board keeps the best four and today, and a time over an hour with a long name."""
+    """The 12th run, ranked 9th among 12 (the app sends each row's true rank; runs 10 and 11 are not on the board): the card keeps the best four and today, and a time over an hour with a long name."""
     rows = [(1, 3978), (2, 3790), (3, 3852), (4, 3683), (5, 3734), (6, 3701), (7, 3722), (8, 3811), (9, 3765), (12, 3905)]
     return {"type": "trail", "distance_km": 9.6, "duration_s": 3905, "pace_s_per_km": 407, "climb_m": 412, "trail_runs": 12,
-            "trail_board": _board(rows, 12), "elev_profile": _trail_profile(), "elev_src": "baro", "turn_idx": 31, "trail_shape": "out_and_back",
+            "trail_board": [r | {"rank": {4: 1, 6: 2, 7: 3, 5: 4, 9: 5, 2: 6, 8: 7, 3: 8, 12: 9, 1: 11}[r["attempt"]]} for r in _board(rows, 12)],
+            "elev_profile": _trail_profile(), "elev_src": "baro", "turn_idx": 31, "trail_shape": "out_and_back",
             "trail_name": "Mt Wellington Pinnacle Circuit"}
 
 

@@ -23,6 +23,7 @@ class BoardRow(BaseModel):
     attempt: StrictInt = Field(ge=1, le=999)
     time_s: StrictInt = Field(ge=1, le=86400)   # the pace-normalised time (#274)
     today: StrictBool = False
+    rank: StrictInt | None = Field(default=None, ge=1, le=999)   # the app's true rank among ALL runs of this trail, ties sharing one
 
 
 class TrailIn(BaseModel):
@@ -54,6 +55,8 @@ class TrailIn(BaseModel):
     def _consistent(self):
         if sum(1 for r in self.board if r.today) != 1 or len({r.attempt for r in self.board}) != len(self.board):
             raise ValueError("board needs exactly one today row and distinct attempts")
+        if self.n < len(self.board):
+            raise ValueError("n is smaller than the board")
         if self.turn is not None and (self.profile is None or self.turn >= len(self.profile)):
             raise ValueError("turn is not an index into the profile")
         return self
@@ -77,8 +80,14 @@ def parse(raw: Any) -> TrailIn | None:
         return None
 
 
-def dump(t: TrailIn | None) -> str | None:
-    return None if t is None else json.dumps(t.model_dump(exclude_none=True), separators=(",", ":"))
+def dump(t: TrailIn | None, keep_name: bool = False) -> str | None:
+    """The stored form. A trail name is a place: it is kept only while the runner's place opt-in is on."""
+    if t is None:
+        return None
+    d = t.model_dump(exclude_none=True)
+    if not keep_name:
+        d.pop("name", None)
+    return json.dumps(d, separators=(",", ":"))
 
 
 def load(raw: str | None) -> dict | None:

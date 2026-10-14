@@ -193,7 +193,8 @@ def test_the_cards_render_at_full_size_when_chromium_is_present():
         assert png[:8] == b"\x89PNG\r\n\x1a\n" and len(png) < 10 * 1024 * 1024, name
 
 
-@pytest.mark.parametrize("name", ["12345", "@rickirun", "see www.trails.com", "https://x.io/a", "trail.com", "a@b", " lead"])
+@pytest.mark.parametrize("name", ["12345", "@rickirun", "see www.trails.com", "https://x.io/a", "trail.com", "a@b", " lead", "+64 21 555 1234", "insta: bobruns",
+                                  "0211234567", "call 021 555", "tiktok bob", "Strava loop", "line\nbreak", "x\u202eevil"])
 def test_a_trail_name_that_is_a_handle_a_link_or_digits_is_refused(name):
     f = F.trail_record_six()
     f["trail_name"] = name
@@ -244,6 +245,7 @@ def test_a_gap_in_the_ranks_gets_a_spacer_row():
 
 
 def test_a_spoilered_photo_keeps_the_verdict_out_of_the_caption(env):
+    env.svc.set_settings(UID, None, None, None, place_names=True)
     trail_run(env, 1, trail_block([(1, 3700), (2, 3900), (3, 3800)], 3, n=3, name="The Saddle Trail"))
     env.quiet_outbox()
     cid = env.svc._build_run_card(UID, "r01", NOW)
@@ -257,4 +259,44 @@ def test_a_spoilered_photo_keeps_the_verdict_out_of_the_caption(env):
         refs = [r["ref"] for r in c.execute("SELECT ref FROM outbox WHERE kind='followup'")]
     assert f"{cid}:coach_line" in refs
     env.svc._send_followup(env.user(), f"{cid}:coach_line", NOW)
-    assert f"{card['headline']}\n{card['body']}" in env.texts()
+    import html
+    sent = [b for m, b in env.fakes.tg if m == "sendMessage"][-1]
+    assert sent["parse_mode"] == "HTML"
+    assert sent["text"] == "<tg-spoiler>" + html.escape(f"{card['headline']}\n{card['body']}", quote=False) + "</tg-spoiler>"
+
+
+def test_board_rank_with_more_than_ten_runs():
+    from render.cards.trail import build_trail_board_html
+    rows = [(1, 3600), (17, 3650), (18, 3700), (19, 3750), (20, 3720)]
+    f = F.trail_board_five() | {"trail_runs": 20, "trail_board": board(rows, 20)}
+    for r in f["trail_board"]:
+        r["rank"] = {1: 1, 17: 12, 18: 14, 19: 16, 20: 15}[r["attempt"]]
+    P.check_request({"v": 1, "op": "card", "kind": "trail_board", "facts": f})
+    html_ = build_trail_board_html(f)
+    assert "15TH FASTEST" in html_ and "···" in html_
+    for r in f["trail_board"]:
+        del r["rank"]
+    P.check_request({"v": 1, "op": "card", "kind": "trail_board", "facts": f})
+    bare = build_trail_board_html(f)
+    assert "FASTEST" not in bare and "JOINT BEST" not in bare and "···" not in bare
+    assert "TWENTY TIMES UP." in bare
+
+
+def test_ordinals_and_n_against_the_board():
+    from render.cards.trail import _ordinal
+    assert [_ordinal(x) for x in (4, 11, 12, 21, 22, 103)] == ["4TH", "11TH", "12TH", "21ST", "22ND", "103RD"]
+    assert T.parse(trail_block([(1, 3900), (2, 3800), (3, 3700)], 3, n=2)) is None
+    f = F.trail_record_six() | {"trail_runs": 2}
+    with pytest.raises(P.ProtocolError):
+        P.check_request({"v": 1, "op": "card", "kind": "trail_record", "facts": f})
+
+
+def test_the_name_is_dropped_unless_the_place_opt_in_is_on(env):
+    trail_run(env, 1, trail_block([(1, 3900), (2, 3800), (3, 3700)], 3, n=3, name="The Saddle Trail"))
+    assert "name" not in json.loads(env.q("SELECT trail_json FROM run_shape WHERE run_id='r01'")[0]["trail_json"])
+    env.svc.set_settings(UID, None, None, None, place_names=True)
+    trail_run(env, 2, trail_block([(1, 3900), (2, 3800), (3, 3700)], 3, n=3, name="The Saddle Trail"))
+    assert json.loads(env.q("SELECT trail_json FROM run_shape WHERE run_id='r02'")[0]["trail_json"])["name"] == "The Saddle Trail"
+    env.svc.set_settings(UID, None, None, None, place_names=False)       # switching it off forgets stored names now
+    assert "name" not in json.loads(env.q("SELECT trail_json FROM run_shape WHERE run_id='r02'")[0]["trail_json"])
+    assert env.svc.get_me(UID)["profile"]["place_names_on_cards"] is False

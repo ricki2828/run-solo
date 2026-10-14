@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import hmac
 from dataclasses import dataclass
 from typing import Any
@@ -9,6 +10,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+import html
 import json
 import re
 
@@ -238,7 +240,10 @@ class TelegramChannel:
                 raise ChannelError("touch card without a photo", permanent=True)
             return self._send_media(ref, OutCard(card.card_id, card.headline, card.body, [], card.media, ()), text)
         if mode == "coach_line":
-            text, kb = f"{card.headline}\n{card.body}", []   # the buttons already ride the photo
+            # the verdict sits behind a spoiler, so neither the chat nor the notification preview shows it
+            payload = {"chat_id": int(ref), "parse_mode": "HTML",
+                       "text": "<tg-spoiler>" + html.escape(f"{card.headline}\n{card.body}", quote=False) + "</tg-spoiler>"}
+            return str(self._call("sendMessage", payload)["result"]["message_id"])
         elif mode == "caption":
             text, kb = f"{card.headline}\n{card.body}", self._keyboard(card, media=False)
         elif mode == "question":

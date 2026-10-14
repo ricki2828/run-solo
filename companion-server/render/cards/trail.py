@@ -28,6 +28,11 @@ SHAPE_WORDS = {"out_and_back": "OUT AND BACK", "loop": "LOOP", "one_way": "ONE W
 MAX_ROWS = 5
 
 
+def _ordinal(n: int) -> str:
+    suffix = "TH" if 10 <= n % 100 <= 20 else {1: "ST", 2: "ND", 3: "RD"}.get(n % 10, "TH")
+    return f"{n}{suffix}"
+
+
 def _band(g: float) -> tuple[str, str]:
     g = abs(g)
     for word, top, colour in BANDS:
@@ -157,9 +162,14 @@ def _board(facts: Mapping[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
-def _rank_of(rows: Sequence[Mapping[str, Any]]) -> tuple[Mapping[str, Any], int]:
-    today = next(r for r in rows if r.get("today"))
-    return today, 1 + sum(1 for r in rows if r["time_s"] < today["time_s"])
+def _rank(row: Mapping[str, Any], rows: Sequence[Mapping[str, Any]], n: int) -> int | None:
+    """The app's rank when it sent one. Otherwise ranked among the rows sent, but only when the board holds every run of the
+    trail (n <= rows); a board that is a slice of a longer history cannot say where a run stands, so there is no rank."""
+    if row.get("rank"):
+        return int(row["rank"])
+    if n > len(rows):
+        return None
+    return 1 + sum(1 for r in rows if r["time_s"] < row["time_s"])
 
 
 def _name_tag(facts: Mapping[str, Any], fallback: str) -> str:
@@ -184,9 +194,9 @@ def _fit(text: str, sizes: tuple[tuple[int, int], ...]) -> int:
     return sizes[-1][1]
 
 
-def _shown(rows: list[dict[str, Any]]) -> list[tuple[int, dict[str, Any]]]:
-    """(rank, row) for at most MAX_ROWS rows: the best rows, and today's row whenever it would otherwise be cut."""
-    ranked = [(1 + sum(1 for o in rows if o["time_s"] < r["time_s"]), r) for r in rows]
+def _shown(rows: list[dict[str, Any]], n: int) -> list[tuple[int | None, dict[str, Any]]]:
+    """(rank or None, row) for at most MAX_ROWS rows: the best rows, and today's row whenever it would otherwise be cut."""
+    ranked = [(_rank(r, rows, n), r) for r in rows]
     if len(ranked) <= MAX_ROWS:
         return ranked
     head = ranked[:MAX_ROWS - 1]
@@ -194,19 +204,19 @@ def _shown(rows: list[dict[str, Any]]) -> list[tuple[int, dict[str, Any]]]:
     return head + (tail[:1] if tail else ranked[MAX_ROWS - 1:MAX_ROWS])
 
 
-def _rows_html(shown: list[tuple[int, dict[str, Any]]], best: int, top: int, row_h: int) -> str:
+def _rows_html(shown: list[tuple[int | None, dict[str, Any]]], best: int, top: int, row_h: int) -> str:
     worst = max(r["time_s"] for _, r in shown)
     lo = best - 60
     out = ""
     prev = 0
     for rank, r in shown:
-        if prev and rank != prev + 1:   # ranks were skipped: a thin spacer says so
+        if prev and rank and rank > prev + 1:   # ranks were skipped (a tie is not a skip): a thin spacer says so
             out += (f'<div class="saira" style="height:20px;line-height:14px;padding-left:60px;font-size:34px;color:{brand.QUIET};'
                     f'letter-spacing:.2em">···</div>')
-        prev = rank
+        prev = rank or prev
         t = r["time_s"]
         today = bool(r.get("today"))
-        is_best = rank == 1
+        is_best = rank == 1 or (rank is None and t == best)
         gap = t - best
         bar_w = 520 * (1 - (t - lo) / (worst - lo + 120))
         bg = brand.tint(LANE) if today else "#FFFFFF"
@@ -215,7 +225,7 @@ def _rows_html(shown: list[tuple[int, dict[str, Any]]], best: int, top: int, row
         chip = (f'<span class="cap" style="font-size:22px;padding:6px 16px;border-radius:99px;background:{brand.ARC};color:{brand.INK}">BEST</span>'
                 if is_best else f'<span class="saira" style="font-size:40px;color:{brand.INK_SECONDARY}">+{_gap_text(gap)}</span>')
         out += (f'<div style="display:flex;align-items:center;height:{row_h}px;padding:0 26px;border-radius:24px;background:{bg};margin-bottom:6px">'
-                f'<span class="saira" style="width:56px;font-size:44px;color:{brand.QUIET}">{rank}</span>'
+                f'<span class="saira" style="width:56px;font-size:44px;color:{brand.QUIET}">{rank or ""}</span>'
                 f'<span class="saira" style="width:150px;font-size:40px;color:{brand.INK if today else brand.INK_SECONDARY}">{label}</span>'
                 f'<span style="flex:1;height:18px;position:relative"><span class="abs" style="left:0;top:0;height:18px;width:{max(bar_w, 24):.0f}px;'
                 f'border-radius:9px;background:{bar}"></span></span>'
@@ -230,13 +240,17 @@ def _climb_stat(facts: Mapping[str, Any]) -> tuple[str, str] | None:
 
 def build_trail_board_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = None) -> str:
     rows = _board(facts)
-    today, rank = _rank_of(rows)
-    best = rows[0]["time_s"]
     n = int(facts.get("trail_runs") or len(rows))
+    today = next(r for r in rows if r.get("today"))
+    rank = _rank(today, rows, n)
+    best = rows[0]["time_s"]
     climb = float(facts.get("climb_m") or 0)
     count = COUNT_WORDS.get(n, str(n))
     line1 = f"{count} TIMES UP." if climb >= 50 else f"{count} RUNS."
-    line2 = (RANK_WORDS.get(rank) or f"{rank}TH FASTEST") + "." if rank > 1 else "JOINT BEST."
+    if rank is None:
+        line2 = ""     # the board is a slice and the app sent no rank: no ordinal rather than a wrong one
+    else:
+        line2 = ((RANK_WORDS.get(rank) or f"{_ordinal(rank)} FASTEST") + ".") if rank > 1 else "JOINT BEST."
     gap = today["time_s"] - best
     first = next((r for r in rows if r["attempt"] == 1 and not r.get("today")), None)
     sub = f"{_gap_words(gap)} off your best" if gap else "level with your best"
@@ -248,15 +262,16 @@ def build_trail_board_html(facts: Mapping[str, Any], memory: Mapping[str, Any] |
     tag_size = _fit(tag_raw + (" / " + shape if shape else ""), ((38, 28), (46, 24), (99, 20)))
     tag = P.esc(tag_raw, 30) + (f" &nbsp;/&nbsp; {shape}" if shape else "")
     value = P.fmt_dur(today["time_s"])
+    line2_html = ("<br>" + P.esc(line2, 24)) if line2 else ""
     hero = (f'<div class="abs" style="left:{P.BX}px;top:160px;width:{P.BW}px;height:420px;border-radius:{P.RADIUS}px;background:{LANE};overflow:hidden">'
             f'<div class="abs cap" style="left:40px;top:34px;font-size:{tag_size}px;letter-spacing:.14em;color:{brand.INK};white-space:nowrap">{tag}</div>'
-            f'<div class="abs saira" style="left:40px;top:86px;width:{P.BW - 80}px;font-size:92px;line-height:.9;color:{brand.INK}">{line1}<br>{P.esc(line2, 24)}</div>'
+            f'<div class="abs saira" style="left:40px;top:86px;width:{P.BW - 80}px;font-size:92px;line-height:.9;color:{brand.INK}">{line1}{line2_html}</div>'
             f'<div class="abs" style="left:36px;bottom:30px;right:30px;display:flex;align-items:baseline;gap:18px;white-space:nowrap">'
             f'<span class="saira" style="font-size:{_fit(value, ((5, 150), (99, 120)))}px;line-height:.78;color:{brand.INK}">{value}</span>'
             f'<span style="font-size:{_fit(sub, ((30, 34), (99, 28)))}px;font-weight:600;color:{brand.INK}">{P.esc(sub, 60)}</span></div></div>')
     profile = _profile_of(facts)
     dist_m = float(facts.get("distance_km") or 0) * 1000
-    shown = _shown(rows)
+    shown = _shown(rows, n)
     if profile:
         baro = facts.get("elev_src") == "baro"
         grad, legend = (" &nbsp;·&nbsp; GRADIENT", _legend()) if baro else ("", "")
