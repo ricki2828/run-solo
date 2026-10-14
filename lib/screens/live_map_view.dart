@@ -195,7 +195,12 @@ class LiveMapView extends StatefulWidget {
     this.plan,
     this.terrain = false,
     this.retrace,
+    this.mapBoxKey,
   });
+
+  /// Lets the page switcher find the map's rectangle (a swipe outside it
+  /// goes back to the numbers; a swipe on it is the map's).
+  final GlobalKey? mapBoxKey;
 
   final MapSurfaceFactory maps;
   final LiveRouteTrack track;
@@ -263,7 +268,7 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
       for (final r in widget.readouts) ...[r, const SizedBox(height: Space.x8)],
       Expanded(
         child: SizedBox(
-          key: const ValueKey('map-page-map'),
+          key: widget.mapBoxKey ?? const ValueKey('map-page-map'),
           child: _map(context),
         ),
       ),
