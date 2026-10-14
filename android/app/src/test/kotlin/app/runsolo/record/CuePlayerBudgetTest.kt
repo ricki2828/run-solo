@@ -62,13 +62,26 @@ class CuePlayerBudgetTest {
     }
 
     @Test
-    fun `a dropped km line says so once for its compare`() {
+    fun `a km line with a compare is said inside the gap and not reported as dropped`() {
         val cues = coachPlayer()
         cues.alert("Turn here.", longArrayOf(0, 150), CueSlot.turnaround)
         clock = 5_000
-        assertNull(cues.play(null, "3 k.", "2nd of 7, 5 seconds off your best.", key = "km:3"))
+        val said = cues.play(null, "3 k.", "2nd of 7, 5 seconds off your best.", key = "km:3")
+        assertEquals("3 k. 2nd of 7, 5 seconds off your best.", said?.text)
+        assertEquals(false, cues.consumeDropped())
+    }
+
+    @Test
+    fun `a dropped km line says so once and a plain one is dropped inside the gap`() {
+        val cues = coachPlayer()
+        cues.alert("Turn here.", longArrayOf(0, 150), CueSlot.turnaround)
+        clock = 5_000
+        assertNull(cues.play(null, "3 k.", null, key = "km:3"))
         assertEquals(true, cues.consumeDropped())
         assertEquals(false, cues.consumeDropped())
+        cues.hardEffort = true
+        assertNull(cues.play(null, "4 k.", "2nd of 7, 5 seconds off your best.", key = "km:4"))
+        assertEquals(true, cues.consumeDropped())
     }
 
     @Test
