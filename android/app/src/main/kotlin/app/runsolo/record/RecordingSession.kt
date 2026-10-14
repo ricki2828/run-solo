@@ -34,10 +34,14 @@ import app.runsolo.core.live.CheckInPlan
 import app.runsolo.core.live.CheckInSnapshot
 import app.runsolo.core.live.CheckInTracker
 import app.runsolo.core.live.CooperCurve
+import app.runsolo.core.live.CueSlot
 import app.runsolo.core.live.GoalCoach
 import app.runsolo.core.live.LiveCoach
 import app.runsolo.core.live.LiveTruePace
+import app.runsolo.core.live.MomentInput
+import app.runsolo.core.live.TrailMoments
 import app.runsolo.core.live.VoiceCoach
+import app.runsolo.core.live.VoiceLevel
 import app.runsolo.core.record.CueWords
 import app.runsolo.core.record.SummaryWords
 import app.runsolo.core.record.LapDispatch
@@ -323,6 +327,7 @@ class RecordingSession(
         var cumActive = 0L
         coach.restoreReps(replayed.events, core, laps.map { l -> cumActive += l.activeMs; l.distanceM to cumActive })
         coach.resumeAt(ticker.distanceM)
+        trailMoments.resumeAt(ticker.distanceM)
         // A goal already reached before the kill is never said again; a kill before it marks the
         // result interrupted (WARN-G2).
         goal = GoalCoach(spec, liveContext).also { it.restored(reachedBeforeKill = core.finalStepEnd != null) }
@@ -507,7 +512,8 @@ class RecordingSession(
         // Free / Laps: a whole km crossed in this tick says its compare, if there is one.
         checkInTick(t, samples.last().hr)
         coach.onTick(coachPrevT, coachPrevD, t, ticker.distanceM, samples.last().hr, snap = { checkInSnapshot(t) }) { core.status(it).activeMs }
-            ?.let { speakFire(null, it.base, it.fire, t, it.nudge, it.tail) }
+            ?.let { speakFire(null, it.base, it.fire, t, it.nudge, it.tail, it.slot, it.key) }
+        trailMomentsTick(t)
         coachPrevT = t
         coachPrevD = ticker.distanceM
         // A nudge follows its cue as its own line: done (journaled, never offered again) only once said.
@@ -898,17 +904,30 @@ class RecordingSession(
      * extra); a compare also goes to the journal (`cf`, so a restore never repeats it) and to the
      * app as a [CompareEvent] for the overlay, muted or not. [kind] null = a Free run's km split.
      */
-    private fun speakFire(kind: CueKind?, cueBase: String?, fire: LiveCoach.Fire?, t: Long, nudge: LiveCoach.Nudge? = null, tail: String? = null) {
+    private fun speakFire(
+        kind: CueKind?,
+        cueBase: String?,
+        fire: LiveCoach.Fire?,
+        t: Long,
+        nudge: LiveCoach.Nudge? = null,
+        tail: String? = null,
+        slot: CueSlot = if (kind == null) CueSlot.km else CueSlot.structure,
+        key: String? = null,
+    ) {
         val extra = fire?.takeIf { it.speak }?.text
         // A spoken goal-km compare replaces "On pace for …" with "3 k." (§G); muted, the cue stays.
         val base = fire?.takeIf { it.speak }?.base ?: cueBase
         // A nudge waits in the player to follow this cue; it is journaled at the tick that says it
         // (the next run's `blocked` list comes from those lines), never when it is dropped.
-        val said = if (kind != null || base != null || extra != null) cues.play(kind, base, extra, nudge, tail) else null
+        val said = if (kind != null || base != null || extra != null) cues.play(kind, base, extra, nudge, tail, slot, key) else null
         said?.text?.let { logSaid(it) }
+        val droppedByBudget = cues.consumeDropped()
         fire ?: return
         val st = core.status(t)
-        writer.append(JournalLine.CueFired(t, System.currentTimeMillis(), JournalLine.FiredKind.compare, fire.key, fire.index, st.elapsedMs))
+        // A compare the budget dropped was never said: it is not journaled as fired (the overlay below still shows it).
+        if (!droppedByBudget || !fire.speak) {
+            writer.append(JournalLine.CueFired(t, System.currentTimeMillis(), JournalLine.FiredKind.compare, fire.key, fire.index, st.elapsedMs))
+        }
         val r = fire.result
         RecorderEventBus.emit(
             CompareEvent(
@@ -962,12 +981,17 @@ class RecordingSession(
             field = value
             checkInTracker = value?.let { p -> CheckInTracker(p.zoneBottomsBpm).also { it.partial = checkInPartial } }
             synchronized(this) { coach.checkIn = value }
+            // Voice detail is for Free and Trail runs; intervals and laps keep today's voice (Coaching detail governs their coaching lines).
+            cues.voiceLevel = if (mode == RunMode.free || mode == RunMode.trail) value?.level ?: VoiceLevel.everything else VoiceLevel.everything
         }
 
     private var checkInTracker: CheckInTracker? = null
 
     /** The run was restored after a kill: its zone minutes are incomplete, whichever tracker is built. */
     private var checkInPartial = false
+
+    /** Tests: the Voice detail the cue player is on (Free and Trail only; everything else is Everything). */
+    internal val voiceLevel: VoiceLevel get() = cues.voiceLevel
 
     /** Tests: the check-in's tracker says only the zone (restored run). */
     internal val checkInSaysZoneOnly: Boolean get() = checkInTracker?.partial == true
@@ -1079,12 +1103,49 @@ class RecordingSession(
                 paceSecPerKm = truePace,
                 hr = hr?.toDouble(),
                 msToPhaseEnd = toEndMs,
-                busyUntil = if (cues.nudgePending) t + 1 else cues.speechBusyUntil,
+                busyUntil = if (cues.nudgePending) t + 1 else cues.coachBusyUntil,
                 wideBand = mode == RunMode.trail || (grade != null && abs(grade) > COACH_STEEP_GRADE),
             ),
         ) ?: return
         Log.i(TAG, "coach ${line.kind}: ${line.text}")
-        cues.announce(line.text)
+        cues.announce(line.text, if (line.kind == VoiceCoach.Kind.drift) CueSlot.zoneDrift else CueSlot.paceStatus)
+    }
+
+    private val trailMoments = TrailMoments()
+    private var trailMomentsOff = false
+
+    /**
+     * Trail beats and the budget's held game beat, once a tick, on the recorder thread. A live Trail run on the Coach
+     * level only; a failure here turns the feature off for the run, never the recording. The ghost fields are null until
+     * the ghost engine fills them (see [MomentInput]); the finish verdict and the turnaround are offered through
+     * [CuePlayer.moment] by their owners.
+     */
+    private fun trailMomentsTick(t: Long) {
+        if (replay != null) return
+        if (trailMomentsOff) {
+            cues.hardEffort = false
+            return
+        }
+        try {
+            // Steep and working hard: the budget keeps the km and half km quiet (Free and Trail alike).
+            cues.hardEffort = (liveElev.grade ?: 0.0) > HARD_GRADE && (checkInTracker?.smoothedZone() ?: 0) >= HARD_ZONE
+            if (mode != RunMode.trail || core.state != RecorderState.recording || core.autoPaused) return
+            val plan = checkIn ?: return
+            if (plan.level != VoiceLevel.coach) return
+            val input = MomentInput(
+                nowMs = t,
+                distM = ticker.distanceM,
+                climbAheadM = retrace.state.takeIf { it.retracing && it.direction == RetraceDirection.reverse }?.climbAheadM,
+                ascentM = liveElev.ascentM.takeIf { liveElev.source == ElevSource.baro },
+                grade = liveElev.grade,
+            )
+            for (line in trailMoments.tick(input)) cues.moment(line)?.let { logSaid(it.text) }
+            cues.dueMoment()?.let { logSaid(it.text) }
+        } catch (e: Exception) {
+            trailMomentsOff = true
+            cues.hardEffort = false
+            Log.w(TAG, "trail moments off: $e")
+        }
     }
 
     /** Replay only (T4): what was said, at trace ms, for the emulator's transcript check. */
@@ -1194,23 +1255,23 @@ class RecordingSession(
     private fun routeEvent(e: RouteFollower.Event) {
         when (e) {
             is RouteFollower.Event.OffRoute -> {
-                cues.alert(RouteWords.OFF_ROUTE, longArrayOf(0, 400, 150, 400, 150, 400))
+                cues.alert(RouteWords.OFF_ROUTE, longArrayOf(0, 400, 150, 400, 150, 400), CueSlot.offRoute)
                 logSaid(RouteWords.OFF_ROUTE)
                 Log.i(TAG, "off route at ${core.status(e.t).elapsedMs} ms, ${"%.0f".format(follower?.offsetM ?: 0.0)} m from the line")
             }
             is RouteFollower.Event.BackOnRoute -> {
-                cues.alert(RouteWords.BACK_ON_ROUTE, longArrayOf(0, 120, 80, 120))
+                cues.alert(RouteWords.BACK_ON_ROUTE, longArrayOf(0, 120, 80, 120), CueSlot.offRoute)
                 logSaid(RouteWords.BACK_ON_ROUTE)
                 Log.i(TAG, "back on route at ${core.status(e.t).elapsedMs} ms")
             }
             is RouteFollower.Event.RouteEnd -> {
                 // Two long pulses: unlike the off-route triple or the short turn tick. The screen cue comes from [routeProgress].
-                cues.alert(e.text, longArrayOf(0, 600, 200, 600))
+                cues.alert(e.text, longArrayOf(0, 600, 200, 600), CueSlot.routeEnd)
                 logSaid(e.text)
                 Log.i(TAG, "route end: ${e.kind}")
             }
             is RouteFollower.Event.Turn -> {
-                cues.alert(e.text, longArrayOf(0, 150))
+                cues.alert(e.text, longArrayOf(0, 150), CueSlot.turnaround)
                 logSaid(e.text)
                 Log.i(TAG, "route turn: ${e.text}")
             }
@@ -1255,6 +1316,10 @@ class RecordingSession(
 
         /** Voice coaching: a distance rep this close to its end counts as ended; a grade over 3% widens the band. */
         private const val COACH_LAST_M = 100.0
+
+        /** The Coach level keeps the km and half km quiet above this grade (a fraction) and this smoothed HR zone. */
+        private const val HARD_GRADE = 0.08
+        private const val HARD_ZONE = 4
         private const val COACH_STEEP_GRADE = 0.03
         private const val VOLUME_KEY_UNAVAILABLE_MARKER = "volume-key-unavailable"
     }

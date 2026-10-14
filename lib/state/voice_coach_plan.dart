@@ -56,7 +56,10 @@ abstract final class VoiceCoachPlan {
     required AppSettings settings,
     required engine.HrZones zones,
   }) => (
-    metrics: [for (final m in settings.checkInMetrics) m.key],
+    metrics: [
+      for (final m in settings.checkInMetrics) m.key,
+      settings.voiceDetail.metricKey,
+    ],
     zoneBottomsBpm: [for (var z = 2; z <= 5; z++) zones.bottom(z).toDouble()],
   );
 

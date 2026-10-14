@@ -38,7 +38,12 @@ enum class CheckInMetric(val key: String) {
  * method (null: no zones, so no HR line). Only a live (non-replay) Free or Trail run gets one; with
  * none, the km line is the legacy [LiveWords.kmSplit] word for word.
  */
-data class CheckInPlan(val metrics: Set<CheckInMetric>, val zoneBottomsBpm: List<Double>? = null) {
+data class CheckInPlan(
+    val metrics: Set<CheckInMetric>,
+    val zoneBottomsBpm: List<Double>? = null,
+    /** Settings → Voice → "Voice detail". The default keeps today's check-in; the app and the prefs always say which. */
+    val level: VoiceLevel = VoiceLevel.everything,
+) {
     init {
         require(zoneBottomsBpm == null || zoneBottomsBpm.size == 4) { "zoneBottomsBpm is zones 2..5" }
     }
@@ -57,6 +62,11 @@ data class CheckInSnapshot(
     /** Retrace: distance back to the start along the way out, km; null when not retracing. */
     val backToStartKm: Double? = null,
     val climbAheadM: Double? = null,
+    /**
+     * Trail ghost: seconds ahead of the runner's best at this point (negative = behind); null = no ghost. The ghost
+     * stream fills it; until then the Coach km line has no gap lead and the half km no gap item.
+     */
+    val ghostAheadSec: Double? = null,
 )
 
 /**
@@ -231,5 +241,154 @@ object CheckInWords {
     private fun tenths(km: Double): String {
         val t = (km * 10).roundToInt()
         return if (t % 10 == 0) "${t / 10}" else "${t / 10} point ${t % 10}"
+    }
+}
+
+/**
+ * The Coach and Minimal km lines (cadence v1): a glance, not a report. "4 k. 31 minutes 12. pace 7:48." is 7 words
+ * (2.6 s) against today's 25. One lead item at most, then the screen holds the rest.
+ */
+object CoachWords {
+    /** A Coach km line is this many words at most (about 3.4 s); a board compare as the lead may take [MAX_WORDS_WITH_COMPARE]. */
+    const val MAX_WORDS = 9
+    const val MAX_WORDS_WITH_COMPARE = 12
+
+    /** A trail km with at least this much gain is a hill: its pace says little, so it is left to the screen. */
+    const val FLAT_KM_GAIN_M = 10.0
+
+    /** Gaps under this are "level": no news. */
+    const val MIN_GAP_SEC = 2.0
+
+    /** "Minimal": the km word and nothing else; no km line at all when the check-in is switched off. */
+    fun minimal(plan: CheckInPlan, km: Int): CheckInWords.Spoken =
+        CheckInWords.Spoken(if (plan.metrics.isEmpty()) null else "$km k.", null)
+
+    /**
+     * The Coach km line. [compare]: a spoken board compare (Free runs), which is then the one lead. [trail]: a Trail run.
+     * [kmGainM]: this km's climb (barometer), null = unknown. Lead, first that is true: the compare, the ghost gap,
+     * the km pace on a Free/road km (or a trail km under [FLAT_KM_GAIN_M] gain); else none. Over [MAX_WORDS] the time
+     * goes first (it is on the screen), then the lead.
+     */
+    fun km(plan: CheckInPlan, km: Int, activeMs: Long, splitMs: Long?, snap: CheckInSnapshot?, trail: Boolean, kmGainM: Double?, compare: String?): CheckInWords.Spoken {
+        val m = plan.metrics
+        if (m.isEmpty()) return CheckInWords.Spoken(null, null)
+        val dist = if (CheckInMetric.distance in m) "$km k." else null
+        val time = if (CheckInMetric.time in m) "${LiveWords.duration(activeMs)}." else null
+        val splitPace = splitMs?.takeIf { it > 0 }
+        fun line(t: String?, l: String?): String? = listOfNotNull(dist, t, l).joinToString(" ").ifEmpty { null }
+        // A compare rides the cue itself (CueComposer) as the one lead, so the base is only what comes before it.
+        if (compare != null) {
+            val withTime = line(time, null)
+            val fits = CueComposer.words(withTime) + CueComposer.words(compare) <= MAX_WORDS_WITH_COMPARE
+            return CheckInWords.Spoken(if (fits) withTime else line(null, null), null)
+        }
+        val flatEnough = !trail || (kmGainM != null && kmGainM < FLAT_KM_GAIN_M)
+        val lead: String? = snap?.ghostAheadSec?.let { gapLine(it) }
+            ?: if (CheckInMetric.pace in m && splitPace != null && flatEnough) "pace ${CueWords.clock(splitPace.toDouble())}." else null
+        var text = line(time, lead)
+        if (CueComposer.words(text) > MAX_WORDS) text = line(null, lead)
+        if (CueComposer.words(text) > MAX_WORDS) text = line(time, null)
+        return CheckInWords.Spoken(text, null)
+    }
+
+    /** "12 up on your best." / "12 off your best."; null when level. */
+    fun gapLine(aheadSec: Double): String? {
+        val s = abs(aheadSec).roundToLong()
+        if (abs(aheadSec) < MIN_GAP_SEC) return null
+        return if (aheadSec > 0) "${CueWords.gap(s)} up on your best." else "${CueWords.gap(s)} off your best."
+    }
+}
+
+/**
+ * What the half km says: only news, else nothing. The first item that qualifies, in order: the ghost gap moved
+ * 15 s since it was last said, the HR zone changed, 40 m more climb since last said, the height passed a 50 m
+ * step, the average pace (Free only, every 2nd half km). Each item at most once per 1.5 km; the first sighting of
+ * a figure is a baseline, not news. At most [MAX_WORDS] words. One per run; pure.
+ */
+class HalfKmNews {
+    private var lastGap: Double? = null
+    private var lastZone: Int? = null
+    private var lastClimb = 0.0
+    private var lastHeightStep = 0
+    private var halves = 0
+    private val itemAtM = HashMap<String, Double>()
+
+    /** A whole km line said these; they are the baseline the half km measures change from. */
+    fun noteKm(snap: CheckInSnapshot?) {
+        if (snap?.ghostAheadSec != null && CoachWords.gapLine(snap.ghostAheadSec) != null) lastGap = snap.ghostAheadSec
+    }
+
+    fun line(plan: CheckInPlan, snap: CheckInSnapshot?, distM: Double, trail: Boolean): TalkLine? {
+        halves++
+        snap ?: return null
+        val m = plan.metrics
+        gap(snap, distM)?.let { return it }
+        if (CheckInMetric.hrZone in m) zone(snap, distM)?.let { return it }
+        if (CheckInMetric.climb in m) climb(snap, distM)?.let { return it }
+        if (CheckInMetric.heightVsStart in m) height(snap, distM)?.let { return it }
+        if (CheckInMetric.avgPace in m && !trail && halves % 2 == 0) avg(snap, distM)?.let { return it }
+        return null
+    }
+
+    private fun due(item: String, distM: Double): Boolean = distM - (itemAtM[item] ?: Double.NEGATIVE_INFINITY) >= REPEAT_M
+
+    private fun said(item: String, distM: Double, text: String, value: Double?, step: Double?): TalkLine {
+        itemAtM[item] = distM
+        return TalkLine(CueSlot.halfKm, "halfKm:$item", text, value, step)
+    }
+
+    private fun gap(s: CheckInSnapshot, distM: Double): TalkLine? {
+        val g = s.ghostAheadSec ?: return null
+        val last = lastGap
+        if (last == null) {
+            lastGap = g
+            return null
+        }
+        if (abs(g - last) < GAP_STEP_SEC || !due("gap", distM)) return null
+        val text = CoachWords.gapLine(g)?.takeIf { CueComposer.words(it) <= MAX_WORDS } ?: return null
+        lastGap = g
+        return said("gap", distM, text, g, GAP_STEP_SEC)
+    }
+
+    private fun zone(s: CheckInSnapshot, distM: Double): TalkLine? {
+        val z = s.hrZone ?: return null
+        val last = lastZone
+        if (last == null) {
+            lastZone = z
+            return null
+        }
+        if (z == last || !due("zone", distM)) return null
+        lastZone = z
+        return said("zone", distM, "Zone $z.", z.toDouble(), 1.0)
+    }
+
+    private fun climb(s: CheckInSnapshot, distM: Double): TalkLine? {
+        val c = s.climbM ?: return null
+        if (c - lastClimb < CLIMB_STEP_M || !due("climb", distM)) return null
+        lastClimb = c
+        return said("climb", distM, "Climbed ${CheckInWords.metres(c)} so far.", c, CLIMB_STEP_M)
+    }
+
+    private fun height(s: CheckInSnapshot, distM: Double): TalkLine? {
+        val h = s.heightVsStartM ?: return null
+        val step = (h / HEIGHT_STEP_M).toInt()
+        if (step == lastHeightStep || !due("height", distM)) return null
+        lastHeightStep = step
+        if (step == 0) return null
+        return said("height", distM, "${CheckInWords.metres(abs(h))} ${if (h > 0) "above" else "below"} the start.", h, HEIGHT_STEP_M)
+    }
+
+    private fun avg(s: CheckInSnapshot, distM: Double): TalkLine? {
+        val a = s.avgPaceSecPerKm?.takeIf { it > 0 } ?: return null
+        if (!due("avg", distM)) return null
+        return said("avg", distM, "Average ${CueWords.clock(a * 1_000)}.", a, 0.0)
+    }
+
+    companion object {
+        const val MAX_WORDS = 6
+        const val REPEAT_M = 1_500.0
+        const val GAP_STEP_SEC = 15.0
+        const val CLIMB_STEP_M = 40.0
+        const val HEIGHT_STEP_M = 50.0
     }
 }
