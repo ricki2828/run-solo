@@ -156,6 +156,9 @@ class FakeRecorderGateway implements RecorderGateway {
   /// Scripted route figures (Follow a route). Null = follow what `start`
   /// was given: the route's length less the distance run, never off route.
   RouteProgress? routeProgress;
+
+  /// Scripted known-trail figures (the in-run ghost). Null = no trail matched.
+  TrailProgress? trailProgress;
   double _routeLengthM = 0;
   double? _routeClimbM;
   bool _following = false;
@@ -576,6 +579,7 @@ class FakeRecorderGateway implements RecorderGateway {
     descentAheadM: descentAheadM,
     heightVsStartM: heightVsStartM,
     route: _state == RecorderState.idle ? null : _route,
+    trail: _state == RecorderState.idle ? null : trailProgress,
     mode: _state == RecorderState.idle ? RecordMode.free : _mode,
     laps: List.of(_laps),
   );
@@ -1016,6 +1020,7 @@ class FakeRecorderGateway implements RecorderGateway {
         descentAheadM: descentAheadM,
         heightVsStartM: heightVsStartM,
         route: _route,
+        trail: trailProgress,
       ),
     );
   }

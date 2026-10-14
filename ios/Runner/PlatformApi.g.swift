@@ -908,6 +908,9 @@ struct LiveContext: Hashable {
   /// Epoch millis when the app built it.
   var builtAtMs: Int64
   var engineVersion: Int64
+  /// Trails the runner has run before (at most 6), for the in-run ahead/behind
+  /// and the turnaround cue on a trail they know. Null or empty = none.
+  var trails: [TrailRef]? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -920,6 +923,7 @@ struct LiveContext: Hashable {
     let coachingMuted = pigeonVar_list[5] as! Bool
     let builtAtMs = pigeonVar_list[6] as! Int64
     let engineVersion = pigeonVar_list[7] as! Int64
+    let trails: [TrailRef]? = nilOrValue(pigeonVar_list[8])
 
     return LiveContext(
       boards: boards,
@@ -929,7 +933,8 @@ struct LiveContext: Hashable {
       cooperHistory: cooperHistory,
       coachingMuted: coachingMuted,
       builtAtMs: builtAtMs,
-      engineVersion: engineVersion
+      engineVersion: engineVersion,
+      trails: trails
     )
   }
   func toList() -> [Any?] {
@@ -942,13 +947,14 @@ struct LiveContext: Hashable {
       coachingMuted,
       builtAtMs,
       engineVersion,
+      trails,
     ]
   }
   static func == (lhs: LiveContext, rhs: LiveContext) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.boards, rhs.boards) && deepEqualsPlatformApi(lhs.target, rhs.target) && deepEqualsPlatformApi(lhs.nudges, rhs.nudges) && deepEqualsPlatformApi(lhs.cooperCurve, rhs.cooperCurve) && deepEqualsPlatformApi(lhs.cooperHistory, rhs.cooperHistory) && deepEqualsPlatformApi(lhs.coachingMuted, rhs.coachingMuted) && deepEqualsPlatformApi(lhs.builtAtMs, rhs.builtAtMs) && deepEqualsPlatformApi(lhs.engineVersion, rhs.engineVersion)
+    return deepEqualsPlatformApi(lhs.boards, rhs.boards) && deepEqualsPlatformApi(lhs.target, rhs.target) && deepEqualsPlatformApi(lhs.nudges, rhs.nudges) && deepEqualsPlatformApi(lhs.cooperCurve, rhs.cooperCurve) && deepEqualsPlatformApi(lhs.cooperHistory, rhs.cooperHistory) && deepEqualsPlatformApi(lhs.coachingMuted, rhs.coachingMuted) && deepEqualsPlatformApi(lhs.builtAtMs, rhs.builtAtMs) && deepEqualsPlatformApi(lhs.engineVersion, rhs.engineVersion) && deepEqualsPlatformApi(lhs.trails, rhs.trails)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -961,6 +967,212 @@ struct LiveContext: Hashable {
     deepHashPlatformApi(value: coachingMuted, hasher: &hasher)
     deepHashPlatformApi(value: builtAtMs, hasher: &hasher)
     deepHashPlatformApi(value: engineVersion, hasher: &hasher)
+    deepHashPlatformApi(value: trails, hasher: &hasher)
+  }
+}
+
+/// One earlier run of a known trail as a progress profile: `ms[i]` is the
+/// moving time since that run's start at vertex i of the [TrailRef] geometry,
+/// -1 where that run did not reach.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct TrailProfile: Hashable {
+  var runId: String
+  /// Run start, epoch millis.
+  var dateMs: Int64
+  var ms: [Int64]
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> TrailProfile? {
+    let runId = pigeonVar_list[0] as! String
+    let dateMs = pigeonVar_list[1] as! Int64
+    let ms = pigeonVar_list[2] as! [Int64]
+
+    return TrailProfile(
+      runId: runId,
+      dateMs: dateMs,
+      ms: ms
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      runId,
+      dateMs,
+      ms,
+    ]
+  }
+  static func == (lhs: TrailProfile, rhs: TrailProfile) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsPlatformApi(lhs.runId, rhs.runId) && deepEqualsPlatformApi(lhs.dateMs, rhs.dateMs) && deepEqualsPlatformApi(lhs.ms, rhs.ms)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("TrailProfile")
+    deepHashPlatformApi(value: runId, hasher: &hasher)
+    deepHashPlatformApi(value: dateMs, hasher: &hasher)
+    deepHashPlatformApi(value: ms, hasher: &hasher)
+  }
+}
+
+/// A trail the runner has run before, handed to the recorder at Start inside
+/// the live context (bounded: at most 400 vertices, never a run file).
+/// `latLon` is flat `[lat, lon, ...]`; `best` and `last` are the fastest and the
+/// most recent run on it (`last` null = the last run is the best);
+/// `turnAlongM` is where an out-and-back trail turns round, else null.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct TrailRef: Hashable {
+  var id: String
+  var name: String
+  var latLon: [Double]
+  var best: TrailProfile
+  var last: TrailProfile? = nil
+  var turnAlongM: Double? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> TrailRef? {
+    let id = pigeonVar_list[0] as! String
+    let name = pigeonVar_list[1] as! String
+    let latLon = pigeonVar_list[2] as! [Double]
+    let best = pigeonVar_list[3] as! TrailProfile
+    let last: TrailProfile? = nilOrValue(pigeonVar_list[4])
+    let turnAlongM: Double? = nilOrValue(pigeonVar_list[5])
+
+    return TrailRef(
+      id: id,
+      name: name,
+      latLon: latLon,
+      best: best,
+      last: last,
+      turnAlongM: turnAlongM
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      id,
+      name,
+      latLon,
+      best,
+      last,
+      turnAlongM,
+    ]
+  }
+  static func == (lhs: TrailRef, rhs: TrailRef) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsPlatformApi(lhs.id, rhs.id) && deepEqualsPlatformApi(lhs.name, rhs.name) && deepEqualsPlatformApi(lhs.latLon, rhs.latLon) && deepEqualsPlatformApi(lhs.best, rhs.best) && deepEqualsPlatformApi(lhs.last, rhs.last) && deepEqualsPlatformApi(lhs.turnAlongM, rhs.turnAlongM)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("TrailRef")
+    deepHashPlatformApi(value: id, hasher: &hasher)
+    deepHashPlatformApi(value: name, hasher: &hasher)
+    deepHashPlatformApi(value: latLon, hasher: &hasher)
+    deepHashPlatformApi(value: best, hasher: &hasher)
+    deepHashPlatformApi(value: last, hasher: &hasher)
+    deepHashPlatformApi(value: turnAlongM, hasher: &hasher)
+  }
+}
+
+/// The known trail the run has been matched to (early in the run), and how it
+/// compares with the runner's best and last run on it at the same distance along
+/// the trail (like for like: not the same odometer distance). Null until a
+/// trail is matched, and for a run on no known trail. `aheadBestMs` and
+/// `aheadLastMs` are positive when AHEAD, negative when behind; null while
+/// off the trail, in the first 100 m, or beyond where that run went.
+/// `lastIsBest`: the last run is the best, so show one figure. `toTurnM` is
+/// the distance to the turnaround point of an out-and-back trail; `turnCue`
+/// is set from reaching it for about a minute (the screen's big "turn around";
+/// the voice and the buzz fire once, natively, unless the run follows a route).
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct TrailProgress: Hashable {
+  var trailId: String
+  var name: String
+  var alongM: Double
+  var toGoM: Double
+  var off: Bool
+  var aheadBestMs: Int64? = nil
+  var aheadLastMs: Int64? = nil
+  var lastIsBest: Bool
+  var bestDateMs: Int64
+  var lastDateMs: Int64
+  var toTurnM: Double? = nil
+  var turnCue: Bool
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> TrailProgress? {
+    let trailId = pigeonVar_list[0] as! String
+    let name = pigeonVar_list[1] as! String
+    let alongM = pigeonVar_list[2] as! Double
+    let toGoM = pigeonVar_list[3] as! Double
+    let off = pigeonVar_list[4] as! Bool
+    let aheadBestMs: Int64? = nilOrValue(pigeonVar_list[5])
+    let aheadLastMs: Int64? = nilOrValue(pigeonVar_list[6])
+    let lastIsBest = pigeonVar_list[7] as! Bool
+    let bestDateMs = pigeonVar_list[8] as! Int64
+    let lastDateMs = pigeonVar_list[9] as! Int64
+    let toTurnM: Double? = nilOrValue(pigeonVar_list[10])
+    let turnCue = pigeonVar_list[11] as! Bool
+
+    return TrailProgress(
+      trailId: trailId,
+      name: name,
+      alongM: alongM,
+      toGoM: toGoM,
+      off: off,
+      aheadBestMs: aheadBestMs,
+      aheadLastMs: aheadLastMs,
+      lastIsBest: lastIsBest,
+      bestDateMs: bestDateMs,
+      lastDateMs: lastDateMs,
+      toTurnM: toTurnM,
+      turnCue: turnCue
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      trailId,
+      name,
+      alongM,
+      toGoM,
+      off,
+      aheadBestMs,
+      aheadLastMs,
+      lastIsBest,
+      bestDateMs,
+      lastDateMs,
+      toTurnM,
+      turnCue,
+    ]
+  }
+  static func == (lhs: TrailProgress, rhs: TrailProgress) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsPlatformApi(lhs.trailId, rhs.trailId) && deepEqualsPlatformApi(lhs.name, rhs.name) && deepEqualsPlatformApi(lhs.alongM, rhs.alongM) && deepEqualsPlatformApi(lhs.toGoM, rhs.toGoM) && deepEqualsPlatformApi(lhs.off, rhs.off) && deepEqualsPlatformApi(lhs.aheadBestMs, rhs.aheadBestMs) && deepEqualsPlatformApi(lhs.aheadLastMs, rhs.aheadLastMs) && deepEqualsPlatformApi(lhs.lastIsBest, rhs.lastIsBest) && deepEqualsPlatformApi(lhs.bestDateMs, rhs.bestDateMs) && deepEqualsPlatformApi(lhs.lastDateMs, rhs.lastDateMs) && deepEqualsPlatformApi(lhs.toTurnM, rhs.toTurnM) && deepEqualsPlatformApi(lhs.turnCue, rhs.turnCue)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("TrailProgress")
+    deepHashPlatformApi(value: trailId, hasher: &hasher)
+    deepHashPlatformApi(value: name, hasher: &hasher)
+    deepHashPlatformApi(value: alongM, hasher: &hasher)
+    deepHashPlatformApi(value: toGoM, hasher: &hasher)
+    deepHashPlatformApi(value: off, hasher: &hasher)
+    deepHashPlatformApi(value: aheadBestMs, hasher: &hasher)
+    deepHashPlatformApi(value: aheadLastMs, hasher: &hasher)
+    deepHashPlatformApi(value: lastIsBest, hasher: &hasher)
+    deepHashPlatformApi(value: bestDateMs, hasher: &hasher)
+    deepHashPlatformApi(value: lastDateMs, hasher: &hasher)
+    deepHashPlatformApi(value: toTurnM, hasher: &hasher)
+    deepHashPlatformApi(value: turnCue, hasher: &hasher)
   }
 }
 
@@ -1119,6 +1331,8 @@ struct RecorderStatus: Hashable {
   var heightVsStartM: Double? = nil
   /// Where the runner is on the followed route; null when the run follows none.
   var route: RouteProgress? = nil
+  /// The known trail this run is on, with ahead/behind; null until matched.
+  var trail: TrailProgress? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -1153,6 +1367,7 @@ struct RecorderStatus: Hashable {
     let descentAheadM: Double? = nilOrValue(pigeonVar_list[27])
     let heightVsStartM: Double? = nilOrValue(pigeonVar_list[28])
     let route: RouteProgress? = nilOrValue(pigeonVar_list[29])
+    let trail: TrailProgress? = nilOrValue(pigeonVar_list[30])
 
     return RecorderStatus(
       state: state,
@@ -1184,7 +1399,8 @@ struct RecorderStatus: Hashable {
       climbAheadM: climbAheadM,
       descentAheadM: descentAheadM,
       heightVsStartM: heightVsStartM,
-      route: route
+      route: route,
+      trail: trail
     )
   }
   func toList() -> [Any?] {
@@ -1219,13 +1435,14 @@ struct RecorderStatus: Hashable {
       descentAheadM,
       heightVsStartM,
       route,
+      trail,
     ]
   }
   static func == (lhs: RecorderStatus, rhs: RecorderStatus) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.state, rhs.state) && deepEqualsPlatformApi(lhs.runId, rhs.runId) && deepEqualsPlatformApi(lhs.mode, rhs.mode) && deepEqualsPlatformApi(lhs.laps, rhs.laps) && deepEqualsPlatformApi(lhs.elapsedMs, rhs.elapsedMs) && deepEqualsPlatformApi(lhs.lapIndex, rhs.lapIndex) && deepEqualsPlatformApi(lhs.gpsFix, rhs.gpsFix) && deepEqualsPlatformApi(lhs.hrConnected, rhs.hrConnected) && deepEqualsPlatformApi(lhs.phase, rhs.phase) && deepEqualsPlatformApi(lhs.repIndex, rhs.repIndex) && deepEqualsPlatformApi(lhs.phaseRemainingMs, rhs.phaseRemainingMs) && deepEqualsPlatformApi(lhs.spec, rhs.spec) && deepEqualsPlatformApi(lhs.stepIndex, rhs.stepIndex) && deepEqualsPlatformApi(lhs.stepRemainingMs, rhs.stepRemainingMs) && deepEqualsPlatformApi(lhs.stepRemainingM, rhs.stepRemainingM) && deepEqualsPlatformApi(lhs.journalOk, rhs.journalOk) && deepEqualsPlatformApi(lhs.pausedAtElapsedMs, rhs.pausedAtElapsedMs) && deepEqualsPlatformApi(lhs.finishRequests, rhs.finishRequests) && deepEqualsPlatformApi(lhs.tipsMuted, rhs.tipsMuted) && deepEqualsPlatformApi(lhs.autoPaused, rhs.autoPaused) && deepEqualsPlatformApi(lhs.elevGainM, rhs.elevGainM) && deepEqualsPlatformApi(lhs.elevLossM, rhs.elevLossM) && deepEqualsPlatformApi(lhs.gradePct, rhs.gradePct) && deepEqualsPlatformApi(lhs.retracing, rhs.retracing) && deepEqualsPlatformApi(lhs.retraceSame, rhs.retraceSame) && deepEqualsPlatformApi(lhs.backToStartM, rhs.backToStartM) && deepEqualsPlatformApi(lhs.climbAheadM, rhs.climbAheadM) && deepEqualsPlatformApi(lhs.descentAheadM, rhs.descentAheadM) && deepEqualsPlatformApi(lhs.heightVsStartM, rhs.heightVsStartM) && deepEqualsPlatformApi(lhs.route, rhs.route)
+    return deepEqualsPlatformApi(lhs.state, rhs.state) && deepEqualsPlatformApi(lhs.runId, rhs.runId) && deepEqualsPlatformApi(lhs.mode, rhs.mode) && deepEqualsPlatformApi(lhs.laps, rhs.laps) && deepEqualsPlatformApi(lhs.elapsedMs, rhs.elapsedMs) && deepEqualsPlatformApi(lhs.lapIndex, rhs.lapIndex) && deepEqualsPlatformApi(lhs.gpsFix, rhs.gpsFix) && deepEqualsPlatformApi(lhs.hrConnected, rhs.hrConnected) && deepEqualsPlatformApi(lhs.phase, rhs.phase) && deepEqualsPlatformApi(lhs.repIndex, rhs.repIndex) && deepEqualsPlatformApi(lhs.phaseRemainingMs, rhs.phaseRemainingMs) && deepEqualsPlatformApi(lhs.spec, rhs.spec) && deepEqualsPlatformApi(lhs.stepIndex, rhs.stepIndex) && deepEqualsPlatformApi(lhs.stepRemainingMs, rhs.stepRemainingMs) && deepEqualsPlatformApi(lhs.stepRemainingM, rhs.stepRemainingM) && deepEqualsPlatformApi(lhs.journalOk, rhs.journalOk) && deepEqualsPlatformApi(lhs.pausedAtElapsedMs, rhs.pausedAtElapsedMs) && deepEqualsPlatformApi(lhs.finishRequests, rhs.finishRequests) && deepEqualsPlatformApi(lhs.tipsMuted, rhs.tipsMuted) && deepEqualsPlatformApi(lhs.autoPaused, rhs.autoPaused) && deepEqualsPlatformApi(lhs.elevGainM, rhs.elevGainM) && deepEqualsPlatformApi(lhs.elevLossM, rhs.elevLossM) && deepEqualsPlatformApi(lhs.gradePct, rhs.gradePct) && deepEqualsPlatformApi(lhs.retracing, rhs.retracing) && deepEqualsPlatformApi(lhs.retraceSame, rhs.retraceSame) && deepEqualsPlatformApi(lhs.backToStartM, rhs.backToStartM) && deepEqualsPlatformApi(lhs.climbAheadM, rhs.climbAheadM) && deepEqualsPlatformApi(lhs.descentAheadM, rhs.descentAheadM) && deepEqualsPlatformApi(lhs.heightVsStartM, rhs.heightVsStartM) && deepEqualsPlatformApi(lhs.route, rhs.route) && deepEqualsPlatformApi(lhs.trail, rhs.trail)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -1260,6 +1477,7 @@ struct RecorderStatus: Hashable {
     deepHashPlatformApi(value: descentAheadM, hasher: &hasher)
     deepHashPlatformApi(value: heightVsStartM, hasher: &hasher)
     deepHashPlatformApi(value: route, hasher: &hasher)
+    deepHashPlatformApi(value: trail, hasher: &hasher)
   }
 }
 
@@ -1849,6 +2067,8 @@ struct TickEvent: RecorderEvent {
   var heightVsStartM: Double? = nil
   /// As `RecorderStatus.route`.
   var route: RouteProgress? = nil
+  /// As `RecorderStatus.trail`.
+  var trail: TrailProgress? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -1878,6 +2098,7 @@ struct TickEvent: RecorderEvent {
     let descentAheadM: Double? = nilOrValue(pigeonVar_list[22])
     let heightVsStartM: Double? = nilOrValue(pigeonVar_list[23])
     let route: RouteProgress? = nilOrValue(pigeonVar_list[24])
+    let trail: TrailProgress? = nilOrValue(pigeonVar_list[25])
 
     return TickEvent(
       elapsedMs: elapsedMs,
@@ -1904,7 +2125,8 @@ struct TickEvent: RecorderEvent {
       climbAheadM: climbAheadM,
       descentAheadM: descentAheadM,
       heightVsStartM: heightVsStartM,
-      route: route
+      route: route,
+      trail: trail
     )
   }
   func toList() -> [Any?] {
@@ -1934,13 +2156,14 @@ struct TickEvent: RecorderEvent {
       descentAheadM,
       heightVsStartM,
       route,
+      trail,
     ]
   }
   static func == (lhs: TickEvent, rhs: TickEvent) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.elapsedMs, rhs.elapsedMs) && deepEqualsPlatformApi(lhs.lapElapsedMs, rhs.lapElapsedMs) && deepEqualsPlatformApi(lhs.lapDistanceM, rhs.lapDistanceM) && deepEqualsPlatformApi(lhs.lapPaceLiveSecPerKm, rhs.lapPaceLiveSecPerKm) && deepEqualsPlatformApi(lhs.totalDistanceM, rhs.totalDistanceM) && deepEqualsPlatformApi(lhs.hr, rhs.hr) && deepEqualsPlatformApi(lhs.gpsAccuracyM, rhs.gpsAccuracyM) && deepEqualsPlatformApi(lhs.state, rhs.state) && deepEqualsPlatformApi(lhs.phase, rhs.phase) && deepEqualsPlatformApi(lhs.repIndex, rhs.repIndex) && deepEqualsPlatformApi(lhs.phaseRemainingMs, rhs.phaseRemainingMs) && deepEqualsPlatformApi(lhs.stepIndex, rhs.stepIndex) && deepEqualsPlatformApi(lhs.stepRemainingMs, rhs.stepRemainingMs) && deepEqualsPlatformApi(lhs.stepRemainingM, rhs.stepRemainingM) && deepEqualsPlatformApi(lhs.autoPaused, rhs.autoPaused) && deepEqualsPlatformApi(lhs.elevGainM, rhs.elevGainM) && deepEqualsPlatformApi(lhs.elevLossM, rhs.elevLossM) && deepEqualsPlatformApi(lhs.gradePct, rhs.gradePct) && deepEqualsPlatformApi(lhs.retracing, rhs.retracing) && deepEqualsPlatformApi(lhs.retraceSame, rhs.retraceSame) && deepEqualsPlatformApi(lhs.backToStartM, rhs.backToStartM) && deepEqualsPlatformApi(lhs.climbAheadM, rhs.climbAheadM) && deepEqualsPlatformApi(lhs.descentAheadM, rhs.descentAheadM) && deepEqualsPlatformApi(lhs.heightVsStartM, rhs.heightVsStartM) && deepEqualsPlatformApi(lhs.route, rhs.route)
+    return deepEqualsPlatformApi(lhs.elapsedMs, rhs.elapsedMs) && deepEqualsPlatformApi(lhs.lapElapsedMs, rhs.lapElapsedMs) && deepEqualsPlatformApi(lhs.lapDistanceM, rhs.lapDistanceM) && deepEqualsPlatformApi(lhs.lapPaceLiveSecPerKm, rhs.lapPaceLiveSecPerKm) && deepEqualsPlatformApi(lhs.totalDistanceM, rhs.totalDistanceM) && deepEqualsPlatformApi(lhs.hr, rhs.hr) && deepEqualsPlatformApi(lhs.gpsAccuracyM, rhs.gpsAccuracyM) && deepEqualsPlatformApi(lhs.state, rhs.state) && deepEqualsPlatformApi(lhs.phase, rhs.phase) && deepEqualsPlatformApi(lhs.repIndex, rhs.repIndex) && deepEqualsPlatformApi(lhs.phaseRemainingMs, rhs.phaseRemainingMs) && deepEqualsPlatformApi(lhs.stepIndex, rhs.stepIndex) && deepEqualsPlatformApi(lhs.stepRemainingMs, rhs.stepRemainingMs) && deepEqualsPlatformApi(lhs.stepRemainingM, rhs.stepRemainingM) && deepEqualsPlatformApi(lhs.autoPaused, rhs.autoPaused) && deepEqualsPlatformApi(lhs.elevGainM, rhs.elevGainM) && deepEqualsPlatformApi(lhs.elevLossM, rhs.elevLossM) && deepEqualsPlatformApi(lhs.gradePct, rhs.gradePct) && deepEqualsPlatformApi(lhs.retracing, rhs.retracing) && deepEqualsPlatformApi(lhs.retraceSame, rhs.retraceSame) && deepEqualsPlatformApi(lhs.backToStartM, rhs.backToStartM) && deepEqualsPlatformApi(lhs.climbAheadM, rhs.climbAheadM) && deepEqualsPlatformApi(lhs.descentAheadM, rhs.descentAheadM) && deepEqualsPlatformApi(lhs.heightVsStartM, rhs.heightVsStartM) && deepEqualsPlatformApi(lhs.route, rhs.route) && deepEqualsPlatformApi(lhs.trail, rhs.trail)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -1970,6 +2193,7 @@ struct TickEvent: RecorderEvent {
     deepHashPlatformApi(value: descentAheadM, hasher: &hasher)
     deepHashPlatformApi(value: heightVsStartM, hasher: &hasher)
     deepHashPlatformApi(value: route, hasher: &hasher)
+    deepHashPlatformApi(value: trail, hasher: &hasher)
   }
 }
 
@@ -3086,68 +3310,74 @@ private class PlatformApiPigeonCodecReader: FlutterStandardReader {
     case 156:
       return LiveContext.fromList(self.readValue() as! [Any?])
     case 157:
-      return StartResult.fromList(self.readValue() as! [Any?])
+      return TrailProfile.fromList(self.readValue() as! [Any?])
     case 158:
-      return LapSummary.fromList(self.readValue() as! [Any?])
+      return TrailRef.fromList(self.readValue() as! [Any?])
     case 159:
-      return RecorderStatus.fromList(self.readValue() as! [Any?])
+      return TrailProgress.fromList(self.readValue() as! [Any?])
     case 160:
-      return FollowRoute.fromList(self.readValue() as! [Any?])
+      return StartResult.fromList(self.readValue() as! [Any?])
     case 161:
-      return RouteProgress.fromList(self.readValue() as! [Any?])
+      return LapSummary.fromList(self.readValue() as! [Any?])
     case 162:
-      return OrphanJournal.fromList(self.readValue() as! [Any?])
+      return RecorderStatus.fromList(self.readValue() as! [Any?])
     case 163:
-      return ReplayConfig.fromList(self.readValue() as! [Any?])
+      return FollowRoute.fromList(self.readValue() as! [Any?])
     case 164:
-      return PermissionStatus.fromList(self.readValue() as! [Any?])
+      return RouteProgress.fromList(self.readValue() as! [Any?])
     case 165:
-      return BleStatus.fromList(self.readValue() as! [Any?])
+      return OrphanJournal.fromList(self.readValue() as! [Any?])
     case 166:
-      return ExitDiagnosis.fromList(self.readValue() as! [Any?])
+      return ReplayConfig.fromList(self.readValue() as! [Any?])
     case 167:
-      return BleDevice.fromList(self.readValue() as! [Any?])
+      return PermissionStatus.fromList(self.readValue() as! [Any?])
     case 168:
-      return BackupStatus.fromList(self.readValue() as! [Any?])
+      return BleStatus.fromList(self.readValue() as! [Any?])
     case 169:
-      return PlaceName.fromList(self.readValue() as! [Any?])
+      return ExitDiagnosis.fromList(self.readValue() as! [Any?])
     case 170:
-      return TickEvent.fromList(self.readValue() as! [Any?])
+      return BleDevice.fromList(self.readValue() as! [Any?])
     case 171:
-      return LapEvent.fromList(self.readValue() as! [Any?])
+      return BackupStatus.fromList(self.readValue() as! [Any?])
     case 172:
-      return LapPendingEvent.fromList(self.readValue() as! [Any?])
+      return PlaceName.fromList(self.readValue() as! [Any?])
     case 173:
-      return CueEvent.fromList(self.readValue() as! [Any?])
+      return TickEvent.fromList(self.readValue() as! [Any?])
     case 174:
-      return GpsProbeEvent.fromList(self.readValue() as! [Any?])
+      return LapEvent.fromList(self.readValue() as! [Any?])
     case 175:
-      return RoutePointsEvent.fromList(self.readValue() as! [Any?])
+      return LapPendingEvent.fromList(self.readValue() as! [Any?])
     case 176:
-      return CompareEvent.fromList(self.readValue() as! [Any?])
+      return CueEvent.fromList(self.readValue() as! [Any?])
     case 177:
-      return GoalEvent.fromList(self.readValue() as! [Any?])
+      return GpsProbeEvent.fromList(self.readValue() as! [Any?])
     case 178:
-      return FaultEvent.fromList(self.readValue() as! [Any?])
+      return RoutePointsEvent.fromList(self.readValue() as! [Any?])
     case 179:
-      return StateEvent.fromList(self.readValue() as! [Any?])
+      return CompareEvent.fromList(self.readValue() as! [Any?])
     case 180:
-      return PhaseEvent.fromList(self.readValue() as! [Any?])
+      return GoalEvent.fromList(self.readValue() as! [Any?])
     case 181:
-      return HealthStatus.fromList(self.readValue() as! [Any?])
+      return FaultEvent.fromList(self.readValue() as! [Any?])
     case 182:
-      return HealthLap.fromList(self.readValue() as! [Any?])
+      return StateEvent.fromList(self.readValue() as! [Any?])
     case 183:
-      return HealthPause.fromList(self.readValue() as! [Any?])
+      return PhaseEvent.fromList(self.readValue() as! [Any?])
     case 184:
-      return HealthHrSample.fromList(self.readValue() as! [Any?])
+      return HealthStatus.fromList(self.readValue() as! [Any?])
     case 185:
-      return HealthRoutePoint.fromList(self.readValue() as! [Any?])
+      return HealthLap.fromList(self.readValue() as! [Any?])
     case 186:
-      return HealthWorkout.fromList(self.readValue() as! [Any?])
+      return HealthPause.fromList(self.readValue() as! [Any?])
     case 187:
-      return HealthWriteResult.fromList(self.readValue() as! [Any?])
+      return HealthHrSample.fromList(self.readValue() as! [Any?])
     case 188:
+      return HealthRoutePoint.fromList(self.readValue() as! [Any?])
+    case 189:
+      return HealthWorkout.fromList(self.readValue() as! [Any?])
+    case 190:
+      return HealthWriteResult.fromList(self.readValue() as! [Any?])
+    case 191:
       return VoiceCoachConfig.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -3241,101 +3471,110 @@ private class PlatformApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? LiveContext {
       super.writeByte(156)
       super.writeValue(value.toList())
-    } else if let value = value as? StartResult {
+    } else if let value = value as? TrailProfile {
       super.writeByte(157)
       super.writeValue(value.toList())
-    } else if let value = value as? LapSummary {
+    } else if let value = value as? TrailRef {
       super.writeByte(158)
       super.writeValue(value.toList())
-    } else if let value = value as? RecorderStatus {
+    } else if let value = value as? TrailProgress {
       super.writeByte(159)
       super.writeValue(value.toList())
-    } else if let value = value as? FollowRoute {
+    } else if let value = value as? StartResult {
       super.writeByte(160)
       super.writeValue(value.toList())
-    } else if let value = value as? RouteProgress {
+    } else if let value = value as? LapSummary {
       super.writeByte(161)
       super.writeValue(value.toList())
-    } else if let value = value as? OrphanJournal {
+    } else if let value = value as? RecorderStatus {
       super.writeByte(162)
       super.writeValue(value.toList())
-    } else if let value = value as? ReplayConfig {
+    } else if let value = value as? FollowRoute {
       super.writeByte(163)
       super.writeValue(value.toList())
-    } else if let value = value as? PermissionStatus {
+    } else if let value = value as? RouteProgress {
       super.writeByte(164)
       super.writeValue(value.toList())
-    } else if let value = value as? BleStatus {
+    } else if let value = value as? OrphanJournal {
       super.writeByte(165)
       super.writeValue(value.toList())
-    } else if let value = value as? ExitDiagnosis {
+    } else if let value = value as? ReplayConfig {
       super.writeByte(166)
       super.writeValue(value.toList())
-    } else if let value = value as? BleDevice {
+    } else if let value = value as? PermissionStatus {
       super.writeByte(167)
       super.writeValue(value.toList())
-    } else if let value = value as? BackupStatus {
+    } else if let value = value as? BleStatus {
       super.writeByte(168)
       super.writeValue(value.toList())
-    } else if let value = value as? PlaceName {
+    } else if let value = value as? ExitDiagnosis {
       super.writeByte(169)
       super.writeValue(value.toList())
-    } else if let value = value as? TickEvent {
+    } else if let value = value as? BleDevice {
       super.writeByte(170)
       super.writeValue(value.toList())
-    } else if let value = value as? LapEvent {
+    } else if let value = value as? BackupStatus {
       super.writeByte(171)
       super.writeValue(value.toList())
-    } else if let value = value as? LapPendingEvent {
+    } else if let value = value as? PlaceName {
       super.writeByte(172)
       super.writeValue(value.toList())
-    } else if let value = value as? CueEvent {
+    } else if let value = value as? TickEvent {
       super.writeByte(173)
       super.writeValue(value.toList())
-    } else if let value = value as? GpsProbeEvent {
+    } else if let value = value as? LapEvent {
       super.writeByte(174)
       super.writeValue(value.toList())
-    } else if let value = value as? RoutePointsEvent {
+    } else if let value = value as? LapPendingEvent {
       super.writeByte(175)
       super.writeValue(value.toList())
-    } else if let value = value as? CompareEvent {
+    } else if let value = value as? CueEvent {
       super.writeByte(176)
       super.writeValue(value.toList())
-    } else if let value = value as? GoalEvent {
+    } else if let value = value as? GpsProbeEvent {
       super.writeByte(177)
       super.writeValue(value.toList())
-    } else if let value = value as? FaultEvent {
+    } else if let value = value as? RoutePointsEvent {
       super.writeByte(178)
       super.writeValue(value.toList())
-    } else if let value = value as? StateEvent {
+    } else if let value = value as? CompareEvent {
       super.writeByte(179)
       super.writeValue(value.toList())
-    } else if let value = value as? PhaseEvent {
+    } else if let value = value as? GoalEvent {
       super.writeByte(180)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthStatus {
+    } else if let value = value as? FaultEvent {
       super.writeByte(181)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthLap {
+    } else if let value = value as? StateEvent {
       super.writeByte(182)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthPause {
+    } else if let value = value as? PhaseEvent {
       super.writeByte(183)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthHrSample {
+    } else if let value = value as? HealthStatus {
       super.writeByte(184)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthRoutePoint {
+    } else if let value = value as? HealthLap {
       super.writeByte(185)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthWorkout {
+    } else if let value = value as? HealthPause {
       super.writeByte(186)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthWriteResult {
+    } else if let value = value as? HealthHrSample {
       super.writeByte(187)
       super.writeValue(value.toList())
-    } else if let value = value as? VoiceCoachConfig {
+    } else if let value = value as? HealthRoutePoint {
       super.writeByte(188)
+      super.writeValue(value.toList())
+    } else if let value = value as? HealthWorkout {
+      super.writeByte(189)
+      super.writeValue(value.toList())
+    } else if let value = value as? HealthWriteResult {
+      super.writeByte(190)
+      super.writeValue(value.toList())
+    } else if let value = value as? VoiceCoachConfig {
+      super.writeByte(191)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
