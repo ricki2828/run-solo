@@ -22,7 +22,7 @@ const String kTopoStyleAsset = 'assets/maps/aurora_topo.json';
 /// Home card styles: a pale printed-map look (and its dark twin), generated
 /// by tools/topo/build_card_style.py. The live and detail maps keep
 /// [kTopoStyleAsset].
-const String kTopoCardLightAsset = 'assets/maps/card/aurora_card_a.json';
+const String kTopoCardLightAsset = 'assets/maps/card/aurora_card_light.json';
 const String kTopoCardDarkAsset = 'assets/maps/card/aurora_card_dark.json';
 const String kTopoGlyphAssetDir = 'assets/topo/glyphs/NotoSans';
 

@@ -126,7 +126,7 @@
       "type": "hillshade",
       "source": "terrain",
       "paint": {
-        "hillshade-exaggeration": 0.256,
+        "hillshade-exaggeration": 0.26,
         "hillshade-shadow-color": "#000000",
         "hillshade-highlight-color": "#626569",
         "hillshade-accent-color": "#000000",

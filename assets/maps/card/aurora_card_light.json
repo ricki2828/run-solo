@@ -1,6 +1,6 @@
 {
   "version": 8,
-  "name": "Aurora Card a",
+  "name": "Aurora Card light",
   "metadata": {
     "generator": "tools/topo/build_card_style.py",
     "note": "Generated. Sentinel colours stand in for the run lane; see the script header.",
@@ -126,11 +126,19 @@
       "type": "hillshade",
       "source": "terrain",
       "paint": {
-        "hillshade-exaggeration": 0.16,
+        "hillshade-exaggeration": 0.5,
         "hillshade-shadow-color": "#606470",
         "hillshade-highlight-color": "#FFFDF6",
         "hillshade-accent-color": "#786E64",
         "hillshade-illumination-direction": 315
+      }
+    },
+    {
+      "id": "lane-wash",
+      "type": "background",
+      "paint": {
+        "background-color": "#fe03fe",
+        "background-opacity": 0.1
       }
     },
     {
@@ -241,7 +249,7 @@
           13,
           0.5
         ],
-        "line-opacity": 0.55
+        "line-opacity": 0.4
       }
     },
     {
@@ -295,7 +303,7 @@
           16,
           0.7
         ],
-        "line-opacity": 0.55
+        "line-opacity": 0.4
       }
     },
     {

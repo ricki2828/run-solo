@@ -42,9 +42,7 @@ enum _Stage {
   live,
   card,
   cardCur,
-  cardA,
-  cardB,
-  cardC,
+  cardLight,
   cardDark,
   noPack,
   hill,
@@ -235,28 +233,13 @@ class _HarnessState extends State<_Harness> {
             ),
           ),
         );
-    const cardDir = 'assets/maps/card';
     _cardFactories[_Stage.cardCur] = with_(kTopoStyleAsset, kTopoStyleAsset);
-    _cardFactories[_Stage.cardA] = with_(
-      '$cardDir/aurora_card_a.json',
-      '$cardDir/aurora_card_dark.json',
+    _cardFactories[_Stage.cardLight] = with_(
+      kTopoCardLightAsset,
+      kTopoCardDarkAsset,
     );
-    _cardFactories[_Stage.cardB] = with_(
-      '$cardDir/aurora_card_b.json',
-      '$cardDir/aurora_card_dark.json',
-    );
-    _cardFactories[_Stage.cardC] = with_(
-      '$cardDir/aurora_card_c.json',
-      '$cardDir/aurora_card_dark.json',
-    );
-    _cardFactories[_Stage.cardDark] = _cardFactories[_Stage.cardA]!;
-    for (final s in const [
-      _Stage.cardCur,
-      _Stage.cardA,
-      _Stage.cardB,
-      _Stage.cardC,
-      _Stage.cardDark,
-    ]) {
+    _cardFactories[_Stage.cardDark] = _cardFactories[_Stage.cardLight]!;
+    for (final s in const [_Stage.cardCur, _Stage.cardLight, _Stage.cardDark]) {
       await _go(s, 14);
     }
     await _go(_Stage.noPack, 6);
@@ -357,11 +340,7 @@ class _HarnessState extends State<_Harness> {
               ),
             ),
           ),
-          _Stage.cardCur ||
-          _Stage.cardA ||
-          _Stage.cardB ||
-          _Stage.cardC ||
-          _Stage.cardDark => Theme(
+          _Stage.cardCur || _Stage.cardLight || _Stage.cardDark => Theme(
             data: runSoloTheme(
               brightness: _stage == _Stage.cardDark
                   ? Brightness.dark

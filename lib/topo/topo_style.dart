@@ -217,9 +217,9 @@ class TopoStyle {
       'layout': {'line-cap': 'round', 'line-join': 'round'},
       'paint': {
         'line-color': ['get', 'c'],
-        'line-width': 18,
+        'line-width': 20,
         'line-blur': 9,
-        'line-opacity': 0.4,
+        'line-opacity': 0.55,
       },
     },
     _line('rs-track-casing', trackSource, ['get', 'k'], 9),

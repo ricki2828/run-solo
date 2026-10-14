@@ -29,16 +29,14 @@ LANE = "#fe01fe"
 LANE_LINE = "#fe02fe"
 LANE_WASH = "#fe03fe"
 
-# variant -> (hillshade exaggeration, minor contours, index weight, wash opacity)
+# variant -> (hillshade exaggeration, minor contours, index weight, wash opacity). Picked from the
+# 14-Oct review of paper+contours (a), hillshade-heavy (b) and lane wash (c): c's wash with b's relief.
 VARIANTS = {
-    "a": dict(hill=0.16, minor=0.55, index=1.0, wash=0.0),
-    "b": dict(hill=0.62, minor=0.0, index=0.7, wash=0.0),
-    "c": dict(hill=0.26, minor=0.4, index=1.0, wash=0.16),
+    "light": dict(hill=0.5, minor=0.4, index=1.0, wash=0.10),
+    "dark": dict(hill=0.26, minor=0.55, index=1.0, wash=0.0),
 }
 FILES = {
-    "a": "aurora_card_a.json",
-    "b": "aurora_card_b.json",
-    "c": "aurora_card_c.json",
+    "light": "aurora_card_light.json",
     "dark": "aurora_card_dark.json",
 }
 
@@ -86,7 +84,7 @@ def palette(tokens: dict, dark: bool) -> dict[str, str]:
 
 def build(tokens: dict, variant: str) -> dict:
     dark = variant == "dark"
-    v = VARIANTS["a" if dark else variant]
+    v = VARIANTS[variant]
     p = palette(tokens, dark)
     ele = ["get", "ele"]
     ele_mod = lambda n: ["==", ["%", ele, n], 0]  # noqa: E731
@@ -111,7 +109,7 @@ def build(tokens: dict, variant: str) -> dict:
     layers.append({
         "id": "hillshade", "type": "hillshade", "source": "terrain",
         "paint": {
-            "hillshade-exaggeration": v["hill"] * (1.6 if dark else 1.0) if dark else v["hill"],
+            "hillshade-exaggeration": v["hill"],
             "hillshade-shadow-color": p["hill_shadow"],
             "hillshade-highlight-color": p["hill_highlight"],
             "hillshade-accent-color": p["hill_accent"],
