@@ -30,8 +30,13 @@ import java.util.UUID
 
 /**
  * Heart Rate Profile client (plan §3, W7). Pairs by one filtered scan for 0x180D; after that
- * every connection is to the saved address, never a rescan (Android throttles scan starts and
- * suppresses unfiltered scans screen-off). At run start an existing link is kept, otherwise a
+ * every connection is to the saved address (Android throttles scan starts and suppresses
+ * unfiltered scans screen-off). One exception: a WHOOP broadcasts from a rotating random
+ * private address, so the saved one can go stale. When a connect yields no measurement within
+ * [FALLBACK_MS], [BleReconnectPolicy] may allow ONE filtered 0x180D scan per episode that
+ * matches the saved device name and silently re-points the saved address. We deliberately do
+ * not createBond: a broadcast-mode strap is not bondable, so it would only raise a pairing
+ * prompt or fail, and a bond is the only way the OS could resolve a private address. At run start an existing link is kept, otherwise a
  * direct `connectGatt(autoConnect = false)`; after a drop `autoConnect = true` (passive, OS
  * managed). `gatt.close()` always precedes a reconnect (GATT 133 leak). "Connected" is reported
  * only once notifications are enabled (the CCCD write succeeded) AND the first measurement
@@ -55,12 +60,15 @@ class BleHrClient(context: Context) {
     private val main = Handler(Looper.getMainLooper())
     private val manager = this.context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager // null without Bluetooth
     private val adapter: BluetoothAdapter? get() = manager?.adapter
-    private val policy = BleReconnectPolicy(prefs.getString(KEY_ADDRESS, null))
+    private val policy = BleReconnectPolicy(prefs.getString(KEY_ADDRESS, null), prefs.getString(KEY_NAME, null))
     private var gatt: BluetoothGatt? = null
     private var pendingReconnect: Runnable? = null
     private var setupRetried = false
     private var notificationsOn = false
     private var silentWatchdog: Runnable? = null
+    private var fallbackTimer: Runnable? = null
+    private var nameScanCb: ScanCallback? = null
+    private val seenNames = HashMap<String, String>() // address -> name from the last pairing scan
     var listener: Listener? = null
 
     /** Notifications enabled AND at least one measurement received (not merely a GATT link). */
@@ -71,6 +79,8 @@ class BleHrClient(context: Context) {
     var deviceName: String? = prefs.getString(KEY_NAME, null)
         private set
     val savedAddress: String? get() = policy.savedAddress
+    /** Paired but the strap was not seen: the UI hint is "start the broadcast, then scan again". */
+    val notFound: Boolean get() = policy.state == BleReconnectPolicy.LinkState.NOT_FOUND
     val adapterOn: Boolean get() = adapter?.isEnabled == true
 
     fun hasPermissions(): Boolean {
@@ -105,11 +115,13 @@ class BleHrClient(context: Context) {
             return
         }
         val found = LinkedHashMap<String, Found>()
+        policy.noteScanStart(SystemClock.elapsedRealtime())
         val cb = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 val d = result.device ?: return
                 val name = result.scanRecord?.deviceName ?: safeName(d)
                 found[d.address] = Found(d.address, name)
+                if (name != null) seenNames[d.address] = name
             }
 
             override fun onScanFailed(errorCode: Int) {
@@ -135,20 +147,24 @@ class BleHrClient(context: Context) {
 
     fun pair(address: String) {
         prefs.edit().putString(KEY_ADDRESS, address).apply()
-        val name = try {
+        // The scan's name wins: the OS only knows a remote name it has cached, often none for a broadcast strap.
+        val name = seenNames[address] ?: try {
             adapter?.getRemoteDevice(address)?.let { safeName(it) }
         } catch (_: Exception) {
             null
         }
         deviceName = name
         prefs.edit().putString(KEY_NAME, name).apply()
-        apply(policy.pair(address))
+        Log.i(TAG, "paired addressType=${addressType(address)} hasName=${name != null}")
+        apply(policy.pair(address, name))
     }
 
     fun forget() {
         prefs.edit().remove(KEY_ADDRESS).remove(KEY_NAME).apply()
         deviceName = null
         cancelReconnect()
+        cancelFallback()
+        stopNameScan()
         closeGatt()
         apply(policy.forget())
         setConnected(false)
@@ -167,6 +183,8 @@ class BleHrClient(context: Context) {
 
     fun disconnect() {
         cancelReconnect()
+        cancelFallback()
+        stopNameScan()
         closeGatt()
         setConnected(false)
     }
@@ -204,8 +222,9 @@ class BleHrClient(context: Context) {
         } catch (_: IllegalArgumentException) {
             return
         }
-        Log.i(TAG, "connectGatt autoConnect=$autoConnect")
+        Log.i(TAG, "connectGatt autoConnect=$autoConnect addressType=${addressType(address)}")
         setupRetried = false
+        armFallback()
         gatt = try {
             device.connectGatt(context, autoConnect, gattCallback, BluetoothDevice.TRANSPORT_LE)
         } catch (e: Exception) {
@@ -213,6 +232,97 @@ class BleHrClient(context: Context) {
             null
         }
         if (gatt == null) apply(policy.onConnectFailed(SystemClock.elapsedRealtime()))
+    }
+
+    /** No measurement [FALLBACK_MS] after a connect attempt: ask the policy whether a name scan is allowed. */
+    private fun armFallback() {
+        cancelFallback()
+        val r = Runnable {
+            fallbackTimer = null
+            if (connected) return@Runnable
+            val action = policy.onNoMeasurement(SystemClock.elapsedRealtime())
+            Log.i(TAG, "no measurement after ${FALLBACK_MS}ms; fallback=${policy.lastFallback}")
+            if (action is BleReconnectPolicy.Action.ScanForName) startNameScan(action)
+            if (policy.state == BleReconnectPolicy.LinkState.NOT_FOUND) listener?.onLink(false)
+        }
+        fallbackTimer = r
+        main.postDelayed(r, FALLBACK_MS)
+    }
+
+    private fun cancelFallback() {
+        fallbackTimer?.let { main.removeCallbacks(it) }
+        fallbackTimer = null
+    }
+
+    /** One filtered scan for the saved name (the start was already budgeted by the policy). */
+    @SuppressLint("MissingPermission")
+    private fun startNameScan(action: BleReconnectPolicy.Action.ScanForName) {
+        val scanner = adapter?.takeIf { it.isEnabled && hasPermissions() }?.bluetoothLeScanner
+        if (scanner == null) {
+            finishNameScan(emptyList())
+            return
+        }
+        val found = LinkedHashMap<String, BleReconnectPolicy.Candidate>()
+        val cb = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                val d = result.device ?: return
+                val name = result.scanRecord?.deviceName ?: safeName(d)
+                found[d.address] = BleReconnectPolicy.Candidate(d.address, name, result.rssi)
+            }
+
+            override fun onScanFailed(errorCode: Int) {
+                Log.w(TAG, "name scan failed $errorCode")
+            }
+        }
+        val filters = listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(HR_SERVICE)).build())
+        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_BALANCED).build()
+        try {
+            scanner.startScan(filters, settings, cb)
+        } catch (e: Exception) {
+            Log.w(TAG, "name scan start threw: $e")
+            finishNameScan(emptyList())
+            return
+        }
+        nameScanCb = cb
+        main.postDelayed({
+            if (nameScanCb !== cb) return@postDelayed // cancelled
+            stopNameScan()
+            finishNameScan(found.values.toList())
+        }, action.timeoutMs)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun stopNameScan() {
+        val cb = nameScanCb ?: return
+        nameScanCb = null
+        try {
+            adapter?.bluetoothLeScanner?.stopScan(cb)
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun finishNameScan(found: List<BleReconnectPolicy.Candidate>) {
+        val before = policy.savedAddress
+        val action = policy.onScanResult(found, SystemClock.elapsedRealtime())
+        if (action is BleReconnectPolicy.Action.Reconnect) {
+            Log.i(TAG, "name scan matched; address ${if (action.address == before) "unchanged" else "updated"} type=${addressType(action.address)}")
+            prefs.edit().putString(KEY_ADDRESS, action.address).apply()
+            apply(action)
+        } else {
+            Log.i(TAG, "name scan found no match among ${found.size} HR device(s); strap stays paired")
+            listener?.onLink(false)
+        }
+    }
+
+    /** Top two address bits (meaningful only if the address is random; a public one looks random): 11 static, 01 resolvable private, 00 non-resolvable private. */
+    private fun addressType(address: String): String {
+        val first = address.substringBefore(':').toIntOrNull(16) ?: return "unknown"
+        return when (first ushr 6) {
+            3 -> "msb11-static-random"
+            1 -> "msb01-resolvable-private"
+            0 -> "msb00-nonresolvable-private-or-public"
+            else -> "unknown"
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -234,6 +344,8 @@ class BleHrClient(context: Context) {
         if (!v) {
             notificationsOn = false
             cancelWatchdog()
+        } else {
+            cancelFallback()
         }
         if (connected == v) return
         connected = v
@@ -375,6 +487,7 @@ class BleHrClient(context: Context) {
         private const val KEY_ADDRESS = "address"
         private const val KEY_NAME = "name"
         private const val SILENT_LINK_MS = 15_000L
+        private const val FALLBACK_MS = 12_000L
         val HR_SERVICE: UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
         val HR_MEASUREMENT: UUID = UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb")
         val CCCD: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
