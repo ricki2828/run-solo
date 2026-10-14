@@ -116,14 +116,20 @@ class CadenceTest {
     }
 
     @Test
-    fun `every later climb ahead is said without a barometer`() {
+    fun `the way back does not repeat the same climb ahead every km`() {
         val m = TrailMoments()
-        val a = m.tick(MomentInput(nowMs = 0, distM = 3_000.0, climbAheadM = 70.0)).single()
-        val b = m.tick(MomentInput(nowMs = 1, distM = 4_200.0, climbAheadM = 50.0)).single()
-        assertTrue(a.key != b.key, "a new key per sighting, so the budget does not call it a repeat")
         val budget = TalkBudget(VoiceLevel.coach)
-        assertNotNull(budget.offer(a, 0L, 0L))
-        assertNotNull(budget.offer(b, 300_000L, 0L))
+        val first = m.tick(MomentInput(nowMs = 0, distM = 3_000.0, climbAheadM = 70.0)).single()
+        assertNotNull(budget.offer(first, 0L, 0L))
+        // The same 70 m seen again each km on the retrace leg: the tracker re-offers it, the budget says it is a repeat.
+        var t = 100_000L
+        for (km in 4..8) {
+            for (line in m.tick(MomentInput(nowMs = t, distM = km * 1_000.0, climbAheadM = 70.0))) assertNull(budget.offer(line, t, 0L))
+            t += 100_000L
+        }
+        // A different climb 40 m or more away is news.
+        val later = m.tick(MomentInput(nowMs = t, distM = 9_000.0, climbAheadM = 120.0)).single()
+        assertNotNull(budget.offer(later, t, 0L))
     }
 
     @Test

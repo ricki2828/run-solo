@@ -122,7 +122,8 @@ class TalkBudget(
             return accept(merge(line, waiting), now, busyUntil)
         }
         if (line.slot.priority >= 2 && overWindow(line, now)) return null
-        if (!gapOpen(now, busyUntil)) {
+        // A km line carrying a board compare is the one chance to say it (the compare is claimed once): it skips the gap.
+        if (!line.whole && !gapOpen(now, busyUntil)) {
             if (line.slot.priority == 1 && held == null) {
                 held = line
                 heldAtMs = now

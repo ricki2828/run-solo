@@ -31,7 +31,6 @@ class TrailMoments {
     private val gate = AheadBehindGate()
     private var climbAheadAtM = Double.NEGATIVE_INFINITY
     private var climbId = 0
-    private var aheadCount = 0
     private var climbStartAscent: Double? = null
     private var flatSinceM: Double? = null
     private var finalPushSaid = false
@@ -56,8 +55,9 @@ class TrailMoments {
         val c = i.climbAheadM?.takeIf { it >= MIN_CLIMB_M } ?: return null
         if (i.distM - climbAheadAtM < CLIMB_AHEAD_REPEAT_M) return null
         climbAheadAtM = i.distM
-        // The retrace figure is the climb left on the way back in total, not one slope: say so. Keyed per sighting so every later one speaks, barometer or not.
-        return TalkLine(CueSlot.climbAhead, "climbAhead:${aheadCount++}", "Climb ahead. ${CheckInWords.metres(c)} of climbing left.")
+        // The retrace figure is the climb left on the way back in total, not one slope: say so. One key and the metres left as its value: the budget says it again only once that has moved 40 m, so the way back
+        // does not repeat the same number every km, barometer or not.
+        return TalkLine(CueSlot.climbAhead, "climbAhead", "Climb ahead. ${CheckInWords.metres(c)} of climbing left.", c, CLIMB_STEP_M)
     }
 
     /** The top of a climb: 30 m of gain, then the grade stays under 2% for 100 m. */
@@ -103,6 +103,7 @@ class TrailMoments {
         const val CLIMB_GRADE = 0.05
         const val FLAT_GRADE = 0.02
         const val FLAT_HOLD_M = 100.0
+        const val CLIMB_STEP_M = 40.0
         const val CLIMB_AHEAD_REPEAT_M = 1_000.0
         const val FINAL_PUSH_M = 1_000.0
         const val FINAL_PUSH_WITHIN_SEC = 30.0

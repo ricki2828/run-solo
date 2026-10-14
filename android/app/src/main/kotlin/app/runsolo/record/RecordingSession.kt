@@ -990,10 +990,10 @@ class RecordingSession(
     /** The run was restored after a kill: its zone minutes are incomplete, whichever tracker is built. */
     private var checkInPartial = false
 
-    /** Tests: the check-in's tracker says only the zone (restored run). */
     /** Tests: the Voice detail the cue player is on (Free and Trail only; everything else is Everything). */
     internal val voiceLevel: VoiceLevel get() = cues.voiceLevel
 
+    /** Tests: the check-in's tracker says only the zone (restored run). */
     internal val checkInSaysZoneOnly: Boolean get() = checkInTracker?.partial == true
     private var checkInPace: Double? = null
     private var checkInTruePace: Double? = null

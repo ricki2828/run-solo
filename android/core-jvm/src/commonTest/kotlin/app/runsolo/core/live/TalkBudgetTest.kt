@@ -47,6 +47,15 @@ class TalkBudgetTest {
     }
 
     @Test
+    fun `a km line carrying a compare skips the gap and a plain km line does not`() {
+        val b = coach()
+        assertNotNull(b.offer(line(CueSlot.turnaround, "t", "Turn here."), 0L, 0L))
+        assertNull(b.offer(line(CueSlot.km, "km:2", "2 k."), 5_000L, 0L))
+        val withCompare = TalkLine(CueSlot.km, "km:3", "3 k. 2nd of 7, 5 seconds off your best.", whole = true)
+        assertEquals(withCompare.text, b.offer(withCompare, 6_000L, 0L)?.text)
+    }
+
+    @Test
     fun `gap opens at the end of what was just said`() {
         val b = coach()
         b.offer(line(CueSlot.turnaround, "t", "Turn here."), 0L, 0L)
