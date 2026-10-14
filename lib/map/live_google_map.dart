@@ -297,12 +297,14 @@ class _LiveGoogleMapState extends State<LiveGoogleMap> {
               endCap: gm.Cap.roundCap,
             ),
           ],
-          if (_line.length > 1 && widget.terrain)
+          // One bold line in the run's colour with a white casing, on every
+          // run type (14-Oct).
+          if (_line.length > 1)
             gm.Polyline(
               polylineId: const gm.PolylineId('live-casing'),
               points: List.of(_line),
-              color: Theme.of(context).extension<RunSoloTokens>()!.bgBase,
-              width: 9,
+              color: kLiveRouteCasing,
+              width: 11,
               jointType: gm.JointType.round,
               startCap: gm.Cap.roundCap,
               endCap: gm.Cap.roundCap,
@@ -312,7 +314,7 @@ class _LiveGoogleMapState extends State<LiveGoogleMap> {
               polylineId: const gm.PolylineId('live'),
               points: List.of(_line),
               color: widget.color,
-              width: 5,
+              width: 7,
               jointType: gm.JointType.round,
               startCap: gm.Cap.roundCap,
               endCap: gm.Cap.roundCap,

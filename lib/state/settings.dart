@@ -148,6 +148,7 @@ class AppSettings {
     this.pastRunsSent = const {},
     this.liveMapTypes = const {},
     this.topoMap = true,
+    this.liveTopoMap = false,
   });
 
   final Units units;
@@ -383,6 +384,12 @@ class AppSettings {
   /// run; everywhere else Google stays.
   final bool topoMap;
 
+  /// The live (in-run) map: Google (false, the default since 14-Oct) or the
+  /// offline Topo map (true). Separate from [topoMap] so run detail and Home
+  /// cards keep their own choice. A phone with no Google map at all uses Topo
+  /// where a pack covers, whatever this says.
+  final bool liveTopoMap;
+
   /// Every preset's edits, the 4x4 included.
   Map<String, PresetEdit> get allPresetEdits => {
     ...presetEdits,
@@ -479,6 +486,7 @@ class AppSettings {
     Map<String, PastRunsSent>? pastRunsSent,
     Set<String>? liveMapTypes,
     bool? topoMap,
+    bool? liveTopoMap,
   }) => AppSettings(
     units: units ?? this.units,
     reps: reps ?? this.reps,
@@ -531,6 +539,7 @@ class AppSettings {
     pastRunsSent: pastRunsSent ?? this.pastRunsSent,
     liveMapTypes: liveMapTypes ?? this.liveMapTypes,
     topoMap: topoMap ?? this.topoMap,
+    liveTopoMap: liveTopoMap ?? this.liveTopoMap,
   );
 
   Map<String, Object?> toJson() => {
@@ -588,6 +597,7 @@ class AppSettings {
       },
     'liveMapTypes': liveMapTypes.toList()..sort(),
     'topoMap': topoMap,
+    'liveTopoMap': liveTopoMap,
   };
 
   /// Lenient: unknown or malformed keys fall back to defaults, never throw.
@@ -724,6 +734,7 @@ class AppSettings {
             if (v is String) v,
       },
       topoMap: j['topoMap'] is bool ? j['topoMap'] as bool : true,
+      liveTopoMap: j['liveTopoMap'] is bool ? j['liveTopoMap'] as bool : false,
     );
   }
 }

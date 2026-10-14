@@ -19,7 +19,6 @@ import '../state/settings.dart';
 import '../theme/theme.dart';
 import '../topo/pack_manager.dart';
 import '../topo/pack_models.dart';
-import 'gradient_legend.dart';
 import 'map_surface.dart';
 import 'retrace_tracker.dart';
 import 'route_builder.dart';
@@ -90,6 +89,11 @@ class TopoMapSurfaceFactory implements MapSurfaceFactory {
   bool get available => fallback.available || packs.installed.isNotEmpty;
 
   bool get _topoWanted => settings.settings.topoMap;
+
+  /// The in-run map: Google by default. Topo only when asked for, or when
+  /// this phone has no Google map at all (no key, no Play services).
+  bool get _liveTopoWanted =>
+      settings.settings.liveTopoMap || !fallback.available;
 
   /// The installed pack that holds the whole of [b], or null.
   InstalledPack? packForBounds(GeoBounds? b) {
@@ -249,6 +253,9 @@ class TopoMapSurfaceFactory implements MapSurfaceFactory {
 
   Future<void> _setTopo(bool on) =>
       settings.update((s) => s.copyWith(topoMap: on));
+
+  Future<void> _setLiveTopo(bool on) =>
+      settings.update((s) => s.copyWith(liveTopoMap: on));
 }
 
 /// The live map with the engine latched once a pack covers the runner: a
@@ -278,7 +285,7 @@ class _LiveChoiceState extends State<_LiveChoice> {
 
   InstalledPack? _pick() {
     final f = widget.factory;
-    if (!f._topoWanted) {
+    if (!f._liveTopoWanted) {
       _latchedId = null;
       return null;
     }
@@ -304,11 +311,8 @@ class _LiveChoiceState extends State<_LiveChoice> {
         final pack = _pick();
         return _Choice(
           pack: pack,
-          topoWanted: f._topoWanted,
-          onToggle: f._setTopo,
-          legend:
-              (widget.plan?.any((p) => p.ele != null) ?? false) ||
-              widget.track.elevations.any((e) => e != null),
+          topoWanted: f._liveTopoWanted,
+          onToggle: f._setLiveTopo,
           child: pack == null
               ? f.fallback.buildLive(
                   context,
@@ -339,11 +343,8 @@ class _Choice extends StatelessWidget {
     required this.topoWanted,
     required this.onToggle,
     required this.child,
-    this.legend = false,
   });
 
-  /// Show the gradient key: only while Topo is the map drawing the gradient.
-  final bool legend;
   final InstalledPack? pack;
   final bool topoWanted;
   final Future<void> Function(bool) onToggle;
@@ -366,12 +367,6 @@ class _Choice extends StatelessWidget {
           right: Space.x8,
           child: MapStyleToggle(topo: topoWanted, onChanged: onToggle),
         ),
-        if (showing != null && legend)
-          const Positioned(
-            left: Space.x8,
-            bottom: Space.x48,
-            child: GradientLegend(),
-          ),
         if (showing != null && showing.region.mapText.isNotEmpty)
           Positioned(
             left: Space.x8,

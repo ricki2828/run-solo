@@ -609,6 +609,12 @@ void main() {
         await settleAnimations(tester);
         expect(find.byKey(const ValueKey('elevation-row')), findsOneWidget);
         expect(find.text('124 m'), findsOneWidget);
+        // The grade is a word on a colour chip; the percent stays small.
+        expect(find.text('Gentle'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('live-grade-chip-gentle')),
+          findsOneWidget,
+        );
         expect(find.text('+3%'), findsOneWidget);
         for (final k in ['live-climb', 'live-grade']) {
           final text = tester.widget<Text>(find.byKey(ValueKey(k)));

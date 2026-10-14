@@ -7,9 +7,9 @@ import '../topo/pack_models.dart';
 import '../widgets/chrome.dart';
 
 const String kOfflineMapsIntro =
-    'Download a region to use the Topo map with no signal. Packs come from '
-    'our map host; the download reveals only which pack you chose and your '
-    'IP address.';
+    'Google is the map on your run. Download a region and the Topo map works '
+    'as a backup with no signal. Packs come from our map host; the download '
+    'reveals only which pack you chose and your IP address.';
 
 /// "12 MB", "1.2 GB". Decimal units, like the phone's own storage page.
 String formatPackBytes(int bytes) {

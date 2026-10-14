@@ -56,6 +56,11 @@ abstract final class AuroraRunType {
   static const Color trail = Color(0xFFB8C04C);
 }
 
+/// White casing under the live route on every in-run map.
+abstract final class LiveRouteInk {
+  static const Color casing = Color(0xFFFFFFFF);
+}
+
 /// Weekly story ground: a deep indigo that carries no lane, run-type, HR zone
 /// or semantic meaning (a test holds it at least 60 RGB from all of them, in
 /// both themes). White ink on it is 7:1.
@@ -74,6 +79,23 @@ abstract final class AuroraGradient {
   static const Color up = Color(0xFFFFFF66);
   static const Color steep = Color(0xFFFFB78F);
   static const Color down = Color(0xFF85A5AD);
+}
+
+/// In-run grade chip fills (14-Oct): a calm-to-hot ramp for the bands Flat,
+/// Gentle, Climb, Steep and Very steep (pale bone to dark plum), and a
+/// grey-teal pair for Down and Steep down. Each chip carries its word, and
+/// all seven sit at least 60 RGB apart from each other and from the zone
+/// ramp, the semantic colours and the run-type identities in both themes (a
+/// test measures it). The chip has its own fill, so one set serves every
+/// zone flood and both themes.
+abstract final class AuroraGrade {
+  static const Color flat = Color(0xFFE4E2DC);
+  static const Color gentle = Color(0xFFE9F0A0);
+  static const Color climb = Color(0xFFFFB78F);
+  static const Color steep = Color(0xFFB8508B);
+  static const Color verySteep = Color(0xFF5E2D80);
+  static const Color down = Color(0xFF8CB4BC);
+  static const Color steepDown = Color(0xFF5A7480);
 }
 
 /// The retraced-stretch band on the map: a Bone halo inside a dark rim. The
