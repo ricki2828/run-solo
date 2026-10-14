@@ -227,3 +227,34 @@ def test_trail_block_is_deleted_30_days_after_the_run(env):
     assert env.q("SELECT trail_json FROM run_shape")[0]["trail_json"]
     env.svc.purge(NOW)
     assert env.q("SELECT trail_json FROM run_shape") == []
+
+
+def test_a_float_metre_label_renders_as_a_whole_number():
+    from render.cards.trail import profile_svg
+    prof = [0, 40, 120, 250, 381.8666666666667, 300, 200, 100, 20]
+    svg = profile_svg(prof, 5000, 936, 232, turn_idx=4, baro=True)
+    assert "382 M" in svg and "381.86" not in svg
+
+
+def test_a_gap_in_the_ranks_gets_a_spacer_row():
+    from render.cards.trail import build_trail_board_html
+    gapped = build_trail_board_html(F.trail_board_many_runs())
+    assert "···" in gapped
+    assert "···" not in build_trail_board_html(F.trail_board_five())
+
+
+def test_a_spoilered_photo_keeps_the_verdict_out_of_the_caption(env):
+    trail_run(env, 1, trail_block([(1, 3700), (2, 3900), (3, 3800)], 3, n=3, name="The Saddle Trail"))
+    env.quiet_outbox()
+    cid = env.svc._build_run_card(UID, "r01", NOW)
+    card = env.q("SELECT headline, body FROM cards WHERE card_id=?", cid)[0]
+    assert env.svc._send_card(env.user(), cid, NOW)
+    (photo,) = env.photos()
+    assert photo["has_spoiler"] == "true"
+    assert photo["caption"] == "Trail run 3 on The Saddle Trail. Tap to see how it went."
+    assert card["headline"] not in photo["caption"] and card["body"] not in photo["caption"]
+    with db.ro(env.s.db_path) as c:
+        refs = [r["ref"] for r in c.execute("SELECT ref FROM outbox WHERE kind='followup'")]
+    assert f"{cid}:coach_line" in refs
+    env.svc._send_followup(env.user(), f"{cid}:coach_line", NOW)
+    assert f"{card['headline']}\n{card['body']}" in env.texts()

@@ -74,6 +74,7 @@ class OutCard:
     buttons: list[dict]  # [{"label": str, "action": str, "row": int}] ; callback = f"{card_id}:{index}"
     media: Media | None = None
     links: tuple[tuple[str, str], ...] = ()  # (label, https url): deep-link buttons
+    neutral_caption: str = ""  # with a spoilered photo: the caption that gives nothing away (the coach line follows as its own message)
     short_caption: bool = False  # a picture carries the numbers: the caption is the headline and one line of judgement
 
 
@@ -94,6 +95,13 @@ def caption_text(card: OutCard) -> str:
     if rest.strip():
         lines.append(rest.strip())
     return "\n".join(x for x in lines if x)
+
+
+def photo_caption(card: OutCard) -> str:
+    """What a photo rides with. A spoilered photo carries only the neutral line: the verdict must stay behind the tap."""
+    if card.media and card.media.spoiler and card.neutral_caption:
+        return card.neutral_caption
+    return caption_text(card)
 
 
 @dataclass(frozen=True)
@@ -197,7 +205,7 @@ class TelegramChannel:
     def send_card(self, ref: str, card: OutCard, **_: Any) -> str:
         text = f"{card.headline}\n{card.body}"
         if card.media and (card.media.photo or card.media.video):
-            return self._send_media(ref, card, caption_text(card))
+            return self._send_media(ref, card, photo_caption(card))
         payload: dict[str, Any] = {"chat_id": int(ref), "text": text}
         kb = self._keyboard(card, media=False)
         if kb:
@@ -210,6 +218,9 @@ class TelegramChannel:
         buttons ride that text), "question" when question buttons were kept off the media."""
         if not (card.media and (card.media.photo or card.media.video)):
             return []
+        if card.media.spoiler and card.neutral_caption:
+            # the coach line (the verdict) goes as its own message after the photo; question buttons follow as before
+            return ["coach_line"] + (["question"] if any(b["action"].startswith("ans:") for b in card.buttons) else [])
         if utf16_len(caption_text(card)) > CAPTION_MAX:
             return ["caption"]  # the text goes once, with every button, questions included
         if any(b["action"].startswith("ans:") for b in card.buttons):
@@ -226,7 +237,9 @@ class TelegramChannel:
             if not (card.media and card.media.photo):
                 raise ChannelError("touch card without a photo", permanent=True)
             return self._send_media(ref, OutCard(card.card_id, card.headline, card.body, [], card.media, ()), text)
-        if mode == "caption":
+        if mode == "coach_line":
+            text, kb = f"{card.headline}\n{card.body}", []   # the buttons already ride the photo
+        elif mode == "caption":
             text, kb = f"{card.headline}\n{card.body}", self._keyboard(card, media=False)
         elif mode == "question":
             text = QUESTION_LEAD

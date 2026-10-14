@@ -128,7 +128,7 @@ class ReplayChannel:
         return out
 
     def send_followup(self, ref: str, card: OutCard, mode: str) -> str:
-        if mode in ("caption", "touch_card"):  # text a caption could not carry, or a picture with no text: both need the line
+        if mode in ("caption", "touch_card", "coach_line"):  # text a caption could not carry, or a picture with no text: both need the line
             card = replace(card, headline=f"{self.r.label()}\n{card.headline}")
         out = self.inner.send_followup(ref, card, mode)
         self.r.note_send("followup", card.card_id)
@@ -616,7 +616,7 @@ def _fresh(c: sqlite3.Connection, s: Settings, uid: str, runs: list[RunIn], appl
     # queued items: the replayed runs', those of every deleted card's run (so a kept run whose replay card goes can
     # be queued again), and the tagged ones
     refs = {*created, *(card_runs[k].removeprefix("question:") for k in card_list if card_runs.get(k))}
-    refs |= {f"{k}:{m}" for k in card_list for m in ("caption", "question")}
+    refs |= {f"{k}:{m}" for k in card_list for m in ("caption", "question", "coach_line")}
     outbox_ids = set(mine("outbox", "due_at"))
     if refs:
         outbox_ids |= {x["id"] for x in c.execute(

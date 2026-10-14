@@ -103,11 +103,11 @@ def profile_svg(profile: Sequence[int], dist_m: float, w: int, h: int, *, pad_to
     if labels:
         top_i = turn_idx if turn_idx is not None else max(range(n), key=lambda i: profile[i])
         xs, ys = sx(top_i), sy(profile[top_i])
-        climbed = profile[top_i] - profile[0]
+        climbed = round(profile[top_i] - profile[0])
         anchor = "start" if xs < 150 else ("end" if xs > w - 150 else "middle")
         parts.append(f'<circle cx="{xs:.1f}" cy="{ys:.1f}" r="11" fill="#fff" stroke="{brand.INK}" stroke-width="5"/>')
         parts.append(f'<text x="{xs:.1f}" y="{ys - 22:.1f}" text-anchor="{anchor}" {font} font-size="{label_size}" fill="{brand.INK}">'
-                     f'{P.esc(turn_word, 12)} · {max(0, climbed)} M</text>')
+                     f'{P.esc(turn_word, 12)} · {max(0, round(climbed))} M</text>')
         steep = max(range(n - 1), key=lambda i: abs(grades[i]))
         word, _ = _band(grades[steep])
         if baro and word in ("STEEP", "VERY STEEP"):
@@ -198,7 +198,12 @@ def _rows_html(shown: list[tuple[int, dict[str, Any]]], best: int, top: int, row
     worst = max(r["time_s"] for _, r in shown)
     lo = best - 60
     out = ""
+    prev = 0
     for rank, r in shown:
+        if prev and rank != prev + 1:   # ranks were skipped: a thin spacer says so
+            out += (f'<div class="saira" style="height:20px;line-height:14px;padding-left:60px;font-size:34px;color:{brand.QUIET};'
+                    f'letter-spacing:.2em">···</div>')
+        prev = rank
         t = r["time_s"]
         today = bool(r.get("today"))
         is_best = rank == 1

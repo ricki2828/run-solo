@@ -1278,7 +1278,8 @@ class Service(CheckinMixin):
         followups: list[str] = []
         if media is not None:
             out = OutCard(card_id, card["headline"], card["body"], buttons, media, links,
-                          short_caption=card["kind"] == "run")
+                          short_caption=card["kind"] == "run",
+                          neutral_caption=self._spoiler_caption(user["id"], card) if media.spoiler else "")
             try:
                 self._deliver(ch, user, card, out)
                 followups = ch.followups(out)  # the media is delivered: from here only text may be retried
@@ -1316,12 +1317,22 @@ class Service(CheckinMixin):
                 card = {**card, "body": f"{card['body']}\n\n{cv_notes.quote(n['note'])}"}
         return card
 
+    def _spoiler_caption(self, uid: str, card: dict) -> str:
+        """The caption of a spoilered trail photo: which run it was and nothing about how it went."""
+        with db.ro(self.s.db_path) as c:
+            tr = c.execute("SELECT trail_json FROM run_shape WHERE user_id=? AND run_id=?", (uid, card.get("run_id"))).fetchone()
+        trail = cv_trail.load(tr["trail_json"]) if tr else None
+        if not trail:
+            return "Trail run done. Tap to see how it went."
+        place = f" on {trail['name']}" if trail.get("name") else ""
+        return f"Trail run {trail['n']}{place}. Tap to see how it went."
+
     def _send_followup(self, user: dict, ref: str, now: datetime) -> bool:
         """False when dropped: unknown card or mode, or older than stale_card_hours since the media went out (a
         follow-up held back by the kill switch or quiet hours must not arrive long after its card)."""
         card_id, _, mode = ref.partition(":")
         ch = self.channels.get(user["channel"])
-        if ch is None or mode not in ("caption", "question", "touch_card"):
+        if ch is None or mode not in ("caption", "question", "touch_card", "coach_line"):
             return False
         with db.ro(self.s.db_path) as c:
             row = c.execute("SELECT * FROM cards WHERE card_id=? AND user_id=?", (card_id, user["id"])).fetchone()
