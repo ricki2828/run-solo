@@ -120,6 +120,7 @@ class AppSettings {
     this.spokenSummary = true,
     this.voiceCoaching = true,
     this.coachingDetail = CoachingDetail.full,
+    this.voiceDetail = kVoiceDetailDefault,
     this.autoPause = true,
     this.countdownSeconds = defaultCountdownSeconds,
     this.coachingTips = true,
@@ -261,6 +262,11 @@ class AppSettings {
   /// Voice → "Coaching detail": [CoachingDetail.minimal] says the next step
   /// only; [CoachingDetail.full] adds target status and zone drift.
   final CoachingDetail coachingDetail;
+
+  /// Voice → "Voice detail": how much a Free or Trail run says (km line, half
+  /// km, trail moments). Reaches Kotlin as [VoiceDetail.metricKey] on the
+  /// check-in's metric list.
+  final VoiceDetail voiceDetail;
 
   /// Recording → "Auto-pause": the recorder pauses itself when you stop and
   /// resumes when you move. Default on.
@@ -452,6 +458,7 @@ class AppSettings {
     bool? spokenSummary,
     bool? voiceCoaching,
     CoachingDetail? coachingDetail,
+    VoiceDetail? voiceDetail,
     bool? autoPause,
     int? countdownSeconds,
     bool? coachingTips,
@@ -505,6 +512,7 @@ class AppSettings {
     spokenSummary: spokenSummary ?? this.spokenSummary,
     voiceCoaching: voiceCoaching ?? this.voiceCoaching,
     coachingDetail: coachingDetail ?? this.coachingDetail,
+    voiceDetail: voiceDetail ?? this.voiceDetail,
     autoPause: autoPause ?? this.autoPause,
     countdownSeconds: countdownSeconds ?? this.countdownSeconds,
     coachingTips: coachingTips ?? this.coachingTips,
@@ -560,6 +568,7 @@ class AppSettings {
     'spokenSummary': spokenSummary,
     'voiceCoaching': voiceCoaching,
     'coachingDetail': coachingDetail.name,
+    'voiceDetail': voiceDetail.name,
     'autoPause': autoPause,
     'countdownSeconds': countdownSeconds,
     'coachingTips': coachingTips,
@@ -665,6 +674,9 @@ class AppSettings {
       coachingDetail:
           CoachingDetail.values.asNameMap()[pick('coachingDetail', '')] ??
           d.coachingDetail,
+      voiceDetail:
+          VoiceDetail.values.asNameMap()[pick('voiceDetail', '')] ??
+          d.voiceDetail,
       autoPause: pick('autoPause', d.autoPause),
       countdownSeconds:
           countdownChoices.contains(
@@ -935,6 +947,40 @@ enum CheckInMetric {
   /// feeds it from the native retrace detector, so the runner can turn it off
   /// like the others.
   static List<CheckInMetric> get pickable => CheckInMetric.values;
+}
+
+/// The Voice detail a runner gets until they pick one. One line on purpose:
+/// Kotlin's `VoiceLevel.DEFAULT` must say the same.
+const VoiceDetail kVoiceDetailDefault = VoiceDetail.coach;
+
+/// TEMPORARY transport: the Voice detail rides `setCheckIn`'s metric list as
+/// this reserved key plus [VoiceDetail.key] (an old build ignores unknown
+/// keys). Move it to a real Pigeon field in the next wave. Never a metric:
+/// no UI reads this list, the picker uses [CheckInMetric].
+const String kVoiceDetailMetricPrefix = 'voice:';
+
+/// Settings → Voice → "Voice detail": how much a Free or Trail run says.
+enum VoiceDetail {
+  coach(
+    'coach',
+    'Coach',
+    'Short km lines, news at the half km, and trail moments.',
+  ),
+  everything(
+    'everything',
+    'Everything',
+    'The full check-in at every km, as chosen in "Check-in says".',
+  ),
+  minimal('minimal', 'Minimal', 'The km number only, and turns and steps.');
+
+  const VoiceDetail(this.key, this.label, this.blurb);
+
+  /// What Kotlin's `VoiceLevel` is told.
+  final String key;
+  final String label;
+  final String blurb;
+
+  String get metricKey => '$kVoiceDetailMetricPrefix$key';
 }
 
 /// Settings → Voice → "Coaching detail".

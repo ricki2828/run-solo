@@ -16,9 +16,13 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import app.runsolo.core.live.CueComposer
+import app.runsolo.core.live.CueSlot
 import app.runsolo.core.live.LiveCoach
 import app.runsolo.core.live.NudgeFollowUp
 import app.runsolo.core.live.SpeechClock
+import app.runsolo.core.live.TalkBudget
+import app.runsolo.core.live.TalkLine
+import app.runsolo.core.live.VoiceLevel
 import app.runsolo.core.model.CueKind
 import java.util.Locale
 
@@ -44,6 +48,20 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
 
     private val speech = SpeechClock()
     private val followUp = NudgeFollowUp()
+
+    /** The one arbiter of what is said (cadence v1): every spoken line below is offered to it first. */
+    private val budget = TalkBudget()
+
+    /** Settings → Voice → "Voice detail" for this run; set before start, read on the recorder thread. */
+    var voiceLevel: VoiceLevel
+        get() = synchronized(this) { budget.level }
+        set(v) = synchronized(this) { budget.level = v }
+
+    private var seq = 0
+
+    /** Steep and zone 4+ right now: the km and half km lines stay quiet (set by the session each tick). */
+    @Volatile
+    var hardEffort: Boolean = false
 
     /** Utterances/tones in flight; focus is abandoned when it returns to zero. */
     private var inFlight = 0
@@ -131,23 +149,70 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
      * it start more than 3 s late; the base km line is still said then.
      */
     @Synchronized
-    fun play(kind: CueKind?, text: String?, extra: String?, nudge: LiveCoach.Nudge? = null, tail: String? = null): CueComposer.Composed? {
-        vibrate(kind ?: CueKind.minuteMark)
-        if (!enabled) return null
+    fun play(
+        kind: CueKind?,
+        text: String?,
+        extra: String?,
+        nudge: LiveCoach.Nudge? = null,
+        tail: String? = null,
+        slot: CueSlot = if (kind == null) CueSlot.km else CueSlot.structure,
+        key: String? = null,
+    ): CueComposer.Composed? {
+        if (!enabled) {
+            vibrate(kind ?: CueKind.minuteMark)
+            return null
+        }
         followUp.cancel()
         if (kind == CueKind.countdown) {
+            vibrate(kind)
             countdown()
             return null
         }
         val t = now()
         val fresh = speech.freshAt(t)
         val composed = CueComposer.compose(text, extra?.takeIf { fresh })
-        val head = composed.text ?: return null
-        val words = if (tail != null && fresh) "${head.trimEnd()} $tail" else head
+        val head = composed.text
+        if (head == null) {
+            vibrate(kind ?: CueKind.minuteMark)
+            return null
+        }
+        val full = if (tail != null && fresh) "${head.trimEnd()} $tail" else head
+        // Interval and plan cues (a kind) are structure: they always speak. A km or half km line can be dropped or merged.
+        val line = TalkLine(slot, key ?: "${slot.name}:${seq++}", full)
+        val offered = budget.offer(line, t, speech.busyUntil, hardEffort) ?: return null
+        vibrate(kind ?: CueKind.minuteMark)
+        val words = offered.text
         speech.queued(t, CueComposer.words(words))
         say(kind, words)
         nudge?.let { followUp.offer(it, speech.busyUntil) }
         return if (words === head) composed else composed.copy(text = words)
+    }
+
+    /** A trail moment (climb ahead, ghost flip, final push, finish...): offered to the budget, said only when it passes. Null = dropped or held. */
+    @Synchronized
+    fun moment(line: TalkLine): TalkLine? {
+        if (!enabled) return null
+        val t = now()
+        val out = budget.offer(line, t, speech.busyUntil, hardEffort) ?: return null
+        sayMoment(out, t)
+        return out
+    }
+
+    /** Once a tick: a held game beat whose gap has opened, said here; null when none is. The caller journals it. */
+    @Synchronized
+    fun dueMoment(): TalkLine? {
+        if (!enabled) return null
+        val t = now()
+        val out = budget.poll(t, speech.busyUntil) ?: return null
+        sayMoment(out, t)
+        return out
+    }
+
+    private fun sayMoment(line: TalkLine, t: Long) {
+        followUp.cancel()
+        vibrate(CueKind.minuteMark)
+        speech.queued(t, line.words)
+        say(null, line.text)
     }
 
     /** When the speech queued so far will be done, on the session's clock (voice coaching only speaks when this has passed). */
@@ -166,6 +231,8 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
         val t = now()
         val n = followUp.due(t, speech.busyUntil) ?: return null
         if (!enabled) return null
+        // A nudge is the tail of its km cue: it is counted against the budget but never gated by it.
+        budget.record(TalkLine(CueSlot.paceStatus, "nudge:${n.rule}:${n.index}", n.text), t, speech.busyUntil)
         speech.queued(t, CueComposer.words(n.text))
         say(null, n.text)
         return n
@@ -177,6 +244,7 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
         vibrate(longArrayOf(0, 400, 150, 400))
         if (!enabled) return
         followUp.cancel()
+        budget.record(TalkLine(CueSlot.finish, "goal:${seq++}", text), now(), speech.busyUntil)
         speech.queued(now(), CueComposer.words(text))
         say(CueKind.phaseEnd, text)
     }
@@ -186,9 +254,9 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
      * words only when cues are on. Never drops or delays a cue already queued: it is said in order like any line.
      */
     @Synchronized
-    fun alert(text: String, pattern: LongArray) {
+    fun alert(text: String, pattern: LongArray, slot: CueSlot = CueSlot.turnaround) {
         vibrate(pattern)
-        announce(text)
+        announce(text, slot)
     }
 
     /**
@@ -205,6 +273,7 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
         }
         releaseWhenIdle = thenRelease
         followUp.cancel()
+        budget.record(TalkLine(CueSlot.structure, "summary:${seq++}", text), now(), speech.busyUntil)
         speech.queued(now(), CueComposer.words(text))
         if (ttsReady || tts == null) say(null, text) else pendingLine = text
         if (thenRelease) main.postDelayed({ release() }, RELEASE_SAFETY_MS)
@@ -229,12 +298,17 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
         say(null, line)
     }
 
-    /** Spoken without a vibration pattern of its own (e.g. "GPS weak"). */
+    /**
+     * Spoken without a vibration pattern of its own (e.g. "GPS weak"). [slot] says how much it matters: the default,
+     * structure, always speaks; a coaching line (zone drift, pace status) can be dropped by the [TalkBudget].
+     */
     @Synchronized
-    fun announce(text: String) {
+    fun announce(text: String, slot: CueSlot = CueSlot.structure) {
         if (!enabled) return
+        val t = now()
+        budget.offer(TalkLine(slot, "${slot.name}:${seq++}", text), t, speech.busyUntil, hardEffort) ?: return
         followUp.cancel()
-        speech.queued(now(), CueComposer.words(text))
+        speech.queued(t, CueComposer.words(text))
         say(null, text)
     }
 

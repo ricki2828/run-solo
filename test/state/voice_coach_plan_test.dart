@@ -34,7 +34,7 @@ void main() {
       [CheckInMetric.time],
     );
     final c = VoiceCoachPlan.checkIn(settings: back, zones: zones);
-    expect(c.metrics, ['time', 'climb']);
+    expect(c.metrics, ['time', 'climb', 'voice:coach']);
     expect(c.zoneBottomsBpm, [for (var z = 2; z <= 5; z++) zones.bottom(z)]);
   });
 
@@ -169,6 +169,31 @@ void main() {
       ).plannedMaxZone,
       isNull,
       reason: 'Minimal is next step only',
+    );
+  });
+
+  test('voice detail defaults to Coach, persists, and rides the check-in as a reserved key', () {
+    expect(kVoiceDetailDefault, VoiceDetail.coach);
+    expect(const AppSettings().voiceDetail, VoiceDetail.coach);
+    expect(AppSettings.fromJson(const {}).voiceDetail, VoiceDetail.coach);
+    expect(
+      AppSettings.fromJson({'voiceDetail': 'nonsense'}).voiceDetail,
+      VoiceDetail.coach,
+    );
+    final back = AppSettings.fromJson(
+      const AppSettings(voiceDetail: VoiceDetail.minimal).toJson(),
+    );
+    expect(back.voiceDetail, VoiceDetail.minimal);
+    expect(
+      [for (final d in VoiceDetail.values) d.metricKey],
+      ['voice:coach', 'voice:everything', 'voice:minimal'],
+    );
+    final c = VoiceCoachPlan.checkIn(settings: back, zones: zones);
+    expect(c.metrics.last, 'voice:minimal');
+    // Never a check-in metric: the picker lists CheckInMetric only.
+    expect(
+      CheckInMetric.values.map((m) => m.key),
+      isNot(contains(startsWith(kVoiceDetailMetricPrefix))),
     );
   });
 }

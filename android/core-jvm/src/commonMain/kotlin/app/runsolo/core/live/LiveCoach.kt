@@ -55,6 +55,13 @@ class LiveCoach(
     private val livePaces = ArrayList<Double?>()
     private var lastKm = 0
 
+    /** The last half km mark said or passed (mark h = h km + 500 m); -1 = none yet. */
+    private var lastHalf = -1
+    private val halfNews = HalfKmNews()
+
+    /** Climb (m) at the last whole km, to read this km's gain; null after a restore (unknown for one km). */
+    private var climbAtLastKm: Double? = 0.0
+
     /** "Best start to this session you've had" is said once a run (#79 review), not after every rep it holds. */
     private var bestStartSaid = false
 
@@ -82,7 +89,17 @@ class LiveCoach(
     }
 
     /** A whole km of a Free or Laps run: the split to say ([base], Free only) and its compare, if any. */
-    data class KmCue(val km: Int, val base: String?, val fire: Fire?, val nudge: Nudge? = null, val tail: String? = null)
+    data class KmCue(
+        val km: Int,
+        val base: String?,
+        val fire: Fire?,
+        val nudge: Nudge? = null,
+        val tail: String? = null,
+        /** [CueSlot.km], or [CueSlot.halfKm] for a news-only half km line (then [fire] and [nudge] are null). */
+        val slot: CueSlot = CueSlot.km,
+        /** The [TalkBudget] key: `km:<n>`, or `halfKm:<item>` for a half km. */
+        val key: String = "km:$km",
+    )
 
     /**
      * An intervals run with a board to race: a rep ended by a manual lap holds its following cue
@@ -100,6 +117,8 @@ class LiveCoach(
     /** After a restore: every km already passed is done, so none is spoken late. */
     fun resumeAt(distanceM: Double) {
         lastKm = maxOf(lastKm, floor(distanceM / 1_000).toInt())
+        lastHalf = maxOf(lastHalf, halfIndex(distanceM))
+        climbAtLastKm = null // this km's gain spans the dark gap: not known
         lastKmActiveMs = null // the next km's split pace spans the dark gap: not said
         kmHr.clean = false // and its HR was not seen whole
     }
@@ -172,12 +191,16 @@ class LiveCoach(
         val goalCooldown = goalReached && spec?.isGoal == true
         if (!goalCooldown && (spec?.steps?.isNotEmpty() == true || (mode != RunMode.free && mode != RunMode.laps && mode != RunMode.trail))) return null
         val km = floor(d / 1_000).toInt()
+        val level = checkIn?.level ?: VoiceLevel.everything
+        val coachPlan = checkIn?.takeIf { it.level == VoiceLevel.coach && !goalCooldown && (mode == RunMode.free || mode == RunMode.trail) && kmSplits }
+        val half = if (coachPlan != null && km <= lastKm) halfKm(coachPlan, prevD, d, snap) else null
         if (km <= lastKm || d <= prevD) {
             kmHr.add(hr)
-            return null
+            return half
         }
         val skipped = km > lastKm + 1
         lastKm = km
+        lastHalf = maxOf(lastHalf, halfIndex(d))
         val mark = km * 1_000.0
         val tk = if (prevD >= mark) prevT else prevT + ((mark - prevD) / (d - prevD) * (t - prevT)).toLong()
         val active = activeAt(tk)
@@ -189,11 +212,34 @@ class LiveCoach(
         // A goal's open cool-down says km splits only: no compare, no nudge.
         val splitsOn = (mode == RunMode.free || mode == RunMode.trail || goalCooldown) && kmSplits
         val plan = checkIn?.takeIf { splitsOn && !goalCooldown }
-        val spoken = plan?.let { CheckInWords.build(it, km, active, splitMs, snap?.invoke()) }
-        val base = if (!splitsOn) null else if (plan == null) LiveWords.kmSplit(km, active, splitMs) else spoken?.base
-        val nudge = if (mode == RunMode.free && kmSplits) kmNudge(km, active, splitMs, hrMean) else null
         val fire = if (goalCooldown) null else compareAtKm(km, active)
+        val snapNow = if (plan != null && plan.level != VoiceLevel.minimal) snap?.invoke() else null
+        val gain = snapNow?.climbM?.let { c -> climbAtLastKm?.let { c - it } }
+        snapNow?.climbM?.let { climbAtLastKm = it }
+        val spoken = plan?.let {
+            when (it.level) {
+                VoiceLevel.everything -> CheckInWords.build(it, km, active, splitMs, snapNow)
+                VoiceLevel.coach -> CoachWords.km(it, km, active, splitMs, snapNow, mode == RunMode.trail, gain, fire?.takeIf { f -> f.speak }?.text)
+                VoiceLevel.minimal -> CoachWords.minimal(it, km)
+            }
+        }
+        if (plan != null && plan.level == VoiceLevel.coach) halfNews.noteKm(snapNow)
+        val base = if (!splitsOn) null else if (plan == null) LiveWords.kmSplit(km, active, splitMs) else spoken?.base
+        val nudge = if (mode == RunMode.free && kmSplits && level != VoiceLevel.minimal) kmNudge(km, active, splitMs, hrMean) else null
         return KmCue(km, base, fire, nudge, spoken?.tail).takeIf { it.base != null || it.fire != null }
+    }
+
+    private fun halfIndex(d: Double): Int = floor((d - 500) / 1_000).toInt()
+
+    /** A half km mark crossed in this tick: the news-only line, or null (nothing new, or a catch-up past several). */
+    private fun halfKm(plan: CheckInPlan, prevD: Double, d: Double, snap: (() -> CheckInSnapshot?)?): KmCue? {
+        val h = halfIndex(d)
+        if (h <= lastHalf || d <= prevD) return null
+        val skipped = h > lastHalf + 1
+        lastHalf = h
+        if (skipped) return null
+        val line = halfNews.line(plan, snap?.invoke(), d, mode == RunMode.trail) ?: return null
+        return KmCue(h, line.text, null, slot = CueSlot.halfKm, key = line.key)
     }
 
     // ---- nudges (CR1): the engine's thresholds against live figures ----
@@ -300,7 +346,7 @@ class LiveCoach(
         val board = context.boards.firstOrNull { it.kind == LiveBoardKind.distance && it.targetM == boardM } ?: return null
         val r = LiveCompare.distance(board, km, active) ?: return null
         if (!claim(r)) return null
-        return Fire(r, LiveWords.compare(r), speak = !muted && mode == RunMode.free && kmSplits)
+        return Fire(r, LiveWords.compare(r), speak = !muted && mode == RunMode.free && kmSplits && checkIn?.level != VoiceLevel.minimal)
     }
 
     /**

@@ -2,6 +2,7 @@ package app.runsolo.platform
 
 import app.runsolo.core.live.CheckInMetric
 import app.runsolo.core.live.CheckInPlan
+import app.runsolo.core.live.VoiceLevel
 import app.runsolo.core.live.VoiceCoach
 import app.runsolo.core.model.LiveContext as CoreLiveContext
 import app.runsolo.core.route.FollowRoute as CoreFollowRoute
@@ -357,7 +358,9 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     internal fun checkInFromPrefs(): CheckInPlan? {
         val raw = prefs.getString(RecorderService.PREF_CHECKIN, null) ?: return null
         val zones = prefs.getString(RecorderService.PREF_CHECKIN_ZONES, null)?.split(",")?.mapNotNull { it.toDoubleOrNull() }?.takeIf { it.size == 4 }
-        return CheckInPlan(CheckInMetric.parse(raw.split(",").filter { it.isNotEmpty() }), zones)
+        val keys = raw.split(",").filter { it.isNotEmpty() }
+        // The Voice detail rides the metric list as a reserved `voice:` key (TEMPORARY, until a real Pigeon field); an app without it gets the default.
+        return CheckInPlan(CheckInMetric.parse(keys), zones, VoiceLevel.fromMetricKeys(keys) ?: VoiceLevel.DEFAULT)
     }
 
     override fun setSpokenSummary(enabled: Boolean) {

@@ -401,6 +401,13 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               if (s.cues && s.kmSplits)
                 SettingsRow(
+                  key: const ValueKey('voice-detail'),
+                  label: 'Voice detail',
+                  value: s.voiceDetail.label,
+                  onTap: () => _pickVoiceDetail(context, s.voiceDetail, set),
+                ),
+              if (s.cues && s.kmSplits)
+                SettingsRow(
                   key: const ValueKey('check-in-metrics'),
                   label: 'Check-in says',
                   value:
@@ -819,6 +826,55 @@ class _SettingsScreenState extends State<SettingsScreen>
       },
     );
     if (picked != null) await set((x) => x.copyWith(profileSex: picked));
+  }
+
+  Future<void> _pickVoiceDetail(
+    BuildContext context,
+    VoiceDetail current,
+    Future<void> Function(AppSettings Function(AppSettings)) set,
+  ) async {
+    final picked = await showModalBottomSheet<VoiceDetail>(
+      context: context,
+      builder: (context) {
+        final t = Theme.of(context).extension<RunSoloTokens>()!;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(Space.screenGutter),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('VOICE DETAIL', style: RunSoloType.title28),
+                const SizedBox(height: Space.x8),
+                Text(
+                  'How much the voice says on a Free or Trail run. Changes '
+                  'apply from your next run.',
+                  style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                ),
+                const SizedBox(height: Space.x8),
+                RadioGroup<VoiceDetail>(
+                  groupValue: current,
+                  onChanged: (v) => Navigator.of(context).pop(v),
+                  child: Column(
+                    children: [
+                      for (final o in VoiceDetail.values)
+                        RadioListTile<VoiceDetail>(
+                          key: ValueKey('voice-detail-${o.name}'),
+                          value: o,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(o.label),
+                          subtitle: Text(o.blurb),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (picked != null) await set((x) => x.copyWith(voiceDetail: picked));
   }
 
   Future<void> _pickDetail(
