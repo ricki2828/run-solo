@@ -407,7 +407,7 @@ class Service(CheckinMixin):
                 # switch and any stored area (reinstall, new phone, 401 wipe of the same chat).
                 c.execute("UPDATE users SET weather_optin=0 WHERE id=?", (uid,))
                 c.execute("DELETE FROM convo_area WHERE user_id=?", (uid,))
-                c.execute("UPDATE users SET paused=0, consent_version=?, consent_at=?, consent_msg_id=?, chat_name=? WHERE id=?",
+                c.execute("UPDATE users SET paused=0, checkin_consent=NULL, consent_version=?, consent_at=?, consent_msg_id=?, chat_name=? WHERE id=?",
                           (self.s.consent_version, iso(now), e["consent_msg_id"], e["chat_name"], uid))
                 chat_name = e["chat_name"]
                 c.execute("UPDATE enrolments SET state='claimed', code=NULL WHERE nonce=?", (nonce,))
@@ -747,9 +747,11 @@ class Service(CheckinMixin):
                 raise NotFound()
             log.info("consent version=%s set user=%s via %s", version, uid, source)
         if c is not None:
-            return go(c)
+            return go(c)   # inside the caller's transaction: it calls _ci_unpin_weeks after the commit
         with db.tx(self.s.db_path) as c:
             go(c)
+        if version < self.s.checkin_consent_required:
+            self._ci_unpin_weeks(uid)
 
     def set_timezone(self, uid: str, zone_id: str, now: datetime | None = None) -> dict:
         """Move the user to `zone_id` (already validated). Scheduling reads users.zone_id; weekly caps stay pinned
@@ -773,6 +775,12 @@ class Service(CheckinMixin):
         return coach, (run.type if run.type in APP_TYPES else None)
 
     def ingest_run(self, uid: str, run: RunIn, now: datetime | None = None, *, replay: bool = False) -> dict:
+        out = self._ingest_run(uid, run, now, replay=replay)
+        if run.consent_version is not None and run.consent_version < self.s.checkin_consent_required:
+            self._ci_unpin_weeks(uid)
+        return out
+
+    def _ingest_run(self, uid: str, run: RunIn, now: datetime | None = None, *, replay: bool = False) -> dict:
         now = now or now_utc()
         if run.start_utc > now + timedelta(minutes=10):
             raise ValueError("start_utc in the future")

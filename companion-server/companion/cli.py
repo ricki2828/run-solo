@@ -9,7 +9,7 @@ from datetime import timedelta
 
 import httpx
 
-from . import db, replay
+from . import db, logs, replay
 from .config import Settings
 from .service import Service
 from .timeutil import iso, now_utc, parse_iso
@@ -93,6 +93,7 @@ def set_consent(s: Settings, svc: Service, who: str, version: str) -> int:
 
 
 def main(argv: list[str]) -> int:
+    logs.setup()   # the operator commands log audit lines (set-consent); they must reach the journal, redacted
     s = Settings.from_env()
     cmd = argv[0] if argv else "status"
     if cmd == "replay":

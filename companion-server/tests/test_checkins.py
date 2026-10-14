@@ -1305,3 +1305,46 @@ def test_the_cli_seeds_a_consent_version_for_one_runner_by_chat_ref_or_id(env_nc
     assert env_nc.step(at(2026, 10, 14, 20, 5)) == 1                      # check-ins now flow
     assert cli.set_consent(s, svc, env_nc.uid, "1") == 0                  # by user id too; lowers it again
     assert env_nc.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] == 1
+
+
+# ================================================================= consent gate, round 2 (review of #295)
+def test_a_real_relink_by_an_old_app_clears_the_consent_so_no_check_ins(env, client):
+    assert env.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] == 2
+    enrol(client)                                    # reinstall / new phone: the full enrol flow, no consent version sent
+    assert env.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] is None
+    assert env.step(at(2026, 10, 14, 20, 5)) == 0
+    assert env.q("SELECT * FROM checkin_slots") == []
+
+
+def test_stored_answers_are_ignored_once_consent_is_withdrawn(env, client):
+    put(env, "why", "2026-10-15", "ill", at(2026, 10, 15, 8, 0))
+    put(env, "why", "2026-10-15", "sore", at(2026, 10, 15, 8, 1))
+    agree(client, env.token, 1)
+    start = at(2026, 10, 16, 7, 0)
+    env.run("fri", start, now=start + timedelta(minutes=45), type="easy", verdict="slower")
+    env.svc.run_outbox(start + timedelta(minutes=46))
+    assert "You said" not in env.sends()[-1]["text"]
+    with db.ro(env.path) as c:
+        assert env.svc._ci_lighter(c, env.uid, start, date(2026, 10, 16)) is False
+        assert env.svc._ci_evening_held(c, env.uid, date(2026, 10, 16), start) is False
+
+
+def test_withdrawing_consent_unpins_the_week_card(penv, client):
+    run_thursday(penv)
+    penv.svc.run_outbox(at(2026, 10, 15, 7, 47))
+    [slot] = penv.q("SELECT message_id FROM checkin_slots WHERE slot='week'")
+    assert not [m for m, _ in penv.fakes.tg if m == "unpinChatMessage"]
+    agree(client, penv.token, 1)
+    assert [b["message_id"] for m, b in penv.fakes.tg if m == "unpinChatMessage"] == [int(slot["message_id"])]
+
+
+def test_the_cli_audit_line_reaches_the_log_through_the_real_logger_setup(env_nc, monkeypatch, capsys):
+    import logging
+    from companion import cli
+    root = logging.getLogger()
+    monkeypatch.setattr(root, "handlers", [])          # as in a fresh process: nothing configured yet
+    monkeypatch.setattr(cli.Settings, "from_env", staticmethod(lambda: env_nc.svc.s))
+    monkeypatch.setattr(cli, "Service", lambda *a, **k: env_nc.svc)
+    assert cli.main(["set-consent", env_nc.uid, "2"]) == 0
+    err = capsys.readouterr().err
+    assert "via cli" in err and "version=2" in err

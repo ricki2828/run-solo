@@ -129,6 +129,25 @@ class CheckinMixin:
         r = c.execute("SELECT checkin_consent FROM users WHERE id=?", (uid,)).fetchone()
         return bool(r and r["checkin_consent"] is not None and r["checkin_consent"] >= self.s.checkin_consent_required)
 
+    def _ci_unpin_weeks(self, uid: str) -> None:
+        """Consent withdrawn: the pinned week cards stop being pinned (the pictures stay in the chat; the runner can delete
+        them). Best effort: a failed unpin must not fail the withdrawal."""
+        ch = self.channels.get("telegram")
+        if ch is None:
+            return
+        with db.ro(self.s.db_path) as c:
+            u = c.execute("SELECT channel, chat_ref FROM users WHERE id=?", (uid,)).fetchone()
+            mids = [r["message_id"] for r in c.execute(
+                "SELECT message_id FROM checkin_slots WHERE user_id=? AND slot='week' AND state='sent' AND message_id IS NOT NULL",
+                (uid,))]
+        if u is None or u["channel"] != "telegram":
+            return
+        for mid in mids:
+            try:
+                ch.unpin(u["chat_ref"], mid)
+            except Exception:
+                log.warning("unpin failed user=%s", uid)
+
     # ------------------------------------------------------------------ the question cap (C1)
     @staticmethod
     def _ci_local_day(c, uid: str, now: datetime) -> str:
@@ -331,9 +350,6 @@ class CheckinMixin:
         parsed = ci.CODES.get(inb.code or "")
         slot = ci.SLOT_OF_KIND.get(parsed[0]) if parsed else None
         stale = parsed is None or card["kind"] != f"ci_{slot}"
-        with db.ro(self.s.db_path) as c:
-            if not self._ci_consented(c, uid):
-                stale = True   # consent withdrawn or never seen: an old button records nothing and loses its keyboard
         for_date: date | None = None
         srow: dict | None = None
         if not stale:
@@ -345,13 +361,15 @@ class CheckinMixin:
             assert parsed is not None and for_date is not None and slot is not None
             kind, value = parsed
             with db.tx(self.s.db_path) as c:
+                # consent is read in the same transaction as the answer write, so a withdrawal cannot slip between them
+                consented = self._ci_consented(c, uid)
                 r = c.execute("SELECT * FROM checkin_slots WHERE user_id=? AND slot=? AND local_date=?",
                               (uid, slot, for_date.isoformat())).fetchone()
                 srow = dict(r) if r else None
                 today = to_local(now, user["zone_id"]).date()
                 t = c.execute("SELECT value FROM checkin_answers WHERE user_id=? AND kind='today' AND local_date=?",
                               (uid, for_date.isoformat())).fetchone()
-                if (srow is None or srow["card_id"] != card["card_id"] or srow["state"] != "sent"
+                if (not consented or srow is None or srow["card_id"] != card["card_id"] or srow["state"] != "sent"
                         or (srow["message_id"] and inb.callback_message_id and srow["message_id"] != inb.callback_message_id)
                         or not ci.tap_open(slot, for_date, today)
                         or (kind == "why" and (t is None or t["value"] != "skip"))):   # a reason only follows a skip
@@ -649,8 +667,8 @@ class CheckinMixin:
         """A run card may carry one templated line about what the runner said in the last 3 days. Built when the card is
         sent and never stored (card.body stays free of it), so it is not kept past the 14 days, and it never goes near
         the writer, which has long finished."""
-        if card.get("kind") != "run" or not card.get("run_id"):
-            return card
+        if card.get("kind") != "run" or not card.get("run_id") or not self._ci_consented(c, card["user_id"]):
+            return card   # no consent: stored answers are never quoted back
         run = c.execute("SELECT start_utc, zone_id, verdict FROM runs WHERE user_id=? AND run_id=?",
                         (card["user_id"], card["run_id"])).fetchone()
         if run is None:
@@ -670,12 +688,16 @@ class CheckinMixin:
     def _ci_lighter(self, c, uid: str, now: datetime, on: date) -> bool:
         """Is the coach keeping things light on this day? (A skip, a sore evening-before answer, a sleepless or stressed
         post-run answer.) Safety outranks the plan: the evening suggestion then softens."""
+        if not self._ci_consented(c, uid):
+            return False
         until = ci.lighter_until(self._ci_answers(c, uid, now), on)
         return until is not None and until >= on
 
     def _ci_evening_held(self, c, uid: str, tomorrow: date, now: datetime) -> bool:
         """True when the evening suggestion must not go: the runner said ill (rest, no nudge) or is away that week, or a
         readiness question for tomorrow is due in the same window and takes the day's one question (P3-6)."""
+        if not self._ci_consented(c, uid):
+            return False   # stored answers are ignored without consent, and no readiness question is coming either
         ans = self._ci_answers(c, uid, now)
         if ci.ill_covers(ans, tomorrow) or ci.away_covers(ans, tomorrow):
             return True
