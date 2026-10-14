@@ -122,6 +122,13 @@ class CheckinMixin:
         head, body, kb = cc.today(stage, ctx, why) if slot == "today" else cc.RENDER[slot](stage, ctx)
         return head, body, kb
 
+    # ------------------------------------------------------------------ consent gate
+    def _ci_consented(self, c, uid: str) -> bool:
+        """The app told us this runner agreed to the check-in data (consent version at or above the requirement).
+        Missing, old or lowered values all mean no. Read from the database each time, never from a cached user dict."""
+        r = c.execute("SELECT checkin_consent FROM users WHERE id=?", (uid,)).fetchone()
+        return bool(r and r["checkin_consent"] is not None and r["checkin_consent"] >= self.s.checkin_consent_required)
+
     # ------------------------------------------------------------------ the question cap (C1)
     @staticmethod
     def _ci_local_day(c, uid: str, now: datetime) -> str:
@@ -156,8 +163,9 @@ class CheckinMixin:
         who, args = ((" AND id = ?", (only_user,)) if only_user else (f" AND id NOT IN {replay_hold(now)}", ()))
         with db.tx(self.s.db_path) as c:
             users = [dict(r) for r in c.execute(
-                "SELECT * FROM users WHERE channel='telegram' AND paused=0 AND last_run_utc >= ?" + who,
-                (iso(now - timedelta(days=14)), *args))]
+                "SELECT * FROM users WHERE channel='telegram' AND paused=0 AND last_run_utc >= ? "
+                "AND checkin_consent >= ?" + who,
+                (iso(now - timedelta(days=14)), self.s.checkin_consent_required, *args))]
             for u in users:
                 try:
                     n += self._ci_plan_user(c, u, now)
@@ -180,6 +188,8 @@ class CheckinMixin:
 
     def _ci_wanted(self, c, u: dict, slot: str, for_date: date, now: datetime) -> bool:
         """Is this check-in still worth sending right now? The same test plans it and, again, sends it."""
+        if not self._ci_consented(c, u["id"]):
+            return False   # the app has not said this runner agreed to the check-in data: nothing is asked or sent
         ans, planned, usual, today, res = self._ci_state(c, u, now)
         if planned is None:
             return False
@@ -321,6 +331,9 @@ class CheckinMixin:
         parsed = ci.CODES.get(inb.code or "")
         slot = ci.SLOT_OF_KIND.get(parsed[0]) if parsed else None
         stale = parsed is None or card["kind"] != f"ci_{slot}"
+        with db.ro(self.s.db_path) as c:
+            if not self._ci_consented(c, uid):
+                stale = True   # consent withdrawn or never seen: an old button records nothing and loses its keyboard
         for_date: date | None = None
         srow: dict | None = None
         if not stale:
@@ -388,6 +401,8 @@ class CheckinMixin:
         stored message id updated. Anything else (429, transport) raises ChannelError."""
         ch = self.channels.get("telegram")
         with db.ro(self.s.db_path) as c:
+            if not self._ci_consented(c, user["id"]):
+                return False
             r = c.execute("SELECT * FROM checkin_slots WHERE user_id=? AND slot=? AND local_date=?",
                           (user["id"], slot, for_date.isoformat())).fetchone()
             if ch is None or r is None or r["state"] != "sent" or not r["message_id"]:
@@ -493,6 +508,8 @@ class CheckinMixin:
             return
         monday = (to_local(now, user["zone_id"]).date() - timedelta(days=to_local(now, user["zone_id"]).weekday())).isoformat()
         with db.tx(self.s.db_path) as c:
+            if not self._ci_consented(c, user["id"]):
+                return
             if c.execute("SELECT 1 FROM outbox WHERE user_id=? AND kind='ci_week' AND ref=? AND state='pending'",
                          (user["id"], monday)).fetchone():
                 return   # one render per burst: the queued item draws the newest state when it runs (a render already under way
@@ -532,6 +549,8 @@ class CheckinMixin:
             return "skipped", None
         monday = date.fromisoformat(monday_s)
         with db.ro(self.s.db_path) as c:
+            if not self._ci_consented(c, user["id"]):
+                return "skipped", None
             facts = self._ci_week_facts(c, user, monday, now)
             r = c.execute("SELECT * FROM checkin_slots WHERE user_id=? AND slot='week' AND local_date=?",
                           (user["id"], monday_s)).fetchone()
@@ -586,6 +605,8 @@ class CheckinMixin:
         if card["kind"] != "run" or not card.get("run_id"):
             return None
         with db.ro(self.s.db_path) as c:
+            if not self._ci_consented(c, user["id"]):
+                return None   # consent withdrawn: the result goes out as a plain new card, not as an edit of a check-in
             run = c.execute("SELECT start_utc, zone_id FROM runs WHERE user_id=? AND run_id=?",
                             (user["id"], card["run_id"])).fetchone()
             if run is None:

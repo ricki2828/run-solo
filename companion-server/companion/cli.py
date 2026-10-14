@@ -1,4 +1,4 @@
-"""Operator commands: python -m companion.cli {status|pause|resume|set-webhook|set-menu-button|purge|replay|replay-stop|replay-abort}.
+"""Operator commands: python -m companion.cli {status|pause|resume|set-webhook|set-menu-button|set-consent|purge|replay|replay-stop|replay-abort}.
 Never prints secrets."""
 from __future__ import annotations
 
@@ -73,6 +73,25 @@ def _replay_control(s: Settings, cmd: str) -> int:
     return code
 
 
+def set_consent(s: Settings, svc: Service, who: str, version: str) -> int:
+    """Record the consent version for one runner (user id or Telegram chat ref), exactly as the app's PUT does."""
+    try:
+        v = int(version)
+    except ValueError:
+        v = -1
+    if not 0 <= v <= 1000:
+        print("usage: set-consent <chat_ref|user_id> <version 0-1000>")
+        return 2
+    with db.ro(s.db_path) as c:
+        rows = [r["id"] for r in c.execute("SELECT id FROM users WHERE id=? OR chat_ref=?", (who, who))]
+    if len(set(rows)) != 1:
+        print(f"set-consent: {'no' if not rows else 'more than one'} runner matches")
+        return 1
+    svc.set_checkin_consent(rows[0], v, source="cli")
+    print(f"consent set: user={rows[0]} version={v}")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     s = Settings.from_env()
     cmd = argv[0] if argv else "status"
@@ -93,6 +112,11 @@ def main(argv: list[str]) -> int:
         print(f"users={n} overdue_outbox={svc.overdue_count()} kill_switch={'on' if (p and p[0]=='1') or s.sends_paused else 'off'} "
               f"llm={'key set' if s.openrouter_key else 'no key (templates only)'} spend_month_usd={svc.writer.month_spend():.4f} "
               f"{_replay_status(s)}")
+    elif cmd == "set-consent":
+        if len(argv) != 3:
+            print("usage: set-consent <chat_ref|user_id> <version>")
+            return 2
+        return set_consent(s, svc, argv[1], argv[2])
     elif cmd == "purge":
         svc.purge()
         print("purged")

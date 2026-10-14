@@ -159,6 +159,9 @@ In the Cloudflare dashboard add a rate-limit rule: `/v1/enrol/start`, per IP, 5 
 "Open the week" web_app button to run and recap cards. Without the flag there are no `/miniapp` routes and no button.
 - Env: `COMPANION_MINIAPP=1`; `COMPANION_MINIAPP_URL` only if the host differs (default `https://companion.taiaroa.xyz/miniapp/`, https only).
 - Edge: apply `deploy/nginx-miniapp.conf` (location, rate limit, tunnel path). Telegram needs HTTPS on that origin.
+- Check-in consent gate: no check-in of any kind goes to a runner until the app has told the server a consent version >= 2
+  (`PUT /v1/me/consent {"consent_version": n}` or `consent_version` on a run upload). Seed one runner whose build predates this:
+  `.venv/bin/python -m companion.cli set-consent <chat_ref|user_id> 2` (logged as `via cli`). Run it right after the deploy.
 - Menu button: `.venv/bin/python -m companion.cli set-menu-button` (sets the bot's default menu button to "My week").
 - Auth: `Authorization: tma <initData>` only (HMAC with the bot token, auth_date within 1 h, user id must match a linked Telegram chat, else 403).
   There is no session token: a session older than an hour gets 401 and the page asks the runner to reopen it from the chat.

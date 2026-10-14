@@ -77,6 +77,9 @@ class Settings:
     # Check-ins (evening readiness, morning card, post-run and Sunday questions). Off until the privacy page that
     # describes them is published and the site redeployed (eng-review P1); taps on messages already sent still work.
     checkins_enabled: bool = False
+    # The app's kCompanionConsentVersion that covers check-in data (lib/state/companion.dart). A runner whose app has not
+    # told the server it agreed to at least this version gets no check-in of any kind.
+    checkin_consent_required: int = 2
     # Telegram Mini App (read-only week, latest run and lanes), served under /miniapp/. Off by default.
     miniapp_enabled: bool = False
     miniapp_url: str = "https://companion.taiaroa.xyz/miniapp/"  # what the web_app buttons open

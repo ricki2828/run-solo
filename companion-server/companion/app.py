@@ -11,7 +11,7 @@ from typing import Literal
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator
 
 from . import logs
 from .channels import TelegramChannel, WhatsAppChannel, verify_wa_signature
@@ -101,6 +101,11 @@ class TimezoneIn(BaseModel):
     zone_id: str = Field(max_length=64, pattern=ZONE_RE)  # IANA name, e.g. Europe/Athens
 
     _zone = field_validator("zone_id")(_check_zone)
+
+
+class ConsentIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    consent_version: StrictInt = Field(ge=0, le=1000)  # kCompanionConsentVersion the runner agreed to in the app
 
 
 class SettingsIn(BaseModel):
@@ -245,6 +250,16 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
     @app.put("/v1/me/settings")
     def put_settings(body: SettingsIn, uid: str = Depends(current_user)):
         svc.set_settings(uid, body.quiet_start_min, body.quiet_end_min, body.zone_id, body.weather, body.route_shape)
+        return {"status": "ok"}
+
+    @app.put("/v1/me/consent")
+    def put_consent(body: ConsentIn, uid: str = Depends(current_user)):
+        """The app calls this when the runner taps Agree on the companion consent card (and may repeat it). The latest
+        value wins, so a lower one withdraws check-ins. Check-ins need a value at or above the server's requirement."""
+        try:
+            svc.set_checkin_consent(uid, body.consent_version)
+        except NotFound:
+            raise HTTPException(404, "gone")
         return {"status": "ok"}
 
     @app.put("/v1/me/timezone")

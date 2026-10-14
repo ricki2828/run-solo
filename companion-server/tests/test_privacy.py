@@ -46,11 +46,11 @@ def populate(client, fakes):
         w.execute("INSERT INTO note_mode (user_id, run_id, expires_at) SELECT user_id, run_id, ? FROM run_notes",
                   (iso(now_utc() + timedelta(minutes=5)),))
         # the check-in tables (coach v2): an answer, a sent-slot row and a cap row
-        w.execute("INSERT INTO checkin_answers (user_id, kind, local_date, value, created_at) SELECT id, 'why', '2026-10-15', "
+        w.execute("INSERT INTO checkin_answers (user_id, kind, local_date, value, created_at) SELECT id, 'why', '2099-01-02', "
                   "'ill', ? FROM users", (iso(now_utc()),))
-        w.execute("INSERT INTO checkin_slots (user_id, slot, local_date, state, claimed_at) SELECT id, 'today', '2026-10-15', "
+        w.execute("INSERT INTO checkin_slots (user_id, slot, local_date, state, claimed_at) SELECT id, 'today', '2099-01-02', "
                   "'sent', ? FROM users", (iso(now_utc()),))
-        w.execute("INSERT INTO question_cap (user_id, local_date, slot, claimed_at) SELECT id, '2026-10-15', 'today', ? "
+        w.execute("INSERT INTO question_cap (user_id, local_date, slot, claimed_at) SELECT id, '2099-01-02', 'today', ? "
                   "FROM users", (iso(now_utc()),))
     return t
 

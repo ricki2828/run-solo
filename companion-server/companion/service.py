@@ -17,7 +17,7 @@ from typing import Annotated, Any
 
 import httpx
 from pydantic_core import PydanticCustomError
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError, field_validator, model_validator
 
 from . import db
 from .channels import ChannelError, Inbound, OutCard, TelegramChannel, WhatsAppChannel, feel_template_eligible
@@ -209,6 +209,7 @@ class RunIn(BaseModel):
     reps_done: int | None = Field(default=None, ge=1, le=200)
     rep_spread_s: float | None = Field(default=None, ge=0, lt=3600)  # slowest minus fastest clean rep, s/km
     recovery_pace_s_per_km: float | None = Field(default=None, gt=0, lt=3600)
+    consent_version: StrictInt | None = Field(default=None, ge=0, le=1000)  # the consent version the runner agreed to; an older app sends none
     area_lat: float | None = Field(default=None, ge=-90, le=90)  # approximate area for weather; the phone rounds to 0.1 degree and the server rounds again
     area_lon: float | None = Field(default=None, ge=-180, le=180)
     route: list[tuple[GridInt, GridInt]] | None = Field(default=None, min_length=2, max_length=MAX_ROUTE_POINTS)
@@ -693,7 +694,7 @@ class Service(CheckinMixin):
         return {
             "profile": {
                 "channel": u["channel"], "chat_name": u["chat_name"], "chat_ref_hint": "…" + ref[-3:], "created_at": u["created_at"],
-                "consent_version": u["consent_version"], "consent_at": u["consent_at"], "paused": bool(u["paused"]),
+                "consent_version": u["consent_version"], "consent_at": u["consent_at"], "checkin_consent": u["checkin_consent"], "paused": bool(u["paused"]),
                 "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "route_shape_on_cards": bool(u["route_optin"]), "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },
             "runs_received": runs, "run_shapes": shapes, "run_notes": run_notes, "memory": memory, "suggestion_outcomes": outcomes,
@@ -738,6 +739,18 @@ class Service(CheckinMixin):
         if wipe_wal:  # old page images of the deleted outlines must not wait in the WAL
             db.checkpoint_truncate(self.s.db_path)
 
+    def set_checkin_consent(self, uid: str, version: int, c=None, source: str = "app") -> None:
+        """Record the consent version the app says the runner agreed to (latest report wins, so a downgrade counts).
+        `source` is only for the log line: "app" (PUT or run upload) or "cli" (operator seeding)."""
+        def go(c):
+            if not c.execute("UPDATE users SET checkin_consent=? WHERE id=?", (version, uid)).rowcount:
+                raise NotFound()
+            log.info("consent version=%s set user=%s via %s", version, uid, source)
+        if c is not None:
+            return go(c)
+        with db.tx(self.s.db_path) as c:
+            go(c)
+
     def set_timezone(self, uid: str, zone_id: str, now: datetime | None = None) -> dict:
         """Move the user to `zone_id` (already validated). Scheduling reads users.zone_id; weekly caps stay pinned
         to the week they started in (resolve_cap_week), so travelling does not hand out a second weekly allowance."""
@@ -771,6 +784,8 @@ class Service(CheckinMixin):
         session_cols = (run.session_name, run.work_pace_s_per_km, run.reps_done, run.rep_spread_s,
                         run.recovery_pace_s_per_km)
         with db.tx(self.s.db_path) as c:
+            if run.consent_version is not None:
+                self.set_checkin_consent(uid, run.consent_version, c)
             coach_type, app_type = self._coach_type(c, uid, run)
             have = c.execute("SELECT real_upload FROM runs WHERE user_id=? AND run_id=?", (uid, run.run_id)).fetchone()
             if have:
