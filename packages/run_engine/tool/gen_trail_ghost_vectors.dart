@@ -98,11 +98,14 @@ List<Fix> runner(
   int seed = 1,
   double acc = 5,
   List<(int, int)> stops = const [],
+  int startT = 0,
+  int startActive = 0,
+  double startDist = 0,
 }) {
   final rnd = math.Random(seed);
   final out = <Fix>[];
-  var t = 0, active = 0;
-  var dist = 0.0;
+  var t = startT, active = startActive;
+  var dist = startDist;
   for (final leg in legs) {
     for (final (x, y) in densify(leg, mps)) {
       final nx = x + (noiseM > 0 ? (rnd.nextDouble() * 2 - 1) * noiseM : 0);
@@ -125,10 +128,14 @@ Map<String, Object?> vector(
   final points = <List<Object?>>[];
   final states = <List<Object?>>[];
   final events = <int>[];
+  final switches = <List<Object?>>[];
   for (final f in fixes) {
     final ev = g.offer(f.t, lat(f.y), lon(f.x), f.acc, f.activeMs, f.distM);
     for (final e in ev) {
       events.add(e.t);
+    }
+    for (final w in g.drainSwitches()) {
+      switches.add([w.t, w.trailId, w.toLast]);
     }
     points.add([f.t, lat(f.y), lon(f.x), f.acc, f.activeMs, f.distM]);
     final s = g.state;
@@ -143,6 +150,7 @@ Map<String, Object?> vector(
               s.aheadLastMs,
               s.turnCue,
               s.toTurnM,
+              s.racing,
             ],
     );
   }
@@ -152,6 +160,7 @@ Map<String, Object?> vector(
     'points': points,
     'states': states,
     'turnEvents': events,
+    'switches': switches,
   };
 }
 
@@ -171,6 +180,22 @@ void main() {
       runner([
         const [(0, 0), (900, 0)],
       ], mps: 3),
+    ),
+    vector(
+      'slip_and_recover',
+      [trail(straight)],
+      runner([
+            const [(0, 0), (800, 0)],
+          ], mps: 3) +
+          runner(
+            [
+              const [(800, 0), (2000, 0)],
+            ],
+            mps: 6,
+            startT: 267000,
+            startActive: 267000,
+            startDist: 800,
+          ),
     ),
     vector(
       'last_is_best',

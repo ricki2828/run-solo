@@ -55,6 +55,14 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
         val minCover: Double = 0.8,
         /** No ahead/behind figure until the runner has covered this much of the trail. */
         val reportM: Double = 100.0,
+        /** Adaptive lead: clearly behind the best by more than max(this, [slipFrac] of the best's time over the stretch)... */
+        val slipFloorMs: Long = 30_000,
+        val slipFrac: Double = 0.03,
+        /** ...for this long, and the last run is closer: race the last run. */
+        val slipHoldMs: Long = 120_000,
+        /** Back to the best once within [recoverFrac] of that margin for this long (the gap between the two is the hysteresis). */
+        val recoverFrac: Double = 0.5,
+        val recoverHoldMs: Long = 60_000,
         // The turnaround reuses the followed route's end rule (RouteFollower.Config).
         val endM: Double = 20.0,
         val endNearM: Double = 60.0,
@@ -92,7 +100,15 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
         /** Metres to the start of the next climb ahead; null when none is ahead or the runner is on one. */
         val toClimbM: Double? = null,
         val inClimb: Boolean = false,
+        /** Which run leads the figure: `best` to start with, `last` once the runner has slipped clearly behind the best and the last is closer. */
+        val racing: Racing = Racing.best,
     )
+
+    enum class Racing { best, last }
+
+    /** The lead figure changed hands at [t]: [toLast] true = now racing the last run, false = back to the best. */
+    data class Switch(val t: Long, val trailId: String, val toLast: Boolean)
+
 
     private inner class Cand(val ref: TrailRef) {
         val path = RoutePath(FollowRoute(ref.id, ref.name, ref.latLon))
@@ -115,6 +131,9 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
         var backSince: Long? = null
         var lastOnT: Long? = null
         var lastFixT: Long? = null
+        var racingLast = false
+        var behindSince: Long? = null
+        var calmSince: Long? = null
         var turnFired = false
         var turnT = 0L
         var crowToApexM = Double.MAX_VALUE
@@ -255,6 +274,9 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
         }
         val last = ref.last ?: ref.best
         val turn = ref.turnAlongM
+        val aBest = ahead(ref.best)
+        val aLast = if (ref.last == null) aBest else ahead(last)
+        adapt(c, t, aBest, aLast, ref)
         val onClimb = c.climbs.any { c.along >= it.startM && c.along <= it.endM }
         val nextClimb = if (onClimb) null else c.climbs.firstOrNull { it.startM > c.along }
         return TrailState(
@@ -263,8 +285,8 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
             alongM = c.along,
             toGoM = max(0.0, c.path.totalM - c.along),
             off = c.off,
-            aheadBestMs = ahead(ref.best),
-            aheadLastMs = if (ref.last == null) ahead(ref.best) else ahead(last),
+            aheadBestMs = aBest,
+            aheadLastMs = aLast,
             lastIsBest = ref.last == null,
             bestDateMs = ref.best.dateMs,
             lastDateMs = last.dateMs,
@@ -275,7 +297,54 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
             climbs = c.climbs,
             toClimbM = nextClimb?.let { it.startM - c.along },
             inClimb = onClimb,
+            racing = if (c.racingLast) Racing.last else Racing.best,
         )
+    }
+
+    private val switches = ArrayList<Switch>(2)
+
+    /** The lead changes since the last call, oldest first; at most a couple are ever waiting. */
+    fun drainSwitches(): List<Switch> {
+        if (switches.isEmpty()) return emptyList()
+        val out = ArrayList(switches)
+        switches.clear()
+        return out
+    }
+
+    /**
+     * Start against the best; when clearly behind it for a while and the last run is closer, race the last; back to the
+     * best on recovery. The enter margin is max(floor, 3% of the best's time over the stretch run), the exit margin half
+     * of it, each held for a time, so it cannot flap. A figure that is missing (off the line, too early) pauses both timers.
+     */
+    private fun adapt(c: Cand, t: Long, aBest: Long?, aLast: Long?, ref: TrailRef) {
+        if (ref.last == null || aBest == null || aLast == null) {
+            c.behindSince = null
+            c.calmSince = null
+            return
+        }
+        val stretch = c.path.interpolate(c.along, ref.best.ms)?.let { at -> c.path.interpolate(c.a0, ref.best.ms)?.let { at - it } } ?: 0.0
+        val margin = max(config.slipFloorMs.toDouble(), config.slipFrac * stretch)
+        if (!c.racingLast) {
+            if (aBest < -margin && aLast > aBest) {
+                val since = c.behindSince ?: t.also { c.behindSince = it }
+                if (t - since >= config.slipHoldMs) {
+                    c.racingLast = true
+                    c.behindSince = null
+                    c.calmSince = null
+                    if (switches.size < 4) switches.add(Switch(t, ref.id, true))
+                }
+            } else c.behindSince = null
+        } else {
+            if (aBest >= -margin * config.recoverFrac) {
+                val since = c.calmSince ?: t.also { c.calmSince = it }
+                if (t - since >= config.recoverHoldMs) {
+                    c.racingLast = false
+                    c.calmSince = null
+                    c.behindSince = null
+                    if (switches.size < 4) switches.add(Switch(t, ref.id, false))
+                }
+            } else c.calmSince = null
+        }
     }
 
     companion object {

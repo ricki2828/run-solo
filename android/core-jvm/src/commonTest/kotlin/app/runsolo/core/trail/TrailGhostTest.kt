@@ -318,4 +318,89 @@ class TrailGhostTest {
         assertFalse(plain.toJson().containsKey("climbs"))
         assertEquals(plain, TrailRef.fromJson(plain.toJson()))
     }
+
+    // Best 4 m/s, last 3.5 m/s over a 2 km straight. A runner at 3 m/s is behind both: best by d/12 s, last by d/21 s.
+    @Test
+    fun `the ghost starts against the best`() {
+        val g = TrailGhost(listOf(TrailGhostKit.trail(straight)))
+        val r = Runner(g, mps = 3.0)
+        r.run(listOf(0.0 to 0.0, 300.0 to 0.0))
+        assertTrue(r.states.filterNotNull().all { it.racing == TrailGhost.Racing.best })
+        assertTrue(g.drainSwitches().isEmpty())
+    }
+
+    @Test
+    fun `clearly behind the best for two minutes slips to the last run once`() {
+        val g = TrailGhost(listOf(TrailGhostKit.trail(straight)))
+        val r = Runner(g, mps = 3.0)
+        r.run(listOf(0.0 to 0.0, 900.0 to 0.0))
+        val s = r.states.last()!!
+        assertEquals(TrailGhost.Racing.last, s.racing)
+        // Both figures are still there.
+        assertTrue(s.aheadBestMs!! < s.aheadLastMs!!)
+        val sw = g.drainSwitches()
+        assertEquals(1, sw.size)
+        assertTrue(sw[0].toLast)
+        assertTrue(g.drainSwitches().isEmpty())
+        // Not before the hold: the margin (30 s) is crossed at 360 m (120 s), the switch is 120 s after that.
+        val first = r.states.indexOfFirst { it?.racing == TrailGhost.Racing.last }
+        assertTrue(first in 235..250, "switched at fix $first")
+    }
+
+    @Test
+    fun `a short bad patch does not slip`() {
+        val g = TrailGhost(listOf(TrailGhostKit.trail(straight)))
+        val r = Runner(g, mps = 3.0)
+        r.run(listOf(0.0 to 0.0, 480.0 to 0.0))
+        assertTrue(r.states.filterNotNull().all { it.racing == TrailGhost.Racing.best })
+        assertTrue(g.drainSwitches().isEmpty())
+    }
+
+    @Test
+    fun `recovering within the floor goes back to the best`() {
+        val g = TrailGhost(listOf(TrailGhostKit.trail(straight)))
+        val slow = Runner(g, mps = 3.0)
+        slow.run(listOf(0.0 to 0.0, 800.0 to 0.0))
+        assertEquals(TrailGhost.Racing.last, slow.states.last()!!.racing)
+        val fast = Runner(g, mps = 6.0, startActiveMs = slow.activeMs).also { it.t = slow.t; it.distM = slow.distM }
+        fast.run(listOf(800.0 to 0.0, 2_000.0 to 0.0))
+        assertEquals(TrailGhost.Racing.best, fast.states.last()!!.racing)
+        assertEquals(listOf(true, false), g.drainSwitches().map { it.toLast })
+    }
+
+    @Test
+    fun `hovering between the two margins never flaps`() {
+        // Behind the best by about 20 s: inside the 30 s enter margin, so it stays on the best for ever.
+        val g = TrailGhost(listOf(TrailGhostKit.trail(straight)))
+        val r = Runner(g, mps = 3.0)
+        r.run(listOf(0.0 to 0.0, 200.0 to 0.0))
+        // 200 m at 3 m/s: 66.7 s vs 50 s, so 16.7 s behind. Now match the best's pace (4 m/s) for the rest.
+        val level = Runner(g, mps = 4.0, startActiveMs = r.activeMs).also { it.t = r.t; it.distM = r.distM }
+        level.run(listOf(200.0 to 0.0, 1_900.0 to 0.0))
+        assertTrue(level.states.filterNotNull().all { it.racing == TrailGhost.Racing.best })
+        assertTrue(g.drainSwitches().isEmpty())
+    }
+
+    @Test
+    fun `when the last run is the best there is nothing to slip to`() {
+        val g = TrailGhost(listOf(TrailGhostKit.trail(straight, lastMps = null)))
+        val r = Runner(g, mps = 3.0)
+        r.run(listOf(0.0 to 0.0, 900.0 to 0.0))
+        assertTrue(r.states.filterNotNull().all { it.racing == TrailGhost.Racing.best })
+        assertTrue(g.drainSwitches().isEmpty())
+    }
+
+    @Test
+    fun `between the exit and enter margins the lead stays where it is`() {
+        val g = TrailGhost(listOf(TrailGhostKit.trail(straight)))
+        val slow = Runner(g, mps = 3.0)
+        slow.run(listOf(0.0 to 0.0, 800.0 to 0.0))
+        // 330 m at 8 m/s wins back about 41 s of the 67 s: about 26 s behind, past the 30 s enter margin but not inside half of it.
+        val surge = Runner(g, mps = 8.0, startActiveMs = slow.activeMs).also { it.t = slow.t; it.distM = slow.distM }
+        surge.run(listOf(800.0 to 0.0, 1_130.0 to 0.0))
+        val level = Runner(g, mps = 4.0, startActiveMs = surge.activeMs).also { it.t = surge.t; it.distM = surge.distM }
+        level.run(listOf(1_130.0 to 0.0, 1_900.0 to 0.0))
+        assertTrue(level.states.filterNotNull().all { it.racing == TrailGhost.Racing.last })
+        assertEquals(listOf(true), g.drainSwitches().map { it.toLast })
+    }
 }

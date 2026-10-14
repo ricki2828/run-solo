@@ -31,7 +31,7 @@ void main() {
     ) as Map<String, dynamic>;
     final vectors = (doc['vectors'] as List).cast<Map<String, dynamic>>();
     expect(vectors.length, greaterThanOrEqualTo(8));
-    var matched = 0, turns = 0, never = 0;
+    var matched = 0, turns = 0, never = 0, switchCount = 0;
     for (final v in vectors) {
       final name = v['name'] as String;
       final g = TrailGhostTracker([
@@ -40,6 +40,7 @@ void main() {
       final points = v['points'] as List;
       final states = v['states'] as List;
       final events = <int>[];
+      final switches = <List<Object?>>[];
       var anyState = false;
       for (var i = 0; i < points.length; i++) {
         final p = points[i] as List;
@@ -52,6 +53,9 @@ void main() {
           (p[5] as num).toDouble(),
         )) {
           events.add(e.t);
+        }
+        for (final w in g.drainSwitches()) {
+          switches.add([w.t, w.trailId, w.toLast]);
         }
         final want = states[i] as List;
         final s = g.state;
@@ -69,8 +73,11 @@ void main() {
         expect(s.aheadLastMs, want[4], reason: '$at last');
         expect(s.turnCue, want[5], reason: '$at cue');
         expect(s.toTurnM, (want[6] as num?)?.toDouble(), reason: '$at toTurn');
+        expect(s.racing, want[7], reason: '$at racing');
       }
       expect(events, (v['turnEvents'] as List).cast<int>(), reason: name);
+      expect(switches, v['switches'], reason: '$name switches');
+      switchCount += switches.length;
       if (anyState) {
         matched++;
       } else {
@@ -82,5 +89,7 @@ void main() {
     expect(matched, greaterThanOrEqualTo(6));
     expect(never, greaterThanOrEqualTo(3));
     expect(turns, greaterThanOrEqualTo(1));
+    // A slip to the last run and a recovery back to the best.
+    expect(switchCount, greaterThanOrEqualTo(2));
   });
 }

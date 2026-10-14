@@ -106,6 +106,7 @@ class GhostState {
     required this.lastDateMs,
     required this.toTurnM,
     required this.turnCue,
+    this.racing = 'best',
   });
   final String trailId;
   final String name;
@@ -121,6 +122,18 @@ class GhostState {
   final int lastDateMs;
   final double? toTurnM;
   final bool turnCue;
+
+  /// Which run leads the figure: `best` first, `last` once the runner has
+  /// slipped clearly behind the best and the last is closer.
+  final String racing;
+}
+
+/// The lead changed hands (best <-> last) at [t].
+class GhostSwitch {
+  const GhostSwitch(this.t, this.trailId, this.toLast);
+  final int t;
+  final String trailId;
+  final bool toLast;
 }
 
 /// Tunables, the Kotlin `TrailGhost.Config` key for key.
@@ -145,6 +158,11 @@ class GhostConfig {
   final double confirmM = 300;
   final double minCover = RouteMatch.minCover;
   final double reportM = 100;
+  final int slipFloorMs = 30000;
+  final double slipFrac = 0.03;
+  final int slipHoldMs = 120000;
+  final double recoverFrac = 0.5;
+  final int recoverHoldMs = 60000;
   final double endM = 20;
   final double endNearM = 60;
   final double endCrowM = 40;
@@ -322,6 +340,9 @@ class _Cand {
   int? backSince;
   int? lastOnT;
   int? lastFixT;
+  bool racingLast = false;
+  int? behindSince;
+  int? calmSince;
   bool turnFired = false;
   int turnT = 0;
   double crowToApexM = double.maxFinite;
@@ -523,14 +544,17 @@ class TrailGhostTracker {
 
     final last = ref.last ?? ref.best;
     final turn = ref.turnAlongM;
+    final aBest = ahead(ref.best);
+    final aLast = ahead(last);
+    _adapt(c, t, aBest, aLast);
     return GhostState(
       trailId: ref.id,
       name: ref.name,
       alongM: c.along,
       toGoM: math.max(0, c.path.totalM - c.along),
       off: c.off,
-      aheadBestMs: ahead(ref.best),
-      aheadLastMs: ahead(last),
+      aheadBestMs: aBest,
+      aheadLastMs: aLast,
       lastIsBest: ref.last == null,
       bestDateMs: ref.best.dateMs,
       lastDateMs: last.dateMs,
@@ -541,7 +565,62 @@ class TrailGhostTracker {
           c.turnFired &&
           t - c.turnT < config.endCueMs &&
           c.crowToApexM <= config.endClearM,
+      racing: c.racingLast ? 'last' : 'best',
     );
+  }
+
+  final List<GhostSwitch> _switches = [];
+
+  /// The lead changes since the last call, oldest first.
+  List<GhostSwitch> drainSwitches() {
+    final out = List<GhostSwitch>.of(_switches);
+    _switches.clear();
+    return out;
+  }
+
+  /// Kotlin `TrailGhost.adapt`: the best leads; clearly behind it for a while
+  /// with the last run closer, the last leads; back to the best on recovery.
+  void _adapt(_Cand c, int t, int? aBest, int? aLast) {
+    final ref = c.ref;
+    if (ref.last == null || aBest == null || aLast == null) {
+      c.behindSince = null;
+      c.calmSince = null;
+      return;
+    }
+    final at = c.path.interpolate(c.along, ref.best.ms);
+    final from = c.path.interpolate(c.a0, ref.best.ms);
+    final stretch = (at != null && from != null) ? at - from : 0.0;
+    final margin = math.max(
+      config.slipFloorMs.toDouble(),
+      config.slipFrac * stretch,
+    );
+    if (!c.racingLast) {
+      if (aBest < -margin && aLast > aBest) {
+        final since = c.behindSince ??= t;
+        if (t - since >= config.slipHoldMs) {
+          c.racingLast = true;
+          c.behindSince = null;
+          c.calmSince = null;
+          if (_switches.length < 4) _switches.add(GhostSwitch(t, ref.id, true));
+        }
+      } else {
+        c.behindSince = null;
+      }
+    } else {
+      if (aBest >= -margin * config.recoverFrac) {
+        final since = c.calmSince ??= t;
+        if (t - since >= config.recoverHoldMs) {
+          c.racingLast = false;
+          c.calmSince = null;
+          c.behindSince = null;
+          if (_switches.length < 4) {
+            _switches.add(GhostSwitch(t, ref.id, false));
+          }
+        }
+      } else {
+        c.calmSince = null;
+      }
+    }
   }
 
   /// Kotlin's `roundToLong` (half up, towards +infinity).

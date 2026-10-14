@@ -41,6 +41,9 @@ class TrailGhostFeed(
         }
     }
 
+    /** Lead changes (best <-> last) since the last call; empty once disabled. */
+    fun drainSwitches(): List<TrailGhost.Switch> = try { ghost?.drainSwitches().orEmpty() } catch (e: Throwable) { fail(e); emptyList() }
+
     /** Null until a trail is matched, and once disabled. */
     val state: TrailGhost.TrailState? get() = ghost?.state
 

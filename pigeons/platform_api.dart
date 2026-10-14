@@ -449,6 +449,10 @@ class TrailClimb {
 /// elevation. `toClimbM` is the distance to the start of the next climb ahead
 /// (null when none is ahead or the runner is on one); `inClimb` is true while
 /// on a climb.
+///
+/// `racing` is which run leads (`best` to start with; `last` once the runner
+/// has slipped clearly behind the best and the last run is closer; back to
+/// `best` on recovery). Both ahead figures are always sent.
 class TrailProgress {
   TrailProgress({
     required this.trailId,
@@ -468,6 +472,7 @@ class TrailProgress {
     this.climbs,
     this.toClimbM,
     required this.inClimb,
+    required this.racing,
   });
   String trailId;
   String name;
@@ -486,6 +491,7 @@ class TrailProgress {
   List<TrailClimb>? climbs;
   double? toClimbM;
   bool inClimb;
+  String racing;
 }
 
 class StartResult {

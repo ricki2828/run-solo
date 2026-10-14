@@ -1309,6 +1309,7 @@ class RecordingSession(
             climbs = s.climbs.takeIf { it.isNotEmpty() }?.map { TrailClimb(it.startM, it.endM, it.gainM, it.avgGradePct) },
             toClimbM = s.toClimbM,
             inClimb = s.inClimb,
+            racing = s.racing.name,
         )
     }
 

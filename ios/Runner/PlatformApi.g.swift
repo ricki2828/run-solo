@@ -1164,6 +1164,10 @@ struct TrailClimb: Hashable {
 /// (null when none is ahead or the runner is on one); `inClimb` is true while
 /// on a climb.
 ///
+/// `racing` is which run leads (`best` to start with; `last` once the runner
+/// has slipped clearly behind the best and the last run is closer; back to
+/// `best` on recovery). Both ahead figures are always sent.
+///
 /// Generated class from Pigeon that represents data sent in messages.
 struct TrailProgress: Hashable {
   var trailId: String
@@ -1183,6 +1187,7 @@ struct TrailProgress: Hashable {
   var climbs: [TrailClimb]? = nil
   var toClimbM: Double? = nil
   var inClimb: Bool
+  var racing: String
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -1204,6 +1209,7 @@ struct TrailProgress: Hashable {
     let climbs: [TrailClimb]? = nilOrValue(pigeonVar_list[14])
     let toClimbM: Double? = nilOrValue(pigeonVar_list[15])
     let inClimb = pigeonVar_list[16] as! Bool
+    let racing = pigeonVar_list[17] as! String
 
     return TrailProgress(
       trailId: trailId,
@@ -1222,7 +1228,8 @@ struct TrailProgress: Hashable {
       elevStepM: elevStepM,
       climbs: climbs,
       toClimbM: toClimbM,
-      inClimb: inClimb
+      inClimb: inClimb,
+      racing: racing
     )
   }
   func toList() -> [Any?] {
@@ -1244,13 +1251,14 @@ struct TrailProgress: Hashable {
       climbs,
       toClimbM,
       inClimb,
+      racing,
     ]
   }
   static func == (lhs: TrailProgress, rhs: TrailProgress) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.trailId, rhs.trailId) && deepEqualsPlatformApi(lhs.name, rhs.name) && deepEqualsPlatformApi(lhs.alongM, rhs.alongM) && deepEqualsPlatformApi(lhs.toGoM, rhs.toGoM) && deepEqualsPlatformApi(lhs.off, rhs.off) && deepEqualsPlatformApi(lhs.aheadBestMs, rhs.aheadBestMs) && deepEqualsPlatformApi(lhs.aheadLastMs, rhs.aheadLastMs) && deepEqualsPlatformApi(lhs.lastIsBest, rhs.lastIsBest) && deepEqualsPlatformApi(lhs.bestDateMs, rhs.bestDateMs) && deepEqualsPlatformApi(lhs.lastDateMs, rhs.lastDateMs) && deepEqualsPlatformApi(lhs.toTurnM, rhs.toTurnM) && deepEqualsPlatformApi(lhs.turnCue, rhs.turnCue) && deepEqualsPlatformApi(lhs.elevProfile, rhs.elevProfile) && deepEqualsPlatformApi(lhs.elevStepM, rhs.elevStepM) && deepEqualsPlatformApi(lhs.climbs, rhs.climbs) && deepEqualsPlatformApi(lhs.toClimbM, rhs.toClimbM) && deepEqualsPlatformApi(lhs.inClimb, rhs.inClimb)
+    return deepEqualsPlatformApi(lhs.trailId, rhs.trailId) && deepEqualsPlatformApi(lhs.name, rhs.name) && deepEqualsPlatformApi(lhs.alongM, rhs.alongM) && deepEqualsPlatformApi(lhs.toGoM, rhs.toGoM) && deepEqualsPlatformApi(lhs.off, rhs.off) && deepEqualsPlatformApi(lhs.aheadBestMs, rhs.aheadBestMs) && deepEqualsPlatformApi(lhs.aheadLastMs, rhs.aheadLastMs) && deepEqualsPlatformApi(lhs.lastIsBest, rhs.lastIsBest) && deepEqualsPlatformApi(lhs.bestDateMs, rhs.bestDateMs) && deepEqualsPlatformApi(lhs.lastDateMs, rhs.lastDateMs) && deepEqualsPlatformApi(lhs.toTurnM, rhs.toTurnM) && deepEqualsPlatformApi(lhs.turnCue, rhs.turnCue) && deepEqualsPlatformApi(lhs.elevProfile, rhs.elevProfile) && deepEqualsPlatformApi(lhs.elevStepM, rhs.elevStepM) && deepEqualsPlatformApi(lhs.climbs, rhs.climbs) && deepEqualsPlatformApi(lhs.toClimbM, rhs.toClimbM) && deepEqualsPlatformApi(lhs.inClimb, rhs.inClimb) && deepEqualsPlatformApi(lhs.racing, rhs.racing)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -1272,6 +1280,7 @@ struct TrailProgress: Hashable {
     deepHashPlatformApi(value: climbs, hasher: &hasher)
     deepHashPlatformApi(value: toClimbM, hasher: &hasher)
     deepHashPlatformApi(value: inClimb, hasher: &hasher)
+    deepHashPlatformApi(value: racing, hasher: &hasher)
   }
 }
 

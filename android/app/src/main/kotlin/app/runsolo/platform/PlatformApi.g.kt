@@ -1342,6 +1342,10 @@ data class TrailClimb (
  * (null when none is ahead or the runner is on one); `inClimb` is true while
  * on a climb.
  *
+ * `racing` is which run leads (`best` to start with; `last` once the runner
+ * has slipped clearly behind the best and the last run is closer; back to
+ * `best` on recovery). Both ahead figures are always sent.
+ *
  * Generated class from Pigeon that represents data sent in messages.
  */
 data class TrailProgress (
@@ -1361,7 +1365,8 @@ data class TrailProgress (
   val elevStepM: Double? = null,
   val climbs: List<TrailClimb>? = null,
   val toClimbM: Double? = null,
-  val inClimb: Boolean
+  val inClimb: Boolean,
+  val racing: String
 )
  {
   companion object {
@@ -1383,7 +1388,8 @@ data class TrailProgress (
       val climbs = pigeonVar_list[14] as List<TrailClimb>?
       val toClimbM = pigeonVar_list[15] as Double?
       val inClimb = pigeonVar_list[16] as Boolean
-      return TrailProgress(trailId, name, alongM, toGoM, off, aheadBestMs, aheadLastMs, lastIsBest, bestDateMs, lastDateMs, toTurnM, turnCue, elevProfile, elevStepM, climbs, toClimbM, inClimb)
+      val racing = pigeonVar_list[17] as String
+      return TrailProgress(trailId, name, alongM, toGoM, off, aheadBestMs, aheadLastMs, lastIsBest, bestDateMs, lastDateMs, toTurnM, turnCue, elevProfile, elevStepM, climbs, toClimbM, inClimb, racing)
     }
   }
   fun toList(): List<Any?> {
@@ -1405,6 +1411,7 @@ data class TrailProgress (
       climbs,
       toClimbM,
       inClimb,
+      racing,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -1415,7 +1422,7 @@ data class TrailProgress (
       return true
     }
     val other = other as TrailProgress
-    return PlatformApiPigeonUtils.deepEquals(this.trailId, other.trailId) && PlatformApiPigeonUtils.deepEquals(this.name, other.name) && PlatformApiPigeonUtils.deepEquals(this.alongM, other.alongM) && PlatformApiPigeonUtils.deepEquals(this.toGoM, other.toGoM) && PlatformApiPigeonUtils.deepEquals(this.off, other.off) && PlatformApiPigeonUtils.deepEquals(this.aheadBestMs, other.aheadBestMs) && PlatformApiPigeonUtils.deepEquals(this.aheadLastMs, other.aheadLastMs) && PlatformApiPigeonUtils.deepEquals(this.lastIsBest, other.lastIsBest) && PlatformApiPigeonUtils.deepEquals(this.bestDateMs, other.bestDateMs) && PlatformApiPigeonUtils.deepEquals(this.lastDateMs, other.lastDateMs) && PlatformApiPigeonUtils.deepEquals(this.toTurnM, other.toTurnM) && PlatformApiPigeonUtils.deepEquals(this.turnCue, other.turnCue) && PlatformApiPigeonUtils.deepEquals(this.elevProfile, other.elevProfile) && PlatformApiPigeonUtils.deepEquals(this.elevStepM, other.elevStepM) && PlatformApiPigeonUtils.deepEquals(this.climbs, other.climbs) && PlatformApiPigeonUtils.deepEquals(this.toClimbM, other.toClimbM) && PlatformApiPigeonUtils.deepEquals(this.inClimb, other.inClimb)
+    return PlatformApiPigeonUtils.deepEquals(this.trailId, other.trailId) && PlatformApiPigeonUtils.deepEquals(this.name, other.name) && PlatformApiPigeonUtils.deepEquals(this.alongM, other.alongM) && PlatformApiPigeonUtils.deepEquals(this.toGoM, other.toGoM) && PlatformApiPigeonUtils.deepEquals(this.off, other.off) && PlatformApiPigeonUtils.deepEquals(this.aheadBestMs, other.aheadBestMs) && PlatformApiPigeonUtils.deepEquals(this.aheadLastMs, other.aheadLastMs) && PlatformApiPigeonUtils.deepEquals(this.lastIsBest, other.lastIsBest) && PlatformApiPigeonUtils.deepEquals(this.bestDateMs, other.bestDateMs) && PlatformApiPigeonUtils.deepEquals(this.lastDateMs, other.lastDateMs) && PlatformApiPigeonUtils.deepEquals(this.toTurnM, other.toTurnM) && PlatformApiPigeonUtils.deepEquals(this.turnCue, other.turnCue) && PlatformApiPigeonUtils.deepEquals(this.elevProfile, other.elevProfile) && PlatformApiPigeonUtils.deepEquals(this.elevStepM, other.elevStepM) && PlatformApiPigeonUtils.deepEquals(this.climbs, other.climbs) && PlatformApiPigeonUtils.deepEquals(this.toClimbM, other.toClimbM) && PlatformApiPigeonUtils.deepEquals(this.inClimb, other.inClimb) && PlatformApiPigeonUtils.deepEquals(this.racing, other.racing)
   }
 
   override fun hashCode(): Int {
@@ -1437,6 +1444,7 @@ data class TrailProgress (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.climbs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.toClimbM)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.inClimb)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.racing)
     return result
   }
 }

@@ -1190,6 +1190,10 @@ class TrailClimb {
 /// elevation. `toClimbM` is the distance to the start of the next climb ahead
 /// (null when none is ahead or the runner is on one); `inClimb` is true while
 /// on a climb.
+///
+/// `racing` is which run leads (`best` to start with; `last` once the runner
+/// has slipped clearly behind the best and the last run is closer; back to
+/// `best` on recovery). Both ahead figures are always sent.
 class TrailProgress {
   TrailProgress({
     required this.trailId,
@@ -1209,6 +1213,7 @@ class TrailProgress {
     this.climbs,
     this.toClimbM,
     required this.inClimb,
+    required this.racing,
   });
 
   String trailId;
@@ -1245,6 +1250,8 @@ class TrailProgress {
 
   bool inClimb;
 
+  String racing;
+
   List<Object?> _toList() {
     return <Object?>[
       trailId,
@@ -1264,6 +1271,7 @@ class TrailProgress {
       climbs,
       toClimbM,
       inClimb,
+      racing,
     ];
   }
 
@@ -1290,6 +1298,7 @@ class TrailProgress {
       climbs: (result[14] as List<Object?>?)?.cast<TrailClimb>(),
       toClimbM: result[15] as double?,
       inClimb: result[16]! as bool,
+      racing: result[17]! as String,
     );
   }
 
@@ -1302,7 +1311,7 @@ class TrailProgress {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(trailId, other.trailId) && _deepEquals(name, other.name) && _deepEquals(alongM, other.alongM) && _deepEquals(toGoM, other.toGoM) && _deepEquals(off, other.off) && _deepEquals(aheadBestMs, other.aheadBestMs) && _deepEquals(aheadLastMs, other.aheadLastMs) && _deepEquals(lastIsBest, other.lastIsBest) && _deepEquals(bestDateMs, other.bestDateMs) && _deepEquals(lastDateMs, other.lastDateMs) && _deepEquals(toTurnM, other.toTurnM) && _deepEquals(turnCue, other.turnCue) && _deepEquals(elevProfile, other.elevProfile) && _deepEquals(elevStepM, other.elevStepM) && _deepEquals(climbs, other.climbs) && _deepEquals(toClimbM, other.toClimbM) && _deepEquals(inClimb, other.inClimb);
+    return _deepEquals(trailId, other.trailId) && _deepEquals(name, other.name) && _deepEquals(alongM, other.alongM) && _deepEquals(toGoM, other.toGoM) && _deepEquals(off, other.off) && _deepEquals(aheadBestMs, other.aheadBestMs) && _deepEquals(aheadLastMs, other.aheadLastMs) && _deepEquals(lastIsBest, other.lastIsBest) && _deepEquals(bestDateMs, other.bestDateMs) && _deepEquals(lastDateMs, other.lastDateMs) && _deepEquals(toTurnM, other.toTurnM) && _deepEquals(turnCue, other.turnCue) && _deepEquals(elevProfile, other.elevProfile) && _deepEquals(elevStepM, other.elevStepM) && _deepEquals(climbs, other.climbs) && _deepEquals(toClimbM, other.toClimbM) && _deepEquals(inClimb, other.inClimb) && _deepEquals(racing, other.racing);
   }
 
   @override

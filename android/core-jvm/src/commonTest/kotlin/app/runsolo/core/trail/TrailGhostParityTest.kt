@@ -29,6 +29,7 @@ class TrailGhostParityTest {
         var matched = 0
         var never = 0
         var turns = 0
+        var switchCount = 0
         for (v in vectors) {
             val name = v["name"] as String
             @Suppress("UNCHECKED_CAST")
@@ -40,6 +41,7 @@ class TrailGhostParityTest {
             assertEquals(points.size, states.size, name)
             val g = TrailGhost(trails)
             val events = ArrayList<Long>()
+            val switches = ArrayList<List<Any?>>()
             var any = false
             for (i in points.indices) {
                 val p = points[i]
@@ -53,6 +55,7 @@ class TrailGhostParityTest {
                 )) {
                     events.add((e as RouteFollower.Event.RouteEnd).t)
                 }
+                for (w in g.drainSwitches()) switches.add(listOf(w.t, w.trailId, w.toLast))
                 val want = states[i]
                 val s = g.state
                 val at = "$name #$i"
@@ -69,14 +72,19 @@ class TrailGhostParityTest {
                 assertEquals((want[4] as Number?)?.toLong(), s.aheadLastMs, "$at last")
                 assertEquals(want[5] as Boolean, s.turnCue, "$at cue")
                 assertEquals(num(want[6]), s.toTurnM, "$at toTurn")
+                assertEquals(want[7] as String, s.racing.name, "$at racing")
             }
             @Suppress("UNCHECKED_CAST")
             assertEquals((v["turnEvents"] as List<Number>).map { it.toLong() }, events, "$name turn events")
+            @Suppress("UNCHECKED_CAST")
+            assertEquals((v["switches"] as List<List<Any?>>).map { listOf((it[0] as Number).toLong(), it[1], it[2]) }, switches, "$name switches")
+            switchCount += switches.size
             if (any) matched++ else never++
             turns += events.size
         }
         assertTrue(matched >= 6)
         assertTrue(never >= 3)
         assertTrue(turns >= 1)
+        assertTrue(switchCount >= 2)
     }
 }
