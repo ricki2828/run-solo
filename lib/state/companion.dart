@@ -386,6 +386,18 @@ class CompanionClient {
     ),
   );
 
+  /// `PUT /v1/me/consent {consent_version}`: the consent version the runner
+  /// agreed to. The server sends no check-in until it is at least the version
+  /// it requires; the latest value wins, so it is safe to repeat.
+  Future<CompanionReply> putConsent(String token, int version) => http.send(
+    CompanionRequest(
+      method: 'PUT',
+      uri: _uri(['v1', 'me', 'consent']),
+      headers: _headers(token, json: true),
+      body: utf8.encode(jsonEncode({'consent_version': version})),
+    ),
+  );
+
   Future<CompanionReply> deleteMe(String token) => http.send(
     CompanionRequest(
       method: 'DELETE',
@@ -864,6 +876,35 @@ class CompanionController extends ChangeNotifier {
       companionLog('could not save consent (${e.runtimeType})');
     }
     notifyListeners();
+    await syncConsent();
+  }
+
+  /// The consent version the server last accepted from this app session. A new
+  /// session, a wipe or a different version sends it again.
+  int _consentSent = 0;
+
+  /// Tells the server which consent version the runner agreed to, so it can
+  /// hold check-ins back until it knows. Quiet: a failure is retried on the
+  /// next call (the next run upload, Agree tap or app start); nothing shows.
+  /// Does nothing before the runner has agreed or while not linked.
+  Future<void> syncConsent() async {
+    final v = _consent;
+    if (v <= 0 || !enrolled || _consentSent == v) return;
+    final t = await token();
+    if (t == null) return;
+    try {
+      final r = await client.putConsent(t, v);
+      if (r.status == 401 || r.status == 403) {
+        await _wipe();
+      } else if (r.ok) {
+        _consentSent = v;
+      }
+      // 404/422: a server older than this app; the next try is after its update.
+    } on CompanionNetworkError {
+      // offline: tried again with the next run upload
+    } catch (e) {
+      companionLog('consent sync failed (${e.runtimeType})', secrets: [t]);
+    }
   }
 
   /// What Home shows from the coach; null when there is nothing to show
@@ -1271,7 +1312,9 @@ class CompanionController extends ChangeNotifier {
     }
     _phase = CompanionPhase.on;
     problem = null;
+    _consentSent = 0;
     notifyListeners();
+    await syncConsent();
     await onEnrolled?.call(_now());
   }
 
@@ -1409,6 +1452,7 @@ class CompanionController extends ChangeNotifier {
     _phase = CompanionPhase.off;
     _weather = false;
     _consent = 0;
+    _consentSent = 0;
     _coachNext = null;
     problem = null;
     notifyListeners();
@@ -1708,6 +1752,7 @@ class CompanionTarget extends ExportTarget {
     try {
       await controller.syncWeather();
       await controller.syncRouteShape();
+      await controller.syncConsent();
       final hide = controller.routeShapeOn
           ? await controller.privacyZonesFor(d.run)
           : const <engine.PrivacyZone>[];
