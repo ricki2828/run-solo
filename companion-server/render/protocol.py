@@ -64,10 +64,20 @@ TRAIL_SHAPES = frozenset({"out_and_back", "loop", "one_way"})
 ELEV_SRCS = frozenset({"baro", "gps"})
 
 
+def normalize_trail_name(v: Any) -> Any:
+    """NFKC, so a fullwidth "＠" or "．" cannot hide an @ or a dot from the filter below."""
+    return unicodedata.normalize("NFKC", v) if isinstance(v, str) else v
+
+
+SOCIAL_WORDS = r"(?:insta|instagram|ig|tiktok|strava|fb|facebook|whatsapp|snap|snapchat)"
+
+
 def trail_name_ok(v: Any) -> bool:
-    """A trail name is a short label: not digits only, no @ and nothing URL-like (a name must not carry a handle, an address
-    or a link)."""
-    if not (isinstance(v, str) and 1 <= len(v.strip()) <= 30 and v == v.strip()):
+    """A trail name is a short label that must not carry a handle, a phone number or a link. Checked on the NFKC form,
+    which the name must already be in. A social-media word is refused only as the whole name or when a ':' or '@' follows it
+    ("Snap Hill Track" and "Big Ig Loop" are trails); "word:handle" is refused only with no space after the colon
+    ("Te Araroa: Section 4" is a trail)."""
+    if not (isinstance(v, str) and 1 <= len(v.strip()) <= 30 and v == v.strip() and v == normalize_trail_name(v)):
         return False
     low = v.lower()
     if any(unicodedata.category(ch)[0] == "C" for ch in v):    # control and format characters (newlines, RTL overrides)
@@ -76,9 +86,11 @@ def trail_name_ok(v: Any) -> bool:
         return False
     if "@" in v or "://" in low or "www." in low or "http" in low:
         return False
-    if re.search(r"\b(insta|instagram|ig|tiktok|strava|fb|facebook|whatsapp|snap|snapchat)\b", low) or re.search(r":\s*[a-z0-9_.]{3,}", low):
+    if re.fullmatch(SOCIAL_WORDS, low.strip()) or re.search(r"\b" + SOCIAL_WORDS + r"\s*[:@]", low) or re.search(r":[a-z0-9_.]{3,}", low):
         return False
     return not re.search(r"\.(com|net|org|io|co|nz|au|app|me|ly|xyz)\b", low)
+
+
 TRAIL_PROFILE_MAX, TRAIL_BOARD_MAX, TRAIL_NAME_MAX = 64, 10, 30
 
 # Every kind is held to its own list on top of ALLOWED_FACT_KEYS: a suggestion card has no business carrying a place, a

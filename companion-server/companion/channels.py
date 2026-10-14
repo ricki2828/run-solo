@@ -10,7 +10,6 @@ from urllib.parse import urlparse
 
 import httpx
 
-import html
 import json
 import re
 
@@ -243,7 +242,13 @@ class TelegramChannel:
             # the verdict sits behind a spoiler, so neither the chat nor the notification preview shows it
             payload = {"chat_id": int(ref), "parse_mode": "HTML",
                        "text": "<tg-spoiler>" + html.escape(f"{card.headline}\n{card.body}", quote=False) + "</tg-spoiler>"}
-            return str(self._call("sendMessage", payload)["result"]["message_id"])
+            try:
+                return str(self._call("sendMessage", payload)["result"]["message_id"])
+            except ChannelError as e:
+                if e.status != 400 or "parse" not in e.description:
+                    raise
+                # Telegram refused the markup (a 400 parse error): the line still goes, as plain text
+                return str(self._call("sendMessage", {"chat_id": int(ref), "text": f"{card.headline}\n{card.body}"})["result"]["message_id"])
         elif mode == "caption":
             text, kb = f"{card.headline}\n{card.body}", self._keyboard(card, media=False)
         elif mode == "question":

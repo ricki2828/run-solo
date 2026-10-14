@@ -194,7 +194,7 @@ def test_the_cards_render_at_full_size_when_chromium_is_present():
 
 
 @pytest.mark.parametrize("name", ["12345", "@rickirun", "see www.trails.com", "https://x.io/a", "trail.com", "a@b", " lead", "+64 21 555 1234", "insta: bobruns",
-                                  "0211234567", "call 021 555", "tiktok bob", "Strava loop", "line\nbreak", "x\u202eevil"])
+                                  "0211234567", "call 021 555", "tiktok: bob", "strava", "ig@bob", "bob\uff20gmail\uff0ecom", "\uff57\uff57\uff57\uff0ebob\uff0ecom", "go:bobruns", "line\nbreak", "x\u202eevil"])
 def test_a_trail_name_that_is_a_handle_a_link_or_digits_is_refused(name):
     f = F.trail_record_six()
     f["trail_name"] = name
@@ -300,3 +300,33 @@ def test_the_name_is_dropped_unless_the_place_opt_in_is_on(env):
     env.svc.set_settings(UID, None, None, None, place_names=False)       # switching it off forgets stored names now
     assert "name" not in json.loads(env.q("SELECT trail_json FROM run_shape WHERE run_id='r02'")[0]["trail_json"])
     assert env.svc.get_me(UID)["profile"]["place_names_on_cards"] is False
+
+
+@pytest.mark.parametrize("name", ["Te Araroa: Section 4", "Snap Hill Track", "Big Ig Loop", "Strava Hill", "Tiktok Ridge"])
+def test_honest_trail_names_are_not_refused(name):
+    f = F.trail_record_six() | {"trail_name": name}
+    P.check_request({"v": 1, "op": "card", "kind": "trail_record", "facts": f})
+    assert T.parse({**trail_block([(1, 3900), (2, 3800)], 2), "name": name}).name == name
+
+
+def test_a_fullwidth_name_is_normalised_before_it_is_filtered():
+    assert T.parse({**trail_block([(1, 3900), (2, 3800)], 2), "name": "bob\uff20gmail\uff0ecom"}).name is None
+    assert T.parse({**trail_block([(1, 3900), (2, 3800)], 2), "name": "\uff57\uff57\uff57\uff0ebob\uff0ecom"}).name is None
+    assert T.parse({**trail_block([(1, 3900), (2, 3800)], 2), "name": "Ｔｈｅ Ｓａｄｄｌｅ"}).name == "The Saddle"
+
+
+def test_the_spoiler_line_falls_back_to_plain_text_on_a_parse_error(tmp_path):
+    from companion.channels import OutCard, TelegramChannel
+    import httpx
+    from conftest import make_settings
+    calls = []
+
+    def fake(self, method, payload, files=None):
+        calls.append(dict(payload))
+        if payload.get("parse_mode") == "HTML":
+            raise ChannelError("bad", status=400, description="Bad Request: can't parse entities")
+        return {"result": {"message_id": 9}}
+    ch = TelegramChannel(make_settings(tmp_path), httpx.Client())
+    ch._call = fake.__get__(ch)
+    assert ch.send_followup("123", OutCard("c1", "Head", "Body <b>", [], None, ()), "coach_line") == "9"
+    assert calls[0]["text"].startswith("<tg-spoiler>") and "parse_mode" not in calls[1] and calls[1]["text"] == "Head\nBody <b>"

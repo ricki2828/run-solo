@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any, Mapping
 
-from render.protocol import trail_name_ok
+from render.protocol import normalize_trail_name, trail_name_ok
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, ValidationError, field_validator, model_validator
 
 PROFILE_MAX = 64
@@ -66,7 +66,7 @@ class TrailIn(BaseModel):
     def _name_is_a_label(cls, v, handler):
         """A name that is digits only, has an @ or looks like a link is dropped (the card says "Your trail"); the trail stays."""
         try:
-            out = handler(v)
+            out = handler(normalize_trail_name(v))   # NFKC first: a fullwidth @ or dot must not slip past the filter
         except ValidationError:
             return None
         return out if out is None or trail_name_ok(out) else None
