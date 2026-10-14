@@ -373,6 +373,7 @@ class _HarnessState extends State<_Harness> {
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: RunCard(
+                    key: ValueKey(_stage),
                     accent: AuroraRunType.trail,
                     padding: EdgeInsets.zero,
                     child: Column(
