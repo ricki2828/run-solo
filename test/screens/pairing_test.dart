@@ -72,6 +72,43 @@ void main() {
     expect(find.text('No strap found.'), findsOneWidget);
   });
 
+  testWidgets('a spent scan budget says to wait, not that Bluetooth is off', (
+    tester,
+  ) async {
+    final ble = FakeBleGateway()..scanBudgetSpent = true;
+    final services = fakeServices(ble: ble);
+    await pumpApp(tester, services, pushRoute: Routes.pairing);
+    await pumpTimes(tester, 4);
+    await tester.tap(find.text('SCAN'));
+    await pumpTimes(tester, 4);
+    expect(find.textContaining('short break between scans'), findsOneWidget);
+    expect(find.textContaining('Is Bluetooth on'), findsNothing);
+  });
+
+  testWidgets('empty scan with a saved strap says to start the broadcast', (
+    tester,
+  ) async {
+    final services = fakeServices(
+      ble: FakeBleGateway(devices: []),
+      settings: const AppSettings(
+        onboardingDone: true,
+        strap: SavedStrap(address: 'AA:BB', name: 'Whoop 4A0934'),
+      ),
+    );
+    await pumpApp(tester, services, pushRoute: Routes.pairing);
+    await pumpTimes(tester, 4);
+    await tester.tap(find.text('SCAN'));
+    await pumpTimes(tester, 4);
+    expect(
+      find.text(
+        'No strap found. Start the Whoop heart-rate broadcast, '
+        'then tap SCAN AGAIN.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('SCAN AGAIN'), findsOneWidget);
+  });
+
   testWidgets('saved strap shows with Forget', (tester) async {
     final ble = FakeBleGateway();
     final services = fakeServices(

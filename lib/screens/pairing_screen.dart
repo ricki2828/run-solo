@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 
 import '../app/services.dart';
 import '../platform/gateway.dart';
@@ -47,13 +48,21 @@ class _PairingScreenState extends State<PairingScreen>
       setState(() {
         _devices = found;
         _scan = found.isEmpty ? _Scan.failed : _Scan.found;
-        if (found.isEmpty) _error = 'No strap found.';
+        if (found.isEmpty) {
+          _error = AppServices.of(context).settings.settings.strap != null
+              ? 'No strap found. Start the Whoop heart-rate broadcast, '
+                    'then tap SCAN AGAIN.'
+              : 'No strap found.';
+        }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _scan = _Scan.failed;
-        _error = 'Scan failed. Is Bluetooth on?';
+        _error = e is PlatformException && e.code == 'scan_budget'
+            ? 'Bluetooth needs a short break between scans. '
+                  'Wait about 30 seconds, then tap SCAN AGAIN.'
+            : 'Scan failed. Is Bluetooth on?';
       });
     } finally {
       _pulse.stop();

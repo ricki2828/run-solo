@@ -111,4 +111,103 @@ class BleTest {
         assertNull(p.savedAddress)
         assertIs<BleReconnectPolicy.Action.Nothing>(p.onConnectFailed(0))
     }
+
+    private fun cand(addr: String, name: String?, rssi: Int = -60) = BleReconnectPolicy.Candidate(addr, name, rssi)
+
+    @Test
+    fun `fallback - stale address with no measurement falls back to one name scan`() {
+        val p = BleReconnectPolicy("OLD", "WHOOP 4A0934")
+        p.onStart()
+        val a = p.onNoMeasurement(12_000)
+        assertEquals(BleReconnectPolicy.Action.ScanForName("WHOOP 4A0934", BleReconnectPolicy.SCAN_TIMEOUT_MS), a)
+        assertEquals(BleReconnectPolicy.LinkState.SCANNING, p.state)
+        assertEquals(BleReconnectPolicy.FallbackReason.STARTED, p.lastFallback)
+    }
+
+    @Test
+    fun `fallback - found name updates the saved address and connects directly`() {
+        val p = BleReconnectPolicy("OLD", "WHOOP 4A0934")
+        p.onStart()
+        p.onNoMeasurement(12_000)
+        val r = p.onScanResult(listOf(cand("X1", "Polar H10", -40), cand("NEW", "whoop 4a0934", -70), cand("NEW2", "WHOOP 4A0934", -50)), 15_000)
+        assertEquals(BleReconnectPolicy.Action.Reconnect("NEW2", autoConnect = false, delayMs = 0, closeFirst = true), r)
+        assertEquals("NEW2", p.savedAddress)
+        assertEquals(BleReconnectPolicy.LinkState.CONNECTING, p.state)
+        p.onConnected(20_000)
+        assertEquals(BleReconnectPolicy.LinkState.CONNECTED, p.state)
+    }
+
+    @Test
+    fun `fallback - no match leaves the strap paired but not found`() {
+        val p = BleReconnectPolicy("OLD", "WHOOP 4A0934")
+        p.onStart()
+        p.onNoMeasurement(12_000)
+        assertIs<BleReconnectPolicy.Action.Nothing>(p.onScanResult(listOf(cand("X1", "Polar H10")), 20_000))
+        assertEquals("OLD", p.savedAddress)
+        assertEquals("WHOOP 4A0934", p.savedName)
+        assertEquals(BleReconnectPolicy.LinkState.NOT_FOUND, p.state)
+    }
+
+    @Test
+    fun `fallback - a link that comes up during the scan is left alone`() {
+        val p = BleReconnectPolicy("OLD", "WHOOP 4A0934")
+        p.onStart()
+        assertIs<BleReconnectPolicy.Action.ScanForName>(p.onNoMeasurement(12_000))
+        p.onConnected(15_000)
+        assertIs<BleReconnectPolicy.Action.Nothing>(p.onScanResult(listOf(cand("NEW", "WHOOP 4A0934")), 20_000))
+        assertEquals("OLD", p.savedAddress)
+        assertEquals(BleReconnectPolicy.LinkState.CONNECTED, p.state)
+        assertIs<BleReconnectPolicy.Action.Nothing>(p.onScanResult(emptyList(), 21_000))
+        assertEquals(BleReconnectPolicy.LinkState.CONNECTED, p.state)
+    }
+
+    @Test
+    fun `fallback - canStartScan follows the budget`() {
+        val p = BleReconnectPolicy("OLD", "WHOOP 4A0934")
+        repeat(BleReconnectPolicy.SCAN_STARTS_PER_WINDOW) { p.noteScanStart(1_000L + it) }
+        assertEquals(false, p.canStartScan(10_000))
+        assertEquals(true, p.canStartScan(40_000))
+    }
+
+    @Test
+    fun `fallback - only one scan per episode and never a loop`() {
+        val p = BleReconnectPolicy("OLD", "WHOOP 4A0934")
+        p.onStart()
+        assertIs<BleReconnectPolicy.Action.ScanForName>(p.onNoMeasurement(12_000))
+        p.onScanResult(emptyList(), 20_000)
+        assertIs<BleReconnectPolicy.Action.Nothing>(p.onNoMeasurement(40_000))
+        assertEquals(BleReconnectPolicy.FallbackReason.ALREADY_SCANNED, p.lastFallback)
+        assertEquals(BleReconnectPolicy.LinkState.NOT_FOUND, p.state)
+        // A fresh start is a new episode.
+        p.onStart()
+        assertIs<BleReconnectPolicy.Action.ScanForName>(p.onNoMeasurement(100_000))
+    }
+
+    @Test
+    fun `fallback - scan start budget is respected`() {
+        val p = BleReconnectPolicy("OLD", "WHOOP 4A0934")
+        repeat(BleReconnectPolicy.SCAN_STARTS_PER_WINDOW) { p.noteScanStart(1_000L + it) }
+        p.onStart()
+        assertIs<BleReconnectPolicy.Action.Nothing>(p.onNoMeasurement(10_000))
+        assertEquals(BleReconnectPolicy.FallbackReason.THROTTLED, p.lastFallback)
+        // Throttled does not burn the episode: once the window passes the scan is allowed.
+        assertIs<BleReconnectPolicy.Action.ScanForName>(p.onNoMeasurement(40_000))
+    }
+
+    @Test
+    fun `fallback - no saved name never scans and says not found`() {
+        val p = BleReconnectPolicy("OLD", null)
+        p.onStart()
+        assertIs<BleReconnectPolicy.Action.Nothing>(p.onNoMeasurement(12_000))
+        assertEquals(BleReconnectPolicy.FallbackReason.NO_NAME, p.lastFallback)
+        assertEquals(BleReconnectPolicy.LinkState.NOT_FOUND, p.state)
+    }
+
+    @Test
+    fun `fallback - a working link does not scan`() {
+        val p = BleReconnectPolicy("A", "WHOOP 1")
+        p.onStart()
+        p.onConnected(5_000)
+        assertIs<BleReconnectPolicy.Action.Nothing>(p.onNoMeasurement(20_000))
+    }
 }
