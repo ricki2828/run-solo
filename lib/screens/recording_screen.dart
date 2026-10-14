@@ -29,6 +29,7 @@ import '../widgets/pace_dial.dart';
 import '../widgets/route_to_go.dart';
 import '../widgets/start_readout.dart';
 import '../widgets/target_band.dart';
+import '../widgets/trail_ghost.dart';
 import '../widgets/zone_gauge.dart';
 import '../widgets/zone_ladder.dart';
 import 'live_map_view.dart';
@@ -541,10 +542,9 @@ class _RecordingScreenState extends State<RecordingScreen>
               runModeOf(s.mode).showsElevation &&
               (retraceSt.heightVsStartM != null || retraceSt.headingBack);
           final readouts = <Widget>[
-            // SLOT (page 2, top): the trail "ahead / behind" readout and the
-            // turnaround cue go here, first in this list, above climb and
-            // grade. They read new RecordingSnapshot fields; nothing else
-            // on the screen needs to move.
+            // Page 2 top: the trail gap to best, one line (page 1 has both).
+            if (s.trail case final tr?)
+              TrailGhostReadout(trail: tr, compact: true, showLast: false),
             if (runModeOf(s.mode).showsElevation && s.elevGainM != null)
               ElevationRow(
                 s: s,
@@ -749,13 +749,11 @@ class _RecordingScreenState extends State<RecordingScreen>
                   child: _Stats(s: s, units: settings.units),
                 ),
               ),
-            ] else
-              // SLOT (page 1, Free / Trail): the big "+12 s vs best" readout
-              // for a matched trail goes ABOVE this block, as a `...[...]`
-              // spread here (this branch becomes `else ...[ readout,
-              // _FreeRunBlock(...) ]`). Absent when no trail is matched, so
-              // it leaves no gap. Mint ahead, vermillion behind, at the
-              // other in-run numbers' size.
+            ] else ...[
+              // The big gap to your best on a known trail; absent (no gap)
+              // until one is matched.
+              if (s.trail case final tr?)
+                TrailGhostReadout(trail: tr, compact: compact),
               _FreeRunBlock(
                 s: s,
                 ctl: ctl,
@@ -766,6 +764,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                 reserveCard: settings.showWhileRunning && s.tipsMuted != true,
                 cardShowing: cardShowing,
               ),
+            ],
             // Page 1's way to the map, matching NUMBERS on page 2. Not in a
             // structured session: its 4x4 layout has no 60 dp to spare (the
             // dots and the swipe still work there).
@@ -830,6 +829,12 @@ class _RecordingScreenState extends State<RecordingScreen>
                           _Banner(text: gpsBannerCopy(s), color: t.semWarn)
                         else if (s.notice != null)
                           _Banner(text: s.notice!, color: t.semWarn),
+                        if (s.trail?.turnCue == true && !pausedNow)
+                          TrailTurnCard(
+                            fill: t.inkPrimary,
+                            ink: t.bgBase,
+                            compact: compact,
+                          ),
                         if (route?.endCue != null && !pausedNow)
                           RouteEndCard(
                             cue: route!.endCue!,
