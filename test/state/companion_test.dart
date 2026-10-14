@@ -62,6 +62,7 @@ class FakeCompanionHttp implements CompanionHttp {
       ('POST', '/v1/runs') => CompanionReply(202, '{"status":"accepted"}'),
       ('PATCH', _) => CompanionReply(200, '{}'),
       ('PUT', '/v1/me/settings') => CompanionReply(200, '{"status":"ok"}'),
+      ('PUT', '/v1/me/consent') => CompanionReply(200, '{"status":"ok"}'),
       ('DELETE', '/v1/me') => CompanionReply(200, '{}'),
       ('GET', '/v1/me') => CompanionReply(200, '{}'),
       _ => const CompanionReply(404),
@@ -1261,6 +1262,117 @@ void main() {
       expect(
         (await store.load(run.id))!.sidecar.sends[CompanionTarget.targetId]!.ok,
         isTrue,
+      );
+    });
+  });
+
+  group('consent version reaches the server', () {
+    Iterable<int> sent() => [
+      for (final r in http.to('PUT', '/v1/me/consent'))
+        http.bodyOf(r)['consent_version'] as int,
+    ];
+
+    test('enrolling sends the agreed version once the key is kept', () async {
+      await enrolNow(ctl);
+      expect(sent(), [kCompanionConsentVersion]);
+      expect(http.bodyOf(http.to('PUT', '/v1/me/consent').single).keys, [
+        'consent_version',
+      ]);
+      expect(
+        http.to('PUT', '/v1/me/consent').single.headers['Authorization'],
+        'Bearer tok-123',
+      );
+    });
+
+    test('Agree on a linked runner whose last PUT failed sends it', () async {
+      http.handler = (r) => r.uri.path == '/v1/me/consent'
+          ? const CompanionReply(503)
+          : http.defaultReply(r);
+      await enrolNow(ctl);
+      http.handler = null;
+      http.requests.clear();
+      await ctl.acceptConsent();
+      expect(sent(), [kCompanionConsentVersion]);
+      await ctl.acceptConsent();
+      expect(sent(), [kCompanionConsentVersion]); // landed: not repeated
+    });
+
+    test('a failed PUT is tried again with the next sync', () async {
+      http.handler = (r) => r.uri.path == '/v1/me/consent'
+          ? const CompanionReply(503)
+          : http.defaultReply(r);
+      await enrolNow(ctl);
+      expect(sent(), [kCompanionConsentVersion]);
+      http.handler = null;
+      await ctl.syncConsent();
+      expect(sent(), [kCompanionConsentVersion, kCompanionConsentVersion]);
+      await ctl.syncConsent();
+      expect(sent().length, 2); // landed: not repeated
+    });
+
+    test('offline does not throw and is retried when back online', () async {
+      http.handler = (r) => r.uri.path == '/v1/me/consent'
+          ? const CompanionReply(503)
+          : http.defaultReply(r);
+      await enrolNow(ctl);
+      http.handler = null;
+      http.offline = true;
+      await ctl.syncConsent();
+      http.offline = false;
+      http.requests.clear();
+      await ctl.syncConsent();
+      expect(sent(), [kCompanionConsentVersion]);
+    });
+
+    test('app start sends it when the last PUT never landed', () async {
+      http.handler = (r) => r.uri.path == '/v1/me/consent'
+          ? const CompanionReply(503)
+          : http.defaultReply(r);
+      await enrolNow(ctl);
+      http.handler = null;
+      http.requests.clear();
+      await controller().load();
+      expect(sent(), [kCompanionConsentVersion]);
+    });
+
+    test('a runner who has not agreed sends nothing', () async {
+      await ctl.syncConsent();
+      expect(http.requests, isEmpty);
+    });
+
+    test('a 401 means the key is dead: wipe it', () async {
+      http.handler = (r) => r.uri.path == '/v1/me/consent'
+          ? const CompanionReply(401)
+          : http.defaultReply(r);
+      await enrolNow(ctl);
+      expect(ctl.enrolled, isFalse);
+      expect(await ctl.token(), isNull);
+    });
+
+    test('a run upload tells the server first', () async {
+      http.handler = (r) => r.uri.path == '/v1/me/consent'
+          ? const CompanionReply(503)
+          : http.defaultReply(r);
+      await enrolNow(ctl);
+      http.handler = null;
+      http.requests.clear();
+      final target = CompanionTarget(controller: ctl, now: () => start);
+      final d = await store.load(run.id);
+      await target.send(
+        SendRequest(
+          run: d!.run,
+          title: 't',
+          format: ExportFormat.tcx,
+          detail: d,
+        ),
+      );
+      final kinds = [
+        for (final r in http.requests) '${r.method} ${r.uri.path}',
+      ];
+      expect(kinds.indexOf('PUT /v1/me/consent'), isNonNegative);
+      expect(
+        kinds.indexOf('PUT /v1/me/consent'),
+        lessThan(kinds.indexOf('POST /v1/runs')),
       );
     });
   });

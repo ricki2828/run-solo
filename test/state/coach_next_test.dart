@@ -145,7 +145,10 @@ void main() {
     expect(ctl.enrolled, isTrue);
     expect(ctl.needsReconsent, isTrue);
     await ctl.refreshNext();
-    expect(http.requests, isEmpty);
+    expect(
+      http.to('GET', '/v1/me/next-session'),
+      isEmpty,
+    ); // only the consent report goes out
     expect(ctl.coachNext, isNull);
     await ctl.acceptConsent();
     expect(ctl.needsReconsent, isFalse);
