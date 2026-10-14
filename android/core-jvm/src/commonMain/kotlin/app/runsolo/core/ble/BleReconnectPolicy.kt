@@ -102,6 +102,12 @@ class BleReconnectPolicy(
         scanStarts.add(nowMs)
     }
 
+    /** Whether a scan start is still inside the budget (the pairing scan checks this before it starts). */
+    fun canStartScan(nowMs: Long): Boolean {
+        prune(nowMs)
+        return scanStarts.size < SCAN_STARTS_PER_WINDOW
+    }
+
     private fun prune(nowMs: Long) {
         scanStarts.removeAll { nowMs - it >= SCAN_WINDOW_MS || it > nowMs }
     }
@@ -144,6 +150,7 @@ class BleReconnectPolicy(
      */
     fun onScanResult(found: List<Candidate>, nowMs: Long): Action {
         if (savedAddress == null) return Action.Nothing
+        if (state == LinkState.CONNECTED) return Action.Nothing // the old link came up during the scan: leave it alone
         val n = savedName
         val hit = if (n.isNullOrBlank()) null else
             found.filter { it.name.equals(n, ignoreCase = true) }.maxByOrNull { it.rssi }

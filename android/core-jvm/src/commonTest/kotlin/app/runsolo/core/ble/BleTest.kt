@@ -149,6 +149,27 @@ class BleTest {
     }
 
     @Test
+    fun `fallback - a link that comes up during the scan is left alone`() {
+        val p = BleReconnectPolicy("OLD", "WHOOP 4A0934")
+        p.onStart()
+        assertIs<BleReconnectPolicy.Action.ScanForName>(p.onNoMeasurement(12_000))
+        p.onConnected(15_000)
+        assertIs<BleReconnectPolicy.Action.Nothing>(p.onScanResult(listOf(cand("NEW", "WHOOP 4A0934")), 20_000))
+        assertEquals("OLD", p.savedAddress)
+        assertEquals(BleReconnectPolicy.LinkState.CONNECTED, p.state)
+        assertIs<BleReconnectPolicy.Action.Nothing>(p.onScanResult(emptyList(), 21_000))
+        assertEquals(BleReconnectPolicy.LinkState.CONNECTED, p.state)
+    }
+
+    @Test
+    fun `fallback - canStartScan follows the budget`() {
+        val p = BleReconnectPolicy("OLD", "WHOOP 4A0934")
+        repeat(BleReconnectPolicy.SCAN_STARTS_PER_WINDOW) { p.noteScanStart(1_000L + it) }
+        assertEquals(false, p.canStartScan(10_000))
+        assertEquals(true, p.canStartScan(40_000))
+    }
+
+    @Test
     fun `fallback - only one scan per episode and never a loop`() {
         val p = BleReconnectPolicy("OLD", "WHOOP 4A0934")
         p.onStart()

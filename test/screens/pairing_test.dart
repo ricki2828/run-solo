@@ -72,6 +72,19 @@ void main() {
     expect(find.text('No strap found.'), findsOneWidget);
   });
 
+  testWidgets('a spent scan budget says to wait, not that Bluetooth is off', (
+    tester,
+  ) async {
+    final ble = FakeBleGateway()..scanBudgetSpent = true;
+    final services = fakeServices(ble: ble);
+    await pumpApp(tester, services, pushRoute: Routes.pairing);
+    await pumpTimes(tester, 4);
+    await tester.tap(find.text('SCAN'));
+    await pumpTimes(tester, 4);
+    expect(find.textContaining('short break between scans'), findsOneWidget);
+    expect(find.textContaining('Is Bluetooth on'), findsNothing);
+  });
+
   testWidgets('empty scan with a saved strap says to start the broadcast', (
     tester,
   ) async {

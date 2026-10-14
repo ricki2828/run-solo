@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 
 import '../app/services.dart';
 import '../platform/gateway.dart';
@@ -58,7 +59,10 @@ class _PairingScreenState extends State<PairingScreen>
       if (!mounted) return;
       setState(() {
         _scan = _Scan.failed;
-        _error = 'Scan failed. Is Bluetooth on?';
+        _error = e is PlatformException && e.code == 'scan_budget'
+            ? 'Bluetooth needs a short break between scans. '
+                  'Wait about 30 seconds, then tap SCAN AGAIN.'
+            : 'Scan failed. Is Bluetooth on?';
       });
     } finally {
       _pulse.stop();

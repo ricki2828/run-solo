@@ -12,6 +12,8 @@ library;
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/services.dart' show PlatformException;
+
 import 'package:run_engine/run_engine.dart' as engine;
 
 import 'gateway.dart';
@@ -1054,9 +1056,16 @@ class FakeBleGateway implements BleGateway {
   int? lastHr;
   bool adapterOn = true;
   bool failNextPair = false;
+  bool scanBudgetSpent = false;
 
   @override
   Future<List<BleDevice>> scan() async {
+    if (scanBudgetSpent) {
+      throw PlatformException(
+        code: 'scan_budget',
+        message: 'scan start budget spent',
+      );
+    }
     if (scanDelay > Duration.zero) await Future<void>.delayed(scanDelay);
     return List.of(devices);
   }

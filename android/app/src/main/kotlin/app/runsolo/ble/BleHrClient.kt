@@ -68,7 +68,7 @@ class BleHrClient(context: Context) {
     private var silentWatchdog: Runnable? = null
     private var fallbackTimer: Runnable? = null
     private var nameScanCb: ScanCallback? = null
-    private val seenNames = HashMap<String, String>() // address -> name from the last pairing scan
+    private val seenNames = HashMap<String, String>() // address -> name from the last pairing scan, capped at MAX_SEEN_NAMES
     var listener: Listener? = null
 
     /** Notifications enabled AND at least one measurement received (not merely a GATT link). */
@@ -114,18 +114,40 @@ class BleHrClient(context: Context) {
             done(Result.failure(IllegalStateException("no LE scanner")))
             return
         }
+        val now = SystemClock.elapsedRealtime()
+        if (!policy.canStartScan(now)) {
+            Log.w(TAG, "scan refused: start budget spent")
+            done(Result.failure(app.runsolo.platform.FlutterError("scan_budget", "scan start budget spent")))
+            return
+        }
         val found = LinkedHashMap<String, Found>()
-        policy.noteScanStart(SystemClock.elapsedRealtime())
-        val cb = object : ScanCallback() {
+        policy.noteScanStart(now)
+        var finished = false
+        lateinit var cb: ScanCallback
+        val finish = {
+            if (!finished) {
+                finished = true
+                try {
+                    scanner.stopScan(cb)
+                } catch (_: Exception) {
+                }
+                done(Result.success(found.values.toList()))
+            }
+        }
+        cb = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 val d = result.device ?: return
                 val name = result.scanRecord?.deviceName ?: safeName(d)
                 found[d.address] = Found(d.address, name)
-                if (name != null) seenNames[d.address] = name
+                if (name != null) {
+                    if (seenNames.size >= MAX_SEEN_NAMES) seenNames.clear()
+                    seenNames[d.address] = name
+                }
             }
 
             override fun onScanFailed(errorCode: Int) {
                 Log.w(TAG, "scan failed $errorCode")
+                main.post { finish() }
             }
         }
         val filters = listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(HR_SERVICE)).build())
@@ -136,13 +158,7 @@ class BleHrClient(context: Context) {
             done(Result.failure(e))
             return
         }
-        main.postDelayed({
-            try {
-                scanner.stopScan(cb)
-            } catch (_: Exception) {
-            }
-            done(Result.success(found.values.toList()))
-        }, timeoutMs)
+        main.postDelayed({ finish() }, timeoutMs)
     }
 
     fun pair(address: String) {
@@ -225,7 +241,8 @@ class BleHrClient(context: Context) {
         }
         Log.i(TAG, "connectGatt autoConnect=$autoConnect addressType=${addressType(address)}")
         setupRetried = false
-        armFallback()
+        // Only a direct connect is expected to produce a measurement within seconds; a passive autoConnect after a drop can legitimately take a minute.
+        if (!autoConnect) armFallback() else cancelFallback()
         gatt = try {
             device.connectGatt(context, autoConnect, gattCallback, BluetoothDevice.TRANSPORT_LE)
         } catch (e: Exception) {
@@ -273,6 +290,12 @@ class BleHrClient(context: Context) {
 
             override fun onScanFailed(errorCode: Int) {
                 Log.w(TAG, "name scan failed $errorCode")
+                main.post {
+                    if (nameScanCb === this) {
+                        stopNameScan()
+                        finishNameScan(found.values.toList())
+                    }
+                }
             }
         }
         val filters = listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(HR_SERVICE)).build())
@@ -304,6 +327,7 @@ class BleHrClient(context: Context) {
 
     private fun finishNameScan(found: List<BleReconnectPolicy.Candidate>) {
         val before = policy.savedAddress
+        if (connected) return // the link came up while the scan ran
         val action = policy.onScanResult(found, SystemClock.elapsedRealtime())
         if (action is BleReconnectPolicy.Action.Reconnect) {
             Log.i(TAG, "name scan matched; address ${if (action.address == before) "unchanged" else "updated"} type=${addressType(action.address)}")
@@ -347,6 +371,7 @@ class BleHrClient(context: Context) {
             cancelWatchdog()
         } else {
             cancelFallback()
+            stopNameScan() // a late scan result must not tear down the working link
         }
         if (connected == v) return
         connected = v
@@ -487,6 +512,7 @@ class BleHrClient(context: Context) {
         private const val TAG = "RunSolo/ble"
         private const val KEY_ADDRESS = "address"
         private const val KEY_NAME = "name"
+        private const val MAX_SEEN_NAMES = 32
         private const val SILENT_LINK_MS = 15_000L
         private const val FALLBACK_MS = 12_000L
         val HR_SERVICE: UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
