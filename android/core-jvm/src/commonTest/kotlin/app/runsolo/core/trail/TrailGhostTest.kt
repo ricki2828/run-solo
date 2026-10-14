@@ -233,4 +233,89 @@ class TrailGhostTest {
         assertTrue(runCatching { ok.copy(latLon = ok.latLon + listOf(0.0)) }.isFailure)
         assertTrue(runCatching { ok.copy(turnAlongM = -1.0) }.isFailure)
     }
+
+    // 2 km straight: flat to 600 m, a 40 m climb to 1000 m, flat to 1400 m, then down 20 m.
+    private fun hill(d: Double) = when {
+        d < 600 -> 0.0
+        d < 1000 -> (d - 600) / 400 * 40
+        d < 1400 -> 40.0
+        else -> 40 - (d - 1400) / 600 * 20
+    }
+    private val hillClimb = TrailClimb(startM = 600.0, endM = 1_000.0, gainM = 40.0, avgGradePct = 10.0)
+
+    @Test
+    fun `the elevation profile and climbs ride the state and the runner is told where the next climb starts`() {
+        val g = TrailGhost(listOf(TrailGhostKit.trail(straight, elev = ::hill, climbs = listOf(hillClimb))))
+        val r = Runner(g)
+        r.run(listOf(0.0 to 0.0, 1_300.0 to 0.0))
+        // Early (about 400 m along): 200 m to go to the climb, not on it.
+        val early = r.states[100]!!
+        assertEquals(TrailGhost.PROFILE_POINTS, early.elevProfile!!.size)
+        assertEquals(2_000.0 / (TrailGhost.PROFILE_POINTS - 1), early.elevStepM!!, 1.0)
+        assertEquals(listOf(hillClimb), early.climbs)
+        assertFalse(early.inClimb)
+        assertEquals(600.0 - early.alongM, early.toClimbM!!, 1.0)
+        // The profile is the trail's: flat at the start, 40 m up at 1.2 km.
+        assertEquals(0.0, early.elevProfile!!.first(), 0.1)
+        assertEquals(40.0, early.elevProfile!![(1_200.0 / early.elevStepM!!).toInt()], 1.5)
+        // On the climb: in it, nothing ahead.
+        val on = r.states.first { it != null && it.alongM in 700.0..900.0 }!!
+        assertTrue(on.inClimb)
+        assertNull(on.toClimbM)
+        // Past the top: out of it, no climb ahead.
+        val past = r.states.last()!!
+        assertFalse(past.inClimb)
+        assertNull(past.toClimbM)
+    }
+
+    @Test
+    fun `a trail with no elevation has no profile and no climbs`() {
+        val g = TrailGhost(listOf(TrailGhostKit.trail(straight)))
+        val r = Runner(g)
+        r.run(listOf(0.0 to 0.0, 600.0 to 0.0))
+        val s = r.states.last()!!
+        assertNull(s.elevProfile)
+        assertNull(s.elevStepM)
+        assertTrue(s.climbs.isEmpty())
+        assertNull(s.toClimbM)
+        assertFalse(s.inClimb)
+    }
+
+    @Test
+    fun `an elevation profile that does not fit the trail is ignored and the ghost still works`() {
+        val ok = TrailGhostKit.trail(straight, elev = ::hill, climbs = listOf(hillClimb))
+        val bad = ok.copy(elevM = ok.elevM!!.drop(3))
+        val nan = ok.copy(elevM = ok.elevM!!.mapIndexed { i, v -> if (i == 5) Double.NaN else v })
+        for (t in listOf(bad, nan)) {
+            val g = TrailGhost(listOf(t))
+            val r = Runner(g)
+            r.run(listOf(0.0 to 0.0, 600.0 to 0.0))
+            val s = r.states.last()!!
+            assertEquals("t1", s.trailId)
+            assertNull(s.elevProfile)
+            assertTrue(s.climbs.isEmpty())
+        }
+    }
+
+    @Test
+    fun `odd climbs are dropped and the rest kept`() {
+        val odd = listOf(
+            hillClimb,
+            TrailClimb(900.0, 800.0, 10.0, 5.0),
+            TrailClimb(0.0, 100.0, Double.NaN, 5.0),
+            TrailClimb(1_100.0, 1_300.0, -3.0, 2.0),
+        )
+        val ref = TrailGhostKit.trail(straight, elev = ::hill, climbs = odd)
+        assertEquals(listOf(hillClimb), ref.sensibleClimbs)
+    }
+
+    @Test
+    fun `elevation and climbs survive the journal and an old trail without them reads`() {
+        val ref = TrailGhostKit.trail(straight, elev = ::hill, climbs = listOf(hillClimb))
+        assertEquals(ref, TrailRef.fromJson(ref.toJson()))
+        val plain = TrailGhostKit.trail(straight)
+        assertFalse(plain.toJson().containsKey("elev"))
+        assertFalse(plain.toJson().containsKey("climbs"))
+        assertEquals(plain, TrailRef.fromJson(plain.toJson()))
+    }
 }

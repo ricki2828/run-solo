@@ -1033,6 +1033,10 @@ class TrailProfile {
 /// `latLon` is flat `[lat, lon, ...]`; `best` and `last` are the fastest and the
 /// most recent run on it (`last` null = the last run is the best);
 /// `turnAlongM` is where an out-and-back trail turns round, else null.
+/// `elevM` is the trail's elevation smoothed over at least 50 m (metres, one
+/// value per `latLon` vertex), `elevSrc` is `baro` or `gps`, and `climbs` are
+/// its climbs, in trail order: empty unless the elevation is trustworthy
+/// (barometer), and null/empty when the run had no elevation at all.
 class TrailRef {
   TrailRef({
     required this.id,
@@ -1041,6 +1045,9 @@ class TrailRef {
     required this.best,
     this.last,
     this.turnAlongM,
+    this.elevM,
+    this.elevSrc,
+    this.climbs,
   });
 
   String id;
@@ -1055,6 +1062,12 @@ class TrailRef {
 
   double? turnAlongM;
 
+  List<double>? elevM;
+
+  String? elevSrc;
+
+  List<TrailClimb>? climbs;
+
   List<Object?> _toList() {
     return <Object?>[
       id,
@@ -1063,6 +1076,9 @@ class TrailRef {
       best,
       last,
       turnAlongM,
+      elevM,
+      elevSrc,
+      climbs,
     ];
   }
 
@@ -1078,6 +1094,9 @@ class TrailRef {
       best: result[3]! as TrailProfile,
       last: result[4] as TrailProfile?,
       turnAlongM: result[5] as double?,
+      elevM: (result[6] as List<Object?>?)?.cast<double>(),
+      elevSrc: result[7] as String?,
+      climbs: (result[8] as List<Object?>?)?.cast<TrailClimb>(),
     );
   }
 
@@ -1090,7 +1109,64 @@ class TrailRef {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(id, other.id) && _deepEquals(name, other.name) && _deepEquals(latLon, other.latLon) && _deepEquals(best, other.best) && _deepEquals(last, other.last) && _deepEquals(turnAlongM, other.turnAlongM);
+    return _deepEquals(id, other.id) && _deepEquals(name, other.name) && _deepEquals(latLon, other.latLon) && _deepEquals(best, other.best) && _deepEquals(last, other.last) && _deepEquals(turnAlongM, other.turnAlongM) && _deepEquals(elevM, other.elevM) && _deepEquals(elevSrc, other.elevSrc) && _deepEquals(climbs, other.climbs);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// A climb on a known trail: where it starts and ends along the trail (metres
+/// from the trail's start), what it gains and its average grade in percent.
+class TrailClimb {
+  TrailClimb({
+    required this.startM,
+    required this.endM,
+    required this.gainM,
+    required this.avgGradePct,
+  });
+
+  double startM;
+
+  double endM;
+
+  double gainM;
+
+  double avgGradePct;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      startM,
+      endM,
+      gainM,
+      avgGradePct,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static TrailClimb decode(Object result) {
+    result as List<Object?>;
+    return TrailClimb(
+      startM: result[0]! as double,
+      endM: result[1]! as double,
+      gainM: result[2]! as double,
+      avgGradePct: result[3]! as double,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! TrailClimb || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(startM, other.startM) && _deepEquals(endM, other.endM) && _deepEquals(gainM, other.gainM) && _deepEquals(avgGradePct, other.avgGradePct);
   }
 
   @override
@@ -1108,6 +1184,12 @@ class TrailRef {
 /// the distance to the turnaround point of an out-and-back trail; `turnCue`
 /// is set from reaching it for about a minute (the screen's big "turn around";
 /// the voice and the buzz fire once, natively, unless the run follows a route).
+/// `elevProfile` is the trail's smoothed elevation at up to 48 evenly spaced
+/// points along its whole length (`elevStepM` apart, metres above sea level as
+/// recorded), `climbs` its climbs; both null when the trail has no usable
+/// elevation. `toClimbM` is the distance to the start of the next climb ahead
+/// (null when none is ahead or the runner is on one); `inClimb` is true while
+/// on a climb.
 class TrailProgress {
   TrailProgress({
     required this.trailId,
@@ -1122,6 +1204,11 @@ class TrailProgress {
     required this.lastDateMs,
     this.toTurnM,
     required this.turnCue,
+    this.elevProfile,
+    this.elevStepM,
+    this.climbs,
+    this.toClimbM,
+    required this.inClimb,
   });
 
   String trailId;
@@ -1148,6 +1235,16 @@ class TrailProgress {
 
   bool turnCue;
 
+  List<double>? elevProfile;
+
+  double? elevStepM;
+
+  List<TrailClimb>? climbs;
+
+  double? toClimbM;
+
+  bool inClimb;
+
   List<Object?> _toList() {
     return <Object?>[
       trailId,
@@ -1162,6 +1259,11 @@ class TrailProgress {
       lastDateMs,
       toTurnM,
       turnCue,
+      elevProfile,
+      elevStepM,
+      climbs,
+      toClimbM,
+      inClimb,
     ];
   }
 
@@ -1183,6 +1285,11 @@ class TrailProgress {
       lastDateMs: result[9]! as int,
       toTurnM: result[10] as double?,
       turnCue: result[11]! as bool,
+      elevProfile: (result[12] as List<Object?>?)?.cast<double>(),
+      elevStepM: result[13] as double?,
+      climbs: (result[14] as List<Object?>?)?.cast<TrailClimb>(),
+      toClimbM: result[15] as double?,
+      inClimb: result[16]! as bool,
     );
   }
 
@@ -1195,7 +1302,7 @@ class TrailProgress {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(trailId, other.trailId) && _deepEquals(name, other.name) && _deepEquals(alongM, other.alongM) && _deepEquals(toGoM, other.toGoM) && _deepEquals(off, other.off) && _deepEquals(aheadBestMs, other.aheadBestMs) && _deepEquals(aheadLastMs, other.aheadLastMs) && _deepEquals(lastIsBest, other.lastIsBest) && _deepEquals(bestDateMs, other.bestDateMs) && _deepEquals(lastDateMs, other.lastDateMs) && _deepEquals(toTurnM, other.toTurnM) && _deepEquals(turnCue, other.turnCue);
+    return _deepEquals(trailId, other.trailId) && _deepEquals(name, other.name) && _deepEquals(alongM, other.alongM) && _deepEquals(toGoM, other.toGoM) && _deepEquals(off, other.off) && _deepEquals(aheadBestMs, other.aheadBestMs) && _deepEquals(aheadLastMs, other.aheadLastMs) && _deepEquals(lastIsBest, other.lastIsBest) && _deepEquals(bestDateMs, other.bestDateMs) && _deepEquals(lastDateMs, other.lastDateMs) && _deepEquals(toTurnM, other.toTurnM) && _deepEquals(turnCue, other.turnCue) && _deepEquals(elevProfile, other.elevProfile) && _deepEquals(elevStepM, other.elevStepM) && _deepEquals(climbs, other.climbs) && _deepEquals(toClimbM, other.toClimbM) && _deepEquals(inClimb, other.inClimb);
   }
 
   @override
@@ -3568,104 +3675,107 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is TrailRef) {
       buffer.putUint8(158);
       writeValue(buffer, value.encode());
-    }    else if (value is TrailProgress) {
+    }    else if (value is TrailClimb) {
       buffer.putUint8(159);
       writeValue(buffer, value.encode());
-    }    else if (value is StartResult) {
+    }    else if (value is TrailProgress) {
       buffer.putUint8(160);
       writeValue(buffer, value.encode());
-    }    else if (value is LapSummary) {
+    }    else if (value is StartResult) {
       buffer.putUint8(161);
       writeValue(buffer, value.encode());
-    }    else if (value is RecorderStatus) {
+    }    else if (value is LapSummary) {
       buffer.putUint8(162);
       writeValue(buffer, value.encode());
-    }    else if (value is FollowRoute) {
+    }    else if (value is RecorderStatus) {
       buffer.putUint8(163);
       writeValue(buffer, value.encode());
-    }    else if (value is RouteProgress) {
+    }    else if (value is FollowRoute) {
       buffer.putUint8(164);
       writeValue(buffer, value.encode());
-    }    else if (value is OrphanJournal) {
+    }    else if (value is RouteProgress) {
       buffer.putUint8(165);
       writeValue(buffer, value.encode());
-    }    else if (value is ReplayConfig) {
+    }    else if (value is OrphanJournal) {
       buffer.putUint8(166);
       writeValue(buffer, value.encode());
-    }    else if (value is PermissionStatus) {
+    }    else if (value is ReplayConfig) {
       buffer.putUint8(167);
       writeValue(buffer, value.encode());
-    }    else if (value is BleStatus) {
+    }    else if (value is PermissionStatus) {
       buffer.putUint8(168);
       writeValue(buffer, value.encode());
-    }    else if (value is ExitDiagnosis) {
+    }    else if (value is BleStatus) {
       buffer.putUint8(169);
       writeValue(buffer, value.encode());
-    }    else if (value is BleDevice) {
+    }    else if (value is ExitDiagnosis) {
       buffer.putUint8(170);
       writeValue(buffer, value.encode());
-    }    else if (value is BackupStatus) {
+    }    else if (value is BleDevice) {
       buffer.putUint8(171);
       writeValue(buffer, value.encode());
-    }    else if (value is PlaceName) {
+    }    else if (value is BackupStatus) {
       buffer.putUint8(172);
       writeValue(buffer, value.encode());
-    }    else if (value is TickEvent) {
+    }    else if (value is PlaceName) {
       buffer.putUint8(173);
       writeValue(buffer, value.encode());
-    }    else if (value is LapEvent) {
+    }    else if (value is TickEvent) {
       buffer.putUint8(174);
       writeValue(buffer, value.encode());
-    }    else if (value is LapPendingEvent) {
+    }    else if (value is LapEvent) {
       buffer.putUint8(175);
       writeValue(buffer, value.encode());
-    }    else if (value is CueEvent) {
+    }    else if (value is LapPendingEvent) {
       buffer.putUint8(176);
       writeValue(buffer, value.encode());
-    }    else if (value is GpsProbeEvent) {
+    }    else if (value is CueEvent) {
       buffer.putUint8(177);
       writeValue(buffer, value.encode());
-    }    else if (value is RoutePointsEvent) {
+    }    else if (value is GpsProbeEvent) {
       buffer.putUint8(178);
       writeValue(buffer, value.encode());
-    }    else if (value is CompareEvent) {
+    }    else if (value is RoutePointsEvent) {
       buffer.putUint8(179);
       writeValue(buffer, value.encode());
-    }    else if (value is GoalEvent) {
+    }    else if (value is CompareEvent) {
       buffer.putUint8(180);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is GoalEvent) {
       buffer.putUint8(181);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is FaultEvent) {
       buffer.putUint8(182);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is StateEvent) {
       buffer.putUint8(183);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthStatus) {
+    }    else if (value is PhaseEvent) {
       buffer.putUint8(184);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthLap) {
+    }    else if (value is HealthStatus) {
       buffer.putUint8(185);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthPause) {
+    }    else if (value is HealthLap) {
       buffer.putUint8(186);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthHrSample) {
+    }    else if (value is HealthPause) {
       buffer.putUint8(187);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthRoutePoint) {
+    }    else if (value is HealthHrSample) {
       buffer.putUint8(188);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthWorkout) {
+    }    else if (value is HealthRoutePoint) {
       buffer.putUint8(189);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthWriteResult) {
+    }    else if (value is HealthWorkout) {
       buffer.putUint8(190);
       writeValue(buffer, value.encode());
-    }    else if (value is VoiceCoachConfig) {
+    }    else if (value is HealthWriteResult) {
       buffer.putUint8(191);
+      writeValue(buffer, value.encode());
+    }    else if (value is VoiceCoachConfig) {
+      buffer.putUint8(192);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -3754,70 +3864,72 @@ class _PigeonCodec extends StandardMessageCodec {
       case 158:
         return TrailRef.decode(readValue(buffer)!);
       case 159:
-        return TrailProgress.decode(readValue(buffer)!);
+        return TrailClimb.decode(readValue(buffer)!);
       case 160:
-        return StartResult.decode(readValue(buffer)!);
+        return TrailProgress.decode(readValue(buffer)!);
       case 161:
-        return LapSummary.decode(readValue(buffer)!);
+        return StartResult.decode(readValue(buffer)!);
       case 162:
-        return RecorderStatus.decode(readValue(buffer)!);
+        return LapSummary.decode(readValue(buffer)!);
       case 163:
-        return FollowRoute.decode(readValue(buffer)!);
+        return RecorderStatus.decode(readValue(buffer)!);
       case 164:
-        return RouteProgress.decode(readValue(buffer)!);
+        return FollowRoute.decode(readValue(buffer)!);
       case 165:
-        return OrphanJournal.decode(readValue(buffer)!);
+        return RouteProgress.decode(readValue(buffer)!);
       case 166:
-        return ReplayConfig.decode(readValue(buffer)!);
+        return OrphanJournal.decode(readValue(buffer)!);
       case 167:
-        return PermissionStatus.decode(readValue(buffer)!);
+        return ReplayConfig.decode(readValue(buffer)!);
       case 168:
-        return BleStatus.decode(readValue(buffer)!);
+        return PermissionStatus.decode(readValue(buffer)!);
       case 169:
-        return ExitDiagnosis.decode(readValue(buffer)!);
+        return BleStatus.decode(readValue(buffer)!);
       case 170:
-        return BleDevice.decode(readValue(buffer)!);
+        return ExitDiagnosis.decode(readValue(buffer)!);
       case 171:
-        return BackupStatus.decode(readValue(buffer)!);
+        return BleDevice.decode(readValue(buffer)!);
       case 172:
-        return PlaceName.decode(readValue(buffer)!);
+        return BackupStatus.decode(readValue(buffer)!);
       case 173:
-        return TickEvent.decode(readValue(buffer)!);
+        return PlaceName.decode(readValue(buffer)!);
       case 174:
-        return LapEvent.decode(readValue(buffer)!);
+        return TickEvent.decode(readValue(buffer)!);
       case 175:
-        return LapPendingEvent.decode(readValue(buffer)!);
+        return LapEvent.decode(readValue(buffer)!);
       case 176:
-        return CueEvent.decode(readValue(buffer)!);
+        return LapPendingEvent.decode(readValue(buffer)!);
       case 177:
-        return GpsProbeEvent.decode(readValue(buffer)!);
+        return CueEvent.decode(readValue(buffer)!);
       case 178:
-        return RoutePointsEvent.decode(readValue(buffer)!);
+        return GpsProbeEvent.decode(readValue(buffer)!);
       case 179:
-        return CompareEvent.decode(readValue(buffer)!);
+        return RoutePointsEvent.decode(readValue(buffer)!);
       case 180:
-        return GoalEvent.decode(readValue(buffer)!);
+        return CompareEvent.decode(readValue(buffer)!);
       case 181:
-        return FaultEvent.decode(readValue(buffer)!);
+        return GoalEvent.decode(readValue(buffer)!);
       case 182:
-        return StateEvent.decode(readValue(buffer)!);
+        return FaultEvent.decode(readValue(buffer)!);
       case 183:
-        return PhaseEvent.decode(readValue(buffer)!);
+        return StateEvent.decode(readValue(buffer)!);
       case 184:
-        return HealthStatus.decode(readValue(buffer)!);
+        return PhaseEvent.decode(readValue(buffer)!);
       case 185:
-        return HealthLap.decode(readValue(buffer)!);
+        return HealthStatus.decode(readValue(buffer)!);
       case 186:
-        return HealthPause.decode(readValue(buffer)!);
+        return HealthLap.decode(readValue(buffer)!);
       case 187:
-        return HealthHrSample.decode(readValue(buffer)!);
+        return HealthPause.decode(readValue(buffer)!);
       case 188:
-        return HealthRoutePoint.decode(readValue(buffer)!);
+        return HealthHrSample.decode(readValue(buffer)!);
       case 189:
-        return HealthWorkout.decode(readValue(buffer)!);
+        return HealthRoutePoint.decode(readValue(buffer)!);
       case 190:
-        return HealthWriteResult.decode(readValue(buffer)!);
+        return HealthWorkout.decode(readValue(buffer)!);
       case 191:
+        return HealthWriteResult.decode(readValue(buffer)!);
+      case 192:
         return VoiceCoachConfig.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);

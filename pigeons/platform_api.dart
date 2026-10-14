@@ -391,6 +391,10 @@ class TrailProfile {
 /// `latLon` is flat `[lat, lon, ...]`; `best` and `last` are the fastest and the
 /// most recent run on it (`last` null = the last run is the best);
 /// `turnAlongM` is where an out-and-back trail turns round, else null.
+/// `elevM` is the trail's elevation smoothed over at least 50 m (metres, one
+/// value per `latLon` vertex), `elevSrc` is `baro` or `gps`, and `climbs` are
+/// its climbs, in trail order: empty unless the elevation is trustworthy
+/// (barometer), and null/empty when the run had no elevation at all.
 class TrailRef {
   TrailRef({
     required this.id,
@@ -399,6 +403,9 @@ class TrailRef {
     required this.best,
     this.last,
     this.turnAlongM,
+    this.elevM,
+    this.elevSrc,
+    this.climbs,
   });
   String id;
   String name;
@@ -406,6 +413,24 @@ class TrailRef {
   TrailProfile best;
   TrailProfile? last;
   double? turnAlongM;
+  List<double>? elevM;
+  String? elevSrc;
+  List<TrailClimb>? climbs;
+}
+
+/// A climb on a known trail: where it starts and ends along the trail (metres
+/// from the trail's start), what it gains and its average grade in percent.
+class TrailClimb {
+  TrailClimb({
+    required this.startM,
+    required this.endM,
+    required this.gainM,
+    required this.avgGradePct,
+  });
+  double startM;
+  double endM;
+  double gainM;
+  double avgGradePct;
 }
 
 /// The known trail the run has been matched to (early in the run), and how it
@@ -418,6 +443,12 @@ class TrailRef {
 /// the distance to the turnaround point of an out-and-back trail; `turnCue`
 /// is set from reaching it for about a minute (the screen's big "turn around";
 /// the voice and the buzz fire once, natively, unless the run follows a route).
+/// `elevProfile` is the trail's smoothed elevation at up to 48 evenly spaced
+/// points along its whole length (`elevStepM` apart, metres above sea level as
+/// recorded), `climbs` its climbs; both null when the trail has no usable
+/// elevation. `toClimbM` is the distance to the start of the next climb ahead
+/// (null when none is ahead or the runner is on one); `inClimb` is true while
+/// on a climb.
 class TrailProgress {
   TrailProgress({
     required this.trailId,
@@ -432,6 +463,11 @@ class TrailProgress {
     required this.lastDateMs,
     this.toTurnM,
     required this.turnCue,
+    this.elevProfile,
+    this.elevStepM,
+    this.climbs,
+    this.toClimbM,
+    required this.inClimb,
   });
   String trailId;
   String name;
@@ -445,6 +481,11 @@ class TrailProgress {
   int lastDateMs;
   double? toTurnM;
   bool turnCue;
+  List<double>? elevProfile;
+  double? elevStepM;
+  List<TrailClimb>? climbs;
+  double? toClimbM;
+  bool inClimb;
 }
 
 class StartResult {

@@ -55,6 +55,7 @@ import app.runsolo.core.record.SampleTicker
 import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.core.route.FollowRoute
 import app.runsolo.core.route.RouteFollower
+import app.runsolo.core.trail.TrailCueSink
 import app.runsolo.core.trail.TrailGhostFeed
 import app.runsolo.core.route.RoutePath
 import app.runsolo.core.route.RouteWords
@@ -75,6 +76,7 @@ import app.runsolo.platform.RouteEndCue
 import app.runsolo.platform.RouteProgress
 import app.runsolo.platform.StateEvent
 import app.runsolo.platform.TickEvent
+import app.runsolo.platform.TrailClimb
 import app.runsolo.platform.TrailProgress
 import app.runsolo.platform.toPigeon
 import kotlin.math.abs
@@ -560,7 +562,7 @@ class RecordingSession(
             val active = ghostClock(last.t, !core.autoPaused)
             if (!core.autoPaused) {
                 for (e in trailFeed.offer(last.t, last.lat!!, last.lon!!, last.accuracyM!!, active, ticker.distanceM)) {
-                    if (follower == null && e is RouteFollower.Event.RouteEnd) routeEvent(e)
+                    if (follower == null && e is RouteFollower.Event.RouteEnd) trailTurn(e)
                 }
             }
         }
@@ -1265,6 +1267,19 @@ class RecordingSession(
         )
     }
 
+    /**
+     * Set by whoever arbitrates speech (the voice budget): the ghost's turnaround is then offered to it instead of being
+     * said here. Null = say it straight away.
+     */
+    @Volatile
+    var trailCueSink: TrailCueSink? = null
+
+    private fun trailTurn(e: RouteFollower.Event.RouteEnd) {
+        val sink = trailCueSink
+        val id = trailFeed.state?.trailId
+        if (sink != null && id != null) sink.turnaround(id, e.text, e.t) else routeEvent(e)
+    }
+
     /** The ghost's clock: advances by the time since the last fix (a kill gap or a long silence counts for at most 5 s) while [running]. */
     private fun ghostClock(t: Long, running: Boolean): Long {
         val prev = ghostLastT
@@ -1289,6 +1304,11 @@ class RecordingSession(
             lastDateMs = s.lastDateMs,
             toTurnM = s.toTurnM,
             turnCue = s.turnCue,
+            elevProfile = s.elevProfile,
+            elevStepM = s.elevStepM,
+            climbs = s.climbs.takeIf { it.isNotEmpty() }?.map { TrailClimb(it.startM, it.endM, it.gainM, it.avgGradePct) },
+            toClimbM = s.toClimbM,
+            inClimb = s.inClimb,
         )
     }
 

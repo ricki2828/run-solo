@@ -124,9 +124,9 @@ class LiveContextJournalTest {
 
     @Test
     fun `six full size trails stay a bounded journal line`() {
-        val trails = List(6) { i -> TrailGhostKit.trail(listOf(0.0 to 0.0, 9_975.0 to 0.0), id = "t$i", turnAlongM = 4_000.0) }
+        val trails = List(6) { i -> TrailGhostKit.trail(listOf(0.0 to 0.0, 9_975.0 to 0.0), id = "t$i", turnAlongM = 4_000.0, elev = { d -> d / 100 * 1.234 }, climbs = List(12) { c -> app.runsolo.core.trail.TrailClimb(c * 700.0, c * 700.0 + 300.0, 25.5, 8.5) }) }
         val bytes = JournalCodec.encode(JournalLine.LiveContextLine(t0, w0, context.copy(trails = trails))).length
-        assertTrue(bytes < 120_000, "lctx line with six trails is $bytes bytes")
+        assertTrue(bytes < 140_000, "lctx line with six trails is $bytes bytes")
     }
 
     @Test

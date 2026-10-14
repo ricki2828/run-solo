@@ -19,6 +19,8 @@ RunFile _run(
   double mps = 4,
   int? pauseAtMs,
   int pauseMs = 0,
+  double Function(double along)? elev,
+  ElevSource? src,
 }) {
   final base = fixture('easy_free_run').run;
   final pts = <(double, double)>[corners.first];
@@ -43,7 +45,16 @@ RunFile _run(
             math.pow(pts[i].$2 - pts[i - 1].$2, 2),
       );
     }
-    samples.add(Sample(tMs: t, lat: la, lon: lo, accM: 5, distM: dist));
+    samples.add(
+      Sample(
+        tMs: t,
+        lat: la,
+        lon: lo,
+        accM: 5,
+        distM: dist,
+        elevM: elev?.call(dist),
+      ),
+    );
     t += 1000;
   }
   final r = base.copyWith(
@@ -51,6 +62,7 @@ RunFile _run(
     mode: RunMode.trail,
     samples: samples,
     laps: const [],
+    elevSrc: src,
     pauses: pauseAtMs == null
         ? const []
         : [Span(pauseAtMs + 1000 - 1000, pauseAtMs + pauseMs)],
@@ -61,6 +73,81 @@ RunFile _run(
 void main() {
   const straight = [(0.0, 0.0), (2000.0, 0.0)];
   const oab = [(0.0, 0.0), (1000.0, 0.0), (1000.0, 6.0), (0.0, 6.0)];
+
+  group('elevation and climbs', () {
+    // 2 km: flat 0..600, a 40 m climb over 600..1000 (10%), flat to 1400,
+    // then a 20 m descent back to 20 m by 2000. Noise of +-0.4 m.
+    double hill(double d) {
+      final noise = ((d * 7).round() % 5 - 2) * 0.2;
+      if (d < 600) return noise;
+      if (d < 1000) return (d - 600) / 400 * 40 + noise;
+      if (d < 1400) return 40 + noise;
+      return 40 - (d - 1400) / 600 * 20 + noise;
+    }
+
+    GhostTrail build(RunFile r) =>
+        TrailGhostBuilder.build(id: 'k', name: 'Kastro', best: r, last: r)!;
+
+    test('a barometer trail packs a smoothed profile and its one climb', () {
+      final t = build(_run('h', straight, elev: hill, src: ElevSource.baro));
+      expect(t.elevSrc, 'baro');
+      expect(t.elevM!.length, t.latLon.length ~/ 2);
+      expect(t.climbs, hasLength(1));
+      final c = t.climbs.single;
+      expect(c.startM, closeTo(600, 80));
+      expect(c.endM, closeTo(1000, 80));
+      expect(c.gainM, closeTo(40, 6));
+      expect(c.avgGradePct, closeTo(10, 2.5));
+      // Smoothed: no vertex-to-vertex jump from the +-0.4 m noise.
+      for (var i = 1; i < t.elevM!.length; i++) {
+        expect((t.elevM![i] - t.elevM![i - 1]).abs(), lessThan(3));
+      }
+    });
+
+    test('GPS-only elevation gives the profile but no climbs', () {
+      final t = build(_run('g', straight, elev: hill, src: ElevSource.gps));
+      expect(t.elevSrc, 'gps');
+      expect(t.elevM, isNotNull);
+      expect(t.climbs, isEmpty);
+    });
+
+    test('a run with no elevation gives neither', () {
+      final t = build(_run('n', straight));
+      expect(t.elevM, isNull);
+      expect(t.elevSrc, isNull);
+      expect(t.climbs, isEmpty);
+    });
+
+    test('a flat trail and a small bump have no climbs', () {
+      final bump = build(
+        _run(
+          'b',
+          straight,
+          src: ElevSource.baro,
+          elev: (d) => d > 800 && d < 1000 ? (d - 800) / 200 * 8 : 0,
+        ),
+      );
+      expect(bump.climbs, isEmpty);
+    });
+
+    test('a short run along a long trail leaves the unreached end flat', () {
+      final full = _run('f', straight, elev: hill, src: ElevSource.baro);
+      final half = _run(
+        's',
+        const [(0.0, 0.0), (1200.0, 0.0)],
+        elev: hill,
+        src: ElevSource.baro,
+      );
+      final t = TrailGhostBuilder.build(
+        id: 'k',
+        name: 'Kastro',
+        best: half,
+        last: full,
+      )!;
+      expect(t.elevM!.length, t.latLon.length ~/ 2);
+      expect(t.climbs, hasLength(1));
+    });
+  });
 
   group('builder', () {
     test('geometry is bounded and the profile reads time at distance', () {

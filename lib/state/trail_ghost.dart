@@ -116,6 +116,17 @@ class TrailGhostSource {
       best: profile(t.best),
       last: t.last == null ? null : profile(t.last!),
       turnAlongM: t.turnAlongM,
+      elevM: t.elevM,
+      elevSrc: t.elevSrc,
+      climbs: [
+        for (final c in t.climbs)
+          TrailClimb(
+            startM: c.startM,
+            endM: c.endM,
+            gainM: c.gainM,
+            avgGradePct: c.avgGradePct,
+          ),
+      ],
     );
   }
 }

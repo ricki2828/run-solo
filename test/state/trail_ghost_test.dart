@@ -135,6 +135,30 @@ void main() {
     expect(src.trailsOnly(RecordMode.cooper), isNull);
   });
 
+  test(
+    'the trail carries its smoothed elevation and climbs to Pigeon',
+    () async {
+      final store = await storeWith(runs);
+      final loop = trailsOf(store).last;
+      final n = loop.latLon.length ~/ 2;
+      expect(loop.elevSrc, 'baro');
+      expect(loop.elevM, hasLength(n));
+      // The fixture is a sine of 18 m: smoothed, it stays inside 40 +- 18.
+      for (final v in loop.elevM!) {
+        expect(v, inInclusiveRange(21, 59));
+      }
+      expect(loop.climbs, isNotEmpty);
+      final wire = TrailGhostSource.toPigeon(loop);
+      expect(wire.elevM, loop.elevM);
+      expect(wire.elevSrc, 'baro');
+      expect(wire.climbs, hasLength(loop.climbs.length));
+      final c = wire.climbs!.first;
+      expect(c.endM, greaterThan(c.startM));
+      expect(c.gainM, greaterThanOrEqualTo(15));
+      expect(c.avgGradePct, greaterThan(0));
+    },
+  );
+
   test('no trail runs gives no trails and no context', () async {
     final store = await storeWith([
       freeRunFile(n: 1, start: d1, seconds: 1800),

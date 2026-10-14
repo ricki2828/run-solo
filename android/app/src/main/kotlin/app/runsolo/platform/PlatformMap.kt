@@ -6,6 +6,7 @@ import app.runsolo.core.model.LiveBoard as CoreLiveBoard
 import app.runsolo.core.model.LiveBoardKind as CoreLiveBoardKind
 import app.runsolo.core.model.LiveContext as CoreLiveContext
 import app.runsolo.core.route.FollowRoute as CoreFollowRoute
+import app.runsolo.core.trail.TrailClimb as CoreTrailClimb
 import app.runsolo.core.trail.TrailProfile as CoreTrailProfile
 import app.runsolo.core.trail.TrailRef as CoreTrailRef
 import app.runsolo.core.model.LiveEntry as CoreLiveEntry
@@ -157,6 +158,8 @@ private fun TrailProfile.toCore() = CoreTrailProfile(runId = runId, dateMs = dat
 /** Throws [IllegalArgumentException] for a trail that breaks its contract (the whole context is then dropped). */
 private fun TrailRef.toCore() = CoreTrailRef(
     id = id, name = name, latLon = latLon, best = best.toCore(), last = last?.toCore(), turnAlongM = turnAlongM,
+    elevM = elevM, elevSrc = elevSrc,
+    climbs = climbs.orEmpty().map { CoreTrailClimb(it.startM, it.endM, it.gainM, it.avgGradePct) },
 )
 
 /** The route to follow as the core takes it; throws [IllegalArgumentException] for one that breaks its contract. */

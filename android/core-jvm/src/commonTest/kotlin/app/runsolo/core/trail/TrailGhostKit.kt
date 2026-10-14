@@ -14,6 +14,9 @@ object TrailGhostKit {
         turnAlongM: Double? = null,
         id: String = "t1",
         stepM: Double = 25.0,
+        /** Smoothed elevation by distance along the trail, per vertex; null = the run had none. */
+        elev: ((Double) -> Double)? = null,
+        climbs: List<TrailClimb> = emptyList(),
     ): TrailRef {
         val pts = RouteTestKit.densify(corners, stepM)
         val ll = ArrayList<Double>()
@@ -30,6 +33,9 @@ object TrailGhostKit {
             best = profile("best", 1_000L, bestMps),
             last = lastMps?.let { profile("last", 2_000L, it) },
             turnAlongM = turnAlongM,
+            elevM = elev?.let { f -> cum.map { kotlin.math.round(f(it) * 10) / 10.0 } },
+            elevSrc = if (elev != null) "baro" else null,
+            climbs = climbs,
         )
     }
 

@@ -84,12 +84,23 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
         val toTurnM: Double?,
         /** Turn around cue now (see [RouteFollower.Config.endCueMs]). */
         val turnCue: Boolean,
+        /** The trail's smoothed elevation at up to [PROFILE_POINTS] even steps ([elevStepM] apart) along it; null without usable elevation. */
+        val elevProfile: List<Double>? = null,
+        val elevStepM: Double? = null,
+        /** The trail's climbs (empty when the profile was not good enough to name any). */
+        val climbs: List<TrailClimb> = emptyList(),
+        /** Metres to the start of the next climb ahead; null when none is ahead or the runner is on one. */
+        val toClimbM: Double? = null,
+        val inClimb: Boolean = false,
     )
 
     private inner class Cand(val ref: TrailRef) {
         val path = RoutePath(FollowRoute(ref.id, ref.name, ref.latLon))
         val loopish = path.closesOnStart(config.loopM)
         val apex: Pair<Double, Double>? = ref.turnAlongM?.takeIf { it < path.totalM }?.let { path.pointAt(it) }
+        val elev: List<Double>? = ref.elevation
+        val climbs: List<TrailClimb> = ref.sensibleClimbs
+        val elevProfile: List<Double>? = elev?.let { runCatching { sampleEvenly(path, it) }.getOrNull() }
         var dead = false
         var engaged = false
         var confirmed = false
@@ -244,6 +255,8 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
         }
         val last = ref.last ?: ref.best
         val turn = ref.turnAlongM
+        val onClimb = c.climbs.any { c.along >= it.startM && c.along <= it.endM }
+        val nextClimb = if (onClimb) null else c.climbs.firstOrNull { it.startM > c.along }
         return TrailState(
             trailId = ref.id,
             name = ref.name,
@@ -257,6 +270,32 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
             lastDateMs = last.dateMs,
             toTurnM = if (turn != null && !c.turnFired && c.along < turn) turn - c.along else null,
             turnCue = c.turnFired && t - c.turnT < config.endCueMs && c.crowToApexM <= config.endClearM,
+            elevProfile = c.elevProfile,
+            elevStepM = c.elevProfile?.let { c.path.totalM / (it.size - 1) },
+            climbs = c.climbs,
+            toClimbM = nextClimb?.let { it.startM - c.along },
+            inClimb = onClimb,
         )
+    }
+
+    companion object {
+        /** The most points of the elevation profile sent on the event bus each tick. */
+        const val PROFILE_POINTS = 48
+
+        /** [elev] (one per vertex of [path]) sampled at [PROFILE_POINTS] even steps along the whole trail, 1 dp. */
+        internal fun sampleEvenly(path: RoutePath, elev: List<Double>): List<Double> {
+            val n = PROFILE_POINTS
+            val out = ArrayList<Double>(n)
+            var seg = 0
+            for (k in 0 until n) {
+                val a = path.totalM * k / (n - 1)
+                while (seg < path.size - 2 && path.cum[seg + 1] < a) seg++
+                val len = path.cum[seg + 1] - path.cum[seg]
+                val f = if (len > 0) ((a - path.cum[seg]) / len).coerceIn(0.0, 1.0) else 0.0
+                val v = elev[seg] + (elev[seg + 1] - elev[seg]) * f
+                out.add(kotlin.math.round(v * 10) / 10)
+            }
+            return out
+        }
     }
 }

@@ -29,9 +29,29 @@ class GhostProfile {
   final List<int> ms;
 }
 
+/// A climb on a trail, read off its smoothed elevation profile: where it
+/// starts and ends along the trail, what it gains and its average grade.
+class GhostClimb {
+  const GhostClimb({
+    required this.startM,
+    required this.endM,
+    required this.gainM,
+    required this.avgGradePct,
+  });
+  final double startM;
+  final double endM;
+  final double gainM;
+  final double avgGradePct;
+}
+
 /// A trail the runner has run before, as the recorder takes it. [latLon] is
 /// flat `[lat, lon, ...]`; a null [last] means the last run is the best;
 /// [turnAlongM] is where an out-and-back trail turns round, else null.
+///
+/// [elevM] is the smoothed elevation (metres, 1 dp) at each vertex, null when
+/// the trail's run had too little elevation; [elevSrc] is `baro` or `gps`;
+/// [climbs] are empty unless the elevation is good enough to trust (barometer,
+/// see [TrailGhostBuilder.elevation]).
 class GhostTrail {
   GhostTrail({
     required this.id,
@@ -40,6 +60,9 @@ class GhostTrail {
     required this.best,
     this.last,
     this.turnAlongM,
+    this.elevM,
+    this.elevSrc,
+    this.climbs = const [],
   }) {
     final n = latLon.length ~/ 2;
     if (latLon.length.isOdd || n < 2 || n > maxPoints) {
@@ -47,6 +70,9 @@ class GhostTrail {
     }
     if (best.ms.length != n || (last != null && last!.ms.length != n)) {
       throw ArgumentError('a profile needs one time per point');
+    }
+    if (elevM != null && elevM!.length != n) {
+      throw ArgumentError('an elevation profile needs one value per point');
     }
   }
 
@@ -60,6 +86,9 @@ class GhostTrail {
   final GhostProfile best;
   final GhostProfile? last;
   final double? turnAlongM;
+  final List<double>? elevM;
+  final String? elevSrc;
+  final List<GhostClimb> climbs;
 }
 
 /// What the tracker says after a fix once a trail is matched.
@@ -547,6 +576,7 @@ abstract final class TrailGhostBuilder {
     if (bestMs == null) return null;
     final same = best.id == last.id;
     final lastMs = same ? null : profile(path, last);
+    final elev = elevation(path, geomRun);
     return GhostTrail(
       id: id,
       name: name,
@@ -564,6 +594,9 @@ abstract final class TrailGhostBuilder {
               ms: lastMs,
             ),
       turnAlongM: turnaround(geo),
+      elevM: elev?.elevM,
+      elevSrc: elev?.src,
+      climbs: elev?.climbs ?? const [],
     );
   }
 
@@ -682,15 +715,18 @@ abstract final class TrailGhostBuilder {
     };
   }
 
-  /// [run]'s moving time at each vertex of [path], -1 where it did not reach.
-  /// The run is projected onto the trail with the same forward-only rule the
-  /// recorder uses, so "time at distance along the trail" means the same
-  /// thing to both. Null when the run never gets onto the trail.
-  static List<int>? profile(GhostPath path, RunFile run) {
+  /// [run] projected onto [path] with the forward-only rule the recorder
+  /// uses: strictly increasing distance along the trail, with the run's moving
+  /// time and fused elevation (null when the sample has none) at each point.
+  static ({List<double> along, List<int> time, List<double?> elev}) _track(
+    GhostPath path,
+    RunFile run,
+  ) {
     final clock = _movingClock(run);
     const cfg = GhostConfig();
     final along = <double>[];
     final time = <int>[];
+    final elev = <double?>[];
     var cur = 0.0;
     var started = false;
     int? lastT;
@@ -720,7 +756,18 @@ abstract final class TrailGhostBuilder {
       if (along.isNotEmpty && cur <= along.last) continue;
       along.add(cur);
       time.add(clock(s.tMs));
+      elev.add(s.elevM);
     }
+    return (along: along, time: time, elev: elev);
+  }
+
+  /// [run]'s moving time at each vertex of [path], -1 where it did not reach.
+  /// The run is projected onto the trail with the same forward-only rule the
+  /// recorder uses, so "time at distance along the trail" means the same
+  /// thing to both. Null when the run never gets onto the trail.
+  static List<int>? profile(GhostPath path, RunFile run) {
+    final tr = _track(path, run);
+    final along = tr.along, time = tr.time;
     if (along.length < 2) return null;
     final out = List<int>.filled(path.size, -1);
     var j = 0;
@@ -753,6 +800,168 @@ abstract final class TrailGhostBuilder {
     }
     return out;
   }
+
+  /// Elevation is smoothed over at least this much trail (a moving average).
+  static const double elevSmoothM = 60;
+
+  /// At least this share of the trail must lie within [elevGapM] of an
+  /// elevation sample, else there is no profile at all.
+  static const double elevMinCover = 0.7;
+  static const double elevGapM = 100;
+
+  /// A climb: the smoothed profile rises at least [climbMinGainM] over at
+  /// least [climbMinLenM], and a dip of less than [climbTurnM] does not end it.
+  static const double climbMinGainM = 15;
+  static const double climbMinLenM = 100;
+  static const double climbTurnM = 5;
+  static const double climbEdgeM = 1;
+  static const int maxClimbs = 12;
+
+  /// The smoothed elevation at each vertex of [path] and its climbs, read
+  /// from [run]'s fused elevation. Null when too few samples carry elevation.
+  /// Climbs are left out (empty) unless the run's elevation came from the
+  /// barometer: GPS altitude alone is too noisy to name a climb, and a wrong
+  /// "steep climb ahead" is worse than none.
+  static ({List<double> elevM, String src, List<GhostClimb> climbs})? elevation(
+    GhostPath path,
+    RunFile run,
+  ) {
+    final src = run.elevSrc;
+    if (src == null) return null;
+    final tr = _track(path, run);
+    final pa = <double>[], pe = <double>[];
+    for (var i = 0; i < tr.along.length; i++) {
+      final e = tr.elev[i];
+      if (e != null && e.isFinite) {
+        pa.add(tr.along[i]);
+        pe.add(e);
+      }
+    }
+    if (pa.length < 2) return null;
+    // Raw elevation at each vertex, interpolated between samples; a vertex far
+    // from any sample has none.
+    final raw = List<double?>.filled(path.size, null);
+    var covered = 0;
+    var j = 0;
+    for (var i = 0; i < path.size; i++) {
+      final c = path.cum[i];
+      if (c < pa.first - elevGapM || c > pa.last + elevGapM) continue;
+      double v;
+      if (c <= pa.first) {
+        v = pe.first;
+      } else if (c >= pa.last) {
+        v = pe.last;
+      } else {
+        while (j + 1 < pa.length - 1 && pa[j + 1] < c) {
+          j++;
+        }
+        final span = pa[j + 1] - pa[j];
+        if (span > 2 * elevGapM) continue;
+        final f = span <= 0 ? 0.0 : (c - pa[j]) / span;
+        v = pe[j] + (pe[j + 1] - pe[j]) * f;
+      }
+      raw[i] = v;
+      covered++;
+    }
+    if (covered < elevMinCover * path.size) return null;
+    // Fill the ends the run did not reach with the nearest value.
+    double? carry;
+    for (var i = 0; i < path.size; i++) {
+      if (raw[i] != null) {
+        carry = raw[i];
+      } else if (carry != null) {
+        raw[i] = carry;
+      }
+    }
+    carry = null;
+    for (var i = path.size - 1; i >= 0; i--) {
+      if (raw[i] != null) {
+        carry = raw[i];
+      } else if (carry != null) {
+        raw[i] = carry;
+      }
+    }
+    // Moving average over +-elevSmoothM/2 of trail.
+    final sm = List<double>.filled(path.size, 0);
+    for (var i = 0; i < path.size; i++) {
+      var sum = 0.0, n = 0;
+      for (
+        var k = i;
+        k >= 0 && path.cum[i] - path.cum[k] <= elevSmoothM / 2;
+        k--
+      ) {
+        sum += raw[k]!;
+        n++;
+      }
+      for (
+        var k = i + 1;
+        k < path.size && path.cum[k] - path.cum[i] <= elevSmoothM / 2;
+        k++
+      ) {
+        sum += raw[k]!;
+        n++;
+      }
+      sm[i] = (sum / n * 10).round() / 10;
+    }
+    final climbs = src == ElevSource.baro
+        ? _climbs(path.cum, sm)
+        : <GhostClimb>[];
+    return (elevM: sm, src: src.name, climbs: climbs);
+  }
+
+  /// Rises of the smoothed profile: from each trough to the next peak, a dip
+  /// of under [climbTurnM] not ending the rise. The ends are pulled in to
+  /// where the profile first and last comes within [climbEdgeM] of the trough
+  /// and the peak, so a wobbling flat start or top is not counted as climb.
+  static List<GhostClimb> _climbs(List<double> cum, List<double> e) {
+    final out = <GhostClimb>[];
+    var lo = 0; // lowest vertex of the current leg
+    var hi = 0; // highest vertex since lo
+    void close() {
+      if (e[hi] - e[lo] < climbMinGainM) return;
+      var a = lo, b = hi;
+      while (a < b && e[a + 1] <= e[lo] + climbEdgeM) {
+        a++;
+      }
+      while (b > a && e[b - 1] >= e[hi] - climbEdgeM) {
+        b--;
+      }
+      final gain = e[b] - e[a];
+      final len = cum[b] - cum[a];
+      if (gain >= climbMinGainM && len >= climbMinLenM) {
+        out.add(
+          GhostClimb(
+            startM: _r1(cum[a]),
+            endM: _r1(cum[b]),
+            gainM: _r1(gain),
+            avgGradePct: _r1(gain / len * 100),
+          ),
+        );
+      }
+    }
+
+    for (var i = 1; i < e.length; i++) {
+      if (e[hi] - e[i] >= climbTurnM) {
+        close();
+        lo = i;
+        hi = i;
+      } else if (e[i] > e[hi]) {
+        hi = i;
+      } else if (e[i] < e[lo] && hi - lo >= 0 && e[hi] - e[lo] < climbTurnM) {
+        lo = i;
+        hi = i;
+      }
+    }
+    close();
+    if (out.length > maxClimbs) {
+      out.sort((a, b) => b.gainM.compareTo(a.gainM));
+      out.removeRange(maxClimbs, out.length);
+      out.sort((a, b) => a.startM.compareTo(b.startM));
+    }
+    return out;
+  }
+
+  static double _r1(double v) => (v * 10).round() / 10;
 
   /// Where the trail turns round when it is an out-and-back: the vertex
   /// furthest from the start as the crow flies, in the middle half of the
