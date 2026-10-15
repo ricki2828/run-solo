@@ -170,9 +170,28 @@ class WeatherQueue {
   /// The weather now at a coarse (0.1 degree) location: one request, sent
   /// only when "Weather for each run" is on; null when off, offline, or the
   /// hour is not served. Nothing is stored.
-  Future<engine.WeatherRecord?> currentAt(double lat, double lon) async {
-    if (!enabled()) return null;
+  Future<engine.WeatherRecord?> currentAt(double lat, double lon) {
+    if (!enabled()) return Future.value(null);
     final at = now();
+    final key = '${lat.toStringAsFixed(1)},${lon.toStringAsFixed(1)}';
+    final hit = _currentMemo[key];
+    // Start's several readers (aim line, target pace) share one request.
+    if (hit != null && at.difference(hit.$1) < const Duration(minutes: 5)) {
+      return hit.$2;
+    }
+    final f = _fetchCurrent(lat, lon, at);
+    _currentMemo[key] = (at, f);
+    return f;
+  }
+
+  final Map<String, (DateTime, Future<engine.WeatherRecord?>)> _currentMemo =
+      {};
+
+  Future<engine.WeatherRecord?> _fetchCurrent(
+    double lat,
+    double lon,
+    DateTime at,
+  ) async {
     final req = engine.WeatherRequest.forStart(lat, lon, now: at);
     final res = await provider.fetch(req.uri);
     if (res is! WeatherFetched) return null;
