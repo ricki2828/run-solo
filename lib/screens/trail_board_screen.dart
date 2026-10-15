@@ -262,8 +262,23 @@ class _RunRow extends StatelessWidget {
         ),
       ),
     );
+    final accent = off <= 0 && uniqueBest ? t.accentArc : t.typeTrail;
+    // "Not this trail" shows on a row only where the match looks marginal;
+    // the run's own screen always offers it.
+    if (margin == null) {
+      return RunCard(
+        accent: accent,
+        onTap: onTap,
+        margin: const EdgeInsets.only(bottom: Space.x8),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Space.x12,
+          vertical: Space.x8,
+        ),
+        child: main,
+      );
+    }
     return RunCard(
-      accent: off <= 0 && uniqueBest ? t.accentArc : t.typeTrail,
+      accent: accent,
       onTap: onTap,
       margin: const EdgeInsets.only(bottom: Space.x8),
       padding: const EdgeInsets.fromLTRB(
@@ -281,15 +296,11 @@ class _RunRow extends StatelessWidget {
             children: [
               const SizedBox(width: 36),
               Expanded(
-                child: margin == null
-                    ? const SizedBox.shrink()
-                    : Text(
-                        'Looks off: ${trailMarginLabel(margin)}',
-                        key: ValueKey('looks-off-${run.id}'),
-                        style: RunSoloType.label13.copyWith(
-                          color: t.inkSecondary,
-                        ),
-                      ),
+                child: Text(
+                  'Looks off: ${trailMarginLabel(margin)}',
+                  key: ValueKey('looks-off-${run.id}'),
+                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                ),
               ),
               NotThisTrailButton(
                 key: ValueKey('not-this-trail-${run.id}'),
