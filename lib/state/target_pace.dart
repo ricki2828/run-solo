@@ -337,7 +337,8 @@ abstract final class TargetPaceText {
     final why = [
       t.intensity.label,
       if (t.adopted) 'moved by you' else 'Daniels VDOT',
-      ?source,
+      if (source != null && source.isNotEmpty)
+        '${source[0].toLowerCase()}${source.substring(1)}',
     ].join(', ');
     final notes = a.notes.isEmpty ? '' : ' (${a.notes.join(', ')})';
     return '$head$notes · $why';

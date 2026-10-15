@@ -186,6 +186,24 @@ void main() {
       expect(c.adoptedFrom, isEmpty);
     });
   });
+  group('words', () {
+    test('the source reads as part of the sentence', () {
+      final vo2 = engine.TargetPaces.fromVdot(
+        40,
+      )![engine.PaceIntensity.vo2max]!;
+      final line = TargetPaceText.sessionLine(
+        engine.TargetPaces.adjust(vo2),
+        Units.km,
+        verb: 'Work reps at',
+        source: 'From your 5K on Sat 12 Sep',
+      );
+      expect(
+        line,
+        contains('VO2 max, Daniels VDOT, from your 5K on Sat 12 Sep'),
+      );
+      expect(line, startsWith('Work reps at '));
+    });
+  });
 }
 
 class _FailingStore implements TargetPaceStore {
