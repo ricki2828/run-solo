@@ -103,6 +103,7 @@ class RecordingSnapshot {
     this.gradePct,
     this.retrace = LiveRetrace.none,
     this.route,
+    this.trail,
   });
 
   final RecorderState state;
@@ -207,6 +208,13 @@ class RecordingSnapshot {
   /// distance and climb to go, off-route, the next turn. Null when the run
   /// follows no route.
   final RouteProgress? route;
+
+  /// The known trail this run was matched to early on (the runner has run it
+  /// before), with ahead/behind the best and last run at the same distance
+  /// along the trail and the turnaround point of an out-and-back. Native
+  /// computes it, so the screen and the voice agree. Null until matched, and
+  /// for a run on no known trail.
+  final TrailProgress? trail;
 
   /// The run follows a route.
   bool get followsRoute => route != null;
@@ -345,6 +353,8 @@ class RecordingSnapshot {
     LiveRetrace? retrace,
     RouteProgress? route,
     bool clearRoute = false,
+    TrailProgress? trail,
+    bool clearTrail = false,
   }) => RecordingSnapshot(
     state: state ?? this.state,
     runId: runId ?? this.runId,
@@ -387,6 +397,7 @@ class RecordingSnapshot {
     gradePct: clearGrade ? null : (gradePct ?? this.gradePct),
     retrace: retrace ?? this.retrace,
     route: clearRoute ? null : (route ?? this.route),
+    trail: clearTrail ? null : (trail ?? this.trail),
   );
 }
 
@@ -594,6 +605,8 @@ class RecordingController extends ChangeNotifier {
       ),
       route: s.route,
       clearRoute: s.route == null,
+      trail: s.trail,
+      clearTrail: s.trail == null,
       hrPaired: s.hrConnected || _snap.hrPaired,
       goalLapMs: goalLap?.activeMs,
       goalLapM: goalLap?.distanceM,
@@ -883,6 +896,8 @@ class RecordingController extends ChangeNotifier {
       ),
       route: t.route,
       clearRoute: t.route == null,
+      trail: t.trail,
+      clearTrail: t.trail == null,
     );
   }
 

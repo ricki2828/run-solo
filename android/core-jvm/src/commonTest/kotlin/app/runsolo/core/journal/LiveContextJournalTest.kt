@@ -11,6 +11,7 @@ import app.runsolo.core.model.NudgePlan
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
+import app.runsolo.core.trail.TrailGhostKit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -107,6 +108,25 @@ class LiveContextJournalTest {
             listOf("boards", "target", "nudges", "cooperCurve", "cooperHistory", "coachingMuted", "builtAtMs", "engineVersion"),
             ctx.keys.toList(),
         )
+    }
+
+    @Test
+    fun `trails round trip as the last key and an old context has none`() {
+        val trails = List(2) { i -> TrailGhostKit.trail(listOf(0.0 to 0.0, 1_000.0 to 0.0), id = "t$i", turnAlongM = if (i == 0) 500.0 else null, lastMps = if (i == 0) 3.5 else null) }
+        val line = JournalLine.LiveContextLine(t0, w0, context.copy(trails = trails))
+        val back = JournalCodec.decode(JournalCodec.encode(line)) as JournalLine.LiveContextLine
+        assertEquals(trails, back.context.trails)
+        val keys = (Json.parseObject(JournalCodec.encode(line))["ctx"] as Map<*, *>).keys.toList()
+        assertEquals("trails", keys.last())
+        assertTrue(!(Json.parseObject(JournalCodec.encode(JournalLine.LiveContextLine(t0, w0, context)))["ctx"] as Map<*, *>).containsKey("trails"))
+        assertFailsWith<IllegalArgumentException> { context.copy(trails = List(app.runsolo.core.trail.TrailRef.MAX_TRAILS + 1) { trails[0] }) }
+    }
+
+    @Test
+    fun `six full size trails stay a bounded journal line`() {
+        val trails = List(6) { i -> TrailGhostKit.trail(listOf(0.0 to 0.0, 9_975.0 to 0.0), id = "t$i", turnAlongM = 4_000.0, elev = { d -> d / 100 * 1.234 }, climbs = List(12) { c -> app.runsolo.core.trail.TrailClimb(c * 700.0, c * 700.0 + 300.0, 25.5, 8.5) }) }
+        val bytes = JournalCodec.encode(JournalLine.LiveContextLine(t0, w0, context.copy(trails = trails))).length
+        assertTrue(bytes < 140_000, "lctx line with six trails is $bytes bytes")
     }
 
     @Test

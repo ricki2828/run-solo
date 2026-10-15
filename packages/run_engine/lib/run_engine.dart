@@ -46,6 +46,7 @@ export 'src/engine/rep_detector.dart';
 export 'src/engine/retrace.dart';
 export 'src/engine/trace.dart';
 export 'src/engine/route_match.dart';
+export 'src/engine/trail_ghost.dart';
 export 'src/engine/trail_run.dart';
 export 'src/engine/spoken_verdict.dart';
 export 'src/engine/true_pace.dart';

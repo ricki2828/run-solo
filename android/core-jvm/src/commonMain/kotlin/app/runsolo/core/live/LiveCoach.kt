@@ -340,13 +340,16 @@ class LiveCoach(
         return Nudge(rule, index, text)
     }
 
+    /** Voice detail Minimal: the km word and structure cues only, so no compare line is ever said (the overlay still shows it). */
+    private val minimalVoice: Boolean get() = checkIn?.level == VoiceLevel.minimal
+
     private fun compareAtKm(km: Int, active: Long): Fire? {
         if (context == null || km > 10) return null
         val boardM = if (km <= 5) 5_000.0 else 10_000.0
         val board = context.boards.firstOrNull { it.kind == LiveBoardKind.distance && it.targetM == boardM } ?: return null
         val r = LiveCompare.distance(board, km, active) ?: return null
         if (!claim(r)) return null
-        return Fire(r, LiveWords.compare(r), speak = !muted && mode == RunMode.free && kmSplits && checkIn?.level != VoiceLevel.minimal)
+        return Fire(r, LiveWords.compare(r), speak = !muted && mode == RunMode.free && kmSplits && !minimalVoice)
     }
 
     /**
@@ -376,20 +379,20 @@ class LiveCoach(
             val bestLine = r.of > 2 && r.rank == 1
             val quiet = bestLine && (bestStartSaid || repFadeDue(s, rep))
             if (bestLine && !quiet && !muted) bestStartSaid = true
-            return Fire(r, LiveWords.compare(r), overlay = !shortRecovery, speak = !muted && !quiet)
+            return Fire(r, LiveWords.compare(r), overlay = !shortRecovery, speak = !muted && !quiet && !minimalVoice)
         }
         if (kind != CueKind.projection || index == null || value == null) return null
         if (s.cueProfile == CueProfile.cooper) {
             if (index !in COOPER_RANK_MINUTES) return null
             val r = LiveCompare.cooper(context.cooperHistory.orEmpty(), index, CooperProjection.vo2(value)) ?: return null
             if (!claim(r)) return null
-            return Fire(r, LiveWords.compare(r), speak = !muted)
+            return Fire(r, LiveWords.compare(r), speak = !muted && !minimalVoice)
         }
         // A km of a distance step (parkrun): against the target's even split.
         val target = context.target ?: return null
         val r = LiveCompare.target(target, index, stepElapsedMs) ?: return null
         if (!claim(r)) return null
-        return Fire(r, LiveWords.compare(r), speak = !muted)
+        return Fire(r, LiveWords.compare(r), speak = !muted && !minimalVoice)
     }
 
     /**
@@ -405,7 +408,7 @@ class LiveCoach(
         val board = context?.boards?.firstOrNull { it.kind == LiveBoardKind.distance && it.key == key } ?: return null
         val r = LiveCompare.distance(board, index, activeMs) ?: return null
         if (!claim(r)) return null
-        return Fire(r, LiveWords.compare(r), speak = !muted, base = LiveWords.goalKm(index))
+        return Fire(r, LiveWords.compare(r), speak = !muted && !minimalVoice, base = LiveWords.goalKm(index))
     }
 
     private fun claim(r: CompareResult): Boolean = done.add(doneKey(r.boardKey, r.index))

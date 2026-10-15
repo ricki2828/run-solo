@@ -6,6 +6,7 @@ import app.runsolo.core.json.list
 import app.runsolo.core.json.long
 import app.runsolo.core.json.obj
 import app.runsolo.core.json.string
+import app.runsolo.core.trail.TrailRef
 import kotlin.math.abs
 
 /**
@@ -27,6 +28,8 @@ data class LiveContext(
     val coachingMuted: Boolean = false,
     val builtAtMs: Long,
     val engineVersion: Int,
+    /** Trails the runner has run before, for the in-run ahead/behind and the turnaround; at most [TrailRef.MAX_TRAILS]. */
+    val trails: List<TrailRef> = emptyList(),
 ) {
     init {
         require(boards.size <= MAX_BOARDS) { "at most $MAX_BOARDS live boards, got ${boards.size}" }
@@ -37,6 +40,7 @@ data class LiveContext(
             require(abs(f.last() - 1.0) < 1e-9) { "cooperCurve must end at F(12) = 1" }
         }
         require(cooperHistory == null || cooperHistory.all { it.isFinite() }) { "cooperHistory must be finite" }
+        require(trails.size <= TrailRef.MAX_TRAILS) { "at most ${TrailRef.MAX_TRAILS} trails, got ${trails.size}" }
     }
 
     /** The previous Cooper test's VO2, for "up 2 on last time". */
@@ -51,7 +55,7 @@ data class LiveContext(
         "coachingMuted" to coachingMuted,
         "builtAtMs" to builtAtMs,
         "engineVersion" to engineVersion,
-    )
+    ).also { if (trails.isNotEmpty()) it["trails"] = trails.map { t -> t.toJson() } }
 
     companion object {
         const val MAX_BOARDS = 3
@@ -67,6 +71,7 @@ data class LiveContext(
             coachingMuted = m["coachingMuted"] as? Boolean ?: throw IllegalArgumentException("coachingMuted"),
             builtAtMs = m.long("builtAtMs"),
             engineVersion = m.int("engineVersion"),
+            trails = m.list("trails").map { TrailRef.fromJson(it.asObj("trails[]")) },
         )
     }
 }

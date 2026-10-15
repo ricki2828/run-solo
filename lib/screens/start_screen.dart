@@ -555,7 +555,9 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                   _targetSwapped,
               coachingMuted: !s.tipsSpoken,
             )
-          : null;
+          // The compare is off, but a trail the runner knows still goes in (the
+          // in-run ghost): trails alone, no boards, nothing said by the compare.
+          : services.live?.trailsOnly(mode);
       if (!debugLiveCompareAtStart && kPerfDiagnostics) {
         // Timed for Settings → Diagnostics, result unused, Start not held.
         unawaited(

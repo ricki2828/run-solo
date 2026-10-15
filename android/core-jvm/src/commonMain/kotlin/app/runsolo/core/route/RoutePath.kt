@@ -86,6 +86,18 @@ class RoutePath(val route: FollowRoute) {
         return (totalClimbM!! - (c[i] + (c[i + 1] - c[i]) * f)).coerceAtLeast(0.0)
     }
 
+    /** [values] (one per route point) linearly interpolated at [alongM]; a negative neighbour (no value there) gives null. */
+    fun interpolate(alongM: Double, values: List<Long>): Double? {
+        val a = alongM.coerceIn(0.0, totalM)
+        val i = segmentAt(a)
+        val v0 = values[i]
+        val v1 = values[i + 1]
+        if (v0 < 0 || v1 < 0) return null
+        val segLen = cum[i + 1] - cum[i]
+        val f = if (segLen > 0) (a - cum[i]) / segLen else 0.0
+        return v0 + (v1 - v0) * f
+    }
+
     /** Index of the segment `[i, i + 1]` holding [alongM] (binary search on [cum]). */
     private fun segmentAt(alongM: Double): Int {
         var lo = 0
@@ -129,7 +141,8 @@ class RoutePath(val route: FollowRoute) {
         return RouteHit(cum[i] + t * sqrt(len2), off)
     }
 
-    private fun pointAt(alongM: Double): Pair<Double, Double> {
+    /** The position (local x, y metres) [alongM] along the route. */
+    fun pointAt(alongM: Double): Pair<Double, Double> {
         val a = alongM.coerceIn(0.0, totalM)
         val i = segmentAt(a)
         val segLen = cum[i + 1] - cum[i]

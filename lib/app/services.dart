@@ -24,6 +24,7 @@ import '../state/companion.dart';
 import '../state/courses.dart';
 import '../state/progress/seen_moments_store.dart';
 import '../state/history_store.dart';
+import '../state/trail_ghost.dart';
 import '../state/live_context.dart';
 import '../state/hr_zone_choice.dart';
 import '../state/max_hr.dart';
@@ -192,7 +193,7 @@ class AppServices {
   final CompanionController? companion;
 
   /// The live compare's context at Start (LC1); null in tests and the fake
-  /// APK. Only used when `kLiveCompare` is on.
+  /// APK. Only used when `kLiveCompare` is on (the default).
   final LiveContextSource? live;
   String? _lastFinishedRunId;
 
@@ -481,7 +482,13 @@ class AppServices {
       storage: PigeonStorageGateway(),
       placeGateway: PigeonPlaceGateway(),
       zoneMemento: FileZoneMementoStore(Directory('${support.path}/state')),
-      live: LiveContextSource(indexFile: history.indexFile),
+      live: LiveContextSource(
+        indexFile: history.indexFile,
+        trailGhosts: TrailGhostSource(
+          indexFile: history.indexFile,
+          runDirs: [history.runsDir, history.archiveDir],
+        ),
+      ),
       weather: WeatherQueue(
         file: File('${support.path}/state/weather-queue.json'),
         store: history,

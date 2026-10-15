@@ -9,9 +9,11 @@
 /// prepared, a timeout, an empty plan or any error: the answer is null: Start goes ahead with no compare,
 /// no overlay and nothing said (#59 review P2).
 ///
-/// Off by default ([kLiveCompare]): comparisons fire only once the in-app
-/// mute (LV2) ships in the same build, because Laps and Intervals runs have
-/// no room for a "Mute tips" notification action (#48 review).
+/// On by default ([kLiveCompare]) since the Voice detail setting shipped
+/// (Settings → Voice: Coach, Everything, Minimal). That was the in-app mute
+/// this waited for (LV2, #48 review): Laps and Intervals runs have no room for
+/// a "Mute tips" notification action, and Minimal now silences every compare
+/// line (the overlay still shows it) alongside the Coaching tips switch.
 library;
 
 import 'dart:async';
@@ -27,10 +29,14 @@ import '../platform/gateway.dart';
 import '../platform/session_codec.dart';
 import 'history_store.dart' show runModeOf;
 import 'run_index.dart';
+import 'trail_ghost.dart';
 
-/// `--dart-define=LIVE_COMPARE=true` turns the live compare on. Default off
-/// until LV2 (in-app mute) merges.
-const bool kLiveCompare = bool.fromEnvironment('LIVE_COMPARE');
+/// `--dart-define=LIVE_COMPARE=false` turns the live compare off. It is also
+/// what carries the known trails for the in-run ghost.
+const bool kLiveCompare = bool.fromEnvironment(
+  'LIVE_COMPARE',
+  defaultValue: true,
+);
 
 class LiveContextSource {
   LiveContextSource({
@@ -38,7 +44,12 @@ class LiveContextSource {
     this.budget = const Duration(milliseconds: 150),
     this.names = kEventNames,
     DateTime Function()? now,
+    this.trailGhosts,
   }) : now = now ?? DateTime.now;
+
+  /// The known trails handed to the recorder for a Free or Trail run (the
+  /// in-run ghost); null = none (tests, and apps with no run directory).
+  final TrailGhostSource? trailGhosts;
 
   /// Test seam: a source already prepared over [candidates] (no index).
   @visibleForTesting
@@ -46,6 +57,7 @@ class LiveContextSource {
     List<engine.LiveCandidate> candidates, {
     this.names = kEventNames,
     DateTime Function()? now,
+    this.trailGhosts,
   }) : indexFile = File('/nonexistent/index.json'),
        budget = const Duration(milliseconds: 150),
        now = now ?? DateTime.now {
@@ -67,9 +79,14 @@ class LiveContextSource {
   /// Reads the index into candidates in a background isolate when it has
   /// changed since the last prepare. Call when Start opens; cheap when
   /// nothing changed (one stat). Never throws.
-  Future<void> prepare() => _cachedVersion == _preparedForTest
-      ? Future<void>.value()
-      : _preparing ??= _prepare().whenComplete(() => _preparing = null);
+  Future<void> prepare() {
+    // The known trails read two run files each: never awaited by callers,
+    // and ready by the time the runner has picked a mode.
+    unawaited(trailGhosts?.prepare() ?? Future<void>.value());
+    return _cachedVersion == _preparedForTest
+        ? Future<void>.value()
+        : _preparing ??= _prepare().whenComplete(() => _preparing = null);
+  }
 
   Future<void> _prepare() async {
     try {
@@ -133,7 +150,7 @@ class LiveContextSource {
         coachingMuted,
       ).timeout(budget);
       if (kPerfDiagnostics) PerfDiagnostics.instance.recordBuild(sw.elapsed);
-      return ctx;
+      return withTrails(ctx, mode);
     } on TimeoutException {
       debugPrint('live: context over ${budget.inMilliseconds} ms, none');
       if (kPerfDiagnostics) {
@@ -142,7 +159,8 @@ class LiveContextSource {
           outcome: BuildOutcome.timedOut,
         );
       }
-      return null;
+      // The trails were prepared ahead and cost no I/O: a slow compare keeps the ghost.
+      return withTrails(null, mode);
     } catch (e) {
       debugPrint('live: no context ($e)');
       if (kPerfDiagnostics) {
@@ -151,9 +169,32 @@ class LiveContextSource {
           outcome: BuildOutcome.failed,
         );
       }
-      return null;
+      return withTrails(null, mode);
     }
   }
+
+  /// [ctx] with the known trails added for a Free or Trail run (the in-run
+  /// ghost). With no compare to make ([ctx] null) and a trail to know, a
+  /// context of the trails alone: no boards, no target, nothing said by the
+  /// compare. Cheap (no I/O): the trails were prepared ahead.
+  LiveContext? withTrails(LiveContext? ctx, RecordMode mode) {
+    if (mode != RecordMode.free && mode != RecordMode.trail) return ctx;
+    final known = trailGhosts?.trails ?? const <engine.GhostTrail>[];
+    if (known.isEmpty) return ctx;
+    final trails = [for (final t in known) TrailGhostSource.toPigeon(t)];
+    if (ctx != null) return ctx..trails = trails;
+    return LiveContext(
+      boards: const [],
+      coachingMuted: true,
+      builtAtMs: now().millisecondsSinceEpoch,
+      engineVersion: engine.engineVersion,
+      trails: trails,
+    );
+  }
+
+  /// The context for a Start when the live compare is off: the known trails
+  /// alone, or null when there are none.
+  LiveContext? trailsOnly(RecordMode mode) => withTrails(null, mode);
 
   Future<LiveContext?> _build(
     RecordMode mode,

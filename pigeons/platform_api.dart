@@ -349,6 +349,7 @@ class LiveContext {
     required this.coachingMuted,
     required this.builtAtMs,
     required this.engineVersion,
+    this.trails,
   });
 
   /// At most 3.
@@ -367,6 +368,130 @@ class LiveContext {
   /// Epoch millis when the app built it.
   int builtAtMs;
   int engineVersion;
+
+  /// Trails the runner has run before (at most 6), for the in-run ahead/behind
+  /// and the turnaround cue on a trail they know. Null or empty = none.
+  List<TrailRef>? trails;
+}
+
+/// One earlier run of a known trail as a progress profile: `ms[i]` is the
+/// moving time since that run's start at vertex i of the [TrailRef] geometry,
+/// -1 where that run did not reach.
+class TrailProfile {
+  TrailProfile({required this.runId, required this.dateMs, required this.ms});
+  String runId;
+
+  /// Run start, epoch millis.
+  int dateMs;
+  List<int> ms;
+}
+
+/// A trail the runner has run before, handed to the recorder at Start inside
+/// the live context (bounded: at most 400 vertices, never a run file).
+/// `latLon` is flat `[lat, lon, ...]`; `best` and `last` are the fastest and the
+/// most recent run on it (`last` null = the last run is the best);
+/// `turnAlongM` is where an out-and-back trail turns round, else null.
+/// `elevM` is the trail's elevation smoothed over at least 50 m (metres, one
+/// value per `latLon` vertex), `elevSrc` is `baro` or `gps`, and `climbs` are
+/// its climbs, in trail order: empty unless the elevation is trustworthy
+/// (barometer), and null/empty when the run had no elevation at all.
+class TrailRef {
+  TrailRef({
+    required this.id,
+    required this.name,
+    required this.latLon,
+    required this.best,
+    this.last,
+    this.turnAlongM,
+    this.elevM,
+    this.elevSrc,
+    this.climbs,
+  });
+  String id;
+  String name;
+  List<double> latLon;
+  TrailProfile best;
+  TrailProfile? last;
+  double? turnAlongM;
+  List<double>? elevM;
+  String? elevSrc;
+  List<TrailClimb>? climbs;
+}
+
+/// A climb on a known trail: where it starts and ends along the trail (metres
+/// from the trail's start), what it gains and its average grade in percent.
+class TrailClimb {
+  TrailClimb({
+    required this.startM,
+    required this.endM,
+    required this.gainM,
+    required this.avgGradePct,
+  });
+  double startM;
+  double endM;
+  double gainM;
+  double avgGradePct;
+}
+
+/// The known trail the run has been matched to (early in the run), and how it
+/// compares with the runner's best and last run on it at the same distance along
+/// the trail (like for like: not the same odometer distance). Null until a
+/// trail is matched, and for a run on no known trail. `aheadBestMs` and
+/// `aheadLastMs` are positive when AHEAD, negative when behind; null while
+/// off the trail, in the first 100 m, or beyond where that run went.
+/// `lastIsBest`: the last run is the best, so show one figure. `toTurnM` is
+/// the distance to the turnaround point of an out-and-back trail; `turnCue`
+/// is set from reaching it for about a minute (the screen's big "turn around";
+/// the voice and the buzz fire once, natively, unless the run follows a route).
+/// `elevProfile` is the trail's smoothed elevation at up to 48 evenly spaced
+/// points along its whole length (`elevStepM` apart, metres above sea level as
+/// recorded), `climbs` its climbs; both null when the trail has no usable
+/// elevation. `toClimbM` is the distance to the start of the next climb ahead
+/// (null when none is ahead or the runner is on one); `inClimb` is true while
+/// on a climb.
+///
+/// `racing` is which run leads (`best` to start with; `last` once the runner
+/// has slipped clearly behind the best and the last run is closer; back to
+/// `best` on recovery). Both ahead figures are always sent.
+class TrailProgress {
+  TrailProgress({
+    required this.trailId,
+    required this.name,
+    required this.alongM,
+    required this.toGoM,
+    required this.off,
+    this.aheadBestMs,
+    this.aheadLastMs,
+    required this.lastIsBest,
+    required this.bestDateMs,
+    required this.lastDateMs,
+    this.toTurnM,
+    required this.turnCue,
+    this.elevProfile,
+    this.elevStepM,
+    this.climbs,
+    this.toClimbM,
+    required this.inClimb,
+    required this.racing,
+  });
+  String trailId;
+  String name;
+  double alongM;
+  double toGoM;
+  bool off;
+  int? aheadBestMs;
+  int? aheadLastMs;
+  bool lastIsBest;
+  int bestDateMs;
+  int lastDateMs;
+  double? toTurnM;
+  bool turnCue;
+  List<double>? elevProfile;
+  double? elevStepM;
+  List<TrailClimb>? climbs;
+  double? toClimbM;
+  bool inClimb;
+  String racing;
 }
 
 class StartResult {
@@ -430,6 +555,7 @@ class RecorderStatus {
     this.descentAheadM,
     this.heightVsStartM,
     this.route,
+    this.trail,
   });
   RecorderState state;
   String? runId;
@@ -499,6 +625,9 @@ class RecorderStatus {
 
   /// Where the runner is on the followed route; null when the run follows none.
   RouteProgress? route;
+
+  /// The known trail this run is on, with ahead/behind; null until matched.
+  TrailProgress? trail;
 }
 
 /// A route to follow (Follow a route): chosen on Start from the route library,
@@ -961,6 +1090,7 @@ class TickEvent extends RecorderEvent {
     this.descentAheadM,
     this.heightVsStartM,
     this.route,
+    this.trail,
   });
 
   /// Wall time since Start, pauses included.
@@ -1014,6 +1144,9 @@ class TickEvent extends RecorderEvent {
 
   /// As `RecorderStatus.route`.
   RouteProgress? route;
+
+  /// As `RecorderStatus.trail`.
+  TrailProgress? trail;
 }
 
 class LapEvent extends RecorderEvent {

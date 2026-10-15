@@ -160,6 +160,25 @@ class LiveCoachTest {
     }
 
     @Test
+    fun `Minimal voice detail mutes the rep compare but the result is still there for the overlay`() {
+        val board = reps(listOf(240.0, 240.0, 240.0, 240.0), listOf(250.0, 250.0, 250.0, 250.0))
+        fun fire(level: VoiceLevel?): LiveCoach.Fire {
+            val coach = LiveCoach(ctx(board), RunMode.intervals, fourHundreds)
+            if (level != null) coach.checkIn = CheckInPlan(CheckInMetric.DEFAULT, listOf(100.0, 120.0, 140.0, 160.0), level)
+            val l = Laps(coach)
+            l.warmUp()
+            l.rep(0, 235.0)
+            return assertNotNull(repEnd(coach, 1))
+        }
+        assertTrue(fire(null).speak, "no voice setting: as before")
+        assertTrue(fire(VoiceLevel.coach).speak)
+        assertTrue(fire(VoiceLevel.everything).speak)
+        val quiet = fire(VoiceLevel.minimal)
+        assertFalse(quiet.speak)
+        assertEquals(1, quiet.result.rank, "the overlay's result is untouched")
+    }
+
+    @Test
     fun `short profile speaks only after the final rep a short recovery is voice only`() {
         val short = fourHundreds.copy(cueProfile = CueProfile.short)
         val board = reps(listOf(240.0, 240.0, 240.0, 240.0), listOf(250.0, 250.0, 250.0, 250.0))

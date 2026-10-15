@@ -18,6 +18,11 @@ data class MomentInput(
     val ghostAheadSec: Double? = null,
     /** Trail ghost: metres to the end of a known trail; null on an unknown trail. */
     val toEndM: Double? = null,
+    /** Trail ghost: the figure above is against the last run (the runner slipped behind the best), not the best. */
+    val racingLast: Boolean = false,
+    /** Trail ghost: the next known climb within call-out range (where it starts along the trail and what it gains); null = none. */
+    val knownClimbStartM: Double? = null,
+    val knownClimbGainM: Double? = null,
 )
 
 /**
@@ -28,7 +33,8 @@ data class MomentInput(
  * [app.runsolo.record.CuePlayer.moment] directly. One per run; pure.
  */
 class TrailMoments {
-    private val gate = AheadBehindGate()
+    private var gate = AheadBehindGate()
+    private var switchId = 0
     private var climbAheadAtM = Double.NEGATIVE_INFINITY
     private var climbId = 0
     private var climbStartAscent: Double? = null
@@ -37,7 +43,10 @@ class TrailMoments {
 
     fun tick(i: MomentInput): List<TalkLine> {
         val out = ArrayList<TalkLine>(2)
-        climbAhead(i)?.let { out += it }
+        // On a known trail the climb ahead comes from its profile: it replaces the retrace total in range, never both.
+        val known = knownClimb(i)
+        if (known != null) out += known else climbAhead(i)?.let { out += it }
+        if (i.knownClimbStartM != null) climbAheadAtM = i.distM
         climbDone(i)?.let { out += it }
         flip(i)?.let { out += it }
         finalPush(i)?.let { out += it }
@@ -49,6 +58,23 @@ class TrailMoments {
         climbAheadAtM = distM
         climbStartAscent = null
         flatSinceM = null
+    }
+
+    /**
+     * A climb of the known trail, called out once each from its own key (the budget's once-per-key rule: offered every tick
+     * in range, so a line it dropped or held is tried again, and one it said is not repeated) (so two climbs on one trail are both said, and
+     * neither waits on the retrace rule's 1 km repeat gap): "Climb ahead. 40 metres up."
+     */
+    private fun knownClimb(i: MomentInput): TalkLine? {
+        val start = i.knownClimbStartM ?: return null
+        val gain = i.knownClimbGainM?.takeIf { it >= MIN_CLIMB_M } ?: return null
+        val id = start.roundToInt()
+        return TalkLine(CueSlot.climbAhead, "climbAhead:known:$id", "Climb ahead. ${CheckInWords.metres(gain)} up.")
+    }
+
+    /** The lead moved to another known trail: its gap is another reference, so the flip gate starts over. Nothing is said. */
+    fun leaderChanged() {
+        gate = AheadBehindGate()
     }
 
     private fun climbAhead(i: MomentInput): TalkLine? {
@@ -86,7 +112,22 @@ class TrailMoments {
     private fun flip(i: MomentInput): TalkLine? {
         val g = i.ghostAheadSec ?: return null
         val side = gate.update(i.nowMs, i.distM, g) ?: return null
-        return TalkLine(CueSlot.ghostFlip, "ghostFlip:${i.distM.roundToInt()}", if (side > 0) "Ahead of your best now." else "Your best just passed you.")
+        val who = if (i.racingLast) "last run" else "best"
+        return TalkLine(CueSlot.ghostFlip, "ghostFlip:${i.distM.roundToInt()}", if (side > 0) "Ahead of your $who now." else "Your $who just passed you.")
+    }
+
+    /**
+     * The ghost changed who it races: the best to start with, the last run once the runner has slipped clearly behind
+     * the best and the last is closer, and back. One line, and the ahead/behind gate starts over: a gap against the
+     * other run is not a flip.
+     */
+    fun switched(toLast: Boolean): TalkLine {
+        gate = AheadBehindGate()
+        return TalkLine(
+            CueSlot.ghostFlip,
+            "ghostSwitch:${switchId++}",
+            if (toLast) "Racing your last run now." else "Back to racing your best.",
+        )
     }
 
     private fun finalPush(i: MomentInput): TalkLine? {
@@ -95,7 +136,7 @@ class TrailMoments {
         if (finalPushSaid || left > FINAL_PUSH_M || left < FINAL_PUSH_M / 2) return null
         if (g > 0 || g < -FINAL_PUSH_WITHIN_SEC) return null
         finalPushSaid = true
-        return TalkLine(CueSlot.finalPush, "finalPush", "One k left. ${CueWords.gap(abs(g).roundToInt().toLong())} to find for your best.")
+        return TalkLine(CueSlot.finalPush, "finalPush", "One k left. ${CueWords.gap(abs(g).roundToInt().toLong())} to find for your ${if (i.racingLast) "last run" else "best"}.")
     }
 
     companion object {

@@ -55,6 +55,8 @@ import app.runsolo.core.record.SampleTicker
 import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.core.route.FollowRoute
 import app.runsolo.core.route.RouteFollower
+import app.runsolo.core.trail.TrailGhost
+import app.runsolo.core.trail.TrailGhostFeed
 import app.runsolo.core.route.RoutePath
 import app.runsolo.core.route.RouteWords
 import app.runsolo.core.run.Finaliser
@@ -74,6 +76,8 @@ import app.runsolo.platform.RouteEndCue
 import app.runsolo.platform.RouteProgress
 import app.runsolo.platform.StateEvent
 import app.runsolo.platform.TickEvent
+import app.runsolo.platform.TrailClimb
+import app.runsolo.platform.TrailProgress
 import app.runsolo.platform.toPigeon
 import kotlin.math.abs
 
@@ -119,6 +123,20 @@ class RecordingSession(
     private val retraceFeed = RetraceFeed(onFailure = { Log.e(TAG, "retrace disabled for this run", it) })
     private val retrace: RetraceDetector get() = retraceFeed.detector
     private var lastElevRel: Double? = null
+
+    /**
+     * Known-trail ghost (ahead/behind the best and last run on a trail the runner has run before, and the turnaround
+     * point of an out-and-back): Free and Trail runs only, fed with accepted fixes on this thread. A failure switches
+     * it off for the run, never the recording.
+     */
+    private val trailFeed = TrailGhostFeed(
+        if (mode == RunMode.free || mode == RunMode.trail) liveContext?.trails.orEmpty() else emptyList(),
+        onFailure = { Log.e(TAG, "trail ghost disabled for this run", it) },
+    )
+    /** The ghost's own active clock (ms): grows while recording and not auto-paused, the same live and on restore. */
+    private var ghostActiveMs = 0L
+    private var ghostLastT: Long? = null
+    private var lastGhostTrailId: String? = null
     private val moving = MovingDetector()
 
     /** Stop/go for auto-pause only; [moving] keeps its own settings for the moving-time summary. */
@@ -294,9 +312,14 @@ class RecordingSession(
                     liveElev.offer(e.t, e.hpa, e.altM, e.accuracyM, ticker.filter.totalM, paused)?.let { lastElevRel = it }
                     // The same rule as live (RetraceFeed), so a restore rebuilds the track the live path built.
                     if (e.hasFix) retraceFeed.offer(e.lat!!, e.lon!!, e.accuracyM!!, lastElevRel, liveElev.source == ElevSource.baro, ticker.distanceM, active = !paused)
+                    // The trail ghost is rebuilt quietly too (its turnaround, if already given, is not given again).
+                    if (e.hasFix && trailFeed.active) {
+                        val active = ghostClock(e.t, !paused)
+                        if (!paused) trailFeed.offer(e.t, e.lat!!, e.lon!!, e.accuracyM!!, active, ticker.distanceM)
+                    }
                 }
                 is RunEvent.Pause -> { paused = true; reanchor = true }
-                is RunEvent.Resume -> { paused = false; ticker.filter.reanchor(); reanchor = false }
+                is RunEvent.Resume -> { paused = false; ghostLastT = null; ticker.filter.reanchor(); reanchor = false }
                 is RunEvent.AutoPause -> paused = true
                 is RunEvent.AutoResume -> { paused = false; if (reanchor) ticker.filter.reanchor(); reanchor = false }
                 is RunEvent.Lap -> {
@@ -307,6 +330,8 @@ class RecordingSession(
             }
         }
         follower?.restartClock() // the fixes' clock starts over after a kill
+        ghostLastT = null
+        trailFeed.drainSwitches() // lead changes the replay queued were said (or not) before the kill: never said late
         ticker.filter.reanchor() // the runner moved during the dark span; do not count the jump
         lapStartDist = lastLapDist
         dispatch.ticked(t, ticker.distanceM)
@@ -534,6 +559,15 @@ class RecordingSession(
         if (follower != null && core.state == RecorderState.recording && last.hasFix) {
             for (e in follower.offer(last.t, last.lat!!, last.lon!!, last.accuracyM!!)) routeEvent(e)
         }
+        // A known trail: ahead/behind, and the turnaround cue when the run follows no route of its own.
+        if (trailFeed.active && core.state == RecorderState.recording && last.hasFix) {
+            val active = ghostClock(last.t, !core.autoPaused)
+            if (!core.autoPaused) {
+                for (e in trailFeed.offer(last.t, last.lat!!, last.lon!!, last.accuracyM!!, active, ticker.distanceM)) {
+                    if (follower == null && e is RouteFollower.Event.RouteEnd) routeEvent(e)
+                }
+            }
+        }
         var pace: Double? = null
         if (last.hasFix) {
             pace = livePace.update(last.t, ticker.distanceM)
@@ -595,6 +629,7 @@ class RecordingSession(
                     descentAheadM = retrace.state.descentAheadM,
                     heightVsStartM = retrace.state.heightVsStartM,
                     route = routeProgress(),
+                    trail = trailProgress(),
                 ),
             )
         }
@@ -700,6 +735,7 @@ class RecordingSession(
     private fun autoResumeNow(t: Long, speak: Boolean) {
         if (!core.autoResume(t)) return
         ticker.onAutoResume()
+        ghostLastT = null
         writer.append(JournalLine.AutoResume(t, System.currentTimeMillis()))
         if (speak && replay == null) cues.announce("Resumed")
         Log.i(TAG, "auto-resume at ${core.status(t).elapsedMs} ms")
@@ -730,6 +766,7 @@ class RecordingSession(
         if (core.autoPaused) return autoResumeNow(t, speak = false)
         core.resume(t)
         ticker.onResume()
+        ghostLastT = null // the paused stretch is not the ghost's time
         writer.append(JournalLine.Resume(t, System.currentTimeMillis()))
         emitState()
         onNotificationChanged?.invoke()
@@ -1129,13 +1166,32 @@ class RecordingSession(
         try {
             // Steep and working hard: the budget keeps the km and half km quiet (Free and Trail alike).
             cues.hardEffort = (liveElev.grade ?: 0.0) > HARD_GRADE && (checkInTracker?.smoothedZone() ?: 0) >= HARD_ZONE
+            // Taken every tick so a lead change in a run that is not spoken about never waits to be said late.
+            val switches = trailFeed.drainSwitches()
             if (mode != RunMode.trail || core.state != RecorderState.recording || core.autoPaused) return
             val plan = checkIn ?: return
-            if (plan.level != VoiceLevel.coach) return
+            if (plan.level == VoiceLevel.minimal) return
+            val ghost = trailFeed.state?.takeIf { !it.off }
+            // The next known climb when it is close: spoken as its own beat, "Climb ahead. 40 metres up."
+            val knownClimb = ghost?.let { g ->
+                g.climbs.firstOrNull { it.startM > g.alongM && it.startM - g.alongM <= GHOST_CLIMB_AHEAD_M }
+            }
+            // A different trail leading now is a different reference: the ahead/behind gate starts over, nothing is said.
+            val leaderId = ghost?.trailId
+            if (leaderId != null && lastGhostTrailId != null && leaderId != lastGhostTrailId) trailMoments.leaderChanged()
+            if (leaderId != null) lastGhostTrailId = leaderId
+            // The leading figure (best to start, the last run once slipped), in seconds, positive = ahead.
+            val lead = ghost?.let { if (it.racing == TrailGhost.Racing.last) it.aheadLastMs else it.aheadBestMs }
+            for (sw in switches) cues.moment(trailMoments.switched(sw.toLast))?.let { said -> logSaid(said.text) }
             val input = MomentInput(
                 nowMs = t,
                 distM = ticker.distanceM,
                 climbAheadM = retrace.state.takeIf { it.retracing && it.direction == RetraceDirection.reverse }?.climbAheadM,
+                knownClimbStartM = knownClimb?.startM,
+                knownClimbGainM = knownClimb?.gainM,
+                ghostAheadSec = lead?.let { it / 1000.0 },
+                toEndM = ghost?.toGoM,
+                racingLast = ghost?.racing == TrailGhost.Racing.last,
                 ascentM = liveElev.ascentM.takeIf { liveElev.source == ElevSource.baro },
                 grade = liveElev.grade,
             )
@@ -1230,6 +1286,40 @@ class RecordingSession(
             descentAheadM = retrace.state.descentAheadM,
             heightVsStartM = retrace.state.heightVsStartM,
             route = routeProgress(),
+            trail = trailProgress(),
+        )
+    }
+
+    /** The ghost's clock: advances by the time since the last fix (a kill gap or a long silence counts for at most 5 s) while [running]. */
+    private fun ghostClock(t: Long, running: Boolean): Long {
+        val prev = ghostLastT
+        ghostLastT = t
+        if (prev != null && running) ghostActiveMs += (t - prev).coerceIn(0L, GHOST_MAX_STEP_MS)
+        return ghostActiveMs
+    }
+
+    /** The known trail the run is on, with its ahead/behind; null until matched (and when the ghost is off). */
+    private fun trailProgress(): TrailProgress? {
+        val s = trailFeed.state ?: return null
+        return TrailProgress(
+            trailId = s.trailId,
+            name = s.name,
+            alongM = s.alongM,
+            toGoM = s.toGoM,
+            off = s.off,
+            aheadBestMs = s.aheadBestMs,
+            aheadLastMs = s.aheadLastMs,
+            lastIsBest = s.lastIsBest,
+            bestDateMs = s.bestDateMs,
+            lastDateMs = s.lastDateMs,
+            toTurnM = s.toTurnM,
+            turnCue = s.turnCue,
+            elevProfile = s.elevProfile,
+            elevStepM = s.elevStepM,
+            climbs = s.climbs.takeIf { it.isNotEmpty() }?.map { TrailClimb(it.startM, it.endM, it.gainM, it.avgGradePct) },
+            toClimbM = s.toClimbM,
+            inClimb = s.inClimb,
+            racing = s.racing.name,
         )
     }
 
@@ -1312,6 +1402,10 @@ class RecordingSession(
 
         /** The strip shows the next turn from this far out. */
         private const val TURN_STRIP_M = 300.0
+        private const val GHOST_MAX_STEP_MS = 5_000L
+
+        /** A known climb is called out from this far ahead. */
+        private const val GHOST_CLIMB_AHEAD_M = 200.0
 
 
         /** Voice coaching: a distance rep this close to its end counts as ended; a grade over 3% widens the band. */

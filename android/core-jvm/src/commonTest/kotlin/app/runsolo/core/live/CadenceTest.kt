@@ -133,6 +133,93 @@ class CadenceTest {
     }
 
     @Test
+    fun `the switch to the last run is one P1 line and the flip gate starts over`() {
+        val m = TrailMoments()
+        // Behind the best for long enough to establish a side, then ahead of it: a flip is said.
+        m.tick(MomentInput(nowMs = 0, distM = 1_000.0, ghostAheadSec = -20.0))
+        m.tick(MomentInput(nowMs = 40_000, distM = 1_200.0, ghostAheadSec = -20.0))
+        val line = m.switched(true)
+        assertEquals("Racing your last run now.", line.text)
+        assertEquals(CueSlot.ghostFlip, line.slot)
+        assertEquals("Back to racing your best.", m.switched(false).text)
+        assertTrue(line.key != m.switched(true).key, "each switch has its own key")
+        // The gate started over: the first figure after a switch only sets the side, it is never a flip.
+        assertTrue(m.tick(MomentInput(nowMs = 50_000, distM = 2_000.0, ghostAheadSec = 20.0, racingLast = true)).isEmpty())
+        assertTrue(m.tick(MomentInput(nowMs = 90_000, distM = 2_300.0, ghostAheadSec = 20.0, racingLast = true)).isEmpty())
+    }
+
+    @Test
+    fun `flips and the final push name the run the ghost is racing`() {
+        val m = TrailMoments()
+        m.tick(MomentInput(nowMs = 0, distM = 1_000.0, ghostAheadSec = 20.0, racingLast = true))
+        m.tick(MomentInput(nowMs = 40_000, distM = 1_200.0, ghostAheadSec = 20.0, racingLast = true))
+        m.tick(MomentInput(nowMs = 50_000, distM = 1_800.0, ghostAheadSec = -20.0, racingLast = true))
+        val flip = m.tick(MomentInput(nowMs = 90_000, distM = 2_000.0, ghostAheadSec = -20.0, racingLast = true))
+        assertEquals(listOf("Your last run just passed you."), flip.map { it.text })
+        val push = m.tick(MomentInput(nowMs = 100_000, distM = 3_000.0, ghostAheadSec = -12.0, toEndM = 900.0, racingLast = true))
+        assertTrue(push.any { it.slot == CueSlot.finalPush && it.text.endsWith("for your last run.") }, push.toString())
+    }
+
+    @Test
+    fun `two known climbs on one trail are both called`() {
+        val m = TrailMoments()
+        val budget = TalkBudget(VoiceLevel.coach)
+        val first = m.tick(MomentInput(nowMs = 0, distM = 1_800.0, knownClimbStartM = 2_000.0, knownClimbGainM = 35.0)).single()
+        assertEquals("Climb ahead. 35 metres up.", first.text)
+        assertEquals("climbAhead:known:2000", first.key)
+        assertNotNull(budget.offer(first, 0L, 0L))
+        // The same climb on the next ticks is offered again and the budget says it is a repeat.
+        val again = m.tick(MomentInput(nowMs = 1_000, distM = 1_850.0, knownClimbStartM = 2_000.0, knownClimbGainM = 35.0)).single()
+        assertNull(budget.offer(again, 1_000L, 0L))
+        // 1.5 km on, 10 m more gain than before: the second climb is news, the retrace rule's 1 km gap and 40 m step do not apply.
+        val second = m.tick(MomentInput(nowMs = 300_000, distM = 3_300.0, knownClimbStartM = 3_500.0, knownClimbGainM = 45.0)).single()
+        assertEquals("climbAhead:known:3500", second.key)
+        assertNotNull(budget.offer(second, 300_000L, 0L))
+        // A bump under 30 m is not called.
+        assertTrue(m.tick(MomentInput(nowMs = 400_000, distM = 4_300.0, knownClimbStartM = 4_500.0, knownClimbGainM = 20.0)).isEmpty())
+    }
+
+    @Test
+    fun `a known climb the budget did not take is tried again and said once`() {
+        val m = TrailMoments()
+        val budget = TalkBudget(VoiceLevel.coach)
+        // Something was just said: the gap is shut, so the climb line is held, not said.
+        assertNotNull(budget.offer(TalkLine(CueSlot.km, "km:1", "1 k."), 0L, 0L))
+        val first = m.tick(MomentInput(nowMs = 5_000, distM = 1_800.0, knownClimbStartM = 2_000.0, knownClimbGainM = 35.0)).single()
+        assertNull(budget.offer(first, 5_000L, 0L))
+        // Dropped for good (past its hold): the next tick still carries it, and it is said when the gap is open.
+        val retry = m.tick(MomentInput(nowMs = 60_000, distM = 1_880.0, knownClimbStartM = 2_000.0, knownClimbGainM = 35.0)).single()
+        assertEquals(first.key, retry.key)
+        assertNotNull(budget.offer(retry, 60_000L, 0L))
+        val third = m.tick(MomentInput(nowMs = 61_000, distM = 1_900.0, knownClimbStartM = 2_000.0, knownClimbGainM = 35.0)).single()
+        assertNull(budget.offer(third, 61_000L, 0L), "said once")
+    }
+
+    @Test
+    fun `on a known trail the known climb replaces the retrace total never both`() {
+        val m = TrailMoments()
+        val both = m.tick(MomentInput(nowMs = 0, distM = 5_000.0, climbAheadM = 70.0, knownClimbStartM = 5_100.0, knownClimbGainM = 70.0))
+        assertEquals(listOf("climbAhead:known:5100"), both.map { it.key })
+        // Still in range a km later by the retrace rule's clock: still only the known beat.
+        val later = m.tick(MomentInput(nowMs = 100_000, distM = 6_300.0, climbAheadM = 70.0, knownClimbStartM = 6_400.0, knownClimbGainM = 70.0))
+        assertEquals(listOf("climbAhead:known:6400"), later.map { it.key })
+        // Off a known trail the retrace line is as it was.
+        val retrace = m.tick(MomentInput(nowMs = 200_000, distM = 8_000.0, climbAheadM = 70.0))
+        assertEquals(listOf("climbAhead"), retrace.map { it.key })
+    }
+
+    @Test
+    fun `a change of leading trail starts the flip gate over and says nothing`() {
+        val m = TrailMoments()
+        m.tick(MomentInput(nowMs = 0, distM = 1_000.0, ghostAheadSec = -20.0))
+        m.tick(MomentInput(nowMs = 35_000, distM = 1_200.0, ghostAheadSec = -20.0))
+        m.leaderChanged()
+        // Without the reset this would be a flip to ahead after the hold; after it, it only sets the side.
+        assertTrue(m.tick(MomentInput(nowMs = 40_000, distM = 1_800.0, ghostAheadSec = 10.0)).isEmpty())
+        assertTrue(m.tick(MomentInput(nowMs = 75_000, distM = 2_300.0, ghostAheadSec = 10.0)).isEmpty())
+    }
+
+    @Test
     fun `a restore does not repeat a climb ahead or guess at a climb under way`() {
         val m = TrailMoments()
         m.resumeAt(5_000.0)
