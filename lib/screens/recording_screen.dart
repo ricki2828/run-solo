@@ -29,6 +29,7 @@ import '../widgets/pace_dial.dart';
 import '../widgets/route_to_go.dart';
 import '../widgets/start_readout.dart';
 import '../widgets/target_band.dart';
+import '../widgets/trail_ghost.dart';
 import '../widgets/zone_gauge.dart';
 import '../widgets/zone_ladder.dart';
 import 'live_map_view.dart';
@@ -541,10 +542,9 @@ class _RecordingScreenState extends State<RecordingScreen>
               runModeOf(s.mode).showsElevation &&
               (retraceSt.heightVsStartM != null || retraceSt.headingBack);
           final readouts = <Widget>[
-            // SLOT (page 2, top): the trail "ahead / behind" readout and the
-            // turnaround cue go here, first in this list, above climb and
-            // grade. They read new RecordingSnapshot fields; nothing else
-            // on the screen needs to move.
+            // Page 2 top: the trail gap to best, one line (page 1 has both).
+            if (s.trail case final tr?)
+              TrailGhostReadout(trail: tr, compact: true, page2: true),
             if (runModeOf(s.mode).showsElevation && s.elevGainM != null)
               ElevationRow(
                 s: s,
@@ -749,13 +749,9 @@ class _RecordingScreenState extends State<RecordingScreen>
                   child: _Stats(s: s, units: settings.units),
                 ),
               ),
-            ] else
-              // SLOT (page 1, Free / Trail): the big "+12 s vs best" readout
-              // for a matched trail goes ABOVE this block, as a `...[...]`
-              // spread here (this branch becomes `else ...[ readout,
-              // _FreeRunBlock(...) ]`). Absent when no trail is matched, so
-              // it leaves no gap. Mint ahead, vermillion behind, at the
-              // other in-run numbers' size.
+            ] else ...[
+              // The big gap to your best on a known trail; absent (no gap)
+              // until one is matched.
               _FreeRunBlock(
                 s: s,
                 ctl: ctl,
@@ -765,7 +761,9 @@ class _RecordingScreenState extends State<RecordingScreen>
                 card: _cardLink,
                 reserveCard: settings.showWhileRunning && s.tipsMuted != true,
                 cardShowing: cardShowing,
+                trail: s.trail,
               ),
+            ],
             // Page 1's way to the map, matching NUMBERS on page 2. Not in a
             // structured session: its 4x4 layout has no 60 dp to spare (the
             // dots and the swipe still work there).
@@ -830,6 +828,12 @@ class _RecordingScreenState extends State<RecordingScreen>
                           _Banner(text: gpsBannerCopy(s), color: t.semWarn)
                         else if (s.notice != null)
                           _Banner(text: s.notice!, color: t.semWarn),
+                        if (s.trail?.turnCue == true && !pausedNow)
+                          TrailTurnCard(
+                            fill: t.inkPrimary,
+                            ink: t.bgBase,
+                            compact: compact,
+                          ),
                         if (route?.endCue != null && !pausedNow)
                           RouteEndCard(
                             cue: route!.endCue!,
@@ -1855,7 +1859,12 @@ class _FreeRunBlock extends StatelessWidget {
     this.card,
     this.reserveCard = false,
     this.cardShowing = false,
+    this.trail,
   });
+
+  /// The matched known trail, if any. Its gap sits above the trio at the
+  /// trio's own size (TIME's), and the plan fitting counts its height.
+  final TrailProgress? trail;
 
   /// The compare card may show: it gets a slot of its own below the
   /// clusters, so it covers no live number. Where the phone is too short for
@@ -2027,7 +2036,12 @@ class _FreeRunBlock extends StatelessWidget {
                 child: Container(height: divider, color: t.lineHair),
               ),
             );
-            final children = <Widget>[SizedBox(height: top)];
+            final children = <Widget>[
+              SizedBox(height: top),
+              // The gap to the run being raced, at TIME's size.
+              if (trail case final tr?)
+                TrailGhostReadout(trail: tr, valueSize: size),
+            ];
             // Without a slot of its own the card covers the pace cluster
             // while it shows; it hides then.
             final cover = !reserve && reserveCard;
@@ -2087,7 +2101,10 @@ class _FreeRunBlock extends StatelessWidget {
           _textH(AuxFigure.style.copyWith(fontSize: RunSoloType.runSize(40)));
       pace = paceCol > p.dialWidth / 2 ? paceCol : p.dialWidth / 2;
     }
-    return _trioH(size, stacked: p.stacked) + minGap + pace;
+    final ghost = trail == null
+        ? 0.0
+        : TrailGhostReadout.heightFor(trail!, size);
+    return ghost + _trioH(size, stacked: p.stacked) + minGap + pace;
   }
 }
 
