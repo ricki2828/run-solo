@@ -58,8 +58,27 @@ void expectValidBlock(Map<String, Object?> b) {
     'turn',
     'shape',
     'name',
+    'hr',
+    'hr_z',
   };
   expect(b.keys.toSet().difference(known), isEmpty);
+  final hr = b['hr'] as List?;
+  final hrZ = b['hr_z'] as List?;
+  // The heart comes with its zones, one of each per profile point.
+  expect(hr == null, hrZ == null);
+  if (hr != null) {
+    expect(profile, isNotNull);
+    expect(hr.length, profile!.length);
+    expect(hrZ!.length, hr.length);
+    for (final v in hr) {
+      expect(v, isA<int>());
+      expect(v as int, inInclusiveRange(30, 250));
+    }
+    for (final v in hrZ) {
+      expect(v, isA<int>());
+      expect(v as int, inInclusiveRange(1, 5));
+    }
+  }
 }
 
 engine.TrailRunFacts factsOf(engine.RunFile r, {String? street}) =>
@@ -79,6 +98,7 @@ Map<String, Object?>? build(
   engine.RunFile? priorBest,
   bool names = false,
   String? street,
+  engine.HrZones? heartZones,
 }) {
   final g = trailGroupOf(today.id, allFacts(runs, street: street));
   if (g == null) return null;
@@ -88,6 +108,7 @@ Map<String, Object?>? build(
     run: today,
     priorBest: priorBest,
     names: names,
+    heartZones: heartZones,
   );
 }
 
@@ -255,6 +276,94 @@ void main() {
     expect(b.containsKey('ghost_gap'), isFalse);
     expectValidBlock(b);
   });
+
+  group('heart rate (Heart rate on cards)', () {
+    final zones = engine.HrZones.percentMax(190);
+
+    test('no zones (the switch is off) means no hr, strap or not', () {
+      final runs = loops([400, 390, 380]);
+      final today = _withHr(runs.last, from: 120);
+      final b = build([...runs.take(2), today], today)!;
+      expect(b.containsKey('hr'), isFalse);
+      expect(b.containsKey('hr_z'), isFalse);
+      expectValidBlock(b);
+    });
+
+    test(
+      'with the switch on and a strap, hr and the runner zones ride along',
+      () {
+        final runs = loops([400, 390, 380]);
+        final today = _withHr(runs.last, from: 120);
+        final b = build([...runs.take(2), today], today, heartZones: zones)!;
+        expectValidBlock(b);
+        final hr = (b['hr']! as List).cast<int>();
+        final hrZ = (b['hr_z']! as List).cast<int>();
+        expect(hr.length, (b['profile']! as List).length);
+        expect(hr.first, lessThan(hr.last)); // the strap rose with the run
+        expect(hr.first, inInclusiveRange(118, 128));
+        expect(hr.last, inInclusiveRange(165, 172));
+        for (var i = 0; i < hr.length; i++) {
+          expect(hrZ[i], zones.zoneOf(hr[i]));
+        }
+      },
+    );
+
+    test('a run without a strap sends no hr even with the switch on', () {
+      final runs = loops([400, 390, 380]);
+      final today = _withHr(runs.last);
+      final b = build([...runs.take(2), today], today, heartZones: zones)!;
+      expect(b.containsKey('hr'), isFalse);
+      expect(b.containsKey('hr_z'), isFalse);
+      expectValidBlock(b);
+    });
+
+    test('a strap that dropped out for most of the run sends no hr', () {
+      final runs = loops([400, 390, 380]);
+      final full = _withHr(runs.last, from: 120);
+      final today = full.copyWith(
+        samples: [
+          for (final s in full.samples)
+            s.distM < 0.8 * full.distanceM ? s.copyWith(hr: null) : s,
+        ],
+      );
+      final b = build([...runs.take(2), today], today, heartZones: zones)!;
+      expect(b.containsKey('hr'), isFalse);
+    });
+
+    test('readings outside 30-250 bpm are not believed', () {
+      final runs = loops([400, 390, 380]);
+      final full = _withHr(runs.last, from: 120);
+      final today = full.copyWith(
+        samples: [for (final s in full.samples) s.copyWith(hr: 255)],
+      );
+      final b = build([...runs.take(2), today], today, heartZones: zones)!;
+      expect(b.containsKey('hr'), isFalse);
+    });
+
+    test('the wire example is a block the server accepts', () {
+      final j = (jsonDecode(
+        File('test/fixtures/trail_block_hr_sample.json').readAsStringSync(),
+      ) as Map).cast<String, Object?>();
+      expectValidBlock(j);
+      expect(j['hr'], isNotNull);
+    });
+  });
+}
+
+/// [r] with a strap reading rising from [from] to [to] bpm over its distance,
+/// or none at all when [from] is null.
+engine.RunFile _withHr(engine.RunFile r, {int? from, int to = 170}) {
+  final total = r.distanceM;
+  return r.copyWith(
+    samples: [
+      for (final s in r.samples)
+        s.copyWith(
+          hr: from == null
+              ? null
+              : from + ((to - from) * s.distM / total).round(),
+        ),
+    ],
+  );
 }
 
 /// [r] without its first [m] metres, as a late GPS lock leaves it.

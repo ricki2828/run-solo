@@ -115,3 +115,11 @@ is sent alone when the clip cannot be made (worker down, ffmpeg missing). The re
 (PIL frames, about 10 s, serial like every render). Telegram's `file_id` is kept in `media_file_ids` (cascades with the run), so a
 repeat send is one JSON call. Forwarding the clip from Telegram keeps the elevation profile in it (the clip is the record card's picture, moving), the same as forwarding the still. A repeat send also renders the still beside the cached id, so a refused id falls back to a photo, not text; the id is deleted with the 30-day trail block. `COMPANION_TRAIL_CLIP=0` keeps the still. The render worker's kinds `trail_board` and `trail_record` take the keys in
 `render/protocol.py` `TRAIL_KEYS` (`elev_profile`, `elev_src`, `ghost_gap`, `trail_board`, `trail_runs`, `turn_idx`, `trail_shape`, `trail_name`).
+
+Heart vs hill: a trail block may carry `hr` (bpm, 30-250) and `hr_z` (the runner's own zone 1-5 of each), both exactly one per `profile` point
+and sent together, only for a strap run with the app's "Heart rate on cards" switch on (`PUT /v1/me/settings {heart_rate}`, off by default,
+`users.hr_optin`). The server drops them at storage unless the switch is on, drops every stored series the moment it goes off, and deletes them with
+the rest of the trail block after 30 days (the series is inside `trail_json`). A board run with a series goes out as the `trail_heart` card in place of
+`trail_board` (a record stays `trail_record`; the series is stripped from its facts and never reaches the worker). The worker's `trail_heart` kind takes
+`TRAIL_KEYS` plus `hr_series` and `hr_zones` and refuses a mismatched length. The "The hill stopped at N m. My heart didn't." line is used only when the
+run's peak bpm came at or after the top of the hill; otherwise the card states the climb and the peak.

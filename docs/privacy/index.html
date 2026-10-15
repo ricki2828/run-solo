@@ -27,7 +27,7 @@
 <body>
 <main>
   <h1>Run Supreme privacy policy</h1>
-  <p class="meta">Applies to the Run Supreme Android app. Last updated 12 October 2026.</p>
+  <p class="meta">Applies to the Run Supreme Android app. Last updated 15 October 2026.</p>
 
   <p>Run Supreme is a running app with no account, no ads and no analytics of our own. This page says
   plainly what stays on your phone, what outside services receive so the app can work, and
@@ -206,6 +206,16 @@
   why the app only draws the profile on a picture you share from the app when "Show route shape on cards" is on. Trail pictures arrive hidden under a spoiler
   that you tap to reveal. The profile is a relative shape, not a place: whole metres up or down from the start, at most 64 of them, no latitude or longitude, no altitude above sea level. All of it is kept for 30 days after its run, then deleted, is in the data the server returns about you, and is deleted at once when you delete your data.</p>
 
+  <h3>Heart rate on trail pictures</h3>
+  <p>Heart rate is health data, so it is off until you turn on "Heart rate on cards" in Settings, Companion. With it on, and only for a
+  trail run you recorded with a heart rate strap, the app sends the heart rate along that run as at most 64 whole numbers (beats per minute, one for
+  each point of the elevation profile), plus the heart rate zone (1 to 5) your phone worked out for each of them from your own zone
+  settings, so the coach can draw a "Heart vs hill" picture in your own Telegram chat. Nothing else about your heart is sent: no
+  resting rate, no maximum, no times and no dates. Our server keeps the series for 30 days after its run, then deletes it, and it is in the
+  data the server returns about you. Turning "Heart rate on cards" off deletes every series we hold at once, as soon as your phone can reach our server, or the next
+  time the app connects if you were offline, and the phone stops sending it straight away. The same picture is only drawn for you:
+  if you forward it from Telegram, anyone you send it to can see what it shows.</p>
+
   <h3>The route outline</h3>
   <p>With "Show route shape on cards" on, the app sends an outline of each run's route so the companion can draw it on the
   picture or video of that run. On your phone, before anything is sent: a hidden circle around the places you start or finish
@@ -319,7 +329,7 @@
     removes them. A Sunday recap that quotes a note carries that quote only in your chat: our server does not keep a copy
     of it, so replacing or deleting the note stops it being quoted.</li>
     <li>Per-kilometre paces and rep times are kept with the run they belong to, so until you delete your data or six months pass
-    with no run. The route outline, and the trail times and elevation profile, are kept for 30 days after their run, then deleted. All of them are in the data the server returns
+    with no run. The route outline, and the trail times, elevation profile and heart rate series, are kept for 30 days after their run, then deleted. All of them are in the data the server returns
     about you (the app does not show them). Turning "Show route shape on cards" off deletes the outlines at once, as soon as your phone can reach our server, or the next
     time the app connects if you were offline.</li>
     <li>The rounded weather area: only the latest one is kept. It is deleted 30 days after the run it came from, when you turn

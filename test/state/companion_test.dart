@@ -682,6 +682,67 @@ void main() {
     });
   });
 
+  group('heart rate switch', () {
+    test('is off after enrolling and sends nothing', () async {
+      await enrolNow(ctl);
+      expect(ctl.heartRateOn, isFalse);
+      expect(http.to('PUT', '/v1/me/settings'), isEmpty);
+    });
+
+    test('on tells the server heart_rate true, off tells it false', () async {
+      await enrolNow(ctl);
+      expect(await ctl.setHeartRate(true), isTrue);
+      expect(ctl.heartRateOn, isTrue);
+      expect(http.bodyOf(http.to('PUT', '/v1/me/settings').single), {
+        'heart_rate': true,
+      });
+      expect(await ctl.setHeartRate(false), isTrue);
+      expect(ctl.heartRateOn, isFalse);
+      expect(http.bodyOf(http.to('PUT', '/v1/me/settings').last), {
+        'heart_rate': false,
+      });
+      expect(
+        await secrets.read(CompanionController.heartRateForgetName),
+        isNull,
+      );
+    });
+
+    test('a failed PUT leaves it off', () async {
+      await enrolNow(ctl);
+      http.handler = (r) =>
+          r.method == 'PUT' ? const CompanionReply(503) : http.defaultReply(r);
+      expect(await ctl.setHeartRate(true), isFalse);
+      expect(ctl.heartRateOn, isFalse);
+      expect(ctl.problem, isNotNull);
+    });
+
+    test('an offline switch-off stops the phone now and is retried', () async {
+      await enrolNow(ctl);
+      await ctl.setHeartRate(true);
+      http.offline = true;
+      await ctl.setHeartRate(false);
+      expect(ctl.heartRateOn, isFalse);
+      expect(await secrets.read(CompanionController.heartRateForgetName), '1');
+      http.offline = false;
+      await ctl.syncHeartRate();
+      expect(
+        await secrets.read(CompanionController.heartRateForgetName),
+        isNull,
+      );
+      expect(http.bodyOf(http.to('PUT', '/v1/me/settings').last), {
+        'heart_rate': false,
+      });
+    });
+
+    test('Delete everything leaves it off and the choice forgotten', () async {
+      await enrolNow(ctl);
+      await ctl.setHeartRate(true);
+      await ctl.deleteEverything();
+      expect(ctl.heartRateOn, isFalse);
+      expect(await secrets.read(CompanionController.heartRateName), isNull);
+    });
+  });
+
   group('weather switch', () {
     late SendCoordinator coordinator;
     var clock = DateTime.utc(2026, 9, 24, 6, 40);

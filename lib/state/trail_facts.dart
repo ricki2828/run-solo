@@ -63,12 +63,16 @@ engine.TrailGroup? trailAsOf(engine.TrailGroup g, String runId) {
 /// run is not on it or it has fewer than [kTrailMinRuns] runs up to this one.
 /// [priorBest] is the run file of [priorBestOf]; without it there is no
 /// `ghost_gap`. [names] is the "Show trail names on cards" switch.
+/// [heartZones] is non-null only while the "Heart rate on cards" switch is on
+/// (the runner's own zones): the block then carries `hr` and `hr_z` when the
+/// run had a strap, and never otherwise.
 Map<String, Object?>? trailBlock({
   required String runId,
   required engine.TrailGroup group,
   required engine.RunFile run,
   engine.RunFile? priorBest,
   bool names = false,
+  engine.HrZones? heartZones,
 }) {
   final g = trailAsOf(group, runId);
   if (g == null || g.runs.length < kTrailMinRuns) return null;
@@ -92,6 +96,9 @@ Map<String, Object?>? trailBlock({
       ? 'loop'
       : 'one_way';
   final name = names ? _name(g) : null;
+  final heart = heartZones == null || prof == null
+      ? null
+      : heartSeries(run, prof.length, heartZones);
   return {
     'n': n,
     'board': board,
@@ -107,7 +114,65 @@ Map<String, Object?>? trailBlock({
     'ghost_gap': ?gap,
     'shape': shape,
     'name': ?name,
+    if (heart != null) ...{'hr': heart.bpm, 'hr_z': heart.zones},
   };
+}
+
+/// Caps from the server's validation (`companion/trail.py`): one bpm is a
+/// whole number in this range.
+const int kHrMin = 30;
+const int kHrMax = 250;
+
+/// The runner's heart rate along the run, [points] values on the same
+/// progress axis as the profile (the profile's point k sits at
+/// `k / (points - 1)` of the run's distance), each with the runner's own zone
+/// (1-5) from [zones]. Each point is the mean of the strap readings nearest
+/// it. Null without a strap: under 70% of the points reached by a reading in
+/// [kHrMin]..[kHrMax], or no distance. Holes take the nearest read value.
+({List<int> bpm, List<int> zones})? heartSeries(
+  engine.RunFile run,
+  int points,
+  engine.HrZones zones,
+) {
+  if (points < 2 || run.samples.isEmpty) return null;
+  final total = run.samples.fold<double>(
+    0,
+    (m, s) => s.distM > m ? s.distM : m,
+  );
+  if (total <= 0) return null;
+  final sum = List<double>.filled(points, 0);
+  final count = List<int>.filled(points, 0);
+  for (final s in run.samples) {
+    final hr = s.hr;
+    if (hr == null || hr < kHrMin || hr > kHrMax) continue;
+    final k = (s.distM / total * (points - 1)).round().clamp(0, points - 1);
+    sum[k] += hr;
+    count[k]++;
+  }
+  final read = count.where((c) => c > 0).length;
+  if (read < 0.7 * points) return null;
+  final vals = List<double?>.generate(
+    points,
+    (k) => count[k] == 0 ? null : sum[k] / count[k],
+  );
+  double? carry;
+  for (var k = 0; k < points; k++) {
+    if (vals[k] != null) {
+      carry = vals[k];
+    } else if (carry != null) {
+      vals[k] = carry;
+    }
+  }
+  carry = null;
+  for (var k = points - 1; k >= 0; k--) {
+    if (vals[k] != null) {
+      carry = vals[k];
+    } else if (carry != null) {
+      vals[k] = carry;
+    }
+  }
+  final bpm = [for (final v in vals) v!.round().clamp(kHrMin, kHrMax)];
+  return (bpm: bpm, zones: [for (final b in bpm) zones.zoneOf(b).clamp(1, 5)]);
 }
 
 /// At most [kTrailBoardRows] rows: the best run, today and the nearest rows,

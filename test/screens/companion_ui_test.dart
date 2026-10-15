@@ -207,6 +207,54 @@ void main() {
     });
   });
 
+  group('heart rate on cards', () {
+    Future<void> openIt(WidgetTester tester) async {
+      await tester.runAsync(() => enrolNow(ctl));
+      await pumpApp(
+        tester,
+        fakeServices(companion: ctl, transfer: transfer),
+        home: const CompanionScreen(),
+      );
+      await pumpTimes(tester, 6);
+      await scrollTo(
+        tester,
+        find.byKey(const ValueKey('companion-heart-rate-switch')),
+      );
+    }
+
+    Switch sw(WidgetTester tester) => tester.widget<Switch>(
+      find.byKey(const ValueKey('companion-heart-rate-switch')),
+    );
+
+    testWidgets('starts off, with one line saying what is sent', (
+      tester,
+    ) async {
+      await openIt(tester);
+      expect(sw(tester).value, isFalse);
+      expect(find.text('Heart rate on cards'), findsOneWidget);
+      expect(find.text(kCompanionHeartRateBlurb), findsOneWidget);
+      expect(kCompanionHeartRateBlurb, isNot(contains('—')));
+      expect(http.to('PUT', '/v1/me/settings'), isEmpty);
+    });
+
+    testWidgets('turning it on tells the server', (tester) async {
+      await openIt(tester);
+      await tester.tap(
+        find.byKey(const ValueKey('companion-heart-rate-switch')),
+      );
+      await tester.runAsync(() async {
+        for (var i = 0; i < 50 && !ctl.heartRateOn; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      await pumpTimes(tester, 4);
+      expect(sw(tester).value, isTrue);
+      expect(http.bodyOf(http.to('PUT', '/v1/me/settings').last), {
+        'heart_rate': true,
+      });
+    });
+  });
+
   group('weather in suggestions', () {
     Future<void> openKnows(WidgetTester tester) async {
       await tester.runAsync(() => enrolNow(ctl));
