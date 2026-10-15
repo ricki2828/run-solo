@@ -1213,6 +1213,65 @@ void main() {
       },
     );
 
+    test('the trail block rides on the run', () async {
+      await enrol();
+      target.trailFacts = (_, {required names}) async => {
+        'n': 2,
+        'board': [
+          {'attempt': 1, 'time_s': 2500, 'rank': 2},
+          {'attempt': 2, 'time_s': 2400, 'today': true, 'rank': 1},
+        ],
+      };
+      await coordinator.sendAuto(run.id);
+      final sent = http.bodyOf(http.to('POST', '/v1/runs').single);
+      expect((sent['trail']! as Map)['n'], 2);
+    });
+
+    test(
+      'a trail read that throws still sends the run, without trail',
+      () async {
+        await enrol();
+        target.trailFacts = (_, {required names}) async =>
+            throw StateError('x');
+        await coordinator.sendAuto(run.id);
+        final sent = http.bodyOf(http.to('POST', '/v1/runs').single);
+        expect(sent['run_id'], run.id);
+        expect(sent.containsKey('trail'), isFalse);
+      },
+    );
+
+    test('the trail read gets names from the switch at send time', () async {
+      await enrol();
+      final seen = <bool>[];
+      target.trailFacts = (_, {required names}) async {
+        seen.add(names);
+        return null;
+      };
+      await coordinator.sendAuto(run.id);
+      await ctl.setPlaceNames(true);
+      await target.send(
+        SendRequest(run: run, title: 't', detail: await store.load(run.id)),
+      );
+      expect(seen, [false, true]);
+    });
+
+    test('an offline switch-off is retried before the next send', () async {
+      await enrol();
+      await ctl.setPlaceNames(true);
+      http.offline = true;
+      await ctl.setPlaceNames(false);
+      expect(await secrets.read(CompanionController.placeNamesForgetName), '1');
+      http.offline = false;
+      await coordinator.sendAuto(run.id);
+      expect(http.bodyOf(http.to('PUT', '/v1/me/settings').last), {
+        'place_names': false,
+      });
+      expect(
+        await secrets.read(CompanionController.placeNamesForgetName),
+        isNull,
+      );
+    });
+
     test(
       'a 422 means the server is older: no try spent, retried after 6 h',
       () async {

@@ -176,12 +176,14 @@ class AppServices {
       trailFactsOfDetail(d),
     ];
     final g = trailGroupOf(d.run.id, facts);
-    if (g == null || g.runs.length < kTrailMinRuns) return null;
-    final prior = priorBestOf(g, d.run.id);
+    if (g == null) return null;
+    final asOf = trailAsOf(g, d.run.id);
+    if (asOf == null || asOf.runs.length < kTrailMinRuns) return null;
+    final prior = priorBestOf(asOf, d.run.id);
     final priorRun = prior == null ? null : (await history.load(prior.id))?.run;
     return trailBlock(
       runId: d.run.id,
-      runs: facts,
+      group: asOf,
       run: d.run,
       priorBest: priorRun,
       names: names,

@@ -16,7 +16,11 @@ import 'package:run_engine/run_engine.dart' as engine;
 /// Caps from the server's validation (`companion/trail.py`).
 const int kTrailBoardRows = 10;
 const int kTrailPoints = 64;
-const int kTrailMinRuns = 3;
+
+/// A block goes from the 2nd run on (a trail record needs two rows). The
+/// server draws a board only from the 3rd run (`card_kind`), so n = 2 can
+/// never become a board.
+const int kTrailMinRuns = 2;
 const int kTrailNameMax = 30;
 
 /// The group [runId] is in, or null when it is on no known trail.
@@ -38,19 +42,34 @@ engine.TrailRunFacts? priorBestOf(engine.TrailGroup g, String runId) {
   return best;
 }
 
-/// The trail block for [run] (id [runId]) among [runs], or null: not on a
-/// known trail, or fewer than [kTrailMinRuns] runs on it (the board starts
-/// from the 3rd). [priorBest] is the run file of [priorBestOf]; without it
-/// there is no `ghost_gap`. [names] is the "Show trail names on cards"
-/// switch.
+/// [g] as it stood at [runId]'s own run: later runs left out, so a run that
+/// uploads late still reads as run N of N. Null when [runId] is not on [g].
+engine.TrailGroup? trailAsOf(engine.TrailGroup g, String runId) {
+  final me = g.runs.where((r) => r.id == runId);
+  if (me.isEmpty) return null;
+  final start = me.first.start;
+  return engine.TrailGroup(
+    key: g.key,
+    name: g.name,
+    runs: [
+      for (final r in g.runs)
+        if (!r.start.isAfter(start)) r,
+    ],
+  );
+}
+
+/// The trail block for [run] (id [runId]) on trail [group], or null when the
+/// run is not on it or it has fewer than [kTrailMinRuns] runs up to this one.
+/// [priorBest] is the run file of [priorBestOf]; without it there is no
+/// `ghost_gap`. [names] is the "Show trail names on cards" switch.
 Map<String, Object?>? trailBlock({
   required String runId,
-  required Iterable<engine.TrailRunFacts> runs,
+  required engine.TrailGroup group,
   required engine.RunFile run,
   engine.RunFile? priorBest,
   bool names = false,
 }) {
-  final g = trailGroupOf(runId, runs);
+  final g = trailAsOf(group, runId);
   if (g == null || g.runs.length < kTrailMinRuns) return null;
   final n = g.runs.length;
   final board = _board(g, runId);
@@ -60,16 +79,18 @@ Map<String, Object?>? trailBlock({
   final path = geo == null ? null : engine.GhostPath(geo);
   final prof = _profile(run, geo, path);
 
-  final gap = path == null || priorBest == null
+  final priorFacts = priorBestOf(g, runId);
+  final todayFacts = g.runs.firstWhere((r) => r.id == runId);
+  final gap = path == null || priorBest == null || priorFacts == null
       ? null
-      : _ghostGap(path, run, priorBest);
+      : _ghostGap(path, run, priorBest, todayFacts, priorFacts, g);
   final turnM = geo == null ? null : engine.TrailGhostBuilder.turnaround(geo);
   final shape = turnM != null
       ? 'out_and_back'
       : (g.anchor.route?.isLoop ?? false)
       ? 'loop'
       : 'one_way';
-  final name = names ? _name(g.name) : null;
+  final name = names ? _name(g) : null;
   return {
     'n': n,
     'board': board,
@@ -167,22 +188,54 @@ List<int>? _profile(
 }
 
 /// Seconds ahead (+) or behind (-) of [best] at the same progress along
-/// [path], at most [kTrailPoints] values; null when the two runs share fewer
-/// than two reached vertices.
+/// [path], at most [kTrailPoints] values on the same progress axis as the
+/// profile (one value per trail vertex, resampled alike). Each run's times
+/// are heat-adjusted like the board's, so the gap and the board agree. Holes
+/// (vertices a run did not reach) take the nearest reached value; null when
+/// under 70% of the vertices are shared, or when the end of the gap
+/// disagrees with the board's verdict between the two runs.
 List<int>? _ghostGap(
   engine.GhostPath path,
   engine.RunFile run,
   engine.RunFile best,
+  engine.TrailRunFacts today,
+  engine.TrailRunFacts prior,
+  engine.TrailGroup g,
 ) {
   final now = engine.TrailGhostBuilder.profile(path, run);
   final then = engine.TrailGhostBuilder.profile(path, best);
   if (now == null || then == null) return null;
-  final gaps = <double>[
-    for (var i = 0; i < path.size; i++)
-      if (now[i] >= 0 && then[i] >= 0) (then[i] - now[i]) / 1000,
+  final raw = List<double?>.filled(path.size, null);
+  var shared = 0;
+  for (var i = 0; i < path.size; i++) {
+    if (now[i] >= 0 && then[i] >= 0) {
+      raw[i] = (then[i] * prior.heatFactor - now[i] * today.heatFactor) / 1000;
+      shared++;
+    }
+  }
+  if (shared < 2 || shared < 0.7 * path.size) return null;
+  double? carry;
+  for (var i = 0; i < path.size; i++) {
+    if (raw[i] != null) {
+      carry = raw[i];
+    } else if (carry != null) {
+      raw[i] = carry;
+    }
+  }
+  carry = null;
+  for (var i = path.size - 1; i >= 0; i--) {
+    if (raw[i] != null) {
+      carry = raw[i];
+    } else if (carry != null) {
+      raw[i] = carry;
+    }
+  }
+  final gap = [
+    for (final v in _resample([for (final v in raw) v!])) v,
   ];
-  if (gaps.length < 2) return null;
-  return [for (final v in _resample(gaps)) v.round().clamp(-3600, 3600)];
+  final boardDelta = (g.normMs(prior) - g.normMs(today)) / 1000;
+  if (gap.last * boardDelta < 0) return null;
+  return [for (final v in gap) v.round().clamp(-3600, 3600)];
 }
 
 /// [vals] (evenly spaced) cut to at most [kTrailPoints] by linear
@@ -219,8 +272,13 @@ List<double>? _byDistance(List<(double, double)> pts) {
   return out;
 }
 
-String? _name(String s) {
-  final t = s.trim();
-  if (t.isEmpty) return null;
-  return t.length <= kTrailNameMax ? t : t.substring(0, kTrailNameMax).trim();
+/// The trail's place name, or null when the anchor run has no street or
+/// place (the dated fallback "Trail of 1 Sep" is not a place and carries a
+/// date). Cut to [kTrailNameMax] code points, never inside one.
+String? _name(engine.TrailGroup g) {
+  final base = (g.anchor.street ?? g.anchor.place)?.trim() ?? '';
+  if (base.isEmpty) return null;
+  final runes = g.name.trim().runes;
+  if (runes.length <= kTrailNameMax) return g.name.trim();
+  return String.fromCharCodes(runes.take(kTrailNameMax)).trim();
 }

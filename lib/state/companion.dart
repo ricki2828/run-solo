@@ -1863,10 +1863,13 @@ class CompanionTarget extends ExportTarget {
     }
   }
 
-  /// A trail read that fails sends the run without a trail block.
+  /// A trail read that fails or takes over 3 s sends the run without a trail block.
   Future<Map<String, Object?>?> _trail(RunDetail run) async {
     try {
-      return await trailFacts?.call(run, names: controller.placeNamesOn);
+      // Never holds the upload: a slow file read just means no trail block.
+      return await trailFacts
+          ?.call(run, names: controller.placeNamesOn)
+          .timeout(const Duration(seconds: 3));
     } catch (e) {
       companionLog('trail read failed (${e.runtimeType})');
       return null;
