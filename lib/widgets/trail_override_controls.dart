@@ -192,5 +192,14 @@ class _CandidateTile extends StatelessWidget {
                       away,
                       style: RunSoloType.body15.copyWith(color: t.inkSecondary),
                     ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: t.inkSecondary),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
